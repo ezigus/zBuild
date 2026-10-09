@@ -19,7 +19,7 @@
 
 ## Context
 
-The legacy resume semantics are partially documented. `resume_state` in `legacy/scripts/lib/pipeline-state.sh:876-1075` restores stage statuses and `SELF_HEAL_COUNT` but **does not** read back `CURRENT_ITERATION` — verified at line 269 (written) and confirmed absent in lines 987-1026 (read). On resume, plugins relying on iteration count receive the *initial* value (often 0), causing the loop to re-do iterations.
+The legacy resume semantics are partially documented. `resume_state` in `legacy-DoNotUse/scripts/lib/pipeline-state.sh:876-1075` restores stage statuses and `SELF_HEAL_COUNT` but **does not** read back `CURRENT_ITERATION` — verified at line 269 (written) and confirmed absent in lines 987-1026 (read). On resume, plugins relying on iteration count receive the *initial* value (often 0), causing the loop to re-do iterations.
 
 Other state that doesn't survive resume:
 - `loop-state.md` (gitignored; per-iteration debug state; regenerated each run).
@@ -228,4 +228,4 @@ success on a still-corrupt file — closing a latent silent-failure the bare `cp
 - [KEEPERS.md §C correction: CURRENT_ITERATION lost on resume](../KEEPERS.md#section-c--reliability--safety-expanded)
 - [KEEPERS.md §C addition 8: resume best-effort contract](../KEEPERS.md#additions-hidden-safety-primitives-the-original-spec-missed)
 - [ARCHITECTURE.md §4](../ARCHITECTURE.md#4-state-model) — full state model.
-- `legacy/scripts/lib/pipeline-state.sh:269` (write) vs `:987-1026` (read) — the gap this ADR closes.
+- `legacy-DoNotUse/scripts/lib/pipeline-state.sh:269` (write) vs `:987-1026` (read) — the gap this ADR closes.

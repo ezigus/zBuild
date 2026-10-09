@@ -115,13 +115,13 @@ rm -rf "$REPO_DIR/.zbuild" "$REPO_DIR/ios"
 # Files inside a path listed in "disable_detection" must not contribute signal
 # matches; detection must treat that subtree as invisible.
 _make_signal_plugin "sig-node-dis" "node" "high"
-mkdir -p "$REPO_DIR/legacy"
-touch "$REPO_DIR/legacy/package.json"
+mkdir -p "$REPO_DIR/legacy-DoNotUse"
+touch "$REPO_DIR/legacy-DoNotUse/package.json"
 mkdir -p "$REPO_DIR/.zbuild"
 cat > "$REPO_DIR/.zbuild/platforms.json" <<'V2DIS'
 {
   "schema_version": 2,
-  "disable_detection": ["legacy/"]
+  "disable_detection": ["legacy-DoNotUse/"]
 }
 V2DIS
 result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)"
@@ -134,7 +134,7 @@ else
         "node appeared despite path being in disable_detection list"
 fi
 rm -f "$STATE_DIR/platforms.json"
-rm -rf "$REPO_DIR/.zbuild" "$REPO_DIR/legacy"
+rm -rf "$REPO_DIR/.zbuild" "$REPO_DIR/legacy-DoNotUse"
 rm -rf "$PLUGINS_ROOT/agent/sig-node-dis"
 
 # ─── Test 15: v2 schema — aliases resolves platform name ──────────────────────

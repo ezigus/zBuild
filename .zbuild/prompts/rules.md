@@ -5,7 +5,7 @@
 - Never pipe anything into `grep -q`, and never pipe into a bare `head`, in any `.sh` file, test files included. The reader exits early, the writer takes SIGPIPE, and under `set -o pipefail` the line fails for a reason nothing logs. Use a here-string instead: `grep -q PATTERN <<< "$var"`, or run grep on the file directly: `grep -q PATTERN "$file"`. `tests/unit/sigpipe-antipattern-guard-test.sh` fails the suite on any violation; a genuinely safe pipe is annotated `# sigpipe-ok: <reason>`.
 - Never name a model (haiku, sonnet, opus, …) in code; model selection goes through core/router and config/models.json.
 - A test must be able to fail: assert what is required, never what the code happens to do.
-- Never edit anything under `legacy/`.
+- Never edit anything under `legacy-DoNotUse/`.
 
 ## Facts reviewers need
 - `ZBUILD_*` environment variables are set by the engine at dispatch (the artifact dir, the stage's input index `ZBUILD_STAGE_INPUTS`, the issue, the run). They are trusted engine inputs, not user or attacker input.

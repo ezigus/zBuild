@@ -5,7 +5,7 @@
 
 ## Context
 
-The legacy code has 160 test files (158 bash + 2 vitest) and `legacy/scripts/lib/test-helpers.sh`, which provides color output, temp-dir isolation, PATH-shadow mocks, child-process cleanup, and CI-env sanitization. The harness is generic and well-crafted; the test inventory is mixed.
+The legacy code has 160 test files (158 bash + 2 vitest) and `legacy-DoNotUse/scripts/lib/test-helpers.sh`, which provides color output, temp-dir isolation, PATH-shadow mocks, child-process cleanup, and CI-env sanitization. The harness is generic and well-crafted; the test inventory is mixed.
 
 A first-pass audit incorrectly claimed "60+ grep-for-function-name assertions" as a liability. Re-audit found **zero** `grep -qE "^funcname\(\)"` patterns across the 160 files. Tests invoke functions directly and assert outputs/side-effects. That's a major asset.
 
@@ -17,7 +17,7 @@ zBuild's test strategy has three pillars: **call-and-assert** (lifted from legac
 
 ### Pillar 1: Call-and-assert (lift wholesale)
 
-`scripts/lib/test-helpers.sh` is lifted from `legacy/scripts/lib/test-helpers.sh` with minimal changes (legacy env var names renamed to `ZBUILD_*`). Convention:
+`scripts/lib/test-helpers.sh` is lifted from `legacy-DoNotUse/scripts/lib/test-helpers.sh` with minimal changes (legacy env var names renamed to `ZBUILD_*`). Convention:
 - Test file naming: `tests/<feature>-test.sh` for unit/integration; `tests/e2e/<feature>-test.sh` for end-to-end.
 - Co-located plugin tests: `plugins/<kind>/<name>/tests/<name>-test.sh` (integration) and `plugins/<kind>/<name>/tests/<name>-unit-test.sh` (unit). Discovered by `run-tests.sh` via glob `plugins/**/tests/*-test.sh`.
 - Every test file is idempotent on re-source (`[[ -n "${_<name>_TEST_LOADED:-}" ]] && return 0`).
@@ -47,11 +47,11 @@ Every keeper has an issue with this checklist (template in `.github/issues/keepe
 
 1. **Behavior preserved.** New code's behavior matches legacy's, verified by a regression test that exercises both.
 2. **Regression test exists.** Test path documented in the issue. Test fails before migration, passes after.
-3. **Citation discoverable.** `legacy/<file>:<line>` from the issue resolves in the current tree (until pruned).
+3. **Citation discoverable.** `legacy-DoNotUse/<file>:<line>` from the issue resolves in the current tree (until pruned).
 4. **Mapping matches.** New file location matches the row in KEEPERS §H mapping table.
 5. **Removal reproduces symptom.** Deleting the new implementation reproduces the original symptom the legacy code was solving.
 
-The trial is the gate to `git rm` the legacy source and write the tombstone.
+The trial is the gate to `git rm` the legacy source; nothing else is written (ADR-002, amended 2026-10-09).
 
 ### Migration matrix (from KEEPERS §G)
 
@@ -100,4 +100,4 @@ Phase 0 verification calls for this: spawn two simulated daemons, have them race
 
 - [KEEPERS.md §G](../KEEPERS.md#section-g--test-harness-carry-forward-with-audit-correction) — full migration matrix and harness audit.
 - [KEEPERS.md §J](../KEEPERS.md#section-j--verification) — the 5-test trial.
-- `legacy/scripts/lib/test-helpers.sh` — source for the lifted harness.
+- `legacy-DoNotUse/scripts/lib/test-helpers.sh` — source for the lifted harness.

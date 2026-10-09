@@ -31,7 +31,7 @@ plugins  (agent · tool · recovery · orchestrator · claim-coordinator · daem
 | `config/` | `models.json`, `event-schema.json`, `templates/`. |
 | `scripts/` | The `zbuild` CLI and shared bash libraries. |
 | `docs/` | VISION, ARCHITECTURE, KEEPERS, ADRs. |
-| `legacy/` | Frozen upstream reference — do not run. |
+| `legacy-DoNotUse/` | Frozen upstream reference — do not run, not zBuild code. |
 
 ## How a run flows
 

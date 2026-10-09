@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # tests/unit/worktree-sparse-legacy-test.sh
-# Per-worktree sparse-checkout excludes legacy/ from issue worktrees (#1802).
+# Per-worktree sparse-checkout excludes legacy-DoNotUse/ from issue worktrees (#1802).
 #
-# [#1802/SPEC-1]: zbuild_worktree_acquire produces a worktree with no legacy/
-#                 (except legacy/migrated/) and returns 0
+# [#1802/SPEC-1]: zbuild_worktree_acquire produces a worktree with none of
+#                 legacy-DoNotUse/ — no subdirectory excepted — and returns 0
 # [#1802/SPEC-2]: zbuild_worktree_enter in all modes does the same
 # [#1802/SPEC-3]: the exclusion survives a git checkout inside the worktree
 # [#1802/SPEC-4]: zbuild_worktree_acquire on the reuse path re-applies the pattern
@@ -16,18 +16,21 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-print_test_header "per-worktree sparse-checkout excludes legacy/ (#1802)"
+print_test_header "per-worktree sparse-checkout excludes legacy-DoNotUse/ (#1802)"
 setup_test_env "worktree-sparse-legacy"
 
 # shellcheck source=../../scripts/lib/worktree.sh
 source "$REPO_ROOT/scripts/lib/worktree.sh"
 set +e
 
-# ── fixture: a real git repo with files under legacy/ ───────────────────────
+# ── fixture: a real git repo with files under legacy-DoNotUse/ ─────────────
+# _KEPT names the subdirectory an earlier rule kept in every worktree; it is now
+# left out like the rest (ADR-059 §2).
+_KEPT=migrated
 _R="$TEST_TEMP_DIR/repo"
-mkdir -p "$_R/legacy/migrated" "$_R/src"
-printf 'frozen\n'   > "$_R/legacy/frozen.sh"
-printf 'tombstone\n' > "$_R/legacy/migrated/tombstone.md"
+mkdir -p "$_R/legacy-DoNotUse/$_KEPT" "$_R/src"
+printf 'frozen\n'   > "$_R/legacy-DoNotUse/frozen.sh"
+printf 'tombstone\n' > "$_R/legacy-DoNotUse/$_KEPT/tombstone.md"
 printf 'work\n'     > "$_R/src/work.sh"
 git -C "$_R" init -q -b main 2>/dev/null
 git -C "$_R" config user.email t@t
@@ -43,20 +46,20 @@ git -C "$_R" branch third  2>/dev/null
 # Redirect all worktrees into the sandbox; $TEST_TEMP_DIR is outside $_R.
 export ZBUILD_WORKTREE_ROOT="$TEST_TEMP_DIR/wt"
 
-# ── helper: assert legacy/frozen.sh absent and legacy/migrated/ present ─────
+# ── helper: assert nothing under legacy-DoNotUse/ is checked out ────────────
 _assert_sparse() {
     local tag="$1" wt="$2"
-    if [[ -f "$wt/legacy/frozen.sh" ]]; then
-        assert_fail "[$tag] legacy/frozen.sh must not be checked out in the worktree" \
-            "found: $wt/legacy/frozen.sh"
+    if [[ -f "$wt/legacy-DoNotUse/frozen.sh" ]]; then
+        assert_fail "[$tag] legacy-DoNotUse/frozen.sh must not be checked out in the worktree" \
+            "found: $wt/legacy-DoNotUse/frozen.sh"
     else
-        assert_pass "[$tag] legacy/frozen.sh is absent from the worktree"
+        assert_pass "[$tag] legacy-DoNotUse/frozen.sh is absent from the worktree"
     fi
-    if [[ -f "$wt/legacy/migrated/tombstone.md" ]]; then
-        assert_pass "[$tag] legacy/migrated/tombstone.md is readable (migrated/ included)"
+    if [[ -e "$wt/legacy-DoNotUse/$_KEPT/tombstone.md" ]]; then
+        assert_fail "[$tag] no subdirectory of legacy-DoNotUse/ is excepted" \
+            "found: $wt/legacy-DoNotUse/$_KEPT/tombstone.md"
     else
-        assert_fail "[$tag] legacy/migrated/tombstone.md must be present in the worktree" \
-            "absent: $wt/legacy/migrated/tombstone.md"
+        assert_pass "[$tag] legacy-DoNotUse/$_KEPT/ is left out too (no exception)"
     fi
 }
 
@@ -74,16 +77,16 @@ _assert_sparse "#1802/SPEC-1" "$_WT_ACQ"
 _WT_CREATE="$(cd "$_R" && zbuild_worktree_enter spec2-create zbuild/spec2-create create 2>/dev/null)"
 _rc=$?
 # Primary [#1802/SPEC-2] assertion checks the sparse outcome — not just exit code.
-# On old code zbuild_worktree_enter succeeds (rc=0) but leaves legacy/frozen.sh in
+# On old code zbuild_worktree_enter succeeds (rc=0) but leaves legacy-DoNotUse/frozen.sh in
 # the worktree; this assertion therefore fails before the fix and passes after it.
 if [[ "$_rc" -ne 0 || ! -d "$_WT_CREATE" ]]; then
     assert_fail "[#1802/SPEC-2] zbuild_worktree_enter create must return 0 and produce a worktree" \
         "rc=$_rc path=${_WT_CREATE:-<empty>}"
-elif [[ -f "$_WT_CREATE/legacy/frozen.sh" ]]; then
-    assert_fail "[#1802/SPEC-2] zbuild_worktree_enter create must not check out legacy/ in the worktree" \
-        "found: $_WT_CREATE/legacy/frozen.sh"
+elif [[ -f "$_WT_CREATE/legacy-DoNotUse/frozen.sh" ]]; then
+    assert_fail "[#1802/SPEC-2] zbuild_worktree_enter create must not check out legacy-DoNotUse/ in the worktree" \
+        "found: $_WT_CREATE/legacy-DoNotUse/frozen.sh"
 else
-    assert_pass "[#1802/SPEC-2] zbuild_worktree_enter create: legacy/frozen.sh absent from worktree"
+    assert_pass "[#1802/SPEC-2] zbuild_worktree_enter create: legacy-DoNotUse/frozen.sh absent from worktree"
 fi
 _assert_sparse "#1802/SPEC-2 create" "$_WT_CREATE"
 
@@ -127,11 +130,11 @@ if [[ "$_rc" -eq 0 && -d "$_WT_SWITCH" ]]; then
     else
         assert_fail "[#1802/SPEC-3] git checkout inside the worktree failed" "rc=$_rcc"
     fi
-    if [[ -f "$_WT_SWITCH/legacy/frozen.sh" ]]; then
-        assert_fail "[#1802/SPEC-3] legacy/frozen.sh must remain absent after branch switch" \
-            "found after checkout: $_WT_SWITCH/legacy/frozen.sh"
+    if [[ -f "$_WT_SWITCH/legacy-DoNotUse/frozen.sh" ]]; then
+        assert_fail "[#1802/SPEC-3] legacy-DoNotUse/frozen.sh must remain absent after branch switch" \
+            "found after checkout: $_WT_SWITCH/legacy-DoNotUse/frozen.sh"
     else
-        assert_pass "[#1802/SPEC-3] legacy/frozen.sh absent after branch switch (sparse persists)"
+        assert_pass "[#1802/SPEC-3] legacy-DoNotUse/frozen.sh absent after branch switch (sparse persists)"
     fi
 else
     assert_fail "[#1802/SPEC-3] SETUP: could not create worktree for branch-switch test" \
@@ -147,10 +150,10 @@ mkdir -p "$(dirname "$_WT4_PATH")"
 git -C "$_R" worktree add --detach "$_WT4_PATH" 2>/dev/null; _rc=$?
 if [[ "$_rc" -eq 0 ]]; then
     assert_pass "[#1802/SPEC-4] manually created worktree (no sparse) setup succeeded"
-    if [[ -f "$_WT4_PATH/legacy/frozen.sh" ]]; then
-        assert_pass "[#1802/SPEC-4] pre-condition: legacy/frozen.sh present before acquire"
+    if [[ -f "$_WT4_PATH/legacy-DoNotUse/frozen.sh" ]]; then
+        assert_pass "[#1802/SPEC-4] pre-condition: legacy-DoNotUse/frozen.sh present before acquire"
     else
-        assert_fail "[#1802/SPEC-4] SETUP: legacy/frozen.sh must be present before acquire" \
+        assert_fail "[#1802/SPEC-4] SETUP: legacy-DoNotUse/frozen.sh must be present before acquire" \
             "(git worktree add without sparse should include all files)"
     fi
     _WT4_OUT="$(zbuild_worktree_acquire spec4-resume "$_R" 2>/dev/null)"; _rcr=$?
@@ -159,17 +162,17 @@ if [[ "$_rc" -eq 0 ]]; then
     else
         assert_fail "[#1802/SPEC-4] zbuild_worktree_acquire reuse path must return 0" "rc=$_rcr"
     fi
-    if [[ -f "$_WT4_PATH/legacy/frozen.sh" ]]; then
-        assert_fail "[#1802/SPEC-4] reuse path must apply sparse: legacy/frozen.sh must be absent" \
-            "found after acquire: $_WT4_PATH/legacy/frozen.sh"
+    if [[ -f "$_WT4_PATH/legacy-DoNotUse/frozen.sh" ]]; then
+        assert_fail "[#1802/SPEC-4] reuse path must apply sparse: legacy-DoNotUse/frozen.sh must be absent" \
+            "found after acquire: $_WT4_PATH/legacy-DoNotUse/frozen.sh"
     else
-        assert_pass "[#1802/SPEC-4] reuse path applied sparse: legacy/frozen.sh absent"
+        assert_pass "[#1802/SPEC-4] reuse path applied sparse: legacy-DoNotUse/frozen.sh absent"
     fi
-    if [[ -f "$_WT4_PATH/legacy/migrated/tombstone.md" ]]; then
-        assert_pass "[#1802/SPEC-4] legacy/migrated/ present after reuse (migrated/ included)"
+    if [[ -e "$_WT4_PATH/legacy-DoNotUse/$_KEPT/tombstone.md" ]]; then
+        assert_fail "[#1802/SPEC-4] reuse path must leave out all of legacy-DoNotUse/, migrated/ included" \
+            "found after acquire: $_WT4_PATH/legacy-DoNotUse/$_KEPT/tombstone.md"
     else
-        assert_fail "[#1802/SPEC-4] legacy/migrated/tombstone.md must be present after reuse" \
-            "absent: $_WT4_PATH/legacy/migrated/tombstone.md"
+        assert_pass "[#1802/SPEC-4] reuse path left out legacy-DoNotUse/$_KEPT/ too"
     fi
 else
     assert_fail "[#1802/SPEC-4] SETUP: git worktree add for resume fixture failed" "rc=$_rc"
@@ -193,12 +196,12 @@ else
     assert_fail "[#1802/SPEC-5] extensions.worktreeConfig must be true in the main checkout" \
         "value: ${_wtcfg:-<not set>}"
 fi
-# Working tree of the main checkout must still contain legacy/ (it is not sparse).
-if [[ -f "$_R/legacy/frozen.sh" ]]; then
-    assert_pass "[#1802/SPEC-5] main checkout working tree still has legacy/frozen.sh (not sparse)"
+# Working tree of the main checkout must still contain legacy-DoNotUse/ (it is not sparse).
+if [[ -f "$_R/legacy-DoNotUse/frozen.sh" ]]; then
+    assert_pass "[#1802/SPEC-5] main checkout working tree still has legacy-DoNotUse/frozen.sh (not sparse)"
 else
     assert_fail "[#1802/SPEC-5] main checkout working tree must not be sparse" \
-        "legacy/frozen.sh absent from main checkout"
+        "legacy-DoNotUse/frozen.sh absent from main checkout"
 fi
 
 cleanup_test_env

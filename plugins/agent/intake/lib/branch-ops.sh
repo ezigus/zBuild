@@ -17,7 +17,7 @@ source "$_ZBUILD_INTAKE_BRANCH_OPS_DIR/../../../../scripts/lib/default-branch.sh
 # ═══════════════════════════════════════════════════════════════════════════
 # Issue #484 — Branch operations (fail-closed)
 #
-# Mirrors legacy/scripts/lib/pipeline-stages-intake.sh:66-94 BUT replaces
+# Mirrors legacy-DoNotUse/scripts/lib/pipeline-stages-intake.sh:66-94 BUT replaces
 # the `git checkout || true` silent-failure pattern with strict error
 # classification + named refusal events. Branch format diverges from
 # legacy's `feature/slug-N` per stakeholder decision: `zbuild/issue-N-slug`

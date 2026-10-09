@@ -593,7 +593,7 @@ _contract_validate_pipeline() {
     #     bind to a cycle MEMBER declaring `convergence: gate` (the gate aggregator,
     #     e.g. gate-aggregator). A convergence:advisory target, or a target that is
     #     not a member, is a hard violation. Cycles whose exit_when target carries
-    #     NO marker are legacy/untyped (standard.yaml's test_assessment/impact/
+    #     NO marker are legacy or untyped (standard.yaml's test_assessment/impact/
     #     review convergence) and are intentionally NOT retro-checked.
     local _cyc_n3=0
     if declare -p _TPL_CYCLES >/dev/null 2>&1; then _cyc_n3="${#_TPL_CYCLES[@]}"; fi

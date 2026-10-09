@@ -4,7 +4,6 @@
 # scripts/lib/lint-adr-enforced-by.sh fails until you do. Never add a line:
 # a new ADR ships with its section. Gaps are tracked from #2268.
 ADR-001-plugin-contract.md
-ADR-002-legacy-import-strategy.md
 ADR-003-models-as-data.md
 ADR-004-redaction-chokepoint.md
 ADR-005-claim-coordinator.md

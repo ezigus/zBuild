@@ -52,7 +52,7 @@ call_graph_produce() {
     for (( _cg_i=0; _cg_i<${#_cg_funcs[@]}; _cg_i++ )); do
         local _fn="${_cg_funcs[$_cg_i]}" _ff="${_cg_files[$_cg_i]}"
 
-        # Callers: source-tree grep for invocations (excludes tests/, legacy/, .git/).
+        # Callers: source-tree grep for invocations (excludes tests/, legacy-DoNotUse/, .git/).
         local _callers="[]"
         # sigpipe-ok: every stage is || true-wrapped and the rc is discarded
         _callers="$(

@@ -203,7 +203,7 @@ fi
 # may be ugrep, which takes --include/--exclude as file operands and warns
 # instead of filtering, so a --include-based scan silently searches everything.
 _prod_files="$(find "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" \
-    -name '*.sh' -not -name 'cleanup.sh' -not -path '*/legacy/*' 2>/dev/null)"
+    -name '*.sh' -not -name 'cleanup.sh' -not -path '*/legacy-DoNotUse/*' 2>/dev/null)"
 # Stems whose producer builds the name from a variable, so no literal appears
 # on the mktemp line. Each entry names the producer, and the pointer is checked
 # below — so an exemption cannot outlive the thing it exempts.

@@ -68,7 +68,7 @@ mkdir -p "$ZBUILD_HOME" "$TARGET_DIR"
 # Why rsync (not cp -r):
 #   --delete makes re-installs idempotent (removes stale files from a prior
 #   install) and preserves permissions atomically.
-# What we copy: only what runner.sh needs at runtime. tests/, docs/, legacy/,
+# What we copy: only what runner.sh needs at runtime. tests/, docs/, legacy-DoNotUse/,
 # and .git/ are intentionally excluded.
 info "copying pipeline runtime to $ZBUILD_HOME"
 for d in scripts core plugins config; do

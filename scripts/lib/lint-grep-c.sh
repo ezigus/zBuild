@@ -12,7 +12,7 @@
 #   count="$(grep -c PAT f || true)"        # grep already printed the count
 #   count=$(grep -c PAT f) || count=0       # assignment outside the substitution
 #
-# Scans scripts/ core/ plugins/ tests/ for *.sh. Excludes legacy/ only (frozen
+# Scans scripts/ core/ plugins/ tests/ for *.sh. Excludes legacy-DoNotUse/ only (frozen
 # upstream import, never run).
 #
 # #1969: test files used to be exempt, on the reasoning that a test asserting on
@@ -46,7 +46,7 @@ if [[ -z "${_SCAN_ROOTS[0]:-}" ]]; then
     _SCAN_ROOTS=("$_REPO_ROOT/scripts" "$_REPO_ROOT/core" "$_REPO_ROOT/plugins" "$_REPO_ROOT/tests")
     # Also the repo-root *.sh entrypoints (install.sh and friends). Scanned at
     # depth 1 only — recursing from the repo root would drag in node_modules,
-    # .git and the frozen legacy/ import for no benefit.
+    # .git and the frozen legacy-DoNotUse/ import for no benefit.
     _SCAN_REPO_ROOT_TOPLEVEL=1
 fi
 
@@ -74,7 +74,7 @@ _collect_files() {
 
 while IFS= read -r -d '' _file; do
     case "$_file" in
-        */legacy/*) continue ;;
+        */legacy-DoNotUse/*) continue ;;
     esac
     while IFS=: read -r _lineno _text; do
         [[ -z "$_lineno" ]] && continue

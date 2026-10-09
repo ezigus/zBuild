@@ -4,7 +4,7 @@
 # Exercises the design-plugin copy (plugins/agent/design/plugin.sh:444-471)
 # behaviorally, and asserts the build-plugin copy
 # (plugins/agent/build/plugin.sh:1554-1581) is byte-identical (SPEC-6) so both
-# migrated copies are covered. legacy/ is not read: issue worktrees leave it out
+# migrated copies are covered. legacy-DoNotUse/ is not read: issue worktrees leave it out
 # (ADR-059 §2), and the prune itself was checked when #1026 merged.
 set -uo pipefail
 

@@ -5,7 +5,7 @@
 
 ## Context
 
-The legacy code references specific model names (`haiku`, `sonnet`, `opus`) directly: ~11 hardcoded sites in `legacy/scripts/sw-pipeline.sh`, plus cost tables, recruit role recommendations, and prompt fallbacks. Every time Anthropic ships a new model tier, or pricing shifts, or a different provider is added, code edits ripple through the repo.
+The legacy code references specific model names (`haiku`, `sonnet`, `opus`) directly: ~11 hardcoded sites in `legacy-DoNotUse/scripts/sw-pipeline.sh`, plus cost tables, recruit role recommendations, and prompt fallbacks. Every time Anthropic ships a new model tier, or pricing shifts, or a different provider is added, code edits ripple through the repo.
 
 Models are data. Their identity (haiku, sonnet, opus, gpt-4o, llama-3.1-70b), their costs, their context windows, and their capabilities all change on a quarterly cadence. Code should be stable across those changes.
 
@@ -135,8 +135,8 @@ No code change. No plugin change.
 ## References
 
 - [KEEPERS.md §B1.9–11](../KEEPERS.md#b1--verified-wired-carry-forward-as-core) — cost ledger, UCB1, Thompson router.
-- `legacy/scripts/sw-pipeline.sh:~2563` (router block), `:837` (cost table).
-- `legacy/scripts/sw-self-optimize.sh:851-893` (Thompson), `:907-955` (UCB1).
+- `legacy-DoNotUse/scripts/sw-pipeline.sh:~2563` (router block), `:837` (cost table).
+- `legacy-DoNotUse/scripts/sw-self-optimize.sh:851-893` (Thompson), `:907-955` (UCB1).
 
 ## Manifest `config.tier_default` is the single source of truth for a plugin's tier (#960/#1230/#1231)
 

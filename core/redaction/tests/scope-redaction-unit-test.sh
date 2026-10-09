@@ -135,6 +135,21 @@ else
     assert_pass "T-818-4: + ./ + json/md extension paths preserved"
 fi
 
+# T-818-5: the frozen tree's top-level name, legacy-DoNotUse/, counts as a repo
+#          path prefix (ADR-002), so an extension-less path into it is wrapped
+#          when it is out of scope.
+printf '+ plugins/\n' > "$MANIFEST2"
+cat > "$INPUT2" <<'EOF'
+Compare with legacy-DoNotUse/scripts/sw before editing plugins/agent/foo/plugin.sh
+EOF
+apply_scope_redaction "$INPUT2" "$OUTPUT2" "$MANIFEST2" >/dev/null
+if [[ "$(cat "$OUTPUT2")" == *"<out-of-scope-context>legacy-DoNotUse/scripts/sw"* ]]; then
+    assert_pass "T-818-5: an out-of-scope legacy-DoNotUse/ path without an extension is wrapped"
+else
+    assert_fail "T-818-5: legacy-DoNotUse/scripts/sw must be wrapped as out of scope" \
+        "got: $(cat "$OUTPUT2")"
+fi
+
 # ── T-NEUTRAL: Malformed-marker neutralization (HTML-escape, not lossy sentinel)
 INPUT_N="$TEST_TEMP_DIR/neutral-in.txt"
 OUTPUT_N="$TEST_TEMP_DIR/neutral-out.txt"

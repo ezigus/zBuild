@@ -20,7 +20,7 @@ The informal list has two problems:
 
 1. Plugin developers have no authoritative source for stage ids, kinds, tiers,
    required hooks, or expected artifacts — they reverse-engineer them from
-   `legacy/scripts/lib/pipeline-stages-*.sh`.
+   `legacy-DoNotUse/scripts/lib/pipeline-stages-*.sh`.
 2. The template runner has no canonical vocabulary to validate stage ids against
    at template-load time, so a typo in a template silently produces a no-op
    instead of an error.
@@ -337,8 +337,8 @@ linear dispatch is byte-identical to today (regression-locked in
 - [ADR-009](ADR-009-platform-aware-modularity.md) — fanout/composite/sequential strategies
 - [ADR-011](ADR-011-pluggable-backends.md) — learning memory backend for quality scores
 - [ADR-012](ADR-012-test-tiering-and-ci-gating.md) — test tier definitions (unit/integration/e2e)
-- `legacy/scripts/sw-pipeline-resume-test.sh` — canonical stage list in legacy (12 stages including `merge`; `merge` is implicit in the `pr` stage in this ADR)
-- `legacy/scripts/lib/pipeline-stages-*.sh` — stage implementations (reference only)
+- `legacy-DoNotUse/scripts/sw-pipeline-resume-test.sh` — canonical stage list in legacy (12 stages including `merge`; `merge` is implicit in the `pr` stage in this ADR)
+- `legacy-DoNotUse/scripts/lib/pipeline-stages-*.sh` — stage implementations (reference only)
 
 ## Amendment 2026-05-31 (#572) — `test_assessment` inserted between `test` and `review`
 
@@ -400,7 +400,7 @@ The canonical stage count grows from 12 to 15. The stage sequence is now:
 `intake → plan → design → build → test → test_assessment → cq-preflight →
 cq-audit-plan → cq-cycle → cq-backtrack → review → pr → deploy → validate → monitor`
 
-Tombstone: `legacy/migrated/A2-compound-quality.md`. Implementation: issue #755.
+Implementation: issue #755.
 
 ## Amendment 2026-06-17 (#922 / ADR-036) — acceptance-gate leaf stage
 

@@ -18,7 +18,7 @@ source "$REPO_ROOT/scripts/lib/scope-governance.sh"
 
 # ─── Security floor (hard) ───────────────────────────────────────────────
 # scope_floor_denied <path> → rc 0 = DENIED (on floor), rc 1 = past floor.
-for p in legacy/scripts/lib/pipeline-intelligence.sh legacy/anything.sh \
+for p in legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh legacy-DoNotUse/anything.sh legacy-DoNotUse \
          .env config/.env secrets/key.pem deploy/credentials.json; do
     if scope_floor_denied "$p"; then
         assert_pass "floor DENIES '$p'"
@@ -103,7 +103,7 @@ assert_eq "evidence absent → deny" "deny" "$(jq -r '.action' <<<"$DEC")"
 popd >/dev/null || exit 1
 
 # ─── Resolver: floor beats everything ────────────────────────────────────
-REQ_FLOOR="$(jq -nc '{files:[{path:"legacy/x.sh", category:"collateral_tests", evidence:"x", reason:"x"}]}')"
+REQ_FLOOR="$(jq -nc '{files:[{path:"legacy-DoNotUse/x.sh", category:"collateral_tests", evidence:"x", reason:"x"}]}')"
 DEC="$(scope_resolve_request "$REQ_FLOOR" "true" "collateral_tests" "structural")"
 assert_eq "floor path → deny regardless of policy" "deny" "$(jq -r '.action' <<<"$DEC")"
 
@@ -147,7 +147,7 @@ REQ_CREATED="$(jq -nc '{files:[{path:"tests/golden/new-built.golden", category:"
 DEC="$(scope_resolve_request "$REQ_CREATED" "true" "collateral_tests,collateral_config" "structural")"
 assert_eq "created collateral (empty evidence) → grant" "grant" "$(jq -r '.action' <<<"$DEC")"
 assert_eq "created collateral granted path" "tests/golden/new-built.golden" "$(jq -r '.granted[0]' <<<"$DEC")"
-REQ_CREATED_FLOOR="$(jq -nc '{files:[{path:"legacy/x.golden", created:true, evidence:"", reason:"x"}]}')"
+REQ_CREATED_FLOOR="$(jq -nc '{files:[{path:"legacy-DoNotUse/x.golden", created:true, evidence:"", reason:"x"}]}')"
 DEC="$(scope_resolve_request "$REQ_CREATED_FLOOR" "true" "collateral_tests" "structural")"
 assert_eq "created:true cannot bypass floor → deny" "deny" "$(jq -r '.action' <<<"$DEC")"
 REQ_CREATED_SRC="$(jq -nc '{files:[{path:"core/new.sh", created:true, evidence:"", reason:"x"}]}')"
@@ -156,11 +156,11 @@ assert_eq "created:true cannot grant source → deny" "deny" "$(jq -r '.action' 
 REQ_CREATED_GONE="$(jq -nc '{files:[{path:"tests/golden/does-not-exist.golden", created:true, evidence:"", reason:"x"}]}')"
 DEC="$(scope_resolve_request "$REQ_CREATED_GONE" "true" "collateral_tests" "structural")"
 assert_eq "created:true non-existent path → deny" "deny" "$(jq -r '.action' <<<"$DEC")"
-# created:true SYMLINK leaf (tests/golden/link -> ../../legacy/real) → deny:
+# created:true SYMLINK leaf (tests/golden/link -> ../../legacy-DoNotUse/real) → deny:
 # -f follows the link past the string-floor; the -L guard must reject it.
-mkdir -p "$TEST_TEMP_DIR/repo/legacy"
-printf 'secret\n' > "$TEST_TEMP_DIR/repo/legacy/real.golden"
-ln -s ../../legacy/real.golden "$TEST_TEMP_DIR/repo/tests/golden/link.golden"
+mkdir -p "$TEST_TEMP_DIR/repo/legacy-DoNotUse"
+printf 'secret\n' > "$TEST_TEMP_DIR/repo/legacy-DoNotUse/real.golden"
+ln -s ../../legacy-DoNotUse/real.golden "$TEST_TEMP_DIR/repo/tests/golden/link.golden"
 REQ_CREATED_SYM="$(jq -nc '{files:[{path:"tests/golden/link.golden", created:true, evidence:"", reason:"symlink attack"}]}')"
 DEC="$(scope_resolve_request "$REQ_CREATED_SYM" "true" "collateral_tests" "structural")"
 assert_eq "created:true symlink leaf → deny (floor non-bypassable via FS)" "deny" "$(jq -r '.action' <<<"$DEC")"

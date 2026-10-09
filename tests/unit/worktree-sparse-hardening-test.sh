@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/unit/worktree-sparse-hardening-test.sh
-# The legacy/ exclusion (#1802, ADR-059 §2) is an optimisation, never a reason
+# The legacy-DoNotUse/ exclusion (#1802, ADR-059 §2) is an optimisation, never a reason
 # for a run to stop, and a keeper's widening is validated and survives resume.
 #
 # [#1802/FAIL-OPEN]   a failing `git sparse-checkout` does not fail acquire or
@@ -10,9 +10,9 @@
 # [#1802/WTCONFIG]    extensions.worktreeConfig is written only when unset; an
 #                     operator's explicit `false` is kept and sparse is skipped
 # [#1802/WIDEN-ARGS]  zbuild_worktree_include_legacy_path refuses anything but a
-#                     plain relative path under legacy/ (no options, patterns)
+#                     plain relative path under legacy-DoNotUse/ (no options, patterns)
 # [#1802/WIDEN]       an accepted widening checks out that one file, `git rm`
-#                     of it works, and the rest of legacy/ stays excluded
+#                     of it works, and the rest of legacy-DoNotUse/ stays excluded
 # [#1802/RESUME]      re-acquire / re-enter keeps the widening
 # [#1802/CONFLICT]    re-acquire over a different sparse config lands on the
 #                     base patterns plus any keeper widenings, nothing else
@@ -24,7 +24,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-print_test_header "legacy/ sparse exclusion: fail open, validated widening, resume (#1802)"
+print_test_header "legacy-DoNotUse/ sparse exclusion: fail open, validated widening, resume (#1802)"
 setup_test_env "worktree-sparse-hardening"
 
 # shellcheck source=../../scripts/lib/worktree.sh
@@ -34,13 +34,16 @@ set +e
 REAL_GIT="$(command -v git)"
 export REAL_GIT
 
-# ── fixture: a git repo with frozen legacy files and a tombstone ────────────
+# ── fixture: a git repo with frozen legacy files ────────────────────────────
+# _KEPT names the subdirectory an earlier rule kept in every worktree; it is now
+# left out like the rest (ADR-059 §2).
+_KEPT=migrated
 _mk_repo() {
     local r="$1"
-    mkdir -p "$r/legacy/migrated" "$r/legacy/sub" "$r/src"
-    printf 'frozen\n'    > "$r/legacy/frozen.sh"
-    printf 'other\n'     > "$r/legacy/sub/other.sh"
-    printf 'tombstone\n' > "$r/legacy/migrated/tombstone.md"
+    mkdir -p "$r/legacy-DoNotUse/$_KEPT" "$r/legacy-DoNotUse/sub" "$r/src"
+    printf 'frozen\n'    > "$r/legacy-DoNotUse/frozen.sh"
+    printf 'other\n'     > "$r/legacy-DoNotUse/sub/other.sh"
+    printf 'tombstone\n' > "$r/legacy-DoNotUse/$_KEPT/tombstone.md"
     printf 'work\n'      > "$r/src/work.sh"
     git -C "$r" init -q -b main
     git -C "$r" config user.email t@t
@@ -98,7 +101,7 @@ _err="$(<"$_ERR")"
 assert_eq "[#1802/GIT-VERSION] acquire returns 0 on a too-old git" "0" "$_rc"
 assert_contains "[#1802/GIT-VERSION] stderr names the git version found" "$_err" "2.20.1"
 assert_contains "[#1802/GIT-VERSION] stderr names the version needed" "$_err" "2.35"
-if [[ -n "$_wt" && -f "$_wt/legacy/frozen.sh" ]]; then
+if [[ -n "$_wt" && -f "$_wt/legacy-DoNotUse/frozen.sh" ]]; then
     assert_pass "[#1802/GIT-VERSION] the tree is full (sparse was not attempted)"
 else
     assert_fail "[#1802/GIT-VERSION] the tree must be full on a too-old git" "path=${_wt:-<empty>}"
@@ -125,7 +128,7 @@ assert_eq "[#1802/WTCONFIG] acquire returns 0 when worktreeConfig=false" "0" "$_
 assert_eq "[#1802/WTCONFIG] the operator's extensions.worktreeConfig=false is kept" \
     "false" "$(git -C "$_RF" config --get extensions.worktreeConfig)"
 assert_contains "[#1802/WTCONFIG] stderr names extensions.worktreeConfig" "$_err" "extensions.worktreeConfig"
-if [[ -n "$_wt" && -f "$_wt/legacy/frozen.sh" && -f "$_RF/legacy/frozen.sh" ]]; then
+if [[ -n "$_wt" && -f "$_wt/legacy-DoNotUse/frozen.sh" && -f "$_RF/legacy-DoNotUse/frozen.sh" ]]; then
     assert_pass "[#1802/WTCONFIG] sparse skipped: worktree and main checkout are full"
 else
     assert_fail "[#1802/WTCONFIG] with worktreeConfig=false nothing may be made sparse" "wt=${_wt:-<empty>}"
@@ -134,10 +137,10 @@ fi
 # ── WIDEN-ARGS: every rejected class ─────────────────────────────────────────
 _WTW="$(zbuild_worktree_acquire widen "$_R" 2>/dev/null)"
 _before="$(git -C "$_WTW" sparse-checkout list 2>&1)"
-for _bad in "" "legacy" "legacy/" "--cone" "/legacy/frozen.sh" "src/work.sh" \
-            "legacy/*" "legacy/fr?zen.sh" "legacy/[f]rozen.sh" "!legacy/frozen.sh" \
-            "legacy/../src/work.sh" "legacy/sub/../frozen.sh" "legacy//frozen.sh" \
-            "legacy/./frozen.sh" $'legacy/a\nb' 'legacy/a\b'; do
+for _bad in "" "legacy-DoNotUse" "legacy-DoNotUse/" "--cone" "/legacy-DoNotUse/frozen.sh" "src/work.sh" \
+            "legacy-DoNotUse/*" "legacy-DoNotUse/fr?zen.sh" "legacy-DoNotUse/[f]rozen.sh" "!legacy-DoNotUse/frozen.sh" \
+            "legacy-DoNotUse/../src/work.sh" "legacy-DoNotUse/sub/../frozen.sh" "legacy-DoNotUse//frozen.sh" \
+            "legacy-DoNotUse/./frozen.sh" $'legacy-DoNotUse/a\nb' 'legacy-DoNotUse/a\b'; do
     zbuild_worktree_include_legacy_path "$_WTW" "$_bad" >/dev/null 2>"$_ERR"; _rc=$?
     if [[ "$_rc" -ne 0 && -s "$_ERR" ]]; then
         assert_pass "[#1802/WIDEN-ARGS] rejects '${_bad//$'\n'/\\n}' with a message"
@@ -147,22 +150,22 @@ for _bad in "" "legacy" "legacy/" "--cone" "/legacy/frozen.sh" "src/work.sh" \
 done
 assert_eq "[#1802/WIDEN-ARGS] rejected calls left the pattern set untouched" \
     "$_before" "$(git -C "$_WTW" sparse-checkout list 2>&1)"
-[[ ! -f "$_WTW/legacy/frozen.sh" ]] \
-    && assert_pass "[#1802/WIDEN-ARGS] legacy/ still excluded after the rejections" \
+[[ ! -f "$_WTW/legacy-DoNotUse/frozen.sh" ]] \
+    && assert_pass "[#1802/WIDEN-ARGS] legacy-DoNotUse/ still excluded after the rejections" \
     || assert_fail "[#1802/WIDEN-ARGS] a rejected call widened the tree"
 
 # ── WIDEN: one accepted path ─────────────────────────────────────────────────
-zbuild_worktree_include_legacy_path "$_WTW" "legacy/frozen.sh" >/dev/null 2>"$_ERR"; _rc=$?
-assert_eq "[#1802/WIDEN] accepts legacy/frozen.sh" "0" "$_rc"
-[[ -f "$_WTW/legacy/frozen.sh" ]] \
-    && assert_pass "[#1802/WIDEN] legacy/frozen.sh is checked out" \
-    || assert_fail "[#1802/WIDEN] legacy/frozen.sh must be checked out after widening" "$(<"$_ERR")"
-[[ ! -f "$_WTW/legacy/sub/other.sh" ]] \
-    && assert_pass "[#1802/WIDEN] legacy/sub/other.sh stays excluded" \
-    || assert_fail "[#1802/WIDEN] widening one path must not re-include the rest of legacy/"
+zbuild_worktree_include_legacy_path "$_WTW" "legacy-DoNotUse/frozen.sh" >/dev/null 2>"$_ERR"; _rc=$?
+assert_eq "[#1802/WIDEN] accepts legacy-DoNotUse/frozen.sh" "0" "$_rc"
+[[ -f "$_WTW/legacy-DoNotUse/frozen.sh" ]] \
+    && assert_pass "[#1802/WIDEN] legacy-DoNotUse/frozen.sh is checked out" \
+    || assert_fail "[#1802/WIDEN] legacy-DoNotUse/frozen.sh must be checked out after widening" "$(<"$_ERR")"
+[[ ! -f "$_WTW/legacy-DoNotUse/sub/other.sh" ]] \
+    && assert_pass "[#1802/WIDEN] legacy-DoNotUse/sub/other.sh stays excluded" \
+    || assert_fail "[#1802/WIDEN] widening one path must not re-include the rest of legacy-DoNotUse/"
 # Idempotent: the same widening twice is rc=0 and adds no second pattern line.
 _list1="$(git -C "$_WTW" sparse-checkout list 2>&1)"
-zbuild_worktree_include_legacy_path "$_WTW" "legacy/frozen.sh" >/dev/null 2>"$_ERR"; _rc=$?
+zbuild_worktree_include_legacy_path "$_WTW" "legacy-DoNotUse/frozen.sh" >/dev/null 2>"$_ERR"; _rc=$?
 assert_eq "[#1802/WIDEN] a second identical widening returns 0" "0" "$_rc"
 assert_eq "[#1802/WIDEN] a second identical widening leaves the pattern set unchanged" \
     "$_list1" "$(git -C "$_WTW" sparse-checkout list 2>&1)"
@@ -171,35 +174,35 @@ assert_eq "[#1802/WIDEN] a second identical widening leaves the pattern set unch
 _again="$(zbuild_worktree_acquire widen "$_R" 2>"$_ERR")"; _rc=$?
 assert_eq "[#1802/RESUME] re-acquire returns 0" "0" "$_rc"
 assert_eq "[#1802/RESUME] re-acquire lands in the same tree" "$_WTW" "$_again"
-[[ -f "$_WTW/legacy/frozen.sh" ]] \
-    && assert_pass "[#1802/RESUME] widened legacy/frozen.sh survives re-acquire" \
+[[ -f "$_WTW/legacy-DoNotUse/frozen.sh" ]] \
+    && assert_pass "[#1802/RESUME] widened legacy-DoNotUse/frozen.sh survives re-acquire" \
     || assert_fail "[#1802/RESUME] re-acquire wiped the keeper's widening" \
         "$(git -C "$_WTW" sparse-checkout list 2>&1)"
-[[ ! -f "$_WTW/legacy/sub/other.sh" && -f "$_WTW/legacy/migrated/tombstone.md" ]] \
-    && assert_pass "[#1802/RESUME] rest of legacy/ excluded, migrated/ kept, after re-acquire" \
+[[ ! -f "$_WTW/legacy-DoNotUse/sub/other.sh" && ! -e "$_WTW/legacy-DoNotUse/$_KEPT/tombstone.md" ]] \
+    && assert_pass "[#1802/RESUME] rest of legacy-DoNotUse/ excluded, the formerly kept subdirectory too, after re-acquire" \
     || assert_fail "[#1802/RESUME] base patterns must still hold after re-acquire"
 
 # ── WIDEN: git rm of the widened path works inside the worktree ──────────────
-git -C "$_WTW" rm -q legacy/frozen.sh 2>"$_ERR"; _rc=$?
+git -C "$_WTW" rm -q legacy-DoNotUse/frozen.sh 2>"$_ERR"; _rc=$?
 assert_eq "[#1802/WIDEN] git rm of the widened legacy path succeeds" "0" "$_rc"
 assert_contains "[#1802/WIDEN] the removal is staged" \
-    "$(git -C "$_WTW" diff --cached --name-status)" "legacy/frozen.sh"
+    "$(git -C "$_WTW" diff --cached --name-status)" "legacy-DoNotUse/frozen.sh"
 git -C "$_WTW" reset -q --hard
 
 # ── RESUME: enter's reuse path keeps the widening ────────────────────────────
 _WTE="$(cd "$_R" && zbuild_worktree_enter widen-enter zbuild/widen-enter create 2>/dev/null)"
 # A directory widening (trailing slash) is accepted: it names one subtree.
-zbuild_worktree_include_legacy_path "$_WTE" "legacy/sub/" >/dev/null 2>"$_ERR"; _rc=$?
-assert_eq "[#1802/WIDEN] accepts a directory, legacy/sub/" "0" "$_rc"
+zbuild_worktree_include_legacy_path "$_WTE" "legacy-DoNotUse/sub/" >/dev/null 2>"$_ERR"; _rc=$?
+assert_eq "[#1802/WIDEN] accepts a directory, legacy-DoNotUse/sub/" "0" "$_rc"
 _again="$(cd "$_R" && zbuild_worktree_enter widen-enter zbuild/widen-enter create 2>"$_ERR")"; _rc=$?
 assert_eq "[#1802/RESUME] re-enter returns 0" "0" "$_rc"
-[[ -f "$_WTE/legacy/sub/other.sh" && ! -f "$_WTE/legacy/frozen.sh" ]] \
+[[ -f "$_WTE/legacy-DoNotUse/sub/other.sh" && ! -f "$_WTE/legacy-DoNotUse/frozen.sh" ]] \
     && assert_pass "[#1802/RESUME] widening survives re-enter; the rest stays excluded" \
     || assert_fail "[#1802/RESUME] re-enter must keep the widening and the exclusion" \
         "$(git -C "$_WTE" sparse-checkout list 2>&1)"
 
 # ── CONFLICT: re-acquire over a different, pre-existing sparse config ────────
-_base=$'/*\n!/legacy/\n/legacy/migrated/'
+_base=$'/*\n!/legacy-DoNotUse/'
 _WTC="$TEST_TEMP_DIR/wt/conflict"
 git -C "$_R" worktree add -q --detach "$_WTC"
 git -C "$_WTC" sparse-checkout set --no-cone -- '/src/'
@@ -207,20 +210,20 @@ zbuild_worktree_acquire conflict "$_R" >/dev/null 2>"$_ERR"; _rc=$?
 assert_eq "[#1802/CONFLICT] acquire over a foreign sparse config returns 0" "0" "$_rc"
 assert_eq "[#1802/CONFLICT] the foreign pattern set is replaced by exactly the base set" \
     "$_base" "$(git -C "$_WTC" sparse-checkout list 2>&1)"
-[[ -f "$_WTC/src/work.sh" ]] && [[ ! -f "$_WTC/legacy/frozen.sh" ]] \
-    && [[ -f "$_WTC/legacy/migrated/tombstone.md" ]] \
-    && assert_pass "[#1802/CONFLICT] tree matches the base set (src/ in, legacy/ out, migrated/ in)" \
+[[ -f "$_WTC/src/work.sh" ]] && [[ ! -f "$_WTC/legacy-DoNotUse/frozen.sh" ]] \
+    && [[ ! -e "$_WTC/legacy-DoNotUse/$_KEPT/tombstone.md" ]] \
+    && assert_pass "[#1802/CONFLICT] tree matches the base set (src/ in, all of legacy-DoNotUse/ out)" \
     || assert_fail "[#1802/CONFLICT] tree does not match the base pattern set"
 
-git -C "$_WTC" sparse-checkout set --no-cone -- '/src/' '!/src/' '/legacy/sub/other.sh' '/legacy/*'
+git -C "$_WTC" sparse-checkout set --no-cone -- '/src/' '!/src/' '/legacy-DoNotUse/sub/other.sh' '/legacy-DoNotUse/*'
 zbuild_worktree_acquire conflict "$_R" >/dev/null 2>"$_ERR"; _rc=$?
 assert_eq "[#1802/CONFLICT] acquire over a mixed config returns 0" "0" "$_rc"
 assert_eq "[#1802/CONFLICT] only a valid keeper widening is carried over the base set" \
-    "$_base"$'\n/legacy/sub/other.sh' "$(git -C "$_WTC" sparse-checkout list 2>&1)"
+    "$_base"$'\n/legacy-DoNotUse/sub/other.sh' "$(git -C "$_WTC" sparse-checkout list 2>&1)"
 
 # ── main checkout is never made sparse ───────────────────────────────────────
-[[ -f "$_R/legacy/frozen.sh" && -f "$_R/legacy/sub/other.sh" ]] \
-    && assert_pass "[#1802/WTCONFIG] the main checkout still has all of legacy/" \
+[[ -f "$_R/legacy-DoNotUse/frozen.sh" && -f "$_R/legacy-DoNotUse/sub/other.sh" ]] \
+    && assert_pass "[#1802/WTCONFIG] the main checkout still has all of legacy-DoNotUse/" \
     || assert_fail "[#1802/WTCONFIG] the main checkout was made sparse"
 
 cleanup_test_env

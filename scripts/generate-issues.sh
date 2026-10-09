@@ -181,8 +181,7 @@ $behavior
 
 ## Pruning step
 
-- [ ] \`git rm\` legacy source once 5-test trial passes
-- [ ] Create \`legacy/migrated/<keeper-id>.md\` tombstone
+- [ ] \`git rm\` the legacy-DoNotUse/ source in the same PR once the 5-test trial passes (nothing else is written)
 EOF
     # Optional body_suffix appended after the keeper template (for cross-refs)
     local suffix; suffix="$(yq ".issues[$idx].body_suffix // \"\"" "$MANIFEST")"

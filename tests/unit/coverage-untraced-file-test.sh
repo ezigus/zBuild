@@ -16,7 +16,7 @@
 # SPEC-4[guard]:  legitimately excluded files (under tests/, or named *-test.sh
 #                 / *-unit-test.sh) stay out of both numerator and denominator.
 # SPEC-5[guard]:  the disk walk is confined to core/ and scripts/lib/ — it must
-#                 not sweep in legacy/, a frozen upstream import that is never
+#                 not sweep in legacy-DoNotUse/, a frozen upstream import that is never
 #                 executed and is not engine code (CLAUDE.md).
 set -uo pipefail
 
@@ -45,16 +45,16 @@ fi
 # core/sub/deep-untraced.sh  2 executable lines, absent (proves recursion)
 # core/tests/helper.sh    excluded by path       (SPEC-4)
 # core/thing-test.sh      excluded by suffix     (SPEC-4)
-# legacy/scripts/lib/old.sh  outside the scan roots (SPEC-5)
+# legacy-DoNotUse/scripts/lib/old.sh  outside the scan roots (SPEC-5)
 FAKE_ROOT="$TEST_TEMP_DIR/fake-repo"
-mkdir -p "$FAKE_ROOT/core/sub" "$FAKE_ROOT/core/tests" "$FAKE_ROOT/legacy/scripts/lib"
+mkdir -p "$FAKE_ROOT/core/sub" "$FAKE_ROOT/core/tests" "$FAKE_ROOT/legacy-DoNotUse/scripts/lib"
 
 printf '#!/usr/bin/env bash\necho traced\n'                  > "$FAKE_ROOT/core/traced.sh"
 printf '#!/usr/bin/env bash\n_x=1\n_y=2\n_z=3\n'             > "$FAKE_ROOT/core/untraced.sh"
 printf '#!/usr/bin/env bash\n_a=1\n_b=2\n'                   > "$FAKE_ROOT/core/sub/deep-untraced.sh"
 printf '#!/usr/bin/env bash\n_h=1\n_i=2\n_j=3\n_k=4\n_l=5\n' > "$FAKE_ROOT/core/tests/helper.sh"
 printf '#!/usr/bin/env bash\n_m=1\n_n=2\n_o=3\n_p=4\n_q=5\n' > "$FAKE_ROOT/core/thing-test.sh"
-printf '#!/usr/bin/env bash\n_r=1\n_s=2\n_t=3\n_u=4\n_v=5\n' > "$FAKE_ROOT/legacy/scripts/lib/old.sh"
+printf '#!/usr/bin/env bash\n_r=1\n_s=2\n_t=3\n_u=4\n_v=5\n' > "$FAKE_ROOT/legacy-DoNotUse/scripts/lib/old.sh"
 
 # Trace sees only core/traced.sh line 2.
 TRACE_FILE="$TEST_TEMP_DIR/test.trace"
@@ -118,28 +118,28 @@ for _excluded in "core/tests/helper.sh" "core/thing-test.sh"; do
 done
 
 # ─── SPEC-5[guard] ──────────────────────────────────────────────────────────
-# legacy/scripts/lib/old.sh matches the '/scripts/lib/' INCLUDE substring, so
+# legacy-DoNotUse/scripts/lib/old.sh matches the '/scripts/lib/' INCLUDE substring, so
 # it can reach the file set by TWO routes and both must be closed:
 #   (a) the disk walk — kept out by the scan-root restriction
-#   (b) the trace — kept out by '/legacy/' in EXCLUDE
+#   (b) the trace — kept out by '/legacy-DoNotUse/' in EXCLUDE
 # Walking repo_root instead would silently add every legacy file to the
 # denominator; excluding only the scan root would leave (b) open.
-if grep -qF "legacy/scripts/lib/old.sh" "$_out"; then
-    assert_fail "SPEC-5: legacy/ is not swept in via the disk walk" \
+if grep -qF "legacy-DoNotUse/scripts/lib/old.sh" "$_out"; then
+    assert_fail "SPEC-5: legacy-DoNotUse/ is not swept in via the disk walk" \
         "legacy file appeared in the table: $_stdout"
 else
-    assert_pass "SPEC-5: legacy/ is not swept in via the disk walk"
+    assert_pass "SPEC-5: legacy-DoNotUse/ is not swept in via the disk walk"
 fi
 
 # (b) same fixture, but now the legacy file IS in the trace.
 LEGACY_TRACE="$TEST_TEMP_DIR/legacy.trace"
 {
     printf 'TRACE:%s/core/traced.sh:2:echo traced\n' "$FAKE_ROOT"
-    printf 'TRACE:%s/legacy/scripts/lib/old.sh:2:_r=1\n' "$FAKE_ROOT"
+    printf 'TRACE:%s/legacy-DoNotUse/scripts/lib/old.sh:2:_r=1\n' "$FAKE_ROOT"
 } > "$LEGACY_TRACE"
 _legacy_out="$TEST_TEMP_DIR/legacy-out.txt"
 python3 "$COV_REPORT" "$LEGACY_TRACE" "$FAKE_ROOT" "0" >"$_legacy_out" 2>&1 || true
-if grep -qF "legacy/scripts/lib/old.sh" "$_legacy_out"; then
+if grep -qF "legacy-DoNotUse/scripts/lib/old.sh" "$_legacy_out"; then
     assert_fail "SPEC-5: a TRACED legacy file is still excluded" \
         "legacy file appeared in the table: $(cat "$_legacy_out")"
 else

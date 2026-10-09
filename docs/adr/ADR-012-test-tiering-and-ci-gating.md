@@ -107,7 +107,7 @@ Output format: `<tier>: N/M passed` — parseable by CI summary step.
 > iterate the PS4 trace, so a file no test ever sourced contributed 0 to the
 > numerator *and* 0 to the denominator — a wholly untested new file could not
 > move the gate. The file set is now enumerated from disk under `core/` and
-> `scripts/lib/` (scan roots deliberately exclude the frozen `legacy/` import,
+> `scripts/lib/` (scan roots deliberately exclude the frozen `legacy-DoNotUse/` import,
 > whose paths also match the `/scripts/lib/` include substring). Measured
 > figure moved 32.3% → 30.1%; the floor was left at 29. The arithmetic lives in
 > `scripts/lib/coverage-report.py` so it is directly testable.

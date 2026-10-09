@@ -3,7 +3,7 @@
 #
 #   SPEC-4 [change]: a scanned file containing the antipattern → rc=1, named
 #   SPEC-5 [change]: only safe forms (`|| true`, assignment-outside) → rc=0
-#   SPEC-6 [change]: legacy/ is excluded from the scan
+#   SPEC-6 [change]: legacy-DoNotUse/ is excluded from the scan
 #   SPEC-7 [change]: test files ARE scanned — the #1751 exemption let the
 #                    defect that cost run 32886585375 through (#1969)
 #   SPEC-8 [change]: an explicit `lint-grep-c:allow` marker suppresses one line,
@@ -94,19 +94,19 @@ rc=0
 bash "$CHECKER" >/dev/null 2>&1 || rc=$?
 assert_eq "[SPEC-5] real scripts/ core/ plugins/ tree is clean" "0" "$rc"
 
-# ─── SPEC-6: legacy/ excluded ────────────────────────────────────────────────
-print_test_section "6. legacy/ directory excluded from scan"
+# ─── SPEC-6: legacy-DoNotUse/ excluded ────────────────────────────────────────────────
+print_test_section "6. legacy-DoNotUse/ directory excluded from scan"
 
 FX_LEGACY="$TEST_TEMP_DIR/withlegacy"
-mkdir -p "$FX_LEGACY/legacy/scripts"
+mkdir -p "$FX_LEGACY/legacy-DoNotUse/scripts"
 {
     echo '#!/usr/bin/env bash'
     echo "$BAD_LINE"
-} > "$FX_LEGACY/legacy/scripts/frozen.sh"
+} > "$FX_LEGACY/legacy-DoNotUse/scripts/frozen.sh"
 
 rc=0
 bash "$CHECKER" "$FX_LEGACY" >/dev/null 2>&1 || rc=$?
-assert_eq "[SPEC-6] bad pattern under legacy/ is excluded from lint" "0" "$rc"
+assert_eq "[SPEC-6] bad pattern under legacy-DoNotUse/ is excluded from lint" "0" "$rc"
 
 # ─── SPEC-7: test files are scanned ──────────────────────────────────────────
 # #1969: the #1751 exemption assumed the only harm was an arithmetic abort under

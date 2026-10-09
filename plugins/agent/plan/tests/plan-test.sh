@@ -154,7 +154,7 @@ assert_eq "[SPEC-2] in-scope plugin.result payload.scope_violations=0" "0" "${sv
 
 # ─── Test 7: out-of-scope single path — one violation, plan.json still written ─
 : > "$EVENTS_FILE"
-CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy-DoNotUse/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
 _run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
@@ -166,13 +166,13 @@ assert_eq "out-of-scope plan emits exactly one violation event" "1" "$violation_
 reason="$(jq -r 'select(.type=="plan.scope.violation") | .data.reason' "$EVENTS_FILE" 2>/dev/null | head -1)"
 assert_eq "violation reason=out_of_scope" "out_of_scope" "$reason"
 voff="$(jq -r 'select(.type=="plan.scope.violation") | .data.path' "$EVENTS_FILE" 2>/dev/null | head -1)"
-assert_eq "violation path reports offender" "legacy/foo.sh" "$voff"
+assert_eq "violation path reports offender" "legacy-DoNotUse/foo.sh" "$voff"
 sv="$(jq -r 'select(.type=="plugin.result" and .data.stage=="plan") | .data.scope_violations' "$EVENTS_FILE" 2>/dev/null | tail -1)"
 assert_eq "scope_violations=1 in plugin.result" "1" "$sv"
 
 # ─── Test 8: multiple out-of-scope — one event per offender ─────────────────
 : > "$EVENTS_FILE"
-CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/a.sh","docs/b.md"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy-DoNotUse/a.sh","docs/b.md"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
 _run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
@@ -181,14 +181,14 @@ assert_eq "two offenders emit two violation events" "2" "$violation_count"
 
 # ─── Test 9: mixed — only out-of-scope path is reported ─────────────────────
 : > "$EVENTS_FILE"
-CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/ok.sh","legacy/bad.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/ok.sh","legacy-DoNotUse/bad.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
 _run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "mixed plan reports only out-of-scope path" "1" "$violation_count"
 voff="$(jq -r 'select(.type=="plan.scope.violation") | .data.path' "$EVENTS_FILE" 2>/dev/null | head -1)"
-assert_eq "mixed violation path is the offender" "legacy/bad.sh" "$voff"
+assert_eq "mixed violation path is the offender" "legacy-DoNotUse/bad.sh" "$voff"
 
 # ─── Test 10: absolute path — reason=absolute_path ──────────────────────────
 : > "$EVENTS_FILE"

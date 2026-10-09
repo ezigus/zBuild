@@ -197,7 +197,7 @@ apply_scope_redaction() {
             # /usr/bin/foo, and other Unix system paths that the redactor
             # MUST continue to catch per the chokepoint contract).
             ext_ok    = (token ~ /\.[A-Za-z0-9]{1,8}$/)
-            prefix_ok = (token ~ /^(\.\/)?(core|scripts|plugins|tests|docs|config|legacy)\//) || (token ~ /^\//)
+            prefix_ok = (token ~ /^(\.\/)?(core|scripts|plugins|tests|docs|config|legacy-DoNotUse)\//) || (token ~ /^\//)
             if (!ext_ok && !prefix_ok) {
                 # Not a path-looking token — leave verbatim, no wrap, no log
                 # (counter_log is reserved for the digit-only case).

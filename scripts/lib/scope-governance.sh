@@ -7,7 +7,7 @@
 # scope_expansion_request; the cycle orchestrator resolves it through the pure
 # functions here. Three concerns, three layers:
 #
-#   1. Security floor (scope_floor_denied) — HARD, non-bypassable. legacy/,
+#   1. Security floor (scope_floor_denied) — HARD, non-bypassable. legacy-DoNotUse/,
 #      secrets/.env, out-of-repo. No template knob and no class can breach it.
 #      ADR-004 "no exceptions" discipline extended to write-scope. EVERY grant
 #      routes through this.
@@ -27,7 +27,7 @@ _ZBUILD_SCOPE_GOVERNANCE_LOADED=1
 # scope_floor_denied <path>
 #   rc 0 = DENIED (on the floor), rc 1 = past the floor (may be grantable).
 #   Build write-scope may NEVER reach these regardless of policy:
-#     - legacy/* — frozen upstream (ADR-002); the migration prune protocol is
+#     - legacy-DoNotUse/* — frozen upstream (ADR-002); a keeper prune (git rm) is
 #       the only legitimate writer, never build.
 #     - secrets: .env, *secret*, *credential*, *.pem/*.key (ADR-004 spirit).
 #     - absolute paths / repo escapes (../, leading /).
@@ -39,7 +39,7 @@ scope_floor_denied() {
     esac
     # Legacy frozen tree.
     case "$path" in
-        legacy/*|legacy) return 0 ;;
+        legacy-DoNotUse/*|legacy-DoNotUse) return 0 ;;
     esac
     # Secret-ish paths (match on basename and full path, case-insensitive-ish).
     local lower="${path,,}"
@@ -151,7 +151,7 @@ scope_resolve_request() {
         # `created` can NEVER grant a floored or source-tree path.
         if [[ "$created" == "true" ]]; then
             # A symlink leaf can resolve past the string-floor (config/x ->
-            # ../legacy/y, or -> /etc/...) and `-f` follows it. A real created
+            # ../legacy-DoNotUse/y, or -> /etc/...) and `-f` follows it. A real created
             # collateral file is never a symlink — reject so the floor stays
             # non-bypassable via the filesystem layer (#870 security review).
             if [[ -L "$path" ]]; then

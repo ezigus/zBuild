@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/run-status-comment.sh — one live GitHub issue comment per run
-# (#2131, ADR-064; keeper e-1 lifted from legacy/scripts/lib/pipeline-github.sh).
+# (#2131, ADR-064; keeper e-1 lifted from legacy-DoNotUse/scripts/lib/pipeline-github.sh).
 #
 # A sidecar the runner spawns beside a run and reaps in its EXIT trap. It READS
 # events.jsonl (never writes it — it has no path to the event bus at all) and

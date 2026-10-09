@@ -228,7 +228,7 @@ A cycle whose `exit_when.stage` resolves to a convergence-marked stage must bind
 declaring `convergence: gate` (the gate aggregator, e.g. `gate-aggregator`). An advisory target, or a
 target that is not a member of the cycle, fails preflight LOUDLY in
 `core/pipeline/contract-validator.sh` (mirrored in `scripts/lib/lint-contract.sh`). Cycles whose
-`exit_when` target carries NO convergence marker are legacy/untyped (standard.yaml's
+`exit_when` target carries NO convergence marker are legacy or untyped (standard.yaml's
 `test_assessment`/`impact`/`review` convergence) and are intentionally NOT retro-checked — preserving
 existing semantics while making the new typed contract fail-closed. See ADR-040 §Phase 1.
 
@@ -251,7 +251,7 @@ existing semantics while making the new typed contract fail-closed. See ADR-040 
 - ADR-015 — stage-io capture (amended for per-iter banner header)
 - ADR-018 — inner loop Pattern 2 (disambiguates from outer cycles)
 - ADR-020 — pre-flight contract validator (amended for cycled stages)
-- `legacy/scripts/lib/loop-convergence.sh` — read-only convergence reference
+- `legacy-DoNotUse/scripts/lib/loop-convergence.sh` — read-only convergence reference
 - `core/pipeline/cycle-orchestrator.sh` — implementation
 - `core/pipeline/template.sh` — cycles overlay parser
 

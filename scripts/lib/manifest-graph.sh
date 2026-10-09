@@ -126,7 +126,7 @@ manifest_graph_get_stage_id() {
 
 # ─── manifest_graph_inputs_block_present ───────────────────────────────────────
 # Returns 0 if the manifest contains an `inputs:` top-level key.
-# Used by the validator to distinguish "no inputs declared" (legacy/incomplete
+# Used by the validator to distinguish "no inputs declared" (legacy or incomplete
 # manifest) from "explicit zero inputs" (`inputs: []`). Per decision #1, an
 # absent inputs block is malformed; zero-input plugins MUST declare `inputs: []`.
 manifest_graph_inputs_block_present() {

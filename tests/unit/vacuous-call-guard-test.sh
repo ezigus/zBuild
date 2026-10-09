@@ -43,11 +43,11 @@ _vcg_scan() {
     local _line _file _rest _lno _cmd _fn
     # Same exclusions as sigpipe-antipattern-guard-test.sh (#1884): a COMMENT is
     # not executed, this guard's own file carries the pattern as documentation
-    # and fixtures rather than as live calls, and legacy/ is frozen.
+    # and fixtures rather than as live calls, and legacy-DoNotUse/ is frozen.
     grep -rnE '\$\([^)]*(2>/dev/null|\|\| true)' --include='*.sh' "$@" 2>/dev/null \
     | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; } \
     | { grep -v '/vacuous-call-guard-test.sh:' || true; } \
-    | { grep -v '/legacy/' || true; } \
+    | { grep -v '/legacy-DoNotUse/' || true; } \
     | while IFS= read -r _line; do
         _file="${_line%%:*}"; _rest="${_line#*:}"; _lno="${_rest%%:*}"
         # What follows the first `$(`, minus any VAR=value assignment prefixes:

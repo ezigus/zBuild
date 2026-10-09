@@ -33,20 +33,20 @@ zBuild's architecture and migration plan live in:
 - `/scripts` — CLI entry + shared libs
 - `/tests` — all tests; `/tests/golden` for snapshot diffs
 - `/docs` — KEEPERS, ARCHITECTURE, ADRs, plans
-- `/legacy` — frozen upstream import; FROZEN, do not run
+- `/legacy-DoNotUse` — frozen upstream import; FROZEN, do not run, do not read as zBuild code
 - `/.github` — workflows, issue templates, `keepers-manifest.yaml`
 
-## Working with `legacy/`
+## Working with `legacy-DoNotUse/`
 
-- `legacy/` is a frozen reference copy of shipwright. **DO NOT EDIT files in `legacy/`** except `legacy/.shipwright-disabled` (the sentinel) and `legacy/scripts/sw` (one-line patch documented in ADR-002).
-- The only legitimate way to remove `legacy/` content is the pruning protocol: when a keeper passes its 5-test trial, `git rm` the legacy source and write `legacy/migrated/<keeper-id>.md` with date + issue link.
-- Never run scripts under `legacy/` directly; the sentinel will refuse to run anyway, but assume daemon-level state pollution risk if you bypass it.
+- `legacy-DoNotUse/` is a frozen reference copy of shipwright, kept only so KEEPERS citations resolve. It is not zBuild code: nothing in `core/`, `plugins/`, `scripts/` or `tests/` reads it, and issue worktrees leave it out entirely (ADR-059 §2). **DO NOT EDIT files in `legacy-DoNotUse/`** except `legacy-DoNotUse/.shipwright-disabled` (the sentinel) and `legacy-DoNotUse/scripts/sw` (one-line patch documented in ADR-002).
+- The only legitimate way to remove `legacy-DoNotUse/` content is pruning: when a keeper's replacement lands, `git rm` its legacy source in the same PR. Nothing else is written — there are no tombstones. Anything a maintainer needs to know about the replacement goes where it belongs (the plugin's README, the ADR, `docs/ARCHITECTURE.md`), as a statement about our code (ADR-002, amended 2026-10-09).
+- Never run scripts under `legacy-DoNotUse/` directly; the sentinel will refuse to run anyway, but assume daemon-level state pollution risk if you bypass it.
 
 ## Migration discipline
 
 - Each keeper from KEEPERS.md gets one issue (template in `.github/issues/keepers-manifest.yaml`).
 - Issue PRs include the 5-test trial checklist in the description, marked complete before merge.
-- After a keeper merges, the legacy source is removed in the same PR (tombstone added to `legacy/migrated/`).
+- After a keeper merges, its legacy source is removed (`git rm`) in the same PR; nothing else is written.
 - Phase milestones gate progression: Phase 1 issues are blocked until Phase 0 ships.
 - **Test scope discovery**: before listing test files in scope for any issue that changes pipeline stage counts, template shape, or dispatch units, run `grep -rl <hardcoded-value> tests/` to find every test that pins that value. All matches must be in the issue's scope — a missed file causes build-loop failures that can't be fixed within the plan's scope enforcement.
 

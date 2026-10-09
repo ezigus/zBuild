@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # plugins/claim-coordinator/github-labels/plugin.sh — ADR-005 default plugin (#308)
-# Ports legacy/scripts/lib/daemon-state.sh:602-720 to the plugin contract.
+# Ports legacy-DoNotUse/scripts/lib/daemon-state.sh:602-720 to the plugin contract.
 # Sourced library: inherits caller's pipefail; do not add set -euo pipefail.
 
 [[ -n "${_ZBUILD_CLAIM_GH_LABELS_LOADED:-}" ]] && return 0

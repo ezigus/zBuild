@@ -41,4 +41,4 @@ Set `ZBUILD_CLAIM_BACKEND=local-fs` and `ZBUILD_CLAIM_STORE=<dir>` to use a floc
 
 ## Legacy origin
 
-Ported from `legacy/scripts/lib/daemon-state.sh:602-720`.
+Ported from `legacy-DoNotUse/scripts/lib/daemon-state.sh:602-720`.

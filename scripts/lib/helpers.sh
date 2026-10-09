@@ -5,7 +5,7 @@
 #
 # Phase 0 minimal primitives. Full safety chokepoints (validate_json hot-path
 # wiring, check_disk_space on every artifact write, etc.) land as part of the
-# core/ engine when individual keepers migrate from legacy/.
+# core/ engine when individual keepers migrate from legacy-DoNotUse/.
 
 [[ -n "${_ZBUILD_HELPERS_LOADED:-}" ]] && return 0
 _ZBUILD_HELPERS_LOADED=1

@@ -20,7 +20,7 @@ description: |
   injection, credential/secret exposure, auth/authz bypass paths, and OWASP
   top 10 vulnerability patterns. Does NOT report non-security issues — that
   discipline is what prevents cross-lens false-positive multiplication.
-  Prompt lifted verbatim from legacy/scripts/lib/compound-audit.sh:48-53.
+  Prompt lifted verbatim from legacy-DoNotUse/scripts/lib/compound-audit.sh:48-53.
 
 hooks:
   run: security_lens_run

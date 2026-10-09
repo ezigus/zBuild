@@ -6,7 +6,7 @@
 # bare `timeout` call runs its command unbounded or not at all there — how the
 # #2113 false `inert_build` shipped. The fix was six hand-copied "gtimeout, else
 # timeout" probes; this lint keeps a seventh from appearing. In core/, scripts/
-# and plugins/ (not legacy/) it fails on:
+# and plugins/ (not legacy-DoNotUse/) it fails on:
 #   - a bare `timeout`/`gtimeout` call, in any command position
 #   - a hand-written probe (`command -v`, `type -P`, `hash`, `which` of either
 #     name) outside scripts/lib/timeout-cmd.sh — the old shape, which calls
@@ -36,7 +36,7 @@ for d in core scripts plugins; do
             scripts/lib/test-helpers.sh) continue ;;  # test-only mock, see header
         esac
         files+=("$f")
-    done < <(find "$ROOT/$d" -name '*.sh' -not -path '*/legacy/*' -print0)
+    done < <(find "$ROOT/$d" -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0)
 done
 (( ${#files[@]} > 0 )) || exit 0
 

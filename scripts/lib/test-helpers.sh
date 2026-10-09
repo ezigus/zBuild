@@ -585,7 +585,7 @@ exit 0'
 # Branches on argv: when invoked with `--output-format json` (ADR-018 Pattern 1
 # decision #8, #476), wraps the payload in a {type:result,result:...} envelope
 # so the router's `.result` extraction finds it. Otherwise emits the payload
-# as raw text (legacy/text-mode callers).
+# as raw text (legacy text-mode callers).
 #
 # Usage:
 #   install_envelope_mock_claude <payload>                        # payload is inline text

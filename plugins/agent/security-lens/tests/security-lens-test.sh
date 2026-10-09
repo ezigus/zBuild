@@ -49,7 +49,7 @@ discovered="$(discover_plugins "$REPO_ROOT/plugins")"
 assert_contains "security-lens is discovered" "$discovered" "agent/security-lens"
 
 # ─── Prompt provenance: the lines ported from the legacy compound audit ─────
-# legacy/ is not read here — issue worktrees leave it out (ADR-059 §2); the ported
+# legacy-DoNotUse/ is not read here — issue worktrees leave it out (ADR-059 §2); the ported
 # lines are pinned in the prompt itself.
 prompt_block="$(cat "$PLUGIN_DIR/prompts/security.md")"
 
