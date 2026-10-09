@@ -4,8 +4,8 @@
 # Exercises the design-plugin copy (plugins/agent/design/plugin.sh:444-471)
 # behaviorally, and asserts the build-plugin copy
 # (plugins/agent/build/plugin.sh:1554-1581) is byte-identical (SPEC-6) so both
-# migrated copies are covered. Verifies the legacy source
-# (legacy/scripts/lib/pipeline-stages.sh:38-71) has been pruned.
+# migrated copies are covered. legacy/ is not read: issue worktrees leave it out
+# (ADR-059 §2), and the prune itself was checked when #1026 merged.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,12 +73,7 @@ _t4_row=$(grep "pipeline-stages.sh:42" "$REPO_ROOT/docs/KEEPERS.md" 2>/dev/null 
 assert_contains "[SPEC-4] KEEPERS §H row for pipeline-stages.sh:42 mentions plugins/agent/design/" \
     "$_t4_row" "plugins/agent/design/"
 
-# ─── T5 [SPEC-5]: _extract_scope_from_design pruned from legacy (CHANGE) ─────
-_t5_cnt=$(grep -c "^_extract_scope_from_design()" \
-    "$REPO_ROOT/legacy/scripts/lib/pipeline-stages.sh" 2>/dev/null || true)
-assert_eq "[SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh" \
-    "0" "$_t5_cnt"
-
+# ─── T5 [SPEC-5]: removing the function reproduces the original symptom ─────
 # T5 simulation: redefine function to return empty, then run the build plugin's
 # scope-selector logic (build/plugin.sh:148-155) to verify _scope_source stays "plan".
 # This proves simulated removal reproduces the original symptom (design scope ignored).

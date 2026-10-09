@@ -48,11 +48,11 @@ assert_eq "security-lens manifest validates (kind: agent + requires.core: [redac
 discovered="$(discover_plugins "$REPO_ROOT/plugins")"
 assert_contains "security-lens is discovered" "$discovered" "agent/security-lens"
 
-# ─── Prompt provenance: text matches legacy:48-53 verbatim ──────────────────
-legacy_block="$(awk 'NR>=48 && NR<=53' "$REPO_ROOT/legacy/scripts/lib/compound-audit.sh" | tr -d '\r')"
+# ─── Prompt provenance: the lines ported from the legacy compound audit ─────
+# legacy/ is not read here — issue worktrees leave it out (ADR-059 §2); the ported
+# lines are pinned in the prompt itself.
 prompt_block="$(cat "$PLUGIN_DIR/prompts/security.md")"
 
-# Both should contain these exact lines
 for line in \
     "You are a Security Auditor" \
     "Command injection, path traversal, input validation gaps" \
@@ -60,17 +60,7 @@ for line in \
     "Authentication/authorization bypass paths" \
     "OWASP top 10 vulnerability patterns" \
     "Do NOT report non-security issues."; do
-    if grep -qF "$line" <<< "$legacy_block"; then
-        legacy_has=1
-    else
-        legacy_has=0
-    fi
-    if grep -qF "$line" <<< "$prompt_block"; then
-        prompt_has=1
-    else
-        prompt_has=0
-    fi
-    assert_eq "verbatim line preserved: '$line'" "$legacy_has" "$prompt_has"
+    assert_contains "ported line preserved: '$line'" "$prompt_block" "$line"
 done
 
 # ─── Run: refuses without scope manifest (chokepoint enforcement) ───────────
