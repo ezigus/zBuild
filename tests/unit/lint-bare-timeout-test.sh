@@ -74,35 +74,56 @@ fi
 print_test_section "[#1752/SPEC-6] ADR-036 amendment paragraph and Enforced-by section"
 
 _adr="$REPO_ROOT/docs/adr/ADR-036-acceptance-contract-teeth.md"
-_adr_content=""
-_adr_content="$(cat "$_adr" 2>/dev/null || true)"
 
-if grep -qF "_acceptance_timeout_prefix" <<< "$_adr_content" 2>/dev/null; then
+# 1. Amendment mentions _acceptance_timeout_prefix
+if grep -qF "_acceptance_timeout_prefix" "$_adr" 2>/dev/null; then
     assert_pass "[#1752/SPEC-6] ADR-036 amendment mentions _acceptance_timeout_prefix"
 else
     assert_fail "[#1752/SPEC-6] ADR-036 amendment mentions _acceptance_timeout_prefix" \
         "amendment paragraph missing reference to _acceptance_timeout_prefix"
 fi
 
-if grep -qF "scripts/lib/timeout-cmd.sh" <<< "$_adr_content" 2>/dev/null; then
+# 2. Amendment names scripts/lib/timeout-cmd.sh
+if grep -qF "scripts/lib/timeout-cmd.sh" "$_adr" 2>/dev/null; then
     assert_pass "[#1752/SPEC-6] ADR-036 amendment names scripts/lib/timeout-cmd.sh"
 else
     assert_fail "[#1752/SPEC-6] ADR-036 amendment names scripts/lib/timeout-cmd.sh" \
         "amendment paragraph missing scripts/lib/timeout-cmd.sh"
 fi
 
-if grep -qF "scripts/lib/lint-bare-timeout.sh" <<< "$_adr_content" 2>/dev/null; then
-    assert_pass "[#1752/SPEC-6] ADR-036 Enforced-by names scripts/lib/lint-bare-timeout.sh"
+# 3. Amendment paragraph is dated (date pattern and #1752 on the same heading line)
+if grep -qE "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].*#1752|#1752.*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+        "$_adr" 2>/dev/null; then
+    assert_pass "[#1752/SPEC-6] ADR-036 has a dated amendment paragraph for #1752"
 else
-    assert_fail "[#1752/SPEC-6] ADR-036 Enforced-by names scripts/lib/lint-bare-timeout.sh" \
-        "Enforced-by section missing scripts/lib/lint-bare-timeout.sh"
+    assert_fail "[#1752/SPEC-6] ADR-036 has a dated amendment paragraph for #1752" \
+        "no Amendment heading with a date and #1752 found in ADR-036"
 fi
 
-if grep -qF "tests/unit/lint-bare-timeout-test.sh" <<< "$_adr_content" 2>/dev/null; then
-    assert_pass "[#1752/SPEC-6] ADR-036 Enforced-by names tests/unit/lint-bare-timeout-test.sh"
+# 4. Amendment states that a bare timeout call is a lint failure
+if grep -qE "bare.*timeout.*lint failure|lint failure.*bare.*timeout" "$_adr" 2>/dev/null; then
+    assert_pass "[#1752/SPEC-6] ADR-036 states bare timeout call is a lint failure"
 else
-    assert_fail "[#1752/SPEC-6] ADR-036 Enforced-by names tests/unit/lint-bare-timeout-test.sh" \
-        "Enforced-by section missing tests/unit/lint-bare-timeout-test.sh"
+    assert_fail "[#1752/SPEC-6] ADR-036 states bare timeout call is a lint failure" \
+        "ADR-036 missing statement that a bare timeout call is a lint failure"
+fi
+
+# 5. scripts/lib/lint-bare-timeout.sh appears UNDER ## Enforced by
+if awk '/^## Enforced by/{s=1; next} /^## /{s=0} s && /scripts\/lib\/lint-bare-timeout\.sh/{found=1; exit} END{exit !found}' \
+        "$_adr" 2>/dev/null; then
+    assert_pass "[#1752/SPEC-6] lint-bare-timeout.sh appears under ## Enforced by"
+else
+    assert_fail "[#1752/SPEC-6] lint-bare-timeout.sh appears under ## Enforced by" \
+        "scripts/lib/lint-bare-timeout.sh not found under ## Enforced by in ADR-036"
+fi
+
+# 6. tests/unit/lint-bare-timeout-test.sh appears UNDER ## Enforced by
+if awk '/^## Enforced by/{s=1; next} /^## /{s=0} s && /tests\/unit\/lint-bare-timeout-test\.sh/{found=1; exit} END{exit !found}' \
+        "$_adr" 2>/dev/null; then
+    assert_pass "[#1752/SPEC-6] lint-bare-timeout-test.sh appears under ## Enforced by"
+else
+    assert_fail "[#1752/SPEC-6] lint-bare-timeout-test.sh appears under ## Enforced by" \
+        "tests/unit/lint-bare-timeout-test.sh not found under ## Enforced by in ADR-036"
 fi
 
 # ── [#1752/SPEC-7]: package.json lint script + live repo passes linter ────────

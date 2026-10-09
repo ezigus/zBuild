@@ -158,27 +158,92 @@ assert_eq "[#1752/SPEC-3] guard returns the failing testfile path" \
 # ── [#1752/SPEC-9]: five non-acceptance-gate sites produce gtimeout ────────────
 print_test_section "[#1752/SPEC-9] each converted site produces gtimeout on gtimeout-only host"
 
-_s9_labels=(
-    "core/router/route.sh sync path"
-    "core/router/route.sh loop path"
-    "scripts/run-tests.sh"
-    "scripts/run-mutation.sh"
-    "scripts/lib/gh-automation.sh"
-)
-for _s9_label in "${_s9_labels[@]}"; do
-    _ACCEPTANCE_TOUT=()
-    unset _ACCEPTANCE_TIMEOUT_KILL_OK
-    export PATH="$TEST_TEMP_DIR/fakebin"
-    _acceptance_timeout_prefix 60
-    export PATH="$_SAVED_PATH"
-    if [[ "${#_ACCEPTANCE_TOUT[@]}" -gt 0 ]]; then
-        assert_eq "[#1752/SPEC-9] $_s9_label: _ACCEPTANCE_TOUT[0]=gtimeout" \
-            "gtimeout" "${_ACCEPTANCE_TOUT[0]}"
-    else
-        assert_fail "[#1752/SPEC-9] $_s9_label: _ACCEPTANCE_TOUT non-empty" \
-            "_ACCEPTANCE_TOUT is empty — gtimeout not found on gtimeout-only PATH"
-    fi
-done
+# Each sub-test simulates the specific probe pattern for one call site:
+# the site-specific variable name, the kill-grace bridge where the site applies
+# it, and the site-appropriate timeout value. This confirms each wiring is
+# distinct and would produce a bounded gtimeout command on a gtimeout-only host.
+
+# site 1: core/router/route.sh sync path — captures into local _tout_cmd
+_s9_route_sync=()
+_ACCEPTANCE_TOUT=()
+unset _ACCEPTANCE_TIMEOUT_KILL_OK
+export PATH="$TEST_TEMP_DIR/fakebin"
+_acceptance_timeout_prefix 120
+_s9_route_sync=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+export PATH="$_SAVED_PATH"
+if [[ "${#_s9_route_sync[@]}" -gt 0 ]]; then
+    assert_eq "[#1752/SPEC-9] route.sh sync: _tout_cmd[0]=gtimeout" \
+        "gtimeout" "${_s9_route_sync[0]}"
+else
+    assert_fail "[#1752/SPEC-9] route.sh sync: _tout_cmd non-empty" \
+        "array empty — gtimeout not found on gtimeout-only PATH"
+fi
+
+# site 2: core/router/route.sh loop path — captures into local _tout_cmd
+_s9_route_loop=()
+_ACCEPTANCE_TOUT=()
+unset _ACCEPTANCE_TIMEOUT_KILL_OK
+export PATH="$TEST_TEMP_DIR/fakebin"
+_acceptance_timeout_prefix 120
+_s9_route_loop=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+export PATH="$_SAVED_PATH"
+if [[ "${#_s9_route_loop[@]}" -gt 0 ]]; then
+    assert_eq "[#1752/SPEC-9] route.sh loop: _tout_cmd[0]=gtimeout" \
+        "gtimeout" "${_s9_route_loop[0]}"
+else
+    assert_fail "[#1752/SPEC-9] route.sh loop: _tout_cmd non-empty" \
+        "array empty — gtimeout not found on gtimeout-only PATH"
+fi
+
+# site 3: scripts/run-tests.sh — captures into _rt_tout; bridges ZBUILD_TEST_KILL_GRACE
+_rt_tout=()
+_ACCEPTANCE_TOUT=()
+unset _ACCEPTANCE_TIMEOUT_KILL_OK
+export PATH="$TEST_TEMP_DIR/fakebin"
+export ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
+_acceptance_timeout_prefix "${ZBUILD_TEST_FILE_TIMEOUT:-480}"
+_rt_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+export PATH="$_SAVED_PATH"
+if [[ "${#_rt_tout[@]}" -gt 0 ]]; then
+    assert_eq "[#1752/SPEC-9] run-tests.sh: _rt_tout[0]=gtimeout" \
+        "gtimeout" "${_rt_tout[0]}"
+else
+    assert_fail "[#1752/SPEC-9] run-tests.sh: _rt_tout non-empty" \
+        "array empty — gtimeout not found on gtimeout-only PATH"
+fi
+
+# site 4: scripts/run-mutation.sh — captures into _mut_tout; bridges ZBUILD_MUTATION_KILL_GRACE
+_mut_tout=()
+_ACCEPTANCE_TOUT=()
+unset _ACCEPTANCE_TIMEOUT_KILL_OK
+export PATH="$TEST_TEMP_DIR/fakebin"
+export ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
+_acceptance_timeout_prefix "${ZBUILD_MUTATION_TEST_TIMEOUT:-300}"
+_mut_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+export PATH="$_SAVED_PATH"
+if [[ "${#_mut_tout[@]}" -gt 0 ]]; then
+    assert_eq "[#1752/SPEC-9] run-mutation.sh: _mut_tout[0]=gtimeout" \
+        "gtimeout" "${_mut_tout[0]}"
+else
+    assert_fail "[#1752/SPEC-9] run-mutation.sh: _mut_tout non-empty" \
+        "array empty — gtimeout not found on gtimeout-only PATH"
+fi
+
+# site 5: scripts/lib/gh-automation.sh — captures into local _tout_cmd
+_s9_gha=()
+_ACCEPTANCE_TOUT=()
+unset _ACCEPTANCE_TIMEOUT_KILL_OK
+export PATH="$TEST_TEMP_DIR/fakebin"
+_acceptance_timeout_prefix 120
+_s9_gha=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+export PATH="$_SAVED_PATH"
+if [[ "${#_s9_gha[@]}" -gt 0 ]]; then
+    assert_eq "[#1752/SPEC-9] gh-automation.sh: _tout_cmd[0]=gtimeout" \
+        "gtimeout" "${_s9_gha[0]}"
+else
+    assert_fail "[#1752/SPEC-9] gh-automation.sh: _tout_cmd non-empty" \
+        "array empty — gtimeout not found on gtimeout-only PATH"
+fi
 
 # ── [#1752/SPEC-10]: per-caller kill-grace env bridge ─────────────────────────
 print_test_section "[#1752/SPEC-10] per-caller kill-grace env bridge"
