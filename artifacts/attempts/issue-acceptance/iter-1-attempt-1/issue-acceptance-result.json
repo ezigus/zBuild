@@ -1,0 +1,28 @@
+{
+  "result_contract": 2,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "npm test exits non-zero (7+ failures introduced by the PR: mutation harness tests can't find `timeout-cmd.sh` because run-mutation.sh now sources it by relative `SCRIPT_DIR` that resolves to temp dirs when the script is copied; two structural tests grep for the now-removed `_RT_KILL_GRACE` literal; shellcheck SC2034 on `ZBUILD_NEGCTL_KILL_GRACE` fails lint)",
+  "data": {
+    "unmet": [
+      "R-6 (npm test: run-mutation-empty-dir-clean-gate, run-mutation-kill-grace, run-mutation-stale-anchor, mutation-relevance all fail because their sandboxes copy run-mutation.sh but not lib/timeout-cmd.sh",
+      "acceptance-negctl and run-tests-timeout-report fail because they grep for the literal `\"-k\" \"$_RT_KILL_GRACE\"` which the PR removed",
+      "npm run lint fails via shellcheck SC2034 on ZBUILD_NEGCTL_KILL_GRACE assigned but not exported/seen in run-tests.sh and run-mutation.sh)"
+    ],
+    "unsure": [],
+    "findings": [
+      {
+        "n": 1,
+        "text": "The issue requires this and the change does not meet it: R-6 (npm test: run-mutation-empty-dir-clean-gate, run-mutation-kill-grace, run-mutation-stale-anchor, mutation-relevance all fail because their sandboxes copy run-mutation.sh but not lib/timeout-cmd.sh. What would settle it: a change that meets this requirement in full."
+      },
+      {
+        "n": 2,
+        "text": "The issue requires this and the change does not meet it: acceptance-negctl and run-tests-timeout-report fail because they grep for the literal `\"-k\" \"$_RT_KILL_GRACE\"` which the PR removed. What would settle it: a change that meets this requirement in full."
+      },
+      {
+        "n": 3,
+        "text": "The issue requires this and the change does not meet it: npm run lint fails via shellcheck SC2034 on ZBUILD_NEGCTL_KILL_GRACE assigned but not exported/seen in run-tests.sh and run-mutation.sh). What would settle it: a change that meets this requirement in full."
+      }
+    ]
+  }
+}
