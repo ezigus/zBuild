@@ -1,0 +1,1 @@
+{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"took in the goal for issue #1730: [bug] route_to_model_loop emits no model.route and no model.","data":{"goal_len":5356,"platform_count":1}}
