@@ -1,0 +1,18 @@
+{
+  "stage": "intake",
+  "cycle_iter": 0,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-10-09T23:29:56Z",
+  "files": 7,
+  "outputs": {
+    "intake-result.json": "changed",
+    "scope-manifest.md": "changed",
+    "intake.md": "changed",
+    "intake-baseline-ref.txt": "changed",
+    "intake-branch.txt": "changed",
+    "requirements.json": "changed",
+    "intake-summary.md": "changed"
+  },
+  "progress": true
+}

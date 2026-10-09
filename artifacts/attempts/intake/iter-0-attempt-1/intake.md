@@ -1,0 +1,56 @@
+[perf] every event costs ~52ms and ~16 process spawns — ~30s per run, with malformed timestamps and missing stage attribution
+
+> **Updated 2026-10-09** (re-verified against main 3611b4e6, in code): the defects below are all still present (line numbers removed from this issue — they drift as other PRs land; locations are named by function). **Part 3's cause is now known** (found in the #1802 run, 37770877839: ~1,500 of ~1,900 events were `redaction.applied`): it is a **self-trigger loop**, not just a busy emitter — see part 3. Added: the ADR this implements, constraints, and the Build Mode re-derivation.
+
+> **Updated 2026-10-08** (Phase 2 re-verification against main 2ae004fa, checked in code, not from this text): **worse than stated.** Measured on this host: 22 external process spawns per emit (12 `jq`, 6 `sed`, 2 `flock`, 1 `date`, 1 `sqlite3`) and 250-360 ms per emit for an 11-field event (host load 24, so the ms are inflated; the spawn count is not). Not in the body: the SQLite mirror forks `sed` per field in `_eb_sql_escape`. On macOS every timestamp ends `.000Z` (no ms precision). The stage-attribution part could be split off and dogfooded on its own.
+
+> **Updated 2026-09-29** (Initiative 1.3 alignment audit, main 900db6b0): the ANSI-strip fork is fixed (ef7ab86a, #2207, ADR-065); the body now covers the remaining forks, the real cause of the malformed timestamps (a map work unit overwrites `ZBUILD_PLATFORM`), and the `redaction.applied` flood that is now the main source of `stage=null`, with figures re-measured on run `20260928144733-57620`.
+
+
+
+Part of #1795 (Phase 2).
+
+**Classification: ENGINE — `core/event-bus/event-bus.sh` `eb_emit_event`.**
+
+Filed measuring ~52 ms and ~16 process spawns per emit, 570 events per run, ~30 s of pure overhead.
+
+## Already fixed
+The per-field `printf | sed` ANSI strip no longer forks when the value holds no ESC byte (`_eb_strip_ansi` in `event-bus.sh`; ef7ab86a / #2207, ADR-065 §5). The run id, plugin, kind and stage no longer cost a fork each.
+
+## Remaining
+**1. Per-emit forks.** Still one `jq` per key/value pair in `eb_emit_event`, a `date` per event (the `ZBUILD_PLATFORM` timestamp branch), the envelope `jq -cn`, plus the flock subshell. Per-emit cost has not been re-measured since the ANSI fix; the acceptance below requires a before/after.
+
+**2. Malformed timestamps — the cause is not the one first filed.** The non-macOS branch uses `date +%...%3NZ`, and BSD `date` prints `%3N` literally, giving `…:43.3NZ`. The platform variable is not unset: the `type: map` work unit **overwrites** it with the map's target platform — `export ZBUILD_PLATFORM='${platform}'` (`core/pipeline/strategies/common.sh`, the map work-unit wrapper) — so on a macOS host every event from a map member takes the Linux branch. Run `20260928144733-57620`: **54 of 3,100** events malformed, every one from the six `review-lens` members (`plugin.run.*`, `model.route`, `model.outcome`, `redaction.applied`, `stage.io.captured`, …).
+
+**3. Missing stage attribution — now dominated by one emitter.** In the same run **1,916 of 3,100** events were `redaction.applied` with empty `plugin`/`kind` and no `stage`. They come from the live run-status comment's redaction pass (`rsc_outbound_body` in `scripts/lib/run-status-render.sh`, temp files `rsc-in.*`, #2131). That one emitter is both the largest share of the run's event volume and the main source of `stage=null`. (Map members themselves now carry `stage` — #1862, see #1706.)
+
+**Why it floods (verified 2026-10-09):** `rsc_tail_loop` (`scripts/lib/run-status-comment.sh`) treats *any* growth of `events.jsonl` as a reason to re-render. Each render calls `rsc_outbound_body` → `apply_scope_redaction`, which **emits `redaction.applied` into the same `events.jsonl`**, so every render schedules the next one, bounded only by `ZBUILD_STATUS_COMMENT_MIN_INTERVAL` (5 s). And `rsc_upsert` PATCHes the GitHub comment on every flush with no unchanged-body check — about 1,476 PATCHes in the #1802 run, for a comment that mostly had not changed.
+
+## Fix
+Build the payload in a single `jq` invocation; use a portable timestamp helper that does not read `ZBUILD_PLATFORM` (the target platform and the host platform are different things); break the run-status loop — the watcher must not be woken by its own `redaction.applied` (ignore events it caused, or do not emit per render), and `rsc_upsert` skips the PATCH when the rendered body is unchanged.
+
+## ADR
+Implements **ADR-065 §5** (the event bus's per-event processes are named for removal) under **§1/§2** (the fork count is a tested contract that only ratchets down) and **§4** (one pass, not one per key). The timestamp fix keeps **ADR-009 §6**: plugins in a map unit must still see `ZBUILD_PLATFORM=<target>` — the fix detects the *host* for the clock, it does not stop the overwrite.
+
+## Constraints
+- **No new failure path in `eb_emit_event`.** A failed emit must not fail or abort its caller where it does not today; the event bus sits in front of every stage (ADR-057 gate 3's hazard).
+- **Envelope unchanged.** Same keys, same types, same `schema_version`; `tests/golden` and every reader of `events.jsonl` keep working. Field *values* change only where this issue says (timestamps, `stage`).
+- **The run-status comment still updates** when the run's state really changes; only unchanged-body PATCHes and self-caused wakeups go.
+- Redaction still runs on every outbound body (CLAUDE.md: all LLM-bound and outbound text passes through `apply_scope_redaction`) — only its per-render *event* may change.
+
+## Acceptance
+- [ ] Per-emit cost materially reduced — measured before/after on the same run shape.
+- [ ] No malformed timestamps, including from `type: map` work units on a macOS host; regression test reddens at the merge-base.
+- [ ] Every event emitted within a stage carries `stage`; `redaction.applied` from the run-status comment is attributed or no longer emitted per render.
+- [ ] The run-status watcher is not re-woken by its own events: a test where nothing but the watcher's own render happens shows no second render and no second PATCH; `rsc_upsert` makes no request when the body is unchanged.
+- [ ] The per-emit fork count is pinned by a test (ADR-065 §1) and is lower than at the merge-base.
+- [ ] Event contents otherwise unchanged.
+
+---
+
+## Contract
+
+This issue touches a surface that **[ADR-054](../blob/main/docs/adr/ADR-054-stage-contract.md) / [ADR-055](../blob/main/docs/adr/ADR-055-inter-stage-data-contract-v2.md) redefine** (Phase 0, #1819). Implement against the contract, not against today's engine — if the two disagree, the ADR wins.
+
+- ADR-054 §10 / #1717 — a plugin declares its own events; the engine does not hold the enumeration.
+- Initiative goal and the domain checklist this must satisfy: #1818
