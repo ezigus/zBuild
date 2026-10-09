@@ -1,0 +1,17 @@
+{
+  "scope_files": [
+    "core/router/route.sh",
+    "docs/adr/ADR-036-acceptance-contract-teeth.md",
+    "package.json",
+    "scripts/lib/acceptance-block.sh",
+    "scripts/lib/gh-automation.sh",
+    "scripts/lib/lint-bare-timeout.sh",
+    "scripts/lib/timeout-cmd.sh",
+    "scripts/release.sh",
+    "scripts/run-mutation.sh",
+    "scripts/run-tests.sh",
+    "tests/unit/lint-bare-timeout-test.sh",
+    "tests/unit/timeout-cmd-helper-test.sh"
+  ],
+  "wiring_files": []
+}
