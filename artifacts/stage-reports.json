@@ -1,0 +1,12 @@
+{
+  "scope_files": [
+    "config/adr-enforcement-baseline.txt",
+    "core/event-bus/event-bus.sh",
+    "docs/adr/ADR-065-process-budget.md",
+    "scripts/lib/run-status-comment.sh",
+    "tests/e2e/fork-budget-test.sh",
+    "tests/unit/event-bus-timestamp-test.sh",
+    "tests/unit/run-status-comment-loop-test.sh"
+  ],
+  "wiring_files": []
+}
