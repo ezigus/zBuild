@@ -13,6 +13,8 @@
 _ZBUILD_WORKTREE_LIB_LOADED=1
 
 _ZBUILD_WORKTREE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/worktree-sparse.sh
+source "$_ZBUILD_WORKTREE_LIB_DIR/worktree-sparse.sh"
 
 # ─── zbuild_run_root <run_id> ────────────────────────────────────────────────
 # The single directory that owns everything for one run. Per-run state already
@@ -178,6 +180,7 @@ zbuild_worktree_acquire() {
             done < <(git -C "$repo_root" worktree list --porcelain 2>/dev/null || true)
         fi
         if [[ "$found" -eq 1 ]]; then
+            _zbuild_worktree_apply_sparse "$wt" "$repo_root" || true
             printf '%s\n' "$wt"
             return 0
         fi
@@ -201,6 +204,7 @@ zbuild_worktree_acquire() {
         printf '  (is `git` shimmed on PATH? set ZBUILD_NO_WORKTREE=1 to run in place.)\n' >&2
         return 5
     fi
+    _zbuild_worktree_apply_sparse "$wt" "$repo_root" || true
     printf '%s\n' "$wt"
     return 0
 }
@@ -239,6 +243,7 @@ zbuild_worktree_enter() {
         local existing_branch
         existing_branch="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
         if [[ "$existing_branch" == "$branch" ]]; then
+            _zbuild_worktree_apply_sparse "$wt" "$repo_root" || true
             printf '%s\n' "$wt"
             return 0
         fi
@@ -280,6 +285,7 @@ zbuild_worktree_enter() {
             "$mode" "$branch" "$wt" "${git_err:-<no git output>}" >&2
         return 5
     fi
+    _zbuild_worktree_apply_sparse "$wt" "$repo_root" || true
     printf '%s\n' "$wt"
     return 0
 }

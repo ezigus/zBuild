@@ -58,7 +58,6 @@ ADR-055-inter-stage-data-contract-v2.md
 ADR-056-run-cleanup-only-lifecycle.md
 ADR-057-build-mode-criteria.md
 ADR-058-engine-write-boundary.md
-ADR-059-issue-vs-run-keying.md
 ADR-060-stages-return-structure.md
 ADR-062-engine-owned-reclamation.md
 ADR-063-budget-disclosure-and-partial-output.md
