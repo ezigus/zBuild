@@ -21,5 +21,11 @@
   "wiring_files": [
     "package.json",
     "scripts/lib/acceptance-block.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/unit/lint-bare-timeout-test.sh",
+      "tests/unit/timeout-cmd-helper-test.sh"
+    ]
+  }
 }

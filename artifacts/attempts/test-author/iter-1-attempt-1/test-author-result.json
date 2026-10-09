@@ -1,0 +1,17 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 10 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 10,
+    "owned_files": [
+      "tests/unit/lint-bare-timeout-test.sh",
+      "tests/unit/timeout-cmd-helper-test.sh"
+    ],
+    "testfiles": {
+      "tests/unit/lint-bare-timeout-test.sh": "59e0b9d4e05c63d954ae5aba59357530fd0ead10",
+      "tests/unit/timeout-cmd-helper-test.sh": "a998856637bfa406ee82d34a0ba8a85dae69d9e1"
+    }
+  }
+}
