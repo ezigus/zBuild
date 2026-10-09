@@ -14,6 +14,7 @@
 #   F4: a whole-run skip still names each SPEC → still a pass (guard)
 #   F5: shape-floor: its library's own dependency is missing → fail
 #   F6: secret-scan: merge-base.sh is missing → fail, not skip
+#   F7: the reason names every file that did not load
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -133,6 +134,18 @@ assert_contains "[F3] failures name nothing_checked" \
     "$(jq -c '.failures' <<<"$RESULT")" "nothing_checked"
 assert_contains "[F3] the reason says no requirement was checked" \
     "$(jq -r .reason <<<"$RESULT")" "none of them was checked"
+assert_eq "[F3] rc 1" "1" "$RC"
+assert_eq "[F3] disposition broken" "broken" "$(jq -r .disposition <<<"$RESULT")"
+
+# ── F7: the reason names every file that did not load ────────────────────────
+print_test_section "F7: the reason keeps every gate_load_failed entry"
+_r7="$(
+    # shellcheck disable=SC1090
+    source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" >/dev/null 2>&1
+    _ag_build_reason "gate_load_failed:a-lib.sh" "gate_load_failed:b-lib.sh"
+)"
+assert_contains "[F7] the first file is named" "$_r7" "a-lib.sh"
+assert_contains "[F7] the second file is named" "$_r7" "b-lib.sh"
 
 # ── F4 (guard): a whole-run skip names each SPEC — still a pass ──────────────
 print_test_section "F4: a test-only change still passes"

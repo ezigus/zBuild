@@ -113,7 +113,7 @@ _ag_build_reason() {
             unreached_at_head:*)    unh="$unh ${f#unreached_at_head:}" ;;
             killed_by_signal:*)     sig="$sig ${f#killed_by_signal:}" ;;
             malformed_acceptance_block) malformed=1 ;;
-            gate_load_failed:*)     loadfail="${f#gate_load_failed:}" ;;
+            gate_load_failed:*)     loadfail="${loadfail:+$loadfail, }${f#gate_load_failed:}" ;;
             nothing_checked:*)      nothing="${f#nothing_checked:}" ;;
             negctl_error:* | reachability_error:*) infra="$infra $f" ;;
         esac
