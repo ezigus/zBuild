@@ -1,0 +1,14 @@
+{
+  "result_contract": 2,
+  "verdict": "corresponds",
+  "disposition": "complete",
+  "reason": "judged 3 SPEC(s): 3 correspond, 0 partial, 0 mismatch, 0 uncheckable, 0 unjudged",
+  "data": {
+    "corresponds": 3,
+    "partial": 0,
+    "mismatch": 0,
+    "uncheckable": 0,
+    "unjudged": 0,
+    "findings": []
+  }
+}
