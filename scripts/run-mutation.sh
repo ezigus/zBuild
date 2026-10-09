@@ -116,23 +116,15 @@ fi
 # ignores TERM (on purpose — runner-status-comment-hook-test's SPEC-5 child)
 # otherwise holds the tier forever; on #1850 a suite ran 8h57m that way.
 # timeout signals the whole process group, so the KILL reaches that child too.
-_MUT_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
-[[ "$_MUT_KILL_GRACE" =~ ^[0-9]+$ ]] || _MUT_KILL_GRACE=10
 _mut_tout=()
 if [[ "$_MUT_TEST_TIMEOUT" != "0" ]]; then
-    _mut_tout_bin=""
-    if   command -v gtimeout >/dev/null 2>&1; then _mut_tout_bin="gtimeout"
-    elif command -v timeout  >/dev/null 2>&1; then _mut_tout_bin="timeout"
+    # shellcheck source=./lib/timeout-cmd.sh
+    if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
+        source "$SCRIPT_DIR/lib/timeout-cmd.sh"
     fi
-    if [[ -n "$_mut_tout_bin" ]]; then
-        # Probe -k rather than assume it: a binary without it keeps the
-        # TERM-only bound instead of failing every mutant.
-        if "$_mut_tout_bin" -k 1 1 true >/dev/null 2>&1; then
-            _mut_tout=("$_mut_tout_bin" "-k" "$_MUT_KILL_GRACE" "$_MUT_TEST_TIMEOUT")
-        else
-            _mut_tout=("$_mut_tout_bin" "$_MUT_TEST_TIMEOUT")
-        fi
-    fi
+    ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
+    _acceptance_timeout_prefix "$_MUT_TEST_TIMEOUT"
+    _mut_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
 fi
 
 # ─── Helpers ────────────────────────────────────────────────────────────────

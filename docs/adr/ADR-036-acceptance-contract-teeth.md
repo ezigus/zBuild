@@ -975,8 +975,36 @@ Requirements now carry a status (ADR-069 §1): `[code]`, `[no-code]` or `[done]`
 
 Verification: `tests/unit/acceptance-unclaimed-code-test.sh` (U1–U4).
 
+### Amendment (2026-10-09, #1752) — every timeout bound resolves through `_acceptance_timeout_prefix`
+
+The #1660 amendment added `_acceptance_timeout_prefix` (`scripts/lib/acceptance-block.sh`) to ensure
+the acceptance gates use a gtimeout-first, `-k`-probed bound. Six other sites in `core/`, `scripts/`,
+and `plugins/` each hand-copied a partial version of the same probe — without `-k` support, without the
+gtimeout-first preference, or both.
+
+**Decision.** `_acceptance_timeout_prefix` is extracted into a standalone
+`scripts/lib/timeout-cmd.sh`. Every timeout bound in `core/`, `scripts/`, and `plugins/` resolves
+through this shared helper. A bare `timeout` call (not routed through `_acceptance_timeout_prefix`)
+is a lint failure, enforced by `scripts/lib/lint-bare-timeout.sh` (wired into `npm run lint`).
+
+`scripts/lib/acceptance-block.sh` guard-sources `timeout-cmd.sh` so callers that already source
+`acceptance-block.sh` gain the function at the same location. `plugins/agent/build/lib/summary.sh`'s
+guard sentinel (`declare -F _acceptance_timeout_prefix`) continues to work because
+`acceptance-block.sh` now provides the function via its guard-source of `timeout-cmd.sh`.
+
+Callers with their own kill-grace env var (`ZBUILD_TEST_KILL_GRACE`, `ZBUILD_MUTATION_KILL_GRACE`)
+must bridge to `ZBUILD_NEGCTL_KILL_GRACE` before calling the helper so the per-caller config is not
+silently dropped.
+
+`scripts/release.sh:629` uses a bare `timeout` in release tooling whose behavior fix is explicitly out
+of scope for #1752; it carries a `# lint-bare-timeout:allow:` exemption on the invocation line.
+
 ### Amendment (2026-10-05, #2304 part B) — the guard paths are removed (ADR-069 §3, §4)
 
 The negative control reads each requirement's status. A code requirement (`[code]`, the old `[change]`, or no tag) keeps the rule above: its test must fail on the old code and pass on the new. A done requirement (`[done]`, or an old `[guard]`) and a no-code one are not run: `NEGCTL SKIP <id> already_done` and `NEGCTL SKIP <id> no_code`. With no code requirement at all, no worktree is made. Tag coverage (Level 1) exempts the same two. Removed: the guard half of `acceptance-negctl.sh` (the baseline-only run, `guard_spec`, `guard_regressed`, `guard_unreached`, `guard_unverified`, `guard_test_broken`, `guard_untested`), the design-gate pre-check (#1777), the `acceptance.gate.guard_regressed` event and the guard failure classes. The per-SPEC log scan the guard arm shared with the code arm and reachability is now `_negctl_spec_log_check`. The pass reason counts the requirements checked on the old and new code, already done, and needing no code.
 
 Verification: `tests/unit/acceptance-negctl-status-test.sh` (N1–N5), `tests/unit/acceptance-coverage-test.sh` (C7, C9).
+
+## Enforced by
+
+- **§ Amendment (#1752) bare-timeout rule**: `scripts/lib/lint-bare-timeout.sh` (lint, wired into `npm run lint`); `tests/unit/lint-bare-timeout-test.sh` (unit tests for the lint and the exemption mechanism).

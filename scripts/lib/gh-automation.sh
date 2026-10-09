@@ -10,6 +10,11 @@ _ZBUILD_GHA_LOADED=1
 _ZBUILD_GHA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./helpers.sh
 source "$_ZBUILD_GHA_DIR/helpers.sh"
+# #1752: shared gtimeout-first probe.
+if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
+    # shellcheck source=./timeout-cmd.sh
+    source "$_ZBUILD_GHA_DIR/timeout-cmd.sh"
+fi
 
 # Returns 0 if PR number is present in a `| #N |`-style markdown log.
 gha_is_already_scanned() {
@@ -187,17 +192,15 @@ EOF
 )"
 
     # Invoke claude with timeout; capture rc explicitly
-    local raw_response rc=0 timeout_cmd=""
-    if command -v gtimeout >/dev/null 2>&1; then
-        timeout_cmd="gtimeout"
-    elif command -v timeout >/dev/null 2>&1; then
-        timeout_cmd="timeout"
-    fi
+    local raw_response rc=0
+    local -a _tout_cmd=()
+    _acceptance_timeout_prefix "$timeout_secs"
+    _tout_cmd=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
 
     local model_args=()
     [[ -n "$model_id" ]] && model_args=(--model "$model_id")
-    if [[ -n "$timeout_cmd" ]]; then
-        raw_response="$("$timeout_cmd" "$timeout_secs" claude "${model_args[@]}" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
+    if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
+        raw_response="$("${_tout_cmd[@]}" claude "${model_args[@]}" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
     else
         raw_response="$(claude "${model_args[@]}" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
     fi

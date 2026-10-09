@@ -131,6 +131,11 @@ source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 if [[ -f "$_ROUTER_DIR/permissions.sh" ]]; then
     source "$_ROUTER_DIR/permissions.sh"
 fi
+# #1752: shared gtimeout-first probe — replaces per-site inline probes.
+if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
+    # shellcheck source=../../scripts/lib/timeout-cmd.sh
+    source "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
+fi
 
 # #1706: map members run concurrently under one stage name; naming the record
 # by the unit keeps one member's failure from overwriting another's.
@@ -1043,9 +1048,8 @@ _route_call_claude() {
     while :; do
     rc=0
     local -a _tout_cmd=()
-    if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_local_secs")
-    elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_local_secs")
-    fi
+    _acceptance_timeout_prefix "$_local_secs"
+    _tout_cmd=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
     if ! stderr_file="$(mktemp "$(zbuild_engine_tmpdir)/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
         error "router: mktemp failed"
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "reason=mktemp_failed"
@@ -1940,9 +1944,8 @@ ${_diff_pointer}"
         while :; do
         rc=0
         local -a _tout_cmd=()
-        if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_iter_local_secs")
-        elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_iter_local_secs")
-        fi
+        _acceptance_timeout_prefix "$_iter_local_secs"
+        _tout_cmd=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
 
         # Run claude in $cwd as background child so signal trap can kill it.
         # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class

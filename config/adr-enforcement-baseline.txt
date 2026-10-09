@@ -37,7 +37,6 @@ ADR-032-per-repo-prompt-overrides.md
 ADR-033-compile-typecheck-gate.md
 ADR-034-targeted-test-rerun.md
 ADR-035-orchestrator-run-state-isolation.md
-ADR-036-acceptance-contract-teeth.md
 ADR-037-objective-gates-vs-semantic-judgment.md
 ADR-038-adversarial-multilens-review-report.md
 ADR-039-parallel-stage-groups.md
