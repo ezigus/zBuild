@@ -1,0 +1,10 @@
+[
+  "plugins/agent/security-lens/tests/security-lens-test.sh",
+  "tests/unit/acceptance-negctl-test.sh",
+  "tests/unit/mutation-relevance-test.sh",
+  "tests/unit/run-mutation-empty-dir-clean-gate-test.sh",
+  "tests/unit/run-mutation-kill-grace-test.sh",
+  "tests/unit/run-mutation-stale-anchor-test.sh",
+  "tests/unit/run-tests-timeout-report-test.sh",
+  "tests/unit/scope-manifest-b1-regression-test.sh"
+]

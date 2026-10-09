@@ -1,0 +1,240 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/acceptance-negctl-test.sh
+
+  acceptance negctl — Level-2 baseline negative control (#922)
+
+  ✓ NC-A: load-bearing SPEC-1 → PASS
+  ✓ NC-B: tautological SPEC-2 → FAIL tautology
+  ✓ NC-C: broken stub SPEC-3 → FAIL not_passing_at_head
+  ✓ NC-D: #844-class tautology SPEC-4 → FAIL tautology
+  ✓ overall rc=1 (≥1 spec failed the control)
+  ✓ [SPEC-2] NC-E: merge-base==HEAD → per-SPEC SKIP no_impl_delta
+  ✓ [SPEC-2] NC-E: skip is not a failure (rc=0)
+  ✓ NC-G: timeout → NEGCTL ERROR timeout:SPEC-1 (infra, not not_passing_at_head)
+  ✓ NC-G: timeout is not classified not_passing_at_head
+  ✓ NC-G: timeout yields overall rc=1 (gate records it)
+  ✓ NC-H: negctl-SPEC-1.log artifact written for diagnosis
+  ✓ [SPEC-1] non-bash runner: load-bearing py spec → NEGCTL PASS SPEC-1
+  ✓ [SPEC-2] non-bash runner: tautological py spec → NEGCTL FAIL SPEC-2 tautology
+  ✓ [SPEC-3] _acceptance_build_run_cmd with no {files} token → returns 1
+  ✓ [SPEC-4] _acceptance_build_run_cmd: first token is interpreter
+  ✓ [SPEC-4] _acceptance_build_run_cmd: second token is testfile path
+  ✓ [SPEC-3] test-only diff → NEGCTL SKIP SPEC-1 no_prod_delta
+  ✓ [SPEC-3] test-only diff skip yields rc=0
+  ✓ [SPEC-3] NC-K2: two-SPEC no_prod_delta → exactly two SKIP lines
+  ✓ [SPEC-3] NC-K2: SPEC-1 SKIP line present
+  ✓ [SPEC-3] NC-K2: SPEC-2 SKIP line present
+  ✓ [SPEC-3] NC-K2: rc=0 (no_prod_delta is not a failure)
+  ✓ [SPEC-2] NC-K3: unreadable roster → bare no_impl_delta fallback line
+  ✓ [SPEC-2] NC-K3: fallback is not a failure (rc=0)
+  ✓ [SPEC-3] mixed diff does NOT emit no_prod_delta skip
+  ✓ [SPEC-3] mixed diff runs full negctl → NEGCTL PASS SPEC-1
+  ✓ [SPEC-1] NC-M: per-SPEC bound load-bearing file → NEGCTL PASS SPEC-1
+  ✓ [SPEC-2] NC-M: per-SPEC bound tautological file → NEGCTL FAIL SPEC-2 tautology
+  ✓ [SPEC-2] NC-M: SPEC-2 does not emit PASS via sibling's binding
+  ✓ NC-N: _negctl_run scrubs inherited ZBUILD_STAGE_IO_* (probe sees none → rc 0)
+  ✓ [SPEC-1] _negctl_is_timeout_rc 137 → true (SIGKILL = infra timeout)
+  ✓ [SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE escalated to SIGKILL (rc=137)
+  ✓ NC-P2: ZBUILD_NEGCTL_KILL_GRACE feeds -k in the built bound
+  ✓ NC-P3: timeout without -k support → TERM-only bound, no -k in argv
+  ✓ [SPEC-4] rc=137 TESTFILE → NEGCTL ERROR timeout:SPEC-1 (not not_passing_at_head)
+  ✓ [SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head
+  ✗ [SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation
+    expected: 1, got: 0
+  ✓ [SPEC-3] NC-V: default bash runner → ✓-marked tag reads as 'held' (1)
+  ✓ [SPEC-3] NC-V: custom ZBUILD_ACCEPTANCE_RUN_CMD → inconclusive (2), file rc governs
+  ✓ [SPEC-3] NC-V: tag present but unmarked → inconclusive (2), not a pass
+  ✓ [SPEC-3] NC-V: ✗ outranks ✓ for the same SPEC → failed (0)
+
+
+  1 of 41 tests failed
+
+  ✗ [SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-kill-grace-test.sh
+
+  run-mutation.sh — a mutant test that ignores TERM cannot hang the tier
+
+
+  SPEC-1: TERM is followed by KILL
+  ✓ [setup] the mutant's spec was accepted and its test run
+  ✗ [setup] ...and the tier scored that one mutant
+    output missing: mutation: 1/1
+  ✗ [setup] the run lasted at least the 2s timeout
+    only 0s — the test never ran
+  ✓ [SPEC-1] the tier ends within the bound (0s)
+  ✓ [SPEC-1] nothing of the mutant's test is left running
+
+
+  2 of 5 tests failed
+
+  ✗ [setup] ...and the tier scored that one mutant
+  ✗ [setup] the run lasted at least the 2s timeout
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-empty-dir-clean-gate-test.sh
+
+  run-mutation.sh clean-tree gate gated on spec count (#1661)
+
+  ✗ [SPEC-1] dirty tree + empty dir → exit 0
+    expected: 0, got: 1
+  ✗ [SPEC-1] dirty tree + empty dir → 'mutation: 0/0 passed'
+    output missing: mutation: 0/0 passed
+  ✓ [SPEC-2] dirty tree + non-empty dir → exit 1
+  ✗ [SPEC-2] stderr contains 'refusing'
+    output missing: refusing
+  ✗ [SPEC-2] stdout contains ABORTED line
+    output missing: ABORTED
+  ✗ [SPEC-2] an ABORTED line was actually captured
+    none found
+  ✓ [SPEC-2] aggregator regex extracted from run-tests.sh (not a copy)
+  ✓ [SPEC-2] ABORTED line does not match the live tier-summary regex
+  ✓ [SPEC-2] _TEST_FAIL_MARKER_RE extracted from parse.sh (not a copy)
+  ✓ [SPEC-2] ABORTED line does not match the live fail-marker regex
+  ✓ [SPEC-2] extracted aggregator regex is live (matches a real summary line)
+  ✓ [SPEC-2] extracted fail-marker regex is live (matches a real FAIL line)
+  ✓ [SPEC-2] abort path leaves no zb-mut-jobs.* temp dir behind
+  ✓ [SPEC-2] job_dir is still derived from $TMPDIR (keeps the leak probe honest)
+  ✗ [SPEC-3] clean tree + empty dir → exit 0
+    expected: 0, got: 1
+  ✗ [SPEC-3] clean tree + empty dir → 'mutation: 0/0 passed'
+    output missing: mutation: 0/0 passed
+  ✓ [SPEC-3] clean tree + non-empty dir → ABORTED absent from stdout
+  ✗ SPEC_MUT counts toward n_specs (Phase A counts invalid specs too)
+    denominator was 0: 
+
+
+  8 of 18 tests failed
+
+  ✗ [SPEC-1] dirty tree + empty dir → exit 0
+  ✗ [SPEC-1] dirty tree + empty dir → 'mutation: 0/0 passed'
+  ✗ [SPEC-2] stderr contains 'refusing'
+  ✗ [SPEC-2] stdout contains ABORTED line
+  ✗ [SPEC-2] an ABORTED line was actually captured
+  ✗ [SPEC-3] clean tree + empty dir → exit 0
+  ✗ [SPEC-3] clean tree + empty dir → 'mutation: 0/0 passed'
+  ✗ SPEC_MUT counts toward n_specs (Phase A counts invalid specs too)
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-stale-anchor-test.sh
+
+  run-mutation.sh — a gone anchor fails the tier; contention does not (#2086)
+
+  ✓ [SPEC-1] a spec whose anchor is gone fails the tier (exit 1)
+  ✗ [SPEC-1] the gone-anchor spec gets its own STALE row
+    output missing: STALE gone.md
+  ✗ [SPEC-1] the STALE row names the missing anchor
+    output missing: GONE_ANCHOR_2086
+  ✗ [SPEC-1] the summary surfaces stale specs on their own line
+    output missing: mutation-stale: 1
+  ✗ [SPEC-1] the stale spec counts in the score (1/2, not 1/1)
+    output missing: mutation: 1/2 passed
+  ✓ [SPEC-1] a gone anchor is not filed as INFRA contention
+  ✗ [SPEC-2] the racy patch really did fail once (marker written)
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/run-mutation-stale-anchor.o83D4S/transient.mark
+  ✗ [SPEC-2] contention does not fail the tier (exit 0)
+    expected: 0, got: 1
+  ✗ [SPEC-2] contention keeps its INFRA row
+    output missing: INFRA racy.md
+  ✗ [SPEC-2] contention stays out of the score
+    output missing: mutation: 0/0 passed
+  ✓ [SPEC-2] contention is not reported as stale
+  ✓ no mutant worktree left behind
+
+
+  8 of 12 tests failed
+
+  ✗ [SPEC-1] the gone-anchor spec gets its own STALE row
+  ✗ [SPEC-1] the STALE row names the missing anchor
+  ✗ [SPEC-1] the summary surfaces stale specs on their own line
+  ✗ [SPEC-1] the stale spec counts in the score (1/2, not 1/1)
+  ✗ [SPEC-2] the racy patch really did fail once (marker written)
+  ✗ [SPEC-2] contention does not fail the tier (exit 0)
+  ✗ [SPEC-2] contention keeps its INFRA row
+  ✗ [SPEC-2] contention stays out of the score
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/scope-manifest-b1-regression-test.sh
+
+  scope-manifest B1.6 regression: _extract_scope_from_design (#754 / KEEPERS §B1.6)
+
+  ✓ [SPEC-1] scope block extraction returns correct CSV
+  ✓ [SPEC-2] missing design.md returns empty
+  ✓ [SPEC-2] design.md without scope block returns empty
+  ✓ [SPEC-2] blank lines inside scope block are stripped
+  ✓ [SPEC-7] trailing whitespace on scope fence still extracts (no silent fallback)
+  ✓ [SPEC-8] whitespace-only lines inside scope block are stripped
+  ✓ [SPEC-3] legacy-citation pipeline-stages.sh:38 is discoverable in design plugin
+  ✓ [SPEC-4] KEEPERS §H row for pipeline-stages.sh:42 mentions plugins/agent/design/
+  ✗ [SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh
+    expected: 0, got: 
+  ✓ [SPEC-5] T5 simulation: scope_source stays plan when _extract_scope_from_design returns empty
+  ✓ [SPEC-6] build copy of _extract_scope_from_design is byte-identical to design copy
+
+
+  1 of 11 tests failed
+
+  ✗ [SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-tests-timeout-report-test.sh
+
+  run-tests.sh timeout reporting (#1613)
+
+  ✓ [SPEC-1] hung file reports TIMEOUT naming the bound, not FAIL
+  ✓ [SPEC-1] hung file does NOT report as an ordinary FAIL
+  ✓ [SPEC-2] timed-out file's captured output is still shown
+  ✓ [SPEC-2] that output is marked UNTRUSTWORTHY
+  ✓ [SPEC-3] tier summary counts timeouts distinctly from failures
+  ✓ [SPEC-4] genuinely failing file still reports FAIL
+  ✓ [SPEC-4] genuine failure is not relabelled TIMEOUT
+  ✓ [SPEC-4] tier still exits non-zero when files fail
+  ✓ [SPEC-4b] no timeouts → summary carries no timeout note
+  ✓ [SPEC-6] both notes render with a comma AND a space
+  ✓ [SPEC-6] the two notes are not run together without a space
+  ✗ RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation
+    expected: 1, got: 0
+  ✓ RT-K: SIGTERM-ignoring file escalated to SIGKILL via -k (rc=137 in TIMEOUT)
+
+
+  1 of 13 tests failed
+
+  ✗ RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/mutation-relevance-test.sh
+
+  mutation harness relevance gate (#309)
+
+/home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/harness-fns.sh: line 123: /home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/lib/timeout-cmd.sh: No such file or directory
+unit: 530/537 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/plugins/agent/security-lens/tests/security-lens-test.sh
+
+  plugin: security-lens (first POC)
+
+  ✓ security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  ✓ security-lens is discovered
+awk: fatal: cannot open file `/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/legacy/scripts/lib/compound-audit.sh' for reading: No such file or directory
+integration: 263/264 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-verdict-words.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-stage-checkpoint.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+
+In scripts/run-tests.sh line 36:
+  ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
+  ^----------------------^ SC2034 (warning): ZBUILD_NEGCTL_KILL_GRACE appears unused. Verify use (or export if used externally).
+
+
+In scripts/run-mutation.sh line 125:
+    ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
+    ^----------------------^ SC2034 (warning): ZBUILD_NEGCTL_KILL_GRACE appears unused. Verify use (or export if used externally).
+
+For more information:
+  https://www.shellcheck.net/wiki/SC2034 -- ZBUILD_NEGCTL_KILL_GRACE appears ...
+lint: 0/1 passed
+
+total: 829/838 passed (4 skipped)

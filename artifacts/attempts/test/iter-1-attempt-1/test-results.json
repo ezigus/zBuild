@@ -1,0 +1,146 @@
+{
+  "result_contract": 2,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "9 of 838 tests failed",
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/acceptance-negctl-test.sh\n\n  acceptance negctl — Level-2 baseline negative control (#922)\n\n  ✓ NC-A: load-bearing SPEC-1 → PASS\n  ✓ NC-B: tautological SPEC-2 → FAIL tautology\n  ✓ NC-C: broken stub SPEC-3 → FAIL not_passing_at_head\n  ✓ NC-D: #844-class tautology SPEC-4 → FAIL tautology\n  ✓ overall rc=1 (≥1 spec failed the control)\n  ✓ [SPEC-2] NC-E: merge-base==HEAD → per-SPEC SKIP no_impl_delta\n  ✓ [SPEC-2] NC-E: skip is not a failure (rc=0)\n  ✓ NC-G: timeout → NEGCTL ERROR timeout:SPEC-1 (infra, not not_passing_at_head)\n  ✓ NC-G: timeout is not classified not_passing_at_head\n  ✓ NC-G: timeout yields overall rc=1 (gate records it)\n  ✓ NC-H: negctl-SPEC-1.log artifact written for diagnosis\n  ✓ [SPEC-1] non-bash runner: load-bearing py spec → NEGCTL PASS SPEC-1\n  ✓ [SPEC-2] non-bash runner: tautological py spec → NEGCTL FAIL SPEC-2 tautology\n  ✓ [SPEC-3] _acceptance_build_run_cmd with no {files} token → returns 1\n  ✓ [SPEC-4] _acceptance_build_run_cmd: first token is interpreter\n  ✓ [SPEC-4] _acceptance_build_run_cmd: second token is testfile path\n  ✓ [SPEC-3] test-only diff → NEGCTL SKIP SPEC-1 no_prod_delta\n  ✓ [SPEC-3] test-only diff skip yields rc=0\n  ✓ [SPEC-3] NC-K2: two-SPEC no_prod_delta → exactly two SKIP lines\n  ✓ [SPEC-3] NC-K2: SPEC-1 SKIP line present\n  ✓ [SPEC-3] NC-K2: SPEC-2 SKIP line present\n  ✓ [SPEC-3] NC-K2: rc=0 (no_prod_delta is not a failure)\n  ✓ [SPEC-2] NC-K3: unreadable roster → bare no_impl_delta fallback line\n  ✓ [SPEC-2] NC-K3: fallback is not a failure (rc=0)\n  ✓ [SPEC-3] mixed diff does NOT emit no_prod_delta skip\n  ✓ [SPEC-3] mixed diff runs full negctl → NEGCTL PASS SPEC-1\n  ✓ [SPEC-1] NC-M: per-SPEC bound load-bearing file → NEGCTL PASS SPEC-1\n  ✓ [SPEC-2] NC-M: per-SPEC bound tautological file → NEGCTL FAIL SPEC-2 tautology\n  ✓ [SPEC-2] NC-M: SPEC-2 does not emit PASS via sibling's binding\n  ✓ NC-N: _negctl_run scrubs inherited ZBUILD_STAGE_IO_* (probe sees none → rc 0)\n  ✓ [SPEC-1] _negctl_is_timeout_rc 137 → true (SIGKILL = infra timeout)\n  ✓ [SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE escalated to SIGKILL (rc=137)\n  ✓ NC-P2: ZBUILD_NEGCTL_KILL_GRACE feeds -k in the built bound\n  ✓ NC-P3: timeout without -k support → TERM-only bound, no -k in argv\n  ✓ [SPEC-4] rc=137 TESTFILE → NEGCTL ERROR timeout:SPEC-1 (not not_passing_at_head)\n  ✓ [SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head\n  ✗ [SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation\n    expected: 1, got: 0\n  ✓ [SPEC-3] NC-V: default bash runner → ✓-marked tag reads as 'held' (1)\n  ✓ [SPEC-3] NC-V: custom ZBUILD_ACCEPTANCE_RUN_CMD → inconclusive (2), file rc governs\n  ✓ [SPEC-3] NC-V: tag present but unmarked → inconclusive (2), not a pass\n  ✓ [SPEC-3] NC-V: ✗ outranks ✓ for the same SPEC → failed (0)\n\n\n  1 of 41 tests failed\n\n  ✗ [SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-kill-grace-test.sh\n\n  run-mutation.sh — a mutant test that ignores TERM cannot hang the tier\n\n\n  SPEC-1: TERM is followed by KILL\n  ✓ [setup] the mutant's spec was accepted and its test run\n  ✗ [setup] ...and the tier scored that one mutant\n    output missing: mutation: 1/1\n  ✗ [setup] the run lasted at least the 2s timeout\n    only 0s — the test never ran\n  ✓ [SPEC-1] the tier ends within the bound (0s)\n  ✓ [SPEC-1] nothing of the mutant's test is left running\n\n\n  2 of 5 tests failed\n\n  ✗ [setup] ...and the tier scored that one mutant\n  ✗ [setup] the run lasted at least the 2s timeout\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-empty-dir-clean-gate-test.sh\n\n  run-mutation.sh clean-tree gate gated on spec count (#1661)\n\n  ✗ [SPEC-1] dirty tree + empty dir → exit 0\n    expected: 0, got: 1\n  ✗ [SPEC-1] dirty tree + empty dir → 'mutation: 0/0 passed'\n    output missing: mutation: 0/0 passed\n  ✓ [SPEC-2] dirty tree + non-empty dir → exit 1\n  ✗ [SPEC-2] stderr contains 'refusing'\n    output missing: refusing\n  ✗ [SPEC-2] stdout contains ABORTED line\n    output missing: ABORTED\n  ✗ [SPEC-2] an ABORTED line was actually captured\n    none found\n  ✓ [SPEC-2] aggregator regex extracted from run-tests.sh (not a copy)\n  ✓ [SPEC-2] ABORTED line does not match the live tier-summary regex\n  ✓ [SPEC-2] _TEST_FAIL_MARKER_RE extracted from parse.sh (not a copy)\n  ✓ [SPEC-2] ABORTED line does not match the live fail-marker regex\n  ✓ [SPEC-2] extracted aggregator regex is live (matches a real summary line)\n  ✓ [SPEC-2] extracted fail-marker regex is live (matches a real FAIL line)\n  ✓ [SPEC-2] abort path leaves no zb-mut-jobs.* temp dir behind\n  ✓ [SPEC-2] job_dir is still derived from $TMPDIR (keeps the leak probe honest)\n  ✗ [SPEC-3] clean tree + empty dir → exit 0\n    expected: 0, got: 1\n  ✗ [SPEC-3] clean tree + empty dir → 'mutation: 0/0 passed'\n    output missing: mutation: 0/0 passed\n  ✓ [SPEC-3] clean tree + non-empty dir → ABORTED absent from stdout\n  ✗ SPEC_MUT counts toward n_specs (Phase A counts invalid specs too)\n    denominator was 0: \n\n\n  8 of 18 tests failed\n\n  ✗ [SPEC-1] dirty tree + empty dir → exit 0\n  ✗ [SPEC-1] dirty tree + empty dir → 'mutation: 0/0 passed'\n  ✗ [SPEC-2] stderr contains 'refusing'\n  ✗ [SPEC-2] stdout contains ABORTED line\n  ✗ [SPEC-2] an ABORTED line was actually captured\n  ✗ [SPEC-3] clean tree + empty dir → exit 0\n  ✗ [SPEC-3] clean tree + empty dir → 'mutation: 0/0 passed'\n  ✗ SPEC_MUT counts toward n_specs (Phase A counts invalid specs too)\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-stale-anchor-test.sh\n\n  run-mutation.sh — a gone anchor fails the tier; contention does not (#2086)\n\n  ✓ [SPEC-1] a spec whose anchor is gone fails the tier (exit 1)\n  ✗ [SPEC-1] the gone-anchor spec gets its own STALE row\n    output missing: STALE gone.md\n  ✗ [SPEC-1] the STALE row names the missing anchor\n    output missing: GONE_ANCHOR_2086\n  ✗ [SPEC-1] the summary surfaces stale specs on their own line\n    output missing: mutation-stale: 1\n  ✗ [SPEC-1] the stale spec counts in the score (1/2, not 1/1)\n    output missing: mutation: 1/2 passed\n  ✓ [SPEC-1] a gone anchor is not filed as INFRA contention\n  ✗ [SPEC-2] the racy patch really did fail once (marker written)\n    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/run-mutation-stale-anchor.o83D4S/transient.mark\n  ✗ [SPEC-2] contention does not fail the tier (exit 0)\n    expected: 0, got: 1\n  ✗ [SPEC-2] contention keeps its INFRA row\n    output missing: INFRA racy.md\n  ✗ [SPEC-2] contention stays out of the score\n    output missing: mutation: 0/0 passed\n  ✓ [SPEC-2] contention is not reported as stale\n  ✓ no mutant worktree left behind\n\n\n  8 of 12 tests failed\n\n  ✗ [SPEC-1] the gone-anchor spec gets its own STALE row\n  ✗ [SPEC-1] the STALE row names the missing anchor\n  ✗ [SPEC-1] the summary surfaces stale specs on their own line\n  ✗ [SPEC-1] the stale spec counts in the score (1/2, not 1/1)\n  ✗ [SPEC-2] the racy patch really did fail once (marker written)\n  ✗ [SPEC-2] contention does not fail the tier (exit 0)\n  ✗ [SPEC-2] contention keeps its INFRA row\n  ✗ [SPEC-2] contention stays out of the score\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/scope-manifest-b1-regression-test.sh\n\n  scope-manifest B1.6 regression: _extract_scope_from_design (#754 / KEEPERS §B1.6)\n\n  ✓ [SPEC-1] scope block extraction returns correct CSV\n  ✓ [SPEC-2] missing design.md returns empty\n  ✓ [SPEC-2] design.md without scope block returns empty\n  ✓ [SPEC-2] blank lines inside scope block are stripped\n  ✓ [SPEC-7] trailing whitespace on scope fence still extracts (no silent fallback)\n  ✓ [SPEC-8] whitespace-only lines inside scope block are stripped\n  ✓ [SPEC-3] legacy-citation pipeline-stages.sh:38 is discoverable in design plugin\n  ✓ [SPEC-4] KEEPERS §H row for pipeline-stages.sh:42 mentions plugins/agent/design/\n  ✗ [SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh\n    expected: 0, got: \n  ✓ [SPEC-5] T5 simulation: scope_source stays plan when _extract_scope_from_design returns empty\n  ✓ [SPEC-6] build copy of _extract_scope_from_design is byte-identical to design copy\n\n\n  1 of 11 tests failed\n\n  ✗ [SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-tests-timeout-report-test.sh\n\n  run-tests.sh timeout reporting (#1613)\n\n  ✓ [SPEC-1] hung file reports TIMEOUT naming the bound, not FAIL\n  ✓ [SPEC-1] hung file does NOT report as an ordinary FAIL\n  ✓ [SPEC-2] timed-out file's captured output is still shown\n  ✓ [SPEC-2] that output is marked UNTRUSTWORTHY\n  ✓ [SPEC-3] tier summary counts timeouts distinctly from failures\n  ✓ [SPEC-4] genuinely failing file still reports FAIL\n  ✓ [SPEC-4] genuine failure is not relabelled TIMEOUT\n  ✓ [SPEC-4] tier still exits non-zero when files fail\n  ✓ [SPEC-4b] no timeouts → summary carries no timeout note\n  ✓ [SPEC-6] both notes render with a comma AND a space\n  ✓ [SPEC-6] the two notes are not run together without a space\n  ✗ RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation\n    expected: 1, got: 0\n  ✓ RT-K: SIGTERM-ignoring file escalated to SIGKILL via -k (rc=137 in TIMEOUT)\n\n\n  1 of 13 tests failed\n\n  ✗ RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/mutation-relevance-test.sh\n\n  mutation harness relevance gate (#309)\n\n/home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/harness-fns.sh: line 123: /home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/lib/timeout-cmd.sh: No such file or directory\nunit: 530/537 passed (4 skipped)\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/plugins/agent/security-lens/tests/security-lens-test.sh\n\n  plu",
+  "run_mode": "full",
+  "exit_code": 1,
+  "data": {
+    "exit_code": 1,
+    "passed": 829,
+    "failed": 9,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/acceptance-negctl-test.sh\n\n  acceptance negctl — Level-2 baseline negative control (#922)\n\n  ✓ NC-A: load-bearing SPEC-1 → PASS\n  ✓ NC-B: tautological SPEC-2 → FAIL tautology\n  ✓ NC-C: broken stub SPEC-3 → FAIL not_passing_at_head\n  ✓ NC-D: #844-class tautology SPEC-4 → FAIL tautology\n  ✓ overall rc=1 (≥1 spec failed the control)\n  ✓ [SPEC-2] NC-E: merge-base==HEAD → per-SPEC SKIP no_impl_delta\n  ✓ [SPEC-2] NC-E: skip is not a failure (rc=0)\n  ✓ NC-G: timeout → NEGCTL ERROR timeout:SPEC-1 (infra, not not_passing_at_head)\n  ✓ NC-G: timeout is not classified not_passing_at_head\n  ✓ NC-G: timeout yields overall rc=1 (gate records it)\n  ✓ NC-H: negctl-SPEC-1.log artifact written for diagnosis\n  ✓ [SPEC-1] non-bash runner: load-bearing py spec → NEGCTL PASS SPEC-1\n  ✓ [SPEC-2] non-bash runner: tautological py spec → NEGCTL FAIL SPEC-2 tautology\n  ✓ [SPEC-3] _acceptance_build_run_cmd with no {files} token → returns 1\n  ✓ [SPEC-4] _acceptance_build_run_cmd: first token is interpreter\n  ✓ [SPEC-4] _acceptance_build_run_cmd: second token is testfile path\n  ✓ [SPEC-3] test-only diff → NEGCTL SKIP SPEC-1 no_prod_delta\n  ✓ [SPEC-3] test-only diff skip yields rc=0\n  ✓ [SPEC-3] NC-K2: two-SPEC no_prod_delta → exactly two SKIP lines\n  ✓ [SPEC-3] NC-K2: SPEC-1 SKIP line present\n  ✓ [SPEC-3] NC-K2: SPEC-2 SKIP line present\n  ✓ [SPEC-3] NC-K2: rc=0 (no_prod_delta is not a failure)\n  ✓ [SPEC-2] NC-K3: unreadable roster → bare no_impl_delta fallback line\n  ✓ [SPEC-2] NC-K3: fallback is not a failure (rc=0)\n  ✓ [SPEC-3] mixed diff does NOT emit no_prod_delta skip\n  ✓ [SPEC-3] mixed diff runs full negctl → NEGCTL PASS SPEC-1\n  ✓ [SPEC-1] NC-M: per-SPEC bound load-bearing file → NEGCTL PASS SPEC-1\n  ✓ [SPEC-2] NC-M: per-SPEC bound tautological file → NEGCTL FAIL SPEC-2 tautology\n  ✓ [SPEC-2] NC-M: SPEC-2 does not emit PASS via sibling's binding\n  ✓ NC-N: _negctl_run scrubs inherited ZBUILD_STAGE_IO_* (probe sees none → rc 0)\n  ✓ [SPEC-1] _negctl_is_timeout_rc 137 → true (SIGKILL = infra timeout)\n  ✓ [SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE escalated to SIGKILL (rc=137)\n  ✓ NC-P2: ZBUILD_NEGCTL_KILL_GRACE feeds -k in the built bound\n  ✓ NC-P3: timeout without -k support → TERM-only bound, no -k in argv\n  ✓ [SPEC-4] rc=137 TESTFILE → NEGCTL ERROR timeout:SPEC-1 (not not_passing_at_head)\n  ✓ [SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head\n  ✗ [SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation\n    expected: 1, got: 0\n  ✓ [SPEC-3] NC-V: default bash runner → ✓-marked tag reads as 'held' (1)\n  ✓ [SPEC-3] NC-V: custom ZBUILD_ACCEPTANCE_RUN_CMD → inconclusive (2), file rc governs\n  ✓ [SPEC-3] NC-V: tag present but unmarked → inconclusive (2), not a pass\n  ✓ [SPEC-3] NC-V: ✗ outranks ✓ for the same SPEC → failed (0)\n\n\n  1 of 41 tests failed\n\n  ✗ [SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-kill-grace-test.sh\n\n  run-mutation.sh — a mutant test that ignores TERM cannot hang the tier\n\n\n  SPEC-1: TERM is followed by KILL\n  ✓ [setup] the mutant's spec was accepted and its test run\n  ✗ [setup] ...and the tier scored that one mutant\n    output missing: mutation: 1/1\n  ✗ [setup] the run lasted at least the 2s timeout\n    only 0s — the test never ran\n  ✓ [SPEC-1] the tier ends within the bound (0s)\n  ✓ [SPEC-1] nothing of the mutant's test is left running\n\n\n  2 of 5 tests failed\n\n  ✗ [setup] ...and the tier scored that one mutant\n  ✗ [setup] the run lasted at least the 2s timeout\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-empty-dir-clean-gate-test.sh\n\n  run-mutation.sh clean-tree gate gated on spec count (#1661)\n\n  ✗ [SPEC-1] dirty tree + empty dir → exit 0\n    expected: 0, got: 1\n  ✗ [SPEC-1] dirty tree + empty dir → 'mutation: 0/0 passed'\n    output missing: mutation: 0/0 passed\n  ✓ [SPEC-2] dirty tree + non-empty dir → exit 1\n  ✗ [SPEC-2] stderr contains 'refusing'\n    output missing: refusing\n  ✗ [SPEC-2] stdout contains ABORTED line\n    output missing: ABORTED\n  ✗ [SPEC-2] an ABORTED line was actually captured\n    none found\n  ✓ [SPEC-2] aggregator regex extracted from run-tests.sh (not a copy)\n  ✓ [SPEC-2] ABORTED line does not match the live tier-summary regex\n  ✓ [SPEC-2] _TEST_FAIL_MARKER_RE extracted from parse.sh (not a copy)\n  ✓ [SPEC-2] ABORTED line does not match the live fail-marker regex\n  ✓ [SPEC-2] extracted aggregator regex is live (matches a real summary line)\n  ✓ [SPEC-2] extracted fail-marker regex is live (matches a real FAIL line)\n  ✓ [SPEC-2] abort path leaves no zb-mut-jobs.* temp dir behind\n  ✓ [SPEC-2] job_dir is still derived from $TMPDIR (keeps the leak probe honest)\n  ✗ [SPEC-3] clean tree + empty dir → exit 0\n    expected: 0, got: 1\n  ✗ [SPEC-3] clean tree + empty dir → 'mutation: 0/0 passed'\n    output missing: mutation: 0/0 passed\n  ✓ [SPEC-3] clean tree + non-empty dir → ABORTED absent from stdout\n  ✗ SPEC_MUT counts toward n_specs (Phase A counts invalid specs too)\n    denominator was 0: \n\n\n  8 of 18 tests failed\n\n  ✗ [SPEC-1] dirty tree + empty dir → exit 0\n  ✗ [SPEC-1] dirty tree + empty dir → 'mutation: 0/0 passed'\n  ✗ [SPEC-2] stderr contains 'refusing'\n  ✗ [SPEC-2] stdout contains ABORTED line\n  ✗ [SPEC-2] an ABORTED line was actually captured\n  ✗ [SPEC-3] clean tree + empty dir → exit 0\n  ✗ [SPEC-3] clean tree + empty dir → 'mutation: 0/0 passed'\n  ✗ SPEC_MUT counts toward n_specs (Phase A counts invalid specs too)\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-mutation-stale-anchor-test.sh\n\n  run-mutation.sh — a gone anchor fails the tier; contention does not (#2086)\n\n  ✓ [SPEC-1] a spec whose anchor is gone fails the tier (exit 1)\n  ✗ [SPEC-1] the gone-anchor spec gets its own STALE row\n    output missing: STALE gone.md\n  ✗ [SPEC-1] the STALE row names the missing anchor\n    output missing: GONE_ANCHOR_2086\n  ✗ [SPEC-1] the summary surfaces stale specs on their own line\n    output missing: mutation-stale: 1\n  ✗ [SPEC-1] the stale spec counts in the score (1/2, not 1/1)\n    output missing: mutation: 1/2 passed\n  ✓ [SPEC-1] a gone anchor is not filed as INFRA contention\n  ✗ [SPEC-2] the racy patch really did fail once (marker written)\n    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/run-mutation-stale-anchor.o83D4S/transient.mark\n  ✗ [SPEC-2] contention does not fail the tier (exit 0)\n    expected: 0, got: 1\n  ✗ [SPEC-2] contention keeps its INFRA row\n    output missing: INFRA racy.md\n  ✗ [SPEC-2] contention stays out of the score\n    output missing: mutation: 0/0 passed\n  ✓ [SPEC-2] contention is not reported as stale\n  ✓ no mutant worktree left behind\n\n\n  8 of 12 tests failed\n\n  ✗ [SPEC-1] the gone-anchor spec gets its own STALE row\n  ✗ [SPEC-1] the STALE row names the missing anchor\n  ✗ [SPEC-1] the summary surfaces stale specs on their own line\n  ✗ [SPEC-1] the stale spec counts in the score (1/2, not 1/1)\n  ✗ [SPEC-2] the racy patch really did fail once (marker written)\n  ✗ [SPEC-2] contention does not fail the tier (exit 0)\n  ✗ [SPEC-2] contention keeps its INFRA row\n  ✗ [SPEC-2] contention stays out of the score\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/scope-manifest-b1-regression-test.sh\n\n  scope-manifest B1.6 regression: _extract_scope_from_design (#754 / KEEPERS §B1.6)\n\n  ✓ [SPEC-1] scope block extraction returns correct CSV\n  ✓ [SPEC-2] missing design.md returns empty\n  ✓ [SPEC-2] design.md without scope block returns empty\n  ✓ [SPEC-2] blank lines inside scope block are stripped\n  ✓ [SPEC-7] trailing whitespace on scope fence still extracts (no silent fallback)\n  ✓ [SPEC-8] whitespace-only lines inside scope block are stripped\n  ✓ [SPEC-3] legacy-citation pipeline-stages.sh:38 is discoverable in design plugin\n  ✓ [SPEC-4] KEEPERS §H row for pipeline-stages.sh:42 mentions plugins/agent/design/\n  ✗ [SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh\n    expected: 0, got: \n  ✓ [SPEC-5] T5 simulation: scope_source stays plan when _extract_scope_from_design returns empty\n  ✓ [SPEC-6] build copy of _extract_scope_from_design is byte-identical to design copy\n\n\n  1 of 11 tests failed\n\n  ✗ [SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-tests-timeout-report-test.sh\n\n  run-tests.sh timeout reporting (#1613)\n\n  ✓ [SPEC-1] hung file reports TIMEOUT naming the bound, not FAIL\n  ✓ [SPEC-1] hung file does NOT report as an ordinary FAIL\n  ✓ [SPEC-2] timed-out file's captured output is still shown\n  ✓ [SPEC-2] that output is marked UNTRUSTWORTHY\n  ✓ [SPEC-3] tier summary counts timeouts distinctly from failures\n  ✓ [SPEC-4] genuinely failing file still reports FAIL\n  ✓ [SPEC-4] genuine failure is not relabelled TIMEOUT\n  ✓ [SPEC-4] tier still exits non-zero when files fail\n  ✓ [SPEC-4b] no timeouts → summary carries no timeout note\n  ✓ [SPEC-6] both notes render with a comma AND a space\n  ✓ [SPEC-6] the two notes are not run together without a space\n  ✗ RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation\n    expected: 1, got: 0\n  ✓ RT-K: SIGTERM-ignoring file escalated to SIGKILL via -k (rc=137 in TIMEOUT)\n\n\n  1 of 13 tests failed\n\n  ✗ RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/mutation-relevance-test.sh\n\n  mutation harness relevance gate (#309)\n\n/home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/harness-fns.sh: line 123: /home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/lib/timeout-cmd.sh: No such file or directory\nunit: 530/537 passed (4 skipped)\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/plugins/agent/security-lens/tests/security-lens-test.sh\n\n  plu",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 161079,
+        "e2e": 172163,
+        "golden": 5328,
+        "unit": 609013,
+        "integration": 867450
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/integration/unowned-finding-last-round-test.sh",
+          "ms": 183972
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/integration/unowned-finding-test.sh",
+          "ms": 180179
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 162257
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/integration/unowned-finding-stale-test.sh",
+          "ms": 136470
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/core-pipeline-cycle-reuse-and-route-back-test.sh",
+          "ms": 135073
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 128123
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/run-status-comment-render-test.sh",
+          "ms": 122532
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/unit/core-pipeline-cycle-stall-break-test.sh",
+          "ms": 112840
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/integration/cycle-multi-exit-when-e2e-test.sh",
+          "ms": 112831
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.dqXwto/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 110871
+        }
+      ]
+    },
+    "tree_sha": "8665aa4933f54dd52079a28f9dd923d0947381e0",
+    "failures": [
+      {
+        "file": "plugins/agent/security-lens/tests/security-lens-test.sh",
+        "reason": "exited non-zero without a failing check, after its last passing check: security-lens is discovered",
+        "points_at": []
+      },
+      {
+        "file": "tests/unit/acceptance-negctl-test.sh",
+        "reason": "✗ [SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation — expected: 1, got: 0",
+        "points_at": []
+      },
+      {
+        "file": "tests/unit/mutation-relevance-test.sh",
+        "reason": "/home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/harness-fns.sh: line 123: /home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/lib/timeout-cmd.sh: No such file or directory",
+        "points_at": []
+      },
+      {
+        "file": "tests/unit/run-mutation-empty-dir-clean-gate-test.sh",
+        "reason": "✗ [SPEC-1] dirty tree + empty dir → exit 0 — expected: 0, got: 1",
+        "points_at": []
+      },
+      {
+        "file": "tests/unit/run-mutation-kill-grace-test.sh",
+        "reason": "✗ [setup] ...and the tier scored that one mutant",
+        "points_at": []
+      },
+      {
+        "file": "tests/unit/run-mutation-stale-anchor-test.sh",
+        "reason": "✗ [SPEC-1] the gone-anchor spec gets its own STALE row",
+        "points_at": []
+      },
+      {
+        "file": "tests/unit/run-tests-timeout-report-test.sh",
+        "reason": "✗ RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation — expected: 1, got: 0",
+        "points_at": []
+      },
+      {
+        "file": "tests/unit/scope-manifest-b1-regression-test.sh",
+        "reason": "✗ [SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh — expected: 0, got: ",
+        "points_at": []
+      }
+    ],
+    "findings": [
+      {
+        "n": 1,
+        "text": "plugins/agent/security-lens/tests/security-lens-test.sh fails: exited non-zero without a failing check, after its last passing check: security-lens is discovered"
+      },
+      {
+        "n": 2,
+        "text": "tests/unit/acceptance-negctl-test.sh fails: ✗ [SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation — expected: 1, got: 0"
+      },
+      {
+        "n": 3,
+        "text": "tests/unit/mutation-relevance-test.sh fails: /home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/harness-fns.sh: line 123: /home/runner/work/_temp/zbuild-state/scratch/test/mutation-relevance.lX9lf7/lib/timeout-cmd.sh: No such file or directory"
+      },
+      {
+        "n": 4,
+        "text": "tests/unit/run-mutation-empty-dir-clean-gate-test.sh fails: ✗ [SPEC-1] dirty tree + empty dir → exit 0 — expected: 0, got: 1"
+      },
+      {
+        "n": 5,
+        "text": "tests/unit/run-mutation-kill-grace-test.sh fails: ✗ [setup] ...and the tier scored that one mutant"
+      },
+      {
+        "n": 6,
+        "text": "tests/unit/run-mutation-stale-anchor-test.sh fails: ✗ [SPEC-1] the gone-anchor spec gets its own STALE row"
+      },
+      {
+        "n": 7,
+        "text": "tests/unit/run-tests-timeout-report-test.sh fails: ✗ RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation — expected: 1, got: 0"
+      },
+      {
+        "n": 8,
+        "text": "tests/unit/scope-manifest-b1-regression-test.sh fails: ✗ [SPEC-5] _extract_scope_from_design pruned from legacy/scripts/lib/pipeline-stages.sh — expected: 0, got:"
+      }
+    ]
+  }
+}
