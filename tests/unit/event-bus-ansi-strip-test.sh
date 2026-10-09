@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests: ANSI stripping in event log emission (KEEPERS §C.5)
-# Legacy citation: legacy/scripts/lib/helpers.sh:431-437 (strip_ansi)
+# Legacy citation: legacy-DoNotUse/scripts/lib/helpers.sh:431-437 (strip_ansi)
 # Proves DoD items 1 (behavior preserved) and 2 (regression test documented).
 set -euo pipefail
 

@@ -8,7 +8,7 @@ One of the 7 compound-audit personas. Detects security-relevant issues in change
 
 ## Legacy origin
 
-Prompt lifted verbatim from `legacy/scripts/lib/compound-audit.sh:48-53`. Trigger keywords from `:367`. **Do not edit the prompt without an ADR** — that prompt discipline is the agent magic that keeps cross-lens findings from multiplying false positives.
+Prompt lifted verbatim from `legacy-DoNotUse/scripts/lib/compound-audit.sh:48-53`. Trigger keywords from `:367`. **Do not edit the prompt without an ADR** — that prompt discipline is the agent magic that keeps cross-lens findings from multiplying false positives.
 
 ## Inputs
 
@@ -43,8 +43,8 @@ Prompt lifted verbatim from `legacy/scripts/lib/compound-audit.sh:48-53`. Trigge
 
 - [x] Behavior preserved: prompt text matches `legacy:48-53` verbatim
 - [x] Regression test exists: `tests/plugin-security-lens-test.sh`
-- [x] Citation discoverable: `legacy/scripts/lib/compound-audit.sh:48-53` still present
+- [x] Citation discoverable: `legacy-DoNotUse/scripts/lib/compound-audit.sh:48-53` still present
 - [ ] Mapping matches: `KEEPERS.md §F` row "compound-audit 7-lens cascade" lists this as `kind: agent` plugin — verify after issue manifest lands
 - [ ] Removal reproduces symptom: deleting `plugins/agent/security-lens/` and running the smoke suite should leave security findings empty — requires full pipeline orchestration (Phase 1)
 
-When the trial is complete, prune the legacy block (`compound-audit.sh:48-53`) and write `legacy/migrated/security-lens.md`.
+When the trial is complete, `git rm` the legacy block (`legacy-DoNotUse/scripts/lib/compound-audit.sh:48-53`) in the same PR; nothing else is written (ADR-002).

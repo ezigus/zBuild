@@ -37,12 +37,12 @@ _offenders="$(
     grep -rnE '(^|[^|])\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q' \
       "$REPO_ROOT/tests/unit" "$REPO_ROOT/tests/integration" "$REPO_ROOT/tests/e2e" 2>/dev/null || true
     # #1884: ENGINE code too — the hazard is worse there (a SIGPIPE inside a gate
-    # makes `if !` take the wrong branch, permissively). legacy/ is frozen, so excluded.
+    # makes `if !` take the wrong branch, permissively). legacy-DoNotUse/ is frozen, so excluded.
     grep -rnE '(^|[^|])\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q' \
       "$REPO_ROOT/scripts" "$REPO_ROOT/core" "$REPO_ROOT/plugins" \
       --include='*.sh' 2>/dev/null || true
   } | { grep -v '/sigpipe-antipattern-guard-test.sh:' || true; } \
-    | { grep -v "^$REPO_ROOT/legacy/" || true; } \
+    | { grep -v "^$REPO_ROOT/legacy-DoNotUse/" || true; } \
     | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; } \
     | sort -u
 )"
@@ -118,7 +118,7 @@ done < <(
     grep -rnE '(^|[^|])\|[[:space:]]*head[[:space:]]+-' \
         "$REPO_ROOT/scripts" "$REPO_ROOT/core" "$REPO_ROOT/plugins" \
         --include='*.sh' 2>/dev/null \
-    | { grep -v "^$REPO_ROOT/legacy/" || true; } \
+    | { grep -v "^$REPO_ROOT/legacy-DoNotUse/" || true; } \
     | { grep -v -- '-test.sh:' || true; } \
     | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; } \
     | sort -u

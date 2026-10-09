@@ -4,7 +4,7 @@
 [[ -n "${_ZBUILD_INTAKE_SANITIZE_LOADED:-}" ]] && return 0
 _ZBUILD_INTAKE_SANITIZE_LOADED=1
 
-# ─── Goal sanitization (ported verbatim from legacy/scripts/lib/goal-sanitize.sh)
+# ─── Goal sanitization (ported verbatim from legacy-DoNotUse/scripts/lib/goal-sanitize.sh)
 # Bash 3.2 safe: %% operator only, no regex, no associative arrays.
 _intake_strip_synthesized() {
     local _s="$1"

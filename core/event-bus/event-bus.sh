@@ -112,7 +112,7 @@ _eb_known_type() {
 }
 
 # _eb_strip_ansi — strip CSI + bare-ESC sequences from a string before JSONL emission.
-# Ported from legacy/scripts/lib/helpers.sh:431-437; two-pass form mirrors _stage_io_strip_ansi.
+# Ported from legacy-DoNotUse/scripts/lib/helpers.sh:431-437; two-pass form mirrors _stage_io_strip_ansi.
 # LC_ALL=C so sed processes raw bytes without aborting on non-UTF-8 sequences (issue #830).
 # No ESC byte → nothing to strip, and no fork: this runs for every value of every
 # event, and a sed per call was the single largest exec site in a run (ADR-065).

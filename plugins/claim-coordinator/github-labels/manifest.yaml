@@ -5,7 +5,7 @@ version: 0.1.0
 description: |
   Default claim-coordinator plugin (ADR-005). Uses GitHub issue labels
   (`claimed:<machine>`) as the cross-machine claim mechanism, ported from
-  legacy/scripts/lib/daemon-state.sh:602-720.
+  legacy-DoNotUse/scripts/lib/daemon-state.sh:602-720.
 
   Has a documented TOCTOU window between add-label and re-verify. Mitigated
   by random backoff (300–1100 ms) and a re-read step that drops the claim

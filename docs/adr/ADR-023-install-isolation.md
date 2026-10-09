@@ -36,7 +36,7 @@ Pinned design (#595 implementation):
 1. **`$ZBUILD_HOME`** is the single source of truth env var.
    Default: `~/.local/share/zbuild`. Settable to override location.
 2. **rsync** copies `scripts/`, `core/`, `plugins/`, `config/`. `tests/`,
-   `docs/`, `legacy/`, `.git/` are excluded — they are not runtime deps.
+   `docs/`, `legacy-DoNotUse/`, `.git/` are excluded — they are not runtime deps.
    `--delete` makes re-installs idempotent.
 3. **Shim** at `$TARGET_DIR/zbuild` is a 5-line regular file (never a
    symlink). It exports `ZBUILD_HOME` and `ZBUILD_FROM_INSTALL=1`, then

@@ -18,7 +18,7 @@
 
 zBuild must run identically from a developer laptop and from GitHub Actions, regardless of the target repo's platform (Node, iOS, TypeScript, Python, etc.). Same command, same flags, same output. The only differences should be in **setup** (CI starts cold every run; the laptop has persistent state) and **teardown** (CI uploads artifacts to durable storage; laptop just persists locally).
 
-Shipwright's legacy CI workflow (`legacy/.github/workflows/shipwright-pipeline.yml`) did this well — extensive setup to rehydrate state, run, then teardown to preserve learnings. We adopt the pattern explicitly so it's not improvised per workflow.
+Shipwright's legacy CI workflow (`legacy-DoNotUse/.github/workflows/shipwright-pipeline.yml`) did this well — extensive setup to rehydrate state, run, then teardown to preserve learnings. We adopt the pattern explicitly so it's not improvised per workflow.
 
 The user requirement: "same command behaves the same in both contexts" with platform-awareness driven by detection (ADR-009), not by hardcoded CI logic.
 
@@ -129,4 +129,4 @@ This is the property the user asked for: "consistent regardless of underlying re
 
 - [ADR-009 — Platform-Aware Modularity](ADR-009-platform-aware-modularity.md) — detection drives platform, not the workflow
 - [ADR-011 — Pluggable Backends](ADR-011-pluggable-backends.md) — cache + memory + orchestrator all follow same pattern
-- `legacy/.github/workflows/shipwright-pipeline.yml` — reference for the setup/teardown shape
+- `legacy-DoNotUse/.github/workflows/shipwright-pipeline.yml` — reference for the setup/teardown shape

@@ -669,7 +669,7 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
         #
         # (A) Cycle exit_when must bind to a MEMBER declaring convergence: gate.
         #     A marked target that is advisory or not-a-member fails; an UNMARKED
-        #     target is a legacy/untyped cycle (not retro-checked).
+        #     target is a legacy or untyped cycle (not retro-checked).
         for _pair in "${_cv_ew_pairs[@]}"; do
             _ows="${_pair%%|*}"; _tgt="${_pair#*|}"
             [[ "${_cv_type[$_ows]:-}" == "cycle" ]] || continue

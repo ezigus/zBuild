@@ -133,11 +133,13 @@ reclaiming after the fact.
 The invariant ADR-052 established survives unchanged and is restated here: **no plugin decides
 which tree it works in.** The engine still acquires it; only the key changes.
 
-**Per-worktree sparse-checkout (#1802).** Every issue worktree leaves out `legacy/` — the frozen
-reference import (~50% of the tree) — so agents working inside the worktree never traverse it.
-`_zbuild_worktree_apply_sparse` (`scripts/lib/worktree-sparse.sh`) runs
-`git sparse-checkout set --no-cone -- '/*' '!/legacy/' '/legacy/migrated/'` inside each linked
-worktree, keeping `legacy/migrated/` visible so tombstone files remain readable. It runs at every
+**Per-worktree sparse-checkout (#1802; amended 2026-10-09).** Every issue worktree leaves out
+`legacy-DoNotUse/` — the frozen reference import (~50% of the tree, ADR-002) — so agents working
+inside the worktree never traverse it. `_zbuild_worktree_apply_sparse`
+(`scripts/lib/worktree-sparse.sh`) runs
+`git sparse-checkout set --no-cone -- '/*' '!/legacy-DoNotUse/'` inside each linked worktree: the
+whole tree is out, with no subdirectory excepted. (Until 2026-10-09 the tree was `legacy/` and its
+`migrated/` tombstones were kept in; ADR-002's amendment removed both.) It runs at every
 acquisition point: initial creation and the reuse (resume) path of `zbuild_worktree_acquire`, and
 all three modes of `zbuild_worktree_enter`.
 
@@ -145,25 +147,27 @@ all three modes of `zbuild_worktree_enter`.
   the worktree's own git directory, so the operator's main checkout is never made sparse. It is
   written to the main repository only when unset. An operator's explicit `false` is kept: sparse is
   skipped for that repository, with a warning.
-- **Fails open.** Leaving `legacy/` out is an optimisation, not a safety property — build's
-  write-scope already refuses `legacy/` (`scope_floor_denied`). So a git older than 2.35, an
+- **Fails open.** Leaving `legacy-DoNotUse/` out is an optimisation, not a safety property —
+  build's write-scope already refuses it (`scope_floor_denied`). So a git older than 2.35, an
   explicit `extensions.worktreeConfig=false`, or a failing `git sparse-checkout` never stops the
   run: stderr names the step and git's own error, and the run continues with the full tree.
-- **No test reads `legacy/`.** A test runs inside the issue worktree during a run's test stage,
-  where `legacy/` is absent — so a test that reads a frozen legacy file fails in every run while
-  CI, a full checkout, stays green (#1752's run, after #1802). Tests may read `legacy/migrated/`
-  only. A ported keeper pins what it carried over in its own files, not by comparing against the
-  legacy source.
+- **No test reads `legacy-DoNotUse/`.** A test runs inside the issue worktree during a run's test
+  stage, where the tree is absent — so a test that reads a frozen legacy file fails in every run
+  while CI, a full checkout, stays green (#1752's run, after #1802). No part of the tree may be
+  read, with no exception (amended 2026-10-09: the `migrated/` exception went with the
+  tombstones). A ported keeper pins what it carried over in its own files, not by comparing
+  against the legacy source.
 - **Re-application keeps widenings.** A re-acquire sets the base patterns again, carrying over any
-  keeper widening already present (an anchored plain path under `/legacy/`); any other pattern a
-  pre-existing sparse config held is dropped.
+  keeper widening already present (an anchored plain path under `/legacy-DoNotUse/`); any other
+  pattern a pre-existing sparse config held is dropped.
 
-A keeper prune that must read or `git rm` one legacy source before migration widens the tree with
-`zbuild_worktree_include_legacy_path <wt> legacy/<path>`. The path must be a plain relative path
-strictly under `legacy/`: option-shaped arguments, pattern syntax (`* ? [ ] ! \`), a leading `/`
-and `..` are refused, and it is passed after `--`. The widening covers that path alone and
-survives every later re-acquire. **The engine does not call it**: build may never write `legacy/`
-(`scope_floor_denied`), so the prune is done by hand per the CLAUDE.md pruning protocol, and this
+A keeper prune that must read or `git rm` one legacy source widens the tree with
+`zbuild_worktree_include_legacy_path <wt> legacy-DoNotUse/<path>`. The path must be a plain
+relative path strictly under `legacy-DoNotUse/`: option-shaped arguments, pattern syntax
+(`* ? [ ] ! \`), a leading `/` and `..` are refused, and it is passed after `--`. The widening
+covers that path alone and survives every later re-acquire. **The engine does not call it**: build
+may never write `legacy-DoNotUse/` (`scope_floor_denied`), so the prune is done by hand (a `git rm`
+in the keeper's PR, ADR-002), and this
 helper is the operator's tool for doing it inside an issue worktree.
 
 ### 3. Prior work is stored in git, and the folder is the working copy
@@ -271,7 +275,7 @@ Liveness is decided before admission, not lazily: a lock whose holder is gone is
 `zbuild_worktree_reclaim_dead` this ADR keeps.
 
 **This is not the same as a capacity limit.** Legacy shipwright's pipeline lock
-(`legacy/scripts/sw-pipeline.sh:325`) refuses on a *host-wide count* for an OOM reason, keyed on
+(`legacy-DoNotUse/scripts/sw-pipeline.sh:325`) refuses on a *host-wide count* for an OOM reason, keyed on
 PID, with `issue_or_goal` recorded only so the error can name the blocker. That is a different
 control, and zBuild has neither today. **Issue exclusivity is a keyed mutex; host capacity is a
 counted cap.** This ADR decides only the first.
@@ -352,7 +356,7 @@ consumers disagree about how a run is keyed is not a layout.**
 - One base directory: one `.gitignore` entry, one place to look for an issue's work.
 - `--goal` runs gain an identity they have never had.
 - One hash derivation and two divergent `owner/repo` slug parsers collapse to one derivation with two renderings; KEEPERS §I is dischargeable.
-- `legacy/` is materialised once per issue instead of once per run (#1802).
+- `legacy-DoNotUse/` is left out of every issue worktree instead of materialised once per run (#1802).
 
 **Negative / costs**
 
@@ -418,7 +422,8 @@ committed, stash ablates nothing and reports a false pass.
 ## Enforced by
 
 - `tests/unit/worktree-sparse-legacy-test.sh` — §2 per-worktree sparse-checkout: acquire and
-  enter configure sparse in the linked worktree (SPEC-1, SPEC-2), the exclusion survives a branch
+  enter leave all of `legacy-DoNotUse/` out of the linked worktree, the formerly kept `migrated/`
+  subdirectory included (SPEC-1, SPEC-2), the exclusion survives a branch
   switch (SPEC-3), the reuse path re-applies the pattern (SPEC-4), and the main checkout is left
   non-sparse via `extensions.worktreeConfig` (SPEC-5)
 - `tests/unit/worktree-sparse-hardening-test.sh` — §2 fails open (a failing `sparse-checkout` or a
@@ -426,5 +431,5 @@ committed, stash ablates nothing and reports a false pass.
   is written only when unset and an explicit `false` is kept, `zbuild_worktree_include_legacy_path`
   refuses every non-plain path, its widening survives re-acquire and re-enter and allows `git rm`,
   and a re-acquire over a foreign sparse config lands on the base patterns plus keeper widenings
-- `tests/unit/no-test-reads-legacy-test.sh` — §2 no test reads `legacy/`: every test tier is
-  scanned for a `$REPO_ROOT/legacy/` path outside `legacy/migrated/`
+- `tests/unit/no-test-reads-legacy-test.sh` — §2 no test reads `legacy-DoNotUse/`: every test tier
+  is scanned for a `$REPO_ROOT/legacy-DoNotUse/` path (or the tree's old name), with no exception

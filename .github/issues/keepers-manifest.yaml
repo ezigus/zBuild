@@ -51,7 +51,7 @@ labels:
     description: Phase 0 foundational work (engine, repo, docs)
   - name: legacy-prune
     color: "fef3c7"
-    description: Tombstone + git rm of legacy/ source for a verified keeper
+    description: git rm of the legacy-DoNotUse/ source for a verified keeper
   # Plugin kind
   - name: agent-plugin
     color: "00d4ff"
@@ -122,7 +122,7 @@ milestones:
   - title: Phase 5 — Test Migration & Verification
     description: |
       5-test trial passes for every keeper, golden-file diffing added,
-      multi-daemon claim race test passes, legacy/ has shrunk to zero. KEEPERS §G.
+      multi-daemon claim race test passes, legacy-DoNotUse/ has shrunk to zero. KEEPERS §G.
   - title: Wishlist — Post-stabilization
     description: |
       Behaviors not wired in legacy today; build after Phase 5 stabilizes.
@@ -140,7 +140,7 @@ milestones:
 # ─── Issues ─────────────────────────────────────────────────────────────────
 # Body template (markdown) used for every keeper issue. Substitution placeholders:
 #   ${spec_cite}      — KEEPERS section
-#   ${legacy_cite}    — file:line in legacy/
+#   ${legacy_cite}    — file:line in legacy-DoNotUse/
 #   ${behavior}       — one-paragraph behavior description
 #   ${plugin_kind}    — agent | tool | orchestrator | claim-coordinator | daemon | (none for safety)
 #   ${depends_on}     — markdown list of dependent issue IDs (resolved to issue numbers by generator)
@@ -164,13 +164,13 @@ issues:
       docs/KEEPERS.md + docs/ARCHITECTURE.md + 7 ADRs as the implementation
       north star. Architecture locked before code arrives. DONE in commit 7686ad1.
   - id: ph0-legacy
-    title: "[Phase 0] Import the upstream source as legacy/ with sentinel guard"
+    title: "[Phase 0] Import the upstream source as legacy-DoNotUse/ with sentinel guard"
     milestone: "Phase 0 — Core Engine Foundation"
     labels: [phase-0, foundation]
     state: closed
     body: |
-      Plain copy of the upstream source into legacy/. FROZEN.md + the legacy
-      sentinel + one-line patch to legacy/scripts/sw to refuse runs. ADR-002.
+      Plain copy of the upstream source into legacy-DoNotUse/. FROZEN.md + the legacy
+      sentinel + one-line patch to legacy-DoNotUse/scripts/sw to refuse runs. ADR-002.
       DONE in commit 5484736.
   - id: ph0-day1
     title: "[Phase 0] Day-1 structural copy (package.json, install.sh, .github, .claude, lib/)"
@@ -234,7 +234,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper, agent-plugin]
     spec_cite: "KEEPERS §A"
-    legacy_cite: "legacy/scripts/sw-pipeline.sh:1572 (run_stage_with_retry dispatch); legacy/scripts/lib/pipeline-stages-{intake,build,review,delivery,monitor}.sh"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-pipeline.sh:1572 (run_stage_with_retry dispatch); legacy-DoNotUse/scripts/lib/pipeline-stages-{intake,build,review,delivery,monitor}.sh"
     behavior: |
       Wrap each existing stage handler (intake, plan, design, build, test, review,
       compound_quality, pr, deploy, validate, monitor) as a kind: agent or kind:
@@ -246,7 +246,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper, orchestrator-plugin]
     spec_cite: "KEEPERS §A"
-    legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh:2042-2195"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:2042-2195"
     behavior: |
       Extract the pre-flight gates (bash-compat check, coverage gate,
       untested-functions check) as a non-cyclic, fail-fast plugin that runs
@@ -258,7 +258,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper, orchestrator-plugin]
     spec_cite: "KEEPERS §A"
-    legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh:2028-2036 (entry); :429-508 (pipeline_select_audits)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:2028-2036 (entry); :429-508 (pipeline_select_audits)"
     behavior: |
       Audit-plan selection: reads quality-scores.jsonl history and branches
       audit intensity (lightweight/targeted/full) on avg score. Preserves the
@@ -269,7 +269,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper, orchestrator-plugin]
     spec_cite: "KEEPERS §A"
-    legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh:2198+"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:2198+"
     behavior: |
       The main compound-quality cycle: run audits, accumulate findings, detect
       plateau (same finding count twice → stop), detect divergence (count
@@ -280,7 +280,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper]
     spec_cite: "KEEPERS §A"
-    legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh — backtrack embedded in cycle loop"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh — backtrack embedded in cycle loop"
     behavior: |
       The backtrack-to-stage logic (architecture findings → route to design,
       scope violations → override everything) is currently embedded in the
@@ -292,7 +292,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper]
     spec_cite: "KEEPERS §A"
-    legacy_cite: "legacy/scripts/lib/pipeline-stages.sh (gate declarations in templates)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-stages.sh (gate declarations in templates)"
     behavior: |
       Six gate kinds, declared in templates not in handlers. Thresholds in JSON.
       Quality score = 100 - 20·crit - 10·major - 2·minor, hard floor 40, strict
@@ -303,7 +303,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper]
     spec_cite: "KEEPERS §A, ADR-009"
-    legacy_cite: "legacy/config/pipeline-templates/ + legacy/scripts/lib/pipeline-stages.sh"
+    legacy_cite: "legacy-DoNotUse/config/pipeline-templates/ + legacy-DoNotUse/scripts/lib/pipeline-stages.sh"
     behavior: |
       Hotfix template is subtractive (disables plan/design/review, keeps CQ).
       Same handler code, different composition. Preserve the pattern.
@@ -319,7 +319,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper]
     spec_cite: "KEEPERS §A"
-    legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh:32-126 (skip), :351-1604 (backtrack)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:32-126 (skip), :351-1604 (backtrack)"
     behavior: |
       pipeline_should_skip_stage reads 5 signals (complexity, labels, diff size,
       mid-pipeline reassessment, hard floor) and decides which stages to skip.
@@ -331,7 +331,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper]
     spec_cite: "KEEPERS §B1.1"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:75 (emit_event); legacy/config/event-schema.json"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:75 (emit_event); legacy-DoNotUse/config/event-schema.json"
     behavior: |
       MIGRATED in Phase 0 as core/event-bus/event-bus.sh. The 5-test trial
       coverage (unit + integration + concurrent-writer) shipped alongside
@@ -343,7 +343,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper, learning-loop]
     spec_cite: "KEEPERS §B1.2"
-    legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh:429-508"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:429-508"
     behavior: |
       pipeline_select_audits reads quality-scores.jsonl at :453-482, branches
       intensity on avg score at :470-480, upgrades complexity→full at :485-492.
@@ -354,7 +354,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, learning-loop]
     spec_cite: "KEEPERS §B1.3, §F"
-    legacy_cite: "legacy/scripts/lib/skill-memory.sh:144-176 (record + sort); legacy/scripts/sw-pipeline.sh:1703 (recommendations consumed); legacy/scripts/lib/pipeline-state.sh:325/608"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/skill-memory.sh:144-176 (record + sort); legacy-DoNotUse/scripts/sw-pipeline.sh:1703 (recommendations consumed); legacy-DoNotUse/scripts/lib/pipeline-state.sh:325/608"
     behavior: |
       Records skill successes/failures, sorts by success rate at skill-memory.sh:173,
       recommendations consumed at sw-pipeline.sh:1703 to steer retries. Real
@@ -364,7 +364,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper, learning-loop]
     spec_cite: "KEEPERS §B1.4"
-    legacy_cite: "legacy/scripts/sw-intelligence.sh:533; legacy/scripts/lib/pipeline-intelligence.sh:1238"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-intelligence.sh:533; legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:1238"
     behavior: |
       Initial complexity from LLM assessment; post-build reassessment compares
       predicted vs actual diff; can drop complexity and skip CQ mid-run.
@@ -374,7 +374,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper]
     spec_cite: "KEEPERS §B1.5"
-    legacy_cite: "legacy/scripts/lib/loop-convergence.sh:101-132 (check_circuit_breaker); legacy/scripts/lib/sw-pipeline-vitals.sh:56-59 (weights)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/loop-convergence.sh:101-132 (check_circuit_breaker); legacy-DoNotUse/scripts/lib/sw-pipeline-vitals.sh:56-59 (weights)"
     behavior: |
       check_circuit_breaker reads pipeline_compute_vitals() JSON at :108, branches
       on verdict=='abort' at :111. Real control, not just telemetry. Weights are
@@ -384,7 +384,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §B1.6"
-    legacy_cite: "legacy/scripts/lib/pipeline-stages.sh:42 (_extract_scope_from_design)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-stages.sh:42 (_extract_scope_from_design)"
     behavior: |
       Scope manifest is a fenced markdown block in design.md. Humans edit visually;
       engine parses with awk. Already partially wired in Phase 0 (chokepoint
@@ -395,7 +395,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper, learning-loop]
     spec_cite: "KEEPERS §B1.7"
-    legacy_cite: "legacy/scripts/lib/pipeline-stages-build.sh:209; legacy/scripts/lib/ruflo-adapter.sh:2376-2440 (HNSW)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-stages-build.sh:209; legacy-DoNotUse/scripts/lib/ruflo-adapter.sh:2376-2440 (HNSW)"
     behavior: |
       Goal-scoped → issue-scoped → repo-scoped cascade. Native memory is TF-IDF
       (sw-memory.sh); ruflo-adapter provides HNSW vectors via MCP under
@@ -416,7 +416,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper, learning-loop]
     spec_cite: "KEEPERS §B1.8"
-    legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh:351/1604"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:351/1604"
     behavior: |
       Convergence rate >50% extends, divergence reduces, plateau (same count
       twice) stops, budget exhaustion caps to zero. Plateau predicate is already
@@ -426,7 +426,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper]
     spec_cite: "KEEPERS §B1.9"
-    legacy_cite: "legacy/scripts/sw-cost.sh, legacy/scripts/lib/cost/*"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-cost.sh, legacy-DoNotUse/scripts/lib/cost/*"
     behavior: |
       Budget as routing input (downgrades to haiku at <$5 etc.), not just kill
       switch. --render-plain produces markdown-ready tables for GitHub comments.
@@ -435,7 +435,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, learning-loop]
     spec_cite: "KEEPERS §B1.10"
-    legacy_cite: "legacy/scripts/sw-self-optimize.sh:907-955"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-self-optimize.sh:907-955"
     behavior: |
       Correct UCB formula: mean + sqrt(2·ln(N)/n). Carry forward as the routing
       primitive. Required total_trials >= 5 graduation; SPRT-as-graduation lives
@@ -445,7 +445,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, learning-loop]
     spec_cite: "KEEPERS §B1.11"
-    legacy_cite: "legacy/scripts/sw-self-optimize.sh:851-893 (impl); :3188, daemon-triage.sh:411 (call sites)"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-self-optimize.sh:851-893 (impl); :3188, daemon-triage.sh:411 (call sites)"
     behavior: |
       Pseudo-Thompson with stochastic noise; actually wired to template choice.
       Carry forward.
@@ -454,7 +454,7 @@ issues:
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, keeper]
     spec_cite: "KEEPERS §B1.12"
-    legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh:134/1343/1745"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:134/1343/1745"
     behavior: |
       Six categories; security always first; architecture routes back to design
       (not just rebuild); scope-violations override everything.
@@ -463,7 +463,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper]
     spec_cite: "KEEPERS §B1.13"
-    legacy_cite: "legacy/scripts/sw-db.sh:312-325 (schema); :1147-1167 (read/write)"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-db.sh:312-325 (schema); :1147-1167 (read/write)"
     behavior: |
       memory_failures table: error_signature TEXT keyed on (repo_hash, failure_class).
       Substrate for future AI fallback (§L wishlist item 2).
@@ -481,7 +481,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C corrections #1"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:634-800 (impl); 9 call sites listed in KEEPERS §C"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:634-800 (impl); 9 call sites listed in KEEPERS §C"
     behavior: |
       MIGRATED in Phase 0 as core/redaction/scope-redaction.sh (the
       _apply_scope_redaction chokepoint). Routing the 9 legacy call sites
@@ -495,7 +495,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C corrections #2"
-    legacy_cite: "legacy/scripts/lib/goal-sanitize.sh:11-40 (18 sentinels); legacy/scripts/sw-loop.sh:517, pipeline-state.sh:946-968, loop-restart.sh:134-143"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/goal-sanitize.sh:11-40 (18 sentinels); legacy-DoNotUse/scripts/sw-loop.sh:517, pipeline-state.sh:946-968, loop-restart.sh:134-143"
     behavior: |
       18 sentinel strippers. Apply at every persistence boundary: initial capture
       (sw-loop.sh:517 when LOOP_CONTEXT_FILE set), resume, restart. Verify Phase 0
@@ -505,7 +505,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C corrections #3"
-    legacy_cite: "legacy/scripts/sw-pipeline.sh:257-349 (admission gate primitives)"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-pipeline.sh:257-349 (admission gate primitives)"
     behavior: |
       Order MATTERS: reap_stale_pipeline_locks → count_active_pipeline_locks →
       memory floor → write_active_pipeline_lock → release_active_pipeline_lock.
@@ -516,7 +516,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C corrections #4"
-    legacy_cite: "legacy/scripts/lib/pipeline-state.sh:876-1075 (resume gap), :269 (written but not read)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-state.sh:876-1075 (resume gap), :269 (written but not read)"
     behavior: |
       ALREADY MIGRATED in Phase 0 as core/state/resume.sh (current_iteration is
       explicitly persisted; exec-based test proves cross-process survival).
@@ -539,7 +539,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C additions #1"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:297 (check_disk_space); only caller: legacy/scripts/lib/pipeline-state.sh:796"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:297 (check_disk_space); only caller: legacy-DoNotUse/scripts/lib/pipeline-state.sh:796"
     behavior: |
       Today: one caller (state save). Extend to all artifact writes
       (compound-quality findings, scope-violations.txt, plan.md, etc.).
@@ -549,7 +549,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C additions #2"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:179 (validate_json); only called at daemon startup"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:179 (validate_json); only called at daemon startup"
     behavior: |
       Mid-pipeline corruption is unrecoverable today. Wire validate_json + .bak
       rotation into every state read in core/state/. Phase 0 did this for
@@ -559,7 +559,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C additions #3"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:239-272"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:239-272"
     behavior: |
       Distinct primitive from atomic_write; assumes no concurrent writers.
       Event-bus contract MUST specify single-writer or add multi-writer locking.
@@ -570,7 +570,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C additions #4"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:945-968"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:945-968"
     behavior: |
       scope-violations.txt is diagnostic-only; if persist_artifacts fails before
       commit, violations are invisible on resume. Ensure scope-violation writes
@@ -580,7 +580,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C additions #5"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:431-437 (strip_ansi)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:431-437 (strip_ansi)"
     behavior: |
       Must be applied to every event payload; selective application corrupts
       JSON schema. Audit core/event-bus/ payload-building for missing strip.
@@ -589,7 +589,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C additions #6"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:515-531"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:515-531"
     behavior: |
       Two lists today (_GIT_BOOKKEEPING_FILES committed-but-excluded,
       _GIT_RUNTIME_EXCLUDES gitignored-and-excluded). Stale lists cause scope
@@ -599,7 +599,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C additions #7"
-    legacy_cite: "legacy/scripts/lib/helpers.sh:202-213 (rotate_jsonl)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/helpers.sh:202-213 (rotate_jsonl)"
     behavior: |
       JSONL truncation during concurrent plugin write loses recent events.
       SQLite mirror is durable. Rotation must defer to writer-coordinated
@@ -628,7 +628,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/sw-daemon.sh:196-209; daemon-state.sh:620-704"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-daemon.sh:196-209; daemon-state.sh:620-704"
     behavior: |
       Labels are the entire control plane. The trigger label (currently named
       'shipwright' in legacy; rename to 'zbuild' for the migrated plugin) in,
@@ -641,7 +641,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/lib/daemon-poll.sh:363-561"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/daemon-poll.sh:363-561"
     behavior: |
       Sense → understand → be patient → only kill as last resort. Verdict
       gradient is currently informational; only wall-clock kills. (Verdict
@@ -651,7 +651,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/lib/daemon-failure.sh:91-151; daemon-poll.sh:33-50"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/daemon-failure.sh:91-151; daemon-poll.sh:33-50"
     behavior: |
       pause_mins = 5 · 2^(consecutive-3), capped at 8h. Wall-clock timestamp =
       auto-resume, no human needed at 3am.
@@ -660,7 +660,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/lib/daemon-triage.sh:22-220"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/daemon-triage.sh:22-220"
     behavior: |
       Six-signal weighted score (priority / age / complexity / dependencies /
       type / memory); configurable strategies; 3-pass dependency reordering.
@@ -669,7 +669,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/lib/daemon-poll.sh:613-801"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/daemon-poll.sh:613-801"
     behavior: |
       Five independent ceilings cap MAX_PARALLEL; minimum wins. Changes happen
       one step at a time. Preserve all five as inputs.
@@ -678,7 +678,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/lib/fleet-failover.sh:7-63"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/fleet-failover.sh:7-63"
     behavior: |
       Every daemon, every cycle, releases claims from machines marked offline.
       No central coordinator.
@@ -687,7 +687,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/lib/daemon-poll.sh:1237-1276"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/daemon-poll.sh:1237-1276"
     behavior: |
       When nothing's queued, daemon runs security audit / stale-deps / dead-code
       scans and creates new zbuild-labeled issues (legacy uses 'shipwright'
@@ -698,7 +698,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/sw-daemon.sh:874-910"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-daemon.sh:874-910"
     behavior: |
       5 auto-restarts with doubling backoff. Transient bash error doesn't kill
       the daemon.
@@ -707,7 +707,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §D"
-    legacy_cite: "legacy/scripts/sw-webhook.sh"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-webhook.sh"
     behavior: |
       Push delivery is fragile; gh issue list returns current truth. Webhook
       receiver appends to JSONL audit log but daemon NEVER short-circuits poll
@@ -717,7 +717,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, claim-coordinator]
     spec_cite: "KEEPERS §M, ADR-005"
-    legacy_cite: "legacy/scripts/lib/daemon-state.sh:602-720"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/daemon-state.sh:602-720"
     behavior: |
       Port the label-claim scheme verbatim as plugins/claim-coordinator/github-labels/.
       Document the TOCTOU window in the plugin README. Future TTL-leases impl is
@@ -727,7 +727,7 @@ issues:
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, daemon-plugin]
     spec_cite: "KEEPERS §C7 (heartbeat reliability)"
-    legacy_cite: "legacy/scripts/lib/daemon-poll.sh:363-561"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/daemon-poll.sh:363-561"
     behavior: |
       Distinguishes 'agent thinking' from 'agent dead.' Per-stage timeouts
       configurable; 'patient kill' protocol.
@@ -737,7 +737,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, cli-ux]
     spec_cite: "KEEPERS §E"
-    legacy_cite: "legacy/scripts/lib/pipeline-github.sh:97-135; sw-pipeline.sh:1150-1154"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/pipeline-github.sh:97-135; sw-pipeline.sh:1150-1154"
     behavior: |
       One comment per run, mutated via PATCH. Comment ID persisted atomically
       to disk, survives daemon restarts. Lift verbatim.
@@ -746,7 +746,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, cli-ux]
     spec_cite: "KEEPERS §E"
-    legacy_cite: "legacy/scripts/sw-status.sh:75-260"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-status.sh:75-260"
     behavior: |
       Same schema feeds tmux statusbar, CI checks, remote machines, and humans.
       Preserve schema; rewrite implementation to read from core/event-bus/.
@@ -755,7 +755,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, cli-ux]
     spec_cite: "KEEPERS §E"
-    legacy_cite: "legacy/scripts/sw-doctor.sh:36-243"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-doctor.sh:36-243"
     behavior: |
       Check registry; copy-paste fix lines; resolves auto config values
       explicitly. Doctor itself becomes a plugin extension point.
@@ -766,7 +766,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, cli-ux]
     spec_cite: "KEEPERS §E"
-    legacy_cite: "legacy/scripts/sw-activity.sh:50-85"
+    legacy_cite: "legacy-DoNotUse/scripts/sw-activity.sh:50-85"
     behavior: |
       Stable per-agent color hash + per-event icon. Visual grep across long
       log scrolls.
@@ -775,7 +775,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, cli-ux]
     spec_cite: "KEEPERS §E"
-    legacy_cite: "legacy/.claude/helpers/statusline.cjs:225-256"
+    legacy_cite: "legacy-DoNotUse/.claude/helpers/statusline.cjs:225-256"
     behavior: |
       Defensive bounds + SQLite-magic verification. Honest 0% beats fake 100%.
       Memorializes a real bug where corrupted memory.db rendered as '3.3 billion
@@ -787,7 +787,7 @@ issues:
     labels: [phase-0, keeper, agent-plugin]
     state: closed
     spec_cite: "KEEPERS §F"
-    legacy_cite: "legacy/scripts/lib/compound-audit.sh:48-53; trigger keywords :367"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/compound-audit.sh:48-53; trigger keywords :367"
     body: |
       Already migrated as plugins/agent/security-lens/ in Phase 0 (POC).
       Full 5-test trial completes when Phase 1 router lands.
@@ -796,7 +796,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, agent-plugin]
     spec_cite: "KEEPERS §F"
-    legacy_cite: "legacy/scripts/lib/compound-audit.sh:27-30, :366"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/compound-audit.sh:27-30, :366"
     behavior: |
       Logic Auditor lens with verbatim prompt. Detects faulty conditionals,
       off-by-one, undefined behavior. Trigger keywords: bug, error, wrong,
@@ -807,7 +807,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, agent-plugin]
     spec_cite: "KEEPERS §F"
-    legacy_cite: "legacy/scripts/lib/compound-audit.sh (integration block)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/compound-audit.sh (integration block)"
     behavior: |
       Integration Auditor; system boundaries, contracts between modules,
       protocol mismatches.
@@ -817,7 +817,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, agent-plugin]
     spec_cite: "KEEPERS §F"
-    legacy_cite: "legacy/scripts/lib/compound-audit.sh:40-46"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/compound-audit.sh:40-46"
     behavior: |
       Completeness Auditor; missing implementations, partial features.
     plugin_kind: "agent"
@@ -826,7 +826,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, agent-plugin]
     spec_cite: "KEEPERS §F"
-    legacy_cite: "legacy/scripts/lib/compound-audit.sh:55-62; triggers :368"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/compound-audit.sh:55-62; triggers :368"
     behavior: |
       Error Handling Auditor; silent swallowing, missing error paths.
     plugin_kind: "agent"
@@ -835,7 +835,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, agent-plugin]
     spec_cite: "KEEPERS §F"
-    legacy_cite: "legacy/scripts/lib/compound-audit.sh (performance block); triggers :369"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/compound-audit.sh (performance block); triggers :369"
     behavior: |
       Performance Auditor; O(n) loops, unbounded queries, leaks.
     plugin_kind: "agent"
@@ -844,7 +844,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, agent-plugin]
     spec_cite: "KEEPERS §F"
-    legacy_cite: "legacy/scripts/lib/compound-audit.sh (edge_case block); triggers :370; skill-memory.sh:144-176"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/compound-audit.sh (edge_case block); triggers :370; skill-memory.sh:144-176"
     behavior: |
       Edge Case Auditor (boundary, empty, null, concurrent, race) AND skill
       registry recording/sorting. Bundled because the skill registry is what
@@ -856,7 +856,7 @@ issues:
     labels: [phase-0, keeper, test-migration]
     state: closed
     spec_cite: "KEEPERS §G"
-    legacy_cite: "legacy/scripts/lib/test-helpers.sh (322 LoC)"
+    legacy_cite: "legacy-DoNotUse/scripts/lib/test-helpers.sh (322 LoC)"
     body: |
       Already DONE in Phase 0 (cp + sed renames). Generic harness primitives
       are reusable for all future tests.
@@ -1448,7 +1448,7 @@ issues:
       .claude/settings.json + handler at .claude/helpers/hook-handler.cjs.
       Validates bash commands and edits before execution (block dangerous,
       record audit trail, redact secrets). Lift legacy contract from
-      legacy/.claude/settings.json:2-23.
+      legacy-DoNotUse/.claude/settings.json:2-23.
     state: closed
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:35Z). Recorded by manifest-sync.'
   - id: hook-2
@@ -1457,7 +1457,7 @@ issues:
     labels: [phase-0, foundation, cli-ux]
     body: |
       Post-tool finalization: run formatters, update event log, persist
-      artifacts. Lift from legacy/.claude/settings.json:25-45.
+      artifacts. Lift from legacy-DoNotUse/.claude/settings.json:25-45.
     state: closed
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:36Z). Recorded by manifest-sync.'
   - id: hook-3
@@ -1499,7 +1499,7 @@ issues:
     body: |
       Snapshot conversation state to disk before Claude Code compacts so
       developers can recover important context. Lift from
-      legacy/.claude/settings.json:96-158.
+      legacy-DoNotUse/.claude/settings.json:96-158.
     state: closed
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:37Z). Recorded by manifest-sync.'
   - id: hook-6
@@ -1697,7 +1697,7 @@ issues:
     labels: [phase-3, keeper]
     body: |
       Persist run history and per-stage outcomes. Enables status dashboards,
-      DORA computation, replay. Schema from legacy/scripts/sw-db.sh.
+      DORA computation, replay. Schema from legacy-DoNotUse/scripts/sw-db.sh.
   - id: db-2
     title: "[Phase 3] AgentDB tables: cost_entries + budgets"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
@@ -1849,7 +1849,7 @@ issues:
     body: |
       Daemon working across multiple repos: per-repo state directory, per-repo
       lockfile, per-repo cost ledger. No bleed-through. Lift logic from
-      legacy/scripts/sw-cross-repo.sh.
+      legacy-DoNotUse/scripts/sw-cross-repo.sh.
   - id: xrepo-2
     title: "[Phase 3] Repository identity persistence (canonical repo-hash)"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
@@ -1928,7 +1928,7 @@ issues:
     body: |
       `zbuild init` = one-shot install. `zbuild setup` = guided 4-phase
       wizard (prereqs → repo analysis → config gen → validation). Both
-      surfaces preserved per legacy/scripts/sw-init.sh + sw-setup.sh.
+      surfaces preserved per legacy-DoNotUse/scripts/sw-init.sh + sw-setup.sh.
   - id: cmd-7
     title: "[Phase 4] CLI: templates (zbuild templates list|show <name>)"
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
@@ -2046,7 +2046,7 @@ issues:
     labels: [phase-4, keeper, cli-ux]
     body: |
       Beyond the 6 compound-audit lenses, legacy has 11 more skill fragments
-      in legacy/scripts/skills/*.md: product-thinking, brainstorming,
+      in legacy-DoNotUse/scripts/skills/*.md: product-thinking, brainstorming,
       validation-thoroughness, observability, deploy-safety, adversarial-quality,
       two-stage-review, architecture-quality, security-audit, ux-investigation,
       and a few others (verify exact list before starting).
@@ -2064,7 +2064,7 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, cli-ux]
     body: |
-      Full web dashboard from legacy/dashboard/. Bun SQLite backend, WebSocket
+      Full web dashboard from legacy-DoNotUse/dashboard/. Bun SQLite backend, WebSocket
       push at 2s intervals, OAuth/PAT auth, 50-client multi-broadcast. React
       frontend with agent timelines, cost overlays, team states. NOT top
       priority per user; ship after CLI and personas land.
@@ -2184,7 +2184,7 @@ issues:
     milestone: "Wishlist — Post-stabilization"
     labels: [wishlist, cli-ux]
     body: |
-      legacy/homebrew/shipwright.rb adapted for zbuild. Adds a Homebrew tap
+      legacy-DoNotUse/homebrew/shipwright.rb adapted for zbuild. Adds a Homebrew tap
       distribution path alongside npm + curl installer.
   - id: l-22
     title: "[L] Docker / Devcontainer (containerized development)"
@@ -2198,7 +2198,7 @@ issues:
     milestone: "Wishlist — Post-stabilization"
     labels: [wishlist, cli-ux]
     body: |
-      legacy/demo/: full-demo.tape, hero.tape (asciinema), sample LinkedIn
+      legacy-DoNotUse/demo/: full-demo.tape, hero.tape (asciinema), sample LinkedIn
       post, package.json with sample workflows. Onboarding accelerant.
   - id: l-24
     title: "[L] Post-install script (install.sh side-effects)"
@@ -2245,7 +2245,7 @@ issues:
     milestone: "Wishlist — Post-stabilization"
     labels: [wishlist]
     body: |
-      Three platform-agnostic template variants from legacy/templates/pipelines/
+      Three platform-agnostic template variants from legacy-DoNotUse/templates/pipelines/
       (tdd, enterprise, deployed). Each `extends: standard` and overrides
       stages per ADR-009 subtractive composition — NO platform-specific forks.
       Mobile (iOS) becomes a separate concern under "platform packs" (l-30..),
@@ -2407,7 +2407,7 @@ issues:
           "overrides": [
             {"path": "ios/", "platform": "ios", "reason": "..."}
           ],
-          "disable_detection": ["app/legacy/"],
+          "disable_detection": ["app/vendor/"],
           "aliases": {"nodejs": "node"},
           "fallback_platform": null,
           "cost_overrides": {
@@ -2504,7 +2504,7 @@ issues:
       Sample output (--explain):
         ios/        DETECTED (Package.swift strength=high, ios/ dir strength=high)
         api/        CONFIG (override; reason: "manual Node API service")
-        legacy/     DISABLED (.zbuild/platforms.json disable_detection)
+        vendor/     DISABLED (.zbuild/platforms.json disable_detection)
         tools/      UNDETECTED (no matching signals; using fallback "generic")
 
       Scope:
@@ -3014,7 +3014,7 @@ issues:
     milestone: "Phase 5 — Test Migration & Verification"
     labels: [phase-2, phase-5, safety-primitive, test-migration]
     body: |
-      Full v3 audit + phased remediation of legacy/scripts (shipwright source).
+      Full v3 audit + phased remediation of legacy-DoNotUse/scripts (shipwright source).
       Covers safety guardrails, dedupe/centralization, monolith splits,
       error-handling hygiene, test-taxonomy rebuild, and CI tier restructure.
       Phased so each PR is independently shippable and revertable.

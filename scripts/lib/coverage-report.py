@@ -33,15 +33,15 @@ except ValueError:
     sys.exit(2)
 
 INCLUDE  = ['/core/', '/scripts/lib/']
-# '/legacy/' is excluded on BOTH paths into the file set. legacy/ is a frozen
+# '/legacy-DoNotUse/' is excluded on BOTH paths into the file set. legacy-DoNotUse/ is a frozen
 # upstream import that is never executed and is not engine code (CLAUDE.md),
-# but `legacy/scripts/lib/*.sh` satisfies the INCLUDE substring — so it can
+# but `legacy-DoNotUse/scripts/lib/*.sh` satisfies the INCLUDE substring — so it can
 # arrive either from the disk walk or from the trace, and restricting only the
 # scan roots would leave the trace path open (#1761).
-EXCLUDE  = ['/legacy/', '/tests/', '-test.sh', '-unit-test.sh']
+EXCLUDE  = ['/legacy-DoNotUse/', '/tests/', '-test.sh', '-unit-test.sh']
 
 # Roots enumerated from disk. Deliberately NOT `repo_root` itself: walking the
-# whole tree would sweep in legacy/ (~58 files) as dead weight (#1761).
+# whole tree would sweep in legacy-DoNotUse/ (~58 files) as dead weight (#1761).
 SCAN_ROOTS = ['core', 'scripts/lib']
 
 

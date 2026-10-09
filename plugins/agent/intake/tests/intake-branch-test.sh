@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests: plugins/agent/intake — branch creation helpers (issue #484)
 #
-# Mirrors shipwright legacy/scripts/lib/pipeline-stages-intake.sh:66-94 but
+# Mirrors shipwright legacy-DoNotUse/scripts/lib/pipeline-stages-intake.sh:66-94 but
 # verifies fail-CLOSED behavior — the `|| true` silent-failure pattern was
 # the highest-severity finding from the silent-failure hunter.
 set -uo pipefail

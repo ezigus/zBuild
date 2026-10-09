@@ -16,7 +16,7 @@ jobs:
           bash scripts/zbuild --version
           bash scripts/zbuild --help
       - name: Legacy sentinel
-        run: bash legacy/scripts/sw 2>&1 | grep -q "disabled" || exit 1
+        run: bash legacy-DoNotUse/scripts/sw 2>&1 | grep -q "disabled" || exit 1
 
   lint:
     name: Lint
@@ -70,7 +70,7 @@ jobs:
         if: always()
         run: |
           sudo apt-get install -y shellcheck
-          find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
+          find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 \
             | xargs -0 shellcheck -x --severity=warning
         # -x matches `npm run lint` (#1682): follow `source` directives so a
         # sourced-only defect cannot pass CI and fail locally, or vice versa.

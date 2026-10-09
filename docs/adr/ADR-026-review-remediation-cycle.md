@@ -19,7 +19,7 @@ build LLM stumbles into the same fix).
 
 Shipwright legacy had this loop. The function
 `_write_merge_retry_ctx_review` at
-`legacy/scripts/lib/pipeline-stages-delivery.sh:676-687` wrote a
+`legacy-DoNotUse/scripts/lib/pipeline-stages-delivery.sh:676-687` wrote a
 `.retry-context-build.md` file when PR review requested changes; the
 build stage on the next pipeline pass read that file and prepended it to
 its prompt, giving the next build iteration the reviewer's complaints as
@@ -348,7 +348,7 @@ the outer cycle's lifecycle identically to the inner cycle's.
 - [ADR-027](ADR-027-recursive-flow-template-format.md) — recursive
   flow template format; ADR-026's `build_review_cycle` declaration uses
   ADR-027's `type: cycle` shape with member stages at the top level.
-- `legacy/scripts/lib/pipeline-stages-delivery.sh:676-687` —
+- `legacy-DoNotUse/scripts/lib/pipeline-stages-delivery.sh:676-687` —
   shipwright `_write_merge_retry_ctx_review` precedent. ADR-026 maps
   the file-based retry-context pattern into zbuild's cycle vocabulary
   (explicit `feedback:` edge instead of implicit `.retry-context-build.md`).

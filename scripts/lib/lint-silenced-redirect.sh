@@ -20,7 +20,7 @@ fi
 
 _bad=0
 while IFS= read -r -d '' f; do
-    [[ "$f" == */tests/* || "$f" == */legacy/* ]] && continue
+    [[ "$f" == */tests/* || "$f" == */legacy-DoNotUse/* ]] && continue
     while IFS=$'\t' read -r line text; do
         echo "lint-silenced-redirect: ${f#"$_LSR_ROOT"/}:$line redirects stdin before silencing stderr — a missing file still prints 'No such file'; write 'cmd 2>/dev/null < \"\$f\"': $text" >&2
         _bad=$((_bad + 1))

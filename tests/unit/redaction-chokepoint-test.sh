@@ -27,7 +27,7 @@ setup_test_env "redaction-chokepoint"
 #   - core/redaction/   (the chokepoint itself)
 #   - core/router/      (routes calls through redaction)
 #   - tests/            (test mocks are acceptable)
-#   - legacy/           (frozen reference; disabled sentinel prevents execution)
+#   - legacy-DoNotUse/           (frozen reference; disabled sentinel prevents execution)
 #   - .git/             (version control internals)
 #   - docs/             (documentation only)
 #   - *.md              (markdown docs)
@@ -49,7 +49,7 @@ P1_PATTERN='claude.*(--print|[[:space:]]-p([[:space:]]|$))'
 VIOLATIONS=()
 
 # ─── Pattern 1: `claude … -p/--print` (direct LLM invocation) ────────────────
-# Exclude: tests/, legacy/, docs/, *.md, core/redaction/, core/router/
+# Exclude: tests/, legacy-DoNotUse/, docs/, *.md, core/redaction/, core/router/
 while IFS=: read -r file line content; do
     # Skip empty lines
     [[ -z "$file" ]] && continue
@@ -59,7 +59,7 @@ while IFS=: read -r file line content; do
     [[ "$_trimmed" == \#* ]] && continue
     # Skip allowed locations
     case "$file" in
-        */tests/*|*/legacy/*|*/docs/*|*.md|*/core/redaction/*|*/core/router/*)
+        */tests/*|*/legacy-DoNotUse/*|*/docs/*|*.md|*/core/redaction/*|*/core/router/*)
             continue ;;
         */.git/*)
             continue ;;
@@ -75,7 +75,7 @@ done < <({
     grep -rEn "$P1_PATTERN" \
         --include="*.sh" --include="*.bash" \
         --exclude-dir=".git" \
-        --exclude-dir="legacy" \
+        --exclude-dir="legacy-DoNotUse" \
         --exclude-dir="tests" \
         --exclude-dir="docs" \
         "$REPO_ROOT" 2>/dev/null || true
@@ -88,7 +88,7 @@ done < <({
 while IFS=: read -r file line content; do
     [[ -z "$file" ]] && continue
     case "$file" in
-        */tests/*|*/legacy/*|*/docs/*|*.md|*/core/redaction/*|*/core/router/*)
+        */tests/*|*/legacy-DoNotUse/*|*/docs/*|*.md|*/core/redaction/*|*/core/router/*)
             continue ;;
         */.git/*)
             continue ;;
@@ -98,7 +98,7 @@ done < <({
     grep -rn 'curl.*anthropic\|curl.*api\.anthropic' \
         --include="*.sh" --include="*.bash" \
         --exclude-dir=".git" \
-        --exclude-dir="legacy" \
+        --exclude-dir="legacy-DoNotUse" \
         --exclude-dir="tests" \
         --exclude-dir="docs" \
         "$REPO_ROOT" 2>/dev/null || true

@@ -21,7 +21,7 @@ Separate read-scope from write-scope, and make write-scope **negotiable through 
 A write-scope deny-list enforced as a **single chokepoint** (`scripts/lib/scope-governance.sh:scope_floor_denied`) that EVERY write-scope grant — from plan, design, build-expansion, or a re-plan escalation — must pass through. ADR-004 "no exceptions" discipline extended from reads to writes.
 
 Floor (always denied, regardless of any policy or class):
-- `legacy/*` — frozen upstream (ADR-002); only the migration prune protocol writes here, never build.
+- `legacy-DoNotUse/*` — frozen upstream (ADR-002); only a keeper prune (`git rm`) writes here, never build.
 - Secrets — `.env`, `*secret*`, `*credential*`, `*.pem`/`*.key`/`*.p12`/`*.pfx`.
 - Out-of-repo — absolute paths, `../` escapes.
 

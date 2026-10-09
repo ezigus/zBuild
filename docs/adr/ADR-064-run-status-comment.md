@@ -2,7 +2,7 @@
 
 **Status:** Proposed (2026-09-18)
 **Issue:** #2131
-**Keeper:** e-1 (KEEPERS §E — live-updating GitHub comment, PATCH, atomic id); tombstone `legacy/migrated/e-1.md`
+**Keeper:** e-1 (KEEPERS §E — live-updating GitHub comment, PATCH, atomic id)
 **Amends:** ADR-010 §3 (the `gh-pr-comment` destination row), ADR-015 (References — per-stage `gh_comment` capture is a separate surface and unchanged)
 **Related:** ADR-055 §9 (stage summaries), ADR-058 (write boundary), ADR-059 (issue-vs-run keying)
 
@@ -135,7 +135,7 @@ Two constraints shaped where it lives:
   (`_runner_status_comment_spawn` / `_reap`), `core/event-bus/event-bus.sh`
   (`seq`), `scripts/zbuild status-comment`.
 - Tests: `event-bus-seq-envelope`, `run-status-comment-{render,gh,loop}`,
-  `runner-status-comment-hook`, `cli-status-comment`, `legacy-e1-tombstone`
+  `runner-status-comment-hook`, `cli-status-comment`
   (unit); `run-status-comment-runner` (integration — the real runner, a
   GitHub that fails every call leaves the exit status alone). Mutation notes
   in `tests/mutation/run-status-comment.md`.

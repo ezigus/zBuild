@@ -77,5 +77,5 @@ do not require an install. This path is unchanged by ADR-023.
 | ---------------------------- | --------------------------------------- |
 | `scripts/`                   | `tests/` — only needed for development  |
 | `core/`                      | `docs/` — reference, not runtime        |
-| `plugins/`                   | `legacy/` — frozen reference            |
+| `plugins/`                   | `legacy-DoNotUse/` — frozen reference   |
 | `config/`                    | `.git/` — no version-control needed     |

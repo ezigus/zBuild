@@ -251,7 +251,7 @@ _security_lens_run_inner() {
     fi
 
     # ─── Parse: strip fences, extract .findings, validate array ───────────
-    # Ported from legacy/scripts/lib/compound-audit.sh:160-182
+    # Ported from legacy-DoNotUse/scripts/lib/compound-audit.sh:160-182
     local findings_json="[]"
     if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
         # ADR-028 v1.2 (#944): use _llm_envelope_parse --schema-gate so

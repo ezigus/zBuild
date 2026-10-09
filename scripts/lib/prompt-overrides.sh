@@ -19,7 +19,7 @@
 _ZBUILD_PROMPT_OVERRIDES_LOADED=1
 
 _PO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# scope_floor_denied: cheap string gate (absolute/../, legacy/, secrets).
+# scope_floor_denied: cheap string gate (absolute/../, legacy-DoNotUse/, secrets).
 # shellcheck source=./scope-governance.sh
 source "$_PO_DIR/scope-governance.sh"
 

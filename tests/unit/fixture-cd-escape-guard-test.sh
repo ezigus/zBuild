@@ -128,7 +128,7 @@ assert_eq "[SPEC-2] plain subshell under file-level set -e is not flagged" "" "$
 _files=()
 while IFS= read -r f; do _files+=("$f"); done < <(
     { printf '%s\n' "$REPO_ROOT/scripts/lib/test-helpers.sh"
-      find "$REPO_ROOT/tests" "$REPO_ROOT/plugins" "$REPO_ROOT/core" -name '*-test.sh' -not -path '*/legacy/*' 2>/dev/null
+      find "$REPO_ROOT/tests" "$REPO_ROOT/plugins" "$REPO_ROOT/core" -name '*-test.sh' -not -path '*/legacy-DoNotUse/*' 2>/dev/null
     } | grep -v '/fixture-cd-escape-guard-test.sh$' | sort -u)
 _hits="$(_scan_cd_escapes "${_files[@]}")"
 if [[ -z "$_hits" ]]; then

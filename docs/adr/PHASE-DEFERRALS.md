@@ -31,6 +31,6 @@ protocol for any legacy sources whose keeper has a deferred trial.
 - Items in this index are **not blocked**; they are intentionally scheduled.
 - When a deferred item lands, update this table and the originating ADR's
   Implementation Notes section.
-- ADR-002's pruning protocol cross-links here: if a keeper's 5-test trial is
-  blocked on a deferred issue, its `legacy/migrated/<keeper-id>.md` tombstone
-  MUST cite the relevant row in this table by issue number.
+- If a keeper's 5-test trial is blocked on a deferred issue, the keeper's
+  issue MUST cite the relevant row in this table by issue number. (There are
+  no tombstones; ADR-002, amended 2026-10-09.)

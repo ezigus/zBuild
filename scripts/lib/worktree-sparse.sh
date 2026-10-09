@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  scripts/lib/worktree-sparse.sh — leave frozen legacy/ out of issue trees  ║
+# ║  scripts/lib/worktree-sparse.sh — leave legacy-DoNotUse/ out of run trees  ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
-# ADR-059 §2 (#1802). Every linked worktree the engine acquires leaves out
-# legacy/ (keeping legacy/migrated/) so agents never traverse the frozen import.
+# ADR-059 §2 (#1802). Every linked worktree the engine acquires leaves out all
+# of legacy-DoNotUse/, no subdirectory excepted, so agents never traverse the
+# frozen upstream import (ADR-002).
 #
-# This is an OPTIMISATION, not a safety property: write-scope to legacy/ is
+# This is an OPTIMISATION, not a safety property: write-scope to it is
 # already refused by scope_floor_denied (scripts/lib/scope-governance.sh). So
 # every failure here FAILS OPEN — a warning on stderr naming the step and git's
 # own words, and the run carries on with the full tree. It never stops a run.
@@ -20,20 +21,20 @@ _ZBUILD_WORKTREE_SPARSE_LOADED=1
 _ZBUILD_SPARSE_MIN_GIT="2.35"
 
 _zbuild_sparse_warn() {
-    printf 'zbuild: warning: could not leave legacy/ out of %s: %s\n' "$1" "$2" >&2
+    printf 'zbuild: warning: could not leave legacy-DoNotUse/ out of %s: %s\n' "$1" "$2" >&2
     printf '  continuing with the full tree (an optimisation only; ADR-059 §2).\n' >&2
 }
 
-# A keeper widening: a plain relative path strictly under legacy/, with no
-# pattern syntax, no option shape and no `..` segment. Anything else would be
+# A keeper widening: a plain relative path strictly under legacy-DoNotUse/, with
+# no pattern syntax, no option shape and no `..` segment. Anything else would be
 # read by git as a pattern or option and could widen or undo the exclusion.
 _zbuild_sparse_legacy_path_ok() {
     local p="$1" rest seg
-    [[ "$p" == legacy/?* ]] || return 1
+    [[ "$p" == legacy-DoNotUse/?* ]] || return 1
     case "$p" in
         *[\!\*\?\[\]\\]*|*$'\n'*|*$'\r'*|*$'\t'*) return 1 ;;
     esac
-    rest="${p#legacy/}"
+    rest="${p#legacy-DoNotUse/}"
     local IFS=/
     for seg in $rest; do
         [[ -n "$seg" && "$seg" != ".." && "$seg" != "." ]] || return 1
@@ -78,13 +79,10 @@ _zbuild_worktree_apply_sparse() {
             fi ;;
     esac
 
-    local -a patterns=('/*' '!/legacy/' '/legacy/migrated/')
+    local -a patterns=('/*' '!/legacy-DoNotUse/')
     local line
     if [[ "$(git -C "$wt" config --bool --get core.sparseCheckout 2>/dev/null)" == "true" ]]; then
         while IFS= read -r line; do
-            case "$line" in
-                '/legacy/migrated/') continue ;;
-            esac
             [[ "$line" == /* ]] && _zbuild_sparse_legacy_path_ok "${line#/}" && patterns+=("$line")
         done < <(git -C "$wt" sparse-checkout list 2>/dev/null || true)
     fi
@@ -96,16 +94,16 @@ _zbuild_worktree_apply_sparse() {
 }
 
 # ─── zbuild_worktree_include_legacy_path <wt> <path> ────────────────────────
-# Widen one worktree to a single legacy/ file or directory, e.g. so a keeper
-# prune can `git rm` it. Additive, idempotent, and kept by every later
-# re-acquire. Not called by the engine (build may not write legacy/ at all);
+# Widen one worktree to a single legacy-DoNotUse/ file or directory, e.g. so a
+# keeper prune can `git rm` it. Additive, idempotent, and kept by every later
+# re-acquire. Not called by the engine (build may not write there at all);
 # it is the operator's tool for a by-hand prune (ADR-059 §2).
 zbuild_worktree_include_legacy_path() {
     local wt="${1:-}" path="${2:-}" err
     [[ -n "$wt" ]]   || { printf 'zbuild_worktree_include_legacy_path: wt required\n' >&2; return 2; }
     if ! _zbuild_sparse_legacy_path_ok "$path"; then
         printf 'zbuild_worktree_include_legacy_path: refusing %q\n' "$path" >&2
-        printf '  give a relative path under legacy/ (not legacy/ itself) with no * ? [ ] ! \\ or .. in it.\n' >&2
+        printf '  give a relative path under legacy-DoNotUse/ (not legacy-DoNotUse/ itself) with no * ? [ ] ! \\ or .. in it.\n' >&2
         return 2
     fi
     # `sparse-checkout add` appends even an existing line; skip it so repeated

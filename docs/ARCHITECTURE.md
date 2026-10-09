@@ -298,6 +298,8 @@ Required event types (lifted from legacy; carry forward):
 
 Schema-as-warn: unknown event types are logged with a warning but never block the pipeline.
 
+Terminal escape sequences never reach the log: `eb_emit_event` (`core/event-bus/event-bus.sh`) strips CSI sequences and then bare `ESC <char>` sequences (`_eb_strip_ansi`, run under `LC_ALL=C` so non-UTF-8 bytes do not abort BSD `sed`) from every payload value and from the `run_id`, `plugin` and `kind` envelope fields. Payload keys, `type` and `ts` are not stripped — they are structural or engine-generated — and `issue` is cast to a non-negative integer instead.
+
 ---
 
 ## 6.5. Two Memory Models (distinct, independent)
@@ -330,11 +332,11 @@ zBuild has two distinct kinds of "memory." They share no storage and have indepe
 - **Plugin kind** — the type discriminator on a manifest: `agent | tool | orchestrator | claim-coordinator | daemon`. Determines required lifecycle hooks.
 - **Chokepoint** — a single function/seam through which all data of a certain kind must pass (e.g., redaction). Enforced by code review + test, not by language-level access control.
 - **Tier (T0–T4)** — model routing ordinal. T0 = no LLM (Agent Booster / WASM); T1 = micro / haiku; T2 = sonnet; T3 = opus; T4 = experimental. Models are data in `config/models.json`; tier numbers are stable, model names are not referenced in code.
-- **Scope manifest** — fenced markdown block in `design.md` (or runtime equivalent) listing allowed paths. Artifact-as-contract: humans edit visually, engine parses with awk.
+- **Scope manifest** — fenced markdown block in `design.md` (or runtime equivalent) listing allowed paths. Artifact-as-contract: humans edit visually, the engine reads it line by line. Design and build each carry a copy of `_extract_scope_from_design` (`plugins/agent/design/plugin.sh`, `plugins/agent/build/lib/scope.sh`) that accepts trailing whitespace on the opening and closing fence lines and drops whitespace-only lines inside the block, because build's guard for the block's presence matches only the start of the fence line, so an exact match there would silently fall back to `plan.json` on a padded fence. Impact's own `_impact_extract_scope_from_design` (`plugins/agent/impact/plugin.sh`) is stricter: it matches the fence lines exactly and drops only empty lines.
 - **Atomic write** — `tmp file + mv + fsync + .bak rotation`. Every state write goes through this.
-- **Legacy citation** — a `legacy/path/file:line` reference in a KEEPERS section or issue body. Resolves until that file is `git rm`'d during the pruning protocol.
+- **State read** — every read of a state file validates it first (`validate_json`, `scripts/lib/helpers.sh`); a corrupt file is restored from its `.bak` atomically. When both are corrupt, `get_state_field` (`core/state/resume.sh`) returns the caller's default, while `read_state` and `locked_state_update` (`core/state/atomic.sh`) fail closed with rc 2; `locked_state_update` also emits `state.corruption.unrecoverable`.
+- **Legacy citation** — a `legacy-DoNotUse/path/file:line` reference in a KEEPERS section or issue body. Resolves until that file is `git rm`'d when its keeper's replacement lands.
 - **5-test trial** — the keeper acceptance gate: (1) behavior preserved, (2) regression test exists, (3) citation discoverable, (4) mapping matches, (5) removal reproduces symptom.
-- **Tombstone** — `legacy/migrated/<keeper-id>.md` written when a keeper passes its trial and its legacy source is removed.
 - **Admission gate** — sequence of checks before a pipeline starts: reap stale locks → count actives → memory floor → write lock → (eventually) release. Sequentially dependent, not parallel.
 - **Pipeline-resume memory** — operational state that lets an interrupted pipeline continue from the failure point. Defined by ADR-006; transported across CI runs by ADR-010 cache. Always-on, baked into core/state/. Distinct from learning memory.
 - **Learning memory** — patterns, embeddings, decisions, and success scores that accumulate across pipelines and runs. Defined by ADR-011; pluggable backends (sqlite default, ruflo HNSW optional). Distinct from pipeline-resume memory.
@@ -358,8 +360,7 @@ zBuild has two distinct kinds of "memory." They share no storage and have indepe
 | `scripts/lib/` | `helpers.sh`, `compat.sh`, `test-helpers.sh` |
 | `tests/` | migrated + new tests; `tests/golden/` for snapshot diffs |
 | `docs/adr/` | architecture decision records |
-| `legacy/` | frozen upstream import; shrinks to zero as keepers verify out |
-| `legacy/migrated/` | tombstones, one per migrated keeper |
+| `legacy-DoNotUse/` | frozen upstream import, kept only so KEEPERS citations resolve; shrinks to zero as keepers land (ADR-002) |
 | `.github/issues/` | `keepers-manifest.yaml` (source of truth for issue generation) |
 | `.github/workflows/` | CI/CD |
 | `.claude/` | hook settings, conventions for AI agents |

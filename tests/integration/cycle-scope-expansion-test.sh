@@ -93,7 +93,7 @@ _seed_state
 load_template "$FIXT/cycle-scope-expandable.yaml"
 MOCK_TEST_VERDICTS="fail,fail,fail,fail,fail"
 MOCK_REQUEST_ITER=1
-MOCK_REQUEST_JSON='{"files":[{"path":"legacy/x.sh","category":"collateral_tests","evidence":"x","reason":"need legacy"}]}'
+MOCK_REQUEST_JSON='{"files":[{"path":"legacy-DoNotUse/x.sh","category":"collateral_tests","evidence":"x","reason":"need legacy"}]}'
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
 assert_eq "T2: floor path → rc=1, outcome interrupted, reason blocked_on_scope" \
     "1 interrupted blocked_on_scope" "$rc ${_CYCLE_LAST_OUTCOME:-unset} ${_CYCLE_LAST_TERMINATED_REASON:-unset}"

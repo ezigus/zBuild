@@ -136,5 +136,5 @@ stage's most-recent event must be the redaction. Covered by
 ## References
 
 - [KEEPERS.md §C](../KEEPERS.md#section-c--reliability--safety-expanded) — redaction has 9 prompt seams; no wrapper today.
-- `legacy/scripts/lib/helpers.sh:634-800` — original `_redact_paths_outside_scope` implementation (reference for the new chokepoint).
-- `legacy/scripts/lib/pipeline-stages.sh:42` — scope-manifest extraction.
+- `legacy-DoNotUse/scripts/lib/helpers.sh:634-800` — original `_redact_paths_outside_scope` implementation (reference for the new chokepoint).
+- `legacy-DoNotUse/scripts/lib/pipeline-stages.sh:42` — scope-manifest extraction.

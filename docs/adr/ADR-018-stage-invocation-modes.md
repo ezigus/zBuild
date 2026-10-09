@@ -91,7 +91,7 @@ was broken for a different reason than we thought. Plan and review stages produc
 outputs because their tasks were light enough to complete without reading files;
 build's task requires reading before writing.
 
-### What shipwright does (frozen reference in `legacy/`)
+### What shipwright does (frozen reference in `legacy-DoNotUse/`)
 
 | Stage | Mode | `claude` flags |
 |---|---|---|
@@ -320,7 +320,7 @@ practice it silently failed on any conflict between the stashed working
 tree and the patch-touched files, leaving the LLM's edits hidden in the
 stash. Dogfood `20260601074651-63429` cycled to exhaustion with
 `numstat=0/0/0` every iter because every build run quietly stashed its
-own work. Legacy shipwright (`legacy/scripts/lib/pipeline-stages-build.sh`)
+own work. Legacy shipwright (`legacy-DoNotUse/scripts/lib/pipeline-stages-build.sh`)
 never did this dance — its `sw loop` runs in-place and the next iter's
 `git diff` reads the working tree directly.
 

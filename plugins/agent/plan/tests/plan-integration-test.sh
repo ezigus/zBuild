@@ -35,7 +35,7 @@ assert_eq "variant 1: no violation events" "0" "$v1_violations"
 
 # ─── Variant 2: out-of-scope plan → plan.json still written, violation emitted ─
 : > "$ZBUILD_EVENTS_JSONL"
-printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/oops.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"
+printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy-DoNotUse/oops.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"
 
 set +e
 _run_plan "$STATE_FILE" >/dev/null 2>&1
@@ -46,7 +46,7 @@ assert_file_exists "variant 2: plan.json still written" "$ARTIFACTS_DIR/plan.jso
 v2_violations="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "variant 2: one violation event" "1" "$v2_violations"
 v2_path="$(jq -r 'select(.type=="plan.scope.violation") | .data.path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
-assert_eq "variant 2: violation path is offender" "legacy/oops.sh" "$v2_path"
+assert_eq "variant 2: violation path is offender" "legacy-DoNotUse/oops.sh" "$v2_path"
 
 # ─── Variant 3 (#478): prose-prefixed JSON survives the subprocess boundary ─
 # The mock claude returns prose preface + JSON inside the envelope .result.
@@ -274,7 +274,7 @@ rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null 
 PLAN_GOAL="redaction guard resume goal"
 export ZBUILD_PLAN_RESUME=1
 # Run 1: error mock whose partial reasoning references an out-of-scope PATH. The
-# scope-manifest allows only core/ and plugins/, so legacy/ is out of scope.
+# scope-manifest allows only core/ and plugins/, so legacy-DoNotUse/ is out of scope.
 # apply_scope_redaction wraps out-of-scope PATHS in <out-of-scope-context> tags
 # (the resume splice keeps those tags — it does NOT run _zbuild_sanitize_for_llm,
 # which would strip them; see plugin.sh) — so the out-of-scope token must live
@@ -282,7 +282,7 @@ export ZBUILD_PLAN_RESUME=1
 # not what scope redaction targets). File channel (scrub-safe) so it reaches the
 # sidecar.
 _GUARD_RESULT="$TEST_TEMP_DIR/guard-run1-result.txt"
-printf '%s' "explored the file legacy/frozen/OUT_OF_SCOPE_SECRET.sh while planning" > "$_GUARD_RESULT"
+printf '%s' "explored the file legacy-DoNotUse/frozen/OUT_OF_SCOPE_SECRET.sh while planning" > "$_GUARD_RESULT"
 _install_plan_error_mock_file --subtype "error_max_turns" --result-file "$_GUARD_RESULT" --rc 1
 set +e
 _run_plan "$STATE_FILE" >/dev/null 2>&1

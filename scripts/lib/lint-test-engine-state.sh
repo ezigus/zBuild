@@ -22,7 +22,7 @@ _LES_ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 _LES_RE='"cycle_iterations"[[:space:]]*:[[:space:]]*\{|(^|[^."A-Za-z_])cycle_iterations[[:space:]]*:[[:space:]]*\{|\.cycle_iterations([.[][^[:space:]=]*)?[[:space:]]*(\|=|//=|=)[[:space:]]*[][{($"]'
 _bad=0
 while IFS= read -r -d '' f; do
-    [[ "$f" == */legacy/* ]] && continue
+    [[ "$f" == */legacy-DoNotUse/* ]] && continue
     _n=0
     while IFS= read -r line || [[ -n "$line" ]]; do
         _n=$((_n + 1))

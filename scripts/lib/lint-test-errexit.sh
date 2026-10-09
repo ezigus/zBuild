@@ -14,7 +14,7 @@ set -euo pipefail
 _LTE_ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 _bad=0
 while IFS= read -r -d '' f; do
-    [[ "$f" == */legacy/* ]] && continue
+    [[ "$f" == */legacy-DoNotUse/* ]] && continue
     # One awk pass: the header is the first `set -<flags>` line of the file's own
     # shell; heredoc bodies are skipped — a fixture script written by the test is
     # not the test's own shell (its `set -e` is the fixture's business).
