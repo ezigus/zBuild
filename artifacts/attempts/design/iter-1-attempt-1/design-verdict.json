@@ -1,0 +1,29 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-10-10T13:34:33Z",
+    "authored_at_commit": "42d90caeacda88972de690a30ec15f1f6540a6da",
+    "wiring_files": [
+      "config/templates/deployed.yaml",
+      "config/templates/simple.yaml"
+    ],
+    "scope_files": [
+      "config/templates/simple.yaml",
+      "config/templates/deployed.yaml",
+      "docs/adr/ADR-068-nested-loops-and-finding-answers.md",
+      "tests/unit/template-simple-yaml-test.sh",
+      "tests/integration/core-pipeline-cycle-build-test-wiring-test.sh",
+      "tests/integration/cycle-acceptance-terminal-failure-test.sh",
+      "tests/integration/cycle-gate-unavailable-aborts-run-test.sh",
+      "tests/integration/cycle-on-max-pipeline-continues-test.sh",
+      "tests/integration/cycle-rate-limit-aborts-run-test.sh",
+      "tests/lib/run-status-comment-mock-roster.sh",
+      "docs/adr/ADR-046-design-verify-shift-left.md",
+      "docs/wiki/Configuration.md",
+      "docs/wiki/Pipeline-and-Stages.md"
+    ]
+  }
+}

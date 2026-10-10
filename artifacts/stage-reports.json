@@ -2,7 +2,10 @@
   "scope_files": [
     "config/templates/deployed.yaml",
     "config/templates/simple.yaml",
+    "docs/adr/ADR-046-design-verify-shift-left.md",
     "docs/adr/ADR-068-nested-loops-and-finding-answers.md",
+    "docs/wiki/Configuration.md",
+    "docs/wiki/Pipeline-and-Stages.md",
     "tests/integration/core-pipeline-cycle-build-test-wiring-test.sh",
     "tests/integration/cycle-acceptance-terminal-failure-test.sh",
     "tests/integration/cycle-gate-unavailable-aborts-run-test.sh",
@@ -11,5 +14,8 @@
     "tests/lib/run-status-comment-mock-roster.sh",
     "tests/unit/template-simple-yaml-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [
+    "config/templates/deployed.yaml",
+    "config/templates/simple.yaml"
+  ]
 }
