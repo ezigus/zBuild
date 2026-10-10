@@ -1,0 +1,169 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## What you own
+### INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK below.
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Saying you are done
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer",
+emit `LOOP_COMPLETE` immediately. Do NOT keep iterating when there is
+nothing left to do. While any STAGE SUMMARY is headed that way, finishing
+with no change needs each of its findings answered: `done` (you changed
+something for it), or `nothing to do` with the reason.
+
+### When a finding does not reproduce
+If a failing summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Answer that finding, on its own line before the sentinel:
+
+    ANSWER <stage> finding <n>: nothing to do — not reproduced: <the path you ran>
+
+one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~630s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY headed "— its findings, to answer" is red RIGHT NOW on this tree.
+  Start from the failing line it quotes.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## What you judge against
+### ORIGINAL TASK (immutable across iterations)
+# Plan: Remove impact from shipped templates
+
+**Goal:** Remove the impact stage from the flow of both shipped templates (simple.yaml and deployed.yaml), update all tests that pin the roster, clean up unused stubs, and amend ADR-068 §1/§8 — leaving plugins/agent/impact/ and its unit tests untouched.
+
+## Steps
+1. Write RED tests first: update SPEC-18 in template-simple-yaml-test.sh to assert delivery_loop stages are 'design_verify_cycle,build_test_cycle' (dropping impact), and update T1 in core-pipeline-cycle-build-test-wiring-test.sh to assert the same. Both assertions fail on main, proving the tests are meaningful before the implementation lands.
+   - Files: `tests/unit/template-simple-yaml-test.sh`, `tests/integration/core-pipeline-cycle-build-test-wiring-test.sh`
+   - Estimated lines: 10
+2. Remove impact from both shipped templates: in simple.yaml remove '- impact' from delivery_loop flow, remove the stage block (lines ~345-373, ~29 lines including the banner comment), remove the delivery_loop banner reference to impact, and remove the 'prior_impact_feedback' / 'impact stage placed AFTER this cycle' comments from the design_verify_cycle banner. In deployed.yaml remove '- impact' from delivery_loop flow and remove the stage block (lines ~170-181, ~12 lines including banner). This makes the step-1 RED tests GREEN.
+   - Files: `config/templates/simple.yaml`, `config/templates/deployed.yaml`
+   - Estimated lines: 50
+3. Fix the remaining pinned assertions in template-simple-yaml-test.sh that are now stale: update SPEC-2 stage count from 20 to 19, remove impact from _expected_stages and shift all indices after it, delete the four SPEC-3 assertions for impact (roles/io/timeout/max_turns), and update SPEC-13's _TPL_STAGES[6] (impact was at index 6; every index from 7 onward must shift down by one).
+   - Files: `tests/unit/template-simple-yaml-test.sh`
+   - Estimated lines: 25
+4. Clean up unused impact stubs: in tests/lib/run-status-comment-mock-roster.sh remove the dead _make_impact_plugin() function body (lines ~57-91) and the live '_make_plugin "impact" "impact_analyzer"' call (line ~335). In each of the four integration tests (cycle-gate-unavailable-aborts-run-test.sh, cycle-rate-limit-aborts-run-test.sh, cycle-acceptance-terminal-failure-test.sh, cycle-on-max-pipeline-continues-test.sh) remove the inline _make_impact_plugin() function and the '_make_plugin "impact" "impact_analyzer"' call; also remove the impact-referencing comments at lines ~52 and ~61 of cycle-on-max-pipeline-continues-test.sh.
+   - Files: `tests/lib/run-status-comment-mock-roster.sh`, `tests/integration/cycle-gate-unavailable-aborts-run-test.sh`, `tests/integration/cycle-rate-limit-aborts-run-test.sh`, `tests/integration/cycle-acceptance-terminal-failure-test.sh`, `tests/integration/cycle-on-max-pipeline-continues-test.sh`
+   - Estimated lines: 60
+5. Amend ADR-068: update §1 to read 'design loop → build loop' (removing impact from the flow description), update §8 to remove impact from the list of stages that answer findings, add an 'Amended 2026-10-10' entry to the document header, and update the '## Enforced by' section for §1 to cite tests/unit/template-simple-yaml-test.sh SPEC-18 (which now asserts the two-stage delivery_loop) rather than a route_back refusal test that does not enforce the roster.
+   - Files: `docs/adr/ADR-068-nested-loops-and-finding-answers.md`
+   - Estimated lines: 20
+
+## Notes
+Prior exploration (budget-exhausted checkpoint) provided all file-level detail; this plan builds directly on it. Key assumptions: (1) The exact ADR-068 filename is 'ADR-068-nested-loops-and-finding-answers.md' — confirmed from checkpoint. (2) deployed-template-e2e-test.sh and template-blocking-reset-test.sh have no impact references and need no changes — confirmed from checkpoint. (3) All impact plugin unit tests (impact-*-test.sh, design-impact-cycle-*-test.sh, impact-pipeline-test.sh, impact-prefilter-781-regression-test.sh) and tests/unit/core-pipeline-template-test.sh drive the plugin directly or use a fixture template, not simple.yaml/deployed.yaml, so they are unaffected. (4) _make_impact_plugin() in mock-roster and the four integration tests is dead code (it defines but is never called); the live stub path is _make_plugin 'impact' 'impact_analyzer', which registers impact with the mock dispatcher — both must be removed. (5) step-1 is the mandated test-first RED step; the PR body must state what SPEC-18 and T1 asserted before and how they failed after the change. (6) The ADR 'Enforced by' update in step-5 is required for npm run lint (lint-adr-enforced-by.sh) to pass — the current pointer to no-fault-routing-test.sh does not enforce the delivery_loop roster; SPEC-18 does. Gap: the exact line numbers for the ADR file were not read directly — the implementer should read the file before editing. Gap: simple.yaml line count for the delivery_loop banner and design_verify_cycle banner were noted from prior exploration; implementer should re-read to confirm exact line ranges before removing.
+
+### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Remove `impact` from shipped templates (issue #1668)
+
+## Decision summary
+
+**Goal:** Remove `impact` from the `delivery_loop.flow` of both shipped templates (`simple.yaml` and `deployed.yaml`), leaving `plugins/agent/impact/` and its unit tests untouched, and amend ADR-068 §1/§8 to match.
+
+**Context:** `delivery_loop` currently sequences `design_verify_cycle → impact → build_test_cycle`. The impact stage is an LLM-heavy advisory stage (T2, 600 s, 45 turns) that runs once per outer loop. Removing it from the shipped templates shortens the pipeline while preserving the plugin for standard.yaml's `design_impact_cycle` and for future reuse. Tests pinning the delivery_loop roster, stage count, and stage indices all become stale and must be updated.
+
+**Decision:** Delete the `- impact` entry from `delivery_loop.flow` and the `impact:` stage section from both templates. Update every test that pins the roster, count, or positional index of any stage whose value shifts as a result (shape-floor, gate-aggregator, and impact itself). Remove the dead `_make_impact_plugin()` stubs and the live `_make_plugin "impact"` calls from the integration test mock rosters, because the runner's resolvability preflight will no longer require an impact plugin. Amend ADR-068 §1 and §8 to describe the two-member `delivery_loop` flow and update the Enforced by pointer for §1. Add a delivery_loop roster assertion to the existing `tests/integration/deployed-template-e2e-test.sh` (which already loads deployed.yaml) to close the coverage gap identified by spec-coverage: no existing assertion fails on main if `impact` remains in deployed.yaml's delivery_loop.
+
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+### ACCEPTANCE TESTS (you MUST make these pass)
+These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#1668/SPEC-1]).
+- SPEC-1: tests/unit/template-simple-yaml-test.sh
+- SPEC-2: tests/unit/template-simple-yaml-test.sh
+- SPEC-3: tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+- SPEC-7: tests/integration/deployed-template-e2e-test.sh
+
+What each SPEC requires:
+- [#1668/SPEC-1] `delivery_loop.flow` in simple.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; SPEC-18 in template-simple-yaml-test.sh (updated to assert `"design_verify_cycle,build_test_cycle"`) fails on main because the template has `"design_verify_cycle,impact,build_test_cycle"`
+- [#1668/SPEC-2] `_TPL_STAGES` for simple.yaml has exactly 19 entries (not 20); `impact` does not appear in the list; shape-floor is at index 10 (was 11) and gate-aggregator at index 15 (was 16); SPEC-2 count assertion and the SPEC-12/SPEC-13 index assertions fail on main
+- [#1668/SPEC-3] T1 in core-pipeline-cycle-build-test-wiring-test.sh asserts `_TPL_CYCLE_STAGES_delivery_loop` equals `"design_verify_cycle,build_test_cycle"` (no impact); the assertion fails on main where the template has `"design_verify_cycle,impact,build_test_cycle"`
+- [#1668/SPEC-4] `_make_impact_plugin()` function bodies and `_make_plugin "impact" "impact_analyzer"` calls removed from the four integration test files and the mock roster; these are dead stubs once the resolvability preflight no longer requires impact
+- [#1668/SPEC-5] ADR-068 §1 amended to read "design loop → build loop" (impact removed from the flow description); §8 amended to remove impact from the stages enumerated in the halt check; Enforced by §1 updated to add tests/unit/template-simple-yaml-test.sh SPEC-18 and tests/integration/deployed-template-e2e-test.sh as the roster enforcers (R1 for route_back refusal is retained); an "Amended 2026-10-10" note added to the document header
+- [#1668/SPEC-7] `delivery_loop.flow` in deployed.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; a new assertion added to tests/integration/deployed-template-e2e-test.sh asserts `_TPL_CYCLE_STAGES_delivery_loop` equals `"design_verify_cycle,build_test_cycle"` (the template is already loaded by that file's SPEC-1) and fails on main because deployed.yaml currently has `"design_verify_cycle,impact,build_test_cycle"`
+
+### REQUIREMENTS YOUR CODE MUST MEET
+Your change is done when the test for every requirement below passes.
+- [#1668/SPEC-1] `delivery_loop.flow` in simple.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; SPEC-18 in template-simple-yaml-test.sh (updated to assert `"design_verify_cycle,build_test_cycle"`) fails on main because the template has `"design_verify_cycle,impact,build_test_cycle"`
+  → its test is already written; make it pass
+- [#1668/SPEC-2] `_TPL_STAGES` for simple.yaml has exactly 19 entries (not 20); `impact` does not appear in the list; shape-floor is at index 10 (was 11) and gate-aggregator at index 15 (was 16); SPEC-2 count assertion and the SPEC-12/SPEC-13 index assertions fail on main
+  → its test is already written; make it pass
+- [#1668/SPEC-3] T1 in core-pipeline-cycle-build-test-wiring-test.sh asserts `_TPL_CYCLE_STAGES_delivery_loop` equals `"design_verify_cycle,build_test_cycle"` (no impact); the assertion fails on main where the template has `"design_verify_cycle,impact,build_test_cycle"`
+  → its test is already written; make it pass
+- [#1668/SPEC-4] `_make_impact_plugin()` function bodies and `_make_plugin "impact" "impact_analyzer"` calls removed from the four integration test files and the mock roster; these are dead stubs once the resolvability preflight no longer requires impact
+  → its test is already written; make it pass
+- [#1668/SPEC-5] ADR-068 §1 amended to read "design loop → build loop" (impact removed from the flow description); §8 amended to remove impact from the stages enumerated in the halt check; Enforced by §1 updated to add tests/unit/template-simple-yaml-test.sh SPEC-18 and tests/integration/deployed-template-e2e-test.sh as the roster enforcers (R1 for route_back refusal is retained); an "Amended 2026-10-10" note added to the document header
+  → its test is already written; make it pass
+- [#1668/SPEC-7] `delivery_loop.flow` in deployed.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; a new assertion added to tests/integration/deployed-template-e2e-test.sh asserts `_TPL_CYCLE_STAGES_delivery_loop` equals `"design_verify_cycle,build_test_cycle"` (the template is already loaded by that file's SPEC-1) and fails on main because deployed.yaml currently has `"design_verify_cycle,impact,build_test_cycle"`
+  → its test is already written; make it pass
+
+## What you must not do
+The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and do not edit it.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - config/templates/simple.yaml
+  - config/templates/deployed.yaml
+  - docs/adr/ADR-068-nested-loops-and-finding-answers.md
+  - tests/unit/template-simple-yaml-test.sh
+  - tests/integration/deployed-template-e2e-test.sh
+  - tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+  - tests/integration/cycle-acceptance-terminal-failure-test.sh
+  - tests/integration/cycle-gate-unavailable-aborts-run-test.sh
+  - tests/integration/cycle-on-max-pipeline-continues-test.sh
+  - tests/integration/cycle-rate-limit-aborts-run-test.sh
+  - tests/lib/run-status-comment-mock-roster.sh
+  - docs/adr/ADR-046-design-verify-shift-left.md
+  - docs/wiki/Configuration.md
+  - docs/wiki/Pipeline-and-Stages.md
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.

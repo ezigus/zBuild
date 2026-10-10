@@ -1,0 +1,482 @@
+diff --git a/config/templates/deployed.yaml b/config/templates/deployed.yaml
+index 8f856073..ff0e4068 100644
+--- a/config/templates/deployed.yaml
++++ b/config/templates/deployed.yaml
+@@ -59,7 +59,6 @@ delivery_loop:
+   description: Design, then build, until both pass — going round when a finding needs design
+   flow:
+     - design_verify_cycle
+-    - impact
+     - build_test_cycle
+   exit_when:
+     all:
+@@ -167,18 +166,6 @@ design-gate:
+     destinations: [file, stdout]
+     tail_lines: 200
+ 
+-# ─── impact (leaf, top-level advisory-by-placement) ──────────────────────────
+-impact:
+-  gate: auto
+-  roles: [impact_analyzer]
+-  io:
+-    destinations: [file, stdout]
+-    tail_lines: 200
+-  router:
+-    timeout_s: 600
+-    max_turns: 45
+-    retries: 1
+-
+ # ─── build (leaf, cycle member) ──────────────────────────────────────────────
+ build:
+   gate: auto
+diff --git a/config/templates/simple.yaml b/config/templates/simple.yaml
+index c44b2e78..d84fab0f 100644
+--- a/config/templates/simple.yaml
++++ b/config/templates/simple.yaml
+@@ -81,9 +81,6 @@ delivery_loop:
+   description: Design, then build, until both pass — going round when a finding needs design
+   flow:
+     - design_verify_cycle
+-    # The semantic judge of the design (advisory by placement, ADR-040): once
+-    # per round, after the design loop, never driving convergence.
+-    - impact
+     - build_test_cycle
+   exit_when:
+     all:
+@@ -117,10 +114,6 @@ delivery_loop:
+ #  (b) design.design → design.prior_design (self-edge) — mirrors design_impact_cycle
+ #      so iter N+1 refines rather than re-creates (#773 lesson).
+ #
+-# The SEMANTIC sibling (LLM judge: are the SPECs genuinely new + separable?) is the
+-# `impact` stage, placed AFTER this cycle in delivery_loop (advisory by placement,
+-# ADR-040) — NOT a member of this cycle, so it never re-runs per design iteration
+-# and never drives convergence.
+ design_verify_cycle:
+   type: cycle
+   description: Verify the design contract is build-ready until design-gate passes
+@@ -342,35 +335,6 @@ design-gate:
+     destinations: [file, stdout]
+     tail_lines: 200
+ 
+-# ─── impact (leaf, top-level advisory-by-placement) ──────────────────────────
+-# ADR-046 (#1218): the SEMANTIC sibling of the design verifier. Reused `impact`
+-# T2 agent (adversarial post-design consequence-finder) placed as a LONE top-level
+-# stage AFTER design_verify_cycle and BEFORE build_test_cycle. Advisory BY PLACEMENT
+-# (ADR-040): it has no exit_when, drives no convergence, and never blocks — so the
+-# LLM runs ONCE (not per design iteration). Its manifest is deliberately MARKER-LESS
+-# (no `convergence:`) — standard.yaml's design_impact_cycle binds impact via
+-# exit_when and the typed-aggregator preflight only checks MARKER-BEARING targets;
+-# adding a marker here would break standard.yaml. Router knobs copied from
+-# standard.yaml (T2, timeout 600s, max_turns 45, #960/#1242).
+-impact:
+-  gate: auto
+-  roles: [impact_analyzer]
+-  io:
+-    destinations: [file, stdout]
+-    tail_lines: 200
+-  router:
+-    # #1242: right-sized 180→600 to match the comparable tool-heavy T2 sibling
+-    # `design`. The 180s ceiling was inherited from the T1 era; the #960 T2
+-    # (sonnet) tier bump raised per-turn latency, so a 45-turn job overran both
+-    # 180s AND the #1230 escalated 270s retry (rc=124, ~7.5min silent hang, run
+-    # 20260704195255). retries below stays a safety net, not the primary budget.
+-    timeout_s: 600
+-    max_turns: 45
+-    # #1230: impact was the lone stage that timed out (rc=124) in the #944
+-    # dogfood. One retry-on-timeout (escalated budget) before the empty
+-    # verdict=incomplete fallback. Default is 0 (opt-in) everywhere else.
+-    retries: 1
+-
+ # ─── build (leaf, cycle member) ──────────────────────────────────────────────
+ build:
+   gate: auto
+diff --git a/docs/adr/ADR-068-nested-loops-and-finding-answers.md b/docs/adr/ADR-068-nested-loops-and-finding-answers.md
+index fb5d6050..4bddf8ce 100644
+--- a/docs/adr/ADR-068-nested-loops-and-finding-answers.md
++++ b/docs/adr/ADR-068-nested-loops-and-finding-answers.md
+@@ -1,7 +1,7 @@
+ # ADR-068 — Nested loops and finding answers: the engine never decides who owns a finding
+ 
+-**Status:** Accepted (2026-10-04)
+-**Issue:** #2271; §8 amended by #2330 (2026-10-06)
++**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop)
++**Issue:** #2271; §8 amended by #2330 (2026-10-06); §1 §8 amended by #1668 (2026-10-10)
+ **Supersedes:** ADR-045 (bounded typed backward-route), ADR-061 (fault-class vocabulary)
+ **Amends:** ADR-021, ADR-027, ADR-040, ADR-046, ADR-047, ADR-054 §4, ADR-055 (finding-owner amendment)
+ **Related:** ADR-063 §5 (every model-calling stage declares a save-as-you-go output), ADR-066, ADR-067
+@@ -18,7 +18,7 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
+ 
+ ## Decision
+ 
+-1. **Nested loops, nothing jumps backwards.** The default flow is one outer loop holding the design loop and the build loop (`delivery_loop` in `simple.yaml` and `deployed.yaml`): design loop → impact → build loop. Plan runs once, before it. `route_back` is removed; a template that declares it is refused at load, with an error that says the nested loops replace it.
++1. **Nested loops, nothing jumps backwards.** The default flow is one outer loop holding the design loop and the build loop (`delivery_loop` in `simple.yaml` and `deployed.yaml`): design loop → build loop. Plan runs once, before it. `route_back` is removed; a template that declares it is refused at load, with an error that says the nested loops replace it.
+ 2. **Inner loops reset each time they start.** Each time the outer loop goes round, the design loop and the build loop start again at round 1. Budgets: outer 2, design 2, build 3, so at most 2 × (2 + 3) model rounds.
+ 3. **An inner loop that ends without converging ends the outer round.** This applies when the inner loop declares `on_max: halt`, or runs out with tests failing. The members after it are skipped and the outer loop goes round from the top; a design the checks still reject is never built. When the outer rounds are spent, the outer loop's own `on_max` applies, and in the default flow the run stops. An inner loop with `on_max: continue` keeps ADR-019's fall-through.
+ 4. **An outer loop's multi-condition `exit_when` is its own.** Running an inner loop never changes how the outer loop's exit is evaluated.
+@@ -29,7 +29,7 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
+ 7. **Only the stage that opened a finding can close it,** with `satisfied — <why>`. A model check judges the work fresh first, then is shown its own earlier findings and asked about each. A check that does not call a model closes a finding by not reporting it again.
+ 8. **The engine only counts answers; it never decides ownership.**
+    - **`unowned: yield`** on a loop: when every member of the loop that answers findings (other than the finding's opener) answered `nothing to do` to the same finding, the loop ends early. The outer loop then goes round from the top, carrying every finding.
+-   - **`unowned: halt`** on the outer loop: just before the yielding loop comes round again, every stage that answers findings and ran in between (the design loop's stages, impact, …) is checked. If all of them answered `nothing to do` to that finding, nobody owns it. The run stops and writes `artifacts/unowned-findings.md`, listing each finding, the stage that opened it, and every answer with its why.
++   - **`unowned: halt`** on the outer loop: just before the yielding loop comes round again, every stage that answers findings and ran in between (the design loop's stages, …) is checked. If all of them answered `nothing to do` to that finding, nobody owns it. The run stops and writes `artifacts/unowned-findings.md`, listing each finding, the stage that opened it, and every answer with its why.
+    - An early hand-back is recorded as such: the loop's state reads `unowned_finding`, and its banner says it ended early.
+    - One `done` from anyone keeps a finding where it is. A member that should have answered and did not counts as not disclaiming. Each round counts only answers given in it: a loop clears its stages' answers when a round starts.
+    - **The last round still reports (#2330).** The check above runs only when another round is coming. When an `unowned: halt` loop has no round left, the run stops with the same report if a loop handed a finding back in that round, or a check is not sure an item is met (`data.unsure`). The loop's state reads `unowned_finding`, and the report lists every answer given. A loop that runs again has its earlier hand-back cleared first, so a finding acted on since is never reported.
+@@ -56,7 +56,7 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
+ 
+ ## Enforced by
+ 
+-- §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it)
++- §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it); `tests/unit/template-simple-yaml-test.sh` SPEC-18 (delivery_loop flow is design_verify_cycle,build_test_cycle); `tests/integration/deployed-template-e2e-test.sh` (delivery_loop flow in deployed.yaml is design_verify_cycle,build_test_cycle)
+ - §2, §3, §4 → `tests/integration/nested-loop-rounds-test.sh` L1, L2, L4, L5; `tests/integration/nested-loop-rounds-build-test.sh` L3, L6; `tests/integration/cycle-member-dispatch-events-test.sh` §3 (rc 8 still halts on the last outer round); `tests/integration/cycle-rate-limit-aborts-run-test.sh` (rc 9 from an inner loop ends the run)
+ - §5 → `tests/unit/numbered-findings-test.sh` N1–N5
+ - §6, §7 → `tests/unit/finding-answers-test.sh` A1–A10 (A7: the request comes after the findings the funnel adds, #2294; A8: the accepted line shapes, #2322; A9: not reproduced is recorded as `nothing to do`, #2322; A10: a colon after the answer word is accepted for every word, #2332)
+diff --git a/tests/integration/core-pipeline-cycle-build-test-wiring-test.sh b/tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+index b6731d8d..be939d6c 100755
+--- a/tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
++++ b/tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+@@ -57,8 +57,8 @@ for u in "${_TPL_DISPATCH_UNITS[@]}"; do
+     [[ "$u" == "cycle:delivery_loop" ]] && has_outer=1
+ done
+ assert_eq "T1: dispatch units include cycle:delivery_loop" "1" "$has_outer"
+-assert_eq "T1: delivery_loop runs the design loop, impact, then build_test_cycle" \
+-    "design_verify_cycle,impact,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
++assert_eq "T1: [#1668/SPEC-3] delivery_loop runs the design loop then build_test_cycle (impact removed)" \
++    "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+ # ADR-040 (#1138): the inner cycle's feedback edge is now the consolidated
+ # gate-aggregator payload (gate-aggregator:gate_feedback → build:gate_feedback)
+ # — the composable-gate successor to standard's test_assessment feedback.
+diff --git a/tests/integration/cycle-acceptance-terminal-failure-test.sh b/tests/integration/cycle-acceptance-terminal-failure-test.sh
+index f5c1cb60..c82a741d 100755
+--- a/tests/integration/cycle-acceptance-terminal-failure-test.sh
++++ b/tests/integration/cycle-acceptance-terminal-failure-test.sh
+@@ -94,42 +94,6 @@ design_run() {
+ PLUG
+ }
+ 
+-_make_impact_plugin() {
+-    local dir="$PLUGINS_ROOT/agent/impact"
+-    mkdir -p "$dir"
+-    cat > "$dir/manifest.yaml" <<'EOF'
+-id: impact
+-name: Test impact
+-kind: agent
+-version: 0.0.1
+-hooks:
+-  run: impact_run
+-requires:
+-  core:
+-    - redaction
+-provides:
+-  role: impact_analyzer
+-  result_contract: 2
+-outputs:
+-  - id: impact_out
+-    path: ${artifact_dir}/impact.json
+-    type: json
+-    required: true
+-    primary: true
+-config:
+-  valid_verdicts: [complete, incomplete, error]
+-EOF
+-    cat > "$dir/plugin.sh" <<'PLUG'
+-impact_run() {
+-    local state_dir; state_dir="$(dirname "$2")"
+-    mkdir -p "$state_dir/artifacts"
+-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}' \
+-        > "$state_dir/artifacts/impact.json"
+-    return 0
+-}
+-PLUG
+-}
+-
+ _make_plan_plugin() {
+     local dir="$PLUGINS_ROOT/agent/plan"
+     mkdir -p "$dir"
+@@ -316,7 +280,6 @@ _make_plugin "intake"          "intake"
+ _make_plan_plugin
+ _make_design_plugin
+ _make_design_gate_plugin       # passes so design_verify_cycle converges quickly
+-_make_plugin "impact"          "impact_analyzer"
+ # #2187: build_test_cycle's newer members. Unresolved, each was a silent
+ # `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
+ _make_plugin "spec-coverage"       "spec_coverage"
+diff --git a/tests/integration/cycle-gate-unavailable-aborts-run-test.sh b/tests/integration/cycle-gate-unavailable-aborts-run-test.sh
+index 7102f27b..41cb9d57 100755
+--- a/tests/integration/cycle-gate-unavailable-aborts-run-test.sh
++++ b/tests/integration/cycle-gate-unavailable-aborts-run-test.sh
+@@ -96,42 +96,6 @@ design_run() {
+ PLUG
+ }
+ 
+-_make_impact_plugin() {
+-    local dir="$PLUGINS_ROOT/agent/impact"
+-    mkdir -p "$dir"
+-    cat > "$dir/manifest.yaml" <<'EOF'
+-id: impact
+-name: Test impact
+-kind: agent
+-version: 0.0.1
+-hooks:
+-  run: impact_run
+-requires:
+-  core:
+-    - redaction
+-provides:
+-  role: impact_analyzer
+-  result_contract: 2
+-outputs:
+-  - id: impact_out
+-    path: ${artifact_dir}/impact.json
+-    type: json
+-    required: true
+-    primary: true
+-config:
+-  valid_verdicts: [complete, incomplete, error]
+-EOF
+-    cat > "$dir/plugin.sh" <<'PLUG'
+-impact_run() {
+-    local state_dir; state_dir="$(dirname "$2")"
+-    mkdir -p "$state_dir/artifacts"
+-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}' \
+-        > "$state_dir/artifacts/impact.json"
+-    return 0
+-}
+-PLUG
+-}
+-
+ _make_plan_plugin() {
+     local dir="$PLUGINS_ROOT/agent/plan"
+     mkdir -p "$dir"
+@@ -357,7 +321,6 @@ _make_plugin "intake"          "intake"
+ _make_plan_plugin
+ _make_design_plugin
+ _make_design_gate_plugin       # passes so design_verify_cycle converges quickly
+-_make_plugin "impact"          "impact_analyzer"
+ # #2187: build_test_cycle's newer members. Unresolved, each was a silent
+ # `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
+ _make_plugin "spec-coverage"       "spec_coverage"
+diff --git a/tests/integration/cycle-on-max-pipeline-continues-test.sh b/tests/integration/cycle-on-max-pipeline-continues-test.sh
+index 6de14a74..ba571c43 100755
+--- a/tests/integration/cycle-on-max-pipeline-continues-test.sh
++++ b/tests/integration/cycle-on-max-pipeline-continues-test.sh
+@@ -49,7 +49,7 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
+ # on_max=continue continue-past-exhaustion mechanic is identical; simple.yaml's
+ # design_verify_cycle (on_max=continue in the overlay, #2241) is the exhausting cycle here, forced by a
+ # design-gate stub that never returns verdict=pass. All other stages succeed so
+-# the runner walks past the exhausted cycle to impact → build_test_cycle →
++# the runner walks past the exhausted cycle to build_test_cycle →
+ # review_lenses → pr and ends status=success.
+ _make_plugin() {
+     local id="$1" role="${2:-}" rc="${3:-0}"
+@@ -228,7 +228,6 @@ _make_design_gate_plugin   # forces design_verify_cycle to exhaust
+ # reports reason='blocked' at iter 1 instead of exhausting, and every
+ # assertion below fails for a reason unrelated to on_max=continue.
+ _make_plugin "spec-coverage"   "spec_coverage"
+-_make_plugin "impact"          "impact_analyzer"
+ # #2187: build_test_cycle's newer members. Unresolved, each was a silent
+ # `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
+ _make_plugin "test-author"         "test_author"
+diff --git a/tests/integration/cycle-rate-limit-aborts-run-test.sh b/tests/integration/cycle-rate-limit-aborts-run-test.sh
+index b7cd8de8..03a4e325 100755
+--- a/tests/integration/cycle-rate-limit-aborts-run-test.sh
++++ b/tests/integration/cycle-rate-limit-aborts-run-test.sh
+@@ -93,42 +93,6 @@ design_run() {
+ PLUG
+ }
+ 
+-_make_impact_plugin() {
+-    local dir="$PLUGINS_ROOT/agent/impact"
+-    mkdir -p "$dir"
+-    cat > "$dir/manifest.yaml" <<'EOF'
+-id: impact
+-name: Test impact
+-kind: agent
+-version: 0.0.1
+-hooks:
+-  run: impact_run
+-requires:
+-  core:
+-    - redaction
+-provides:
+-  role: impact_analyzer
+-  result_contract: 2
+-outputs:
+-  - id: impact_out
+-    path: ${artifact_dir}/impact.json
+-    type: json
+-    required: true
+-    primary: true
+-config:
+-  valid_verdicts: [complete, incomplete, error]
+-EOF
+-    cat > "$dir/plugin.sh" <<'PLUG'
+-impact_run() {
+-    local state_dir; state_dir="$(dirname "$2")"
+-    mkdir -p "$state_dir/artifacts"
+-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}' \
+-        > "$state_dir/artifacts/impact.json"
+-    return 0
+-}
+-PLUG
+-}
+-
+ _make_plan_plugin() {
+     local dir="$PLUGINS_ROOT/agent/plan"
+     mkdir -p "$dir"
+@@ -375,7 +339,6 @@ _make_plugin "intake"          "intake"
+ _make_plan_plugin
+ _make_design_plugin
+ _make_design_gate_plugin       # passes so design_verify_cycle converges quickly
+-_make_plugin "impact"          "impact_analyzer"
+ # #2187: build_test_cycle's newer members. Unresolved, each was a silent
+ # `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
+ _make_plugin "spec-coverage"       "spec_coverage"
+diff --git a/tests/integration/deployed-template-e2e-test.sh b/tests/integration/deployed-template-e2e-test.sh
+index 8f5948a5..bdb1cea7 100755
+--- a/tests/integration/deployed-template-e2e-test.sh
++++ b/tests/integration/deployed-template-e2e-test.sh
+@@ -97,6 +97,14 @@ set -e
+ 
+ assert_eq "[SPEC-1] deployed.yaml loads without error (exit 0)" "0" "$_load_rc"
+ 
++# ─── [#1668/SPEC-7]: delivery_loop.flow in deployed.yaml excludes impact ─────
++# CHANGE: deployed.yaml's delivery_loop previously sequenced
++# design_verify_cycle,impact,build_test_cycle. After #1668 impact is absent.
++# This assertion fails on main (three members) and passes once the template is
++# updated (two members). The template is already loaded above by SPEC-1.
++assert_eq "[#1668/SPEC-7] deployed.yaml delivery_loop flow is design_verify_cycle,build_test_cycle (impact absent)" \
++    "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
++
+ # ─── SPEC-10: review_lenses map group includes 'sre' (issue #1517) ───────────
+ # CHANGE: at merge-base deployed.yaml's review_lenses elements list did not
+ # include 'sre' — this assertion fails there and passes at HEAD.
+diff --git a/tests/lib/run-status-comment-mock-roster.sh b/tests/lib/run-status-comment-mock-roster.sh
+index 74577ed2..bb4bb5bf 100644
+--- a/tests/lib/run-status-comment-mock-roster.sh
++++ b/tests/lib/run-status-comment-mock-roster.sh
+@@ -54,42 +54,6 @@ design_run() {
+ PLUG
+ }
+ 
+-_make_impact_plugin() {
+-    local dir="$PLUGINS_ROOT/agent/impact"
+-    mkdir -p "$dir"
+-    cat > "$dir/manifest.yaml" <<'EOF'
+-id: impact
+-name: Test impact
+-kind: agent
+-version: 0.0.1
+-hooks:
+-  run: impact_run
+-requires:
+-  core:
+-    - redaction
+-provides:
+-  role: impact_analyzer
+-  result_contract: 2
+-outputs:
+-  - id: impact_out
+-    path: ${artifact_dir}/impact.json
+-    type: json
+-    required: true
+-    primary: true
+-config:
+-  valid_verdicts: [complete, incomplete, error]
+-EOF
+-    cat > "$dir/plugin.sh" <<'PLUG'
+-impact_run() {
+-    local state_dir; state_dir="$(dirname "$2")"
+-    mkdir -p "$state_dir/artifacts"
+-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}' \
+-        > "$state_dir/artifacts/impact.json"
+-    return 0
+-}
+-PLUG
+-}
+-
+ _make_plan_plugin() {
+     local dir="$PLUGINS_ROOT/agent/plan"
+     mkdir -p "$dir"
+@@ -332,7 +296,6 @@ _make_slow_intake_plugin
+ _make_plan_plugin
+ _make_design_plugin
+ _make_design_gate_plugin
+-_make_plugin "impact"          "impact_analyzer"
+ _make_build_plugin
+ _make_test_plugin
+ _make_plugin "shape-floor"     "shape_floor"
+diff --git a/tests/unit/template-simple-yaml-test.sh b/tests/unit/template-simple-yaml-test.sh
+index cb34b640..ef82a291 100755
+--- a/tests/unit/template-simple-yaml-test.sh
++++ b/tests/unit/template-simple-yaml-test.sh
+@@ -78,9 +78,9 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
+ # exists) and `assertion-integrity` guards them just before the aggregate.
+ # 19 -> 20: #1849 adds issue-acceptance before gate-aggregator — the finished
+ # change judged against the ISSUE, the one link below the SPEC.
+-assert_eq "[SPEC-2] _TPL_STAGES count is 20" "20" "${#_TPL_STAGES[@]}"
++assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 19" "19" "${#_TPL_STAGES[@]}"
+ 
+-_expected_stages=(hydrate intake plan design spec-coverage design-gate impact test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance gate-aggregator review_lenses review-aggregator pr)
++_expected_stages=(hydrate intake plan design spec-coverage design-gate test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance gate-aggregator review_lenses review-aggregator pr)
+ _i=0
+ for _s in "${_expected_stages[@]}"; do
+     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
+@@ -131,14 +131,12 @@ assert_eq "[SPEC-3] design router max_turns" "0"           "$_TPL_STAGE_ROUTER_M
+ assert_eq "[SPEC-3] design-gate roles"    "design_gate" "$_TPL_STAGE_ROLES_design_gate"
+ assert_eq "[SPEC-3] design-gate io_dests" "file,stdout" "$_TPL_STAGE_IO_DESTS_design_gate"
+ 
+-# impact (#1218, ADR-046): reused T2 agent as a lone advisory-by-placement stage
+-# (role impact_analyzer, timeout 600 / max_turns 45 copied from standard.yaml).
+-# #1242: timeout right-sized 180→600 to match its tool-heavy T2 sibling `design`
+-# (the 180s T1-era budget was too low for a 45-turn sonnet job — rc=124 hang).
+-assert_eq "[SPEC-3] impact roles"            "impact_analyzer" "$_TPL_STAGE_ROLES_impact"
+-assert_eq "[SPEC-3] impact io_dests"         "file,stdout"     "$_TPL_STAGE_IO_DESTS_impact"
+-assert_eq "[SPEC-3] impact router timeout"   "600"             "$_TPL_STAGE_ROUTER_TIMEOUT_impact"
+-assert_eq "[SPEC-3] impact router max_turns" "45"              "$_TPL_STAGE_ROUTER_MAX_TURNS_impact"
++# impact removed from simple.yaml delivery_loop (#1668): all four impact stage vars
++# must be unset once the impact section is absent from the template.
++assert_eq "[SPEC-3] impact roles unset (impact removed from template)"            "" "${_TPL_STAGE_ROLES_impact:-}"
++assert_eq "[SPEC-3] impact io_dests unset (impact removed from template)"         "" "${_TPL_STAGE_IO_DESTS_impact:-}"
++assert_eq "[SPEC-3] impact router timeout unset (impact removed from template)"   "" "${_TPL_STAGE_ROUTER_TIMEOUT_impact:-}"
++assert_eq "[SPEC-3] impact router max_turns unset (impact removed from template)" "" "${_TPL_STAGE_ROUTER_MAX_TURNS_impact:-}"
+ 
+ # build
+ assert_eq "[SPEC-3] build roles"            "builder"     "$_TPL_STAGE_ROLES_build"
+@@ -206,8 +204,8 @@ assert_eq "[SPEC-11] dispatch[5] stage:review-aggregator" "stage:review-aggregat
+ assert_eq "[SPEC-11] dispatch[6] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[6]}"
+ 
+ # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
+-assert_eq "[SPEC-18] delivery_loop holds the design loop, impact and the build loop" \
+-    "design_verify_cycle,impact,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
++assert_eq "[SPEC-18] [#1668/SPEC-1] delivery_loop holds the design loop and the build loop (impact removed)" \
++    "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+ assert_eq "[SPEC-18] delivery_loop runs at most 2 rounds" "2" "${_TPL_CYCLE_MAX_delivery_loop:-}"
+ assert_eq "[SPEC-18] delivery_loop halts when its rounds are spent" "halt" "${_TPL_CYCLE_ON_MAX_delivery_loop:-}"
+ assert_eq "[SPEC-18] delivery_loop stops on a finding nobody owns" "halt" "${_TPL_CYCLE_UNOWNED_delivery_loop:-}"
+@@ -276,19 +274,17 @@ assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
+ # gate-aggregator from 8 to 10 (design=2,design-gate=3,impact=4,build=5,test=6,
+ # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
+ 
+-assert_eq "[SPEC-12] _TPL_STAGES[11] == shape-floor" "shape-floor" "${_TPL_STAGES[11]}"
+-assert_eq "[SPEC-12] _TPL_STAGES[16] == gate-aggregator (cycle exit_when source)" \
+-    "gate-aggregator" "${_TPL_STAGES[16]}"
++assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[10] == shape-floor" "shape-floor" "${_TPL_STAGES[10]}"
++assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[15] == gate-aggregator (cycle exit_when source)" \
++    "gate-aggregator" "${_TPL_STAGES[15]}"
+ 
+-# ─── SPEC-13: design is at index 3; design-gate at 4, impact at 5 ─────────────
++# ─── SPEC-13: design is at index 3; design-gate at 5 ─────────────────────────
+ # CHANGE: design sits at index 3 (after hydrate, intake, plan); its verifier
+-# design-gate follows at 4, then the advisory impact at 5 (#1218, ADR-046).
+-# Every index here shifted by one when #1074 put `hydrate` first — the relative
+-# ORDER, which is what ADR-046 actually constrains, is unchanged.
++# design-gate follows at 5 (spec-coverage at 4), then test-author at 6 (#1668).
++# The advisory impact stage has been removed from simple.yaml (#1668).
+ 
+ assert_eq "[SPEC-13] _TPL_STAGES[3] == design" "design" "${_TPL_STAGES[3]}"
+ assert_eq "[SPEC-13] _TPL_STAGES[5] == design-gate" "design-gate" "${_TPL_STAGES[5]}"
+-assert_eq "[SPEC-13] _TPL_STAGES[6] == impact" "impact" "${_TPL_STAGES[6]}"
+ 
+ # ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
+ # GUARD: simple.yaml's pr stage declares roles: [pr]. Since #1704 that role is
