@@ -346,6 +346,23 @@ Precedent is one day old: #1809 extracted `core/plugin-registry/output-paths.sh`
 halves disagree about where a declared output lives is not a boundary."* **A layout whose
 consumers disagree about how a run is keyed is not a layout.**
 
+### 7. Host-wide run cap, off unless configured (2026-10-10)
+
+**Issue exclusivity (§4) decides which issue can run; it says nothing about how many runs the host can support simultaneously.** A host under memory pressure that starts N+1 concurrent pipeline runs will OOM, and §4 permits it. `core/state/issue-lock.sh:21–24` names this gap explicitly: *"NOT A CAPACITY CAP … zBuild still lacks it (#1932). Issue exclusivity is a keyed mutex; host capacity is a counted cap."* Legacy shipwright's pipeline lock (`legacy-DoNotUse/scripts/sw-pipeline.sh:325`) had a flat PID-keyed count, fail-on-exceed, dead-holder reap — the shape this section now brings to zBuild.
+
+**Rules (effective 2026-10-10):**
+
+- The cap is **off by default.** Setting `ZBUILD_MAX_CONCURRENT_RUNS=N` enables it. When unset, `zbuild_run_cap_admit` is a no-op: it returns 0, writes no slot file, and produces no output.
+- The count is **flat**: every live pipeline run on the host counts equally, regardless of which issue or goal it is running.
+- **Dead holders are reaped before counting.** `zbuild_run_is_live` (ADR-006's staleness gate) is the predicate. A slot whose state file reports anything other than `status=in_progress` with a fresh (<24h) `updated_at` is removed before the count is taken, so a crashed run cannot block new work indefinitely.
+- **Fail-open.** Any infrastructure failure during cap enforcement (unwritable slot dir, unreadable slot files, missing predicate function) admits the run with a warning to stderr rather than refusing it. Only a successful count at or above the cap refuses.
+- **Explicit override.** `ZBUILD_NO_RUN_CAP=1` bypasses the cap entirely, with a warning to stderr. Named for what it disables, following `ZBUILD_NO_ISSUE_LOCK=1` (§4).
+- **Refusal names blockers.** When a run is refused, `_ZBUILD_RUN_CAP_BLOCKERS` is set to a space-separated list of the blocking `run_id` values, and the refusal message emitted to stderr names every blocker. The `pipeline.refused.run_cap` event is emitted.
+- **Race window on no-flock hosts.** Two runs starting simultaneously can both pass a cap of 1 via count-then-write. This mirrors the no-flock weakness already stated and accepted in `issue-lock.sh:141–149`, and is documented here rather than hidden.
+- **Release in exit trap.** `zbuild_run_cap_release` is called in `_runner_abort_trap` alongside `zbuild_issue_lock_release`. It is a no-op if no slot was written (guarded by `-f` check).
+
+**Implementation:** `core/state/run-cap.sh`. Slot files live at `${ZBUILD_STATE_ROOT}/run-slots/$$.json`, keyed by PID so a slot is unambiguously owned by one process. The runner sources it at `core/pipeline/runner.sh:25–27`, calls `zbuild_run_cap_admit` before the issue lock acquire (cap is the coarser resource gate; fail fast), and calls `zbuild_run_cap_release` in `_runner_abort_trap`.
+
 ## Consequences
 
 **Positive**
@@ -433,3 +450,8 @@ committed, stash ablates nothing and reports a false pass.
   and a re-acquire over a foreign sparse config lands on the base patterns plus keeper widenings
 - `tests/unit/no-test-reads-legacy-test.sh` — §2 no test reads `legacy-DoNotUse/`: every test tier
   is scanned for a `$REPO_ROOT/legacy-DoNotUse/` path (or the tree's old name), with no exception
+- `tests/unit/run-cap-test.sh` — §7 host-wide run cap: ZBUILD_MAX_CONCURRENT_RUNS unset is a no-op
+  (SPEC-1), cap N with N live slots refuses naming blockers (SPEC-2), stale slot reaped before
+  counting (SPEC-3), ZBUILD_NO_RUN_CAP=1 bypasses with warning (SPEC-4), unreadable slot dir
+  fails open with warning (SPEC-5), below-cap admission writes slot (SPEC-6), ADR §7 and
+  pipeline.refused.run_cap event registered (SPEC-7)

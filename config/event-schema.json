@@ -15,6 +15,7 @@
     "stage.skip",
     "stage.always_run.unresolved",
     "pipeline.refused.issue_locked",
+    "pipeline.refused.run_cap",
     "hydrate.start",
     "hydrate.complete",
     "hydrate.fetch.failed",
