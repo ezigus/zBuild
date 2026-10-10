@@ -1,0 +1,9 @@
+{
+  "scope_files": [
+    "core/pipeline/runner.sh",
+    "core/state/run-cap.sh",
+    "docs/adr/ADR-059-issue-vs-run-keying.md",
+    "tests/unit/run-cap-test.sh"
+  ],
+  "wiring_files": []
+}
