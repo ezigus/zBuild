@@ -3,3 +3,5 @@
 9be4068accb801d02bee1ff9a138540a5ffa31a9fe205a1b87c728052cd7b4df  tests/unit/template-simple-yaml-test.sh
 a5eeaae2d864a2bdf02af1d1fc296859e7889c50f07e56e8b23bfaa30d748d6b  tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
 a2061eef66118a7b459861907141ca0fc4006e1ea257884fe6825fdfa67ec136  tests/integration/deployed-template-e2e-test.sh
+2d4f994b9a1cbbcf94964db55eab429ac96a221cd565be4d6786f31ebf9e342a  tests/unit/impact-max-turns-test.sh
+44ad3a5129a53f2bf414fe64a903d8cd9544438e7b1012412407b2c68e2f7eb2  tests/unit/template-always-run-test.sh

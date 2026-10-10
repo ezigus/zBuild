@@ -34,6 +34,8 @@
     "test-author": [
       "tests/integration/core-pipeline-cycle-build-test-wiring-test.sh",
       "tests/integration/deployed-template-e2e-test.sh",
+      "tests/unit/impact-max-turns-test.sh",
+      "tests/unit/template-always-run-test.sh",
       "tests/unit/template-simple-yaml-test.sh"
     ]
   }
