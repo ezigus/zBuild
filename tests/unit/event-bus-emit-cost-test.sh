@@ -133,13 +133,14 @@ assert_eq "[#1806/E4] an event with no fields has data {}" "{}" "$(sed -n 2p "$_
 print_test_section "E5: an emit whose jq fails returns 0 and the caller carries on"
 _d="$TEST_TEMP_DIR/e5"; mkdir -p "$_d" "$TEST_TEMP_DIR/badjq"
 printf '#!/bin/sh\nexit 5\n' > "$TEST_TEMP_DIR/badjq/jq"; chmod +x "$TEST_TEMP_DIR/badjq/jq"
+cat > "$_d/driver.sh" <<DRIVER
+set -euo pipefail
+source "$REPO_ROOT/core/event-bus/event-bus.sh"
+eb_emit_event stage.complete stage=x
+echo "carried-on rc=\$?"
+DRIVER
 _e5="$(ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" ZBUILD_EVENTS_DB=/dev/null \
-    PATH="$TEST_TEMP_DIR/badjq:$PATH" bash -c '
-        set -euo pipefail
-        source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"
-        eb_emit_event stage.complete stage=x
-        echo "carried-on rc=$?"
-    ' 2>/dev/null || true)"
+    PATH="$TEST_TEMP_DIR/badjq:$PATH" bash "$_d/driver.sh" 2>/dev/null || true)"
 assert_eq "[#1806/E5] the caller under set -e carries on after a failed emit" "carried-on rc=0" "$_e5"
 assert_eq "[#1806/E5] nothing half-built is appended" "0" "$(if [[ -f "$_d/events.jsonl" ]]; then grep -c . "$_d/events.jsonl" || true; else echo 0; fi)"
 
