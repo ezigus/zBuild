@@ -2,3 +2,5 @@ model call iter=1 rc=124 turns=46
 model call iter=2 rc=124 turns=58
 model call iter=1 rc=124 turns=32
 model call iter=2 rc=124 turns=38
+model call iter=1 rc=124 turns=36
+model call iter=2 rc=124 turns=34
