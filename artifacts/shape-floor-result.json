@@ -1,0 +1,9 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "every shape-change floor file is updated, or unedited and shown still correct by this run's full test pass",
+  "data": {
+    "findings": []
+  }
+}
