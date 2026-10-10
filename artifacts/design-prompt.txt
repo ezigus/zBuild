@@ -147,7 +147,11 @@ Remove the impact stage from the flow of both shipped templates (simple.yaml and
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
-### PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)
+### PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)
+The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.
+
+### SINCE THE PRIOR DESIGN (engine-collected)
+- The prior design's date is unknown: treat every claim it makes as unverified until you have checked it.
 
 # Design: Remove `impact` from shipped templates (issue #1668)
 
@@ -157,13 +161,14 @@ Every requirement above must be covered by at least one SPEC. End each SPEC line
 
 **Context:** `delivery_loop` currently sequences `design_verify_cycle → impact → build_test_cycle`. The impact stage is an LLM-heavy advisory stage (T2, 600 s, 45 turns) that runs once per outer loop. Removing it from the shipped templates shortens the pipeline while preserving the plugin for standard.yaml's `design_impact_cycle` and for future reuse. Tests pinning the delivery_loop roster, stage count, and stage indices all become stale and must be updated.
 
-**Decision:** Delete the `- impact` entry from `delivery_loop.flow` and the `impact:` stage section from both templates. Update every test that pins the roster, count, or positional index of any stage whose value shifts as a result (shape-floor, gate-aggregator, and impact itself). Remove the dead `_make_impact_plugin()` stubs and the live `_make_plugin "impact"` calls from the integration test mock rosters, because the runner's resolvability preflight will no longer require an impact plugin. Amend ADR-068 §1 and §8 to describe the two-member `delivery_loop` flow and update the Enforced by pointer for §1.
+**Decision:** Delete the `- impact` entry from `delivery_loop.flow` and the `impact:` stage section from both templates. Update every test that pins the roster, count, or positional index of any stage whose value shifts as a result (shape-floor, gate-aggregator, and impact itself). Remove the dead `_make_impact_plugin()` stubs and the live `_make_plugin "impact"` calls from the integration test mock rosters, because the runner's resolvability preflight will no longer require an impact plugin. Amend ADR-068 §1 and §8 to describe the two-member `delivery_loop` flow and update the Enforced by pointer for §1. Add a delivery_loop roster assertion to the existing `tests/integration/deployed-template-e2e-test.sh` (which already loads deployed.yaml) to close the coverage gap identified by spec-coverage: no existing assertion fails on main if `impact` remains in deployed.yaml's delivery_loop.
 
 ```scope
 config/templates/simple.yaml
 config/templates/deployed.yaml
 docs/adr/ADR-068-nested-loops-and-finding-answers.md
 tests/unit/template-simple-yaml-test.sh
+tests/integration/deployed-template-e2e-test.sh
 tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
 tests/integration/cycle-acceptance-terminal-failure-test.sh
 tests/integration/cycle-gate-unavailable-aborts-run-test.sh
@@ -176,12 +181,13 @@ docs/wiki/Pipeline-and-Stages.md
 ```
 
 ```acceptance
-SPEC-1[code]: `delivery_loop.flow` in both simple.yaml and deployed.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent from both; SPEC-18 in template-simple-yaml-test.sh (updated to assert `"design_verify_cycle,build_test_cycle"`) fails on main because the template has `"design_verify_cycle,impact,build_test_cycle"` covers: R-1 R-5
+SPEC-1[code]: `delivery_loop.flow` in simple.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; SPEC-18 in template-simple-yaml-test.sh (updated to assert `"design_verify_cycle,build_test_cycle"`) fails on main because the template has `"design_verify_cycle,impact,build_test_cycle"` covers: R-1 R-5
 SPEC-2[code]: `_TPL_STAGES` for simple.yaml has exactly 19 entries (not 20); `impact` does not appear in the list; shape-floor is at index 10 (was 11) and gate-aggregator at index 15 (was 16); SPEC-2 count assertion and the SPEC-12/SPEC-13 index assertions fail on main covers: R-3
 SPEC-3[code]: T1 in core-pipeline-cycle-build-test-wiring-test.sh asserts `_TPL_CYCLE_STAGES_delivery_loop` equals `"design_verify_cycle,build_test_cycle"` (no impact); the assertion fails on main where the template has `"design_verify_cycle,impact,build_test_cycle"` covers: R-1 R-3
 SPEC-4[no-code]: `_make_impact_plugin()` function bodies and `_make_plugin "impact" "impact_analyzer"` calls removed from the four integration test files and the mock roster; these are dead stubs once the resolvability preflight no longer requires impact covers: R-2 R-5
-SPEC-5[no-code]: ADR-068 §1 amended to read "design loop → build loop" (impact removed from the flow description); §8 amended to remove impact from the stages enumerated in the halt check; Enforced by §1 updated to add tests/unit/template-simple-yaml-test.sh SPEC-18 as the roster enforcer (R1 for route_back refusal is retained); an "Amended 2026-10-10" note added to the document header covers: R-4
+SPEC-5[no-code]: ADR-068 §1 amended to read "design loop → build loop" (impact removed from the flow description); §8 amended to remove impact from the stages enumerated in the halt check; Enforced by §1 updated to add tests/unit/template-simple-yaml-test.sh SPEC-18 and tests/integration/deployed-template-e2e-test.sh as the roster enforcers (R1 for route_back refusal is retained); an "Amended 2026-10-10" note added to the document header covers: R-4
 SPEC-6[done]: plugins/agent/impact/ directory and all its unit and integration tests are untouched; impact plugin tests drive the plugin via inline fixture templates or directly, never via simple.yaml or deployed.yaml covers: R-2 evidence: plugins/agent/impact/manifest.yaml tests/unit/impact-v2-result-contract-test.sh tests/integration/impact-pipeline-test.sh
+SPEC-7[code]: `delivery_loop.flow` in deployed.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; a new assertion added to tests/integration/deployed-template-e2e-test.sh asserts `_TPL_CYCLE_STAGES_delivery_loop` equals `"design_verify_cycle,build_test_cycle"` (the template is already loaded by that file's SPEC-1) and fails on main because deployed.yaml currently has `"design_verify_cycle,impact,build_test_cycle"` covers: R-1 R-5
 WIRING:
 config/templates/simple.yaml
 config/templates/deployed.yaml
@@ -189,6 +195,7 @@ TESTFILES:
 SPEC-1: tests/unit/template-simple-yaml-test.sh
 SPEC-2: tests/unit/template-simple-yaml-test.sh
 SPEC-3: tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+SPEC-7: tests/integration/deployed-template-e2e-test.sh
 ```
 
 ```supersedes
@@ -207,7 +214,7 @@ LOOP_COMPLETE
 Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
 WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
+- This stage has a wall-clock budget of 600 seconds total; ~1s have elapsed.
 - You cannot read a real-time clock, but estimate elapsed time from your tool-call history.
 - Target emitting your best-effort design before ~420s of wall-clock time has elapsed (70% of the 600s budget). A partial design with named gaps BEATS a hard SIGTERM that produces no output.
 
