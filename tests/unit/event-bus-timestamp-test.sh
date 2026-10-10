@@ -106,16 +106,24 @@ unset _ZBUILD_EVENT_BUS_LOADED _ZBUILD_EVENT_KNOWN_TYPES_LOADED 2>/dev/null || t
 source "$EVENT_BUS"
 
 : > "$JQ_CALL_LOG"
+eb_emit_event "stage.complete" "arg1=v1"
+
+_n1="$(grep -c '' "$JQ_CALL_LOG" 2>/dev/null || true)"
+: > "$_S2/events.jsonl"
+: > "$JQ_CALL_LOG"
 eb_emit_event "stage.complete" "stage=test-stage" "verdict=pass" "extra=data-value"
 
-# Old code called jq once per key=val argument with the filter '. + {($k): $v}'.
-# New code accumulates all args and calls jq once — that per-arg filter is gone.
-_loop_calls="$(grep -cF '{($k): $v}' "$JQ_CALL_LOG" 2>/dev/null || true)"
-if [[ "$_loop_calls" -eq 0 ]]; then
-    assert_pass "[#1806/SPEC-2] per-arg accumulation pattern '. + {(\$k): \$v}' absent"
+_n3="$(grep -c '' "$JQ_CALL_LOG" 2>/dev/null || true)"
+
+# Old code called jq once per key=val argument for payload building — N args
+# produced N jq calls for payload.  New code accumulates all args into a single
+# jq invocation, so the call count is the same regardless of arg count.
+# N3 (3 args) and N1 (1 arg) must be equal; old code gives N3=N1+2.
+if [[ "$_n3" -eq "$_n1" ]]; then
+    assert_pass "[#1806/SPEC-2] jq call count is constant (not per-arg): N1=$_n1 N3=$_n3"
 else
-    assert_fail "[#1806/SPEC-2] per-arg accumulation pattern absent" \
-        "found $_loop_calls call(s) with old per-arg filter"
+    assert_fail "[#1806/SPEC-2] jq call count must not scale with arg count" \
+        "1-arg=$_n1 calls, 3-arg=$_n3 calls — old per-arg code still active"
 fi
 
 # All key=val args must survive in the payload (byte-identical output check)

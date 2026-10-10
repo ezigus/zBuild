@@ -226,7 +226,9 @@ wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments'
 ev "$S_SC3/events.jsonl" 23:00:01 stage.complete 1 build stage=build verdict=pass
 
 # Wait for the first PATCH; the mock injects a byte into events.jsonl during it.
-if wait_for_event "$GH_LOG" 'X PATCH' 30 0.1; then
+# Use a generous timeout: MIN_INTERVAL=2 means the PATCH fires ~2s after the POST;
+# 120*0.1=12s leaves 10s of margin on a loaded CI runner.
+if wait_for_event "$GH_LOG" 'X PATCH' 120 0.1; then
     assert_pass "[#1806/SPEC-3] first PATCH fired"
 else
     assert_fail "[#1806/SPEC-3] first PATCH fired (setup)" "no PATCH in GH_LOG"
@@ -275,7 +277,8 @@ ZBUILD_STATUS_COMMENT_MIN_INTERVAL=2 start_sidecar "$S_SC4" "$PARENT"
 wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1 || true
 
 # Wait for the first PATCH (MIN_INTERVAL=2 after pipeline.start POST).
-if wait_for_event "$GH_LOG" 'X PATCH' 30 0.1; then
+# 120*0.1=12s: generous enough for a loaded CI runner.
+if wait_for_event "$GH_LOG" 'X PATCH' 120 0.1; then
     assert_pass "[#1806/SPEC-4] first PATCH fired"
 else
     assert_fail "[#1806/SPEC-4] first PATCH fired (setup)" "no PATCH in GH_LOG"
@@ -333,7 +336,10 @@ fi
 # Old code: emit_event is a stub → SC5_EVENTS stays empty → count == 0.
 # New code: event-bus sourced + ZBUILD_CURRENT_STAGE=run-status-comment →
 #           SC5_EVENTS has at least one event.
-_sc5_event_count="$(grep -c '' "$SC5_EVENTS" 2>/dev/null || echo 0)"
+_sc5_event_count=0
+if [[ -f "$SC5_EVENTS" ]]; then
+    _sc5_event_count="$(grep -c '' "$SC5_EVENTS" 2>/dev/null || true)"
+fi
 if [[ "$_sc5_event_count" -gt 0 ]]; then
     assert_pass "[#1806/SPEC-5] sidecar emitted at least one event to its events file"
 else

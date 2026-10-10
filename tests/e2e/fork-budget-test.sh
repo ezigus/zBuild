@@ -274,9 +274,9 @@ _pool_max="$(awk -F'\t' '$2 ~ /^local_engine\.sh:/ && $1 > m { m = $1 } END { pr
 echo "  busiest counted pool line: ${_pool_max} execs (2 work units)"
 assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit (max ${_pool_max})" "1" "$(( _pool_max <= 2 ))"
 if (( _total <= FORK_BUDGET )); then
-    assert_pass "[SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
+    assert_pass "[#1806/SPEC-6] [SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
 else
-    assert_fail "[SPEC-4] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
+    assert_fail "[#1806/SPEC-6] [SPEC-4] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
 fi
 
 cleanup_test_env
