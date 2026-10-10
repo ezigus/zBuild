@@ -1,0 +1,19 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 7 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 7,
+    "owned_files": [
+      "tests/e2e/fork-budget-test.sh",
+      "tests/unit/event-bus-timestamp-test.sh",
+      "tests/unit/run-status-comment-loop-test.sh"
+    ],
+    "testfiles": {
+      "tests/e2e/fork-budget-test.sh": "2fc76a0f5b078289d3af07c86651c599ef9dab95",
+      "tests/unit/event-bus-timestamp-test.sh": "863d3185dbcb98a678381228752286e005766996",
+      "tests/unit/run-status-comment-loop-test.sh": "f60520d2d3dbf2c4643f3ca53811a3e1c66c47ba"
+    }
+  }
+}

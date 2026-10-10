@@ -23,5 +23,12 @@
   "wiring_files": [
     "core/event-bus/event-bus.sh",
     "scripts/lib/run-status-comment.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/e2e/fork-budget-test.sh",
+      "tests/unit/event-bus-timestamp-test.sh",
+      "tests/unit/run-status-comment-loop-test.sh"
+    ]
+  }
 }
