@@ -1,0 +1,8 @@
+## spec-correspondence — partial
+
+- judged 7 SPEC(s): 4 correspond, 3 partial, 0 mismatch, 0 uncheckable, 0 unjudged
+
+- SPEC-1 partial: The assertion verifies return 0 and no slot file, but `_s1_out` captures only stdout (SPEC-4/5 use separate `_stderr_file` variables to inspect stderr, indicating `_out` is stdout-only), so "produces no cap-related output" is not established for stderr.
+- SPEC-6 partial: The assertion verifies return 0 and that a slot file is written, but `_s6_out` covers stdout only — "produces no cap-related output" is not established for stderr, for the same reason as SPEC-1.
+- SPEC-7 partial: The assertion verifies the presence of the section title and test file name in ADR-059 and the event key in event-schema.json, but does not check that §7 is placed "under Decision", that the reference to the test file appears in an Enforced-by bullet, or that all six spec statements are individually named there.
+
