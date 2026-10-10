@@ -1,0 +1,91 @@
+### core/router/route.sh reverted tests/integration/router-loop-emits-model-events-test.sh
+
+[38;2;0;212;255m[1m  router_loop: emits model.route and model.outcome per iteration (#1730)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m TC-1: loop driver exits 0 (sentinel honored)
+
+  [38;2;0;212;255mSPEC-1: model.route emitted per iteration with tier, model_id, provider[0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-1] one model.route event for 1-iteration loop
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-1] model.route.tier is T2
+    [2mexpected: T2, got: [0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-1] model.route.model_id is non-empty
+    [2mmodel_id was empty — model.route not emitted[0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-1] model.route.provider is non-empty
+    [2mprovider was empty — model.route not emitted[0m
+
+  [38;2;0;212;255mSPEC-2: model.outcome emitted per iteration with token and cost fields[0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] one model.outcome event for 1-iteration loop
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.input_tokens=100
+    [2mexpected: 100, got: [0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.output_tokens=20
+    [2mexpected: 20, got: [0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.cache_read_input_tokens=50
+    [2mexpected: 50, got: [0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.cache_creation_input_tokens=10
+    [2mexpected: 10, got: [0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.cost_usd is present and not 'unknown'
+    [2mcost_usd='' — model.outcome not emitted or total_cost_usd not extracted[0m
+  [38;2;74;222;128m✓[0m TC-2: 3-iter loop driver exits 0 (sentinel on iter 3)
+  [38;2;74;222;128m✓[0m TC-2: stub invoked exactly 3 times
+
+  [38;2;0;212;255mSPEC-3: 3-iteration loop emits exactly 3 model.route and 3 model.outcome events[0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-3] exactly 3 model.route events for 3-iteration loop
+    [2mexpected: 3, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-3] exactly 3 model.outcome events for 3-iteration loop
+    [2mexpected: 3, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1730/SPEC-3] model.outcome count matches cost-ledger rows
+    [2mexpected: 3, got: 0[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m13 of 16 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1730/SPEC-1] one model.route event for 1-iteration loop
+  [38;2;248;113;113m✗[0m [#1730/SPEC-1] model.route.tier is T2
+  [38;2;248;113;113m✗[0m [#1730/SPEC-1] model.route.model_id is non-empty
+  [38;2;248;113;113m✗[0m [#1730/SPEC-1] model.route.provider is non-empty
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] one model.outcome event for 1-iteration loop
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.input_tokens=100
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.output_tokens=20
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.cache_read_input_tokens=50
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.cache_creation_input_tokens=10
+  [38;2;248;113;113m✗[0m [#1730/SPEC-2] model.outcome.cost_usd is present and not 'unknown'
+  [38;2;248;113;113m✗[0m [#1730/SPEC-3] exactly 3 model.route events for 3-iteration loop
+  [38;2;248;113;113m✗[0m [#1730/SPEC-3] exactly 3 model.outcome events for 3-iteration loop
+  [38;2;248;113;113m✗[0m [#1730/SPEC-3] model.outcome count matches cost-ledger rows
+
+### core/router/route.sh head tests/integration/router-loop-emits-model-events-test.sh
+
+[38;2;0;212;255m[1m  router_loop: emits model.route and model.outcome per iteration (#1730)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m TC-1: loop driver exits 0 (sentinel honored)
+
+  [38;2;0;212;255mSPEC-1: model.route emitted per iteration with tier, model_id, provider[0m
+  [38;2;74;222;128m✓[0m [#1730/SPEC-1] one model.route event for 1-iteration loop
+  [38;2;74;222;128m✓[0m [#1730/SPEC-1] model.route.tier is T2
+  [38;2;74;222;128m✓[0m [#1730/SPEC-1] model.route.model_id is non-empty
+  [38;2;74;222;128m✓[0m [#1730/SPEC-1] model.route.provider is non-empty
+
+  [38;2;0;212;255mSPEC-2: model.outcome emitted per iteration with token and cost fields[0m
+  [38;2;74;222;128m✓[0m [#1730/SPEC-2] one model.outcome event for 1-iteration loop
+  [38;2;74;222;128m✓[0m [#1730/SPEC-2] model.outcome.input_tokens=100
+  [38;2;74;222;128m✓[0m [#1730/SPEC-2] model.outcome.output_tokens=20
+  [38;2;74;222;128m✓[0m [#1730/SPEC-2] model.outcome.cache_read_input_tokens=50
+  [38;2;74;222;128m✓[0m [#1730/SPEC-2] model.outcome.cache_creation_input_tokens=10
+  [38;2;74;222;128m✓[0m [#1730/SPEC-2] model.outcome.cost_usd is present and not 'unknown'
+  [38;2;74;222;128m✓[0m TC-2: 3-iter loop driver exits 0 (sentinel on iter 3)
+  [38;2;74;222;128m✓[0m TC-2: stub invoked exactly 3 times
+
+  [38;2;0;212;255mSPEC-3: 3-iteration loop emits exactly 3 model.route and 3 model.outcome events[0m
+  [38;2;74;222;128m✓[0m [#1730/SPEC-3] exactly 3 model.route events for 3-iteration loop
+  [38;2;74;222;128m✓[0m [#1730/SPEC-3] exactly 3 model.outcome events for 3-iteration loop
+  [38;2;74;222;128m✓[0m [#1730/SPEC-3] model.outcome count matches cost-ledger rows
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 16 tests passed[0m
+

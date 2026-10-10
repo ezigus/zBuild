@@ -1,0 +1,16 @@
+NEGCTL PASS SPEC-1
+      design : route_to_model_loop emits one model.route event (containing tier, model_id, provider) per iteration,…
+      asserts: assert_eq "[#1730/SPEC-1] one model.route event for 1-iteration loop" "1" "$tc1_route_count"
+NEGCTL PASS SPEC-2
+      design : route_to_model_loop emits one model.outcome event (containing input_tokens, output_tokens, cache_rea…
+      asserts: assert_eq "[#1730/SPEC-2] one model.outcome event for 1-iteration loop" "1" "$tc1_outcome_count"
+NEGCTL PASS SPEC-3
+      design : a 3-iteration route_to_model_loop call produces exactly 3 model.route events and exactly 3 model.out…
+      asserts: assert_eq "[#1730/SPEC-3] exactly 3 model.route events for 3-iteration loop" "3" "$tc2_route_count"
+NEGCTL SKIP SPEC-4 already_done
+      design : route_to_model already calls _route_emit_model_route and _route_emit_outcome on its success path
+      asserts: <none found>
+NEGCTL SKIP SPEC-5 no_code
+      design : parity/event-sequence.golden is updated to include model.route and model.outcome in the build-stage …
+      asserts: <none found>
+REACHABILITY PASS core/router/route.sh
