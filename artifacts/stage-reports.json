@@ -11,6 +11,7 @@
     "tests/integration/cycle-gate-unavailable-aborts-run-test.sh",
     "tests/integration/cycle-on-max-pipeline-continues-test.sh",
     "tests/integration/cycle-rate-limit-aborts-run-test.sh",
+    "tests/integration/deployed-template-e2e-test.sh",
     "tests/lib/run-status-comment-mock-roster.sh",
     "tests/unit/template-simple-yaml-test.sh"
   ],
