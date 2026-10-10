@@ -5,14 +5,14 @@
 
 
   [38;2;0;212;255mSPEC-1: a script with one external exec counts exactly 1[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Ll5zHv/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Sb3XZz/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
   [38;2;74;222;128m✓[0m [SPEC-1] the canary's one dirname is counted, its builtins are not
   [38;2;74;222;128m✓[0m [SPEC-1] …and attributed to its call site
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Ll5zHv/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Sb3XZz/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
   [38;2;74;222;128m✓[0m [SPEC-1b] words inside an assigned value are not counted
 
   [38;2;0;212;255mSPEC-5: a marked wait is not counted[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Ll5zHv/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Sb3XZz/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
   [38;2;74;222;128m✓[0m [SPEC-5] only the unmarked sleep is counted (3 of 6)
   [38;2;74;222;128m✓[0m [SPEC-5] …the marked one is listed apart
 
@@ -21,7 +21,7 @@
   [38;2;74;222;128m✓[0m [SPEC-2] …and produced events.jsonl
 
   [38;2;0;212;255mSPEC-3/4: liveness floor and the budget[0m
-  external execs: 5300 (budget 4500) across 92 source files
+  external execs: 5301 (budget 4500) across 92 source files
   top call sites:
       280  event-bus.sh:155                   jq
       231  manifest-graph.sh:124              awk
@@ -36,7 +36,7 @@
        79  manifest-validation.sh:324         awk
        78  manifest-router-budget.sh:96       awk
   exempt waits (not counted — their repeat count is elapsed time):
-      101  local_engine.sh:136                sleep
+      103  local_engine.sh:136                sleep
   by file:
       646  event-bus.sh
       577  manifest-graph.sh
@@ -48,18 +48,18 @@
       208  input-resolve.sh
       206  requires-core.sh
       198  secret-patterns.sh
-  [38;2;74;222;128m✓[0m [SPEC-3] the trace is live (92 files, 5300 execs)
+  [38;2;74;222;128m✓[0m [SPEC-3] the trace is live (92 files, 5301 execs)
   [38;2;74;222;128m✓[0m [SPEC-6] the worker pool's poll sleep is listed as an exempt wait
   busiest counted pool line: 1 execs (2 work units)
   [38;2;74;222;128m✓[0m [SPEC-6] …and no counted pool line runs more than once per work unit (max 1)
-  [38;2;248;113;113m✗[0m [SPEC-4] external execs ≤ FORK_BUDGET
-    [2m5300 > 4500 — see the call sites above; ADR-065 §2: the budget only ratchets down[0m
+  [38;2;248;113;113m✗[0m [#1806/SPEC-6] [SPEC-4] external execs ≤ FORK_BUDGET
+    [2m5301 > 4500 — see the call sites above; ADR-065 §2: the budget only ratchets down[0m
 
 [2m  ──────────────────────────────────────────[0m
 
   [38;2;248;113;113m[1m1 of 11 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [SPEC-4] external execs ≤ FORK_BUDGET
+  [38;2;248;113;113m✗[0m [#1806/SPEC-6] [SPEC-4] external execs ≤ FORK_BUDGET
 
 ### SPEC-6 head tests/e2e/fork-budget-test.sh
 
@@ -99,7 +99,7 @@
        79  manifest-validation.sh:324         awk
        78  manifest-router-budget.sh:96       awk
   exempt waits (not counted — their repeat count is elapsed time):
-       93  local_engine.sh:136                sleep
+       96  local_engine.sh:136                sleep
   by file:
       577  manifest-graph.sh
       499  helpers.sh
@@ -115,12 +115,12 @@
   [38;2;74;222;128m✓[0m [SPEC-6] the worker pool's poll sleep is listed as an exempt wait
   busiest counted pool line: 1 execs (2 work units)
   [38;2;74;222;128m✓[0m [SPEC-6] …and no counted pool line runs more than once per work unit (max 1)
-  [38;2;248;113;113m✗[0m [SPEC-4] external execs ≤ FORK_BUDGET
+  [38;2;248;113;113m✗[0m [#1806/SPEC-6] [SPEC-4] external execs ≤ FORK_BUDGET
     [2m5111 > 4500 — see the call sites above; ADR-065 §2: the budget only ratchets down[0m
 
 [2m  ──────────────────────────────────────────[0m
 
   [38;2;248;113;113m[1m1 of 11 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [SPEC-4] external execs ≤ FORK_BUDGET
+  [38;2;248;113;113m✗[0m [#1806/SPEC-6] [SPEC-4] external execs ≤ FORK_BUDGET
 

@@ -1,10 +1,10 @@
-the acceptance check failed — SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong; SPEC-3/SPEC-4/SPEC-6: its test does not pass on the new code — the code or the test is wrong
+the acceptance check failed — SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong; SPEC-3/SPEC-4/SPEC-6: its test does not pass on the new code — the code or the test is wrong; SPEC-6: no assertion in the test files carries its tag — add one labelled with it
 NEGCTL PASS SPEC-1
       design : eb_emit_event produces a well-formed ISO 8601 timestamp (no literal `%3N`, format `YYYY-MM-DDTHH:MM:…
       asserts: assert_fail "[#1806/SPEC-1] event emitted to events.jsonl" "file empty or ts missing"
 NEGCTL FAIL SPEC-2 tautology
       design : eb_emit_event accumulates all key=val arguments into a single jq invocation for payload construction…
-      asserts: assert_pass "[#1806/SPEC-2] jq call count is constant (not per-arg): N1=$_n1 N3=$_n3"
+      asserts: assert_pass "[#1806/SPEC-2] per-arg accumulation pattern '. + {(\$k): \$v}' absent"
 NEGCTL FAIL SPEC-3 not_passing_at_head
       design : after rsc_flush returns, the tail loop's file-size cursor (`last_size`) is updated to the current by…
       asserts: assert_pass "[#1806/SPEC-3] first PATCH fired"
@@ -16,7 +16,7 @@ NEGCTL PASS SPEC-5
       asserts: assert_pass "[#1806/SPEC-5] initial POST fired (apply_scope_redaction ran)"
 NEGCTL FAIL SPEC-6 not_passing_at_head
       design : FORK_BUDGET in fork-budget-test.sh is lowered to a value smaller than the current merge-base measure…
-      asserts: assert_pass "[#1806/SPEC-6] [SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
+      asserts: <none found>
 NEGCTL SKIP SPEC-7 no_code
       design : ADR-065-process-budget.md gains an `## Enforced by` section naming fork-budget-test.sh (§1) and the …
       asserts: <none found>
