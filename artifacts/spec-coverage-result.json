@@ -1,0 +1,22 @@
+{
+  "result_contract": 2,
+  "verdict": "uncovered",
+  "disposition": "complete",
+  "reason": "SPEC-1 asserts the code condition for \"both simple.yaml and deployed.yaml\" but its TESTFILES names only `tests/unit/template-simple-yaml-test.sh`; SPEC-3's T1 also loads only `simple.yaml` (confirmed at line 43 of the test file), so no SPEC names a test file that would fail if `impact` remained in `deployed.yaml`'s `delivery_loop`.",
+  "data": {
+    "uncovered": [
+      "R-1: the requirement is \"a test asserting `impact` is absent from `delivery_loop` in **both** shipped templates\" — SPEC-1 and SPEC-3 together enforce only `simple.yaml`",
+      "no SPEC names a test file whose failure on main would catch `impact` still present in `deployed.yaml`'s `delivery_loop.flow`."
+    ],
+    "findings": [
+      {
+        "n": 1,
+        "text": "The issue asks for this and no SPEC covers it: R-1: the requirement is \"a test asserting `impact` is absent from `delivery_loop` in **both** shipped templates\" — SPEC-1 and SPEC-3 together enforce only `simple.yaml`"
+      },
+      {
+        "n": 2,
+        "text": "The issue asks for this and no SPEC covers it: no SPEC names a test file whose failure on main would catch `impact` still present in `deployed.yaml`'s `delivery_loop.flow`."
+      }
+    ]
+  }
+}
