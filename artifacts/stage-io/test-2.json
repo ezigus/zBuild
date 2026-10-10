@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "run_id": "20261010132454-2484",
+  "stage": "test",
+  "kind": "command",
+  "seq": 2,
+  "input": "npm\\ test",
+  "output": "unit 54/56 · FAIL: unit (exit 1)",
+  "exit_code": 1,
+  "duration_ms": 332454,
+  "metadata": {
+    "cwd": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.y7m5D1",
+    "verdict": "fail",
+    "passed": "54",
+    "failed": "2",
+    "exit_code": "1"
+  },
+  "ts": "2026-10-10T14:52:31Z"
+}
