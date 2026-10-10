@@ -1,0 +1,271 @@
+### SPEC-1 baseline tests/unit/template-simple-yaml-test.sh
+
+[38;2;0;212;255m[1m  config/templates/simple.yaml — skeleton load and stage assertions (#968)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] simple.yaml loads without error (exit 0)
+  [38;2;248;113;113m✗[0m [SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 19
+    [2mexpected: 19, got: 20[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[0] == hydrate
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[1] == intake
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[2] == plan
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[3] == design
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[4] == spec-coverage
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[5] == design-gate
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[6] == test-author
+    [2mexpected: test-author, got: impact[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[7] == spec-correspondence
+    [2mexpected: spec-correspondence, got: test-author[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[8] == build
+    [2mexpected: build, got: spec-correspondence[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[9] == test
+    [2mexpected: test, got: build[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[10] == shape-floor
+    [2mexpected: shape-floor, got: test[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[11] == acceptance-gate
+    [2mexpected: acceptance-gate, got: shape-floor[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[12] == secret-scan
+    [2mexpected: secret-scan, got: acceptance-gate[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[13] == assertion-integrity
+    [2mexpected: assertion-integrity, got: secret-scan[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[14] == issue-acceptance
+    [2mexpected: issue-acceptance, got: assertion-integrity[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[15] == gate-aggregator
+    [2mexpected: gate-aggregator, got: issue-acceptance[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
+    [2mexpected: review_lenses, got: gate-aggregator[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
+    [2mexpected: review-aggregator, got: review_lenses[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[18] == pr
+    [2mexpected: pr, got: review-aggregator[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] merge_policy is not parsed as a stage
+  [38;2;74;222;128m✓[0m [SPEC-3] intake roles
+  [38;2;74;222;128m✓[0m [SPEC-3] intake io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] plan roles
+  [38;2;74;222;128m✓[0m [SPEC-3] plan io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] plan router timeout
+  [38;2;74;222;128m✓[0m [SPEC-3] plan router max_turns
+  [38;2;74;222;128m✓[0m [SPEC-3] shape-floor roles
+  [38;2;74;222;128m✓[0m [SPEC-3] acceptance-gate roles
+  [38;2;74;222;128m✓[0m [SPEC-3] lint stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] coverage stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] mutation stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] secret-scan roles
+  [38;2;74;222;128m✓[0m [SPEC-3] gate-aggregator roles
+  [38;2;74;222;128m✓[0m [SPEC-3] gate-aggregator io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] design roles
+  [38;2;74;222;128m✓[0m [SPEC-3] design io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] design router timeout
+  [38;2;74;222;128m✓[0m [SPEC-3] design router max_turns
+  [38;2;74;222;128m✓[0m [SPEC-3] design-gate roles
+  [38;2;74;222;128m✓[0m [SPEC-3] design-gate io_dests
+  [38;2;248;113;113m✗[0m [SPEC-3] impact roles unset (impact removed from template)
+    [2mexpected: , got: impact_analyzer[0m
+  [38;2;248;113;113m✗[0m [SPEC-3] impact io_dests unset (impact removed from template)
+    [2mexpected: , got: file,stdout[0m
+  [38;2;248;113;113m✗[0m [SPEC-3] impact router timeout unset (impact removed from template)
+    [2mexpected: , got: 600[0m
+  [38;2;248;113;113m✗[0m [SPEC-3] impact router max_turns unset (impact removed from template)
+    [2mexpected: , got: 45[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] build roles
+  [38;2;74;222;128m✓[0m [SPEC-3] build io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] build router timeout
+  [38;2;74;222;128m✓[0m [SPEC-3] build router max_turns
+  [38;2;74;222;128m✓[0m [SPEC-3] test roles
+  [38;2;74;222;128m✓[0m [SPEC-3] test io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] review stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] lens-security stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] lens-scope stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses is a map group
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses roles
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses over dim
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses elements csv
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses router timeout
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses router max_turns
+  [38;2;74;222;128m✓[0m [SPEC-3] review-aggregator roles
+  [38;2;74;222;128m✓[0m [SPEC-3] review-aggregator io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] pr roles
+  [38;2;74;222;128m✓[0m [SPEC-3] pr io_dests
+  [38;2;74;222;128m✓[0m [SPEC-4] resolve_template_file exit 0
+  [38;2;74;222;128m✓[0m [SPEC-4] resolve_template_file 'simple' returns shipped path
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch units count is 7
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[0] stage:hydrate
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[1] stage:intake
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[2] stage:plan
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[3] cycle:delivery_loop
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[4] map:review_lenses
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[5] stage:review-aggregator
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[6] stage:pr
+  [38;2;248;113;113m✗[0m [SPEC-18] [#1668/SPEC-1] delivery_loop holds the design loop and the build loop (impact removed)
+    [2mexpected: design_verify_cycle,build_test_cycle, got: design_verify_cycle,impact,build_test_cycle[0m
+  [38;2;74;222;128m✓[0m [SPEC-18] delivery_loop runs at most 2 rounds
+  [38;2;74;222;128m✓[0m [SPEC-18] delivery_loop halts when its rounds are spent
+  [38;2;74;222;128m✓[0m [SPEC-18] delivery_loop stops on a finding nobody owns
+  [38;2;74;222;128m✓[0m [SPEC-18] the build loop yields a finding nobody in it owns
+  [38;2;74;222;128m✓[0m [SPEC-18] the design loop counts no answers itself
+  [38;2;74;222;128m✓[0m [SPEC-16] _TPL_CYCLES contains design_verify_cycle
+  [38;2;74;222;128m✓[0m [SPEC-16] _TPL_CYCLE_STAGES_design_verify_cycle
+  [38;2;74;222;128m✓[0m [SPEC-16] _TPL_CYCLE_MAX_design_verify_cycle is 2 (#2271)
+  [38;2;74;222;128m✓[0m [SPEC-16] design_verify_cycle converges on ALL conditions
+  [38;2;74;222;128m✓[0m [SPEC-16] there are two of them
+  [38;2;74;222;128m✓[0m [SPEC-16] the first is design-gate == pass
+  [38;2;74;222;128m✓[0m [SPEC-16] the second is spec-coverage != uncovered
+  [38;2;74;222;128m✓[0m [SPEC-14] _TPL_CYCLES contains build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)
+  [38;2;74;222;128m✓[0m [SPEC-15] _TPL_CYCLE_UNTIL_STAGE_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-15] _TPL_CYCLE_UNTIL_FIELD_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-15] _TPL_CYCLE_UNTIL_OP_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle
+  [38;2;248;113;113m✗[0m [SPEC-12] [#1668/SPEC-2] _TPL_STAGES[10] == shape-floor
+    [2mexpected: shape-floor, got: test[0m
+  [38;2;248;113;113m✗[0m [SPEC-12] [#1668/SPEC-2] _TPL_STAGES[15] == gate-aggregator (cycle exit_when source)
+    [2mexpected: gate-aggregator, got: issue-acceptance[0m
+  [38;2;74;222;128m✓[0m [SPEC-13] _TPL_STAGES[3] == design
+  [38;2;74;222;128m✓[0m [SPEC-13] _TPL_STAGES[5] == design-gate
+  [38;2;74;222;128m✓[0m [SPEC-6] simple.yaml: pr stage still declares roles: [pr] (guard)
+  [38;2;74;222;128m✓[0m [SPEC-7] template_merge_policy() == auto_unless_flagged
+  [38;2;74;222;128m✓[0m [SPEC-6] deployed.yaml loads without error
+  [38;2;74;222;128m✓[0m [SPEC-6] deployed.yaml plan max_turns matches simple.yaml (45 not 25)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m21 of 104 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 19
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[6] == test-author
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[7] == spec-correspondence
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[8] == build
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[9] == test
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[10] == shape-floor
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[11] == acceptance-gate
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[12] == secret-scan
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[13] == assertion-integrity
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[14] == issue-acceptance
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[15] == gate-aggregator
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
+  [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[18] == pr
+  [38;2;248;113;113m✗[0m [SPEC-3] impact roles unset (impact removed from template)
+  [38;2;248;113;113m✗[0m [SPEC-3] impact io_dests unset (impact removed from template)
+  [38;2;248;113;113m✗[0m [SPEC-3] impact router timeout unset (impact removed from template)
+  [38;2;248;113;113m✗[0m [SPEC-3] impact router max_turns unset (impact removed from template)
+  [38;2;248;113;113m✗[0m [SPEC-18] [#1668/SPEC-1] delivery_loop holds the design loop and the build loop (impact removed)
+  [38;2;248;113;113m✗[0m [SPEC-12] [#1668/SPEC-2] _TPL_STAGES[10] == shape-floor
+  [38;2;248;113;113m✗[0m [SPEC-12] [#1668/SPEC-2] _TPL_STAGES[15] == gate-aggregator (cycle exit_when source)
+
+### SPEC-1 head tests/unit/template-simple-yaml-test.sh
+
+[38;2;0;212;255m[1m  config/templates/simple.yaml — skeleton load and stage assertions (#968)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] simple.yaml loads without error (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 19
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[0] == hydrate
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[1] == intake
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[2] == plan
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[3] == design
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[4] == spec-coverage
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[5] == design-gate
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[6] == test-author
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[7] == spec-correspondence
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[8] == build
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[9] == test
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[10] == shape-floor
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[11] == acceptance-gate
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[12] == secret-scan
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[13] == assertion-integrity
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[14] == issue-acceptance
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[15] == gate-aggregator
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
+  [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[18] == pr
+  [38;2;74;222;128m✓[0m [SPEC-2] merge_policy is not parsed as a stage
+  [38;2;74;222;128m✓[0m [SPEC-3] intake roles
+  [38;2;74;222;128m✓[0m [SPEC-3] intake io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] plan roles
+  [38;2;74;222;128m✓[0m [SPEC-3] plan io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] plan router timeout
+  [38;2;74;222;128m✓[0m [SPEC-3] plan router max_turns
+  [38;2;74;222;128m✓[0m [SPEC-3] shape-floor roles
+  [38;2;74;222;128m✓[0m [SPEC-3] acceptance-gate roles
+  [38;2;74;222;128m✓[0m [SPEC-3] lint stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] coverage stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] mutation stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] secret-scan roles
+  [38;2;74;222;128m✓[0m [SPEC-3] gate-aggregator roles
+  [38;2;74;222;128m✓[0m [SPEC-3] gate-aggregator io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] design roles
+  [38;2;74;222;128m✓[0m [SPEC-3] design io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] design router timeout
+  [38;2;74;222;128m✓[0m [SPEC-3] design router max_turns
+  [38;2;74;222;128m✓[0m [SPEC-3] design-gate roles
+  [38;2;74;222;128m✓[0m [SPEC-3] design-gate io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] impact roles unset (impact removed from template)
+  [38;2;74;222;128m✓[0m [SPEC-3] impact io_dests unset (impact removed from template)
+  [38;2;74;222;128m✓[0m [SPEC-3] impact router timeout unset (impact removed from template)
+  [38;2;74;222;128m✓[0m [SPEC-3] impact router max_turns unset (impact removed from template)
+  [38;2;74;222;128m✓[0m [SPEC-3] build roles
+  [38;2;74;222;128m✓[0m [SPEC-3] build io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] build router timeout
+  [38;2;74;222;128m✓[0m [SPEC-3] build router max_turns
+  [38;2;74;222;128m✓[0m [SPEC-3] test roles
+  [38;2;74;222;128m✓[0m [SPEC-3] test io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] review stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] lens-security stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] lens-scope stage removed (role var unset)
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses is a map group
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses roles
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses over dim
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses elements csv
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses router timeout
+  [38;2;74;222;128m✓[0m [SPEC-3] review_lenses router max_turns
+  [38;2;74;222;128m✓[0m [SPEC-3] review-aggregator roles
+  [38;2;74;222;128m✓[0m [SPEC-3] review-aggregator io_dests
+  [38;2;74;222;128m✓[0m [SPEC-3] pr roles
+  [38;2;74;222;128m✓[0m [SPEC-3] pr io_dests
+  [38;2;74;222;128m✓[0m [SPEC-4] resolve_template_file exit 0
+  [38;2;74;222;128m✓[0m [SPEC-4] resolve_template_file 'simple' returns shipped path
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch units count is 7
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[0] stage:hydrate
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[1] stage:intake
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[2] stage:plan
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[3] cycle:delivery_loop
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[4] map:review_lenses
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[5] stage:review-aggregator
+  [38;2;74;222;128m✓[0m [SPEC-11] dispatch[6] stage:pr
+  [38;2;74;222;128m✓[0m [SPEC-18] [#1668/SPEC-1] delivery_loop holds the design loop and the build loop (impact removed)
+  [38;2;74;222;128m✓[0m [SPEC-18] delivery_loop runs at most 2 rounds
+  [38;2;74;222;128m✓[0m [SPEC-18] delivery_loop halts when its rounds are spent
+  [38;2;74;222;128m✓[0m [SPEC-18] delivery_loop stops on a finding nobody owns
+  [38;2;74;222;128m✓[0m [SPEC-18] the build loop yields a finding nobody in it owns
+  [38;2;74;222;128m✓[0m [SPEC-18] the design loop counts no answers itself
+  [38;2;74;222;128m✓[0m [SPEC-16] _TPL_CYCLES contains design_verify_cycle
+  [38;2;74;222;128m✓[0m [SPEC-16] _TPL_CYCLE_STAGES_design_verify_cycle
+  [38;2;74;222;128m✓[0m [SPEC-16] _TPL_CYCLE_MAX_design_verify_cycle is 2 (#2271)
+  [38;2;74;222;128m✓[0m [SPEC-16] design_verify_cycle converges on ALL conditions
+  [38;2;74;222;128m✓[0m [SPEC-16] there are two of them
+  [38;2;74;222;128m✓[0m [SPEC-16] the first is design-gate == pass
+  [38;2;74;222;128m✓[0m [SPEC-16] the second is spec-coverage != uncovered
+  [38;2;74;222;128m✓[0m [SPEC-14] _TPL_CYCLES contains build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)
+  [38;2;74;222;128m✓[0m [SPEC-15] _TPL_CYCLE_UNTIL_STAGE_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-15] _TPL_CYCLE_UNTIL_FIELD_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-15] _TPL_CYCLE_UNTIL_OP_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle
+  [38;2;74;222;128m✓[0m [SPEC-12] [#1668/SPEC-2] _TPL_STAGES[10] == shape-floor
+  [38;2;74;222;128m✓[0m [SPEC-12] [#1668/SPEC-2] _TPL_STAGES[15] == gate-aggregator (cycle exit_when source)
+  [38;2;74;222;128m✓[0m [SPEC-13] _TPL_STAGES[3] == design
+  [38;2;74;222;128m✓[0m [SPEC-13] _TPL_STAGES[5] == design-gate
+  [38;2;74;222;128m✓[0m [SPEC-6] simple.yaml: pr stage still declares roles: [pr] (guard)
+  [38;2;74;222;128m✓[0m [SPEC-7] template_merge_policy() == auto_unless_flagged
+  [38;2;74;222;128m✓[0m [SPEC-6] deployed.yaml loads without error
+  [38;2;74;222;128m✓[0m [SPEC-6] deployed.yaml plan max_turns matches simple.yaml (45 not 25)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 104 tests passed[0m
+

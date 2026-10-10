@@ -1,0 +1,87 @@
+### SPEC-7 baseline tests/integration/deployed-template-e2e-test.sh
+
+[38;2;0;212;255m[1m  deployed.yaml e2e — deploy+validate+monitor dry-run dispatch (#1328-A6)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] deployed.yaml loads without error (exit 0)
+  [38;2;248;113;113m✗[0m [#1668/SPEC-7] deployed.yaml delivery_loop flow is design_verify_cycle,build_test_cycle (impact absent)
+    [2mexpected: design_verify_cycle,build_test_cycle, got: design_verify_cycle,impact,build_test_cycle[0m
+  [38;2;74;222;128m✓[0m [SPEC-10] deployed.yaml review_lenses elements include 'sre'
+  [38;2;74;222;128m✓[0m [SPEC-2] deployed.yaml has deploy stage
+  [38;2;74;222;128m✓[0m [SPEC-2] deployed.yaml has validate stage
+  [38;2;74;222;128m✓[0m [SPEC-2] deployed.yaml has monitor stage
+  [38;2;74;222;128m✓[0m [SPEC-2] deploy follows pr
+  [38;2;74;222;128m✓[0m [SPEC-2] validate follows deploy
+  [38;2;74;222;128m✓[0m [SPEC-2] monitor follows validate
+  [38;2;74;222;128m✓[0m [SPEC-2] stage 'deploy' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-2] 'deploy' resolves under plugins/agent/deploy
+  [38;2;74;222;128m✓[0m [SPEC-2] stage 'validate' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-2] 'validate' resolves under plugins/agent/validate
+  [38;2;74;222;128m✓[0m [SPEC-2] stage 'monitor' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-2] 'monitor' resolves under plugins/agent/monitor
+  [38;2;74;222;128m✓[0m [SPEC-3] deploy_agent_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-23] deploy_agent_run exits 0 in dry-run with non-default ZBUILD_ARTIFACT_DIR + ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [#1846/SPEC-23] deploy-result.json written to non-default ZBUILD_ARTIFACT_DIR (not state-derived)
+  [38;2;74;222;128m✓[0m [SPEC-9] deploy_agent_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m [SPEC-9] deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-9] deploy-result.json verdict=deployed
+  [38;2;74;222;128m✓[0m [SPEC-4] validate_agent_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m [#1845] the engine resolves validate's deploy_result from the deployed.yaml flow
+  [38;2;74;222;128m✓[0m [SPEC-9] validate_agent_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m [#1845] validate-result.json is a v2 result
+  [38;2;74;222;128m✓[0m [SPEC-9] validate-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-9] validate-result.json verdict=healthy
+  [38;2;74;222;128m✓[0m [SPEC-5] monitor_stage_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m [SPEC-9] monitor_stage_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m [SPEC-9] monitor-report.json written
+  [38;2;74;222;128m✓[0m [#1847/SPEC-13] monitor_stage_run returns rc=0 in the deployed.yaml dry-run dispatch
+  [38;2;74;222;128m✓[0m [#1847/SPEC-13] monitor-report.json is present after the deployed.yaml dry-run dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 32 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1668/SPEC-7] deployed.yaml delivery_loop flow is design_verify_cycle,build_test_cycle (impact absent)
+
+### SPEC-7 head tests/integration/deployed-template-e2e-test.sh
+
+[38;2;0;212;255m[1m  deployed.yaml e2e — deploy+validate+monitor dry-run dispatch (#1328-A6)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] deployed.yaml loads without error (exit 0)
+  [38;2;74;222;128m✓[0m [#1668/SPEC-7] deployed.yaml delivery_loop flow is design_verify_cycle,build_test_cycle (impact absent)
+  [38;2;74;222;128m✓[0m [SPEC-10] deployed.yaml review_lenses elements include 'sre'
+  [38;2;74;222;128m✓[0m [SPEC-2] deployed.yaml has deploy stage
+  [38;2;74;222;128m✓[0m [SPEC-2] deployed.yaml has validate stage
+  [38;2;74;222;128m✓[0m [SPEC-2] deployed.yaml has monitor stage
+  [38;2;74;222;128m✓[0m [SPEC-2] deploy follows pr
+  [38;2;74;222;128m✓[0m [SPEC-2] validate follows deploy
+  [38;2;74;222;128m✓[0m [SPEC-2] monitor follows validate
+  [38;2;74;222;128m✓[0m [SPEC-2] stage 'deploy' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-2] 'deploy' resolves under plugins/agent/deploy
+  [38;2;74;222;128m✓[0m [SPEC-2] stage 'validate' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-2] 'validate' resolves under plugins/agent/validate
+  [38;2;74;222;128m✓[0m [SPEC-2] stage 'monitor' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-2] 'monitor' resolves under plugins/agent/monitor
+  [38;2;74;222;128m✓[0m [SPEC-3] deploy_agent_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-23] deploy_agent_run exits 0 in dry-run with non-default ZBUILD_ARTIFACT_DIR + ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [#1846/SPEC-23] deploy-result.json written to non-default ZBUILD_ARTIFACT_DIR (not state-derived)
+  [38;2;74;222;128m✓[0m [SPEC-9] deploy_agent_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m [SPEC-9] deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-9] deploy-result.json verdict=deployed
+  [38;2;74;222;128m✓[0m [SPEC-4] validate_agent_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m [#1845] the engine resolves validate's deploy_result from the deployed.yaml flow
+  [38;2;74;222;128m✓[0m [SPEC-9] validate_agent_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m [#1845] validate-result.json is a v2 result
+  [38;2;74;222;128m✓[0m [SPEC-9] validate-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-9] validate-result.json verdict=healthy
+  [38;2;74;222;128m✓[0m [SPEC-5] monitor_stage_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m [SPEC-9] monitor_stage_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m [SPEC-9] monitor-report.json written
+  [38;2;74;222;128m✓[0m [#1847/SPEC-13] monitor_stage_run returns rc=0 in the deployed.yaml dry-run dispatch
+  [38;2;74;222;128m✓[0m [#1847/SPEC-13] monitor-report.json is present after the deployed.yaml dry-run dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 32 tests passed[0m
+

@@ -1,0 +1,83 @@
+### SPEC-3 baseline tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+
+[38;2;0;212;255m[1m  cycle build/test wiring — integration (#511 F2)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m T1: simple.yaml declares 3 cycles (delivery_loop + design_verify + build_test)
+  [38;2;74;222;128m✓[0m T1: inner build_test_cycle is registered
+  [38;2;74;222;128m✓[0m T1: dispatch units include cycle:delivery_loop
+  [38;2;248;113;113m✗[0m T1: [#1668/SPEC-3] delivery_loop runs the design loop then build_test_cycle (impact removed)
+    [2mexpected: design_verify_cycle,build_test_cycle, got: design_verify_cycle,impact,build_test_cycle[0m
+  [38;2;74;222;128m✓[0m T1: build_test_cycle declares no feedback edge
+  [38;2;74;222;128m✓[0m T1: shape-floor declares its own summary
+  [38;2;74;222;128m✓[0m T1: secret-scan declares its own summary
+  [38;2;74;222;128m✓[0m T1: lint-gate declares its own summary
+  [38;2;74;222;128m✓[0m T1: coverage-gate declares its own summary
+  [38;2;74;222;128m✓[0m T1: mutation-gate declares its own summary
+  [38;2;74;222;128m✓[0m T2a: pass verdict → summary file PRESENT (ADR-055 §9)
+  [38;2;74;222;128m✓[0m T2a: pass summary records the verdict
+  [38;2;74;222;128m✓[0m T2a: pass summary states no failing assertions
+  [38;2;74;222;128m✓[0m T2b: fail verdict → summary file present and non-empty
+  [38;2;74;222;128m✓[0m T2b: contains failing line
+  [38;2;74;222;128m✓[0m T2c: error+empty raw → summary file PRESENT and non-empty
+  [38;2;74;222;128m✓[0m T2c: error summary records the verdict
+  [38;2;74;222;128m✓[0m T2c: error summary names the no-output condition
+  [38;2;74;222;128m✓[0m T4: manifest-driven feedback resolution rc=0
+  [38;2;74;222;128m✓[0m T4: prior_test_failures.txt copied to iter-2 feedback dir
+  [38;2;74;222;128m✓[0m T4: .complete sentinel written (Pin 9)
+  [38;2;74;222;128m✓[0m T5: --from-stage build refused with rc=1 (Pin 14)
+  [38;2;74;222;128m✓[0m T5: rejection message mentions 'inside or after a cycle'
+  [38;2;74;222;128m✓[0m T6: mixed failure set still leaves verdict=fail
+  [38;2;74;222;128m✓[0m T6: and no fault is rolled up (#2271)
+  [38;2;74;222;128m✓[0m T6: the aggregator renders no payload of its own
+  [38;2;74;222;128m✓[0m T6: build receives a NON-EMPTY gate summary (the #1831 regression)
+  [38;2;74;222;128m✓[0m T6: body carries the failing suite
+  [38;2;74;222;128m✓[0m T6: body carries the tautology build must re-author
+  [38;2;74;222;128m✓[0m T6: the design-routed gate's finding is present too
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m T1: [#1668/SPEC-3] delivery_loop runs the design loop then build_test_cycle (impact removed)
+
+### SPEC-3 head tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+
+[38;2;0;212;255m[1m  cycle build/test wiring — integration (#511 F2)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m T1: simple.yaml declares 3 cycles (delivery_loop + design_verify + build_test)
+  [38;2;74;222;128m✓[0m T1: inner build_test_cycle is registered
+  [38;2;74;222;128m✓[0m T1: dispatch units include cycle:delivery_loop
+  [38;2;74;222;128m✓[0m T1: [#1668/SPEC-3] delivery_loop runs the design loop then build_test_cycle (impact removed)
+  [38;2;74;222;128m✓[0m T1: build_test_cycle declares no feedback edge
+  [38;2;74;222;128m✓[0m T1: shape-floor declares its own summary
+  [38;2;74;222;128m✓[0m T1: secret-scan declares its own summary
+  [38;2;74;222;128m✓[0m T1: lint-gate declares its own summary
+  [38;2;74;222;128m✓[0m T1: coverage-gate declares its own summary
+  [38;2;74;222;128m✓[0m T1: mutation-gate declares its own summary
+  [38;2;74;222;128m✓[0m T2a: pass verdict → summary file PRESENT (ADR-055 §9)
+  [38;2;74;222;128m✓[0m T2a: pass summary records the verdict
+  [38;2;74;222;128m✓[0m T2a: pass summary states no failing assertions
+  [38;2;74;222;128m✓[0m T2b: fail verdict → summary file present and non-empty
+  [38;2;74;222;128m✓[0m T2b: contains failing line
+  [38;2;74;222;128m✓[0m T2c: error+empty raw → summary file PRESENT and non-empty
+  [38;2;74;222;128m✓[0m T2c: error summary records the verdict
+  [38;2;74;222;128m✓[0m T2c: error summary names the no-output condition
+  [38;2;74;222;128m✓[0m T4: manifest-driven feedback resolution rc=0
+  [38;2;74;222;128m✓[0m T4: prior_test_failures.txt copied to iter-2 feedback dir
+  [38;2;74;222;128m✓[0m T4: .complete sentinel written (Pin 9)
+  [38;2;74;222;128m✓[0m T5: --from-stage build refused with rc=1 (Pin 14)
+  [38;2;74;222;128m✓[0m T5: rejection message mentions 'inside or after a cycle'
+  [38;2;74;222;128m✓[0m T6: mixed failure set still leaves verdict=fail
+  [38;2;74;222;128m✓[0m T6: and no fault is rolled up (#2271)
+  [38;2;74;222;128m✓[0m T6: the aggregator renders no payload of its own
+  [38;2;74;222;128m✓[0m T6: build receives a NON-EMPTY gate summary (the #1831 regression)
+  [38;2;74;222;128m✓[0m T6: body carries the failing suite
+  [38;2;74;222;128m✓[0m T6: body carries the tautology build must re-author
+  [38;2;74;222;128m✓[0m T6: the design-routed gate's finding is present too
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 30 tests passed[0m
+
