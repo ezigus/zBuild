@@ -87,6 +87,14 @@ for _s in "${_expected_stages[@]}"; do
     _i=$((_i + 1))
 done
 
+# [SPEC-2] [#1668/SPEC-2] impact must not appear in _TPL_STAGES after removal from
+# the delivery_loop flow in simple.yaml (#1668). A 19-element array with impact
+# substituted for another stage would pass the count and index checks above but
+# fail this one.
+_impact_in_stages=0
+for _s in "${_TPL_STAGES[@]}"; do [[ "$_s" == "impact" ]] && _impact_in_stages=1; done
+assert_eq "[SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES" "0" "$_impact_in_stages"
+
 # [SPEC-2] merge_policy is a reserved template-level knob, NOT a stage section
 # (#968 review): it must never appear in _TPL_STAGES nor as a phantom stage def.
 _mp_is_stage=0
