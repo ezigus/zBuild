@@ -1,5 +1,5 @@
 ### SPEC-5 baseline tests/unit/run-cap-test.sh
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qtcTJG/tests/unit/run-cap-test.sh: line 13: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qtcTJG/core/state/run-cap.sh: No such file or directory
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.604cIX/tests/unit/run-cap-test.sh: line 13: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.604cIX/core/state/run-cap.sh: No such file or directory
 ### SPEC-5 head tests/unit/run-cap-test.sh
 
 [38;2;0;212;255m[1m  host-wide concurrent run cap (#1932)[0m
@@ -8,12 +8,14 @@
 
   [38;2;0;212;255m[#1932/SPEC-1] unset ZBUILD_MAX_CONCURRENT_RUNS[0m
   [38;2;74;222;128m✓[0m [#1932/SPEC-1] no cap: returns 0
-  [38;2;74;222;128m✓[0m [#1932/SPEC-1] no cap: no output produced
+  [38;2;74;222;128m✓[0m [#1932/SPEC-1] no cap: no stdout produced
+  [38;2;74;222;128m✓[0m [#1932/SPEC-1] no cap: no stderr produced
   [38;2;74;222;128m✓[0m [#1932/SPEC-1] no cap: no slot file written
 
   [38;2;0;212;255m[#1932/SPEC-6] cap set, fewer live slots than cap[0m
   [38;2;74;222;128m✓[0m [#1932/SPEC-6] below cap: returns 0
-  [38;2;74;222;128m✓[0m [#1932/SPEC-6] below cap: no cap output produced
+  [38;2;74;222;128m✓[0m [#1932/SPEC-6] below cap: no stdout produced
+  [38;2;74;222;128m✓[0m [#1932/SPEC-6] below cap: no stderr produced
   [38;2;74;222;128m✓[0m [#1932/SPEC-6] below cap: slot file written for admitted run
 
   [38;2;0;212;255m[#1932/SPEC-2] cap set, N live slots present[0m
@@ -38,11 +40,17 @@
 
   [38;2;0;212;255m[#1932/SPEC-7] ADR-059 §7 and pipeline.refused.run_cap[0m
   [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 file exists
-  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured'
-  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by names tests/unit/run-cap-test.sh
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured' under Decision
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by has a bullet naming tests/unit/run-cap-test.sh
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by names SPEC-1
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by names SPEC-2
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by names SPEC-3
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by names SPEC-4
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by names SPEC-5
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by names SPEC-6
   [38;2;74;222;128m✓[0m [#1932/SPEC-7] event-schema.json contains pipeline.refused.run_cap
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 22 tests passed[0m
+  [38;2;74;222;128m[1mAll 30 tests passed[0m
 
