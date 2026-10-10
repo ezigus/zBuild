@@ -51,12 +51,16 @@ unset ZBUILD_MAX_CONCURRENT_RUNS
 _s1_state="$TEST_TEMP_DIR/spec1/run.json"
 _mk_live_state "$_s1_state"
 
-_s1_out=""
+_s1_stdout_file="$TEST_TEMP_DIR/spec1-stdout.txt"
+_s1_stderr_file="$TEST_TEMP_DIR/spec1-stderr.txt"
 _s1_rc=0
-_s1_out="$(zbuild_run_cap_admit "run-s1" "$_s1_state" 2>&1)" || _s1_rc=$?
+zbuild_run_cap_admit "run-s1" "$_s1_state" >"$_s1_stdout_file" 2>"$_s1_stderr_file" || _s1_rc=$?
+_s1_stdout="$(<"$_s1_stdout_file")"
+_s1_stderr="$(<"$_s1_stderr_file")"
 
 assert_eq "[#1932/SPEC-1] no cap: returns 0" "0" "$_s1_rc"
-assert_eq "[#1932/SPEC-1] no cap: no output produced" "" "$_s1_out"
+assert_eq "[#1932/SPEC-1] no cap: no stdout produced" "" "$_s1_stdout"
+assert_eq "[#1932/SPEC-1] no cap: no stderr produced" "" "$_s1_stderr"
 
 # No files must have been written under the state root
 _s1_file_count=0
@@ -81,12 +85,16 @@ _mk_live_state "$_s6_state_new"
 # One existing live slot (cap=2, so 1 < 2)
 _cap_admit_subprocess "run-s6-a" "$_s6_state_a"
 
-_s6_out=""
+_s6_stdout_file="$TEST_TEMP_DIR/spec6-stdout.txt"
+_s6_stderr_file="$TEST_TEMP_DIR/spec6-stderr.txt"
 _s6_rc=0
-_s6_out="$(zbuild_run_cap_admit "run-s6-new" "$_s6_state_new" 2>&1)" || _s6_rc=$?
+zbuild_run_cap_admit "run-s6-new" "$_s6_state_new" >"$_s6_stdout_file" 2>"$_s6_stderr_file" || _s6_rc=$?
+_s6_stdout="$(<"$_s6_stdout_file")"
+_s6_stderr="$(<"$_s6_stderr_file")"
 
 assert_eq "[#1932/SPEC-6] below cap: returns 0" "0" "$_s6_rc"
-assert_eq "[#1932/SPEC-6] below cap: no cap output produced" "" "$_s6_out"
+assert_eq "[#1932/SPEC-6] below cap: no stdout produced" "" "$_s6_stdout"
+assert_eq "[#1932/SPEC-6] below cap: no stderr produced" "" "$_s6_stderr"
 
 # A slot file must now exist for the admitted run
 _s6_slot_found=0
@@ -237,19 +245,41 @@ print_test_section "[#1932/SPEC-7] ADR-059 §7 and pipeline.refused.run_cap"
 _adr_file="$REPO_ROOT/docs/adr/ADR-059-issue-vs-run-keying.md"
 assert_file_exists "[#1932/SPEC-7] ADR-059 file exists" "$_adr_file"
 
-if grep -q "Host-wide run cap, off unless configured" "$_adr_file"; then
-    assert_pass "[#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured'"
+# §7 heading must appear inside the ## Decision section (between ## Decision and the next ##)
+_s7_decision_section=""
+_s7_decision_section="$(awk '/^## Decision/{in_sec=1; next} /^## /{if(in_sec) exit} in_sec{print}' "$_adr_file")"
+if grep -q "Host-wide run cap, off unless configured" <<< "$_s7_decision_section"; then
+    assert_pass "[#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured' under Decision"
 else
-    assert_fail "[#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured'" \
-        "section heading not found in ADR-059"
+    assert_fail "[#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured' under Decision" \
+        "section heading not found inside ## Decision in ADR-059"
 fi
 
-if grep -q "tests/unit/run-cap-test.sh" "$_adr_file"; then
-    assert_pass "[#1932/SPEC-7] ADR-059 Enforced-by names tests/unit/run-cap-test.sh"
+# Enforced-by section must contain a bullet (line starting with -) naming run-cap-test.sh
+_s7_enforced_section=""
+_s7_enforced_section="$(awk '/^## Enforced by/{in_sec=1; next} /^## /{if(in_sec) exit} in_sec{print}' "$_adr_file")"
+_s7_enforced_bullet=""
+while IFS= read -r _line; do
+    if grep -q "^[-*]" <<< "$_line" && grep -q "run-cap-test\.sh" <<< "$_line"; then
+        _s7_enforced_bullet="$_line"
+    fi
+done <<< "$_s7_enforced_section"
+if [[ -n "$_s7_enforced_bullet" ]]; then
+    assert_pass "[#1932/SPEC-7] ADR-059 Enforced-by has a bullet naming tests/unit/run-cap-test.sh"
 else
-    assert_fail "[#1932/SPEC-7] ADR-059 Enforced-by names tests/unit/run-cap-test.sh" \
-        "not found in ADR-059 Enforced-by"
+    assert_fail "[#1932/SPEC-7] ADR-059 Enforced-by has a bullet naming tests/unit/run-cap-test.sh" \
+        "no bullet line containing run-cap-test.sh found in ## Enforced by"
 fi
+
+# Enforced-by section must individually name all six spec statements
+for _spec_tag in SPEC-1 SPEC-2 SPEC-3 SPEC-4 SPEC-5 SPEC-6; do
+    if grep -q "$_spec_tag" <<< "$_s7_enforced_section"; then
+        assert_pass "[#1932/SPEC-7] ADR-059 Enforced-by names $_spec_tag"
+    else
+        assert_fail "[#1932/SPEC-7] ADR-059 Enforced-by names $_spec_tag" \
+            "$_spec_tag not found in ## Enforced by section of ADR-059"
+    fi
+done
 
 _schema_file="$REPO_ROOT/config/event-schema.json"
 if grep -q "pipeline.refused.run_cap" "$_schema_file"; then
