@@ -1,0 +1,22 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-10-10T13:34:08Z",
+    "authored_at_commit": "42d90caeacda88972de690a30ec15f1f6540a6da",
+    "wiring_files": [
+      "core/pipeline/runner.sh"
+    ],
+    "scope_files": [
+      "core/state/run-cap.sh",
+      "core/pipeline/runner.sh",
+      "core/state/resume.sh",
+      "core/state/issue-lock.sh",
+      "docs/adr/ADR-059-issue-vs-run-keying.md",
+      "config/event-schema.json",
+      "tests/unit/run-cap-test.sh"
+    ]
+  }
+}

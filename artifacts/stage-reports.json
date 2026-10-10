@@ -1,9 +1,14 @@
 {
   "scope_files": [
+    "config/event-schema.json",
     "core/pipeline/runner.sh",
+    "core/state/issue-lock.sh",
+    "core/state/resume.sh",
     "core/state/run-cap.sh",
     "docs/adr/ADR-059-issue-vs-run-keying.md",
     "tests/unit/run-cap-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [
+    "core/pipeline/runner.sh"
+  ]
 }
