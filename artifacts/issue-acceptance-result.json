@@ -1,0 +1,23 @@
+{
+  "result_contract": 2,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "Two tests broken by the change were not updated — `tests/unit/impact-max-turns-test.sh` (3 assertions on impact's router config in simple.yaml, now empty after removal) and `tests/unit/template-always-run-test.sh` (pins simple.yaml flow count at 20, now 19) — leaving the test suite failing.",
+  "data": {
+    "unmet": [
+      "R-2: `impact-max-turns-test.sh` (an `impact-*-test.sh` file the issue classified as \"verified not affected\") reads `_TPL_STAGE_ROUTER_MAX_TURNS_impact` and `_TPL_STAGE_ROUTER_TIMEOUT_impact` from simple.yaml, both now empty, causing 3 failures — impact's tests do not all pass",
+      "R-5: dogfood cannot be confirmed with a failing test suite"
+    ],
+    "unsure": [],
+    "findings": [
+      {
+        "n": 1,
+        "text": "The issue requires this and the change does not meet it: R-2: `impact-max-turns-test.sh` (an `impact-*-test.sh` file the issue classified as \"verified not affected\") reads `_TPL_STAGE_ROUTER_MAX_TURNS_impact` and `_TPL_STAGE_ROUTER_TIMEOUT_impact` from simple.yaml, both now empty, causing 3 failures — impact's tests do not all pass. What would settle it: a change that meets this requirement in full."
+      },
+      {
+        "n": 2,
+        "text": "The issue requires this and the change does not meet it: R-5: dogfood cannot be confirmed with a failing test suite. What would settle it: a change that meets this requirement in full."
+      }
+    ]
+  }
+}
