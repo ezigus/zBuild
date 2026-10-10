@@ -81,9 +81,6 @@ delivery_loop:
   description: Design, then build, until both pass — going round when a finding needs design
   flow:
     - design_verify_cycle
-    # The semantic judge of the design (advisory by placement, ADR-040): once
-    # per round, after the design loop, never driving convergence.
-    - impact
     - build_test_cycle
   exit_when:
     all:
@@ -117,10 +114,6 @@ delivery_loop:
 #  (b) design.design → design.prior_design (self-edge) — mirrors design_impact_cycle
 #      so iter N+1 refines rather than re-creates (#773 lesson).
 #
-# The SEMANTIC sibling (LLM judge: are the SPECs genuinely new + separable?) is the
-# `impact` stage, placed AFTER this cycle in delivery_loop (advisory by placement,
-# ADR-040) — NOT a member of this cycle, so it never re-runs per design iteration
-# and never drives convergence.
 design_verify_cycle:
   type: cycle
   description: Verify the design contract is build-ready until design-gate passes
@@ -341,35 +334,6 @@ design-gate:
   io:
     destinations: [file, stdout]
     tail_lines: 200
-
-# ─── impact (leaf, top-level advisory-by-placement) ──────────────────────────
-# ADR-046 (#1218): the SEMANTIC sibling of the design verifier. Reused `impact`
-# T2 agent (adversarial post-design consequence-finder) placed as a LONE top-level
-# stage AFTER design_verify_cycle and BEFORE build_test_cycle. Advisory BY PLACEMENT
-# (ADR-040): it has no exit_when, drives no convergence, and never blocks — so the
-# LLM runs ONCE (not per design iteration). Its manifest is deliberately MARKER-LESS
-# (no `convergence:`) — standard.yaml's design_impact_cycle binds impact via
-# exit_when and the typed-aggregator preflight only checks MARKER-BEARING targets;
-# adding a marker here would break standard.yaml. Router knobs copied from
-# standard.yaml (T2, timeout 600s, max_turns 45, #960/#1242).
-impact:
-  gate: auto
-  roles: [impact_analyzer]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    # #1242: right-sized 180→600 to match the comparable tool-heavy T2 sibling
-    # `design`. The 180s ceiling was inherited from the T1 era; the #960 T2
-    # (sonnet) tier bump raised per-turn latency, so a 45-turn job overran both
-    # 180s AND the #1230 escalated 270s retry (rc=124, ~7.5min silent hang, run
-    # 20260704195255). retries below stays a safety net, not the primary budget.
-    timeout_s: 600
-    max_turns: 45
-    # #1230: impact was the lone stage that timed out (rc=124) in the #944
-    # dogfood. One retry-on-timeout (escalated budget) before the empty
-    # verdict=incomplete fallback. Default is 0 (opt-in) everywhere else.
-    retries: 1
 
 # ─── build (leaf, cycle member) ──────────────────────────────────────────────
 build:

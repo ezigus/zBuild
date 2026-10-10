@@ -94,42 +94,6 @@ design_run() {
 PLUG
 }
 
-_make_impact_plugin() {
-    local dir="$PLUGINS_ROOT/agent/impact"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: impact
-name: Test impact
-kind: agent
-version: 0.0.1
-hooks:
-  run: impact_run
-requires:
-  core:
-    - redaction
-provides:
-  role: impact_analyzer
-  result_contract: 2
-outputs:
-  - id: impact_out
-    path: ${artifact_dir}/impact.json
-    type: json
-    required: true
-    primary: true
-config:
-  valid_verdicts: [complete, incomplete, error]
-EOF
-    cat > "$dir/plugin.sh" <<'PLUG'
-impact_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}' \
-        > "$state_dir/artifacts/impact.json"
-    return 0
-}
-PLUG
-}
-
 _make_plan_plugin() {
     local dir="$PLUGINS_ROOT/agent/plan"
     mkdir -p "$dir"
@@ -316,7 +280,6 @@ _make_plugin "intake"          "intake"
 _make_plan_plugin
 _make_design_plugin
 _make_design_gate_plugin       # passes so design_verify_cycle converges quickly
-_make_plugin "impact"          "impact_analyzer"
 # #2187: build_test_cycle's newer members. Unresolved, each was a silent
 # `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
 _make_plugin "spec-coverage"       "spec_coverage"
