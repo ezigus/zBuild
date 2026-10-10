@@ -24,6 +24,7 @@
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[18] == pr
+  [38;2;74;222;128m✓[0m [SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES
   [38;2;74;222;128m✓[0m [SPEC-2] merge_policy is not parsed as a stage
   [38;2;74;222;128m✓[0m [SPEC-3] intake roles
   [38;2;74;222;128m✓[0m [SPEC-3] intake io_dests
@@ -110,7 +111,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 104 tests passed[0m
+  [38;2;74;222;128m[1mAll 105 tests passed[0m
 
 ### config/templates/deployed.yaml head tests/unit/template-simple-yaml-test.sh
 
@@ -138,6 +139,7 @@
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[18] == pr
+  [38;2;74;222;128m✓[0m [SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES
   [38;2;74;222;128m✓[0m [SPEC-2] merge_policy is not parsed as a stage
   [38;2;74;222;128m✓[0m [SPEC-3] intake roles
   [38;2;74;222;128m✓[0m [SPEC-3] intake io_dests
@@ -224,7 +226,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 104 tests passed[0m
+  [38;2;74;222;128m[1mAll 105 tests passed[0m
 
 ### config/templates/deployed.yaml reverted tests/unit/template-simple-yaml-test.sh
 
@@ -252,6 +254,7 @@
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[18] == pr
+  [38;2;74;222;128m✓[0m [SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES
   [38;2;74;222;128m✓[0m [SPEC-2] merge_policy is not parsed as a stage
   [38;2;74;222;128m✓[0m [SPEC-3] intake roles
   [38;2;74;222;128m✓[0m [SPEC-3] intake io_dests
@@ -338,7 +341,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 104 tests passed[0m
+  [38;2;74;222;128m[1mAll 105 tests passed[0m
 
 ### config/templates/deployed.yaml head tests/unit/template-simple-yaml-test.sh
 
@@ -366,6 +369,7 @@
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[18] == pr
+  [38;2;74;222;128m✓[0m [SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES
   [38;2;74;222;128m✓[0m [SPEC-2] merge_policy is not parsed as a stage
   [38;2;74;222;128m✓[0m [SPEC-3] intake roles
   [38;2;74;222;128m✓[0m [SPEC-3] intake io_dests
@@ -452,7 +456,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 104 tests passed[0m
+  [38;2;74;222;128m[1mAll 105 tests passed[0m
 
 ### config/templates/deployed.yaml reverted tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
 

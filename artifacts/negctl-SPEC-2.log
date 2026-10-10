@@ -38,6 +38,8 @@
     [2mexpected: review-aggregator, got: review_lenses[0m
   [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[18] == pr
     [2mexpected: pr, got: review-aggregator[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES
+    [2mexpected: 0, got: 1[0m
   [38;2;74;222;128m✓[0m [SPEC-2] merge_policy is not parsed as a stage
   [38;2;74;222;128m✓[0m [SPEC-3] intake roles
   [38;2;74;222;128m✓[0m [SPEC-3] intake io_dests
@@ -131,7 +133,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m21 of 104 tests failed[0m
+  [38;2;248;113;113m[1m22 of 105 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 19
   [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[6] == test-author
@@ -147,6 +149,7 @@
   [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
   [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
   [38;2;248;113;113m✗[0m [SPEC-2] _TPL_STAGES[18] == pr
+  [38;2;248;113;113m✗[0m [SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES
   [38;2;248;113;113m✗[0m [SPEC-3] impact roles unset (impact removed from template)
   [38;2;248;113;113m✗[0m [SPEC-3] impact io_dests unset (impact removed from template)
   [38;2;248;113;113m✗[0m [SPEC-3] impact router timeout unset (impact removed from template)
@@ -181,6 +184,7 @@
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[16] == review_lenses
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[17] == review-aggregator
   [38;2;74;222;128m✓[0m [SPEC-2] _TPL_STAGES[18] == pr
+  [38;2;74;222;128m✓[0m [SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES
   [38;2;74;222;128m✓[0m [SPEC-2] merge_policy is not parsed as a stage
   [38;2;74;222;128m✓[0m [SPEC-3] intake roles
   [38;2;74;222;128m✓[0m [SPEC-3] intake io_dests
@@ -267,5 +271,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 104 tests passed[0m
+  [38;2;74;222;128m[1mAll 105 tests passed[0m
 
