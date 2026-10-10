@@ -101,7 +101,7 @@ done
 print_test_section "E4: the envelope a reader sees is unchanged"
 _d="$TEST_TEMP_DIR/e4"; mkdir -p "$_d"
 ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" ZBUILD_EVENTS_DB=/dev/null \
-ZBUILD_RUN_ID="r-1806" ZBUILD_ISSUE=1806 ZBUILD_CURRENT_STAGE=build \
+ZBUILD_RUN_ID="r-1806" ZBUILD_ISSUE=90000042 ZBUILD_CURRENT_STAGE=build \
 ZBUILD_STAGE_IO_SEQ_LABEL=6.1.2 ZBUILD_UNIT=build.web \
 bash -c '
     source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"
@@ -115,7 +115,7 @@ assert_eq "[#1806/E4] envelope keys, in order, and their types" \
     'ts:string,run_id:string,issue:number,type:string,plugin:string,kind:string,data:object,schema_version:number,stage:string,seq:string,unit:string' \
     "$(jq -r '[to_entries[] | "\(.key):\(.value|type)"] | join(",")' <<< "$_first")"
 assert_eq "[#1806/E4] envelope values" \
-    '{"issue":1806,"kind":"agent","plugin":"build","run_id":"r-1806","schema_version":1,"seq":"6.1.2","stage":"build","type":"stage.complete","unit":"build.web"}' \
+    '{"issue":90000042,"kind":"agent","plugin":"build","run_id":"r-1806","schema_version":1,"seq":"6.1.2","stage":"build","type":"stage.complete","unit":"build.web"}' \
     "$(jq -cS 'del(.ts, .data)' <<< "$_first")"
 assert_eq "[#1806/E4] data: last duplicate wins, values verbatim, ANSI stripped, every value a string" \
     '{"ansi":"red","empty":"","eq":"a=b","kind":"agent","nl":"a\nb","plugin":"build","quote":"say \"hi\"","verdict":"pass"}' \
