@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 1/10 ==============
+============== ZBUILD BUILD — iter 2/10 ==============
 ## What you own
 ### INSTRUCTIONS
 Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
