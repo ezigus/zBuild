@@ -1,0 +1,15 @@
+{
+  "scope_files": [
+    "config/templates/deployed.yaml",
+    "config/templates/simple.yaml",
+    "docs/adr/ADR-068-nested-loops-and-finding-answers.md",
+    "tests/integration/core-pipeline-cycle-build-test-wiring-test.sh",
+    "tests/integration/cycle-acceptance-terminal-failure-test.sh",
+    "tests/integration/cycle-gate-unavailable-aborts-run-test.sh",
+    "tests/integration/cycle-on-max-pipeline-continues-test.sh",
+    "tests/integration/cycle-rate-limit-aborts-run-test.sh",
+    "tests/lib/run-status-comment-mock-roster.sh",
+    "tests/unit/template-simple-yaml-test.sh"
+  ],
+  "wiring_files": []
+}
