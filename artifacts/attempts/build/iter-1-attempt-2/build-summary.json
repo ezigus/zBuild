@@ -1,0 +1,33 @@
+{
+  "schema_version": 4,
+  "result_contract": 2,
+  "issue": 1806,
+  "files_changed": [
+    "config/adr-enforcement-baseline.txt",
+    "core/event-bus/event-bus.sh",
+    "docs/adr/ADR-065-process-budget.md",
+    "scripts/lib/run-status-comment.sh"
+  ],
+  "lines_added": 61,
+  "lines_removed": 9,
+  "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
+  "iterations": 3,
+  "terminated_reason": "router_timeout",
+  "verdict": "incomplete",
+  "disposition": "timed_out",
+  "reason": "router_timeout",
+  "scope_violation": false,
+  "scope_violations": [],
+  "loop_input_tokens": 0,
+  "loop_output_tokens": 0,
+  "notes": "Build stage completed. Diff written to artifact; not applied.",
+  "passes": 2,
+  "round": {
+    "run_id": "20261009232946-2382",
+    "cycle_id": "build_test_cycle",
+    "iter": "1",
+    "base": "7f6e0bf356c89dcee1994690d1d81515dc2978b7",
+    "passes": 2,
+    "iterations": 6
+  }
+}

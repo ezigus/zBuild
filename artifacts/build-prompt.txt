@@ -1,0 +1,204 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## What you own
+### INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK below.
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Saying you are done
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer",
+emit `LOOP_COMPLETE` immediately. Do NOT keep iterating when there is
+nothing left to do. While any STAGE SUMMARY is headed that way, finishing
+with no change needs each of its findings answered: `done` (you changed
+something for it), or `nothing to do` with the reason.
+
+### When a finding does not reproduce
+If a failing summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Answer that finding, on its own line before the sentinel:
+
+    ANSWER <stage> finding <n>: nothing to do — not reproduced: <the path you ran>
+
+one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~630s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY headed "— its findings, to answer" is red RIGHT NOW on this tree.
+  Start from the failing line it quotes.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## What you judge against
+### ORIGINAL TASK (immutable across iterations)
+# Plan: Fix event-bus per-emit forks, malformed timestamps, and run-status self-trigger loop
+
+**Goal:** Reduce per-event spawns to O(1) jq calls, fix malformed ISO timestamps in map-unit work units, and break the run-status comment sidecar's self-trigger loop and redundant PATCH loop
+
+## Steps
+1. Write test-first: timestamp malformation regression test. Verifies that emitting an event with ZBUILD_PLATFORM=linux (as a map work unit would set) on the host still produces a well-formed ISO 8601 timestamp with no literal '%3N'. Must fail RED at the merge base because the current code reads ZBUILD_PLATFORM to choose the date format, causing BSD date to emit '%3N' literally on macOS hosts running linux-target map units.
+   - Files: `tests/unit/event-bus-timestamp-test.sh`
+   - Estimated lines: 55
+2. Write test-first: two new SPECs in the run-status comment loop test. SPEC-6: a sidecar whose only new events are its own render's redaction.applied must produce no second render and no second PATCH — the watcher must not re-wake on its own writes. SPEC-7: rsc_upsert (via rsc_flush) makes no gh PATCH request when the rendered body is identical to the previously-sent body. Both must fail RED at the merge base.
+   - Files: `tests/unit/run-status-comment-loop-test.sh`
+   - Estimated lines: 65
+3. Fix eb_emit_event: build payload in one jq invocation instead of one per key=val pair. Accumulate key/val pairs as --arg entries in an array, then call jq -n '$ARGS.named' once. This eliminates N-1 jq forks per emit (N = payload field count, typically 3-8). Also replace _eb_sql_escape's 'printf | sed' with bash parameter expansion '${1//\'/'\''\''}'  to remove the sed fork per escaped field (six calls per SQLite-enabled emit). Envelope call (jq -cn) at line 206 is already a single call and is unchanged.
+   - Files: `core/event-bus/event-bus.sh`
+   - Estimated lines: 25
+4. Fix portable timestamp: replace 'if [[ "$ZBUILD_PLATFORM" == "macos" ]]' with an OSTYPE-based host check. Add a _eb_host_is_mac helper that reads $OSTYPE (bash built-in, no fork) — true when OSTYPE starts with 'darwin'. The fix keeps ADR-009 §6: map work units continue to export ZBUILD_PLATFORM=<target> for plugins; the host clock format now uses a separate variable so the two are no longer coupled.
+   - Files: `core/event-bus/event-bus.sh`
+   - Estimated lines: 12
+5. Fix rsc_tail_loop self-trigger: after rsc_flush returns, re-read the current file size of events.jsonl and set last_size to that value. This absorbs the redaction.applied event(s) written by apply_scope_redaction during the flush, so the next poll sees size == last_size and dirty stays 0. Also set ZBUILD_CURRENT_STAGE="run-status-comment" at the top of rsc_main (before rsc_flush is ever called) so every event emitted by the sidecar, including redaction.applied, carries stage attribution.
+   - Files: `scripts/lib/run-status-comment.sh`
+   - Estimated lines: 10
+6. Fix rsc_flush to skip unchanged-body PATCHes: before calling rsc_upsert, compare the rendered body_file against the previously-sent body stored at $state_dir/status-comment-body-prev.txt using 'cmp -s'. If identical, remove body_file and return 0. On a successful rsc_upsert call, atomically copy body_file to the prev file. This makes rsc_upsert a no-op for unchanged renders, eliminating the ~1,476 redundant PATCHes seen in the #1802 run.
+   - Files: `scripts/lib/run-status-comment.sh`
+   - Estimated lines: 12
+7. Lower FORK_BUDGET in fork-budget-test.sh to reflect the reduced per-emit fork count (measure after steps 3-4 land). Add ADR-065 §5 amendment note to ADR-065-process-budget.md documenting that the event bus per-emit processes named in §5 are now removed, and add an ## Enforced by section naming the enforcement tests. Remove ADR-065-process-budget.md from config/adr-enforcement-baseline.txt (the baseline only shrinks).
+   - Files: `tests/e2e/fork-budget-test.sh`, `docs/adr/ADR-065-process-budget.md`, `config/adr-enforcement-baseline.txt`
+   - Estimated lines: 22
+
+## Notes
+Gaps and assumptions: (1) FORK_BUDGET exact new value cannot be determined without running the parity fixture after the implementation lands — step-7 must measure it then set the number. The plan sets the budget ratchet as the last step so measurement is against the fully-patched tree. (2) The _eb_sql_escape bash-substitution form '${1//\'/\'\''}'  is documented in the code as having been flagged by Copilot for the escaped-inside-double-quotes edge case. The implementer should verify the expansion is correct in bash (a unit test with a string containing a single quote is a sufficient check). If it proves unreliable, 'tr' is the safe fallback ('printf "%s" "$1" | tr "'" "''"') at the cost of one fork — still better than sed. (3) The sidecar stage attribution (ZBUILD_CURRENT_STAGE="run-status-comment") is set in rsc_main before any emit; this covers rsc_tail_loop and rsc_flush. If rsc_outbound_body is called outside rsc_main (e.g., the --once path), it too inherits the exported value. (4) The unchanged-body prev file grows to ~60 KB per render; this is acceptable for a state-dir file and is cleaned up with the run's state directory. (5) The cmp -s approach for unchanged-body detection adds one fork per potential PATCH, which is negligible compared to the gh network call it prevents. (6) The self-trigger fix (re-reading size after flush) is minimal and does not suppress redaction.applied entirely — the event is still emitted once per genuine render and carries stage attribution after step-5. This satisfies 'attributed or no longer emitted per render' in the acceptance criteria. (7) ADR-065 is currently in config/adr-enforcement-baseline.txt (line 62), so the absence of 'Enforced by' does not currently fail lint. Step-7 removes it from the baseline, which requires the Enforced by section to be present and name real test files — this is a hard dependency: step-7 must only run after step-1 and step-2 have created those test files.
+
+### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design — Fix event-bus per-emit forks, malformed timestamps, and run-status self-trigger loop
+
+**Issue:** #1806  
+**ADR refs:** ADR-065 §1-§2-§5 (fork budget), ADR-064 §2-§6 (sidecar reader/redaction), ADR-009 §ZBUILD_PLATFORM env contract
+
+## Architectural Decision Summary
+
+**Goal:** Reduce O(N) jq forks per event emission to O(1), fix ISO 8601 timestamp malformation on macOS hosts running `type: map` work units, and break the run-status sidecar's self-trigger loop and redundant PATCH cycle.
+
+**Context:** `eb_emit_event` forks jq once per key=val payload argument (typically 3–8) rather than once total; the envelope jq call is already one call and is unchanged. The timestamp format branch reads `ZBUILD_PLATFORM` (the build target) rather than the host OS (`$OSTYPE`), so a macOS host dispatching a linux-target map unit calls BSD `date +%3N` which emits the literal string `%3N`. The run-status sidecar calls `apply_scope_redaction` during each render, which emits `redaction.applied` to events.jsonl; the tail loop sees a new byte count, sets `dirty=1`, and triggers another render. Each render also issues a redundant PATCH when the body is unchanged.
+
+**Decision:**
+1. **Payload accumulation:** replace the per-argument `jq . + {($k): $v}` loop with a two-phase approach — accumulate `--arg key val` pairs in a bash array, then call `jq -n '$ARGS.named'` once after the loop. ANSI stripping and plugin/kind extraction remain in the loop (both are bash-native; no fork).
+2. **SQL escape:** replace `printf '%s' "$1" | sed "s/'/''/g"` with bash parameter expansion `${1//\'/\'\'}` to eliminate one fork per SQLite-enabled field (six calls per emit when the mirror is active).
+3. **Host-OS timestamp:** add a `_eb_host_is_mac` helper that tests `[[ "$OSTYPE" == darwin* ]]` (bash builtin, zero forks). Use it instead of `ZBUILD_PLATFORM == "macos"`. ADR-009's ZBUILD_PLATFORM contract for plugins is preserved; the host clock format is now a separate concern.
+4. **Self-trigger fix:** after `rsc_flush` returns in `rsc_tail_loop`, re-read the file byte count and set `last_size` to it, absorbing any `redaction.applied` bytes written during the flush. Set `ZBUILD_CURRENT_STAGE="run-status-comment"` (and export it) at the top of `rsc_main`, before any `rsc_flush` call, so every event the sidecar emits carries stage attribution.
+5. **Unchanged-body skip:** in `rsc_flush`, after rendering to `body_file`, compare it against `$state_dir/status-comment-body-prev.txt` with `cmp -s`. If identical, remove `body_file` and return 0. After a successful `rsc_upsert`, copy `body_file` to the prev file atomically.
+6. **ADR-065 amendment + enforcement:** lower `FORK_BUDGET` in `fork-budget-test.sh` to just above the new measured value; amend ADR-065 §5 to name the removed processes; add `## Enforced by` section; remove ADR-065 from `config/adr-enforcement-baseline.txt`.
+
+
+
+## Notes
+
+- The new `FORK_BUDGET` constant must be measured after steps 3–4 (payload + sql-escape fixes) land, then set to just above the Linux CI value per ADR-065 §2. Until measured, the design cannot name the exact number.
+- `$ARGS.named` in jq preserves all key/value pairs; key order in the output JSON may differ from the iterative approach but downstream consumers (including `jq -Sc` golden comparisons) sort keys, so the change is invisible to all existing tests.
+- The `_eb_host_is_mac` helper reads `$OSTYPE`, a bash builtin set at shell startup — no fork, and immune to ZBUILD_PLATFORM overrides that map work units inject for plugin dispatch.
+- The unchanged-body prev file grows to ~60 KB; it lives in the run's state dir and is cleaned up with it.
+- `cmp -s` adds one fork per potential PATCH, negligible against the `gh` network call it prevents.
+- The self-trigger fix (cursor reset) and the stage attribution (ZBUILD_CURRENT_STAGE) address R-3 jointly: the event is still emitted once per genuine render and carries attribution, but it no longer re-arms the dirty flag for a second render.
+- ADR-064 §2 states the sidecar "reads events.jsonl (never writes it)"; in practice `apply_scope_redaction` (called from the render path) does write a `redaction.applied` event. The stage attribution amendment note in ADR-064 acknowledges this and records that the sidecar's own events are now attributed.
+Where a design decision above conflicts with the plan, follow the design decision.
+
+### ACCEPTANCE TESTS (you MUST make these pass)
+These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#1806/SPEC-1]).
+- SPEC-1: tests/unit/event-bus-timestamp-test.sh
+- SPEC-2: tests/unit/event-bus-timestamp-test.sh
+- SPEC-3: tests/unit/run-status-comment-loop-test.sh
+- SPEC-4: tests/unit/run-status-comment-loop-test.sh
+- SPEC-5: tests/unit/run-status-comment-loop-test.sh
+- SPEC-6: tests/e2e/fork-budget-test.sh
+
+What each SPEC requires:
+- [#1806/SPEC-1] eb_emit_event produces a well-formed ISO 8601 timestamp (no literal `%3N`, format `YYYY-MM-DDTHH:MM:SS.000Z` or `.NNNz`) when ZBUILD_PLATFORM is set to "linux" and the host OS is macOS (OSTYPE=darwin*)
+- [#1806/SPEC-2] eb_emit_event accumulates all key=val arguments into a single jq invocation for payload construction; the emitted event JSON is byte-for-byte identical to the current output for the same inputs
+- [#1806/SPEC-3] after rsc_flush returns, the tail loop's file-size cursor (`last_size`) is updated to the current byte count of events.jsonl so that redaction.applied events written during the flush do not set dirty=1 and cause a second render
+- [#1806/SPEC-4] rsc_flush makes no gh PATCH request (does not call rsc_upsert) when the rendered body is byte-for-byte identical to the body sent in the previous flush
+- [#1806/SPEC-5] every event emitted by the sidecar process (including redaction.applied) carries `stage="run-status-comment"` in the event envelope
+- [#1806/SPEC-6] FORK_BUDGET in fork-budget-test.sh is lowered to a value smaller than the current merge-base measurement; the test fails on the unpatched event-bus.sh and passes after the payload-accumulation and sql-escape fixes
+- [#1806/SPEC-7] ADR-065-process-budget.md gains an `## Enforced by` section naming fork-budget-test.sh (§1) and the amendment text naming the removed per-emit processes (§5); ADR-065-process-budget.md is removed from config/adr-enforcement-baseline.txt
+
+### REQUIREMENTS YOUR CODE MUST MEET
+Your change is done when the test for every requirement below passes.
+- [#1806/SPEC-1] eb_emit_event produces a well-formed ISO 8601 timestamp (no literal `%3N`, format `YYYY-MM-DDTHH:MM:SS.000Z` or `.NNNz`) when ZBUILD_PLATFORM is set to "linux" and the host OS is macOS (OSTYPE=darwin*)
+  → its test is already written; make it pass
+- [#1806/SPEC-2] eb_emit_event accumulates all key=val arguments into a single jq invocation for payload construction; the emitted event JSON is byte-for-byte identical to the current output for the same inputs
+  → its test is already written; make it pass
+- [#1806/SPEC-3] after rsc_flush returns, the tail loop's file-size cursor (`last_size`) is updated to the current byte count of events.jsonl so that redaction.applied events written during the flush do not set dirty=1 and cause a second render
+  → its test is already written; make it pass
+- [#1806/SPEC-4] rsc_flush makes no gh PATCH request (does not call rsc_upsert) when the rendered body is byte-for-byte identical to the body sent in the previous flush
+  → its test is already written; make it pass
+- [#1806/SPEC-5] every event emitted by the sidecar process (including redaction.applied) carries `stage="run-status-comment"` in the event envelope
+  → its test is already written; make it pass
+- [#1806/SPEC-6] FORK_BUDGET in fork-budget-test.sh is lowered to a value smaller than the current merge-base measurement; the test fails on the unpatched event-bus.sh and passes after the payload-accumulation and sql-escape fixes
+  → its test is already written; make it pass
+- [#1806/SPEC-7] ADR-065-process-budget.md gains an `## Enforced by` section naming fork-budget-test.sh (§1) and the amendment text naming the removed per-emit processes (§5); ADR-065-process-budget.md is removed from config/adr-enforcement-baseline.txt
+  → its test is already written; make it pass
+
+## What you must not do
+The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and do not edit it.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - core/event-bus/event-bus.sh
+  - scripts/lib/run-status-comment.sh
+  - tests/unit/event-bus-timestamp-test.sh
+  - tests/unit/run-status-comment-loop-test.sh
+  - tests/e2e/fork-budget-test.sh
+  - docs/adr/ADR-065-process-budget.md
+  - config/adr-enforcement-baseline.txt
+  - docs/adr/ADR-064-run-status-comment.md
+  - docs/adr/ADR-009-platform-aware-modularity.md
+  - tests/unit/core-event-bus-test.sh
+  - tests/unit/engine-event-shape-test.sh
+  - tests/unit/event-bus-seq-envelope-test.sh
+  - tests/unit/event-bus-concurrency-test.sh
+  - tests/unit/event-bus-ansi-strip-test.sh
+  - tests/unit/run-status-comment-gh-test.sh
+  - tests/mutation/event-bus.md
+  - tests/mutation/event-bus-ansi-strip.md
+  - tests/integration/strategy-platform-env-test.sh
+  - tests/golden/parity/run-fixture.sh
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=incomplete and touched 4 file(s): config/adr-enforcement-baseline.txt, core/event-bus/event-bus.sh, docs/adr/ADR-065-process-budget.md, scripts/lib/run-status-comment.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is headed "— its findings, to answer".

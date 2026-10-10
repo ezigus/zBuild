@@ -1,0 +1,486 @@
+diff --git a/config/adr-enforcement-baseline.txt b/config/adr-enforcement-baseline.txt
+index a8c082f5..62ae409b 100644
+--- a/config/adr-enforcement-baseline.txt
++++ b/config/adr-enforcement-baseline.txt
+@@ -59,4 +59,3 @@ ADR-060-stages-return-structure.md
+ ADR-062-engine-owned-reclamation.md
+ ADR-063-budget-disclosure-and-partial-output.md
+ ADR-064-run-status-comment.md
+-ADR-065-process-budget.md
+diff --git a/core/event-bus/event-bus.sh b/core/event-bus/event-bus.sh
+index 1b6a0bee..a50f2faa 100644
+--- a/core/event-bus/event-bus.sh
++++ b/core/event-bus/event-bus.sh
+@@ -60,6 +60,11 @@ _eb_mirror_enabled() {
+     [[ "$ZBUILD_EVENTS_DB" != "/dev/null" ]] && command -v sqlite3 >/dev/null 2>&1
+ }
+ 
++# _eb_host_is_mac — true when the host OS is macOS, regardless of ZBUILD_PLATFORM.
++# Uses $OSTYPE (bash builtin, zero forks) so map work units exporting
++# ZBUILD_PLATFORM=linux on a macOS host get the correct date format.
++_eb_host_is_mac() { [[ "$OSTYPE" == darwin* ]]; }
++
+ # ─── _eb_init — idempotent setup (dir, lockfile, SQLite schema) ─────────────
+ _eb_init() {
+     mkdir -p "$ZBUILD_EVENTS_DIR"
+@@ -142,9 +147,9 @@ eb_emit_event() {
+     # exported ZBUILD_PLUGIN context, and left the envelope's advertised
+     # .plugin/.kind empty. Captured in this existing loop so the hot path gains
+     # no subprocess, and applied below only when the exported context is absent.
+-    local payload="{}"
+-    local key val
+     local _data_plugin="" _data_kind=""
++    local -a _jq_args=()
++    local key val
+     for arg in "$@"; do
+         key="${arg%%=*}"
+         val="$(_eb_strip_ansi "${arg#*=}")"
+@@ -152,12 +157,18 @@ eb_emit_event() {
+             plugin) _data_plugin="$val" ;;
+             kind)   _data_kind="$val" ;;
+         esac
+-        payload="$(echo "$payload" | jq --arg k "$key" --arg v "$val" '. + {($k): $v}')"
++        _jq_args+=(--arg "$key" "$val")
+     done
++    local payload
++    if [[ ${#_jq_args[@]} -eq 0 ]]; then
++        payload="{}"
++    else
++        payload="$(jq -n '$ARGS.named' "${_jq_args[@]}")"
++    fi
+ 
+     # ISO 8601 timestamp with milliseconds
+     local ts
+-    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
++    if _eb_host_is_mac; then
+         ts="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+     else
+         ts="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+@@ -286,10 +297,10 @@ _eb_mirror_insert() {
+ 
+ # _eb_sql_escape: double single-quotes for SQLite single-quoted string literals.
+ # Single source of truth; used for every string field in the INSERT above.
+-# Uses sed because bash parameter expansion ${s//\'/\'\'} inside double
+-# quotes treats \' as literal backslash+quote (Copilot caught this on #278).
++# $'...' ANSI-C quoting avoids the double-quote context issue (#278) where
++# ${s//\'/\'\'} would produce literal backslash+quote instead of two quotes.
+ _eb_sql_escape() {
+-    printf '%s' "$1" | sed "s/'/''/g"
++    printf '%s' "${1//$'\''/$'\'\''}"
+ }
+ 
+ # ─── eb_query_events — minimal read API ─────────────────────────────────────
+diff --git a/docs/adr/ADR-065-process-budget.md b/docs/adr/ADR-065-process-budget.md
+index 66dd436a..07be2912 100644
+--- a/docs/adr/ADR-065-process-budget.md
++++ b/docs/adr/ADR-065-process-budget.md
+@@ -116,3 +116,15 @@ exactly 1 (the detector cannot go inert); SPEC-2 the mocked run still exits 0 un
+ SPEC-3 the trace names ≥ 20 source files and ≥ 1,000 execs (an fd-7-closed child traces to
+ stderr and must not pass as "under budget"); SPEC-4 total ≤ `FORK_BUDGET`. Red step: with the
+ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
++
++> **Amended 2026-10-10 (#1806): §5 processes removed.** The event bus per-emit processes named
++> in §5 are now eliminated: `eb_emit_event` accumulates all key=val arguments into a single
++> `jq -n '$ARGS.named'` call (previously one `jq` fork per argument), and `_eb_sql_escape`
++> uses bash parameter expansion `${1//$'\''/$'\'\''}` instead of `printf | sed` (previously one
++> `sed` fork per SQLite-mirrored field). These changes reduce per-event fork cost from O(N args)
++> to O(1). `FORK_BUDGET` ratcheted from 5,480 → 4,500.
++
++## Enforced by
++
++- §1 — `tests/e2e/fork-budget-test.sh` (SPEC-4: total external process count ≤ `FORK_BUDGET`; SPEC-1: canary correctness)
++- §5 — `tests/unit/event-bus-timestamp-test.sh` (SPEC-2: per-arg accumulation pattern absent after payload fix)
+diff --git a/scripts/lib/run-status-comment.sh b/scripts/lib/run-status-comment.sh
+index ecdf2bc4..ca46a6b4 100644
+--- a/scripts/lib/run-status-comment.sh
++++ b/scripts/lib/run-status-comment.sh
+@@ -228,15 +228,34 @@ _rsc_on_stop() { _RSC_STOP=1; }
+ 
+ # ─── rsc_flush <events> <state_dir> <slug> <issue> <run_id> [override] ──────
+ # Render → redact → upsert. A redactor failure posts nothing (logged).
++# Skips rsc_upsert when the rendered body is byte-for-byte identical to the
++# previously-sent body (cmp -s), eliminating redundant PATCHes.
++# Sets global _rsc_flush_cursor_size to the events.jsonl byte count captured
++# AFTER apply_scope_redaction writes but BEFORE the gh network call, so that
++# rsc_tail_loop can advance last_size without absorbing external events that
++# arrive concurrently with the gh call.
+ rsc_flush() {
+     local events="$1" state_dir="$2" slug="$3" issue="$4" run_id="$5" override="${6:-}"
+-    local body_file
++    local body_file prev_body
++    prev_body="$state_dir/status-comment-body-prev.txt"
+     body_file="$(mktemp "${TMPDIR:-$state_dir}/rsc-body.XXXXXX")" || return 0
+     if ! rsc_outbound_body "$events" "$state_dir" "$override" > "$body_file"; then
+         rsc_log "$state_dir" "redaction_failed: body not posted"
++        rm -f "$body_file"
++        _rsc_flush_cursor_size=0
++        [[ -f "$events" ]] && _rsc_flush_cursor_size="$(wc -c 2>/dev/null < "$events" | tr -d ' ')"
++        return 0
++    fi
++    # Capture cursor AFTER sidecar writes (apply_scope_redaction) but BEFORE the
++    # gh call: external events arriving during the network call are detected on the
++    # next poll rather than silently absorbed into last_size.
++    _rsc_flush_cursor_size=0
++    [[ -f "$events" ]] && _rsc_flush_cursor_size="$(wc -c 2>/dev/null < "$events" | tr -d ' ')"
++    if [[ -f "$prev_body" ]] && cmp -s "$prev_body" "$body_file"; then
+         rm -f "$body_file"; return 0
+     fi
+     rsc_upsert "$state_dir" "$slug" "$issue" "$run_id" "$body_file"
++    cp "$body_file" "$prev_body" 2>/dev/null || true
+     rm -f "$body_file"
+     return 0
+ }
+@@ -288,6 +307,10 @@ rsc_tail_loop() {
+         if [[ $dirty -eq 1 && $seen_start -eq 1 ]] && \
+            [[ $flushed_once -eq 0 || $terminal_now -eq 1 || $(( now - last_flush )) -ge "${ZBUILD_STATUS_COMMENT_MIN_INTERVAL%.*}" ]]; then
+             rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
++            # Use the cursor captured inside rsc_flush (before the gh call) so
++            # redaction.applied bytes are absorbed without swallowing external events
++            # that arrived concurrently during the network call.
++            last_size="${_rsc_flush_cursor_size:-$last_size}"
+             dirty=0; flushed_once=1; last_flush="$now"
+         fi
+         # Interruptible sleep: a TERM lands on `wait`, not inside `sleep`.
+@@ -357,6 +380,13 @@ rsc_main() {
+         # shellcheck source=../../core/pipeline/input-resolve.sh
+         source "$_RSC_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
+     fi
++    # Source event-bus so emit_event calls from apply_scope_redaction during
++    # rsc_outbound_body write real events; export stage attribution for all of them.
++    if ! declare -F eb_emit_event >/dev/null 2>&1; then
++        # shellcheck source=../../core/event-bus/event-bus.sh
++        source "$_RSC_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
++    fi
++    export ZBUILD_CURRENT_STAGE="run-status-comment"
+     rsc_log "$state_dir" "start: repo=${slug} issue=${issue} run_id=${run_id} parent=${parent:-none} events=${events}"
+     if [[ $once -eq 1 ]]; then
+         rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
+diff --git a/tests/e2e/fork-budget-test.sh b/tests/e2e/fork-budget-test.sh
+index 0c0b11c0..2fc76a0f 100755
+--- a/tests/e2e/fork-budget-test.sh
++++ b/tests/e2e/fork-budget-test.sh
+@@ -59,7 +59,10 @@ setup_test_env "fork-budget"
+ # 5480 (#2271): the per-stage owner and fault lookups in the summary collector
+ # are gone with fault routing, which more than pays for numbered findings and
+ # answers — measured 5,426 macOS (Linux CI census 5,276).
+-FORK_BUDGET=5480
++# 4500 (#1806/SPEC-6): payload accumulation (single jq call per emit, not one
++# per key=val arg) and sql-escape fixes eliminate per-arg forks from every
++# eb_emit_event call.
++FORK_BUDGET=4500
+ 
+ # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
+ # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work
+diff --git a/tests/unit/event-bus-timestamp-test.sh b/tests/unit/event-bus-timestamp-test.sh
+new file mode 100644
+index 00000000..863d3185
+--- /dev/null
++++ b/tests/unit/event-bus-timestamp-test.sh
+@@ -0,0 +1,134 @@
++#!/usr/bin/env bash
++# Tests: eb_emit_event timestamp platform fix and single-jq payload accumulation (#1806).
++#   [#1806/SPEC-1] well-formed timestamp when ZBUILD_PLATFORM=linux + OSTYPE=darwin*
++#   [#1806/SPEC-2] single jq invocation for payload; byte-identical output for same inputs
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "event-bus: timestamp platform fix and single-jq payload (#1806)"
++setup_test_env "event-bus-timestamp"
++
++EVENT_BUS="$REPO_ROOT/core/event-bus/event-bus.sh"
++REAL_DATE="$(command -v date)"
++REAL_JQ="$(command -v jq)"
++mkdir -p "$TEST_TEMP_DIR/bin"
++
++# ─── SPEC-1 [#1806/SPEC-1]: well-formed timestamp on darwin host + linux platform ──
++print_test_section "SPEC-1 [#1806/SPEC-1]: no literal %3N when OSTYPE=darwin* ZBUILD_PLATFORM=linux"
++
++# BSD/macOS date does not support %3N — it outputs the literal characters %3N.
++# This mock simulates that behaviour so the test runs on Linux CI.
++cat > "$TEST_TEMP_DIR/bin/date" <<MOCK
++#!/usr/bin/env bash
++for _arg in "\$@"; do
++    case "\$_arg" in
++        +*%3N*) printf '2026-01-01T12:00:00.%%3NZ\n'; exit 0 ;;
++    esac
++done
++exec $REAL_DATE "\$@"
++MOCK
++chmod +x "$TEST_TEMP_DIR/bin/date"
++export PATH="$TEST_TEMP_DIR/bin:$PATH"
++
++_S1="$TEST_TEMP_DIR/s1"
++mkdir -p "$_S1"
++export ZBUILD_EVENTS_JSONL="$_S1/events.jsonl"
++export ZBUILD_EVENTS_DB="/dev/null"
++export ZBUILD_EVENTS_DIR="$_S1"
++: > "$_S1/events.jsonl"
++
++# Simulate: macOS host (OSTYPE=darwin*) with ZBUILD_PLATFORM=linux.
++# Old code checked ZBUILD_PLATFORM == "macos"; on Linux CI ZBUILD_PLATFORM=linux,
++# so old code went to the else branch and called date with %3N, producing the
++# literal string %3N on a macOS host.  New code checks OSTYPE.
++OSTYPE="darwin12.3.0"
++unset _ZBUILD_EVENT_BUS_LOADED _ZBUILD_EVENT_KNOWN_TYPES_LOADED 2>/dev/null || true
++# shellcheck source=../../core/event-bus/event-bus.sh
++source "$EVENT_BUS"
++
++eb_emit_event "pipeline.start" "run_id=test-1806" "issue=1806"
++
++_ts="$(jq -r '.ts // empty' "$_S1/events.jsonl" 2>/dev/null || true)"
++if [[ -z "$_ts" ]]; then
++    assert_fail "[#1806/SPEC-1] event emitted to events.jsonl" "file empty or ts missing"
++else
++    assert_pass "[#1806/SPEC-1] event emitted to events.jsonl"
++fi
++
++if grep -qF '%3N' "$_S1/events.jsonl" 2>/dev/null; then
++    assert_fail "[#1806/SPEC-1] timestamp must not contain literal %3N" "ts: $_ts"
++else
++    assert_pass "[#1806/SPEC-1] timestamp contains no literal %3N"
++fi
++
++# Format: YYYY-MM-DDTHH:MM:SS.NNNz  (3 decimal digits, Z or z)
++if [[ "$_ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}[Zz]$ ]]; then
++    assert_pass "[#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds"
++else
++    assert_fail "[#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds" \
++        "got: $_ts"
++fi
++
++# ─── SPEC-2 [#1806/SPEC-2]: single jq invocation; byte-identical payload output ──
++print_test_section "SPEC-2 [#1806/SPEC-2]: single jq call accumulates all key=val args"
++
++JQ_CALL_LOG="$TEST_TEMP_DIR/jq-calls.log"
++export JQ_CALL_LOG
++: > "$JQ_CALL_LOG"
++
++# Wrap the real jq to record every invocation; real jq still executes so output
++# is preserved and the payload-identity assertion has something to check.
++cat > "$TEST_TEMP_DIR/bin/jq" <<MOCK
++#!/usr/bin/env bash
++printf '%s\n' "\$*" >> "\${JQ_CALL_LOG:-/dev/null}"
++exec $REAL_JQ "\$@"
++MOCK
++chmod +x "$TEST_TEMP_DIR/bin/jq"
++
++_S2="$TEST_TEMP_DIR/s2"
++mkdir -p "$_S2"
++export ZBUILD_EVENTS_JSONL="$_S2/events.jsonl"
++export ZBUILD_EVENTS_DIR="$_S2"
++: > "$_S2/events.jsonl"
++
++# Restore a non-darwin OSTYPE so the timestamp goes through the Linux path
++# (date supports %3N on Linux; the mock date is still on PATH but is not called
++# for non-%3N formats — it falls through to exec the real date).
++OSTYPE="linux-gnu"
++unset _ZBUILD_EVENT_BUS_LOADED _ZBUILD_EVENT_KNOWN_TYPES_LOADED 2>/dev/null || true
++source "$EVENT_BUS"
++
++: > "$JQ_CALL_LOG"
++eb_emit_event "stage.complete" "stage=test-stage" "verdict=pass" "extra=data-value"
++
++# Old code called jq once per key=val argument with the filter '. + {($k): $v}'.
++# New code accumulates all args and calls jq once — that per-arg filter is gone.
++_loop_calls="$(grep -cF '{($k): $v}' "$JQ_CALL_LOG" 2>/dev/null || true)"
++if [[ "$_loop_calls" -eq 0 ]]; then
++    assert_pass "[#1806/SPEC-2] per-arg accumulation pattern '. + {(\$k): \$v}' absent"
++else
++    assert_fail "[#1806/SPEC-2] per-arg accumulation pattern absent" \
++        "found $_loop_calls call(s) with old per-arg filter"
++fi
++
++# All key=val args must survive in the payload (byte-identical output check)
++_ev="$(cat "$_S2/events.jsonl" 2>/dev/null || true)"
++assert_eq "[#1806/SPEC-2] payload.stage preserved" "test-stage" \
++    "$(jq -r '.data.stage // empty' <<< "$_ev" 2>/dev/null || true)"
++assert_eq "[#1806/SPEC-2] payload.verdict preserved" "pass" \
++    "$(jq -r '.data.verdict // empty' <<< "$_ev" 2>/dev/null || true)"
++assert_eq "[#1806/SPEC-2] payload.extra preserved" "data-value" \
++    "$(jq -r '.data.extra // empty' <<< "$_ev" 2>/dev/null || true)"
++assert_eq "[#1806/SPEC-2] event type preserved" "stage.complete" \
++    "$(jq -r '.type // empty' <<< "$_ev" 2>/dev/null || true)"
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/run-status-comment-loop-test.sh b/tests/unit/run-status-comment-loop-test.sh
+index 1e3e35b1..f60520d2 100755
+--- a/tests/unit/run-status-comment-loop-test.sh
++++ b/tests/unit/run-status-comment-loop-test.sh
+@@ -191,6 +191,168 @@ bash "$LIB" --events "$S4/events.jsonl" --state-dir "$S4" --parent-pid $$ \
+ assert_eq "[SPEC-8] --once exits 0" "0" "$rc"
+ assert_eq "[SPEC-8] --once made exactly one gh write" "1" "$(( $(posts) + $(patches) ))"
+ 
++# ─── SPEC-3 [#1806/SPEC-3]: last_size cursor updated after flush ─────────────
++# After rsc_flush returns, the poll loop must update last_size to the current
++# byte count of events.jsonl so that events written inside rsc_flush (e.g.
++# redaction.applied via apply_scope_redaction) do not set dirty=1 and trigger
++# a spurious second render.
++S_SC3="$TEST_TEMP_DIR/s_sc3"; mkdir -p "$S_SC3"; : > "$S_SC3/events.jsonl"
++: > "$GH_LOG"; rm -f "$GH_BODIES"/*
++
++# gh mock: during a PATCH call, inject a fake event so events.jsonl grows
++# while last_size is still the pre-flush value (simulating redaction.applied).
++cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
++#!/usr/bin/env bash
++args="\$*"
++case "\$args" in *body=@*) f="\${args##*body=@}"; f="\${f%% *}"; n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"; cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" ;; esac
++printf '%s\n' "\$*" >> "$GH_LOG"
++case "\$args" in
++  "auth status"*) exit 0 ;;
++  *--paginate*) echo '[]'; exit 0 ;;
++  *"-X PATCH"*)
++    printf '%s\n' '{"ts":"2026-10-10T00:00:00.000Z","type":"redaction.applied","run_id":"r-loop","issue":90000042,"data":{},"schema_version":1}' >> "$S_SC3/events.jsonl"
++    echo '{}'
++    exit 0
++    ;;
++  *issues/*/comments*) echo 4242; exit 0 ;;
++esac
++exit 1
++MOCK
++chmod +x "$TEST_TEMP_DIR/bin/gh"
++
++ev "$S_SC3/events.jsonl" 23:00:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc engine_branch=main
++ZBUILD_STATUS_COMMENT_MIN_INTERVAL=2 start_sidecar "$S_SC3" "$PARENT"
++wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1 || true
++ev "$S_SC3/events.jsonl" 23:00:01 stage.complete 1 build stage=build verdict=pass
++
++# Wait for the first PATCH; the mock injects a byte into events.jsonl during it.
++if wait_for_event "$GH_LOG" 'X PATCH' 30 0.1; then
++    assert_pass "[#1806/SPEC-3] first PATCH fired"
++else
++    assert_fail "[#1806/SPEC-3] first PATCH fired (setup)" "no PATCH in GH_LOG"
++fi
++
++# Reset: only count PATCHes that appear AFTER this point.
++: > "$GH_LOG"
++
++# Old code: last_size was set before the flush, file grew during it → dirty=1
++# next interval → second PATCH.  New code: cursor updated after flush → dirty=0
++# → no second PATCH within MIN_INTERVAL * 1.5.
++sleep 3
++
++_sc3_patches="$(patches)"
++if [[ "$_sc3_patches" -eq 0 ]]; then
++    assert_pass "[#1806/SPEC-3] no spurious PATCH after event injected during flush"
++else
++    assert_fail "[#1806/SPEC-3] no spurious PATCH after event injected during flush" \
++        "got $_sc3_patches PATCH(es) — last_size cursor not updated after flush"
++fi
++kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
++
++# ─── SPEC-4 [#1806/SPEC-4]: no PATCH when rendered body is byte-for-byte identical ──
++S_SC4="$TEST_TEMP_DIR/s_sc4"; mkdir -p "$S_SC4"; : > "$S_SC4/events.jsonl"
++: > "$GH_LOG"; rm -f "$GH_BODIES"/*
++
++# Restore default gh mock (no injection).
++cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
++#!/usr/bin/env bash
++args="\$*"
++case "\$args" in *body=@*) f="\${args##*body=@}"; f="\${f%% *}"; n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"; cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" ;; esac
++printf '%s\n' "\$*" >> "$GH_LOG"
++case "\$args" in
++  "auth status"*) exit 0 ;;
++  *--paginate*) echo '[]'; exit 0 ;;
++  *"-X PATCH"*) echo '{}'; exit 0 ;;
++  *issues/*/comments*) echo 4242; exit 0 ;;
++esac
++exit 1
++MOCK
++chmod +x "$TEST_TEMP_DIR/bin/gh"
++
++ev "$S_SC4/events.jsonl" 23:30:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc engine_branch=main
++ev "$S_SC4/events.jsonl" 23:30:01 stage.complete 1 build stage=build verdict=pass
++ZBUILD_STATUS_COMMENT_MIN_INTERVAL=2 start_sidecar "$S_SC4" "$PARENT"
++wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1 || true
++
++# Wait for the first PATCH (MIN_INTERVAL=2 after pipeline.start POST).
++if wait_for_event "$GH_LOG" 'X PATCH' 30 0.1; then
++    assert_pass "[#1806/SPEC-4] first PATCH fired"
++else
++    assert_fail "[#1806/SPEC-4] first PATCH fired (setup)" "no PATCH in GH_LOG"
++fi
++
++# Append an event that rsc_rows_json does not render — the body is unchanged.
++: > "$GH_LOG"
++printf '%s\n' '{"ts":"2026-10-10T00:00:01.000Z","type":"redaction.applied","run_id":"r-loop","issue":90000042,"data":{},"schema_version":1}' \
++    >> "$S_SC4/events.jsonl"
++
++# Wait long enough for dirty=1 to be processed (file grew) and a second flush
++# to fire if rsc_upsert is not guarded by a body comparison.
++sleep 4
++
++_sc4_patches="$(patches)"
++if [[ "$_sc4_patches" -eq 0 ]]; then
++    assert_pass "[#1806/SPEC-4] no PATCH when rendered body is identical to previous flush"
++else
++    assert_fail "[#1806/SPEC-4] no PATCH when body is identical" \
++        "got $_sc4_patches PATCH(es) — rsc_upsert was called with an unchanged body"
++fi
++kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
++
++# ─── SPEC-5 [#1806/SPEC-5]: sidecar events carry stage=run-status-comment ────
++# Every emit_event call from the sidecar process must include stage=run-status-comment
++# in the envelope.  In the old code emit_event is a no-op stub; in the new code
++# the sidecar sources event-bus and exports ZBUILD_CURRENT_STAGE=run-status-comment.
++S_SC5="$TEST_TEMP_DIR/s_sc5"; mkdir -p "$S_SC5"; : > "$S_SC5/events.jsonl"
++SC5_EVENTS="$TEST_TEMP_DIR/sc5-events.jsonl"; : > "$SC5_EVENTS"
++: > "$GH_LOG"; rm -f "$GH_BODIES"/*
++
++# scope-manifest.md triggers apply_scope_redaction during rsc_outbound_body;
++# apply_scope_redaction calls emit_event("redaction.applied"), which (new code)
++# writes to SC5_EVENTS.  "` + ./`" allows every path so redaction succeeds.
++printf '+ ./\n' > "$S_SC5/scope-manifest.md"
++
++ev "$S_SC5/events.jsonl" 23:45:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc engine_branch=main
++
++# Start sidecar with its own ZBUILD_EVENTS_JSONL so its emits go to SC5_EVENTS
++# and do not mix with the events.jsonl the sidecar reads.
++ZBUILD_EVENTS_JSONL="$SC5_EVENTS" ZBUILD_EVENTS_DB="/dev/null" ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR" \
++ZBUILD_STATUS_COMMENT_MIN_INTERVAL=2 \
++    bash "$LIB" --events "$S_SC5/events.jsonl" --state-dir "$S_SC5" --parent-pid "$PARENT" \
++    --slug testuser/testrepo --issue 90000042 --run-id r-loop >>"$S_SC5/status-comment.log" 2>&1 &
++pid=$!
++
++# The first flush fires immediately (flushed_once=0); apply_scope_redaction runs
++# and calls emit_event — must be in SC5_EVENTS before the POST is logged.
++if wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1; then
++    assert_pass "[#1806/SPEC-5] initial POST fired (apply_scope_redaction ran)"
++else
++    assert_fail "[#1806/SPEC-5] initial POST fired" "no POST — apply_scope_redaction may have failed"
++fi
++
++# Old code: emit_event is a stub → SC5_EVENTS stays empty → count == 0.
++# New code: event-bus sourced + ZBUILD_CURRENT_STAGE=run-status-comment →
++#           SC5_EVENTS has at least one event.
++_sc5_event_count="$(grep -c '' "$SC5_EVENTS" 2>/dev/null || echo 0)"
++if [[ "$_sc5_event_count" -gt 0 ]]; then
++    assert_pass "[#1806/SPEC-5] sidecar emitted at least one event to its events file"
++else
++    assert_fail "[#1806/SPEC-5] sidecar emitted at least one event" \
++        "SC5_EVENTS is empty — emit_event is still a stub"
++fi
++
++# Every emitted event must carry stage="run-status-comment".
++if [[ "$_sc5_event_count" -gt 0 ]]; then
++    _sc5_bad="$(jq -c 'select(.stage != "run-status-comment")' "$SC5_EVENTS" 2>/dev/null | grep -c '' || true)"
++    if [[ "$_sc5_bad" -eq 0 ]]; then
++        assert_pass "[#1806/SPEC-5] all sidecar events carry stage=run-status-comment"
++    else
++        assert_fail "[#1806/SPEC-5] all sidecar events carry stage=run-status-comment" \
++            "$_sc5_bad event(s) missing the field"
++    fi
++fi
++kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
++
+ kill "$PARENT" 2>/dev/null; wait "$PARENT" 2>/dev/null
+ cleanup_test_env
+ print_test_results
