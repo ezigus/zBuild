@@ -1,0 +1,14 @@
+{
+  "stage": "spec-correspondence",
+  "cycle_iter": 1,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-10-10T00:38:00Z",
+  "files": 3,
+  "outputs": {
+    "spec-correspondence-result.json": "changed",
+    "spec-correspondence-summary.md": "changed",
+    "spec-correspondence-checkpoint.md": "changed"
+  },
+  "progress": true
+}
