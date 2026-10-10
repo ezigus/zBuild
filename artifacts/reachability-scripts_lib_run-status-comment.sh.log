@@ -1,0 +1,188 @@
+### scripts/lib/run-status-comment.sh reverted tests/unit/event-bus-timestamp-test.sh
+
+[38;2;0;212;255m[1m  event-bus: timestamp platform fix and single-jq payload (#1806)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 [#1806/SPEC-1]: no literal %3N when OSTYPE=darwin* ZBUILD_PLATFORM=linux[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] event emitted to events.jsonl
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp contains no literal %3N
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds
+
+  [38;2;0;212;255mSPEC-2 [#1806/SPEC-2]: single jq call accumulates all key=val args[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.OsQkwo/tests/unit/event-bus-timestamp-test.sh: line 88: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.NYZxwi/bin/jq: Permission denied
+chmod: changing permissions of '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.NYZxwi/bin/jq': Operation not permitted
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] per-arg accumulation pattern '. + {($k): $v}' absent
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.stage preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.verdict preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.extra preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] event type preserved
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
+
+### scripts/lib/run-status-comment.sh head tests/unit/event-bus-timestamp-test.sh
+
+[38;2;0;212;255m[1m  event-bus: timestamp platform fix and single-jq payload (#1806)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 [#1806/SPEC-1]: no literal %3N when OSTYPE=darwin* ZBUILD_PLATFORM=linux[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] event emitted to events.jsonl
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp contains no literal %3N
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds
+
+  [38;2;0;212;255mSPEC-2 [#1806/SPEC-2]: single jq call accumulates all key=val args[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1806/worktree/tests/unit/event-bus-timestamp-test.sh: line 88: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.6lqqyK/bin/jq: Permission denied
+chmod: changing permissions of '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.6lqqyK/bin/jq': Operation not permitted
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] per-arg accumulation pattern '. + {($k): $v}' absent
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.stage preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.verdict preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.extra preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] event type preserved
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
+
+### scripts/lib/run-status-comment.sh reverted tests/unit/event-bus-timestamp-test.sh
+
+[38;2;0;212;255m[1m  event-bus: timestamp platform fix and single-jq payload (#1806)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 [#1806/SPEC-1]: no literal %3N when OSTYPE=darwin* ZBUILD_PLATFORM=linux[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] event emitted to events.jsonl
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp contains no literal %3N
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds
+
+  [38;2;0;212;255mSPEC-2 [#1806/SPEC-2]: single jq call accumulates all key=val args[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.OsQkwo/tests/unit/event-bus-timestamp-test.sh: line 88: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.NYZxwi/bin/jq: Permission denied
+chmod: changing permissions of '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.NYZxwi/bin/jq': Operation not permitted
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] per-arg accumulation pattern '. + {($k): $v}' absent
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.stage preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.verdict preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.extra preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] event type preserved
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
+
+### scripts/lib/run-status-comment.sh head tests/unit/event-bus-timestamp-test.sh
+
+[38;2;0;212;255m[1m  event-bus: timestamp platform fix and single-jq payload (#1806)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 [#1806/SPEC-1]: no literal %3N when OSTYPE=darwin* ZBUILD_PLATFORM=linux[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] event emitted to events.jsonl
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp contains no literal %3N
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds
+
+  [38;2;0;212;255mSPEC-2 [#1806/SPEC-2]: single jq call accumulates all key=val args[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1806/worktree/tests/unit/event-bus-timestamp-test.sh: line 88: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.6lqqyK/bin/jq: Permission denied
+chmod: changing permissions of '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.6lqqyK/bin/jq': Operation not permitted
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] per-arg accumulation pattern '. + {($k): $v}' absent
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.stage preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.verdict preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.extra preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] event type preserved
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
+
+### scripts/lib/run-status-comment.sh reverted tests/unit/run-status-comment-loop-test.sh
+
+[38;2;0;212;255m[1m  run-status-comment — sidecar loop (#2131)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] no gh call while events.jsonl is empty
+  [38;2;74;222;128m✓[0m [SPEC-1] pipeline.start → POST within 3s (the run is visible before any stage)
+  [38;2;74;222;128m✓[0m [SPEC-1] posted body carries the marker
+  [38;2;74;222;128m✓[0m [SPEC-1] posted body header says running
+  [38;2;74;222;128m✓[0m [SPEC-2] 6 events in a burst → 1 PATCH(es), not 6
+  [38;2;74;222;128m✓[0m [SPEC-2] the latest PATCH has the newest row on top
+  [38;2;74;222;128m✓[0m [SPEC-3] the body on GitHub already had the running row (start before end)
+  [38;2;74;222;128m✓[0m [SPEC-4] pipeline.end → PATCH without waiting out the gap between edits
+  [38;2;74;222;128m✓[0m [SPEC-4] final header says success
+  [38;2;74;222;128m✓[0m [SPEC-4] the sidecar is still alive after the terminal event (always-run stages come later)
+  [38;2;74;222;128m✓[0m [SPEC-5] TERM ends the sidecar within 5s
+  [38;2;74;222;128m✓[0m [SPEC-5] exit status 0 on TERM
+  [38;2;74;222;128m✓[0m [SPEC-5] TERM produced one final PATCH
+  [38;2;74;222;128m✓[0m [SPEC-5] final body keeps the terminal status from the events
+  [38;2;74;222;128m✓[0m [SPEC-5] a stage after pipeline.end lands in the final render
+  [38;2;74;222;128m✓[0m [SPEC-6] no terminal event + TERM → interrupted
+  [38;2;74;222;128m✓[0m [SPEC-6] the running row keeps its start
+  [38;2;74;222;128m✓[0m [SPEC-7] parent death ends the sidecar
+  [38;2;74;222;128m✓[0m [SPEC-7] exit status 0 on parent death
+  [38;2;74;222;128m✓[0m [SPEC-7] final body names the cause
+  [38;2;74;222;128m✓[0m [SPEC-8] --once exits 0
+  [38;2;74;222;128m✓[0m [SPEC-8] --once made exactly one gh write
+  [38;2;74;222;128m✓[0m [#1806/SPEC-3] first PATCH fired
+  [38;2;248;113;113m✗[0m [#1806/SPEC-3] no spurious PATCH after event injected during flush
+    [2mgot 1 PATCH(es) — last_size cursor not updated after flush[0m
+  [38;2;248;113;113m✗[0m [#1806/SPEC-4] first PATCH fired (setup)
+    [2mno PATCH in GH_LOG[0m
+  [38;2;248;113;113m✗[0m [#1806/SPEC-4] no PATCH when body is identical
+    [2mgot 1 PATCH(es) — rsc_upsert was called with an unchanged body[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-5] initial POST fired (apply_scope_redaction ran)
+  [38;2;74;222;128m✓[0m [#1806/SPEC-5] sidecar emitted at least one event to its events file
+  [38;2;248;113;113m✗[0m [#1806/SPEC-5] all sidecar events carry stage=run-status-comment
+    [2m1 event(s) missing the field[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 29 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1806/SPEC-3] no spurious PATCH after event injected during flush
+  [38;2;248;113;113m✗[0m [#1806/SPEC-4] first PATCH fired (setup)
+  [38;2;248;113;113m✗[0m [#1806/SPEC-4] no PATCH when body is identical
+  [38;2;248;113;113m✗[0m [#1806/SPEC-5] all sidecar events carry stage=run-status-comment
+
+### scripts/lib/run-status-comment.sh head tests/unit/run-status-comment-loop-test.sh
+
+[38;2;0;212;255m[1m  run-status-comment — sidecar loop (#2131)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] no gh call while events.jsonl is empty
+  [38;2;74;222;128m✓[0m [SPEC-1] pipeline.start → POST within 3s (the run is visible before any stage)
+  [38;2;74;222;128m✓[0m [SPEC-1] posted body carries the marker
+  [38;2;74;222;128m✓[0m [SPEC-1] posted body header says running
+  [38;2;74;222;128m✓[0m [SPEC-2] 6 events in a burst → 1 PATCH(es), not 6
+  [38;2;74;222;128m✓[0m [SPEC-2] the latest PATCH has the newest row on top
+  [38;2;74;222;128m✓[0m [SPEC-3] the body on GitHub already had the running row (start before end)
+  [38;2;74;222;128m✓[0m [SPEC-4] pipeline.end → PATCH without waiting out the gap between edits
+  [38;2;74;222;128m✓[0m [SPEC-4] final header says success
+  [38;2;74;222;128m✓[0m [SPEC-4] the sidecar is still alive after the terminal event (always-run stages come later)
+  [38;2;74;222;128m✓[0m [SPEC-5] TERM ends the sidecar within 5s
+  [38;2;74;222;128m✓[0m [SPEC-5] exit status 0 on TERM
+  [38;2;74;222;128m✓[0m [SPEC-5] TERM produced one final PATCH
+  [38;2;74;222;128m✓[0m [SPEC-5] final body keeps the terminal status from the events
+  [38;2;74;222;128m✓[0m [SPEC-5] a stage after pipeline.end lands in the final render
+  [38;2;74;222;128m✓[0m [SPEC-6] no terminal event + TERM → interrupted
+  [38;2;74;222;128m✓[0m [SPEC-6] the running row keeps its start
+  [38;2;74;222;128m✓[0m [SPEC-7] parent death ends the sidecar
+  [38;2;74;222;128m✓[0m [SPEC-7] exit status 0 on parent death
+  [38;2;74;222;128m✓[0m [SPEC-7] final body names the cause
+  [38;2;74;222;128m✓[0m [SPEC-8] --once exits 0
+  [38;2;74;222;128m✓[0m [SPEC-8] --once made exactly one gh write
+  [38;2;248;113;113m✗[0m [#1806/SPEC-3] first PATCH fired (setup)
+    [2mno PATCH in GH_LOG[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-3] no spurious PATCH after event injected during flush
+  [38;2;248;113;113m✗[0m [#1806/SPEC-4] first PATCH fired (setup)
+    [2mno PATCH in GH_LOG[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-4] no PATCH when rendered body is identical to previous flush
+  [38;2;74;222;128m✓[0m [#1806/SPEC-5] initial POST fired (apply_scope_redaction ran)
+  [38;2;74;222;128m✓[0m [#1806/SPEC-5] sidecar emitted at least one event to its events file
+  [38;2;74;222;128m✓[0m [#1806/SPEC-5] all sidecar events carry stage=run-status-comment
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 29 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1806/SPEC-3] first PATCH fired (setup)
+  [38;2;248;113;113m✗[0m [#1806/SPEC-4] first PATCH fired (setup)
+

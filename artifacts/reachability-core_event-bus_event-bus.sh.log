@@ -1,0 +1,53 @@
+### core/event-bus/event-bus.sh reverted tests/unit/event-bus-timestamp-test.sh
+
+[38;2;0;212;255m[1m  event-bus: timestamp platform fix and single-jq payload (#1806)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 [#1806/SPEC-1]: no literal %3N when OSTYPE=darwin* ZBUILD_PLATFORM=linux[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] event emitted to events.jsonl
+  [38;2;248;113;113m✗[0m [#1806/SPEC-1] timestamp must not contain literal %3N
+    [2mts: 2026-01-01T12:00:00.%3NZ[0m
+  [38;2;248;113;113m✗[0m [#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds
+    [2mgot: 2026-01-01T12:00:00.%3NZ[0m
+
+  [38;2;0;212;255mSPEC-2 [#1806/SPEC-2]: single jq call accumulates all key=val args[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rZIaYt/tests/unit/event-bus-timestamp-test.sh: line 88: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.7qTicJ/bin/jq: Permission denied
+chmod: changing permissions of '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.7qTicJ/bin/jq': Operation not permitted
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] per-arg accumulation pattern '. + {($k): $v}' absent
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.stage preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.verdict preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.extra preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] event type preserved
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 8 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1806/SPEC-1] timestamp must not contain literal %3N
+  [38;2;248;113;113m✗[0m [#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds
+
+### core/event-bus/event-bus.sh head tests/unit/event-bus-timestamp-test.sh
+
+[38;2;0;212;255m[1m  event-bus: timestamp platform fix and single-jq payload (#1806)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 [#1806/SPEC-1]: no literal %3N when OSTYPE=darwin* ZBUILD_PLATFORM=linux[0m
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] event emitted to events.jsonl
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp contains no literal %3N
+  [38;2;74;222;128m✓[0m [#1806/SPEC-1] timestamp is well-formed ISO 8601 with milliseconds
+
+  [38;2;0;212;255mSPEC-2 [#1806/SPEC-2]: single jq call accumulates all key=val args[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1806/worktree/tests/unit/event-bus-timestamp-test.sh: line 88: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.6lqqyK/bin/jq: Permission denied
+chmod: changing permissions of '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/event-bus-timestamp.6lqqyK/bin/jq': Operation not permitted
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] per-arg accumulation pattern '. + {($k): $v}' absent
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.stage preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.verdict preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] payload.extra preserved
+  [38;2;74;222;128m✓[0m [#1806/SPEC-2] event type preserved
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
+
