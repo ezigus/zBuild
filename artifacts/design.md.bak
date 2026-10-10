@@ -10,7 +10,7 @@ reaped before counting using the same predicate ADR-059 §4 already uses
 
 **Context.** ADR-059 §4 serialises concurrent same-issue runs with a keyed mutex
 (`core/state/issue-lock.sh`). That decides _which_ issue can run; it says nothing about
-_how many_ runs the host can support simultaneously. `issue-lock.sh:22–23` already names
+_how many_ runs the host can support simultaneously. `issue-lock.sh:22–24` already names
 this gap: *"NOT A CAPACITY CAP … zBuild still lacks it (#1932). Issue exclusivity is a keyed
 mutex; host capacity is a counted cap."* ADR-059 §4 also cites the legacy control directly:
 `legacy-DoNotUse/scripts/sw-pipeline.sh:325` had a flat PID-keyed count, fail-on-exceed,
@@ -19,11 +19,11 @@ dead-holder reap — the same shape this issue now brings to zBuild.
 **Decision.** Introduce `core/state/run-cap.sh` as a new state module following the same
 structural contract as `issue-lock.sh` (fail-open mkdir, reap-before-count, explicit opt-out
 env var, explicit release in the exit trap). Integrate three call sites in
-`core/pipeline/runner.sh`: source the module alongside `issue-lock.sh`, call
-`zbuild_run_cap_admit` before the issue lock acquire (cap is the coarser resource gate;
-fail fast), and call `zbuild_run_cap_release` in `_runner_abort_trap` alongside
-`zbuild_issue_lock_release`. Amend ADR-059 with a new §7. Add `pipeline.refused.run_cap`
-to `config/event-schema.json`.
+`core/pipeline/runner.sh`: source the module alongside `issue-lock.sh` (runner.sh:25–26),
+call `zbuild_run_cap_admit` before the issue lock acquire (runner.sh:2302 — cap is the
+coarser resource gate; fail fast), and call `zbuild_run_cap_release` in
+`_runner_abort_trap` (runner.sh:2461) alongside `zbuild_issue_lock_release`.
+Amend ADR-059 with a new §7. Add `pipeline.refused.run_cap` to `config/event-schema.json`.
 
 **Race window.** On hosts without `flock`, two runs starting simultaneously can both pass a
 cap of 1 (count-then-write race). This mirrors the no-flock weakness already stated and
