@@ -1,0 +1,495 @@
+diff --git a/config/event-schema.json b/config/event-schema.json
+index 509a3401..cbc5af79 100644
+--- a/config/event-schema.json
++++ b/config/event-schema.json
+@@ -15,6 +15,7 @@
+     "stage.skip",
+     "stage.always_run.unresolved",
+     "pipeline.refused.issue_locked",
++    "pipeline.refused.run_cap",
+     "hydrate.start",
+     "hydrate.complete",
+     "hydrate.fetch.failed",
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 945c5085..4682c482 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -24,6 +24,8 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
+ source "$_ZBUILD_ROOT/core/state/resume.sh"
+ # shellcheck source=../state/issue-lock.sh
+ source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
++# shellcheck source=../state/run-cap.sh
++source "$_ZBUILD_ROOT/core/state/run-cap.sh"
+ # shellcheck source=../state/layout.sh
+ source "$_ZBUILD_ROOT/core/state/layout.sh"
+ # shellcheck source=../../scripts/lib/identity.sh
+@@ -2298,6 +2300,16 @@ main() {
+     if declare -F zbuild_run_key >/dev/null 2>&1; then
+         _runner_lock_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
+     fi
++    if declare -F zbuild_run_cap_admit >/dev/null 2>&1; then
++        if ! zbuild_run_cap_admit "$_runner_run_id" "$state_file"; then
++            eb_emit_event "pipeline.refused.run_cap" \
++                "run_id=$_runner_run_id" "blockers=${_ZBUILD_RUN_CAP_BLOCKERS:-unknown}" \
++                2>/dev/null || true
++            error "run cap reached — blockers: ${_ZBUILD_RUN_CAP_BLOCKERS:-unknown}"
++            error "wait for a run to finish, or set ZBUILD_NO_RUN_CAP=1 to override (see ADR-059 §7)"
++            return 1
++        fi
++    fi
+     if [[ -n "$_runner_lock_key" ]]; then
+         if ! zbuild_issue_lock_acquire "$_runner_lock_key" "$_runner_run_id" "$state_file"; then
+             eb_emit_event "pipeline.refused.issue_locked" \
+@@ -2470,6 +2482,9 @@ main() {
+         if declare -F zbuild_issue_lock_release >/dev/null 2>&1; then
+             zbuild_issue_lock_release || true
+         fi
++        if declare -F zbuild_run_cap_release >/dev/null 2>&1; then
++            zbuild_run_cap_release || true
++        fi
+         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
+         # exit path — clean end, normal failure, or abort — so a follow-on
+         # zbuild invocation in the same state_dir never sees a stale
+diff --git a/core/state/run-cap.sh b/core/state/run-cap.sh
+new file mode 100644
+index 00000000..14057ee3
+--- /dev/null
++++ b/core/state/run-cap.sh
+@@ -0,0 +1,130 @@
++#!/usr/bin/env bash
++# core/state/run-cap.sh — host-wide concurrent run cap (issue #1932, ADR-059 §7).
++#
++# Off by default. Set ZBUILD_MAX_CONCURRENT_RUNS=N to enable. Fail-open: any
++# infrastructure error (unreadable slot dir, missing reap function) admits the run
++# with a warning rather than refusing. ZBUILD_NO_RUN_CAP=1 bypasses entirely.
++# Dead holders are reaped before counting using zbuild_run_is_live (ADR-006).
++
++[[ -n "${_ZBUILD_RUN_CAP_LOADED:-}" ]] && return 0
++_ZBUILD_RUN_CAP_LOADED=1
++
++_ZBUILD_RUN_CAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=./resume.sh
++source "$_ZBUILD_RUN_CAP_DIR/resume.sh"
++
++# ─── zbuild_run_cap_slot_dir ──────────────────────────────────────────────────
++zbuild_run_cap_slot_dir() {
++    printf '%s/run-slots\n' "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
++}
++
++# ─── zbuild_run_cap_reap_stale ────────────────────────────────────────────────
++# Scan slot dir; remove slots whose state_file fails zbuild_run_is_live. Fail-open.
++zbuild_run_cap_reap_stale() {
++    local slot_dir; slot_dir="$(zbuild_run_cap_slot_dir)"
++    [[ -d "$slot_dir" ]] || return 0
++    local f state_file
++    while IFS= read -r f; do
++        [[ -f "$f" ]] || continue
++        state_file="$(jq -r '.state_file // ""' "$f" 2>/dev/null || true)"
++        if [[ -z "$state_file" ]] || ! zbuild_run_is_live "$state_file" 2>/dev/null; then
++            rm -f "$f" 2>/dev/null || true
++        fi
++    done < <(find "$slot_dir" -maxdepth 1 -name '*.json' -type f 2>/dev/null)
++    return 0
++}
++
++# ─── zbuild_run_cap_count_live [exclude_pid] ─────────────────────────────────
++# Echo the count of live slot files (excluding exclude_pid's slot) to stdout.
++# Sets _ZBUILD_RUN_CAP_BLOCKER_LIST to a space-separated list of run_ids.
++# Fail-open: errors produce count=0 and no blockers.
++zbuild_run_cap_count_live() {
++    local exclude_pid="${1:-$$}"
++    local slot_dir; slot_dir="$(zbuild_run_cap_slot_dir)"
++    _ZBUILD_RUN_CAP_BLOCKER_LIST=""
++    local count=0 f fname run_id
++    while IFS= read -r f; do
++        [[ -f "$f" ]] || continue
++        fname="$(basename "$f")"
++        [[ "$fname" == "${exclude_pid}.json" ]] && continue
++        run_id="$(jq -r '.run_id // ""' "$f" 2>/dev/null || true)"
++        count=$(( count + 1 ))
++        _ZBUILD_RUN_CAP_BLOCKER_LIST="${_ZBUILD_RUN_CAP_BLOCKER_LIST:+$_ZBUILD_RUN_CAP_BLOCKER_LIST }${run_id}"
++    done < <(find "$slot_dir" -maxdepth 1 -name '*.json' -type f 2>/dev/null)
++    printf '%d\n' "$count"
++}
++
++# ─── zbuild_run_cap_write_slot <run_id> [state_file] ─────────────────────────
++# Write <slot_dir>/$$.json. Fail-open (no-op on write error).
++zbuild_run_cap_write_slot() {
++    local run_id="${1:-}" state_file="${2:-}"
++    local slot_dir; slot_dir="$(zbuild_run_cap_slot_dir)"
++    mkdir -p "$slot_dir" 2>/dev/null || return 0
++    printf '{"run_id":"%s","pid":%d,"state_file":"%s","acquired_at":"%s"}\n' \
++        "$run_id" "$$" "${state_file}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++        > "$slot_dir/$$.json" 2>/dev/null || true
++}
++
++# ─── zbuild_run_cap_release ───────────────────────────────────────────────────
++# Remove this run's slot file. No-op if the slot was never written.
++zbuild_run_cap_release() {
++    local slot_dir; slot_dir="$(zbuild_run_cap_slot_dir)"
++    local slot_file="$slot_dir/$$.json"
++    if [[ -f "$slot_file" ]]; then rm -f "$slot_file" 2>/dev/null || true; fi
++    return 0
++}
++
++# ─── zbuild_run_cap_admit <run_id> [state_file] ──────────────────────────────
++# Admission gate. Returns 0 to admit, 1 to refuse (sets _ZBUILD_RUN_CAP_BLOCKERS).
++# No-op (returns 0, writes nothing) when ZBUILD_MAX_CONCURRENT_RUNS is unset.
++zbuild_run_cap_admit() {
++    local run_id="${1:-}" state_file="${2:-}"
++    _ZBUILD_RUN_CAP_BLOCKERS=""
++
++    # SPEC-1: off by default
++    [[ -n "${ZBUILD_MAX_CONCURRENT_RUNS:-}" ]] || return 0
++
++    # SPEC-4: operator bypass
++    if [[ "${ZBUILD_NO_RUN_CAP:-0}" == "1" ]]; then
++        printf 'zBuild: ZBUILD_NO_RUN_CAP=1 — run cap bypassed for %s\n' "$run_id" >&2
++        return 0
++    fi
++
++    local cap="${ZBUILD_MAX_CONCURRENT_RUNS}"
++    local slot_dir; slot_dir="$(zbuild_run_cap_slot_dir)"
++
++    # SPEC-5: mkdir fail-open
++    mkdir -p "$slot_dir" 2>/dev/null || {
++        printf 'zBuild: run-cap: cannot create slot dir %s — admitting (fail-open)\n' \
++            "$slot_dir" >&2
++        return 0
++    }
++
++    # SPEC-3: reap stale slots before counting
++    zbuild_run_cap_reap_stale 2>/dev/null || true
++
++    # Count live slots and collect blocker run_ids (inline — avoids subshell/global loss).
++    # Uses _slot_run_id to avoid shadowing the $run_id admission-request parameter.
++    local live_count=0 _loop_f _loop_fname _slot_run_id _blocker_list=""
++    while IFS= read -r _loop_f; do
++        [[ -f "$_loop_f" ]] || continue
++        _loop_fname="$(basename "$_loop_f")"
++        # Exclude own potential slot (not yet written, but guard for re-entry)
++        [[ "$_loop_fname" == "$$.json" ]] && continue
++        _slot_run_id="$(jq -r '.run_id // ""' "$_loop_f" 2>/dev/null || true)"
++        live_count=$(( live_count + 1 ))
++        _blocker_list="${_blocker_list:+$_blocker_list }${_slot_run_id}"
++    done < <(find "$slot_dir" -maxdepth 1 -name '*.json' -type f 2>/dev/null)
++
++    # SPEC-2: refuse if at or above cap
++    if (( live_count >= cap )); then
++        _ZBUILD_RUN_CAP_BLOCKERS="$_blocker_list"
++        printf 'zBuild: run-cap: refused %s — cap=%d, live=%d, blockers: %s\n' \
++            "$run_id" "$cap" "$live_count" "$_ZBUILD_RUN_CAP_BLOCKERS" >&2
++        return 1
++    fi
++
++    # SPEC-6: below cap — write slot and admit
++    zbuild_run_cap_write_slot "$run_id" "$state_file"
++    return 0
++}
+diff --git a/docs/adr/ADR-059-issue-vs-run-keying.md b/docs/adr/ADR-059-issue-vs-run-keying.md
+index 775bebc5..31341080 100644
+--- a/docs/adr/ADR-059-issue-vs-run-keying.md
++++ b/docs/adr/ADR-059-issue-vs-run-keying.md
+@@ -346,6 +346,23 @@ Precedent is one day old: #1809 extracted `core/plugin-registry/output-paths.sh`
+ halves disagree about where a declared output lives is not a boundary."* **A layout whose
+ consumers disagree about how a run is keyed is not a layout.**
+ 
++### 7. Host-wide run cap, off unless configured (2026-10-10)
++
++**Issue exclusivity (§4) decides which issue can run; it says nothing about how many runs the host can support simultaneously.** A host under memory pressure that starts N+1 concurrent pipeline runs will OOM, and §4 permits it. `core/state/issue-lock.sh:21–24` names this gap explicitly: *"NOT A CAPACITY CAP … zBuild still lacks it (#1932). Issue exclusivity is a keyed mutex; host capacity is a counted cap."* Legacy shipwright's pipeline lock (`legacy-DoNotUse/scripts/sw-pipeline.sh:325`) had a flat PID-keyed count, fail-on-exceed, dead-holder reap — the shape this section now brings to zBuild.
++
++**Rules (effective 2026-10-10):**
++
++- The cap is **off by default.** Setting `ZBUILD_MAX_CONCURRENT_RUNS=N` enables it. When unset, `zbuild_run_cap_admit` is a no-op: it returns 0, writes no slot file, and produces no output.
++- The count is **flat**: every live pipeline run on the host counts equally, regardless of which issue or goal it is running.
++- **Dead holders are reaped before counting.** `zbuild_run_is_live` (ADR-006's staleness gate) is the predicate. A slot whose state file reports anything other than `status=in_progress` with a fresh (<24h) `updated_at` is removed before the count is taken, so a crashed run cannot block new work indefinitely.
++- **Fail-open.** Any infrastructure failure during cap enforcement (unwritable slot dir, unreadable slot files, missing predicate function) admits the run with a warning to stderr rather than refusing it. Only a successful count at or above the cap refuses.
++- **Explicit override.** `ZBUILD_NO_RUN_CAP=1` bypasses the cap entirely, with a warning to stderr. Named for what it disables, following `ZBUILD_NO_ISSUE_LOCK=1` (§4).
++- **Refusal names blockers.** When a run is refused, `_ZBUILD_RUN_CAP_BLOCKERS` is set to a space-separated list of the blocking `run_id` values, and the refusal message emitted to stderr names every blocker. The `pipeline.refused.run_cap` event is emitted.
++- **Race window on no-flock hosts.** Two runs starting simultaneously can both pass a cap of 1 via count-then-write. This mirrors the no-flock weakness already stated and accepted in `issue-lock.sh:141–149`, and is documented here rather than hidden.
++- **Release in exit trap.** `zbuild_run_cap_release` is called in `_runner_abort_trap` alongside `zbuild_issue_lock_release`. It is a no-op if no slot was written (guarded by `-f` check).
++
++**Implementation:** `core/state/run-cap.sh`. Slot files live at `${ZBUILD_STATE_ROOT}/run-slots/$$.json`, keyed by PID so a slot is unambiguously owned by one process. The runner sources it at `core/pipeline/runner.sh:25–27`, calls `zbuild_run_cap_admit` before the issue lock acquire (cap is the coarser resource gate; fail fast), and calls `zbuild_run_cap_release` in `_runner_abort_trap`.
++
+ ## Consequences
+ 
+ **Positive**
+@@ -433,3 +450,8 @@ committed, stash ablates nothing and reports a false pass.
+   and a re-acquire over a foreign sparse config lands on the base patterns plus keeper widenings
+ - `tests/unit/no-test-reads-legacy-test.sh` — §2 no test reads `legacy-DoNotUse/`: every test tier
+   is scanned for a `$REPO_ROOT/legacy-DoNotUse/` path (or the tree's old name), with no exception
++- `tests/unit/run-cap-test.sh` — §7 host-wide run cap: ZBUILD_MAX_CONCURRENT_RUNS unset is a no-op
++  (SPEC-1), cap N with N live slots refuses naming blockers (SPEC-2), stale slot reaped before
++  counting (SPEC-3), ZBUILD_NO_RUN_CAP=1 bypasses with warning (SPEC-4), unreadable slot dir
++  fails open with warning (SPEC-5), below-cap admission writes slot (SPEC-6), ADR §7 and
++  pipeline.refused.run_cap event registered (SPEC-7)
+diff --git a/tests/unit/run-cap-test.sh b/tests/unit/run-cap-test.sh
+new file mode 100644
+index 00000000..c3875784
+--- /dev/null
++++ b/tests/unit/run-cap-test.sh
+@@ -0,0 +1,264 @@
++#!/usr/bin/env bash
++# Tests: host-wide concurrent run cap (issue #1932, ADR-059 §7).
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++# shellcheck source=../../core/state/run-cap.sh
++source "$REPO_ROOT/core/state/run-cap.sh"
++
++print_test_header "host-wide concurrent run cap (#1932)"
++setup_test_env "zb-run-cap"
++
++# ─── helpers ─────────────────────────────────────────────────────────────────
++
++_mk_live_state() {
++    local f="$1"
++    mkdir -p "$(dirname "$f")"
++    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
++    printf '{"status":"in_progress","updated_at":"%s"}\n' "$ts" > "$f"
++}
++
++_mk_dead_state() {
++    local f="$1"
++    mkdir -p "$(dirname "$f")"
++    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
++    printf '{"status":"complete","updated_at":"%s"}\n' "$ts" > "$f"
++}
++
++# Admit a run as a subprocess so its slot file persists after exit.
++# ZBUILD_STATE_ROOT and ZBUILD_MAX_CONCURRENT_RUNS are inherited from the caller.
++_cap_admit_subprocess() {
++    local _run_id="$1" _state_file="${2:-}"
++    bash -c '
++        source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
++        source "'"$REPO_ROOT"'/core/state/run-cap.sh"
++        zbuild_run_cap_admit "'"$_run_id"'" "'"$_state_file"'" || true
++    ' >/dev/null 2>&1 || true
++}
++
++# ─── [#1932/SPEC-1] no cap: returns 0, no slot written, silent ───────────────
++print_test_section "[#1932/SPEC-1] unset ZBUILD_MAX_CONCURRENT_RUNS"
++
++export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec1-state"
++unset ZBUILD_MAX_CONCURRENT_RUNS
++
++_s1_state="$TEST_TEMP_DIR/spec1/run.json"
++_mk_live_state "$_s1_state"
++
++_s1_out=""
++_s1_rc=0
++_s1_out="$(zbuild_run_cap_admit "run-s1" "$_s1_state" 2>&1)" || _s1_rc=$?
++
++assert_eq "[#1932/SPEC-1] no cap: returns 0" "0" "$_s1_rc"
++assert_eq "[#1932/SPEC-1] no cap: no output produced" "" "$_s1_out"
++
++# No files must have been written under the state root
++_s1_file_count=0
++if [[ -d "$ZBUILD_STATE_ROOT" ]]; then
++    while IFS= read -r _; do
++        _s1_file_count=$((_s1_file_count + 1))
++    done < <(find "$ZBUILD_STATE_ROOT" -type f 2>/dev/null)
++fi
++assert_eq "[#1932/SPEC-1] no cap: no slot file written" "0" "$_s1_file_count"
++
++# ─── [#1932/SPEC-6] below cap: returns 0, slot written, silent ───────────────
++print_test_section "[#1932/SPEC-6] cap set, fewer live slots than cap"
++
++export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec6-state"
++export ZBUILD_MAX_CONCURRENT_RUNS=2
++
++_s6_state_a="$TEST_TEMP_DIR/spec6-a/run.json"
++_s6_state_new="$TEST_TEMP_DIR/spec6-new/run.json"
++_mk_live_state "$_s6_state_a"
++_mk_live_state "$_s6_state_new"
++
++# One existing live slot (cap=2, so 1 < 2)
++_cap_admit_subprocess "run-s6-a" "$_s6_state_a"
++
++_s6_out=""
++_s6_rc=0
++_s6_out="$(zbuild_run_cap_admit "run-s6-new" "$_s6_state_new" 2>&1)" || _s6_rc=$?
++
++assert_eq "[#1932/SPEC-6] below cap: returns 0" "0" "$_s6_rc"
++assert_eq "[#1932/SPEC-6] below cap: no cap output produced" "" "$_s6_out"
++
++# A slot file must now exist for the admitted run
++_s6_slot_found=0
++while IFS= read -r _f; do
++    if grep -q "run-s6-new" "$_f" 2>/dev/null; then
++        _s6_slot_found=1
++    fi
++done < <(find "$ZBUILD_STATE_ROOT" -type f 2>/dev/null)
++assert_eq "[#1932/SPEC-6] below cap: slot file written for admitted run" "1" "$_s6_slot_found"
++
++# ─── [#1932/SPEC-2] at cap: returns 1, blockers named, stderr message ────────
++print_test_section "[#1932/SPEC-2] cap set, N live slots present"
++
++export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec2-state"
++export ZBUILD_MAX_CONCURRENT_RUNS=2
++
++_s2_state_a="$TEST_TEMP_DIR/spec2-a/run.json"
++_s2_state_b="$TEST_TEMP_DIR/spec2-b/run.json"
++_s2_state_new="$TEST_TEMP_DIR/spec2-new/run.json"
++_mk_live_state "$_s2_state_a"
++_mk_live_state "$_s2_state_b"
++_mk_live_state "$_s2_state_new"
++
++# Seed two live slots (cap=2, so count == cap)
++_cap_admit_subprocess "run-s2-a" "$_s2_state_a"
++_cap_admit_subprocess "run-s2-b" "$_s2_state_b"
++
++_ZBUILD_RUN_CAP_BLOCKERS=""
++_s2_stderr_file="$TEST_TEMP_DIR/spec2-stderr.txt"
++_s2_rc=0
++zbuild_run_cap_admit "run-s2-new" "$_s2_state_new" 2>"$_s2_stderr_file" || _s2_rc=$?
++
++assert_eq "[#1932/SPEC-2] at cap: returns 1" "1" "$_s2_rc"
++assert_contains "[#1932/SPEC-2] _ZBUILD_RUN_CAP_BLOCKERS names run-s2-a" \
++    "$_ZBUILD_RUN_CAP_BLOCKERS" "run-s2-a"
++assert_contains "[#1932/SPEC-2] _ZBUILD_RUN_CAP_BLOCKERS names run-s2-b" \
++    "$_ZBUILD_RUN_CAP_BLOCKERS" "run-s2-b"
++
++_s2_stderr="$(<"$_s2_stderr_file")"
++assert_contains "[#1932/SPEC-2] stderr refusal names run-s2-a" "$_s2_stderr" "run-s2-a"
++assert_contains "[#1932/SPEC-2] stderr refusal names run-s2-b" "$_s2_stderr" "run-s2-b"
++
++# ─── [#1932/SPEC-3] stale slot reaped before counting ────────────────────────
++print_test_section "[#1932/SPEC-3] stale slot reaped, does not block admission"
++
++export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec3-state"
++export ZBUILD_MAX_CONCURRENT_RUNS=2
++
++_s3_state_live="$TEST_TEMP_DIR/spec3-live/run.json"
++_s3_state_dead="$TEST_TEMP_DIR/spec3-dead/run.json"
++_s3_state_new="$TEST_TEMP_DIR/spec3-new/run.json"
++_mk_live_state "$_s3_state_live"
++_mk_dead_state "$_s3_state_dead"
++_mk_live_state "$_s3_state_new"
++
++# Seed one live slot + one dead (complete) slot — total 2, but only 1 is live
++_cap_admit_subprocess "run-s3-live" "$_s3_state_live"
++_cap_admit_subprocess "run-s3-dead" "$_s3_state_dead"
++
++# With cap=2 and 2 total slots (1 live, 1 stale), admission must succeed
++# because zbuild_run_cap_reap_stale removes the dead slot before counting
++_s3_rc=0
++zbuild_run_cap_admit "run-s3-new" "$_s3_state_new" 2>/dev/null || _s3_rc=$?
++assert_eq "[#1932/SPEC-3] stale slot reaped: admission succeeds" "0" "$_s3_rc"
++
++# The stale slot must have been removed
++_s3_dead_found=0
++while IFS= read -r _f; do
++    if grep -q "run-s3-dead" "$_f" 2>/dev/null; then
++        _s3_dead_found=1
++    fi
++done < <(find "$ZBUILD_STATE_ROOT" -type f 2>/dev/null)
++assert_eq "[#1932/SPEC-3] stale slot file removed by reap" "0" "$_s3_dead_found"
++
++# Negative control: two live slots still refuse — reaping alone does not open the gate
++export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec3b-state"
++_s3b_state_a="$TEST_TEMP_DIR/spec3b-a/run.json"
++_s3b_state_b="$TEST_TEMP_DIR/spec3b-b/run.json"
++_s3b_state_new="$TEST_TEMP_DIR/spec3b-new/run.json"
++_mk_live_state "$_s3b_state_a"
++_mk_live_state "$_s3b_state_b"
++_mk_live_state "$_s3b_state_new"
++_cap_admit_subprocess "run-s3b-a" "$_s3b_state_a"
++_cap_admit_subprocess "run-s3b-b" "$_s3b_state_b"
++_s3b_rc=0
++zbuild_run_cap_admit "run-s3b-new" "$_s3b_state_new" 2>/dev/null || _s3b_rc=$?
++assert_eq "[#1932/SPEC-3] control: two live slots still refuse" "1" "$_s3b_rc"
++
++# ─── [#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1: bypass regardless of cap and count ──
++print_test_section "[#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1 overrides cap and slot count"
++
++export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec4-state"
++export ZBUILD_MAX_CONCURRENT_RUNS=1
++
++_s4_state_blocker="$TEST_TEMP_DIR/spec4-blocker/run.json"
++_s4_state_new="$TEST_TEMP_DIR/spec4-new/run.json"
++_mk_live_state "$_s4_state_blocker"
++_mk_live_state "$_s4_state_new"
++
++# Seed one live slot (cap=1, so count == cap — would normally refuse)
++_cap_admit_subprocess "run-s4-blocker" "$_s4_state_blocker"
++
++export ZBUILD_NO_RUN_CAP=1
++_s4_stderr_file="$TEST_TEMP_DIR/spec4-stderr.txt"
++_s4_rc=0
++zbuild_run_cap_admit "run-s4-new" "$_s4_state_new" 2>"$_s4_stderr_file" || _s4_rc=$?
++unset ZBUILD_NO_RUN_CAP
++
++assert_eq "[#1932/SPEC-4] NO_RUN_CAP=1: returns 0 regardless of cap" "0" "$_s4_rc"
++_s4_stderr="$(<"$_s4_stderr_file")"
++if [[ -n "$_s4_stderr" ]]; then
++    assert_pass "[#1932/SPEC-4] NO_RUN_CAP=1: emits a warning to stderr"
++else
++    assert_fail "[#1932/SPEC-4] NO_RUN_CAP=1: emits a warning to stderr" "no warning emitted"
++fi
++
++# ─── [#1932/SPEC-5] unreadable slot dir: warns and fails open ────────────────
++print_test_section "[#1932/SPEC-5] unreadable slot dir fails open"
++
++export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec5-state"
++export ZBUILD_MAX_CONCURRENT_RUNS=1
++
++_s5_state="$TEST_TEMP_DIR/spec5-new/run.json"
++_mk_live_state "$_s5_state"
++
++# Make the slot root unreadable/untraversable so the function cannot count slots
++mkdir -p "$ZBUILD_STATE_ROOT"
++chmod 000 "$ZBUILD_STATE_ROOT"
++
++_s5_stderr_file="$TEST_TEMP_DIR/spec5-stderr.txt"
++_s5_rc=0
++zbuild_run_cap_admit "run-s5" "$_s5_state" 2>"$_s5_stderr_file" || _s5_rc=$?
++
++# Restore before any assertions so cleanup_test_env can remove the tree
++chmod 755 "$ZBUILD_STATE_ROOT"
++
++assert_eq "[#1932/SPEC-5] unreadable slot dir: returns 0 (fail-open)" "0" "$_s5_rc"
++_s5_stderr="$(<"$_s5_stderr_file")"
++if [[ -n "$_s5_stderr" ]]; then
++    assert_pass "[#1932/SPEC-5] unreadable slot dir: emits a warning to stderr"
++else
++    assert_fail "[#1932/SPEC-5] unreadable slot dir: emits a warning to stderr" "no warning emitted"
++fi
++
++# ─── [#1932/SPEC-7] ADR-059 §7 and event-schema.json ────────────────────────
++print_test_section "[#1932/SPEC-7] ADR-059 §7 and pipeline.refused.run_cap"
++
++_adr_file="$REPO_ROOT/docs/adr/ADR-059-issue-vs-run-keying.md"
++assert_file_exists "[#1932/SPEC-7] ADR-059 file exists" "$_adr_file"
++
++if grep -q "Host-wide run cap, off unless configured" "$_adr_file"; then
++    assert_pass "[#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured'"
++else
++    assert_fail "[#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured'" \
++        "section heading not found in ADR-059"
++fi
++
++if grep -q "tests/unit/run-cap-test.sh" "$_adr_file"; then
++    assert_pass "[#1932/SPEC-7] ADR-059 Enforced-by names tests/unit/run-cap-test.sh"
++else
++    assert_fail "[#1932/SPEC-7] ADR-059 Enforced-by names tests/unit/run-cap-test.sh" \
++        "not found in ADR-059 Enforced-by"
++fi
++
++_schema_file="$REPO_ROOT/config/event-schema.json"
++if grep -q "pipeline.refused.run_cap" "$_schema_file"; then
++    assert_pass "[#1932/SPEC-7] event-schema.json contains pipeline.refused.run_cap"
++else
++    assert_fail "[#1932/SPEC-7] event-schema.json contains pipeline.refused.run_cap" \
++        "event type missing from config/event-schema.json"
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))

@@ -1,0 +1,185 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## What you own
+### INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK below.
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Saying you are done
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer",
+emit `LOOP_COMPLETE` immediately. Do NOT keep iterating when there is
+nothing left to do. While any STAGE SUMMARY is headed that way, finishing
+with no change needs each of its findings answered: `done` (you changed
+something for it), or `nothing to do` with the reason.
+
+### When a finding does not reproduce
+If a failing summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Answer that finding, on its own line before the sentinel:
+
+    ANSWER <stage> finding <n>: nothing to do — not reproduced: <the path you ran>
+
+one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~630s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY headed "— its findings, to answer" is red RIGHT NOW on this tree.
+  Start from the failing line it quotes.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## What you judge against
+### ORIGINAL TASK (immutable across iterations)
+# Plan: Host-wide concurrent run cap (issue #1932)
+
+**Goal:** Add a configurable, fail-open, off-by-default host-wide counted cap on concurrent pipeline runs, with explicit refusal naming blockers, dead-holder reaping, and an operator override — amending ADR-059 §4 with a new §7 section.
+
+## Steps
+1. Create core/state/run-cap.sh — the cap module. Implements: zbuild_run_cap_slot_dir (returns ${ZBUILD_STATE_ROOT}/run-slots); zbuild_run_cap_reap_stale (scan slot dir, call zbuild_run_is_live on each PID-keyed entry, delete stale ones, fail-open); zbuild_run_cap_count_live [exclude_pid] (count live slot files excluding given PID, fail-open returns count via stdout); zbuild_run_cap_write_slot <run_id> [state_file] (write <slot_dir>/$$.json with run_id, pid, state_file, acquired_at); zbuild_run_cap_release (remove <slot_dir>/$$.json); zbuild_run_cap_admit <run_id> [state_file] (the admission gate: no-op if ZBUILD_MAX_CONCURRENT_RUNS unset; admits with warning if ZBUILD_NO_RUN_CAP=1; mkdir slot_dir fail-open; reap stale fail-open; count live excluding $$ fail-open — on error warn+return 0; if count >= cap set _ZBUILD_RUN_CAP_BLOCKERS and return 1; else write slot return 0). Sources resume.sh for zbuild_run_is_live.
+   - Files: `core/state/run-cap.sh`
+   - Estimated lines: 140
+2. Modify core/pipeline/runner.sh to integrate the cap. Three changes: (1) source run-cap.sh alongside issue-lock.sh near the top of the file; (2) in main(), call zbuild_run_cap_admit before the issue lock acquire (lines ~2297-2310), emit pipeline.refused.run_cap event and a named-blocker error message on refusal, return 1; (3) in _runner_abort_trap() (the exit trap, ~line 2470), call zbuild_run_cap_release alongside zbuild_issue_lock_release.
+   - Files: `core/pipeline/runner.sh`
+   - Estimated lines: 22
+3. Create tests/unit/run-cap-test.sh covering all issue-required specs: [SPEC-1] ZBUILD_MAX_CONCURRENT_RUNS unset — admit returns 0 and writes no slot file (byte-identically unaffected guard); [SPEC-2] cap+1 starts — pre-populate cap live slots, attempt one more, expect refusal naming blockers (reddens at merge-base); [SPEC-3] fail-open — inject a counting error (unreadable slot dir) and confirm the run is admitted with a warning; [SPEC-4] ZBUILD_NO_RUN_CAP=1 override — admits regardless of cap; [SPEC-5] dead holder reaping — write a slot with a dead PID/stale state, confirm it is reaped before counting and does not block admission.
+   - Files: `tests/unit/run-cap-test.sh`
+   - Estimated lines: 180
+4. Amend docs/adr/ADR-059-issue-vs-run-keying.md. Add a new ### 7 section under Decision (dated 2026-10-10): 'Host-wide run cap, off unless configured' — states the rule (flat run count, off unless ZBUILD_MAX_CONCURRENT_RUNS set, fail-open, dead holders reaped with zbuild_run_is_live before counting, override via ZBUILD_NO_RUN_CAP, refusal names blockers, race window on no-flock hosts stated not hidden). Add an entry for §7 to the existing ## Enforced by section naming tests/unit/run-cap-test.sh and its five spec statements.
+   - Files: `docs/adr/ADR-059-issue-vs-run-keying.md`
+   - Estimated lines: 45
+
+## Notes
+1. Placement of cap check vs issue lock: cap check (zbuild_run_cap_admit) is placed BEFORE the issue lock acquire in runner.sh — cap is a coarser resource gate and should fail fast. 2. Race window: two runs racing with no-flock cannot both be serialised by the PID-file approach alone; with count-then-write they may both proceed past a cap of 1. This mirrors the no-flock weakness already stated in issue-lock.sh and should be documented in §7 the same way. 3. 'A run never counts itself' — the admission count excludes the calling run's own $$ because the slot is written only after admission passes; on the happy path no slot exists yet for this PID. 4. Fail-open scope: mkdir failure, unreadable entries, missing zbuild_run_is_live function, unexpected ps output — all warn to stderr and return 0 from zbuild_run_cap_admit. Only a successful count above the cap refuses. 5. Release in exit trap: zbuild_run_cap_release must run even if slot was never written (no-op in that case, guarded by -f check). 6. The issue says 'State the red step in the PR body' — the plan step produces a test that reddens at merge-base because no run-cap.sh exists yet; the PR description should record this. 7. ADR-059 amendment adds §7 as a dated subsection inside the existing Decision section; the ## Enforced by section already exists and gains one new bullet. 8. ZBUILD_MAX_CONCURRENT_RUNS is the env var name stated in the issue Constraints; ZBUILD_NO_RUN_CAP=1 follows the ZBUILD_NO_ISSUE_LOCK=1 pattern from issue-lock.sh.
+
+### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Host-wide concurrent run cap (issue #1932)
+
+## Architectural decision summary
+
+**Goal.** Add a configurable, off-by-default, host-wide counted cap on concurrent pipeline
+runs: when more than N runs are live on one host, the next admission attempt refuses
+explicitly, emits a refusal message naming the blockers, and returns 1. Dead holders are
+reaped before counting using the same predicate ADR-059 §4 already uses
+(`zbuild_run_is_live`). The cap fails open. An operator override bypasses it entirely.
+
+**Context.** ADR-059 §4 serialises concurrent same-issue runs with a keyed mutex
+(`core/state/issue-lock.sh`). That decides _which_ issue can run; it says nothing about
+_how many_ runs the host can support simultaneously. `issue-lock.sh:22–24` already names
+this gap: *"NOT A CAPACITY CAP … zBuild still lacks it (#1932). Issue exclusivity is a keyed
+mutex; host capacity is a counted cap."* ADR-059 §4 also cites the legacy control directly:
+`legacy-DoNotUse/scripts/sw-pipeline.sh:325` had a flat PID-keyed count, fail-on-exceed,
+dead-holder reap — the same shape this issue now brings to zBuild.
+
+**Decision.** Introduce `core/state/run-cap.sh` as a new state module following the same
+structural contract as `issue-lock.sh` (fail-open mkdir, reap-before-count, explicit opt-out
+env var, explicit release in the exit trap). Integrate three call sites in
+`core/pipeline/runner.sh`: source the module alongside `issue-lock.sh` (runner.sh:25–26),
+call `zbuild_run_cap_admit` before the issue lock acquire (runner.sh:2302 — cap is the
+coarser resource gate; fail fast), and call `zbuild_run_cap_release` in
+`_runner_abort_trap` (runner.sh:2461) alongside `zbuild_issue_lock_release`.
+Amend ADR-059 with a new §7. Add `pipeline.refused.run_cap` to `config/event-schema.json`.
+
+**Race window.** On hosts without `flock`, two runs starting simultaneously can both pass a
+cap of 1 (count-then-write race). This mirrors the no-flock weakness already stated and
+accepted in `issue-lock.sh:141–149`, and is documented in §7 rather than hidden.
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+### ACCEPTANCE TESTS (you MUST make these pass)
+These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#1932/SPEC-1]).
+- SPEC-1: tests/unit/run-cap-test.sh
+- SPEC-2: tests/unit/run-cap-test.sh
+- SPEC-3: tests/unit/run-cap-test.sh
+- SPEC-4: tests/unit/run-cap-test.sh
+- SPEC-5: tests/unit/run-cap-test.sh
+- SPEC-6: tests/unit/run-cap-test.sh
+- SPEC-7: tests/unit/run-cap-test.sh
+
+What each SPEC requires:
+- [#1932/SPEC-1] when ZBUILD_MAX_CONCURRENT_RUNS is unset zbuild_run_cap_admit returns 0, writes no slot file, and produces no cap-related output
+- [#1932/SPEC-2] with cap N set and N live slot files present zbuild_run_cap_admit returns 1, sets _ZBUILD_RUN_CAP_BLOCKERS naming each blocking run_id, and emits a refusal message to stderr that names every blocker
+- [#1932/SPEC-3] a slot whose state file fails zbuild_run_is_live is removed by zbuild_run_cap_reap_stale before counting so it does not block admission
+- [#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1 causes zbuild_run_cap_admit to return 0 and emit a warning regardless of cap value and live slot count
+- [#1932/SPEC-5] when the slot directory is unreadable zbuild_run_cap_admit warns on stderr and returns 0 admitting the run
+- [#1932/SPEC-6] with cap N set and fewer than N live slot files present zbuild_run_cap_admit returns 0, writes a slot file for the current run, and produces no cap-related output
+- [#1932/SPEC-7] ADR-059 gains dated §7 "Host-wide run cap, off unless configured" under Decision and an Enforced-by bullet naming tests/unit/run-cap-test.sh and its six spec statements; pipeline.refused.run_cap is added to config/event-schema.json
+
+### REQUIREMENTS YOUR CODE MUST MEET
+Your change is done when the test for every requirement below passes.
+- [#1932/SPEC-1] when ZBUILD_MAX_CONCURRENT_RUNS is unset zbuild_run_cap_admit returns 0, writes no slot file, and produces no cap-related output
+  → its test is already written; make it pass
+- [#1932/SPEC-2] with cap N set and N live slot files present zbuild_run_cap_admit returns 1, sets _ZBUILD_RUN_CAP_BLOCKERS naming each blocking run_id, and emits a refusal message to stderr that names every blocker
+  → its test is already written; make it pass
+- [#1932/SPEC-3] a slot whose state file fails zbuild_run_is_live is removed by zbuild_run_cap_reap_stale before counting so it does not block admission
+  → its test is already written; make it pass
+- [#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1 causes zbuild_run_cap_admit to return 0 and emit a warning regardless of cap value and live slot count
+  → its test is already written; make it pass
+- [#1932/SPEC-5] when the slot directory is unreadable zbuild_run_cap_admit warns on stderr and returns 0 admitting the run
+  → its test is already written; make it pass
+- [#1932/SPEC-6] with cap N set and fewer than N live slot files present zbuild_run_cap_admit returns 0, writes a slot file for the current run, and produces no cap-related output
+  → its test is already written; make it pass
+- [#1932/SPEC-7] ADR-059 gains dated §7 "Host-wide run cap, off unless configured" under Decision and an Enforced-by bullet naming tests/unit/run-cap-test.sh and its six spec statements; pipeline.refused.run_cap is added to config/event-schema.json
+  → its test is already written; make it pass
+
+## What you must not do
+The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and do not edit it.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - core/state/run-cap.sh
+  - core/pipeline/runner.sh
+  - core/state/resume.sh
+  - core/state/issue-lock.sh
+  - docs/adr/ADR-059-issue-vs-run-keying.md
+  - config/event-schema.json
+  - tests/unit/run-cap-test.sh
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
