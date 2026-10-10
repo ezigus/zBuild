@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests: route_to_model_loop emits one model.route and one model.outcome event
 # per iteration — observability parity with the single-shot path (#1730).
-# [#1730/SPEC-1] [#1730/SPEC-2] [#1730/SPEC-3]
+# [#1730/SPEC-1] [#1730/SPEC-2] [#1730/SPEC-3] [#1730/SPEC-5]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -138,12 +138,7 @@ assert_eq "[#1730/SPEC-2] model.outcome.cache_creation_input_tokens=10" "10" "$t
 
 # [#1730/SPEC-2] Field: cost_usd is present and non-"unknown" (total_cost_usd in mock JSON).
 tc1_cost="$(jq -r 'select(.type=="model.outcome") | .data.cost_usd // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1 || true)"
-if [[ -n "$tc1_cost" && "$tc1_cost" != "unknown" ]]; then
-    assert_pass "[#1730/SPEC-2] model.outcome.cost_usd is present and not 'unknown'"
-else
-    assert_fail "[#1730/SPEC-2] model.outcome.cost_usd is present and not 'unknown'" \
-        "cost_usd='${tc1_cost}' — model.outcome not emitted or total_cost_usd not extracted"
-fi
+assert_eq "[#1730/SPEC-2] model.outcome.cost_usd is the provider-reported 0.0012" "0.0012" "$tc1_cost"
 
 # ─── TC-2: 3-iteration loop ─ exactly 3 model.route and 3 model.outcome events ─
 # Stub claude: counts calls via a shared file. Writes a distinct file each
@@ -214,6 +209,121 @@ assert_eq "[#1730/SPEC-3] exactly 3 model.outcome events for 3-iteration loop" "
 # [#1730/SPEC-3] model.outcome count matches cost-ledger row count (3 rows from 3 iterations).
 tc2_ledger_rows="$(wc -l < "$LEDGER2" 2>/dev/null | tr -d ' ' || printf '0')"
 assert_eq "[#1730/SPEC-3] model.outcome count matches cost-ledger rows" "$tc2_ledger_rows" "$tc2_outcome_count"
+
+# Drives one route_to_model_loop call (or, with mode=sync, one route_to_model
+# call) in a child shell against the current stub; writes its rc to <rc_file>.
+_drive() {
+    local mode="$1" prompt="$2" ledger="$3" rc_file="$4" max="${5:-5}" driver
+    driver="$TEST_TEMP_DIR/driver-$RANDOM.sh"
+    cat > "$driver" <<EOF
+set -euo pipefail
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+source "$REPO_ROOT/core/event-bus/event-bus.sh"
+source "$REPO_ROOT/core/output/stage-io.sh"
+source "$REPO_ROOT/core/router/route.sh"
+export ZBUILD_EVENTS_DIR="$ZBUILD_EVENTS_DIR"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_JSONL"
+export ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA"
+export ZBUILD_STATE_DIR="$ZBUILD_STATE_DIR"
+export ZBUILD_MODELS_FILE="$ZBUILD_MODELS_FILE"
+export ZBUILD_RUN_ID="$ZBUILD_RUN_ID"
+export ZBUILD_COST_LEDGER="$ledger"
+export HOME="$HOME"
+export ZBUILD_SCOPE_OVERRIDE=1
+export PATH="$PATH"
+export ZBUILD_ROUTER_MAX_TURNS=0
+set +e
+if [[ "$mode" == "sync" ]]; then
+    # The sync path's audited bypass wants the token to name this run.
+    printf '%s' "\$ZBUILD_RUN_ID" > "\$HOME/.zbuild/scope-override-token"
+    route_to_model T2 "\$(<"$prompt")" --skip-precondition >/dev/null
+else
+    route_to_model_loop T2 "$prompt" "$REPO" "$max"
+fi
+rc=\$?
+set -e
+printf '%s' "\$rc" > "$rc_file"
+EOF
+    bash "$driver" >/dev/null 2>/dev/null || true
+}
+
+_count() { jq -c --arg t "$1" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' '; }
+_rows() { if [[ -f "$1" ]]; then wc -l < "$1" | tr -d ' '; else printf '0'; fi; }
+
+# ─── TC-3: a failed iteration is billed, so it is reported like any other ─────
+# Iteration 1 fails (rc=1) with an envelope that still carries a cost; the
+# router writes a ledger row for it. Iteration 2 succeeds with LOOP_COMPLETE.
+COUNT3="$TEST_TEMP_DIR/tc3-count"
+: > "$COUNT3"
+cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK3
+#!/usr/bin/env bash
+printf '1\n' >> "$COUNT3"
+n=\$(wc -l < "$COUNT3" | tr -d ' ')
+printf 'iter%s\n' "\$n" > "$REPO/tc3-work-\${n}.txt" 2>/dev/null || true
+if [[ "\$n" -eq 1 ]]; then
+    jq -n '{type:"result",subtype:"error_during_execution",is_error:true,result:"",num_turns:3,total_cost_usd:0.0007,usage:{input_tokens:70,output_tokens:7,cache_read_input_tokens:5,cache_creation_input_tokens:1}}'
+    exit 1
+fi
+jq -n '{type:"result",subtype:"success",is_error:false,result:"done\nLOOP_COMPLETE",num_turns:1,total_cost_usd:0.0005,usage:{input_tokens:80,output_tokens:15,cache_read_input_tokens:0,cache_creation_input_tokens:0}}'
+exit 0
+MOCK3
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+: > "$ZBUILD_EVENTS_JSONL"
+PROMPT3="$TEST_TEMP_DIR/tc3-prompt.txt"; printf 'build\n' > "$PROMPT3"
+LEDGER3="$TEST_TEMP_DIR/tc3-ledger.jsonl"
+_drive loop "$PROMPT3" "$LEDGER3" "$TEST_TEMP_DIR/tc3-rc.txt" 5
+
+print_test_section "SPEC-3: a failed iteration gets its model.outcome, matching its ledger row"
+assert_eq "TC-3: stub invoked twice (one failure, one success)" "2" "$(_rows "$COUNT3")"
+assert_eq "[#1730/SPEC-3] two ledger rows (the failed iteration was billed)" "2" "$(_rows "$LEDGER3")"
+assert_eq "[#1730/SPEC-3] two model.route events" "2" "$(_count model.route)"
+assert_eq "[#1730/SPEC-3] model.outcome count matches ledger rows after a failed iteration" \
+    "$(_rows "$LEDGER3")" "$(_count model.outcome)"
+tc3_first="$(jq -r 'select(.type=="model.outcome") | "\(.data.input_tokens)/\(.data.output_tokens)/\(.data.cost_usd)"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "[#1730/SPEC-3] the failed iteration's outcome carries its own tokens and cost" "70/7/0.0007" "$tc3_first"
+
+# ─── TC-4: a timeout after LOOP_COMPLETE still reports the finished call ──────
+# rc=124 with the sentinel on disk ends the loop as done (#743). The call ran
+# and was billed, so it gets a ledger row and a model.outcome like any other.
+cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK4'
+#!/usr/bin/env bash
+jq -n '{type:"result",subtype:"success",is_error:false,result:"done\nLOOP_COMPLETE",num_turns:2,total_cost_usd:0.0009,usage:{input_tokens:90,output_tokens:9,cache_read_input_tokens:0,cache_creation_input_tokens:0}}'
+exit 124
+MOCK4
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+: > "$ZBUILD_EVENTS_JSONL"
+LEDGER4="$TEST_TEMP_DIR/tc4-ledger.jsonl"
+_drive loop "$PROMPT3" "$LEDGER4" "$TEST_TEMP_DIR/tc4-rc.txt" 5
+
+print_test_section "SPEC-3: a timed-out call that finished its work is reported"
+assert_eq "TC-4: loop ends 0 on the sentinel" "0" "$(cat "$TEST_TEMP_DIR/tc4-rc.txt" 2>/dev/null || printf missing)"
+assert_eq "TC-4: the sentinel path was taken" "1" "$(_count router.loop.iter.timeout_with_sentinel)"
+assert_eq "[#1730/SPEC-3] one ledger row for the timed-out call" "1" "$(_rows "$LEDGER4")"
+assert_eq "[#1730/SPEC-3] one model.outcome for the timed-out call" "1" "$(_count model.outcome)"
+
+# ─── TC-5: both entry points reach the shared emitters ───────────────────────
+# Same stubbed reply through route_to_model and route_to_model_loop: each must
+# emit model.route and model.outcome with the same fields, so a future path that
+# bypasses the emitters shows up here.
+cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK5'
+#!/usr/bin/env bash
+jq -n '{type:"result",subtype:"success",is_error:false,result:"done\nLOOP_COMPLETE",num_turns:1,total_cost_usd:0.0012,usage:{input_tokens:100,output_tokens:20,cache_read_input_tokens:50,cache_creation_input_tokens:10}}'
+exit 0
+MOCK5
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+_fields='select(.type=="model.outcome") | [.data.tier, .data.provider, .data.input_tokens, .data.output_tokens, .data.cache_read_input_tokens, .data.cache_creation_input_tokens, .data.cost_usd] | map(tostring) | join(",")'
+
+print_test_section "SPEC-5: both entry points emit model.route and model.outcome"
+for _mode in sync loop; do
+    : > "$ZBUILD_EVENTS_JSONL"
+    _drive "$_mode" "$PROMPT3" "$TEST_TEMP_DIR/tc5-$_mode-ledger.jsonl" "$TEST_TEMP_DIR/tc5-$_mode-rc.txt" 5
+    assert_eq "[#1730/SPEC-5] $_mode: call returns 0" "0" "$(cat "$TEST_TEMP_DIR/tc5-$_mode-rc.txt" 2>/dev/null || printf missing)"
+    assert_eq "[#1730/SPEC-5] $_mode: one model.route" "1" "$(_count model.route)"
+    assert_eq "[#1730/SPEC-5] $_mode: one model.outcome" "1" "$(_count model.outcome)"
+    _prov="$(jq -r 'select(.type=="model.route") | .data.provider' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    assert_eq "[#1730/SPEC-5] $_mode: model.outcome fields" "T2,$_prov,100,20,50,10,0.0012" \
+        "$(jq -r "$_fields" "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+done
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
