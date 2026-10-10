@@ -161,3 +161,33 @@ non-empty line is frozen, so a row whose summary lands later still reads live un
 one. Keyed by run id: a resumed run has its own comment and its own record. The file
 persists with the state. The design row's "N acceptance SPEC(s)" now counts SPEC
 declarations only, not the TESTFILES bindings that start the same way.
+
+## Amendment 2026-10-10 (#1806) — the sidecar does not wake itself
+
+§2 said the sidecar has no path to the event bus. It had one: `rsc_main` sources
+`core/pipeline/input-resolve.sh` for the summary path, which sources `verdict.sh`, which sources
+the event bus. Every render passes the body through `apply_scope_redaction`, which reports
+`redaction.applied` — into the `events.jsonl` the loop watches, so each render scheduled the
+next one, bounded only by `ZBUILD_STATUS_COMMENT_MIN_INTERVAL`. The #1802 run had about 1,500
+such events (stage-less, the largest share of the run's event volume) and 1,476 PATCHes.
+
+- **Nothing in the sidecar process emits.** `rsc_main` replaces `emit_event` and `eb_emit_event`
+  with no-ops (`_rsc_no_events`) after its sources are loaded. Redaction still runs on every
+  outbound body; only its event is not written. Not at source time: the runner sources this file.
+- **An unchanged body is not sent.** `rsc_upsert` keeps the body it last sent successfully and
+  returns without a request when the new render is identical. A failed send is not remembered,
+  so the next render tries again.
+- The "1 s resolution on macOS" consequence above no longer holds: event timestamps carry real
+  milliseconds on every host (ADR-065 §5, amended #1806).
+
+## Enforced by
+
+- §1 → `tests/unit/runner-status-comment-hook-test.sh`; `tests/integration/run-status-comment-runner-test.sh` (a GitHub that fails every call leaves the exit status alone)
+- §2 → `tests/unit/run-status-comment-render-test.sh` SPEC-8 (no emit call, no event-bus source); `tests/unit/run-status-comment-quiet-test.sh` Q1 (a render with the real redactor adds nothing to `events.jsonl`), Q3 (a live sidecar with nothing new sends no PATCH and its events file does not grow)
+- §3 → `tests/unit/run-status-comment-gh-test.sh` (POST once, PATCH after, the id persisted and rediscovered); `tests/unit/run-status-comment-quiet-test.sh` Q2 (an unchanged body is not sent)
+- §4 → `tests/unit/run-status-comment-render-test.sh`; `tests/unit/run-status-comment-loop-test.sh`
+- §5 → `tests/unit/event-bus-seq-envelope-test.sh`
+- §6 → `tests/unit/run-status-comment-render-test.sh` SPEC-6 (the bound), SPEC-7 (redaction); `tests/unit/run-status-comment-gh-test.sh` (every failure is advisory)
+- §7 → `tests/unit/run-status-comment-gh-test.sh`; `tests/unit/cli-status-comment-test.sh`
+- Amendment #2145 → `tests/unit/run-status-comment-render-test.sh`
+- Amendment #2154 → `tests/unit/run-status-comment-render-test.sh` SPEC-9

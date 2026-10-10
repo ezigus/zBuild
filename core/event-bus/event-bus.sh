@@ -62,7 +62,7 @@ _eb_mirror_enabled() {
 
 # ─── _eb_init — idempotent setup (dir, lockfile, SQLite schema) ─────────────
 _eb_init() {
-    mkdir -p "$ZBUILD_EVENTS_DIR"
+    [[ -d "$ZBUILD_EVENTS_DIR" ]] || mkdir -p "$ZBUILD_EVENTS_DIR"
     : > "${ZBUILD_EVENTS_JSONL}.lock" 2>/dev/null || true
     # SQLite mirror (optional, best-effort) — set up the dedicated mirror lock
     # (SEPARATE from the jsonl lock, so a slow mirror never blocks the
@@ -121,6 +121,27 @@ _eb_strip_ansi() {
     printf '%s' "$1" | LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g'
 }
 
+# _eb_strip_ansi_v <var> <value>: the same, into <var>, with no subshell when
+# the value holds no ESC (#1806 — the envelope and every field took one each).
+_eb_strip_ansi_v() {
+    if [[ "$2" == *$'\x1b'* ]]; then
+        printf -v "$1" '%s' "$(_eb_strip_ansi "$2")"
+    else
+        printf -v "$1" '%s' "$2"
+    fi
+}
+
+# _eb_now_iso_v <var>: UTC, with milliseconds, from the shell's own clock (#1806).
+# No `date` process, and no reading of ZBUILD_PLATFORM: a map work unit exports
+# its TARGET platform there (ADR-009 §6), which is not the host the clock is on.
+# EPOCHREALTIME's separator follows the locale, so both . and , are accepted.
+_eb_now_iso_v() {
+    local _er="$EPOCHREALTIME" _s _f _iso
+    _s="${_er%[.,]*}"; _f="${_er#*[.,]}000"
+    TZ=UTC0 printf -v _iso '%(%Y-%m-%dT%H:%M:%S)T' "$_s"
+    printf -v "$1" '%s.%sZ' "$_iso" "${_f:0:3}"
+}
+
 # ─── eb_emit_event — single source of truth for events ──────────────────────
 # Usage:
 #   eb_emit_event <type> [key1=val1] [key2=val2] ...
@@ -142,31 +163,31 @@ eb_emit_event() {
     # exported ZBUILD_PLUGIN context, and left the envelope's advertised
     # .plugin/.kind empty. Captured in this existing loop so the hot path gains
     # no subprocess, and applied below only when the exported context is absent.
-    local payload="{}"
+    # #1806: the fields travel to the ONE jq below as numbered --arg pairs
+    # (_k0/_v0, …); it builds .data (a later duplicate key wins, as before) with
+    # the envelope. An option argument is never read as an option, so a value
+    # like "-n" stays a value — a positional list after --args would not.
     local key val
     local _data_plugin="" _data_kind=""
+    local -a _pairs=()
+    local -i _n=0
     for arg in "$@"; do
         key="${arg%%=*}"
-        val="$(_eb_strip_ansi "${arg#*=}")"
+        _eb_strip_ansi_v val "${arg#*=}"
         case "$key" in
             plugin) _data_plugin="$val" ;;
             kind)   _data_kind="$val" ;;
         esac
-        payload="$(echo "$payload" | jq --arg k "$key" --arg v "$val" '. + {($k): $v}')"
+        _pairs+=(--arg "_k$_n" "$key" --arg "_v$_n" "$val")
+        _n+=1
     done
 
-    # ISO 8601 timestamp with milliseconds
-    local ts
-    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
-        ts="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-    else
-        ts="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
-    fi
+    local ts; _eb_now_iso_v ts
 
-    local run_id; run_id="$(_eb_strip_ansi "${ZBUILD_RUN_ID:-}")"
+    local run_id; _eb_strip_ansi_v run_id "${ZBUILD_RUN_ID:-}"
     local issue="${ZBUILD_ISSUE:-0}"
-    local plugin; plugin="$(_eb_strip_ansi "${ZBUILD_PLUGIN:-}")"
-    local kind; kind="$(_eb_strip_ansi "${ZBUILD_PLUGIN_KIND:-}")"
+    local plugin; _eb_strip_ansi_v plugin "${ZBUILD_PLUGIN:-}"
+    local kind; _eb_strip_ansi_v kind "${ZBUILD_PLUGIN_KIND:-}"
     # Fall back to the payload's own plugin/kind so the envelope is populated
     # for every emitter, not only those dispatched through plugin_hook_call.
     # Applied before the SQLite insert too, so both stores agree.
@@ -180,7 +201,7 @@ eb_emit_event() {
     # `redaction.applied` check. Present ONLY when a stage is active — stage-less
     # emits (pipeline.start, template load, bootstrap) keep the canonical 8-key
     # envelope, so C6 falls back to the run-level last-event check for them.
-    local stage; stage="$(_eb_strip_ansi "${ZBUILD_CURRENT_STAGE:-}")"
+    local stage; _eb_strip_ansi_v stage "${ZBUILD_CURRENT_STAGE:-}"
     # #2131 (ADR-064): the stage-io seq label (`6.1.3` = runner cardinal ·
     # cycle iteration · member position) rides the envelope by the same rule
     # as `stage` — present only while a label is exported. It was rendered
@@ -202,8 +223,10 @@ eb_emit_event() {
         issue=0
     fi
 
-    local event_json
-    event_json="$(jq -cn \
+    # Two compact lines out: the event, then its .data (the SQLite mirror's
+    # payload column). Compact JSON never holds a raw newline, so each is one line.
+    local event_json payload _jq_out
+    _jq_out="$(jq -cn \
         --arg ts "$ts" \
         --arg run_id "$run_id" \
         --argjson issue "$issue" \
@@ -213,11 +236,16 @@ eb_emit_event() {
         --arg stage "$stage" \
         --arg seq "$seq" \
         --arg unit "$unit" \
-        --argjson data "$payload" \
-        '{ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}
-         + (if $stage != "" then {stage: $stage} else {} end)
-         + (if $seq != "" then {seq: $seq} else {} end)
-         + (if $unit != "" then {unit: $unit} else {} end)')"
+        --argjson _n "$_n" \
+        "${_pairs[@]}" \
+        '$ARGS.named as $a
+         | ([range(0; $_n) | {($a["_k\(.)"]): $a["_v\(.)"]}] | add // {}) as $data
+         | ({ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}
+            + (if $stage != "" then {stage: $stage} else {} end)
+            + (if $seq != "" then {seq: $seq} else {} end)
+            + (if $unit != "" then {unit: $unit} else {} end)), $data')"
+    event_json="${_jq_out%%$'\n'*}"
+    payload="${_jq_out#*$'\n'}"
 
     # Single-writer JSONL via flock
     if zbuild_has_flock; then
@@ -238,13 +266,13 @@ eb_emit_event() {
     # the dedicated lock) when the mirror is disabled — e.g. ZBUILD_EVENTS_DB=
     # /dev/null, whose .lock redirect would otherwise fail the emit (#1153).
     if _eb_mirror_enabled; then
-        local _ts_esc _rid_esc _type_esc _plugin_esc _kind_esc _payload_esc
-        _ts_esc="$(_eb_sql_escape "$ts")"
-        _rid_esc="$(_eb_sql_escape "$run_id")"
-        _type_esc="$(_eb_sql_escape "$type")"
-        _plugin_esc="$(_eb_sql_escape "$plugin")"
-        _kind_esc="$(_eb_sql_escape "$kind")"
-        _payload_esc="$(_eb_sql_escape "$payload")"
+        # Single quotes doubled for SQLite string literals, in the shell (#1806:
+        # a sed process per field before). The quote and its double are held in
+        # variables because inside "..." a \' in the pattern stays a backslash.
+        local _q="'" _qq="''"
+        local _ts_esc="${ts//$_q/$_qq}" _rid_esc="${run_id//$_q/$_qq}"
+        local _type_esc="${type//$_q/$_qq}" _plugin_esc="${plugin//$_q/$_qq}"
+        local _kind_esc="${kind//$_q/$_qq}" _payload_esc="${payload//$_q/$_qq}"
         local _eb_insert_sql
         _eb_insert_sql="INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version) VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);"
         # Serialize the mirror INSERT with flock on the DEDICATED db lock (NOT
@@ -282,14 +310,6 @@ _eb_mirror_insert() {
     local _eb_emit_err
     _eb_emit_err="$(sqlite3 -cmd ".timeout 2000" "$ZBUILD_EVENTS_DB" "$1" 2>&1)" \
         || { [[ -n "$_eb_emit_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_emit_err" >&2; }
-}
-
-# _eb_sql_escape: double single-quotes for SQLite single-quoted string literals.
-# Single source of truth; used for every string field in the INSERT above.
-# Uses sed because bash parameter expansion ${s//\'/\'\'} inside double
-# quotes treats \' as literal backslash+quote (Copilot caught this on #278).
-_eb_sql_escape() {
-    printf '%s' "$1" | sed "s/'/''/g"
 }
 
 # ─── eb_query_events — minimal read API ─────────────────────────────────────

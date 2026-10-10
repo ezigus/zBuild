@@ -89,6 +89,16 @@ The census also names the event bus's per-event processes, the `$(dirname` / `$(
 `manifest_graph_collect`'s per-hit awk and `cksum`, and `validate_manifest`'s three direct awks
 per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 
+> **Amended 2026-10-10 (#1806): the event bus's per-event processes are gone.** One
+> `eb_emit_event` used to start a `jq` per field plus one for the envelope, a `date`, a `mkdir`,
+> and, with the SQLite mirror on, a `sed` per mirrored field (about 22 for an 11-field event). It
+> now starts one `jq`, which builds the fields and the envelope together, and the jsonl lock's
+> `flock`; the mirror adds its `sqlite3` and lock. The clock is `EPOCHREALTIME` read by the shell,
+> which also gives macOS real milliseconds, and the SQL quoting is a parameter expansion. The
+> fields reach `jq` as numbered `--arg` pairs, never a positional list, because `jq` reads
+> options after `--args` and a value such as `-n` must stay a value.
+> Ratcheted 5,480 → 5,040 (measured 4,991 on macOS).
+
 ## Consequences
 
 - A fork regression fails CI with its call site named, instead of surfacing months later as a
@@ -116,3 +126,11 @@ exactly 1 (the detector cannot go inert); SPEC-2 the mocked run still exits 0 un
 SPEC-3 the trace names ≥ 20 source files and ≥ 1,000 execs (an fd-7-closed child traces to
 stderr and must not pass as "under budget"); SPEC-4 total ≤ `FORK_BUDGET`. Red step: with the
 counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
+
+## Enforced by
+
+- §1 → `tests/e2e/fork-budget-test.sh` SPEC-1 (the canary counts one exec), SPEC-1b (a quoted value is not a command), SPEC-2, SPEC-3, SPEC-4 (the total is within `FORK_BUDGET`)
+- §1 (amended #2236, exempt waits) → `tests/e2e/fork-budget-test.sh` (marked waits are listed apart and not counted)
+- §2 → `tests/e2e/fork-budget-test.sh` SPEC-4 (`FORK_BUDGET` carries its ratchet history in the comment above it)
+- §3, §4 → `tests/unit/manifest-index-test.sh` (fork counts, the parent fill); `tests/unit/yaml-get-cache-test.sh` SPEC-9 (one awk per prewarm)
+- §5 (amended #1806, the event bus) → `tests/unit/event-bus-emit-cost-test.sh` E1 (one emit starts one `jq` and the lock, nothing per field), E2 (no `sed` for the mirror), E3 (UTC with real milliseconds whatever `ZBUILD_PLATFORM` says), E4 (the envelope is unchanged, and option-like values stay data)

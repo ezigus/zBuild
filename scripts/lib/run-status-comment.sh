@@ -189,9 +189,13 @@ rsc_finalize_issue() {
 # fan out. Always returns 0.
 _RSC_RECREATED=0
 _RSC_GIVEN_UP=0
+# 1 when the last rsc_upsert reached GitHub (rsc_flush remembers only a body
+# that was really sent, so a failed send is tried again).
+_RSC_UPSERT_SENT=0
 rsc_upsert() {
     local state_dir="$1" slug="$2" issue="$3" run_id="$4" body_file="$5"
     local id rc=0
+    _RSC_UPSERT_SENT=0
     [[ "$_RSC_GIVEN_UP" -eq 1 ]] && return 0
     id="$(rsc_id_load "$state_dir")"
     if [[ -z "$id" ]]; then
@@ -200,7 +204,7 @@ rsc_upsert() {
     fi
     if [[ -n "$id" ]]; then
         rsc_comment_patch "$state_dir" "$slug" "$id" "$body_file"; rc=$?
-        if [[ $rc -eq 0 ]]; then return 0; fi
+        if [[ $rc -eq 0 ]]; then _RSC_UPSERT_SENT=1; return 0; fi
         if [[ $rc -ne 44 ]]; then return 0; fi
         # Gone. Forget it; re-create at most once.
         rm -f "$state_dir/status-comment.json"
@@ -214,6 +218,7 @@ rsc_upsert() {
     fi
     id="$(rsc_comment_create "$state_dir" "$slug" "$issue" "$body_file")"
     if [[ -n "$id" ]]; then
+        _RSC_UPSERT_SENT=1
         rsc_id_save "$state_dir" "$slug" "$issue" "$run_id" "$id"
         [[ "${GITHUB_ACTIONS:-}" == "true" ]] && \
             echo "::notice title=zbuild status comment::https://github.com/${slug}/issues/${issue}#issuecomment-${id}"
@@ -226,6 +231,10 @@ rsc_upsert() {
 _RSC_STOP=0
 _rsc_on_stop() { _RSC_STOP=1; }
 
+# The body rsc_flush last sent, and for which state dir (#1806).
+_RSC_LAST_SENT=""
+_RSC_LAST_SENT_DIR=""
+
 # ─── rsc_flush <events> <state_dir> <slug> <issue> <run_id> [override] ──────
 # Render → redact → upsert. A redactor failure posts nothing (logged).
 rsc_flush() {
@@ -236,7 +245,16 @@ rsc_flush() {
         rsc_log "$state_dir" "redaction_failed: body not posted"
         rm -f "$body_file"; return 0
     fi
+    # #1806: a render identical to the last one this process sent for this run
+    # is not sent again — the watcher wakes for events that change nothing shown.
+    local body; body="$(<"$body_file")"
+    if [[ "$state_dir" == "$_RSC_LAST_SENT_DIR" && "$body" == "$_RSC_LAST_SENT" ]]; then
+        rm -f "$body_file"; return 0
+    fi
     rsc_upsert "$state_dir" "$slug" "$issue" "$run_id" "$body_file"
+    if [[ "$_RSC_UPSERT_SENT" -eq 1 ]]; then
+        _RSC_LAST_SENT="$body"; _RSC_LAST_SENT_DIR="$state_dir"
+    fi
     rm -f "$body_file"
     return 0
 }
@@ -318,6 +336,14 @@ rsc_find_state_dir() {
     return 1
 }
 
+# ─── _rsc_no_events ──────────────────────────────────────────────────────────
+# Replaces the event emitters with no-ops in THIS process only. Called from
+# rsc_main, never at source time: the runner sources this file too.
+_rsc_no_events() {
+    emit_event() { return 0; }
+    eb_emit_event() { return 0; }
+}
+
 # ─── main ───────────────────────────────────────────────────────────────────
 #   --events <jsonl> --state-dir <dir> [--parent-pid <pid>] [--slug o/r]
 #   [--issue N] [--run-id id] [--repo-root <dir>] [--once]
@@ -357,6 +383,11 @@ rsc_main() {
         # shellcheck source=../../core/pipeline/input-resolve.sh
         source "$_RSC_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
     fi
+    # ADR-064 §2: this process reads the run's events and never writes them.
+    # input-resolve.sh brings the event bus in (through verdict.sh), and the
+    # redactor reports every pass as an event — into the very file this loop
+    # watches, so each render woke the next one (#1806). Nothing here emits.
+    _rsc_no_events
     rsc_log "$state_dir" "start: repo=${slug} issue=${issue} run_id=${run_id} parent=${parent:-none} events=${events}"
     if [[ $once -eq 1 ]]; then
         rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
