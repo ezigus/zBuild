@@ -60,6 +60,11 @@ _eb_mirror_enabled() {
     [[ "$ZBUILD_EVENTS_DB" != "/dev/null" ]] && command -v sqlite3 >/dev/null 2>&1
 }
 
+# _eb_host_is_mac — true when the host OS is macOS, regardless of ZBUILD_PLATFORM.
+# Uses $OSTYPE (bash builtin, zero forks) so map work units exporting
+# ZBUILD_PLATFORM=linux on a macOS host get the correct date format.
+_eb_host_is_mac() { [[ "$OSTYPE" == darwin* ]]; }
+
 # ─── _eb_init — idempotent setup (dir, lockfile, SQLite schema) ─────────────
 _eb_init() {
     mkdir -p "$ZBUILD_EVENTS_DIR"
@@ -142,9 +147,9 @@ eb_emit_event() {
     # exported ZBUILD_PLUGIN context, and left the envelope's advertised
     # .plugin/.kind empty. Captured in this existing loop so the hot path gains
     # no subprocess, and applied below only when the exported context is absent.
-    local payload="{}"
-    local key val
     local _data_plugin="" _data_kind=""
+    local -a _jq_args=()
+    local key val
     for arg in "$@"; do
         key="${arg%%=*}"
         val="$(_eb_strip_ansi "${arg#*=}")"
@@ -152,12 +157,18 @@ eb_emit_event() {
             plugin) _data_plugin="$val" ;;
             kind)   _data_kind="$val" ;;
         esac
-        payload="$(echo "$payload" | jq --arg k "$key" --arg v "$val" '. + {($k): $v}')"
+        _jq_args+=(--arg "$key" "$val")
     done
+    local payload
+    if [[ ${#_jq_args[@]} -eq 0 ]]; then
+        payload="{}"
+    else
+        payload="$(jq -n '$ARGS.named' "${_jq_args[@]}")"
+    fi
 
     # ISO 8601 timestamp with milliseconds
     local ts
-    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
+    if _eb_host_is_mac; then
         ts="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
     else
         ts="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
@@ -286,10 +297,10 @@ _eb_mirror_insert() {
 
 # _eb_sql_escape: double single-quotes for SQLite single-quoted string literals.
 # Single source of truth; used for every string field in the INSERT above.
-# Uses sed because bash parameter expansion ${s//\'/\'\'} inside double
-# quotes treats \' as literal backslash+quote (Copilot caught this on #278).
+# $'...' ANSI-C quoting avoids the double-quote context issue (#278) where
+# ${s//\'/\'\'} would produce literal backslash+quote instead of two quotes.
 _eb_sql_escape() {
-    printf '%s' "$1" | sed "s/'/''/g"
+    printf '%s' "${1//$'\''/$'\'\''}"
 }
 
 # ─── eb_query_events — minimal read API ─────────────────────────────────────

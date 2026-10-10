@@ -228,15 +228,34 @@ _rsc_on_stop() { _RSC_STOP=1; }
 
 # ─── rsc_flush <events> <state_dir> <slug> <issue> <run_id> [override] ──────
 # Render → redact → upsert. A redactor failure posts nothing (logged).
+# Skips rsc_upsert when the rendered body is byte-for-byte identical to the
+# previously-sent body (cmp -s), eliminating redundant PATCHes.
+# Sets global _rsc_flush_cursor_size to the events.jsonl byte count captured
+# AFTER apply_scope_redaction writes but BEFORE the gh network call, so that
+# rsc_tail_loop can advance last_size without absorbing external events that
+# arrive concurrently with the gh call.
 rsc_flush() {
     local events="$1" state_dir="$2" slug="$3" issue="$4" run_id="$5" override="${6:-}"
-    local body_file
+    local body_file prev_body
+    prev_body="$state_dir/status-comment-body-prev.txt"
     body_file="$(mktemp "${TMPDIR:-$state_dir}/rsc-body.XXXXXX")" || return 0
     if ! rsc_outbound_body "$events" "$state_dir" "$override" > "$body_file"; then
         rsc_log "$state_dir" "redaction_failed: body not posted"
+        rm -f "$body_file"
+        _rsc_flush_cursor_size=0
+        [[ -f "$events" ]] && _rsc_flush_cursor_size="$(wc -c 2>/dev/null < "$events" | tr -d ' ')"
+        return 0
+    fi
+    # Capture cursor AFTER sidecar writes (apply_scope_redaction) but BEFORE the
+    # gh call: external events arriving during the network call are detected on the
+    # next poll rather than silently absorbed into last_size.
+    _rsc_flush_cursor_size=0
+    [[ -f "$events" ]] && _rsc_flush_cursor_size="$(wc -c 2>/dev/null < "$events" | tr -d ' ')"
+    if [[ -f "$prev_body" ]] && cmp -s "$prev_body" "$body_file"; then
         rm -f "$body_file"; return 0
     fi
     rsc_upsert "$state_dir" "$slug" "$issue" "$run_id" "$body_file"
+    cp "$body_file" "$prev_body" 2>/dev/null || true
     rm -f "$body_file"
     return 0
 }
@@ -288,6 +307,10 @@ rsc_tail_loop() {
         if [[ $dirty -eq 1 && $seen_start -eq 1 ]] && \
            [[ $flushed_once -eq 0 || $terminal_now -eq 1 || $(( now - last_flush )) -ge "${ZBUILD_STATUS_COMMENT_MIN_INTERVAL%.*}" ]]; then
             rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
+            # Use the cursor captured inside rsc_flush (before the gh call) so
+            # redaction.applied bytes are absorbed without swallowing external events
+            # that arrived concurrently during the network call.
+            last_size="${_rsc_flush_cursor_size:-$last_size}"
             dirty=0; flushed_once=1; last_flush="$now"
         fi
         # Interruptible sleep: a TERM lands on `wait`, not inside `sleep`.
@@ -357,6 +380,13 @@ rsc_main() {
         # shellcheck source=../../core/pipeline/input-resolve.sh
         source "$_RSC_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
     fi
+    # Source event-bus so emit_event calls from apply_scope_redaction during
+    # rsc_outbound_body write real events; export stage attribution for all of them.
+    if ! declare -F eb_emit_event >/dev/null 2>&1; then
+        # shellcheck source=../../core/event-bus/event-bus.sh
+        source "$_RSC_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+    fi
+    export ZBUILD_CURRENT_STAGE="run-status-comment"
     rsc_log "$state_dir" "start: repo=${slug} issue=${issue} run_id=${run_id} parent=${parent:-none} events=${events}"
     if [[ $once -eq 1 ]]; then
         rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"

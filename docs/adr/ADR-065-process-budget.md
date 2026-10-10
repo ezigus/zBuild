@@ -116,3 +116,15 @@ exactly 1 (the detector cannot go inert); SPEC-2 the mocked run still exits 0 un
 SPEC-3 the trace names ≥ 20 source files and ≥ 1,000 execs (an fd-7-closed child traces to
 stderr and must not pass as "under budget"); SPEC-4 total ≤ `FORK_BUDGET`. Red step: with the
 counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
+
+> **Amended 2026-10-10 (#1806): §5 processes removed.** The event bus per-emit processes named
+> in §5 are now eliminated: `eb_emit_event` accumulates all key=val arguments into a single
+> `jq -n '$ARGS.named'` call (previously one `jq` fork per argument), and `_eb_sql_escape`
+> uses bash parameter expansion `${1//$'\''/$'\'\''}` instead of `printf | sed` (previously one
+> `sed` fork per SQLite-mirrored field). These changes reduce per-event fork cost from O(N args)
+> to O(1). `FORK_BUDGET` ratcheted from 5,480 → 4,500.
+
+## Enforced by
+
+- §1 — `tests/e2e/fork-budget-test.sh` (SPEC-4: total external process count ≤ `FORK_BUDGET`; SPEC-1: canary correctness)
+- §5 — `tests/unit/event-bus-timestamp-test.sh` (SPEC-2: per-arg accumulation pattern absent after payload fix)
