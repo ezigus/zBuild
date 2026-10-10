@@ -1,5 +1,5 @@
 ## File
-`core/event-bus/event-bus.sh` — `_eb_strip_ansi` is called inside `eb_emit_event` to sanitize every payload value and string envelope field before they are written to the JSONL log. Bypassing these call sites lets raw ANSI escape bytes reach the JSONL writer.
+`core/event-bus/event-bus.sh` — `_eb_strip_ansi_v` (#1806: the subshell-free form of `_eb_strip_ansi`) is called inside `eb_emit_event` to sanitize every payload value and string envelope field before they are written to the JSONL log. Bypassing these call sites lets raw ANSI escape bytes reach the JSONL writer.
 
 ## Mutation
 Comment out the `_eb_strip_ansi` call sites inside `eb_emit_event`: replace the stripped `val` assignment with the raw `${arg#*=}` expansion, and replace the three stripped envelope-field assignments with bare environment variable reads so ANSI bytes pass through unfiltered.
@@ -11,19 +11,19 @@ import pathlib
 p = pathlib.Path("core/event-bus/event-bus.sh")
 src = p.read_text()
 new = src.replace(
-    'val="$(_eb_strip_ansi "${arg#*=}")"',
+    '_eb_strip_ansi_v val "${arg#*=}"',
     'val="${arg#*=}"',
     1,
 ).replace(
-    'local run_id; run_id="$(_eb_strip_ansi "${ZBUILD_RUN_ID:-}")"',
+    'local run_id; _eb_strip_ansi_v run_id "${ZBUILD_RUN_ID:-}"',
     'local run_id="${ZBUILD_RUN_ID:-}"',
     1,
 ).replace(
-    'local plugin; plugin="$(_eb_strip_ansi "${ZBUILD_PLUGIN:-}")"',
+    'local plugin; _eb_strip_ansi_v plugin "${ZBUILD_PLUGIN:-}"',
     'local plugin="${ZBUILD_PLUGIN:-}"',
     1,
 ).replace(
-    'local kind; kind="$(_eb_strip_ansi "${ZBUILD_PLUGIN_KIND:-}")"',
+    'local kind; _eb_strip_ansi_v kind "${ZBUILD_PLUGIN_KIND:-}"',
     'local kind="${ZBUILD_PLUGIN_KIND:-}"',
     1,
 )
