@@ -54,6 +54,12 @@ assert_eq "[SPEC-2] ANSI stripped from envelope run_id field" "run-99" "$(printf
 assert_eq "[SPEC-2] ANSI stripped from envelope kind field" "agent" "$(printf '%s' "$last" | jq -r '.kind')"
 unset ZBUILD_RUN_ID ZBUILD_PLUGIN_KIND
 
+# The stage envelope field too (#1806: five call sites, the mutation spec covers all)
+export ZBUILD_CURRENT_STAGE=$'\e[35mbuild\e[0m'
+eb_emit_event "plugin.run.complete" "status=ok"
+assert_eq "[SPEC-2] ANSI stripped from envelope stage field" "build" "$(tail -1 "$ZBUILD_EVENTS_JSONL" | jq -r '.stage')"
+unset ZBUILD_CURRENT_STAGE
+
 # ─── SPEC-3: clean ASCII values pass through unchanged ──────────────────────
 eb_emit_event "test.clean" "key=hello" "msg=world"
 last="$(tail -1 "$ZBUILD_EVENTS_JSONL")"

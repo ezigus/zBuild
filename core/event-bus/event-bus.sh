@@ -225,6 +225,8 @@ eb_emit_event() {
 
     # Two compact lines out: the event, then its .data (the SQLite mirror's
     # payload column). Compact JSON never holds a raw newline, so each is one line.
+    # An event jq cannot build is dropped, never fatal: this runs bare under
+    # `set -e` everywhere (see the closing `return 0`).
     local event_json payload _jq_out
     _jq_out="$(jq -cn \
         --arg ts "$ts" \
@@ -243,7 +245,7 @@ eb_emit_event() {
          | ({ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}
             + (if $stage != "" then {stage: $stage} else {} end)
             + (if $seq != "" then {seq: $seq} else {} end)
-            + (if $unit != "" then {unit: $unit} else {} end)), $data')"
+            + (if $unit != "" then {unit: $unit} else {} end)), $data')" || return 0
     event_json="${_jq_out%%$'\n'*}"
     payload="${_jq_out#*$'\n'}"
 

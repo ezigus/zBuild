@@ -127,6 +127,22 @@ assert_eq "[#1806/E4] option-like keys and values are data" \
     '{"-x":"1","_n":"5","a":"-n","b":"--args","ts":"x"}' "$(jq -cS '.data' "$_d/opts.jsonl" 2>/dev/null)"
 assert_eq "[#1806/E4] an event with no fields has data {}" "{}" "$(sed -n 2p "$_d/events.jsonl" | jq -c '.data')"
 
+# ─── E5: a failing jq does not fail the caller ───────────────────────────────
+# eb_emit_event is called bare under `set -e` across the engine: an emit that
+# cannot be built is dropped, never fatal (#1153's rule; ADR-057 gate 3's hazard).
+print_test_section "E5: an emit whose jq fails returns 0 and the caller carries on"
+_d="$TEST_TEMP_DIR/e5"; mkdir -p "$_d" "$TEST_TEMP_DIR/badjq"
+printf '#!/bin/sh\nexit 5\n' > "$TEST_TEMP_DIR/badjq/jq"; chmod +x "$TEST_TEMP_DIR/badjq/jq"
+_e5="$(ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" ZBUILD_EVENTS_DB=/dev/null \
+    PATH="$TEST_TEMP_DIR/badjq:$PATH" bash -c '
+        set -euo pipefail
+        source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"
+        eb_emit_event stage.complete stage=x
+        echo "carried-on rc=$?"
+    ' 2>/dev/null || true)"
+assert_eq "[#1806/E5] the caller under set -e carries on after a failed emit" "carried-on rc=0" "$_e5"
+assert_eq "[#1806/E5] nothing half-built is appended" "0" "$(if [[ -f "$_d/events.jsonl" ]]; then grep -c . "$_d/events.jsonl" || true; else echo 0; fi)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
