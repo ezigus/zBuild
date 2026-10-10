@@ -1,0 +1,92 @@
+{
+  "result_contract": 2,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "2 of 844 tests failed",
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/impact-max-turns-test.sh\n\n  unit: impact router.max_turns headroom (#891)\n\n  ✗ impact router.max_turns is 45 (raised from the 25 default)\n    expected: 45, got: \n  ✗ impact router.timeout_s is 600 (right-sized 180→600, #1242)\n    expected: 600, got: \n  ✗ impact max_turns should exceed 25\n    got: \n\n\n  3 of 3 tests failed\n\n  ✗ impact router.max_turns is 45 (raised from the 25 default)\n  ✗ impact router.timeout_s is 600 (right-sized 180→600, #1242)\n  ✗ impact max_turns should exceed 25\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/template-always-run-test.sh\n\n  always_run template attribute (#1831)\n\n\n  [SPEC-1][change] simple.yaml declares always_run: release\n  ✓ [SPEC-1] _TPL_ALWAYS_RUN is [release persist], in that order\n  ✓ [SPEC-1] release resolves by role, not by directory\n  ✓ [SPEC-1] release carries its own timeout_s\n\n  [SPEC-2][guard] always-run stages never enter _TPL_STAGES[]\n  ✓ [SPEC-2] neither release nor persist is in _TPL_STAGES[]\n  ✗ [SPEC-2] simple.yaml flow count excludes both always-run stages\n    expected: 20, got: 19\n\n  [SPEC-3][guard] a template with no always_run gets an empty list\n  ✓ [SPEC-3] _TPL_ALWAYS_RUN is empty after loading a template without it\n\n  [SPEC-4][guard] an undefined always_run member refuses the template\n  ✓ [SPEC-4] undefined always_run member is refused (exit 1)\n  ✓ [SPEC-4] always_run member with no roles: is refused (exit 1)\n\n  [SPEC-5][change] the list is ordered, in both YAML forms\n  ✓ [SPEC-5] block form preserves declared order\n  ✓ [SPEC-5] inline form preserves declared order\n\n  [SPEC-6][guard] an old-shape template inherits always_run from its base\n  ✓ [SPEC-6] old-shape overlay still gets always_run from its base\n  ✓ [SPEC-6] and its own single stage, not the base's flow\n  ✓ [SPEC-6] the release role survives the old-shape path\n\n  [SPEC-7][change] roles: parses in block form as well as inline\n  ✓ [SPEC-7] a block-form roles: section loads (exit 0)\n  ✓ [SPEC-7] block-form roles: is captured\n  ✓ [SPEC-7] and timeout_s after it still parses\n  ✓ [SPEC-7] inline-form roles: is captured on an always-run section too\n  ✓ [SPEC-7] and its timeout_s parses as well\n\n\n  1 of 18 tests failed\n\n  ✗ [SPEC-2] simple.yaml flow count excludes both always-run stages\n\nunit: 539/541 passed (4 skipped)\nintegration: 266/266 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 842/844 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 1,
+  "data": {
+    "exit_code": 1,
+    "passed": 842,
+    "failed": 2,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/impact-max-turns-test.sh\n\n  unit: impact router.max_turns headroom (#891)\n\n  ✗ impact router.max_turns is 45 (raised from the 25 default)\n    expected: 45, got: \n  ✗ impact router.timeout_s is 600 (right-sized 180→600, #1242)\n    expected: 600, got: \n  ✗ impact max_turns should exceed 25\n    got: \n\n\n  3 of 3 tests failed\n\n  ✗ impact router.max_turns is 45 (raised from the 25 default)\n  ✗ impact router.timeout_s is 600 (right-sized 180→600, #1242)\n  ✗ impact max_turns should exceed 25\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/template-always-run-test.sh\n\n  always_run template attribute (#1831)\n\n\n  [SPEC-1][change] simple.yaml declares always_run: release\n  ✓ [SPEC-1] _TPL_ALWAYS_RUN is [release persist], in that order\n  ✓ [SPEC-1] release resolves by role, not by directory\n  ✓ [SPEC-1] release carries its own timeout_s\n\n  [SPEC-2][guard] always-run stages never enter _TPL_STAGES[]\n  ✓ [SPEC-2] neither release nor persist is in _TPL_STAGES[]\n  ✗ [SPEC-2] simple.yaml flow count excludes both always-run stages\n    expected: 20, got: 19\n\n  [SPEC-3][guard] a template with no always_run gets an empty list\n  ✓ [SPEC-3] _TPL_ALWAYS_RUN is empty after loading a template without it\n\n  [SPEC-4][guard] an undefined always_run member refuses the template\n  ✓ [SPEC-4] undefined always_run member is refused (exit 1)\n  ✓ [SPEC-4] always_run member with no roles: is refused (exit 1)\n\n  [SPEC-5][change] the list is ordered, in both YAML forms\n  ✓ [SPEC-5] block form preserves declared order\n  ✓ [SPEC-5] inline form preserves declared order\n\n  [SPEC-6][guard] an old-shape template inherits always_run from its base\n  ✓ [SPEC-6] old-shape overlay still gets always_run from its base\n  ✓ [SPEC-6] and its own single stage, not the base's flow\n  ✓ [SPEC-6] the release role survives the old-shape path\n\n  [SPEC-7][change] roles: parses in block form as well as inline\n  ✓ [SPEC-7] a block-form roles: section loads (exit 0)\n  ✓ [SPEC-7] block-form roles: is captured\n  ✓ [SPEC-7] and timeout_s after it still parses\n  ✓ [SPEC-7] inline-form roles: is captured on an always-run section too\n  ✓ [SPEC-7] and its timeout_s parses as well\n\n\n  1 of 18 tests failed\n\n  ✗ [SPEC-2] simple.yaml flow count excludes both always-run stages\n\nunit: 539/541 passed (4 skipped)\nintegration: 266/266 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 842/844 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 223929,
+        "e2e": 180709,
+        "golden": 5400,
+        "unit": 628425,
+        "integration": 817646
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/integration/unowned-finding-last-round-test.sh",
+          "ms": 192922
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/integration/unowned-finding-test.sh",
+          "ms": 188960
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/run-status-comment-render-test.sh",
+          "ms": 145357
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/core-pipeline-cycle-reuse-and-route-back-test.sh",
+          "ms": 133158
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/integration/unowned-finding-stale-test.sh",
+          "ms": 131263
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 125260
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 119905
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/integration/cycle-multi-exit-when-e2e-test.sh",
+          "ms": 115871
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/stage-resolution-parity-test.sh",
+          "ms": 115051
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/plugins/agent/review-lens/tests/review-lens-v2-result-test.sh",
+          "ms": 112066
+        }
+      ]
+    },
+    "tree_sha": "445ee18f5427923282f1178ab9aab5a8c5b19f75",
+    "failures": [
+      {
+        "file": "tests/unit/impact-max-turns-test.sh",
+        "reason": "✗ impact router.max_turns is 45 (raised from the 25 default) — expected: 45, got: ",
+        "points_at": []
+      },
+      {
+        "file": "tests/unit/template-always-run-test.sh",
+        "reason": "✗ [SPEC-2] simple.yaml flow count excludes both always-run stages — expected: 20, got: 19",
+        "points_at": []
+      }
+    ],
+    "findings": [
+      {
+        "n": 1,
+        "text": "tests/unit/impact-max-turns-test.sh fails: ✗ impact router.max_turns is 45 (raised from the 25 default) — expected: 45, got:"
+      },
+      {
+        "n": 2,
+        "text": "tests/unit/template-always-run-test.sh fails: ✗ [SPEC-2] simple.yaml flow count excludes both always-run stages — expected: 20, got: 19"
+      }
+    ]
+  }
+}

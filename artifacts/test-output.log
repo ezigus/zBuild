@@ -1,0 +1,73 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/impact-max-turns-test.sh
+
+  unit: impact router.max_turns headroom (#891)
+
+  ✗ impact router.max_turns is 45 (raised from the 25 default)
+    expected: 45, got: 
+  ✗ impact router.timeout_s is 600 (right-sized 180→600, #1242)
+    expected: 600, got: 
+  ✗ impact max_turns should exceed 25
+    got: 
+
+
+  3 of 3 tests failed
+
+  ✗ impact router.max_turns is 45 (raised from the 25 default)
+  ✗ impact router.timeout_s is 600 (right-sized 180→600, #1242)
+  ✗ impact max_turns should exceed 25
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FZ5bAj/tests/unit/template-always-run-test.sh
+
+  always_run template attribute (#1831)
+
+
+  [SPEC-1][change] simple.yaml declares always_run: release
+  ✓ [SPEC-1] _TPL_ALWAYS_RUN is [release persist], in that order
+  ✓ [SPEC-1] release resolves by role, not by directory
+  ✓ [SPEC-1] release carries its own timeout_s
+
+  [SPEC-2][guard] always-run stages never enter _TPL_STAGES[]
+  ✓ [SPEC-2] neither release nor persist is in _TPL_STAGES[]
+  ✗ [SPEC-2] simple.yaml flow count excludes both always-run stages
+    expected: 20, got: 19
+
+  [SPEC-3][guard] a template with no always_run gets an empty list
+  ✓ [SPEC-3] _TPL_ALWAYS_RUN is empty after loading a template without it
+
+  [SPEC-4][guard] an undefined always_run member refuses the template
+  ✓ [SPEC-4] undefined always_run member is refused (exit 1)
+  ✓ [SPEC-4] always_run member with no roles: is refused (exit 1)
+
+  [SPEC-5][change] the list is ordered, in both YAML forms
+  ✓ [SPEC-5] block form preserves declared order
+  ✓ [SPEC-5] inline form preserves declared order
+
+  [SPEC-6][guard] an old-shape template inherits always_run from its base
+  ✓ [SPEC-6] old-shape overlay still gets always_run from its base
+  ✓ [SPEC-6] and its own single stage, not the base's flow
+  ✓ [SPEC-6] the release role survives the old-shape path
+
+  [SPEC-7][change] roles: parses in block form as well as inline
+  ✓ [SPEC-7] a block-form roles: section loads (exit 0)
+  ✓ [SPEC-7] block-form roles: is captured
+  ✓ [SPEC-7] and timeout_s after it still parses
+  ✓ [SPEC-7] inline-form roles: is captured on an always-run section too
+  ✓ [SPEC-7] and its timeout_s parses as well
+
+
+  1 of 18 tests failed
+
+  ✗ [SPEC-2] simple.yaml flow count excludes both always-run stages
+
+unit: 539/541 passed (4 skipped)
+integration: 266/266 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 842/844 passed (4 skipped)

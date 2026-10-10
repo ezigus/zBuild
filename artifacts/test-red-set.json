@@ -1,0 +1,4 @@
+[
+  "tests/unit/impact-max-turns-test.sh",
+  "tests/unit/template-always-run-test.sh"
+]
