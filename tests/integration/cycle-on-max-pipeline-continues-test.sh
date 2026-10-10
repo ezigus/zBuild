@@ -49,7 +49,7 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 # on_max=continue continue-past-exhaustion mechanic is identical; simple.yaml's
 # design_verify_cycle (on_max=continue in the overlay, #2241) is the exhausting cycle here, forced by a
 # design-gate stub that never returns verdict=pass. All other stages succeed so
-# the runner walks past the exhausted cycle to impact → build_test_cycle →
+# the runner walks past the exhausted cycle to build_test_cycle →
 # review_lenses → pr and ends status=success.
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
@@ -228,7 +228,6 @@ _make_design_gate_plugin   # forces design_verify_cycle to exhaust
 # reports reason='blocked' at iter 1 instead of exhausting, and every
 # assertion below fails for a reason unrelated to on_max=continue.
 _make_plugin "spec-coverage"   "spec_coverage"
-_make_plugin "impact"          "impact_analyzer"
 # #2187: build_test_cycle's newer members. Unresolved, each was a silent
 # `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
 _make_plugin "test-author"         "test_author"

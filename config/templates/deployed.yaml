@@ -59,7 +59,6 @@ delivery_loop:
   description: Design, then build, until both pass — going round when a finding needs design
   flow:
     - design_verify_cycle
-    - impact
     - build_test_cycle
   exit_when:
     all:
@@ -166,18 +165,6 @@ design-gate:
   io:
     destinations: [file, stdout]
     tail_lines: 200
-
-# ─── impact (leaf, top-level advisory-by-placement) ──────────────────────────
-impact:
-  gate: auto
-  roles: [impact_analyzer]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    timeout_s: 600
-    max_turns: 45
-    retries: 1
 
 # ─── build (leaf, cycle member) ──────────────────────────────────────────────
 build:

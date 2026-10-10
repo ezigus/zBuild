@@ -78,14 +78,22 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # exists) and `assertion-integrity` guards them just before the aggregate.
 # 19 -> 20: #1849 adds issue-acceptance before gate-aggregator — the finished
 # change judged against the ISSUE, the one link below the SPEC.
-assert_eq "[SPEC-2] _TPL_STAGES count is 20" "20" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 19" "19" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design spec-coverage design-gate impact test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance gate-aggregator review_lenses review-aggregator pr)
+_expected_stages=(hydrate intake plan design spec-coverage design-gate test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance gate-aggregator review_lenses review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
     _i=$((_i + 1))
 done
+
+# [SPEC-2] [#1668/SPEC-2] impact must not appear in _TPL_STAGES after removal from
+# the delivery_loop flow in simple.yaml (#1668). A 19-element array with impact
+# substituted for another stage would pass the count and index checks above but
+# fail this one.
+_impact_in_stages=0
+for _s in "${_TPL_STAGES[@]}"; do [[ "$_s" == "impact" ]] && _impact_in_stages=1; done
+assert_eq "[SPEC-2] [#1668/SPEC-2] impact is absent from _TPL_STAGES" "0" "$_impact_in_stages"
 
 # [SPEC-2] merge_policy is a reserved template-level knob, NOT a stage section
 # (#968 review): it must never appear in _TPL_STAGES nor as a phantom stage def.
@@ -131,14 +139,12 @@ assert_eq "[SPEC-3] design router max_turns" "0"           "$_TPL_STAGE_ROUTER_M
 assert_eq "[SPEC-3] design-gate roles"    "design_gate" "$_TPL_STAGE_ROLES_design_gate"
 assert_eq "[SPEC-3] design-gate io_dests" "file,stdout" "$_TPL_STAGE_IO_DESTS_design_gate"
 
-# impact (#1218, ADR-046): reused T2 agent as a lone advisory-by-placement stage
-# (role impact_analyzer, timeout 600 / max_turns 45 copied from standard.yaml).
-# #1242: timeout right-sized 180→600 to match its tool-heavy T2 sibling `design`
-# (the 180s T1-era budget was too low for a 45-turn sonnet job — rc=124 hang).
-assert_eq "[SPEC-3] impact roles"            "impact_analyzer" "$_TPL_STAGE_ROLES_impact"
-assert_eq "[SPEC-3] impact io_dests"         "file,stdout"     "$_TPL_STAGE_IO_DESTS_impact"
-assert_eq "[SPEC-3] impact router timeout"   "600"             "$_TPL_STAGE_ROUTER_TIMEOUT_impact"
-assert_eq "[SPEC-3] impact router max_turns" "45"              "$_TPL_STAGE_ROUTER_MAX_TURNS_impact"
+# impact removed from simple.yaml delivery_loop (#1668): all four impact stage vars
+# must be unset once the impact section is absent from the template.
+assert_eq "[SPEC-3] impact roles unset (impact removed from template)"            "" "${_TPL_STAGE_ROLES_impact:-}"
+assert_eq "[SPEC-3] impact io_dests unset (impact removed from template)"         "" "${_TPL_STAGE_IO_DESTS_impact:-}"
+assert_eq "[SPEC-3] impact router timeout unset (impact removed from template)"   "" "${_TPL_STAGE_ROUTER_TIMEOUT_impact:-}"
+assert_eq "[SPEC-3] impact router max_turns unset (impact removed from template)" "" "${_TPL_STAGE_ROUTER_MAX_TURNS_impact:-}"
 
 # build
 assert_eq "[SPEC-3] build roles"            "builder"     "$_TPL_STAGE_ROLES_build"
@@ -206,8 +212,8 @@ assert_eq "[SPEC-11] dispatch[5] stage:review-aggregator" "stage:review-aggregat
 assert_eq "[SPEC-11] dispatch[6] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[6]}"
 
 # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
-assert_eq "[SPEC-18] delivery_loop holds the design loop, impact and the build loop" \
-    "design_verify_cycle,impact,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[SPEC-18] [#1668/SPEC-1] delivery_loop holds the design loop and the build loop (impact removed)" \
+    "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop runs at most 2 rounds" "2" "${_TPL_CYCLE_MAX_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop halts when its rounds are spent" "halt" "${_TPL_CYCLE_ON_MAX_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop stops on a finding nobody owns" "halt" "${_TPL_CYCLE_UNOWNED_delivery_loop:-}"
@@ -276,19 +282,17 @@ assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
 # gate-aggregator from 8 to 10 (design=2,design-gate=3,impact=4,build=5,test=6,
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
-assert_eq "[SPEC-12] _TPL_STAGES[11] == shape-floor" "shape-floor" "${_TPL_STAGES[11]}"
-assert_eq "[SPEC-12] _TPL_STAGES[16] == gate-aggregator (cycle exit_when source)" \
-    "gate-aggregator" "${_TPL_STAGES[16]}"
+assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[10] == shape-floor" "shape-floor" "${_TPL_STAGES[10]}"
+assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[15] == gate-aggregator (cycle exit_when source)" \
+    "gate-aggregator" "${_TPL_STAGES[15]}"
 
-# ─── SPEC-13: design is at index 3; design-gate at 4, impact at 5 ─────────────
+# ─── SPEC-13: design is at index 3; design-gate at 5 ─────────────────────────
 # CHANGE: design sits at index 3 (after hydrate, intake, plan); its verifier
-# design-gate follows at 4, then the advisory impact at 5 (#1218, ADR-046).
-# Every index here shifted by one when #1074 put `hydrate` first — the relative
-# ORDER, which is what ADR-046 actually constrains, is unchanged.
+# design-gate follows at 5 (spec-coverage at 4), then test-author at 6 (#1668).
+# The advisory impact stage has been removed from simple.yaml (#1668).
 
 assert_eq "[SPEC-13] _TPL_STAGES[3] == design" "design" "${_TPL_STAGES[3]}"
 assert_eq "[SPEC-13] _TPL_STAGES[5] == design-gate" "design-gate" "${_TPL_STAGES[5]}"
-assert_eq "[SPEC-13] _TPL_STAGES[6] == impact" "impact" "${_TPL_STAGES[6]}"
 
 # ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
 # GUARD: simple.yaml's pr stage declares roles: [pr]. Since #1704 that role is

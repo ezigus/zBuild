@@ -1,7 +1,7 @@
 # ADR-068 — Nested loops and finding answers: the engine never decides who owns a finding
 
-**Status:** Accepted (2026-10-04)
-**Issue:** #2271; §8 amended by #2330 (2026-10-06)
+**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop)
+**Issue:** #2271; §8 amended by #2330 (2026-10-06); §1 §8 amended by #1668 (2026-10-10)
 **Supersedes:** ADR-045 (bounded typed backward-route), ADR-061 (fault-class vocabulary)
 **Amends:** ADR-021, ADR-027, ADR-040, ADR-046, ADR-047, ADR-054 §4, ADR-055 (finding-owner amendment)
 **Related:** ADR-063 §5 (every model-calling stage declares a save-as-you-go output), ADR-066, ADR-067
@@ -18,7 +18,7 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 
 ## Decision
 
-1. **Nested loops, nothing jumps backwards.** The default flow is one outer loop holding the design loop and the build loop (`delivery_loop` in `simple.yaml` and `deployed.yaml`): design loop → impact → build loop. Plan runs once, before it. `route_back` is removed; a template that declares it is refused at load, with an error that says the nested loops replace it.
+1. **Nested loops, nothing jumps backwards.** The default flow is one outer loop holding the design loop and the build loop (`delivery_loop` in `simple.yaml` and `deployed.yaml`): design loop → build loop. Plan runs once, before it. `route_back` is removed; a template that declares it is refused at load, with an error that says the nested loops replace it.
 2. **Inner loops reset each time they start.** Each time the outer loop goes round, the design loop and the build loop start again at round 1. Budgets: outer 2, design 2, build 3, so at most 2 × (2 + 3) model rounds.
 3. **An inner loop that ends without converging ends the outer round.** This applies when the inner loop declares `on_max: halt`, or runs out with tests failing. The members after it are skipped and the outer loop goes round from the top; a design the checks still reject is never built. When the outer rounds are spent, the outer loop's own `on_max` applies, and in the default flow the run stops. An inner loop with `on_max: continue` keeps ADR-019's fall-through.
 4. **An outer loop's multi-condition `exit_when` is its own.** Running an inner loop never changes how the outer loop's exit is evaluated.
@@ -29,7 +29,7 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 7. **Only the stage that opened a finding can close it,** with `satisfied — <why>`. A model check judges the work fresh first, then is shown its own earlier findings and asked about each. A check that does not call a model closes a finding by not reporting it again.
 8. **The engine only counts answers; it never decides ownership.**
    - **`unowned: yield`** on a loop: when every member of the loop that answers findings (other than the finding's opener) answered `nothing to do` to the same finding, the loop ends early. The outer loop then goes round from the top, carrying every finding.
-   - **`unowned: halt`** on the outer loop: just before the yielding loop comes round again, every stage that answers findings and ran in between (the design loop's stages, impact, …) is checked. If all of them answered `nothing to do` to that finding, nobody owns it. The run stops and writes `artifacts/unowned-findings.md`, listing each finding, the stage that opened it, and every answer with its why.
+   - **`unowned: halt`** on the outer loop: just before the yielding loop comes round again, every stage that answers findings and ran in between (the design loop's stages, …) is checked. If all of them answered `nothing to do` to that finding, nobody owns it. The run stops and writes `artifacts/unowned-findings.md`, listing each finding, the stage that opened it, and every answer with its why.
    - An early hand-back is recorded as such: the loop's state reads `unowned_finding`, and its banner says it ended early.
    - One `done` from anyone keeps a finding where it is. A member that should have answered and did not counts as not disclaiming. Each round counts only answers given in it: a loop clears its stages' answers when a round starts.
    - **The last round still reports (#2330).** The check above runs only when another round is coming. When an `unowned: halt` loop has no round left, the run stops with the same report if a loop handed a finding back in that round, or a check is not sure an item is met (`data.unsure`). The loop's state reads `unowned_finding`, and the report lists every answer given. A loop that runs again has its earlier hand-back cleared first, so a finding acted on since is never reported.
@@ -56,7 +56,7 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 
 ## Enforced by
 
-- §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it)
+- §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it); `tests/unit/template-simple-yaml-test.sh` SPEC-18 (delivery_loop flow is design_verify_cycle,build_test_cycle); `tests/integration/deployed-template-e2e-test.sh` (delivery_loop flow in deployed.yaml is design_verify_cycle,build_test_cycle)
 - §2, §3, §4 → `tests/integration/nested-loop-rounds-test.sh` L1, L2, L4, L5; `tests/integration/nested-loop-rounds-build-test.sh` L3, L6; `tests/integration/cycle-member-dispatch-events-test.sh` §3 (rc 8 still halts on the last outer round); `tests/integration/cycle-rate-limit-aborts-run-test.sh` (rc 9 from an inner loop ends the run)
 - §5 → `tests/unit/numbered-findings-test.sh` N1–N5
 - §6, §7 → `tests/unit/finding-answers-test.sh` A1–A10 (A7: the request comes after the findings the funnel adds, #2294; A8: the accepted line shapes, #2322; A9: not reproduced is recorded as `nothing to do`, #2322; A10: a colon after the answer word is accepted for every word, #2332)
