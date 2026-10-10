@@ -108,6 +108,7 @@ CANDIDATE GAPS (deterministic prefilter — you MUST VALIDATE each and KEEP all 
       "tests/integration/runner-release-exit-paths-test.sh",
       "tests/integration/core-orch-contract-test.sh",
       "tests/integration/cycle-seq-deep-nesting-test.sh",
+      "tests/integration/deployed-template-e2e-test.sh",
       "tests/integration/test-stage-proc-group-test.sh",
       "tests/integration/release-wrapper-test.sh",
       "tests/integration/worktree-run-isolation-test.sh",
@@ -177,6 +178,8 @@ DESIGN SCOPE BLOCK:
 - config/templates/deployed.yaml
 - docs/adr/ADR-068-nested-loops-and-finding-answers.md
 - tests/unit/template-simple-yaml-test.sh
+- tests/unit/impact-max-turns-test.sh
+- tests/unit/template-always-run-test.sh
 - tests/integration/deployed-template-e2e-test.sh
 - tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
 - tests/integration/cycle-acceptance-terminal-failure-test.sh
@@ -187,6 +190,18 @@ DESIGN SCOPE BLOCK:
 - docs/adr/ADR-046-design-verify-shift-left.md
 - docs/wiki/Configuration.md
 - docs/wiki/Pipeline-and-Stages.md
+- tests/golden/full-pipeline/event-sequence.golden
+- tests/golden/parity/event-sequence.golden
+- tests/unit/shape-floor-content-stable-test.sh
+- tests/unit/build-oos-pass-request-test.sh
+- tests/unit/change-scope-floor-test.sh
+- tests/unit/core-pipeline-template-test.sh
+- tests/unit/template-resolvability-preflight-test.sh
+- tests/unit/impact-prefilter-order-detector-test.sh
+- tests/unit/shape-floor-summary-plain-test.sh
+
+### PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)
+{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-3","files_to_add":["tests/unit/template-always-run-test.sh"],"reason":"Loads simple.yaml directly and asserts `${#_TPL_STAGES[@]}` equals 20; removing impact reduces the count to 19, breaking SPEC-2 in this file.","evidence":"Line 38: `load_template \"$REPO_ROOT/config/templates/simple.yaml\"` then line 62-63: `assert_eq \"[SPEC-2] simple.yaml flow count excludes both always-run stages\" \"20\" \"${#_TPL_STAGES[@]}\"`"},{"step_id":"prefilter","files_to_add":["tests/golden/full-pipeline/event-sequence.golden","tests/golden/parity/event-sequence.golden","tests/unit/build-oos-pass-request-test.sh","tests/unit/change-scope-floor-test.sh","tests/unit/core-pipeline-template-test.sh","tests/unit/impact-prefilter-order-detector-test.sh","tests/unit/shape-floor-content-stable-test.sh","tests/unit/shape-floor-summary-plain-test.sh","tests/unit/template-resolvability-preflight-test.sh"],"reason":"deterministic prefilter floor (#781/#881): shape-change detected; event-sequence goldens + stage-order (_TPL_STAGES[N]) tests required regardless of LLM judgment"}],"result_contract":2,"disposition":"complete","reason":"verdict:incomplete,missing_count:2"}
 
 ## What you must not do
 - Do NOT call Edit, Write, or Bash. This stage is read-only.
