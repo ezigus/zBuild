@@ -1,8 +1,8 @@
 ## File
-`core/event-bus/event-bus.sh` — `_eb_strip_ansi` is called inside `eb_emit_event` to sanitize every payload value and string envelope field before they are written to the JSONL log. Bypassing these call sites lets raw ANSI escape bytes reach the JSONL writer.
+`core/event-bus/event-bus.sh` — `_eb_strip_ansi_v` (#1806: the subshell-free form of `_eb_strip_ansi`) is called inside `eb_emit_event` to sanitize every payload value and string envelope field before they are written to the JSONL log. Bypassing these call sites lets raw ANSI escape bytes reach the JSONL writer.
 
 ## Mutation
-Comment out the `_eb_strip_ansi` call sites inside `eb_emit_event`: replace the stripped `val` assignment with the raw `${arg#*=}` expansion, and replace the three stripped envelope-field assignments with bare environment variable reads so ANSI bytes pass through unfiltered.
+Comment out the `_eb_strip_ansi` call sites inside `eb_emit_event`: replace the stripped `val` assignment with the raw `${arg#*=}` expansion, and replace the four stripped envelope-field assignments (`run_id`, `plugin`, `kind`, `stage`) with bare environment variable reads so ANSI bytes pass through unfiltered.
 
 ## Patch
 ```bash
@@ -11,20 +11,24 @@ import pathlib
 p = pathlib.Path("core/event-bus/event-bus.sh")
 src = p.read_text()
 new = src.replace(
-    'val="$(_eb_strip_ansi "${arg#*=}")"',
+    '_eb_strip_ansi_v val "${arg#*=}"',
     'val="${arg#*=}"',
     1,
 ).replace(
-    'local run_id; run_id="$(_eb_strip_ansi "${ZBUILD_RUN_ID:-}")"',
+    'local run_id; _eb_strip_ansi_v run_id "${ZBUILD_RUN_ID:-}"',
     'local run_id="${ZBUILD_RUN_ID:-}"',
     1,
 ).replace(
-    'local plugin; plugin="$(_eb_strip_ansi "${ZBUILD_PLUGIN:-}")"',
+    'local plugin; _eb_strip_ansi_v plugin "${ZBUILD_PLUGIN:-}"',
     'local plugin="${ZBUILD_PLUGIN:-}"',
     1,
 ).replace(
-    'local kind; kind="$(_eb_strip_ansi "${ZBUILD_PLUGIN_KIND:-}")"',
+    'local kind; _eb_strip_ansi_v kind "${ZBUILD_PLUGIN_KIND:-}"',
     'local kind="${ZBUILD_PLUGIN_KIND:-}"',
+    1,
+).replace(
+    'local stage; _eb_strip_ansi_v stage "${ZBUILD_CURRENT_STAGE:-}"',
+    'local stage="${ZBUILD_CURRENT_STAGE:-}"',
     1,
 )
 assert new != src, "patch did not match any _eb_strip_ansi call site"
@@ -33,7 +37,7 @@ PY
 ```
 
 ## Expected failing test
-`tests/unit/event-bus-ansi-strip-test.sh` — With the mutation applied, ANSI escape sequences reach the JSONL writer. The `[SPEC-1]` assertion on `.data.output` fails because the actual value is `$'\e[32mgreen\e[0m'` instead of `green`. The `[SPEC-2]` assertions on `.plugin`, `.run_id`, and `.kind` fail for the same reason. The no-ESC-bytes assertion also fails.
+`tests/unit/event-bus-ansi-strip-test.sh` — With the mutation applied, ANSI escape sequences reach the JSONL writer. The `[SPEC-1]` assertion on `.data.output` fails because the actual value is `$'\e[32mgreen\e[0m'` instead of `green`. The `[SPEC-2]` assertions on `.plugin`, `.run_id`, `.kind` and `.stage` fail for the same reason. The no-ESC-bytes assertion also fails.
 
 ## Test
 ```bash

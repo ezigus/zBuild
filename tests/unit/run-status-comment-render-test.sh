@@ -257,7 +257,10 @@ unset -f jq
 assert_eq "[SPEC-10] a save that cannot encode the ends map leaves the snapshot file untouched" "$_before" "$(cat "$STATE/status-comment-rows.json")"
 
 # ─── SPEC-8: the sidecar is a reader of events.jsonl, never a writer ────────
-assert_eq "[SPEC-8] no eb_emit_event in the sidecar" "0" "$(grep -c 'eb_emit_event' "$LIB")"
+# The one mention allowed is _rsc_no_events's no-op definition (#1806); the
+# behaviour — a render writes no event — is run-status-comment-quiet-test.sh Q1.
+assert_eq "[SPEC-8] no eb_emit_event call in the sidecar" "0" \
+    "$(grep 'eb_emit_event' "$LIB" | grep -vc 'eb_emit_event() { return 0; }' || true)"
 assert_eq "[SPEC-8] the sidecar never sources the event bus" "0" "$(grep -c 'event-bus' "$LIB")"
 
 cleanup_test_env

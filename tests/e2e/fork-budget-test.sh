@@ -59,7 +59,9 @@ setup_test_env "fork-budget"
 # 5480 (#2271): the per-stage owner and fault lookups in the summary collector
 # are gone with fault routing, which more than pays for numbered findings and
 # answers — measured 5,426 macOS (Linux CI census 5,276).
-FORK_BUDGET=5480
+# 5040 (#1806): one emit starts one jq and the lock — no jq per field, no
+# date, no mkdir, no sed for the mirror — measured 4,991 macOS.
+FORK_BUDGET=5040
 
 # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
 # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work

@@ -58,5 +58,3 @@ ADR-058-engine-write-boundary.md
 ADR-060-stages-return-structure.md
 ADR-062-engine-owned-reclamation.md
 ADR-063-budget-disclosure-and-partial-output.md
-ADR-064-run-status-comment.md
-ADR-065-process-budget.md
