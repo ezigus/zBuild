@@ -106,13 +106,8 @@ delivery_loop:
 # not built. Nested in delivery_loop (#2271), running out of rounds ends that
 # loop's round — build is skipped — and the outer loop goes round.
 #
-# Feedback (block-form `to:` per the Wave 18-B translator):
-#  (a) design-gate.design_gate_feedback → design.prior_impact_feedback — REUSE
-#      design's existing prior_impact_feedback input (same "here's what's wrong,
-#      refine" category; zero design-manifest churn). required:false — the
-#      feedback file is absent on a passing gate.
-#  (b) design.design → design.prior_design (self-edge) — mirrors design_impact_cycle
-#      so iter N+1 refines rather than re-creates (#773 lesson).
+# Feedback: design.design → design.prior_design (self-edge) — mirrors
+# design_impact_cycle so iter N+1 refines rather than re-creates (#773 lesson).
 #
 design_verify_cycle:
   type: cycle
