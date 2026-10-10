@@ -1,0 +1,8 @@
+[
+  "tests/e2e/fork-budget-test.sh",
+  "tests/unit/cli-status-comment-test.sh",
+  "tests/unit/lint-grep-c-test.sh",
+  "tests/unit/run-status-comment-loop-test.sh",
+  "tests/unit/run-status-comment-render-test.sh",
+  "tests/unit/test-plugin-result-write-fallback-test.sh"
+]

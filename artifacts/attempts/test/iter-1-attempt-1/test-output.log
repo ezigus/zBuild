@@ -1,0 +1,327 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/unit/cli-status-comment-test.sh
+
+  zbuild status-comment (#2131)
+
+  ✓ [SPEC-1] usage lists status-comment
+::notice title=zbuild status comment::https://github.com/testuser/testrepo/issues/90000042#issuecomment-4242
+  ✓ [SPEC-2] exits 0
+  ✓ [SPEC-2] one POST (no id file yet)
+  ✓ [SPEC-2] id persisted beside the run
+  ✓ [SPEC-3] --run (nested layout) exits 0
+  ✗ [SPEC-3] …and PATCHes the persisted id
+    expected: 1, got: 0
+  ✓ [SPEC-3] --run (flat layout) exits 0
+  ✓ [SPEC-3] …identity comes from status-comment.json (issue 90000043, id 777)
+  ✓ [SPEC-4] unknown run id → rc 1
+  ✓ [SPEC-4] names the run id
+  ✓ [SPEC-4] no gh call
+
+
+  1 of 11 tests failed
+
+  ✗ [SPEC-3] …and PATCHes the persisted id
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/unit/run-status-comment-loop-test.sh
+
+  run-status-comment — sidecar loop (#2131)
+
+  ✓ [SPEC-1] no gh call while events.jsonl is empty
+  ✓ [SPEC-1] pipeline.start → POST within 3s (the run is visible before any stage)
+  ✓ [SPEC-1] posted body carries the marker
+  ✓ [SPEC-1] posted body header says running
+  ✓ [SPEC-2] 6 events in a burst → 1 PATCH(es), not 6
+  ✓ [SPEC-2] the latest PATCH has the newest row on top
+  ✓ [SPEC-3] the body on GitHub already had the running row (start before end)
+  ✓ [SPEC-4] pipeline.end → PATCH without waiting out the gap between edits
+  ✓ [SPEC-4] final header says success
+  ✓ [SPEC-4] the sidecar is still alive after the terminal event (always-run stages come later)
+  ✓ [SPEC-5] TERM ends the sidecar within 5s
+  ✓ [SPEC-5] exit status 0 on TERM
+  ✓ [SPEC-5] TERM produced one final PATCH
+  ✓ [SPEC-5] final body keeps the terminal status from the events
+  ✓ [SPEC-5] a stage after pipeline.end lands in the final render
+  ✓ [SPEC-6] no terminal event + TERM → interrupted
+  ✓ [SPEC-6] the running row keeps its start
+  ✓ [SPEC-7] parent death ends the sidecar
+  ✓ [SPEC-7] exit status 0 on parent death
+  ✓ [SPEC-7] final body names the cause
+  ✓ [SPEC-8] --once exits 0
+  ✓ [SPEC-8] --once made exactly one gh write
+  ✗ [#1806/SPEC-3] first PATCH fired (setup)
+    no PATCH in GH_LOG
+  ✓ [#1806/SPEC-3] no spurious PATCH after event injected during flush
+  ✗ [#1806/SPEC-4] first PATCH fired (setup)
+    no PATCH in GH_LOG
+  ✓ [#1806/SPEC-4] no PATCH when rendered body is identical to previous flush
+  ✓ [#1806/SPEC-5] initial POST fired (apply_scope_redaction ran)
+  ✓ [#1806/SPEC-5] sidecar emitted at least one event to its events file
+  ✓ [#1806/SPEC-5] all sidecar events carry stage=run-status-comment
+
+
+  2 of 29 tests failed
+
+  ✗ [#1806/SPEC-3] first PATCH fired (setup)
+  ✗ [#1806/SPEC-4] first PATCH fired (setup)
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/unit/run-status-comment-render-test.sh
+
+  run-status-comment — render (#2131)
+
+  ✓ [SPEC-0] scripts/lib/run-status-comment.sh sources and defines rsc_render_body
+  ✓ [SPEC-1] first line is the hidden run marker
+  ✓ [SPEC-1] header names the run id
+  ✓ [SPEC-1] header names the issue
+  ✓ [SPEC-1] header names the engine sha (short)
+  ✓ [SPEC-1] header shows started (Eastern, #2145)
+  ✓ [SPEC-1] header status is running without a terminal event
+  ✓ [SPEC-1] header carries the PR link
+  ✓ [SPEC-1] header names the current stage
+  ✓ [SPEC-2] rows render newest-first (deploy > pr-open > review > reused > test > build > intake)
+  ✓ [SPEC-2] a nested plugin.run.start for the same seq opens no second row
+  ✓ [SPEC-3] closed cycle-member row: start → end (duration) first, then seq, iter, verdict, summary first line (#2145)
+  ✓ [SPEC-3] linear row: no iter, <1s for equal timestamps
+  ✓ [SPEC-3] open row: start, running, inputs, injected summaries count
+  ✓ [SPEC-3] open row without an injection: inputs only
+  ✓ [SPEC-3] a seq-less stage.fail closes the open row for that stage
+  ✓ [SPEC-3] reused members collapse to one row per iteration
+  ✓ [SPEC-4] summary cut at 200 chars (+ ellipsis)
+  ✓ [SPEC-4] pipe escaped
+  ✓ [SPEC-5] header status from pipeline.end
+  ✓ [SPEC-5] header carries the abort reason in words, and the detail
+  ✓ [SPEC-5] ...not the reason code
+  ✓ [SPEC-5] no current stage once terminal
+  ✓ [SPEC-5] the row killed mid-way keeps its start and inputs
+  ✓ [SPEC-6] 400-row feed renders under 60,000 bytes (59937)
+  ✓ [SPEC-6] newest row present
+  ✓ [SPEC-6] oldest row omitted
+  ✓ [SPEC-6] omission line is the last line
+  ✓ [SPEC-6] omitted count + rendered rows == 400
+  ✓ [SPEC-6] rsc_byte_len counts bytes, not characters
+  ✓ [SPEC-7] body passes apply_scope_redaction when a scope manifest exists
+  ✓ [SPEC-7] redactor failure → non-zero, nothing rendered
+  ✓ [SPEC-7] redactor failure → empty output
+
+  SPEC-9: a closed row keeps the summary it closed with
+  ✓ [SPEC-9] the build row still says what it said when it closed
+  ✓ [SPEC-9] …and a fresh process (the post-run finalize) renders the same snapshot
+  ✓ [SPEC-9] the snapshot lives with the run's state
+  ✓ [SPEC-9] …keyed by the run id
+  ✓ [SPEC-9] a row that closed without a summary is not frozen empty
+  ✓ [SPEC-9] …and picks the summary up once it exists
+  ✓ [SPEC-9] a tab in a frozen summary round-trips through the snapshot file intact
+  ✓ [SPEC-9] a snapshot for a different run id is not served
+
+  SPEC-10: a retried row keeps the summary of its LAST close
+  ✓ [SPEC-10] the row shows the summary of the retry, not the frozen first attempt
+  ✓ [SPEC-10] …and the retry's end time
+  ✓ [SPEC-10] a fresh process serves the re-frozen line
+  ✓ [SPEC-10] the re-frozen line is a snapshot too (a later overwrite does not leak in)
+  ✓ [SPEC-10] a save that cannot encode the ends map leaves the snapshot file untouched
+  ✗ [SPEC-8] no eb_emit_event in the sidecar
+    expected: 0, got: 1
+  ✗ [SPEC-8] the sidecar never sources the event bus
+    expected: 0, got: 3
+
+
+  2 of 48 tests failed
+
+  ✗ [SPEC-8] no eb_emit_event in the sidecar
+  ✗ [SPEC-8] the sidecar never sources the event bus
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/unit/lint-grep-c-test.sh
+
+  lint-grep-c — grep -c || echo detection (#1751)
+
+
+  4. bad pattern detected: exit 1
+  ✓ [SPEC-4] lint exits 1 when bad pattern is present
+  ✓ [SPEC-4] lint names the offending file and line
+  ✓ [SPEC-4] lint catches -c in a later flag cluster (grep -E -c)
+  ✓ [SPEC-4] lint catches the GNU long form (grep --count)
+
+  5. clean code: exit 0
+  ✓ [SPEC-5] lint exits 0 when no bad pattern is present
+  ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean
+    expected: 0, got: 1
+
+  6. legacy-DoNotUse/ directory excluded from scan
+  ✓ [SPEC-6] bad pattern under legacy-DoNotUse/ is excluded from lint
+
+  7. test files are scanned (#1969)
+  ✓ [SPEC-7] a *-test.sh under tests/ is scanned, not exempted
+  ✓ [SPEC-7] the offending test file is named with file:line
+  ✓ [SPEC-7] a plain .sh under a tests/ dir is scanned
+
+  8. lint-grep-c:allow suppresses a single line (#1969)
+  ✓ [SPEC-8] a line marked lint-grep-c:allow is not reported
+  ✓ [SPEC-8] the marker is per-line: an unmarked sibling still fails
+  ✓ [SPEC-8] only the unmarked line is reported
+
+  9. wiring: CI configuration references lint-grep-c.sh
+  ✓ [SPEC-4] package.json lint script includes lint-grep-c.sh
+  ✓ [SPEC-5] .github/workflows/test.yml references lint-grep-c step
+  ✓ [SPEC-6] .github/workflows/deferred-tracker.yml has if: failure() step
+
+
+  1 of 16 tests failed
+
+  ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/unit/test-plugin-result-write-fallback-test.sh
+
+  test-plugin _test_write_result defensive fallback (#626)
+
+
+  1. whitespace in passed slot triggers fallback
+  ✓ ws-passed: results file written
+  ✓ ws-passed: results file is valid JSON
+  ✓ ws-passed: no jq error leaked to stderr
+  ✓ ws-passed: .data.passed sanitized to null
+
+  2. non-numeric failed slot triggers sanitizer
+  ✓ abc-failed: results file written
+  ✓ abc-failed: results file is valid JSON
+  ✓ abc-failed: no jq error leaked to stderr
+  ✓ abc-failed: .data.failed sanitized to null
+
+  3. control-char test_output is accepted, JSON still valid
+  ✓ ctl-output: results file written
+  ✓ ctl-output: results file is valid JSON
+  ✓ ctl-output: no jq error leaked to stderr
+
+  4. embedded quotes/backticks in test_cmd survive
+  ✓ quotes: results file written
+  ✓ quotes: results file is valid JSON
+  ✓ quotes: no jq error leaked to stderr
+  ✓ quotes: .test_cmd round-trips
+
+  5. non-bool diff_applied is sanitized to false
+  ✓ bad-bool: results file written
+  ✓ bad-bool: results file is valid JSON
+  ✓ bad-bool: no jq error leaked to stderr
+  ✓ bad-bool: .data.diff_applied sanitized to false
+
+  6. whitespace exit_code is sanitized to null
+  ✓ ws-exit: results file written
+  ✓ ws-exit: results file is valid JSON
+  ✓ ws-exit: no jq error leaked to stderr
+  ✓ ws-exit: .data.exit_code sanitized to null
+
+  7. happy path (no regression)
+  ✓ happy: results file written
+  ✓ happy: results file is valid JSON
+  ✓ happy: no jq error leaked to stderr
+  ✓ happy: .verdict
+  ✓ happy: .data.exit_code
+  ✓ happy: .data.passed
+  ✓ happy: .data.diff_applied
+  ✓ [SPEC-11] run_mode=full at top level, agreeing with data.run_mode
+
+  8. forced jq failure: fallback JSON + event emitted
+  ✓ forced-fail: results file written
+  ✓ forced-fail: fallback JSON is parseable
+  ✓ forced-fail: .reason=result_write_failed
+  ✓ forced-fail: .verdict=error
+  ✓ [SPEC-13] fallback: .result_contract=2
+  ✓ [SPEC-13] fallback: .disposition=broken
+  ✓ [SPEC-13] fallback carries the same top-level mirrors as the normal path
+  ✗ forced-fail: test.result_write.fallback event emitted
+    events.jsonl: 
+
+  9. test.result_write.fallback declared by the test plugin's manifest
+  ✓ schema: test.result_write.fallback declared in provides.events
+  ✓ schema: test.result_write.fallback is in the composed known set
+
+
+  1 of 41 tests failed
+
+  ✗ forced-fail: test.result_write.fallback event emitted
+
+unit: 535/540 passed (4 skipped)
+integration: 265/265 passed
+e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/e2e/fork-budget-test.sh
+
+  fork budget: external execs of a mocked full run (#2151, ADR-065)
+
+
+  SPEC-1: a script with one external exec counts exactly 1
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  ✓ [SPEC-1] the canary's one dirname is counted, its builtins are not
+  ✓ [SPEC-1] …and attributed to its call site
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  ✓ [SPEC-1b] words inside an assigned value are not counted
+
+  SPEC-5: a marked wait is not counted
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8Cal2Q/tests/e2e/fork-budget-test.sh: line 78: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  ✓ [SPEC-5] only the unmarked sleep is counted (3 of 6)
+  ✓ [SPEC-5] …the marked one is listed apart
+
+  SPEC-2: the mocked full run under tracing
+  ✓ [SPEC-2] the mocked full run exits 0 under tracing
+  ✓ [SPEC-2] …and produced events.jsonl
+
+  SPEC-3/4: liveness floor and the budget
+  external execs: 5110 (budget 4500) across 92 source files
+  top call sites:
+      231  manifest-graph.sh:124              awk
+      122  manifest-validation.sh:555         awk
+      120  manifest-graph.sh:265              awk
+       94  manifest-graph.sh:236              awk
+       91  event-bus.sh:70                    mkdir
+       91  event-bus.sh:236                   flock
+       91  event-bus.sh:231                   jq
+       91  event-bus.sh:174                   date
+       91  event-bus.sh:166                   jq
+       90  manifest-graph.sh:148              awk
+       79  manifest-validation.sh:324         awk
+       78  manifest-router-budget.sh:96       awk
+  exempt waits (not counted — their repeat count is elapsed time):
+       99  local_engine.sh:136                sleep
+  by file:
+      577  manifest-graph.sh
+      499  helpers.sh
+      457  event-bus.sh
+      354  manifest-validation.sh
+      309  artifact-persist.sh
+      275  attempt-archive.sh
+      212  plugin.sh
+      208  input-resolve.sh
+      206  requires-core.sh
+      198  secret-patterns.sh
+  ✓ [SPEC-3] the trace is live (92 files, 5110 execs)
+  ✓ [SPEC-6] the worker pool's poll sleep is listed as an exempt wait
+  busiest counted pool line: 1 execs (2 work units)
+  ✓ [SPEC-6] …and no counted pool line runs more than once per work unit (max 1)
+  ✗ [SPEC-4] external execs ≤ FORK_BUDGET
+    5110 > 4500 — see the call sites above; ADR-065 §2: the budget only ratchets down
+
+
+  1 of 11 tests failed
+
+  ✗ [SPEC-4] external execs ≤ FORK_BUDGET
+
+e2e: 9/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-verdict-words.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-stage-checkpoint.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — docs/VISION.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 56 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: tests/unit/run-status-comment-loop-test.sh:336 — `grep -c … || echo` yields "0\n0" on no-match; use `|| true`
+    _sc5_event_count="$(grep -c '' "$SC5_EVENTS" 2>/dev/null || echo 0)"
+
+lint-grep-c: 1 occurrence(s). `grep -c` already prints the count — replace `|| echo 0` with `|| true`.
+lint: 0/1 passed
+
+total: 835/842 passed (4 skipped)
