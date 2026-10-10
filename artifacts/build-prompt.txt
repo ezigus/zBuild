@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 2/10 ==============
+============== ZBUILD BUILD — iter 1/10 ==============
 ## What you own
 ### INSTRUCTIONS
 Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
@@ -87,11 +87,17 @@ Prior exploration (budget-exhausted checkpoint) provided all file-level detail; 
 
 ## Decision summary
 
-**Goal:** Remove `impact` from the `delivery_loop.flow` of both shipped templates (`simple.yaml` and `deployed.yaml`), leaving `plugins/agent/impact/` and its unit tests untouched, and amend ADR-068 §1/§8 to match.
+**Goal:** Remove `impact` from the `delivery_loop.flow` of both shipped templates (`simple.yaml` and `deployed.yaml`), leaving `plugins/agent/impact/` and its unit tests untouched (or fixed to not depend on simple.yaml), and amend ADR-068 §1/§8 to match.
 
-**Context:** `delivery_loop` currently sequences `design_verify_cycle → impact → build_test_cycle`. The impact stage is an LLM-heavy advisory stage (T2, 600 s, 45 turns) that runs once per outer loop. Removing it from the shipped templates shortens the pipeline while preserving the plugin for standard.yaml's `design_impact_cycle` and for future reuse. Tests pinning the delivery_loop roster, stage count, and stage indices all become stale and must be updated.
+**Context:** `delivery_loop` currently sequences `design_verify_cycle → impact → build_test_cycle`. The impact stage is an LLM-heavy advisory stage (T2, 600 s, 45 turns) that runs once per outer loop. Removing it from the shipped templates shortens the pipeline while preserving the plugin for future reuse. Tests pinning the delivery_loop roster, stage count, and stage indices all become stale and must be updated.
 
-**Decision:** Delete the `- impact` entry from `delivery_loop.flow` and the `impact:` stage section from both templates. Update every test that pins the roster, count, or positional index of any stage whose value shifts as a result (shape-floor, gate-aggregator, and impact itself). Remove the dead `_make_impact_plugin()` stubs and the live `_make_plugin "impact"` calls from the integration test mock rosters, because the runner's resolvability preflight will no longer require an impact plugin. Amend ADR-068 §1 and §8 to describe the two-member `delivery_loop` flow and update the Enforced by pointer for §1. Add a delivery_loop roster assertion to the existing `tests/integration/deployed-template-e2e-test.sh` (which already loads deployed.yaml) to close the coverage gap identified by spec-coverage: no existing assertion fails on main if `impact` remains in deployed.yaml's delivery_loop.
+**Decision:** Delete the `- impact` entry from `delivery_loop.flow` and the `impact:` stage section from both templates. Update every test that pins the roster, count, or positional index of any stage whose value shifts as a result. Remove the dead `_make_impact_plugin()` stubs and the live `_make_plugin "impact"` calls from the integration test mock rosters. Amend ADR-068 §1 and §8 to describe the two-member `delivery_loop` flow. Add a delivery_loop roster assertion to `tests/integration/deployed-template-e2e-test.sh`.
+
+**Second-round corrections:** The prior design missed two files that load simple.yaml and pin impact-dependent values:
+- `tests/unit/impact-max-turns-test.sh` loads `simple.yaml` to read `_TPL_STAGE_ROUTER_MAX_TURNS_impact` and `_TPL_STAGE_ROUTER_TIMEOUT_impact`; after removing impact from simple.yaml, all three assertions are unset and the test fails. Fix: replace the `load_template simple.yaml` call with an inline fixture that declares the impact stage with `router.max_turns: 45` / `router.timeout_s: 600`.
+- `tests/unit/template-always-run-test.sh` SPEC-2 asserts `${#_TPL_STAGES[@]} == 20`; after removing impact the count is 19. Fix: update the assertion and its explanatory comment.
+
+Nine files flagged by shape-floor are added to scope. Most use `impact` only as a synthetic fixture string (not loading simple.yaml) and are already correct; they are in scope so the build stage can verify them.
 
 
 
@@ -105,6 +111,8 @@ These tests were written before your code. Make them pass by changing code only.
 - SPEC-2: tests/unit/template-simple-yaml-test.sh
 - SPEC-3: tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
 - SPEC-7: tests/integration/deployed-template-e2e-test.sh
+- SPEC-8: tests/unit/impact-max-turns-test.sh
+- SPEC-9: tests/unit/template-always-run-test.sh
 
 What each SPEC requires:
 - [#1668/SPEC-1] `delivery_loop.flow` in simple.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; SPEC-18 in template-simple-yaml-test.sh (updated to assert `"design_verify_cycle,build_test_cycle"`) fails on main because the template has `"design_verify_cycle,impact,build_test_cycle"`
@@ -113,6 +121,8 @@ What each SPEC requires:
 - [#1668/SPEC-4] `_make_impact_plugin()` function bodies and `_make_plugin "impact" "impact_analyzer"` calls removed from the four integration test files and the mock roster; these are dead stubs once the resolvability preflight no longer requires impact
 - [#1668/SPEC-5] ADR-068 §1 amended to read "design loop → build loop" (impact removed from the flow description); §8 amended to remove impact from the stages enumerated in the halt check; Enforced by §1 updated to add tests/unit/template-simple-yaml-test.sh SPEC-18 and tests/integration/deployed-template-e2e-test.sh as the roster enforcers (R1 for route_back refusal is retained); an "Amended 2026-10-10" note added to the document header
 - [#1668/SPEC-7] `delivery_loop.flow` in deployed.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; a new assertion added to tests/integration/deployed-template-e2e-test.sh asserts `_TPL_CYCLE_STAGES_delivery_loop` equals `"design_verify_cycle,build_test_cycle"` (the template is already loaded by that file's SPEC-1) and fails on main because deployed.yaml currently has `"design_verify_cycle,impact,build_test_cycle"`
+- [#1668/SPEC-8] `tests/unit/impact-max-turns-test.sh` no longer calls `load_template simple.yaml`; instead it writes an inline fixture that declares an impact stage with `router.max_turns: 45` and `router.timeout_s: 600` and loads that; all three assertions (max_turns==45, timeout_s==600, max_turns>25) pass after the fix
+- [#1668/SPEC-9] `tests/unit/template-always-run-test.sh` SPEC-2 count assertion is updated from `"20"` to `"19"` and its explanatory comment updated to reflect the removal of impact from the flow; the test passes after the fix
 
 ### REQUIREMENTS YOUR CODE MUST MEET
 Your change is done when the test for every requirement below passes.
@@ -128,6 +138,10 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [#1668/SPEC-7] `delivery_loop.flow` in deployed.yaml contains exactly `[design_verify_cycle, build_test_cycle]` — impact is absent; a new assertion added to tests/integration/deployed-template-e2e-test.sh asserts `_TPL_CYCLE_STAGES_delivery_loop` equals `"design_verify_cycle,build_test_cycle"` (the template is already loaded by that file's SPEC-1) and fails on main because deployed.yaml currently has `"design_verify_cycle,impact,build_test_cycle"`
   → its test is already written; make it pass
+- [#1668/SPEC-8] `tests/unit/impact-max-turns-test.sh` no longer calls `load_template simple.yaml`; instead it writes an inline fixture that declares an impact stage with `router.max_turns: 45` and `router.timeout_s: 600` and loads that; all three assertions (max_turns==45, timeout_s==600, max_turns>25) pass after the fix
+  → its test is already written; make it pass
+- [#1668/SPEC-9] `tests/unit/template-always-run-test.sh` SPEC-2 count assertion is updated from `"20"` to `"19"` and its explanatory comment updated to reflect the removal of impact from the flow; the test passes after the fix
+  → its test is already written; make it pass
 
 ## What you must not do
 The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and do not edit it.
@@ -138,6 +152,8 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - config/templates/deployed.yaml
   - docs/adr/ADR-068-nested-loops-and-finding-answers.md
   - tests/unit/template-simple-yaml-test.sh
+  - tests/unit/impact-max-turns-test.sh
+  - tests/unit/template-always-run-test.sh
   - tests/integration/deployed-template-e2e-test.sh
   - tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
   - tests/integration/cycle-acceptance-terminal-failure-test.sh
@@ -148,6 +164,15 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - docs/adr/ADR-046-design-verify-shift-left.md
   - docs/wiki/Configuration.md
   - docs/wiki/Pipeline-and-Stages.md
+  - tests/golden/full-pipeline/event-sequence.golden
+  - tests/golden/parity/event-sequence.golden
+  - tests/unit/shape-floor-content-stable-test.sh
+  - tests/unit/build-oos-pass-request-test.sh
+  - tests/unit/change-scope-floor-test.sh
+  - tests/unit/core-pipeline-template-test.sh
+  - tests/unit/template-resolvability-preflight-test.sh
+  - tests/unit/impact-prefilter-order-detector-test.sh
+  - tests/unit/shape-floor-summary-plain-test.sh
 
 ### Rules
 - Touch only files in the scope list above.
@@ -169,4 +194,4 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
 - If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
 
 ## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
-A previous attempt on this issue ended build with verdict=pass and touched 8 file(s): config/templates/deployed.yaml, config/templates/simple.yaml, docs/adr/ADR-068-nested-loops-and-finding-answers.md, tests/integration/cycle-acceptance-terminal-failure-test.sh, tests/integration/cycle-gate-unavailable-aborts-run-test.sh, tests/integration/cycle-on-max-pipeline-continues-test.sh, tests/integration/cycle-rate-limit-aborts-run-test.sh, tests/lib/run-status-comment-mock-roster.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is headed "— its findings, to answer".
+A previous attempt on this issue ended build with verdict=pass having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a summary headed "— its findings, to answer" means a check is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).
