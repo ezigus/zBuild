@@ -97,6 +97,14 @@ set -e
 
 assert_eq "[SPEC-1] deployed.yaml loads without error (exit 0)" "0" "$_load_rc"
 
+# ─── [#1668/SPEC-7]: delivery_loop.flow in deployed.yaml excludes impact ─────
+# CHANGE: deployed.yaml's delivery_loop previously sequenced
+# design_verify_cycle,impact,build_test_cycle. After #1668 impact is absent.
+# This assertion fails on main (three members) and passes once the template is
+# updated (two members). The template is already loaded above by SPEC-1.
+assert_eq "[#1668/SPEC-7] deployed.yaml delivery_loop flow is design_verify_cycle,build_test_cycle (impact absent)" \
+    "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+
 # ─── SPEC-10: review_lenses map group includes 'sre' (issue #1517) ───────────
 # CHANGE: at merge-base deployed.yaml's review_lenses elements list did not
 # include 'sre' — this assertion fails there and passes at HEAD.
