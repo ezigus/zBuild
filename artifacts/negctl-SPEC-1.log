@@ -1,0 +1,48 @@
+### SPEC-1 baseline tests/unit/run-cap-test.sh
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qtcTJG/tests/unit/run-cap-test.sh: line 13: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qtcTJG/core/state/run-cap.sh: No such file or directory
+### SPEC-1 head tests/unit/run-cap-test.sh
+
+[38;2;0;212;255m[1m  host-wide concurrent run cap (#1932)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1932/SPEC-1] unset ZBUILD_MAX_CONCURRENT_RUNS[0m
+  [38;2;74;222;128m✓[0m [#1932/SPEC-1] no cap: returns 0
+  [38;2;74;222;128m✓[0m [#1932/SPEC-1] no cap: no output produced
+  [38;2;74;222;128m✓[0m [#1932/SPEC-1] no cap: no slot file written
+
+  [38;2;0;212;255m[#1932/SPEC-6] cap set, fewer live slots than cap[0m
+  [38;2;74;222;128m✓[0m [#1932/SPEC-6] below cap: returns 0
+  [38;2;74;222;128m✓[0m [#1932/SPEC-6] below cap: no cap output produced
+  [38;2;74;222;128m✓[0m [#1932/SPEC-6] below cap: slot file written for admitted run
+
+  [38;2;0;212;255m[#1932/SPEC-2] cap set, N live slots present[0m
+  [38;2;74;222;128m✓[0m [#1932/SPEC-2] at cap: returns 1
+  [38;2;74;222;128m✓[0m [#1932/SPEC-2] _ZBUILD_RUN_CAP_BLOCKERS names run-s2-a
+  [38;2;74;222;128m✓[0m [#1932/SPEC-2] _ZBUILD_RUN_CAP_BLOCKERS names run-s2-b
+  [38;2;74;222;128m✓[0m [#1932/SPEC-2] stderr refusal names run-s2-a
+  [38;2;74;222;128m✓[0m [#1932/SPEC-2] stderr refusal names run-s2-b
+
+  [38;2;0;212;255m[#1932/SPEC-3] stale slot reaped, does not block admission[0m
+  [38;2;74;222;128m✓[0m [#1932/SPEC-3] stale slot reaped: admission succeeds
+  [38;2;74;222;128m✓[0m [#1932/SPEC-3] stale slot file removed by reap
+  [38;2;74;222;128m✓[0m [#1932/SPEC-3] control: two live slots still refuse
+
+  [38;2;0;212;255m[#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1 overrides cap and slot count[0m
+  [38;2;74;222;128m✓[0m [#1932/SPEC-4] NO_RUN_CAP=1: returns 0 regardless of cap
+  [38;2;74;222;128m✓[0m [#1932/SPEC-4] NO_RUN_CAP=1: emits a warning to stderr
+
+  [38;2;0;212;255m[#1932/SPEC-5] unreadable slot dir fails open[0m
+  [38;2;74;222;128m✓[0m [#1932/SPEC-5] unreadable slot dir: returns 0 (fail-open)
+  [38;2;74;222;128m✓[0m [#1932/SPEC-5] unreadable slot dir: emits a warning to stderr
+
+  [38;2;0;212;255m[#1932/SPEC-7] ADR-059 §7 and pipeline.refused.run_cap[0m
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 file exists
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured'
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] ADR-059 Enforced-by names tests/unit/run-cap-test.sh
+  [38;2;74;222;128m✓[0m [#1932/SPEC-7] event-schema.json contains pipeline.refused.run_cap
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 22 tests passed[0m
+

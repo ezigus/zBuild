@@ -1,0 +1,23 @@
+the acceptance check failed — core/pipeline/runner.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
+NEGCTL PASS SPEC-1
+      design : when ZBUILD_MAX_CONCURRENT_RUNS is unset zbuild_run_cap_admit returns 0, writes no slot file, and pr…
+      asserts: assert_eq "[#1932/SPEC-1] no cap: returns 0" "0" "$_s1_rc"
+NEGCTL PASS SPEC-2
+      design : with cap N set and N live slot files present zbuild_run_cap_admit returns 1, sets _ZBUILD_RUN_CAP_BL…
+      asserts: assert_eq "[#1932/SPEC-2] at cap: returns 1" "1" "$_s2_rc"
+NEGCTL PASS SPEC-3
+      design : a slot whose state file fails zbuild_run_is_live is removed by zbuild_run_cap_reap_stale before coun…
+      asserts: assert_eq "[#1932/SPEC-3] stale slot reaped: admission succeeds" "0" "$_s3_rc"
+NEGCTL PASS SPEC-4
+      design : ZBUILD_NO_RUN_CAP=1 causes zbuild_run_cap_admit to return 0 and emit a warning regardless of cap val…
+      asserts: assert_eq "[#1932/SPEC-4] NO_RUN_CAP=1: returns 0 regardless of cap" "0" "$_s4_rc"
+NEGCTL PASS SPEC-5
+      design : when the slot directory is unreadable zbuild_run_cap_admit warns on stderr and returns 0 admitting t…
+      asserts: assert_eq "[#1932/SPEC-5] unreadable slot dir: returns 0 (fail-open)" "0" "$_s5_rc"
+NEGCTL PASS SPEC-6
+      design : with cap N set and fewer than N live slot files present zbuild_run_cap_admit returns 0, writes a slo…
+      asserts: assert_eq "[#1932/SPEC-6] below cap: returns 0" "0" "$_s6_rc"
+NEGCTL SKIP SPEC-7 no_code
+      design : ADR-059 gains dated §7 "Host-wide run cap, off unless configured" under Decision and an Enforced-by …
+      asserts: assert_file_exists "[#1932/SPEC-7] ADR-059 file exists" "$_adr_file"
+REACHABILITY FAIL inert_wiring core/pipeline/runner.sh
