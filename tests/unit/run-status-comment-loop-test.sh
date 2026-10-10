@@ -191,6 +191,168 @@ bash "$LIB" --events "$S4/events.jsonl" --state-dir "$S4" --parent-pid $$ \
 assert_eq "[SPEC-8] --once exits 0" "0" "$rc"
 assert_eq "[SPEC-8] --once made exactly one gh write" "1" "$(( $(posts) + $(patches) ))"
 
+# ─── SPEC-3 [#1806/SPEC-3]: last_size cursor updated after flush ─────────────
+# After rsc_flush returns, the poll loop must update last_size to the current
+# byte count of events.jsonl so that events written inside rsc_flush (e.g.
+# redaction.applied via apply_scope_redaction) do not set dirty=1 and trigger
+# a spurious second render.
+S_SC3="$TEST_TEMP_DIR/s_sc3"; mkdir -p "$S_SC3"; : > "$S_SC3/events.jsonl"
+: > "$GH_LOG"; rm -f "$GH_BODIES"/*
+
+# gh mock: during a PATCH call, inject a fake event so events.jsonl grows
+# while last_size is still the pre-flush value (simulating redaction.applied).
+cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+args="\$*"
+case "\$args" in *body=@*) f="\${args##*body=@}"; f="\${f%% *}"; n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"; cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" ;; esac
+printf '%s\n' "\$*" >> "$GH_LOG"
+case "\$args" in
+  "auth status"*) exit 0 ;;
+  *--paginate*) echo '[]'; exit 0 ;;
+  *"-X PATCH"*)
+    printf '%s\n' '{"ts":"2026-10-10T00:00:00.000Z","type":"redaction.applied","run_id":"r-loop","issue":90000042,"data":{},"schema_version":1}' >> "$S_SC3/events.jsonl"
+    echo '{}'
+    exit 0
+    ;;
+  *issues/*/comments*) echo 4242; exit 0 ;;
+esac
+exit 1
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+ev "$S_SC3/events.jsonl" 23:00:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc engine_branch=main
+ZBUILD_STATUS_COMMENT_MIN_INTERVAL=2 start_sidecar "$S_SC3" "$PARENT"
+wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1 || true
+ev "$S_SC3/events.jsonl" 23:00:01 stage.complete 1 build stage=build verdict=pass
+
+# Wait for the first PATCH; the mock injects a byte into events.jsonl during it.
+if wait_for_event "$GH_LOG" 'X PATCH' 30 0.1; then
+    assert_pass "[#1806/SPEC-3] first PATCH fired"
+else
+    assert_fail "[#1806/SPEC-3] first PATCH fired (setup)" "no PATCH in GH_LOG"
+fi
+
+# Reset: only count PATCHes that appear AFTER this point.
+: > "$GH_LOG"
+
+# Old code: last_size was set before the flush, file grew during it → dirty=1
+# next interval → second PATCH.  New code: cursor updated after flush → dirty=0
+# → no second PATCH within MIN_INTERVAL * 1.5.
+sleep 3
+
+_sc3_patches="$(patches)"
+if [[ "$_sc3_patches" -eq 0 ]]; then
+    assert_pass "[#1806/SPEC-3] no spurious PATCH after event injected during flush"
+else
+    assert_fail "[#1806/SPEC-3] no spurious PATCH after event injected during flush" \
+        "got $_sc3_patches PATCH(es) — last_size cursor not updated after flush"
+fi
+kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+
+# ─── SPEC-4 [#1806/SPEC-4]: no PATCH when rendered body is byte-for-byte identical ──
+S_SC4="$TEST_TEMP_DIR/s_sc4"; mkdir -p "$S_SC4"; : > "$S_SC4/events.jsonl"
+: > "$GH_LOG"; rm -f "$GH_BODIES"/*
+
+# Restore default gh mock (no injection).
+cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+args="\$*"
+case "\$args" in *body=@*) f="\${args##*body=@}"; f="\${f%% *}"; n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"; cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" ;; esac
+printf '%s\n' "\$*" >> "$GH_LOG"
+case "\$args" in
+  "auth status"*) exit 0 ;;
+  *--paginate*) echo '[]'; exit 0 ;;
+  *"-X PATCH"*) echo '{}'; exit 0 ;;
+  *issues/*/comments*) echo 4242; exit 0 ;;
+esac
+exit 1
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+ev "$S_SC4/events.jsonl" 23:30:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc engine_branch=main
+ev "$S_SC4/events.jsonl" 23:30:01 stage.complete 1 build stage=build verdict=pass
+ZBUILD_STATUS_COMMENT_MIN_INTERVAL=2 start_sidecar "$S_SC4" "$PARENT"
+wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1 || true
+
+# Wait for the first PATCH (MIN_INTERVAL=2 after pipeline.start POST).
+if wait_for_event "$GH_LOG" 'X PATCH' 30 0.1; then
+    assert_pass "[#1806/SPEC-4] first PATCH fired"
+else
+    assert_fail "[#1806/SPEC-4] first PATCH fired (setup)" "no PATCH in GH_LOG"
+fi
+
+# Append an event that rsc_rows_json does not render — the body is unchanged.
+: > "$GH_LOG"
+printf '%s\n' '{"ts":"2026-10-10T00:00:01.000Z","type":"redaction.applied","run_id":"r-loop","issue":90000042,"data":{},"schema_version":1}' \
+    >> "$S_SC4/events.jsonl"
+
+# Wait long enough for dirty=1 to be processed (file grew) and a second flush
+# to fire if rsc_upsert is not guarded by a body comparison.
+sleep 4
+
+_sc4_patches="$(patches)"
+if [[ "$_sc4_patches" -eq 0 ]]; then
+    assert_pass "[#1806/SPEC-4] no PATCH when rendered body is identical to previous flush"
+else
+    assert_fail "[#1806/SPEC-4] no PATCH when body is identical" \
+        "got $_sc4_patches PATCH(es) — rsc_upsert was called with an unchanged body"
+fi
+kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+
+# ─── SPEC-5 [#1806/SPEC-5]: sidecar events carry stage=run-status-comment ────
+# Every emit_event call from the sidecar process must include stage=run-status-comment
+# in the envelope.  In the old code emit_event is a no-op stub; in the new code
+# the sidecar sources event-bus and exports ZBUILD_CURRENT_STAGE=run-status-comment.
+S_SC5="$TEST_TEMP_DIR/s_sc5"; mkdir -p "$S_SC5"; : > "$S_SC5/events.jsonl"
+SC5_EVENTS="$TEST_TEMP_DIR/sc5-events.jsonl"; : > "$SC5_EVENTS"
+: > "$GH_LOG"; rm -f "$GH_BODIES"/*
+
+# scope-manifest.md triggers apply_scope_redaction during rsc_outbound_body;
+# apply_scope_redaction calls emit_event("redaction.applied"), which (new code)
+# writes to SC5_EVENTS.  "` + ./`" allows every path so redaction succeeds.
+printf '+ ./\n' > "$S_SC5/scope-manifest.md"
+
+ev "$S_SC5/events.jsonl" 23:45:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc engine_branch=main
+
+# Start sidecar with its own ZBUILD_EVENTS_JSONL so its emits go to SC5_EVENTS
+# and do not mix with the events.jsonl the sidecar reads.
+ZBUILD_EVENTS_JSONL="$SC5_EVENTS" ZBUILD_EVENTS_DB="/dev/null" ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR" \
+ZBUILD_STATUS_COMMENT_MIN_INTERVAL=2 \
+    bash "$LIB" --events "$S_SC5/events.jsonl" --state-dir "$S_SC5" --parent-pid "$PARENT" \
+    --slug testuser/testrepo --issue 90000042 --run-id r-loop >>"$S_SC5/status-comment.log" 2>&1 &
+pid=$!
+
+# The first flush fires immediately (flushed_once=0); apply_scope_redaction runs
+# and calls emit_event — must be in SC5_EVENTS before the POST is logged.
+if wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1; then
+    assert_pass "[#1806/SPEC-5] initial POST fired (apply_scope_redaction ran)"
+else
+    assert_fail "[#1806/SPEC-5] initial POST fired" "no POST — apply_scope_redaction may have failed"
+fi
+
+# Old code: emit_event is a stub → SC5_EVENTS stays empty → count == 0.
+# New code: event-bus sourced + ZBUILD_CURRENT_STAGE=run-status-comment →
+#           SC5_EVENTS has at least one event.
+_sc5_event_count="$(grep -c '' "$SC5_EVENTS" 2>/dev/null || echo 0)"
+if [[ "$_sc5_event_count" -gt 0 ]]; then
+    assert_pass "[#1806/SPEC-5] sidecar emitted at least one event to its events file"
+else
+    assert_fail "[#1806/SPEC-5] sidecar emitted at least one event" \
+        "SC5_EVENTS is empty — emit_event is still a stub"
+fi
+
+# Every emitted event must carry stage="run-status-comment".
+if [[ "$_sc5_event_count" -gt 0 ]]; then
+    _sc5_bad="$(jq -c 'select(.stage != "run-status-comment")' "$SC5_EVENTS" 2>/dev/null | grep -c '' || true)"
+    if [[ "$_sc5_bad" -eq 0 ]]; then
+        assert_pass "[#1806/SPEC-5] all sidecar events carry stage=run-status-comment"
+    else
+        assert_fail "[#1806/SPEC-5] all sidecar events carry stage=run-status-comment" \
+            "$_sc5_bad event(s) missing the field"
+    fi
+fi
+kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+
 kill "$PARENT" 2>/dev/null; wait "$PARENT" 2>/dev/null
 cleanup_test_env
 print_test_results
