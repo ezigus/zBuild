@@ -1351,6 +1351,20 @@ _route_emit_outcome() {
         "timeout_s=${secs}"
 }
 
+# ─── _route_loop_report_call <tier> <timeout_s> <envelope> ───────────────────
+# #1730: every loop call the provider billed gets a ledger row AND a
+# model.outcome, so the two always count the same — success, failure, or a
+# timeout after LOOP_COMPLETE alike.
+_route_loop_report_call() {
+    local tier="$1" secs="$2" envelope="${3:-}" usage
+    _route_record_call "$envelope"
+    _route_update_ledger
+    usage="$(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' <<< "$envelope" 2>/dev/null || true)"
+    [[ -n "$usage" ]] || usage="0 0 0 0"
+    read -r _ROUTE_INPUT_TOKENS _ROUTE_OUTPUT_TOKENS _ROUTE_CACHE_READ _ROUTE_CACHE_CREATION <<< "$usage"
+    _route_emit_outcome "$tier" "$secs"
+}
+
 # ─── _route_record_call <raw_response> ───────────────────────────────────────
 # Asks the call's provider what it cost and which model answered (ADR-003
 # amendment). Sets _ROUTE_CALL_COST (empty = the provider could not say) and
@@ -1827,6 +1841,7 @@ ${_stat:-  (no changes)}"
         eb_emit_event "loop.iteration" \
             "tier=$tier" "iteration=$iter" "max_iterations=$max_iterations" \
             "model_id=$_ROUTE_MODEL_ID" "cwd=$cwd" 2>/dev/null || true
+        _route_emit_model_route "$tier" "$secs"
 
         # #505: build operator-facing banner_input that DEDUPES the static
         # prompt + REPLACES the cumulative diff section with a pointer once
@@ -2123,6 +2138,7 @@ ${_diff_pointer}"
                 local _rc124_result
                 _rc124_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
                 if _route_has_done_sentinel "$done_sentinel" "$_rc124_result"; then
+                    _route_loop_report_call "$tier" "$secs" "$(<"$json_file")"
                     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
                     _ROUTE_LOOP_ITERATIONS=$iter
                     eb_emit_event "router.loop.iter.timeout_with_sentinel" \
@@ -2211,8 +2227,7 @@ ${_diff_pointer}"
                 _loop_envelope="$(cat "$_diag_json_path" 2>/dev/null || true)"
             fi
             # A failed iteration can still have been billed; the provider says.
-            _route_record_call "$_loop_envelope"
-            _route_update_ledger
+            _route_loop_report_call "$tier" "$secs" "$_loop_envelope"
             if [[ -n "$_loop_envelope" ]] && _router_is_rate_limit "$_loop_envelope"; then
                 _loop_rate_limited=1
                 _loop_rl_msg="$(_router_rate_limit_message "$_loop_envelope")"
@@ -2340,8 +2355,7 @@ ${_diff_pointer}"
         _ROUTE_LOOP_INPUT_TOKENS=$(( _ROUTE_LOOP_INPUT_TOKENS + in_tok ))
         _ROUTE_LOOP_OUTPUT_TOKENS=$(( _ROUTE_LOOP_OUTPUT_TOKENS + out_tok ))
         # ADR-003 amendment: the iteration's cost, as the provider reports it.
-        _route_record_call "$(<"$json_file")"
-        _route_update_ledger
+        _route_loop_report_call "$tier" "$secs" "$(<"$json_file")"
         # #608: expose the most recent iteration's LLM text so the build plugin
         # can parse the COMMIT_SUMMARY marker after the loop returns.
         _ROUTE_LOOP_LAST_RESPONSE="$result_text"
