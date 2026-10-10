@@ -1,0 +1,5 @@
+# authored_by: test-author
+333a6096ead657e0f56de568bec7f6cc0df7b4bda058f3ca6cfdae717df72109  tests/unit/template-simple-yaml-test.sh
+333a6096ead657e0f56de568bec7f6cc0df7b4bda058f3ca6cfdae717df72109  tests/unit/template-simple-yaml-test.sh
+a5eeaae2d864a2bdf02af1d1fc296859e7889c50f07e56e8b23bfaa30d748d6b  tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+a2061eef66118a7b459861907141ca0fc4006e1ea257884fe6825fdfa67ec136  tests/integration/deployed-template-e2e-test.sh

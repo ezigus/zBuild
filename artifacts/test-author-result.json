@@ -1,0 +1,19 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 6 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 6,
+    "owned_files": [
+      "tests/integration/core-pipeline-cycle-build-test-wiring-test.sh",
+      "tests/integration/deployed-template-e2e-test.sh",
+      "tests/unit/template-simple-yaml-test.sh"
+    ],
+    "testfiles": {
+      "tests/integration/core-pipeline-cycle-build-test-wiring-test.sh": "be939d6ce90f0494633f750db63095687c7521b8",
+      "tests/integration/deployed-template-e2e-test.sh": "bdb1cea7619274a588f7ca8df33bea33c899b1ae",
+      "tests/unit/template-simple-yaml-test.sh": "ef82a291d2dd4bed17beb585c93baf61b0c5e6a5"
+    }
+  }
+}

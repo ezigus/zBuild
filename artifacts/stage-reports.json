@@ -18,5 +18,12 @@
   "wiring_files": [
     "config/templates/deployed.yaml",
     "config/templates/simple.yaml"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/integration/core-pipeline-cycle-build-test-wiring-test.sh",
+      "tests/integration/deployed-template-e2e-test.sh",
+      "tests/unit/template-simple-yaml-test.sh"
+    ]
+  }
 }

@@ -1,0 +1,271 @@
+#!/usr/bin/env bash
+# Integration test: #511 F2 — concrete build/test cycle wiring.
+#
+# Verifies (without invoking the real build agent / LLM):
+#   1) simple.yaml declares cycle:build_test_cycle and the runner enters
+#      cycle-aware dispatch when ZBUILD_CYCLES_ENABLED is unset (auto-enable).
+#      (#979: re-pointed from the retired standard.yaml to the shipped default
+#      simple.yaml, which carries the same inner build_test_cycle.)
+#   2) The test plugin emits test-failures-summary.md on EVERY terminal verdict
+#      — pass, fail and error alike (ADR-055 §9, amended #1988). "Ran and found
+#      nothing" and "published nothing" are different facts, so absence is a
+#      contract violation, not the old #511 F2 "missing == empty" signal.
+#   3) _cycle_apply_feedback resolves the from-path through the test plugin's
+#      manifest (Pin 2 — manifest-driven, not legacy stage/output path).
+#   4) (retired, #2124) the build plugin's bespoke feedback reader — findings
+#      reach build as the router's STAGE SUMMARIES block (ADR-055 §9).
+#   5) (retired with 4)
+#   6) `--from-stage build` is refused when simple.yaml declares a cycle
+#      that contains `build` (Pin 14).
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+print_test_header "cycle build/test wiring — integration (#511 F2)"
+setup_test_env "cycle-build-test-wiring"
+
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
+
+# ─── T1: simple.yaml template parsed; cycle declared + auto-detected ────────
+# #979: standard.yaml retired. simple.yaml (the shipped default) declares 2
+# cycles — design_verify_cycle (ADR-046) and the inner build_test_cycle (this
+# test's focus). Its build_test_cycle converges on gate-aggregator and wires the
+# consolidated gate feedback (gate-aggregator:gate_feedback → build) — the
+# composable-gate successor to standard's test_assessment feedback edge.
+# shellcheck disable=SC1090
+source "$REPO_ROOT/core/pipeline/template.sh"
+load_template "$REPO_ROOT/config/templates/simple.yaml"
+# #2271: 3 cycles — delivery_loop (top level) holding design_verify_cycle and
+# build_test_cycle.
+assert_eq "T1: simple.yaml declares 3 cycles (delivery_loop + design_verify + build_test)" \
+    "3" "${#_TPL_CYCLES[@]}"
+has_inner=0
+for c in "${_TPL_CYCLES[@]}"; do
+    [[ "$c" == "build_test_cycle" ]] && has_inner=1
+done
+assert_eq "T1: inner build_test_cycle is registered" "1" "$has_inner"
+# #2271: delivery_loop is the top-level dispatch unit; both inner loops sit in
+# it, design first.
+has_outer=0
+for u in "${_TPL_DISPATCH_UNITS[@]}"; do
+    [[ "$u" == "cycle:delivery_loop" ]] && has_outer=1
+done
+assert_eq "T1: dispatch units include cycle:delivery_loop" "1" "$has_outer"
+assert_eq "T1: [#1668/SPEC-3] delivery_loop runs the design loop then build_test_cycle (impact removed)" \
+    "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+# ADR-040 (#1138): the inner cycle's feedback edge is now the consolidated
+# gate-aggregator payload (gate-aggregator:gate_feedback → build:gate_feedback)
+# — the composable-gate successor to standard's test_assessment feedback.
+fb_var="_TPL_CYCLE_FEEDBACK_build_test_cycle"
+fb_value="${!fb_var:-}"
+# #1979: the wire is retired — gate-feedback.md reaches build as an
+# engine-collected summary (#1976). The invariant is now that the producer
+# DECLARES it as its summary, which is what makes the engine deliver it.
+assert_eq "T1: build_test_cycle declares no feedback edge" "" "$fb_value"
+# shellcheck source=../../scripts/lib/manifest-graph.sh
+source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
+# #1988: the aggregator no longer renders gate detail — each gate publishes its
+# own. The invariant is that the GATES declare summaries, which is what makes
+# the engine deliver their findings.
+for _g in shape-floor secret-scan lint-gate coverage-gate mutation-gate; do
+    _gm="$REPO_ROOT/plugins/tool/$_g/manifest.yaml"
+    _has=0
+    while IFS= read -r _r; do
+        [[ -n "$_r" ]] || continue
+        [[ "$(manifest_graph_output_summary "$_gm" "${_r%%|*}")" == "true" ]] && _has=1
+    done < <(manifest_graph_get_outputs "$_gm")
+    assert_eq "T1: $_g declares its own summary" "1" "$_has"
+done
+
+# ─── T2: test plugin publishes its summary on EVERY terminal verdict ────────
+# ADR-055 §9 (amended #1988): a summary states what the stage DID, not what went
+# wrong, and is written on pass, fail and skip alike. "This gate ran and found
+# nothing" and "this gate published nothing" are different facts; if absence
+# were legitimate the pipeline could not tell them apart.
+# shellcheck disable=SC1090
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
+ART_DIR="$TEST_TEMP_DIR/artifacts-t2"; mkdir -p "$ART_DIR"
+SUM="$ART_DIR/test-failures-summary.md"
+
+# T2a: verdict=pass → file PRESENT, stating what the stage did (ADR-055 §9)
+rm -f "$SUM"
+_test_emit_failures_summary "$SUM" "pass" "0" "0" "all good" "42"
+if [[ -s "$SUM" ]]; then
+    assert_pass "T2a: pass verdict → summary file PRESENT (ADR-055 §9)"
+else
+    assert_fail "T2a: pass verdict → summary must still be published" "missing or empty $SUM"
+fi
+assert_contains "T2a: pass summary records the verdict" "$(cat "$SUM")" "verdict: pass"
+assert_contains "T2a: pass summary states no failing assertions" "$(cat "$SUM")" "no failing assertions"
+
+# T2b: verdict=fail with FAIL line → file present, non-empty
+rm -f "$SUM"
+_test_emit_failures_summary "$SUM" "fail" "3" "1" "FAIL: some test
+Expected: foo
+Got: bar"
+if [[ -s "$SUM" ]]; then
+    assert_pass "T2b: fail verdict → summary file present and non-empty"
+else
+    assert_fail "T2b: fail verdict → summary should exist with content" "missing or empty"
+fi
+assert_contains "T2b: contains failing line" "$(cat "$SUM")" "FAIL: some test"
+
+# T2c: verdict=error with empty raw output → file PRESENT, and says so.
+# The old contract made this ABSENT to avoid an empty-but-present file. §9
+# inverts it: absence is what is forbidden now, so the file must exist AND name
+# the condition rather than being empty — otherwise "ran, produced nothing
+# readable" is indistinguishable from "never ran".
+rm -f "$SUM"
+_test_emit_failures_summary "$SUM" "error" "0" "2" ""
+if [[ -s "$SUM" ]]; then
+    assert_pass "T2c: error+empty raw → summary file PRESENT and non-empty"
+else
+    assert_fail "T2c: error+empty raw must still publish a summary" "missing or empty $SUM"
+fi
+assert_contains "T2c: error summary records the verdict" "$(cat "$SUM")" "verdict: error"
+assert_contains "T2c: error summary names the no-output condition" "$(cat "$SUM")" "no readable test output"
+
+# ─── T3 (#2124): retired — _build_read_prior_assessment is gone; findings reach
+# build as the router's STAGE SUMMARIES block (ADR-055 §9). build/plugin.sh is
+# still sourced here for T5+.
+# shellcheck disable=SC1090
+source "$REPO_ROOT/plugins/agent/build/plugin.sh"
+
+# ─── T4: _cycle_apply_feedback resolves via manifest (Pin 2) ─────────────────
+# shellcheck disable=SC1090
+source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+T4_STATE_DIR="$TEST_TEMP_DIR/t4-state"
+T4_ART_DIR="$T4_STATE_DIR/artifacts"
+mkdir -p "$T4_ART_DIR"
+# Test plugin manifest declares path: ${artifact_dir}/test-failures-summary.md
+# (FLAT — no `test/` subdir). The legacy resolver used artifacts/<stage>/<out>;
+# Pin 2 must resolve via the real manifest path.
+printf '# real failures summary\n- failed: 7\n' \
+    > "$T4_ART_DIR/test-failures-summary.md"
+_CYCLE_TRAP_CYCLE_ID="build_test_cycle"
+_CYCLE_FEEDBACK=("test:test_failures_summary|build:prior_test_failures:false")
+set +e
+_cycle_apply_feedback 2 "$T4_STATE_DIR"
+t4_rc=$?
+set -e
+assert_eq "T4: manifest-driven feedback resolution rc=0" "0" "$t4_rc"
+assert_file_exists "T4: prior_test_failures.txt copied to iter-2 feedback dir" \
+    "$T4_STATE_DIR/cycle-build_test_cycle/iter-2/feedback/prior_test_failures.txt"
+assert_contains "T4: .complete sentinel written (Pin 9)" \
+    "$(ls -A "$T4_STATE_DIR/cycle-build_test_cycle/iter-2/feedback/")" ".complete"
+
+# ─── T5: --from-stage build is refused (Pin 14) ─────────────────────────────
+# Verify runner refuses --from-stage that lands inside a cycle. Easiest test:
+# parse simple.yaml + walk our refusal logic. Drive via runner.sh subprocess.
+# (#979: re-pointed from standard → simple; build lives inside simple.yaml's
+# build_test_cycle, so the same Pin-14 refusal applies.)
+: > "$ZBUILD_EVENTS_JSONL"
+T5_STATE="$TEST_TEMP_DIR/t5-state.json"
+jq -n '{schema_version:1,status:"in_progress",stage_statuses:{intake:"complete",plan:"complete"}}' > "$T5_STATE"
+set +e
+ZBUILD_STATE_FILE="$T5_STATE" \
+ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" \
+    bash "$REPO_ROOT/core/pipeline/runner.sh" \
+    --issue 0 --resume --from-stage build --template simple \
+    > "$TEST_TEMP_DIR/t5.out" 2> "$TEST_TEMP_DIR/t5.err"
+t5_rc=$?
+set -e
+# #1850 (ADR-054 §4): the refusal exits 1 (was 2); the message below names it.
+if [[ $t5_rc -eq 1 ]]; then
+    assert_pass "T5: --from-stage build refused with rc=1 (Pin 14)"
+else
+    assert_fail "T5: --from-stage build should be refused" "rc=$t5_rc"
+fi
+if grep -q 'inside or after a cycle' "$TEST_TEMP_DIR/t5.err" 2>/dev/null; then
+    assert_pass "T5: rejection message mentions 'inside or after a cycle'"
+else
+    assert_fail "T5: rejection message" "missing expected diagnostic"
+fi
+
+# NB (#979): the former T6 asserted that the retired standard.yaml's outer
+# build_review_cycle dispatched its `review` member on an unconverged inner
+# cycle (ADR-026 / Wave 18-B #707). simple.yaml has no build_review_cycle and no
+# `review` stage (its post-cycle review is the ADVISORY review_lenses group +
+# review-aggregator, never a merge-blocking container). That review-on-unconverged
+# container semantic no longer exists, so T6 was removed with the lattice.
+
+# ─── T6 (#1757): a MIXED gate failure reaches build across the real seam ─────
+# Unit coverage pins the aggregator's two payloads; this walks the whole chain
+# the #1831 run walked and found broken end-to-end: real gate_aggregator_run →
+# real _cycle_apply_feedback (manifest-driven, gate-aggregator:gate_feedback →
+# build:gate_feedback) → real _build_read_prior_gate. Before #1757 the chain
+# produced an EMPTY body whenever any gate declared a fault, and build
+# was handed a prompt with no failure section at all.
+# shellcheck disable=SC1090
+source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
+
+T6_STATE_DIR="$TEST_TEMP_DIR/t6-state"
+T6_ART_DIR="$T6_STATE_DIR/artifacts"
+mkdir -p "$T6_ART_DIR"
+for _g in test-results shape-floor-result acceptance-gate-result lint-result \
+          coverage-result mutation-result secret-scan-result; do
+    printf '{"verdict":"pass"}\n' > "$T6_ART_DIR/$_g.json"
+done
+# Three failing gates; one still writes a fault (an older plugin) — #2271: the
+# aggregator never rolls it up.
+printf '{"verdict":"fail","reason":"missing_floor_files","fault":"scope"}\n' \
+    > "$T6_ART_DIR/shape-floor-result.json"
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"recoverable","reason":"tautology","failures":["tautology:SPEC-1"]}\n' \
+    > "$T6_ART_DIR/acceptance-gate-result.json"
+printf '{"verdict":"fail","test_output":"FAIL tests/unit/sigpipe-antipattern-guard-test.sh"}\n' \
+    > "$T6_ART_DIR/test-results.json"
+
+gate_aggregator_run "gate-aggregator" "$T6_STATE_DIR/state.json" >/dev/null 2>&1 || true
+
+assert_json_key "T6: mixed failure set still leaves verdict=fail" \
+    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.verdict' "fail"
+assert_eq "T6: and no fault is rolled up (#2271)" "" \
+    "$(jq -r '.fault // ""' "$T6_ART_DIR/gate-aggregator-result.json")"
+assert_file_not_exists "T6: the aggregator renders no payload of its own" \
+    "$T6_ART_DIR/gate-feedback.md"
+
+# #1988: the last hop is the engine's summary collector reading each GATE's own
+# detail, not the aggregator's rendering. Re-pointed rather than deleted: this is
+# the only proof the payload actually arrives, and the #1831 regression it guards
+# — a routing signal producing an EMPTY body — is just as possible here, where it
+# would mean a gate published nothing.
+#
+# The fixture writes the detail artifacts the gate plugins write, so the chain
+# under test is still "gate output on disk -> prompt body".
+# shellcheck source=../../scripts/lib/stage-summary.sh
+source "$REPO_ROOT/scripts/lib/stage-summary.sh"
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
+
+stage_summary_write "$T6_ART_DIR/test-failures-summary.md" "suite" "fail" \
+    "FAIL tests/unit/sigpipe-antipattern-guard-test.sh"
+stage_summary_write "$T6_ART_DIR/acceptance-summary.txt" "acceptance-gate" "fail" \
+    "tautology:SPEC-1"
+stage_summary_write "$T6_ART_DIR/shape-floor-detail.md" "shape-floor" "fail" \
+    "missing_floor_files"
+
+printf '{"schema_version":1,"stage_statuses":{"test":"failed","acceptance-gate":"failed","shape-floor":"failed"},"stage_verdicts":{"test":"fail","acceptance-gate":"fail","shape-floor":"fail"}}\n' \
+    > "$T6_STATE_DIR/pipeline-state.json"
+_TPL_STAGES=(test acceptance-gate shape-floor)
+T6_BODY="$(stage_summaries_prompt_block "$T6_STATE_DIR/pipeline-state.json" \
+    "$REPO_ROOT/plugins" 2>/dev/null || true)"
+
+
+assert_gt "T6: build receives a NON-EMPTY gate summary (the #1831 regression)" \
+    "${#T6_BODY}" "0"
+assert_contains "T6: body carries the failing suite" \
+    "$T6_BODY" "sigpipe-antipattern-guard-test.sh"
+assert_contains "T6: body carries the tautology build must re-author" \
+    "$T6_BODY" "tautology:SPEC-1"
+# No longer described as "handled elsewhere" by a renderer — the design-routed
+# gate publishes its own finding like any other, and the fault class routes it.
+assert_contains "T6: the design-routed gate's finding is present too" \
+    "$T6_BODY" "missing_floor_files"
+
+print_test_results
