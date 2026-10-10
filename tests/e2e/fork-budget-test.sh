@@ -273,6 +273,10 @@ fi
 _pool_max="$(awk -F'\t' '$2 ~ /^local_engine\.sh:/ && $1 > m { m = $1 } END { print m + 0 }' "$SITES")"
 echo "  busiest counted pool line: ${_pool_max} execs (2 work units)"
 assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit (max ${_pool_max})" "1" "$(( _pool_max <= 2 ))"
+# FORK_BUDGET must be strictly below the merge-base measurement (5480) so that
+# unpatched code (which measured ~5480 at merge-base) fails this test.
+assert_eq "[#1806/SPEC-6] FORK_BUDGET ($FORK_BUDGET) is below the merge-base measurement (5480)" \
+    "1" "$(( FORK_BUDGET < 5480 ))"
 if (( _total <= FORK_BUDGET )); then
     assert_pass "[#1806/SPEC-6] [SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
 else

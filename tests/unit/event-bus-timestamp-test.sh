@@ -48,7 +48,19 @@ export ZBUILD_EVENTS_DIR="$_S1"
 # Old code checked ZBUILD_PLATFORM == "macos"; on Linux CI ZBUILD_PLATFORM=linux,
 # so old code went to the else branch and called date with %3N, producing the
 # literal string %3N on a macOS host.  New code checks OSTYPE.
+export ZBUILD_PLATFORM="linux"
 OSTYPE="darwin12.3.0"
+# Preconditions: assert both are in effect so the test cannot pass vacuously.
+if [[ "$ZBUILD_PLATFORM" == "linux" ]]; then
+    assert_pass "[#1806/SPEC-1] precondition: ZBUILD_PLATFORM=linux"
+else
+    assert_fail "[#1806/SPEC-1] precondition: ZBUILD_PLATFORM must be linux" "got: ${ZBUILD_PLATFORM:-}"
+fi
+if [[ "$OSTYPE" == darwin* ]]; then
+    assert_pass "[#1806/SPEC-1] precondition: OSTYPE is darwin (${OSTYPE})"
+else
+    assert_fail "[#1806/SPEC-1] precondition: OSTYPE must be darwin*" "got: ${OSTYPE:-}"
+fi
 unset _ZBUILD_EVENT_BUS_LOADED _ZBUILD_EVENT_KNOWN_TYPES_LOADED 2>/dev/null || true
 # shellcheck source=../../core/event-bus/event-bus.sh
 source "$EVENT_BUS"
@@ -85,6 +97,10 @@ export JQ_CALL_LOG
 
 # Wrap the real jq to record every invocation; real jq still executes so output
 # is preserved and the payload-identity assertion has something to check.
+# setup_test_env may have created $TEST_TEMP_DIR/bin/jq as a symlink to the real
+# jq; `cat >` follows symlinks and tries to write the real binary (failing
+# silently under pipefail-but-no-e).  Remove it first so we create a new file.
+rm -f "$TEST_TEMP_DIR/bin/jq"
 cat > "$TEST_TEMP_DIR/bin/jq" <<MOCK
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "\${JQ_CALL_LOG:-/dev/null}"
@@ -109,6 +125,10 @@ source "$EVENT_BUS"
 eb_emit_event "stage.complete" "arg1=v1"
 
 _n1="$(grep -c '' "$JQ_CALL_LOG" 2>/dev/null || true)"
+# Guard: if jq mock was never called, the 0==0 comparison below is vacuous.
+# This fails when the mock was not installed (e.g. rm -f missed, symlink
+# followed) — forcing the test to fail on old code that never intercepts jq.
+assert_gt "[#1806/SPEC-2] jq mock intercepted at least one call for 1-arg emit" "$_n1" 0
 : > "$_S2/events.jsonl"
 : > "$JQ_CALL_LOG"
 eb_emit_event "stage.complete" "stage=test-stage" "verdict=pass" "extra=data-value"
@@ -119,7 +139,7 @@ _n3="$(grep -c '' "$JQ_CALL_LOG" 2>/dev/null || true)"
 # produced N jq calls for payload.  New code accumulates all args into a single
 # jq invocation, so the call count is the same regardless of arg count.
 # N3 (3 args) and N1 (1 arg) must be equal; old code gives N3=N1+2.
-if [[ "$_n3" -eq "$_n1" ]]; then
+if [[ "$_n1" -gt 0 && "$_n3" -eq "$_n1" ]]; then
     assert_pass "[#1806/SPEC-2] jq call count is constant (not per-arg): N1=$_n1 N3=$_n3"
 else
     assert_fail "[#1806/SPEC-2] jq call count must not scale with arg count" \
@@ -136,6 +156,16 @@ assert_eq "[#1806/SPEC-2] payload.extra preserved" "data-value" \
     "$(jq -r '.data.extra // empty' <<< "$_ev" 2>/dev/null || true)"
 assert_eq "[#1806/SPEC-2] event type preserved" "stage.complete" \
     "$(jq -r '.type // empty' <<< "$_ev" 2>/dev/null || true)"
+assert_eq "[#1806/SPEC-2] schema_version preserved" "1" \
+    "$(jq -r '.schema_version // empty' <<< "$_ev" 2>/dev/null || true)"
+# All 3 data fields must be present (no field dropped by the accumulation refactor).
+_ev_keys="$(jq -r '.data | keys | join(",")' <<< "$_ev" 2>/dev/null || true)"
+assert_contains "[#1806/SPEC-2] all three key=val args are in .data" \
+    "$_ev_keys" "extra"
+assert_contains "[#1806/SPEC-2] all three key=val args are in .data" \
+    "$_ev_keys" "stage"
+assert_contains "[#1806/SPEC-2] all three key=val args are in .data" \
+    "$_ev_keys" "verdict"
 
 cleanup_test_env
 print_test_results

@@ -249,6 +249,14 @@ else
     assert_fail "[#1806/SPEC-3] no spurious PATCH after event injected during flush" \
         "got $_sc3_patches PATCH(es) — last_size cursor not updated after flush"
 fi
+# Sidecar must still be running — proves the loop has run at least one more poll
+# cycle since the first PATCH, so the zero count above is not vacuously true.
+if alive "$pid"; then
+    assert_pass "[#1806/SPEC-3] sidecar still alive after no-spurious-PATCH window"
+else
+    assert_fail "[#1806/SPEC-3] sidecar still alive after no-spurious-PATCH window" \
+        "sidecar exited — loop did not poll again"
+fi
 kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
 
 # ─── SPEC-4 [#1806/SPEC-4]: no PATCH when rendered body is byte-for-byte identical ──
@@ -294,6 +302,14 @@ printf '%s\n' '{"ts":"2026-10-10T00:00:01.000Z","type":"redaction.applied","run_
 sleep 4
 
 _sc4_patches="$(patches)"
+# Sidecar must still be alive: proves the loop polled at least once during the
+# window, so the zero-PATCH result is not vacuously true (sidecar did not exit).
+if alive "$pid"; then
+    assert_pass "[#1806/SPEC-4] sidecar still alive after identical-body window (loop ran)"
+else
+    assert_fail "[#1806/SPEC-4] sidecar still alive after identical-body window" \
+        "sidecar exited — cannot prove body-unchanged flush was attempted"
+fi
 if [[ "$_sc4_patches" -eq 0 ]]; then
     assert_pass "[#1806/SPEC-4] no PATCH when rendered body is identical to previous flush"
 else
@@ -356,6 +372,16 @@ if [[ "$_sc5_event_count" -gt 0 ]]; then
         assert_fail "[#1806/SPEC-5] all sidecar events carry stage=run-status-comment" \
             "$_sc5_bad event(s) missing the field"
     fi
+fi
+
+# The SPEC calls out "including redaction.applied" explicitly: verify at least one
+# redaction.applied event was emitted to SC5_EVENTS (not left in a different file).
+# Old code (stub emit_event) never writes to SC5_EVENTS → this fails on old code.
+if grep -qF '"redaction.applied"' "$SC5_EVENTS" 2>/dev/null; then
+    assert_pass "[#1806/SPEC-5] sidecar emitted at least one redaction.applied event"
+else
+    assert_fail "[#1806/SPEC-5] sidecar emitted at least one redaction.applied event" \
+        "no redaction.applied found in SC5_EVENTS — the '(including redaction.applied)' condition not met"
 fi
 kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
 
