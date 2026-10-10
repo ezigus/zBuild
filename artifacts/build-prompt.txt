@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 2/10 ==============
+============== ZBUILD BUILD — iter 3/10 ==============
 ## What you own
 ### INSTRUCTIONS
 Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
@@ -201,4 +201,4 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
 - If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
 
 ## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
-A previous attempt on this issue ended build with verdict=incomplete and touched 4 file(s): config/adr-enforcement-baseline.txt, core/event-bus/event-bus.sh, docs/adr/ADR-065-process-budget.md, scripts/lib/run-status-comment.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is headed "— its findings, to answer".
+A previous attempt on this issue ended build with verdict=incomplete having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a summary headed "— its findings, to answer" means a check is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).
