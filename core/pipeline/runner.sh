@@ -26,6 +26,8 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
 # shellcheck source=../state/issue-lock.sh
 source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
+# shellcheck source=../state/run-cap.sh
+source "$_ZBUILD_ROOT/core/state/run-cap.sh"
 # shellcheck source=../state/layout.sh
 source "$_ZBUILD_ROOT/core/state/layout.sh"
 # shellcheck source=../../scripts/lib/identity.sh
@@ -2291,6 +2293,16 @@ main() {
     if declare -F zbuild_run_key >/dev/null 2>&1; then
         _runner_lock_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
     fi
+    if declare -F zbuild_run_cap_admit >/dev/null 2>&1; then
+        if ! zbuild_run_cap_admit "$_runner_run_id" "$state_file"; then
+            eb_emit_event "pipeline.refused.run_cap" \
+                "run_id=$_runner_run_id" "blockers=${_ZBUILD_RUN_CAP_BLOCKERS:-unknown}" \
+                2>/dev/null || true
+            error "run cap reached — blockers: ${_ZBUILD_RUN_CAP_BLOCKERS:-unknown}"
+            error "wait for a run to finish, or set ZBUILD_NO_RUN_CAP=1 to override (see ADR-059 §7)"
+            return 1
+        fi
+    fi
     if [[ -n "$_runner_lock_key" ]]; then
         if ! zbuild_issue_lock_acquire "$_runner_lock_key" "$_runner_run_id" "$state_file"; then
             eb_emit_event "pipeline.refused.issue_locked" \
@@ -2298,6 +2310,8 @@ main() {
                 2>/dev/null || true
             error "another run already holds $_runner_lock_key: ${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}"
             error "wait for it to finish, or set ZBUILD_NO_ISSUE_LOCK=1 to override (see ADR-059 §4)"
+            # The exit trap that frees the cap slot is not set yet (#1932).
+            zbuild_run_cap_release || true
             return 1
         fi
     fi
@@ -2313,7 +2327,10 @@ main() {
     if declare -F zbuild_run_key >/dev/null 2>&1; then
         _wt_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
     fi
-    _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key" || return 1
+    if ! _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key"; then
+        zbuild_run_cap_release || true
+        return 1
+    fi
 
     # Mark pipeline as in_progress
     _set_pipeline_status "$state_file" "in_progress"
@@ -2462,6 +2479,9 @@ main() {
         # still belong to this run.
         if declare -F zbuild_issue_lock_release >/dev/null 2>&1; then
             zbuild_issue_lock_release || true
+        fi
+        if declare -F zbuild_run_cap_release >/dev/null 2>&1; then
+            zbuild_run_cap_release || true
         fi
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
         # exit path — clean end, normal failure, or abort — so a follow-on
