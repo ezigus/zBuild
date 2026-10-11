@@ -19,6 +19,8 @@ source "$_ZBUILD_ROOT/scripts/lib/abort-propagation.sh"
 # #796 / ADR-021 v3 R1: pipeline final status helper honoring on_max=continue.
 # shellcheck source=../../scripts/lib/runner-final-status.sh
 source "$_ZBUILD_ROOT/scripts/lib/runner-final-status.sh"
+# shellcheck source=../../scripts/lib/run-open-items.sh
+source "$_ZBUILD_ROOT/scripts/lib/run-open-items.sh"   # run_end_words, open_items_markdown (#2330)
 source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
 source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
@@ -1225,15 +1227,6 @@ _render_cycle_exit() {
             # #840: build needs out-of-scope files the policy won't grant.
             glyph="⚠"; color="${YELLOW:-}"
             text="Cycle ${cycle_id} halted: blocked on scope (needs files outside write-scope)"
-            ;;
-        unowned_finding)
-            # #2271 (ADR-068): every stage here disclaimed the same finding, so
-            # the loop hands it back; the outer loop goes round or stops.
-            glyph="⚠"; color="${YELLOW:-}"
-            text="Cycle ${cycle_id} ended early (${iter}/${max}): no stage in it owns a finding"
-            # #2330: on its last round the loop did not end early — it stopped.
-            [[ "$iter" == "$max" ]] \
-                && text="Cycle ${cycle_id} stopped on its last round (${iter}/${max}): open items no stage could act on"
             ;;
         error|config_invalid)
             glyph="✗"; color="${RED:-}"

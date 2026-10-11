@@ -53,6 +53,10 @@ rsc_rows_json() {
                              ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null}
               | .order += [$seq]
               | (if ($seq|contains(".")) then .cardinal = ($seq|split(".")[0]) else . end)
+            elif .rows[$seq].verdict != null then
+              # A retry under the same row (the first try already ended): the
+              # row shows the latest try.
+              .rows[$seq] += {started_ts:$e.ts, ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null}
             else . end
           elif $t == "prompt.summaries.injected" then
             open_for(.; ($d.stage // $e.stage // "")) as $k

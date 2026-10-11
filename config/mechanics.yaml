@@ -49,8 +49,8 @@ mechanics:
     adr: ADR-004
 
   - name: finding-answers
-    summary: Every stage answers every finding; a loop counts the answers and goes round or stops (ADR-068).
-    defined_in: core/pipeline/unowned.sh
+    summary: Every check lists numbered findings; every later stage sees them and says in its own result what it did (ADR-068).
+    defined_in: core/pipeline/input-resolve.sh
     adr: ADR-068
 
   - name: router-models-as-data

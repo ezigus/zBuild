@@ -475,6 +475,13 @@ Keep the prose focused and under 200 lines (the scope block and acceptance
 block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
 
 ## What you judge against
+The issue, and the plan drawn from it, may describe a solution as well as the
+problem. A section that records a decision (for example "Decision:") is binding: follow it.
+Anything else they propose — an approach, a file list, a scope, a claim that
+some files or tests are unaffected — is a starting point, not the answer: check
+it against the code yourself and come up with your own design. Where yours
+differs, say why.
+
 ### Plan
 $(printf '%s' "$plan_json" | jq -r '.title // "Untitled"' 2>/dev/null)
 

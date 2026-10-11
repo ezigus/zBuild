@@ -507,17 +507,14 @@ load_template() {
             RB)
                 # #2271 (ADR-068): the backward jump is gone. Refused, not ignored:
                 # a template relying on it would otherwise run without it silently.
-                error "load_template: cycle '${payload%%|*}' declares route_back, which was removed (#2271): nested loops replace it — put the loops inside one outer loop and give the inner one 'unowned: yield'"
+                error "load_template: cycle '${payload%%|*}' declares route_back, which was removed (#2271): nested loops replace it — put the loops inside one outer loop"
                 return 1
                 ;;
             UO)
-                # #2271 (ADR-068): <cid>|<yield|halt>
-                local uo_cid uo_val
-                IFS='|' read -r uo_cid uo_val <<< "$payload"
-                case "$uo_val" in
-                    yield|halt) printf -v "_TPL_CYCLE_UNOWNED_${uo_cid//-/_}" '%s' "$uo_val" ;;
-                    *) error "load_template: cycle '${uo_cid}': unowned must be yield or halt (got '${uo_val}')"; return 1 ;;
-                esac
+                # ADR-068 §8 (amended 2026-10-11): the engine keeps no record of
+                # answers, so there is nothing to count. Refused, not ignored.
+                error "load_template: cycle '${payload%%|*}' declares unowned, which was removed (ADR-068 §8): a loop goes round until it passes or its rounds run out — delete the line"
+                return 1
                 ;;
             EW)
                 # #1284 (ADR-047): multi-condition exit_when for cycles.
@@ -2024,9 +2021,8 @@ _tpl_translate_new_shape() {
             if ($0 ~ /^[[:space:]]+on_max:/) {
                 v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); cyc_on_max = trim(v); next
             }
-            # #2271 (ADR-068): what the loop does with a finding none of its
-            # members owns — `yield` (end this loop, let the outer go round) or
-            # `halt` (stop the run with a report). Absent: the loop counts nothing.
+            # ADR-068 §8 (amended 2026-10-11): read only so the loader can
+            # refuse it (UO row) — the key was removed.
             if ($0 ~ /^[[:space:]]+unowned:/) {
                 v = $0; sub(/^[[:space:]]+unowned:[[:space:]]*/, "", v); cyc_unowned = trim(v); next
             }
@@ -2348,7 +2344,7 @@ _tpl_translate_new_shape() {
             }
             print "EW|" ew_row
         }
-        # #2271 (ADR-068): the unowned-finding rule of the loop, only when declared.
+        # A removed key, emitted so the loader refuses it.
         if (cyc_unowned_v[k] != "") print "UO|" k "|" cyc_unowned_v[k]
     }
     function extract_cyc_flow(k,    d) {

@@ -394,6 +394,13 @@ Rules:
 ## What you judge against
 The goal below, in the issue's own words, and the scope manifest after it.
 
+The issue may describe a solution as well as the problem.
+A section that records a decision (for example "Decision:") is binding: follow it.
+Anything else it proposes — an approach, a file list, a scope, a claim that
+some files or tests are unaffected — is a starting point, not the answer: check
+it against the code yourself and come up with your own approach. Where yours
+differs, say why.
+
 Tool use:
 - Explore with READ-ONLY tools (Read, Grep, Glob, and read-only Bash such as
   find/grep/cat/git-log) to inspect files within the scope-manifest before

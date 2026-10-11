@@ -198,4 +198,4 @@ modified — so confidence is substituted by these deterministic gates):
 
 ### Amendment (2026-10-04, #2271)
 
-The preflight no longer considers stages "reachable by `route_back`". Counting answers (`core/pipeline/unowned.sh`) names no stage: the stages that answer findings are the stages that declare a save-as-you-go output (ADR-063 §5). Test: `tests/integration/unowned-finding-test.sh`.
+The preflight no longer considers stages "reachable by `route_back`". The engine keeps nothing but stage outputs and names no stage (ADR-068 §8, amended 2026-10-11). Test: `tests/unit/engine-keeps-only-stage-outputs-test.sh`.

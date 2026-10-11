@@ -104,9 +104,6 @@ render_mode() {
                 exit-unknown)
                     _render_cycle_exit build-test some_typo_reason 2 5
                     ;;
-                exit-unowned)
-                    _render_cycle_exit build-test unowned_finding 1 3
-                    ;;
             esac
             ) > '$RENDER_DIR/'\"\$variant\".'$mode' 2>&1
         done
@@ -145,7 +142,7 @@ declare -a VARIANTS=(
     "exit-unknown"
 )
 declare -a MODES=("layout" "colored")
-ALL_VARIANTS="${VARIANTS[*]} exit-unowned"
+ALL_VARIANTS="${VARIANTS[*]}"
 for mode in "${MODES[@]}"; do
     render_mode "$mode"
 done
@@ -250,16 +247,6 @@ verify_glyph "aborted" "⚠" "aborted"
 verify_glyph "verdict-missing" "⚠" "verdict_missing"
 verify_glyph "blocked" "✗" "blocked"
 verify_glyph "error" "✗" "error/default"
-
-# #2271 (ADR-068): a loop that hands back a finding none of its stages owns
-# ends early by design — the banner says so in words, never the raw token.
-_uo="$(emit_cycle_banner layout exit-unowned || true)"
-assert_contains "[#2271] the hand-back banner says the loop ended early" "$_uo" "ended early"
-if grep -qF 'unowned_finding' <<< "$_uo"; then
-    assert_fail "[#2271] the banner never shows the raw reason token" "$_uo"
-else
-    assert_pass "[#2271] the banner never shows the raw reason token"
-fi
 
 cleanup_test_env
 print_test_results

@@ -66,7 +66,6 @@ delivery_loop:
       - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
   max_iterations: 2
   on_max: halt
-  unowned: halt
 
 # ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
 design_verify_cycle:
@@ -113,7 +112,6 @@ build_test_cycle:
     value: pass
   max_iterations: 3
   on_max: continue
-  unowned: yield
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:

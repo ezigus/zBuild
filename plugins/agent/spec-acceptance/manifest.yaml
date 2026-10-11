@@ -90,6 +90,7 @@ provides:
     - acceptance.gate.unclaimed_code
     - acceptance.gate.unknown_failure_class
     - acceptance.gate.untagged_spec
+    - acceptance.gate.untested_change
     - acceptance.gate.wiring_exempt
     - acceptance.gate.wiring_not_on_path
     - acceptance.gate.worktree_failed
@@ -109,6 +110,7 @@ config:
     - untagged_spec
     - tautology
     - inert_wiring
+    - untested_change
     - no_testfile
     - no_testfiles
     - not_passing_at_head

@@ -216,9 +216,10 @@ assert_eq "[SPEC-18] [#1668/SPEC-1] delivery_loop holds the design loop and the 
     "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop runs at most 2 rounds" "2" "${_TPL_CYCLE_MAX_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop halts when its rounds are spent" "halt" "${_TPL_CYCLE_ON_MAX_delivery_loop:-}"
-assert_eq "[SPEC-18] delivery_loop stops on a finding nobody owns" "halt" "${_TPL_CYCLE_UNOWNED_delivery_loop:-}"
-assert_eq "[SPEC-18] the build loop yields a finding nobody in it owns" "yield" "${_TPL_CYCLE_UNOWNED_build_test_cycle:-}"
-assert_eq "[SPEC-18] the design loop counts no answers itself" "" "${_TPL_CYCLE_UNOWNED_design_verify_cycle:-}"
+# ADR-068 §8 (amended 2026-10-11): the template declares no `unowned:` — a
+# loader that met one would have refused the template before this point.
+assert_eq "[SPEC-18] simple.yaml declares no unowned: key" "0" \
+    "$(grep -cE '^[[:space:]]+unowned:' "$REPO_ROOT/config/templates/simple.yaml" || true)"
 
 # ─── SPEC-16 (#1218, ADR-046): design_verify_cycle registered correctly ───────
 # _TPL_CYCLES must ALSO contain design_verify_cycle (design → design-gate); its

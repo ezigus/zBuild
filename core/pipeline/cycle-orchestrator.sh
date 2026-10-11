@@ -38,8 +38,6 @@ source "$_CYCLE_ORCH_ROOT/scripts/lib/abort-propagation.sh"
 source "$_CYCLE_ORCH_ROOT/core/state/atomic.sh"
 # shellcheck source=../state/resume.sh
 source "$_CYCLE_ORCH_ROOT/core/state/resume.sh"
-# shellcheck source=./unowned.sh
-source "$_CYCLE_ORCH_ROOT/core/pipeline/unowned.sh"
 # shellcheck source=../event-bus/event-bus.sh
 source "$_CYCLE_ORCH_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=./template.sh
@@ -86,7 +84,6 @@ _CYCLE_LAST_PLATEAU_EVIDENCE=""
 # #1284 (ADR-047): multi-condition exit_when state — populated by _cycle_load_template.
 # Empty combinator means single-condition mode (byte-identical behavior).
 _CYCLE_EXIT_COMBINATOR=""
-_CYCLE_UNOWNED=""
 _CYCLE_EXIT_CONDITIONS=()
 
 # #2325 (ADR-063 §5): how many loops this one is nested inside. Only the
@@ -332,9 +329,6 @@ _cycle_load_template() {
     fi
 
     _CYCLE_ON_MAX="${!on_max_var:-continue}"
-    # #2271 (ADR-068): yield | halt | "" (the loop counts no answers).
-    local _uo_var="_TPL_CYCLE_UNOWNED_${safe}"
-    _CYCLE_UNOWNED="${!_uo_var:-}"
     if [[ "$_CYCLE_ON_MAX" != "continue" && "$_CYCLE_ON_MAX" != "halt" ]]; then
         error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
         _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
@@ -1674,30 +1668,6 @@ _cycle_iter_dispatch() {
         local _member_type_var="_TPL_STAGE_TYPE_${s//-/_}"
         local _member_type="${!_member_type_var:-leaf}"
         if [[ "$_member_type" == "cycle" ]]; then
-            # #2271 (ADR-068): about to re-enter the loop that yielded a finding.
-            # If every stage that answers findings and ran before it this round
-            # (design, impact, …) also said "nothing to do", nobody owns it: the
-            # run stops (report: artifacts/unowned-findings.md). One "done" from
-            # any of them hands it back to the loop.
-            if [[ "${_CYCLE_UNOWNED:-}" == "halt" && "$(_unowned_yielder "$state_dir")" == "$s" ]]; then
-                local -a _uo_before=() _uo_m
-                for _uo_m in "${_CYCLE_STAGES[@]}"; do
-                    [[ "$_uo_m" == "$s" ]] && break
-                    _uo_before+=("$_uo_m")
-                done
-                if _unowned_halt_check "$state_dir" "${_uo_before[@]}"; then
-                    _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
-                    _cycle_emit "cycle.unowned_finding" "iter=$iter" "stage=$s" "action=halt" 2>/dev/null || true
-                    _cycle_state_write_member_atomic "$state_file" "$s" "failed" "unowned_finding" || true
-                    _cycle_clear_traps
-                    [[ $_had_e -eq 1 ]] && set -e
-                    _CYCLE_ITER_OUTCOME="failed"
-                    return 1
-                fi
-                # #2330: the loop runs again; what it hands back is recorded afresh,
-                # so a finding acted on since is never reported at the end.
-                _unowned_clear_yield "$state_dir"
-            fi
             set +e
             # Wave 19-B (#718): set ZBUILD_SEQ_PREFIX to this member's label so
             # the nested cycle's children inherit the full path
@@ -1747,7 +1717,6 @@ _cycle_iter_dispatch() {
             # reloads both from its own template, and an outer `all:` would
             # otherwise be judged against the inner's leftovers.
             local _outer_exit_comb="$_CYCLE_EXIT_COMBINATOR"
-            local _outer_unowned="${_CYCLE_UNOWNED:-}"
             local -a _outer_exit_conds=( ${_CYCLE_EXIT_CONDITIONS[@]+"${_CYCLE_EXIT_CONDITIONS[@]}"} )
             # #2271 (ADR-068): what the inner loop does when it runs out of
             # rounds decides whether this outer round may carry on past it.
@@ -1787,7 +1756,6 @@ _cycle_iter_dispatch() {
             _CYCLE_VELOCITY_PLATEAU_WINDOW="$_outer_velopl_w"
             _CYCLE_EXIT_COMBINATOR="$_outer_exit_comb"
             local _inner_reason="${_CYCLE_LAST_TERMINATED_REASON:-}"
-            _CYCLE_UNOWNED="$_outer_unowned"
             _CYCLE_EXIT_CONDITIONS=( ${_outer_exit_conds[@]+"${_outer_exit_conds[@]}"} )
             # #2271 (ADR-068): an inner loop that ends without converging ends
             # this outer round when it may not be carried past — it declares
@@ -1799,7 +1767,6 @@ _cycle_iter_dispatch() {
             # loop's outcome and reason, not an rc: an abort; a block
             # (blocked / no_committed_changes); `failed` on the last round.
             local _end_round=0 _inner_stops=""
-            [[ "$_inner_reason" == "unowned_finding" ]] && _end_round=1
             case "$_inner_outcome" in
                 converged) ;;
                 aborted) _inner_stops="aborted" ;;
@@ -2466,22 +2433,9 @@ _cycle_orchestrator_run_body() {
         "stages=${_CYCLE_STAGES[*]}" 2>/dev/null || true
 
     local iter
-    # #2271 (ADR-068): a finding an inner loop yielded belongs to this run of
-    # the outer loop only.
-    [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] && rm -f "$state_dir/$_UNOWNED_YIELD_FILE" 2>/dev/null
     for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
         _CYCLE_TRAP_ITER="$iter"
         _CYCLE_LAST_ITERATIONS="$iter"
-        # #2271 (ADR-068): each round counts only the answers given in it. An
-        # outer `halt` loop clears every stage in its tree (design, impact, …):
-        # one that answers nothing this round must not count an old answer.
-        if [[ "${_CYCLE_UNOWNED:-}" == "yield" ]]; then
-            _unowned_clear_round "$state_dir" "${_CYCLE_STAGES[@]}"
-        elif [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] && declare -F _tpl_flow_leaves >/dev/null 2>&1; then
-            local -a _uo_tree=() _uo_l
-            while IFS= read -r _uo_l; do [[ -n "$_uo_l" ]] && _uo_tree+=("$_uo_l"); done < <(_tpl_flow_leaves "$cycle_id")
-            [[ ${#_uo_tree[@]} -gt 0 ]] && _unowned_clear_round "$state_dir" "${_uo_tree[@]}"
-        fi
 
         # #682: 2 blank lines BEFORE each iter separator (inter-iter gap),
         # except before the very first iter where 1 blank is enough — the
@@ -2538,7 +2492,7 @@ _cycle_orchestrator_run_body() {
         local _iter_rc=$?
         [[ $_ORCH_HAD_E -eq 1 ]] && set -e
         # The round stopped before every member ran (#1850: the word, not an rc).
-        #   failed      — ADR-013 blocking member / unowned finding: the runner
+        #   failed      — ADR-013 blocking member: the runner
         #                 emits pipeline.end status=failed. Reason already set.
         #   aborted     — ADR-025: an abort word is recorded (a signal, a
         #                 cycle_abort from a nested loop, an unavailable model).
@@ -2772,14 +2726,6 @@ _cycle_orchestrator_run_body() {
             # the cycle is not expandable). Abandon cleanly — never loop.
             _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
             overall_status="blocked_on_scope"; term_outcome="interrupted"
-        elif [[ "${_CYCLE_UNOWNED:-}" == "yield" ]] \
-             && _unowned_yield_check "$state_dir" "$cycle_id" "${_CYCLE_STAGES[@]}"; then
-            # #2271 (ADR-068): every member here that answers findings said
-            # "nothing to do" to the same one — this loop cannot resolve it. End
-            # early; the outer loop goes round from the top, carrying it.
-            _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
-            _cycle_emit "cycle.unowned_finding" "iter=$iter" "action=yield" 2>/dev/null || true
-            overall_status="unowned_finding"; term_outcome="unconverged"
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             # #1208 — THE single fatal condition: the cycle exhausted its
             # iteration budget WITHOUT a clean, passing convergence. Split
@@ -2819,12 +2765,6 @@ _cycle_orchestrator_run_body() {
             local _exh_tests_reported=0 _exh_tests_failing=0
             _cycle_tests_reported "$verdicts_blob" && _exh_tests_reported=1
             _cycle_tests_failing "$verdicts_blob" && _exh_tests_failing=1
-            # #2330 (ADR-068 §8): an `unowned: halt` loop with no round left still
-            # reports the items no stage could act on — the check before the
-            # yielding loop runs only when another round is coming.
-            local _exh_unowned=0
-            [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] \
-                && _unowned_last_round_report "$state_dir" "${_CYCLE_STAGES[@]}" && _exh_unowned=1
             # #1261: reason-aware exhaustion (timeout-exhaustion exception to the
             # ADR-019 on_max=continue fall-through). When the TERMINATING iteration
             # was interrupted by a router timeout (a member surfaced the repo-neutral
@@ -2843,11 +2783,7 @@ _cycle_orchestrator_run_body() {
             # id) — build_test_cycle ALWAYS runs `test`, so it has a signal and is
             # unaffected (scope: design-only for now, #1261); a future verifier-less
             # cycle inherits the same fail-fast.
-            if [[ "$_exh_unowned" -eq 1 ]]; then
-                _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
-                _cycle_emit "cycle.unowned_finding" "iter=$iter" "action=halt" 2>/dev/null || true
-                overall_status="unowned_finding"; term_outcome="failed"
-            elif [[ "$_iter_did_not_finish" -eq 1 && "$_exh_tests_reported" -eq 0 ]]; then
+            if [[ "$_iter_did_not_finish" -eq 1 && "$_exh_tests_reported" -eq 0 ]]; then
                 eb_emit_event "cycle.timeout_exhausted" \
                     "cycle_id=$cycle_id" "iter=$iter" \
                     "reason=design_timeout_exhausted" 2>/dev/null || true

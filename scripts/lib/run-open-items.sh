@@ -9,11 +9,9 @@
 # say WHAT must be checked, never who must check it, and never the engine's own
 # codes (events keep those).
 #
-# An item comes from one of two places:
-#   - <state>/artifacts/open-items.json, written with the report of items no
-#     stage could act on (core/pipeline/unowned.sh) — those items exactly;
-#   - otherwise every check whose result did not pass: each of its numbered
-#     findings, or its reason when it has none.
+# An item comes from the checks' latest results (ADR-068 §8): every check whose
+# result did not pass — each of its numbered findings, or its reason when it has
+# none. Nothing is kept beside those results.
 # A finding may say what would settle it itself, after "What would settle it:".
 #
 # Source-only; no `set -e` at top level. Needs jq.
@@ -22,17 +20,12 @@ _ZBUILD_RUN_OPEN_ITEMS_LOADED=1
 
 _OPEN_ITEMS_SETTLE_RE='[[:space:]]*What would settle it:[[:space:]]*'
 # The one rule for a check result that passed — every reader of results uses it.
-# shellcheck disable=SC2034  # read by core/pipeline/unowned.sh
 _OPEN_ITEMS_JQ_PASSED='def passed: (.verdict // "" | ascii_downcase)
     | IN("pass", "passed", "approve", "approved", "complete", "success", "skip", "skipped", "");'
 
-# open_items_json <state_dir> — [{ref, opener, text, answers}] (answers may be []).
+# open_items_json <state_dir> — [{ref, opener, text}].
 open_items_json() {
     local sd="$1" f
-    if [[ -s "$sd/artifacts/open-items.json" ]]; then
-        jq -c 'if type == "array" then . else [] end' "$sd/artifacts/open-items.json" 2>/dev/null || printf '[]'
-        return 0
-    fi
     local -a files=()
     for f in "$sd"/artifacts/*-result.json; do [[ -s "$f" ]] && files+=("$f"); done
     [[ ${#files[@]} -gt 0 ]] || { printf '[]'; return 0; }
@@ -43,11 +36,10 @@ open_items_json() {
           | $r | select(type == "object" and (.verdict | type) == "string")
           | select(passed | not)
           | if ((.data.findings // []) | length) > 0 then
-                (.data.findings[] | {ref: "\($c) finding \(.n)", opener: $c, text: (.text // ""), answers: []})
+                (.data.findings[] | {ref: "\($c) finding \(.n)", opener: $c, text: (.text // "")})
             else
                 {ref: $c, opener: $c, text: ("the " + $c + " check did not pass: "
-                                              + ((.reason // "") | if . == "" then "it gave no reason" else . end)),
-                 answers: []}
+                                              + ((.reason // "") | if . == "" then "it gave no reason" else . end))}
             end ]' "${files[@]}" 2>/dev/null || printf '[]'
 }
 
@@ -56,11 +48,11 @@ open_items_count() {
     jq 'length' <<< "$(open_items_json "$1")" 2>/dev/null || printf '0'
 }
 
-# open_items_render <items_json> [with_answers] — the numbered list every report
-# shows. Each item: its name and what is unresolved, then what would settle it.
+# open_items_render <items_json> — the numbered list every report shows. Each
+# item: its name and what is unresolved, then what would settle it.
 open_items_render() {
-    local items="$1" answers="${2:-0}"
-    jq -r --arg re "$_OPEN_ITEMS_SETTLE_RE" --arg ans "$answers" '
+    local items="$1"
+    jq -r --arg re "$_OPEN_ITEMS_SETTLE_RE" '
         to_entries[] | .key as $i | .value as $it
         | ($it.text // "" | [splits($re)]) as $p
         | ($p[0] | sub("[[:space:]]+$"; "")) as $what
@@ -69,10 +61,7 @@ open_items_render() {
            end) as $settle
         | "\($i + 1). **\($it.ref)**" + (if $it.ref == $it.opener then "" else " (opened by \($it.opener))" end)
           + ": " + (if $what == "" then "no words were given for it" else $what end)
-          + "\n   - What would settle it: " + $settle
-          + (if $ans == "1" then
-                ([ ($it.answers // [])[] | "\n   - \(.by): \(.answer) — \(.why)" ] | join(""))
-             else "" end)' <<< "$items" 2>/dev/null || true
+          + "\n   - What would settle it: " + $settle' <<< "$items" 2>/dev/null || true
 }
 
 # open_items_markdown <state_dir> — the list, or nothing when no item is open.
@@ -94,8 +83,6 @@ run_end_words() {
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
     [[ "$n" -gt 0 ]] && with=" with $(_open_items_n "$n" "open item")"
     case "$reason" in
-        unowned_finding)
-            printf 'stopped%s that no stage could act on' "${with:- with open items}" ;;
         max_iterations|max_iterations_tests_failing)
             printf 'ran out of rounds%s' "$with" ;;
         design_timeout_exhausted)

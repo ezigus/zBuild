@@ -22,7 +22,7 @@
 #             a reference to check, not as this run's design (#2299, ADR-050 §6).
 #             #2035 run 37289704344 kept an untested design in 1 second.
 # R6–R11 [guard] design runs in each case the old reuse rule turned on:
-#             ZBUILD_RESUME=0, changed issue text, a finding nobody owned (R8),
+#             ZBUILD_RESUME=0, changed issue text,
 #             an ordinary failed gate (R8b), a rewind, an uncovered spec, and
 #             a gate pass for a different design.md.
 #             With the reuse rule gone no code path tells these apart: each
@@ -130,11 +130,8 @@ _design_case() {
     [[ -n "$mismatch" ]] && _sha="0000000000000000000000000000000000000000"
     jq -n --arg sha "$_sha" '{result_contract:2,verdict:"pass",disposition:"complete",reason:"build-ready",data:{design_sha:$sha}}' > "$rr/artifacts/design-gate-result.json"
     jq -n --arg v "$coverage" '{result_contract:2,verdict:$v,disposition:"complete",reason:"x"}' > "$rr/artifacts/spec-coverage-result.json"
-    # #2271: $2 = unowned → the prior run stopped on a finding nobody owned;
-    # anything else → an ordinary failed gate, which is no reason to redo design.
-    if [[ "$fault" == "unowned" ]]; then
-        printf '# Findings no stage owns\n\n## acceptance-gate finding 1 (opened by acceptance-gate)\n' > "$rr/artifacts/unowned-findings.md"
-    elif [[ -n "$fault" ]]; then
+    # $2 set → the prior run ended on an ordinary failed gate.
+    if [[ -n "$fault" ]]; then
         printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x"}\n' > "$rr/artifacts/gate-aggregator-result.json"
     fi
     [[ -n "$existing" ]] && printf '# Design (this run)\n' > "$ad/design.md"
@@ -158,9 +155,13 @@ assert_contains "[R5] ...this run's design is the one the model wrote" \
 _r5_prompt="$(cat "$TEST_TEMP_DIR/r5/prompt-seen.txt" 2>/dev/null)"
 assert_contains "[R5] ...the prior design reaches the prompt" "$_r5_prompt" "# Design (prior)"
 assert_contains "[R5] ...as a reference to check, not a fact" "$_r5_prompt" "## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)"
+# ADR-067 §9: a solution the issue proposes is a starting point for design too.
+assert_contains "[ADR-067 §9] design is told a recorded decision binds" "$_r5_prompt" \
+    "A section that records a decision (for example \"Decision:\") is binding"
+assert_contains "[ADR-067 §9] design is told any other proposal is a starting point" "$_r5_prompt" \
+    "is a starting point, not the answer"
 assert_eq "[R6] under ZBUILD_RESUME=0 design runs" "1" "$(_design_case r6 "" 0)"
 assert_eq "[R7] when the issue text changed design runs" "1" "$(_design_case r7 "" 1 "Migrate the OTHER thing.")"
-assert_eq "[R8] when the prior run stopped on a finding nobody owned, design runs" "1" "$(_design_case r8 unowned)"
 assert_eq "[R8b] after an ordinary failed gate, design runs" "1" "$(_design_case r8b failed)"
 assert_eq "[R9] when this run already has a design (a rewind), design runs" "1" "$(_design_case r9 "" 1 "Migrate the thing." yes)"
 assert_eq "[R10] when the prior spec-coverage said uncovered, design runs" "1" "$(_design_case r10 "" 1 "Migrate the thing." "" uncovered)"

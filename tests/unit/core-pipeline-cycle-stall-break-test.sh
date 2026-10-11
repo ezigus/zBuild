@@ -166,8 +166,7 @@ fi
 # gate before design got the rewind. It now fires at the iteration the fault
 # appears, while the edge's budget lasts.
 # SPEC-11 (#2119) is retired with route_back (#2271): a finding the build loop
-# cannot resolve now ends it early through counted answers — see
-# tests/integration/unowned-finding-test.sh U1.
+# cannot resolve now runs it out of rounds, and the outer loop goes round.
 
 print_test_section "SPEC-4/SPEC-10: empty_diff + gate=pass ⇒ converged (no false stall)"
 _GA_VERDICT="pass"

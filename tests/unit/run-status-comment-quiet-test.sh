@@ -72,6 +72,9 @@ S2="$TEST_TEMP_DIR/s2"; new_state "$S2"; : > "$GH_LOG"
     # shellcheck source=../../scripts/lib/run-status-comment.sh
     source "$LIB"
     _rsc_no_events
+    # The body says when it was updated, to the minute: pin "now", or a minute
+    # turning over between two renders makes the second one a real change.
+    export ZBUILD_STATUS_NOW=2026-10-10T12:00:30Z
     f() { rsc_flush "$S2/events.jsonl" "$S2" testuser/testrepo 90000042 r-quiet; }
     f; f                                   # POST, then the same render again
     jq -cn '{ts:"2026-10-10T12:00:05.000Z", run_id:"r-quiet", issue:90000042, type:"plugin.run.start", plugin:"intake", kind:"agent", data:{plugin:"intake", kind:"agent"}, schema_version:1, stage:"intake", seq:"1"}' >> "$S2/events.jsonl"
@@ -87,6 +90,7 @@ FAILING="$TEST_TEMP_DIR/patch-fails"
     _rsc_no_events
     eval "_real_$(declare -f rsc_comment_patch)"
     rsc_comment_patch() { [[ -f "$FAILING" ]] && return 1; _real_rsc_comment_patch "$@"; }
+    export ZBUILD_STATUS_NOW=2026-10-10T12:00:30Z
     f() { rsc_flush "$S2b/events.jsonl" "$S2b" testuser/testrepo 90000042 r-quiet; }
     f                                      # POST
     jq -cn '{ts:"2026-10-10T12:00:06.000Z", run_id:"r-quiet", issue:90000042, type:"plugin.run.start", plugin:"plan", kind:"agent", data:{plugin:"plan", kind:"agent"}, schema_version:1, stage:"plan", seq:"2"}' >> "$S2b/events.jsonl"

@@ -268,7 +268,9 @@ REPO_S="$(setup_git_temp_repo "quiet-summary-always")"
     cd "$REPO_S"
     "$GIT" checkout -q -b feature
     mkdir -p tests
-    printf '#!/usr/bin/env bash\nexit 0\n' > tests/feature-test.sh
+    # The test needs impl.sh, so putting impl.sh back fails it (ADR-036: every
+    # changed code file must be noticed by some test).
+    printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../impl.sh" ]]\n' > tests/feature-test.sh
     printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
     chmod +x tests/feature-test.sh impl.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: impl + testfile, no SPEC ids"
@@ -288,7 +290,9 @@ if [[ "$_s_sum" == *STALE-PRIOR-ITERATION* ]]; then
 else
     assert_pass "[#2124] the prior iteration's summary is replaced"
 fi
-assert_contains "[#2124] the rewritten summary states the verdict" "$_s_sum" "verdict=pass"
+# ADR-036 (2026-10-11): a changed code file is always put back on its own, so
+# this run has a line of its own to write — the rewrite carries it.
+assert_contains "[#2124] the rewritten summary is this run's" "$_s_sum" "REACHABILITY PASS change impl.sh"
 
 cleanup_test_env
 print_test_results  # exits with $FAIL
