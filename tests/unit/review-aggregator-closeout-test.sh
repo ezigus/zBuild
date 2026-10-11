@@ -147,9 +147,15 @@ printf '%s\n' '{"schema_version":1,"name":"performance","score":9,"findings":[],
 _inputs "$_k10/inputs.json" "$_k10/lens-correctness.json" "$_k10/lens-security.json" "$_k10/lens-performance.json"
 ZBUILD_ARTIFACT_DIR="$_k10" ZBUILD_STAGE_INPUTS="$_k10/inputs.json" \
     review_aggregator_run review-aggregator "$_k10/x" >/dev/null 2>&1
+# ADR-068 §10 adds `data.findings` — the same findings, numbered, for the engine
+# to count — so it is part of the envelope here; F5 of open-findings-test.sh
+# asserts what it holds.
 assert_eq "[K10] the report matches main's v1 output, less the v2 envelope" \
     "$(cat "$REPO_ROOT/tests/golden/review-aggregator-output-v1.golden")" \
-    "$(jq -S 'del(.result_contract, .verdict, .disposition, .reason)' "$_k10/review-report.json" 2>/dev/null)"
+    "$(jq -S 'del(.result_contract, .verdict, .disposition, .reason, .data)' "$_k10/review-report.json" 2>/dev/null)"
+assert_eq "[K10] ...and every deduplicated finding is numbered in data.findings" \
+    "$(jq '.findings | length' "$_k10/review-report.json" 2>/dev/null)" \
+    "$(jq '.data.findings | length' "$_k10/review-report.json" 2>/dev/null)"
 assert_eq "[K10] ...and the rendered summary matches" \
     "$(cat "$REPO_ROOT/tests/golden/review-aggregator-report-md-v1.golden")" \
     "$(cat "$_k10/review-report.md" 2>/dev/null)"

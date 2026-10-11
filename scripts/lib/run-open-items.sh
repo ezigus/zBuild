@@ -14,6 +14,9 @@
 #     stage could act on (core/pipeline/unowned.sh) — those items exactly;
 #   - otherwise every check whose result did not pass: each of its numbered
 #     findings, or its reason when it has none.
+# To either, ADR-068 §10 adds every finding still open in a stage's latest
+# result whatever its verdict — a warning nobody acted on is open too
+# (core/pipeline/open-findings.sh).
 # A finding may say what would settle it itself, after "What would settle it:".
 #
 # Source-only; no `set -e` at top level. Needs jq.
@@ -28,6 +31,21 @@ _OPEN_ITEMS_JQ_PASSED='def passed: (.verdict // "" | ascii_downcase)
 
 # open_items_json <state_dir> — [{ref, opener, text, answers}] (answers may be []).
 open_items_json() {
+    local base open='[]'
+    base="$(_open_items_base_json "$1")"
+    if [[ -s "$1/pipeline-state.json" ]]; then
+        if ! declare -F open_findings_json >/dev/null 2>&1; then
+            # shellcheck source=../../core/pipeline/open-findings.sh
+            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/core/pipeline/open-findings.sh" 2>/dev/null || true
+        fi
+        declare -F open_findings_json >/dev/null 2>&1 && open="$(open_findings_json "$1/pipeline-state.json")"
+    fi
+    jq -n -c --argjson b "${base:-[]}" --argjson o "${open:-[]}" \
+        '$b + [ $o[] | select(.ref as $r | ($b | map(.ref) | index($r)) == null) ]' 2>/dev/null \
+        || printf '%s' "${base:-[]}"
+}
+
+_open_items_base_json() {
     local sd="$1" f
     if [[ -s "$sd/artifacts/open-items.json" ]]; then
         jq -c 'if type == "array" then . else [] end' "$sd/artifacts/open-items.json" 2>/dev/null || printf '[]'
@@ -49,6 +67,14 @@ open_items_json() {
                                               + ((.reason // "") | if . == "" then "it gave no reason" else . end)),
                  answers: []}
             end ]' "${files[@]}" 2>/dev/null || printf '[]'
+}
+
+# open_items_completed_words <n> — how a run that completed reports what is
+# still open (ADR-068 §10): "completed with 1 open item".
+open_items_completed_words() {
+    local n="${1:-0}"
+    [[ "$n" == "1" ]] && { printf 'completed with 1 open item'; return 0; }
+    printf 'completed with %s open items' "$n"
 }
 
 # open_items_count <state_dir>
@@ -160,7 +186,8 @@ run_completion_body() {
     else
         body="**zbuild pipeline did not finish.** The run log shows where it stopped."
     fi
-    if [[ "$result" != "success" && -n "$items" ]]; then
+    # ADR-068 §10: a run that succeeded with findings nobody acted on says so.
+    if [[ -n "$items" ]]; then
         body+=$'\n\n'"Still open:"$'\n\n'"$items"
     fi
     printf '%s' "$body"

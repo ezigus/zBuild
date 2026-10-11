@@ -953,14 +953,21 @@ _render_pipeline_end() {
 # _runner_render_open_items <status> — #2330 (ADR-068 §8): a run that did not
 # pass ends by saying why in words and naming each open item, with what would
 # settle it. pipeline.end keeps the engine's code; this is what a reader sees.
+# ADR-068 §10: a run that completed with findings nobody acted on says so too.
 _runner_render_open_items() {
-    case "${1:-}" in failed|interrupted|aborted) ;; *) return 0 ;; esac
+    local _ended=""
+    case "${1:-}" in failed|interrupted|aborted) _ended=stopped ;; complete|success|complete_unconverged) _ended=completed ;; *) return 0 ;; esac
     [[ -n "${_runner_state_file:-}" ]] && declare -F open_items_markdown >/dev/null 2>&1 || return 0
     local sd="${_runner_state_file%/*}" items n
     items="$(open_items_markdown "$sd")" || items=""
     n=0; [[ -n "$items" ]] && n="$(grep -c '^[0-9][0-9]*\. ' <<< "$items" || true)"
+    [[ "$_ended" == completed && "$n" -eq 0 ]] && return 0
     {
-        printf 'The run %s.\n' "$(run_end_words "${_CYCLE_LAST_TERMINATED_REASON:-}" "$n")"
+        if [[ "$_ended" == completed ]]; then
+            printf 'The run %s.\n' "$(open_items_completed_words "$n")"
+        else
+            printf 'The run %s.\n' "$(run_end_words "${_CYCLE_LAST_TERMINATED_REASON:-}" "$n")"
+        fi
         [[ -n "$items" ]] && printf '%s\n' "$items"
     } >&2
 }

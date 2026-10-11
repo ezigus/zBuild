@@ -42,12 +42,19 @@ _pr_open_forced_draft_marker() {
 # (for the result and the event) and the rest is the description's warning
 # block. One jq for both files (ADR-065).
 _pr_open_unsettled() {
-    local state_file="$1" gate_path="${2:-}" gates='null'
+    local state_file="$1" gate_path="${2:-}" gates='null' open='[]'
     [[ -f "$state_file" ]] || return 0
+    # ADR-068 §10: a finding nobody acted on — a warning included — means the
+    # work did not settle either.
+    if ! declare -F open_findings_json >/dev/null 2>&1; then
+        # shellcheck source=../../../../core/pipeline/open-findings.sh
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/core/pipeline/open-findings.sh" 2>/dev/null || true
+    fi
+    declare -F open_findings_json >/dev/null 2>&1 && open="$(open_findings_json "$state_file")"
     if [[ -n "$gate_path" && -s "$gate_path" ]] && jq -e 'type == "object"' "$gate_path" >/dev/null 2>&1; then
         gates="$(cat "$gate_path")"
     fi
-    jq -r --argjson g "$gates" "${_PR_OPEN_FINDING_JQ_DEFS}"'
+    jq -r --argjson g "$gates" --argjson of "${open:-[]}" "${_PR_OPEN_FINDING_JQ_DEFS}"'
         def why: if . == "max_iterations" then "it ran out of rounds"
                  elif . == "unowned_finding" then "it had findings no stage could act on"
                  else "it ended before it passed" end;
@@ -60,14 +67,16 @@ _pr_open_unsettled() {
             then { gates: (($g.failed // []) | map(esc) | join(", ")),
                    reason: (($g.reason // "") | if startswith("gates failed:") then "" else esc end) }
             else null end ) as $gate
-        | if ($loops | length) == 0 and $gate == null then empty else
+        | if ($loops | length) == 0 and $gate == null and ($of | length) == 0 then empty else
             ( [ ($loops[] | "\(.id) stopped after round \(.round) of \(.limit)"),
-                (if $gate then "gates failed: \($gate.gates)" else empty end) ] | join("; ") ),
+                (if $gate then "gates failed: \($gate.gates)" else empty end),
+                (if ($of | length) > 0 then "\($of | length) open finding(s)" else empty end) ] | join("; ") ),
             "> ⚠️ **This change did not settle, so the PR is a draft.**",
             ( $loops[] | "> - `\(.id)` stopped after round \(.round) of \(.limit) without passing: \(.why)." ),
             ( if $gate then "> - The final gate check did not pass: \($gate.gates)"
                   + (if $gate.reason != "" then " (\($gate.reason))" else "" end) + "."
-              else empty end )
+              else empty end ),
+            ( $of[] | "> - Open finding — \(.ref | esc): \(.text | esc). No stage said it was done, and the check that raised it did not say it was satisfied." )
           end' "$state_file" 2>/dev/null || true
 }
 

@@ -336,8 +336,16 @@ rsc_render_header() {
     printf '%s\n' "$meta"
     # #2330 (ADR-068 §8): once the run has ended without passing, each open
     # item, with what would settle it.
+    # ADR-068 §10: a run that completed lists what is still open too.
     case "$status" in
-        running|complete|success|complete_unconverged) ;;
+        running) ;;
+        complete|success|complete_unconverged)
+            local items; items="$(open_items_markdown "$state_dir")"
+            if [[ -n "$items" ]]; then
+                local words; words="$(open_items_completed_words "$(grep -c '^[0-9][0-9]*\. ' <<< "$items" || true)")"
+                printf '\n**%s:**\n\n%s\n' "${words^}" "$items"
+            fi
+            ;;
         *)
             local items; items="$(open_items_markdown "$state_dir")"
             if [[ -n "$items" ]]; then

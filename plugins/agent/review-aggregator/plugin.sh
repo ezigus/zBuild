@@ -35,6 +35,9 @@ _RA_DIR="$_ZBUILD_PLUGIN_DIR"; : "$_RA_DIR"
 _RA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_RA_ROOT/core/event-bus/event-bus.sh"
+# stage_findings_json — the findings writer every check uses (ADR-068 §5).
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$_RA_ROOT/scripts/lib/stage-summary.sh"
 # render_review_report_md + atomic_write arrive via plugin-bootstrap (helpers.sh
 # + artifact-render.sh); no explicit source needed.
 
@@ -275,7 +278,18 @@ _review_aggregator_run_inner() {
     # never `ready` (all() over an empty score list is true). Then the envelope.
     local _nr
     _nr="$(jq -c '[.[] | select(.ran == false) | .name]' "$lenses_file" 2>/dev/null || printf '[]')"
-    jq --argjson nr "${_nr:-[]}" --argjson total "${lens_count:-0}" '
+    # ADR-068 §10: every concern a lens raised, low and medium included, is a
+    # numbered finding — delivered, answered, and open until someone acts on it.
+    # The advisory section of the PR still renders `.findings`; `data.findings`
+    # is what the engine counts. Pre-existing issues are not this change's.
+    # Written in the envelope step below: one write (ADR-065).
+    local _ra_lines _ra_f
+    _ra_lines="$(jq -r '(.findings // [])[]
+        | "\(.severity // "unknown"): \(.file // "(no file)")\(if .line then ":\(.line)" else "" end) — "
+          + ((.messages // []) | join("; ") | gsub("[\r\n]+"; " "))
+          + " (lens: \((.lenses // []) | join(", ")))"' "$out_json" 2>/dev/null || true)"
+    _ra_f="$(stage_findings_json <<< "$_ra_lines")"
+    jq --argjson nr "${_nr:-[]}" --argjson total "${lens_count:-0}" --argjson f "${_ra_f:-[]}" '
         . + {did_not_run: $nr}
         | if $total == 0 then
             .merge_readiness = "needs_attention"
@@ -288,7 +302,8 @@ _review_aggregator_run_inner() {
             | .escalation_note = "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline."
           else . end
         | . + {result_contract: 2, verdict: "complete", disposition: "complete",
-               reason: "aggregated \($total) lens result(s)"}' \
+               reason: "aggregated \($total) lens result(s)"}
+        | .data = ((.data // {}) + {findings: $f})' \
         "$out_json" 2>/dev/null | atomic_write "$out_json" || true
 
     local merge_readiness

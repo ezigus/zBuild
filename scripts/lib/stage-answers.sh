@@ -14,6 +14,11 @@
 # Source-only; no `set -e` at top level.
 [[ -n "${_ZBUILD_STAGE_ANSWERS_LOADED:-}" ]] && return 0
 _ZBUILD_STAGE_ANSWERS_LOADED=1
+# An answer without its opener's run count would settle nothing (ADR-068 §10),
+# so the counter is loaded wherever answers are recorded.
+# shellcheck source=../../core/pipeline/open-findings.sh
+_sa_dir="${BASH_SOURCE[0]%/*}"; [[ "$_sa_dir" == "${BASH_SOURCE[0]}" ]] && _sa_dir=.
+source "$_sa_dir/../../core/pipeline/open-findings.sh"
 
 _ZB_ANSWERS_MARKER="=== ANSWER EVERY FINDING ==="
 # A finding line as input-resolve.sh renders it.
@@ -102,6 +107,14 @@ answers_record() {
     [[ -n "$sd" && -n "$unit" ]] || return 0
     j="$(answers_parse "${1:-}")"
     [[ -n "$j" && "$j" != "{}" ]] || return 0
+    # ADR-068 §10: each answer is tied to the run of its opener it answered, so
+    # it settles nothing once the opener runs again (core/pipeline/open-findings.sh).
+    local _op _runs='{}'
+    while IFS= read -r _op; do
+        [[ -n "$_op" ]] || continue
+        _runs="$(jq -c --arg o "$_op" --argjson n "$(open_findings_runs "$sd" "$_op")" '. + {($o): $n}' <<< "$_runs")"
+    done < <(jq -r 'keys[] | sub(" finding [0-9]+$"; "")' <<< "$j" 2>/dev/null | sort -u)
+    j="$(jq -c --argjson r "$_runs" 'with_entries(.value.runs = ($r[(.key | sub(" finding [0-9]+$"; ""))] // 0))' <<< "$j" 2>/dev/null || printf '%s' "$j")"
     unit="${unit//[^A-Za-z0-9._-]/_}"
     mkdir -p "$sd/finding-answers" 2>/dev/null || return 0
     printf '%s\n' "$j" > "$sd/finding-answers/.$unit.json.tmp" 2>/dev/null \
