@@ -155,6 +155,11 @@ assert_contains "[R5] ...this run's design is the one the model wrote" \
 _r5_prompt="$(cat "$TEST_TEMP_DIR/r5/prompt-seen.txt" 2>/dev/null)"
 assert_contains "[R5] ...the prior design reaches the prompt" "$_r5_prompt" "# Design (prior)"
 assert_contains "[R5] ...as a reference to check, not a fact" "$_r5_prompt" "## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)"
+# ADR-067 §9: a solution the issue proposes is a starting point for design too.
+assert_contains "[ADR-067 §9] design is told a recorded decision binds" "$_r5_prompt" \
+    "A section that records a decision (for example \"Decision:\") is binding"
+assert_contains "[ADR-067 §9] design is told any other proposal is a starting point" "$_r5_prompt" \
+    "is a starting point, not the answer"
 assert_eq "[R6] under ZBUILD_RESUME=0 design runs" "1" "$(_design_case r6 "" 0)"
 assert_eq "[R7] when the issue text changed design runs" "1" "$(_design_case r7 "" 1 "Migrate the OTHER thing.")"
 assert_eq "[R8b] after an ordinary failed gate, design runs" "1" "$(_design_case r8b failed)"

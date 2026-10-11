@@ -98,6 +98,14 @@ fi
 assert_contains "plan prompt forbids mutating tools (Edit/Write)" \
     "$captured_prompt" "Do NOT call Edit"
 
+# ─── Test 3c2: ADR-067 §9 — a solution in the issue is a starting point ──────
+# #1668's issue said which tests the change left alone, and it was wrong; the
+# plan trusted it. A recorded decision binds; any other proposed fix is checked.
+assert_contains "[ADR-067 §9] plan is told a recorded decision binds" \
+    "$captured_prompt" "A section that records a decision (for example \"Decision:\") is binding"
+assert_contains "[ADR-067 §9] plan is told any other proposal is a starting point" \
+    "$captured_prompt" "is a starting point, not the answer"
+
 # ─── Test 3d: #1442 — turn-budget guardrail (inject budget + bias to converge) ─
 # The captured prompt should carry the budget block (the plugin resolves the
 # router's max_turns; the in-test fallback is a finite default, so the block
