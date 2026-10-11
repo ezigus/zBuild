@@ -52,6 +52,7 @@ _hold_slot() {
     _HOLDER_PIDS+=("$_pid")
     local _w=0
     while [[ ! -f "$SLOT_DIR/$_pid.json" && $_w -lt 100 ]]; do sleep 0.1; _w=$((_w + 1)); done
+    [[ -f "$SLOT_DIR/$_pid.json" ]] || assert_fail "holder for $_run_id wrote its slot" "no slot after 10s"
 }
 
 _kill_holders() {

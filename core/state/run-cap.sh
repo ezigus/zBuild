@@ -38,8 +38,9 @@ zbuild_run_cap_write_slot() {
     local run_id="${1:-}" state_file="${2:-}"
     local slot_dir; slot_dir="$(zbuild_run_cap_slot_dir)"
     mkdir -p "$slot_dir" 2>/dev/null || return 0
-    printf '{"run_id":"%s","pid":%d,"state_file":"%s","acquired_at":"%s"}\n' \
-        "$run_id" "$$" "${state_file}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    jq -cn --arg run_id "$run_id" --argjson pid "$$" --arg state_file "$state_file" \
+        --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{run_id:$run_id, pid:$pid, state_file:$state_file, acquired_at:$at}' \
         > "$slot_dir/$$.json" 2>/dev/null || true
 }
 

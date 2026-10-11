@@ -56,6 +56,7 @@ _hold_slot() {
     local _slot; _slot="$(zbuild_run_cap_slot_dir)/$_pid.json"
     local _w=0
     while [[ ! -f "$_slot" && $_w -lt 100 ]]; do sleep 0.1; _w=$((_w + 1)); done
+    [[ -f "$_slot" ]] || assert_fail "holder for $_run_id wrote its slot" "no slot after 10s"
 }
 
 # A slot whose process has exited: written the same way, but nothing stays alive.
@@ -263,6 +264,21 @@ while IFS= read -r _f; do
 done < <(find "$ZBUILD_STATE_ROOT" -type f 2>/dev/null)
 assert_eq "[#1932/SPEC-3c] starting run's slot file kept" "1" "$_s3d_found"
 
+# ─── [#1932/SPEC-3d] a slot's JSON survives any run id ─────────────────────
+# A slot that does not parse has no readable pid, so the reap removes it even
+# while its process is alive.
+print_test_section "[#1932/SPEC-3d] a run id with quotes and backslashes"
+
+export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec3e-state"
+export ZBUILD_MAX_CONCURRENT_RUNS=1
+_s3e_id='run-"quoted"\\x'
+_hold_slot "$_s3e_id" ""
+_s3e_rc=0
+_ZBUILD_RUN_CAP_BLOCKERS=""
+zbuild_run_cap_admit "run-s3e-new" "" 2>/dev/null || _s3e_rc=$?
+assert_eq "[#1932/SPEC-3d] live slot with an odd run id still counts: refused" "1" "$_s3e_rc"
+assert_eq "[#1932/SPEC-3d] and the blocker is named exactly" "$_s3e_id" "$_ZBUILD_RUN_CAP_BLOCKERS"
+
 # ─── [#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1: bypass regardless of cap and count ──
 print_test_section "[#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1 overrides cap and slot count"
 
@@ -285,11 +301,8 @@ unset ZBUILD_NO_RUN_CAP
 
 assert_eq "[#1932/SPEC-4] NO_RUN_CAP=1: returns 0 regardless of cap" "0" "$_s4_rc"
 _s4_stderr="$(<"$_s4_stderr_file")"
-if [[ -n "$_s4_stderr" ]]; then
-    assert_pass "[#1932/SPEC-4] NO_RUN_CAP=1: emits a warning to stderr"
-else
-    assert_fail "[#1932/SPEC-4] NO_RUN_CAP=1: emits a warning to stderr" "no warning emitted"
-fi
+assert_contains "[#1932/SPEC-4] NO_RUN_CAP=1: warns that the cap was bypassed" \
+    "$_s4_stderr" "ZBUILD_NO_RUN_CAP=1"
 
 # ─── [#1932/SPEC-5] unreadable slot dir: warns and fails open ────────────────
 print_test_section "[#1932/SPEC-5] unreadable slot dir fails open"
@@ -313,11 +326,8 @@ chmod 755 "$ZBUILD_STATE_ROOT"
 
 assert_eq "[#1932/SPEC-5] unreadable slot dir: returns 0 (fail-open)" "0" "$_s5_rc"
 _s5_stderr="$(<"$_s5_stderr_file")"
-if [[ -n "$_s5_stderr" ]]; then
-    assert_pass "[#1932/SPEC-5] unreadable slot dir: emits a warning to stderr"
-else
-    assert_fail "[#1932/SPEC-5] unreadable slot dir: emits a warning to stderr" "no warning emitted"
-fi
+assert_contains "[#1932/SPEC-5] unreadable slot dir: warns it is admitting" \
+    "$_s5_stderr" "admitting (fail-open)"
 
 # ─── [#1932/SPEC-7] ADR-059 §7 and event-schema.json ────────────────────────
 print_test_section "[#1932/SPEC-7] ADR-059 §7 and pipeline.refused.run_cap"

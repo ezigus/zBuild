@@ -456,7 +456,7 @@ committed, stash ablates nothing and reports a false pass.
   fails open with warning (SPEC-5), below-cap admission writes slot (SPEC-6), ADR §7 and
   pipeline.refused.run_cap event registered (SPEC-7); §7 liveness is the process: a dead
   process's slot is reaped though its state says in_progress (SPEC-3b), a live process's slot
-  is kept though its state is not in_progress yet (SPEC-3c)
+  is kept though its state is not in_progress yet (SPEC-3c), a slot's JSON parses whatever its run id holds (SPEC-3d)
 - `tests/integration/run-cap-runner-test.sh` — §7 through the real runner: a run past the cap is
   refused, names its blocker, emits pipeline.refused.run_cap and runs no stage (R-6); below the
   cap it runs and frees its slot (R-6b); a run refused by the issue lock, or failing to enter its
