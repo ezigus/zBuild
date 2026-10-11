@@ -453,6 +453,15 @@ plugin_hook_call() {
         write_boundary_mark "${2:-}" "${1:-}" "${ZBUILD_MAP_ELEMENT:-}" || true
     fi
 
+    # When this run of the stage started. A result older than this was not
+    # written by this run, and _verdict_read_result reads it as absent: the
+    # engine never deletes a stage's output to keep a previous run's verdict
+    # from being read as this one's (ADR-068 §6). Fail-open.
+    if [[ "$hook_name" == "run" && "${2:-}" == /* && -n "${1:-}" ]]; then
+        local _lc_dd; _lc_dd="$(dirname "$2")/runtime/dispatched"
+        mkdir -p "$_lc_dd" 2>/dev/null && : > "$_lc_dd/${1//[^A-Za-z0-9._-]/_}" 2>/dev/null || true
+    fi
+
     # #2186: what the declared outputs were before this run, so the attempt
     # record can say which ones the run actually changed. Fail-open.
     local _lc_outputs_before=""

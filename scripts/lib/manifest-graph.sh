@@ -77,11 +77,10 @@ manifest_graph_external_supplied() {
 }
 
 # ─── ADR-020 closed templating var set (decision #5) ──────────────────────────
-# `cycle_feedback_dir` added by #511 (F2): resolves to $ZBUILD_CYCLE_FEEDBACK_DIR
-# at expansion time. Only valid on inputs declared `source: cycle_feedback` —
-# enforced by lint/validator (cycle_feedback_dir_in_artifact_path rule).
+# `cycle_feedback_dir` is retired (ADR-068 §8): the engine writes no feedback
+# copy, so there is nothing for it to name.
 manifest_graph_canonical_vars() {
-    echo "state_dir artifact_dir stage_io_dir run_id cycle_feedback_dir"
+    echo "state_dir artifact_dir stage_io_dir run_id"
 }
 
 # ─── ADR-020 amendment (#511): cycle_feedback as input source ────────────────

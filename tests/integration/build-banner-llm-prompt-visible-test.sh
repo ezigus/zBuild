@@ -152,7 +152,6 @@ cycle_dispatch_stage() {
 _CYCLE_STAGES=(build)
 _CYCLE_TRAP_CYCLE_ID="cyc1"
 _cycle_install_traps() { :; }
-_cycle_pre_iter_cleanup() { :; }
 
 # Pre-condition: caller does NOT have ZBUILD_CURRENT_STAGE set.
 unset ZBUILD_CURRENT_STAGE

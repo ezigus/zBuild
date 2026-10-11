@@ -149,16 +149,20 @@ mkdir -p "$T4_ART_DIR"
 printf '# real failures summary\n- failed: 7\n' \
     > "$T4_ART_DIR/test-failures-summary.md"
 _CYCLE_TRAP_CYCLE_ID="build_test_cycle"
-_CYCLE_FEEDBACK=("test:test_failures_summary|build:prior_test_failures:false")
+# required=true: the edge resolves only if the manifest's FLAT path is found —
+# the legacy artifacts/test/<out> shape would be missing and fail loud.
+_CYCLE_FEEDBACK=("test:test_failures_summary|build:prior_test_failures:true")
 set +e
 _cycle_apply_feedback 2 "$T4_STATE_DIR"
 t4_rc=$?
 set -e
 assert_eq "T4: manifest-driven feedback resolution rc=0" "0" "$t4_rc"
-assert_file_exists "T4: prior_test_failures.txt copied to iter-2 feedback dir" \
-    "$T4_STATE_DIR/cycle-build_test_cycle/iter-2/feedback/prior_test_failures.txt"
-assert_contains "T4: .complete sentinel written (Pin 9)" \
-    "$(ls -A "$T4_STATE_DIR/cycle-build_test_cycle/iter-2/feedback/")" ".complete"
+# ADR-068 §8: the edge is checked, never copied.
+if [[ -e "$T4_STATE_DIR/cycle-build_test_cycle/iter-2/feedback" ]]; then
+    assert_fail "T4: no feedback copy is made (ADR-068 §8)" "copy dir exists"
+else
+    assert_pass "T4: no feedback copy is made (ADR-068 §8)"
+fi
 
 # ─── T5: --from-stage build is refused (Pin 14) ─────────────────────────────
 # Verify runner refuses --from-stage that lands inside a cycle. Easiest test:

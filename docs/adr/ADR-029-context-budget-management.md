@@ -40,6 +40,8 @@ Before invoking a cycle member, the orchestrator measures the assembled prompt. 
 
 The orchestrator emits `cycle.context.compressed` event with `original_chars`, `final_chars`, `strategy` so postmortem can see what was dropped.
 
+> **Amendment (2026-10-11, ADR-068 §8): the only implementation of G1 is removed.** The yaml `context_budget` above was never built; G1 shipped as `ZBUILD_CYCLE_MAX_FIELD_CHARS`, which tail-truncated each per-iteration feedback COPY. Those copies are gone — the engine keeps no copy of a stage's output — so the truncation and the `cycle.context.compressed` event go with them. A prompt that needs bounding is bounded where it is built.
+
 ### G2. Repeated-timeout fast abandon — **REVERSED / REMOVED (issue #1208)**
 
 > **Amendment (2026-07-03, issue #1208): G2's fast-abandon is REMOVED.** A build-stage

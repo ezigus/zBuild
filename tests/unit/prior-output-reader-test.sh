@@ -22,7 +22,7 @@ source "$REPO_ROOT/scripts/lib/prior-output-reader.sh"
 print_test_header "prior-output-reader — unified artifact resolution (#1581)"
 setup_test_env "prior-output-reader"
 
-# ─── T1: Intra-cycle source wins (ZBUILD_CYCLE_ITER >= 2) ──────────────────
+# ─── T1: on a later try the stage's latest output wins — no copy is read ───
 export ZBUILD_CYCLE_ITER="2"
 export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
 mkdir -p "$ZBUILD_CYCLE_FEEDBACK_DIR"
@@ -30,7 +30,7 @@ mkdir -p "$ZBUILD_CYCLE_FEEDBACK_DIR"
 # Create prior_design.txt (artifact "design.md" → field "design")
 printf 'prior design from cycle' > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_design.txt"
 
-# Also create restored and state versions to verify cycle wins
+# Also create restored and state versions: the live (state) one is the latest
 export ZBUILD_RESTORED_ARTIFACTS_DIR="$TEST_TEMP_DIR/restored"
 mkdir -p "$ZBUILD_RESTORED_ARTIFACTS_DIR"
 printf 'restored design' > "$ZBUILD_RESTORED_ARTIFACTS_DIR/design.md"
@@ -40,8 +40,8 @@ mkdir -p "$ZBUILD_STATE_DIR/artifacts"
 printf 'state design' > "$ZBUILD_STATE_DIR/artifacts/design.md"
 
 result=$(_read_prior_output "design.md")
-assert_eq "T1: intra-cycle source (iter>=2) wins over restored and state" \
-    "prior design from cycle" "$result"
+assert_eq "T1: the latest output wins over a cycle copy and the restored one (ADR-068 §6)" \
+    "state design" "$result"
 
 # Cleanup cycle-related env vars
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
@@ -77,7 +77,7 @@ assert_eq "T4: returns rc 0 when artifact not found" \
     "0" "$rc"
 
 # ─── T5: Precedence verification with all three sources present ────────────
-# Recreate cycle source to verify it truly wins
+# A cycle copy present too: it is still never read
 export ZBUILD_CYCLE_ITER="3"
 export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback-v2"
 mkdir -p "$ZBUILD_CYCLE_FEEDBACK_DIR"
@@ -91,8 +91,8 @@ printf 'build from restored' > "$ZBUILD_RESTORED_ARTIFACTS_DIR/build.json"
 printf 'build from state' > "$ZBUILD_STATE_DIR/artifacts/build.json"
 
 result=$(_read_prior_output "build.json")
-assert_eq "T5: cycle precedence over restored over state (all present)" \
-    "build from cycle" "$result"
+assert_eq "T5: the latest output wins with all three present" \
+    "build from state" "$result"
 
 # Test with field stripping (build.json → prior_build.txt)
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_RESTORED_ARTIFACTS_DIR

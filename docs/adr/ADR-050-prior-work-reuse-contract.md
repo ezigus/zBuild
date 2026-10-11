@@ -158,12 +158,15 @@ Consuming stages read prior work through a single helper
 `scripts/lib/prior-output-reader.sh` → `_read_prior_output <artifact>`, with one
 resolution order (first hit wins):
 
-1. **Intra-cycle** feedback (`ZBUILD_CYCLE_FEEDBACK_DIR/prior_<field>.txt`, iter ≥ 2)
-   — a later cycle iteration refining an earlier one within the same run.
+1. **This run's latest output** (`${ZBUILD_STATE_DIR}/artifacts/<artifact>`) — the
+   file the stage wrote, on any try of any loop. (Amended 2026-10-11, ADR-068 §8:
+   the intra-cycle copy `ZBUILD_CYCLE_FEEDBACK_DIR/prior_<field>.txt` and the
+   attempt-record fallback are removed; the engine keeps no copy of a stage's
+   output. #2252 had already put this run's own output before the restored one.)
 2. **Cross-run restored** (`ZBUILD_RESTORED_ARTIFACTS_DIR/<artifact>`) — the prior
-   run's artifact, placed there by the engine's restore.
-3. **Local state fallback** (`${ZBUILD_STATE_DIR}/artifacts/<artifact>`).
-4. Not found → empty, `return 0` (silent-fail).
+   run's artifact, placed there by the engine's restore, when this run has
+   written none.
+3. Not found → empty, `return 0` (silent-fail).
 
 A stage does not choose _which_ source supplied the content; it injects the
 result into its prompt as an advisory `## PRIOR <X>` section. Amended by §8

@@ -23,7 +23,7 @@ flow:
       max_iterations: 5
 ```
 
-The cycle orchestrator exports `ZBUILD_CYCLE_FEEDBACK_DIR`; build reads feedback files from that directory on iterations 2 and beyond.
+On iterations 2 and beyond, build reads the latest output of each stage it depends on, where that stage wrote it; the engine keeps no copy between iterations (ADR-068 §8). The other stages' findings reach it as engine-collected summaries.
 
 ## Reference
 
@@ -75,26 +75,6 @@ inputs:
     path: "${artifact_dir}/plan.json"
     source: stage:plan
     required: true
-  - id: prior_test_assessment
-    type: text/markdown
-    path: "${cycle_feedback_dir}/prior_test_assessment.txt"
-    source: cycle_feedback
-    required: false
-  - id: prior_review_feedback
-    type: text/markdown
-    path: "${cycle_feedback_dir}/prior_review_feedback.txt"
-    source: cycle_feedback
-    required: false
-  - id: prior_acceptance_feedback
-    type: text/json
-    path: "${cycle_feedback_dir}/prior_acceptance_feedback.txt"
-    source: cycle_feedback
-    required: false
-  - id: prior_gate_feedback
-    type: text/markdown
-    path: "${cycle_feedback_dir}/prior_gate_feedback.txt"
-    source: cycle_feedback
-    required: false
   - id: design
     type: file
     path: "${artifact_dir}/design.md"
@@ -123,7 +103,7 @@ capabilities:
 
 ### Inputs at a glance
 
-All `cycle_feedback` inputs are optional: when the file is absent or empty, the corresponding prompt section is omitted entirely. Multiple feedback channels can coexist in the same iteration.
+Optional inputs that are absent or empty leave their prompt section out entirely.
 
 | ID | Required | Purpose |
 |----|----------|---------|

@@ -53,9 +53,9 @@ declare -F _verdict_resolve_path >/dev/null 2>&1 || \
 # shellcheck source=../../scripts/lib/stage-checkpoint.sh
 declare -F _checkpoint_declared_path >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/scripts/lib/stage-checkpoint.sh"
-# #2252: this run's archived copies come before an earlier run's.
+# #2252: attempt_is_this_run — a live file older than this run's start is not this run's.
 # shellcheck source=../plugin-registry/attempt-archive.sh
-declare -F attempt_latest_copy >/dev/null 2>&1 || \
+declare -F attempt_is_this_run >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/plugin-registry/attempt-archive.sh"
 # #2326: the words for an earlier run's work, and the test for one.
 # shellcheck source=../../scripts/lib/prior-output-reader.sh
@@ -264,12 +264,19 @@ _inputs_build_producer_index() {
     done < <(_inputs_flow_stages)
 }
 
-# ─── _inputs_effective_path <live_path> [input_id] ───────────────────────────
-# Per-input existence precedence: the cycle-feedback copy (iteration >= 2)
-# wins, then the LIVE artifact, then the restored cross-run copy. Returns a
-# PATH rather than the content.
+# ─── _inputs_effective_path <live_path> ──────────────────────────────────────
+# Per-input existence precedence: the LIVE artifact — the producer's latest
+# output — then the restored cross-run copy. Returns a PATH rather than the
+# content.
 #
-# This is NOT the order of prior-output-reader.sh:12-16, and #2095 is why. That
+# Every stage reads what its producer wrote last, whichever stage it is and
+# wherever it sits in a loop. The cycle-feedback copy used to win on a loop's
+# later tries; it was taken as the try began, so a stage that rewrote its output
+# during the try had its checkers judge the version it had replaced (#1932's
+# run: spec-coverage judged the design design had already fixed). The engine
+# keeps no copy of a stage's output (ADR-021 §3, ADR-068 §6).
+#
+# This is NOT the order of prior-output-reader.sh, and #2095 is why. That
 # reader serves ADR-050 self-seeding — a stage reading its OWN earlier output as
 # advisory context — so "prior first" is its point. A declared input is the
 # opposite relationship: the consumer wants what its producer wrote THIS run.
@@ -279,44 +286,14 @@ _inputs_build_producer_index() {
 # the corrected rule ("input-resolve.sh reads the live path first"); the
 # restored copy remains a fallback for the absent-live case only, the same rule
 # stage-checkpoint.sh applies.
-#
-# _read_prior_output itself is deliberately not called and not changed. Its
-# `prior_<field>.txt` naming belongs to ADR-050 prior-run reuse, which ADR-055
-# §1.2 keeps OUTSIDE the input model ("the producer is the consuming stage
-# itself in an earlier run"). Its four live call sites (plan.json,
-# build-summary.json, impact.json, lens-<x>.json) match no template `to.input`
-# today, so the two namespaces do not collide — but a template that ever wired
-# `to.input: plan` would make them, and that is the seam to watch.
 _inputs_effective_path() {
-    local live="$1" in_id="${2:-}"
+    local live="$1"
     local base="${live##*/}"
-    local iter="${ZBUILD_CYCLE_ITER:-}" fb="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    if [[ -n "$iter" && -n "$fb" && -n "$in_id" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
-        # The orchestrator names the copy after the TEMPLATE's `to.input`
-        # (cycle-orchestrator.sh:1196 — `dst="$fb_dir/${to_field}.txt"`), which
-        # is this input's id. Deriving it from the producer's FILENAME instead
-        # never matched: gate_feedback's producer writes `gate-feedback.md`, so
-        # the old form looked for `prior_gate-feedback.txt` while the
-        # orchestrator wrote `prior_gate_feedback.txt` — hyphen against
-        # underscore, so the branch could not fire.
-        # Latent while the feature was gated off; #1825 turns it on.
-        local f="$fb/${in_id}.txt"
-        [[ -s "$f" ]] && { printf '%s' "$f"; return 0; }
-    fi
     # #2252 (review on #2253): a live file older than this run's start is a
     # reused state dir's leftover, not this run's — the same rule as below.
     if [[ -s "$live" ]] && { ! declare -F attempt_is_this_run >/dev/null 2>&1 \
             || attempt_is_this_run "$live"; }; then
         printf '%s' "$live"; return 0
-    fi
-    # #2252: a live file this run produced and then cleared (a cycle re-entry)
-    # is this run's newest archived copy — never an earlier run's (#1844 run
-    # 36969128968 redid its design from the Sept 30 run's). The archive sits
-    # under the artifact dir whatever subfolder the output is declared in.
-    local own
-    if declare -F attempt_latest_copy >/dev/null 2>&1 \
-            && own="$(attempt_latest_copy "${ZBUILD_ARTIFACT_DIR:-${live%/*}}" "$base")"; then
-        printf '%s' "$own"; return 0
     fi
     # #2326 (ADR-050 §8): a stage that judges results never gets an earlier
     # run's copy — for it, a result this run did not produce is missing.
@@ -404,7 +381,7 @@ _inputs_resolve_stage() {
             local joined=""
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                eff="$(_inputs_effective_path "$line" "$id")"
+                eff="$(_inputs_effective_path "$line")"
                 # A map input is a SET, and the per-element rule is the same one
                 # the scalar branch applies: a damaged member is not a usable
                 # member. Passing it through because its siblings are healthy is
@@ -423,7 +400,7 @@ _inputs_resolve_stage() {
             done <<< "$paths"
             tsv+="${id}"$'\t'"A"$'\t'"${joined}"$'\n'
         else
-            eff="$(_inputs_effective_path "${paths%%$'\n'*}" "$id")"
+            eff="$(_inputs_effective_path "${paths%%$'\n'*}")"
             # #1894: an OPTIONAL input that is present but damaged is omitted
             # from the index, so the consumer sees it exactly as it sees an
             # absent one — a missing key, not an empty read. Degrading in
@@ -566,7 +543,7 @@ _inputs_check_required() {
         present=0; damaged=""
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
-            eff="$(_inputs_effective_path "$line" "$id")"
+            eff="$(_inputs_effective_path "$line")"
             # Damage is tested BEFORE presence, and this order is the whole
             # point: a truncated file is non-empty, so `-s` accepts it and the
             # stage receives half an artifact as though it were whole. That is

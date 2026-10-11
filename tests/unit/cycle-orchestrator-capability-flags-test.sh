@@ -234,17 +234,13 @@ assert_eq "[SPEC-2] tester-stage has no produces_commits → empty" "" "$_pc_abs
 # ── [SPEC-3] Site 3: feedback_count_field capability in _cycle_render_feedback_digest
 print_test_section "[SPEC-3] Site 3: feedback_count_field drives digest append"
 
-FB_DIR="$STATE_DIR/cycle-spec3/iter-2/feedback"
-mkdir -p "$FB_DIR"
-
-# Feedback record: "tester-stage:tester_assessment_output|build:prior_tester_assess:false"
-# The from_stage (tester-stage) declares feedback_count_field = required_changes
-_CYCLE_FEEDBACK=("tester-stage:tester_assessment_output|build:prior_tester_assess:false")
+# The from_stage (tester-stage) declares feedback_count_field = required_changes.
+# The digest reads the producer's own output (ADR-068 §8: no copy is kept).
+mkdir -p "$STATE_DIR/artifacts"
+_CYCLE_FEEDBACK=("tester-stage:tester_results|build:prior_tester_assess:false")
 _CYCLE_TRAP_CYCLE_ID="spec3"
-
-# Write the feedback file with a required_changes array
 printf '{"verdict":"fail","required_changes":["fix-a","fix-b","fix-c"]}' \
-    > "$FB_DIR/prior_tester_assess.txt"
+    > "$STATE_DIR/artifacts/tester-results.json"
 
 set +e
 digest="$(_cycle_render_feedback_digest 2 "$STATE_DIR")"
@@ -274,12 +270,10 @@ outputs:
     primary: true
 EOF
 
-FB_DIR2="$STATE_DIR/cycle-spec3b/iter-2/feedback"
-mkdir -p "$FB_DIR2"
-_CYCLE_FEEDBACK=("plain-stage:output|build:prior_plain:false")
+_CYCLE_FEEDBACK=("plain-stage:plain_result|build:prior_plain:false")
 _CYCLE_TRAP_CYCLE_ID="spec3b"
 printf '{"verdict":"pass","required_changes":["ignored"]}' \
-    > "$FB_DIR2/prior_plain.txt"
+    > "$STATE_DIR/artifacts/plain-result.json"
 
 set +e
 digest2="$(_cycle_render_feedback_digest 2 "$STATE_DIR")"

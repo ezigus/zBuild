@@ -122,7 +122,7 @@ Path templates may reference ONLY:
 - `${artifact_dir}` — `$state_dir/artifacts/`
 - `${stage_io_dir}` — `$state_dir/artifacts/stage-io/` (ADR-015 v1)
 - `${run_id}` — sanitized `$ZBUILD_RUN_ID`
-- `${cycle_feedback_dir}` — `$ZBUILD_CYCLE_FEEDBACK_DIR` (ADR-020 #511 amendment)
+- ~~`${cycle_feedback_dir}`~~ — retired 2026-10-11 (ADR-068 §8; see §4)
 
 Any other `${var}` reference is a load-time error.
 
@@ -165,7 +165,7 @@ The consumer names the artifact; the engine resolves it to the producing stage; 
 > the wiring integrity the source check always stood in for. Their replacement is §1.5,
 > enforced as `INPUT_UNRESOLVED` / `INPUT_AMBIGUOUS`. The wiring integrity they were meant to protect is now §1.5's single rule: every declared input name resolves to exactly one producer, checked for every input regardless of requiredness.
 
-The `${cycle_feedback_dir}` templating var (§2) is retained for the producer side while cycle feedback is written there.
+The `${cycle_feedback_dir}` templating var (§2) is retired (amended 2026-10-11, ADR-068 §8): the orchestrator no longer writes a feedback copy, so there is nothing for it to name. A backward edge reads the producer's own output, where §1.3 already said it lives.
 
 ### 5. Output-uniqueness rule
 

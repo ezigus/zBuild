@@ -70,7 +70,6 @@ inputs:
     required: true
   - id: prior_feedback
     type: file
-    path: ${cycle_feedback_dir}/prior_feedback.txt
     required: false
 outputs:
   - id: consumer_out

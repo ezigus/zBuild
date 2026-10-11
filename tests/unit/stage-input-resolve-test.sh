@@ -10,7 +10,7 @@
 #   2 [guard]  a missing required input aborts BEFORE dispatch (sentinel absent)
 #   3 [change] the refusal names producer, output id and consumer
 #   4 [change] a `map` producer yields a JSON ARRAY of member paths (§1.4)
-#   5 [change] ${stage_io_dir}/${cycle_feedback_dir}/${run_id} interpolate
+#   5 [change] ${stage_io_dir}/${run_id} interpolate; ${cycle_feedback_dir} is retired
 #   6 [guard]  flag off (default) writes nothing and leaves the var unset
 #   7 [guard]  role-resolved stages resolve to the manifest DISPATCH would use
 #   8 [change] agent stages get the paths as prompt literals (env-scrub wall)
@@ -281,9 +281,15 @@ print_test_section "5. the canonical templating vars interpolate"
 assert_eq "[SPEC-5] \${stage_io_dir} resolves to state_dir/artifacts/stage-io" \
     "$STATE/artifacts/stage-io/x.json" \
     "$(_verdict_resolve_path '${stage_io_dir}/x.json' "$STATE")"
-assert_eq "[SPEC-5] \${cycle_feedback_dir} resolves to ZBUILD_CYCLE_FEEDBACK_DIR" \
-    "/tmp/cf-1826/prior.txt" \
-    "$(ZBUILD_CYCLE_FEEDBACK_DIR=/tmp/cf-1826 _verdict_resolve_path '${cycle_feedback_dir}/prior.txt' "$STATE")"
+# ADR-068 §8: the engine writes no feedback copy, so ${cycle_feedback_dir} names
+# nothing and is no longer a canonical var — a manifest path using it is refused.
+# shellcheck source=../../core/pipeline/contract-validator.sh
+source "$REPO_ROOT/core/pipeline/contract-validator.sh"
+if _cv_check_path_vars '${cycle_feedback_dir}/prior.txt'; then
+    assert_fail "[SPEC-5] \${cycle_feedback_dir} is refused as an unknown var" "accepted"
+else
+    assert_pass "[SPEC-5] \${cycle_feedback_dir} is refused as an unknown var"
+fi
 assert_eq "[SPEC-5] \${run_id} resolves to ZBUILD_RUN_ID" \
     "$STATE/runs/run-42/x" \
     "$(ZBUILD_RUN_ID=run-42 _verdict_resolve_path '${state_dir}/runs/${run_id}/x' "$STATE")"

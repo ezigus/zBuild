@@ -252,10 +252,9 @@ _verdict_primary_output_path() {
 # interpolation helper — stage-checkpoint.sh (#1879) and input-resolve.sh (#1826)
 # both delegate here rather than adding a sixth copy.
 #
-# #1826 added ${stage_io_dir}, ${run_id} and ${cycle_feedback_dir}. The first had
-# NO resolver anywhere in the tree despite being canonical since ADR-015 v1; the
-# other two come from the environment, so an unset ZBUILD_* leaves the reference
-# expanding to empty — the same fail-soft the three dir vars already have.
+# #1826 added ${stage_io_dir} and ${run_id}. The first had NO resolver anywhere
+# in the tree despite being canonical since ADR-015 v1; run_id comes from the
+# environment, so an unset ZBUILD_RUN_ID leaves the reference expanding to empty.
 _verdict_resolve_path() {
     local raw="$1" state_dir="$2"
     local artifact_dir="${state_dir}/artifacts"
@@ -264,7 +263,6 @@ _verdict_resolve_path() {
     p="${p//\$\{artifact_dir\}/$artifact_dir}"
     p="${p//\$\{artifacts_dir\}/$artifact_dir}"
     p="${p//\$\{stage_io_dir\}/$artifact_dir/stage-io}"
-    p="${p//\$\{cycle_feedback_dir\}/${ZBUILD_CYCLE_FEEDBACK_DIR:-}}"
     # run_id is interpolated into a path: strip anything but the sanitized set
     # the runner itself guarantees, so a hostile value cannot traverse.
     local _rid="${ZBUILD_RUN_ID:-}"; _rid="${_rid//[^A-Za-z0-9._-]/_}"
@@ -348,6 +346,12 @@ _verdict_read_result() {
     esac
 
     if [[ ! -s "$resolved" ]]; then
+        printf -v "${p}_state" '%s' "absent"; return 0
+    fi
+    # A result older than the stage's latest run is the previous run's: that
+    # run wrote none (ADR-068 §6). The mark is plugin_hook_call's.
+    local _rr_mark="$state_dir/runtime/dispatched/${stage//[^A-Za-z0-9._-]/_}"
+    if [[ -n "$stage" && -e "$_rr_mark" && "$_rr_mark" -nt "$resolved" ]]; then
         printf -v "${p}_state" '%s' "absent"; return 0
     fi
     # One jq for every field (ADR-065): this runs on every read of every stage's

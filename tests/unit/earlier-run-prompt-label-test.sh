@@ -29,7 +29,7 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "an earlier run's work is labelled in every prompt that carries it (#2326)"
 setup_test_env "earlier-run-prompt-label"
 
-unset ZBUILD_STAGE_INPUTS ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR \
+unset ZBUILD_STAGE_INPUTS ZBUILD_CYCLE_ITER \
       ZBUILD_RESTORED_ARTIFACTS_DIR ZBUILD_OUTER_ROUND ZBUILD_RUN_START_MARKER 2>/dev/null || true
 
 LABEL="from an earlier run — reference only, not this run's result"
@@ -43,7 +43,7 @@ print_test_section "L1. design labels a design restored from an earlier run"
 FIX="$TEST_TEMP_DIR/design-fix"; mkdir -p "$FIX"
 git -C "$FIX" init -q; git -C "$FIX" config user.email t@t; git -C "$FIX" config user.name t
 printf 'x\n' > "$FIX/foo.sh"; git -C "$FIX" add -A; git -C "$FIX" -c commit.gpgsign=false commit -qm init
-_design_case() {   # <name> <restored dir or ""> <feedback dir or ""> → prints the prompt path
+_design_case() {   # <name> <restored dir or ""> <this run's design file or ""> → prints the prompt path
     local st="$FIX/$1"; mkdir -p "$st/artifacts"; printf 'scope: all\n' > "$st/scope-manifest.md"
     printf '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}\n' \
         > "$st/artifacts/plan.json"
@@ -62,7 +62,8 @@ _design_case() {   # <name> <restored dir or ""> <feedback dir or ""> → prints
         emit_event() { :; }; eb_emit_event() { :; }
         export ZBUILD_REPO_ROOT="$FIX"
         [[ -n "$2" ]] && export ZBUILD_RESTORED_ARTIFACTS_DIR="$2"
-        [[ -n "$3" ]] && export ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$3"
+        # This run's design is design's own latest output, where it wrote it (ADR-068 §8).
+        [[ -n "$3" ]] && { export ZBUILD_CYCLE_ITER=2; cp "$3" "$st/artifacts/design.md"; }
         cd "$FIX" && _design_stage_run_inner "$st/scope-manifest.md" "$st/artifacts/plan.json" \
             "$st/artifacts/design.md" "$st/artifacts"
     ) >/dev/null 2>&1
@@ -73,9 +74,9 @@ printf '# Design\n\nDESIGN-FROM-EARLIER-RUN\n\n```scope\nfoo.sh\n```\n' > "$D_RE
 P1="$(cat "$(_design_case l1 "$D_RESTORED" "")" 2>/dev/null)"
 assert_contains "[L1] the earlier design still reaches the prompt" "$P1" "DESIGN-FROM-EARLIER-RUN"
 assert_contains "[L1] ...labelled as from an earlier run" "$P1" "$LABEL"
-D_FB="$TEST_TEMP_DIR/design-fb"; mkdir -p "$D_FB"
-printf '# Design\n\nDESIGN-FROM-THIS-RUN\n\n```scope\nfoo.sh\n```\n' > "$D_FB/design.txt"
-P1g="$(cat "$(_design_case l1g "" "$D_FB")" 2>/dev/null)"
+D_OWN="$TEST_TEMP_DIR/design-own.md"
+printf '# Design\n\nDESIGN-FROM-THIS-RUN\n\n```scope\nfoo.sh\n```\n' > "$D_OWN"
+P1g="$(cat "$(_design_case l1g "" "$D_OWN")" 2>/dev/null)"
 assert_contains "[L1-guard] a design from this run reaches the prompt" "$P1g" "DESIGN-FROM-THIS-RUN"
 _refute_contains "[L1-guard] ...and is not labelled as an earlier run's" "$P1g" "$LABEL"
 

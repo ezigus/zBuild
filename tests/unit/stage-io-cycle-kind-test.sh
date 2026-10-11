@@ -152,16 +152,15 @@ _CYCLE_TRAP_CYCLE_ID="build_test_cycle"
 _CYCLE_FEEDBACK=( "test_assessment:summary|build:prior_test_assessment:false" )
 dig1="$(_cycle_render_feedback_digest 1 "$ZBUILD_STATE_DIR" 2>/dev/null)"
 assert_contains "[SPEC-3b] digest iter1 → no feedback" "$dig1" "no feedback"
-# iterN with present artifact → to_field name + digest.
-fbdir="$ZBUILD_STATE_DIR/cycle-build_test_cycle/iter-2/feedback"
-mkdir -p "$fbdir"
-printf 'fail diagnostics here' > "$fbdir/prior_test_assessment.txt"
+# iterN with the producer's output present (where it wrote it — ADR-068 §8:
+# no copy is kept) → to_field name + digest.
+mkdir -p "$ZBUILD_STATE_DIR/artifacts/test_assessment"
+printf 'fail diagnostics here' > "$ZBUILD_STATE_DIR/artifacts/test_assessment/summary"
 dig2="$(_cycle_render_feedback_digest 2 "$ZBUILD_STATE_DIR" 2>/dev/null)"
 assert_contains "[SPEC-3b] digest iterN names the consumed to_field" "$dig2" "prior_test_assessment"
 # required + missing → MISSING marker.
 _CYCLE_FEEDBACK=( "test_assessment:summary|build:prior_test_assessment:true" )
-rm -rf "$ZBUILD_STATE_DIR/cycle-build_test_cycle/iter-3"
-mkdir -p "$ZBUILD_STATE_DIR/cycle-build_test_cycle/iter-3/feedback"
+rm -f "$ZBUILD_STATE_DIR/artifacts/test_assessment/summary"
 dig3="$(_cycle_render_feedback_digest 3 "$ZBUILD_STATE_DIR" 2>/dev/null)"
 assert_contains "[SPEC-3b] digest required+missing → MISSING" "$dig3" "MISSING"
 

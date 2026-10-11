@@ -3,6 +3,7 @@
 **Status:** Proposed (F1) → Accepted (after F2 / #511)
 **Date:** 2026-05-30
 **Amends:** ADR-006 (resume contract), ADR-013 (canonical stage list), ADR-015 (stage-io v6), ADR-018 (Pattern 2 inner loops), ADR-020 (contract validator)
+**Amended:** 2026-10-11 — decision point 3 and the per-iter cleanup contract (#511 Pin 8) are replaced by ADR-068 §8: the orchestrator copies nothing between iterations (a `feedback:` edge only declares a backward flow; the consumer reads the producer's latest output) and deletes no member output before re-dispatch (a result older than the member's latest dispatch is read as absent). In #1932's run the iteration copy was handed to the design's checkers after design had rewritten it.
 **Amended:** 2026-10-05 (#2032) — generic member-unfinished convergence suppression: when any iteration member carries an unfinished disposition (`timed_out`, `out_of_turns`, `interrupted`) and the `exit_when` predicate fires, convergence is suppressed and `cycle.member_unfinished.suppressed_convergence` is emitted. This joins the two existing suppressions: `cycle.build_unfinished.suppressed_convergence` (#1208) fires only when the build member is unfinished; `cycle.no_committed_changes.suppressed_convergence` (#1265) fires when an iteration would converge on zero commits. The new suppression fires for ANY member, on ANY cycle type (including design-only cycles without a build member). The `converged==0` guard prevents double-fire with the build-specific suppression. At `max_iterations` when the suppression fires, the existing #1261 exhaustion path halts with `cycle.timeout_exhausted` and `term_rc=8`.
 **Amended:** 2026-10-05 (#2296) — R2: a `stream-json` capture is judged by the CLI's own records (a refused `rate_limit_event`, the final `result` line), never by text found anywhere in it; a call cut off by its time limit is not a rate limit.
 **Amended:** 2026-09-16 (#2117) — an unchanged tree is not re-verified. When `build` reports `empty_diff` on iter ≥ 2 and the tree fingerprint (HEAD + `git status --porcelain`) equals the one recorded when the previous iteration finished all members, every later member that PASSED then is reused from that iteration (blob entry copied, artifact kept — the #511 Pin-8 pre-iteration cleanup is now per member, right before dispatch — `cycle.iteration.reused` emitted, no dispatch). A member that FAILED re-runs so its iter-aware escalation (#1711, #2097) sees `ZBUILD_CYCLE_ITER` advance; (since #2144 a test pass is always full-suite confirmed by the stage itself, so no run mode is read here). The #1208 "run all tries" contract is intact — iterations still run; they no longer re-verify. #1840 spent 45 min of tests and a 68-min gate on each of three identical trees.
@@ -55,10 +56,12 @@ linear dispatch when the orchestrator returns.
 2. **Structured `until:` grammar (not string DSL).** v1 fields: `verdict`,
    `status`; v1 ops: `eq`, `ne`. Field-missing → **unconverged** (never falsely
    converge). Emits `cycle.iteration.verdict_missing`.
-3. **File-path feedback (not env-vars, not in-memory).** Feedback artifacts are
-   copied to `${state_dir}/cycle-<id>/iter-<N>/feedback/<to_field>.txt`. Plugins
-   read via `ZBUILD_CYCLE_FEEDBACK_DIR`. Missing required from-fields fail loud
-   with `cycle.feedback.missing` (never empty-string-substitute).
+3. **Feedback is the producer's own output (amended 2026-10-11, ADR-068 §8).**
+   A `feedback:` edge declares that an output flows back to an earlier member;
+   the consumer reads it where the producer wrote it. Nothing is copied — the
+   per-iteration copy (`cycle-<id>/iter-<N>/feedback/`, `ZBUILD_CYCLE_FEEDBACK_DIR`)
+   is removed. A missing required from-output still fails loud with
+   `cycle.feedback.missing` (never empty-string-substitute).
 4. **Single atomic state write per iter boundary.** All updates (current_iter,
    iter[] append, status) go through one `locked_state_update` mutator.
 5. **Trap composition.** Runner owns EXIT trap; cycle owns INT/TERM only. Re-
@@ -290,12 +293,12 @@ failed to find anything for plugins (build, test) that write FLAT into
 
 ### Per-iter artifact cleanup contract (#511 Pin 8)
 
-Before EACH cycle iteration dispatch, the orchestrator deletes per-cycle
-stage primary outputs (read from each stage's manifest
-`outputs[primary:true].path`). Without this, a stale prior-iter
-`test-results.json` could silently satisfy `until: verdict==pass` even
-though the current iter's test stage never ran. Event:
-`cycle.artifacts.cleared iter=N stage=<id> path=<resolved>`.
+**Replaced 2026-10-11 (ADR-068 §8).** The orchestrator used to delete each
+member's primary output before dispatching it, so a stale prior-iter result could
+not satisfy `until: verdict==pass`. It deletes nothing now: `plugin_hook_call`
+marks each run's start (`runtime/dispatched/<stage>`), and `_verdict_read_result`
+reads a result older than that mark as absent. The `cycle.artifacts.cleared`
+event is retired.
 
 ### `test-results.json` reflects the FINAL iter (#511 Pin 16)
 
@@ -427,10 +430,8 @@ failure into convergence; it can only down-classify a structural pass
 into `fail` or `inconclusive` when semantic interpretation contradicts
 the raw counts.
 
-**Per-iter artifact cleanup.** The cleanup contract (#511 Pin 8) extends
-to `test-assessment.json`: each cycle iteration deletes the file before
-dispatching the iteration, preventing stale prior-iter assessments from
-silently satisfying `until: verdict==pass`.
+**Per-iter artifact cleanup.** Replaced (ADR-068 §8): a `test-assessment.json`
+older than its stage's latest dispatch is read as absent; nothing is deleted.
 
 **Blocked termination.** The blocked predicate (#528 amendment above)
 treats `test_assessment.verdict ∈ {error}` as blocked identically to
