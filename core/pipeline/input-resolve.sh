@@ -716,7 +716,7 @@ _summaries_collect() {
                 _cutcp="$(_summaries_cutoff_checkpoint "$stage" "$plugins_root" "$state_dir")" ;;
         esac
         # #2271 (ADR-068): no owner and no fault class — the engine does not
-        # decide who owns a finding; every reader answers each one itself.
+        # decide who owns a finding; every reader judges each one itself.
         printf '%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
             "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")" "$_cutcp" \
             "$(_summaries_result_path "$stage" "$plugins_root" "$state_dir")"
@@ -906,9 +906,9 @@ stage_summaries_prompt_block() {
             body="${body}"$'\n'"[… truncated at ${_ZB_SUMMARY_MAX_BYTES}B —"
             body="${body} read the artifact directly for the full text]"
         fi
-        # #2271 (ADR-068): one framing for every reader. The engine no longer
-        # decides whose finding this is — every stage answers each one itself
-        # (the router asks it to, scripts/lib/stage-answers.sh).
+        # #2271 (ADR-068): one framing for every reader. The engine does not
+        # decide whose finding this is — every stage judges each one itself and
+        # says in its own result what it did about it (stage-conduct.sh).
         case "$verdict" in
             fail|failed|partial|mismatch)
                 chunk="$(printf '### %s (verdict: %s) — its findings, to answer\n%s\n' "$stage" "$verdict" "$body")" ;;

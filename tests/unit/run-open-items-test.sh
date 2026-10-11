@@ -14,10 +14,8 @@
 #           "What would settle it:" when it gives one); a passing check and a
 #           file with no verdict are not listed; a failing check with no
 #           findings is listed by its reason
-# O2 [code] the report written when no stage could act on an item is what the
-#           other reports list, in the same words
 # O3 [code] the end reason a reader sees is words, never the engine's code:
-#           "stopped with 1 open item", "ran out of rounds with 2 open items"
+#           "ran out of rounds with 2 open items"
 # O4 [code] the issue completion comment lists each open item, not a bare
 #           `failure`; with nothing recorded it still says what happened
 # O5 [code] the live status comment, once the run has ended, lists each open
@@ -27,8 +25,6 @@
 #           code or number, or "a person" / "human" wording
 # O8 [code] the completion comment workflow builds its body from O4, and the
 #           pipeline workflow hands it the run's open items
-# O10 [code] a loop that stops on its last round with items no stage could act
-#           on says so in its banner: it did not end early
 # O9 [code] the runner's lines that say a loop ended the run say why in words
 #           (run_end_words), not as "rc=N reason=<code>"
 set -uo pipefail
@@ -52,8 +48,6 @@ if ! { [[ -f "$LIB" ]] && source "$LIB" 2>/dev/null && declare -F open_items_mar
 fi
 # shellcheck source=../../scripts/lib/run-status-comment.sh
 source "$REPO_ROOT/scripts/lib/run-status-comment.sh"
-# shellcheck source=../../core/pipeline/unowned.sh
-source "$REPO_ROOT/core/pipeline/unowned.sh"
 
 _GUARDED=""   # every report text produced below, for O7
 _guard() { _GUARDED+=$'\n'"$1"; }
@@ -91,43 +85,9 @@ assert_eq "[O1] a passing check is not listed" "0" "$(grep -c 'PASSING CHECK TEX
 assert_eq "[O1] the count is the items listed" "3" "$(open_items_count "$S1")"
 assert_eq "[O1] no open items → nothing listed" "" "$(open_items_markdown "$TEST_TEMP_DIR/empty")"
 
-print_test_section "O2: the report for items no stage could act on is the shared list"
-S2="$TEST_TEMP_DIR/s2"; mkdir -p "$S2/artifacts"
-jq -n '{result_contract:2, verdict:"fail", data:{findings:[{n:1, text:"config/x.json is not the file that calls the new code"}]}}' \
-    > "$S2/artifacts/acc-result.json"
-_unowned_report "$S2" '["acc finding 1"]' \
-    '[{"ref":"acc finding 1","by":"build","answer":"nothing to do","why":"the code passes the tests it was given"}]' halt
-_rep="$(cat "$S2/artifacts/unowned-findings.md" 2>/dev/null)"; _guard "$_rep"
-assert_contains "[O2] the report names the item" "$_rep" "acc finding 1"
-assert_contains "[O2] ...what is unresolved" "$_rep" "config/x.json is not the file that calls the new code"
-assert_contains "[O2] ...what would settle it" "$_rep" "What would settle it:"
-assert_contains "[O2] ...and each answer with its why" "$_rep" "build: nothing to do — the code passes the tests it was given"
-_md2="$(open_items_markdown "$S2")"
-assert_contains "[O2] the other reports list the same item" "$_md2" "config/x.json is not the file that calls the new code"
-assert_eq "[O2] ...and only the items the report names" "1" "$(open_items_count "$S2")"
-
-print_test_section "O2b: a check not sure of one item reports that item, not its others"
-S3="$TEST_TEMP_DIR/s3"; mkdir -p "$S3/artifacts"
-jq -n '{result_contract:2, verdict:"fail",
-        data:{unsure:["R-2: the flag is documented"],
-              findings:[{n:1, text:"The issue requires this and the change does not meet it: R-1: the command exits 2"},
-                        {n:2, text:"Not sure this requirement is met: R-2: the flag is documented. What would settle it: a test."}]}}' \
-    > "$S3/artifacts/judge-result.json"
-_unowned_last_round_report "$S3"; _rc3=$?
-_rep3="$(cat "$S3/artifacts/unowned-findings.md" 2>/dev/null)"
-assert_eq "[O2b] the report is written" "0" "$_rc3"
-assert_contains "[O2b] it names the item the check is not sure of" "$_rep3" "judge finding 2"
-assert_eq "[O2b] ...and not the check's other finding" "0" "$(grep -c 'judge finding 1' <<< "$_rep3" || true)"
-assert_eq "[O2b] ...so one item is open" "1" "$(open_items_count "$S3")"
-S4="$TEST_TEMP_DIR/s4"; mkdir -p "$S4/artifacts"
-jq -n '{result_contract:2, verdict:"Passed", data:{unsure:["R-1: x"], findings:[{n:1, text:"Not sure this requirement is met: R-1: x"}]}}' \
-    > "$S4/artifacts/judge-result.json"
-_unowned_last_round_report "$S4"; _rc4=$?
-assert_eq "[O2b] a passing check is never open, whatever case its verdict is in (same rule as the list)" "1" "$_rc4"
-
 print_test_section "O3: the end reason is words"
-_w1="$(run_end_words unowned_finding 1)"; _guard "$_w1"
-assert_contains "[O3] items no stage could act on" "$_w1" "stopped with 1 open item"
+_w1="$(run_end_words blocking_member_failure 1)"; _guard "$_w1"
+assert_contains "[O3] one item, in words" "$_w1" "with 1 open item"
 _w2="$(run_end_words max_iterations 2)"; _guard "$_w2"
 assert_contains "[O3] out of rounds, with the count" "$_w2" "ran out of rounds with 2 open items"
 _w3="$(run_end_words max_iterations 0)"; _guard "$_w3"
@@ -138,7 +98,7 @@ assert_contains "[O3] an interrupt names the signal" "$(run_end_words sigint 0)"
 # A leaf stage that reported a failure (#1798) says so, and names the word.
 assert_contains "[O3] a stage that reported a failure says so in words" \
     "$(run_end_words stage_failed:block 0)" "stopped: a stage reported that it failed (block)"
-for _r in stage_failed:fail max_iterations_tests_failing unowned_finding blocking_member_failure member_terminal_failure \
+for _r in stage_failed:fail max_iterations_tests_failing blocking_member_failure member_terminal_failure \
           blocked blocked_on_scope cycle_abort sigint sigterm llm_rate_limited llm_unavailable \
           scope_too_large design_timeout_exhausted no_committed_changes some_new_code ""; do
     _guard "$(run_end_words "$_r" 1)"
@@ -169,9 +129,9 @@ assert_contains "[O4] an aborted run names the reason in words" "$_c5" "$(run_en
 print_test_section "O5: the status comment lists each open item once the run ended"
 EV="$S1/events.jsonl"
 jq -cn '{ts:"2026-10-06T10:00:00.000Z", run_id:"r-2330", issue:2330, type:"pipeline.start", data:{run_id:"r-2330", issue:"2330"}, schema_version:1}' > "$EV"
-jq -cn '{ts:"2026-10-06T11:00:00.000Z", run_id:"r-2330", issue:2330, type:"pipeline.end", data:{status:"failed", reason:"unowned_finding"}, schema_version:1}' >> "$EV"
+jq -cn '{ts:"2026-10-06T11:00:00.000Z", run_id:"r-2330", issue:2330, type:"pipeline.end", data:{status:"failed", reason:"blocking_member_failure"}, schema_version:1}' >> "$EV"
 _b="$(ZBUILD_STATUS_NOW=2026-10-06T11:00:00Z rsc_render_body "$EV" "$S1")"; _guard "$_b"
-assert_contains "[O5] the end reason in words" "$_b" "Stopped with 3 open items"
+assert_contains "[O5] the end reason in words" "$_b" "a check that must pass failed with 3 open items"
 assert_contains "[O5] each item is listed" "$_b" "judge finding 1"
 assert_contains "[O5] ...with what would settle it" "$_b" "What would settle it:"
 jq -cn '{ts:"2026-10-06T10:00:00.000Z", run_id:"r-2330", issue:2330, type:"pipeline.start", data:{run_id:"r-2330", issue:"2330"}, schema_version:1}' > "$EV"
@@ -191,10 +151,10 @@ _e="$(bash -c "
     source '$REPO_ROOT/core/pipeline/runner.sh'
     _runner_run_id=r1; _runner_issue=2330; _RUNNER_PIPELINE_START_MS=12344600
     _runner_state_file='$S1/pipeline-state.json'
-    _CYCLE_LAST_TERMINATED_REASON=unowned_finding
+    _CYCLE_LAST_TERMINATED_REASON=blocking_member_failure
     _render_pipeline_end failed
 " 2>&1)"; _guard "$_e"
-assert_contains "[O6] the banner says why the run stopped" "$_e" "stopped with 3 open items"
+assert_contains "[O6] the banner says why the run stopped" "$_e" "a check that must pass failed with 3 open items"
 assert_contains "[O6] ...and names each item" "$_e" "judge finding 1"
 assert_contains "[O6] ...with what would settle it" "$_e" "What would settle it:"
 
@@ -231,19 +191,6 @@ assert_eq "[O9] no such line prints rc=N or the reason code" "" \
     "$(grep -E 'rc=\$_rc|reason=\$_(CYCLE_LAST_TERMINATED|RUNNER_CYCLE_UNCONVERGED)_REASON|: scope_too_large' <<< "$_rn" || true)"
 assert_eq "[O9] each says why through run_end_words" "$(grep -c . <<< "$_rn")" \
     "$(grep -c 'run_end_words' <<< "$_rn" || true)"
-
-print_test_section "O10: the last-round stop is not called early"
-_cb="$(bash -c "
-    export NO_COLOR=1 ZBUILD_TERM_WIDTH_OVERRIDE=80
-    export ZBUILD_STATE_DIR='$TEST_TEMP_DIR/rs' ZBUILD_EVENTS_DIR='$TEST_TEMP_DIR/ev'
-    export ZBUILD_EVENTS_JSONL='$TEST_TEMP_DIR/ev/events.jsonl'
-    source '$REPO_ROOT/core/pipeline/runner.sh'
-    _render_cycle_exit delivery_loop unowned_finding 2 2
-" 2>&1)"; _guard "$_cb"
-assert_eq "[O10] the banner does not say it ended early" "0" "$(grep -c 'ended early' <<< "$_cb" || true)"
-assert_contains "[O10] ...it says it stopped with items no stage could act on" "$_cb" "no stage could act on"
-_guard_bad="$(plain_report_violations "$_cb")"
-assert_eq "[O10] ...in plain words" "" "$_guard_bad"
 
 cleanup_test_env
 print_test_results

@@ -59,10 +59,9 @@ _INCLUDES=(
     scripts/lib/vision.sh
     # [SPEC-4] proc-group.sh is now a guarded include (issue #1748).
     scripts/lib/proc-group.sh
-    # [SPEC-4] the three stage blocks every model call carries (#1879, #2271,
-    # #2308): saving as it goes, the answer request, the shared conduct part.
+    # [SPEC-4] the stage blocks every model call carries (#1879, #2308):
+    # saving as it goes, the shared conduct part.
     scripts/lib/stage-checkpoint.sh
-    scripts/lib/stage-answers.sh
     scripts/lib/stage-conduct.sh
     # #1752: the shared timeout helper both model-call paths bound through.
     scripts/lib/timeout-cmd.sh

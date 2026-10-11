@@ -66,14 +66,8 @@ always_run:
 
 # ─── delivery_loop (cycle) — #2271, ADR-068 ─────────────────────────────────
 # One outer loop holds the design loop and the build loop. Every stage sees
-# every finding and answers each one ("done" + what it changed, "nothing to do"
-# + why); the engine only counts the answers — it never decides who owns a
-# finding, and nothing jumps backwards.
-#   - The build loop ends early (`unowned: yield`) when every build-side stage
-#     answered "nothing to do" to the same finding. This loop then goes round
-#     from design, carrying every finding; each inner loop starts again at 1.
-#   - If design also answers "nothing to do" to it, nobody owns it: the run
-#     stops (`unowned: halt`) with artifacts/unowned-findings.md.
+# every finding and says in its own result what it did about each; the engine
+# never decides who owns a finding, and nothing jumps backwards.
 #   - A design loop that runs out of rounds ends this round (build is skipped)
 #     and this loop goes round. When this loop's rounds are spent, the run stops.
 delivery_loop:
@@ -88,7 +82,6 @@ delivery_loop:
       - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
   max_iterations: 2
   on_max: halt
-  unowned: halt
 
 # ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
 # ADR-046 (#1218, EPIC #1216): give the design stage an independent verifier that
@@ -232,8 +225,7 @@ issue-acceptance:
 # they emit verdict-in-artifact (ADR-004) and the cycle iterates-to-fix; the loop
 # converges via exit_when, never via per-gate hard-blocks. max_iterations: 3.
 # Nested in delivery_loop (#2271): running out of rounds hands back to that loop,
-# which goes round from design; `unowned: yield` ends this loop early when every
-# build-side stage answered "nothing to do" to the same finding.
+# which goes round from design.
 build_test_cycle:
   type: cycle
   description: Build, test, and run the mechanical gates until gate-aggregator passes
@@ -264,7 +256,7 @@ build_test_cycle:
     # #1849: the finished change judged against the ISSUE, not the SPECs — the
     # only check after spec-coverage that reads the issue at all. A convergence
     # gate, so gate-aggregator's roster makes it must-pass; each unmet
-    # requirement is a numbered finding every stage answers.
+    # requirement is a numbered finding.
     - issue-acceptance
     - gate-aggregator
   exit_when:
@@ -274,7 +266,6 @@ build_test_cycle:
     value: pass
   max_iterations: 3
   on_max: continue
-  unowned: yield
   # The cycle CONVERGES rather than spinning build(no-op)→…→gate-aggregator(fail)
   # because the aggregator's consolidated gate-feedback.md reaches build. B2
   # (ADR-040): the gate-aggregator is the SINGLE collector of failure detail,

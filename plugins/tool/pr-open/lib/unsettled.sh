@@ -10,9 +10,8 @@
 #     id from whichever template ran, with `status`, `current_iter` and
 #     `max_iterations` written by the engine (cycle-orchestrator.sh
 #     _cycle_state_write_iter_atomic). A loop whose last status is not
-#     `complete` did not pass: it ran out of rounds (max_iterations), stopped
-#     with findings no stage could act on (unowned_finding), or ended some other
-#     way before passing (in_progress is what a plateau or divergence leaves).
+#     `complete` did not pass: it ran out of rounds (max_iterations), or ended
+#     some other way before passing (in_progress is what a plateau or divergence leaves).
 #     A loop nested in an outer one restarts its count each outer round, so its
 #     numbers are its last run's.
 #   * the final gate roll-up, gate_aggregator_result — a declared input — when
@@ -49,7 +48,6 @@ _pr_open_unsettled() {
     fi
     jq -r --argjson g "$gates" "${_PR_OPEN_FINDING_JQ_DEFS}"'
         def why: if . == "max_iterations" then "it ran out of rounds"
-                 elif . == "unowned_finding" then "it had findings no stage could act on"
                  else "it ended before it passed" end;
         def num: if type == "number" then tostring else "?" end;
         [ (.cycle_iterations // {}) | to_entries[]
