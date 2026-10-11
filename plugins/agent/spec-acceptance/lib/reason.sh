@@ -27,7 +27,7 @@ _ag_resolve_negctl_timeout() {
 #                 cannot fix). OUTRANKS recoverable. An UNKNOWN class is
 #                 recoverable + evented, never terminal (#1959).
 #   recoverable — build-fixable classes: untagged_spec:*, tautology:*,
-#                 inert_wiring:*, not_passing_at_head:* (#1585/#2097 — the
+#                 inert_wiring:*, untested_change:*, not_passing_at_head:* (#1585/#2097 — the
 #                 assertion has a model author (test-author, #2022); the cycle
 #                 re-iterates with the finding in the stage summaries, the
 #                 negative control re-verifies each iteration).
@@ -96,7 +96,7 @@ _ag_unreached_where() {
 # member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 nofiles="" sig="" unb="" unh=""
+    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 nofiles="" sig="" unb="" unh="" untested=""
     local loadfail="" nothing=""
     local -a unclaimed=()
     for f in "$@"; do
@@ -108,6 +108,7 @@ _ag_build_reason() {
             no_testfile:*)          notf="$notf ${f#no_testfile:}" ;;
             no_testfiles:*)         nofiles="$nofiles ${f#no_testfiles:}" ;;
             inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
+            untested_change:*)      untested="$untested ${f#untested_change:}" ;;
             wiring_not_on_path:*)   notpath="$notpath ${f#wiring_not_on_path:}" ;;
             unreached_at_base:*)    unb="$unb ${f#unreached_at_base:}" ;;
             unreached_at_head:*)    unh="$unh ${f#unreached_at_head:}" ;;
@@ -140,6 +141,7 @@ _ag_build_reason() {
     [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged"): no assertion in the test files carries its tag — add one labelled with it")
     [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf"): no test file is listed for it under TESTFILES:")
     [[ -n "$inert"    ]] && clauses+=("$(_ag_join_ids "$inert") was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none")
+    [[ -n "$untested" ]] && clauses+=("$(_ag_join_ids "$untested") was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it")
     [[ -n "$nofiles"  ]] && clauses+=("$(_ag_join_ids "$nofiles"): none of the listed test files exist, so putting it back could not be checked")
     [[ -n "$notpath"  ]] && clauses+=("$(_ag_join_ids "$notpath") is not changed by this change — name a file the change touches, or write WIRING: none")
     [[ -n "$unb" ]] && clauses+=("$(_ag_unreached_where "$unb"): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code")

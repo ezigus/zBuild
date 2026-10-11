@@ -11,8 +11,13 @@
 #     load-bearing: REACHABILITY PASS <target>.
 #   - If no test flips: REACHABILITY FAIL inert_wiring <target> — gate hard-fails.
 #
-# WIRING: none → REACHABILITY EXEMPT none (pure-utility exemption, no revert runs).
-# No WIRING section → no-op (composability invariant, caller skips Level-3).
+# Then every other changed code file (ADR-036, 2026-10-11), listed by git, is
+# put back the same way: some test must fail without it, or
+# REACHABILITY FAIL untested_change <file>. A file whose only changes are
+# comments or blank lines, a deleted file, tests, docs/ and Markdown are skipped.
+#
+# WIRING: none → REACHABILITY EXEMPT none: no file is named for the first part;
+# the second still runs. No WIRING section → the second part only.
 #
 # Source-only; no `set -e` at top level (would mutate caller options).
 
@@ -96,15 +101,174 @@ _reachability_bound_log() {
     fi
 }
 
+# _reachability_strip_comments — stdin without blank lines and whole-line
+# comments (`#`, `//`, `/*`).
+_reachability_strip_comments() {
+    awk '!/^[[:space:]]*$/ && !/^[[:space:]]*(#|\/\/|\/\*)/'
+}
+
+# _reachability_code_changed <repo_root> <base_sha> <path> — rc 0 when the file
+# changed in more than whole-line comments and blank lines (ADR-036, 2026-10-11:
+# a mechanical rule, so no stage decides it).
+_reachability_code_changed() {
+    local repo="$1" base="$2" path="$3" a b
+    a="$(git -C "$repo" show "$base:$path" 2>/dev/null | _reachability_strip_comments)"
+    b="$(git -C "$repo" show "HEAD:$path" 2>/dev/null | _reachability_strip_comments)"
+    [[ "$a" != "$b" ]]
+}
+
+# _reachability_revert_one <target> — put <target> back to the merge-base with
+# every other changed file at HEAD, run the TESTFILES, and print one word:
+#   flip | no_testfiles | timeout | harness <tf> | red <tf> | none | worktree_failed
+# Reads the caller's repo_root, base_sha, design_md, changed_files[], testfiles[].
+_reachability_revert_one() {
+    local target="$1" cf tf
+    local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-reach.XXXXXX")"
+    if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then
+        rm -rf "${wt_dir:?}" 2>/dev/null || true
+        printf 'worktree_failed'
+        return 0
+    fi
+
+    # Overlay ALL changed files from HEAD, EXCEPT the target.
+    for cf in "${changed_files[@]:-}"; do
+        [[ -z "$cf" ]] && continue
+        [[ "$cf" == "$target" ]] && continue  # leave the target at merge-base
+        mkdir -p "$wt_dir/$(dirname "$cf")"
+        # Overlay HEAD version; if the file was DELETED at HEAD, git show fails —
+        # remove it from the baseline overlay rather than leaving a truncated empty
+        # file (which would corrupt the flip detection).
+        if git -C "$repo_root" show "HEAD:$cf" > "$wt_dir/$cf.zbtmp" 2>/dev/null; then
+            mv "$wt_dir/$cf.zbtmp" "$wt_dir/$cf"
+            chmod +x "$wt_dir/$cf" 2>/dev/null || true
+        else
+            rm -f "${wt_dir:?}/${cf:?}.zbtmp" "${wt_dir:?}/${cf:?}" 2>/dev/null || true
+        fi
+    done
+
+    # Ensure testfiles are overlaid from HEAD (may not be in changed_files if unchanged).
+    for tf in "${testfiles[@]:-}"; do
+        [[ -z "$tf" ]] && continue
+        mkdir -p "$wt_dir/$(dirname "$tf")"
+        git -C "$repo_root" show "HEAD:$tf" > "$wt_dir/$tf" 2>/dev/null || true
+        chmod +x "$wt_dir/$tf" 2>/dev/null || true
+    done
+
+    # Check if any testfile flips pass→fail when the target is at merge-base.
+    # #2109: judged per [SPEC-n] line (the #1969 rule negctl already has),
+    # file rc only where the captures carry no verdict; a file that is red
+    # at HEAD, a run the harness could not execute, and a roster with no
+    # file on disk are each named for what they are.
+    local found_flip=0 saw_timeout=0 saw_harness="" red_at_head="" ran_any=0
+    local logfile=""
+    if [[ -n "${ZBUILD_NEGCTL_ARTIFACT_DIR:-}" ]]; then
+        mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR" 2>/dev/null || true
+        # sanitize the target path into a flat log filename
+        local _safe_target="${target//\//_}"
+        logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/reachability-${_safe_target}.log"
+        : > "$logfile" 2>/dev/null || logfile=""
+    fi
+    local -a _spec_ids=()
+    local _sid
+    while IFS= read -r _sid; do
+        [[ -n "$_sid" ]] && _spec_ids+=("$_sid")
+    done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+    for tf in "${testfiles[@]:-}"; do
+        [[ -z "$tf" ]] && continue
+        [[ ! -f "$wt_dir/$tf" ]] && continue
+        ran_any=1
+        local rc_reverted=0 rc_head=0 _cap_rev _cap_head
+        _cap_rev="$(mktemp "$(zbuild_engine_tmpdir)/zb-reach-rev.XXXXXX")" || _cap_rev=""
+        _cap_head="$(mktemp "$(zbuild_engine_tmpdir)/zb-reach-head.XXXXXX")" || _cap_head=""
+        _reachability_run "$wt_dir/$tf" "$wt_dir" "$_cap_rev" || rc_reverted=$?
+        _reachability_run "$repo_root/$tf" "$repo_root" "$_cap_head" || rc_head=$?
+        if [[ -n "$logfile" ]]; then
+            printf '### %s reverted %s\n' "$target" "$tf" >> "$logfile"
+            [[ -n "$_cap_rev" ]] && cat "$_cap_rev" >> "$logfile" 2>/dev/null
+            printf '### %s head %s\n' "$target" "$tf" >> "$logfile"
+            [[ -n "$_cap_head" ]] && cat "$_cap_head" >> "$logfile" 2>/dev/null
+        fi
+        # A timeout on EITHER run leaves the flip verdict unknown → INFRA;
+        # do not treat it as a flip or as an untested file.
+        if _reachability_is_timeout_rc "$rc_reverted" || _reachability_is_timeout_rc "$rc_head"; then
+            rm -f "$_cap_rev" "$_cap_head" 2>/dev/null; saw_timeout=1; continue
+        fi
+        if _reachability_is_harness_rc "$rc_reverted" || _reachability_is_harness_rc "$rc_head"; then
+            rm -f "$_cap_rev" "$_cap_head" 2>/dev/null
+            [[ -z "$saw_harness" ]] && saw_harness="$tf"; continue
+        fi
+        # Per-SPEC evidence: 0 = a ✗ line for the id, 1 = ✓ and no ✗, 2 = none.
+        # A side with no line for the SPEC falls back to the file's rc — the
+        # rule negctl uses (#1969): a file that dies before printing, because
+        # the file it needs was put back, failed.
+        local _any_verdict=0 _lv_h _lv_r _h_ok _r_bad
+        for _sid in ${_spec_ids[@]+"${_spec_ids[@]}"}; do
+            _negctl_spec_log_check "$_cap_head" "$_sid" && _lv_h=0 || _lv_h=$?
+            _negctl_spec_log_check "$_cap_rev" "$_sid" && _lv_r=0 || _lv_r=$?
+            [[ "$_lv_h" -ne 2 || "$_lv_r" -ne 2 ]] && _any_verdict=1
+            [[ "$_lv_h" -eq 2 && "$_lv_r" -eq 2 ]] && continue
+            _h_ok=0; { [[ "$_lv_h" -eq 1 ]] || { [[ "$_lv_h" -eq 2 ]] && [[ "$rc_head" -eq 0 ]]; }; } && _h_ok=1
+            _r_bad=0; { [[ "$_lv_r" -eq 0 ]] || { [[ "$_lv_r" -eq 2 ]] && [[ "$rc_reverted" -ne 0 ]]; }; } && _r_bad=1
+            if [[ "$_h_ok" -eq 1 && "$_r_bad" -eq 1 ]]; then found_flip=1; break; fi
+            [[ "$_lv_h" -eq 0 && -z "$red_at_head" ]] && red_at_head="$tf"
+        done
+        rm -f "$_cap_rev" "$_cap_head" 2>/dev/null
+        [[ "$found_flip" -eq 1 ]] && break
+        # No tagged evidence at all (custom runner, untagged file): file rc.
+        if [[ "$_any_verdict" -eq 0 ]]; then
+            if [[ "$rc_reverted" -ne 0 && "$rc_head" -eq 0 ]]; then found_flip=1; break; fi
+            [[ "$rc_head" -ne 0 && -z "$red_at_head" ]] && red_at_head="$tf"
+        fi
+    done
+    _reachability_bound_log "$logfile"
+
+    git -C "$repo_root" worktree remove --force "$wt_dir" >/dev/null 2>&1 || true
+    rm -rf "${wt_dir:?}" 2>/dev/null || true
+
+    if [[ "$found_flip" -eq 1 ]]; then printf 'flip'
+    elif [[ "$ran_any" -eq 0 ]]; then printf 'no_testfiles'
+    elif [[ "$saw_timeout" -eq 1 ]]; then printf 'timeout'
+    elif [[ -n "$saw_harness" ]]; then printf 'harness %s' "$saw_harness"
+    elif [[ -n "$red_at_head" ]]; then printf 'red %s' "$red_at_head"
+    else printf 'none'
+    fi
+}
+
+# _reachability_print <outcome> <file> <fail_word> [pass_prefix] — the verdict
+# line for one put-back file. <fail_word> is the class when no test flipped.
+_reachability_print() {
+    local outcome="$1" f="$2" fail_word="$3" pass_prefix="${4:-}"
+    case "$outcome" in
+        flip)            printf 'REACHABILITY PASS %s%s\n' "$pass_prefix" "$f"; return 0 ;;
+        no_testfiles)    printf 'REACHABILITY FAIL no_testfiles %s\n' "$f" ;;
+        timeout)         printf 'REACHABILITY ERROR timeout:%s\n' "$f" ;;
+        harness\ *)      printf 'REACHABILITY ERROR harness:%s %s\n' "$f" "${outcome#harness }" ;;
+        red\ *)          printf 'REACHABILITY FAIL not_passing_at_head %s %s\n' "$f" "${outcome#red }" ;;
+        worktree_failed) printf 'REACHABILITY ERROR worktree_failed %s\n' "$f" ;;
+        *)               printf 'REACHABILITY FAIL %s %s\n' "$fail_word" "$f" ;;
+    esac
+    return 1
+}
+
 # acceptance_reachability_check <design_md> <repo_root>
+# Two parts, each putting one file back to the merge-base at a time:
+#   1. each file the design names under WIRING: — the change must reach the
+#      program through it (#956);
+#   2. every other changed code file, listed by `git diff` (ADR-036,
+#      2026-10-11): putting it back must make some test fail. Nothing a stage
+#      writes takes a file out of this list; `WIRING: none` only says part 1
+#      names no file.
 # Prints one verdict line per outcome:
-#   REACHABILITY EXEMPT none          — WIRING: none declared; no revert runs
+#   REACHABILITY EXEMPT none          — WIRING: none declared (part 1 names no file)
 #   REACHABILITY PASS <target>        — ≥1 testfile flips pass→fail; wiring load-bearing
 #   REACHABILITY FAIL inert_wiring <target>  — no testfile flips; wiring is inert
+#   REACHABILITY PASS change <file>   — ≥1 testfile flips with <file> put back
+#   REACHABILITY FAIL untested_change <file> — no testfile flips with <file> put back
+#   REACHABILITY SKIP no_code <file>  — only comments / blank lines changed
 #   REACHABILITY ERROR <detail>       — infrastructure failure (worktree_failed,
 #                                       empty_wiring_targets, timeout:<target>)
 #   REACHABILITY SKIP no_impl_delta   — HEAD == merge-base; nothing to check
-# Returns 0 when every target passes (or exempt/skip), 1 otherwise.
+# Returns 0 when every file passes (or exempt/skip), 1 otherwise.
 acceptance_reachability_check() {
     local design_md="${1:-}" repo_root="${2:-}"
     [[ -z "$design_md" || -z "$repo_root" ]] && { printf 'REACHABILITY ERROR bad_args\n'; return 1; }
@@ -132,19 +296,15 @@ acceptance_reachability_check() {
         [[ -n "$wt" ]] && wiring_targets+=("$wt")
     done < <(acceptance_list_wiring "$design_md" 2>/dev/null || true)
 
-    if [[ ${#wiring_targets[@]} -eq 0 ]]; then
-        # No WIRING section → genuine no-op (caller normally guards on this too).
-        [[ "$wiring_declared" -eq 0 ]] && return 0
+    local rc=0
+    if [[ "$wiring_declared" -eq 1 && ${#wiring_targets[@]} -eq 0 ]]; then
         # WIRING declared but every target was rejected (unsafe/empty) → FAIL CLOSED.
         # A gate must never silently skip because the author gave only bad paths.
         printf 'REACHABILITY ERROR empty_wiring_targets\n'
-        return 1
-    fi
-
-    # WIRING: none → exempt.
-    if [[ ${#wiring_targets[@]} -eq 1 && "${wiring_targets[0]}" == "none" ]]; then
+        rc=1
+    elif [[ ${#wiring_targets[@]} -eq 1 && "${wiring_targets[0]}" == "none" ]]; then
         printf 'REACHABILITY EXEMPT none\n'
-        return 0
+        wiring_targets=()
     fi
 
     # Collect declared TESTFILES (existing on disk).
@@ -154,12 +314,13 @@ acceptance_reachability_check() {
         [[ -n "$tf" && -f "$repo_root/$tf" ]] && testfiles+=("$tf")
     done < <(acceptance_list_testfiles "$design_md")
 
-    # Get all files changed between merge-base and HEAD.
+    # Every file changed between merge-base and HEAD. --no-renames lists a moved
+    # file as its old path (deleted) and its new one (added).
     local -a changed_files=()
     local cf
     while IFS= read -r cf; do
         [[ -n "$cf" ]] && changed_files+=("$cf")
-    done < <(git -C "$repo_root" diff --name-only "$base_sha" HEAD 2>/dev/null || true)
+    done < <(git -C "$repo_root" diff --no-renames --name-only "$base_sha" HEAD 2>/dev/null || true)
 
     # An empty diff with head != base means the git call failed (shallow clone,
     # unresolvable base). Fail closed: without it every target reads as off-diff.
@@ -168,18 +329,15 @@ acceptance_reachability_check() {
         return 1
     fi
 
-    local rc=0
     # #2110: memoise the HEAD run across targets (see _acceptance_run_cached).
     _acceptance_run_cache_begin
     local _rc_owner="${_ACCEPTANCE_RUN_CACHE_OWNED:-0}"
 
-    for target in "${wiring_targets[@]}"; do
+    local target
+    for target in ${wiring_targets[@]+"${wiring_targets[@]}"}; do
         # #1686: a target absent from this commit's diff was not changed here, so
         # reverting it is a no-op and no testfile can flip. Design named a file
         # unrelated to the change; only design can fix the declaration.
-        # NOTE: this does NOT cover a target that IS in the diff but no test can
-        # load (the #1664 CI-config shape) — that still reads as inert_wiring. No
-        # static rule separates those two cases; see #1711.
         local _t_norm="${target#./}" _in_diff=0 _cf
         for _cf in "${changed_files[@]}"; do
             [[ "${_cf#./}" == "$_t_norm" ]] && _in_diff=1 && break
@@ -189,136 +347,29 @@ acceptance_reachability_check() {
             rc=1
             continue
         fi
+        _reachability_print "$(_reachability_revert_one "$target")" "$target" inert_wiring || rc=1
+    done
 
-        # Create detached worktree at baseline.
-        local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-reach.XXXXXX")"
-        # shellcheck disable=SC2064
-        trap "git -C '$repo_root' worktree remove --force '$wt_dir' >/dev/null 2>&1 || true; rm -rf '$wt_dir' 2>/dev/null || true" RETURN
-        if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then
-            printf 'REACHABILITY ERROR worktree_failed %s\n' "$target"
-            rc=1
-            rm -rf "$wt_dir" 2>/dev/null || true  # don't leak the mktemp dir (trap is per-return)
+    # Part 2: every other changed code file, put back on its own.
+    local _named
+    for cf in "${changed_files[@]}"; do
+        _acceptance_is_production_path "$cf" || continue
+        # Deleted here: nothing is left to test.
+        git -C "$repo_root" cat-file -e "HEAD:$cf" 2>/dev/null || continue
+        _named=0
+        for target in ${wiring_targets[@]+"${wiring_targets[@]}"}; do
+            [[ "${target#./}" == "${cf#./}" ]] && _named=1 && break
+        done
+        [[ "$_named" -eq 1 ]] && continue
+        if ! _reachability_code_changed "$repo_root" "$base_sha" "$cf"; then
+            printf 'REACHABILITY SKIP no_code %s\n' "$cf"
             continue
         fi
-
-        # Overlay ALL changed files from HEAD, EXCEPT the WIRING target.
-        for cf in "${changed_files[@]:-}"; do
-            [[ -z "$cf" ]] && continue
-            [[ "$cf" == "$target" ]] && continue  # leave WIRING file at merge-base
-            mkdir -p "$wt_dir/$(dirname "$cf")"
-            # Overlay HEAD version; if the file was DELETED at HEAD, git show fails —
-            # remove it from the baseline overlay rather than leaving a truncated empty
-            # file (which would corrupt the flip detection).
-            if git -C "$repo_root" show "HEAD:$cf" > "$wt_dir/$cf.zbtmp" 2>/dev/null; then
-                mv "$wt_dir/$cf.zbtmp" "$wt_dir/$cf"
-                chmod +x "$wt_dir/$cf" 2>/dev/null || true
-            else
-                rm -f "$wt_dir/$cf.zbtmp" "$wt_dir/$cf" 2>/dev/null || true
-            fi
-        done
-
-        # Ensure testfiles are overlaid from HEAD (may not be in changed_files if unchanged).
-        for tf in "${testfiles[@]:-}"; do
-            [[ -z "$tf" ]] && continue
-            mkdir -p "$wt_dir/$(dirname "$tf")"
-            git -C "$repo_root" show "HEAD:$tf" > "$wt_dir/$tf" 2>/dev/null || true
-            chmod +x "$wt_dir/$tf" 2>/dev/null || true
-        done
-
-        # Check if any testfile flips pass→fail when WIRING is at merge-base.
-        # #2109: judged per [SPEC-n] line (the #1969 rule negctl already has),
-        # file rc only where the captures carry no verdict; a file that is red
-        # at HEAD, a run the harness could not execute, and a roster with no
-        # file on disk are each named for what they are — "inert_wiring" used
-        # to swallow all three, and at iter≥2 it routes to DESIGN.
-        local found_flip=0 saw_timeout=0 saw_harness="" red_at_head="" ran_any=0
-        local logfile=""
-        if [[ -n "${ZBUILD_NEGCTL_ARTIFACT_DIR:-}" ]]; then
-            mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR" 2>/dev/null || true
-            # sanitize the target path into a flat log filename
-            local _safe_target="${target//\//_}"
-            logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/reachability-${_safe_target}.log"
-            : > "$logfile" 2>/dev/null || logfile=""
-        fi
-        local -a _spec_ids=()
-        local _sid
-        while IFS= read -r _sid; do
-            [[ -n "$_sid" ]] && _spec_ids+=("$_sid")
-        done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
-        for tf in "${testfiles[@]:-}"; do
-            [[ -z "$tf" ]] && continue
-            [[ ! -f "$wt_dir/$tf" ]] && continue
-            ran_any=1
-            local rc_reverted=0 rc_head=0 _cap_rev _cap_head
-            _cap_rev="$(mktemp "$(zbuild_engine_tmpdir)/zb-reach-rev.XXXXXX")" || _cap_rev=""
-            _cap_head="$(mktemp "$(zbuild_engine_tmpdir)/zb-reach-head.XXXXXX")" || _cap_head=""
-            _reachability_run "$wt_dir/$tf" "$wt_dir" "$_cap_rev" || rc_reverted=$?
-            _reachability_run "$repo_root/$tf" "$repo_root" "$_cap_head" || rc_head=$?
-            if [[ -n "$logfile" ]]; then
-                printf '### %s reverted %s\n' "$target" "$tf" >> "$logfile"
-                [[ -n "$_cap_rev" ]] && cat "$_cap_rev" >> "$logfile" 2>/dev/null
-                printf '### %s head %s\n' "$target" "$tf" >> "$logfile"
-                [[ -n "$_cap_head" ]] && cat "$_cap_head" >> "$logfile" 2>/dev/null
-            fi
-            # A timeout on EITHER run leaves the flip verdict unknown → INFRA;
-            # do not treat it as a flip or as inert wiring.
-            if _reachability_is_timeout_rc "$rc_reverted" || _reachability_is_timeout_rc "$rc_head"; then
-                rm -f "$_cap_rev" "$_cap_head" 2>/dev/null; saw_timeout=1; continue
-            fi
-            if _reachability_is_harness_rc "$rc_reverted" || _reachability_is_harness_rc "$rc_head"; then
-                rm -f "$_cap_rev" "$_cap_head" 2>/dev/null
-                [[ -z "$saw_harness" ]] && saw_harness="$tf"; continue
-            fi
-            # Per-SPEC evidence: 0 = a ✗ line for the id, 1 = ✓ and no ✗, 2 = none.
-            local _any_verdict=0 _lv_h _lv_r
-            for _sid in ${_spec_ids[@]+"${_spec_ids[@]}"}; do
-                _negctl_spec_log_check "$_cap_head" "$_sid" && _lv_h=0 || _lv_h=$?
-                _negctl_spec_log_check "$_cap_rev" "$_sid" && _lv_r=0 || _lv_r=$?
-                [[ "$_lv_h" -ne 2 || "$_lv_r" -ne 2 ]] && _any_verdict=1
-                if [[ "$_lv_h" -eq 1 && "$_lv_r" -eq 0 ]]; then found_flip=1; break; fi
-                [[ "$_lv_h" -eq 0 && -z "$red_at_head" ]] && red_at_head="$tf"
-            done
-            rm -f "$_cap_rev" "$_cap_head" 2>/dev/null
-            [[ "$found_flip" -eq 1 ]] && break
-            # No tagged evidence at all (custom runner, untagged file): file rc.
-            if [[ "$_any_verdict" -eq 0 ]]; then
-                if [[ "$rc_reverted" -ne 0 && "$rc_head" -eq 0 ]]; then found_flip=1; break; fi
-                [[ "$rc_head" -ne 0 && -z "$red_at_head" ]] && red_at_head="$tf"
-            fi
-        done
-        _reachability_bound_log "$logfile"
-
-        # Remove worktree now (trap handles it but be explicit).
-        git -C "$repo_root" worktree remove --force "$wt_dir" >/dev/null 2>&1 || true
-        rm -rf "$wt_dir" 2>/dev/null || true
-
-        if [[ "$found_flip" -eq 1 ]]; then
-            printf 'REACHABILITY PASS %s\n' "$target"
-        elif [[ "$ran_any" -eq 0 ]]; then
-            # No declared TESTFILE exists on disk: nothing could flip. Not a
-            # wiring verdict — a roster the next iteration can still create.
-            printf 'REACHABILITY FAIL no_testfiles %s\n' "$target"
-            rc=1
-        elif [[ "$saw_timeout" -eq 1 ]]; then
-            # No flip observed, but a run timed out → cannot conclude inert; infra.
-            printf 'REACHABILITY ERROR timeout:%s\n' "$target"
-            rc=1
-        elif [[ -n "$saw_harness" ]]; then
-            printf 'REACHABILITY ERROR harness:%s %s\n' "$target" "$saw_harness"
-            rc=1
-        elif [[ -n "$red_at_head" ]]; then
-            # The file is red at HEAD: no revert can flip a failing test. That is
-            # the build's defect (or the assertion's), never the wiring's.
-            printf 'REACHABILITY FAIL not_passing_at_head %s %s\n' "$target" "$red_at_head"
-            rc=1
-        else
-            printf 'REACHABILITY FAIL inert_wiring %s\n' "$target"
-            rc=1
-        fi
+        _reachability_print "$(_reachability_revert_one "$cf")" "$cf" untested_change "change " || rc=1
     done
 
     if [[ "$_rc_owner" -eq 1 ]]; then
-        rm -rf "${_ACCEPTANCE_RUN_CACHE_DIR:-}" 2>/dev/null || true
+        rm -rf "${_ACCEPTANCE_RUN_CACHE_DIR:?}" 2>/dev/null || true
         unset _ACCEPTANCE_RUN_CACHE_DIR
     fi
     return "$rc"

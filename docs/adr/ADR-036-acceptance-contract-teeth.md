@@ -3,7 +3,8 @@
 **Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions);
 amended 2026-07-03 (#1218, ADR-046 — Level-1 SPEC-tag-presence shifts LEFT to a PRE-build
 `design-gate`; this post-build acceptance-gate retains Level-2 negative-control/tautology +
-Level-3 reachability, which cannot shift left — they need a built assertion + baseline-vs-HEAD)
+Level-3 reachability, which cannot shift left — they need a built assertion + baseline-vs-HEAD);
+amended 2026-10-11 (Level 3 puts back every changed code file, not only the named WIRING file)
 **Related:** ADR-031 (behavioral acceptance contract), ADR-013 (canonical stage list),
 ADR-020 (inter-stage data contract / optional inputs), ADR-022 (test-assessment),
 ADR-030 (scope governance), ADR-042 (plug-and-play stage resolution),
@@ -1003,6 +1004,15 @@ The #1660 amendment above put both acceptance gates' bound in one helper, `_acce
 - **The helper.** `_acceptance_timeout_prefix <timeout_s> [kill_grace|none]` fills `_ACCEPTANCE_TOUT` with `<bin> [-k <grace>] <timeout_s>`, `gtimeout` first. The grace defaults to `ZBUILD_NEGCTL_KILL_GRACE` (10s), so the acceptance gates' contract is unchanged; `run-tests.sh` and `run-mutation.sh` pass their own (`ZBUILD_TEST_KILL_GRACE`, `ZBUILD_MUTATION_KILL_GRACE`); the router and `gh-automation.sh` pass `none` and keep the TERM-only bound they always had. `-k` is still probed once per process. With neither binary the bound is empty and the caller runs its command unbounded — never skips it. Exit codes are untouched: 124 is a timeout and 137 a kill, as before.
 - **The gates load it like every contract lib.** `acceptance-block.sh` loads the helper with a same-directory `source "$DIR/timeout-cmd.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" timeout-cmd.sh"` line: `_runner_contract_lib_closure` lists it, the self-grading snapshot carries it, and a failed load fails the gate (the amendment above). The first #1752 run loaded it another way, the snapshot of that day left it out, and the gate passed having checked nothing.
 
+## Amendment (2026-10-11) — every changed code file is put back on its own
+
+Level 3 put back only the file the design named under `WIRING:`, and `WIRING: none` switched it off. In #1932's run the change touched `core/state/run-cap.sh` and `runner.sh`; the tests called `run-cap.sh` directly, so putting back the whole change (Level 2) failed them, and nothing tested the `runner.sh` change. The design then wrote `WIRING: none` and the check stopped looking. A check must pass on something it measured, never on something a stage wrote.
+
+- **The list comes from git.** After the named `WIRING:` targets, Level 3 puts back every other file `git diff --no-renames <merge-base> HEAD` lists, one at a time, with the rest of the change in place, and runs the TESTFILES. Some test must fail; if none does: `REACHABILITY FAIL untested_change <file>`, class `untested_change` (recoverable — a test is added for it), event `acceptance.gate.untested_change`. The finding says the file was put back on its own and every test still passed, and that a test that fails without the change to it is what settles it.
+- **Skipped by rule, never by declaration:** test paths, `docs/` and Markdown (ADR-069 §5's production-path rule), files deleted by the change, and a file whose only changes are whole-line comments (`#`, `//`, `/*`) or blank lines (`REACHABILITY SKIP no_code <file>`).
+- **`WIRING:` keeps its first job:** it names a file the change must reach the program through (the #845 case, a hook nobody wrote, is not in the diff and only a named file catches it). `WIRING: none` now only says no file is named; it exempts nothing. A block with no `WIRING:` section is checked the same way.
+- **One evidence rule.** A test file judged per `[SPEC-n]` line falls back to the file's exit code on a side that printed no line for that SPEC — negctl's rule (#1969) — so a file that dies before printing, because the file it needs was put back, counts as failed.
+
 ## Enforced by
 
 - §1 → `tests/unit/acceptance-block-test.sh` TC-7 (`acceptance_list_spec_ids` returns the ids); `tests/unit/acceptance-coverage-test.sh` C6 (bare legacy `SPEC:` lines carry no id and are not checked)
@@ -1033,6 +1043,7 @@ The #1660 amendment above put both acceptance gates' bound in one helper, `_acce
 - Amendment (2026-09-28, a signal is not a timeout) → `tests/unit/acceptance-negctl-signal-test.sh` S1–S6, S8
 - Amendment (#2234) → `tests/unit/acceptance-negctl-unreached-test.sh` U2, U8–U12
 - Amendment (#2244, #2243) → `tests/unit/test-author-supersedes-test.sh` S1–S6 (`guard_test_broken` went with `[guard]`, #2304)
+- Amendment (2026-10-11, every changed code file) → `tests/integration/acceptance-every-change-tested-test.sh` E1–E5; `tests/integration/acceptance-gate-v2-reader-test.sh` SPEC-1 (a file that dies before printing counts as failed); `scripts/lib/lint-disposition-classify.sh` (`untested_change` is mapped)
 - Amendment (#2300) → `tests/unit/acceptance-negctl-plugin-tests-test.sh` P1, P2
 - Amendment (#2304) → `tests/unit/acceptance-unclaimed-code-test.sh` U1–U4; `tests/integration/acceptance-gate-test.sh` S6b
 - Amendment (#2304 part B) → `tests/unit/acceptance-negctl-status-test.sh` N1–N5; `tests/unit/acceptance-coverage-test.sh` C7, C9; `tests/integration/acceptance-gate-test.sh` S6

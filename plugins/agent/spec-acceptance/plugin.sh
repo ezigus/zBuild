@@ -318,19 +318,16 @@ acceptance_gate_run() {
         fi
     fi
 
-    # ── Level 3: reachability (WIRING load-bearing check) ────────────────────
-    # #1220: runs REGARDLESS of Level 1/2 outcome (still gated on a WIRING:
-    # section being present) so an inert-wiring violation surfaces in the SAME
-    # pass as any Level-1/2 violation.
-    local wiring_present=0
-    acceptance_list_wiring "$design_md" >/dev/null 2>&1 && wiring_present=1
-    if [[ "$wiring_present" -eq 1 ]]; then
+    # ── Level 3: reachability — each file put back on its own ────────────────
+    # #1220: runs REGARDLESS of Level 1/2 outcome so its violations surface in
+    # the SAME pass as any Level-1/2 violation. ADR-036 (2026-10-11): it runs
+    # with or without a WIRING: section — every changed code file is checked.
         {
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
                 summary_lines+=("$line")  # #1211: one operator line per WIRING target
                 case "$line" in
-                    "REACHABILITY PASS "*) : ;;  # wiring is load-bearing
+                    "REACHABILITY PASS "*) : ;;  # wiring / change is load-bearing
                     "REACHABILITY EXEMPT none")
                         eb_emit_event "acceptance.gate.wiring_exempt" "stage=acceptance-gate" ;;
                     "REACHABILITY SKIP "*)   : ;;  # no_impl_delta
@@ -340,6 +337,13 @@ acceptance_gate_run() {
                         verdict="fail"
                         eb_emit_event "acceptance.gate.inert_wiring" "stage=acceptance-gate" \
                             "target=$target"
+                        ;;
+                    "REACHABILITY FAIL untested_change "*)
+                        local _uf="${line#REACHABILITY FAIL untested_change }"
+                        failures+=("untested_change:$_uf")
+                        verdict="fail"
+                        eb_emit_event "acceptance.gate.untested_change" "stage=acceptance-gate" \
+                            "file=$_uf"
                         ;;
                     "REACHABILITY FAIL not_passing_at_head "*)
                         # #2109: "<target> <tf>" — the file is red at HEAD, so
@@ -386,7 +390,6 @@ acceptance_gate_run() {
                 esac
             done < <(acceptance_reachability_check "$design_md" "$repo_root" || true)
         }
-    fi
 
     # ── Classify + compose operator reason ───────────────────────────────────
     # `disposition` is the GENERIC contract the cycle engine reads (ADR-021): the
