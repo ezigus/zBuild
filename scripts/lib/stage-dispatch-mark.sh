@@ -27,7 +27,11 @@ stage_dispatch_mark() {
 }
 
 # stage_result_is_current <state_dir> <stage> <result_file> — rc 1 when the
-# result is older than <stage>'s latest run, i.e. that run wrote none.
+# result is older than <stage>'s latest run, i.e. that run wrote none. No mark
+# means the stage has not run in this state dir: the result is trusted, as it
+# was before. Whether a file belongs to THIS RUN at all (a reused state dir's
+# leftover) is a different question, answered by attempt_is_this_run against the
+# run-start marker; this one is per dispatch.
 stage_result_is_current() {
     local m
     [[ -n "${2:-}" ]] || return 0

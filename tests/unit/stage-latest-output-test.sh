@@ -66,7 +66,9 @@ assert_eq "[L1b] first run's pass is read" "ok|pass" "$(_read)"
 
 # ─── L1: the next run writes nothing; its result is missing, not the old pass ─
 print_test_section "L1: a run that did not rewrite its result has none"
-sleep 1   # mtime resolution on some filesystems is one second
+# Backdate the first result so the second run's mark is strictly newer on any
+# filesystem's timestamp resolution.
+touch -t 202601010000 "$STATE/artifacts/once-writer-result.json"
 plugin_hook_call "$SDIR" run "once-writer" "$STATE/pipeline-state.json" >/dev/null 2>&1
 assert_file_exists "[L1] the engine did not delete the stage's file" \
     "$STATE/artifacts/once-writer-result.json"
@@ -117,7 +119,7 @@ printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":
 plugin_hook_call "$NDIR" run "needy" "$STATE/pipeline-state.json" >/dev/null 2>&1
 _verdict_read_result "$STATE" "$NDIR/manifest.yaml" "needy" 0 _n
 assert_eq "[L6-guard] the first run wrote its result" "ok|pass" "$_n_state|$_n_verdict"
-sleep 1
+touch -t 202601010000 "$STATE/artifacts/needy-result.json"
 rm -f "$STATE/artifacts/once-writer-result.json"   # its required input is gone: refused
 plugin_hook_call "$NDIR" run "needy" "$STATE/pipeline-state.json" >/dev/null 2>&1
 _verdict_read_result "$STATE" "$NDIR/manifest.yaml" "needy" 0 _n

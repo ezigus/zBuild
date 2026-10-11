@@ -23,6 +23,8 @@ print_test_header "prior-output-reader — unified artifact resolution (#1581)"
 setup_test_env "prior-output-reader"
 
 # ─── T1: on a later try the stage's latest output wins — no copy is read ───
+# The cycle copy and ZBUILD_CYCLE_ITER are set on purpose: they are what the
+# removed copy tier read, so a reader that grows it back fails here.
 export ZBUILD_CYCLE_ITER="2"
 export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
 mkdir -p "$ZBUILD_CYCLE_FEEDBACK_DIR"
@@ -40,7 +42,7 @@ mkdir -p "$ZBUILD_STATE_DIR/artifacts"
 printf 'state design' > "$ZBUILD_STATE_DIR/artifacts/design.md"
 
 result=$(_read_prior_output "design.md")
-assert_eq "T1: the latest output wins over a cycle copy and the restored one (ADR-068 §6)" \
+assert_eq "T1: a planted cycle copy is not read — the latest output wins (ADR-068 §8)" \
     "state design" "$result"
 
 # Cleanup cycle-related env vars
@@ -91,7 +93,7 @@ printf 'build from restored' > "$ZBUILD_RESTORED_ARTIFACTS_DIR/build.json"
 printf 'build from state' > "$ZBUILD_STATE_DIR/artifacts/build.json"
 
 result=$(_read_prior_output "build.json")
-assert_eq "T5: the latest output wins with all three present" \
+assert_eq "T5: a planted cycle copy is not read with all three present (ADR-068 §8)" \
     "build from state" "$result"
 
 # Test with field stripping (build.json → prior_build.txt)
