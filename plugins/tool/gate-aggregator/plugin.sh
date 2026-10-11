@@ -32,6 +32,9 @@ source "$_GA_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # hardcoded gate list — so adding/removing a gate needs NO edit to this plugin.
 # shellcheck source=../../../scripts/lib/manifest-graph.sh
 source "$_GA_ROOT/scripts/lib/manifest-graph.sh" 2>/dev/null || true
+# ADR-068 §8: a gate's result counts only if its latest run wrote it.
+# shellcheck source=../../../scripts/lib/stage-dispatch-mark.sh
+source "$_GA_ROOT/scripts/lib/stage-dispatch-mark.sh"
 # yaml_get (top-level + single-level-nested scalar reader): convergence / role /
 # provides.artifact_type. manifest-validation.sh is a leaf (sources nothing).
 # shellcheck source=../../../core/plugin-registry/manifest-validation.sh
@@ -131,10 +134,14 @@ _ga_build_roster() {
 #   malformed      → artifact present but unparseable / no usable verdict
 # The test stage's "error" verdict (interrupted / unparseable suite) maps to
 # fail — an indeterminate suite must never satisfy convergence.
-# Usage: _ga_read_gate_verdict <result_path>
+# Usage: _ga_read_gate_verdict <result_path> [stage] [state_dir]
 _ga_read_gate_verdict() {
-    local result_path="$1"
+    local result_path="$1" stage="${2:-}" state_dir="${3:-}"
     [[ -f "$result_path" ]] || { echo "missing"; return 0; }
+    # A result from before the gate's latest run: that run wrote none.
+    if [[ -n "$state_dir" ]] && ! stage_result_is_current "$state_dir" "$stage" "$result_path"; then
+        echo "missing"; return 0
+    fi
     local v
     v="$(jq -r '.verdict // empty' "$result_path" 2>/dev/null)" || { echo "malformed"; return 0; }
     case "$v" in
@@ -187,7 +194,7 @@ gate_aggregator_run() {
     for entry in "${_GA_ROSTER[@]}"; do
         name="${entry%%:*}"
         file="${entry#*:}"
-        status="$(_ga_read_gate_verdict "$artifacts_dir/$file")"
+        status="$(_ga_read_gate_verdict "$artifacts_dir/$file" "$name" "${artifacts_dir%/artifacts}")"
         gate_pairs+=("$name=$status")
         case "$status" in
             pass | skip | advisory) : ;;          # satisfied (advisory = non-blocking fail)

@@ -23,6 +23,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/write-ownership.sh"
 # shellcheck source=attempt-archive.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/attempt-archive.sh"
+# shellcheck source=../../scripts/lib/stage-dispatch-mark.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-dispatch-mark.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -186,6 +188,11 @@ plugin_hook_call() {
     shift 2
     local manifest="$plugin_dir/manifest.yaml"
     local plugin_sh="$plugin_dir/plugin.sh"
+
+    # ADR-068 §8: mark when this run of the stage started, FIRST — before any
+    # refusal below can return — so a run that writes no result, refused or
+    # not, is never credited with the previous run's (stage_result_is_current).
+    [[ "$hook_name" == "run" ]] && stage_dispatch_mark "${2:-}" "${1:-}"
 
     if [[ ! -f "$plugin_sh" ]]; then
         error "plugin_hook_call: plugin.sh missing: $plugin_sh"
@@ -451,15 +458,6 @@ plugin_hook_call() {
         # Keyed on stage + map element so nested, map and parallel dispatches
         # against one state file do not share (and re-stamp) one window.
         write_boundary_mark "${2:-}" "${1:-}" "${ZBUILD_MAP_ELEMENT:-}" || true
-    fi
-
-    # When this run of the stage started. A result older than this was not
-    # written by this run, and _verdict_read_result reads it as absent: the
-    # engine never deletes a stage's output to keep a previous run's verdict
-    # from being read as this one's (ADR-068 §6). Fail-open.
-    if [[ "$hook_name" == "run" && "${2:-}" == /* && -n "${1:-}" ]]; then
-        local _lc_dd; _lc_dd="$(dirname "$2")/runtime/dispatched"
-        mkdir -p "$_lc_dd" 2>/dev/null && : > "$_lc_dd/${1//[^A-Za-z0-9._-]/_}" 2>/dev/null || true
     fi
 
     # #2186: what the declared outputs were before this run, so the attempt

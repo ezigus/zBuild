@@ -2893,7 +2893,7 @@ main() {
         # Declared outside the loop: bash function-scopes locals, so re-declaring
         # them per iteration is harmless but reads as an intent to reset (#1887
         # review). Hoisting makes the scope unambiguous.
-        local _cd_manifest _cd_observation _cd_rate_limited _cd_wait _cd_primary _cd_resolved
+        local _cd_manifest _cd_observation _cd_rate_limited _cd_wait
         _cd_redispatch_max="$(_runner_retry_budget "$_cd_stage")"
         while :; do
             _router_clear_throttle_marker
@@ -2968,14 +2968,7 @@ main() {
             # Inside the re-dispatch loop (#1887): a retried attempt writes a fresh
             # artifact, so a kind read once before the loop would describe the
             # attempt that was discarded.
-            _CYCLE_DISPATCH_DATA_KIND=""
-            _cd_primary="$(_verdict_primary_output_path "$_cd_manifest" 2>/dev/null || true)"
-            if [[ -n "$_cd_primary" ]]; then
-                _cd_resolved="$(_verdict_resolve_path "$_cd_primary" "$state_dir" 2>/dev/null || true)"
-                if [[ "$_cd_resolved" == *.json && -s "$_cd_resolved" ]]; then
-                    _CYCLE_DISPATCH_DATA_KIND="$(jq -r '.data.build_kind // ""' "$_cd_resolved" 2>/dev/null || true)"
-                fi
-            fi
+            _CYCLE_DISPATCH_DATA_KIND="$(runner_read_stage_data_kind "$state_dir" "$_cd_manifest" "$_cd_stage")"
             # The table decides. `interrupted` re-dispatches at once; `throttled`
             # waits first, because re-dispatching a throttled stage immediately is
             # simply throttled again — a retry loop that burns budget to learn

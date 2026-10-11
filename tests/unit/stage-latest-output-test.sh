@@ -9,6 +9,12 @@
 #               loop re-ran the stage (#511 Pin 8); now the reader tells by time.
 #   L1b [guard] a stage that does rewrite its result is read as usual.
 #   L2 [change] a loop does not delete a stage's output before running it again.
+#   L3 [change] gate-aggregator does not count a gate's result from before the
+#               gate's latest run (a suite that timed out on try 2 must not pass
+#               on try 1's result) — review on #2357.
+#   L4 [change] the stage report is empty for a run that wrote no result.
+#   L5 [change] data.build_kind is not read from a previous run's result.
+#   L6 [change] a run refused before its hook ran has no result either.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +72,56 @@ assert_file_exists "[L1] the engine did not delete the stage's file" \
     "$STATE/artifacts/once-writer-result.json"
 assert_eq "[L1] the second run's result reads as absent, not the first run's pass" \
     "absent|" "$(_read)"
+
+# ─── L4 / L5: the report and build_kind come from this run's result only ─────
+print_test_section "L4/L5: report and build_kind of a run that wrote nothing"
+assert_eq "[L4] the stage report of that run is empty" "{}" \
+    "$(runner_read_stage_report "$STATE" "$SDIR/manifest.yaml" "once-writer" 0)"
+printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"r","data":{"build_kind":"empty_diff"}}' \
+    > "$STATE/artifacts/once-writer-result.json"
+touch -t 202601010000 "$STATE/artifacts/once-writer-result.json"
+assert_eq "[L5] build_kind is not read from a result older than the run" "" \
+    "$(runner_read_stage_data_kind "$STATE" "$SDIR/manifest.yaml" "once-writer")"
+
+# ─── L3: gate-aggregator ignores a gate's result from before its latest run ──
+print_test_section "L3: gate-aggregator and a gate that wrote nothing this run"
+(
+    source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
+    GA_STATE="$TEST_TEMP_DIR/ga"; mkdir -p "$GA_STATE/artifacts"
+    for f in test-results shape-floor-result acceptance-gate-result lint-result \
+             coverage-result mutation-result secret-scan-result; do
+        printf '{"verdict":"pass"}\n' > "$GA_STATE/artifacts/$f.json"
+        touch -t 202601010000 "$GA_STATE/artifacts/$f.json"
+    done
+    # acceptance-gate ran again (its mark is newer) and wrote nothing.
+    mkdir -p "$GA_STATE/runtime/dispatched"; : > "$GA_STATE/runtime/dispatched/acceptance-gate"
+    unset ZBUILD_CYCLE_ID
+    gate_aggregator_run "gate-aggregator" "$GA_STATE/pipeline-state.json" >/dev/null 2>&1 || true
+    cat "$GA_STATE/artifacts/gate-aggregator-result.json" > "$TEST_TEMP_DIR/ga-out.json"
+)
+assert_eq "[L3] the re-run gate counts as missing" "missing" \
+    "$(jq -r '.data.gates["acceptance-gate"] // .gates["acceptance-gate"] // empty' "$TEST_TEMP_DIR/ga-out.json")"
+assert_eq "[L3] so the loop is not converged" "fail" "$(jq -r '.verdict' "$TEST_TEMP_DIR/ga-out.json")"
+
+# ─── L6: a run refused before its hook ran has no result ────────────────────
+print_test_section "L6: a refused run is not credited with the previous result"
+NDIR="$(mock_plugin_factory "needy" "tool" 0)"
+python3 - "$NDIR/manifest.yaml" <<'PY'
+import sys; p=sys.argv[1]; s=open(p).read()
+s=s.replace("outputs:\n", "inputs:\n  - id: once_writer_result\n    required: true\noutputs:\n",1)
+open(p,'w').write(s)
+PY
+_TPL_STAGES=(once-writer needy)
+printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"r"}' \
+    > "$STATE/artifacts/once-writer-result.json"
+plugin_hook_call "$NDIR" run "needy" "$STATE/pipeline-state.json" >/dev/null 2>&1
+_verdict_read_result "$STATE" "$NDIR/manifest.yaml" "needy" 0 _n
+assert_eq "[L6-guard] the first run wrote its result" "ok|pass" "$_n_state|$_n_verdict"
+sleep 1
+rm -f "$STATE/artifacts/once-writer-result.json"   # its required input is gone: refused
+plugin_hook_call "$NDIR" run "needy" "$STATE/pipeline-state.json" >/dev/null 2>&1
+_verdict_read_result "$STATE" "$NDIR/manifest.yaml" "needy" 0 _n
+assert_eq "[L6] the refused run's result reads as absent" "absent" "$_n_state"
 
 # ─── L2: a loop does not delete a member's output before re-running it ──────
 print_test_section "L2: a loop keeps a member's output until the member rewrites it"

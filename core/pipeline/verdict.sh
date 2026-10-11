@@ -71,6 +71,10 @@ if ! declare -F dispatch_rc_failure_disposition >/dev/null 2>&1; then
     # shellcheck source=./dispatch-rc.sh
     source "$_ZBUILD_VERDICT_ROOT/core/pipeline/dispatch-rc.sh"
 fi
+# ADR-068 §8: whether a result was written by its stage's latest run.
+# shellcheck source=../../scripts/lib/stage-dispatch-mark.sh
+declare -F stage_result_is_current >/dev/null 2>&1 || \
+    source "$_ZBUILD_VERDICT_ROOT/scripts/lib/stage-dispatch-mark.sh"
 if [[ -z "${GREEN:-}${YELLOW:-}${RED:-}" ]]; then
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$_ZBUILD_VERDICT_ROOT/scripts/lib/helpers.sh" 2>/dev/null || true
@@ -349,9 +353,8 @@ _verdict_read_result() {
         printf -v "${p}_state" '%s' "absent"; return 0
     fi
     # A result older than the stage's latest run is the previous run's: that
-    # run wrote none (ADR-068 §6). The mark is plugin_hook_call's.
-    local _rr_mark="$state_dir/runtime/dispatched/${stage//[^A-Za-z0-9._-]/_}"
-    if [[ -n "$stage" && -e "$_rr_mark" && "$_rr_mark" -nt "$resolved" ]]; then
+    # run wrote none (ADR-068 §8).
+    if ! stage_result_is_current "$state_dir" "$stage" "$resolved"; then
         printf -v "${p}_state" '%s' "absent"; return 0
     fi
     # One jq for every field (ADR-065): this runs on every read of every stage's
@@ -581,8 +584,21 @@ runner_read_stage_report() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
     local _p_state _p_contract _p_verdict _p_disp _p_reason _p_viol _p_path _p_present
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _p
-    if [[ -z "$_p_path" || ! -s "$_p_path" ]]; then printf '{}'; return 0; fi
+    # Only a result this run wrote has a report (ADR-068 §8).
+    [[ "$_p_state" == ok ]] || { printf '{}'; return 0; }
     _verdict_report_from_file "$_p_path"
+}
+
+# ─── runner_read_stage_data_kind <state_dir> <manifest> <stage> ─────────────
+# ADR-054: the primary result's data.build_kind, so the cycle can tell the
+# empty_diff resting point from a pass without reading the verdict channel.
+runner_read_stage_data_kind() {
+    local state_dir="$1" manifest="$2" stage="$3"
+    local _k_state _k_contract _k_verdict _k_disp _k_reason _k_viol _k_path _k_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" 0 _k
+    # Only a result this run wrote says what kind of build it was (ADR-068 §8).
+    [[ "$_k_state" == ok ]] || return 0
+    jq -r '.data.build_kind // ""' "$_k_path" 2>/dev/null || true
 }
 
 # _verdict_report_from_file <result.json> — the extraction runner_read_stage_report
