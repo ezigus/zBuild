@@ -11,6 +11,9 @@
 # T1 [code] fail, then a retry that passes → the row shows pass
 # T2 [code] the retry's start time is the row's start; one row, not two
 # T3 [code] a repeated start for a row still running changes nothing
+#
+# T1 also covers the summary counts the first try's prompt carried (review of
+# the fix): the retry's row shows its own, or none.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,6 +35,7 @@ EV="$TEST_TEMP_DIR/events.jsonl"
 cat > "$EV" <<'EOF'
 {"ts":"2026-10-10T13:25:07.346Z","run_id":"r","issue":1668,"type":"stage.start","plugin":"","kind":"","data":{"stage":"plan"},"schema_version":1}
 {"ts":"2026-10-10T13:25:07.946Z","run_id":"r","issue":1668,"type":"plugin.run.start","plugin":"plan","kind":"agent","data":{"plugin":"plan","kind":"agent"},"schema_version":1,"stage":"plan","seq":"3"}
+{"ts":"2026-10-10T13:25:08.743Z","run_id":"r","issue":1668,"type":"prompt.summaries.injected","plugin":"","kind":"","data":{"stage":"plan","stages":"4","resolve":"2"},"schema_version":1,"stage":"plan"}
 {"ts":"2026-10-10T13:27:42.095Z","run_id":"r","issue":1668,"type":"plugin.result","plugin":"plan","kind":"agent","data":{"verdict":"error","plugin":"plan","reason":"schema_violation"},"schema_version":1,"stage":"plan","seq":"3"}
 {"ts":"2026-10-10T13:27:42.113Z","run_id":"r","issue":1668,"type":"plugin.run.error","plugin":"plan","kind":"agent","data":{"plugin":"plan","kind":"agent","rc":"1"},"schema_version":1,"stage":"plan","seq":"3"}
 {"ts":"2026-10-10T13:27:42.857Z","run_id":"r","issue":1668,"type":"plugin.run.start","plugin":"plan","kind":"agent","data":{"plugin":"plan","kind":"agent"},"schema_version":1,"stage":"plan","seq":"3"}
@@ -42,6 +46,8 @@ EOF
 _rows="$(rsc_rows_json "$EV")"
 assert_eq "[T1] the retried stage's row shows pass" "pass" "$(jq -r '.rows["3"].verdict // "none"' <<< "$_rows")"
 assert_eq "[T1] ...with no leftover error code" "null" "$(jq -r '.rows["3"].rc' <<< "$_rows")"
+assert_eq "[T1] ...and none of the first try's summary counts" "null null" \
+    "$(jq -r '"\(.rows["3"].summaries) \(.rows["3"].resolve)"' <<< "$_rows")"
 assert_eq "[T2] one row for the stage" "1" "$(jq -r '.order | length' <<< "$_rows")"
 assert_eq "[T2] the row starts at the retry" "2026-10-10T13:27:42.857Z" "$(jq -r '.rows["3"].started_ts' <<< "$_rows")"
 assert_eq "[T2] the row ends at the retry's end" "2026-10-10T13:29:02.813Z" "$(jq -r '.rows["3"].ended_ts' <<< "$_rows")"

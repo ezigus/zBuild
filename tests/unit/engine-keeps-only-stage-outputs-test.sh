@@ -149,13 +149,19 @@ S4="$TEST_TEMP_DIR/state4"; mkdir -p "$S4/artifacts"
 # A record kept beside the results, from an earlier round (#1668's shape).
 jq -n -c '[{ref:"issue-acceptance finding 5", opener:"issue-acceptance", text:"", answers:[]}]' \
     > "$S4/artifacts/open-items.json"
-jq -n -c '{result_contract:2, verdict:"fail", disposition:"complete", reason:"one requirement unmet",
-           data:{findings:[{n:1, text:"R-1: the PR body does not state the red step"}]}}' \
+# The findings are made by the writer every check uses (stage_findings_json).
+# shellcheck source=../../scripts/lib/stage-summary.sh
+source "$REPO_ROOT/scripts/lib/stage-summary.sh"
+_f4="$(printf 'R-1: the PR body does not state the red step\n' | stage_findings_json)"
+jq -n -c --argjson f "$_f4" '{result_contract:2, verdict:"fail", disposition:"complete",
+           reason:"one requirement unmet", data:{findings:$f}}' \
     > "$S4/artifacts/issue-acceptance-result.json"
 _items="$(open_items_json "$S4")"
 assert_eq "[K4] one item is open" "1" "$(jq 'length' <<< "$_items" 2>/dev/null)"
 assert_eq "[K4] it is the check's latest finding" "R-1: the PR body does not state the red step" \
     "$(jq -r '.[0].text // empty' <<< "$_items" 2>/dev/null)"
+assert_eq "[K4] ...named by the check and its number" "issue-acceptance finding 1" \
+    "$(jq -r '.[0].ref // empty' <<< "$_items" 2>/dev/null)"
 
 print_test_section "K5: stages report on findings in their own result"
 # shellcheck source=../../scripts/lib/stage-conduct.sh

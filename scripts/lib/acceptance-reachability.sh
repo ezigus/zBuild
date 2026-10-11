@@ -102,9 +102,9 @@ _reachability_bound_log() {
 }
 
 # _reachability_strip_comments — stdin without blank lines and whole-line
-# comments (`#`, `//`, `/*`).
+# comments (`#`, `//`, `/*`). A `#!` line picks the interpreter: it is code.
 _reachability_strip_comments() {
-    awk '!/^[[:space:]]*$/ && !/^[[:space:]]*(#|\/\/|\/\*)/'
+    awk '/^#!/ { print; next } !/^[[:space:]]*$/ && !/^[[:space:]]*(#|\/\/|\/\*)/'
 }
 
 # _reachability_code_changed <repo_root> <base_sha> <path> — rc 0 when the file

@@ -13,7 +13,8 @@
 #           under WIRING: none
 # E2 [code] a changed code file a test notices passes
 # E3 [code] a file whose only changes are comments or blank lines, a deleted
-#           file, a test file and a document are not put back
+#           file, a test file and a document are not put back; a changed
+#           shebang line is code (it picks the interpreter)
 # E4 [code] with no WIRING section at all the files are still checked
 # E5 [code] the gate fails on it, as a finding the build loop can act on, in
 #           plain words that name the file
@@ -38,6 +39,7 @@ REPO="$(setup_git_temp_repo "every-change")"
     printf '#!/usr/bin/env bash\nsource lib.sh\nmain() { echo run; }\n' > caller.sh
     printf '#!/usr/bin/env bash\n# old comment\nother() { echo o; }\n' > other.sh
     printf '#!/usr/bin/env bash\nold() { :; }\n' > old.sh
+    printf '#!/bin/sh\nshebang() { :; }\n' > shebang.sh
     "$GIT" add -A && "$GIT" commit -q -m base
     "$GIT" checkout -q -b feature
     # lib.sh: the tested change. caller.sh: a change no test looks at.
@@ -46,6 +48,7 @@ REPO="$(setup_git_temp_repo "every-change")"
     # other.sh: comments and blank lines only. old.sh: deleted.
     printf '#!/usr/bin/env bash\n# new comment\n\n// another\nother() { echo o; }\n' > other.sh
     "$GIT" rm -q old.sh
+    printf '#!/usr/bin/env bash\nshebang() { :; }\n' > shebang.sh
     mkdir -p tests docs
     printf 'notes\n' > docs/notes.md
     cat > tests/limit-test.sh <<'TESTEOF'
@@ -79,6 +82,11 @@ _out="$(_reach)"
 assert_contains "[E1] the untested change is reported by name" "$_out" "REACHABILITY FAIL untested_change caller.sh"
 assert_contains "[E2] the tested change passes" "$_out" "REACHABILITY PASS change lib.sh"
 assert_contains "[E3] a comments-only change is not put back" "$_out" "REACHABILITY SKIP no_code other.sh"
+if grep -qF "REACHABILITY SKIP no_code shebang.sh" <<< "$_out"; then
+    assert_fail "[E3] a changed shebang line is code, not a comment" "skipped as no_code"
+else
+    assert_pass "[E3] a changed shebang line is code, not a comment"
+fi
 for _f in old.sh tests/limit-test.sh docs/notes.md; do
     if grep -qF " $_f" <<< "$_out"; then
         assert_fail "[E3] $_f is not put back" "$(grep -F " $_f" <<< "$_out")"
@@ -113,10 +121,11 @@ _design none
 _run_gate
 assert_contains "[E5] the gate lists the untested file" "$(jq -r '.failures[]? // empty' <<< "$RESULT")" "untested_change:caller.sh"
 assert_eq "[E5] the build loop can act on it" "recoverable" "$(jq -r '.severity // empty' <<< "$RESULT")"
-assert_contains "[E5] the reason names the file in plain words" "$(jq -r '.reason // empty' <<< "$RESULT")" \
-    "caller.sh was put back to its old version on its own and every test still passed"
-assert_eq "[E5] the event is emitted" "1" \
-    "$(grep -c '"acceptance.gate.untested_change"' "$REPO/.zbuild-state/events/events.jsonl" || true)"
+_reason="$(jq -r '.reason // empty' <<< "$RESULT")"
+assert_contains "[E5] the reason names the file" "$_reason" "caller.sh"
+assert_contains "[E5] ...in plain words" "$_reason" "was put back to its old version on its own and every test still passed"
+assert_eq "[E5] the event is emitted for the file" "1" \
+    "$(grep '"acceptance.gate.untested_change"' "$REPO/.zbuild-state/events/events.jsonl" | grep -c '"file":"caller.sh"' || true)"
 
 cleanup_test_env
 print_test_results
