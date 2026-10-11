@@ -17,29 +17,65 @@ setup_test_env "zb-run-cap"
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
+# #1799: state files are made by the engine's own writers, never by hand.
+# shellcheck source=../../core/state/resume.sh
+source "$REPO_ROOT/core/state/resume.sh"
+# shellcheck source=../../core/pipeline/state_helpers.sh
+source "$REPO_ROOT/core/pipeline/state_helpers.sh"
+
 _mk_live_state() {
-    local f="$1"
-    mkdir -p "$(dirname "$f")"
-    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"status":"in_progress","updated_at":"%s"}\n' "$ts" > "$f"
+    init_state "$1" "run-$RANDOM" 0 >/dev/null 2>&1
+    _set_pipeline_status "$1" "in_progress"
 }
 
 _mk_dead_state() {
-    local f="$1"
-    mkdir -p "$(dirname "$f")"
-    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"status":"complete","updated_at":"%s"}\n' "$ts" > "$f"
+    init_state "$1" "run-$RANDOM" 0 >/dev/null 2>&1
+    _set_pipeline_status "$1" "complete"
 }
 
-# Admit a run as a subprocess so its slot file persists after exit.
-# ZBUILD_STATE_ROOT and ZBUILD_MAX_CONCURRENT_RUNS are inherited from the caller.
-_cap_admit_subprocess() {
+# A run that has started but not yet marked itself in_progress: the runner takes
+# its slot before _set_pipeline_status runs, so this is every new run's state.
+_mk_starting_state() {
+    init_state "$1" "run-$RANDOM" 0 >/dev/null 2>&1
+}
+
+# A slot belongs to a process, so a held slot needs a process that stays alive.
+# The holder writes its slot with the module's own writer, then execs sleep so
+# the slot's pid stays the live one. Killed at the end of the test.
+_HOLDER_PIDS=()
+_hold_slot() {
     local _run_id="$1" _state_file="${2:-}"
     bash -c '
         source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
         source "'"$REPO_ROOT"'/core/state/run-cap.sh"
-        zbuild_run_cap_admit "'"$_run_id"'" "'"$_state_file"'" || true
-    ' >/dev/null 2>&1 || true
+        zbuild_run_cap_write_slot "$1" "$2"
+        exec sleep 120
+    ' _ "$_run_id" "$_state_file" >/dev/null 2>&1 &
+    local _pid=$!
+    _HOLDER_PIDS+=("$_pid")
+    local _slot; _slot="$(zbuild_run_cap_slot_dir)/$_pid.json"
+    local _w=0
+    while [[ ! -f "$_slot" && $_w -lt 100 ]]; do sleep 0.1; _w=$((_w + 1)); done
+}
+
+# A slot whose process has exited: written the same way, but nothing stays alive.
+_dead_slot() {
+    local _run_id="$1" _state_file="${2:-}"
+    bash -c '
+        source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
+        source "'"$REPO_ROOT"'/core/state/run-cap.sh"
+        zbuild_run_cap_write_slot "$1" "$2"
+    ' _ "$_run_id" "$_state_file" >/dev/null 2>&1 || true
+}
+
+_kill_holders() {
+    local _p
+    for _p in "${_HOLDER_PIDS[@]:-}"; do
+        [[ -n "$_p" ]] || continue
+        kill "$_p" 2>/dev/null || true
+        wait "$_p" 2>/dev/null || true
+    done
+    _HOLDER_PIDS=()
 }
 
 # ─── [#1932/SPEC-1] no cap: returns 0, no slot written, silent ───────────────
@@ -83,7 +119,7 @@ _mk_live_state "$_s6_state_a"
 _mk_live_state "$_s6_state_new"
 
 # One existing live slot (cap=2, so 1 < 2)
-_cap_admit_subprocess "run-s6-a" "$_s6_state_a"
+_hold_slot "run-s6-a" "$_s6_state_a"
 
 _s6_stdout_file="$TEST_TEMP_DIR/spec6-stdout.txt"
 _s6_stderr_file="$TEST_TEMP_DIR/spec6-stderr.txt"
@@ -119,8 +155,8 @@ _mk_live_state "$_s2_state_b"
 _mk_live_state "$_s2_state_new"
 
 # Seed two live slots (cap=2, so count == cap)
-_cap_admit_subprocess "run-s2-a" "$_s2_state_a"
-_cap_admit_subprocess "run-s2-b" "$_s2_state_b"
+_hold_slot "run-s2-a" "$_s2_state_a"
+_hold_slot "run-s2-b" "$_s2_state_b"
 
 _ZBUILD_RUN_CAP_BLOCKERS=""
 _s2_stderr_file="$TEST_TEMP_DIR/spec2-stderr.txt"
@@ -151,8 +187,8 @@ _mk_dead_state "$_s3_state_dead"
 _mk_live_state "$_s3_state_new"
 
 # Seed one live slot + one dead (complete) slot — total 2, but only 1 is live
-_cap_admit_subprocess "run-s3-live" "$_s3_state_live"
-_cap_admit_subprocess "run-s3-dead" "$_s3_state_dead"
+_hold_slot "run-s3-live" "$_s3_state_live"
+_dead_slot "run-s3-dead" "$_s3_state_dead"
 
 # With cap=2 and 2 total slots (1 live, 1 stale), admission must succeed
 # because zbuild_run_cap_reap_stale removes the dead slot before counting
@@ -177,11 +213,55 @@ _s3b_state_new="$TEST_TEMP_DIR/spec3b-new/run.json"
 _mk_live_state "$_s3b_state_a"
 _mk_live_state "$_s3b_state_b"
 _mk_live_state "$_s3b_state_new"
-_cap_admit_subprocess "run-s3b-a" "$_s3b_state_a"
-_cap_admit_subprocess "run-s3b-b" "$_s3b_state_b"
+_hold_slot "run-s3b-a" "$_s3b_state_a"
+_hold_slot "run-s3b-b" "$_s3b_state_b"
 _s3b_rc=0
 zbuild_run_cap_admit "run-s3b-new" "$_s3b_state_new" 2>/dev/null || _s3b_rc=$?
 assert_eq "[#1932/SPEC-3] control: two live slots still refuse" "1" "$_s3b_rc"
+
+# ─── [#1932/SPEC-3b] a dead process's slot is reaped though its state says running
+# A run killed by the OOM killer — the case the cap exists for — never gets to
+# write a final status: its state still says in_progress with a fresh
+# updated_at. Liveness read from the state file would keep its slot for 24h.
+print_test_section "[#1932/SPEC-3b] dead process, state still in_progress"
+
+export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec3c-state"
+export ZBUILD_MAX_CONCURRENT_RUNS=1
+_s3c_state_crashed="$TEST_TEMP_DIR/spec3c-crashed/run.json"
+_s3c_state_new="$TEST_TEMP_DIR/spec3c-new/run.json"
+_mk_live_state "$_s3c_state_crashed"
+_mk_live_state "$_s3c_state_new"
+_dead_slot "run-s3c-crashed" "$_s3c_state_crashed"
+_s3c_rc=0
+zbuild_run_cap_admit "run-s3c-new" "$_s3c_state_new" 2>/dev/null || _s3c_rc=$?
+assert_eq "[#1932/SPEC-3b] crashed run's slot does not block: admitted" "0" "$_s3c_rc"
+_s3c_found=0
+while IFS= read -r _f; do
+    grep -q "run-s3c-crashed" "$_f" 2>/dev/null && _s3c_found=1
+done < <(find "$ZBUILD_STATE_ROOT" -type f 2>/dev/null)
+assert_eq "[#1932/SPEC-3b] crashed run's slot file removed" "0" "$_s3c_found"
+
+# ─── [#1932/SPEC-3c] a live process's slot is kept though its state is not in_progress yet
+# The runner takes its slot before it marks itself in_progress, and init_state
+# writes no status at all. A starter that reaped on the state file would delete
+# that slot, and both runs would go over the cap.
+print_test_section "[#1932/SPEC-3c] live process, state not yet in_progress"
+
+export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/spec3d-state"
+export ZBUILD_MAX_CONCURRENT_RUNS=1
+_s3d_state_starting="$TEST_TEMP_DIR/spec3d-starting/run.json"
+_s3d_state_new="$TEST_TEMP_DIR/spec3d-new/run.json"
+_mk_starting_state "$_s3d_state_starting"
+_mk_live_state "$_s3d_state_new"
+_hold_slot "run-s3d-starting" "$_s3d_state_starting"
+_s3d_rc=0
+zbuild_run_cap_admit "run-s3d-new" "$_s3d_state_new" 2>/dev/null || _s3d_rc=$?
+assert_eq "[#1932/SPEC-3c] starting run still counts: refused" "1" "$_s3d_rc"
+_s3d_found=0
+while IFS= read -r _f; do
+    grep -q "run-s3d-starting" "$_f" 2>/dev/null && _s3d_found=1
+done < <(find "$ZBUILD_STATE_ROOT" -type f 2>/dev/null)
+assert_eq "[#1932/SPEC-3c] starting run's slot file kept" "1" "$_s3d_found"
 
 # ─── [#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1: bypass regardless of cap and count ──
 print_test_section "[#1932/SPEC-4] ZBUILD_NO_RUN_CAP=1 overrides cap and slot count"
@@ -195,7 +275,7 @@ _mk_live_state "$_s4_state_blocker"
 _mk_live_state "$_s4_state_new"
 
 # Seed one live slot (cap=1, so count == cap — would normally refuse)
-_cap_admit_subprocess "run-s4-blocker" "$_s4_state_blocker"
+_hold_slot "run-s4-blocker" "$_s4_state_blocker"
 
 export ZBUILD_NO_RUN_CAP=1
 _s4_stderr_file="$TEST_TEMP_DIR/spec4-stderr.txt"
@@ -248,10 +328,10 @@ assert_file_exists "[#1932/SPEC-7] ADR-059 file exists" "$_adr_file"
 # §7 heading must appear inside the ## Decision section (between ## Decision and the next ##)
 _s7_decision_section=""
 _s7_decision_section="$(awk '/^## Decision/{in_sec=1; next} /^## /{if(in_sec) exit} in_sec{print}' "$_adr_file")"
-if grep -q "Host-wide run cap, off unless configured" <<< "$_s7_decision_section"; then
-    assert_pass "[#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured' under Decision"
+if grep -Eq '^### 7\. Host-wide run cap, off unless configured \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$' <<< "$_s7_decision_section"; then
+    assert_pass "[#1932/SPEC-7] ADR-059 heading '### 7. Host-wide run cap, off unless configured (<date>)' under Decision"
 else
-    assert_fail "[#1932/SPEC-7] ADR-059 §7 titled 'Host-wide run cap, off unless configured' under Decision" \
+    assert_fail "[#1932/SPEC-7] ADR-059 heading '### 7. Host-wide run cap, off unless configured (<date>)' under Decision" \
         "section heading not found inside ## Decision in ADR-059"
 fi
 
@@ -289,6 +369,7 @@ else
         "event type missing from config/event-schema.json"
 fi
 
+_kill_holders
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

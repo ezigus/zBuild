@@ -348,20 +348,20 @@ consumers disagree about how a run is keyed is not a layout.**
 
 ### 7. Host-wide run cap, off unless configured (2026-10-10)
 
-**Issue exclusivity (§4) decides which issue can run; it says nothing about how many runs the host can support simultaneously.** A host under memory pressure that starts N+1 concurrent pipeline runs will OOM, and §4 permits it. `core/state/issue-lock.sh:21–24` names this gap explicitly: *"NOT A CAPACITY CAP … zBuild still lacks it (#1932). Issue exclusivity is a keyed mutex; host capacity is a counted cap."* Legacy shipwright's pipeline lock (`legacy-DoNotUse/scripts/sw-pipeline.sh:325`) had a flat PID-keyed count, fail-on-exceed, dead-holder reap — the shape this section now brings to zBuild.
+**Issue exclusivity (§4) decides which issue can run; it says nothing about how many runs the host can support simultaneously.** A host under memory pressure that starts N+1 concurrent pipeline runs will OOM, and §4 permits it. `core/state/issue-lock.sh`'s header names this gap explicitly: *"NOT A CAPACITY CAP … zBuild still lacks it (#1932). Issue exclusivity is a keyed mutex; host capacity is a counted cap."* Legacy shipwright's pipeline lock (`legacy-DoNotUse/scripts/sw-pipeline.sh`) had a flat PID-keyed count, fail-on-exceed, dead-holder reap — the shape this section now brings to zBuild.
 
 **Rules (effective 2026-10-10):**
 
 - The cap is **off by default.** Setting `ZBUILD_MAX_CONCURRENT_RUNS=N` enables it. When unset, `zbuild_run_cap_admit` is a no-op: it returns 0, writes no slot file, and produces no output.
 - The count is **flat**: every live pipeline run on the host counts equally, regardless of which issue or goal it is running.
-- **Dead holders are reaped before counting.** `zbuild_run_is_live` (ADR-006's staleness gate) is the predicate. A slot whose state file reports anything other than `status=in_progress` with a fresh (<24h) `updated_at` is removed before the count is taken, so a crashed run cannot block new work indefinitely.
-- **Fail-open.** Any infrastructure failure during cap enforcement (unwritable slot dir, unreadable slot files, missing predicate function) admits the run with a warning to stderr rather than refusing it. Only a successful count at or above the cap refuses.
+- **Dead holders are reaped before counting, by process.** A slot is live while the process that wrote it is alive (`kill -0` on the slot's `pid`); a slot whose process is gone is removed before the count is taken. The state file is not the predicate: a run killed by the OOM killer, the case the cap exists for, never writes a final status, so its state still reads `in_progress`; and a starting run takes its slot before it marks itself `in_progress`, so a reap by state would delete a live run's slot and let both runs past the cap.
+- **Fail-open.** Any infrastructure failure during cap enforcement (unwritable slot dir, unreadable slot files) admits the run with a warning to stderr rather than refusing it. Only a successful count at or above the cap refuses.
 - **Explicit override.** `ZBUILD_NO_RUN_CAP=1` bypasses the cap entirely, with a warning to stderr. Named for what it disables, following `ZBUILD_NO_ISSUE_LOCK=1` (§4).
 - **Refusal names blockers.** When a run is refused, `_ZBUILD_RUN_CAP_BLOCKERS` is set to a space-separated list of the blocking `run_id` values, and the refusal message emitted to stderr names every blocker. The `pipeline.refused.run_cap` event is emitted.
-- **Race window on no-flock hosts.** Two runs starting simultaneously can both pass a cap of 1 via count-then-write. This mirrors the no-flock weakness already stated and accepted in `issue-lock.sh:141–149`, and is documented here rather than hidden.
-- **Release in exit trap.** `zbuild_run_cap_release` is called in `_runner_abort_trap` alongside `zbuild_issue_lock_release`. It is a no-op if no slot was written (guarded by `-f` check).
+- **Race window between count and write.** Two runs whose counts both finish before either writes its slot can both pass a cap of 1. This mirrors the no-flock weakness `issue-lock.sh` already states and accepts, and is documented here rather than hidden.
+- **Every exit frees the slot.** `zbuild_run_cap_release` runs in `_runner_abort_trap` alongside `zbuild_issue_lock_release`, and on the two exits taken before that trap is set: the issue lock's refusal and a failure to enter the run's worktree. It is a no-op if no slot was written.
 
-**Implementation:** `core/state/run-cap.sh`. Slot files live at `${ZBUILD_STATE_ROOT}/run-slots/$$.json`, keyed by PID so a slot is unambiguously owned by one process. The runner sources it at `core/pipeline/runner.sh:25–27`, calls `zbuild_run_cap_admit` before the issue lock acquire (cap is the coarser resource gate; fail fast), and calls `zbuild_run_cap_release` in `_runner_abort_trap`.
+**Implementation:** `core/state/run-cap.sh`. Slot files live at `${ZBUILD_STATE_ROOT}/run-slots/$$.json`, keyed by PID so a slot is unambiguously owned by one process. The runner (`core/pipeline/runner.sh`) sources it, calls `zbuild_run_cap_admit` before the issue lock acquire (cap is the coarser resource gate; fail fast), and calls `zbuild_run_cap_release` in `_runner_abort_trap`.
 
 ## Consequences
 
@@ -454,4 +454,10 @@ committed, stash ablates nothing and reports a false pass.
   (SPEC-1), cap N with N live slots refuses naming blockers (SPEC-2), stale slot reaped before
   counting (SPEC-3), ZBUILD_NO_RUN_CAP=1 bypasses with warning (SPEC-4), unreadable slot dir
   fails open with warning (SPEC-5), below-cap admission writes slot (SPEC-6), ADR §7 and
-  pipeline.refused.run_cap event registered (SPEC-7)
+  pipeline.refused.run_cap event registered (SPEC-7); §7 liveness is the process: a dead
+  process's slot is reaped though its state says in_progress (SPEC-3b), a live process's slot
+  is kept though its state is not in_progress yet (SPEC-3c)
+- `tests/integration/run-cap-runner-test.sh` — §7 through the real runner: a run past the cap is
+  refused, names its blocker, emits pipeline.refused.run_cap and runs no stage (R-6); below the
+  cap it runs and frees its slot (R-6b); a run refused by the issue lock, or failing to enter its
+  worktree, leaves no slot behind (slot-leak, slot-leak-wt)

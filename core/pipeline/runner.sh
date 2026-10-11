@@ -2310,6 +2310,8 @@ main() {
                 2>/dev/null || true
             error "another run already holds $_runner_lock_key: ${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}"
             error "wait for it to finish, or set ZBUILD_NO_ISSUE_LOCK=1 to override (see ADR-059 §4)"
+            # The exit trap that frees the cap slot is not set yet (#1932).
+            zbuild_run_cap_release || true
             return 1
         fi
     fi
@@ -2325,7 +2327,10 @@ main() {
     if declare -F zbuild_run_key >/dev/null 2>&1; then
         _wt_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
     fi
-    _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key" || return 1
+    if ! _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key"; then
+        zbuild_run_cap_release || true
+        return 1
+    fi
 
     # Mark pipeline as in_progress
     _set_pipeline_status "$state_file" "in_progress"
