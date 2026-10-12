@@ -129,7 +129,47 @@ else
     assert_fail "[#1944/SPEC-2] validation checks skipped — function not found" "missing implementation"
 fi
 
-print_test_section "[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch"
+# ─── SPEC-2: template_max_run_s() from the real template.sh ─────────────────
+# This section sources the REAL template.sh to test its template_max_run_s()
+# function directly. If template.sh is reverted (function removed), the
+# assert_fail below fires — making template.sh testable.
+print_test_section "[#1944/SPEC-2] template_max_run_s() reads max_run_s from template YAML (real function)"
+TEMPLATE_SH="$REPO_ROOT/core/pipeline/template.sh"
+
+# shellcheck source=../../core/pipeline/template.sh
+source "$TEMPLATE_SH" 2>/dev/null || true
+
+# Build two YAML fixtures: one WITH max_run_s, one WITHOUT
+_tpl_yaml="$TEST_TEMP_DIR/max-run-test.yaml"
+cat > "$_tpl_yaml" <<'EOF'
+id: max-run-test
+max_run_s: 3600
+extends: simple
+EOF
+
+_tpl_none="$TEST_TEMP_DIR/no-max-run.yaml"
+cat > "$_tpl_none" <<'EOF'
+id: no-max-run-test
+extends: simple
+EOF
+
+if declare -F template_max_run_s >/dev/null 2>&1; then
+    # Real function from template.sh: must extract the value from the YAML.
+    _TPL_SOURCE_FILE="$_tpl_yaml"
+    _tmr="$(template_max_run_s 2>/dev/null || true)"
+    assert_eq "[#1944/SPEC-2] template_max_run_s() returns max_run_s value from YAML" "3600" "$_tmr"
+
+    # When max_run_s is absent, function returns empty (no override)
+    _TPL_SOURCE_FILE="$_tpl_none"
+    _tmr_empty="$(template_max_run_s 2>/dev/null || true)"
+    assert_eq "[#1944/SPEC-2] template_max_run_s() returns empty when max_run_s absent" "" "$_tmr_empty"
+    unset _TPL_SOURCE_FILE
+else
+    assert_fail "[#1944/SPEC-2] template_max_run_s() defined in core/pipeline/template.sh" \
+        "function not found after sourcing template.sh — implementation missing or template.sh reverted"
+fi
+
+print_test_section "[#1944/SPEC-2] misconfigured run (invalid ZBUILD_MAX_RUN_S): runner rejects before dispatch"
 # Run the actual runner with an invalid ZBUILD_MAX_RUN_S; it must exit non-zero
 # before dispatching any stage (no stage marker written).
 export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -168,35 +208,91 @@ intake_run() {
 }
 PLUG
 
-set +e
-ZBUILD_MAX_RUN_S="not-a-number" \
-( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \
-    >"$TEST_TEMP_DIR/miscfg.stdout" 2>"$TEST_TEMP_DIR/miscfg.stderr"
-_miscfg_rc=$?
-set -e
+# Run with invalid env var — must fail before dispatch loop
+_miscfg_rc=0
+( cd "$MISCFG_OVERLAY" && ZBUILD_MAX_RUN_S="not-a-number" bash "$RUNNER" \
+    --template limit-single --goal "test misconfigured limit" ) \
+    >"$TEST_TEMP_DIR/miscfg.stdout" 2>"$TEST_TEMP_DIR/miscfg.stderr" \
+    || _miscfg_rc=$?
 
 assert_eq "[#1944/SPEC-2] invalid ZBUILD_MAX_RUN_S → runner exits non-zero" "1" "$_miscfg_rc"
 if [[ -e "$STAGE_MARKER" ]]; then
-    assert_fail "[#1944/SPEC-2] stage did not run when limit is misconfigured" \
+    assert_fail "[#1944/SPEC-2] stage did not run when env limit is misconfigured" \
         "stage marker exists — dispatch loop was reached"
 else
-    assert_pass "[#1944/SPEC-2] stage did not run when limit is misconfigured"
+    assert_pass "[#1944/SPEC-2] stage did not run when env limit is misconfigured"
 fi
 
-# Check pipeline-state.json reflects misconfigured disposition
+# Check that misconfigured is explained (state file OR stderr)
 _miscfg_sf="$ZBUILD_STATE_DIR/pipeline-state.json"
 if [[ -f "$_miscfg_sf" ]]; then
     _miscfg_disp="$(jq -r '.disposition // empty' "$_miscfg_sf" 2>/dev/null || true)"
-    assert_eq "[#1944/SPEC-2] pipeline-state.json disposition=misconfigured" "misconfigured" "$_miscfg_disp"
+    assert_eq "[#1944/SPEC-2] pipeline-state.json disposition=misconfigured (env)" "misconfigured" "$_miscfg_disp"
 else
-    # State file may be absent if the runner refuses before creating it; check stderr instead
+    _miscfg_err="$(cat "$TEST_TEMP_DIR/miscfg.stderr" 2>/dev/null || true)"
     if grep -qi "misconfigured\|invalid.*max_run_s\|max_run_s.*invalid\|non-integer\|non-positive\|max_run_s.*must be" \
-            "$TEST_TEMP_DIR/miscfg.stderr" 2>/dev/null; then
-        assert_pass "[#1944/SPEC-2] stderr explains misconfigured limit"
+            <<< "$_miscfg_err" 2>/dev/null; then
+        assert_pass "[#1944/SPEC-2] stderr explains misconfigured env limit"
     else
-        assert_fail "[#1944/SPEC-2] runner names misconfigured limit on stderr" \
+        assert_fail "[#1944/SPEC-2] runner names misconfigured env limit on stderr" \
             "stderr: $(head -c 400 "$TEST_TEMP_DIR/miscfg.stderr" 2>/dev/null)"
     fi
+fi
+
+# ─── SPEC-2 (template layer): runner rejects invalid template max_run_s ──────
+# A template that contains `max_run_s: not-a-number` must make the runner
+# abort with rc=1 before any stage dispatches. This exercises template.sh's
+# template_max_run_s() function, which is called by _runner_resolve_run_limit_s.
+print_test_section "[#1944/SPEC-2] misconfigured run (invalid template max_run_s): runner rejects before dispatch"
+
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-miscfg-tpl"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events-miscfg-tpl"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+mkdir -p "$ZBUILD_STATE_DIR" "$ZBUILD_EVENTS_DIR"
+unset ZBUILD_MAX_RUN_S
+
+# Template with an invalid max_run_s value in the YAML.
+# MUST use new-shape (flow: style): the old-shape merger strips top-level keys
+# like max_run_s: when building the merged file (only stages:/stage_definitions:
+# blocks are carried over from the per-repo file). New-shape copies the file
+# verbatim, so max_run_s: not-a-number survives in _TPL_SOURCE_FILE.
+cat > "$MISCFG_OVERLAY/.zbuild/templates/limit-bad-tpl.yaml" <<'EOF'
+id: limit-bad-tpl
+extends: simple
+max_run_s: not-a-number
+flow:
+  - intake
+
+intake:
+  gate: auto
+  io:
+    destinations: [file]
+    tail_lines: 50
+EOF
+(cd "$MISCFG_OVERLAY" && git add .zbuild && git commit -q -m "add limit-bad-tpl template") \
+    >/dev/null 2>&1
+
+STAGE_MARKER_TPL="$TEST_TEMP_DIR/stage-ran-marker-tpl"
+cat > "$TEST_TEMP_DIR/plugins/agent/intake/plugin.sh" <<PLUG
+intake_run() {
+    : > "${STAGE_MARKER_TPL}"
+    $(mock_v2_result_line intake)
+    return 0
+}
+PLUG
+
+_miscfg_tpl_rc=0
+( cd "$MISCFG_OVERLAY" && bash "$RUNNER" \
+    --template limit-bad-tpl --goal "test misconfigured template limit" ) \
+    >"$TEST_TEMP_DIR/miscfg-tpl.stdout" 2>"$TEST_TEMP_DIR/miscfg-tpl.stderr" \
+    || _miscfg_tpl_rc=$?
+
+assert_eq "[#1944/SPEC-2] invalid template max_run_s → runner exits non-zero" "1" "$_miscfg_tpl_rc"
+if [[ -e "$STAGE_MARKER_TPL" ]]; then
+    assert_fail "[#1944/SPEC-2] stage did not run when template limit is misconfigured" \
+        "stage marker exists — dispatch loop was reached"
+else
+    assert_pass "[#1944/SPEC-2] stage did not run when template limit is misconfigured"
 fi
 
 # ─── SPEC-5: no platform-specific env vars in new limit code ────────────────
@@ -214,6 +310,18 @@ assert_eq "[#1944/SPEC-5] stage-limits.sh: no bare \$CI in non-comment code" "0"
 # runner.sh: no GITHUB_ACTIONS in code lines (excluding pure comments)
 _ga_rn="$(grep -v '^[[:space:]]*#' "$RUNNER" 2>/dev/null | grep -c 'GITHUB_ACTIONS' || true)"
 assert_eq "[#1944/SPEC-5] runner.sh: no GITHUB_ACTIONS in code lines" "0" "$_ga_rn"
+
+# runner.sh: no bare $CI in non-comment code lines
+_ci_rn="$(grep -v '^[[:space:]]*#' "$RUNNER" 2>/dev/null | grep -cE '\$\{?CI\}?[^A-Za-z0-9_]' || true)"
+assert_eq "[#1944/SPEC-5] runner.sh: no bare \$CI in non-comment code" "0" "$_ci_rn"
+
+# Additional platform-specific variables — none should appear in limit-resolution code
+for _plat_var in TRAVIS CIRCLECI RUNNER_OS BUILD_BUILDID; do
+    _cnt_sl="$(grep -c "$_plat_var" "$STAGE_LIMITS" 2>/dev/null || true)"
+    assert_eq "[#1944/SPEC-5] stage-limits.sh: no $_plat_var reference" "0" "$_cnt_sl"
+    _cnt_rn="$(grep -v '^[[:space:]]*#' "$RUNNER" 2>/dev/null | grep -c "$_plat_var" || true)"
+    assert_eq "[#1944/SPEC-5] runner.sh: no $_plat_var in code lines" "0" "$_cnt_rn"
+done
 
 # ─── SPEC-6: ADR alignment ──────────────────────────────────────────────────
 
