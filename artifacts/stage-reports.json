@@ -1,0 +1,16 @@
+{
+  "scope_files": [
+    "config/adr-enforcement-baseline.txt",
+    "core/pipeline/runner.sh",
+    "core/pipeline/template.sh",
+    "docs/adr/ADR-025-abort-propagation.md",
+    "docs/adr/ADR-054-stage-contract.md",
+    "scripts/lib/abort-propagation.sh",
+    "scripts/lib/stage-limits.sh",
+    "tests/integration/resume-after-run-timeout-test.sh",
+    "tests/integration/run-timed-out-test.sh",
+    "tests/unit/run-limit-precedence-test.sh",
+    "tests/unit/run-watchdog-clean-exit-test.sh"
+  ],
+  "wiring_files": []
+}

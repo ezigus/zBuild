@@ -1,0 +1,14 @@
+{
+  "stage": "plan",
+  "cycle_iter": 0,
+  "attempt": 2,
+  "rc": "0",
+  "generated_at": "2026-10-12T18:35:47Z",
+  "files": 3,
+  "outputs": {
+    "plan.json": "changed",
+    "plan-context.json": "changed",
+    "plan-summary.md": "changed"
+  },
+  "progress": true
+}
