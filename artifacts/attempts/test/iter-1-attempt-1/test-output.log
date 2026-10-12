@@ -1,0 +1,172 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/scripts/run-tests.sh: line 171: 1489467 Killed                  "${_rt_tout[@]}" bash "$1" < /dev/null 3> /dev/null > "$2" 2>&1
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/tests/unit/run-limit-precedence-test.sh
+
+  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)
+
+
+  [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+  ✓ [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700
+  ✓ [#1944/SPEC-2] no template, no env → default 20700
+  ✓ [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  ✓ [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  ✓ [#1944/SPEC-2] template value wins over default
+
+  [#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1
+  ✓ [#1944/SPEC-2] non-integer template value → rc=1
+  ✓ [#1944/SPEC-2] template value=0 → rc=1
+  ✓ [#1944/SPEC-2] negative template value → rc=1
+  ✓ [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  ✓ [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/tests/unit/lint-test-errexit-test.sh
+
+  a test file never turns stop-on-error on mid-file (#2252 G)
+
+  ✓ [L1] no -e header, then set -e → refused
+  ✓ [L2] ...set -euo pipefail mid-file → refused
+  ✓ [L3] an -e header may toggle it
+  ✓ [L4] set +e and set -o pipefail are fine
+  ✗ [L5] the real tree passes
+    expected: 0, got: 1
+lint-test-errexit: tests/integration/resume-after-run-timeout-test.sh:133 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/integration/run-timed-out-test.sh:137 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/integration/run-timed-out-test.sh:224 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/integration/run-timed-out-test.sh:273 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/integration/run-timed-out-test.sh:334 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/unit/run-limit-precedence-test.sh:176 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/unit/run-watchdog-clean-exit-test.sh:80 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/unit/run-watchdog-clean-exit-test.sh:131 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: 8 file(s) switch stop-on-error on mid-file
+
+
+  1 of 5 tests failed
+
+  ✗ [L5] the real tree passes
+
+unit: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+  scripts/lib/vision.sh — admission gate enforcement (ADR-049 #1360)
+
+  ✓ [SPEC-1] valid vision: load_vision_doc rc=0
+  ✓ [SPEC-1] valid vision: validate_vision_doc rc=0
+  ✓ [SPEC-2] missing vision: load_vision_doc rc=1
+  ✓ [SPEC-2] missing vision: rc=1 signals absence
+  ✓ [SPEC-2] the only search path is .zbuild/vision.md
+  ✓ [SPEC-3] doc missing ## Intent now passes validation (rc=0)
+  ✓ [SPEC-4] over-length vision: rc=1
+  ✓ [SPEC-4] over-length diagnostic contains '--condense'
+  ✓ [SPEC-5] over-length diagnostic contains body word count (got 313)
+  ✓ [SPEC-6] over-length diagnostic reports correct overage (13)
+  ✓ [SPEC-10] over-length message contains actionable hint
+  ✓ [SPEC-7] runner rc=1 on missing vision (enforce)
+  ✓ [SPEC-7] pipeline.end says the gate refused (status=preflight_failed)
+  ✓ [SPEC-7] runner names search paths in message
+  ✓ [SPEC-7] runner includes zbuild vision init hint
+  ✓ [SPEC-8] runner rc=1 on malformed vision (enforce)
+  ✓ [SPEC-8] pipeline.end says the gate refused (status=preflight_failed)
+  ✓ [SPEC-8] runner message references --condense
+unit: 526/529 passed (4 skipped, 1 timed out)
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)
+
+  ✓ no args exits 1
+  ✓ no args prints the usage
+  ✓ --help exits 0
+  ✓ --issue with no value exits 1
+  ✓ --issue with no value names the flag
+  ✓ --goal with no value exits 1
+  ✓ --goal with no value names the flag
+  ✓ dry-run shows intake stage
+  ✓ dry-run shows build stage
+  ✓ dry-run leaves state file untouched
+  ✓ happy path exits 0
+  ✓ events.jsonl created
+  ✓ pipeline.start emitted once
+  ✓ pipeline.end emitted once
+  ✓ pipeline.end carries status=success
+  ✓ [SPEC-1] stage.start emitted for each fixture stage (2x)
+  ✓ [SPEC-1] stage.complete emitted for each fixture stage (2x)
+  ✓ state file created
+  ✓ intake stage_status=complete (ADR-006 enum)
+  ✓ build stage_status=complete (ADR-006 enum)
+  ✓ mid-stage failure exits 1
+  ✓ events.jsonl present on failure
+  ✓ pipeline.end status=failed emitted
+  ✓ pipeline.end names the failing stage
+  ✓ stage.fail event emitted
+  ✓ build stage_status=failed in state
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/scripts/run-tests.sh: line 171: 1804492 Killed                  "${_rt_tout[@]}" bash "$1" < /dev/null 3> /dev/null > "$2" 2>&1
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+  core/pipeline/strategies — integration: runner delegates via orch contract
+
+
+  1. fanout: all orch contract functions called
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/core-pipeline-strategy-int.tvEAuo/home/.zbuild/repos/local/strat-overlay-repo/goals/goal-6a33327f1817/worktree
+▸ Pipeline started — run_id=20261012215908-1804903 issue= goal=test strategy dispatch template=strategy-dispatch-minimal engine=f6aa703(zbuild/issue-1944-ci)
+  ✓ fanout: orch_spawn called (got 1)
+  ✓ fanout: orch_dispatch called (got 1)
+  ✓ fanout: orch_collect called (got 1)
+  ✓ fanout: orch_shutdown called (got 1)
+
+  2. fanout: no pool leaks (spawn count == shutdown count)
+  ✓ orch_spawn count == orch_shutdown count
+  ✓ no pool directories left after fanout (orch_shutdown cleaned up)
+
+  3. sequential halt-on-fail: only one dispatch when first fails
+▸ merge_policy: auto_unless_flagged
+  ✓ sequential: runner exits non-zero when stage fails (rc=1)
+
+  4. composite strategy: emits deferral error (Phase 1 deferred)
+integration: 262/264 passed (2 timed out)
+e2e: 10/10 passed
+golden: 1/1 passed
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/scripts/run-mutation.sh: line 308: 2616725 Killed                  ( cd "$wt" && "${_mut_tout[@]}" bash -c "$test_code" ) < /dev/null > /dev/null 2>&1 3> /dev/null
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.YMRLO3/scripts/run-mutation.sh: line 308: 2647726 Killed                  ( cd "$wt" && "${_mut_tout[@]}" bash -c "$test_code" ) < /dev/null > /dev/null 2>&1 3> /dev/null
+mutation: 25/25 passed
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-verdict-words.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 56 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: OK — no grep -c || echo occurrences in scripts/ core/ plugins/ tests/
+lint-test-identity: OK — no real issue number used as test identity
+lint-llm-envelope: OK — 64 plugin source(s) checked, no markdown-document envelope fields
+lint-verdict-classify: 33 manifest(s) checked, all declared verdicts classify
+lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
+lint-silenced-redirect: clean
+lint-test-errexit: tests/integration/resume-after-run-timeout-test.sh:133 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/integration/run-timed-out-test.sh:137 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/integration/run-timed-out-test.sh:224 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/integration/run-timed-out-test.sh:273 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/integration/run-timed-out-test.sh:334 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/unit/run-limit-precedence-test.sh:176 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/unit/run-watchdog-clean-exit-test.sh:80 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: tests/unit/run-watchdog-clean-exit-test.sh:131 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: 8 file(s) switch stop-on-error on mid-file
+lint: 0/1 passed
+
+total: 824/830 passed (4 skipped, 3 timed out)

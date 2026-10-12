@@ -1,0 +1,7 @@
+[
+  "tests/integration/core-pipeline-runner-test.sh",
+  "tests/integration/core-pipeline-strategy-test.sh",
+  "tests/unit/lint-test-errexit-test.sh",
+  "tests/unit/run-limit-precedence-test.sh",
+  "tests/unit/vision-admission-gate-test.sh"
+]
