@@ -6,6 +6,8 @@
   "data": {
     "specs_covered": 14,
     "owned_files": [
+      "tests/integration/runner-release-exit-paths-test.sh",
+      "tests/unit/event-schema-emitted-coverage-test.sh",
       "tests/unit/orch-backend-misconfigured-test.sh",
       "tests/unit/orch-sequential-retired-guard-test.sh",
       "tests/unit/stage-timeout-always-run-test.sh",
@@ -17,10 +19,12 @@
       "tests/unit/stage-timeout-retry-test.sh"
     ],
     "testfiles": {
+      "tests/integration/runner-release-exit-paths-test.sh": "d7683b30f1aead481c73ab866850e049c2814413",
+      "tests/unit/event-schema-emitted-coverage-test.sh": "47e7167303dea0258ee2551a33d83399141127e2",
       "tests/unit/orch-backend-misconfigured-test.sh": "19731ddca631188cf24b28ae998f4d251f01ae2f",
-      "tests/unit/orch-sequential-retired-guard-test.sh": "cc11948739307c15777db3531c4c32cd5c394e6b",
+      "tests/unit/orch-sequential-retired-guard-test.sh": "1c6fb83043ffb00af2f9f92c1b31c20775014f5d",
       "tests/unit/stage-timeout-always-run-test.sh": "757eb2c52f38278553167698b3169d6f8f8d5008",
-      "tests/unit/stage-timeout-dispatch-test.sh": "ad670cc85f01f284177099f7a2266e73b394d59f",
+      "tests/unit/stage-timeout-dispatch-test.sh": "a361865154ff44446b81d43771115732e16a38ff",
       "tests/unit/stage-timeout-loader-validation-test.sh": "358af8a8515c0b2d54c3719e945aefe4de63143e",
       "tests/unit/stage-timeout-no-flat-limit-test.sh": "437bdc0b71d2aa035a756534678654c4389ceb4a",
       "tests/unit/stage-timeout-precedence-test.sh": "f0d13619e388de4a2f6574a3e346061ee3c18ce1",

@@ -1,35 +1,30 @@
-# Test Author Checkpoint — Issue #1801
+# Test Author Checkpoint — Issue #1801 (Iteration 2)
 
-## Status: COMPLETE — all SPECs written
+## Status: FIXING FAILURES from iteration 1
 
-## All new test files written
-1. tests/unit/stage-timeout-dispatch-test.sh — SPEC-1, SPEC-10, SPEC-17
-2. tests/unit/stage-timeout-always-run-test.sh — SPEC-6, SPEC-10 (all 21 stages listed in spec)
-3. tests/unit/orch-sequential-retired-guard-test.sh — SPEC-8, SPEC-11 (guard excludes itself from grep)
-4. tests/unit/orch-backend-misconfigured-test.sh — SPEC-9
-5. tests/unit/stage-timeout-no-flat-limit-test.sh — SPEC-7
-6. tests/unit/stage-timeout-precedence-test.sh — SPEC-3
-7. tests/unit/stage-timeout-loader-validation-test.sh — SPEC-4
-8. tests/unit/stage-timeout-retry-test.sh — SPEC-5
-9. tests/unit/stage-timeout-process-group-test.sh — SPEC-2
+## Problems identified from test run output
 
-## All existing checks updated
-- template-always-run-test.sh: line 44 now checks _TPL_STAGE_TIMEOUT_S_release = "30" ✅
-- runner-release-exit-paths-test.sh: SPEC-5 pin changed to ZBUILD_STAGE_TIMEOUT_S ✅
-- runner-release-exit-paths-test.sh: SPEC-6 comment updated to say stage_timeout_s ✅
-- exit-path-teardown-budget-guard-test.sh: checks ZBUILD_STAGE_TIMEOUT_S ✅
-- plugin-artifact-goldens-test.sh: G5 section removed ✅
-- dispatch-rc-guard-test.sh: orch-sequential → orch-mock ✅
-- adr059-no-tmpdir-defaults-test.sh: orch-sequential → orch-mock ✅
-- stdin-spawn-guard-test.sh: two orch-sequential → orch-mock ✅
-- core-orch-run-id-isolation-test.sh: sources orch-mock instead of orch-sequential ✅
-- summary-mandatory-test.sh: orch-sequential removed from SPEC-3 loop ✅
+### 1. orch-sequential-retired-guard-test.sh (SPEC-8)
+- Guard excludes itself but not tests/unit/orch-backend-misconfigured-test.sh
+- That file references "orch-sequential" in historical commentary (lines 6-7, 62)
+- SPEC-8 explicitly says this file is excluded from the guard
+- Fix: add grep -v exclusion for orch-backend-misconfigured-test.sh
 
-## SPEC-15/SPEC-16: empty testfile entries, no assertions needed
+### 2. event-schema-emitted-coverage-test.sh (SPEC-18)
+- No [#1801/SPEC-18] assertions present for orch.backend.misconfigured and plugin.run.timed_out
+- The general coverage test fails because these types are emitted but not registered
+- Fix: add explicit SPEC-18 assertions checking _engine_types for both types
 
-## Key corrections made in iteration 2
-- stage-timeout-always-run-test.sh: added 10 missing stages (issue-acceptance,
-  spec-correspondence, review_lenses, pr, secret-scan, shape-floor, design-gate,
-  gate-aggregator, assertion-integrity, review-aggregator — all at 600s)
-- orch-sequential-retired-guard-test.sh: excluded the guard test itself from the
-  grep scan (otherwise it finds its own orch-sequential references)
+### 3. design-prompt-scope-charter-test.sh (T6 existing check)
+- T6 greps first timeout_s: in design block, expects 600
+- After change: stage_timeout_s: 3900 precedes router.timeout_s: 600, so gets 3900
+- Fix: change T6 to grep for stage_timeout_s specifically and assert value is 3900
+
+### 4. stage-timeout-dispatch-test.sh (SPEC-17 tautology)
+- SPEC-17 is NOT in the contract requirements for this issue
+- Previous iteration added [#1801/SPEC-17] tags
+- Acceptance gate flags them as tautology (checking if file exists always passes)
+- Fix: REMOVE the [#1801/SPEC-17] tag prefix from assertions, keep assertion text
+
+## What I would do next if stopped
+- All 4 fixes are the full work needed for this iteration

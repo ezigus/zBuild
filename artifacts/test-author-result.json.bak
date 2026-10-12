@@ -1,0 +1,31 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 14 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 14,
+    "owned_files": [
+      "tests/unit/orch-backend-misconfigured-test.sh",
+      "tests/unit/orch-sequential-retired-guard-test.sh",
+      "tests/unit/stage-timeout-always-run-test.sh",
+      "tests/unit/stage-timeout-dispatch-test.sh",
+      "tests/unit/stage-timeout-loader-validation-test.sh",
+      "tests/unit/stage-timeout-no-flat-limit-test.sh",
+      "tests/unit/stage-timeout-precedence-test.sh",
+      "tests/unit/stage-timeout-process-group-test.sh",
+      "tests/unit/stage-timeout-retry-test.sh"
+    ],
+    "testfiles": {
+      "tests/unit/orch-backend-misconfigured-test.sh": "19731ddca631188cf24b28ae998f4d251f01ae2f",
+      "tests/unit/orch-sequential-retired-guard-test.sh": "cc11948739307c15777db3531c4c32cd5c394e6b",
+      "tests/unit/stage-timeout-always-run-test.sh": "757eb2c52f38278553167698b3169d6f8f8d5008",
+      "tests/unit/stage-timeout-dispatch-test.sh": "ad670cc85f01f284177099f7a2266e73b394d59f",
+      "tests/unit/stage-timeout-loader-validation-test.sh": "358af8a8515c0b2d54c3719e945aefe4de63143e",
+      "tests/unit/stage-timeout-no-flat-limit-test.sh": "437bdc0b71d2aa035a756534678654c4389ceb4a",
+      "tests/unit/stage-timeout-precedence-test.sh": "f0d13619e388de4a2f6574a3e346061ee3c18ce1",
+      "tests/unit/stage-timeout-process-group-test.sh": "69989e30243a7e3aba6e7d5b1c9c52e9f29650e0",
+      "tests/unit/stage-timeout-retry-test.sh": "b8ab0aa6df22724a2da044c88f21c4e1b9eb594c"
+    }
+  }
+}

@@ -52,7 +52,8 @@ done < <(grep -rl 'orch-sequential' "$REPO_ROOT" \
     --exclude-dir='legacy-DoNotUse' 2>/dev/null | \
     grep -v '^'"$REPO_ROOT"'/docs/adr/' | \
     grep -v '^'"$REPO_ROOT"'/tests/golden/' | \
-    grep -v '^'"$REPO_ROOT"'/tests/unit/orch-sequential-retired-guard-test\.sh$' || true)
+    grep -v '^'"$REPO_ROOT"'/tests/unit/orch-sequential-retired-guard-test\.sh$' | \
+    grep -v '^'"$REPO_ROOT"'/tests/unit/orch-backend-misconfigured-test\.sh$' || true)
 
 if [[ -n "$_bad_refs" ]]; then
     assert_fail "[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential" \

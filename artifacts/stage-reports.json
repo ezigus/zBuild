@@ -67,6 +67,8 @@
   ],
   "owned_files": {
     "test-author": [
+      "tests/integration/runner-release-exit-paths-test.sh",
+      "tests/unit/event-schema-emitted-coverage-test.sh",
       "tests/unit/orch-backend-misconfigured-test.sh",
       "tests/unit/orch-sequential-retired-guard-test.sh",
       "tests/unit/stage-timeout-always-run-test.sh",

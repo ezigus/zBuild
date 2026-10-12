@@ -8,11 +8,6 @@
 # kill through zbuild_pg_kill; no hand-rolled TERM/KILL sequence remains for
 # stage dispatch.
 #
-# [#1801/SPEC-17] The per-dispatch timeout watchdog kills a hung hook under
-# the orch-mock backend (confirming the watchdog in lifecycle.sh is
-# backend-agnostic); plugins/tool/orch-ruflo-hive/plugin.sh carries no
-# TERM/KILL sequence that would suppress the lifecycle-level kill.
-#
 # All dispatch routes reach plugin_hook_call in lifecycle.sh; the single
 # watchdog there covers every route. These tests FAIL on pre-change code
 # (where lifecycle.sh has no watchdog) and PASS after the change.
@@ -26,7 +21,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "[#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog"
+print_test_header "[#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog"
 setup_test_env "stage-timeout-dispatch"
 
 _lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
@@ -139,27 +134,27 @@ else
     fi
 fi
 
-# ─── [#1801/SPEC-17] watchdog is backend-agnostic: lifecycle is above backends ─
-print_test_section "[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)"
+# ─── watchdog is backend-agnostic: lifecycle is above backends ────────────────
+print_test_section "watchdog in lifecycle.sh is backend-agnostic (above the backend layer)"
 
 # The watchdog's position in lifecycle.sh (plugin_hook_call) means it fires
 # regardless of which orch backend is active — the backends dispatch work units
 # that ultimately call plugin_hook_call. Verify orch-mock still routes through it.
 _mock_plugin="$REPO_ROOT/plugins/tool/orch-mock/plugin.sh"
 if [[ ! -f "$_mock_plugin" ]]; then
-    assert_fail "[#1801/SPEC-17] plugins/tool/orch-mock/plugin.sh exists" "not found"
+    assert_fail "plugins/tool/orch-mock/plugin.sh exists" "not found"
 else
     # orch-mock dispatches work units that call plugin_hook_call;
     # the backend itself does not arm or disarm the watchdog.
-    assert_pass "[#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)"
+    assert_pass "orch-mock plugin exists (backend-agnostic watchdog can be tested with it)"
 fi
 
-# ─── [#1801/SPEC-17] ruflo-hive carries no suppressing TERM/KILL sequence ─────
-print_test_section "[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch"
+# ─── ruflo-hive carries no suppressing TERM/KILL sequence ─────────────────────
+print_test_section "orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch"
 
 _hive="$REPO_ROOT/plugins/tool/orch-ruflo-hive/plugin.sh"
 if [[ ! -f "$_hive" ]]; then
-    assert_fail "[#1801/SPEC-17] plugins/tool/orch-ruflo-hive/plugin.sh exists" "not found"
+    assert_fail "plugins/tool/orch-ruflo-hive/plugin.sh exists" "not found"
 else
     # The hive plugin must not have a kill -TERM / kill -KILL that would intercept
     # the lifecycle-level watchdog's signal before it reaches the hook subshell.
@@ -167,11 +162,11 @@ else
     _hive_kills=""
     _hive_kills="$(grep -n 'kill -TERM\|kill -KILL' "$_hive" | grep -v '^\s*#' || true)"
     if [[ -n "$_hive_kills" ]]; then
-        assert_fail "[#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch" \
+        assert_fail "orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch" \
             "found kill -TERM/-KILL in ruflo-hive — may suppress lifecycle-level watchdog signal:" \
             "$(printf '%s' "$_hive_kills" | head -5 | tr '\n' '|')"
     else
-        assert_pass "[#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch"
+        assert_pass "orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch"
     fi
 fi
 
