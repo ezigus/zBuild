@@ -532,40 +532,20 @@ $_plan_instructions"
             "prior_num_turns=$_prior_turns"
     fi
 
-    # ADR-050 (#1581): seed from a prior RUN's plan.json — complements the
-    # exploration-cache resume above with the actual prior PLAN output. Advisory:
-    # reference and refine, don't blindly re-emit. Rides the router's single
-    # redaction pass with the rest of the assembled prompt.
-    # Gated on ZBUILD_RESTORED_ARTIFACTS_DIR so this fires ONLY on a genuine
-    # cross-run restore — plan is a leaf, so it must never pick up stale/leaked
-    # cycle-feedback env or its OWN same-run local plan.json (#842 leaf contract).
-    local _prior_plan_json="" _prior_plan_path=""
-    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
-        _prior_plan_path="$(_prior_output_path "plan.json" 2>/dev/null || true)"
-        [[ -n "$_prior_plan_path" ]] && \
-            _prior_plan_json="$(_zbuild_sanitize_for_llm 2>/dev/null < "$_prior_plan_path" || true)"
-    fi
-    if [[ -n "${_prior_plan_json//[[:space:]]/}" ]]; then
-        prompt+=$'\n## PRIOR PLAN (a previous attempt on this issue — reference & refine; verify against the CURRENT scope)\n\n'
-        # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
-        prior_output_is_earlier_run "$_prior_plan_path" && \
-            prompt+="This plan is ${ZB_EARLIER_RUN_LABEL}."$'\n\n'
-        prompt+="$_prior_plan_json"$'\n'
-    fi
-
     # #2308: the stage's limits close its own text, after everything it judges
-    # against; the router adds the part every stage shares.
+    # against.
     prompt+=$'\n## What you must not do\n'
     prompt+=$'- Do NOT call Edit or Write, and do NOT run any command that modifies the tree.\n  This stage is read-only.\n'
 
-    # ADR-032 (#855): the operator override is spliced in AFTER the contract
-    # (_plan_instructions) so it follows the shipped charter. ADR-043: it rides
-    # the router's single redaction pass over the assembled prompt.
-    local _plan_ov; _plan_ov="$(load_prompt_override "plan")"
-    if [[ -n "$_plan_ov" ]]; then
-        prompt+=$'\n\n'"$ZBUILD_PROMPT_OVERRIDE_DELIMITER"$'\n\n'
-        prompt+="$_plan_ov"$'\n'
+    # ADR-067 §8: the stage's three parts and the engine's blocks — the
+    # repository's guidance for this stage among them — in the one prompt
+    # order. Plan's own latest plan reaches it under Previous work.
+    local _composed
+    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
+        error "plan_run: the prompt could not be composed — the engine's blocks are missing"
+        return 1
     fi
+    prompt="$_composed"
 
     # ─── Route to LLM (T2, matching manifest config.tier_default) ───────────
     # ADR-018 (#476): Pattern 1 stages with tools MUST use JSON envelope mode.
@@ -776,7 +756,7 @@ $_plan_instructions"
             if [[ "$_is_scope_too_large" -eq 1 ]]; then
                 # Recover partial reasoning + num_turns.
                 #
-                # #1879: prefer the MODEL-WRITTEN checkpoint over the sidecar
+                # #1879: prefer the MODEL-WRITTEN notes file over the sidecar
                 # distillation. The sidecar route cannot work: the CLI's
                 # error_max_turns envelope carries neither `.result` nor
                 # `.tool_uses` (verified against the real #1708 artifact), so
@@ -785,11 +765,11 @@ $_plan_instructions"
                 # issue will resume from it" an empty promise. The checkpoint is
                 # what the model actually recorded as it worked.
                 local _stl_reasoning _stl_turns _stl_checkpoint=""
-                if declare -F _checkpoint_declared_path >/dev/null 2>&1; then
+                if declare -F stage_notes_path >/dev/null 2>&1; then
                     local _stl_cp_path
-                    _stl_cp_path="$(_checkpoint_declared_path "$_PLAN_DIR/manifest.yaml" \
-                        "${ZBUILD_STATE_DIR:-$(dirname "$artifact_dir")}" 2>/dev/null || true)"
-                    [[ -n "$_stl_cp_path" && -s "$_stl_cp_path" ]] && _stl_checkpoint="$(cat "$_stl_cp_path" 2>/dev/null || true)"
+                    _stl_cp_path="$(stage_notes_path "${ZBUILD_STATE_DIR:-$(dirname "$artifact_dir")}" \
+                        "${ZBUILD_CURRENT_STAGE:-plan}")"
+                    [[ -s "$_stl_cp_path" ]] && _stl_checkpoint="$(cat "$_stl_cp_path" 2>/dev/null || true)"
                 fi
                 _stl_reasoning="$_stl_checkpoint"
                 [[ -z "$_stl_reasoning" ]] && _stl_reasoning="$_sidecar_blob"

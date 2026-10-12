@@ -16,8 +16,8 @@
 # M7 [change] missing arguments return 1, never 2 (rc ∈ {0,1}, ADR-054 §4b)
 # M8 [change] no `jq … | atomic_write` pipe in plugin.sh (SIGPIPE rule)
 # M9 [change] the interrupt bookkeeping does not leak into the caller's shell
-# M10 [change] the WALL CLOCK block's elapsed time is measured from the start of
-#              the stage, not from the line before it is printed
+# M10 (retired, ADR-067 §8): the budget is the engine's rules, not a block
+#              the stage prints with its own elapsed time
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -134,18 +134,6 @@ print_test_section "M8: no pipe into atomic_write"
 _m8="$(grep -nE '\|[[:space:]]*atomic_write' "$PLUGIN_FILE" 2>/dev/null || true)"
 if [[ -n "$_m8" ]]; then assert_fail "[M8] plugin.sh has no '| atomic_write' pipe" "$_m8"
 else assert_pass "[M8] plugin.sh has no '| atomic_write' pipe"; fi
-
-print_test_section "M10: elapsed time is the stage's"
-: > "$PROMPT_FILE"; MOCK_MODE=pass
-( _llm_output_contract() { sleep 2; printf 'CONTRACT'; }
-  _route_resolve_timeout() { printf '600'; }
-  monitor_stage_run monitor "$STATE_FILE" ) >/dev/null 2>&1 || true
-_el="$(grep -oE '~[0-9]+s have elapsed' "$PROMPT_FILE" | grep -oE '[0-9]+' || true)"
-if [[ "${_el:-0}" =~ ^[0-9]+$ ]] && (( ${_el:-0} >= 2 )); then
-    assert_pass "[M10] a stage that spent 2s before the call reports ≥2s elapsed (got ${_el})"
-else
-    assert_fail "[M10] a stage that spent 2s before the call reports ≥2s elapsed" "got ~${_el:-?}s"
-fi
 
 cleanup_test_env
 print_test_results

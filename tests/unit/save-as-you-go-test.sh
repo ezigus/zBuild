@@ -9,13 +9,12 @@
 # go file (`role: checkpoint`, scripts/lib/stage-checkpoint.sh). Eric
 # (2026-10-03): every stage gets it.
 #
-# C1 [change] every plugin that calls the model declares a `role: checkpoint` output
+# C1 [change] every stage's notes file and budget are the engine's (ADR-067 §8);
+#             no stage declares whether it calls a model
 # C2 [change] map elements running in parallel never share a checkpoint file:
 #             `${map_element}` in a path resolves to each element's own name
-# C3 [change] a stage that ends cut off (timed_out / out_of_turns) with notes in
-#             its checkpoint hands them on: the summary later stages read
-#             carries them, marked as unfinished work
-# C4 [guard]  a stage that finished does not get its checkpoint appended
+# C3 [change] a stage's notes file is listed under Previous work for every later
+#             stage, and comes back to the stage itself in full
 # C5 [change] with no map element set, `${map_element}` stays unresolved — it
 #             never collapses to "" and points at a file no element owns
 set -uo pipefail
@@ -29,19 +28,13 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "every stage saves as it goes, and hands over what it found (#2270)"
 setup_test_env "save-as-you-go"
 
-print_test_section "C1: every model-calling plugin declares a checkpoint"
-_missing=""
-for d in "$REPO_ROOT"/plugins/*/*/; do
-    _calls=0
-    for f in "$d"*.sh "$d"lib/*.sh; do
-        [[ -f "$f" ]] || continue
-        grep -qE 'route_to_model(_loop)?[[:space:]]' "$f" && { _calls=1; break; }
-    done
-    [[ $_calls -eq 1 ]] || continue
-    grep -qE '^[[:space:]]+role:[[:space:]]*checkpoint' "$d/manifest.yaml" 2>/dev/null \
-        || _missing+="${d#"$REPO_ROOT"/}"$'\n'
-done
-assert_eq "[C1] every plugin that calls the model declares a checkpoint" "" "$_missing"
+print_test_section "C1: the engine needs no declaration from a stage"
+# Every stage gets a notes file and the same per-call budget from the engine
+# (ADR-067 §8); no stage says whether or how it calls a model.
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
+assert_eq "[C1] no manifest declares model_calls" "" \
+    "$(grep -l 'model_calls:' "$REPO_ROOT"/plugins/*/*/manifest.yaml 2>/dev/null || true)"
 
 print_test_section "C2: each map element has its own checkpoint"
 # shellcheck source=../../core/pipeline/verdict.sh
@@ -64,51 +57,29 @@ else
     assert_pass "[C5] no element: the path does not collapse to lens--checkpoint.md"
 fi
 
-print_test_section "C3/C4: a cut-off stage hands over its notes"
+print_test_section "C3: a stage's notes file reaches the stages that follow"
 # shellcheck source=../../core/pipeline/input-resolve.sh
 source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1 || true
-_handover() {   # _handover <disposition> → the summary block a later stage reads
-    local s="$TEST_TEMP_DIR/state-$1" p="$TEST_TEMP_DIR/plugins-$1"
-    mkdir -p "$s/artifacts" "$p/agent/cut"
-    cat > "$p/agent/cut/manifest.yaml" <<'MF'
+_s3="$TEST_TEMP_DIR/state-cut"; _p3="$TEST_TEMP_DIR/plugins-cut"
+mkdir -p "$_s3/artifacts" "$_p3/agent/cut"
+cat > "$_p3/agent/cut/manifest.yaml" <<'MF'
 id: cut
 kind: agent
-provides:
-  role: cut
-  result_contract: 2
 outputs:
   - id: cut-result
     path: ${artifact_dir}/cut-result.json
     format: json
     required: true
     primary: true
-  - id: cut-checkpoint
-    path: ${artifact_dir}/cut-checkpoint.md
-    format: markdown
-    required: false
-    role: checkpoint
-  - id: cut-summary
-    path: ${artifact_dir}/cut-summary.md
-    format: markdown
-    required: false
-    summary: true
 MF
-    jq -n --arg d "$1" '{result_contract:2,verdict:"error",disposition:$d,reason:"stopped"}' > "$s/artifacts/cut-result.json"
-    printf '## cut — error\n\n- the call stopped\n' > "$s/artifacts/cut-summary.md"
-    printf 'Read plugin.sh: the dry run writes no result.\nNext: check the merge path.\n' > "$s/artifacts/cut-checkpoint.md"
-    printf '{"stage_statuses":{"cut":"failed"},"stage_verdicts":{"cut":"error"}}\n' > "$s/pipeline-state.json"
-    ( _TPL_STAGES=(cut); export ZBUILD_CURRENT_STAGE=later
-      stage_summaries_prompt_block "$s/pipeline-state.json" "$p" 2>/dev/null )
-}
-_cut="$(_handover timed_out)"
-assert_contains "[C3] the notes reach the stages that follow" "$_cut" "the dry run writes no result"
-assert_contains "[C3] they are marked as unfinished work" "$_cut" "before it was cut off"
-_done="$(_handover complete)"
-if grep -qF "the dry run writes no result" <<< "$_done"; then
-    assert_fail "[C4] a finished stage's checkpoint is not appended" "it was"
-else
-    assert_pass "[C4] a finished stage's checkpoint is not appended"
-fi
+jq -n '{result_contract:2,verdict:"error",disposition:"timed_out",reason:"stopped"}' > "$_s3/artifacts/cut-result.json"
+_n3="$(stage_notes_path "$_s3" cut)"; mkdir -p "${_n3%/*}"
+printf 'Read plugin.sh: the dry run writes no result.\n' > "$_n3"
+printf '{"stage_statuses":{"cut":"failed"},"stage_verdicts":{"cut":"error"}}\n' > "$_s3/pipeline-state.json"
+_cut="$( _TPL_STAGES=(cut); zb_test_previous_work "$_s3/pipeline-state.json" "$_p3" later )"
+assert_contains "[C3] the notes file is listed for the stages that follow" "$_cut" "- notes: $_n3"
+_own="$( _TPL_STAGES=(cut); zb_test_previous_work "$_s3/pipeline-state.json" "$_p3" cut )"
+assert_contains "[C3] the stage itself gets its notes back, in full" "$_own" "the dry run writes no result"
 
 cleanup_test_env
 print_test_results

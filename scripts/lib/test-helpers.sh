@@ -42,7 +42,7 @@ export ZBUILD_TEST_EXEC_ACTIVE=1
 # testing vision, so they must opt out — same hermeticity precedent as
 # ZBUILD_CONTRACT_VALIDATOR. Tests that DO exercise the gate set the mode inline
 # per-case, which overrides this default. Real (non-test) runs never source this
-# file, so dogfood-on-zbuild still enforces against the real docs/VISION.md.
+# file, so dogfood-on-zbuild still enforces against the real .zbuild/vision.md.
 export ZBUILD_VISION_GATE="${ZBUILD_VISION_GATE:-off}"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ assert_file_not_exists() {
 _ZB_TEST_ISOLATED_VARS=(
     ZBUILD_STATE_ROOT ZBUILD_STATE_DIR ZBUILD_ARTIFACT_DIR ZBUILD_STATE_FILE
     ZBUILD_DATA_ROOT ZBUILD_RUN_ROOT ZBUILD_POOL_ROOT ZBUILD_SCRATCH_ROOT
-    ZBUILD_WORKTREE_ROOT ZBUILD_STAGE_INPUTS ZBUILD_RESTORED_ARTIFACTS_DIR
+    ZBUILD_WORKTREE_ROOT ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS
     ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_NEGCTL_ARTIFACT_DIR ZBUILD_PLAN_CONTEXT_DIR
     ZBUILD_RUN_START_MARKER ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
     ZBUILD_MEMORY_DB ZBUILD_CACHE_DIR ZBUILD_COST_LEDGER ZBUILD_ROUTER_TOOL_USES_FILE
@@ -318,6 +318,38 @@ _ZB_TEST_INHERITED_VARS=(
     ZBUILD_SECRET_SCAN_ALLOWLIST_FILE ZBUILD_TESTS_DIR ZBUILD_MUTATION_DIR
     ZBUILD_TEST_TIMING_FILE ZBUILD_RELEASE_LOCAL_DIR ZBUILD_RELEASE_VERSION_FILE
 )
+
+# _zb_test_stage_blocks <dir> — the engine's three blocks for a stage that has
+# no repository settings, no earlier stage and no manifest, written with the
+# engine's own writers (#1799: never hand-made).
+_zb_test_stage_blocks() {
+    local dir="$1"
+    (
+        # shellcheck source=./stage-prompt.sh
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-prompt.sh" || exit 1
+        mkdir -p "$dir" "$dir/repo" "$dir/state" || exit 1
+        _stage_block_from_repo test-stage "$dir/repo" > "$dir/from-repo.md"
+        _stage_block_previous_work test-stage "$dir/state" "$dir/plugins" "" "$dir/repo" \
+            > "$dir/previous-work.md"
+        _stage_block_rules test-stage "$dir/state" "$dir/no-manifest.yaml" > "$dir/rules.md"
+    ) 2>/dev/null
+}
+
+# zb_test_previous_work <state_file> <plugins_root> [consumer] — the engine's
+# Previous work block a later stage receives (ADR-067 §8), from the engine's
+# own writers. The flow is the caller's _TPL_STAGES.
+zb_test_previous_work() {
+    local state_file="$1" proot="$2" consumer="${3:-later}" sd
+    sd="$(dirname "$state_file")"
+    (
+        # shellcheck source=./stage-prompt.sh
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-prompt.sh" || exit 1
+        declare -F _inputs_resolve_stage >/dev/null 2>&1 \
+            || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/core/pipeline/input-resolve.sh" || exit 1
+        _stage_block_previous_work "$consumer" "$sd" "$proot" \
+            "$(_inputs_resolve_stage "$consumer" "$proot" "$sd")" "$sd"
+    ) 2>/dev/null
+}
 
 setup_test_env() {
     local test_name="${1:-zb-test}"
@@ -358,6 +390,13 @@ setup_test_env() {
     mkdir -p "$ZBUILD_EVENTS_DIR"
     export NO_GITHUB=true
     export GIT_TERMINAL_PROMPT=0
+
+    # ADR-067 §8: a stage that calls a model composes its prompt with the
+    # engine's three blocks, which plugin_hook_call writes at dispatch. A test
+    # that calls a stage's run function directly gets a minimal set, written by
+    # the engine's own code; a test about the blocks sets its own.
+    _zb_test_stage_blocks "$TEST_TEMP_DIR/stage-blocks" \
+        && export ZBUILD_STAGE_BLOCKS="$TEST_TEMP_DIR/stage-blocks"
 
     # Prevent CI-environment leakage into the test subprocess.
     # GitHub Actions exports WORKSPACE_BRANCH and (in some workflows) CI_MODE; if

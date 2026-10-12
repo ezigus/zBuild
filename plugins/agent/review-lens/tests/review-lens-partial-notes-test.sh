@@ -7,7 +7,7 @@
 # run". With save-as-you-go, its notes are on disk — the result and the report
 # must carry them, marked unfinished, instead of throwing them away.
 #
-# N1 [change] a lens whose call times out, with notes in its checkpoint, puts
+# N1 [change] a lens whose call times out, with notes in its notes file, puts
 #             them in its result (data.partial_notes)
 # N2 [change] the review report shows them under that lens, marked unfinished
 # N3 [guard]  a lens that times out with nothing saved still reads "did not run"
@@ -39,8 +39,8 @@ evidence="$artifact_dir/diff.patch"; printf 'diff --git a/x b/x\n+ y\n' > "$evid
 # The model call saves notes, then is cut off by the clock (rc 124).
 # shellcheck disable=SC2329
 route_to_model() {
-    printf 'Read plugin.sh: draft is written twice.\nNext: check the merge path.\n' \
-        > "$artifact_dir/lens-${ZBUILD_MAP_ELEMENT}-checkpoint.md"
+    local _np; _np="$(stage_notes_path "$state" review_lenses)"; mkdir -p "${_np%/*}"
+    printf 'Read plugin.sh: draft is written twice.\nNext: check the merge path.\n' > "$_np"
     return 124
 }
 out="$artifact_dir/lens-correctness.json"
@@ -72,7 +72,8 @@ assert_contains "[N3] a lens with nothing saved still reads did not run" "$_md" 
 
 # A lens stopped by a signal, with notes saved.
 out4="$artifact_dir/lens-architecture.json"
-printf 'Read route.sh: the retry loop never resets.\n' > "$artifact_dir/lens-architecture-checkpoint.md"
+_np4="$(ZBUILD_MAP_ELEMENT=architecture stage_notes_path "$state" review_lenses)"; mkdir -p "${_np4%/*}"
+printf 'Read route.sh: the retry loop never resets.\n' > "$_np4"
 # shellcheck disable=SC2031  # each lens runs in its own subshell on purpose
 ( export ZBUILD_MAP_ELEMENT=architecture
   _rl_out_ref="$out4"; _review_lens_interrupt_handler ) >/dev/null 2>&1
@@ -80,8 +81,9 @@ assert_contains "[N4] a signal-stopped lens carries its saved notes" \
     "$(jq -r '.data.partial_notes // empty' "$out4" 2>/dev/null)" "the retry loop never resets"
 
 # An artifacts folder with another name.
-odd="$TEST_TEMP_DIR/run-artifacts-x"; mkdir -p "$odd"
-printf 'Read lifecycle.sh: the lock is never released.\n' > "$odd/lens-performance-checkpoint.md"
+odd="$TEST_TEMP_DIR/run-artifacts-x"; mkdir -p "$odd/notes"
+_np5="$(ZBUILD_MAP_ELEMENT=performance stage_notes_path "/_s" review_lenses)"
+printf 'Read lifecycle.sh: the lock is never released.\n' > "$odd/${_np5#/_s/artifacts/}"
 assert_contains "[N5] notes found in an artifacts folder not named 'artifacts'" \
     "$(ZBUILD_MAP_ELEMENT=performance _review_lens_saved_notes "$odd" 2>/dev/null)" "the lock is never released"
 

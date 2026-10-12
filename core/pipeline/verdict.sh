@@ -253,7 +253,7 @@ _verdict_primary_output_path() {
 # ─── _verdict_resolve_path <raw_path> <state_dir> ─────────────────────────────
 # Expands the canonical templating vars (manifest_graph_canonical_vars, ADR-055
 # §2) and anchors relative paths under state_dir. THE engine's single
-# interpolation helper — stage-checkpoint.sh (#1879) and input-resolve.sh (#1826)
+# interpolation helper — stage-prompt.sh and input-resolve.sh (#1826)
 # both delegate here rather than adding a sixth copy.
 #
 # #1826 added ${stage_io_dir} and ${run_id}. The first had NO resolver anywhere

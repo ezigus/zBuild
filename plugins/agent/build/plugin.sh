@@ -219,26 +219,16 @@ _build_stage_run_inner() {
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
         "$_acceptance_spec_ids" "$_iter_n" "$(_build_compose_limits "$plan_files_csv")"
 
-    # ADR-050 (#1581): cross-run seed — when a prior RUN of this issue produced a
-    # build-summary (restored onto this runner), append a short advisory note so
-    # build continues the prior attempt rather than restarting. Appended AFTER the
-    # composed body (mirrors design's prior-work injection). Sanitized like the
-    # other feedback bodies before it reaches the prompt.
-    local _prior_build_note
-    _prior_build_note="$(_build_read_prior_build_summary 2>/dev/null || true)"
-    if [[ -n "$_prior_build_note" ]]; then
-        _prior_build_note="$(printf '%s' "$_prior_build_note" | _zbuild_sanitize_for_llm)"
-        printf '\n## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)\n%s\n' \
-            "$_prior_build_note" >> "$prompt_input_file"
+    # ADR-067 §8: build's three parts and the engine's blocks, in the one
+    # prompt order. Build's own latest summary — and every earlier stage's
+    # output — reaches it under Previous work; the repository's guidance for
+    # build under From the repo.
+    local _bp_composed
+    if ! _bp_composed="$(stage_prompt_compose_parts "$(cat "$prompt_input_file")")"; then
+        error "_build_stage_run_inner: the prompt could not be composed — the engine's blocks are missing"
+        return 1
     fi
-
-    # ADR-032 (#855): per-repo override appended AFTER the contract (so the
-    # operator overlay can never precede or weaken the shipped charter). ADR-043:
-    # redaction is owned by the router — route_to_model_loop redacts each
-    # iteration's prompt (this override included) by construction, using the
-    # runner-exported ZBUILD_SCOPE_MANIFEST + the --scope-allowlist passed below
-    # (#606: plan.files[] keeps in-scope paths out of the OOS wrap).
-    append_prompt_override "$prompt_input_file" "build"
+    printf '%s\n' "$_bp_composed" > "$prompt_input_file"
 
     # ─── Route through agent loop (ADR-018 Pattern 2) ────────────────────────
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"

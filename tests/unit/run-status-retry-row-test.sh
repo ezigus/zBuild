@@ -35,7 +35,7 @@ EV="$TEST_TEMP_DIR/events.jsonl"
 cat > "$EV" <<'EOF'
 {"ts":"2026-10-10T13:25:07.346Z","run_id":"r","issue":1668,"type":"stage.start","plugin":"","kind":"","data":{"stage":"plan"},"schema_version":1}
 {"ts":"2026-10-10T13:25:07.946Z","run_id":"r","issue":1668,"type":"plugin.run.start","plugin":"plan","kind":"agent","data":{"plugin":"plan","kind":"agent"},"schema_version":1,"stage":"plan","seq":"3"}
-{"ts":"2026-10-10T13:25:08.743Z","run_id":"r","issue":1668,"type":"prompt.summaries.injected","plugin":"","kind":"","data":{"stage":"plan","stages":"4","resolve":"2"},"schema_version":1,"stage":"plan"}
+{"ts":"2026-10-10T13:25:08.743Z","run_id":"r","issue":1668,"type":"stage.previous_work.written","plugin":"","kind":"","data":{"stage":"plan","stages":"4","failing":"2"},"schema_version":1,"stage":"plan"}
 {"ts":"2026-10-10T13:27:42.095Z","run_id":"r","issue":1668,"type":"plugin.result","plugin":"plan","kind":"agent","data":{"verdict":"error","plugin":"plan","reason":"schema_violation"},"schema_version":1,"stage":"plan","seq":"3"}
 {"ts":"2026-10-10T13:27:42.113Z","run_id":"r","issue":1668,"type":"plugin.run.error","plugin":"plan","kind":"agent","data":{"plugin":"plan","kind":"agent","rc":"1"},"schema_version":1,"stage":"plan","seq":"3"}
 {"ts":"2026-10-10T13:27:42.857Z","run_id":"r","issue":1668,"type":"plugin.run.start","plugin":"plan","kind":"agent","data":{"plugin":"plan","kind":"agent"},"schema_version":1,"stage":"plan","seq":"3"}

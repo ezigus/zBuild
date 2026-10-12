@@ -96,29 +96,27 @@ export ZBUILD_SCOPE_OVERRIDE=1
 # shellcheck source=../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh" >/dev/null 2>&1 || true
 
-S2="$TEST_TEMP_DIR/state2"; mkdir -p "$S2"
-printf '{"schema_version":1}\n' > "$S2/pipeline-state.json"
-printf 'Do your task.\n' > "$TEST_TEMP_DIR/p2.txt"
-SNAP2="$TEST_TEMP_DIR/p2.snap"
+# The engine's Previous work for a stage that follows a failing check — built
+# with the engine's own writers (#1799) — and the prompt composed from it.
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh" >/dev/null 2>&1 || true
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1 || true
+S2="$TEST_TEMP_DIR/state2"; P2="$TEST_TEMP_DIR/plugins2"; mkdir -p "$S2/artifacts" "$P2/tool/test"
+printf 'id: test\nkind: tool\noutputs:\n  - id: test_result\n    path: ${artifact_dir}/test-result.json\n    format: json\n    required: true\n    primary: true\n' \
+    > "$P2/tool/test/manifest.yaml"
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","data":{"findings":[{"n":1,"text":"run-tests-test.sh fails on line 40"}]}}\n' \
+    > "$S2/artifacts/test-result.json"
+printf '{"schema_version":1,"stage_statuses":{"test":"failed"},"stage_verdicts":{"test":"fail"}}\n' > "$S2/pipeline-state.json"
+B2="$TEST_TEMP_DIR/blocks2"; mkdir -p "$B2"
 (
-    # shellcheck source=../../core/pipeline/input-resolve.sh
-    source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1
-    # The summary renderer is stubbed to its real heading and line shapes —
-    # what is under test is what the funnel adds after it.
-    stage_summaries_prompt_block() {
-        printf '%s\n' "=== STAGE SUMMARIES ===" \
-            "### test (verdict: fail) — its findings, to answer" \
-            "- test finding 1 (opened by test): run-tests-test.sh fails on line 40"
-    }
-    stage_summaries_count() { printf '1 1\n'; }
-    apply_scope_redaction() { cp "$1" "$SNAP2"; cp "$1" "$2"; return 0; }
-    export ZBUILD_CURRENT_STAGE=build ZBUILD_STATE_DIR="$S2"
-    unset ZBUILD_PLUGIN_DIR ZBUILD_STAGE_INPUTS
-    ZBUILD_SCOPE_MANIFEST="$TEST_TEMP_DIR/m2.yaml"; : > "$ZBUILD_SCOPE_MANIFEST"
-    _route_redact_prompt "$TEST_TEMP_DIR/p2.txt" "$TEST_TEMP_DIR/p2.out" 0 ""
+    _TPL_STAGES=(test build)
+    _stage_block_from_repo build "$REPO_ROOT" > "$B2/from-repo.md"
+    _stage_block_previous_work build "$S2" "$P2" "$(_inputs_resolve_stage build "$P2" "$S2")" "$S2" > "$B2/previous-work.md"
+    _stage_block_rules build "$S2" "$REPO_ROOT/plugins/agent/build/manifest.yaml" > "$B2/rules.md"
 ) >/dev/null 2>&1
-_p2="$(cat "$SNAP2" 2>/dev/null)"
-assert_contains "[K2] the funnel added the findings (fixture live)" "$_p2" "- test finding 1 (opened by test)"
+_p2="$(ZBUILD_STAGE_BLOCKS="$B2" stage_prompt_compose_parts "$(printf '## What you own\nDo your task.\n## What you judge against\nThe plan.\n## What you must not do\nNothing else.\n')" 2>/dev/null)"
+assert_contains "[K2] the prompt carries the findings (fixture live)" "$_p2" "- test finding 1 (opened by test)"
 for _w in "ANSWER EVERY FINDING" "ANSWER test finding 1:" "Fill in one line for each" "satisfied —"; do
     if grep -qF -- "$_w" <<< "$_p2"; then
         assert_fail "[K2] the prompt does not ask for answer lines ('$_w')" "found in the prompt"
@@ -164,9 +162,7 @@ assert_eq "[K4] ...named by the check and its number" "issue-acceptance finding 
     "$(jq -r '.[0].ref // empty' <<< "$_items" 2>/dev/null)"
 
 print_test_section "K5: stages report on findings in their own result"
-# shellcheck source=../../scripts/lib/stage-conduct.sh
-source "$REPO_ROOT/scripts/lib/stage-conduct.sh"
-_c="$(stage_conduct_block)"
+_c="$(_stage_block_rules any-stage "$TEST_TEMP_DIR/s5" "$TEST_TEMP_DIR/none.yaml")"
 assert_contains "[K5] every stage is told to say what it did about each finding, in its result" \
     "$_c" "In your result, say what you did about each finding"
 if grep -qF "Answer every finding you are given" <<< "$_c"; then

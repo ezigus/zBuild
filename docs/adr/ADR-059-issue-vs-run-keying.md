@@ -188,9 +188,9 @@ than quietly dropping:
   which is the opposite of what this decision exists to achieve. `git fetch` moves only the
   remote-tracking ref and never `refs/heads`, so fetching cannot clobber an unpushed local
   snapshot.
-- **The clobber hazard does not exist in this architecture.** Restore extracts into a SEPARATE
-  `restored-artifacts/` area and never writes over the live `artifacts/` dir, and `input-resolve.sh`
-  reads the live path first. So a stage's own output is never overwritten by an older copy of
+- **The clobber hazard does not exist in this architecture.** Restore extracts into a staging
+  area, and since 2026-10-12 (ADR-050 §9) hydrate copies it into the live `artifacts/` dir only where
+  the run has no file of its own; `input-resolve.sh` reads the live path. So a stage's own output is never overwritten by an older copy of
   itself, and the "failed persist then re-run" sequence loses nothing.
 
 What hydrate genuinely adds is the **fetch** — on a fresh clone (every CI runner) neither ref
@@ -235,7 +235,7 @@ completed stage recoverable"*. Those stay engine-side; they are stage-boundary b
 events. What was missing is only the **run-end** half: a final snapshot catching whatever the last
 stage produced (including the stage that failed and ended the run, which no boundary call covers),
 and the push. That is what the persist stage owns. This follows
-`docs/VISION.md` — *"a minimal core, with all behavior plugin-delivered and template-composed"* —
+zBuild's vision (`.zbuild/vision.md`) — *"a minimal core, with all behavior plugin-delivered and template-composed"* —
 and makes the behaviour visible and reorderable in the template.
 
 **Release and persist are separate stages, deliberately.** Release runs inside the exit trap and

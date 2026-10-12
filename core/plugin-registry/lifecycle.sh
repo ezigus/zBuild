@@ -380,45 +380,55 @@ plugin_hook_call() {
         fi
     fi
 
-    # ADR-055 §1 (#1826): the engine resolves what this stage DECLARED it needs
-    # and states where each artifact is, so a plugin stops hardcoding filenames.
-    # Same site and same `local -x` as the identity vars above, for the same two
-    # reasons: it is the only site reaching all four dispatch arms (the `map:` arm
-    # runs a generated standalone script the runner cannot export into, and this
-    # call is that script's last line), and `local -x` unsets on return so stage
-    # N's index cannot bleed into stage N+1.
+    # ADR-055 / ADR-067 §8 (amended): every stage gets the same three blocks —
+    # what comes from the repository, the previous work, and the rules for the
+    # stage — and the index of every stage's latest output, its own included.
+    # Nothing is checked against what a stage "needs": there is no such list, and
+    # a stage that finds something it needs missing says so in its own result.
     #
-    # Unconditional as of #1825 — the resolved-input index is always built and
-    # never declared, so the dispatch is byte-identical to today.
+    # This is the only site reaching all four dispatch arms (the `map:` arm runs
+    # a generated standalone script the runner cannot export into, and this call
+    # is that script's last line), and `local -x` unsets on return so stage N's
+    # blocks cannot bleed into stage N+1.
     #
     # plugins_root is derived from plugin_dir (plugins/<kind>/<id>/), not read
     # from ZBUILD_PLUGINS_ROOT — ADR-024 / persona-resolve.sh forbid relying on
-    # that override as a root, exactly as the block above says.
+    # that override as a root.
     if [[ "$hook_name" == "run" ]]; then
         if ! declare -F _inputs_resolve_stage >/dev/null 2>&1; then
             # shellcheck source=../pipeline/input-resolve.sh
             source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/input-resolve.sh" 2>/dev/null || true
         fi
-        if declare -F _inputs_resolve_stage >/dev/null 2>&1; then
-            local _ir_proot; _ir_proot="$(cd "$plugin_dir/../.." 2>/dev/null && pwd)"
-            local _ir_state="${ZBUILD_STATE_DIR:-}"
-            if [[ -n "$_ir_state" && -n "$ZBUILD_CURRENT_STAGE" ]]; then
-                # Pre-dispatch: a missing `required: true` input means the stage
-                # is never launched — we return before plugin.sh is sourced, so
-                # its entrypoint does not run at all.
-                #
-                # rc=1, not a private code: ADR-054 §4 narrows this boundary to
-                # {0,1} and dispatch-rc-guard-test.sh ratchets it. "Which input,
-                # from which producer" rides the refusal render and the
-                # plugin.run.refused event — the declared channels — exactly as
-                # the lockfile-mismatch refusal below does.
-                if ! _inputs_check_required "$ZBUILD_CURRENT_STAGE" "$_ir_proot" "$_ir_state" "$manifest"; then
-                    emit_event "plugin.$hook_name.refused" "plugin=$plugin_id" "kind=$kind" \
-                        "reason=required-input-missing"
-                    return 1
+        if ! declare -F stage_blocks_write >/dev/null 2>&1; then
+            # shellcheck source=../../scripts/lib/stage-prompt.sh
+            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-prompt.sh" 2>/dev/null || true
+        fi
+        local _ir_proot; _ir_proot="$(cd "$plugin_dir/../.." 2>/dev/null && pwd)"
+        local _ir_state="${ZBUILD_STATE_DIR:-}"
+        if [[ -n "$_ir_state" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F _inputs_resolve_stage >/dev/null 2>&1; then
+            local -x ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS
+            # Built here, in this shell, so the two readers below — each in its
+            # own subshell — share one producer index instead of each building it.
+            _inputs_build_producer_index "$_ir_proot" "$_ir_state" 2>/dev/null || true
+            ZBUILD_STAGE_INPUTS="$(_inputs_resolve_stage "$ZBUILD_CURRENT_STAGE" "$_ir_proot" "$_ir_state" 2>/dev/null || true)"
+            if declare -F stage_blocks_write >/dev/null 2>&1; then
+                local _sb_repo="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+                ZBUILD_STAGE_BLOCKS="$(stage_blocks_write "$ZBUILD_CURRENT_STAGE" "$_ir_state" "$manifest" \
+                    "$_ir_proot" "$ZBUILD_STAGE_INPUTS" "$_sb_repo" 2>/dev/null || true)"
+                # After the blocks: they say what moved since this stage's LAST run.
+                stage_context_record "$_ir_state" "$ZBUILD_CURRENT_STAGE" "$_sb_repo"
+                # What Previous work carried, so a run's record says what each
+                # stage was given (#2124).
+                if [[ -s "${ZBUILD_STAGE_BLOCKS:-}/previous-work.md" ]]; then
+                    local _pw_n=0 _pw_f=0 _pw_l
+                    while IFS= read -r _pw_l; do
+                        [[ "$_pw_l" == "### "*" (verdict: "* ]] || continue
+                        _pw_n=$((_pw_n + 1))
+                        [[ "$_pw_l" == *"(verdict: fail)"* || "$_pw_l" == *"(verdict: failed)"* ]] && _pw_f=$((_pw_f + 1))
+                    done < "$ZBUILD_STAGE_BLOCKS/previous-work.md"
+                    emit_event "stage.previous_work.written" "stage=$ZBUILD_CURRENT_STAGE" \
+                        "stages=$_pw_n" "failing=$_pw_f" 2>/dev/null || true
                 fi
-                local -x ZBUILD_STAGE_INPUTS
-                ZBUILD_STAGE_INPUTS="$(_inputs_resolve_stage "$ZBUILD_CURRENT_STAGE" "$_ir_proot" "$_ir_state" "$manifest" 2>/dev/null || true)"
             fi
         fi
     fi

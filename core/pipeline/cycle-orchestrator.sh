@@ -89,8 +89,9 @@ _CYCLE_EXIT_CONDITIONS=()
 # #2325 (ADR-063 §5): how many loops this one is nested inside. Only the
 # outermost loop (depth 0) publishes ZBUILD_OUTER_ROUND, so a stage knows which
 # outer round it runs in even though an inner loop restarts its own counter at
-# round 1 each outer round (ADR-068 §2). The stage checkpoint uses it to tell
-# notes saved in an earlier outer round from this round's.
+# round 1 each outer round (ADR-068 §2). (The notes label that read it was
+# withdrawn, ADR-063 §5 amended 2026-10-12; it stays published for the run's
+# own record.)
 _CYCLE_NEST_DEPTH=0
 
 # #833: last-evaluated termination predicate, stashed by _cycle_check_until /
@@ -683,11 +684,8 @@ _cycle_render_feedback_digest() {
     return 0
 }
 
-# _cycle_render_summaries_digest <state_dir> (#2124) — what the next prompt's
-# STAGE SUMMARIES block will carry, from the same collector the renderer uses.
-# This is the PRE-cap count; the router's prompt.summaries.injected event
-# counts the rendered block after the ADR-029 total cap. When the two differ,
-# the cap dropped the oldest summaries — that difference is the signal.
+# _cycle_render_summaries_digest <state_dir> (#2124) — how many stage summaries
+# the next stage's Previous work carries, and how many of those stages failed.
 _cycle_render_summaries_digest() {
     local state_dir="$1" counts n r
     if ! declare -F stage_summaries_count >/dev/null 2>&1; then

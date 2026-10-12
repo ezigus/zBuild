@@ -10,11 +10,13 @@
 [[ -n "${_VISION_LOADED:-}" ]] && return 0
 _VISION_LOADED=1
 
-# Search order (ADR-049): .zbuild/vision.md → docs/VISION.md → VISION.md
-_VISION_SEARCH_PATHS=(".zbuild/vision.md" "docs/VISION.md" "VISION.md")
+# ADR-049 §1 (amended): a repository's vision lives in its zBuild settings area.
+# zBuild runs from its install on any repository, so it never guesses at the
+# repository's own layout — a docs/VISION.md there was not written for zBuild.
+_VISION_SEARCH_PATHS=(".zbuild/vision.md")
 
 # load_vision_doc [repo_root]
-# Walks the three-path search order from repo_root (default: current directory).
+# Looks for the vision document under repo_root (default: current directory).
 # Prints the resolved absolute path on stdout and returns 0.
 # Returns 1 (prints nothing) when no vision document is found.
 load_vision_doc() {

@@ -11,7 +11,9 @@
 #
 #   1 [change] live and restored both present, different → the index names LIVE
 #   2 [change] the consumer READS the live body through the index (not just a path)
-#   3 [guard]  live absent → the restored copy is still offered (warm-start seam)
+#   3 [change] live absent → nothing is offered: there is no second "restored"
+#              area to fall back to — hydrate puts an earlier run's outputs in
+#              the live places (ADR-050, amended)
 #   4 [change] on a cycle's later try, a stage reads its producer's LATEST output,
 #              never the copy the orchestrator took when the try began (#1932's
 #              run: spec-coverage judged the design design had already replaced)
@@ -143,25 +145,16 @@ else
     assert_pass "[SPEC-2] the prior run's body is NOT what the consumer saw"
 fi
 
-# ─── SPEC-3: live absent → restored is still offered ────────────────────────
-print_test_section "3. live absent → the restored copy is still offered"
+# ─── SPEC-3: live absent → nothing is offered ────────────────────────────────
+print_test_section "3. live absent → there is no second area to fall back to"
 rm -f "$ART/design-doc.md"
 ZBUILD_RESTORED_ARTIFACTS_DIR="$RESTORED" _dispatch >/dev/null 2>&1
-assert_eq "[SPEC-3] design_doc falls back to the restored path" \
-    "$RESTORED/design-doc.md" "$(_indexed)"
-assert_contains "[SPEC-3] and the consumer reads the restored body" \
-    "$(_seen body)" "RESTORED-BODY-2095"
-# [guard] with NO restored area either, the required input refuses as before.
-rm -rf "$RESTORED"
-_dispatch >/dev/null 2>"$TEST_TEMP_DIR/d3.err"
-_rc3=$?
-if [[ "$_rc3" -ne 0 ]]; then
-    assert_pass "[SPEC-3-guard] nothing anywhere → the required input still refuses (rc=$_rc3)"
+assert_eq "[SPEC-3] design_doc is not indexed from a restored area" "" "$(_indexed)"
+if grep -qF "RESTORED-BODY-2095" <<< "$(_seen body)"; then
+    assert_fail "[SPEC-3] the consumer reads no copy from a restored area" "it did"
 else
-    assert_fail "[SPEC-3-guard] nothing anywhere → the required input still refuses" "rc=0"
+    assert_pass "[SPEC-3] the consumer reads no copy from a restored area"
 fi
-assert_contains "[SPEC-3-guard] with the INPUT_MISSING code" \
-    "$(cat "$TEST_TEMP_DIR/d3.err" 2>/dev/null)" "INPUT_MISSING"
 
 # ─── SPEC-4: a later try reads the producer's latest output, not the try-start copy
 # #1932's run: design_verify_cycle's feedback edge (design → design) made the

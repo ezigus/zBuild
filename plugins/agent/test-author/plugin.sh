@@ -36,26 +36,6 @@ source "$_TA_ROOT/plugins/tool/assertion-integrity/plugin.sh" 2>/dev/null || tru
 
 _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
-# _test_author_budget_guidance <max_turns> <timeout_s> — TURN BUDGET + WALL
-# CLOCK BUDGET blocks (ADR-063 §1). Each is skipped when its value is 0.
-_test_author_budget_guidance() {
-    local turns="${1:-0}" secs="${2:-0}"
-    if [[ "$turns" =~ ^[0-9]+$ && "$turns" -gt 0 ]]; then
-        cat <<EOF
-TURN BUDGET (read this — you have a BOUNDED tool-call budget):
-- You have about ${turns} tool-call turns for reading the contract and the testfile(s) AND writing every assertion.
-- Read the design and each testfile ONCE, then write. Do not explore the repository; the requirements above are complete.
-- If an edit is refused, do not retry it another way — write what you can and say which SPECs are unwritten.
-- STOP reading and WRITE well before you run out. Assertions for most SPECs beat a full budget spent and none written.
-EOF
-    fi
-    if [[ "$secs" =~ ^[0-9]+$ && "$secs" -gt 0 ]]; then
-        cat <<EOF
-WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of ${secs} seconds total. Estimate elapsed time from your tool-call history and finish writing before ~$(( secs * 70 / 100 ))s.
-EOF
-    fi
-}
 
 # _ta_drop_stale_tags <design.md> <repo_root> — strip THIS issue's tags whose
 # SPEC number is not in this contract (#2174): they are left over from an
@@ -243,7 +223,7 @@ EXISTING CHECKS THIS CHANGE MAKES WRONG — these assertions exist already and a
 ${sup_block}"
     fi
 
-    # #2308: the stage's own text in three parts; the router adds the shared fourth.
+    # #2308: the stage's own text in three parts (ADR-067 §8).
     local _spec_tag1; _spec_tag1="$(acceptance_spec_tag SPEC-1)"
     local prompt
     prompt="$(cat <<EOF
@@ -275,16 +255,15 @@ ${spec_block}${sup_section}
 EOF
 )"
 
-    # ADR-063 §1 (#2170): the budget reaches the prompt from the values that
-    # enforce it — never a literal. Same shape as design/plan/review-lens.
-    local _ta_max_turns=0 _ta_timeout_s=0
-    declare -F _route_resolve_max_turns >/dev/null 2>&1 && _ta_max_turns="$(_route_resolve_max_turns 2>/dev/null || printf '0')"
-    declare -F _route_resolve_timeout >/dev/null 2>&1 && _ta_timeout_s="$(_route_resolve_timeout 2>/dev/null || printf '0')"
-    [[ "$_ta_max_turns" =~ ^[0-9]+$ ]] || _ta_max_turns=0
-    [[ "$_ta_timeout_s" =~ ^[0-9]+$ ]] || _ta_timeout_s=0
-    local _ta_guidance
-    _ta_guidance="$(_test_author_budget_guidance "$_ta_max_turns" "$_ta_timeout_s")"
-    [[ -n "$_ta_guidance" ]] && prompt+=$'\n\n'"$_ta_guidance"
+    # ADR-067 §8: the stage's three parts and the engine's blocks — its budget
+    # and notes file among the engine's rules — in the one prompt order.
+    local _composed
+    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
+        _ta_write_result "$art" "degraded" "misconfigured" \
+            "the prompt could not be composed — the engine's blocks are missing" "$n"
+        return 1
+    fi
+    prompt="$_composed"
 
     local tier="T2" rc=0
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"

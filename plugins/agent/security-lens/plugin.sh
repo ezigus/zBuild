@@ -195,12 +195,19 @@ _security_lens_run_inner() {
             "reason=tier_unresolved"
         return 1
     fi
-    # #2252: the limits this call runs under, from the values the router enforces.
-    declare -F stage_budget_note >/dev/null 2>&1 || \
-        source "$_SEC_LENS_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
-    local _budget_note=""
-    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your findings")"
-    [[ -n "$_budget_note" ]] && prompt+=$'\n\n'"$_budget_note"
+    # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
+    # prompt order. A prompt that cannot be composed is not sent.
+    local _composed
+    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
+        _security_lens_write_result "$output" "error" "misconfigured" \
+            "the prompt could not be composed, so no security review happened"
+        stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
+            "the prompt could not be composed — no security review happened" \
+            "This lens contributed no findings; absence here is not evidence of safety."
+        emit_event "security_lens.failed" "plugin=security-lens" "reason=prompt_not_composed"
+        return 1
+    fi
+    prompt="$_composed"
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1

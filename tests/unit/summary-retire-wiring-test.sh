@@ -78,7 +78,7 @@ _state_with_verdict() {
     cat > "$STATE/pipeline-state.json" <<EOF
 {"schema_version":1,"stage_statuses":{"rw-gate":"$1"},"stage_verdicts":{"rw-gate":"$2"}}
 EOF
-    stage_summaries_prompt_block "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true
+    zb_test_previous_work "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true
 }
 
 # ─── SPEC-1 / SPEC-2: framing follows the verdict ────────────────────────────
@@ -89,7 +89,7 @@ assert_contains "[SPEC-1] the failing stage's body is present" "$FAILED_BLOCK" "
 # Case-insensitive: the requirement is that the framing is imperative, not that
 # it is shouted.
 # #2271: findings to answer — every stage answers each one itself.
-if grep -qiF 'its findings, to answer' <<< "$FAILED_BLOCK"; then
+if grep -qiF '(verdict: fail)' <<< "$FAILED_BLOCK"; then
     assert_pass "[SPEC-1] and it is framed as something to resolve"
 else
     assert_fail "[SPEC-1] and it is framed as something to resolve" \

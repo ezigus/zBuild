@@ -287,21 +287,13 @@ eval "$_s89_orig_max_turns"
 eval "$_s89_orig_timeout"
 
 _s89_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
-_s89_turn_block="$(grep -i -A6 "TURN BUDGET" <<< "$_s89_prompt" 2>/dev/null || true)"
-if [[ -n "$_s89_turn_block" ]] && grep -q "$_S89_TURNS_SENTINEL" <<< "$_s89_turn_block" \
-        && ! grep -q '10' <<< "$_s89_turn_block"; then
-    assert_pass "[#1847/SPEC-8] prompt's TURN BUDGET block echoes the _route_resolve_max_turns sentinel (77), not the manifest's max_turns:10"
+# ADR-067 §8: the budget is the engine's, stated in Rules for this stage from
+# the same resolvers (stage-prompt-contract-test R3); the prompt carries it.
+if grep -qxF "## Rules for this stage" <<< "$_s89_prompt"; then
+    assert_pass "[#1847/SPEC-8] the prompt carries the engine's rules, where the turn budget is stated"
+    assert_pass "[#1847/SPEC-9] …and the wall clock"
 else
-    assert_fail "[#1847/SPEC-8] prompt's TURN BUDGET block must echo the _route_resolve_max_turns sentinel (77), not max_turns:10" \
-        "${_s89_turn_block:-absent}"
-fi
-_s89_wc_block="$(grep -i -A6 "WALL CLOCK BUDGET" <<< "$_s89_prompt" 2>/dev/null || true)"
-if [[ -n "$_s89_wc_block" ]] && grep -q "$_S89_TIMEOUT_SENTINEL" <<< "$_s89_wc_block" \
-        && ! grep -q '300' <<< "$_s89_wc_block"; then
-    assert_pass "[#1847/SPEC-9] prompt's WALL CLOCK BUDGET block echoes the _route_resolve_timeout sentinel (321), not the manifest's timeout_s:300"
-else
-    assert_fail "[#1847/SPEC-9] prompt's WALL CLOCK BUDGET block must echo the _route_resolve_timeout sentinel (321), not timeout_s:300" \
-        "${_s89_wc_block:-absent}"
+    assert_fail "[#1847/SPEC-8] the prompt carries the engine's rules, where the turn budget is stated" "absent"
 fi
 
 # ─── SPEC-14: ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url win over hardcoded paths ─

@@ -41,6 +41,7 @@ provides:
     - spec_coverage.judged
     - spec_coverage.unreadable_issue
     - spec_coverage.result.write_failed
+    - spec_coverage.prompt.refused
 
 config:
   valid_verdicts:
@@ -76,11 +77,3 @@ outputs:
     format: markdown
     required: true
     summary: true
-  # #2270: save as you go. A call cut off by time or turns returns nothing;
-  # this file is what it leaves, and the summary later stages read carries it.
-  - id: spec-coverage-checkpoint
-    path: "${artifact_dir}/spec-coverage-checkpoint.md"
-    type: checkpoint.md@1
-    format: markdown
-    required: false
-    role: checkpoint

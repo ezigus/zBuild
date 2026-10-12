@@ -811,7 +811,7 @@ unexamined: the §Disposition table said terminal while the prose two paragraphs
 
 1. `not_passing_at_head:*` → `recoverable`. The cycle re-iterates; the assertion's author sees
    the gate's finding (SPEC id, the `design:`/`asserts:` pairing from Amendment #1684) in the
-   engine-injected STAGE SUMMARIES. Bounded by `max_iterations`.
+   engine-injected STAGE SUMMARIES (since 2026-10-12, the engine's Previous work block, ADR-067 §8). Bounded by `max_iterations`.
 2. Iter ≥ 2 still not passing → `fault=specification` + `acceptance.gate.not_passing_at_head_escalated`,
    the Amendment #1711 shape: after one honest authoring pass, impl and assertion still cannot be
    made to agree with the SPEC, so the premise is what is suspect and design is the stage that

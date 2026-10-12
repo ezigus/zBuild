@@ -84,7 +84,7 @@ _Newcomers can skip this section._
 
 **Deterministic prefilter (#781).** Before the LLM runs, `scripts/lib/impact-prefilter.sh` applies the CLAUDE.md "Test scope discovery" rule: it greps `tests/` for numeric shape values derived from `plan.json` and scans `tests/golden/**`. Results are injected into the prompt as `CANDIDATE GAPS`. Entries with `source=shape-change-golden` are mandatory — the post-LLM bash merge enforces them. Entries with `source=shape-change-numeric` are advisory — the LLM may drop them with a one-line reason.
 
-**Prompt overrides (ADR-032, #855).** Per-repo operator overlays are appended to the prompt file after the shipped charter via `append_prompt_override`. The overlay can never precede or weaken the output contract. ADR-043 delegates redaction to the router, which covers the overlay.
+**Prompt overrides (ADR-032, #855).** A repository's guidance for impact (`.zbuild/prompts/impact-overrides.md`) reaches it from the engine, under From the repo (ADR-067 §8); it can add to the stage's job, never take part of it away. ADR-043 delegates redaction to the router, which covers the whole prompt.
 
 **Hallucination guard (#911).** The LLM must verify file existence with `Read` or `Grep` before listing any path in `missing[].files_to_add`. Non-existent paths are stripped by a post-LLM bash merge step to prevent the design stage from chasing phantom gaps.
 

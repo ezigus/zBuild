@@ -49,11 +49,12 @@ _scv_issue_is_placeholder() {
     [[ "$t" =~ ^GitHubissue#[0-9]+$ ]]
 }
 
-_scv_prompt() {
-    cat <<EOF
+# The stage's three parts, composed with the engine's blocks in the one prompt
+# order (ADR-067 §8). _scv_prompt_judge <issue> <acceptance> <requirements>.
+_scv_prompt_own() {
+    cat <<'EOF'
 You are checking whether a DESIGN covers what an ISSUE asked for.
 
-## What you own
 One verdict: what does the issue require that no SPEC covers?
 
 Check EVERY requirement,
@@ -66,8 +67,10 @@ Answer in exactly this form:
 VERDICT: covered | uncovered
 REASON: <one sentence>
 UNCOVERED: <every requirement no SPEC fully covers, separated by semicolons, all on this one line; omit when covered>
-
-## What you judge against
+EOF
+}
+_scv_prompt_judge() {
+    cat <<EOF
 Three things, shown at the end of this part:
 
 ISSUE — what was asked for, in the requester's own words.
@@ -108,8 +111,10 @@ ${3:-<none listed>}
 
 ACCEPTANCE:
 $2
-
-## What you must not do
+EOF
+}
+_scv_prompt_limits() {
+    cat <<'EOF'
 - Do not suggest SPEC text.
 - Do not rewrite the design.
 - Answer only, in the form above.
@@ -186,8 +191,7 @@ spec_coverage_run() {
     [[ -s "${ZBUILD_STAGE_INPUTS:-}" ]] && _req_f="$(jq -r '.inputs.requirements // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null)"
     declare -F acceptance_requirements_list >/dev/null 2>&1 \
         && _reqs="$(acceptance_requirements_list "${_req_f:-$art/requirements.json}")"
-    _task="$(_scv_prompt "$issue" "$acc" "$_reqs")"
-    _framed="$_task"
+    _task="$(_scv_prompt_own)"
     if declare -f persona_stage_framing >/dev/null 2>&1; then
         if declare -f resolve_persona >/dev/null 2>&1; then
             _pdir="$(resolve_persona spec-coverage 2>/dev/null || true)"
@@ -195,17 +199,15 @@ spec_coverage_run() {
         fi
         local _f
         if _f="$(persona_stage_framing "$_pid" "$_task" 2>/dev/null)" && [[ -n "$_f" ]]; then
-            _framed="$_f"
+            _task="$_f"
             export ZBUILD_STAGE_IO_PERSONA="$_pid"
         fi
     fi
-
-    # #2252: the limits this call runs under, from the values the router enforces.
-    declare -F stage_budget_note >/dev/null 2>&1 || \
-        source "$_SCV_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
-    local _budget_note=""
-    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your verdict")"
-    [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
+    if ! _framed="$(stage_prompt_compose_text "$_task" "$(_scv_prompt_judge "$issue" "$acc" "$_reqs")" "$(_scv_prompt_limits)")"; then
+        _scv_emit "spec_coverage.prompt.refused" "stage=$stage_id"
+        _scv_write "$art" "unreadable" "the prompt could not be composed: the engine's blocks are missing" "[]" "misconfigured"
+        return 0
+    fi
     local _raw="" _rtm_rc=0 _scv_rc_file
     _scv_rc_file="$(mktemp)" || _scv_rc_file=""
     # No 2>/dev/null on this call: the stage-io input banner writes to fd 2 and

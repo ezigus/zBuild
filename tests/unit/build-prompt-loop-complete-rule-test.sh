@@ -56,16 +56,14 @@ assert_contains "R6: literal LOOP_COMPLETE sentinel name present" \
     "$out" "LOOP_COMPLETE"
 
 cleanup_test_env
-# ─── #2138: the prompt states its budget and what a failing summary means ────
+# ─── #2138: build is told not to re-run the suite, and that a failed stage is red
 # Run 35355623656's builder, told only "this file is red", re-ran the suite
-# and lint inside a 900s call three times in a row. It was never told the
-# clock existed.
-_b_out="$(ZBUILD_ROUTER_TIMEOUT=900 _build_compose_instructions "src/foo.sh")"
-assert_contains "[#2138] the instructions carry a Budget section" "$_b_out" "### Budget"
-assert_contains "[#2138] …naming the wall clock per call" "$_b_out" "900"
+# and lint inside a 900s call three times in a row. The clock itself is now
+# the engine's to state, in the Rules for this stage (ADR-067 §8).
+_b_out="$(_build_compose_instructions "src/foo.sh")"
 assert_contains "[#2138] …forbidding the full suite" "$_b_out" "npm test"
-# #2292: by the heading the summaries actually use (#2271 retired RESOLVE).
-assert_contains "[#2138] …and making failing summaries authoritative" "$_b_out" "its findings, to answer"
+assert_contains "[#2138] …and making a failed stage under Previous work authoritative" \
+    "$_b_out" "A failed stage under Previous work is red RIGHT NOW"
 
 print_test_results
 exit $((FAIL > 0))

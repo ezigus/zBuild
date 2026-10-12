@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Tests: the hydrate stage (#1074) — the fetch a fresh clone needs, the atomic
+# Tests: the hydrate stage (#1074) — the fetch a fresh clone needs, the
 # promote that cannot leave a partial tree, and the local-wins read rule.
+# A rerun of an issue continues it: hydrate puts an earlier run's outputs back
+# in their LIVE places (ADR-050, amended; ADR-068 §8), so they are simply each
+# stage's latest output — there is no second "restored" area to read.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,17 +99,30 @@ assert_eq "[SPEC-1] control: restore without a fetch reports first-run" \
 _H_STATE="$TEST_TEMP_DIR/fresh-state"
 mkdir -p "$_H_STATE/artifacts"
 export ZBUILD_ARTIFACT_DIR="$_H_STATE/artifacts"
-export ZBUILD_RESTORED_ARTIFACTS_DIR="$_H_STATE/restored-artifacts/artifacts"
 _rc=0
 ( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_H_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-1] hydrate returns 0" "0" "$_rc"
 assert_file_exists "[SPEC-1] prior plan.json was restored" \
-    "$ZBUILD_RESTORED_ARTIFACTS_DIR/plan.json"
+    "$ZBUILD_ARTIFACT_DIR/plan.json"
 assert_file_exists "[SPEC-1] prior design.md was restored" \
-    "$ZBUILD_RESTORED_ARTIFACTS_DIR/design.md"
+    "$ZBUILD_ARTIFACT_DIR/design.md"
 assert_eq "[SPEC-1] the result records how many were restored" "2" \
     "$(jq -r '.data.restored' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
+
+# ─── [SPEC-6][change] an earlier run's outputs land in the live places ──────
+assert_eq "[SPEC-6] no separate restored area is made" "no" \
+    "$([[ -e "$_H_STATE/restored-artifacts" ]] && echo yes || echo no)"
+# A file the run already has live is newer than an earlier run's: kept.
+_K_STATE="$TEST_TEMP_DIR/keep-state"
+mkdir -p "$_K_STATE/artifacts"
+printf 'THIS RUN design\n' > "$_K_STATE/artifacts/design.md"
+( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_K_STATE" \
+    ZBUILD_ARTIFACT_DIR="$_K_STATE/artifacts" hydrate_run hydrate "" ) >/dev/null 2>&1 || true
+assert_contains "[SPEC-6] a live file already there is kept" \
+    "$(cat "$_K_STATE/artifacts/design.md" 2>/dev/null)" "THIS RUN design"
+assert_contains "[SPEC-6] … and a missing one is put back" \
+    "$(cat "$_K_STATE/artifacts/plan.json" 2>/dev/null)" "prior plan"
 
 # ─── [SPEC-2][guard] the fetch cannot clobber an unpushed local snapshot ────
 # "Git wins" is about DURABILITY, not read precedence. A local snapshot may hold
@@ -142,14 +158,13 @@ fi
 _R_STATE="$TEST_TEMP_DIR/localwins-state"
 mkdir -p "$_R_STATE/artifacts"
 export ZBUILD_ARTIFACT_DIR="$_R_STATE/artifacts"
-export ZBUILD_RESTORED_ARTIFACTS_DIR="$_R_STATE/restored-artifacts/artifacts"
 ( cd "$_H_LOCAL" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_R_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1
 
 _l_after="$( cd "$_H_LOCAL" && git rev-parse refs/heads/zbuild/state/issue-$_ZB_ID 2>/dev/null || true )"
 assert_eq "[SPEC-2] the local branch ref is unmoved by the fetch" "$_l_before" "$_l_after"
 assert_contains "[SPEC-2] and the LOCAL (unpushed) content is what got restored" \
-    "$(cat "$ZBUILD_RESTORED_ARTIFACTS_DIR/plan.json" 2>/dev/null)" "NEWER local work"
+    "$(cat "$ZBUILD_ARTIFACT_DIR/plan.json" 2>/dev/null)" "NEWER local work"
 
 # ─── [SPEC-3][guard] a partial extraction is never promoted ─────────────────
 # git archive | tar can fail mid-stream leaving a half-extracted tree that
@@ -170,7 +185,6 @@ _S_STATE="$TEST_TEMP_DIR/srcfield-state"
 # guard below read SPEC-2's file: a failed write here would then be masked by
 # stale data that already says status=restored.
 export ZBUILD_ARTIFACT_DIR="$_S_STATE/artifacts"
-export ZBUILD_RESTORED_ARTIFACTS_DIR="$_S_STATE/restored-artifacts/artifacts"
 ( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_S_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1 || true
 # Guard: the restore itself still worked (existing invariant, no [SPEC-N] tag).
@@ -196,7 +210,6 @@ print_test_section "[SPEC-3][guard] a failed restore leaves the area absent, not
 _P_STATE="$TEST_TEMP_DIR/partial-state"
 mkdir -p "$_P_STATE/artifacts"
 export ZBUILD_ARTIFACT_DIR="$_P_STATE/artifacts"
-export ZBUILD_RESTORED_ARTIFACTS_DIR="$_P_STATE/restored-artifacts/artifacts"
 
 # Force a restore failure that still creates a staging directory with content —
 # the exact shape a mid-stream tar failure leaves behind.
@@ -213,8 +226,8 @@ _rc=0
     hydrate_run hydrate "" ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-3] hydrate still returns 0 on a failed restore" "0" "$_rc"
 assert_file_not_exists "[SPEC-3] the half-extracted file was NOT promoted" \
-    "$ZBUILD_RESTORED_ARTIFACTS_DIR/plan.json"
-if [[ -d "$_P_STATE/restored-artifacts.staging" ]]; then
+    "$ZBUILD_ARTIFACT_DIR/plan.json"
+if [[ -d "$_P_STATE/hydrate.staging" ]]; then
     assert_fail "[SPEC-3] the staging tree must be discarded" "still present"
 else
     assert_pass "[SPEC-3] the staging tree is discarded whole"

@@ -1,6 +1,6 @@
 # hydrate
 
-The hydrate plugin pulls a prior run's artifacts for this issue out of the ADR-050 state branch (`zbuild/state/issue-<N>`) and into the run's restored-artifacts area, so each stage's prior-output seam can seed from earlier work instead of redoing it.
+The hydrate plugin puts this issue's earlier outputs, saved on the ADR-050 state branch (`zbuild/state/issue-<N>`), back in their live places in the run's artifacts folder. A rerun of an issue continues it: each is that stage's latest output until the stage writes a newer one (ADR-050 §9). A file the run already has is kept.
 
 **Hydrate Plugin**
 
@@ -25,13 +25,15 @@ Restore itself already ran, as engine code, identically in local runs and CI. Tw
 
 **The fetch.** `_artifact_persist_restore` reads `refs/heads/<branch>` first and `refs/remotes/origin/<branch>` second. On a fresh clone — which every CI runner is — *neither* exists until something fetches, so restore reported "first run" for an issue with plenty of prior work. That only ever worked because the CI workflow fetched the branch itself in a `run:` block. Doing it in the stage is what makes local and CI one mechanism, which is the same gap the `persist` stage closes on the way out.
 
-**A guarantee against partial trees.** `git archive | tar` can fail mid-stream — disk full, permissions — leaving a half-extracted tree that satisfies a bare `-d`/`-n` check. PR #1880's review caught the engine adopting one and added a status gate. Hydrate extracts to a staging directory and promotes it with a single `mv`, so the area a stage reads is complete or absent. The failure mode is removed rather than detected.
+**A guarantee against partial trees.** `git archive | tar` can fail mid-stream — disk full, permissions — leaving a half-extracted tree that satisfies a bare `-d`/`-n` check. PR #1880's review caught the engine adopting one and added a status gate. Hydrate extracts to a staging directory and copies only a complete extraction into place, so a half-extracted tree never reaches a stage. The failure mode is removed rather than detected.
 
-## The path is the engine's; the content is this stage's
+## One place to read
 
-`ZBUILD_RESTORED_ARTIFACTS_DIR` is exported by the runner, unconditionally, at a location it derives itself. Hydrate only fills it.
-
-That split is forced, not stylistic. A stage runs in its own subshell, so an export from hydrate would die with it — [ADR-052](https://github.com/ezigus/zBuild/blob/main/docs/adr/ADR-052-engine-owned-run-worktree.md)'s whole diagnosis of #888. Every consumer (`prior-output-reader.sh`, `input-resolve.sh`, `stage-checkpoint.sh`, `design/plugin.sh`) already guards on `-s <file>`, so an empty or absent area falls through to fresh — which was already the behaviour for a first-ever run.
+There is no separate restored area. Hydrate copies the earlier run's outputs into the live
+`artifacts/` folder, skipping any file the run already has, so every reader — the previous-work index,
+the prior-output reader, design's own latest design — reads one place. What moved since a stage last ran
+(files changed, whether the issue text changed) is the engine's to say, in each stage's Previous work
+block (ADR-067 §8).
 
 ## Local wins on read, and that is deliberate
 

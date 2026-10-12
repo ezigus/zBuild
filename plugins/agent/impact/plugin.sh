@@ -339,43 +339,19 @@ $_impact_instructions"
             "$_impact_instructions" "$_scope_list"
     fi
 
-    # ADR-050 (#1581): seed from a prior RUN's impact.json. Advisory — reference the
-    # prior gap analysis, but re-derive against the CURRENT design/tests (the
-    # deterministic prefilter above stays authoritative for goldens). Gated on
-    # ZBUILD_RESTORED_ARTIFACTS_DIR so it fires ONLY on a genuine cross-run restore
-    # (never stale cycle env or impact's OWN same-run local impact.json).
-    local _prior_impact="" _prior_impact_path=""
-    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
-        _prior_impact_path="$(_prior_output_path "impact.json" 2>/dev/null || true)"
-        [[ -n "$_prior_impact_path" ]] && \
-            _prior_impact="$(_zbuild_sanitize_for_llm 2>/dev/null < "$_prior_impact_path" || true)"
-    fi
-    if [[ -n "${_prior_impact//[[:space:]]/}" ]]; then
-        prompt+=$'\n### PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)\n'
-        # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
-        prior_output_is_earlier_run "$_prior_impact_path" && \
-            prompt+="This impact result is ${ZB_EARLIER_RUN_LABEL}."$'\n'
-        prompt+="$_prior_impact"$'\n'
-    fi
     prompt+=$'\n'"$_impact_limits"$'\n'
 
-    local prompt_file="$artifact_dir/impact-prompt.txt"
-    printf '%s\n' "$prompt" > "$prompt_file"
-
-    # ADR-032 (#855): per-repo override appended AFTER the contract (so the
-    # operator overlay can never precede or weaken the shipped charter). ADR-043:
-    # redaction is owned by the router — it covers this override too.
-    append_prompt_override "$prompt_file" "impact"
-
-    # ─── Assemble the raw prompt (ADR-043: route_to_model redacts it). ──────
+    # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
+    # prompt order. Impact's own latest result reaches it under Previous work,
+    # like every stage's. A prompt that cannot be composed is not sent.
     local redacted_prompt
-    redacted_prompt="$(cat "$prompt_file")"
-    # #2252: the limits this call runs under, from the values the router enforces.
-    declare -F stage_budget_note >/dev/null 2>&1 || \
-        source "$_IMPACT_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
-    local _budget_note=""
-    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your JSON verdict")"
-    [[ -n "$_budget_note" ]] && redacted_prompt+=$'\n\n'"$_budget_note"
+    if ! redacted_prompt="$(stage_prompt_compose_parts "$prompt")"; then
+        error "_impact_run_inner: the prompt could not be composed — the engine's blocks are missing"
+        _impact_write_result "$output_impact_json" error misconfigured prompt_not_composed '{"missing":[]}' || true
+        return 1
+    fi
+    local prompt_file="$artifact_dir/impact-prompt.txt"
+    printf '%s\n' "$redacted_prompt" > "$prompt_file"
 
     # ─── Route to LLM (T2 default per manifest config.tier_default, #960/#1230) ─
     # The fallback MUST match manifest tier_default (T2). On T1 (haiku) impact's

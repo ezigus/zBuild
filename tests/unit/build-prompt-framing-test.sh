@@ -92,9 +92,11 @@ assert_eq "F1: iter 1 build inner rc=0" "0" "$rc1"
 
 iter1_prompt="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
 
-# F2: banner present and reads "iter 1/3"
-assert_contains "F2: iter 1 banner present" "$iter1_prompt" "ZBUILD BUILD"
-assert_contains "F2: iter 1 banner reads 'iter 1/3'" "$iter1_prompt" "iter 1/3"
+# F2: no iteration banner — it told the model a different number from the
+# loop it was in; the engine's rules state the budget (ADR-067 §8).
+assert_eq "F2: iter 1 prompt carries no iteration banner" "0" \
+    "$(grep -c 'ZBUILD BUILD' <<< "$iter1_prompt" || true)"
+assert_eq "F2: iter 1 prompt opens with From the repo" "## From the repo" "${iter1_prompt%%$'\n'*}"
 
 # F3: ORIGINAL TASK section header present
 assert_contains "F3: iter 1 has ORIGINAL TASK section" "$iter1_prompt" \
@@ -132,8 +134,9 @@ assert_eq "F6: iter 2 build inner rc=0" "0" "$rc2"
 
 iter2_prompt="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
 
-# F7: banner shows iter 2/3
-assert_contains "F7: iter 2 banner reads 'iter 2/3'" "$iter2_prompt" "iter 2/3"
+# F7: no iteration banner on iter 2 either
+assert_eq "F7: iter 2 prompt carries no iteration banner" "0" \
+    "$(grep -c 'iter 2/3' <<< "$iter2_prompt" || true)"
 
 # F8: ORIGINAL TASK + INSTRUCTIONS still present
 assert_contains "F8: iter 2 has ORIGINAL TASK section" "$iter2_prompt" \
@@ -198,20 +201,16 @@ done
 # ─── #2138: a prior build that changed nothing is not "done" ──────────────────
 # "verdict=pass and touched 0 file(s) … emit LOOP_COMPLETE immediately" was
 # obeyed verbatim by iteration 1 of run 35355623656 on a red suite.
-print_test_section "#2138: PRIOR BUILD note"
-_read_prior_output() { [[ "$1" == build-summary.json ]] && printf '{"verdict":"pass","files_changed":[]}'; return 0; }
-_pb0="$(_build_read_prior_build_summary 2>/dev/null)"
-assert_contains "[#2138] a 0-file prior build is described as having changed nothing" "$_pb0" "changed nothing"
-if grep -qi 'emit LOOP_COMPLETE immediately' <<< "$_pb0"; then
-    assert_fail "[#2138] a 0-file prior build must not invite an immediate LOOP_COMPLETE" "$_pb0"
+print_test_section "PRIOR BUILD is retired (ADR-067 §8)"
+# Build's own latest summary reaches it under the engine's Previous work, like
+# every stage's latest output; the build plugin no longer reads and words it.
+if declare -F _build_read_prior_build_summary >/dev/null 2>&1; then
+    assert_fail "[PB] the PRIOR BUILD reader is gone" "still defined"
 else
-    assert_pass "[#2138] a 0-file prior build does not invite an immediate LOOP_COMPLETE"
+    assert_pass "[PB] the PRIOR BUILD reader is gone"
 fi
-assert_contains "[#2138] …and points at the STAGE SUMMARIES for the suite's state" "$_pb0" "STAGE SUMMARIES"
-_read_prior_output() { [[ "$1" == build-summary.json ]] && printf '{"verdict":"pass","files_changed":["core/a.sh","core/b.sh"]}'; return 0; }
-_pb2="$(_build_read_prior_build_summary 2>/dev/null)"
-assert_contains "[#2138] a prior build with real changes keeps the continue-do-not-restart guidance" "$_pb2" "do NOT restart"
-unset -f _read_prior_output
+assert_eq "[PB] no prompt carries a PRIOR BUILD section" "0" \
+    "$(grep -c '## PRIOR BUILD' <<< "$iter1_prompt$iter2_prompt" || true)"
 
 # ─── (#2183) the prompt permits reporting a finding that does not reproduce ─
 # It used to say "'nothing to do' is not an available answer" while a RESOLVE
@@ -219,7 +218,7 @@ unset -f _read_prior_output
 print_test_section "#2183: a finding that does not reproduce can be reported"
 # Read the shipped text directly: this is the prompt the stage sends, and the
 # rule under test is a property of that text, not of how it is assembled.
-_t2183="$(sed -n '/### Saying you are done/,/### Budget/p' \
+_t2183="$(sed -n '/### Saying you are done/,/### Running tests/p' \
     "$REPO_ROOT/plugins/agent/build/lib/prompt.sh" 2>/dev/null || true)"
 assert_contains "[#2183] premise: the section under test was read" "$_t2183" "LOOP_COMPLETE"
 assert_contains "[#2183] the prompt tells it how to report a non-reproduction" \

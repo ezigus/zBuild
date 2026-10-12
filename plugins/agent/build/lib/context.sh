@@ -43,39 +43,6 @@ _build_read_design_decisions() {
     design_decisions_prose "${1:-}" "$_BUILD_DESIGN_DECISIONS_MAX_LINES"
 }
 
-# _build_read_prior_build_summary (ADR-050 / #1581)
-# Read a prior RUN's build-summary.json (via the unified prior-work seam), and
-# emit a concise, human-readable advisory line for the build prompt. The seam's
-# cross-run/local tiers surface a prior attempt's summary; empty stdout when
-# absent (first run / no state branch). Intentionally NOT machine JSON in the
-# prompt — build already sees the actual committed code via the router's BRANCH
-# STATE injection; this just tells it a prior attempt exists so it continues
-# rather than restarts.
-_build_read_prior_build_summary() {
-    local raw; raw="$(_read_prior_output "build-summary.json" 2>/dev/null || true)"
-    [[ -z "${raw//[[:space:]]/}" ]] && return 0
-    # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
-    # Only a run with restored work can have one, so no lookup otherwise.
-    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]] \
-            && prior_output_is_earlier_run "$(_prior_output_path "build-summary.json" 2>/dev/null)"; then
-        printf 'This build summary is %s.\n' "$ZB_EARLIER_RUN_LABEL"
-    fi
-    local verdict n_files files
-    verdict="$(printf '%s' "$raw" | jq -r '.verdict // "unknown"' 2>/dev/null || echo unknown)"
-    n_files="$(printf '%s' "$raw" | jq -r '(.files_changed // []) | length' 2>/dev/null || echo 0)"
-    files="$(printf '%s' "$raw" | jq -r '(.files_changed // []) | join(", ")' 2>/dev/null || echo "")"
-    [[ "$n_files" =~ ^[0-9]+$ ]] || n_files=0
-    # #2138: a pass with 0 files is "did nothing", not "done" — iteration 1 of
-    # run 35355623656 read the old wording as licence to emit LOOP_COMPLETE
-    # on a red suite. Whether there is work is what the STAGE SUMMARIES say.
-    if [[ "$n_files" -eq 0 ]]; then
-        printf 'A previous attempt on this issue ended build with verdict=%s having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a summary headed "— its findings, to answer" means a check is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).' \
-            "$verdict"
-    else
-        printf 'A previous attempt on this issue ended build with verdict=%s and touched %s file(s): %s. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is headed "— its findings, to answer".' \
-            "$verdict" "$n_files" "$files"
-    fi
-}
 
 # _build_read_prior_assessment — the test stage's summary, read through the
 # DECLARED optional input `test_failures_summary` (ADR-055 §1; a backwards edge

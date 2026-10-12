@@ -1876,7 +1876,7 @@ main() {
             local _vg_path=""
             _vg_path="$(load_vision_doc "$PWD" 2>/dev/null)" || true
             if [[ -z "$_vg_path" ]]; then
-                local _vg_search_hint=".zbuild/vision.md, docs/VISION.md, VISION.md"
+                local _vg_search_hint=".zbuild/vision.md"
                 if [[ "$_vg_mode" == "enforce" ]]; then
                     error "Vision document not found (searched: $_vg_search_hint). Run: zbuild vision init"
                     _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
@@ -2235,28 +2235,9 @@ main() {
         ln -sfn "$state_dir" "$(zbuild_layout_state_root)/latest" 2>/dev/null || true
     fi
 
-    # ADR-050 (#1581) / #1074: the RESTORED-ARTIFACTS AREA.
-    #
-    # The engine owns the PATH; the hydrate stage owns the CONTENT. That split
-    # is forced, not stylistic: a stage runs in its own subshell, so an export
-    # from hydrate would die with it — ADR-052's whole diagnosis of #888. So the
-    # runner derives this location and exports it unconditionally, before any
-    # dispatch, and hydrate fills it.
-    #
-    # Exported even when nothing is there. Every consumer
-    # (`prior-output-reader.sh`, `input-resolve.sh`, `stage-checkpoint.sh`,
-    # `design/plugin.sh`) guards on `-s <file>`, so an absent or empty area
-    # falls through to fresh — which is the documented behaviour and was already
-    # the behaviour for a first-ever run.
-    #
-    # The engine no longer RESTORES here. That moved to the hydrate stage
-    # (#1074), which extracts to a staging dir and promotes with a single `mv` —
-    # so the partial-tree hazard PR #1880's review caught is removed by
-    # construction rather than gated on a status.
-    # #1931: a --goal run has prior work to restore too, once it has an identity.
-    if _artifact_persist_has_identity "$_runner_issue"; then
-        export ZBUILD_RESTORED_ARTIFACTS_DIR="$state_dir/restored-artifacts/artifacts"
-    fi
+    # ADR-050 (amended): an earlier run's outputs are put back in their live
+    # places by the hydrate stage, so there is no restored area to export — a
+    # rerun of an issue continues it (ADR-068 §8).
 
     # #963: self-host — redirect the read-only acceptance-grammar libs that the
     # contract-reader stages (acceptance-gate, test_assessment, design) source to

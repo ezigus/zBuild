@@ -60,11 +60,11 @@ Some of zBuild's stages are AI agents that write files into your repository — 
 - Never call the network from a test; use the `fake_http` fixture.
 ```
 
-If your repository has no `rules.md`, those stages get zBuild's short default rule set instead (follow the repository's existing style and contributor docs, pass its own linters and tests, never write secrets). Your file replaces the defaults rather than adding to them, so copy any default you want to keep.
+If your repository has no `rules.md`, every stage gets zBuild's short default rule set instead (follow the repository's existing style and contributor docs, pass its own linters and tests, never write secrets). Your file replaces the defaults rather than adding to them, so copy any default you want to keep.
 
-Which stages get the rules is decided by each stage's manifest (`prompt.repo_rules: true`, see [Writing Plugins](Writing-Plugins.md)). Today that is test-author.
+Every stage gets the rules, from the engine, as part of its From the repo block (ADR-067 §8).
 
-**Advanced (newcomers can skip).** The file is read through the same safety checks as the per-stage overrides (no symlinks or hardlinks out of `.zbuild/prompts/`, a 32 KiB cap), and injected by the router before redaction. Per-stage overrides (`.zbuild/prompts/<stage>-overrides.md`) still work alongside it for the stages that read them. See ADR-032 and its 2026-09-27 amendment.
+**Advanced (newcomers can skip).** The file is read through the same safety checks as the per-stage overrides (no symlinks or hardlinks out of `.zbuild/prompts/`, a 32 KiB cap), and the whole prompt passes the redaction chokepoint. Per-stage guidance (`.zbuild/prompts/<stage>-overrides.md`) reaches any stage it names the same way. See ADR-032 and its 2026-10-12 amendment.
 
 ---
 

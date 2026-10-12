@@ -2,6 +2,7 @@ memory.backend.init
 pipeline.init
 pipeline.start
 stage.start
+stage.previous_work.written
 plugin.run.start
 hydrate.start
 hydrate.complete
@@ -9,6 +10,7 @@ plugin.run.complete
 stage.complete
 artifact.snapshot.saved
 stage.start
+stage.previous_work.written
 plugin.run.start
 plugin.result
 plugin.run.complete
@@ -16,8 +18,8 @@ stage.outputs.unchanged
 stage.complete
 artifact.snapshot.saved
 stage.start
+stage.previous_work.written
 plugin.run.start
-prompt.summaries.injected
 redaction.applied
 model.route
 model.outcome
@@ -27,9 +29,8 @@ plugin.run.complete
 stage.complete
 artifact.snapshot.saved
 stage.start
+stage.previous_work.written
 plugin.run.start
-prompt.summaries.injected
-redaction.counter_skipped
 redaction.applied
 loop.iteration
 model.route
@@ -42,14 +43,15 @@ plugin.run.complete
 stage.complete
 artifact.snapshot.saved
 stage.start
+stage.previous_work.written
 plugin.run.start
 plugin.result
 plugin.run.complete
 stage.complete
 artifact.snapshot.saved
 stage.start
+stage.previous_work.written
 plugin.run.start
-prompt.summaries.injected
 redaction.applied
 model.route
 model.outcome
@@ -59,12 +61,14 @@ plugin.run.complete
 stage.complete
 artifact.snapshot.saved
 stage.start
+stage.previous_work.written
 plugin.run.start
 plugin.result
 plugin.run.complete
 stage.complete
 artifact.snapshot.saved
 stage.start
+stage.previous_work.written
 plugin.run.start
 plugin.pr_open.branch_fallback_used
 plugin.result
@@ -73,6 +77,7 @@ plugin.run.complete
 stage.complete
 artifact.snapshot.saved
 pipeline.end
+stage.previous_work.written
 plugin.run.start
 teardown.start
 teardown.pgroups.killed
@@ -87,6 +92,7 @@ plugin.cleanup.absent
 plugin.cleanup.absent
 teardown.complete
 plugin.run.complete
+stage.previous_work.written
 plugin.run.start
 persist.start
 persist.complete

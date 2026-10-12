@@ -1,6 +1,7 @@
 # ADR-050 — Prior-Work Reuse Contract (durable artifact store + per-stage self-seeding)
 
 **Status:** Accepted (2026-07-23)
+**Amended:** 2026-10-12 (ADR-067 §8 prompt contract) — §9: a rerun of an issue continues it. Hydrate puts an earlier run's outputs back in their live places; there is no separate restored area, no "earlier run" label, and a stage judges or refines the latest output whichever run wrote it. §5's restored tier and §8 are withdrawn.
 **Amended:** 2026-10-06 (#2326) — §8: anything a stage reads from an earlier run's saved work is labelled as that run's, for reference only, wherever it shows (input index, prompts, input events), and a stage that judges results never counts it as this run's result.
 **Amended:** 2026-10-06 (#2324) — design-gate no longer writes `data.design_sha`; its only reader was the reuse rule #2299 withdrew. Every statement below now names its test.
 **Amended:** 2026-10-05 (#2299) — design always runs. The #2225 rule that kept a prior run's design without a model call is withdrawn; a restored design reaches the prompt as a reference to check (§6: never skip the stage on the basis of prior output).
@@ -163,9 +164,9 @@ resolution order (first hit wins):
    the intra-cycle copy `ZBUILD_CYCLE_FEEDBACK_DIR/prior_<field>.txt` and the
    attempt-record fallback are removed; the engine keeps no copy of a stage's
    output. #2252 had already put this run's own output before the restored one.)
-2. **Cross-run restored** (`ZBUILD_RESTORED_ARTIFACTS_DIR/<artifact>`) — the prior
-   run's artifact, placed there by the engine's restore, when this run has
-   written none.
+2. ~~**Cross-run restored** (`ZBUILD_RESTORED_ARTIFACTS_DIR/<artifact>`)~~ — withdrawn
+   by §9 (2026-10-12): hydrate puts an earlier run's outputs in their live
+   places, so tier 1 is the only one.
 3. Not found → empty, `return 0` (silent-fail).
 
 A stage does not choose _which_ source supplied the content; it injects the
@@ -253,7 +254,7 @@ restore reported "first run" for an issue with plenty of prior work.
 
 ### 8. Amendment (#2326) — an earlier run's work is labelled, and never counted as this run's result
 
-**Status:** Accepted (2026-10-06). The same rule ADR-063 §5 (#2325) applies across the rounds of one run,
+**Status:** Withdrawn 2026-10-12 by §9. Accepted (2026-10-06). The same rule ADR-063 §5 (#2325) applies across the rounds of one run,
 applied across runs.
 
 A stage may read what an earlier run saved (restored into `$ZBUILD_RESTORED_ARTIFACTS_DIR`). That work
@@ -281,6 +282,28 @@ run.
   This extends §3 from the gate's own verdict to every result a gate reads.
 - **Hand-overs keep working.** A stage that does not judge still reads the earlier copy when this run
   has none (#2095); it is labelled, not withheld.
+
+### 9. Amendment (2026-10-12) — a rerun of an issue continues it
+
+**Status:** Accepted (2026-10-12). Supersedes §5's restored tier and §8.
+
+An earlier run's outputs are earlier versions of each stage's output, exactly as an earlier try in the
+same run is. One rule covers both: **a stage's latest output is the live file, whichever try or run wrote
+it** (ADR-068 §8).
+
+- **Hydrate puts them in the live places.** The hydrate stage extracts the state branch to a staging
+  folder and copies every file into the run's `artifacts/`, skipping any the run already has (a live
+  file is this run's own, and newer). There is no `restored-artifacts/` area and no
+  `ZBUILD_RESTORED_ARTIFACTS_DIR`; the reader (§5), the input index and design read one place.
+- **No label.** Nothing says "from an earlier run". What a stage needs to know is what moved since the
+  output was written, and the engine says so for every stage in the Previous work block (ADR-067 §8):
+  the repository files changed since that stage last ran, and whether the issue text changed. The
+  record behind it (`artifacts/stage-context/<stage>.txt`: the repository's HEAD and a checksum of the
+  issue text intake read, at that stage's dispatch) is saved with the outputs, so a rerun can say it too.
+- **A result still counts only if its stage's latest run wrote it.** A stage that runs again and writes
+  no result has none (`stage_result_is_current`, ADR-068 §8) — that safeguard is per dispatch and
+  unchanged.
+- **Intake always reads the live issue** (it already did, failing closed on an unreadable one, #1804).
 
 ## Consequences
 
@@ -378,16 +401,18 @@ no model ever reads that line.
 - §3 (a deterministic gate never reuses a prior verdict: no gate plugin reads prior work; design-gate and gate-aggregator judge the current state despite a restored pass) → `tests/unit/prior-work-reuse-contract-test.sh` C3
 - §4 (a snapshot at each stage boundary; a failed snapshot never aborts the run) → `tests/integration/artifact-snapshot-runner-test.sh`
 - §4 (#1921: persist's own result joins the store; the secret gate runs before the push) → `tests/unit/persist-stage-test.sh`
-- §5 (`_read_prior_output` order) → `tests/unit/prior-output-reader-test.sh`
+- §5 (`_read_prior_output` order; no restored tier, §9) → `tests/unit/prior-output-reader-test.sh` T2; `tests/unit/own-run-artifacts-first-test.sh` O5–O8
 - §6 (never skip a stage on the basis of prior output — design always runs, the prior design is a reference in its prompt) → `tests/unit/resume-default-test.sh` R5–R11 (#2299)
-- §7 (persist is an always-run stage; restore never writes over live artifacts) → `tests/unit/template-always-run-test.sh`, `tests/unit/stage-input-resolve-precedence-test.sh`
+- §7 (persist is an always-run stage) → `tests/unit/template-always-run-test.sh`
 - §7 (the local ref wins on read: unpushed local work is what restore returns) → `tests/unit/hydrate-stage-test.sh` SPEC-2
 - Implementation notes (intake adopts an existing remote work branch) → `tests/integration/intake-branch-ahead-count-test.sh`
 - Implementation notes (pr-open edits the existing open PR, never opens a second, and reports `status=updated`) → `tests/unit/prior-work-reuse-contract-test.sh` C5
 - #2225 (`ZBUILD_RESUME` defaults to 1; `--no-resume` restores nothing yet still fetches and adopts) → `tests/unit/resume-default-test.sh` R1–R4
 - #2324 (design-gate's result has no `design_sha`) → `tests/unit/resume-default-test.sh` R12
-- §8 (#2326: the input index marks an input served from an earlier run's copy, and not this run's; the prompt's input block labels it; the `stage.input.earlier_run` event records it; a gate and review-aggregator treat a result that exists only as an earlier run's copy as missing; a stage that does not judge still reads it) → `tests/unit/earlier-run-reference-test.sh` E1–E5
-- §8 (#2326: design, plan, impact, build's prior summary and an earlier run's saved notes are labelled in the prompt when they came from an earlier run, and not when they came from this run) → `tests/unit/earlier-run-prompt-label-test.sh` L1–L5
+- §9 (hydrate puts an earlier run's outputs in the live places, keeping any the run already has; no restored area) → `tests/unit/hydrate-stage-test.sh` SPEC-1, SPEC-6; `tests/integration/prior-work-reuse-integration-test.sh` T4, T5
+- §9 (no restored area is read: the index and the reader see only the live file) → `tests/unit/stage-input-resolve-precedence-test.sh` SPEC-3; `tests/unit/own-run-artifacts-first-test.sh` O1, O7
+- §9 (no earlier-run label; one wording for design's latest design whichever run wrote it) → `tests/unit/stage-prompt-contract-test.sh` P2; `tests/unit/design-prior-hypothesis-test.sh` SPEC-5
+- §9 (what moved since a stage last ran: files changed and whether the issue text changed, recorded at dispatch) → `tests/unit/stage-prompt-contract-test.sh` P4; `tests/unit/stage-blocks-dispatch-test.sh` D2
 - #2111 (a run aborted with `llm_rate_limited` persists — persist pushes the state branch; the daemon's completion comment names the reset time and says to re-add the label) → `tests/unit/prior-work-reuse-contract-test.sh` C6
 
 ## References

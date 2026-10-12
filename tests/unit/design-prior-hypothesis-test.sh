@@ -10,14 +10,14 @@
 #
 # SPEC-1[change]: the design result records WHEN and against WHICH commit it was authored
 #   (data.authored_at ISO-8601, data.authored_at_commit)
-# SPEC-2[change]: with a prior design that carries that stamp, the prompt carries an
-#   engine-collected "SINCE THE PRIOR DESIGN" block naming the ADRs added or changed
-#   since, each with its Supersedes line, and the scope files that changed
-# SPEC-3[change]: the prior design is presented as a hypothesis to re-verify — the prompt
-#   no longer says "refine, do not recreate"
-# SPEC-4[change]: a prior design with no stamp is presented as undated — every claim unverified
-# SPEC-5[change]: a prior design from THIS run (intra-cycle refinement, iter >= 2) gets no drift
-#   block and no hypothesis framing — the tree has not moved since it was written
+# SPEC-2[change]: design's latest design.md is carried as YOUR LATEST DESIGN, with the
+#   instruction to re-check every claim it makes against the tree as it is NOW. What
+#   moved since design last ran — files and the issue text — is the engine's, under
+#   Previous work (ADR-067 §8; stage-prompt-contract-test P4), not design's own block.
+# SPEC-3[change]: the prompt no longer says "refine, do not recreate"
+# SPEC-5[change]: one wording whichever try or run wrote it — a rerun of an issue
+#   continues it (ADR-068 §8): no "earlier in this run", no "previous attempt", no
+#   "earlier run" label
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -74,75 +74,30 @@ else
 fi
 assert_eq "[SPEC-1] data.authored_at_commit is the repo HEAD at authoring" "$(git -C "$FIX" rev-parse HEAD)" "$_sha"
 
-print_test_section "SPEC-2/3: a stamped prior design gets the engine-collected drift block"
-RESTORED="$TEST_TEMP_DIR/restored"; mkdir -p "$RESTORED"
-printf '# Design\n\nRelies on ADR-001: declare a cleanup hook.\n\n```scope\nfoo.sh\n```\n' > "$RESTORED/design.md"
-# The prior design was authored before ADR-002 and before foo.sh changed.
-jq -n --arg sha "$OLD_SHA" '{result_contract:2, verdict:"pass", disposition:"complete", reason:"design_produced", data:{authored_at:"2026-08-02T00:00:00Z", authored_at_commit:$sha}}' > "$RESTORED/design-verdict.json"
-export ZBUILD_RESTORED_ARTIFACTS_DIR="$RESTORED"
-AD2="$FIX/state2/artifacts"; mkdir -p "$AD2"; cp "$AD/plan.json" "$AD2/"; printf 'scope: all\n' > "$FIX/state2/scope-manifest.md"
-export MOCK_DESIGN_WRITE_PATH="$AD2/design.md"
-( cd "$FIX" && _design_stage_run_inner "$FIX/state2/scope-manifest.md" "$AD2/plan.json" "$AD2/design.md" "$AD2" >/dev/null 2>&1 ) || true
-P="$AD2/design-prompt.txt"
-assert_file_exists "[SPEC-2] the prompt is written" "$P"
-assert_contains "[SPEC-2] the prompt carries the SINCE THE PRIOR DESIGN block" "$(cat "$P")" "SINCE THE PRIOR DESIGN"
-assert_contains "[SPEC-2] …dating the prior design" "$(cat "$P")" "2026-08-02"
-assert_contains "[SPEC-2] …naming the ADR added since" "$(cat "$P")" "ADR-002-engine-reclaims.md"
-assert_contains "[SPEC-2] …with its Supersedes line" "$(cat "$P")" "Supersedes: ADR-001"
-assert_contains "[SPEC-2] …and the scope file that changed since" "$(sed -n '/SINCE THE PRIOR DESIGN/,/^## /p' "$P")" "foo.sh"
-assert_contains "[SPEC-3] the prior design is framed as a hypothesis to re-verify" "$(cat "$P")" "a hypothesis, not a fact"
-if grep -qF 'refine, do not recreate' "$P"; then
-    assert_fail "[SPEC-3] the prompt no longer says 'refine, do not recreate'" "still present"
-else
-    assert_pass "[SPEC-3] the prompt no longer says 'refine, do not recreate'"
-fi
-
-print_test_section "SPEC-4: an unstamped prior design is undated — every claim unverified"
-rm -f "$RESTORED/design-verdict.json"
-AD3="$FIX/state3/artifacts"; mkdir -p "$AD3"; cp "$AD/plan.json" "$AD3/"; printf 'scope: all\n' > "$FIX/state3/scope-manifest.md"
-export MOCK_DESIGN_WRITE_PATH="$AD3/design.md"
-( cd "$FIX" && _design_stage_run_inner "$FIX/state3/scope-manifest.md" "$AD3/plan.json" "$AD3/design.md" "$AD3" >/dev/null 2>&1 ) || true
-assert_contains "[SPEC-4] an undated prior design is said to be undated" "$(cat "$AD3/design-prompt.txt")" "date is unknown"
-
-print_test_section "SPEC-5: an intra-cycle refinement is not told the repository moved"
-unset ZBUILD_RESTORED_ARTIFACTS_DIR
-# No feedback copy (the engine keeps none): the prior design is design's own
-# latest output — this run's design.md, where design wrote it.
-unset ZBUILD_CYCLE_FEEDBACK_DIR
-AD4="$FIX/state4/artifacts"; mkdir -p "$AD4"; cp "$AD/plan.json" "$AD4/"; printf 'scope: all\n' > "$FIX/state4/scope-manifest.md"
-printf '# Design\n\nfrom this run\n\n```scope\nfoo.sh\n```\n' > "$AD4/design.md"
-export MOCK_DESIGN_WRITE_PATH="$AD4/design.md"
-( cd "$FIX" && ZBUILD_CYCLE_ITER=2 _design_stage_run_inner "$FIX/state4/scope-manifest.md" "$AD4/plan.json" "$AD4/design.md" "$AD4" >/dev/null 2>&1 ) || true
-P4="$AD4/design-prompt.txt"
-assert_contains "[SPEC-5] the in-run prior design is carried into the prompt" "$(cat "$P4")" "from this run"
-if grep -qF 'SINCE THE PRIOR DESIGN' "$P4"; then
-    assert_fail "[SPEC-5] no drift block for a design written in this run" "block present"
-else
-    assert_pass "[SPEC-5] no drift block for a design written in this run"
-fi
-if grep -qF 'date is unknown' "$P4"; then
-    assert_fail "[SPEC-5] an in-run prior design is not called undated" "present"
-else
-    assert_pass "[SPEC-5] an in-run prior design is not called undated"
-fi
-assert_contains "[SPEC-5] it is framed as this run's own earlier pass to refine" "$(cat "$P4")" "earlier in this run"
-
-print_test_section "SPEC-5b: a re-entered loop's first try still refines this run's design"
-# #1932's round two: the outer loop went round, the inner loop restarted at try 1,
-# and design was told its own round-one design was "a previous attempt … the
-# repository has moved".
-AD5="$FIX/state5/artifacts"; mkdir -p "$AD5"; cp "$AD/plan.json" "$AD5/"; printf 'scope: all\n' > "$FIX/state5/scope-manifest.md"
-printf '# Design\n\nround one of this run\n\n```scope\nfoo.sh\n```\n' > "$AD5/design.md"
-export MOCK_DESIGN_WRITE_PATH="$AD5/design.md"
-( cd "$FIX" && ZBUILD_CYCLE_ITER=1 _design_stage_run_inner "$FIX/state5/scope-manifest.md" "$AD5/plan.json" "$AD5/design.md" "$AD5" >/dev/null 2>&1 ) || true
-P5="$AD5/design-prompt.txt"
-assert_contains "[SPEC-5b] round one's design is carried into the prompt" "$(cat "$P5")" "round one of this run"
-assert_contains "[SPEC-5b] framed as this run's own earlier pass" "$(cat "$P5")" "earlier in this run"
-if grep -qF 'The repository has moved' "$P5"; then
-    assert_fail "[SPEC-5b] not told the repository moved" "present"
-else
-    assert_pass "[SPEC-5b] not told the repository moved"
-fi
+print_test_section "SPEC-2/3/5: design refines its latest design, whichever run wrote it"
+for _case in 2 5 5b; do
+    ADc="$FIX/state$_case/artifacts"; mkdir -p "$ADc"; cp "$AD/plan.json" "$ADc/"
+    printf 'scope: all\n' > "$FIX/state$_case/scope-manifest.md"
+    printf '# Design\n\nLATEST-DESIGN-%s\n\n```scope\nfoo.sh\n```\n' "$_case" > "$ADc/design.md"
+    export MOCK_DESIGN_WRITE_PATH="$ADc/design.md"
+    _iter=1; [[ "$_case" == 5 ]] && _iter=2
+    ( cd "$FIX" && ZBUILD_CYCLE_ITER=$_iter _design_stage_run_inner "$FIX/state$_case/scope-manifest.md" \
+        "$ADc/plan.json" "$ADc/design.md" "$ADc" >/dev/null 2>&1 ) || true
+    Pc="$(cat "$ADc/design-prompt.txt" 2>/dev/null)"
+    assert_contains "[SPEC-2] ($_case) the latest design is carried into the prompt" "$Pc" "LATEST-DESIGN-$_case"
+    assert_contains "[SPEC-2] ($_case) as YOUR LATEST DESIGN" "$Pc" "### YOUR LATEST DESIGN"
+    assert_contains "[SPEC-2] ($_case) every claim is re-checked against the tree as it is now" "$Pc" "re-checked against the tree as it is NOW"
+    if grep -qF 'refine, do not recreate' <<< "$Pc"; then
+        assert_fail "[SPEC-3] ($_case) the prompt no longer says 'refine, do not recreate'" "still present"
+    else
+        assert_pass "[SPEC-3] ($_case) the prompt no longer says 'refine, do not recreate'"
+    fi
+    if grep -qiE 'earlier in this run|previous attempt|earlier run|SINCE THE PRIOR DESIGN' <<< "$Pc"; then
+        assert_fail "[SPEC-5] ($_case) one wording, with no run label" "$(grep -iE 'earlier in this run|previous attempt|earlier run|SINCE THE PRIOR' <<< "$Pc" | head -2)"
+    else
+        assert_pass "[SPEC-5] ($_case) one wording, with no run label"
+    fi
+done
 
 cleanup_test_env
 print_test_results

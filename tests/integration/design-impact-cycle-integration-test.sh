@@ -14,7 +14,7 @@
 #   T3 (#1979): design does NOT re-splice the gate summary on iter 2 — the
 #       bespoke reader and its section were retired; the summaries block is
 #       now the single splice point.
-#   T4: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
+#   T4: design iter 2 prompt contains YOUR LATEST DESIGN (self-feedback, #773 lesson)
 #       from design's own latest design.md (ADR-068 §8: no copy is kept)
 #   T5: _design_read_prior_design returns empty outside cycle context
 set -euo pipefail
@@ -254,7 +254,7 @@ else
     assert_fail "T3: prompt capture file not written (route_to_model_loop stub issue)" ""
 fi
 
-# ─── T4: design iter 2 prompt contains PRIOR DESIGN (self-feedback) ──────────
+# ─── T4: design iter 2 prompt contains YOUR LATEST DESIGN (self-feedback) ─────
 export ZBUILD_CYCLE_ITER=2
 
 T4_STATE="$TEST_TEMP_DIR/t4-state"
@@ -296,10 +296,10 @@ unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 if [[ -f "$T4_PROMPT_CAPTURE" ]]; then
     t4_prompt="$(cat "$T4_PROMPT_CAPTURE")"
     case "$t4_prompt" in
-        *"PRIOR DESIGN"*)
-            assert_pass "T4: design prompt includes PRIOR DESIGN on iter 2 (self-feedback, #773)" ;;
+        *"YOUR LATEST DESIGN"*)
+            assert_pass "T4: design prompt includes YOUR LATEST DESIGN on iter 2 (self-feedback, #773)" ;;
         *)
-            assert_fail "T4: design prompt missing PRIOR DESIGN self-feedback" \
+            assert_fail "T4: design prompt missing YOUR LATEST DESIGN self-feedback" \
                 "prompt snippet: $(head -30 "$T4_PROMPT_CAPTURE")" ;;
     esac
 else

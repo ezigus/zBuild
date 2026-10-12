@@ -253,10 +253,10 @@ set +e
 _review_lens_run_inner "1840spec5" "$scope_manifest" "$evidence" "$out_1840_s5" "$artifact_dir"
 set -e
 _1840_s5_prompt="$(cat "$_RL_PROMPT" 2>/dev/null || true)"
-if grep -qi "TURN BUDGET" <<< "$_1840_s5_prompt"; then
-    assert_pass "[SPEC-5] ADR-063 turn budget block appears in prompt when max_turns > 0"
+if grep -qxF "## Rules for this stage" <<< "$_1840_s5_prompt"; then
+    assert_pass "[SPEC-5] the prompt carries the engine's rules, where the turn budget is stated"
 else
-    assert_fail "[SPEC-5] ADR-063 turn budget block must appear in prompt when max_turns > 0" "absent"
+    assert_fail "[SPEC-5] the prompt carries the engine's rules, where the turn budget is stated" "absent"
 fi
 unset -f _route_resolve_max_turns 2>/dev/null || true
 # Restore the original plugin.sh definition so SPEC-6 Part 2 can call the real fn

@@ -93,8 +93,10 @@ jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"two p
                         {n:2,text:"SPEC-3s test already passes on the old code"}]}}' > "$S/artifacts/chk-result.json"
 printf '## chk — fail\n\n- two problems\n' > "$S/artifacts/chk-summary.md"
 printf '{"stage_statuses":{"chk":"failed"},"stage_verdicts":{"chk":"fail"}}\n' > "$S/pipeline-state.json"
-_blk="$( _TPL_STAGES=(chk); export ZBUILD_CURRENT_STAGE=later
-         stage_summaries_prompt_block "$S/pipeline-state.json" "$PR" 2>/dev/null )"
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh" >/dev/null 2>&1 || true
+_blk="$( _TPL_STAGES=(chk)
+         _stage_block_previous_work later "$S" "$PR" "$(_inputs_resolve_stage later "$PR" "$S")" "$S" 2>/dev/null )"
 assert_contains "[N3] finding 1 is listed with who opened it" "$_blk" \
     "- chk finding 1 (opened by chk): config/event-schema.json is not the file that calls the new code"
 assert_contains "[N3] finding 2 is listed on its own line" "$_blk" \

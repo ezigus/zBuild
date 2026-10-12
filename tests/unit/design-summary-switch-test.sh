@@ -82,7 +82,7 @@ else
         "the branch still keys on whether a file was read"
 fi
 assert_contains "[SPEC-2] the strong branch survives the rewiring" \
-    "$(cat "$_p")" "Expand the PRIOR DESIGN scope block"
+    "$(cat "$_p")" "Expand YOUR LATEST DESIGN"
 # It must point at a heading that still exists. The old text named PRIOR
 # DESIGN-GATE FEEDBACK, which this change removes.
 if grep -qF 'gaps named in PRIOR DESIGN-GATE FEEDBACK' "$_p" 2>/dev/null; then
@@ -94,7 +94,7 @@ fi
 
 print_test_section "3. the weak branch is preserved for a passing gate"
 assert_contains "[SPEC-3] the plain refine instruction is still there" \
-    "$(cat "$_p")" "Refine the PRIOR DESIGN"
+    "$(cat "$_p")" "Refine YOUR LATEST DESIGN"
 
 # ─── SPEC-4: the bespoke reader and its section are gone ─────────────────────
 print_test_section "4. the bespoke reader and its splice are retired"

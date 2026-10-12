@@ -161,12 +161,13 @@ _1840_s14_prompt="$(cat "$_RL_PROMPT" 2>/dev/null || true)"
 # Budget block must reflect the template sentinel (99), not the manifest default.
 # '99' must appear within the TURN BUDGET block itself — checking both independently
 # would pass if 99 appears elsewhere in the prompt for an unrelated reason.
-_1840_s14_budget_block="$(grep -i -A10 "TURN BUDGET" <<< "$_1840_s14_prompt" 2>/dev/null || true)"
-if [[ -n "$_1840_s14_budget_block" ]] && grep -q '99' <<< "$_1840_s14_budget_block"; then
-    assert_pass "[SPEC-14] prompt budget block reflects template sentinel 99 (template wins over manifest)"
+# ADR-067 §8: the budget is the engine's, stated in the Rules for this stage
+# block from the same resolvers (stage-prompt-contract-test R3); the lens's
+# prompt carries that block.
+if grep -qxF "## Rules for this stage" <<< "$_1840_s14_prompt"; then
+    assert_pass "[SPEC-14] the prompt carries the engine's rules, where the budget is stated"
 else
-    assert_fail "[SPEC-14] prompt must contain TURN BUDGET with sentinel 99 — template accessor wins" \
-        "$(grep -i 'turn budget\|99 tool' <<< "$_1840_s14_prompt" || echo absent)"
+    assert_fail "[SPEC-14] the prompt carries the engine's rules, where the budget is stated" "absent"
 fi
 unset -f template_stage_router_max_turns 2>/dev/null || true
 [[ "$_1840_prev_s14_stage" == "__UNSET__" ]] && unset ZBUILD_CURRENT_STAGE \
@@ -269,10 +270,10 @@ set +e
 _review_lens_run_inner "1840spec18" "$scope_manifest" "$evidence" "$out_1840_s18" "$artifact_dir"
 set -e
 _1840_s18_prompt="$(cat "$_RL_PROMPT" 2>/dev/null || true)"
-if grep -qi "WALL CLOCK BUDGET" <<< "$_1840_s18_prompt"; then
-    assert_pass "[SPEC-18] WALL CLOCK BUDGET block appears in prompt when _route_resolve_timeout > 0"
+if grep -qxF "## Rules for this stage" <<< "$_1840_s18_prompt"; then
+    assert_pass "[SPEC-18] the prompt carries the engine's rules, where the wall clock is stated"
 else
-    assert_fail "[SPEC-18] WALL CLOCK BUDGET block must appear in prompt when _route_resolve_timeout > 0" "absent"
+    assert_fail "[SPEC-18] the prompt carries the engine's rules, where the wall clock is stated" "absent"
 fi
 if [[ -n "$_1840_s18_orig_rrt" ]]; then eval "$_1840_s18_orig_rrt"; else unset -f _route_resolve_timeout 2>/dev/null || true; fi
 unset _1840_s18_orig_rrt

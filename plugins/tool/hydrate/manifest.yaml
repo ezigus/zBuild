@@ -3,9 +3,10 @@ name: Hydrate Stage
 kind: tool
 version: 0.1.0
 description: |
-  Pulls a prior run's artifacts for this issue out of the ADR-050 state branch
-  (zbuild/state/issue-<N>) and into the run's restored-artifacts area, so each
-  stage's prior-output seam can seed from earlier work.
+  Puts this issue's earlier outputs, saved on the ADR-050 state branch
+  (zbuild/state/issue-<N>), back in their live places in the run's artifacts
+  folder, so a rerun continues the issue: each is that stage's latest output
+  until the stage writes a newer one. A file the run already has is kept.
 
   Runs FIRST in the flow, before intake. Not always-run: there is nothing to
   hydrate at the end of a run.
@@ -76,8 +77,8 @@ outputs:
     # a consumer — unlike release/persist, which are always-run and never in
     # `flow:`. hydrate-result.json is a REPORT: what was restored and from
     # where. Nothing downstream reads it, and nothing should — the restored
-    # ARTIFACTS are the real product, and stages reach those through the
-    # prior-output seam (ZBUILD_RESTORED_ARTIFACTS_DIR), not through this file.
+    # ARTIFACTS are the real product, and stages reach those in their live
+    # places, under Previous work, not through this file.
     # Marking it advisory says that, rather than inventing a consumer to
     # satisfy the validator.
   # ADR-055 §9: this stage's statement of what it DID. required:true —

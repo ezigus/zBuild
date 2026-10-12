@@ -24,7 +24,7 @@
 #   SPEC-6 [change]: an oversized summary is truncated with an EXPLICIT marker,
 #                    so truncation is distinguishable from absence
 #   SPEC-7 [guard] : a stage declaring no summary contributes nothing
-#   SPEC-8 [change]: injected in _route_redact_prompt BEFORE
+#   SPEC-8 [retired]: was injected in _route_redact_prompt BEFORE
 #                    apply_scope_redaction, riding the ADR-004 chokepoint
 #   SPEC-9 [change]: lint refuses two `summary: true` outputs in one manifest —
 #                    "the ONE output offered downstream" must mean one
@@ -36,7 +36,7 @@
 #                    next prompt will carry instead of printing "(no feedback —
 #                    first iteration)" on every iteration of a cycle that has
 #                    no feedback edges (the #1841 misdiagnosis)
-#  SPEC-12 [change]: (#2124) injection is evented — prompt.summaries.injected
+#  SPEC-12 [retired]: (#2124) injection was evented — prompt.summaries.injected
 #                    stages= resolve= bytes= — so a run's events.jsonl proves
 #                    what the builder was told
 #  SPEC-13 [change]: (#2124) the per-summary cap matches the test stage's own
@@ -199,7 +199,7 @@ printf 'SECOND-DETAIL-BODY\n' > "$ART/ss-second-detail.txt"
 printf 'LENS-DETAIL-BODY\n' > "$ART/ss-lens-detail.txt"
 
 _block() {
-    stage_summaries_prompt_block "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true
+    zb_test_previous_work "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true
 }
 
 # ─── SPEC-1: the marker parses ───────────────────────────────────────────────
@@ -276,7 +276,7 @@ awk 'BEGIN{for(i=0;i<4000;i++) print "PADDING-LINE-BODY-XXXXXXXXXXXXXXXXXXXXXXXX
 cp "$_big" "$ART/ss-gate-detail.txt"
 OUT_BIG="$(_block)"
 _bytes="$(printf '%s' "$OUT_BIG" | wc -c | tr -d ' ')"
-assert_contains "[SPEC-6] truncation is announced, not silent" "$OUT_BIG" "truncated"
+assert_contains "[SPEC-6] truncation is announced, not silent" "$OUT_BIG" "cut at"
 if [[ "$_bytes" -lt 40000 ]]; then
     assert_pass "[SPEC-6] the block stays bounded (${_bytes}B < 40000B)"
 else
@@ -295,51 +295,15 @@ else
     assert_pass "[SPEC-7] a non-declaring stage is absent from the block"
 fi
 
-# A run where NO stage declares a summary must render nothing at all, so a
-# non-adopting repo's prompts stay byte-identical.
+# A run where NO stage declares a summary carries no summary at all.
 cat > "$TEST_TEMP_DIR/empty-state.json" <<'EOF'
 {"schema_version":1,"stage_statuses":{"ss-plain":"complete"},"stage_verdicts":{"ss-plain":"pass"}}
 EOF
-assert_eq "[SPEC-7] no declaring stage → empty block" "" \
-    "$(stage_summaries_prompt_block "$TEST_TEMP_DIR/empty-state.json" "$PROOT" 2>/dev/null || true)"
+assert_eq "[SPEC-7] no declaring stage → no summary in the block" "0" \
+    "$(zb_test_previous_work "$TEST_TEMP_DIR/empty-state.json" "$PROOT" 2>/dev/null | grep -c '^Summary:' || true)"
 
-# ─── SPEC-8: injected before redaction ───────────────────────────────────────
-# Proven behaviourally: a stub apply_scope_redaction snapshots the prompt file at
-# the moment it is called. If the marker is in that snapshot, injection happened
-# first and the block rides the ADR-004 chokepoint rather than bypassing it.
-print_test_section "8. injected before apply_scope_redaction (ADR-004 chokepoint)"
-
-# shellcheck source=../../core/router/route.sh
-source "$REPO_ROOT/core/router/route.sh" 2>/dev/null || true
-
-if declare -F _route_redact_prompt >/dev/null 2>&1; then
-    SNAP="$TEST_TEMP_DIR/redaction-snapshot.txt"
-    apply_scope_redaction() { cp "$1" "$SNAP" 2>/dev/null; cp "$1" "$2" 2>/dev/null; return 0; }
-
-    IN="$TEST_TEMP_DIR/prompt.txt"; OUT="$TEST_TEMP_DIR/prompt.out"
-    printf 'ORIGINAL PROMPT BODY\n' > "$IN"
-    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" \
-        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
-        _route_redact_prompt "$IN" "$OUT" 0 "" >/dev/null 2>&1 || true
-
-    assert_contains "[SPEC-8] the funnel injects the block" "$(cat "$IN" 2>/dev/null)" \
-        "STAGE SUMMARIES"
-    assert_contains "[SPEC-8] and it was present BEFORE redaction ran" \
-        "$(cat "$SNAP" 2>/dev/null)" "STAGE SUMMARIES"
-    assert_contains "[SPEC-8] the original prompt body survives" "$(cat "$IN" 2>/dev/null)" \
-        "ORIGINAL PROMPT BODY"
-
-    # Idempotent: the agentic loop redacts the same file once per iteration.
-    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" \
-        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
-        _route_redact_prompt "$IN" "$OUT" 1 "" >/dev/null 2>&1 || true
-    assert_eq "[SPEC-8] exactly one block after a second pass (idempotent)" "1" \
-        "$(grep -cF 'STAGE SUMMARIES' "$IN" 2>/dev/null || true)"
-
-    unset -f apply_scope_redaction 2>/dev/null || true
-else
-    assert_fail "[SPEC-8] _route_redact_prompt is available" "function not defined"
-fi
+# SPEC-8 (retired, ADR-067 §8): the router no longer injects anything; the
+# engine's Previous work reaches a stage at dispatch (stage-blocks-dispatch-test).
 
 # ─── SPEC-9: at most one summary per manifest ────────────────────────────────
 # Mirrors the exactly-one-`primary` rule (lint-contract.sh:177). Two summaries
@@ -466,62 +430,20 @@ else
     assert_fail "[SPEC-11] _cycle_render_feedback_digest is available" "function not defined"
 fi
 
-# ─── SPEC-12: injection is evented (#2124) ───────────────────────────────────
-print_test_section "12. prompt.summaries.injected names what shipped (#2124)"
-
-if declare -F _route_redact_prompt >/dev/null 2>&1; then
-    apply_scope_redaction() { cp "$1" "$2" 2>/dev/null; return 0; }
-    export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events-12"; mkdir -p "$ZBUILD_EVENTS_DIR"
-    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
-    IN12="$TEST_TEMP_DIR/prompt12.txt"; OUT12="$TEST_TEMP_DIR/prompt12.out"
-    printf 'PROMPT\n' > "$IN12"
-    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
-        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
-        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
-    assert_event_emitted "[SPEC-12] prompt.summaries.injected is emitted" "$ZBUILD_EVENTS_JSONL" "prompt.summaries.injected"
-    _ev12="$(jq -c 'select(.type=="prompt.summaries.injected")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
-    assert_contains "[SPEC-12] it counts the stages shipped" "$_ev12" '"stages":"3"'
-    assert_contains "[SPEC-12] it counts the RESOLVE framings" "$_ev12" '"resolve":"1"'
-    assert_contains "[SPEC-12] it names the consuming stage" "$_ev12" '"stage":"build"'
-    assert_contains_regex "[SPEC-12] it carries the block size" "$_ev12" '"bytes":"[1-9][0-9]*"'
-    # A body that carries its own markdown headings — the test stage's summary
-    # has `## Failing lines (extracted)`, a lens may write `### Findings` —
-    # must not inflate the count: only the renderer's own headings count.
-    printf '### Findings\n- one\n### More\nsee — RESOLVE these findings before completing\n' > "$ART/ss-second-detail.txt"
-    : > "$ZBUILD_EVENTS_JSONL"; printf 'PROMPT\n' > "$IN12"
-    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
-        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
-        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
-    _ev12b="$(jq -c 'select(.type=="prompt.summaries.injected")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
-    assert_contains "[SPEC-12] a body's own ### headings do not inflate stages=" "$_ev12b" '"stages":"3"'
-    assert_contains "[SPEC-12] …nor its text inflate resolve=" "$_ev12b" '"resolve":"1"'
-    printf 'SECOND-DETAIL-BODY\n' > "$ART/ss-second-detail.txt"
-    : > "$ZBUILD_EVENTS_JSONL"; printf 'PROMPT\n' > "$IN12"
-    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
-        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
-        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
-    # A second pass on the same file injects nothing and must not re-event.
-    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
-        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
-        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
-    assert_eq "[SPEC-12] exactly one event across two passes (idempotent with the block)" "1" \
-        "$(grep -c 'prompt.summaries.injected' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-    assert_contains "[SPEC-12] the event is registered in config/event-schema.json" \
-        "$(cat "$REPO_ROOT/config/event-schema.json")" '"prompt.summaries.injected"'
-    unset -f apply_scope_redaction 2>/dev/null || true
-else
-    assert_fail "[SPEC-12] _route_redact_prompt is available" "function not defined"
-fi
+# SPEC-12 (retired, ADR-067 §8): what Previous work carried is recorded at
+# dispatch as stage.previous_work.written (run-status-comment-render-test).
 
 # ─── SPEC-13: per-summary cap = 8192 (#2124) ─────────────────────────────────
 # The test stage writes up to 8192B and puts the extracted ✗ lines LAST; a
 # 4096B per-summary cap cuts exactly the part the builder needs.
 print_test_section "13. a 6000B summary ships whole (#2124)"
+# Sourcing the cycle orchestrator above resets the flow; put it back.
+_TPL_STAGES=(ss-gate ss-second ss-lens ss-plain)
 
 awk 'BEGIN{for(i=0;i<100;i++) print "PADDING-LINE-BODY-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"; print "TAIL-LINE-SURVIVES"}' > "$ART/ss-gate-detail.txt"
 _sz13="$(wc -c < "$ART/ss-gate-detail.txt" | tr -d ' ')"
 assert_gt "[SPEC-13] fixture is over 4096B" "$_sz13" "4096"
-OUT13="$(env -u ZBUILD_SUMMARY_MAX_BYTES bash -c 'source "$0/core/pipeline/input-resolve.sh"; stage_summaries_prompt_block "$1" "$2"' "$REPO_ROOT" "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
+OUT13="$( unset ZBUILD_SUMMARY_MAX_BYTES; _block )"
 assert_contains "[SPEC-13] the last line of a 6000B summary reaches the prompt" "$OUT13" "TAIL-LINE-SURVIVES"
 printf 'GATE-DETAIL-BODY\n' > "$ART/ss-gate-detail.txt"
 

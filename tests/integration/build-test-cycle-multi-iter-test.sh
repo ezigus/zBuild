@@ -110,11 +110,12 @@ if [[ "$_cwd" == "$_outer_cwd" ]]; then
 else
     assert_fail "[SPEC-3] outer CWD unchanged after iter-1 subshell" "cwd=$_cwd"
 fi
-# [SPEC-4] ZBUILD_CYCLE_ITER=1 reaches _build_stage_run_inner (banner contains 'iter 1/')
-if grep -q 'iter 1/' "$ART/build-prompt.txt" 2>/dev/null; then
-    assert_pass "[SPEC-4] iter-1 prompt banner contains 'iter 1/'"
+# [SPEC-4] iteration 1 reaches _build_stage_run_inner and builds a prompt in the
+# contract order (ADR-067 §8: no iteration banner in the prompt).
+if [[ "$(head -n1 "$ART/build-prompt.txt" 2>/dev/null)" == "## From the repo" ]]; then
+    assert_pass "[SPEC-4] iter-1 prompt is built, in the contract order"
 else
-    assert_fail "[SPEC-4] iter-1 prompt banner contains 'iter 1/'" \
+    assert_fail "[SPEC-4] iter-1 prompt is built, in the contract order" \
         "$(head -5 "$ART/build-prompt.txt" 2>/dev/null || echo '<missing>')"
 fi
 
@@ -165,11 +166,12 @@ route_to_model_loop() {
         "$DIFF_PATCH" "$SUMMARY_JSON" "$ART"
 ) >/dev/null 2>&1 || true
 
-# [SPEC-5] ZBUILD_CYCLE_ITER=2 reaches _build_stage_run_inner (banner contains 'iter 2/', fails at baseline)
-if grep -q 'iter 2/' "$ART/build-prompt.txt" 2>/dev/null; then
-    assert_pass "[SPEC-5] iter-2 prompt banner contains 'iter 2/'"
+# [SPEC-5] iteration 2 reaches _build_stage_run_inner and builds a prompt in the
+# contract order.
+if [[ "$(head -n1 "$ART/build-prompt.txt" 2>/dev/null)" == "## From the repo" ]]; then
+    assert_pass "[SPEC-5] iter-2 prompt is built, in the contract order"
 else
-    assert_fail "[SPEC-5] iter-2 prompt banner contains 'iter 2/'" \
+    assert_fail "[SPEC-5] iter-2 prompt is built, in the contract order" \
         "$(head -5 "$ART/build-prompt.txt" 2>/dev/null || echo '<missing>')"
 fi
 

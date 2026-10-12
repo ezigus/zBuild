@@ -78,13 +78,14 @@ print_test_section "SPEC-2: route_to_model_loop"
 (
     route_to_model_loop T2 "$BIG" "$TEST_TEMP_DIR" 1 >/dev/null 2>"$TEST_TEMP_DIR/loop.err"
 )
-# The loop frames the prompt (intent header, iteration banner), so the check is
-# containment: the first and last lines both arrived, and nothing was cut.
+# The loop sends the stage's prompt as composed (ADR-067 §8): the first and last
+# lines both arrive and nothing is cut. Only the file's trailing newline is not
+# counted — the shell's $(cat) drops it, and it carries nothing.
 _got2="$(wc -c < "$TEST_TEMP_DIR/received" | tr -d ' ')"
 assert_eq "[SPEC-2] the loop's call carries the prompt's first line" "1" "$(grep -cF 'diff line 000000:' "$TEST_TEMP_DIR/received")"
 assert_eq "[SPEC-2] …and its last line (nothing truncated)" "1" "$(grep -cF 'diff line 017999:' "$TEST_TEMP_DIR/received")"
-if [[ "$_got2" -ge "$BIG_BYTES" ]]; then assert_pass "[SPEC-2] …and at least the prompt's ${BIG_BYTES} bytes"
-else assert_fail "[SPEC-2] …and at least the prompt's ${BIG_BYTES} bytes" "got $_got2"; fi
+if [[ "$_got2" -ge $(( BIG_BYTES - 1 )) ]]; then assert_pass "[SPEC-2] …and the prompt's ${BIG_BYTES} bytes (less its trailing newline)"
+else assert_fail "[SPEC-2] …and the prompt's ${BIG_BYTES} bytes (less its trailing newline)" "got $_got2"; fi
 
 print_test_results
 exit $((FAIL > 0))

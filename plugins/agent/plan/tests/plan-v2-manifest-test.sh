@@ -307,7 +307,7 @@ for _s14_ev in \
     fi
 done
 
-# ─── [#1835/SPEC-15][guard] manifest declares plan-summary.md and plan-checkpoint.md ─
+# ─── [#1835/SPEC-15][guard] manifest declares plan-summary.md ─
 print_test_section "[#1835/SPEC-15] manifest output entries with summary and checkpoint roles (guard)"
 _s15_outputs="$(awk '/^outputs:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)"
 # summary: true must be bound specifically to the plan-summary.md entry, not any output.
@@ -319,15 +319,8 @@ if grep -q 'summary: true' <<< "$_s15_summary_block"; then
 else
     assert_fail "[#1835/SPEC-15] plan-summary.md output entry has summary: true"
 fi
-# role: checkpoint must be bound specifically to the plan-checkpoint.md entry, not any output.
-_s15_checkpoint_block="$(awk \
-    '/id: plan-checkpoint/{f=1;print;next} f && /- id:/{exit} f{print}' \
-    <<< "$_s15_outputs" 2>/dev/null || true)"
-if grep -q 'role: checkpoint' <<< "$_s15_checkpoint_block"; then
-    assert_pass "[#1835/SPEC-15] plan-checkpoint.md output entry has role: checkpoint"
-else
-    assert_fail "[#1835/SPEC-15] plan-checkpoint.md output entry has role: checkpoint"
-fi
+# The plan-checkpoint output is retired: every stage's notes file is the
+# engine's (ADR-067 §8), so no manifest declares one.
 
 # ─── [#1835/SPEC-16][change] runner.sh leaf-path rc=10 block deleted ─────────
 # The block carrying "plan turn budget exhausted" in the leaf-path `stage:*` case
