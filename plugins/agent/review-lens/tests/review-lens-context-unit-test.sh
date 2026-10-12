@@ -135,7 +135,7 @@ print_test_section "C8/C9: rules and the scope lens"
 # (ADR-067 §8), so a lens no longer declares them.
 assert_eq "[C8] review-lens no longer declares prompt.repo_rules" "" \
     "$(yaml_get "$PLUGIN_DIR/manifest.yaml" "prompt.repo_rules" 2>/dev/null || true)"
-_scope="$(_rl_lens_charter scope 2>/dev/null || true)"
+_scope="$(awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*/, ""); print; exit }' "$REPO_ROOT/plugins/persona/scope/manifest.yaml")"
 if grep -qiE "untouched|did not touch" <<< "$_scope"; then
     assert_fail "[C9] the scope lens does not report planned-but-untouched files" "$_scope"
 else

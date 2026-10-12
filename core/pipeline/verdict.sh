@@ -88,8 +88,8 @@ verdict_classify() {
     case "$raw" in
         pass|approve)
             echo "pass" ;;
-        # complete is impact's "no gaps" terminal success verdict (declared in
-        # plugins/agent/impact/manifest.yaml as a valid_verdict). skip is gates'
+        # complete is a "nothing left to do" terminal success verdict (e.g.
+        # review-aggregator's valid_verdicts). skip is gates'
         # "not-applicable this run" verdict (shape-floor, lint-gate, coverage-gate,
         # mutation-gate, secret-scan) — declining to apply is not a failure. Both map
         # to pass (✓ GREEN). Without this both fall through to *) → unknown, emitting
@@ -108,9 +108,9 @@ verdict_classify() {
         # scripts/lib/lint-verdict-classify.sh.
         skipped|healthy|deployed)
             echo "pass" ;;
-        # #775: `incomplete` is impact's "cycle has not converged yet" verdict
+        # #775: `incomplete` is a "cycle has not converged yet" verdict
         # (analogous to review's `request_changes`) — iterating, not done.
-        # Maps to warn, not fail. Without this, every impact-incomplete fired
+        # Maps to warn, not fail. Without this, every incomplete fired
         # a `pipeline.indicator.unknown_verdict` event 1× per iter.
         # #2076: there is deliberately NO `did_not_finish` arm. It was build's
         # mid-flight verdict (#1208), but ADR-054 §6 split verdict from

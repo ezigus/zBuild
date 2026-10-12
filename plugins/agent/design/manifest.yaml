@@ -41,21 +41,6 @@ config:
     timeout_s: 600
     max_turns: 45
 
-inputs:
-  - id: scope_manifest
-    required: true
-  - id: plan
-    required: true
-  # Self-feedback edge (mirrors #773 lesson from plan_impact_cycle): design's
-  # own prior design.md becomes the next iter's prior_design input so design
-  # iter N+1 refines rather than re-creates.
-  - id: design
-    required: false
-  # #2306 (ADR-070): the issue's requirements, numbered by intake. Absent on a
-  # --goal run, so not required.
-  - id: requirements
-    required: false
-
 outputs:
   - id: design
     path: "${artifact_dir}/design.md"

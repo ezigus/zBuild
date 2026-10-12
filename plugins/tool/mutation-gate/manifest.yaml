@@ -46,10 +46,6 @@ config:
   tier_default: T0
   mutation_floor: 0
 
-inputs:
-  - id: test_results
-    required: false
-
 outputs:
   - id: mutation_result
     path: "${artifact_dir}/mutation-result.json"

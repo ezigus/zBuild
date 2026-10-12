@@ -45,20 +45,6 @@ config:
     - unreadable
   tier_default: T2
 
-inputs:
-  - id: intake_goal
-    required: true
-  - id: design
-    required: true
-  - id: diff_patch
-    required: false
-  - id: test_results
-    required: false
-  # #2306 (ADR-070): the issue's requirements, numbered by intake. Absent on a
-  # --goal run, so not required.
-  - id: requirements
-    required: false
-
 outputs:
   - id: issue_acceptance_result
     path: "${artifact_dir}/issue-acceptance-result.json"

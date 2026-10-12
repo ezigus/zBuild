@@ -123,17 +123,6 @@ assert_contains "[SPEC-4] md names the correctness lens + score" "$_md" "#### co
 assert_contains "[SPEC-4] md renders a finding message (not blank)" "$_md" "off-by-one in loop"
 assert_contains "[SPEC-4] de-duped section names contributing lenses" "$_md" "lenses: correctness, security"
 
-# ─── SPEC-5: aggregation EQUIVALENCE with review-report's _rr_aggregate ──────
-# DoD: the collapsed report must match the current review-report aggregation.
-# Feed the SAME lenses array to both functions and assert byte-identical output.
-# shellcheck source=../../plugins/agent/review-report/lib/lenses.sh
-source "$REPO_ROOT/plugins/agent/review-report/lib/lenses.sh"
-_lenses_arr="$artifact_dir/review-aggregator-lenses.json"
-assert_file_exists "[SPEC-5] aggregator wrote its combined lenses array" "$_lenses_arr"
-_ra_out="$(_ra_aggregate "$_lenses_arr")"
-_rr_out="$(_rr_aggregate "$_lenses_arr")"
-assert_eq "[SPEC-5] _ra_aggregate output matches _rr_aggregate byte-for-byte" "$_rr_out" "$_ra_out"
-
 # ─── SPEC-6: empty lens group degrades to an empty report (rc 0 + event) ─────
 _empty_dir="$TEST_TEMP_DIR/empty"
 mkdir -p "$_empty_dir"

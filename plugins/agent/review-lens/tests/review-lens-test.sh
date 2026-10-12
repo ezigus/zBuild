@@ -47,9 +47,9 @@ export _RL_PROMPT="$TEST_TEMP_DIR/last-prompt.txt"
 route_to_model() {
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
-    if [[ "$2" == *'"security" review lens'* ]]; then
+    if [[ "$2" == *'"security" lens'* ]]; then
         printf '%s' '{"score":3,"findings":[{"file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
-    elif [[ "$2" == *'"performance" review lens'* ]]; then
+    elif [[ "$2" == *'"performance" lens'* ]]; then
         printf '%s' '{"score":8,"findings":[{"file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
     else
         printf '%s' '{"score":10,"findings":[]}'
@@ -87,10 +87,9 @@ assert_eq "[#1140-1] severity lowercased to enum" "critical" "$(jq -r '.findings
 # ─── SPEC-2: redaction reaches the model; raw text never sent without it ─────
 _p="$(cat "$_RL_PROMPT")"
 assert_contains "[#1140-2] redacted evidence reached the prompt" "$_p" "exec user input at line 10"
-assert_contains "[#1140-2] prompt carries the security charter (not wildcard)" "$_p" "injection risks"
-assert_contains "[#1140-2] prompt is the single-lens advisory contract" "$_p" '"security" review lens'
+assert_contains "[#1140-2] prompt is the single-lens advisory contract" "$_p" '"security" lens'
 
-# ─── SPEC-3: parametrized — SAME plugin serves a different lens (charter swap) ─
+# ─── SPEC-3: parametrized — SAME plugin serves a different lens ──────────────
 out_perf="$artifact_dir/lens-performance.json"
 : > "$_RL_CALLS"
 set +e
@@ -99,7 +98,7 @@ set -e
 assert_eq "[#1140-3] performance lens name" "performance" "$(jq -r '.name' "$out_perf")"
 assert_eq "[#1140-3] performance score" "8" "$(jq -r '.score' "$out_perf")"
 _pp="$(cat "$_RL_PROMPT")"
-assert_contains "[#1140-3] performance charter swapped in" "$_pp" "O(n^2)"
+assert_contains "[#1140-3] the prompt names the performance lens" "$_pp" '"performance" lens'
 
 # ─── SPEC-4: empty evidence STILL routes (ADR-043 / #952) ────────────────────
 # The former empty-evidence guard skipped redaction on an empty change bundle,
@@ -179,15 +178,6 @@ set -e
 assert_file_exists "[#1140-7] stage-id prefix stripped (lens_maintainability → maintainability)" \
     "$STATE_DIR/artifacts/lens-maintainability.json"
 
-# ─── SPEC-8: per-lens evidence selection — test-coverage prefers coverage-map ─
-_ev_default="$(_review_lens_evidence_path "security" "$artifact_dir")"
-assert_eq "[#1140-8] default lens evidence falls back to diff.patch" \
-    "$artifact_dir/diff.patch" "$_ev_default"
-printf '{"files":[{"file":"core/x.sh"}]}\n' > "$artifact_dir/coverage-map.json"
-_ev_cov="$(_review_lens_evidence_path "test-coverage" "$artifact_dir")"
-assert_eq "[#1140-8] test-coverage lens prefers coverage-map.json when present" \
-    "$artifact_dir/coverage-map.json" "$_ev_cov"
-
 # ─── SPEC-9: no merge-decision vocabulary in plugin source (advisory, ADR-040) ─
 # [#1840/SPEC-10] 'verdict' is removed from this check: after the v2 migration
 # _review_lens_write_result uses 'verdict' as a jq field, not a coercion token.
@@ -198,40 +188,13 @@ else
     assert_pass "[#1140-9] no coercion vocabulary in review-lens source"
 fi
 
-# ─── SPEC-11 [SPEC-6]: live-tree correctness persona parity ──────────────────
-# _rl_lens_charter('correctness') is the lens's own question (the persona
-# reaches the model through the provider, ADR-051) (containing 'logic errors') and must NOT fall through to the wildcard fallback.
-_prev_plugins_root_spec11="${ZBUILD_PLUGINS_ROOT:-}"
-export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-_corr_charter="$(_rl_lens_charter "correctness")"
-case "$_corr_charter" in
-    *"logic errors"*) corr_charter_ok=1 ;;
-    *) corr_charter_ok=0 ;;
-esac
-assert_eq "[#1140-11] correctness charter from live manifest contains 'logic errors'" "1" "$corr_charter_ok"
-if grep -q "Examine the change for issues relevant to the correctness concern" <<< "$_corr_charter"; then
-    assert_fail "[#1140-11] wildcard fallback must NOT fire when correctness manifest exists" "wildcard text found"
-else
-    assert_pass "[#1140-11] wildcard fallback is suppressed by correctness persona manifest"
-fi
-export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec11"
-
-# ─── SPEC-12 [SPEC-6]: live-tree scope persona parity ────────────────────────
-# _rl_lens_charter('scope') is the lens's own question (containing 'WARN ONLY') and must NOT fall through to the wildcard fallback.
-_prev_plugins_root_spec12="${ZBUILD_PLUGINS_ROOT:-}"
-export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-_scope_charter="$(_rl_lens_charter "scope")"
-case "$_scope_charter" in
-    *"WARN ONLY"*) scope_charter_ok=1 ;;
-    *) scope_charter_ok=0 ;;
-esac
-assert_eq "[#1140-12] scope charter from live manifest contains 'WARN ONLY'" "1" "$scope_charter_ok"
-if grep -q "Examine the change for issues relevant to the scope concern" <<< "$_scope_charter"; then
-    assert_fail "[#1140-12] wildcard fallback must NOT fire when scope manifest exists" "wildcard text found"
-else
-    assert_pass "[#1140-12] wildcard fallback is suppressed by scope persona manifest"
-fi
-export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec12"
+# ─── SPEC-11/12: a lens's question is its persona's (ADR-051 §3) ─────────────
+# The lens stage writes one job for every lens; the question each lens asks is
+# the perspective of the persona its element names.
+_persp() { awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*/, ""); print; exit }' \
+    "$REPO_ROOT/plugins/persona/$1/manifest.yaml" 2>/dev/null; }
+assert_contains "[#1140-11] the correctness persona asks about logic errors" "$(_persp correctness)" "logic errors"
+assert_contains "[#1140-12] the scope persona is WARN ONLY" "$(_persp scope)" "WARN ONLY"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 

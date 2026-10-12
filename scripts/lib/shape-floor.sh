@@ -38,8 +38,28 @@ _ZBUILD_SHAPE_FLOOR_LOADED=1
 _SF_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./merge-base.sh
 source "$_SF_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
-# shellcheck source=./impact-prefilter.sh
-source "$_SF_LIB_DIR/impact-prefilter.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" impact-prefilter.sh"
+
+# ─── _sf_list_event_goldens <tests_root> ────────────────────────────────────
+# Every tests/golden/**/event-sequence.golden (repo-relative): a shape change
+# touches the event sequences.
+_sf_list_event_goldens() {
+    local tests_root="$1" f
+    [[ -d "$tests_root/golden" ]] || return 0
+    while IFS= read -r f; do
+        [[ -n "$f" ]] && printf 'tests/%s\n' "${f#"$tests_root/"}"
+    done < <(find "$tests_root/golden" -name 'event-sequence.golden' -type f 2>/dev/null || true)
+}
+
+# ─── _sf_list_order_assertions <tests_root> ─────────────────────────────────
+# PREV-1 (#881): tests that pin a stage by its POSITION via `_TPL_STAGES[N]` —
+# a reorder invalidates them though the stage set is unchanged.
+_sf_list_order_assertions() {
+    local tests_root="$1" f
+    [[ -d "$tests_root" ]] || return 0
+    while IFS= read -r f; do
+        [[ -n "$f" ]] && printf 'tests/%s\n' "${f#"$tests_root/"}"
+    done < <(grep -rlE '(^|[^A-Za-z0-9_])_TPL_STAGES\[[0-9]+\]' "$tests_root" 2>/dev/null || true)
+}
 
 # ─── _sf_diff_files <repo_root> ──────────────────────────────────────────────
 # Prints changed file paths (one per line) between merge-base and HEAD.
@@ -243,14 +263,14 @@ _sf_collect_missing_floor_files() {
                 && ! _sf_floor_verified "$f"; then
             printf '%s\n' "$f"
         fi
-    done < <(_impact_list_event_goldens "$tests_root")
+    done < <(_sf_list_event_goldens "$tests_root")
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
         if { ! grep -qxF "$f" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$f"; } \
                 && ! _sf_floor_verified "$f"; then
             printf '%s\n' "$f"
         fi
-    done < <(_impact_list_order_assertions "$tests_root")
+    done < <(_sf_list_order_assertions "$tests_root")
 }
 
 # ─── sf_scope_floor_files <repo_root> <file>... (#1874) ──────────────────────
@@ -272,8 +292,8 @@ sf_scope_floor_files() {
         done
     done < "$paths"
     (( hit )) || return 0
-    _impact_list_event_goldens "$repo/tests"
-    _impact_list_order_assertions "$repo/tests"
+    _sf_list_event_goldens "$repo/tests"
+    _sf_list_order_assertions "$repo/tests"
 }
 
 # ─── _sf_shape_floor <repo_root> ─────────────────────────────────────────────
@@ -285,7 +305,7 @@ sf_scope_floor_files() {
 # _sf_is_template_comment_only.
 # Then verifies event-sequence.golden files AND _TPL_STAGES[N]-indexed test files
 # are also in the diff. Missing any → SHAPE_FLOOR FAIL missing_floor_files.
-# Reuses _impact_list_event_goldens and _impact_list_order_assertions (impact-prefilter.sh).
+# Uses _sf_list_event_goldens and _sf_list_order_assertions (above).
 _sf_shape_floor() {
     local repo_root="$1"
     local paths_file="$repo_root/config/shape-change-paths.txt"

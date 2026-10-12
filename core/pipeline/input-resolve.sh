@@ -6,33 +6,14 @@
 # all, keyed by output id; a stage reads the ones it needs and checks for itself
 # that what it needs is there.
 #
-# History:
-# `manifest_graph_get_inputs` had four call sites and all four were static
-# validators. No runtime path ever turned an input declaration into a PATH, so
-# every declaration was inert and 25 of 37 plugin.sh files hardcoded artifact
-# filenames instead. This module is the missing runtime half: it resolves a
-# stage's declared inputs to concrete paths, writes them to an index file, and
-# the engine hands that index to `run`.
-#
-# #1825 removed the ZBUILD_INPUTS_RESOLVE gate. #1826 shipped behind it so the
-# engine could land inert, but an inert flag that stays inert is the pattern
-# Phase 0 exists to end — the same reason #1865 un-held CYCLE_FB_UNWIRED.
-# Resolution is unconditional; the functions themselves are pure.
-#
 # Index shape, written to ${state_dir}/stage-inputs/<stage>.json:
 #
-#   {"schema_version": 1, "stage": "build",
+#   {"schema_version": 2, "stage": "build",
 #    "inputs": {"design": "/abs/design.md", "lens_result": ["/a.json","/b.json"]}}
 #
-# A `map` producer yields a JSON ARRAY of its members' resolved paths under the
-# one input id (ADR-055 §1.4) — that is what retires review-aggregator's
-# `lens-*.json` wildcard.
-#
-# #2326 (ADR-050 §8): a path served from an earlier run's saved copy is also
-# listed under `earlier_run` (the key is absent when there is none):
-#
-#   {..., "inputs": {"design": "/restored/design.md"},
-#    "earlier_run": ["/restored/design.md"]}
+# Every output id in the flow whose file exists, keyed by id; a `map` producer
+# yields a JSON ARRAY of its members' paths (ADR-055 §1.4). Stages declare no
+# inputs (ADR-055 §1, amended 2026-10-12).
 #
 # Sourced library: inherits the caller's pipefail settings; do NOT add set -euo.
 
@@ -43,7 +24,7 @@ _ZBUILD_IR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_IR_ROOT="$(cd "$_ZBUILD_IR_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/manifest-graph.sh
-declare -F manifest_graph_get_inputs >/dev/null 2>&1 || \
+declare -F manifest_graph_get_outputs >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/scripts/lib/manifest-graph.sh"
 # atomic_write lives in helpers.sh; core/state/atomic.sh only re-exports it.
 # shellcheck source=../../scripts/lib/helpers.sh

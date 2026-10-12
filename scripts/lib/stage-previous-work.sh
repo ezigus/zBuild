@@ -174,8 +174,11 @@ _stage_block_previous_work() {
     local now_issue; now_issue="$(_sp_issue_sha "$state_dir")"
     local s manifest roles summ errp res notes verdict own body any=0 raw content
     for s in "${order[@]}"; do
-        notes="$(stage_notes_path "$state_dir" "$s")"
-        [[ -s "$notes" ]] || notes=""
+        # Only a stage's own notes come back to it (ADR-067 §8); another
+        # stage's notes are its working file, not its output.
+        notes=""
+        [[ "$s" == "$stage" ]] && notes="$(stage_notes_path "$state_dir" "$s")"
+        [[ -n "$notes" && -s "$notes" ]] || notes=""
         [[ -n "${outs[$s]:-}" || -n "$notes" ]] || continue
         any=1
         manifest="$(_inputs_stage_manifest "$s" "$plugins_root" 2>/dev/null || true)"
@@ -200,7 +203,6 @@ _stage_block_previous_work() {
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
         _sp_moved_line "$state_dir" "$s" "$repo_root" "$now_issue"
         [[ -n "${outs[$s]:-}" ]] && printf 'Outputs:\n%s' "${outs[$s]}"
-        [[ -n "$notes" ]] && printf -- '- notes: %s\n' "$notes"
 
         if [[ "$content" == *'"findings"'* ]]; then
             body="$(jq -r --arg s "$s" '(.data.findings // [])[]?

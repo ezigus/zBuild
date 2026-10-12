@@ -374,10 +374,8 @@ DESIGN_PROMPT
     _reqs="$(acceptance_requirements_list "${_req_f:-$artifact_dir/requirements.json}")"
     [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (numbered by the engine)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
 
-    # design_impact_cycle feedback: on iter ≥ 2, splice prior impact gap-report
-    # and prior design.md into the prompt so design EXPANDS its scope block
-    # (impact feedback) and REFINES rather than re-creates (self-feedback).
-    # #1825 established that this content is spliced exactly ONCE. #1979 keeps
+    # On a later round design REFINES its prior design.md rather than
+    # re-creating it. #1825 established that this content is spliced exactly ONCE. #1979 keeps
     # that invariant with the splice moved: the engine's Previous work carries
     # the design check's findings, so design only decides how to WORD the
     # refinement instruction — from the recorded verdict, not from a file read.

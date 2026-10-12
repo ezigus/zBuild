@@ -26,11 +26,6 @@ requires:
     - event-bus
     - state
 
-# ADR-020 inter-stage data contract: intake has no upstream stage; its only
-# input is the GitHub issue body fetched at runtime. The `gh_issue_body`
-# source id is on the external-sources allowlist (see ADR-020).
-inputs: []
-
 outputs:
   # ADR-055 v2: JSON result file — verdict-bearing primary output.
   - id: intake_result

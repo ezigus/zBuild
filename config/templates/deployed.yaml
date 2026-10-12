@@ -85,14 +85,6 @@ design_verify_cycle:
       - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
   max_iterations: 2
   on_max: halt
-  feedback:
-    - from:
-        stage: design
-        output: design
-      to:
-        stage: design
-        input: design
-        required: false
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 build_test_cycle:

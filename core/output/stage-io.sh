@@ -1046,7 +1046,7 @@ _stage_io_stdout_begin() {
                 # #785: artifact-id renderer dispatch is OUTPUT-side only.
                 # The INPUT to an LLM stage is the prompt — a text artifact,
                 # not the structured response shape the renderer expects.
-                # Dispatching render_impact_md / render_plan_md on a prompt
+                # Dispatching render_plan_md on a prompt
                 # mis-renders the embedded JSON schema literal and shunts the
                 # OUTPUT CONTRACT into a "── llm comment ──" block. Always
                 # pretty-print the input as plain text.

@@ -41,10 +41,6 @@ config:
     - error
   tier_default: T0
 
-inputs:
-  - id: pr_url
-    required: false
-
 outputs:
   - id: deploy_result
     path: ${artifact_dir}/deploy-result.json

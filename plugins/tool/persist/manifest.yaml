@@ -47,11 +47,6 @@ config:
     - complete
     - degraded
 
-# Empty by construction, like teardown's. A declared input resolves to another
-# stage's declared OUTPUT (ADR-055 §5); this stage's subject is the whole
-# artifact AREA, which no single stage produces.
-inputs: []
-
 outputs:
   # #2183: this stage's error channel — whatever its subprocesses said when
   # they failed. Published to the other stages' prompts (bounded) when this

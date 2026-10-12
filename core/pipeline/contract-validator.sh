@@ -2,15 +2,11 @@
 # core/pipeline/contract-validator.sh — ADR-020 runtime pre-flight contract
 # validator (issue #496).
 #
-# Reads the active template's stage list + each stage's manifest, builds an
-# O(1) lookup of available stage outputs in template order, then asserts that
-# every required input of every stage has a producer ahead of it.
-#
-# Failure modes:
-#   - missing required input from a stage NOT in the template → preflight_failed
-#   - input declares `source: stage:X` but X declares no output with that id
-#   - input declares `source: external` for an id outside the allowlist
-#   - input path template references an unknown ${var}
+# Reads the active template's stage list + each stage's manifest and checks
+# what each stage declares it WRITES: unique output ids, a versioned type and a
+# known format, exactly one summary, and the aggregator wiring. Declared inputs
+# are retired (ADR-055 §1, amended 2026-10-12) — a manifest still carrying an
+# `inputs:` block is refused (INPUTS_RETIRED).
 #
 # Integration: called from core/pipeline/runner.sh:~165 after load_template +
 # init_state but before the --dry-run branch and before the stage loop.
@@ -221,23 +217,7 @@ _contract_validate_pipeline() {
     done <<< "$template_stages_csv"
     [[ ${#stages[@]} -eq 0 ]] && return 0
 
-    # External allowlist (decision #6)
-    local allowlist
-    allowlist="$(manifest_graph_external_allowlist)"
-    local -A _CV_EXTERNAL_OK=()
-    local a
-    for a in $allowlist; do
-        _CV_EXTERNAL_OK["$a"]=1
-    done
-
-    # Build cumulative available-outputs map: key="stage:output_id" → 1
-    declare -A _CV_AVAILABLE=()
-    # Also build per-stage available list to check `stage:X` references
-    declare -A _CV_STAGE_OUTPUTS_OK=()  # key="stage:id" → 1 if stage X has output id
-    # Pass 3 (OUTPUT_UNCONSUMED): every input id seen across all stages in the flow.
-    local -A _CV_INPUT_NAMES_SEEN=()
-
-    # Pass 1: collect every stage's outputs into _CV_STAGE_OUTPUTS_OK.
+    # Pass 1: collect every stage's outputs.
     # Also track producers-per-output-id for the output-uniqueness check
     # (ADR-020 amendment §D, Wave 12-E #664): each output id MUST be
     # claimed by exactly one stage manifest across the resolved stage set.
@@ -272,7 +252,6 @@ _contract_validate_pipeline() {
             [[ -z "$outrec" ]] && continue
             local out_id="${outrec%%|*}"
             [[ -z "$out_id" ]] && continue
-            _CV_STAGE_OUTPUTS_OK["$stage:$out_id"]=1
             # Append this stage to the producer list for output-uniqueness.
             local _prev="${_CV_OUTPUT_PRODUCERS[$out_id]:-}"
             if [[ -z "$_prev" ]]; then
@@ -314,14 +293,6 @@ _contract_validate_pipeline() {
                 fail_count=$((fail_count + 1))
             fi
         done < <(manifest_graph_get_outputs "$manifest")
-        # #1895: a consumer declares no format either — the producer owns how its
-        # artifact is checked, for the same reason it owns the type. Checked once
-        # over the inputs BLOCK because the field would not appear in the input
-        # record at all, so a per-input lookup could never see it.
-        if awk '/^inputs:[[:space:]]*$/{i=1;next} /^[a-zA-Z_]/{i=0} i && /^[[:space:]]+format:/{found=1} END{exit !found}' "$manifest" 2>/dev/null; then
-            violations+=("$stage|INPUT_FORMAT||an input declares format: — the producer owns it (ADR-055 §1, #1895)")
-            fail_count=$((fail_count + 1))
-        fi
     done
 
     # Output-uniqueness check (ADR-020 amendment §D, Wave 12-E #664):
@@ -343,20 +314,19 @@ _contract_validate_pipeline() {
         fi
     done < <(printf '%s\n' "${!_CV_OUTPUT_PRODUCERS[@]}" | LC_ALL=C sort)
 
-    # Pass 2: walk stages in order; for each, validate inputs against the
-    # cumulative _CV_AVAILABLE map, then merge this stage's outputs into it.
+    # Pass 2: per stage, what it declares about itself.
 
     for stage in "${stages[@]}"; do
         manifest="${_CV_STAGE_MANIFEST[$stage]:-}"
         [[ -z "$manifest" ]] && continue
 
-        # Decision #1: an absent `inputs:` block is malformed. An explicit
-        # `inputs: []` is required to declare zero inputs. (For agent
-        # plugins specifically; tool/orchestrator that haven't migrated yet
-        # are warned but not failed during the warn-default rollout.)
-        if ! manifest_graph_inputs_block_present "$manifest"; then
-            printf '  WARNING: manifest for stage %s has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n' \
-                "$stage" >&2
+        # Declared inputs are retired (ADR-055 §1, amended 2026-10-12): every
+        # stage gets every stage's latest output (ADR-068 §8), so a declaration
+        # would promise something nothing reads. Refused, not ignored, so a
+        # stage written for the old contract is told rather than misled.
+        if grep -qE '^inputs:' "$manifest" 2>/dev/null; then
+            violations+=("$stage|INPUTS_RETIRED|-|the manifest declares inputs:, which are retired — every stage gets every stage's latest output under Previous work (ADR-068 §8); remove the block")
+            fail_count=$(( fail_count + 1 ))
         fi
 
         # ADR-055 §9 (#2000): every stage-bound plugin declares EXACTLY ONE
@@ -385,202 +355,10 @@ _contract_validate_pipeline() {
             violations+=("$stage|SUMMARY_DUP|-|stage declares $_sum_n summary outputs — exactly one (ADR-055 §9)")
             fail_count=$(( fail_count + 1 ))
         fi
-
-        # Collect inputs and sort by id for stable error ordering (decision: stable ordering)
-        local -a input_lines=()
-        local rec
-        while IFS= read -r rec; do
-            [[ -z "$rec" ]] && continue
-            input_lines+=("$rec")
-        done < <(manifest_graph_get_inputs "$manifest" | LC_ALL=C sort)
-
-        local in_rec in_id in_source in_required in_path
-        for in_rec in "${input_lines[@]}"; do
-            # ADR-055 §8: the type position is READ PAST, not captured. It held
-            # `in_type` from 2026-05-30 to #1827 "for future schema-aware checks"
-            # that could never be written — §1 removed the consumer-declared type,
-            # so there is no second declaration to compare against. Removed rather
-            # than implemented, which is what the ADR asks for.
-            IFS='|' read -r in_id _ in_source in_required in_path <<< "$in_rec"
-            [[ -z "$in_id" ]] && continue
-            _CV_INPUT_NAMES_SEEN["$in_id"]=1
-
-            # Default required=true if absent at parse time (decision #1).
-            # Empty `required:` value (key present but no value) is malformed.
-            if [[ -z "$in_required" ]]; then
-                in_required="true"
-            fi
-            case "$in_required" in
-                true|false) ;;
-                *)
-                    violations+=("$stage|MALFORMED|$in_id|invalid required: value '$in_required' (must be true|false)")
-                    fail_count=$((fail_count + 1))
-                    continue
-                    ;;
-            esac
-
-            # Check path template variables (decision #5)
-            if [[ -n "$in_path" ]]; then
-                if ! _cv_check_path_vars "$in_path"; then
-                    violations+=("$stage|BAD_VAR|$in_id|path template references unknown variable \${${_CV_LAST_BAD_VAR}} (allowed: $(manifest_graph_canonical_vars))|$in_path")
-                    fail_count=$((fail_count + 1))
-                    continue
-                fi
-            fi
-
-            # #1768: the switch below runs for EVERY input, matching the CI lint
-            # (lint-contract.sh), which has never gated it. This gate used to
-            # skip the whole switch for `required: false` — 33 of 50 inputs —
-            # so an unrecognised or malformed source on an optional input was
-            # invisible, and CYCLE_FB_DIR / CYCLE_FB_UNWIRED could never fire.
-            # Only the TEMPLATE-AWARE checks stay gated (see the stage:* arm).
-            local _in_optional=0
-            [[ "$in_required" == "false" ]] && _in_optional=1
-
-            # ADR-055 §1.2 leaves exactly TWO input kinds, so this switch has
-            # two live arms. `stage:<name>`, `artifacts` and `cycle_feedback`
-            # are gone: a consumer no longer names a producer, restates a path
-            # or restates a type, and the four CYCLE_FB_* codes retire with
-            # them (§4). What they protected is now §1.5's single rule, checked
-            # in the default arm below — and it covers EVERY input, where the
-            # old template-aware checks were skipped for `required: false`.
-            case "$in_source" in
-                external)
-                    # The one kind that survives: it names something from
-                    # OUTSIDE the pipeline, so there is no producer to resolve
-                    # and the allowlist is the only thing that can validate it.
-                    if [[ -z "${_CV_EXTERNAL_OK[$in_id]:-}" ]]; then
-                        violations+=("$stage|BAD_EXTERNAL|$in_id|source: external used for id not in allowlist (allowed: $(manifest_graph_external_allowlist))")
-                        fail_count=$((fail_count + 1))
-                    fi
-                    ;;
-                "")
-                    # A stage output, named and nothing else (ADR-055 §1.5).
-                    # The name must resolve to EXACTLY ONE producer in the
-                    # resolved flow; zero or two is a refused template, not a
-                    # runtime surprise. Two is what OUTPUT_DUP already prevents,
-                    # so it is reported here only if that guard is ever relaxed.
-                    local _prods="${_CV_OUTPUT_PRODUCERS[$in_id]:-}"
-                    if [[ -z "$_prods" ]]; then
-                        # ADR-055 §1.5 says zero producers is a refused template.
-                        # That holds for a REQUIRED input. For an optional one it
-                        # is too strict, and gate-aggregator is why: it declares
-                        # lint_result / coverage_result / mutation_result so it
-                        # adapts to whichever gates a template includes, and
-                        # simple.yaml includes none of those three. Refusing that
-                        # would forbid a plugin from working across templates,
-                        # which is the portability ADR-042 exists to protect.
-                        # Optional means "this may not exist in this flow" — the
-                        # engine already omits it from the index (#1894).
-                        if [[ "$in_required" != "false" ]]; then
-                            violations+=("$stage|INPUT_UNRESOLVED|$in_id|required input '$in_id' names an artifact no stage in the resolved flow produces (ADR-055 §1.5)")
-                            fail_count=$((fail_count + 1))
-                        fi
-                    else
-                        local -a _pl=()
-                        # shellcheck disable=SC2206
-                        _pl=( $_prods )
-                        if [[ ${#_pl[@]} -gt 1 ]]; then
-                            violations+=("$stage|INPUT_AMBIGUOUS|$in_id|input name '$in_id' resolves to ${#_pl[@]} producers: ${_prods// /, } — a name must identify exactly one (ADR-055 §1.5)")
-                            fail_count=$((fail_count + 1))
-                        elif [[ "${_pl[0]}" == "$stage" ]]; then
-                            # A self-edge is legal ONLY as a declared re-entry
-                            # (ADR-055 §1.3): a cycle re-runs its own members, so
-                            # design consuming its own prior design.md is fine.
-                            # Outside a cycle it is a stage waiting on itself.
-                            if ! _cv_stage_in_any_cycle "$stage"; then
-                                violations+=("$stage|SELF_REF|$in_id|input '$in_id' resolves to this stage's own output, and '$stage' is not a cycle member — no re-entry can deliver it (ADR-055 §1.3)")
-                                fail_count=$((fail_count + 1))
-                            fi
-                        fi
-                    fi
-                    ;;
-                *)
-                    violations+=("$stage|BAD_SOURCE|$in_id|source: '$in_source' is not a recognised kind — a consumer declares 'external' or nothing at all (ADR-055 §1.2)")
-                    fail_count=$((fail_count + 1))
-                    ;;
-            esac
-        done
-
-        # Mark this stage as available for downstream consumers.
-        _CV_AVAILABLE["$stage"]=1
     done
 
-    # ── ADR-021 amendment (#511): cycle_feedback_undeclared check ──────────
-    # For every cycles[].feedback.to.input=<X>, the consumer's manifest MUST
-    # declare an input with id==X and source==cycle_feedback. Otherwise the
-    # template wires data the consumer never reads — silent failure class.
-    local _cyc_count2=0
-    if declare -p _TPL_CYCLES >/dev/null 2>&1; then
-        _cyc_count2="${#_TPL_CYCLES[@]}"
-    fi
-    if [[ $_cyc_count2 -gt 0 ]]; then
-        local _cyc
-        for _cyc in "${_TPL_CYCLES[@]}"; do
-            local _safe="${_cyc//-/_}"
-            local _fb_var="_TPL_CYCLE_FEEDBACK_${_safe}"
-            local _fb_blob="${!_fb_var:-}"
-            [[ -z "$_fb_blob" ]] && continue
-            local _fb_line
-            while IFS= read -r _fb_line; do
-                [[ -z "$_fb_line" ]] && continue
-                local _to_part="${_fb_line#*|}"
-                local _to_stage="${_to_part%%:*}"
-                local _rest="${_to_part#*:}"
-                local _to_field="${_rest%%:*}"
-                local _to_manifest="${_CV_STAGE_MANIFEST[$_to_stage]:-}"
-                [[ -z "$_to_manifest" ]] && continue
-                local _has_input=0 _irec _iid _isrc _ireq _ipath
-                while IFS= read -r _irec; do
-                    [[ -z "$_irec" ]] && continue
-                    # type position read past, not captured — #1827, same as :365
-                    IFS='|' read -r _iid _ _isrc _ireq _ipath <<< "$_irec"
-                    # ADR-055 §4: the `cycle_feedback` source kind is retired,
-                    # so the edge's target is an ordinary declared input. What
-                    # still matters — and is all that ever mattered — is that
-                    # the input EXISTS; keying on the source made this check
-                    # unenforceable the moment the kind went away.
-                    if [[ "$_iid" == "$_to_field" ]]; then
-                        _has_input=1; break
-                    fi
-                done < <(manifest_graph_get_inputs "$_to_manifest")
-                if [[ $_has_input -eq 0 ]]; then
-                    violations+=("$_to_stage|CYCLE_FB_UNDECLARED|$_to_field|cycle[$_cyc].feedback.to wires input '$_to_field' but stage '$_to_stage' declares no input by that name (ADR-055 §4)")
-                    fail_count=$((fail_count + 1))
-                fi
-            done <<< "$_fb_blob"
-        done
-    fi
-
-    # ── Pass 3 pre-work: mark cycle exit_when stage outputs as consumed ─────────
-    # The cycle mechanism itself reads the exit_when stage's primary output (the
-    # verdict artifact) to decide convergence — this is not a manifest input but
-    # IS a form of consumption. Without this, gate_aggregator_result (or any other
-    # convergence aggregator output) would be false-alarmed in templates where no
-    # subsequent stage declares it as a direct input (e.g. simple.yaml after the
-    # build_test_cycle, which flows to pr-delivery, not merge/deploy).
-    local _ew_c _ew_safe _ew_var _ew_stage _ew_mf _ew_orec _ew_oid
-    if declare -p _TPL_CYCLES >/dev/null 2>&1 && [[ ${#_TPL_CYCLES[@]} -gt 0 ]]; then
-        for _ew_c in "${_TPL_CYCLES[@]}"; do
-            _ew_safe="${_ew_c//-/_}"
-            _ew_var="_TPL_CYCLE_UNTIL_STAGE_${_ew_safe}"
-            _ew_stage="${!_ew_var:-}"
-            [[ -z "$_ew_stage" ]] && continue
-            _ew_mf="${_CV_STAGE_MANIFEST[$_ew_stage]:-}"
-            [[ -z "$_ew_mf" ]] && continue
-            while IFS= read -r _ew_orec; do
-                [[ -z "$_ew_orec" ]] && continue
-                _ew_oid="${_ew_orec%%|*}"
-                [[ -n "$_ew_oid" ]] && _CV_INPUT_NAMES_SEEN["$_ew_oid"]=1
-            done < <(manifest_graph_get_outputs "$_ew_mf")
-        done
-    fi
-
-    # #1980: Pass 3 (OUTPUT_UNCONSUMED) is retired. It asked a PRODUCER whether
-    # anyone consumes its output — a property of the TEMPLATE, so the same plugin
-    # in a different flow needed a different answer. The mirror direction (a
-    # required input naming no producer) is a real error and is still enforced
-    # above.
+    # #1980: Pass 3 (OUTPUT_UNCONSUMED) is retired; with declared inputs
+    # retired too, so is the mirror check (an input naming no producer).
 
     # ── ADR-040 §3/§5/§7 (Phase 1): typed-aggregator preflight ─────────────
     # Make "aggregator" an explicit, PREFLIGHT-ENFORCED concept. The `convergence:`
@@ -623,90 +401,6 @@ _contract_validate_pipeline() {
                 violations+=("$_c|CYCLE_AGG_TYPE|$_ew|cycle '$_c': exit_when.stage '$_ew' is convergence:$_ew_conv but a cycle requires a convergence:gate aggregator [ADR-040 §5]")
                 fail_count=$((fail_count + 1))
             fi
-        done
-    fi
-
-    # (A2) #2040, ADR-040 §5 amendment: a model-judged stage MAY gate, but only
-    #      when the STANDARD it judges against is immutable by the judged party.
-    #
-    #      §5 stated the invariant as mechanical-vs-model, but its own
-    #      justification names a different property — it "does not read what a
-    #      stage DOES, it reads where a stage SITS … un-gameable by prompt
-    #      wording". Mechanical-ness was a PROXY for un-gameability, and the only
-    #      one available while every model-judged stage read the artifact it was
-    #      grading and judged its QUALITY, with no fixed reference at all.
-    #
-    #      The property is NOT "the gate cannot see what it grades". A comparison
-    #      requires reading both sides: spec-correspondence must read the
-    #      assertion it is judging. What makes it un-gameable is that its
-    #      STANDARD — the SPEC sentence — is authored upstream and cannot be
-    #      edited by the stage being judged. The only way to earn a pass is to
-    #      actually satisfy it, which is compliance, not gaming.
-    #
-    #      So the structural test is: a model-judged gate must declare at least
-    #      one REFERENCE input produced OUTSIDE its own cycle. Inputs produced by
-    #      same-cycle members are re-authored by the loop and cannot serve as a
-    #      fixed standard. A review lens fails this by construction — its
-    #      standard is "is this good code?", which is not an artifact at all.
-    #
-    #      Declaring no inputs fails closed: absence of a declaration is not
-    #      proof of anything, and ADR-054 §10 is explicit that an unenforced
-    #      declaration is how the contract became fiction.
-    local _icyc_n=0
-    [[ -n "${_TPL_CYCLES+x}" ]] && _icyc_n=${#_TPL_CYCLES[@]}
-    if [[ $_icyc_n -gt 0 ]]; then
-        local _ic _icsafe _im _imf _iconv _in_rec _in_id _prod_rec _prod_id
-        for _ic in "${_TPL_CYCLES[@]}"; do
-            _icsafe="${_ic//-/_}"
-            local _imems_var="_TPL_CYCLE_STAGES_${_icsafe}"
-            local _imem_csv="${!_imems_var:-}"
-            [[ -z "$_imem_csv" ]] && continue
-            local _IFS_i="$IFS"; IFS=','
-            # shellcheck disable=SC2206
-            local -a _imems=($_imem_csv)
-            IFS="$_IFS_i"
-
-            # Outputs produced INSIDE this cycle — re-authored by the loop, so
-            # they cannot be anyone's fixed standard.
-            local -A _cycle_outputs=()
-            for _im in "${_imems[@]}"; do
-                _imf="${_CV_STAGE_MANIFEST[$_im]:-}"
-                [[ -z "$_imf" ]] && continue
-                while IFS= read -r _prod_rec; do
-                    [[ -z "$_prod_rec" ]] && continue
-                    _prod_id="${_prod_rec%%|*}"
-                    [[ -n "$_prod_id" ]] && _cycle_outputs["$_prod_id"]="$_im"
-                done < <(manifest_graph_get_outputs "$_imf")
-            done
-
-            for _im in "${_imems[@]}"; do
-                _imf="${_CV_STAGE_MANIFEST[$_im]:-}"
-                [[ -z "$_imf" ]] && continue
-                _iconv="$(_cv_stage_convergence "$plugins_root" "$_im")"
-                [[ "$_iconv" == "gate" ]] || continue
-                # Model-judged is a DECLARED property: the manifest says it needs
-                # the router. Not inferred from `kind:` — spec-acceptance is
-                # kind:agent and wholly mechanical, which is why §5 keys on the
-                # convergence marker rather than the kind in the first place.
-                grep -qE '^[[:space:]]*-[[:space:]]*router[[:space:]]*$' "$_imf" 2>/dev/null || continue
-
-                local _n_in=0 _n_ref=0
-                while IFS= read -r _in_rec; do
-                    [[ -z "$_in_rec" ]] && continue
-                    _in_id="${_in_rec%%|*}"
-                    [[ -z "$_in_id" ]] && continue
-                    _n_in=$(( _n_in + 1 ))
-                    [[ -z "${_cycle_outputs[$_in_id]:-}" ]] && _n_ref=$(( _n_ref + 1 ))
-                done < <(manifest_graph_get_inputs "$_imf")
-
-                if [[ $_n_in -eq 0 ]]; then
-                    violations+=("$_im|GATE_REFERENCE_UNPROVEN|-|stage '$_im' is a model-judged convergence:gate declaring no inputs — it cannot show that the standard it judges against is authored outside the cycle, so it fails closed [ADR-040 §5]")
-                    fail_count=$((fail_count + 1))
-                elif [[ $_n_ref -eq 0 ]]; then
-                    violations+=("$_im|GATE_REFERENCE_MUTABLE|-|stage '$_im' is a model-judged convergence:gate whose every declared input is produced inside its own cycle — the standard it judges against is re-authored by the party it judges, so a pass can be earned by changing the standard [ADR-040 §5]")
-                    fail_count=$((fail_count + 1))
-                fi
-            done
         done
     fi
 
@@ -759,7 +453,7 @@ _contract_validate_pipeline() {
     # ── Render structured error ────────────────────────────────────────────
     {
         printf '\n'
-        printf '✗ Pipeline cannot start — inputs missing for declared stages:\n\n'
+        printf '✗ Pipeline cannot start — stage manifests break the contract:\n\n'
         local v sstage scode sid smsg spath
         for v in "${violations[@]}"; do
             IFS='|' read -r sstage scode sid smsg spath <<< "$v"
@@ -776,7 +470,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|GATE_REFERENCE_MUTABLE|GATE_REFERENCE_UNPROVEN|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|MALFORMED|BAD_VAR|FORMAT_MISSING|FORMAT_UNKNOWN|TYPE_UNVERSIONED|INPUTS_RETIRED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)
@@ -792,7 +486,7 @@ _contract_validate_pipeline() {
     # Emit event (best-effort; do not fail the validator on event-bus errors)
     if declare -F eb_emit_event >/dev/null 2>&1; then
         eb_emit_event "pipeline.preflight.fail" \
-            "reason=missing_input" \
+            "reason=contract_violation" \
             "violation_count=$fail_count" \
             "mode=$mode" 2>/dev/null || true
     fi
@@ -811,7 +505,7 @@ _contract_validate_pipeline() {
         if declare -F atomic_write >/dev/null 2>&1; then
             jq -n \
                 --arg status "preflight_failed" \
-                --arg reason "missing_input" \
+                --arg reason "contract_violation" \
                 --argjson count "$fail_count" \
                 '{schema_version: 1, status: $status, reason: $reason, violation_count: $count}' \
                 2>/dev/null | atomic_write "$state_file" 2>/dev/null || true

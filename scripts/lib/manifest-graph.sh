@@ -39,43 +39,6 @@ else
     _ZBUILD_MGRAPH_ROOT="$(cd "$_ZBUILD_MGRAPH_DIR/../.." && pwd)"
 fi
 
-# ─── ADR-020 external sources allowlist (decision #6) ──────────────────────────
-# Inputs declared `source: external` must use an id from this set. The list
-# is hardcoded here and mirrored in ADR-020 §External Sources Allowlist; CI
-# lint cross-references both to prevent drift.
-manifest_graph_external_allowlist() {
-    # gh_comments: ADR-055 §3 (#1768, first consumer #1729).
-    echo "gh_issue_body gh_issue_view gh_comments goal_string scope_paths working_tree git_branch"
-}
-
-# ─── manifest_graph_external_supplier <id> ────────────────────────────────────
-# What supplies each allowlisted external id — the kind the pre-dispatch check
-# tests. Empty for an id outside the allowlist. An allowlisted id with no entry
-# here would be declarable but uncheckable, which is how #1835's run relied on a
-# ZBUILD_GOAL no --issue run ever sets.
-manifest_graph_external_supplier() {
-    case "${1-}" in
-        gh_issue_body|gh_issue_view|gh_comments) printf 'issue' ;;
-        goal_string)                             printf 'goal' ;;
-        scope_paths)                             printf 'scope_paths' ;;
-        working_tree|git_branch)                 printf 'git' ;;
-        *)                                       return 0 ;;
-    esac
-}
-
-# ─── manifest_graph_external_supplied <id> ────────────────────────────────────
-# rc 0 when the run actually supplies <id>. Read at dispatch, not at load: the
-# runner exports ZBUILD_GOAL / ZBUILD_ISSUE before the first stage.
-manifest_graph_external_supplied() {
-    case "$(manifest_graph_external_supplier "${1-}")" in
-        issue)       [[ "${ZBUILD_ISSUE:-}" =~ ^[0-9]+$ && "${ZBUILD_ISSUE}" -gt 0 ]] ;;
-        goal)        [[ -n "${ZBUILD_GOAL//[[:space:]]/}" ]] ;;
-        scope_paths) [[ -n "${ZBUILD_SCOPE_PATHS//[[:space:]]/}" ]] ;;
-        git)         git rev-parse --is-inside-work-tree >/dev/null 2>&1 ;;
-        *)           return 1 ;;
-    esac
-}
-
 # ─── ADR-020 closed templating var set (decision #5) ──────────────────────────
 # `cycle_feedback_dir` is retired (ADR-068 §8): the engine writes no feedback
 # copy, so there is nothing for it to name.
@@ -121,16 +84,6 @@ manifest_graph_get_stage_id() {
             exit
         }
     ' "$manifest" 2>/dev/null
-}
-
-# ─── manifest_graph_inputs_block_present ───────────────────────────────────────
-# Returns 0 if the manifest contains an `inputs:` top-level key.
-# Used by the validator to distinguish "no inputs declared" (legacy or incomplete
-# manifest) from "explicit zero inputs" (`inputs: []`). Per decision #1, an
-# absent inputs block is malformed; zero-input plugins MUST declare `inputs: []`.
-manifest_graph_inputs_block_present() {
-    local manifest="$1"
-    grep -qE '^inputs:[[:space:]]*(\[\]|$)' "$manifest" 2>/dev/null
 }
 
 manifest_graph_outputs_block_present() {
@@ -208,10 +161,6 @@ _mgraph_parse_block() {
         }
         END { flush() }
     ' "$manifest" 2>/dev/null
-}
-
-manifest_graph_get_inputs() {
-    _mgraph_parse_block "$1" "inputs"
 }
 
 manifest_graph_get_outputs() {

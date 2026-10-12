@@ -32,7 +32,7 @@ description: |
   verdict = pass IFF zero violations, else fail (verdict-in-artifact, ADR-040).
   Always returns rc=0; the verdict lives in design-gate-result.json and the
   design_verify_cycle's exit_when reads it. design-gate-feedback.md is written
-  on every terminal verdict (ADR-055 §9) and wired back into design.prior_impact_feedback.
+  on every terminal verdict (ADR-055 §9) and reaches design under Previous work (ADR-068 §8).
 
   Level-2 (negative-control / tautology) and Level-3 (reachability) CANNOT shift
   left — they need a built assertion + baseline-vs-HEAD run — and remain at the
@@ -61,14 +61,6 @@ config:
     - pass
     - fail
   tier_default: T0
-
-inputs:
-  - id: design
-    required: true
-  # #2306 (ADR-070): the issue's requirements, numbered by intake. Absent on a
-  # --goal run, so not required.
-  - id: requirements
-    required: false
 
 outputs:
   - id: design_gate_result

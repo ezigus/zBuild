@@ -36,8 +36,6 @@ config:
     - fail
     - skip
 
-inputs: []
-
 outputs:
   - id: assertion_integrity_result
     path: "${artifact_dir}/assertion-integrity-result.json"

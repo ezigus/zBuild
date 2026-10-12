@@ -76,6 +76,15 @@ load_template() {
         error "  Run: scripts/migrate-template-v2.sh '$template_file' --in-place"
         return 1
     fi
+    # ADR-055 §4 (amended 2026-10-12): cycle `feedback:` wires are retired —
+    # every stage gets every stage's latest output under Previous work
+    # (ADR-068 §8), so a wire would promise a delivery nothing makes.
+    if awk 'BEGIN{rc=1} /^[[:space:]]+feedback:[[:space:]]*$/ {rc=0; exit} END{exit rc}' "$template_file"; then
+        error "load_template: 'feedback:' is retired (ADR-055 §4) in $template_file"
+        error "  every stage already gets every stage's latest output under Previous work"
+        error "  (ADR-068 §8); remove the feedback: block from the cycle."
+        return 1
+    fi
 
     _TPL_DEFAULT_STRATEGY="$(yaml_get "$template_file" "defaults.strategy")"
     [[ -z "$_TPL_DEFAULT_STRATEGY" ]] && _TPL_DEFAULT_STRATEGY="fanout"
@@ -147,7 +156,7 @@ load_template() {
         )
     fi
 
-    # ADR-021 v2 parser: scan `stages:` block, emitting interleaved S|/IC|/FB|
+    # ADR-021 v2 parser: scan `stages:` block, emitting interleaved S|/IC|
     # rows. Inline cycle entries (IC|) reference cycle member stages by id;
     # per-stage attrs for those members come from `stage_definitions:` (parsed
     # separately below).
@@ -573,23 +582,6 @@ load_template() {
                            "_TPL_CYCLE_EXIT_${ew_i}_VALUE_${ew_safe}"
                 done
                 ;;
-            FB)
-                # Feedback row for the most-recent cycle. Format:
-                # <cid>|<fbrec>  (fbrec = from_stage:from_output|to_stage:to_field:required)
-                local fb_cid fb_rec
-                fb_cid="${payload%%|*}"
-                fb_rec="${payload#*|}"
-                local safe="${fb_cid//-/_}"
-                local var="_TPL_CYCLE_FEEDBACK_${safe}"
-                local prev="${!var:-}"
-                if [[ -z "$prev" ]]; then
-                    printf -v "$var" '%s' "$fb_rec"
-                else
-                    printf -v "$var" '%s\n%s' "$prev" "$fb_rec"
-                fi
-                # shellcheck disable=SC2163
-                export "${var?}"
-                ;;
             BL)
                 # ADR-013 blocking attribute (CQ-3 / issue #863).
                 # Format: <stage_id>|true
@@ -733,8 +725,6 @@ load_template() {
 #   IC|<cid>|<cstages_csv>|<cmax>|<conmax>|<custage>|<cufield>|<cuop>|<cuvalue>|<cplateau>|<cdiverg>|<cvelopl>|<cdesc>
 #     for `- id: …; type: cycle` entries. <cdesc> is the optional operator-
 #     facing description (#831); empty when the YAML omits `description:`.
-#   FB|<cid>|<from_stage>:<from_output>|<to_stage>:<to_input>:<required>
-#     one row per feedback record in the most-recently opened cycle
 # Caller distinguishes by leading tag; preserves declaration order.
 _tpl_parse_stages_v2() {
     local file="$1"
@@ -751,11 +741,6 @@ _tpl_parse_stages_v2() {
         if (current_id == "") return
         if (entry_kind == "cycle") {
             print "IC|" current_id "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg "|" cvelopl "|" cdesc "|" cexpand "|" cautogrant "|" cescalate "|" condeny
-            if (fb_from_stage != "" || fb_to_stage != "") {
-                nfb++
-                fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
-            }
-            for (k = 1; k <= nfb; k++) print "FB|" current_id "|" fb[k]
         } else {
             print "S|" current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns "|" current_router_max_iterations "|" current_router_retries
         }
@@ -771,8 +756,7 @@ _tpl_parse_stages_v2() {
         nfb = 0
         in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0
         in_stages_list = 0; in_until = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0
-        in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
-        fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+        in_scope_policy = 0
     }
     BEGIN { reset_entry() }
     /^stages:[[:space:]]*$/ { in_stages = 1; next }
@@ -797,7 +781,7 @@ _tpl_parse_stages_v2() {
 
     # ── cycle-only fields ────────────────────────────────────────────────────
     in_stages && entry_kind == "cycle" && /^[[:space:]]+stages:/ {
-        in_until = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0
+        in_until = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0
         if ($0 ~ /\[/) {
             cstages = strip_inline_list($0)
             in_stages_list = 0
@@ -828,7 +812,7 @@ _tpl_parse_stages_v2() {
     # #840 scope_policy (ADR-030): nested block, children guarded by
     # in_scope_policy. auto_grant inline list [a, b] → csv a,b.
     in_stages && entry_kind == "cycle" && /^[[:space:]]+scope_policy:[[:space:]]*$/ {
-        in_scope_policy = 1; in_until = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; next
+        in_scope_policy = 1; in_until = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; next
     }
     in_stages && entry_kind == "cycle" && in_scope_policy && /^[[:space:]]+expandable:/ {
         v = $0; sub(/^[[:space:]]+expandable:[[:space:]]*/, "", v); cexpand = trim(v); next
@@ -845,7 +829,7 @@ _tpl_parse_stages_v2() {
         v = $0; sub(/^[[:space:]]+on_deny:[[:space:]]*/, "", v); condeny = trim(v); next
     }
     in_stages && entry_kind == "cycle" && /^[[:space:]]+until:[[:space:]]*$/ {
-        in_until = 1; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
+        in_until = 1; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_scope_policy = 0; next
     }
     in_stages && entry_kind == "cycle" && in_until && /^[[:space:]]+stage:/ {
         v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); custage = trim(v); next
@@ -871,52 +855,6 @@ _tpl_parse_stages_v2() {
     in_stages && entry_kind == "cycle" && in_velopl && /^[[:space:]]+window:/ {
         v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cvelopl = trim(v); next
     }
-    in_stages && entry_kind == "cycle" && /^[[:space:]]+feedback:[[:space:]]*$/ {
-        in_feedback = 1; in_until = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_scope_policy = 0; next
-    }
-    in_stages && entry_kind == "cycle" && in_feedback && /^[[:space:]]+-[[:space:]]+from:/ {
-        if (fb_from_stage != "" || fb_to_stage != "") {
-            nfb++
-            fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
-        }
-        fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
-        in_fb_item = 1
-        line = $0
-        sub(/^[[:space:]]+-[[:space:]]+from:[[:space:]]*\{?/, "", line)
-        sub(/\}.*$/, "", line)
-        n = split(line, kv, /,[[:space:]]*/)
-        for (i = 1; i <= n; i++) {
-            split(kv[i], pair, /:[[:space:]]*/)
-            key = trim(pair[1]); val = trim(pair[2])
-            if (key == "stage")  fb_from_stage = val
-            if (key == "output") fb_from_output = val
-        }
-        next
-    }
-    in_stages && entry_kind == "cycle" && in_feedback && in_fb_item && /^[[:space:]]+from:/ {
-        line = $0; sub(/^[[:space:]]+from:[[:space:]]*\{?/, "", line); sub(/\}.*$/, "", line)
-        n = split(line, kv, /,[[:space:]]*/)
-        for (i = 1; i <= n; i++) {
-            split(kv[i], pair, /:[[:space:]]*/)
-            key = trim(pair[1]); val = trim(pair[2])
-            if (key == "stage")  fb_from_stage = val
-            if (key == "output") fb_from_output = val
-        }
-        next
-    }
-    in_stages && entry_kind == "cycle" && in_feedback && in_fb_item && /^[[:space:]]+to:/ {
-        line = $0; sub(/^[[:space:]]+to:[[:space:]]*\{?/, "", line); sub(/\}.*$/, "", line)
-        n = split(line, kv, /,[[:space:]]*/)
-        for (i = 1; i <= n; i++) {
-            split(kv[i], pair, /:[[:space:]]*/)
-            key = trim(pair[1]); val = trim(pair[2])
-            if (key == "stage")    fb_to_stage = val
-            if (key == "input")    fb_to_field = val
-            if (key == "required") fb_required = val
-        }
-        next
-    }
-
     # ── regular-stage fields (entry_kind == "stage") ────────────────────────
     in_stages && entry_kind == "stage" && in_roles && /^[[:space:]]*-[[:space:]]/ {
         item = $0; gsub(/^[[:space:]]*-[[:space:]]+/, "", item); gsub(/[[:space:]]*$/, "", item)
@@ -1363,7 +1301,7 @@ _tpl_validate_parallel() {
 # Without this folding, a leaf member of an inner cycle that is also the
 # first member of the outer cycle would be absorbed into `cycle:<inner>`
 # and the OUTER cycle would never appear in dispatch, silently dropping
-# the outer-cycle semantics (exit_when, abort_when, feedback).
+# the outer-cycle semantics (exit_when, abort_when).
 _tpl_build_dispatch_units() {
     _TPL_DISPATCH_UNITS=()
     # Map: stage → immediate enclosing cycle id (if any)
@@ -1719,7 +1657,7 @@ _tpl_is_new_shape() {
 #        - a stage row in flow-order:
 #            * leaf  → S| row in the position determined by the top-level
 #                      flow index
-#            * cycle → IC| row at that position + FB| rows for feedback
+#            * cycle → IC| row at that position
 # Keeping the existing pipe schema means downstream consumers (validators,
 # orchestrator, runner) need zero changes.
 _tpl_translate_new_shape() {
@@ -1767,8 +1705,7 @@ _tpl_translate_new_shape() {
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
-        in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
-        fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+        in_plateau = 0; in_diverg = 0; in_velopl = 0; in_scope_policy = 0
     }
     function reset_section(    i) {
         sec_type = "leaf"
@@ -1793,24 +1730,7 @@ _tpl_translate_new_shape() {
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
-        in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
-        fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
-        # Copilot P2: fb_kind must reset per-section so a prior "to" cannot
-        # leak into the next section feedback parsing.
-        fb_kind = ""
-    }
-    function finalize_pending_fb() {
-        # Copilot P1: flush an in-flight feedback item before the section
-        # closes. Without this, the LAST feedback edge in every cycle is
-        # silently dropped because we previously only flushed on the NEXT
-        # `- from:` opener.
-        if (in_fb_item && (fb_from_stage != "" || fb_to_stage != "")) {
-            nfb++
-            fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
-            in_fb_item = 0
-            fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
-            fb_kind = ""
-        }
+        in_plateau = 0; in_diverg = 0; in_velopl = 0; in_scope_policy = 0
     }
     # #1284 (ADR-047): flush in-flight multi-condition exit_when item.
     function flush_ew_cond() {
@@ -1826,8 +1746,6 @@ _tpl_translate_new_shape() {
     }
     function flush_section(   k) {
         if (cur_key == "" || is_reserved(cur_key)) return
-        # Finalize any in-flight feedback item now (Copilot P1).
-        finalize_pending_fb()
         # #1284 (ADR-047): finalize in-flight multi-condition exit_when item.
         flush_ew_cond()
         # Always emit a defs-style row carrying the attr payload — downstream
@@ -1849,10 +1767,6 @@ _tpl_translate_new_shape() {
             cyc_abort[cur_key] = cyc_as "|" cyc_af "|" cyc_ao "|" cyc_av
             if (cyc_unowned != "") cyc_unowned_v[cur_key] = cyc_unowned
             if (cyc_rb_declared) cyc_rb_seen[cur_key] = 1
-            cyc_fb_count[cur_key] = nfb
-            for (k = 1; k <= nfb; k++) {
-                cyc_fb[cur_key, k] = fb[k]
-            }
             # #1284 (ADR-047): stash multi-condition exit_when data.
             if (cyc_ew_comb != "" && cyc_ew_n > 0) {
                 cyc_ew_combinator[cur_key] = cyc_ew_comb
@@ -2006,7 +1920,7 @@ _tpl_translate_new_shape() {
                 if ($0 ~ /\[/) {
                     cyc_flow = strip_inline_list($0); in_cflow = 0
                 } else { in_cflow = 1 }
-                in_exit_when = 0; in_abort_when = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0
+                in_exit_when = 0; in_abort_when = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0
                 next
             }
             if (in_cflow && $0 ~ /^[[:space:]]+-[[:space:]]/) {
@@ -2037,7 +1951,7 @@ _tpl_translate_new_shape() {
             # #840 scope_policy (ADR-030): nested block; children guarded by
             # in_scope_policy. auto_grant inline list [a, b] → csv a,b.
             if ($0 ~ /^[[:space:]]+scope_policy:[[:space:]]*$/) {
-                in_scope_policy = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_feedback = 0; next
+                in_scope_policy = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; next
             }
             if (in_scope_policy && $0 ~ /^[[:space:]]+expandable:/) {
                 v = $0; sub(/^[[:space:]]+expandable:[[:space:]]*/, "", v); cyc_expand = trim(v); next
@@ -2053,28 +1967,28 @@ _tpl_translate_new_shape() {
                 v = $0; sub(/^[[:space:]]+on_deny:[[:space:]]*/, "", v); cyc_ondeny = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+plateau:[[:space:]]*$/) {
-                in_plateau = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
+                in_plateau = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_velopl = 0; in_scope_policy = 0; next
             }
             if (in_plateau && $0 ~ /^[[:space:]]+window:/) {
                 v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cyc_plateau = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+divergence:[[:space:]]*$/) {
-                in_diverg = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
+                in_diverg = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_velopl = 0; in_scope_policy = 0; next
             }
             if (in_diverg && $0 ~ /^[[:space:]]+window:/) {
                 v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cyc_diverg = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+velocity_plateau:[[:space:]]*$/) {
-                in_velopl = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_feedback = 0; in_scope_policy = 0; next
+                in_velopl = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_scope_policy = 0; next
             }
             if (in_velopl && $0 ~ /^[[:space:]]+window:/) {
                 v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cyc_velopl = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+exit_when:[[:space:]]*$/) {
-                in_exit_when = 1; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
+                in_exit_when = 1; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_scope_policy = 0; next
             }
             if ($0 ~ /^[[:space:]]+abort_when:[[:space:]]*$/) {
-                in_abort_when = 1; in_exit_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
+                in_abort_when = 1; in_exit_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_scope_policy = 0; next
             }
             # #2271 (ADR-068): the key is refused at load — nested loops replace it.
             if ($0 ~ /^[[:space:]]+route_back:/) { cyc_rb_declared = 1; next }   # #2271 refusal
@@ -2143,58 +2057,6 @@ _tpl_translate_new_shape() {
             }
             if (in_abort_when && $0 ~ /^[[:space:]]+value:/) {
                 v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_av = trim(v); next
-            }
-            if ($0 ~ /^[[:space:]]+feedback:[[:space:]]*$/) {
-                in_feedback = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; next
-            }
-            if (in_feedback && $0 ~ /^[[:space:]]+-[[:space:]]+from:/) {
-                # Close previous in-flight item.
-                if (fb_from_stage != "" || fb_to_stage != "") {
-                    nfb++
-                    fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
-                }
-                fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
-                in_fb_item = 1
-                # Copilot P1: default fb_kind to "from" so subsequent
-                # indented `stage:`/`output:` lines belonging to a multi-
-                # line `- from:` opener attribute correctly. Inline form
-                # (- from: { stage: X, output: Y }) overrides below.
-                fb_kind = "from"
-                line = $0
-                sub(/^[[:space:]]+-[[:space:]]+from:[[:space:]]*\{?/, "", line)
-                sub(/\}.*$/, "", line)
-                # Inline form is detected via presence of a `{` or non-empty
-                # stripped payload. If empty, we are in multi-line form.
-                gsub(/[[:space:]]/, "", line)
-                if (line != "") {
-                    n = split(line, kv, /,[[:space:]]*/)
-                    for (i = 1; i <= n; i++) {
-                        split(kv[i], pair, /:[[:space:]]*/)
-                        key = trim(pair[1]); val = trim(pair[2])
-                        if (key == "stage")  fb_from_stage = val
-                        if (key == "output") fb_from_output = val
-                    }
-                }
-                next
-            }
-            if (in_feedback && in_fb_item) {
-                if ($0 ~ /^[[:space:]]+from:[[:space:]]*$/) { fb_kind = "from"; next }
-                if ($0 ~ /^[[:space:]]+to:[[:space:]]*$/)   { fb_kind = "to"; next }
-                if ($0 ~ /^[[:space:]]+stage:/) {
-                    v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); v = trim(v)
-                    if (fb_kind == "from") fb_from_stage = v
-                    else if (fb_kind == "to") fb_to_stage = v
-                    next
-                }
-                if ($0 ~ /^[[:space:]]+output:/) {
-                    v = $0; sub(/^[[:space:]]+output:[[:space:]]*/, "", v); fb_from_output = trim(v); next
-                }
-                if ($0 ~ /^[[:space:]]+input:/) {
-                    v = $0; sub(/^[[:space:]]+input:[[:space:]]*/, "", v); fb_to_field = trim(v); next
-                }
-                if ($0 ~ /^[[:space:]]+required:/) {
-                    v = $0; sub(/^[[:space:]]+required:[[:space:]]*/, "", v); fb_required = trim(v); next
-                }
             }
         }
 
@@ -2339,8 +2201,6 @@ _tpl_translate_new_shape() {
         }
         d = cyc_data[k]
         print "IC|" k "|" d
-        cnt = cyc_fb_count[k] + 0
-        for (j = 1; j <= cnt; j++) print "FB|" k "|" cyc_fb[k, j]
         aw = cyc_abort[k]
         if (aw != "" && aw != "|||") print "AW|" k "|" aw
         if (cyc_rb_seen[k]) print "RB|" k   # #2271 refusal

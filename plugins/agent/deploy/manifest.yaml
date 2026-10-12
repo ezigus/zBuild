@@ -44,12 +44,6 @@ config:
     - skipped
   tier_default: T2
 
-inputs:
-  - id: pr_url
-    required: true
-  - id: gate_aggregator_result
-    required: true
-
 outputs:
   - id: deploy_result
     path: ${artifact_dir}/deploy-result.json

@@ -62,10 +62,6 @@ config:
     - unjudged
   tier_default: T2
 
-inputs:
-  - id: design
-    required: true
-
 outputs:
   - id: spec_correspondence_result
     path: "${artifact_dir}/spec-correspondence-result.json"

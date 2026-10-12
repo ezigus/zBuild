@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: review-lens + review-report judge the FULL-BRANCH merge-base change
+# Tests: review-lens judges the FULL-BRANCH merge-base change
 # bundle, like `review` (#896), instead of the per-run incremental diff.patch
 # (Issue B, #952). The observed #952 failure: build converged with an EMPTY
 # diff.patch (work already committed), so the lens change bundle was empty, the
@@ -13,9 +13,8 @@
 # MB3: with the empty diff.patch, the lens actually RUNS (reaches route_to_model
 #      with non-empty evidence) instead of degrading on empty evidence.
 # MB4: no resolvable base → falls back to the diff.patch artifact (no crash).
-# MB5: source-level dedupe — lens/report share zbuild_change_bundle /
-#      zbuild_resolve_merge_base via the shared merge-base.sh lib. (The retired
-#      review agent plugin, #979, is no longer part of this dedupe assertion.)
+# MB5: review-lens resolves the bundle through the shared merge-base.sh lib
+#      (zbuild_change_bundle / zbuild_resolve_merge_base).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,7 +24,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "review-lens/report judge the merge-base change bundle (Issue B, #952)"
+print_test_header "review-lens judges the merge-base change bundle (Issue B, #952)"
 setup_test_env "review-lens-report-merge-base-bundle"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
@@ -34,8 +33,6 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 # shellcheck source=../../plugins/agent/review-lens/plugin.sh
 source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
-# shellcheck source=../../plugins/agent/review-report/plugin.sh
-source "$REPO_ROOT/plugins/agent/review-report/plugin.sh"
 
 # ─── Repo: main baseline + feature branch whose work is ALREADY committed ─────
 REPO="$TEST_TEMP_DIR/repo"
@@ -86,9 +83,8 @@ assert_eq "MB2 lens/report bundle == the review merge-base diff" \
 
 # ─── MB3: evidence resolves to the non-empty bundle AND the lens RUNS ─────────
 print_test_section "MB3: lens evidence is non-empty → lens reaches route_to_model"
-# `security` has no per-lens artifact → falls through to the shared bundle.
-EV="$(_review_lens_evidence_path "security" "$ART" "$BUNDLE")"
-assert_eq "MB3 lens evidence path is the merge-base bundle" "$BUNDLE" "$EV"
+# Every lens judges the shared bundle (no lens picks its own evidence).
+EV="$BUNDLE"
 if [[ -s "$EV" ]]; then
     assert_pass "MB3 lens evidence is non-empty (redaction/route no longer skipped)"
 else
@@ -138,9 +134,9 @@ else
     assert_fail "MB4 branch-diff.patch should not exist without a base" "present"
 fi
 
-# ─── MB5: source-level dedupe — one shared resolver across lens + report ──────
-print_test_section "MB5: lens/report share the resolver via merge-base.sh"
-for _p in review-lens review-report; do
+# ─── MB5: review-lens uses the shared resolver ─────────────────────────────────
+print_test_section "MB5: review-lens uses the resolver in merge-base.sh"
+for _p in review-lens; do
     _src="$REPO_ROOT/plugins/agent/$_p/plugin.sh"
     if grep -q 'scripts/lib/merge-base.sh' "$_src"; then
         assert_pass "MB5 $_p sources shared merge-base.sh"
@@ -148,7 +144,7 @@ for _p in review-lens review-report; do
         assert_fail "MB5 $_p must source shared merge-base.sh" "absent"
     fi
 done
-for _p in review-lens review-report; do
+for _p in review-lens; do
     if grep -q 'zbuild_change_bundle' "$REPO_ROOT/plugins/agent/$_p/plugin.sh"; then
         assert_pass "MB5 $_p resolves the change bundle via zbuild_change_bundle"
     else
