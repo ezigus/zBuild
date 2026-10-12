@@ -21,7 +21,8 @@
 #                 prompt's first section, "## Who you are"
 #   PA6 [guard] : a model call made outside any stage carries no agent
 #   PA7 [change]: the model loop carries the agent on every call
-#   PA8 [change]: a map element whose name is a persona runs as that persona
+#   PA8 [change]: a map element runs as the persona the template names for it,
+#                 never one guessed from its name
 #   PA9 [change]: the shipped templates pin the personas the stages used to
 #                 choose in their own code (plan, design, build)
 #   PA10 [change]: the persona given to the provider has been through the
@@ -63,6 +64,9 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 _last() { local n; n="$(ls "$CAP" | /usr/bin/grep -c '^args-' || true)"; cat "$CAP/$1-$n" 2>/dev/null; }
 _reset_cap() { rm -f "$CAP"/args-* "$CAP"/prompt-*; }
+# The value that follows --agent in captured args, exactly (assert_contains
+# would match each line of a two-line needle on its own).
+_agent_of() { awk 'p { print; exit } $0 == "--agent" { p = 1 }' <<< "$1"; }
 
 # A target repository with its own persona, and a dispatched agent stage.
 TGT="$TEST_TEMP_DIR/target"; mkdir -p "$TGT/.zbuild/plugins/persona/architect"
@@ -119,7 +123,7 @@ _reset_cap
          ZBUILD_PA_AGENT_PERSONA=architect
   route_to_model T2 "$PROMPT" >/dev/null 2>&1 )
 _args="$(_last args)"
-assert_contains "[PA2] the call names its agent" "$_args" $'--agent\narchitect'
+assert_eq "[PA2] the call names its agent" "architect" "$(_agent_of "$_args")"
 _json="$(awk 'p { print; exit } $0 == "--agents" { p = 1 }' <<< "$_args")"
 assert_contains "[PA4] the repository's own persona is the one used" \
     "$(jq -r '.architect.prompt // empty' <<< "$_json" 2>/dev/null)" "REPO-ARCHITECT-PERSPECTIVE"
@@ -128,7 +132,7 @@ _reset_cap
 ( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent \
          ZBUILD_PA_AGENT_PERSONA=no-such-persona
   route_to_model T2 "$PROMPT" >/dev/null 2>&1 )
-assert_contains "[PA4] no persona of that id anywhere → generic" "$(_last args)" $'--agent\ngeneric'
+assert_eq "[PA4] no persona of that id anywhere → generic" "generic" "$(_agent_of "$(_last args)")"
 
 # ─── PA3: the template pin ───────────────────────────────────────────────────
 print_test_section "PA3: the stage's template pin picks the persona"
@@ -143,7 +147,7 @@ _reset_cap
 ( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent
   _TPL_SOURCE_FILE="$TEST_TEMP_DIR/tpl.yaml"
   route_to_model T2 "$PROMPT" >/dev/null 2>&1 )
-assert_contains "[PA3] the pinned persona is the agent" "$(_last args)" $'--agent\ndeveloper'
+assert_eq "[PA3] the pinned persona is the agent" "developer" "$(_agent_of "$(_last args)")"
 
 # ─── PA5: a provider that cannot take an agent ───────────────────────────────
 print_test_section "PA5: no agent support → the persona is the prompt's first section"
@@ -172,10 +176,10 @@ printf '%s\n' "$PROMPT" > "$TEST_TEMP_DIR/loop-prompt.txt"
 ( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent \
          ZBUILD_PA_AGENT_PERSONA=architect
   route_to_model_loop T2 "$TEST_TEMP_DIR/loop-prompt.txt" "$TGT" 2 >/dev/null 2>&1 )
-assert_contains "[PA7] the loop's call names the agent" "$(cat "$CAP"/args-1 2>/dev/null)" $'--agent\narchitect'
+assert_eq "[PA7] the loop's call names the agent" "architect" "$(_agent_of "$(cat "$CAP"/args-1 2>/dev/null)")"
 
-# ─── PA8: a map element named after a persona ────────────────────────────────
-print_test_section "PA8: a map element that is a persona"
+# ─── PA8: a map element runs as the persona the template names for it ────────
+print_test_section "PA8: a map element's declared persona"
 mkdir -p "$TGT/.zbuild/plugins/persona/security"
 cat > "$TGT/.zbuild/plugins/persona/security/manifest.yaml" <<'EOF'
 id: security
@@ -187,11 +191,29 @@ persona:
   role: a security engineer
   perspective: "REPO-SECURITY-PERSPECTIVE: look for the hostile input."
 EOF
-_reset_cap
-( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent \
-         ZBUILD_MAP_ELEMENT=security
-  route_to_model T2 "$PROMPT" >/dev/null 2>&1 )
-assert_contains "[PA8] the security element runs as the security persona" "$(_last args)" $'--agent\nsecurity'
+cat > "$TEST_TEMP_DIR/tpl-map.yaml" <<'EOF'
+id: pa-map
+flow:
+  - pa-agent
+pa-agent:
+  type: map
+  over: lenses
+  elements:
+    - id: sec
+      persona: security
+    - id: architect
+  roles: [pa_agent]
+EOF
+_pa8() {
+    _reset_cap
+    ( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent \
+             ZBUILD_MAP_ELEMENT="$1"
+      _TPL_SOURCE_FILE="$TEST_TEMP_DIR/tpl-map.yaml"
+      route_to_model T2 "$PROMPT" >/dev/null 2>&1 )
+    _agent_of "$(_last args)"
+}
+assert_eq "[PA8] an element runs as the persona it names" "security" "$(_pa8 sec)"
+assert_eq "[PA8] an element named like a persona but naming none runs as generic" "generic" "$(_pa8 architect)"
 
 # ─── PA9: the templates pin what the stages used to hardcode ─────────────────
 print_test_section "PA9: the shipped templates pin each stage's persona"

@@ -714,6 +714,28 @@ _runner_validate_leaf_resolvability() {
 # before any real producer exists. A non-empty string yields exactly one violation;
 # empty (or omitted) yields none. Runtime call sites in runner.sh pass no argument,
 # so until D3/D4 land the live path always renders nothing and returns 0.
+# _runner_template_personas <template> — every persona the template names, one
+# "<where>|<persona id>" per line: <where> is the section, or section/element
+# for a map element's own persona (ADR-051 §2).
+_runner_template_personas() {
+    awk '
+        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+        /^[[:space:]]*#/ { next }
+        /^[A-Za-z_][A-Za-z0-9_-]*:/ { sec = $0; sub(/:.*/, "", sec); el = ""; els_ind = -1; next }
+        /^[[:space:]]+elements:[[:space:]]*$/ { els_ind = indent($0); next }
+        els_ind >= 0 && /[^[:space:]]/ && indent($0) <= els_ind { els_ind = -1; el = "" }
+        els_ind >= 0 && /^[[:space:]]+-[[:space:]]/ {
+            el = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", el); sub(/^id:[[:space:]]*/, "", el)
+            sub(/[[:space:]]*#.*/, "", el); gsub(/[[:space:]]/, "", el); next
+        }
+        /^[[:space:]]+persona:[[:space:]]*[^[:space:]#]/ {
+            id = $0; sub(/^[[:space:]]+persona:[[:space:]]*/, "", id); sub(/[[:space:]]*#.*/, "", id)
+            gsub(/[[:space:]"\047]/, "", id)
+            print (el != "" ? sec "/" el : sec) "|" id
+        }
+    ' "$1" 2>/dev/null
+}
+
 # shellcheck disable=SC2120  # $1 is used by unit tests; runtime call sites pass no arg
 _runner_validate_startup_preflight() {
     local _violation_fixture="${1:-}"
@@ -735,9 +757,22 @@ _runner_validate_startup_preflight() {
         fail_count=$((fail_count + 1))
     fi
 
-    # Check producers append to violations[]/fail_count here — see #1320 (persona
-    # binding) and #1321 (requires.plugins). Until one lands, the only source of a
-    # violation is the test fixture above.
+    # ADR-051 §2 (amended 2026-10-12): every persona the template names — a
+    # stage's pin, a map element's, the config default — exists in the target
+    # repository's .zbuild/plugins/persona or the install. A misspelt persona
+    # must not quietly run as generic, so this refuses in warn mode too.
+    local _persona_missing=0 _pw _pid _pdir
+    if [[ -n "${_TPL_SOURCE_FILE:-}" && -f "$_TPL_SOURCE_FILE" ]]; then
+        # shellcheck source=/dev/null  # followed, it re-reads runner.sh's own includes
+        declare -F persona_find_dir >/dev/null 2>&1 \
+            || source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
+        while IFS='|' read -r _pw _pid; do
+            [[ -n "$_pid" ]] || continue
+            _pdir="$(persona_find_dir "$_pid" 2>/dev/null)" && [[ -n "$_pdir" ]] && continue
+            violations+=("${_pw}|PERSONA_MISSING|${_pid}|the template names persona '${_pid}', which is in neither the repository's .zbuild/plugins/persona nor the install")
+            fail_count=$((fail_count + 1)); _persona_missing=1
+        done < <(_runner_template_personas "$_TPL_SOURCE_FILE")
+    fi
 
     # No violations → clean
     [[ $fail_count -eq 0 ]] && return 0
@@ -761,7 +796,7 @@ _runner_validate_startup_preflight() {
             "mode=$mode" 2>/dev/null || true
     fi
 
-    if [[ "$mode" == "warn" ]]; then
+    if [[ "$mode" == "warn" && "$_persona_missing" -eq 0 ]]; then
         printf '  ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite startup preflight violations. Set =enforce to fail-fast.\n\n' >&2
         return 0
     fi

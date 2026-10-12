@@ -229,13 +229,21 @@ gate-aggregator:
 review_lenses:
   type: map
   over: lenses
+  # ADR-051 §2: each lens names the persona it runs as; none is inferred
+  # from the lens's name.
   elements:
-    - security
-    - performance
-    - red-team
-    - correctness
-    - scope
-    - sre
+    - id: security
+      persona: security
+    - id: performance
+      persona: performance
+    - id: red-team
+      persona: red-team
+    - id: correctness
+      persona: correctness
+    - id: scope
+      persona: scope
+    - id: sre
+      persona: sre
   roles: [review_lens]
   as: ZBUILD_REVIEW_LENS_ID
   max_parallel: 4

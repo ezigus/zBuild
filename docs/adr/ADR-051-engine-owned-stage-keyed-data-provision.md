@@ -60,8 +60,13 @@ own personas (see §4). The engine never enumerates the persona set.
 ### 2. The binding is template data; `core/pipeline` passes it through blind
 
 Which persona a stage uses is a **declaration in the template**, not code in a plugin:
-`stage_definitions.<stage>.persona: <id>` for single-pin stages, or the `map over: agents`
-element id for the fan-out lenses. `core/pipeline` treats this as opaque per-stage data via a
+`stage_definitions.<stage>.persona: <id>` (or `persona:` in the stage's own section) for a
+stage, and, for a `type: map` group, each element's own `persona:` — an element carries its
+settings the way a stage does (`elements: - id: <element>` / `persona: <id>`). A persona is never
+inferred from an element's name: an element that names none runs as its stage's pin, else
+`generic` (amended 2026-10-12). Every persona the template names must exist (§4): the startup
+preflight refuses a run whose template names one that is in neither the repository's overlay nor
+the install, in its default mode too, so a misspelt id never quietly runs as `generic`. `core/pipeline` treats this as opaque per-stage data via a
 name-mangled accessor — a drop-in copy of the existing `template_stage_router_tier`
 (`core/pipeline/template.sh:2596`) / `template_stage_negctl_timeout` (`:2570`) lazy readers, with
 **zero persona semantics in the engine mechanics**. Onboarding a fictitious stage leaves the
@@ -70,8 +75,8 @@ mechanics byte-identical, per ADR-047.
 ### 3. The router resolves the persona; the provider delivers it (amended 2026-10-12)
 
 Every model call a dispatched stage makes runs as that stage's persona. The router resolves it
-(§4, §5) keyed on `ZBUILD_CURRENT_STAGE` — a map element whose name is itself a persona (a review
-lens) runs as that persona unless the stage is pinned — and the **provider module that calls the
+(§4, §5) keyed on `ZBUILD_CURRENT_STAGE` — for a map element, the persona the template names for
+it (§2) — and the **provider module that calls the
 model decides how it reaches the model** (`core/router/persona-delivery.sh`). A provider that can
 run the call as an agent defines `provider_<name>_persona_args` and gets the persona's id, summary
 and `perspective`: Anthropic passes `--agents <json> --agent <id>`. A provider that cannot gets
@@ -98,7 +103,7 @@ leaked via `ZBUILD_PLUGINS_ROOT` into nested runners — preserving
 ### 5. Resolution precedence
 
 Mirroring `resolve_tier` (`scripts/lib/tier-resolve.sh:55`):
-`ZBUILD_<STAGE>_PERSONA` env  >  template `stage_definitions.<stage>.persona`  >  manifest default
+`ZBUILD_<STAGE>_PERSONA` env  >  a map element's own `persona:`  >  template `stage_definitions.<stage>.persona`  >  manifest default
 >  **generic default persona**. The first non-empty binding wins; a divergent env override against
 a template value is auditable, consistent with `_route_resolve_knob` (`route.sh:457`).
 
@@ -198,7 +203,8 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
 
 - §1 (a persona is data: id, role, perspective; the resolvers and the live manifests) → `tests/unit/persona-resolver-test.sh`, `tests/unit/persona-kind-validation-test.sh`
 - §2, §5 (the template pin picks the persona; the env override wins) → `tests/unit/persona-agent-delivery-test.sh` PA2, PA3
-- §3 (the provider delivers the persona: Anthropic's `--agents`/`--agent`; `## Who you are` for a provider that cannot; every loop call; no persona outside a stage; a map element named after a persona) → `tests/unit/persona-agent-delivery-test.sh` PA1, PA2, PA5–PA8
+- §2 (a map element names its own persona, never inferred from its name; its stage's pin, else generic, when it names none; every named persona exists or the run is refused at startup; the shipped lenses each name theirs) → `tests/unit/map-element-persona-test.sh` ME1–ME6
+- §3 (the provider delivers the persona: Anthropic's `--agents`/`--agent`; `## Who you are` for a provider that cannot; every loop call; no persona outside a stage; a map element's declared persona) → `tests/unit/persona-agent-delivery-test.sh` PA1, PA2, PA5–PA8
 - §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; generic when none) → `tests/unit/persona-agent-delivery-test.sh` PA4; the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
 - §6 (the persona passes through the scope redaction, before the prompt's own) → `tests/unit/persona-agent-delivery-test.sh` PA10
 - §7 (the shipped templates pin plan, design, build) → `tests/unit/persona-agent-delivery-test.sh` PA9
