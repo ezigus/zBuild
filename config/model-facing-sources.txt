@@ -21,6 +21,7 @@ plugins/tool/shape-floor/plugin.sh
 scripts/lib/acceptance-reachability.sh
 scripts/lib/acceptance-negctl.sh
 scripts/lib/stage-prompt.sh printf
+scripts/lib/stage-previous-work.sh printf
 config/prompts/default-rules.md
 core/pipeline/input-resolve.sh printf
 core/router/route.sh

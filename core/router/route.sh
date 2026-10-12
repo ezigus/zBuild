@@ -325,10 +325,12 @@ _route_redact_prompt() {
     # it, rather than send a stage a prompt without its repository, its previous
     # work or its rules. A call outside any stage (no ZBUILD_PLUGIN_DIR) is not
     # a stage prompt and is not held to it.
+    _ROUTE_PROMPT_REFUSED=0
     if [[ -n "${ZBUILD_PLUGIN_DIR:-}" ]]; then
         declare -F stage_prompt_check >/dev/null 2>&1 \
             || source "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh" 2>/dev/null || true
         if ! stage_prompt_check "$input"; then
+            _ROUTE_PROMPT_REFUSED=1
             eb_emit_event "router.prompt.refused" "stage=${ZBUILD_CURRENT_STAGE:-}" \
                 "reason=not_in_contract_order" 2>/dev/null || true
             printf 'router: refusing the %s prompt — it is not in the contract order (ADR-067 §8): compose it with stage_prompt_compose\n' \
@@ -454,9 +456,12 @@ _route_ensure_redaction() {
         rm -f "$_tmp_in" "$_tmp_out"
         return 0
     fi
+    rm -f "$_tmp_in" "$_tmp_out"
+    # A stage prompt out of the contract order was refused and said so
+    # (router.prompt.refused); the manifest is not the cause.
+    [[ "${_ROUTE_PROMPT_REFUSED:-0}" == "1" ]] && return 2
     # Fail-closed: apply_scope_redaction refused (missing/empty manifest, no
     # override) or hit an I/O error. redaction.refused was already emitted there.
-    rm -f "$_tmp_in" "$_tmp_out"
     error "router redaction refused (fail-closed) — scope manifest missing/empty for run_id=$run_id stage=${stage:-<none>}"
     return 2
 }
@@ -1429,8 +1434,16 @@ route_to_model_loop() {
         local iter_redacted_file="${_loop_tmp}/iter-${iter}.redacted.txt"
         printf '%s\n' "$iter_prompt" > "$iter_prompt_file"
 
-        _route_redact_prompt "$iter_prompt_file" "$iter_redacted_file" "$iter" "$scope_allowlist" \
-            || cp "$iter_prompt_file" "$iter_redacted_file"
+        if ! _route_redact_prompt "$iter_prompt_file" "$iter_redacted_file" "$iter" "$scope_allowlist"; then
+            # A stage prompt out of the contract order is never sent (ADR-067
+            # §8): the stage's prompt is the same on every call, so no later
+            # call would be different. Misconfigured, not a model failure.
+            if [[ "${_ROUTE_PROMPT_REFUSED:-0}" == "1" ]]; then
+                _ROUTE_LOOP_TERMINATED_REASON="router_config_error"
+                _route_loop_clear_traps; return 1
+            fi
+            cp "$iter_prompt_file" "$iter_redacted_file"
+        fi
 
         local final_prompt; final_prompt="$(cat "$iter_redacted_file")"
 

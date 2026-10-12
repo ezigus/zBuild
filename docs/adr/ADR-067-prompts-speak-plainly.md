@@ -59,7 +59,7 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §8 (Rules: the own-job rule, read-only only for a non-writer, the notes file, the budget from the enforcing resolvers, how every stage works) → `tests/unit/stage-prompt-contract-test.sh` R1–R3
 - §8 (every stage gets the three blocks at dispatch, a map element its own; the engine refuses no stage over a missing output) → `tests/unit/stage-blocks-dispatch-test.sh` D1–D4
 - §8 (every model-calling stage sends a prompt in the contract order with the engine's blocks in their sections; every one has a composer) → `tests/unit/prompt-contract-every-stage-test.sh` E1–E3
-- §8 (the router adds nothing and refuses a stage prompt out of order; a call outside a stage is not held to it) → `tests/unit/router-prompt-contract-test.sh` RC1–RC3
+- §8 (the router adds nothing and refuses a stage prompt out of order, in a single call and in a loop, saying why; a call outside a stage is not held to it) → `tests/unit/router-prompt-contract-test.sh` RC1–RC5
 - §8 (every call of a stage's model loop sends the stage's prompt unchanged) → `tests/integration/route-loop-prompt-unchanged-test.sh` LP1, LP2
 - §8 (every plugin that calls a model declares it; every stage's notes file is listed for later stages and handed back to itself) → `tests/unit/save-as-you-go-test.sh` C1, C3
 - §8 (test-author checks the new value itself) → `tests/unit/prompt-contract-every-stage-test.sh` T1

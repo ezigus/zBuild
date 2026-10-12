@@ -15,6 +15,10 @@
 #                 and the refusal is an event
 #   RC3 [guard] : a model call made outside any stage (no dispatched plugin)
 #                 is not held to the stage contract
+#   RC4 [change]: a refused stage prompt is reported as what it is — not in the
+#                 contract order — and not also as a missing scope manifest
+#   RC5 [change]: a stage's model loop refuses such a prompt too: the model is
+#                 never called with it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -123,6 +127,33 @@ rc=0
 ( unset ZBUILD_PLUGIN_DIR; _route_redact_prompt "$IN.free" "$OUT.free" >/dev/null 2>&1 ) || rc=$?
 assert_eq "[RC3] a call outside any stage is not held to the contract" "0" "$rc"
 assert_contains "[RC3] … and its text is sent" "$(cat "$OUT.free" 2>/dev/null)" "just a task, no sections"
+
+# RC5: the loop does not send it either.
+mkdir -p "$TEST_TEMP_DIR/bin"
+printf '#!/usr/bin/env bash\necho called >> "%s"\nprintf %%s %s\n' "$TEST_TEMP_DIR/claude-calls" \
+    "'{\"result\":\"LOOP_COMPLETE\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}'" > "$TEST_TEMP_DIR/bin/claude"
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+printf 'just a task, no sections\n' > "$TEST_TEMP_DIR/loop-bad.txt"
+rc=0
+( export PATH="$TEST_TEMP_DIR/bin:$PATH" ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=rc-agent
+  route_to_model_loop T2 "$TEST_TEMP_DIR/loop-bad.txt" "$TEST_TEMP_DIR" 2 >/dev/null 2>&1 ) || rc=$?
+assert_eq "[RC5] the loop refuses an out-of-order stage prompt" "1" "$([[ "$rc" -ne 0 ]] && echo 1 || echo 0)"
+assert_eq "[RC5] …and the model is never called" "0" \
+    "$(wc -l < "$TEST_TEMP_DIR/claude-calls" 2>/dev/null | tr -d ' ' || echo 0)"
+
+# RC4: through route_to_model, the operator is told the real reason only.
+export ZBUILD_RUN_ID="rc4-run"
+: > "$ZBUILD_EVENTS_JSONL"
+rc=0
+_rc4_err="$( ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=rc-agent \
+    route_to_model T2 "just a task, no sections" 2>&1 >/dev/null )" || rc=$?
+assert_eq "[RC4] the call is refused" "1" "$([[ "$rc" -ne 0 ]] && echo 1 || echo 0)"
+assert_contains "[RC4] the operator is told it is not in the contract order" "$_rc4_err" "not in the contract order"
+if grep -qF "scope manifest" <<< "$_rc4_err"; then
+    assert_fail "[RC4] …and not that a scope manifest is missing" "$(grep -F 'scope manifest' <<< "$_rc4_err")"
+else
+    assert_pass "[RC4] …and not that a scope manifest is missing"
+fi
 
 cleanup_test_env
 print_test_results
