@@ -94,6 +94,52 @@ else
     assert_pass "[#1801/SPEC-9] orch_load_backend returns non-zero on missing backend"
 fi
 
+# ─── [#1801/SPEC-9] unreadable backend config fails as misconfigured ─────────
+print_test_section "[#1801/SPEC-9] unreadable backend manifest → misconfigured"
+
+# Create a backend whose manifest.yaml is present but unreadable (chmod 000).
+# contract.sh scans with find -type f, so the file is found; then grep for the
+# orchestrator-backend role fails (permission denied, suppressed), the entry is
+# skipped, and no backend is matched → misconfigured. This tests the
+# "whose config is unreadable" arm of the SPEC-9 requirement.
+_unreadable_plugins="$TEST_TEMP_DIR/unreadable-plugins"
+mkdir -p "$_unreadable_plugins/tool/bad-backend"
+cat > "$_unreadable_plugins/tool/bad-backend/manifest.yaml" <<'EOF'
+id: bad-backend
+name: Bad Backend
+kind: tool
+version: 0.0.1
+roles:
+  - orchestrator-backend
+aliases:
+  - alias: bad-backend
+EOF
+chmod 000 "$_unreadable_plugins/tool/bad-backend/manifest.yaml"
+
+_out4=""
+_out4="$(
+    ZBUILD_PLUGINS_ROOT="$_unreadable_plugins" \
+    bash -c '
+        source "'"$REPO_ROOT"'/scripts/lib/helpers.sh" 2>/dev/null || true
+        source "'"$REPO_ROOT"'/core/orch/contract.sh" 2>/dev/null || true
+        orch_load_backend "bad-backend" 2>&1
+        echo "exit:$?"
+    ' 2>&1)" || true
+
+# Restore so cleanup_test_env can remove it
+chmod 644 "$_unreadable_plugins/tool/bad-backend/manifest.yaml" 2>/dev/null || true
+
+_reported_exit4=""
+_reported_exit4="$(grep '^exit:' <<< "$_out4" | tail -1 | cut -d: -f2 || true)"
+
+# After the change: orch_load_backend must not return 0 for an unreadable config.
+if [[ "$_reported_exit4" == "0" ]]; then
+    assert_fail "[#1801/SPEC-9] unreadable backend config fails as misconfigured (non-zero rc)" \
+        "returned 0 — an unreadable backend config was silently accepted"
+else
+    assert_pass "[#1801/SPEC-9] unreadable backend config fails as misconfigured (non-zero rc)"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
