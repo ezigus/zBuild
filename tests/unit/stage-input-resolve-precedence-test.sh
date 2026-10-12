@@ -12,8 +12,9 @@
 #   1 [change] live and restored both present, different → the index names LIVE
 #   2 [change] the consumer READS the live body through the index (not just a path)
 #   3 [guard]  live absent → the restored copy is still offered (warm-start seam)
-#   4 [guard]  cycle feedback (iter >= 2) still outranks live — the cycle's own
-#              copy is the newest thing in the tree, not the live artifact
+#   4 [change] on a cycle's later try, a stage reads its producer's LATEST output,
+#              never the copy the orchestrator took when the try began (#1932's
+#              run: spec-coverage judged the design design had already replaced)
 #
 # Sibling of stage-input-resolve-test.sh, which is already over the 500-line
 # guideline; the fixture here is the minimum one producer / one consumer pair.
@@ -162,23 +163,30 @@ fi
 assert_contains "[SPEC-3-guard] with the INPUT_MISSING code" \
     "$(cat "$TEST_TEMP_DIR/d3.err" 2>/dev/null)" "INPUT_MISSING"
 
-# ─── SPEC-4: cycle feedback still outranks live ─────────────────────────────
-print_test_section "4. cycle feedback (iter >= 2) still outranks the live copy"
-mkdir -p "$RESTORED"
-printf 'LIVE-BODY-2095 written by this run\n'     > "$ART/design-doc.md"
-printf 'RESTORED-BODY-2095 from the prior run\n' > "$RESTORED/design-doc.md"
-printf 'FEEDBACK-BODY-2095 from the previous iteration\n' > "$FEEDBACK/design_doc.txt"
-ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FEEDBACK" \
-ZBUILD_RESTORED_ARTIFACTS_DIR="$RESTORED" _dispatch >/dev/null 2>&1
-assert_eq "[SPEC-4] design_doc resolves to the cycle-feedback copy" \
-    "$FEEDBACK/design_doc.txt" "$(_indexed)"
-assert_contains "[SPEC-4] and the consumer reads the feedback body" \
-    "$(_seen body)" "FEEDBACK-BODY-2095"
-# [guard] iter 1 has no feedback to prefer — live wins again, not restored.
-ZBUILD_CYCLE_ITER=1 ZBUILD_CYCLE_FEEDBACK_DIR="$FEEDBACK" \
-ZBUILD_RESTORED_ARTIFACTS_DIR="$RESTORED" _dispatch >/dev/null 2>&1
-assert_eq "[SPEC-4-guard] iter 1 resolves to LIVE, not restored" \
+# ─── SPEC-4: a later try reads the producer's latest output, not the try-start copy
+# #1932's run: design_verify_cycle's feedback edge (design → design) made the
+# orchestrator copy design.md into iter-2/feedback/design.txt as try 2 began.
+# Design then wrote a fixed design.md, and spec-coverage — which reads an input
+# of the same name — was handed the copy, so it judged the design design had
+# already replaced and the loop ran out of tries. The latest output of a stage
+# is what every later stage gets.
+print_test_section "4. on try 2 the consumer reads the producer's latest output"
+# shellcheck source=../../core/pipeline/cycle-orchestrator.sh
+source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+_TPL_STAGES=(pp-producer pp-consumer)   # sourcing the orchestrator resets the roster
+rm -rf "$RESTORED"
+printf 'TRY-1-BODY design as try 1 left it\n' > "$ART/design-doc.md"
+# The try boundary runs the orchestrator's own code for the template's self-edge.
+_CYCLE_TRAP_CYCLE_ID="cycle-x"
+_CYCLE_FEEDBACK=("pp-producer:design_doc|pp-producer:design_doc:false")
+ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl" \
+    _cycle_apply_feedback 2 "$STATE" >/dev/null 2>&1
+# Try 2: the producer replaces its output before the consumer runs.
+printf 'TRY-2-BODY design as try 2 rewrote it\n' > "$ART/design-doc.md"
+ZBUILD_CYCLE_ITER=2 _dispatch >/dev/null 2>&1
+assert_eq "[SPEC-4] design_doc resolves to the producer's live path on try 2" \
     "$ART/design-doc.md" "$(_indexed)"
+assert_contains "[SPEC-4] and the consumer reads try 2's body" "$(_seen body)" "TRY-2-BODY"
 
 cleanup_test_env
 print_test_results

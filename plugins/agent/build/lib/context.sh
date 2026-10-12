@@ -83,7 +83,7 @@ _build_read_prior_build_summary() {
 # producer has not run. It is NOT rendered into the prompt — the router's
 # STAGE SUMMARIES block already carries it (§9) — it feeds the mechanical
 # out-of-scope detection (_build_detect_out_of_scope_files → scope expansion).
-# #2124: until now this read $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt,
+# #2124: until now this read a per-iteration feedback copy (prior_test_assessment.txt),
 # a file no shipped template has written since #1979, so that detection had
 # been starved in production while its tests fed it through a stub.
 _build_read_prior_assessment() {

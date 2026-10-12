@@ -23,6 +23,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/write-ownership.sh"
 # shellcheck source=attempt-archive.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/attempt-archive.sh"
+# shellcheck source=../../scripts/lib/stage-dispatch-mark.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-dispatch-mark.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -186,6 +188,11 @@ plugin_hook_call() {
     shift 2
     local manifest="$plugin_dir/manifest.yaml"
     local plugin_sh="$plugin_dir/plugin.sh"
+
+    # ADR-068 §8: mark when this run of the stage started, FIRST — before any
+    # refusal below can return — so a run that writes no result, refused or
+    # not, is never credited with the previous run's (stage_result_is_current).
+    [[ "$hook_name" == "run" ]] && stage_dispatch_mark "${2:-}" "${1:-}"
 
     if [[ ! -f "$plugin_sh" ]]; then
         error "plugin_hook_call: plugin.sh missing: $plugin_sh"

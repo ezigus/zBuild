@@ -77,8 +77,8 @@ schedule.
 
 **Consequence, deliberately accepted.** Nothing clears a `runtime/` file
 mid-run. A `.pgid` written in cycle iteration 1 is still present at iteration 5
-and at exit, and neither `_cycle_pre_iter_cleanup` (which deletes only
-manifest-declared primary outputs) nor anything else removes it. A reader must
+and at exit, and nothing removes it (the loop's per-iteration deletion of
+primary outputs was itself removed by ADR-068 §8). A reader must
 therefore verify liveness before acting on a recorded PID or process group —
 PID reuse is real and this ADR does not prevent it.
 

@@ -21,15 +21,21 @@ _CYCLE_TRAP_CYCLE_ID="build-test"
 STATE_DIR="$TEST_TEMP_DIR/state"
 mkdir -p "$STATE_DIR/artifacts/test"
 
-# T1: from-artifact present + required=false → copy succeeds, returns 0
+# T1: the engine keeps no copy of a stage's output between tries. A feedback
+# edge only says the output may flow back; the consumer reads the producer's
+# latest output (#1932's run judged a design that had already been replaced).
 echo "test artifact" > "$STATE_DIR/artifacts/test/primary.txt"
 _CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:false")
+unset ZBUILD_CYCLE_FEEDBACK_DIR
 set +e; _cycle_apply_feedback 2 "$STATE_DIR"; rc=$?; set -e
-assert_eq "feedback copy succeeds → rc=0" "0" "$rc"
-assert_file_exists "feedback file copied to iter-2/feedback dir" \
-    "$STATE_DIR/cycle-build-test/iter-2/feedback/prior_test_result.txt"
-assert_eq "ZBUILD_CYCLE_FEEDBACK_DIR exported" \
-    "$STATE_DIR/cycle-build-test/iter-2/feedback" "$ZBUILD_CYCLE_FEEDBACK_DIR"
+assert_eq "present from-artifact → rc=0" "0" "$rc"
+if [[ -e "$STATE_DIR/cycle-build-test/iter-2/feedback" ]]; then
+    assert_fail "[ADR-021 §3] no feedback copy is made" \
+        "$(find "$STATE_DIR/cycle-build-test" -type f | tr '\n' ' ')"
+else
+    assert_pass "[ADR-021 §3] no feedback copy is made"
+fi
+assert_eq "[ADR-021 §3] no feedback dir is exported" "" "${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
 
 # T2: from-artifact MISSING + required=true → rc=1 + emits cycle.feedback.missing
 rm -f "$STATE_DIR/artifacts/test/primary.txt"
@@ -62,21 +68,5 @@ if grep -qF "⚠" <<< "$err5"; then
 else
     assert_pass "[SPEC-5] optional absent → no ⚠ banner on stderr"
 fi
-
-# T6: SPEC-6 guard — cp-failure path always emits cycle.feedback.missing + rc=1
-# regardless of required flag (structural error, not an expected absence).
-STATE_DIR6="$TEST_TEMP_DIR/state6"
-mkdir -p "$STATE_DIR6/artifacts/test"
-echo "cp test artifact" > "$STATE_DIR6/artifacts/test/primary.txt"
-_CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:false")
-fb_dir6="$STATE_DIR6/cycle-build-test/iter-7/feedback"
-mkdir -p "$fb_dir6"
-chmod 000 "$fb_dir6"
-: > "$ZBUILD_EVENTS_JSONL"
-set +e; _cycle_apply_feedback 7 "$STATE_DIR6"; rc=$?; set -e
-chmod 755 "$fb_dir6"
-assert_eq "[SPEC-6] cp-failure → rc=1 (fail-closed regardless of required)" "1" "$rc"
-assert_contains "[SPEC-6] cp-failure emits cycle.feedback.missing (reason=copy_failed)" \
-    "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.missing"
 
 print_test_results

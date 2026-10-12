@@ -106,11 +106,13 @@ assert_contains "[SPEC-4] an undated prior design is said to be undated" "$(cat 
 
 print_test_section "SPEC-5: an intra-cycle refinement is not told the repository moved"
 unset ZBUILD_RESTORED_ARTIFACTS_DIR
-FB="$TEST_TEMP_DIR/fb"; mkdir -p "$FB"
-printf '# Design\n\nfrom this run\n\n```scope\nfoo.sh\n```\n' > "$FB/design.txt"
+# No feedback copy (the engine keeps none): the prior design is design's own
+# latest output — this run's design.md, where design wrote it.
+unset ZBUILD_CYCLE_FEEDBACK_DIR
 AD4="$FIX/state4/artifacts"; mkdir -p "$AD4"; cp "$AD/plan.json" "$AD4/"; printf 'scope: all\n' > "$FIX/state4/scope-manifest.md"
+printf '# Design\n\nfrom this run\n\n```scope\nfoo.sh\n```\n' > "$AD4/design.md"
 export MOCK_DESIGN_WRITE_PATH="$AD4/design.md"
-( cd "$FIX" && ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB" _design_stage_run_inner "$FIX/state4/scope-manifest.md" "$AD4/plan.json" "$AD4/design.md" "$AD4" >/dev/null 2>&1 ) || true
+( cd "$FIX" && ZBUILD_CYCLE_ITER=2 _design_stage_run_inner "$FIX/state4/scope-manifest.md" "$AD4/plan.json" "$AD4/design.md" "$AD4" >/dev/null 2>&1 ) || true
 P4="$AD4/design-prompt.txt"
 assert_contains "[SPEC-5] the in-run prior design is carried into the prompt" "$(cat "$P4")" "from this run"
 if grep -qF 'SINCE THE PRIOR DESIGN' "$P4"; then
@@ -124,6 +126,23 @@ else
     assert_pass "[SPEC-5] an in-run prior design is not called undated"
 fi
 assert_contains "[SPEC-5] it is framed as this run's own earlier pass to refine" "$(cat "$P4")" "earlier in this run"
+
+print_test_section "SPEC-5b: a re-entered loop's first try still refines this run's design"
+# #1932's round two: the outer loop went round, the inner loop restarted at try 1,
+# and design was told its own round-one design was "a previous attempt … the
+# repository has moved".
+AD5="$FIX/state5/artifacts"; mkdir -p "$AD5"; cp "$AD/plan.json" "$AD5/"; printf 'scope: all\n' > "$FIX/state5/scope-manifest.md"
+printf '# Design\n\nround one of this run\n\n```scope\nfoo.sh\n```\n' > "$AD5/design.md"
+export MOCK_DESIGN_WRITE_PATH="$AD5/design.md"
+( cd "$FIX" && ZBUILD_CYCLE_ITER=1 _design_stage_run_inner "$FIX/state5/scope-manifest.md" "$AD5/plan.json" "$AD5/design.md" "$AD5" >/dev/null 2>&1 ) || true
+P5="$AD5/design-prompt.txt"
+assert_contains "[SPEC-5b] round one's design is carried into the prompt" "$(cat "$P5")" "round one of this run"
+assert_contains "[SPEC-5b] framed as this run's own earlier pass" "$(cat "$P5")" "earlier in this run"
+if grep -qF 'The repository has moved' "$P5"; then
+    assert_fail "[SPEC-5b] not told the repository moved" "present"
+else
+    assert_pass "[SPEC-5b] not told the repository moved"
+fi
 
 cleanup_test_env
 print_test_results

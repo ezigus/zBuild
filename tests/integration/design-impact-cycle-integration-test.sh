@@ -15,7 +15,7 @@
 #       bespoke reader and its section were retired; the summaries block is
 #       now the single splice point.
 #   T4: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
-#       when ZBUILD_CYCLE_FEEDBACK_DIR/design.txt is present
+#       from design's own latest design.md (ADR-068 §8: no copy is kept)
 #   T5: _design_read_prior_design returns empty outside cycle context
 set -euo pipefail
 
@@ -255,18 +255,14 @@ else
 fi
 
 # ─── T4: design iter 2 prompt contains PRIOR DESIGN (self-feedback) ──────────
-T4_FB_DIR="$TEST_TEMP_DIR/t4-feedback-iter2"
-mkdir -p "$T4_FB_DIR"
-printf '# Design v1\n```scope\nplugins/agent/design/plugin.sh\n```\n' \
-    > "$T4_FB_DIR/design.txt"
-# No prior_impact_feedback — only self-feedback edge fires.
-
 export ZBUILD_CYCLE_ITER=2
-export ZBUILD_CYCLE_FEEDBACK_DIR="$T4_FB_DIR"
 
 T4_STATE="$TEST_TEMP_DIR/t4-state"
 T4_ARTS="$T4_STATE/artifacts"
 mkdir -p "$T4_ARTS"
+# Design's try-1 output, where design wrote it.
+printf '# Design v1\n```scope\nplugins/agent/design/plugin.sh\n```\n' \
+    > "$T4_ARTS/design.md"
 cat > "$T4_STATE/scope-manifest.md" <<'EOF'
 + ./
 EOF

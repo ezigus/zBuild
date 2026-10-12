@@ -55,7 +55,6 @@ _CYCLE_STAGES=(build test)
 _CYCLE_TRAP_CYCLE_ID="cyc1"
 # Avoid the trap installer noise — we only care about per-iter dispatch.
 _cycle_install_traps() { :; }
-_cycle_pre_iter_cleanup() { :; }
 
 # Ensure caller environment has ZBUILD_CURRENT_STAGE unset BEFORE the call,
 # so restore-after-loop semantics can be asserted.

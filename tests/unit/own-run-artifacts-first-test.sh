@@ -12,21 +12,21 @@
 #     nothing" — the Sept 30 run's build-summary.json — because the prior-output
 #     reader checks the restored copy BEFORE this run's own.
 #
-# O1 [change] input resolution: live missing, this run archived it → this
-#             run's newest archived copy, not the restored one
+# O1 [change] input resolution never reads the attempt record: it is the run's
+#             record for people, not a stage's output (ADR-068 §6). The engine
+#             no longer deletes a live output, so "live cleared" — #1844's case —
+#             cannot happen; a missing live output is one this run never wrote
 # O2 [guard]  live present → live
 # O3 [guard]  this run never produced it → the restored copy (resume still works)
-# O4 [change] the newest of several archived attempts wins
 # O5 [change] prior-output reader: this run's live copy beats the restored one
-# O6 [change] prior-output reader: live cleared, this run archived it → archived
+# O6 [change] prior-output reader never reads the attempt record either
 # O7 [guard]  prior-output reader: nothing of this run's → the restored copy
 # O8 [guard]  a file older than this run's start (a reused state dir's leftover)
 #             is not this run's: the restored copy wins over it
 # O10 [change] input resolution: a LIVE file older than this run's start (a
 #             reused state dir's leftover) is not this run's either (review on
 #             #2253)
-# O11 [change] an output declared in a SUBFOLDER of the artifact dir still finds
-#             this run's archived copy (review on #2253)
+# O11 [change] nor for an output declared in a SUBFOLDER of the artifact dir
 # O9 [guard]  an archived copy older than this run's start is ignored too
 set -uo pipefail
 
@@ -60,7 +60,7 @@ print_test_section "O1-O4: input resolution"
 _archive design 1 design.md "THIS RUN design round 1"
 _archive design 3 design.md "THIS RUN design round 3"
 _archive design 2 design.md "THIS RUN design round 2"
-assert_eq "[O1/O4] live cleared → this run's newest archived design" "THIS RUN design round 3" \
+assert_eq "[O1] live missing → not the attempt record" "OLD RUN design" \
     "$(cat "$(_inputs_effective_path "$ART/design.md" design)" 2>/dev/null)"
 printf 'THIS RUN live design\n' > "$ART/design.md"
 assert_eq "[O2] live present → live" "THIS RUN live design" \
@@ -76,7 +76,7 @@ assert_eq "[O5] this run's live copy beats the restored one" "THIS RUN build sum
     "$(_read_prior_output build-summary.json)"
 rm -f "$ART/build-summary.json"
 _archive build 1 build-summary.json "THIS RUN archived build summary"
-assert_eq "[O6] live cleared → this run's archived copy" "THIS RUN archived build summary" \
+assert_eq "[O6] live missing → not the attempt record" "OLD RUN build summary" \
     "$(_read_prior_output build-summary.json)"
 printf 'OLD RUN impact\n' > "$RESTORED/impact.json"
 assert_eq "[O7] nothing of this run's → the restored copy" "OLD RUN impact" \
@@ -104,7 +104,7 @@ print_test_section "O11: an output in a subfolder"
 export ZBUILD_STATE_DIR="$S" ZBUILD_ARTIFACT_DIR="$ART" ZBUILD_RESTORED_ARTIFACTS_DIR="$RESTORED"
 mkdir -p "$ART/sub"; printf 'OLD RUN nested\n' > "$RESTORED/nested.json"
 _archive design 4 nested.json "THIS RUN nested"
-assert_eq "[O11] a subfolder output finds this run's archived copy" "THIS RUN nested" \
+assert_eq "[O11] a subfolder output → not the attempt record" "OLD RUN nested" \
     "$(cat "$(_inputs_effective_path "$ART/sub/nested.json" nested)" 2>/dev/null)"
 
 cleanup_test_env

@@ -184,24 +184,20 @@ _design_gate_failed() {
     [[ "$v" == "fail" || "$v" == "failed" ]]
 }
 
-# design_impact_cycle self-feedback (mirrors #773 lesson): design's own prior
-# design.md body to refine rather than re-create.
-# ADR-050 (#1581): Tier 1 = intra-cycle (iter≥2 prior_design.txt); Tier 2 = restored
-# artifact from a prior run. No state-dir fallback: ./state may hold the CURRENT
-# run's design.md, not a prior, and returning it outside a cycle would be wrong.
+# Design's prior design, to refine rather than re-create: its own latest
+# design.md when this run has written one, else the restored artifact from a
+# prior run (ADR-050). The engine keeps no copy between tries (ADR-021 §3):
+# design's latest output is the file it wrote. A design.md older than this run's
+# start is a reused state dir's leftover, not this run's (#2252).
 # _design_prior_design_path prints the path; the reader cats it. #2326: the
 # path is what says whether the design is an earlier run's.
 _design_prior_design_path() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-
-    # Tier 1: intra-cycle self-feedback (iter >= 2)
-    if [[ -n "$iter" && -n "$fb_dir" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
-        local cycle_f="$fb_dir/design.txt"
-        [[ -s "$cycle_f" ]] && { printf '%s' "$cycle_f"; return 0; }
+    local own="${1:-}"
+    if [[ -n "$own" && -s "$own" ]] && { ! declare -F attempt_is_this_run >/dev/null 2>&1 \
+            || attempt_is_this_run "$own"; }; then
+        printf '%s' "$own"; return 0
     fi
 
-    # Tier 2: cross-run restored artifact
     local restored_dir="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
     if [[ -n "$restored_dir" ]]; then
         local restored_f="$restored_dir/design.md"
@@ -211,7 +207,7 @@ _design_prior_design_path() {
     return 0
 }
 _design_read_prior_design() {
-    local f; f="$(_design_prior_design_path)"
+    local f; f="$(_design_prior_design_path "${1:-}")"
     [[ -n "$f" ]] && cat "$f" 2>/dev/null
     return 0
 }
@@ -513,14 +509,13 @@ DESIGN_PROMPT
     # ADR-050 (#1826): check ZBUILD_STAGE_INPUTS for the 'design' input first —
     # input-resolve.sh already consolidates Tier-1 and Tier-2 when writing the
     # index, so we don't need to run the tier-1/tier-2 logic separately. Fall
-    # back to _design_prior_design_path when the index is absent or has no entry
-    # so existing test fixtures that set ZBUILD_CYCLE_FEEDBACK_DIR directly work.
+    # back to _design_prior_design_path when the index is absent or has no entry.
     local _si_design_path=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         _si_design_path="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
     if [[ -z "$_si_design_path" || ! -s "$_si_design_path" ]]; then
-        _si_design_path="$(_design_prior_design_path 2>/dev/null || true)"
+        _si_design_path="$(_design_prior_design_path "$output_design_md" 2>/dev/null || true)"
     fi
     [[ -n "$_si_design_path" ]] && _prior_design_body="$(cat "$_si_design_path" 2>/dev/null || true)"
     if [[ -n "$_prior_design_body" ]]; then
@@ -529,16 +524,16 @@ DESIGN_PROMPT
         # what moved (the block below); the model re-checks every claim
         # against the tree as it is now. "Refine, do not recreate" told it to
         # trust the prior — on #1841 that carried a retired ADR's hook through
-        # weeks of runs. A design written EARLIER IN THIS RUN (an intra-cycle
-        # refinement, iter >= 2) is not that: the tree has not moved, and it
-        # is refined as before (review on #2173).
-        if [[ "${ZBUILD_CYCLE_ITER:-1}" =~ ^[0-9]+$ && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 && -s "${ZBUILD_CYCLE_FEEDBACK_DIR:-/nonexistent}/design.txt" ]]; then
+        # weeks of runs. A design written EARLIER IN THIS RUN — any try, any
+        # round of the loop (#1932's round two was told otherwise) — is not
+        # that: the tree has not moved, and it is refined as before (review
+        # on #2173).
+        if ! prior_output_is_earlier_run "$_si_design_path"; then
             printf '\n### PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)\n' >> "$prompt_input_file"
         else
             printf '\n### PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)\n' >> "$prompt_input_file"
             # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
-            prior_output_is_earlier_run "$_si_design_path" && \
-                printf 'This design is %s.\n' "$ZB_EARLIER_RUN_LABEL" >> "$prompt_input_file"
+            printf 'This design is %s.\n' "$ZB_EARLIER_RUN_LABEL" >> "$prompt_input_file"
             printf 'The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
             _design_prior_drift_block >> "$prompt_input_file"
         fi

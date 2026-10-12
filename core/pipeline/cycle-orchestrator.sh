@@ -611,8 +611,7 @@ _cycle_stash_predicate() {
 # ─── _cycle_render_feedback_digest <iter> <state_dir> (#833) ─────────────────
 # Builds the cycle INPUT-banner body: a comma-joined digest of the feedback
 # edges consumed this iter. For each edge in _CYCLE_FEEDBACK[] (same parse as
-# _cycle_apply_feedback), inspect $state_dir/cycle-<id>/iter-<iter>/feedback/
-# <to_field>.txt:
+# _cycle_apply_feedback), inspect the producer's latest output (no copy is kept):
 #   present       → "<to_field>(<digest>)"  (verdict from JSON, else ~40-char
 #                    head; a source stage that declares
 #                    capabilities.feedback_count_field also appends ", N changes")
@@ -633,7 +632,6 @@ _cycle_render_feedback_digest() {
         _cycle_render_summaries_digest "$state_dir"
         return 0
     fi
-    local fb_dir="$state_dir/cycle-${_CYCLE_TRAP_CYCLE_ID}/iter-${iter}/feedback"
     local -a parts=()
     local rec
     local _fbd_plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
@@ -646,7 +644,8 @@ _cycle_render_feedback_digest() {
         local rest="${to_part#*:}"
         local to_field="${rest%%:*}"
         local required="${rest#*:}"
-        local f="$fb_dir/${to_field}.txt"
+        local f
+        f="$(_cycle_resolve_from_path "$state_dir" "$from_stage" "${from_part#*:}")"
         if [[ -f "$f" ]]; then
             local content digest
             content="$(cat "$f" 2>/dev/null || true)"
@@ -1084,10 +1083,12 @@ _cycle_detect_divergence() {
 }
 
 # ─── _cycle_apply_feedback <iter_next> ───────────────────────────────────────
-# Wires file-path feedback for the NEXT iteration. Layout:
-#   ${state_dir}/cycle-<id>/iter-<N>/feedback/<to_field>.txt
-# FAIL LOUDLY (emit cycle.feedback.missing) when from-field artifact missing.
-# Never substitute empty string silently.
+# Checks the cycle's feedback edges before the NEXT iteration. An edge only
+# declares that a stage's output flows back to an earlier stage; the consumer
+# reads the producer's latest output where the producer wrote it. Nothing is
+# copied: a copy taken as a try begins goes stale the moment its producer
+# rewrites the output in that try (#1932's run; ADR-021 §3, ADR-068 §6).
+# FAIL LOUDLY (emit cycle.feedback.missing) when a required output is missing.
 # ─── _cycle_resolve_from_path <state_dir> <from_stage> <from_output> ─────────
 # #511 Pin 2: resolve the feedback source path using the from-stage manifest's
 # outputs[id==<from_output>].path entry (which already supports ${artifact_dir}
@@ -1188,9 +1189,6 @@ _cycle_resolve_scope_expansion() {
 
 _cycle_apply_feedback() {
     local iter_next="$1" state_dir="$2"
-    local fb_dir="$state_dir/cycle-${_CYCLE_TRAP_CYCLE_ID}/iter-${iter_next}/feedback"
-    mkdir -p "$fb_dir" 2>/dev/null || true
-    export ZBUILD_CYCLE_FEEDBACK_DIR="$fb_dir"
 
     # ADR-034 / #846: wire targeted-test artifacts for the next iter's test stage.
     # ZBUILD_TEST_RED_SET  → path to test-red-set.json from the just-completed run.
@@ -1215,21 +1213,6 @@ _cycle_apply_feedback() {
 
     [[ ${#_CYCLE_FEEDBACK[@]} -eq 0 ]] && return 0
 
-    # ADR-029 G1 (#814): per-feedback-field context budget. Defaults to 50000
-    # chars (~12K tokens at 4 chars/token); operators override via env knob
-    # ZBUILD_CYCLE_MAX_FIELD_CHARS=<n>. Strategy is tail_truncate (keep the
-    # most-recent tail; drop the oldest head — accumulating feedback artifacts
-    # tend to grow at the head as agents prepend new diagnostic context).
-    # The yaml-level `context_budget.{max_prompt_chars,compress_strategy}`
-    # schema declared in ADR-029 G1 is deferred to a follow-up issue; this
-    # env-knob path covers the dogfood-observed bloat case (a single
-    # prior_test_assessment that ballooned across iters) without needing
-    # the template-loader awk parser to grow new keys.
-    local _g1_max_field_chars="${ZBUILD_CYCLE_MAX_FIELD_CHARS:-50000}"
-    if [[ ! "$_g1_max_field_chars" =~ ^[0-9]+$ ]] || [[ "$_g1_max_field_chars" -le 0 ]]; then
-        _g1_max_field_chars=50000
-    fi
-
     local rec
     for rec in "${_CYCLE_FEEDBACK[@]}"; do
         # "from_stage:from_output|to_stage:to_field:required"
@@ -1243,66 +1226,21 @@ _cycle_apply_feedback() {
         local required="${rest#*:}"
         local src
         src="$(_cycle_resolve_from_path "$state_dir" "$from_stage" "$from_output")"
-        local dst="$fb_dir/${to_field}.txt"
-        if [[ ! -e "$src" ]]; then
-            if [[ "$required" == "true" ]]; then
-                _cycle_emit "cycle.feedback.missing" \
-                    "iter_next=$iter_next" "from_stage=$from_stage" \
-                    "from_output=$from_output" "to_stage=$to_stage" \
-                    "to_field=$to_field" "required=$required" \
-                    "src=$src"
-                return 1
-            else
-                _cycle_emit "cycle.feedback.absent" \
-                    "iter_next=$iter_next" "from_stage=$from_stage" \
-                    "from_output=$from_output" "to_stage=$to_stage" \
-                    "to_field=$to_field" "required=$required" \
-                    "src=$src"
-                continue
-            fi
-        fi
-        if ! cp "$src" "$dst" 2>/dev/null; then
+        [[ -e "$src" ]] && continue
+        if [[ "$required" == "true" ]]; then
             _cycle_emit "cycle.feedback.missing" \
                 "iter_next=$iter_next" "from_stage=$from_stage" \
-                "to_field=$to_field" "reason=copy_failed"
+                "from_output=$from_output" "to_stage=$to_stage" \
+                "to_field=$to_field" "required=$required" \
+                "src=$src"
             return 1
         fi
-
-        # ADR-029 G1: if the copied feedback file exceeds the per-field
-        # budget, tail_truncate it in-place. The tail (last N chars) is
-        # the most-recent content; prepend a sentinel marker so the
-        # downstream agent can see truncation occurred (and won't be
-        # misled into thinking that's the entire history).
-        local _g1_size
-        _g1_size="$(wc -c 2>/dev/null < "$dst" | tr -d ' ' || echo 0)"
-        if [[ "$_g1_size" =~ ^[0-9]+$ ]] && [[ "$_g1_size" -gt "$_g1_max_field_chars" ]]; then
-            local _g1_marker="… [ADR-029 G1 tail_truncate: dropped $((_g1_size - _g1_max_field_chars)) leading chars; kept tail of $_g1_max_field_chars / $_g1_size] …"
-            # Next to $dst, which is already state-rooted (ADR-058 §1 area 1).
-            # `mktemp -t` resolves to $TMPDIR — /tmp on every Linux runner, and
-            # on macOS the -t form ignores $TMPDIR entirely for /var/folders, so
-            # not even C10's run-scoped TMPDIR relocates it. This file holds RAW
-            # model-authored feedback, the disclosure class §5 keeps inside the
-            # job folder, and it runs BETWEEN cycle iterations where the dispatch
-            # sweep can never see it. Siting it beside $dst also makes the `mv`
-            # below a same-filesystem rename instead of a cross-device copy.
-            local _g1_tmp; _g1_tmp="$(mktemp "${dst}.g1-truncate.XXXXXX" 2>/dev/null || true)"
-            if [[ -n "$_g1_tmp" ]]; then
-                printf '%s\n' "$_g1_marker" > "$_g1_tmp"
-                tail -c "$_g1_max_field_chars" "$dst" >> "$_g1_tmp" 2>/dev/null || true
-                mv "$_g1_tmp" "$dst" 2>/dev/null || rm -f "$_g1_tmp"
-                _cycle_emit "cycle.context.compressed" \
-                    "iter_next=$iter_next" "to_field=$to_field" \
-                    "from_stage=$from_stage" "from_output=$from_output" \
-                    "original_chars=$_g1_size" "final_chars=$_g1_max_field_chars" \
-                    "strategy=tail_truncate"
-            fi
-        fi
+        _cycle_emit "cycle.feedback.absent" \
+            "iter_next=$iter_next" "from_stage=$from_stage" \
+            "from_output=$from_output" "to_stage=$to_stage" \
+            "to_field=$to_field" "required=$required" \
+            "src=$src"
     done
-    # #511 Pin 9: atomic `.complete` sentinel — written AFTER all feedback
-    # files are copied. On resume entry to iter N+1, missing `.complete`
-    # signals "re-run _cycle_apply_feedback" (kill between mkdir and cp left
-    # partial dir, mitigating silent-failure finding #9).
-    : > "$fb_dir/.complete" 2>/dev/null || true
     return 0
 }
 
@@ -1400,43 +1338,6 @@ _cycle_state_write_member_atomic() {
 # `cycle_dispatch_stage` is declared (test harness OR runner), call it; else
 # emit cycle.config.invalid and fail. Returns aggregate failure_count.
 # Sets globals: _CYCLE_LAST_VERDICTS_BLOB (JSON), _CYCLE_LAST_FAILURE_COUNT.
-# ─── _cycle_pre_iter_cleanup (#511 Pin 8) ────────────────────────────────────
-# Before EACH cycle iter dispatch, delete per-cycle-stage primary outputs so a
-# stale prior-iter artifact cannot silently satisfy `until: verdict==pass`
-# (silent-failure finding #2). Reads each stage's manifest primary-output path.
-# #2117: with a third argument, clears ONLY that member — the cycle clears each
-# member right before dispatching it, so a member whose verdict is being REUSED
-# from the previous iteration keeps the artifact that verdict lives in (a later
-# member reads it: gate-aggregator reads test-results.json).
-_cycle_pre_iter_cleanup() {
-    local iter="$1" state_dir="$2" only="${3:-}"
-    local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
-    declare -F manifest_graph_collect >/dev/null 2>&1 || return 0
-    declare -F manifest_graph_primary_output >/dev/null 2>&1 || return 0
-    local s
-    for s in "${_CYCLE_STAGES[@]}"; do
-        [[ -n "$only" && "$s" != "$only" ]] && continue
-        local manifest
-        manifest="$(manifest_graph_collect "$plugins_root" "$s" 2>/dev/null || true)"
-        [[ -z "$manifest" || ! -f "$manifest" ]] && continue
-        local row
-        row="$(manifest_graph_primary_output "$manifest" 2>/dev/null || true)"
-        [[ -z "$row" ]] && continue
-        # row: id|type||required|path
-        local p="${row##*|}"
-        [[ -z "$p" ]] && continue
-        local resolved="$p"
-        resolved="${resolved//\$\{artifact_dir\}/$state_dir/artifacts}"
-        resolved="${resolved//\$\{state_dir\}/$state_dir}"
-        if [[ -f "$resolved" ]]; then
-            rm -f "$resolved" 2>/dev/null || true
-            _cycle_emit "cycle.artifacts.cleared" "iter=$iter" "stage=$s" \
-                "path=$resolved"
-        fi
-    done
-    return 0
-}
-
 # ─── #2117: an unchanged tree is not re-verified ────────────────────────────
 # _cycle_tree_fingerprint — HEAD plus a digest of `git status --porcelain`
 # (tracked edits AND untracked files); empty when not in a git tree, which
@@ -1538,8 +1439,8 @@ _cycle_iter_dispatch() {
         return 1
     fi
 
-    # #511 Pin 8: per-iter cleanup BEFORE dispatch — per member since #2117
-    # (see _cycle_pre_iter_cleanup), so a reused member keeps its artifact.
+    # A member's output is never deleted before it runs again: a result its run
+    # did not rewrite is read as absent (_verdict_read_result, ADR-068 §6).
     local _state_dir; _state_dir="$(dirname "$state_file")"
     local _reuse_rest=0
 
@@ -1629,7 +1530,6 @@ _cycle_iter_dispatch() {
                 "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
             continue
         fi
-        _cycle_pre_iter_cleanup "$iter" "$_state_dir" "$s"
         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
