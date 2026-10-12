@@ -506,3 +506,48 @@ A word off the list, a missing `outcome` or a missing `reason` is a broken resul
 
 **Enforced by** `tests/unit/result-outcome-test.sh` O1–O9 (O2b: `stage_result_add`); `tests/unit/result-outcome-readers-test.sh` R1–R5 (readers; the template tests only pass/fail); `tests/unit/contract2-retired-test.sh` V1–V5 (contract 2, the verdict words and their tooling are gone).
 
+### Amendment (2026-10-12, #1944) — §11: per-run wall-clock limit
+
+A run has no upper bound on its lifetime without this section. A long-running stage or a
+deadlock between dispatches can run indefinitely. CI job limits are platform-specific; the
+engine must enforce its own ceiling.
+
+**§11 — run-level wall-clock limit.**
+
+- The engine resolves a single per-run limit (`_runner_resolve_run_limit_s` in
+  `scripts/lib/stage-limits.sh`) using this precedence order:
+  1. Template `max_run_s:` key (top-level YAML) — read by `template_max_run_s()` in
+     `core/pipeline/template.sh`.
+  2. `ZBUILD_MAX_RUN_S` environment variable.
+  3. Engine default: **20700 seconds** (≈ 5 h 45 m).
+  A non-integer or non-positive value in either source (1) or (2) is a misconfigured
+  disposition: the runner exits 1 before any stage runs.
+- The limit source is never platform-specific. No reference to `GITHUB_ACTIONS`, `CI`,
+  `TRAVIS`, `CIRCLECI`, `RUNNER_OS`, or similar variables appears in the limit-resolution
+  code.
+- A background watchdog subshell is armed in `main()` after the traps are installed. It
+  sleeps for the resolved limit, writes `timed_out` to the abort sentinel
+  (`_zbuild_arm_abort_sentinel timed_out`), then sends SIGTERM to the runner's process
+  group. After a 10-second grace, it sends SIGKILL to the runner's child processes (not
+  the runner itself), allowing the runner's deferred SIGTERM trap to fire and exit with
+  rc=1. The EXIT trap kills the watchdog on clean exit.
+- A timed-out run ends with pipeline status `timed_out` (ADR-006), a `pipeline.end`
+  event carrying `status=timed_out`, the in-flight stage name, and `limit_s`. The
+  `always_run` stages (release, persist) still execute via the EXIT trap's
+  `_runner_dispatch_always_run` call.
+- A resumed run receives a fresh watchdog armed from its own wall-clock start — the
+  original run's elapsed time is not carried forward. `get_resume_recommendation`
+  returns `manual_resume_only` for `timed_out` state.
+
+## Enforced by
+
+- §11: limit resolution precedence (template > env > 20700), misconfigured validation →
+  `tests/unit/run-limit-precedence-test.sh`
+- §11: run ends `timed_out`, `pipeline.end` event carries stage + `limit_s`, watchdog
+  fires between dispatches, TERM-ignoring stage reaped within TERM+10 s, always-run
+  stages execute →
+  `tests/integration/run-timed-out-test.sh`
+- §11: watchdog reaped on clean exit, pipeline status unchanged after normal run →
+  `tests/unit/run-watchdog-clean-exit-test.sh`
+- §11: resumed run gets fresh watchdog; `get_resume_recommendation(timed_out)` =
+  `manual_resume_only` → `tests/integration/resume-after-run-timeout-test.sh`

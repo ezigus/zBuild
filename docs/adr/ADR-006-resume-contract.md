@@ -159,6 +159,7 @@ The pipeline status enum now includes:
 | `aborted` | runner / operator | explicit cancellation |
 | `failed` | runner | terminal failure after at least one stage ran |
 | `preflight_failed` | contract-validator (ADR-020) | rejected before any stage; no resume target |
+| `timed_out` | runner watchdog (ADR-054 §11) | run exceeded per-run wall-clock limit; resumable |
 
 Pipelines in `preflight_failed` status are NOT resumable; the runner's
 resume policy refuses to restart them (the contract violation is in the

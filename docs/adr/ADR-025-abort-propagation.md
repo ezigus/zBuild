@@ -362,7 +362,7 @@ test, no event-schema changes in this PR. Only the ADR text.
 
 ADR-054 §4 makes exit codes binary everywhere, the engine's own paths included. This ADR's two layers carried the abort *as* an rc (130, then 143, and later 6, 9 and 10 joined), and every reader mapped those numbers its own way — `cycle_orchestrator_run` collapsed a nested `cycle_abort` into `config_invalid` (#1860). The layers stay; what they carry changes.
 
-- **An abort is recorded once, as a word:** `sigint`, `sigterm`, `cycle_abort`, `llm_unavailable`, `llm_rate_limited` or `scope_too_large`. It is held in the process (`_ZB_ABORT_REASON`) and written into the sentinel `${ZBUILD_STATE_DIR}/.abort.signal`, which still crosses subshells and env scrubs (ADR-024). The first recorded abort wins. An empty sentinel reads as `sigint`.
+- **An abort is recorded once, as a word:** `sigint`, `sigterm`, `cycle_abort`, `llm_unavailable`, `llm_rate_limited`, `scope_too_large`, or `timed_out`. It is held in the process (`_ZB_ABORT_REASON`) and written into the sentinel `${ZBUILD_STATE_DIR}/.abort.signal`, which still crosses subshells and env scrubs (ADR-024). The first recorded abort wins. An empty sentinel reads as `sigint`. The run-level watchdog writes `timed_out` before sending SIGTERM to the process group; first-wins preserves `timed_out` over the `sigterm` that the runner's signal trap would otherwise record.
 - **The helpers return 0 or 1.** `_zbuild_abort <word>` records and returns 1; `_zbuild_abort_reason` reads the word back (from the sentinel when this process has none); `_zbuild_check_abort` is 1 when an abort is recorded; `_zbuild_propagate_abort <rc>` is 1 only when the child failed *and* an abort is recorded. `_zbuild_arm_abort_sentinel [word]` records (default `sigint`); disarming clears both channels.
 - **Every signal handler records the word:** the runner's (`_runner_signal_trap`), the cycle's (`_cycle_on_signal`) and the parallel group's (`_parallel_on_signal`). An `abort_when` match records `cycle_abort`; an unavailable model records `llm_unavailable` / `llm_rate_limited`.
 - **The runner ends on the word**, in one place (`_runner_end_on_abort`): `sigint` / `sigterm` / `cycle_abort` → status `interrupted`; `llm_unavailable` / `llm_rate_limited` / `scope_too_large` → status `aborted`. `pipeline.aborted` carries the word as its reason. The process exits 1 — the signal is in that reason, not in 130 or 143.
@@ -380,6 +380,10 @@ The dispatch-site contract is unchanged in shape: pre-flight `_zbuild_check_abor
 - Cleanup contract (the EXIT trap clears the sentinel; `pipeline.aborted reason=sigint` on Ctrl-C) → `tests/integration/full-pipeline-sigint-test.sh`
 - SIGTERM extension (`reason=sigterm`) → `tests/integration/sigterm-aborts-pipeline-test.sh`
 - Resume clears a stale sentinel before the first pre-flight → `tests/integration/resume-after-sigint-test.sh`
+- Run-level watchdog writes `timed_out`; first-wins preserves it over the runner's `sigterm` write; pipeline ends `timed_out`, watchdog fires between dispatches, TERM-ignoring stage reaped within TERM+10 s, always-run stages execute → `tests/integration/run-timed-out-test.sh`
+- `timed_out` in the word vocabulary; limit resolution precedence and misconfigured validation → `tests/unit/run-limit-precedence-test.sh`
+- Watchdog reaped on clean exit; pipeline status unchanged after clean run → `tests/unit/run-watchdog-clean-exit-test.sh`
+- Resume after `timed_out`: `get_resume_recommendation` returns `manual_resume_only`; fresh watchdog armed on resume → `tests/integration/resume-after-run-timeout-test.sh`
 
 ## References
 

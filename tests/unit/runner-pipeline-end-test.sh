@@ -158,6 +158,7 @@ declare -a STATUSES=(
     "interrupted"
     "aborted"
     "preflight_failed"
+    "timed_out"
 )
 for status in "${STATUSES[@]}"; do
     stage=""

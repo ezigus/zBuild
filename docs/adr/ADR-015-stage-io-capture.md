@@ -821,6 +821,7 @@ mapping and does NOT extend the verdict-table enum:
 | `interrupted`       | `✗`   | RED    | fail          |
 | `aborted`           | `✗`   | RED    | fail          |
 | `preflight_failed`  | `⚠`   | YELLOW | warn          |
+| `timed_out`         | `✗`   | RED    | fail          |
 
 Duration is sourced from `_RUNNER_PIPELINE_START_MS`, cached immediately
 after `_runner_run_id` is sanitized (before the EXIT trap installs) so
