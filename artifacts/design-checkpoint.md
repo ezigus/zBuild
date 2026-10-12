@@ -1,33 +1,62 @@
-# Design Checkpoint — Issue #1801 (iteration 2)
+# Design Checkpoint — Issue #1801 (iteration 3)
 
-## Files read
-- design.md (prior design - complete, has the 4 gaps below)
-- config/templates/simple.yaml (full - confirms router.timeout_s on release/persist; no stage_timeout_s anywhere yet)
-- runner.sh grep (cycle_orchestrator_run line 3236, parallel_group_run line 3363, always_run 2398)
-- cycle-orchestrator.sh / parallel-orchestrator.sh (route through runner hooks, not direct plugin_hook_call)
-- router.timeout_s grep in tests/ (17 files; key new one: router-timeout-precedence-e2e-test.sh)
+## Files read this iteration
+- design.md (prior design — complete, adding 7 scope files + 2 supersedes + redesigning SPEC-17/SPEC-2/SPEC-8)
+- tests/unit/orch-sequential-retired-guard-test.sh — guard excludes guard itself + docs/adr/ + tests/golden/, NOT orch-backend-misconfigured-test.sh
+- tests/unit/event-schema-emitted-coverage-test.sh — checks all emitted literal types are in composed known set
+- config/event-schema.json — confirmed: no orch.backend.misconfigured, no plugin.run.timed_out
+- core/plugin-registry/lifecycle.sh:487 — set -m called in runner shell (leaks monitor mode)
+- tests/integration/runner-release-exit-paths-test.sh:375 — SPEC-6b: child ignoring TERM must not outlive run
+- tests/unit/stdin-spawn-guard-test.sh:30 — pins orch-mock's bash -c "$task_body" .* </dev/null
+- plugins/tool/orch-mock/plugin.sh:97 — bash -c "$task_body" has NO </dev/null (must be fixed)
+- tests/unit/design-prompt-scope-charter-test.sh:93-94 — T6 greps design stage for first timeout_s, expects 600; stage_timeout_s=3900 comes first now
 
-## Gaps being fixed in design.md
+## Key conclusions
 
-### Gap 1: R-11 not covered
-Add SPEC-15[no-code]: grep for orch-sequential/ZBUILD_ORCH_TIMEOUT/router.timeout_s/always_run watchdog documented and all matching test files in scope covers: R-11
+### SPEC-17 (tautology)
+Acceptance-gate says SPEC-17 assertion just checks if orch-mock/plugin.sh exists — always true.
+Fix: REMOVE SPEC-17 from design. The backend-agnostic coverage is structural (lifecycle.sh above
+backend layer) and is already proven by SPEC-1's test which runs under orch-mock or bash-parallel.
 
-### Gap 2: R-13 not covered
-Add SPEC-16[no-code]: npm test + npm run lint pass covers: R-13
+### SPEC-8 (guard not passing at head)
+orch-sequential-retired-guard-test.sh guard excludes: docs/adr/, tests/golden/, itself.
+It does NOT exclude orch-backend-misconfigured-test.sh which contains "orch-sequential" at line 6
+in a comment. Fix: update SPEC-8 description to say the guard must also exclude
+tests/unit/orch-backend-misconfigured-test.sh.
 
-### Gap 3: SPEC-1 omits cycle member, parallel-group member, always_run
-Update SPEC-1 to list ALL dispatch routes explicitly (was: map, fanout, sequential strategy, roleless leaf)
+### event-schema.json missing orch.backend.misconfigured and plugin.run.timed_out
+Both emitted in core (contract.sh and lifecycle.sh). Neither registered in event-schema.json.
+Must add SPEC-18[code] for this. Add config/event-schema.json and 
+tests/unit/event-schema-emitted-coverage-test.sh to scope.
 
-### Gap 4: No multi-backend SPEC (R-1)
-Add SPEC-17[code]: timeout kill confirmed under orch-mock; ruflo-hive unaffected (lifecycle.sh is backend-agnostic) covers: R-1
+### set -m leaks monitor mode  
+lifecycle.sh:487 calls `set -m` in the calling shell (not a subshell). Even though `set +m`
+follows at line 501, race conditions or error paths may leave -m set. The implementation must
+wrap the set -m / process group management in a way that cannot leak. Runner-job-control-abort-
+test.sh is not in scope — add it.
 
-### Gap 5: SPEC-6 covers only release/persist (R-6)
-Expand SPEC-6 to list all simple.yaml stage_timeout_s values:
-test=5400s, build=4200s, design=3900s, plan=1200s, test-author=900s,
-spec-coverage/acceptance-gate/issue-acceptance/spec-correspondence/review_lenses=600s,
-intake/pr/hydrate/secret-scan/shape-floor/design-gate/gate-aggregator/assertion-integrity/review-aggregator=600s
+### SPEC-2 / SPEC-6b: external SIGTERM path broken
+set -m isolates hook in its own process group. External SIGTERM to runner no longer propagates
+to hook's children. runner-release-exit-paths-test.sh SPEC-6b fails. Fix: update SPEC-2 to
+require that external kill of the runner also kills isolated hook process groups. Add
+tests/integration/runner-job-control-abort-test.sh to scope.
 
-## Scope additions
-- tests/integration/router-timeout-precedence-e2e-test.sh (R-11: matches router.timeout_s grep in tests/)
+### orch-mock stdin close
+plugins/tool/orch-mock/plugin.sh line 97: `bash -c "$task_body"` has no </dev/null.
+stdin-spawn-guard-test.sh pins the pattern `bash -c "$task_body" .* </dev/null`.
+Fix: add plugins/tool/orch-mock/plugin.sh to scope + supersedes entry for orch-mock.
 
-## Writing design.md now
+### design-prompt-scope-charter-test.sh T6
+T6 greps design stage in simple.yaml for first timeout_s, expects 600. After change,
+stage_timeout_s: 3900 appears first. T6 fails with got: 3900.
+Fix: add file to scope + supersedes entry explaining T6 must check stage_timeout_s=3900.
+
+### golden files
+tests/golden/full-pipeline/event-sequence.golden and tests/golden/parity/event-sequence.golden
+flagged by shape-floor. Both need to be in scope for build stage to verify/update.
+
+## What is still unresolved
+- Whether golden files actually need content updates (build stage determines)
+- Whether set -m requires storing hook PID in SIGTERM handler or a different approach
+
+## Writing final design.md now
