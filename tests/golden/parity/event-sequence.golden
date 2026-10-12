@@ -21,6 +21,7 @@ stage.start
 stage.previous_work.written
 plugin.run.start
 redaction.applied
+redaction.applied
 model.route
 model.outcome
 plan.context.persisted
@@ -31,6 +32,7 @@ artifact.snapshot.saved
 stage.start
 stage.previous_work.written
 plugin.run.start
+redaction.applied
 redaction.applied
 loop.iteration
 model.route
@@ -52,6 +54,7 @@ artifact.snapshot.saved
 stage.start
 stage.previous_work.written
 plugin.run.start
+redaction.applied
 redaction.applied
 model.route
 model.outcome

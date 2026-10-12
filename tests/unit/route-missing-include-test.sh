@@ -59,6 +59,8 @@ _INCLUDES=(
     # the engine's rules for the stage.
     scripts/lib/stage-limits.sh
     scripts/lib/persona-resolve.sh
+    # [SPEC-4] ADR-051 (amended 2026-10-12): the persona's delivery to the provider.
+    core/router/persona-delivery.sh
     # [SPEC-4] proc-group.sh is now a guarded include (issue #1748).
     scripts/lib/proc-group.sh
     # [SPEC-4] ADR-067 §8: the engine/stage prompt contract the router checks.
