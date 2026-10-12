@@ -82,7 +82,6 @@ hooks:      { init: <fn>, run: <fn>, finalize: <fn>, cleanup: <fn> }
 requires:   { core: [redaction, event-bus, state, ...], plugins: [...] }
 provides:   { role: <role-id>, artifact_type: <type>, schema_version: <int>, alias: <opt> }
 config:     { <key>: <default> }
-inputs:     [ { id, type, source: stage:<s>|role:<r>, required } ]
 outputs:    [ { id, path: ${artifact_dir}/<file>, type, required, primary } ]
 state:      { persisted: [...], reconstructed: [...] }
 ```
@@ -104,9 +103,11 @@ stage's latest output by id; a stage checks for itself that what it needs is the
 
 Templates bind to `role`, not `id`. At stage resolution time the engine finds the plugin whose `provides.role` matches the stage name; if no role matches it falls back to the `id`. This is the role-then-id protocol from ADR-042/047.
 
-### `required: true` on inputs
+### No declared inputs
 
-An input marked `required: true` with `source: stage:<s>` means the named stage must have run and produced that output before this plugin starts. The lint-contract enforces this at pipeline preflight — if the producer stage is not wired in the template, the run will refuse to start. This is intentional: wire the producer or mark the input `required: false`.
+A stage declares only what it writes (`outputs:`). It declares no `inputs:` — every stage gets every
+stage's latest output by id, and a manifest that still carries an `inputs:` block is refused at
+preflight and by the contract lint (`INPUTS_RETIRED`, ADR-055).
 
 ### Discovery
 

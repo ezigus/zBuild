@@ -2,7 +2,7 @@
 # Tests: core/output/stage-io.sh — kind=cycle per-iter cycle boundary banners
 # (issue #833, ADR-015 §G). Cycles have NO template io: block, so the kind=cycle
 # arm forces dests=stdout (fd-2 only; never file, never gh_comment). INPUT is a
-# feedback-edge digest, OUTPUT is the termination-predicate eval + multi-axis
+# per-iteration digest, OUTPUT is the termination-predicate eval + multi-axis
 # health score (#1243: code-change progress − defects → score, calc shown).
 set -euo pipefail
 
@@ -147,22 +147,14 @@ set -e
 assert_eq "[SPEC-6] unknown --kind=foo returns rc=2" "2" "$rc"
 
 # ─── [SPEC-3b] _cycle_render_feedback_digest derives per-cycle digest ────────
-# iter1 → no-feedback string.
+# iter1 → no-feedback string; a later iteration → the stage-summaries count the
+# next stage's Previous work carries (template feedback edges are retired,
+# ADR-055 §4 amended 2026-10-12).
 _CYCLE_TRAP_CYCLE_ID="build_test_cycle"
-_CYCLE_FEEDBACK=( "test_assessment:summary|build:prior_test_assessment:false" )
 dig1="$(_cycle_render_feedback_digest 1 "$ZBUILD_STATE_DIR" 2>/dev/null)"
 assert_contains "[SPEC-3b] digest iter1 → no feedback" "$dig1" "no feedback"
-# iterN with the producer's output present (where it wrote it — ADR-068 §8:
-# no copy is kept) → to_field name + digest.
-mkdir -p "$ZBUILD_STATE_DIR/artifacts/test_assessment"
-printf 'fail diagnostics here' > "$ZBUILD_STATE_DIR/artifacts/test_assessment/summary"
 dig2="$(_cycle_render_feedback_digest 2 "$ZBUILD_STATE_DIR" 2>/dev/null)"
-assert_contains "[SPEC-3b] digest iterN names the consumed to_field" "$dig2" "prior_test_assessment"
-# required + missing → MISSING marker.
-_CYCLE_FEEDBACK=( "test_assessment:summary|build:prior_test_assessment:true" )
-rm -f "$ZBUILD_STATE_DIR/artifacts/test_assessment/summary"
-dig3="$(_cycle_render_feedback_digest 3 "$ZBUILD_STATE_DIR" 2>/dev/null)"
-assert_contains "[SPEC-3b] digest required+missing → MISSING" "$dig3" "MISSING"
+assert_contains "[SPEC-3b] digest iterN → the stage summaries count" "$dig2" "stage summaries"
 
 # ─── [SPEC-4b] _cycle_render_predicate_result formats predicate + health score ───
 _CYCLE_LAST_PREDICATE_KIND="exit_when"

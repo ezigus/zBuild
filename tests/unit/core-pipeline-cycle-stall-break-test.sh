@@ -7,9 +7,7 @@
 # SPEC-1: the feedback edge delivers failure detail — _cycle_apply_feedback writes
 #         a non-empty <to_field>.txt in the next-iter feedback dir referencing the
 #         failure (B2/ADR-040: build's gate_feedback input).
-# SPEC-2: the simple.yaml edge parses + the producer (gate-aggregator:gate_feedback)
-#         resolves to a path that EXISTS in simple.yaml's flow (no required-edge
-#         cycle.feedback.missing surprise — it is required:false regardless).
+# SPEC-2: simple.yaml wires no feedback edge (retired, ADR-055 §4).
 # SPEC-3: the stall-break fires — build verdict=empty_diff + gate-aggregator
 #         verdict!=pass ⇒ cycle terminates reason=stalled within <=2 iterations
 #         (NOT max_iterations=5), emitting cycle.stalled.
@@ -37,34 +35,13 @@ source "$REPO_ROOT/tests/lib/cycle-stall-break-fixture.sh"
 # #1979: the edge is retired, so this now asserts its ABSENCE plus the surviving
 # invariant — the producer's artifact is still resolvable by output id, which is
 # what the summaries collector depends on.
-print_test_section "SPEC-2: no feedback edge, and the producer still resolves"
+print_test_section "SPEC-2: no feedback edge"
 
-# #1979: the gate-aggregator→build edge is retired. gate-feedback.md reaches
-# build as an engine-collected summary (#1976) instead of a template wire plus a
-# bespoke reader, so build_test_cycle declares no feedback edge at all.
-#
-# The invariant that MATTERS is not the edge — it is that the payload is still
-# resolvable from the producer that writes it. That is what the resolution
-# assertion below pins, and it is unchanged by the rewiring.
-assert_eq "[SPEC-2] simple.yaml build_test_cycle declares no feedback edge" \
-    "" \
-    "${_TPL_CYCLE_FEEDBACK_build_test_cycle:-}"
-
-_RESOLVE_DIR="$TEST_TEMP_DIR/resolve"
-mkdir -p "$_RESOLVE_DIR"
-# #1988: gate_feedback is retired — the aggregator renders nothing. The
-# surviving invariant is that a GATE's own detail resolves by output id, which
-# is what the summaries collector depends on.
-set +e
-_resolved_src="$(_cycle_resolve_from_path "$_RESOLVE_DIR" "test" "test_failures_summary")"
-set +e
-case "$_resolved_src" in
-    */test-failures-summary.md)
-        assert_pass "[SPEC-2] a gate's own detail resolves by output id" ;;
-    *)
-        assert_fail "[SPEC-2] a gate's own detail resolves by output id" \
-            "got: $_resolved_src" ;;
-esac
+# #1979: the gate-aggregator→build edge is retired, and with it every template
+# feedback wire (ADR-055 §4, amended 2026-10-12): a failing gate's detail
+# reaches build under Previous work. SPEC-1 below asserts it arrives.
+assert_eq "[SPEC-2] simple.yaml declares no feedback edge" "" \
+    "$(/usr/bin/grep -nE '^[[:space:]]+feedback:[[:space:]]*$' "$REPO_ROOT/config/templates/simple.yaml" || true)"
 
 # ─── SPEC-1 (feedback delivery) ──────────────────────────────────────────────
 print_test_section "SPEC-1: a failing gate\x27s detail reaches the prompt"

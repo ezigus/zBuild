@@ -6,7 +6,7 @@
 #   - top-level flow list captured
 #   - leaf stage sections parsed into _TPL_STAGE_* per-id vars
 #   - cycle stage section parsed into _TPL_CYCLE_* + _TPL_STAGE_TYPE_<id>=cycle
-#   - exit_when / abort_when (optional) / feedback parsed
+#   - exit_when / abort_when (optional) parsed
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,14 +67,6 @@ build_test_cycle:
     value: pass
   max_iterations: 3
   on_max: continue
-  feedback:
-    - from:
-        stage: test_assessment
-        output: test_assessment_md
-      to:
-        stage: build
-        input: prior_test_assessment
-        required: false
 
 build:
   gate: auto
@@ -157,10 +149,8 @@ assert_eq "T6: until value=pass" "pass" \
 assert_eq "T7: cycle stages csv" "build,test,test_assessment" \
     "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
 
-# T8: feedback record parsed.
-fb="${_TPL_CYCLE_FEEDBACK_build_test_cycle:-}"
-assert_contains "T8: feedback wires test_assessment_md -> prior_test_assessment" \
-    "test_assessment:test_assessment_md|build:prior_test_assessment:false" "$fb"
+# T8: (retired) cycle `feedback:` wires — load_template refuses them
+# (ADR-055 §4, amended 2026-10-12; core-pipeline-template-cycles-test.sh T3).
 
 # T9: per-stage attrs parsed for cycle members (build/test/test_assessment).
 assert_eq "T9: build roles" "builder" "${_TPL_STAGE_ROLES_build:-}"

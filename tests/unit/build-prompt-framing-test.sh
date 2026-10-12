@@ -188,8 +188,10 @@ assert_eq "[#2132] …nor outside a cycle" "" \
     "$(ZBUILD_STAGE_INPUTS="$_si" ZBUILD_CYCLE_ITER="" _build_read_prior_assessment 2>/dev/null)"
 assert_eq "[#2124] …and nothing from the feedback dir" "" \
     "$(ZBUILD_STAGE_INPUTS="" ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR" _build_read_prior_assessment 2>/dev/null)"
-assert_contains "[#2124] build declares test_failures_summary as an optional input" \
-    "$(awk '/^inputs:/,/^outputs:/' "$REPO_ROOT/plugins/agent/build/manifest.yaml")" "id: test_failures_summary"
+# Declared inputs are retired (ADR-055 §1, amended 2026-10-12): build reads
+# test_failures_summary from the index of every stage's latest output.
+assert_eq "[#2124] build declares no inputs: — test_failures_summary comes from the index" "" \
+    "$(grep -E '^inputs:' "$REPO_ROOT/plugins/agent/build/manifest.yaml" || true)"
 for _sec in "CURRENT ITERATION FEEDBACK" "PRIOR REVIEW FEEDBACK" "ACCEPTANCE COVERAGE GAPS"; do
     if grep -qF "$_sec" "$REPO_ROOT/plugins/agent/build/lib/prompt.sh"; then
         assert_fail "[#2124] prompt.sh no longer renders '$_sec'" "section still present"

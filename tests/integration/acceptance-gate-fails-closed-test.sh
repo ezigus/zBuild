@@ -166,7 +166,7 @@ assert_eq "[F4] a test-only change (no_prod_delta for SPEC-1) still passes" "pas
 # ── F5: shape-floor — its library's dependency is missing ────────────────────
 print_test_section "F5: shape-floor fails when its library's dependency does not load"
 W5="$TEST_TEMP_DIR/w5"; mkdir -p "$W5/artifacts"
-L5="$(_lib_without f5 impact-prefilter.sh)"
+L5="$(_lib_without f5 merge-base.sh)"
 set +e
 (
     export ZBUILD_CONTRACT_LIB_DIR="$L5" ZBUILD_REPO_ROOT="$R0"

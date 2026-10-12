@@ -9,12 +9,13 @@
 # different answer, so a producer was asked to declare something it cannot know.
 # 24 annotations across 16 plugins were the evidence.
 #
-# The mirror check stays: a stage naming an input nothing produces breaks the
-# run; an output nobody reads costs a few bytes. Only one of those is an error.
+# The mirror check (an input naming no producer) went with declared inputs
+# (ADR-055 §1, amended 2026-10-12): every stage gets every stage's latest
+# output, so a stage declares no inputs at all.
 #
 #   SPEC-1 [change]: an unconsumed output is accepted, with no annotation
-#   SPEC-2 [guard] : INPUT_UNRESOLVED still refuses a required input that names
-#                    no producer — the half of the contract that is real
+#   SPEC-2 [change]: a stage declaring inputs: is refused as INPUTS_RETIRED, not
+#                    checked for a producer
 #   SPEC-3 [guard] : OUTPUT_DUP still fires — asserted in
 #                    contract-validator-output-uniqueness-test.sh, which owns
 #                    that check (the lint never had it)
@@ -47,10 +48,8 @@ kind: tool
 version: 0.0.1
 hooks:
   run: ucp_run
-inputs:
-  - id: gh_issue_body
-    source: external
-    required: true
+provides:
+  result_contract: 2
 outputs:
   - id: uc_producer_out
     path: ${artifact_dir}/uc-producer-out.json
@@ -74,10 +73,8 @@ kind: tool
 version: 0.0.1
 hooks:
   run: ucc_run
-inputs:
-  - id: gh_issue_body
-    source: external
-    required: true
+provides:
+  result_contract: 2
 outputs:
   - id: uc_consumer_out
     path: ${artifact_dir}/uc-consumer-out.json
@@ -119,8 +116,8 @@ assert_eq "[SPEC-1] and the lint exits clean" "0" "$_rc"
 _rc2=0; bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || _rc2=$?
 assert_eq "[SPEC-1] the real tree lints clean with no annotations left" "0" "$_rc2"
 
-# ─── SPEC-2: the half that IS an error still fires ───────────────────────────
-print_test_section "2. an input naming no producer is still refused"
+# ─── SPEC-2: a declared inputs: block is refused as retired ──────────────────
+print_test_section "2. a stage declaring inputs: is refused as retired"
 
 cat > "$PL/tool/uc-consumer/manifest.yaml" <<'EOF'
 id: uc-consumer
@@ -129,6 +126,8 @@ kind: tool
 version: 0.0.1
 hooks:
   run: ucc_run
+provides:
+  result_contract: 2
 inputs:
   - id: nothing_produces_this
     required: true
@@ -147,8 +146,12 @@ outputs:
     summary: true
 EOF
 _out2="$(_lint)"
-assert_contains "[SPEC-2] a required input with no producer is reported" \
-    "$_out2" "nothing_produces_this"
+assert_contains "[SPEC-2] the inputs: block is refused as retired" "$_out2" "INPUTS_RETIRED"
+if grep -qF 'nothing_produces_this' <<< "$_out2"; then
+    assert_fail "[SPEC-2] no producer check is made" "the input's name was checked: $_out2"
+else
+    assert_pass "[SPEC-2] no producer check is made"
+fi
 
 # ─── SPEC-4: the dead vocabulary is gone ─────────────────────────────────────
 print_test_section "4. no dead annotation or accessor remains"

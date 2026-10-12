@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests: cycle-orchestrator HIGH-event banner integration (#526).
 # Verifies BOTH a JSONL event AND a stderr WARN banner are emitted when one
-# of the 5 HIGH-severity cycle.* events fires, and that informational events
+# of the HIGH-severity cycle.* events fires, and that informational events
 # (cycle.plateau.skipped etc.) do NOT trigger a banner.
 set -euo pipefail
 
@@ -25,14 +25,15 @@ _CYCLE_TRAP_ITER=2
 STATE_DIR="$TEST_TEMP_DIR/state"
 mkdir -p "$STATE_DIR"
 
-# ─── S1: cycle.feedback.missing → JSONL event AND stderr WARN banner ─────────
+# ─── S1: cycle.config.invalid → JSONL event AND stderr WARN banner ───────────
+# (cycle.feedback.missing was this slot's event until template feedback wires
+# were retired, ADR-055 §4 amended 2026-10-12.)
 : > "$ZBUILD_EVENTS_JSONL"
-_CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:true")
-err="$(_cycle_apply_feedback 3 "$STATE_DIR" 2>&1 >/dev/null || true)"
+err="$(_cycle_load_template "no-such-cycle" 2>&1 >/dev/null || true)"
 jsonl="$(cat "$ZBUILD_EVENTS_JSONL")"
-assert_contains "cycle.feedback.missing JSONL event recorded" "$jsonl" "cycle.feedback.missing"
-assert_contains "cycle.feedback.missing stderr banner emitted" "$err" "⚠"
-assert_contains "stderr banner names event type" "$err" "cycle.feedback.missing"
+assert_contains "cycle.config.invalid JSONL event recorded" "$jsonl" "cycle.config.invalid"
+assert_contains "cycle.config.invalid stderr banner emitted" "$err" "⚠"
+assert_contains "stderr banner names event type" "$err" "cycle.config.invalid"
 
 # ─── S2: cycle.iteration.verdict_missing → both emitted ──────────────────────
 : > "$ZBUILD_EVENTS_JSONL"
@@ -73,22 +74,6 @@ if grep -qF "⚠" <<< "$err5"; then
     assert_fail "informational event has no banner" "stderr unexpectedly contained ⚠: $err5"
 else
     assert_pass "informational event has no banner"
-fi
-
-# ─── S6: optional absent → cycle.feedback.absent, NO ⚠ banner ───────────────
-# SPEC-4: cycle.feedback.absent is not in _HIGH_EVENT_TYPES, so no banner fires.
-# At baseline this fails: required=false absent emitted cycle.feedback.missing (HIGH).
-: > "$ZBUILD_EVENTS_JSONL"
-_CYCLE_TRAP_ITER=2
-_CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:false")
-err6="$(_cycle_apply_feedback 4 "$STATE_DIR" 2>&1 >/dev/null || true)"
-jsonl6="$(cat "$ZBUILD_EVENTS_JSONL")"
-assert_contains "[SPEC-4] optional absent → cycle.feedback.absent JSONL event" "$jsonl6" "cycle.feedback.absent"
-if grep -qF "⚠" <<< "$err6"; then
-    assert_fail "[SPEC-4] optional absent → no ⚠ banner (cycle.feedback.absent is not HIGH)" \
-        "banner appeared: $err6"
-else
-    assert_pass "[SPEC-4] optional absent → no ⚠ banner (cycle.feedback.absent is not HIGH)"
 fi
 
 print_test_results

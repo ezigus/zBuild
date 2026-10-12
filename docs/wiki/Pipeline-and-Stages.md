@@ -26,8 +26,7 @@ The `simple` template is what most runs use. Here is the flow:
 flowchart LR
     intake[intake] --> plan[plan]
     plan --> dvc{{design_verify_cycle}}
-    dvc --> impact[impact]
-    impact --> btc{{build_test_cycle}}
+    dvc --> btc{{build_test_cycle}}
     btc --> lenses[review_lenses<br/>map over 5 lenses]
     lenses --> agg[review-aggregator]
     agg --> pr[pr]
@@ -38,7 +37,6 @@ What each stage does:
 - **intake** — reads the issue and gathers context.
 - **plan** — writes a plan for the work.
 - **design_verify_cycle** — drafts a design and checks it against a **gate** (a pass/fail quality check) until the design passes or the attempt limit is reached.
-- **impact** — analyses which files and systems the change will touch (advisory; does not block progress).
 - **build_test_cycle** — writes the code, runs the tests, and checks the result. Loops until tests pass or the attempt limit is reached.
 - **review_lenses** — five advisory lenses (security, performance, red-team, correctness, scope) each add findings.
 - **review-aggregator** — merges the lens findings into a single advisory report.

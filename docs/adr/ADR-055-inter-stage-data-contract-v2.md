@@ -4,6 +4,7 @@
 **Date:** 2026-08-09
 **Issue:** #1820
 **Supersedes:** ADR-020 (inter-stage data contract) — presented as a clean v2 at the current stable state; ADR-020 is retired in-place for audit history.
+**Amended:** 2026-10-12 (declared inputs retired) — no stage declares `inputs:`; a manifest that does is refused (`INPUTS_RETIRED`); the §3 external allowlist and §4's cycle `feedback:` edges go with them. See the last amendment.
 **Amended:** 2026-10-12 (ADR-067 §8 prompt contract) — every stage receives the latest output of every stage that has run, its own included; declared `inputs:` no longer limit what a stage receives or block its launch, and the STAGE INPUTS and STAGE SUMMARIES prompt blocks are replaced by the engine's Previous work block. See the amendment at the end.
 **Amended:** 2026-08-31 (#1986) — §9's `MAY` becomes `MUST`: every stage-bound plugin declares exactly one summary output, enforced at pre-flight rather than by tree lint, because a stage may be authored outside this repository. Previously amended 2026-08-30 (#1976) — §9 added: a stage may mark ONE output `summary: true`, which the engine collects and injects as ambient prompt context. This is deliberately NOT an input: a consumer declares nothing. Previously amended 2026-08-19 (#1825) — §1's "no case needs an explicit binding" verified and made true by cleanup; §1.5 refined so the zero-producer refusal applies to required inputs only; §4's four codes retired in code; §5's output-id count corrected 29 → 27. Previously amended 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
 **Related:** ADR-001 (plugin contract), ADR-006 (resume contract), ADR-013 (canonical stages), ADR-015 §v4 (stage I/O capture), ADR-019 (review fail-closed), ADR-042 (stage portability — completed by §1), ADR-045 (bounded typed backward route — legalises a backwards data edge, §1.3), ADR-046 (design-verify shift-left — the cross-cycle feedback edge this ADR previously failed to account for), ADR-047 (stage-agnostic mechanics)
@@ -129,6 +130,8 @@ Any other `${var}` reference is a load-time error.
 
 ### 3. External sources allowlist
 
+*Retired 2026-10-12 with declared inputs (see the last amendment).*
+
 Inputs declared `source: external` MUST use an id from this hardcoded set:
 
 ```
@@ -140,6 +143,8 @@ CI lint (`scripts/lib/lint-contract.sh`) rejects `source: external` for ids outs
 `gh_comments` added 2026-08-12 (#1768). §1.2 makes `external` the declared route for everything a stage takes from outside the pipeline, replacing direct environment reads. #1729 — *intake reads only the issue title and body, so every correction made in comments is invisible to the pipeline* — is the first consumer: the correction channel becomes a declared input rather than a missing environment variable.
 
 ### 4. Cycle feedback — retired into the stage-output kind
+
+*Retired 2026-10-12: a template's cycle `feedback:` edge is refused at load (see the last amendment).*
 
 **Amended 2026-08-12 (#1768).** `source: cycle_feedback` is retired. Inter-iteration feedback is an ordinary stage output whose wire runs backwards, made legal by §1.3 rather than by a separate kind:
 
@@ -487,7 +492,7 @@ has run — its own included, whichever try or run wrote it (ADR-068 §8, ADR-05
 - **Nothing is refused over a missing output.** The pre-dispatch `INPUT_MISSING` / `INPUT_DAMAGED` /
   `EXTERNAL_UNSUPPLIED` refusal is removed: a stage that finds something it needs missing says so in its
   own result (e.g. review-aggregator's "no review happened").
-- **Declared `inputs:` stay, for the template checks only.** They no longer limit what a stage receives.
+- **Declared `inputs:` stay, for the template checks only** *(superseded the same day by the amendment below — declared inputs are retired)*. They no longer limit what a stage receives.
   Two load-time checks still read them — ADR-040 §5 (a model-judged gate must judge against something
   authored outside its own loop) and the cycle `feedback:` target — and the pre-flight validator's §1.5
   refusal of a required name no stage produces. Retiring the declarations needs those checks redesigned.
@@ -498,3 +503,28 @@ has run — its own included, whichever try or run wrote it (ADR-068 §8, ADR-05
   obligation stands: every stage-bound plugin declares exactly one summary output.
 
 Enforced by: `tests/unit/stage-prompt-contract-test.sh` P1–P8 (the block), `tests/unit/stage-input-resolve-test.sh` SPEC-1, SPEC-2, SPEC-9, SPEC-10, SPEC-12 (the index), `tests/unit/stage-blocks-dispatch-test.sh` D3 (no refusal), `tests/unit/review-aggregator-closeout-test.sh` K11 (a stage's own check).
+
+### Amendment (2026-10-12) — declared inputs are retired
+
+Every stage gets every stage's latest output (above, ADR-068 §8), so a declaration of what a stage
+needs promises something nothing reads. They are retired, with everything that only checked them:
+
+- **No stage declares `inputs:`.** A manifest that still does is refused at pre-flight
+  (`INPUTS_RETIRED`) and by the tree lint, so a stage written for the old contract is told, not
+  misled. A stage reads what it needs from the index by output id and says in its own result when
+  something it needs is missing.
+- **Gone with them:** §1.5's name resolution (`INPUT_UNRESOLVED`, `INPUT_AMBIGUOUS`), `SELF_REF`,
+  the input `required:`/`source:`/path-variable checks, §3's external allowlist, and the tree lint's
+  input graph. The lint's scope is now every stage — a manifest that writes a stage result
+  (`provides.result_contract`).
+- **A cycle's `feedback:` edge is refused at load (§4).** It only declared that an output flows back;
+  the orchestrator delivered nothing through it. The parser, `CYCLE_FB_UNDECLARED`, and the
+  `cycle.feedback.missing` / `cycle.feedback.absent` events are removed.
+- **What still holds:** output ids are unique (§5), each output has a versioned type and a known
+  format, every stage declares exactly one summary (§9), and the aggregator wiring (ADR-040 §7).
+
+Enforced by: `tests/unit/retired-impact-review-report-inputs-test.sh` RT4 (no manifest declares
+inputs, no template wires feedback, no check reads inputs, a manifest declaring inputs is refused);
+`tests/unit/preflight-lint-parity-test.sh` (the lint and the validator refuse it alike);
+`tests/unit/lint-contract-scope-derivation-test.sh` (lint scope is every stage);
+`tests/unit/summary-retire-wiring-test.sh` SPEC-5 (no template wires `feedback:`).

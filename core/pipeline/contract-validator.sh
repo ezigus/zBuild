@@ -91,53 +91,6 @@ _cv_stage_convergence() {
     return 0
 }
 
-# ─── _cv_var_in_canonical_set <var_name> ───────────────────────────────────────
-# Returns 0 if the variable is in the closed templating-var set (decision #5).
-_cv_var_in_canonical_set() {
-    local v="$1"
-    local allowed
-    allowed="$(manifest_graph_canonical_vars)"
-    for a in $allowed; do
-        [[ "$a" == "$v" ]] && return 0
-    done
-    return 1
-}
-
-# ─── _cv_check_path_vars <path_template> → rc 0 ok, 1 unknown var ──────────────
-# Scans the path template for ${var} references and rejects any not in the
-# canonical set. Emits the first offender on stderr via $_CV_LAST_BAD_VAR.
-_CV_LAST_BAD_VAR=""
-_cv_check_path_vars() {
-    local path="$1"
-    _CV_LAST_BAD_VAR=""
-    [[ -z "$path" ]] && return 0
-    # Extract every "${name}" reference.
-    local rest="$path" v
-    while [[ "$rest" == *'${'*'}'* ]]; do
-        v="${rest#*'${'}"
-        v="${v%%'}'*}"
-        if ! _cv_var_in_canonical_set "$v"; then
-            _CV_LAST_BAD_VAR="$v"
-            return 1
-        fi
-        rest="${rest#*'}'}"
-    done
-    return 0
-}
-
-# ─── _cv_redact_path <abs_path> <state_dir> ────────────────────────────────────
-# Per decision #12: pre-flight errors render paths as $ZBUILD_STATE_DIR/...
-# rather than absolute paths. Pre-flight runs before scope-manifest is final,
-# so we can't use the redaction chokepoint; we strip the state_dir prefix
-# manually here as a best-effort.
-_cv_redact_path() {
-    local path="$1" state_dir="$2"
-    if [[ -n "$state_dir" && "$path" == "$state_dir"* ]]; then
-        echo "\$ZBUILD_STATE_DIR${path#$state_dir}"
-    else
-        printf '%s' "$path"
-    fi
-}
 # ─── _cv_stage_in_any_cycle <stage> ──────────────────────────────────────────
 # rc 0 when the stage is a member of some `type: cycle` group. ADR-055 §1.3
 # legalises a backwards data edge only where the template declares a re-entry
@@ -179,7 +132,6 @@ _cv_stage_in_any_cycle() {
 #     template position, alphabetical by input id within stage).
 _contract_validate_pipeline() {
     local template_stages_csv="$1" plugins_root="$2" state_file="$3"
-    local state_dir; state_dir="$(dirname "${state_file:-/dev/null}")"
 
     # Mode (decision #2). Default `enforce` as of Wave 12-E (#664) —
     # contracts are honest after Wave 12-D so fail-closed is safe.
@@ -454,23 +406,11 @@ _contract_validate_pipeline() {
     {
         printf '\n'
         printf '✗ Pipeline cannot start — stage manifests break the contract:\n\n'
-        local v sstage scode sid smsg spath
+        local v sstage scode sid smsg
         for v in "${violations[@]}"; do
-            IFS='|' read -r sstage scode sid smsg spath <<< "$v"
-            local rendered_path=""
-            if [[ -n "$spath" ]]; then
-                rendered_path="$(_cv_redact_path "$spath" "$state_dir")"
-            fi
+            IFS='|' read -r sstage scode sid smsg _ <<< "$v"
             case "$scode" in
-                MISSING_STAGE)
-                    printf '  %s: expects %s%s\n' "$sstage" "'$sid'" \
-                        "$( [[ -n "$rendered_path" ]] && printf ' (path: %s)' "$rendered_path" )"
-                    printf '    %s\n\n' "$smsg" | sed 's/|/\n    /g'
-                    ;;
-                MISORDERED)
-                    printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
-                    ;;
-                MISSING_OUTPUT|MALFORMED|BAD_VAR|FORMAT_MISSING|FORMAT_UNKNOWN|TYPE_UNVERSIONED|INPUTS_RETIRED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                FORMAT_MISSING|FORMAT_UNKNOWN|TYPE_UNVERSIONED|INPUTS_RETIRED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

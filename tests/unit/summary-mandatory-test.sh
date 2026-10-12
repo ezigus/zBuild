@@ -40,27 +40,13 @@ setup_test_env "summary-mandatory"
 # ─── SPEC-1: the tree conforms ───────────────────────────────────────────────
 print_test_section "1. every stage-bound plugin declares exactly one summary"
 
-declare -A _HAS_IN=() _ANY_OUT=() _PROD_REF=() _IN_NAMES=()
-for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
-    _id="$(manifest_graph_get_stage_id "$_m")"; [[ -n "$_id" ]] || continue
-    while IFS= read -r _r; do
-        [[ -n "$_r" ]] || continue
-        _IN_NAMES["${_r%%|*}"]=1; _HAS_IN["$_id"]=1
-    done < <(manifest_graph_get_inputs "$_m")
-    while IFS= read -r _r; do
-        [[ -n "$_r" ]] && _ANY_OUT["$_id:${_r%%|*}"]=1
-    done < <(manifest_graph_get_outputs "$_m")
-done
-for _k in "${!_ANY_OUT[@]}"; do
-    [[ -n "${_IN_NAMES[${_k#*:}]:-}" ]] && _PROD_REF["${_k%%:*}"]=1
-done
-
 _missing="" _doubled=""
 for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
     _id="$(manifest_graph_get_stage_id "$_m")"; [[ -n "$_id" ]] || continue
-    # Stage-bound iff a node in the data-dependency graph — the same derivation
-    # lint-contract.sh uses, so backend services fall out with no naming.
-    [[ -n "${_HAS_IN[$_id]:-}${_PROD_REF[$_id]:-}" ]] || continue
+    # Stage-bound iff it writes a stage result (provides.result_contract) — the
+    # same derivation lint-contract.sh uses, so backend services fall out with
+    # no naming.
+    grep -qE '^[[:space:]]+result_contract:' "$_m" || continue
     _n="$(grep -cE '^[[:space:]]+summary:[[:space:]]*true' "$_m" || true)"
     [[ "$_n" -eq 0 ]] && _missing="${_missing}${_id} "
     [[ "$_n" -gt 1 ]] && _doubled="${_doubled}${_id} "
@@ -83,10 +69,8 @@ version: 0.0.1
 convergence: gate
 hooks:
   run: ext_stage_run
-inputs:
-  - id: gh_issue_body
-    source: external
-    required: true
+provides:
+  result_contract: 2
 outputs:
   - id: ext_stage_result
     path: ${artifact_dir}/ext-stage-result.json

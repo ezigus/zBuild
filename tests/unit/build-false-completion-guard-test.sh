@@ -219,8 +219,10 @@ _el=$(( SECONDS - _t0 ))
 if (( _el <= 6 )); then assert_pass "[#2142] a measured file that hangs is bounded by 3× its measurement, not the ceiling (${_el}s)"; else assert_fail "[#2142] a measured file that hangs is bounded by 3× its measurement, not the ceiling" "took ${_el}s (ceiling 10 s — the declared input was not read)"; fi
 assert_eq "[#2142] …and a kill at the bound is UNKNOWN, not red (rc 0, nothing reported)" "0|" "${h_rc}|${h_out}"
 assert_eq "[#2142] the probe leaves no ZBUILD_NEGCTL_TIMING_LOG behind in the caller's environment" "" "${ZBUILD_NEGCTL_TIMING_LOG:-}"
-assert_contains "[#2142] build declares test_timing as an optional input" \
-    "$(awk '/^inputs:/,/^outputs:/' "$REPO_ROOT/plugins/agent/build/manifest.yaml")" "id: test_timing"
+# Declared inputs are retired (ADR-055 §1, amended 2026-10-12): build reads
+# test_timing from the index of every stage's latest output, undeclared.
+assert_eq "[#2142] build declares no inputs: — test_timing comes from the index of every output" "" \
+    "$(grep -E '^inputs:' "$REPO_ROOT/plugins/agent/build/manifest.yaml" || true)"
 
 cleanup_test_env
 

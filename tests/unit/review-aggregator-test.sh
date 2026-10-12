@@ -256,19 +256,6 @@ _rc_s8=$?
 set -e
 assert_eq "[#1842/SPEC-8] hook returns 0 (advisory never aborts)" "0" "$_rc_s8"
 
-# ─── [#1842/SPEC-9]: _ra_aggregate ≡ _rr_aggregate byte-for-byte ─────────────
-# Guard: after the v2 migration the aggregation logic must remain byte-identical
-# to _rr_aggregate (ADR-038 / SPEC-5 predecessor invariant). Use a fresh input
-# independent of the earlier SPEC-5 run to verify equivalence independently.
-_lenses_s9="$TEST_TEMP_DIR/spec9-guard-lenses.json"
-printf '%s\n' \
-    '[{"name":"s9","score":6,"findings":[{"file":"g.sh","category":"logic","severity":"high","line":5,"message":"s9 guard issue","introduced":true}]}]' \
-    > "$_lenses_s9"
-_ra_out_s9="$(_ra_aggregate "$_lenses_s9")"
-_rr_out_s9="$(_rr_aggregate "$_lenses_s9")"
-assert_eq "[#1842/SPEC-9] _ra_aggregate output matches _rr_aggregate byte-for-byte" \
-    "$_rr_out_s9" "$_ra_out_s9"
-
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

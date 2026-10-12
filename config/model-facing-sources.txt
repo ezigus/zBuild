@@ -6,13 +6,11 @@ plugins/agent/design/plugin.sh printf
 plugins/agent/plan/plugin.sh
 plugins/agent/test-author/plugin.sh
 plugins/agent/build/lib/prompt.sh printf
-plugins/agent/impact/plugin.sh
 plugins/agent/issue-acceptance/plugin.sh
 plugins/agent/spec-coverage/plugin.sh
 plugins/agent/spec-correspondence/plugin.sh
 plugins/agent/review-lens/plugin.sh
 plugins/agent/review-lens/lib/charters.sh
-plugins/agent/review-report/lib/lenses.sh
 plugins/agent/security-lens/plugin.sh
 plugins/agent/security-lens/prompts/security.md
 plugins/agent/spec-acceptance/plugin.sh

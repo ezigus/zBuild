@@ -250,20 +250,10 @@ else
     assert_fail "[#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]" "${_s1847_11_stanza:-absent}"
 fi
 
-# ─── [#1847/SPEC-12] inputs: still declares only deploy_result/pr_url, required:false ─
-print_test_section "[#1847/SPEC-12] inputs: still declares only deploy_result and pr_url, both required:false, no restated source/path/type"
-
-_s1847_12_inputs="$(awk '
-    /^inputs:/ { f=1; next }
-    f && /^[a-zA-Z]/ { exit }
-    f { print }
-' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
-_s1847_12_id_count="$(grep -c '^[[:space:]]*-[[:space:]]*id:' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
-assert_eq "[#1847/SPEC-12] inputs: declares exactly 2 input ids" "2" "$_s1847_12_id_count"
-_s1847_12_required_false="$(grep -c 'required:[[:space:]]*false' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
-assert_eq "[#1847/SPEC-12] inputs: both entries have required:false" "2" "$_s1847_12_required_false"
-_s1847_12_restated="$(grep -cE '^\s*(source|path|type):' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
-assert_eq "[#1847/SPEC-12] inputs: no restated source/path/type keys" "0" "$_s1847_12_restated"
+# ─── [#1847/SPEC-12] no inputs: block (ADR-055 §1, amended 2026-10-12) ──────
+print_test_section "[#1847/SPEC-12] monitor declares no inputs: — deploy_result/pr_url come from the index"
+assert_eq "[#1847/SPEC-12] inputs: none declared" "" \
+    "$(grep -E '^inputs:' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
 
 # ─── [#1847/SPEC-17] provides.events unchanged; plugin.sh still emits all three ─
 print_test_section "[#1847/SPEC-17] manifest still declares provides.events [monitor.alert, monitor.check, monitor.started]; plugin.sh still emits all three"

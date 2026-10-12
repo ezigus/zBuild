@@ -2,7 +2,7 @@
 # tests/unit/runner-contract-lib-seam-test.sh — the contract-reader seam (#1783).
 #
 #   SPEC-1 [change]: the snapshot set is DERIVED, so it includes the transitive
-#                    deps the old hand-list missed (env-scrub, impact-prefilter)
+#                    deps the old hand-list missed (env-scrub; merge-base via shape-floor)
 #   SPEC-2 [change]: the snapshot is a self-contained root — every lib it copies
 #                    can be sourced from it without reaching outside
 #   SPEC-3 [change]: no once-guard — a later call picks up a changed tree
@@ -49,8 +49,8 @@ CLOSURE="$(_runner_contract_lib_closure "$LIB" || true)"
 
 assert_contains "[SPEC-1] closure includes env-scrub.sh (sourced by acceptance-negctl)" \
     "$CLOSURE" "env-scrub.sh"
-assert_contains "[SPEC-1] closure includes impact-prefilter.sh (sourced by shape-floor)" \
-    "$CLOSURE" "impact-prefilter.sh"
+assert_contains "[SPEC-1] closure includes merge-base.sh (sourced by shape-floor)" \
+    "$CLOSURE" "merge-base.sh"
 assert_contains "[SPEC-1] closure still includes the entry points" \
     "$CLOSURE" "acceptance-negctl.sh"
 

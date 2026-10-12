@@ -1072,7 +1072,7 @@ _cycle_resolve_scope_expansion() {
 # (Template feedback wires are retired, ADR-055 §4: every stage reads every
 # stage's latest output under Previous work.)
 _cycle_apply_feedback() {
-    local iter_next="$1" state_dir="$2"
+    local state_dir="$2"   # $1 (the next iteration) is kept in the call shape
 
     # ADR-034 / #846: wire targeted-test artifacts for the next iter's test stage.
     # ZBUILD_TEST_RED_SET  → path to test-red-set.json from the just-completed run.

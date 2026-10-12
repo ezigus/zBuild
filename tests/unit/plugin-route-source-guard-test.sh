@@ -250,15 +250,12 @@ done
 # Without this, a typo in _calls_router makes the caller set empty and SPEC-1
 # passes for the worst possible reason — and it earned its keep on this file's
 # first run, catching a SIGPIPE-under-pipefail bug in _calls_router that had
-# silently dropped impact from the population. These seven call the router at
-# d2db611; the three fixed by #2060/#2061/#2062 are deliberately NOT listed,
+# silently dropped impact (since retired) from the population. These six call
+# the router; the three fixed by #2060/#2061/#2062 are deliberately NOT listed,
 # because this file must not encode which side of those merges it sits on.
-# review-report is absent on purpose too: it sources route.sh but reaches no
-# route_to_model, and the guard is one-directional by design.
 _KNOWN_CALLERS=(
     plugins/agent/build/plugin.sh
     plugins/agent/design/plugin.sh
-    plugins/agent/impact/plugin.sh
     plugins/agent/monitor/plugin.sh
     plugins/agent/plan/plugin.sh
     plugins/agent/review-lens/plugin.sh

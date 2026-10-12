@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Tests: ADR-047 §4 — cycle-orchestrator capability flags (issue #1281)
 #
-# Characterization goldens for the three coupling sites replaced:
+# Characterization goldens for the coupling sites replaced:
 #   [SPEC-1] Site 1: detailed_failure_count — orchestrator reads the declared
 #            artifact+field to set _CYCLE_LAST_FAILURE_COUNT (not stage name).
 #   [SPEC-2] Site 2: produces_commits — orchestrator detects commit-producing
 #            member via manifest capability (not literal "build").
-#   [SPEC-3] Site 3: feedback_count_field — _cycle_render_feedback_digest appends
-#            the declared count field (not literal "test_assessment").
+#   [SPEC-3] (retired) Site 3: feedback_count_field went with the template
+#            feedback wires (ADR-055 §4, amended 2026-10-12).
 #   [SPEC-4] Fictitious-stage guard — a stage named "frobnicate" declaring
 #            capabilities.detailed_failure_count is honored byte-identically;
 #            cycle-orchestrator.sh contains no literal "frobnicate" and its
@@ -35,7 +35,7 @@ mkdir -p "$PLUGINS_ROOT/tool/tester-stage" \
          "$PLUGINS_ROOT/agent/builder-stage" \
          "$PLUGINS_ROOT/agent/frobnicate"
 
-# Site-1 / Site-3 producer: declares detailed_failure_count + feedback_count_field
+# Site-1 producer: declares detailed_failure_count
 cat > "$PLUGINS_ROOT/tool/tester-stage/manifest.yaml" <<'EOF'
 id: tester-stage
 name: Test tester-stage fixture
@@ -46,7 +46,6 @@ hooks:
 provides:
   role: tester
   artifact_type: tester-results.json
-inputs: []
 outputs:
   - id: tester_results
     path: ${artifact_dir}/tester-results.json
@@ -57,7 +56,6 @@ capabilities:
   detailed_failure_count:
     artifact: tester-results.json
     field: failed
-  feedback_count_field: required_changes
 EOF
 
 # Site-2 producer: declares produces_commits
@@ -70,7 +68,6 @@ hooks:
   run: builder_stage_run
 provides:
   artifact_type: builder-summary.json
-inputs: []
 outputs:
   - id: builder_summary
     path: ${artifact_dir}/builder-summary.json
@@ -92,7 +89,6 @@ hooks:
   run: frobnicate_run
 provides:
   artifact_type: frobnicate-results.json
-inputs: []
 outputs:
   - id: frobnicate_results
     path: ${artifact_dir}/frobnicate-results.json
@@ -167,7 +163,6 @@ hooks:
   run: no_cap_run
 provides:
   artifact_type: no-cap-results.json
-inputs: []
 outputs:
   - id: no_cap_results
     path: ${artifact_dir}/no-cap-results.json
@@ -231,59 +226,6 @@ _pc_absent="$(yaml_get "$PLUGINS_ROOT/tool/tester-stage/manifest.yaml" \
     "capabilities.produces_commits" 2>/dev/null || true)"
 assert_eq "[SPEC-2] tester-stage has no produces_commits → empty" "" "$_pc_absent"
 
-# ── [SPEC-3] Site 3: feedback_count_field capability in _cycle_render_feedback_digest
-print_test_section "[SPEC-3] Site 3: feedback_count_field drives digest append"
-
-# The from_stage (tester-stage) declares feedback_count_field = required_changes.
-# The digest reads the producer's own output (ADR-068 §8: no copy is kept).
-mkdir -p "$STATE_DIR/artifacts"
-_CYCLE_FEEDBACK=("tester-stage:tester_results|build:prior_tester_assess:false")
-_CYCLE_TRAP_CYCLE_ID="spec3"
-printf '{"verdict":"fail","required_changes":["fix-a","fix-b","fix-c"]}' \
-    > "$STATE_DIR/artifacts/tester-results.json"
-
-set +e
-digest="$(_cycle_render_feedback_digest 2 "$STATE_DIR")"
-set -e
-
-# Must contain the verdict + 3 changes count
-assert_contains "[SPEC-3] digest includes verdict" "$digest" "fail"
-assert_contains "[SPEC-3] digest appends required_changes count (3)" "$digest" "3 changes"
-
-# Verify: a stage WITHOUT feedback_count_field does NOT append a count.
-mkdir -p "$PLUGINS_ROOT/tool/plain-stage"
-cat > "$PLUGINS_ROOT/tool/plain-stage/manifest.yaml" <<'EOF'
-id: plain-stage
-name: Plain stage (no feedback capability)
-kind: tool
-version: 0.0.1
-hooks:
-  run: plain_run
-provides:
-  artifact_type: plain-result.json
-inputs: []
-outputs:
-  - id: plain_result
-    path: ${artifact_dir}/plain-result.json
-    type: json
-    required: true
-    primary: true
-EOF
-
-_CYCLE_FEEDBACK=("plain-stage:plain_result|build:prior_plain:false")
-_CYCLE_TRAP_CYCLE_ID="spec3b"
-printf '{"verdict":"pass","required_changes":["ignored"]}' \
-    > "$STATE_DIR/artifacts/plain-result.json"
-
-set +e
-digest2="$(_cycle_render_feedback_digest 2 "$STATE_DIR")"
-set -e
-# Must NOT append a changes count (no feedback_count_field capability on plain-stage)
-_has_changes=0
-printf '%s' "$digest2" | /usr/bin/grep -q "changes" 2>/dev/null && _has_changes=1 || true
-assert_eq "[SPEC-3b] no capability → digest has no changes suffix" \
-    "0" "$_has_changes"
-
 # ── [SPEC-4] Fictitious-stage guard ───────────────────────────────────────────
 print_test_section "[SPEC-4] Fictitious stage 'frobnicate' honored, no literal in orchestrator"
 
@@ -331,11 +273,6 @@ _dfc_fld="$(manifest_graph_capability_field \
     "detailed_failure_count" "field" 2>/dev/null || true)"
 assert_eq "[SPEC-5] test plugin: detailed_failure_count.field=failed" \
     "failed" "$_dfc_fld"
-
-# #979: the test_assessment real-manifest characterization (feedback_count_field)
-# was dropped — the plugin was retired with the compound-quality lattice. The
-# generic feedback_count_field mechanic is still covered by the synthetic
-# tester-stage fixture manifest above (SPEC-3).
 
 cleanup_test_env
 print_test_results

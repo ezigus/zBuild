@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: plan/review/security-lens symmetrically opt-in to producer-side
+# Tests: plan/security-lens symmetrically opt-in to producer-side
 # artifact tagging (#483, ADR-018 Implementation Notes).
 #
 # This is a table-driven sanity check that all Pattern 1 stages export
@@ -27,11 +27,11 @@ print_test_header "agent-stages: artifact metadata symmetry (#483)"
 # reading the captured env via a stubbed route_to_model.
 
 # Row format: <plugin_id> <expected_artifact_id> <plugin_file>
-# (#979 retired the review agent stage; its row was removed.)
+# (#979 retired the review agent stage and 2026-10-12 retired impact; their rows
+# were removed.)
 _rows=(
     "plan|plan|$REPO_ROOT/plugins/agent/plan/plugin.sh"
     "security-lens|security-lens|$REPO_ROOT/plugins/agent/security-lens/plugin.sh"
-    "impact|impact|$REPO_ROOT/plugins/agent/impact/plugin.sh"
 )
 
 for row in "${_rows[@]}"; do

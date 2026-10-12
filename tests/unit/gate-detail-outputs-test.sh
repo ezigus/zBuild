@@ -126,8 +126,9 @@ done
 # No inert declaration left behind — the #1865/#1898 lesson.
 _orphans=""
 while IFS= read -r -d '' _m; do
-    _ins="$(manifest_graph_get_inputs "$_m" 2>/dev/null || true)"
-    grep -qE '^(gate_feedback|design_feedback)\|' <<< "$_ins" \
+    # Declared inputs are retired (ADR-055 §1, amended 2026-10-12): a manifest
+    # that still names a retired output anywhere is an inert leftover.
+    grep -qE '(^|[^A-Za-z_])(gate_feedback|design_feedback)([^A-Za-z_]|$)' "$_m" 2>/dev/null \
         && _orphans="${_orphans}$(manifest_graph_get_stage_id "$_m") "
 done < <(find "$REPO_ROOT/plugins" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
 assert_eq "[SPEC-3] no consumer still names the retired outputs" "" \

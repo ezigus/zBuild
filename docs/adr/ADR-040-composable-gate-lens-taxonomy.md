@@ -408,3 +408,22 @@ The gate aggregator no longer rolls up a fault class (ADR-068 §9); it emits the
 Why: on #2035 the correctness lens found that the change left a header comment stale that the issue had asked to update. The lens marked it pre-existing, pr-open printed only `findings`, and no reader ever saw it.
 
 Test: `tests/unit/pr-open-advisory-review-test.sh` SPEC-24.
+
+### Amendment (2026-10-12) — the reference-input check and review-report are retired
+
+- **The #2040 reference-input check is retired.** It proved a model-judged `convergence: gate` stage
+  judged against something authored outside its own loop by reading the stage's declared `inputs:`
+  (`GATE_REFERENCE_UNPROVEN` / `GATE_REFERENCE_MUTABLE`). Declared inputs are retired (ADR-055, amended
+  2026-10-12): every stage gets every stage's latest output, so a stage's standard is declared nowhere a
+  check could read. Which stages may gate is the template's choice — the `convergence:` marker of each
+  member and the cycle's `exit_when` — and §5's structural rules on those still hold (an advisory stage
+  never gates; `CYCLE_AGG_NOT_MEMBER`, `CYCLE_AGG_TYPE`, `PARALLEL_NO_AGG`). spec-coverage and
+  issue-acceptance keep their standard, the issue, because intake writes it before the loop and no stage
+  in the loop rewrites it; that is now the template author's responsibility, not a check's.
+- **review-report is retired.** `review_lenses` (one `review-lens` work unit per element) plus
+  `review-aggregator` replaced it (§3, §4); no template used it.
+
+Enforced by: `tests/integration/adr040-isolated-gate-test.sh` SPEC-1 (a model-judged gate member is
+admitted; no `GATE_REFERENCE` violation), SPEC-6 (the aggregator wiring is still checked);
+`tests/unit/retired-impact-review-report-inputs-test.sh` RT2 (review-report is gone), RT4 (no check reads
+declared inputs).

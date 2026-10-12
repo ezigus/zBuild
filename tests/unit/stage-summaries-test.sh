@@ -308,7 +308,8 @@ assert_eq "[SPEC-7] no declaring stage → no summary in the block" "0" \
 # ─── SPEC-9: at most one summary per manifest ────────────────────────────────
 # Mirrors the exactly-one-`primary` rule (lint-contract.sh:177). Two summaries
 # would make "the stage's summary" ambiguous and the renderer's first-wins scan
-# order-dependent.
+# order-dependent. The fixture is a stage (it writes a stage result,
+# provides.result_contract) — what puts a manifest in the lint's scope.
 print_test_section "9. lint refuses two summary outputs in one manifest"
 
 LINTDIR="$TEST_TEMP_DIR/lintfix/plugins/tool/ss-double"
@@ -321,10 +322,8 @@ version: 0.0.1
 convergence: gate
 hooks:
   run: ssd_run
-inputs:
-  - id: gh_issue_body
-    source: external
-    required: true
+provides:
+  result_contract: 2
 outputs:
   - id: ss_double_result
     path: ${artifact_dir}/ss-double-result.json
