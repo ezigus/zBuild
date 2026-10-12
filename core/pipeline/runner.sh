@@ -110,6 +110,10 @@ source "$_ZBUILD_ROOT/scripts/lib/worktree.sh"
 source "$_ZBUILD_ROOT/scripts/lib/run-branch.sh"
 # shellcheck source=../../scripts/lib/run-branch-setup.sh
 source "$_ZBUILD_ROOT/scripts/lib/run-branch-setup.sh"
+# ADR-054 §11 (#1944): run-level wall-clock limit resolver lives in stage-limits.sh
+# alongside all other limit-resolution functions.
+# shellcheck source=../../scripts/lib/stage-limits.sh
+source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
 
 _usage() {
     # Usage shown on error or --help. Unix convention: stderr (#619).
@@ -146,6 +150,10 @@ EOF
 
 # Globals (not local) so EXIT trap can read them after main() returns.
 _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
+# ADR-054 §11 (#1944): run-level watchdog globals — PID of the watchdog background
+# subshell (killed by the EXIT trap on clean exit) and the resolved limit in seconds.
+_RUNNER_WATCHDOG_PID=""
+_RUNNER_MAX_RUN_S=""
 # #1878: last reported snapshot-failure reason, so a static precondition is
 # reported once rather than once per stage boundary.
 _RUNNER_LAST_SNAPSHOT_FAIL_REASON=""
@@ -874,11 +882,11 @@ _runner_pipeline_duration_token() {
 _pipeline_status_glyph() {
     local status="${1:-}"
     case "$status" in
-        complete|success)              verdict_glyph "pass" ;;
-        complete_unconverged)          verdict_glyph "warn" ;;
-        failed|interrupted|aborted)    verdict_glyph "fail" ;;
-        preflight_failed)              verdict_glyph "warn" ;;
-        *)                             printf '%s' "?" ;;
+        complete|success)                        verdict_glyph "pass" ;;
+        complete_unconverged)                    verdict_glyph "warn" ;;
+        failed|interrupted|aborted|timed_out)    verdict_glyph "fail" ;;
+        preflight_failed)                        verdict_glyph "warn" ;;
+        *)                                       printf '%s' "?" ;;
     esac
 }
 
@@ -888,11 +896,11 @@ _pipeline_status_glyph() {
 _pipeline_status_color() {
     local status="${1:-}"
     case "$status" in
-        complete|success)              verdict_color "pass" ;;
-        complete_unconverged)          verdict_color "warn" ;;
-        failed|interrupted|aborted)    verdict_color "fail" ;;
-        preflight_failed)              verdict_color "warn" ;;
-        *)                             printf '%s' "${YELLOW:-}" ;;
+        complete|success)                        verdict_color "pass" ;;
+        complete_unconverged)                    verdict_color "warn" ;;
+        failed|interrupted|aborted|timed_out)    verdict_color "fail" ;;
+        preflight_failed)                        verdict_color "warn" ;;
+        *)                                       printf '%s' "${YELLOW:-}" ;;
     esac
 }
 
@@ -955,6 +963,7 @@ _render_pipeline_end() {
         failed)                  word="failed" ;;
         interrupted)             word="interrupted" ;;
         aborted)                 word="aborted" ;;
+        timed_out)               word="timed_out" ;;
         preflight_failed)        word="preflight_failed" ;;
         *)                       word="$status" ;;
     esac
@@ -1005,7 +1014,7 @@ _render_pipeline_end() {
 # pass ends by saying why in words and naming each open item, with what would
 # settle it. pipeline.end keeps the engine's code; this is what a reader sees.
 _runner_render_open_items() {
-    case "${1:-}" in failed|interrupted|aborted) ;; *) return 0 ;; esac
+    case "${1:-}" in failed|interrupted|aborted|timed_out) ;; *) return 0 ;; esac
     [[ -n "${_runner_state_file:-}" ]] && declare -F open_items_markdown >/dev/null 2>&1 || return 0
     local sd="${_runner_state_file%/*}" items n
     items="$(open_items_markdown "$sd")" || items=""
@@ -1986,6 +1995,14 @@ main() {
         return 0
     fi
 
+    # ADR-054 §11 (#1944): resolve the per-run wall-clock limit BEFORE creating
+    # the state file so a misconfigured value aborts with no state artifact.
+    # template_max_run_s() is available because load_template() ran above.
+    if ! _runner_resolve_run_limit_s; then
+        error "run limit is misconfigured — see above; aborting before any stage runs"
+        return 1
+    fi
+
     mkdir -p "$state_dir"
     # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`)
     # Cross-check vs --issue happened earlier (before --dry-run); see #296 Δ-4.
@@ -2514,6 +2531,11 @@ main() {
         # ADR-054 §7: a signal ends the run while a stage is still running;
         # stop it, and all it started, before anything else.
         declare -F plugin_stop_running >/dev/null 2>&1 && plugin_stop_running
+        # ADR-054 §11 (#1944): disarm the watchdog before dispatching always-run
+        # stages — it has already done its work (or was never needed on this path).
+        # Killing it here prevents it from firing during teardown.
+        kill "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
+        wait "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
         # #1829: free live resources first, while the state file and the
         # process tree are still intact.
         _runner_dispatch_always_run
@@ -2528,6 +2550,13 @@ main() {
         if declare -F zbuild_run_cap_release >/dev/null 2>&1; then
             zbuild_run_cap_release || true
         fi
+        # ADR-054 §11 (#1944): capture the abort word BEFORE disarming the
+        # sentinel — _zbuild_disarm_abort_sentinel clears both _ZB_ABORT_REASON
+        # and the sentinel file. _RUNNER_ABORT_REASON is set by _runner_signal_trap
+        # using first-wins semantics: if the watchdog wrote `timed_out` before the
+        # signal fired, _runner_signal_trap's _zbuild_arm_abort_sentinel call saw it
+        # and set _RUNNER_ABORT_REASON="timed_out". This survives the disarm.
+        local _at_abort_word; _at_abort_word="${_RUNNER_ABORT_REASON:-}"
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
         # exit path — clean end, normal failure, or abort — so a follow-on
         # zbuild invocation in the same state_dir never sees a stale
@@ -2547,6 +2576,20 @@ main() {
         # #2131: the normal path — pipeline.end and the always-run stages are
         # on disk; the sidecar renders them in its final PATCH, then goes.
         if [[ "$_runner_ended" == "true" ]]; then _runner_status_comment_reap; return 0; fi
+        if [[ "${_at_abort_word:-}" == "timed_out" ]]; then
+            if ! _set_pipeline_status "$_runner_state_file" "timed_out" 2>/dev/null; then
+                eb_emit_event "pipeline.state.error" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                    "reason=abort_trap_set_status_failed" 2>/dev/null || true
+            fi
+            eb_emit_event "pipeline.end" "status=timed_out" \
+                "stage=${ZBUILD_CURRENT_STAGE:-}" \
+                "limit_s=${_RUNNER_MAX_RUN_S:-}" \
+                "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+            ( _render_pipeline_end "timed_out" ) || true
+            _runner_status_comment_reap
+            return 0
+        fi
         # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere.
         # Fail-closed: if we cannot mark the pipeline interrupted, emit an error event so the
         # operator can detect the unrecorded abort (was: || true, which silently dropped failures).
@@ -2677,7 +2720,10 @@ main() {
                 disown $! 2>/dev/null || true
             fi
         fi
-        _RUNNER_ABORT_REASON="$_word"
+        # ADR-054 §11 (#1944): read back the ACTUAL abort reason after arming —
+        # if the watchdog wrote `timed_out` before this signal fired, first-wins
+        # preserves it; _RUNNER_ABORT_REASON must carry that, not the signal word.
+        _RUNNER_ABORT_REASON="$(_zbuild_abort_reason)"
         # Not a clean 0: the parent sees the run failed; why is in the events.
         exit 1
     }
@@ -2724,6 +2770,37 @@ main() {
             "engine_sha=$_eng_sha" "engine_branch=$_eng_br"
         info "Pipeline started — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template engine=${_eng_sha:0:7}(${_eng_br})"
     fi
+
+    # ── ADR-054 §11 (#1944): arm the run-level watchdog ─────────────────────
+    # The watchdog is a background subshell that sleeps for the resolved limit,
+    # then writes `timed_out` to the abort sentinel and sends SIGTERM to the
+    # runner's process group. The EXIT trap kills the watchdog on clean exit.
+    #
+    # Raw kill (not zbuild_pg_kill): the watchdog IS in the runner's process
+    # group, so zbuild_pg_kill's self-group guard would refuse the kill.
+    # First-wins: the sentinel write happens BEFORE the signal, so if the
+    # runner's SIGTERM trap calls _zbuild_arm_abort_sentinel "sigterm", ADR-025
+    # first-wins preserves `timed_out` over that later write.
+    local _RUNNER_RUN_PGID=""
+    if command -v ps >/dev/null 2>&1; then
+        _RUNNER_RUN_PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')" || _RUNNER_RUN_PGID="$$"
+    fi
+    [[ -z "$_RUNNER_RUN_PGID" ]] && _RUNNER_RUN_PGID="$$"
+    (
+        # Ignore SIGTERM so the watchdog survives its own PG-wide TERM and
+        # can escalate to KILL after the grace period. The runner's EXIT trap
+        # uses SIGKILL (not TERM) to disarm this watchdog on clean exit.
+        trap '' TERM
+        _wdg_lim="${_RUNNER_MAX_RUN_S}"
+        _wdg_pgid="${_RUNNER_RUN_PGID}"
+        sleep "$_wdg_lim" || exit 0
+        # Arm the sentinel BEFORE signalling so first-wins preserves timed_out.
+        _zbuild_arm_abort_sentinel timed_out 2>/dev/null || true
+        kill -TERM -- "-${_wdg_pgid}" 2>/dev/null || true
+        sleep 10 || exit 0
+        kill -KILL -- "-${_wdg_pgid}" 2>/dev/null || true
+    ) &
+    _RUNNER_WATCHDOG_PID=$!
 
     # ── ADR-015 stage-io stdout channel ─────────────────────────────────────
     # Allocate a dedicated fd that survives plugin-side `2>/dev/null`
@@ -2864,6 +2941,17 @@ main() {
                 _render_pipeline_end "aborted" || true
                 _runner_ended=true
                 error "${_ea_unit%%=*} ${_ea_unit#*=}: the run $(run_end_words "$_ea_word" 0)${_ea_detail:+ — $_ea_detail}"
+                ;;
+            timed_out)
+                # ADR-054 §11 (#1944): run-level wall-clock limit exceeded.
+                _set_pipeline_status "$_ea_state" "timed_out"
+                eb_emit_event "pipeline.end" "status=timed_out" "$_ea_unit" \
+                    "stage=${ZBUILD_CURRENT_STAGE:-}" \
+                    "limit_s=${_RUNNER_MAX_RUN_S:-}" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+                _render_pipeline_end "timed_out" || true
+                _runner_ended=true
+                error "${_ea_unit%%=*} ${_ea_unit#*=}: the run $(run_end_words "$_ea_word" 0)"
                 ;;
             *)
                 _set_pipeline_status "$_ea_state" "interrupted"
