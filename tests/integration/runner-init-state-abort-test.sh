@@ -35,6 +35,7 @@ setup_test_env "runner-init-state-abort"
 _ZB_ID="$(zb_test_issue)"
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+fixture_link_personas "$PLUGINS_ROOT"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"

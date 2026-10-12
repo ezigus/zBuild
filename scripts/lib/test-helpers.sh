@@ -924,6 +924,7 @@ mock_plugin_factory() {
     local id="$1" kind="${2:-agent}" exit_code="${3:-0}" platform="${4:-}" role="${5:-}" version="${6:-0.0.1}"
     local dir="$TEST_TEMP_DIR/plugins/$kind/$id"
     mkdir -p "$dir"
+    fixture_link_personas "$TEST_TEMP_DIR/plugins"
     local fn; fn="${id//-/_}_run"
     cat > "$dir/manifest.yaml" <<EOF
 id: $id

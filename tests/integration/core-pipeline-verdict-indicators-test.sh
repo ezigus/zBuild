@@ -42,6 +42,7 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 _make_verdict_plugin() {
     local id="$1" kind="$2" out_rel="$3" json="$4" role="${5:-}"
     local dir="$PLUGINS_ROOT/$kind/$id"
+    fixture_link_personas "$PLUGINS_ROOT"
     mkdir -p "$dir"
     local fn; fn="${id//-/_}_run"
     # #1850: the stub speaks result contract v2 — the JSON it writes gains the
