@@ -24,5 +24,13 @@
   "wiring_files": [
     "core/pipeline/runner.sh",
     "core/pipeline/template.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/integration/resume-after-run-timeout-test.sh",
+      "tests/integration/run-timed-out-test.sh",
+      "tests/unit/run-limit-precedence-test.sh",
+      "tests/unit/run-watchdog-clean-exit-test.sh"
+    ]
+  }
 }
