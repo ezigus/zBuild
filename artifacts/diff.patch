@@ -62,6 +62,20 @@ index a111821e..a3faf796 100644
  ADR-055-inter-stage-data-contract-v2.md
  ADR-056-run-cleanup-only-lifecycle.md
  ADR-058-engine-write-boundary.md
+diff --git a/config/event-schema.json b/config/event-schema.json
+index 9d443676..7a576d88 100644
+--- a/config/event-schema.json
++++ b/config/event-schema.json
+@@ -168,6 +168,8 @@
+     "stage.write_boundary.window_unbounded",
+     "stage.write_boundary.unattributable",
+     "strategy.unit_name_conflict",
+-    "cycle.round.ended_early"
++    "cycle.round.ended_early",
++    "orch.backend.misconfigured",
++    "plugin.run.timed_out"
+   ]
+ }
 diff --git a/config/templates/simple.yaml b/config/templates/simple.yaml
 index 00af1bd3..2b7d2d59 100644
 --- a/config/templates/simple.yaml
@@ -239,7 +253,7 @@ index 00af1bd3..2b7d2d59 100644
      timeout_s: 60
    io:
 diff --git a/core/orch/contract.sh b/core/orch/contract.sh
-index bcb7cc0c..e763cf49 100644
+index bcb7cc0c..aaceca7b 100644
 --- a/core/orch/contract.sh
 +++ b/core/orch/contract.sh
 @@ -131,8 +131,8 @@ _orch_find_backend_dir() {
@@ -273,7 +287,24 @@ index bcb7cc0c..e763cf49 100644
      # Try registry lookup if find_plugin_for_role is available
      if declare -F find_plugin_for_role >/dev/null 2>&1; then
          plugin_dir="$(find_plugin_for_role "orchestrator-backend" "$backend" 2>/dev/null)" || plugin_dir=""
-@@ -162,26 +175,12 @@ orch_load_backend() {
+@@ -155,6 +168,16 @@ orch_load_backend() {
+ 
+     # Fallback: lightweight scan without the full registry
+     plugin_dir="$(_orch_find_backend_dir "$backend" 2>/dev/null)" || plugin_dir=""
++    # When ZBUILD_PLUGINS_ROOT is set to a directory other than the engine's own
++    # plugins (e.g. a test temp dir), also search the engine's plugins so that
++    # backends like bash-parallel remain resolvable without installing them there.
++    if [[ -z "$plugin_dir" || ! -f "${plugin_dir}/plugin.sh" ]]; then
++        local _engine_plugins="${_ZBUILD_ROOT}/plugins"
++        if [[ "${ZBUILD_PLUGINS_ROOT:-}" != "" && \
++              "${ZBUILD_PLUGINS_ROOT}" != "${_engine_plugins}" ]]; then
++            plugin_dir="$(_orch_find_backend_dir "$backend" "${_engine_plugins}" 2>/dev/null)" || plugin_dir=""
++        fi
++    fi
+     if [[ -n "$plugin_dir" && -f "${plugin_dir}/plugin.sh" ]]; then
+         # shellcheck disable=SC1090
+         source "${plugin_dir}/plugin.sh"
+@@ -162,26 +185,12 @@ orch_load_backend() {
          return 0
      fi
  
@@ -305,7 +336,7 @@ index bcb7cc0c..e763cf49 100644
      return 1
  }
  
-@@ -198,11 +197,11 @@ _orch_load_backend() {
+@@ -198,11 +207,11 @@ _orch_load_backend() {
  
      local backend
  
@@ -556,10 +587,10 @@ index a76cbadb..879b6a72 100644
 +    echo "${!var:-}"
 +}
 diff --git a/core/plugin-registry/lifecycle.sh b/core/plugin-registry/lifecycle.sh
-index 563776ae..506ee6c9 100644
+index 563776ae..54bca1ef 100644
 --- a/core/plugin-registry/lifecycle.sh
 +++ b/core/plugin-registry/lifecycle.sh
-@@ -469,18 +469,57 @@ plugin_hook_call() {
+@@ -469,18 +469,72 @@ plugin_hook_call() {
  
      emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
  
@@ -586,9 +617,17 @@ index 563776ae..506ee6c9 100644
 +        local _lc_hook_to="${!_lc_to_var:-}"
 +        [[ "$_lc_hook_to" =~ ^[0-9]+$ && "$_lc_hook_to" -gt 0 ]] || _lc_hook_to="${ZBUILD_STAGE_TIMEOUT_S:-5400}"
 +        [[ "$_lc_hook_to" =~ ^[0-9]+$ && "$_lc_hook_to" -gt 0 ]] || _lc_hook_to=5400
-+        local _lc_hook_pid _lc_wd_pid
++        local _lc_hook_pid _lc_wd_pid _lc_m_before=0
++        [[ "$-" == *m* ]] && _lc_m_before=1
 +        set -m
 +        (
++            # Always clear monitor mode: the hook subshell is already in its own
++            # process group (created by set -m + & above). Any background job the
++            # hook spawns must stay in that group so kill -KILL -- -<pgid> reaches
++            # them. If the caller had set -m (e.g. _runner_dispatch_always_run's
++            # outer subshell), the hook would inherit it and its children would get
++            # their own groups, escaping the KILL (#2333 SPEC-6b).
++            set +m
 +            # shellcheck disable=SC1090
 +            source "$plugin_sh"
 +            if declare -F "$hook_fn" >/dev/null 2>&1; then
@@ -602,7 +641,14 @@ index 563776ae..506ee6c9 100644
 +        ( set +m; sleep "$_lc_hook_to"; zbuild_pg_kill "$_lc_hook_pid" 10 2>/dev/null || true ) &
 +        _lc_wd_pid=$!
 +        set +m
++        # Restore runner's monitor mode: set +m above always clears it, even when
++        # ZBUILD_RUNNER_JOB_CONTROL=1 had it enabled before this call.
++        (( _lc_m_before == 1 )) && set -m
 +        wait "$_lc_hook_pid" 2>/dev/null; rc=$?
++        # #2333: the group leader exiting does not mean its group members did.
++        # A child that ignored TERM would survive if the watchdog is cancelled before
++        # it delivers KILL, so KILL the whole group now.
++        kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true
 +        declare -F zbuild_pg_kill >/dev/null 2>&1 && zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true
 +        wait "$_lc_wd_pid" 2>/dev/null || true
 +        if (( rc == 143 || rc == 137 )); then
@@ -747,6 +793,19 @@ index 1326ae8e..00000000
 -```
 -
 -_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._
+diff --git a/plugins/tool/orch-mock/plugin.sh b/plugins/tool/orch-mock/plugin.sh
+index 23e2cf31..b15b8a15 100755
+--- a/plugins/tool/orch-mock/plugin.sh
++++ b/plugins/tool/orch-mock/plugin.sh
+@@ -94,7 +94,7 @@ orch_dispatch() {
+ 
+     # Execute synchronously; capture stdout; store rc.
+     local task_rc=0
+-    bash -c "$task_body" > "$stdout_file" 2>&1 || task_rc=$?
++    bash -c "$task_body" _ </dev/null > "$stdout_file" 2>&1 || task_rc=$?
+     printf '%s' "$task_rc" > "$rc_file"
+ 
+     # Always return 0: dispatch means "task accepted", not "task succeeded".
 diff --git a/plugins/tool/orch-mock/tests/orch-mock-test.sh b/plugins/tool/orch-mock/tests/orch-mock-test.sh
 index 4f37fb6f..61c1ccc0 100755
 --- a/plugins/tool/orch-mock/tests/orch-mock-test.sh
@@ -1239,6 +1298,25 @@ index 1ba1423a..c7d3c3c8 100755
  
  cleanup_test_env
  print_test_results
+diff --git a/tests/unit/design-prompt-scope-charter-test.sh b/tests/unit/design-prompt-scope-charter-test.sh
+index 78a66073..0dec40d4 100755
+--- a/tests/unit/design-prompt-scope-charter-test.sh
++++ b/tests/unit/design-prompt-scope-charter-test.sh
+@@ -89,9 +89,11 @@ else
+     assert_fail "T5: prompt must forbid Edit/Write/Bash (design is read-only enumeration)"
+ fi
+ 
+-# T6: simple.yaml design timeout raised to 600 (repo-wide grep headroom).
+-tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
+-assert_eq "T6: design timeout_s raised to 600" "600" "${tmo:-unset}"
++# T6: simple.yaml design stage carries stage_timeout_s: 3900 (the whole-stage
++# limit now owns the design stage; router.timeout_s: 600 remains the per-dispatch
++# limit but stage_timeout_s is the dominant, and larger, value).
++tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'stage_timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
++assert_eq "T6: design stage_timeout_s raised to 3900" "3900" "${tmo:-unset}"
+ 
+ cleanup_test_env
+ print_test_results
 diff --git a/tests/unit/dispatch-rc-guard-test.sh b/tests/unit/dispatch-rc-guard-test.sh
 index f9720580..50ca7264 100755
 --- a/tests/unit/dispatch-rc-guard-test.sh
@@ -1251,6 +1329,34 @@ index f9720580..50ca7264 100755
  "
  
  _LEGACY_RE='(return|exit)[[:space:]]+(2|3|4|5|6|7|8|9|10|11|124|130|137|143)([[:space:]]|;|$)'
+diff --git a/tests/unit/event-schema-emitted-coverage-test.sh b/tests/unit/event-schema-emitted-coverage-test.sh
+index 70464603..47e71673 100755
+--- a/tests/unit/event-schema-emitted-coverage-test.sh
++++ b/tests/unit/event-schema-emitted-coverage-test.sh
+@@ -157,5 +157,23 @@ else
+     assert_fail "[#2032] cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types"
+ fi
+ 
++# ─── 5. [#1801/SPEC-18] orch.backend.misconfigured and plugin.run.timed_out ────
++# These two types must be registered in config/event-schema.json known_types.
++# The test FAILs on pre-change code (where neither is registered) and passes
++# after the change adds them.
++if grep -qxF "orch.backend.misconfigured" <<< "$_engine_types"; then
++    assert_pass "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json"
++else
++    assert_fail "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json" \
++        "not in config/event-schema.json known_types — add it under the orch. namespace"
++fi
++
++if grep -qxF "plugin.run.timed_out" <<< "$_engine_types"; then
++    assert_pass "[#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json"
++else
++    assert_fail "[#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json" \
++        "not in config/event-schema.json known_types — add it under the plugin. namespace"
++fi
++
+ print_test_results
+ exit $((FAIL > 0))
 diff --git a/tests/unit/exit-path-teardown-budget-guard-test.sh b/tests/unit/exit-path-teardown-budget-guard-test.sh
 index 4959d3b0..43d273a2 100755
 --- a/tests/unit/exit-path-teardown-budget-guard-test.sh
@@ -1389,10 +1495,10 @@ index 00000000..19731ddc
 +exit $((FAIL > 0))
 diff --git a/tests/unit/orch-sequential-retired-guard-test.sh b/tests/unit/orch-sequential-retired-guard-test.sh
 new file mode 100644
-index 00000000..cc119487
+index 00000000..1c6fb830
 --- /dev/null
 +++ b/tests/unit/orch-sequential-retired-guard-test.sh
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,157 @@
 +#!/usr/bin/env bash
 +# [#1801/SPEC-8] Guard: orch-sequential is retired.
 +#
@@ -1447,7 +1553,8 @@ index 00000000..cc119487
 +    --exclude-dir='legacy-DoNotUse' 2>/dev/null | \
 +    grep -v '^'"$REPO_ROOT"'/docs/adr/' | \
 +    grep -v '^'"$REPO_ROOT"'/tests/golden/' | \
-+    grep -v '^'"$REPO_ROOT"'/tests/unit/orch-sequential-retired-guard-test\.sh$' || true)
++    grep -v '^'"$REPO_ROOT"'/tests/unit/orch-sequential-retired-guard-test\.sh$' | \
++    grep -v '^'"$REPO_ROOT"'/tests/unit/orch-backend-misconfigured-test\.sh$' || true)
 +
 +if [[ -n "$_bad_refs" ]]; then
 +    assert_fail "[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential" \
@@ -1779,10 +1886,10 @@ index 00000000..757eb2c5
 +exit $((FAIL > 0))
 diff --git a/tests/unit/stage-timeout-dispatch-test.sh b/tests/unit/stage-timeout-dispatch-test.sh
 new file mode 100644
-index 00000000..ad670cc8
+index 00000000..a3618651
 --- /dev/null
 +++ b/tests/unit/stage-timeout-dispatch-test.sh
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,175 @@
 +#!/usr/bin/env bash
 +# [#1801/SPEC-1] A run hook that hangs is killed at the per-stage timeout on
 +# every dispatch route — map, fanout, sequential strategy, roleless leaf, cycle
@@ -1792,11 +1899,6 @@ index 00000000..ad670cc8
 +# [#1801/SPEC-10] _runner_dispatch_always_run and _orch_local_collect_results
 +# kill through zbuild_pg_kill; no hand-rolled TERM/KILL sequence remains for
 +# stage dispatch.
-+#
-+# [#1801/SPEC-17] The per-dispatch timeout watchdog kills a hung hook under
-+# the orch-mock backend (confirming the watchdog in lifecycle.sh is
-+# backend-agnostic); plugins/tool/orch-ruflo-hive/plugin.sh carries no
-+# TERM/KILL sequence that would suppress the lifecycle-level kill.
 +#
 +# All dispatch routes reach plugin_hook_call in lifecycle.sh; the single
 +# watchdog there covers every route. These tests FAIL on pre-change code
@@ -1811,7 +1913,7 @@ index 00000000..ad670cc8
 +# shellcheck source=../../scripts/lib/test-helpers.sh
 +source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 +
-+print_test_header "[#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog"
++print_test_header "[#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog"
 +setup_test_env "stage-timeout-dispatch"
 +
 +_lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
@@ -1924,27 +2026,27 @@ index 00000000..ad670cc8
 +    fi
 +fi
 +
-+# ─── [#1801/SPEC-17] watchdog is backend-agnostic: lifecycle is above backends ─
-+print_test_section "[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)"
++# ─── watchdog is backend-agnostic: lifecycle is above backends ────────────────
++print_test_section "watchdog in lifecycle.sh is backend-agnostic (above the backend layer)"
 +
 +# The watchdog's position in lifecycle.sh (plugin_hook_call) means it fires
 +# regardless of which orch backend is active — the backends dispatch work units
 +# that ultimately call plugin_hook_call. Verify orch-mock still routes through it.
 +_mock_plugin="$REPO_ROOT/plugins/tool/orch-mock/plugin.sh"
 +if [[ ! -f "$_mock_plugin" ]]; then
-+    assert_fail "[#1801/SPEC-17] plugins/tool/orch-mock/plugin.sh exists" "not found"
++    assert_fail "plugins/tool/orch-mock/plugin.sh exists" "not found"
 +else
 +    # orch-mock dispatches work units that call plugin_hook_call;
 +    # the backend itself does not arm or disarm the watchdog.
-+    assert_pass "[#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)"
++    assert_pass "orch-mock plugin exists (backend-agnostic watchdog can be tested with it)"
 +fi
 +
-+# ─── [#1801/SPEC-17] ruflo-hive carries no suppressing TERM/KILL sequence ─────
-+print_test_section "[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch"
++# ─── ruflo-hive carries no suppressing TERM/KILL sequence ─────────────────────
++print_test_section "orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch"
 +
 +_hive="$REPO_ROOT/plugins/tool/orch-ruflo-hive/plugin.sh"
 +if [[ ! -f "$_hive" ]]; then
-+    assert_fail "[#1801/SPEC-17] plugins/tool/orch-ruflo-hive/plugin.sh exists" "not found"
++    assert_fail "plugins/tool/orch-ruflo-hive/plugin.sh exists" "not found"
 +else
 +    # The hive plugin must not have a kill -TERM / kill -KILL that would intercept
 +    # the lifecycle-level watchdog's signal before it reaches the hook subshell.
@@ -1952,11 +2054,11 @@ index 00000000..ad670cc8
 +    _hive_kills=""
 +    _hive_kills="$(grep -n 'kill -TERM\|kill -KILL' "$_hive" | grep -v '^\s*#' || true)"
 +    if [[ -n "$_hive_kills" ]]; then
-+        assert_fail "[#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch" \
++        assert_fail "orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch" \
 +            "found kill -TERM/-KILL in ruflo-hive — may suppress lifecycle-level watchdog signal:" \
 +            "$(printf '%s' "$_hive_kills" | head -5 | tr '\n' '|')"
 +    else
-+        assert_pass "[#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch"
++        assert_pass "orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch"
 +    fi
 +fi
 +

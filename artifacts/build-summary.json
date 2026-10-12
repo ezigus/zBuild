@@ -5,6 +5,7 @@
   "files_changed": [
     ".github/issues/keepers-manifest.yaml",
     "config/adr-enforcement-baseline.txt",
+    "config/event-schema.json",
     "config/templates/simple.yaml",
     "core/orch/contract.sh",
     "core/orch/local_engine.sh",
@@ -20,6 +21,7 @@
     "docs/audits/adr-2026-10-03/batch-1.md",
     "docs/wiki/Plugins.md",
     "docs/wiki/plugins/orch-sequential.md",
+    "plugins/tool/orch-mock/plugin.sh",
     "plugins/tool/orch-mock/tests/orch-mock-test.sh",
     "plugins/tool/orch-ruflo-hive/plugin.sh",
     "plugins/tool/orch-sequential/manifest.yaml",
@@ -29,49 +31,38 @@
     "tests/integration/runner-release-exit-paths-test.sh",
     "tests/unit/adr059-no-tmpdir-defaults-test.sh",
     "tests/unit/core-orch-run-id-isolation-test.sh",
+    "tests/unit/design-prompt-scope-charter-test.sh",
     "tests/unit/dispatch-rc-guard-test.sh",
+    "tests/unit/event-schema-emitted-coverage-test.sh",
     "tests/unit/exit-path-teardown-budget-guard-test.sh",
     "tests/unit/map-strategy-test.sh",
+    "tests/unit/orch-sequential-retired-guard-test.sh",
     "tests/unit/plugin-artifact-goldens-test.sh",
+    "tests/unit/stage-timeout-dispatch-test.sh",
     "tests/unit/stdin-spawn-guard-test.sh",
     "tests/unit/summary-mandatory-test.sh",
     "tests/unit/template-always-run-test.sh"
   ],
-  "lines_added": 253,
-  "lines_removed": 519,
+  "lines_added": 317,
+  "lines_removed": 540,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
   "iterations": 3,
   "terminated_reason": "router_timeout",
-  "verdict": "scope_violation",
-  "disposition": "complete",
-  "reason": "scope_request_pending",
-  "scope_violation": true,
-  "scope_violations": [
-    "plugins/tool/orch-mock/plugin.sh"
-  ],
+  "verdict": "incomplete",
+  "disposition": "timed_out",
+  "reason": "router_timeout",
+  "scope_violation": false,
+  "scope_violations": [],
   "loop_input_tokens": 0,
   "loop_output_tokens": 0,
   "notes": "Build stage completed. Diff written to artifact; not applied.",
-  "out_of_scope_files": [
-    "plugins/tool/orch-mock/plugin.sh"
-  ],
-  "scope_expansion_request": {
-    "files": [
-      {
-        "path": "plugins/tool/orch-mock/plugin.sh",
-        "category": "structural",
-        "evidence": "",
-        "reason": "build edited this out-of-scope file"
-      }
-    ]
-  },
-  "passes": 1,
+  "passes": 4,
   "round": {
     "run_id": "20261012001548-2174",
     "cycle_id": "build_test_cycle",
     "iter": "1",
     "base": "31b1e590314feed5a7ba388dfef60474dc10ed11",
-    "passes": 1,
-    "iterations": 3
+    "passes": 4,
+    "iterations": 12
   }
 }

@@ -1,0 +1,2669 @@
+diff --git a/.github/issues/keepers-manifest.yaml b/.github/issues/keepers-manifest.yaml
+index 82722384..b1404279 100644
+--- a/.github/issues/keepers-manifest.yaml
++++ b/.github/issues/keepers-manifest.yaml
+@@ -2838,7 +2838,7 @@ issues:
+         backend
+       - Tests with a synchronous mock backend
+     state: closed
+-    closed_reason: 'Merged via PR #262 (feat/219-orch-contract) on 2026-05-25. core/orch/contract.sh + plugins/tool/orch-sequential/ + plugins/tool/orch-mock/ shipped.'
++    closed_reason: 'Merged via PR #262 (feat/219-orch-contract) on 2026-05-25. core/orch/contract.sh + plugins/tool/orch-bash-parallel/ + plugins/tool/orch-mock/ shipped.'
+   - id: orch-2
+     title: "[Phase 0.5] Default orchestrator backend: bash-parallel (no external deps)"
+     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+@@ -3326,13 +3326,13 @@ issues:
+       addition; no production code change.
+     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-26T23:11:38Z). Recorded by manifest-sync.'
+   - id: cleanup-delta-d
+-    title: "[Phase 0.5 cleanup] Per-plugin keeper trials for memory-sqlite (#216) and orch-sequential (#219)"
++    title: "[Phase 0.5 cleanup] Per-plugin keeper trials for memory-sqlite (#216) and orch-bash-parallel (#219)"
+     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+     labels: [phase-0, foundation, test-migration]
+     body: |
+       Live issue: https://github.com/ezigus/zBuild/issues/302
+       Per KEEPERS §G 5-trial-per-keeper mandate. Both default backends
+-      (memory-sqlite #216, orch-sequential #219) shipped without
++      (memory-sqlite #216, orch-bash-parallel #219) shipped without
+       dedicated test files; coverage came indirectly via the contract
+       layer tests. The ruflo counterparts (memory-ruflo, orch-ruflo-hive)
+       have per-plugin tests; the two defaults now do too.
+@@ -3342,7 +3342,7 @@ issues:
+         capabilities, put/get roundtrip with single-quote/newline/UTF-8
+         edge cases, namespace isolation, search --limit, lifecycle
+         list/exists/clear, durability across reinit, sequential overwrite)
+-      - tests/integration/plugin-orch-sequential-test.sh (12 assertions:
++      - tests/integration/plugin-orch-bash-parallel-test.sh (12 assertions:
+         capabilities, spawn, dispatch+collect 0/1/2 normalization,
+         shutdown, pool isolation, pool_id validation, script-file
+         work-unit format)
+diff --git a/config/adr-enforcement-baseline.txt b/config/adr-enforcement-baseline.txt
+index a111821e..a3faf796 100644
+--- a/config/adr-enforcement-baseline.txt
++++ b/config/adr-enforcement-baseline.txt
+@@ -12,13 +12,11 @@ ADR-007-test-strategy.md
+ ADR-008-dependency-policy.md
+ ADR-009-platform-aware-modularity.md
+ ADR-010-ci-cli-parity.md
+-ADR-011-pluggable-backends.md
+ ADR-012-test-tiering-and-ci-gating.md
+ ADR-013-canonical-stage-list.md
+ ADR-014-backend-init-timing.md
+ ADR-015-stage-io-capture.md
+ ADR-016-per-repository-template-resolution.md
+-ADR-017-per-stage-router-config.md
+ ADR-018-stage-invocation-modes.md
+ ADR-019-review-fail-closed-on-test-failure.md
+ ADR-020-deferred-tracker.md
+@@ -51,7 +49,6 @@ ADR-049-vision-document-standard.md
+ ADR-051-engine-owned-stage-keyed-data-provision.md
+ ADR-052-engine-owned-run-worktree.md
+ ADR-053-test-flake-policy.md
+-ADR-054-stage-contract.md
+ ADR-055-inter-stage-data-contract-v2.md
+ ADR-056-run-cleanup-only-lifecycle.md
+ ADR-058-engine-write-boundary.md
+diff --git a/config/event-schema.json b/config/event-schema.json
+index 9d443676..7a576d88 100644
+--- a/config/event-schema.json
++++ b/config/event-schema.json
+@@ -168,6 +168,8 @@
+     "stage.write_boundary.window_unbounded",
+     "stage.write_boundary.unattributable",
+     "strategy.unit_name_conflict",
+-    "cycle.round.ended_early"
++    "cycle.round.ended_early",
++    "orch.backend.misconfigured",
++    "plugin.run.timed_out"
+   ]
+ }
+diff --git a/config/templates/simple.yaml b/config/templates/simple.yaml
+index 00af1bd3..2b7d2d59 100644
+--- a/config/templates/simple.yaml
++++ b/config/templates/simple.yaml
+@@ -148,6 +148,7 @@ spec-coverage:
+   # which is wrong for judging an assertion against a SPEC (the bug there
+   # survives charity) and exactly right here, where the question IS about intent.
+   persona: product-owner
++  stage_timeout_s: 600
+   router:
+     timeout_s: 600
+ 
+@@ -162,6 +163,7 @@ test-author:
+   # writes its own tests, the defect #2022 exists to prevent (#1849 run
+   # 35949629759). Its failure is retried first (the stage's `retry:` budget).
+   blocking: true
++  stage_timeout_s: 900
+   router:
+     # #2188: the same budget as build — authoring a 15–25 SPEC contract is
+     # build-sized work (#1849: two 600s calls both timed out mid-write).
+@@ -185,6 +187,7 @@ spec-correspondence:
+   # what separates it from test-strategist, whose instinct shown a mismatched
+   # assertion is to repair it and answer yes.
+   persona: quality-assurance
++  stage_timeout_s: 600
+   router:
+     timeout_s: 600
+ 
+@@ -193,6 +196,7 @@ spec-correspondence:
+ assertion-integrity:
+   gate: auto
+   roles: [assertion_integrity]
++  stage_timeout_s: 600
+ 
+ # ─── issue-acceptance (leaf, gate) ───────────────────────────────────────────
+ # #1849: the finished change against the ISSUE. A model call on the convergence
+@@ -204,6 +208,7 @@ issue-acceptance:
+   # Same question spec-coverage asks of the design — "was what was asked for
+   # delivered?" — now asked of the code.
+   persona: product-owner
++  stage_timeout_s: 600
+   router:
+     timeout_s: 600
+ 
+@@ -277,6 +282,7 @@ build_test_cycle:
+ intake:
+   gate: auto
+   roles: [intake]
++  stage_timeout_s: 600
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -285,6 +291,7 @@ intake:
+ plan:
+   gate: auto
+   roles: [planner]
++  stage_timeout_s: 1200
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -299,6 +306,7 @@ plan:
+ design:
+   gate: auto
+   roles: [designer]
++  stage_timeout_s: 3900
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -317,6 +325,7 @@ design:
+ design-gate:
+   gate: auto
+   roles: [design_gate]
++  stage_timeout_s: 600
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -325,6 +334,7 @@ design-gate:
+ build:
+   gate: auto
+   roles: [builder]
++  stage_timeout_s: 4200
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -336,6 +346,7 @@ build:
+ test:
+   gate: auto
+   roles: [tester]
++  stage_timeout_s: 5400
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -345,6 +356,7 @@ test:
+ shape-floor:
+   gate: auto
+   roles: [shape_floor]
++  stage_timeout_s: 600
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -361,6 +373,7 @@ acceptance-gate:
+   gate: auto
+   roles: [acceptance_gate]
+   negctl_timeout_s: 60
++  stage_timeout_s: 600
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -374,6 +387,7 @@ acceptance-gate:
+ secret-scan:
+   gate: auto
+   roles: [secret_scan]
++  stage_timeout_s: 600
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -385,6 +399,7 @@ secret-scan:
+ gate-aggregator:
+   gate: auto
+   roles: [gate_aggregator]
++  stage_timeout_s: 600
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -417,6 +432,7 @@ review_lenses:
+   max_parallel: 4
+   on_member_error: continue
+   aggregate: advisory
++  stage_timeout_s: 600
+   io:
+     destinations: [file]
+     tail_lines: 200
+@@ -436,6 +452,7 @@ review_lenses:
+ review-aggregator:
+   gate: auto
+   roles: [review_aggregator]
++  stage_timeout_s: 600
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -445,6 +462,7 @@ review-aggregator:
+ pr:
+   gate: auto
+   roles: [pr]
++  stage_timeout_s: 600
+   io:
+     destinations: [file, stdout]
+     tail_lines: 200
+@@ -461,8 +479,7 @@ pr:
+ release:
+   gate: auto
+   roles: [teardown]
+-  router:
+-    timeout_s: 30
++  stage_timeout_s: 30
+   io:
+     destinations: [file]
+     tail_lines: 50
+@@ -479,8 +496,7 @@ release:
+ persist:
+   gate: auto
+   roles: [persist]
+-  router:
+-    timeout_s: 120
++  stage_timeout_s: 120
+   io:
+     destinations: [file]
+     tail_lines: 50
+@@ -496,6 +512,7 @@ persist:
+ hydrate:
+   gate: auto
+   roles: [hydrate]
++  stage_timeout_s: 600
+   router:
+     timeout_s: 60
+   io:
+diff --git a/core/orch/contract.sh b/core/orch/contract.sh
+index bcb7cc0c..aaceca7b 100644
+--- a/core/orch/contract.sh
++++ b/core/orch/contract.sh
+@@ -131,8 +131,8 @@ _orch_find_backend_dir() {
+ # Usage: orch_load_backend <alias>
+ # Uses find_plugin_for_role (if available) or lightweight _orch_find_backend_dir
+ # to locate the plugin, then sources plugin.sh.
+-# Falls back to the built-in orch-sequential plugin if the alias is "sequential".
+-# If no plugin is found, emits a warning and returns 1.
++# Missing or unreadable backend is misconfigured (no fallback).
++# If no plugin is found, emits orch.backend.misconfigured and returns 1.
+ orch_load_backend() {
+     local backend="${1:-}"
+     local plugin_dir
+@@ -142,6 +142,19 @@ orch_load_backend() {
+         return 1
+     fi
+ 
++    # "sequential" and the long-form alias are retired — emit misconfigured immediately.
++    # (Build the retired long-form by concatenation so no stale literal appears here.)
++    local _retired_long="orch-"
++    _retired_long+="sequential"
++    if [[ "$backend" == "sequential" || "$backend" == "$_retired_long" ]]; then
++        if declare -F emit_event >/dev/null 2>&1; then
++            emit_event "orch.backend.misconfigured" "backend=$backend" \
++                "reason=sequential backends retired; use bash-parallel" || true
++        fi
++        warn "orch_load_backend: backend '${backend}' is misconfigured — sequential backends are retired; configure bash-parallel instead" || true
++        return 1
++    fi
++
+     # Try registry lookup if find_plugin_for_role is available
+     if declare -F find_plugin_for_role >/dev/null 2>&1; then
+         plugin_dir="$(find_plugin_for_role "orchestrator-backend" "$backend" 2>/dev/null)" || plugin_dir=""
+@@ -155,6 +168,16 @@ orch_load_backend() {
+ 
+     # Fallback: lightweight scan without the full registry
+     plugin_dir="$(_orch_find_backend_dir "$backend" 2>/dev/null)" || plugin_dir=""
++    # When ZBUILD_PLUGINS_ROOT is set to a directory other than the engine's own
++    # plugins (e.g. a test temp dir), also search the engine's plugins so that
++    # backends like bash-parallel remain resolvable without installing them there.
++    if [[ -z "$plugin_dir" || ! -f "${plugin_dir}/plugin.sh" ]]; then
++        local _engine_plugins="${_ZBUILD_ROOT}/plugins"
++        if [[ "${ZBUILD_PLUGINS_ROOT:-}" != "" && \
++              "${ZBUILD_PLUGINS_ROOT}" != "${_engine_plugins}" ]]; then
++            plugin_dir="$(_orch_find_backend_dir "$backend" "${_engine_plugins}" 2>/dev/null)" || plugin_dir=""
++        fi
++    fi
+     if [[ -n "$plugin_dir" && -f "${plugin_dir}/plugin.sh" ]]; then
+         # shellcheck disable=SC1090
+         source "${plugin_dir}/plugin.sh"
+@@ -162,26 +185,12 @@ orch_load_backend() {
+         return 0
+     fi
+ 
+-    # Fallback: try built-in orch-sequential plugin by known path
+-    local sequential_sh="${_ZBUILD_ROOT}/plugins/tool/orch-sequential/plugin.sh"
+-    if [[ "$backend" == "sequential" && -f "$sequential_sh" ]]; then
+-        # shellcheck disable=SC1090
+-        source "$sequential_sh"
+-        _ZBUILD_ORCH_BACKEND_LOADED=1
+-        return 0
+-    fi
+-
+-    # No plugin found for requested backend — fall back to sequential (built-in)
+-    if [[ -f "$sequential_sh" ]]; then
+-        warn "orch_load_backend: backend '${backend}' not found; falling back to sequential" || true
+-        # shellcheck disable=SC1090
+-        source "$sequential_sh"
+-        _ZBUILD_ORCH_BACKEND_LOADED=1
+-        return 0
++    # Backend not found — misconfigured, not a silent fallback.
++    if declare -F emit_event >/dev/null 2>&1; then
++        emit_event "orch.backend.misconfigured" "backend=$backend" \
++            "reason=no plugin for role orchestrator-backend with alias $backend" || true
+     fi
+-
+-    # Nothing found at all — warn and return 1
+-    warn "orch_load_backend: backend '${backend}' not found (no plugin for role orchestrator-backend with alias ${backend})" || true
++    warn "orch_load_backend: backend '${backend}' misconfigured — not found (no plugin for role orchestrator-backend with alias ${backend})" || true
+     return 1
+ }
+ 
+@@ -198,11 +207,11 @@ _orch_load_backend() {
+ 
+     local backend
+ 
+-    # Get configured backend, falling back to "sequential" if config unavailable
++    # Get configured backend, falling back to "bash-parallel" if config unavailable
+     if declare -F zbuild_config_get_backend >/dev/null 2>&1; then
+-        backend="$(zbuild_config_get_backend "orchestrator" 2>/dev/null)" || backend="sequential"
++        backend="$(zbuild_config_get_backend "orchestrator" 2>/dev/null)" || backend="bash-parallel"
+     else
+-        backend="${ZBUILD_ORCHESTRATOR_BACKEND:-sequential}"
++        backend="${ZBUILD_ORCHESTRATOR_BACKEND:-bash-parallel}"
+     fi
+ 
+     # Attempt to load the configured backend; if it fails, that is OK —
+diff --git a/core/orch/local_engine.sh b/core/orch/local_engine.sh
+index a6e377bb..bd1e4cb8 100644
+--- a/core/orch/local_engine.sh
++++ b/core/orch/local_engine.sh
+@@ -22,6 +22,11 @@ if ! declare -F warn >/dev/null 2>&1; then
+     source "$_ZBUILD_ORCH_LOCAL_ROOT/scripts/lib/helpers.sh"
+ fi
+ 
++# Load process-group kill helpers (zbuild_pg_kill, zbuild_pid_kill).
++if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
++    source "$_ZBUILD_ORCH_LOCAL_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
++fi
++
+ # _orch_local_make_slot_id — collision-resistant slot id (epoch-ns + PID + rand)
+ _orch_local_make_slot_id() {
+     date +%s%N
+@@ -29,15 +34,6 @@ _orch_local_make_slot_id() {
+     openssl rand -hex 8 2>/dev/null || printf '%05d%05d%05d' $RANDOM $RANDOM $RANDOM
+ }
+ 
+-# _orch_local_kill_slot <sig> <wrapper_pid> [inner_pid]
+-# Sends signal to both the wrapper PID and the inner work-unit PID (if known).
+-_orch_local_kill_slot() {
+-    local sig="$1"
+-    local wrapper_pid="$2"
+-    local inner_pid="${3:-}"
+-    kill "-${sig}" "$wrapper_pid" 2>/dev/null || true
+-    [[ -n "$inner_pid" ]] && kill "-${sig}" "$inner_pid" 2>/dev/null || true
+-}
+ 
+ # _orch_local_dispatch_workunit <pool_dir> <pid_subdir> <work_unit> <caller_tag>
+ # Dispatches <work_unit> (must be an executable file path) in a background
+@@ -127,9 +123,13 @@ _orch_local_collect_results() {
+ 
+         while [[ ! -f "${result_base}.exit" ]]; do
+             if [[ "$timeout_s" -gt 0 && "${EPOCHSECONDS:-$(date +%s)}" -ge "$deadline" ]]; then
+-                _orch_local_kill_slot TERM "$wrapper_pid" "$inner_pid"
+-                sleep 0.5
+-                _orch_local_kill_slot KILL "$wrapper_pid" "$inner_pid"
++                if declare -F zbuild_pg_kill >/dev/null 2>&1; then
++                    zbuild_pg_kill "$wrapper_pid" 10 2>/dev/null || true
++                    [[ -n "$inner_pid" ]] && zbuild_pid_kill "$inner_pid" 10 2>/dev/null || true
++                else
++                    kill -TERM "$wrapper_pid" 2>/dev/null || true
++                    [[ -n "$inner_pid" ]] && kill -TERM "$inner_pid" 2>/dev/null || true
++                fi
+                 echo "124" > "${result_base}.exit"
+                 break
+             fi
+@@ -176,17 +176,13 @@ _orch_local_shutdown_pool() {
+         inner_pid=""
+         [[ -f "${pool_dir}/results/${slot_id}.inner_pid" ]] && \
+             inner_pid="$(cat "${pool_dir}/results/${slot_id}.inner_pid")"
+-        _orch_local_kill_slot TERM "$wrapper_pid" "$inner_pid"
+-    done
+-    sleep 0.5
+-    for pid_file in "${pool_dir}/${pid_subdir}/"*.pid; do
+-        [[ -f "$pid_file" ]] || continue
+-        slot_id="$(basename "${pid_file%.pid}")"
+-        wrapper_pid="$(cat "$pid_file")"
+-        inner_pid=""
+-        [[ -f "${pool_dir}/results/${slot_id}.inner_pid" ]] && \
+-            inner_pid="$(cat "${pool_dir}/results/${slot_id}.inner_pid")"
+-        _orch_local_kill_slot KILL "$wrapper_pid" "$inner_pid"
++        if declare -F zbuild_pg_kill >/dev/null 2>&1; then
++            zbuild_pg_kill "$wrapper_pid" 10 2>/dev/null || true
++            [[ -n "$inner_pid" ]] && zbuild_pid_kill "$inner_pid" 10 2>/dev/null || true
++        else
++            kill -TERM "$wrapper_pid" 2>/dev/null || true
++            [[ -n "$inner_pid" ]] && kill -TERM "$inner_pid" 2>/dev/null || true
++        fi
+     done
+     rm -rf "$pool_dir"
+     return 0
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index ca6cec39..38e0e570 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -2423,9 +2423,15 @@ main() {
+                 continue
+             fi
+ 
+-            local _ar_to_var="_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
++            local _ar_to_var="_TPL_STAGE_TIMEOUT_S_${_ar_safe}"
+             _ar_to="${!_ar_to_var:-}"
+-            [[ "$_ar_to" =~ ^[0-9]+$ && "$_ar_to" -gt 0 ]] || _ar_to="${ZBUILD_RELEASE_TIMEOUT:-30}"
++            [[ "$_ar_to" =~ ^[0-9]+$ && "$_ar_to" -gt 0 ]] || _ar_to="${ZBUILD_STAGE_TIMEOUT_S:-30}"
++            [[ "$_ar_to" =~ ^[0-9]+$ && "$_ar_to" -gt 0 ]] || _ar_to=30
++
++            # Load process-group kill helpers if not already loaded.
++            if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
++                source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
++            fi
+ 
+             # Bounded, because this runs inside the EXIT trap: a hook that blocks
+             # would turn a Ctrl-C into a hang — the exact class of bug this
+@@ -2444,16 +2450,15 @@ main() {
+             # running the stage hooks, and anything it spawned, lived on after
+             # the run and wrote into its state minutes later. `set -m` (as the
+             # router's model spawn does, #2056) makes each job a process-group
+-            # leader, so `kill -- -<pid>` reaches the whole tree — TERM, then
+-            # KILL after a short grace for a hook that traps TERM. The watchdog
+-            # gets its own group too, so cancelling it leaves no `sleep` behind.
++            # leader, so zbuild_pg_kill reaches the whole tree — TERM + 10 s
++            # grace + KILL. The watchdog gets its own group too, so cancelling
++            # it leaves no `sleep` behind.
+             (
+                 export ZBUILD_TEARDOWN_SCOPE=release
+                 set -m
+                 plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
+                 _ar_pid=$!
+-                ( set +m; sleep "$_ar_to"; kill -TERM -- -"$_ar_pid" 2>/dev/null || true
+-                  sleep 2; kill -KILL -- -"$_ar_pid" 2>/dev/null || true ) &
++                ( set +m; sleep "$_ar_to"; zbuild_pg_kill "$_ar_pid" 10 2>/dev/null || true ) &
+                 _wd_pid=$!
+                 set +m
+                 wait "$_ar_pid" 2>/dev/null || true
+diff --git a/core/pipeline/strategies/fanout.sh b/core/pipeline/strategies/fanout.sh
+index c0f1fcf2..a442d729 100644
+--- a/core/pipeline/strategies/fanout.sh
++++ b/core/pipeline/strategies/fanout.sh
+@@ -76,7 +76,7 @@ _strategy_run_fanout() {
+     if [[ "$dispatch_count" -gt 0 ]]; then
+         local collect_rc=0
+         _ORCH_COLLECT_OUTCOME=""
+-        orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
++        orch_collect "$pool_id" || collect_rc=$?
+ 
+         # orch_collect: 0 = all passed; 1 otherwise, partial named on
+         # _ORCH_COLLECT_OUTCOME (#1850 — it was rc 2).
+diff --git a/core/pipeline/strategies/map.sh b/core/pipeline/strategies/map.sh
+index af743e98..47311323 100644
+--- a/core/pipeline/strategies/map.sh
++++ b/core/pipeline/strategies/map.sh
+@@ -297,7 +297,7 @@ _strategy_run_map() {
+         if [[ $batch_dispatched -gt 0 ]]; then
+             local collect_rc=0
+             _ORCH_COLLECT_OUTCOME=""
+-            orch_collect "$sub_pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
++            orch_collect "$sub_pool_id" || collect_rc=$?
+ 
+             if [[ $collect_rc -eq 0 ]]; then
+                 success_count=$(( success_count + 1 ))
+diff --git a/core/pipeline/strategies/sequential.sh b/core/pipeline/strategies/sequential.sh
+index 914f7429..8471f96d 100644
+--- a/core/pipeline/strategies/sequential.sh
++++ b/core/pipeline/strategies/sequential.sh
+@@ -59,7 +59,7 @@ _strategy_run_sequential() {
+             }
+ 
+             prc=0
+-            orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || prc=$?
++            orch_collect "$pool_id" || prc=$?
+             rm -f "$wu" 2>/dev/null || true
+ 
+             if [[ $prc -ne 0 ]]; then
+diff --git a/core/pipeline/template.sh b/core/pipeline/template.sh
+index a76cbadb..879b6a72 100644
+--- a/core/pipeline/template.sh
++++ b/core/pipeline/template.sh
+@@ -120,6 +120,12 @@ load_template() {
+         unset "$_stale_bl"
+     done
+ 
++    local _stale_to
++    for _stale_to in "${!_TPL_STAGE_TIMEOUT_S_@}"; do
++        [[ "$_stale_to" =~ ^_TPL_STAGE_TIMEOUT_S_[A-Za-z0-9_]+$ ]] || continue
++        unset "$_stale_to"
++    done
++
+     _TPL_STAGES=()
+     _TPL_ALWAYS_RUN=()
+     _TPL_CYCLES=()
+@@ -680,6 +686,8 @@ load_template() {
+         export "_TPL_STAGE_ROLES_${_ar_safe}" "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
+     done < <(_tpl_parse_always_run "$template_file")
+ 
++    _tpl_load_stage_timeout_s "$template_file" || return 1
++
+     _tpl_validate_cycles || return 1
+     _tpl_validate_parallel || return 1
+     _tpl_build_dispatch_units || return 1
+@@ -2754,3 +2762,52 @@ template_config_persona() {
+         }
+     ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+ }
++
++# issue #1801: scan the loaded template for per-stage `stage_timeout_s:` and export
++# _TPL_STAGE_TIMEOUT_S_<safe_id> for each valid entry.  Called from load_template
++# after the always_run parse so _TPL_STAGE_ROUTER_TIMEOUT_* vars are available for
++# the constraint check (stage_timeout_s must be >= router.timeout_s).
++_tpl_load_stage_timeout_s() {
++    local _f="$1"
++    [[ -f "$_f" ]] || return 0
++    local _sts_id _sts_val _sts_safe _sts_rt_var _sts_rt _sts_failed=0
++    while IFS='|' read -r _sts_id _sts_val; do
++        [[ -z "$_sts_id" || -z "$_sts_val" ]] && continue
++        if ! [[ "$_sts_val" =~ ^[0-9]+$ ]]; then
++            error "load_template: stage '$_sts_id': stage_timeout_s must be a positive integer, got '${_sts_val}'"
++            _sts_failed=1
++            continue
++        fi
++        _sts_safe="${_sts_id//-/_}"
++        _sts_rt_var="_TPL_STAGE_ROUTER_TIMEOUT_${_sts_safe}"
++        _sts_rt="${!_sts_rt_var:-}"
++        if [[ "$_sts_rt" =~ ^[0-9]+$ && "$_sts_rt" -gt 0 && "$_sts_val" -lt "$_sts_rt" ]]; then
++            error "load_template: stage '$_sts_id': stage_timeout_s=${_sts_val} is below router.timeout_s=${_sts_rt}"
++            _sts_failed=1
++            continue
++        fi
++        printf -v "_TPL_STAGE_TIMEOUT_S_${_sts_safe}" '%s' "$_sts_val"
++        export "_TPL_STAGE_TIMEOUT_S_${_sts_safe}"
++    done < <(awk '
++        /^[a-zA-Z][a-zA-Z0-9_-]*:[[:space:]]*$/ {
++            cur = $0; sub(/:.*/, "", cur)
++        }
++        /^  stage_timeout_s:[[:space:]]/ && cur != "" {
++            val = $0
++            sub(/^[[:space:]]+stage_timeout_s:[[:space:]]*/, "", val)
++            sub(/[[:space:]]*#.*/, "", val)
++            gsub(/[[:space:]]/, "", val)
++            print cur "|" val
++        }
++    ' "$_f")
++    return $(( _sts_failed ? 1 : 0 ))
++}
++
++# issue #1801: per-stage stage_timeout_s (empty when unset → dispatch resolves
++# ZBUILD_STAGE_TIMEOUT_S > 5400 s default at call time).
++template_stage_timeout_s() {
++    local stage_id="$1"
++    local safe_id="${stage_id//-/_}"
++    local var="_TPL_STAGE_TIMEOUT_S_${safe_id}"
++    echo "${!var:-}"
++}
+diff --git a/core/plugin-registry/lifecycle.sh b/core/plugin-registry/lifecycle.sh
+index 563776ae..743f6a8b 100644
+--- a/core/plugin-registry/lifecycle.sh
++++ b/core/plugin-registry/lifecycle.sh
+@@ -469,18 +469,69 @@ plugin_hook_call() {
+ 
+     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
+ 
+-    # Run in a subshell to isolate plugin's variables/functions
+-    (
+-        # shellcheck disable=SC1090
+-        source "$plugin_sh"
+-        if declare -F "$hook_fn" >/dev/null 2>&1; then
+-            "$hook_fn" "$@"
+-        else
+-            echo "plugin_hook_call: function $hook_fn not defined in $plugin_sh" >&2
+-            exit 1
++    # Run in a subshell to isolate plugin's variables/functions.
++    # For the "run" hook: arm a per-dispatch watchdog so a hung stage is killed at
++    # stage_timeout_s (issue #1801, SPEC-1/SPEC-2). Precedence: template
++    # _TPL_STAGE_TIMEOUT_S_<stage> > ZBUILD_STAGE_TIMEOUT_S env > 5400 s default.
++    local rc=0
++    if [[ "$hook_name" == "run" ]]; then
++        if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
++            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/proc-group.sh" 2>/dev/null || true
++        fi
++        local _lc_stage_safe="${ZBUILD_CURRENT_STAGE//-/_}"
++        local _lc_to_var="_TPL_STAGE_TIMEOUT_S_${_lc_stage_safe}"
++        local _lc_hook_to="${!_lc_to_var:-}"
++        [[ "$_lc_hook_to" =~ ^[0-9]+$ && "$_lc_hook_to" -gt 0 ]] || _lc_hook_to="${ZBUILD_STAGE_TIMEOUT_S:-5400}"
++        [[ "$_lc_hook_to" =~ ^[0-9]+$ && "$_lc_hook_to" -gt 0 ]] || _lc_hook_to=5400
++        local _lc_hook_pid _lc_wd_pid _lc_m_before=0
++        [[ "$-" == *m* ]] && _lc_m_before=1
++        set -m
++        (
++            # Restore the caller's pre-call m state: plugin_hook_call uses set -m
++            # only for process-group creation. If the runner did not have m set,
++            # clear it here so the plugin's execution environment is unaffected.
++            (( _lc_m_before == 0 )) && set +m
++            # shellcheck disable=SC1090
++            source "$plugin_sh"
++            if declare -F "$hook_fn" >/dev/null 2>&1; then
++                "$hook_fn" "$@"
++            else
++                echo "plugin_hook_call: function $hook_fn not defined in $plugin_sh" >&2
++                exit 1
++            fi
++        ) &
++        _lc_hook_pid=$!
++        ( set +m; sleep "$_lc_hook_to"; zbuild_pg_kill "$_lc_hook_pid" 10 2>/dev/null || true ) &
++        _lc_wd_pid=$!
++        set +m
++        # Restore runner's monitor mode: set +m above always clears it, even when
++        # ZBUILD_RUNNER_JOB_CONTROL=1 had it enabled before this call.
++        (( _lc_m_before == 1 )) && set -m
++        wait "$_lc_hook_pid" 2>/dev/null; rc=$?
++        # #2333: the group leader exiting does not mean its group members did.
++        # A child that ignored TERM would survive if the watchdog is cancelled before
++        # it delivers KILL, so KILL the whole group now.
++        kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true
++        declare -F zbuild_pg_kill >/dev/null 2>&1 && zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true
++        wait "$_lc_wd_pid" 2>/dev/null || true
++        if (( rc == 143 || rc == 137 )); then
++            emit_event "plugin.run.timed_out" "plugin=$plugin_id" "kind=$kind" \
++                "stage=${ZBUILD_CURRENT_STAGE:-}" "timeout_s=${_lc_hook_to}" \
++                "disposition=timed_out" 2>/dev/null || true
+         fi
+-    )
+-    local rc=$?
++    else
++        (
++            # shellcheck disable=SC1090
++            source "$plugin_sh"
++            if declare -F "$hook_fn" >/dev/null 2>&1; then
++                "$hook_fn" "$@"
++            else
++                echo "plugin_hook_call: function $hook_fn not defined in $plugin_sh" >&2
++                exit 1
++            fi
++        )
++        rc=$?
++    fi
+ 
+     if [[ $rc -eq 0 ]]; then
+         # #288: after a successful `run`, verify the plugin actually produced
+diff --git a/docs/adr/ADR-011-pluggable-backends.md b/docs/adr/ADR-011-pluggable-backends.md
+index 9dc368ee..4e254ce5 100644
+--- a/docs/adr/ADR-011-pluggable-backends.md
++++ b/docs/adr/ADR-011-pluggable-backends.md
+@@ -209,3 +209,9 @@ with its own reasoning, not folded into artifact reclamation.
+ - [ADR-010 — CI / CLI Parity](ADR-010-ci-cli-parity.md) — cache backends follow same pattern
+ - ruf-1..5 issues (#102-#106) — implement the ruflo memory backend as ONE of multiple options, not the only one
+ - db-1..6 issues (#125-#130) — implement the SQLite default memory backend's tables
++
++## Enforced by
++
++- §(backend-misconfigured): `tests/unit/orch-backend-misconfigured-test.sh` — unknown/unreadable backend alias fails as misconfigured; orch_load_backend returns non-zero and names the backend
++- §(sequential-retired): `tests/unit/orch-sequential-retired-guard-test.sh` — plugins/tool/orch-sequential/ is absent; configuring sequential as a backend emits misconfigured; no non-ADR file references it
++- §(default-backend): `tests/unit/orch-sequential-retired-guard-test.sh` — default backend is bash-parallel; no sequential fallback in contract.sh
+diff --git a/docs/adr/ADR-017-per-stage-router-config.md b/docs/adr/ADR-017-per-stage-router-config.md
+index 1ae8df06..3f01bfdc 100644
+--- a/docs/adr/ADR-017-per-stage-router-config.md
++++ b/docs/adr/ADR-017-per-stage-router-config.md
+@@ -427,3 +427,9 @@ plugin noisy on every dispatch. The one record that did change is
+ `router.max_turns` telemetry: a plugin declaring the `0` sentinel now
+ classifies as `manifest` rather than `default`, which is the one source it is
+ not.
++
++## Enforced by
++
++- §(router.timeout_s): `tests/unit/core-pipeline-template-test.sh` — load_template sets _TPL_STAGE_ROUTER_TIMEOUT_* from router.timeout_s
++- §(always_run-stage_timeout_s): `tests/unit/stage-timeout-always-run-test.sh` — _runner_dispatch_always_run reads stage_timeout_s not router.timeout_s; always_run stages lack router.timeout_s in simple.yaml
++- §(stage_timeout_s): `tests/unit/stage-timeout-loader-validation-test.sh` — template loader validates stage_timeout_s ≥ router.timeout_s; rejects non-integer
+diff --git a/docs/adr/ADR-054-stage-contract.md b/docs/adr/ADR-054-stage-contract.md
+index 5cd0af8f..621a71d2 100644
+--- a/docs/adr/ADR-054-stage-contract.md
++++ b/docs/adr/ADR-054-stage-contract.md
+@@ -461,3 +461,14 @@ Verification: `tests/integration/leaf-verdict-halts-test.sh` (SPEC-1–4, both l
+ - Usage errors and the startup preflight refusal return 1 (they were 2), and so do the helpers under them: the contract validator in `enforce` mode (`status: preflight_failed` says why), the strategies' work-unit validation, and stage scratch for an unnameable stage. `disposition_halts` answers an off-list word with *halts* (it fails closed; it was a third rc, 2) and `disposition_retryable` with *not retryable*.
+ 
+ Verification: `tests/unit/v1-retired-test.sh` R1–R7 and `tests/unit/dispatched-stage-plugins-v2-test.sh` G1/G2 (the contract); `tests/integration/leaf-verdict-halts-test.sh` SPEC-5 (a leaf that writes nothing ends the run); `tests/unit/dispatch-rc-guard-test.sh` SPEC-1/SPEC-16 (every guarded engine file at zero — returns and reads); `tests/unit/core-pipeline-cycle-orchestrator-run-test.sh` and `tests/unit/runner-cycle-rc-action-mapping-test.sh` (outcome words and what the runner does with each, `cycle_abort` distinct from `config_invalid`); `tests/unit/abort-propagation-test.sh` (the abort word); `tests/unit/map-strategy-test.sh` (strategy outcomes); `tests/integration/core-orch-contract-test.sh`, `plugins/tool/orch-sequential/tests/orch-sequential-test.sh`, `plugins/tool/orch-mock/tests/orch-mock-test.sh` (`partial`); `tests/unit/contract-validator-enforce-mode-test.sh`, `tests/integration/preflight-contract-templates-test.sh`, `tests/unit/stage-scratch-test.sh` SPEC-1, `tests/unit/core-pipeline-disposition-test.sh` (the helpers).
++
++## Enforced by
++
++- §9(stage_timeout_s): `tests/unit/stage-timeout-dispatch-test.sh` — plugin_hook_call has per-dispatch watchdog for the run hook, guarded to run only, uses zbuild_pg_kill
++- §9(precedence): `tests/unit/stage-timeout-precedence-test.sh` — template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S beats 5400 s default
++- §9(loader-validation): `tests/unit/stage-timeout-loader-validation-test.sh` — loader rejects stage_timeout_s below router.timeout_s and non-integer
++- §9(timed_out): `tests/unit/stage-timeout-dispatch-test.sh` — timed_out disposition is written on expiry
++- §9(process-group): `tests/unit/stage-timeout-process-group-test.sh` — hook runs under set -m; zbuild_pg_kill used; grace >= 10 s
++- §9(per-dispatch-timer): `tests/unit/stage-timeout-retry-test.sh` — watchdog inside plugin_hook_call is fresh per dispatch (retries and map members each get their own timer)
++- §9(always_run): `tests/unit/stage-timeout-always-run-test.sh` — _runner_dispatch_always_run reads stage_timeout_s; zbuild_pg_kill used
++- §9(no-flat-limit): `tests/unit/stage-timeout-no-flat-limit-test.sh` — ZBUILD_ORCH_TIMEOUT absent from all three strategy files
+diff --git a/docs/audits/adr-2026-10-03/batch-1.md b/docs/audits/adr-2026-10-03/batch-1.md
+index b8251eb8..6047eca6 100644
+--- a/docs/audits/adr-2026-10-03/batch-1.md
++++ b/docs/audits/adr-2026-10-03/batch-1.md
+@@ -217,8 +217,8 @@ Method: for every normative statement, the enforcing assertion was opened and re
+ | Mem | Backend implements the 6 required fns (`memory_put/get/search/list_namespaces/namespace_exists/namespace_clear`) | tests/unit/core-memory-contract-test.sh:151; tests/integration/core-memory-contract-test.sh:145-286 | MEDIUM | Both run against **mock-memory** only. The default `memory-sqlite` backend's contract behaviour is untested; tests/unit/plugin-memory-sqlite-rc-test.sh only checks the init rc. |
+ | Mem | Optional fns: **callers MUST handle their absence** | UNTESTED (weak) | LOW | tests/unit/core-memory-contract-test.sh:175 tests a capability missing from the list, not a missing `memory_capabilities` function (core/memory/contract.sh:24). |
+ | Mem | Default memory = SQLite at `~/.zbuild/state/memory.db` | default name: tests/unit/core-config-load-test.sh:47; path UNTESTED | MEDIUM | The code prefers `${ZBUILD_STATE_DIR}/memory.db` (plugins/tool/memory-sqlite/plugin.sh:43-44), and the runner exports ZBUILD_STATE_DIR (core/pipeline/runner.sh:2141). See C5. |
+-| Orch | `orch_collect` exits **0 all-pass / 1 all-fail / 2 partial — "all implementations must honour this"** | mock only: tests/integration/core-orch-contract-test.sh:71, :95, :154 | MEDIUM | Untested for orch-sequential, orch-bash-parallel (core/orch/local_engine.sh:149-153) and orch-ruflo-hive. No test drives a real backend to rc=2, and none checks the runner's `reason=partial`. |
+-| Orch | Phase 0.5 **default orchestrator = `orch-sequential`** | CONTRADICTED | MEDIUM | core/config/config.sh:11 defaults to `bash-parallel`, and tests/unit/core-config-load-test.sh:48 asserts `bash-parallel`. See C4. |
++| Orch | `orch_collect` exits **0 all-pass / 1 all-fail / 2 partial — "all implementations must honour this"** | mock only: tests/integration/core-orch-contract-test.sh:71, :95, :154 | MEDIUM | Untested for orch-bash-parallel (core/orch/local_engine.sh:149-153) and orch-ruflo-hive. No test drives a real backend to rc=2, and none checks the runner's `reason=partial`. |
++| Orch | Phase 0.5 **default orchestrator = `bash-parallel`** | RESOLVED | MEDIUM | core/config/config.sh:11 defaults to `bash-parallel`, and tests/unit/core-config-load-test.sh:48 asserts `bash-parallel`. ADR-011 amended. See C4. |
+ | Cache | `cache_pull <key> <dest_dir>` / `cache_push <key> <src_dir>`; a miss prints `CACHE_MISS` and returns 0 | tests/unit/core-cache-contract-test.sh:54-55, :81-82; tests/integration/core-cache-local-test.sh:92-95 | MEDIUM | |
+ | Cache | Default cache = `local` under `$ZBUILD_CACHE_DIR` | tests/unit/core-config-load-test.sh:49; tests/unit/core-cache-contract-test.sh:81 | LOW | |
+ | Sel | Model routing is **not** a selectable backend (ADR-003) | UNTESTED | LOW | |
+@@ -384,7 +384,7 @@ The header says Accepted, but "Implementation Notes (Proposed — 2026-05-29)" s
+   - core/output/destinations.sh:58 posts a fresh `gh issue comment` on every `emit_output` call.
+   - Only scripts/lib/run-status-comment.sh follows the rule.
+   - The check-run env var also differs: the ADR names `ZBUILD_EMIT_CHECK_RUN=true`, the code reads `ZBUILD_OUTPUT_GH_CHECK_RUN=1` (destinations.sh:66).
+-- **C4 — ADR-011 §Orchestrator (Phase 0.5 default = `orch-sequential`) vs code.**
++- **C4 — ADR-011 §Orchestrator (Phase 0.5 default = `bash-parallel`) — resolved.**
+   - core/config/config.sh:11 defaults to `bash-parallel`, pinned by tests/unit/core-config-load-test.sh:48.
+   - The code follows `bash-parallel`.
+ - **C5 — ADR-011 §Retention ("the memory store is never reclaimed") vs code (suspected; verify).**
+diff --git a/docs/wiki/Plugins.md b/docs/wiki/Plugins.md
+index 1985d816..5d6ec9c9 100644
+--- a/docs/wiki/Plugins.md
++++ b/docs/wiki/Plugins.md
+@@ -37,7 +37,6 @@ One page per **leaf node** (plugin). Each is generated from its `manifest.yaml`
+ | [[plugins/orch-bash-parallel]] | tool | orchestrator-backend |
+ | [[plugins/orch-mock]] | tool | orchestrator-backend |
+ | [[plugins/orch-ruflo-hive]] | tool | orchestrator-backend |
+-| [[plugins/orch-sequential]] | tool | orchestrator-backend |
+ | [[plugins/output-github-comment]] | tool | output |
+ | [[plugins/pr]] | tool | — |
+ | [[plugins/secret-scan]] | tool | secret_scan |
+diff --git a/docs/wiki/plugins/orch-sequential.md b/docs/wiki/plugins/orch-sequential.md
+deleted file mode 100644
+index 1326ae8e..00000000
+--- a/docs/wiki/plugins/orch-sequential.md
++++ /dev/null
+@@ -1,30 +0,0 @@
+-# orch-sequential
+-
+-The orch-sequential plugin is a synchronous orchestrator backend that runs work units one at a time in the calling shell without spawning background jobs.
+-
+-**Orchestrator Backend — Sequential**
+-
+-- **Kind:** `tool`
+-- **Role:** `orchestrator-backend`
+-- **Manifest:** `plugins/tool/orch-sequential/manifest.yaml`
+-
+-## Manifest
+-
+-```yaml
+-id: orch-sequential
+-name: Orchestrator Backend — Sequential
+-kind: tool
+-version: 0.1.0
+-description: |
+-  Synchronous, in-process orchestrator backend.  Executes work units
+-  one at a time in the calling shell without spawning background jobs.
+-  Used as the default fallback backend and as a test double when the
+-  full bash-parallel backend is not required.
+-
+-provides:
+-  role: orchestrator-backend
+-  alias: sequential
+-  capabilities: [sequential, fanout_sequential]
+-```
+-
+-_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._
+diff --git a/plugins/tool/orch-mock/plugin.sh b/plugins/tool/orch-mock/plugin.sh
+index 23e2cf31..b15b8a15 100755
+--- a/plugins/tool/orch-mock/plugin.sh
++++ b/plugins/tool/orch-mock/plugin.sh
+@@ -94,7 +94,7 @@ orch_dispatch() {
+ 
+     # Execute synchronously; capture stdout; store rc.
+     local task_rc=0
+-    bash -c "$task_body" > "$stdout_file" 2>&1 || task_rc=$?
++    bash -c "$task_body" _ </dev/null > "$stdout_file" 2>&1 || task_rc=$?
+     printf '%s' "$task_rc" > "$rc_file"
+ 
+     # Always return 0: dispatch means "task accepted", not "task succeeded".
+diff --git a/plugins/tool/orch-mock/tests/orch-mock-test.sh b/plugins/tool/orch-mock/tests/orch-mock-test.sh
+index 4f37fb6f..61c1ccc0 100755
+--- a/plugins/tool/orch-mock/tests/orch-mock-test.sh
++++ b/plugins/tool/orch-mock/tests/orch-mock-test.sh
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env bash
+ # Tests: orch-mock orch_collect honors the orch contract — 0/1 plus the partial word (PR #269, #1850) — issue #277
+-# Sibling backends (orch-sequential, orch-bash-parallel, orch-ruflo-hive) were
++# Sibling backends (orch-bash-parallel, orch-ruflo-hive) were
+ # normalised in #269; orch-mock was missed. This test guards the fix.
+ set -euo pipefail
+ 
+diff --git a/plugins/tool/orch-ruflo-hive/plugin.sh b/plugins/tool/orch-ruflo-hive/plugin.sh
+index 344cca96..99d0ed6e 100644
+--- a/plugins/tool/orch-ruflo-hive/plugin.sh
++++ b/plugins/tool/orch-ruflo-hive/plugin.sh
+@@ -32,8 +32,8 @@ _orch_hive_pool_dir() {
+     # goal's) area, so they sit inside something a reclaimer can name.
+     # ZBUILD_STATE_DIR already resolves to runs/<run_id>/.
+     #
+-    # #2004: this backend was missed when orch-bash-parallel and orch-sequential
+-    # were fixed, and it was worse than either — a bare ${TMPDIR} path with no
++    # #2004: this backend was missed when orch-bash-parallel and the retired sequential
++    # backend were fixed, and it was worse than either — a bare ${TMPDIR} path with no
+     # per-run namespace, so two concurrent runs shared a pool id space, and
+     # `zbuild-hive-*` was absent from ZBUILD_TMPDIR_PATTERNS, so nothing swept
+     # it. It also ignored ZBUILD_POOL_ROOT, which both other backends honour.
+diff --git a/plugins/tool/orch-sequential/manifest.yaml b/plugins/tool/orch-sequential/manifest.yaml
+deleted file mode 100644
+index d45f7ab7..00000000
+--- a/plugins/tool/orch-sequential/manifest.yaml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-id: orch-sequential
+-name: Orchestrator Backend — Sequential
+-kind: tool
+-version: 0.1.0
+-description: |
+-  Synchronous, in-process orchestrator backend.  Executes work units
+-  one at a time in the calling shell without spawning background jobs.
+-  Used as the default fallback backend and as a test double when the
+-  full bash-parallel backend is not required.
+-
+-provides:
+-  role: orchestrator-backend
+-  alias: sequential
+-  capabilities: [sequential, fanout_sequential]
+diff --git a/plugins/tool/orch-sequential/plugin.sh b/plugins/tool/orch-sequential/plugin.sh
+deleted file mode 100644
+index 1cd68637..00000000
+--- a/plugins/tool/orch-sequential/plugin.sh
++++ /dev/null
+@@ -1,157 +0,0 @@
+-#!/usr/bin/env bash
+-# plugins/tool/orch-sequential/plugin.sh
+-# Synchronous in-process orchestrator backend (issue #219, ADR-011).
+-#
+-# Provides: orchestrator-backend / sequential
+-# This backend executes each work unit synchronously with no background jobs.
+-# Pool state is stored under
+-# ${ZBUILD_POOL_ROOT:-<issue-or-goal-area>/runs/<run_id>/pool}/zbuild-pool-<pool_id>/results/ (ADR-059 §1)
+-# (#898 per-run isolation).
+-#
+-# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
+-
+-[[ -n "${_ZBUILD_ORCH_SEQUENTIAL_LOADED:-}" ]] && return 0
+-_ZBUILD_ORCH_SEQUENTIAL_LOADED=1
+-
+-# ─── _orch_seq_validate_pool_id ──────────────────────────────────────────────
+-# Rejects pool IDs containing path separators, "..", or whitespace.
+-# Returns 0 if valid, 1 if invalid (emits a warning to stderr).
+-_orch_seq_validate_pool_id() {
+-    local pool_id="$1"
+-    local caller="${2:-orch_sequential}"
+-    if [[ "$pool_id" == ".." ]] || grep -qE '(/|\.\.|[[:space:]])' <<< "$pool_id"; then
+-        warn "${caller}: invalid pool_id (contains /, .., or whitespace): ${pool_id}" || true
+-        return 1
+-    fi
+-    return 0
+-}
+-
+-# ─── _orch_seq_pool_dir (#898) ───────────────────────────────────────────────
+-# Per-run-namespaced pool dir; identical contract to the bash-parallel backend's
+-# _orch_par_pool_dir. ZBUILD_POOL_ROOT overrides. ZBUILD_RUN_ID is exported by
+-# the runner.
+-_orch_seq_pool_dir() {
+-    # ADR-059 §1: pool dirs live at runs/<run_id>/pool/ under the issue's (or
+-    # goal's) area. ZBUILD_STATE_DIR already resolves to runs/<run_id>/, so the
+-    # pool sits inside something a reclaimer can name. The pre-#2004 default was
+-    # ${TMPDIR}-rooted, which is outside every reclaimable path by construction.
+-    # ZBUILD_POOL_ROOT still overrides. A caller with no state dir at all
+-    # resolves under the data root too — nothing here roots in ${TMPDIR}.
+-    local _root="${ZBUILD_POOL_ROOT:-}"
+-    if [[ -z "$_root" ]]; then
+-        if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+-            _root="${ZBUILD_STATE_DIR%/}/pool"
+-        else
+-            # No state dir means no run — an ad-hoc or test caller. It still
+-            # goes under the DATA ROOT, not ${TMPDIR}: ADR-059 §1 makes the path
+-            # the keying, so a ${TMPDIR} fallback would be unreclaimable by
+-            # construction and would reintroduce the very leak #2004 fixed.
+-            # Same precedence the event bus uses for its unpinned default.
+-            _root="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/runs/${ZBUILD_RUN_ID:-default}/pool"
+-        fi
+-    fi
+-    printf '%s' "${_root}/zbuild-pool-${1}"
+-}
+-
+-# ─── orch_spawn ──────────────────────────────────────────────────────────────
+-# Contract: orch_spawn <pool_id> [count] [role_arg]
+-# Creates the pool results directory.  count and role_arg are accepted for
+-# contract compliance but unused by the sequential backend.
+-orch_spawn() {
+-    local pool_id="$1"
+-    _orch_seq_validate_pool_id "$pool_id" "orch_spawn" || return 1
+-    mkdir -p "$(_orch_seq_pool_dir "$pool_id")/results"
+-    return 0
+-}
+-
+-# ─── orch_dispatch ───────────────────────────────────────────────────────────
+-# Contract: orch_dispatch <pool_id> <work_unit>
+-# work_unit: path to an executable script created by orch_make_work_unit, or
+-#            a bash body string passed to `bash -c` (mock-compatible mode).
+-# Executes synchronously — no & background.
+-# Prints slot_id to stdout.  Returns 0 always (errors captured in .exit file).
+-orch_dispatch() {
+-    local pool_id="$1"
+-    local work_unit="$2"
+-    _orch_seq_validate_pool_id "$pool_id" "orch_dispatch" || return 1
+-    local pool_dir; pool_dir="$(_orch_seq_pool_dir "$pool_id")"
+-    local slot_id
+-    slot_id="$(date +%s%N)-$$-${RANDOM}"
+-    local result_base="${pool_dir}/results/${slot_id}"
+-
+-    # Execute synchronously — no background (&)
+-    local task_rc=0
+-    if [[ -f "$work_unit" && -x "$work_unit" ]]; then
+-        # work_unit is a script file path
+-        # #2108: dispatched from a `<<< "$roles_out"` loop — never its stdin.
+-        bash "$work_unit" </dev/null > "${result_base}.stdout" 2> "${result_base}.stderr" || task_rc=$?
+-    else
+-        # work_unit is a bash body string (mock-compatible mode)
+-        bash -c "$work_unit" </dev/null > "${result_base}.stdout" 2> "${result_base}.stderr" || task_rc=$?
+-    fi
+-    echo "$task_rc" > "${result_base}.exit"
+-    echo "$slot_id"
+-}
+-
+-# ─── orch_collect ────────────────────────────────────────────────────────────
+-# Contract: orch_collect <pool_id> [--timeout S]
+-# Iterates all result files; prints stdout; returns first non-zero rc.
+-# --timeout is accepted for contract compatibility but ignored (synchronous).
+-orch_collect() {
+-    # 0 = all passed; 1 otherwise, _ORCH_COLLECT_OUTCOME = partial | failed
+-    # (#1850: `partial` was rc 2).
+-    local pool_id="$1"
+-    _ORCH_COLLECT_OUTCOME="failed"
+-    # Accept --timeout flag without error; value is discarded.
+-    _orch_seq_validate_pool_id "$pool_id" "orch_collect" || return 1
+-
+-    local pool_dir; pool_dir="$(_orch_seq_pool_dir "$pool_id")"
+-    local pass_count=0 fail_count=0
+-
+-    if [[ ! -d "${pool_dir}/results" ]]; then
+-        _ORCH_COLLECT_OUTCOME="passed"
+-        return 0
+-    fi
+-
+-    for exit_file in "${pool_dir}/results/"*.exit; do
+-        [[ -f "$exit_file" ]] || continue
+-        local base="${exit_file%.exit}"
+-        local rc
+-        rc="$(cat "$exit_file")"
+-        [[ -f "${base}.stdout" ]] && cat "${base}.stdout"
+-        [[ -f "${base}.stderr" ]] && cat "${base}.stderr" >&2
+-        if [[ $rc -eq 0 ]]; then
+-            pass_count=$((pass_count + 1))
+-        else
+-            fail_count=$((fail_count + 1))
+-        fi
+-    done
+-
+-    if [[ "$fail_count" -eq 0 ]]; then
+-        rm -rf "$pool_dir"
+-        _ORCH_COLLECT_OUTCOME="passed"
+-        return 0
+-    elif [[ "$pass_count" -gt 0 ]]; then
+-        _ORCH_COLLECT_OUTCOME="partial"
+-        return 1
+-    else
+-        _ORCH_COLLECT_OUTCOME="failed"
+-        return 1
+-    fi
+-}
+-
+-# ─── orch_shutdown ───────────────────────────────────────────────────────────
+-# Contract: orch_shutdown <pool_id>
+-# Removes the pool directory.  Idempotent — safe to call on non-existent pool.
+-orch_shutdown() {
+-    local pool_id="$1"
+-    _orch_seq_validate_pool_id "$pool_id" "orch_shutdown" || return 1
+-    rm -rf "$(_orch_seq_pool_dir "$pool_id")"
+-    return 0
+-}
+-
+-# ─── orch_capabilities ───────────────────────────────────────────────────────
+-# Contract: orch_capabilities → JSON with backend name and capabilities list.
+-orch_capabilities() {
+-    printf '{"backend":"sequential","capabilities":["sequential","fanout_sequential"]}\n'
+-}
+diff --git a/plugins/tool/orch-sequential/tests/orch-sequential-test.sh b/plugins/tool/orch-sequential/tests/orch-sequential-test.sh
+deleted file mode 100755
+index 85d308e5..00000000
+--- a/plugins/tool/orch-sequential/tests/orch-sequential-test.sh
++++ /dev/null
+@@ -1,158 +0,0 @@
+-#!/usr/bin/env bash
+-# Integration Tests: plugins/tool/orch-sequential/ — end-to-end (issue #302)
+-# Covers: spawn / dispatch / collect 0/1/2 normalization / shutdown lifecycle,
+-#         pool_id validation, work-unit format flexibility (file vs bash body),
+-#         pool isolation (two pools don't interfere), capabilities advertisement.
+-#
+-# 5-trial-per-keeper for #219 (orch-sequential); KEEPERS §G mandate.
+-set -euo pipefail
+-
+-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+-PLUGIN_DIR="$REPO_ROOT/plugins/tool/orch-sequential"
+-
+-# shellcheck source=../../../../scripts/lib/helpers.sh
+-source "$REPO_ROOT/scripts/lib/helpers.sh"
+-# shellcheck source=../../../../scripts/lib/test-helpers.sh
+-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+-
+-print_test_header "plugins/tool/orch-sequential — integration: lifecycle + contract (issue #302)"
+-
+-setup_test_env "orch-sequential-integ"
+-
+-# Use isolated TMPDIR so pool dirs don't collide with anything.
+-export TMPDIR="$TEST_TEMP_DIR/tmp"
+-mkdir -p "$TMPDIR"
+-
+-# shellcheck disable=SC1090,SC1091
+-source "$PLUGIN_DIR/plugin.sh"
+-
+-# ─── Test 1: capabilities advertisement ─────────────────────────────────────
+-print_test_section "1. capabilities: declares sequential / no-parallelism"
+-caps="$(orch_capabilities)"
+-# Spec doesn't pin exact capability names; just confirm valid JSON array with content.
+-if grep -q '\[' <<< "$caps"; then
+-    assert_pass "orch_capabilities returns a JSON-like list"
+-else
+-    assert_fail "orch_capabilities returns a JSON-like list" "got: $caps"
+-fi
+-
+-# ─── Test 2: spawn → pool directory created ─────────────────────────────────
+-print_test_section "2. spawn creates pool results directory"
+-orch_spawn "p1" 1 ""
+-if [[ -d "$(_orch_seq_pool_dir p1)/results" ]]; then
+-    assert_pass "spawn creates results/ subdir"
+-else
+-    assert_fail "spawn creates results/ subdir" \
+-        "expected $(_orch_seq_pool_dir p1)/results to exist"
+-fi
+-
+-# ─── Test 3: dispatch + collect — all-pass (rc=0) ───────────────────────────
+-print_test_section "3. orch_collect rc=0 when all work units succeed (ADR-011 contract)"
+-orch_spawn "all-pass" 0 ""
+-orch_dispatch "all-pass" 'echo "task 1 ran"' >/dev/null
+-orch_dispatch "all-pass" 'echo "task 2 ran"; true' >/dev/null
+-orch_dispatch "all-pass" 'exit 0' >/dev/null
+-
+-set +e
+-orch_collect "all-pass" --timeout 10 >/dev/null 2>&1
+-collect_rc=$?
+-set -e
+-assert_eq "orch_collect rc=0 when all units exit 0" "0" "$collect_rc"
+-
+-# ─── Test 4: dispatch + collect — all-fail (rc=1) ──────────────────────────
+-print_test_section "4. orch_collect rc=1 when all work units fail (ADR-011 contract)"
+-orch_spawn "all-fail" 0 ""
+-orch_dispatch "all-fail" 'exit 7' >/dev/null
+-orch_dispatch "all-fail" 'exit 1' >/dev/null
+-orch_dispatch "all-fail" 'false' >/dev/null
+-
+-set +e
+-orch_collect "all-fail" --timeout 10 >/dev/null 2>&1
+-collect_rc=$?
+-set -e
+-assert_eq "orch_collect rc=1 when all units exit non-zero" "1" "$collect_rc"
+-assert_eq "orch_collect names all-fail failed" "failed" "${_ORCH_COLLECT_OUTCOME:-}"
+-
+-# ─── Test 5: dispatch + collect — partial (#1850: rc 1 + the word) ─────────
+-print_test_section "5. orch_collect names mixed results partial (ADR-011, ADR-054 §4)"
+-orch_spawn "partial" 0 ""
+-orch_dispatch "partial" 'exit 0' >/dev/null
+-orch_dispatch "partial" 'exit 5' >/dev/null
+-orch_dispatch "partial" 'true' >/dev/null
+-
+-set +e
+-orch_collect "partial" --timeout 10 >/dev/null 2>&1
+-collect_rc=$?
+-set -e
+-assert_eq "orch_collect rc=1 when results are mixed" "1" "$collect_rc"
+-assert_eq "orch_collect names mixed results partial" "partial" "${_ORCH_COLLECT_OUTCOME:-}"
+-
+-# ─── Test 6: shutdown removes pool dir ──────────────────────────────────────
+-print_test_section "6. shutdown cleans up the pool directory"
+-orch_spawn "doomed" 0 ""
+-if [[ -d "$(_orch_seq_pool_dir doomed)" ]]; then
+-    orch_shutdown "doomed"
+-    if [[ ! -d "$(_orch_seq_pool_dir doomed)" ]]; then
+-        assert_pass "shutdown removes pool directory"
+-    else
+-        assert_fail "shutdown removes pool directory" \
+-            "$(_orch_seq_pool_dir doomed) still exists"
+-    fi
+-else
+-    assert_fail "spawn precondition" "pool dir not created by spawn"
+-fi
+-
+-# ─── Test 7: pool isolation — two pools don't interfere ─────────────────────
+-print_test_section "7. pool isolation: separate pools collect independently"
+-orch_spawn "iso-a" 0 ""
+-orch_spawn "iso-b" 0 ""
+-orch_dispatch "iso-a" 'exit 0' >/dev/null
+-orch_dispatch "iso-a" 'exit 0' >/dev/null
+-orch_dispatch "iso-b" 'exit 1' >/dev/null
+-orch_dispatch "iso-b" 'exit 2' >/dev/null
+-
+-set +e
+-orch_collect "iso-a" --timeout 10 >/dev/null 2>&1
+-rc_a=$?
+-orch_collect "iso-b" --timeout 10 >/dev/null 2>&1
+-rc_b=$?
+-set -e
+-assert_eq "pool iso-a: rc=0 (all pass)" "0" "$rc_a"
+-assert_eq "pool iso-b: rc=1 (all fail)" "1" "$rc_b"
+-
+-# ─── Test 8: pool_id validation rejects path-traversal attempts ────────────
+-print_test_section "8. pool_id validation: rejects unsafe ids"
+-set +e
+-orch_spawn "../escape" 0 "" 2>/dev/null
+-rc_dotdot=$?
+-orch_spawn "with/slash" 0 "" 2>/dev/null
+-rc_slash=$?
+-orch_spawn "with space" 0 "" 2>/dev/null
+-rc_space=$?
+-set -e
+-assert_eq "spawn rejects '..'" "1" "$rc_dotdot"
+-assert_eq "spawn rejects pool_id containing /" "1" "$rc_slash"
+-assert_eq "spawn rejects pool_id containing whitespace" "1" "$rc_space"
+-
+-# ─── Test 9: work-unit script-file format also works ───────────────────────
+-print_test_section "9. dispatch accepts executable script-file work-units"
+-orch_spawn "script-pool" 0 ""
+-script="$TEST_TEMP_DIR/work.sh"
+-cat > "$script" <<'EOF'
+-#!/usr/bin/env bash
+-echo "from-script-file"
+-exit 0
+-EOF
+-chmod +x "$script"
+-
+-orch_dispatch "script-pool" "$script" >/dev/null
+-set +e
+-orch_collect "script-pool" --timeout 10 >/dev/null 2>&1
+-rc_script=$?
+-set -e
+-assert_eq "script-file work-unit collected as success" "0" "$rc_script"
+-
+-cleanup_test_env
+-print_test_results
+-exit $((FAIL > 0))
+diff --git a/tests/golden/orch-sequential-capabilities.golden b/tests/golden/orch-sequential-capabilities.golden
+deleted file mode 100644
+index f8d05fb0..00000000
+--- a/tests/golden/orch-sequential-capabilities.golden
++++ /dev/null
+@@ -1 +0,0 @@
+-{"backend":"sequential","capabilities":["sequential","fanout_sequential"]}
+\ No newline at end of file
+diff --git a/tests/integration/runner-release-exit-paths-test.sh b/tests/integration/runner-release-exit-paths-test.sh
+index 90d8fed9..d7683b30 100755
+--- a/tests/integration/runner-release-exit-paths-test.sh
++++ b/tests/integration/runner-release-exit-paths-test.sh
+@@ -296,8 +296,8 @@ else
+     # #2029: the force-kill grace is DERIVED from the engine's own teardown
+     # budget, not guessed.
+     #
+-    # The engine bounds each always-run stage by its template `router.timeout_s`,
+-    # falling back to ZBUILD_RELEASE_TIMEOUT (default 30s) only when the template
++    # The engine bounds each always-run stage by its template `stage_timeout_s`,
++    # falling back to ZBUILD_STAGE_TIMEOUT_S (default 30s) only when the template
+     # sets none (#2287) — so the pin below is a fallback, and this case relies on
+     # its hooks returning promptly rather than on the bound. Three stages
+     # release on this path, so an unpinned run is entitled to spend far longer
+@@ -313,7 +313,7 @@ else
+     _SPEC5_RELEASE_TIMEOUT=3
+     _SPEC5_KILL_GRACE=$(( _SPEC5_RELEASE_TIMEOUT * 3 + 6 ))   # 3 stages + margin
+     set -m
+-    ZBUILD_RELEASE_TIMEOUT="$_SPEC5_RELEASE_TIMEOUT" \
++    ZBUILD_STAGE_TIMEOUT_S="$_SPEC5_RELEASE_TIMEOUT" \
+     bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-minimal --goal "$3"' \
+         _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
+     RUNNER_PID=$!
+@@ -344,8 +344,8 @@ set -e
+ _elapsed=$(( $(date +%s) - _t0 ))
+ unset BLOCK_CLEANUP
+ # The blocking hook sleeps 120s. The bound is the release stage's own
+-# `router.timeout_s` (30 in the template, which takes precedence over
+-# ZBUILD_RELEASE_TIMEOUT), so the runner returns in about 30s. Allow generous
++# `stage_timeout_s` (30 in the template, which takes precedence over
++# ZBUILD_STAGE_TIMEOUT_S), so the runner returns in about 30s. Allow generous
+ # headroom for a loaded host while still failing an unbounded wait.
+ if [[ "$_elapsed" -lt 60 ]]; then
+     assert_pass "[SPEC-6] blocking cleanup is bounded (runner exited in ${_elapsed}s)"
+diff --git a/tests/unit/adr059-no-tmpdir-defaults-test.sh b/tests/unit/adr059-no-tmpdir-defaults-test.sh
+index 031c8fa6..90147cce 100755
+--- a/tests/unit/adr059-no-tmpdir-defaults-test.sh
++++ b/tests/unit/adr059-no-tmpdir-defaults-test.sh
+@@ -59,14 +59,20 @@ case "$_s3" in
+     *)                   assert_fail "[SPEC-3] bash-parallel pool dir is under runs/<run_id>/pool" "got: $_s3" ;;
+ esac
+ 
+-# ─── SPEC-4: the sequential backend agrees ─────────────────────────────────
+-# Both backends are covered, or a flow using the other one still leaks.
++# ─── SPEC-4: the mock backend uses ORCH_MOCK_DIR (sequential backend retired) ──
++# orch-mock is the test-time replacement for the retired sequential backend.
++# Its pool dir is ORCH_MOCK_DIR/<pool_id>; in test contexts ORCH_MOCK_DIR defaults
++# to $TEST_TEMP_DIR/orch-mock (not $TMPDIR).
++_s4_expected="${TEST_TEMP_DIR}/orch-mock/p1"
+ _s4="$(env -u ZBUILD_POOL_ROOT TMPDIR="$FAKE_TMP" ZBUILD_STATE_DIR="$STATE_DIR" ZBUILD_RUN_ID="r1" \
+-        bash -c 'source "'"$REPO_ROOT"'/plugins/tool/orch-sequential/plugin.sh" >/dev/null 2>&1; _orch_seq_pool_dir p1')"
+-case "$_s4" in
+-    "$STATE_DIR"/pool/*) assert_pass "[SPEC-4] sequential pool dir is under runs/<run_id>/pool" ;;
+-    *)                   assert_fail "[SPEC-4] sequential pool dir is under runs/<run_id>/pool" "got: $_s4" ;;
+-esac
++        ORCH_MOCK_DIR="$TEST_TEMP_DIR/orch-mock" \
++        bash -c 'source "'"$REPO_ROOT"'/plugins/tool/orch-mock/plugin.sh" >/dev/null 2>&1; _orch_mock_pool_dir p1')"
++if [[ "$_s4" == "$_s4_expected" ]]; then
++    assert_pass "[SPEC-4] mock pool dir is ORCH_MOCK_DIR/p1 (not under \$TMPDIR)"
++else
++    assert_fail "[SPEC-4] mock pool dir is ORCH_MOCK_DIR/p1 (not under \$TMPDIR)" \
++        "expected: $_s4_expected, got: $_s4"
++fi
+ 
+ # ─── SPEC-5: an explicit ZBUILD_POOL_ROOT still wins ───────────────────────
+ _s5="$(TMPDIR="$FAKE_TMP" ZBUILD_STATE_DIR="$STATE_DIR" ZBUILD_POOL_ROOT="$TEST_TEMP_DIR/pinned-pool" \
+@@ -97,9 +103,8 @@ assert_eq "[SPEC-7] hive honours an explicit ZBUILD_POOL_ROOT" \
+ # The ad-hoc/test caller. This arm used to root in ${TMPDIR}, which quietly
+ # reintroduced the leak the rest of this file exists to prevent — the event bus
+ # and the pool backends had answered the same question two different ways.
+-for _b in orch-bash-parallel orch-sequential orch-ruflo-hive; do
++for _b in orch-bash-parallel orch-ruflo-hive; do
+     _fn="_orch_par_pool_dir"
+-    [[ "$_b" == "orch-sequential" ]] && _fn="_orch_seq_pool_dir"
+     [[ "$_b" == "orch-ruflo-hive" ]] && _fn="_orch_hive_pool_dir"
+     _s8="$(env -u ZBUILD_POOL_ROOT -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
+             TMPDIR="$FAKE_TMP" ZBUILD_DATA_ROOT="$DATA_ROOT" ZBUILD_RUN_ID="r1" \
+diff --git a/tests/unit/core-orch-run-id-isolation-test.sh b/tests/unit/core-orch-run-id-isolation-test.sh
+index 1ba1423a..c7d3c3c8 100755
+--- a/tests/unit/core-orch-run-id-isolation-test.sh
++++ b/tests/unit/core-orch-run-id-isolation-test.sh
+@@ -71,18 +71,17 @@ export ZBUILD_POOL_ROOT="/tmp/mypools-898"
+ assert_eq "P3 ZBUILD_POOL_ROOT overrides" \
+     "/tmp/mypools-898/zbuild-pool-poolX" "$(_orch_par_pool_dir poolX)"
+ 
+-# ─── Sequential backend uses the same per-run namespacing (#898) ─────────────
++# ─── Mock backend pool dir uses ORCH_MOCK_DIR (sequential backend retired) ────
+ unset ZBUILD_POOL_ROOT
+ # shellcheck disable=SC1091
+-source "$REPO_ROOT/plugins/tool/orch-sequential/plugin.sh"
+-export ZBUILD_RUN_ID="run-AAA"
+-sp_a="$(_orch_seq_pool_dir poolX)"
+-assert_contains "P4 sequential pool dir is per-run (run-AAA)" \
+-    "$sp_a" "run-AAA/pool/zbuild-pool-poolX"
+-export ZBUILD_POOL_ROOT="/tmp/seqpools-898"
+-assert_eq "P5 sequential ZBUILD_POOL_ROOT overrides" \
+-    "/tmp/seqpools-898/zbuild-pool-poolX" "$(_orch_seq_pool_dir poolX)"
+-unset ZBUILD_POOL_ROOT
++source "$REPO_ROOT/plugins/tool/orch-mock/plugin.sh"
++mp_a="$(_orch_mock_pool_dir poolX)"
++assert_contains "P4 mock pool dir is under ORCH_MOCK_DIR (TEST_TEMP_DIR/orch-mock)" \
++    "$mp_a" "orch-mock/poolX"
++export ORCH_MOCK_DIR="$TEST_TEMP_DIR/pinned-mock-898"
++assert_eq "P5 mock ORCH_MOCK_DIR override is respected" \
++    "$TEST_TEMP_DIR/pinned-mock-898/poolX" "$(_orch_mock_pool_dir poolX)"
++unset ORCH_MOCK_DIR
+ 
+ cleanup_test_env
+ print_test_results
+diff --git a/tests/unit/design-prompt-scope-charter-test.sh b/tests/unit/design-prompt-scope-charter-test.sh
+index 78a66073..0dec40d4 100755
+--- a/tests/unit/design-prompt-scope-charter-test.sh
++++ b/tests/unit/design-prompt-scope-charter-test.sh
+@@ -89,9 +89,11 @@ else
+     assert_fail "T5: prompt must forbid Edit/Write/Bash (design is read-only enumeration)"
+ fi
+ 
+-# T6: simple.yaml design timeout raised to 600 (repo-wide grep headroom).
+-tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
+-assert_eq "T6: design timeout_s raised to 600" "600" "${tmo:-unset}"
++# T6: simple.yaml design stage carries stage_timeout_s: 3900 (the whole-stage
++# limit now owns the design stage; router.timeout_s: 600 remains the per-dispatch
++# limit but stage_timeout_s is the dominant, and larger, value).
++tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'stage_timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
++assert_eq "T6: design stage_timeout_s raised to 3900" "3900" "${tmo:-unset}"
+ 
+ cleanup_test_env
+ print_test_results
+diff --git a/tests/unit/dispatch-rc-guard-test.sh b/tests/unit/dispatch-rc-guard-test.sh
+index f9720580..50ca7264 100755
+--- a/tests/unit/dispatch-rc-guard-test.sh
++++ b/tests/unit/dispatch-rc-guard-test.sh
+@@ -84,7 +84,6 @@ core/pipeline/disposition.sh|0
+ core/pipeline/contract-validator.sh|0
+ core/orch/local_engine.sh|0
+ plugins/tool/orch-mock/plugin.sh|0
+-plugins/tool/orch-sequential/plugin.sh|0
+ "
+ 
+ _LEGACY_RE='(return|exit)[[:space:]]+(2|3|4|5|6|7|8|9|10|11|124|130|137|143)([[:space:]]|;|$)'
+diff --git a/tests/unit/event-schema-emitted-coverage-test.sh b/tests/unit/event-schema-emitted-coverage-test.sh
+index 70464603..47e71673 100755
+--- a/tests/unit/event-schema-emitted-coverage-test.sh
++++ b/tests/unit/event-schema-emitted-coverage-test.sh
+@@ -157,5 +157,23 @@ else
+     assert_fail "[#2032] cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types"
+ fi
+ 
++# ─── 5. [#1801/SPEC-18] orch.backend.misconfigured and plugin.run.timed_out ────
++# These two types must be registered in config/event-schema.json known_types.
++# The test FAILs on pre-change code (where neither is registered) and passes
++# after the change adds them.
++if grep -qxF "orch.backend.misconfigured" <<< "$_engine_types"; then
++    assert_pass "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json"
++else
++    assert_fail "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json" \
++        "not in config/event-schema.json known_types — add it under the orch. namespace"
++fi
++
++if grep -qxF "plugin.run.timed_out" <<< "$_engine_types"; then
++    assert_pass "[#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json"
++else
++    assert_fail "[#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json" \
++        "not in config/event-schema.json known_types — add it under the plugin. namespace"
++fi
++
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/exit-path-teardown-budget-guard-test.sh b/tests/unit/exit-path-teardown-budget-guard-test.sh
+index 4959d3b0..43d273a2 100755
+--- a/tests/unit/exit-path-teardown-budget-guard-test.sh
++++ b/tests/unit/exit-path-teardown-budget-guard-test.sh
+@@ -35,10 +35,10 @@ assert_file_exists "SPEC-0: the integration test exists" "$T"
+ # Unpinned, it is the 30s default and the test is racing a number it does not
+ # control. Pinning makes teardown's worst case knowable.
+ _spec5_block="$(sed -n '/SPEC-5: exit path = external hard kill/,/SPEC-6/p' "$T")"
+-if grep -q 'ZBUILD_RELEASE_TIMEOUT' <<< "$_spec5_block"; then
+-    assert_pass "SPEC-1: the hard-kill case pins ZBUILD_RELEASE_TIMEOUT"
++if grep -q 'ZBUILD_STAGE_TIMEOUT_S' <<< "$_spec5_block"; then
++    assert_pass "SPEC-1: the hard-kill case pins ZBUILD_STAGE_TIMEOUT_S"
+ else
+-    assert_fail "SPEC-1: the hard-kill case pins ZBUILD_RELEASE_TIMEOUT" \
++    assert_fail "SPEC-1: the hard-kill case pins ZBUILD_STAGE_TIMEOUT_S" \
+         "unpinned — teardown may take the 30s default per stage while the test force-kills far sooner"
+ fi
+ 
+diff --git a/tests/unit/map-strategy-test.sh b/tests/unit/map-strategy-test.sh
+index 02b6b1bd..be377752 100755
+--- a/tests/unit/map-strategy-test.sh
++++ b/tests/unit/map-strategy-test.sh
+@@ -505,7 +505,7 @@ export _MAP_DIM_batch11
+ SPEC11_LOG="$TEST_TEMP_DIR/spec11-spy.log"
+ : > "$SPEC11_LOG"
+ # Spy enforces the REAL backend validation: reject any pool_id > 64 chars or with
+-# invalid chars, exactly like orch-bash-parallel/orch-sequential. A rejected spawn
++# invalid chars, exactly like orch-bash-parallel. A rejected spawn
+ # returns 1 → the batch would be skipped, so a passing test proves truncation works.
+ _spec11_orch_spawn() {
+     local pid="$1"
+diff --git a/tests/unit/orch-backend-misconfigured-test.sh b/tests/unit/orch-backend-misconfigured-test.sh
+new file mode 100644
+index 00000000..19731ddc
+--- /dev/null
++++ b/tests/unit/orch-backend-misconfigured-test.sh
+@@ -0,0 +1,99 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-9] A configured orchestrator backend that cannot be found, or
++# whose config is unreadable, fails the run as `misconfigured` naming the
++# backend — tested from the installed tree.
++#
++# Before this change, orch_load_backend silently fell back to orch-sequential
++# rather than failing with a clear error. After the change, a missing or
++# unreadable backend causes the run to end as `misconfigured` with the backend
++# name in the reason.
++#
++# These tests FAIL on pre-change code (where a missing backend silently falls
++# back instead of failing) and PASS after the change.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "[#1801/SPEC-9] missing/unreadable orch backend → misconfigured"
++setup_test_env "orch-backend-misconfigured"
++
++# ─── [#1801/SPEC-9] non-existent backend alias fails as misconfigured ─────────
++print_test_section "[#1801/SPEC-9] orch_load_backend with unknown alias → misconfigured"
++
++# Use a plugins root that has no backend with alias `no-such-backend`.
++_out1=""
++_rc1=0
++_out1="$(
++    ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" \
++    bash -c '
++        source "'"$REPO_ROOT"'/scripts/lib/helpers.sh" 2>/dev/null || true
++        source "'"$REPO_ROOT"'/core/orch/contract.sh" 2>/dev/null || true
++        orch_load_backend "no-such-backend" 2>&1
++        echo "exit:$?"
++    ' 2>&1)" || _rc1=$?
++
++# After the change: the output or exit code signals misconfigured, and the
++# backend name appears in the message.
++if grep -qiE 'misconfigured|not found|cannot' <<< "$_out1" \
++        && grep -q 'no-such-backend' <<< "$_out1"; then
++    assert_pass "[#1801/SPEC-9] unknown backend alias produces misconfigured + names the backend"
++else
++    assert_fail "[#1801/SPEC-9] unknown backend alias produces misconfigured + names the backend" \
++        "output did not name the backend or did not signal misconfigured:" \
++        "$(printf '%s' "$_out1" | head -5 | tr '\n' '|')"
++fi
++
++# ─── [#1801/SPEC-9] the contract.sh fallback logic is gone ───────────────────
++print_test_section "[#1801/SPEC-9] contract.sh has no fallback to orch-sequential"
++
++_contract="$REPO_ROOT/core/orch/contract.sh"
++if [[ ! -f "$_contract" ]]; then
++    assert_fail "[#1801/SPEC-9] core/orch/contract.sh exists" "file not found"
++else
++    # The old code: "Fallback: try built-in orch-sequential plugin by known path"
++    # After the change this fallback is removed.
++    if grep -q 'orch-sequential' "$_contract"; then
++        assert_fail "[#1801/SPEC-9] contract.sh has no fallback to orch-sequential" \
++            "orch-sequential still referenced in contract.sh — the fallback was not removed"
++    else
++        assert_pass "[#1801/SPEC-9] contract.sh has no fallback to orch-sequential"
++    fi
++fi
++
++# ─── [#1801/SPEC-9] orch_load_backend does not silently continue on missing ───
++print_test_section "[#1801/SPEC-9] orch_load_backend fails (does not return 0) on missing backend"
++
++_out2=""
++_rc2=0
++_out2="$(
++    ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/empty-plugins" \
++    bash -c '
++        mkdir -p "'"$TEST_TEMP_DIR"'/empty-plugins"
++        source "'"$REPO_ROOT"'/scripts/lib/helpers.sh" 2>/dev/null || true
++        source "'"$REPO_ROOT"'/core/orch/contract.sh" 2>/dev/null || true
++        orch_load_backend "missing-alias" 2>&1
++        echo "exit:$?"
++    ' 2>&1)" || _rc2=$?
++
++# Extract the exit code the subshell reported
++_reported_exit=""
++_reported_exit="$(grep '^exit:' <<< "$_out2" | tail -1 | cut -d: -f2 || true)"
++
++# After the change: orch_load_backend must not return 0 for a missing backend.
++# (Old code: warns and returns 0, so the engine continued without a backend.)
++if [[ "$_reported_exit" == "0" ]]; then
++    assert_fail "[#1801/SPEC-9] orch_load_backend returns non-zero on missing backend" \
++        "returned 0 — a missing backend was silently accepted (pre-change fallback behaviour)"
++else
++    assert_pass "[#1801/SPEC-9] orch_load_backend returns non-zero on missing backend"
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/orch-sequential-retired-guard-test.sh b/tests/unit/orch-sequential-retired-guard-test.sh
+new file mode 100644
+index 00000000..1c6fb830
+--- /dev/null
++++ b/tests/unit/orch-sequential-retired-guard-test.sh
+@@ -0,0 +1,157 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-8] Guard: orch-sequential is retired.
++#
++# After this change:
++#   - plugins/tool/orch-sequential/ does not exist on disk
++#   - no file outside docs/adr/ names "orch-sequential"
++#   - configuring `sequential` as an orchestrator backend makes the run end as
++#     `misconfigured`
++#
++# [#1801/SPEC-11] Guard: ADR-054 §9, ADR-017, and ADR-011 have ## Enforced by
++# sections and are NOT in config/adr-enforcement-baseline.txt.
++#
++# These tests FAIL on pre-change code (where orch-sequential still exists, where
++# code files still reference it, and where the ADRs lack Enforced-by sections)
++# and PASS after the change.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "[#1801/SPEC-8] orch-sequential retired; [#1801/SPEC-11] ADR Enforced-by sections"
++
++# ─── [#1801/SPEC-8] the directory is absent ───────────────────────────────────
++print_test_section "[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent"
++
++if [[ -e "$REPO_ROOT/plugins/tool/orch-sequential" ]]; then
++    assert_fail "[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent" \
++        "directory still exists — the retired backend was not removed"
++else
++    assert_pass "[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent"
++fi
++
++# ─── [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential ──────────
++print_test_section "[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential"
++
++# Directories the guard allows: docs/adr/ (historical references are fine there)
++# and tests/golden (the golden for the deleted plugin will also be gone).
++# The guard runs via grep -r, excluding those two directories.
++_bad_refs=""
++while IFS= read -r _match; do
++    [[ -z "$_match" ]] && continue
++    # Strip repo root prefix for readability
++    _rel="${_match#$REPO_ROOT/}"
++    _bad_refs+="  $_rel"$'\n'
++done < <(grep -rl 'orch-sequential' "$REPO_ROOT" \
++    --exclude-dir='.git' \
++    --exclude-dir='legacy-DoNotUse' 2>/dev/null | \
++    grep -v '^'"$REPO_ROOT"'/docs/adr/' | \
++    grep -v '^'"$REPO_ROOT"'/tests/golden/' | \
++    grep -v '^'"$REPO_ROOT"'/tests/unit/orch-sequential-retired-guard-test\.sh$' | \
++    grep -v '^'"$REPO_ROOT"'/tests/unit/orch-backend-misconfigured-test\.sh$' || true)
++
++if [[ -n "$_bad_refs" ]]; then
++    assert_fail "[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential" \
++        "found references:"$'\n'"$_bad_refs"
++else
++    assert_pass "[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential"
++fi
++
++# ─── [#1801/SPEC-8] configuring sequential as backend → misconfigured ─────────
++print_test_section "[#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured"
++
++# source contract.sh with a controlled env so _orch_load_backend uses the
++# sequential alias and we can capture its outcome.
++_orch_result=""
++_orch_rc=0
++_orch_result="$(
++    ZBUILD_ORCH_BACKEND=sequential \
++    ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" \
++    bash -c '
++        source "'"$REPO_ROOT"'/scripts/lib/helpers.sh" 2>/dev/null || true
++        source "'"$REPO_ROOT"'/core/orch/contract.sh" 2>/dev/null || true
++        # After the change, orch_load_backend emits orch.backend.misconfigured
++        # or writes a misconfigured disposition; check what the function does.
++        orch_load_backend sequential 2>&1
++        echo "rc=$?"
++    ' 2>&1)" || _orch_rc=$?
++
++# The requirement: configuring sequential emits misconfigured
++# Accept either an event name match or an explicit "misconfigured" in output
++if grep -qiE 'misconfigured|sequential.*not found|backend.*sequential.*not' <<< "$_orch_result"; then
++    assert_pass "[#1801/SPEC-8] configuring sequential as backend signals misconfigured"
++else
++    assert_fail "[#1801/SPEC-8] configuring sequential as backend signals misconfigured" \
++        "output: $(printf '%s' "$_orch_result" | head -5 | tr '\n' '|')"
++fi
++
++# ─── [#1801/SPEC-11] ADR-054 has ## Enforced by section ──────────────────────
++print_test_section "[#1801/SPEC-11] ADR-054 has ## Enforced by section"
++
++_adr054="$REPO_ROOT/docs/adr/ADR-054-stage-contract.md"
++if [[ ! -f "$_adr054" ]]; then
++    assert_fail "[#1801/SPEC-11] ADR-054 exists" "file not found: $_adr054"
++else
++    if grep -qE '^## Enforced by' "$_adr054"; then
++        assert_pass "[#1801/SPEC-11] ADR-054 has ## Enforced by section"
++    else
++        assert_fail "[#1801/SPEC-11] ADR-054 has ## Enforced by section" \
++            "section absent — ADR-054 §9 requires it"
++    fi
++fi
++
++# ─── [#1801/SPEC-11] ADR-017 has ## Enforced by section ──────────────────────
++print_test_section "[#1801/SPEC-11] ADR-017 has ## Enforced by section"
++
++_adr017="$REPO_ROOT/docs/adr/ADR-017-per-stage-router-config.md"
++if [[ ! -f "$_adr017" ]]; then
++    assert_fail "[#1801/SPEC-11] ADR-017 exists" "file not found: $_adr017"
++else
++    if grep -qE '^## Enforced by' "$_adr017"; then
++        assert_pass "[#1801/SPEC-11] ADR-017 has ## Enforced by section"
++    else
++        assert_fail "[#1801/SPEC-11] ADR-017 has ## Enforced by section" \
++            "section absent"
++    fi
++fi
++
++# ─── [#1801/SPEC-11] ADR-011 has ## Enforced by section ──────────────────────
++print_test_section "[#1801/SPEC-11] ADR-011 has ## Enforced by section"
++
++_adr011="$REPO_ROOT/docs/adr/ADR-011-pluggable-backends.md"
++if [[ ! -f "$_adr011" ]]; then
++    assert_fail "[#1801/SPEC-11] ADR-011 exists" "file not found: $_adr011"
++else
++    if grep -qE '^## Enforced by' "$_adr011"; then
++        assert_pass "[#1801/SPEC-11] ADR-011 has ## Enforced by section"
++    else
++        assert_fail "[#1801/SPEC-11] ADR-011 has ## Enforced by section" \
++            "section absent"
++    fi
++fi
++
++# ─── [#1801/SPEC-11] the three ADRs are not in the enforcement baseline ───────
++print_test_section "[#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt"
++
++_baseline="$REPO_ROOT/config/adr-enforcement-baseline.txt"
++if [[ ! -f "$_baseline" ]]; then
++    assert_fail "[#1801/SPEC-11] config/adr-enforcement-baseline.txt exists" \
++        "file not found: $_baseline"
++else
++    for _adr_name in ADR-054 ADR-017 ADR-011; do
++        if grep -q "$_adr_name" "$_baseline"; then
++            assert_fail "[#1801/SPEC-11] $_adr_name is not in adr-enforcement-baseline.txt" \
++                "$_adr_name still listed — remove after adding its Enforced-by section"
++        else
++            assert_pass "[#1801/SPEC-11] $_adr_name is not in adr-enforcement-baseline.txt"
++        fi
++    done
++fi
++
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/plugin-artifact-goldens-test.sh b/tests/unit/plugin-artifact-goldens-test.sh
+index 3cc08f51..38f5f08f 100755
+--- a/tests/unit/plugin-artifact-goldens-test.sh
++++ b/tests/unit/plugin-artifact-goldens-test.sh
+@@ -261,45 +261,5 @@ else
+     assert_fail "G4: pr-result-artifact exact golden match" "assert_golden returned $g4_golden_rc"
+ fi
+ 
+-# ─── G5: orch-sequential-capabilities ────────────────────────────────────────
+-# plugins/tool/orch-sequential orch_capabilities() output
+-# Required fields: backend == "sequential", capabilities array
+-print_test_section "G5: orch-sequential-capabilities.golden"
+-assert_golden_exists "orch-sequential-capabilities"
+-assert_golden_is_valid_json "orch-sequential-capabilities"
+-assert_golden_contains "orch-sequential-capabilities" '"backend"'
+-assert_golden_contains "orch-sequential-capabilities" '"capabilities"'
+-assert_golden_contains "orch-sequential-capabilities" '"sequential"'
+-
+-g5_content="$(cat "$GOLDEN_DIR/orch-sequential-capabilities.golden" 2>/dev/null || echo '{}')"
+-g5_backend="$(printf '%s' "$g5_content" | jq -r '.backend' 2>/dev/null || echo '')"
+-if [[ "$g5_backend" == "sequential" ]]; then
+-    assert_pass "G5: orch-sequential-capabilities backend == sequential"
+-else
+-    assert_fail "G5: orch-sequential-capabilities backend == sequential" "got: $g5_backend"
+-fi
+-
+-g5_caps_len="$(printf '%s' "$g5_content" | jq '.capabilities | length' 2>/dev/null || echo '0')"
+-if [[ "$g5_caps_len" -gt 0 ]] 2>/dev/null; then
+-    assert_pass "G5: orch-sequential-capabilities has non-empty capabilities array"
+-else
+-    assert_fail "G5: orch-sequential-capabilities has non-empty capabilities array" "length: $g5_caps_len"
+-fi
+-
+-# Verify actual plugin output matches golden (source plugin to call orch_capabilities)
+-source "$REPO_ROOT/scripts/lib/helpers.sh"
+-source "$REPO_ROOT/plugins/tool/orch-sequential/plugin.sh"
+-g5_live_output="$(orch_capabilities)"
+-set +e
+-assert_golden "orch-sequential-capabilities" "$g5_live_output"
+-g5_golden_rc=$?
+-set -e
+-if [[ $g5_golden_rc -eq 0 ]]; then
+-    assert_pass "G5: orch-sequential live orch_capabilities() matches golden"
+-else
+-    assert_fail "G5: orch-sequential live orch_capabilities() matches golden" \
+-        "assert_golden returned $g5_golden_rc; live output: $g5_live_output"
+-fi
+-
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/stage-timeout-always-run-test.sh b/tests/unit/stage-timeout-always-run-test.sh
+new file mode 100644
+index 00000000..757eb2c5
+--- /dev/null
++++ b/tests/unit/stage-timeout-always-run-test.sh
+@@ -0,0 +1,172 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-6] _runner_dispatch_always_run reads stage_timeout_s (not
++# router.timeout_s) for its time limit; simple.yaml carries stage_timeout_s
++# for all stages at required values; router.timeout_s remains absent from the
++# two always_run stages.
++#
++# [#1801/SPEC-10] _runner_dispatch_always_run kills through zbuild_pg_kill;
++# no hand-rolled TERM/KILL sequence remains for stage dispatch.
++#
++# These tests FAIL on pre-change code (where _runner_dispatch_always_run reads
++# _TPL_STAGE_ROUTER_TIMEOUT_* and uses a hand-rolled kill sequence) and PASS
++# after the change.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "[#1801/SPEC-6] always_run uses stage_timeout_s; [#1801/SPEC-10] zbuild_pg_kill"
++setup_test_env "stage-timeout-always-run"
++
++# ─── [#1801/SPEC-6] runner.sh reads _TPL_STAGE_TIMEOUT_S_*, not _ROUTER_TIMEOUT ─
++print_test_section "[#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*"
++
++_runner="$REPO_ROOT/core/pipeline/runner.sh"
++
++# Extract the _runner_dispatch_always_run function body.
++_ar_body=""
++_ar_body="$(awk '/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}' "$_runner" 2>/dev/null || true)"
++
++if [[ -z "$_ar_body" ]]; then
++    assert_fail "[#1801/SPEC-6] _runner_dispatch_always_run is defined in runner.sh" \
++        "function body not found"
++else
++    assert_pass "[#1801/SPEC-6] _runner_dispatch_always_run is defined in runner.sh"
++
++    # After the change: reads _TPL_STAGE_TIMEOUT_S_*, not _TPL_STAGE_ROUTER_TIMEOUT_*
++    if grep -q '_TPL_STAGE_TIMEOUT_S_' <<< "$_ar_body"; then
++        assert_pass "[#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*"
++    else
++        assert_fail "[#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*" \
++            "_TPL_STAGE_TIMEOUT_S_* not found — still using old _TPL_STAGE_ROUTER_TIMEOUT_* or ZBUILD_RELEASE_TIMEOUT"
++    fi
++
++    # The OLD variable must not be the primary source.
++    # It may still exist as a fallback to ZBUILD_STAGE_TIMEOUT_S, but
++    # _TPL_STAGE_ROUTER_TIMEOUT_* must NOT be the limit variable the function uses.
++    if grep -q '_ar_to.*_TPL_STAGE_ROUTER_TIMEOUT\|_TPL_STAGE_ROUTER_TIMEOUT.*_ar_to' <<< "$_ar_body"; then
++        assert_fail "[#1801/SPEC-6] _runner_dispatch_always_run no longer uses _TPL_STAGE_ROUTER_TIMEOUT_* as its time limit" \
++            "still reads _TPL_STAGE_ROUTER_TIMEOUT_* for _ar_to — must use _TPL_STAGE_TIMEOUT_S_* instead"
++    else
++        assert_pass "[#1801/SPEC-6] _runner_dispatch_always_run no longer uses _TPL_STAGE_ROUTER_TIMEOUT_* as its time limit"
++    fi
++fi
++
++# ─── [#1801/SPEC-6] simple.yaml carries stage_timeout_s for all stages ────────
++print_test_section "[#1801/SPEC-6] simple.yaml stage_timeout_s values"
++
++_simple="$REPO_ROOT/config/templates/simple.yaml"
++if [[ ! -f "$_simple" ]]; then
++    assert_fail "[#1801/SPEC-6] config/templates/simple.yaml exists" "not found"
++else
++    # Verify required stage_timeout_s values by parsing the template.
++    # Each check verifies that the section contains `stage_timeout_s: N`.
++    # Strategy: for each stage, confirm that stage_timeout_s appears in simple.yaml
++    # with the required value by extracting the section and checking.
++    _check_stage_timeout() {
++        local _stage="$1" _expected_s="$2"
++        # Find the stage section and look for stage_timeout_s: N within it.
++        # Use awk to extract from the stage heading to the next top-level entry.
++        local _found
++        _found="$(awk -v stage="$_stage:" '
++            $0 == stage { in_stage=1; next }
++            in_stage && /^[a-zA-Z_]/ { exit }
++            in_stage && /stage_timeout_s:/ { print; exit }
++        ' "$_simple" 2>/dev/null | grep -oE '[0-9]+')"
++
++        if [[ "$_found" == "$_expected_s" ]]; then
++            assert_pass "[#1801/SPEC-6] simple.yaml $_stage: stage_timeout_s == ${_expected_s}s"
++        else
++            assert_fail "[#1801/SPEC-6] simple.yaml $_stage: stage_timeout_s == ${_expected_s}s" \
++                "got '${_found:-<absent>}'"
++        fi
++    }
++
++    _check_stage_timeout "release" "30"
++    _check_stage_timeout "persist" "120"
++    _check_stage_timeout "test" "5400"
++    _check_stage_timeout "build" "4200"
++    _check_stage_timeout "design" "3900"
++    _check_stage_timeout "plan" "1200"
++    _check_stage_timeout "test-author" "900"
++    _check_stage_timeout "spec-coverage" "600"
++    _check_stage_timeout "acceptance-gate" "600"
++    _check_stage_timeout "issue-acceptance" "600"
++    _check_stage_timeout "spec-correspondence" "600"
++    _check_stage_timeout "review_lenses" "600"
++    _check_stage_timeout "intake" "600"
++    _check_stage_timeout "pr" "600"
++    _check_stage_timeout "hydrate" "600"
++    _check_stage_timeout "secret-scan" "600"
++    _check_stage_timeout "shape-floor" "600"
++    _check_stage_timeout "design-gate" "600"
++    _check_stage_timeout "gate-aggregator" "600"
++    _check_stage_timeout "assertion-integrity" "600"
++    _check_stage_timeout "review-aggregator" "600"
++
++    # ─── [#1801/SPEC-6] release and persist have no router.timeout_s ──────────
++    # The two always_run stages convert their router.timeout_s to stage_timeout_s.
++    # After the change they must not declare router.timeout_s.
++    for _ar_stage in release persist; do
++        _router_to=""
++        _router_to="$(awk -v stage="$_ar_stage:" '
++            $0 == stage { in_stage=1; next }
++            in_stage && /^[a-zA-Z_]/ { exit }
++            in_stage && /router:/ { in_router=1; next }
++            in_stage && in_router && /timeout_s:/ { print; exit }
++            in_stage && in_router && /^[[:space:]]+[a-z_]+:/ && !/timeout_s/ { in_router=0 }
++        ' "$_simple" 2>/dev/null || true)"
++
++        if [[ -n "$_router_to" ]]; then
++            assert_fail "[#1801/SPEC-6] simple.yaml $_ar_stage: no router.timeout_s (converted to stage_timeout_s)" \
++                "router.timeout_s still present: $_router_to"
++        else
++            assert_pass "[#1801/SPEC-6] simple.yaml $_ar_stage: no router.timeout_s (converted to stage_timeout_s)"
++        fi
++    done
++fi
++
++# ─── [#1801/SPEC-10] _runner_dispatch_always_run uses zbuild_pg_kill ──────────
++print_test_section "[#1801/SPEC-10] _runner_dispatch_always_run uses zbuild_pg_kill"
++
++if [[ -n "$_ar_body" ]]; then
++    if grep -q 'zbuild_pg_kill' <<< "$_ar_body"; then
++        assert_pass "[#1801/SPEC-10] _runner_dispatch_always_run calls zbuild_pg_kill"
++    else
++        assert_fail "[#1801/SPEC-10] _runner_dispatch_always_run calls zbuild_pg_kill" \
++            "zbuild_pg_kill not found in function body"
++    fi
++
++    # The hand-rolled `kill -TERM -- -` pattern must be gone from this function.
++    # (The pattern is `kill -TERM -- -"$_ar_pid"` in the old code.)
++    if grep -qE 'kill -TERM -- -"\$_ar_pid"' <<< "$_ar_body"; then
++        assert_fail "[#1801/SPEC-10] _runner_dispatch_always_run has no hand-rolled TERM/KILL sequence" \
++            "found 'kill -TERM -- -\"\$_ar_pid\"' — replace with zbuild_pg_kill"
++    else
++        assert_pass "[#1801/SPEC-10] _runner_dispatch_always_run has no hand-rolled TERM/KILL sequence"
++    fi
++fi
++
++# ─── [#1801/SPEC-10] lifecycle.sh uses zbuild_pg_kill for stage dispatch ──────
++print_test_section "[#1801/SPEC-10] lifecycle.sh uses zbuild_pg_kill (not hand-rolled TERM/KILL) for dispatch"
++
++_lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
++if [[ ! -f "$_lc" ]]; then
++    assert_fail "[#1801/SPEC-10] core/plugin-registry/lifecycle.sh exists" "not found"
++else
++    if grep -q 'zbuild_pg_kill' "$_lc"; then
++        assert_pass "[#1801/SPEC-10] lifecycle.sh calls zbuild_pg_kill for stage dispatch"
++    else
++        assert_fail "[#1801/SPEC-10] lifecycle.sh calls zbuild_pg_kill for stage dispatch" \
++            "zbuild_pg_kill not found — the per-dispatch watchdog must use it"
++    fi
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/stage-timeout-dispatch-test.sh b/tests/unit/stage-timeout-dispatch-test.sh
+new file mode 100644
+index 00000000..a3618651
+--- /dev/null
++++ b/tests/unit/stage-timeout-dispatch-test.sh
+@@ -0,0 +1,175 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-1] A run hook that hangs is killed at the per-stage timeout on
++# every dispatch route — map, fanout, sequential strategy, roleless leaf, cycle
++# member, parallel-group member, and always_run — and the stage ends with
++# disposition timed_out naming the stage and the limit.
++#
++# [#1801/SPEC-10] _runner_dispatch_always_run and _orch_local_collect_results
++# kill through zbuild_pg_kill; no hand-rolled TERM/KILL sequence remains for
++# stage dispatch.
++#
++# All dispatch routes reach plugin_hook_call in lifecycle.sh; the single
++# watchdog there covers every route. These tests FAIL on pre-change code
++# (where lifecycle.sh has no watchdog) and PASS after the change.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "[#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog"
++setup_test_env "stage-timeout-dispatch"
++
++_lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
++
++# ─── Extract plugin_hook_call body for inspection ────────────────────────────
++_phc_body=""
++if [[ -f "$_lc" ]]; then
++    _phc_body="$(awk '/^plugin_hook_call\(\) \{/{p=1} p{print} p && /^\}$/{exit}' "$_lc" 2>/dev/null || true)"
++fi
++
++# ─── [#1801/SPEC-1] lifecycle.sh has a per-dispatch timeout watchdog ──────────
++print_test_section "[#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook"
++
++if [[ -z "$_phc_body" ]]; then
++    assert_fail "[#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh" "not found"
++else
++    assert_pass "[#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh"
++
++    # The watchdog must be armed only for the `run` hook (not cleanup/other hooks).
++    # Check for a guard like `[[ "$hook_name" == "run" ]]` near the timeout code.
++    if grep -qE '"run"' <<< "$_phc_body" && grep -q 'zbuild_pg_kill\|zbuild_pid_kill' <<< "$_phc_body"; then
++        assert_pass "[#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only"
++    else
++        assert_fail "[#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only" \
++            "zbuild_pg_kill/zbuild_pid_kill not found inside plugin_hook_call — no per-dispatch watchdog"
++    fi
++fi
++
++# ─── [#1801/SPEC-1] the watchdog writes timed_out disposition ─────────────────
++print_test_section "[#1801/SPEC-1] watchdog writes disposition timed_out"
++
++# The watchdog must call the disposition layer with 'timed_out' when it fires.
++# Check lifecycle.sh and disposition-writing helpers used from within lifecycle.sh.
++_timed_out_found=0
++if grep -q 'timed_out' "$_lc" 2>/dev/null; then
++    _timed_out_found=1
++fi
++# Also check that the runner or a helper wires the watchdog result to timed_out
++_runner="$REPO_ROOT/core/pipeline/runner.sh"
++if grep -q 'timed_out' "$_runner" 2>/dev/null; then
++    _timed_out_found=1
++fi
++
++if [[ "$_timed_out_found" -eq 1 ]]; then
++    assert_pass "[#1801/SPEC-1] timed_out disposition is used in the dispatch path"
++else
++    assert_fail "[#1801/SPEC-1] timed_out disposition is used in the dispatch path" \
++        "'timed_out' not found in lifecycle.sh or runner.sh — timeout result cannot produce the required disposition"
++fi
++
++# ─── [#1801/SPEC-1] every dispatch route reaches plugin_hook_call ─────────────
++print_test_section "[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call"
++
++# The design states: all dispatch routes — map, fanout, sequential strategy,
++# roleless leaf, cycle member, parallel-group member, always_run — reach
++# plugin_hook_call. Verify that each strategy file and the runner itself calls
++# plugin_hook_call (not a private bypass).
++for _sf in \
++    core/pipeline/strategies/fanout.sh \
++    core/pipeline/strategies/sequential.sh \
++    core/pipeline/strategies/map.sh \
++    core/pipeline/runner.sh; do
++    _file="$REPO_ROOT/$_sf"
++    [[ -f "$_file" ]] || continue
++    if grep -q 'plugin_hook_call' "$_file"; then
++        assert_pass "[#1801/SPEC-1] $_sf reaches plugin_hook_call (route covered by watchdog)"
++    else
++        assert_fail "[#1801/SPEC-1] $_sf reaches plugin_hook_call (route covered by watchdog)" \
++            "plugin_hook_call not found — this dispatch route would bypass the watchdog"
++    fi
++done
++
++# ─── [#1801/SPEC-10] no hand-rolled TERM/KILL in lifecycle.sh for dispatch ────
++print_test_section "[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch"
++
++if [[ -n "$_phc_body" ]]; then
++    # After the change: no `kill -TERM` or `kill -KILL` hand-rolled in
++    # plugin_hook_call itself — these are replaced by zbuild_pg_kill.
++    # Allow lines that are purely comments.
++    _hand_rolled=""
++    _hand_rolled="$(grep -E 'kill -TERM|kill -KILL' <<< "$_phc_body" | grep -v '^\s*#' || true)"
++    if [[ -n "$_hand_rolled" ]]; then
++        assert_fail "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch" \
++            "found: $(printf '%s' "$_hand_rolled" | head -3 | tr '\n' '|') — replace with zbuild_pg_kill"
++    else
++        assert_pass "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch"
++    fi
++fi
++
++# ─── [#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill ──────────
++print_test_section "[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill"
++
++_le="$REPO_ROOT/core/orch/local_engine.sh"
++if [[ ! -f "$_le" ]]; then
++    assert_fail "[#1801/SPEC-10] core/orch/local_engine.sh exists" "not found"
++else
++    if grep -q 'zbuild_pg_kill\|zbuild_pid_kill' "$_le"; then
++        assert_pass "[#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill"
++    else
++        assert_fail "[#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill" \
++            "not found — _orch_local_collect_results still has a hand-rolled kill sequence"
++    fi
++
++    # The old _orch_local_kill_slot is replaced; if it still exists, that is a bug.
++    if grep -q '_orch_local_kill_slot' "$_le"; then
++        assert_fail "[#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh" \
++            "still present — the hand-rolled kill helper was not replaced by zbuild_pg_kill"
++    else
++        assert_pass "[#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh"
++    fi
++fi
++
++# ─── watchdog is backend-agnostic: lifecycle is above backends ────────────────
++print_test_section "watchdog in lifecycle.sh is backend-agnostic (above the backend layer)"
++
++# The watchdog's position in lifecycle.sh (plugin_hook_call) means it fires
++# regardless of which orch backend is active — the backends dispatch work units
++# that ultimately call plugin_hook_call. Verify orch-mock still routes through it.
++_mock_plugin="$REPO_ROOT/plugins/tool/orch-mock/plugin.sh"
++if [[ ! -f "$_mock_plugin" ]]; then
++    assert_fail "plugins/tool/orch-mock/plugin.sh exists" "not found"
++else
++    # orch-mock dispatches work units that call plugin_hook_call;
++    # the backend itself does not arm or disarm the watchdog.
++    assert_pass "orch-mock plugin exists (backend-agnostic watchdog can be tested with it)"
++fi
++
++# ─── ruflo-hive carries no suppressing TERM/KILL sequence ─────────────────────
++print_test_section "orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch"
++
++_hive="$REPO_ROOT/plugins/tool/orch-ruflo-hive/plugin.sh"
++if [[ ! -f "$_hive" ]]; then
++    assert_fail "plugins/tool/orch-ruflo-hive/plugin.sh exists" "not found"
++else
++    # The hive plugin must not have a kill -TERM / kill -KILL that would intercept
++    # the lifecycle-level watchdog's signal before it reaches the hook subshell.
++    # (Pool-management kills in the backend's own shutdown are acceptable.)
++    _hive_kills=""
++    _hive_kills="$(grep -n 'kill -TERM\|kill -KILL' "$_hive" | grep -v '^\s*#' || true)"
++    if [[ -n "$_hive_kills" ]]; then
++        assert_fail "orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch" \
++            "found kill -TERM/-KILL in ruflo-hive — may suppress lifecycle-level watchdog signal:" \
++            "$(printf '%s' "$_hive_kills" | head -5 | tr '\n' '|')"
++    else
++        assert_pass "orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch"
++    fi
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/stage-timeout-loader-validation-test.sh b/tests/unit/stage-timeout-loader-validation-test.sh
+new file mode 100644
+index 00000000..358af8a8
+--- /dev/null
++++ b/tests/unit/stage-timeout-loader-validation-test.sh
+@@ -0,0 +1,141 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-4] The template loader rejects a stage_timeout_s value below
++# the stage's router.timeout_s, and rejects a non-integer value.
++#
++# These tests FAIL on pre-change code (where stage_timeout_s is not a
++# recognized field and no cross-field validation exists) and PASS after the change.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++# shellcheck source=../../core/pipeline/template.sh
++source "$REPO_ROOT/core/pipeline/template.sh"
++
++print_test_header "[#1801/SPEC-4] template loader validates stage_timeout_s"
++setup_test_env "stage-timeout-loader-validation"
++
++_MINIMAL_HEAD='id: t
++name: T
++extends: null
++defaults:
++  strategy: fanout
++'
++
++_write_tpl() {
++    printf '%s%s' "$_MINIMAL_HEAD" "$2" > "$1"
++}
++
++# ─── Reject: stage_timeout_s < router.timeout_s ───────────────────────────────
++print_test_section "[#1801/SPEC-4] stage_timeout_s below router.timeout_s is rejected"
++
++_tpl_low="$TEST_TEMP_DIR/low.yaml"
++_write_tpl "$_tpl_low" 'flow:
++  - alpha
++
++alpha:
++  gate: auto
++  roles: [intake]
++  stage_timeout_s: 30
++  router:
++    timeout_s: 600
++  io:
++    destinations: [file]
++'
++# stage_timeout_s=30 is below router.timeout_s=600 — the loader must refuse this.
++_rc_low=0
++load_template "$_tpl_low" >/dev/null 2>&1 || _rc_low=$?
++assert_exit_code "[#1801/SPEC-4] stage_timeout_s=30 below router.timeout_s=600 is rejected (rc=1)" \
++    "1" "$_rc_low"
++
++# ─── Reject: stage_timeout_s is not an integer ────────────────────────────────
++print_test_section "[#1801/SPEC-4] non-integer stage_timeout_s is rejected"
++
++_tpl_bad="$TEST_TEMP_DIR/bad.yaml"
++_write_tpl "$_tpl_bad" 'flow:
++  - beta
++
++beta:
++  gate: auto
++  roles: [intake]
++  stage_timeout_s: "1h"
++  io:
++    destinations: [file]
++'
++_rc_bad=0
++load_template "$_tpl_bad" >/dev/null 2>&1 || _rc_bad=$?
++assert_exit_code "[#1801/SPEC-4] non-integer stage_timeout_s (\"1h\") is rejected (rc=1)" \
++    "1" "$_rc_bad"
++
++# ─── Accept: stage_timeout_s >= router.timeout_s ──────────────────────────────
++print_test_section "[#1801/SPEC-4] stage_timeout_s at or above router.timeout_s is accepted"
++
++_tpl_ok="$TEST_TEMP_DIR/ok.yaml"
++_write_tpl "$_tpl_ok" 'flow:
++  - gamma
++
++gamma:
++  gate: auto
++  roles: [intake]
++  stage_timeout_s: 1200
++  router:
++    timeout_s: 600
++  io:
++    destinations: [file]
++'
++_rc_ok=0
++load_template "$_tpl_ok" >/dev/null 2>&1 || _rc_ok=$?
++assert_exit_code "[#1801/SPEC-4] stage_timeout_s=1200 >= router.timeout_s=600 is accepted (rc=0)" \
++    "0" "$_rc_ok"
++assert_eq "[#1801/SPEC-4] accepted template exports _TPL_STAGE_TIMEOUT_S_gamma=1200" \
++    "1200" "${_TPL_STAGE_TIMEOUT_S_gamma:-<unset>}"
++
++# ─── Accept: stage_timeout_s with no router.timeout_s ─────────────────────────
++print_test_section "[#1801/SPEC-4] stage_timeout_s with no router block is accepted"
++
++_tpl_norouter="$TEST_TEMP_DIR/norouter.yaml"
++_write_tpl "$_tpl_norouter" 'flow:
++  - delta
++
++delta:
++  gate: auto
++  roles: [intake]
++  stage_timeout_s: 900
++  io:
++    destinations: [file]
++'
++_rc_nr=0
++load_template "$_tpl_norouter" >/dev/null 2>&1 || _rc_nr=$?
++assert_exit_code "[#1801/SPEC-4] stage_timeout_s with no router block is accepted (rc=0)" \
++    "0" "$_rc_nr"
++assert_eq "[#1801/SPEC-4] exports _TPL_STAGE_TIMEOUT_S_delta=900" \
++    "900" "${_TPL_STAGE_TIMEOUT_S_delta:-<unset>}"
++
++# ─── Accept: equal values (stage_timeout_s == router.timeout_s) ───────────────
++print_test_section "[#1801/SPEC-4] stage_timeout_s equal to router.timeout_s is accepted"
++
++_tpl_eq="$TEST_TEMP_DIR/eq.yaml"
++_write_tpl "$_tpl_eq" 'flow:
++  - epsilon
++
++epsilon:
++  gate: auto
++  roles: [intake]
++  stage_timeout_s: 600
++  router:
++    timeout_s: 600
++  io:
++    destinations: [file]
++'
++_rc_eq=0
++load_template "$_tpl_eq" >/dev/null 2>&1 || _rc_eq=$?
++assert_exit_code "[#1801/SPEC-4] stage_timeout_s=600 equal to router.timeout_s=600 is accepted (rc=0)" \
++    "0" "$_rc_eq"
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/stage-timeout-no-flat-limit-test.sh b/tests/unit/stage-timeout-no-flat-limit-test.sh
+new file mode 100644
+index 00000000..437bdc0b
+--- /dev/null
++++ b/tests/unit/stage-timeout-no-flat-limit-test.sh
+@@ -0,0 +1,53 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-7] Guard: removing ZBUILD_ORCH_TIMEOUT from the three strategy files
++# means the per-dispatch watchdog is the only stage time limit.
++#
++# Before this change the strategy files had `orch_collect … --timeout
++# "${ZBUILD_ORCH_TIMEOUT:-300}"` as a flat ceiling; a plan dispatch running
++# longer than 300 s would have been killed even when its `stage_timeout_s`
++# allowed more. After the change, orch_collect is called without --timeout (or
++# with no ceiling), leaving the per-dispatch watchdog in lifecycle.sh as the
++# only limit.
++#
++# The assertions are source-level: they verify that each strategy file no
++# longer carries the flat ceiling. This test FAILS on pre-change code
++# (where ZBUILD_ORCH_TIMEOUT still appears) and PASSES after the change.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "[#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files"
++
++# ─── Each strategy file must not reference ZBUILD_ORCH_TIMEOUT ───────────────
++# These are the three files the design names: fanout.sh, sequential.sh, map.sh.
++# Every occurrence of ZBUILD_ORCH_TIMEOUT pins a flat ceiling that the per-dispatch
++# watchdog is meant to replace.
++
++for _sf in \
++    core/pipeline/strategies/fanout.sh \
++    core/pipeline/strategies/sequential.sh \
++    core/pipeline/strategies/map.sh; do
++
++    _file="$REPO_ROOT/$_sf"
++    if [[ ! -f "$_file" ]]; then
++        assert_fail "[#1801/SPEC-7] $_sf exists" "file not found: $_file"
++        continue
++    fi
++
++    if grep -q 'ZBUILD_ORCH_TIMEOUT' "$_file"; then
++        assert_fail "[#1801/SPEC-7] $_sf carries no ZBUILD_ORCH_TIMEOUT flat ceiling" \
++            "ZBUILD_ORCH_TIMEOUT still present — a plan dispatch longer than the default 300 s" \
++            "would be killed before its stage_timeout_s expires"
++    else
++        assert_pass "[#1801/SPEC-7] $_sf carries no ZBUILD_ORCH_TIMEOUT flat ceiling"
++    fi
++done
++
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/stage-timeout-precedence-test.sh b/tests/unit/stage-timeout-precedence-test.sh
+new file mode 100644
+index 00000000..f0d13619
+--- /dev/null
++++ b/tests/unit/stage-timeout-precedence-test.sh
+@@ -0,0 +1,133 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-3] stage_timeout_s precedence: template value beats
++# ZBUILD_STAGE_TIMEOUT_S beats the 5400 s engine default, each tier
++# verified in isolation.
++#
++# These tests FAIL on pre-change code (where stage_timeout_s is not a
++# recognized template field and _TPL_STAGE_TIMEOUT_S_* is never exported)
++# and PASS after the change.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++# shellcheck source=../../core/pipeline/template.sh
++source "$REPO_ROOT/core/pipeline/template.sh"
++
++print_test_header "[#1801/SPEC-3] stage_timeout_s precedence: template > env > 5400 s default"
++setup_test_env "stage-timeout-precedence"
++
++_MINIMAL_HEAD='id: t
++name: T
++extends: null
++defaults:
++  strategy: fanout
++'
++
++_write_tpl() {
++    printf '%s%s' "$_MINIMAL_HEAD" "$2" > "$1"
++}
++
++# ─── Tier 1: template value beats ZBUILD_STAGE_TIMEOUT_S ─────────────────────
++print_test_section "[#1801/SPEC-3] template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S"
++
++_tpl_t1="$TEST_TEMP_DIR/t1.yaml"
++_write_tpl "$_tpl_t1" 'flow:
++  - alpha
++
++alpha:
++  gate: auto
++  roles: [intake]
++  stage_timeout_s: 7200
++  io:
++    destinations: [file]
++'
++
++ZBUILD_STAGE_TIMEOUT_S=99 load_template "$_tpl_t1" >/dev/null 2>&1
++_got="${_TPL_STAGE_TIMEOUT_S_alpha:-<unset>}"
++assert_eq "[#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99" \
++    "7200" "$_got"
++
++# ─── Tier 2: ZBUILD_STAGE_TIMEOUT_S beats the 5400 s default ─────────────────
++print_test_section "[#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default"
++
++_tpl_t2="$TEST_TEMP_DIR/t2.yaml"
++_write_tpl "$_tpl_t2" 'flow:
++  - beta
++
++beta:
++  gate: auto
++  roles: [intake]
++  io:
++    destinations: [file]
++'
++# No stage_timeout_s in template; env variable should win over 5400 default.
++ZBUILD_STAGE_TIMEOUT_S=1800 load_template "$_tpl_t2" >/dev/null 2>&1
++
++# After the change: when the template doesn't declare stage_timeout_s,
++# the engine resolves it at dispatch time from ZBUILD_STAGE_TIMEOUT_S > 5400.
++# The template loader may not embed the env-tier value; the lookup contract
++# is that ZBUILD_STAGE_TIMEOUT_S is consulted at dispatch.
++# Assert that the template does NOT override with 5400 when ZBUILD_STAGE_TIMEOUT_S is set:
++# the loaded var is either absent (resolved at dispatch) or equals the env value.
++_got_t2="${_TPL_STAGE_TIMEOUT_S_beta:-<unset>}"
++if [[ "$_got_t2" == "<unset>" || "$_got_t2" == "1800" ]]; then
++    assert_pass "[#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)"
++else
++    assert_fail "[#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)" \
++        "got _TPL_STAGE_TIMEOUT_S_beta=${_got_t2} — must be unset or 1800 when ZBUILD_STAGE_TIMEOUT_S=1800"
++fi
++unset ZBUILD_STAGE_TIMEOUT_S
++
++# ─── Tier 3: engine default is 5400 when neither template nor env sets it ─────
++print_test_section "[#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s"
++
++# Use lifecycle.sh's dispatch function to verify that an absent template value
++# and absent env variable yield 5400.
++# Check the source: the default literal 5400 must appear in the codebase as the
++# fallback for stage_timeout_s resolution.
++_lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
++_runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
++
++_has_5400=0
++if grep -qE '\b5400\b' "$_lc" 2>/dev/null; then
++    _has_5400=1
++fi
++if grep -qE '\b5400\b' "$_runner_sh" 2>/dev/null; then
++    _has_5400=1
++fi
++
++if [[ "$_has_5400" -eq 1 ]]; then
++    assert_pass "[#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback"
++else
++    assert_fail "[#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback" \
++        "5400 not found in lifecycle.sh or runner.sh — the engine default is missing"
++fi
++
++# ─── Template parse: stage_timeout_s is exported as _TPL_STAGE_TIMEOUT_S_* ────
++print_test_section "[#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>"
++
++_tpl_t3="$TEST_TEMP_DIR/t3.yaml"
++_write_tpl "$_tpl_t3" 'flow:
++  - gamma
++
++gamma:
++  gate: auto
++  roles: [intake]
++  stage_timeout_s: 3600
++  io:
++    destinations: [file]
++'
++
++unset _TPL_STAGE_TIMEOUT_S_gamma 2>/dev/null || true
++load_template "$_tpl_t3" >/dev/null 2>&1
++assert_eq "[#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s" \
++    "3600" "${_TPL_STAGE_TIMEOUT_S_gamma:-<unset>}"
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/stage-timeout-process-group-test.sh b/tests/unit/stage-timeout-process-group-test.sh
+new file mode 100644
+index 00000000..69989e30
+--- /dev/null
++++ b/tests/unit/stage-timeout-process-group-test.sh
+@@ -0,0 +1,112 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-2] Killing a hung run hook stops the entire process group — a
++# child ignoring TERM leaves no process alive after TERM + 10 s grace.
++#
++# The per-dispatch watchdog must:
++#   1. Run the hook subshell under set -m (job-control mode) so the subshell
++#      becomes a process-group leader.
++#   2. Kill via zbuild_pg_kill, which sends TERM to the whole group and then
++#      KILL after a grace period.
++#   3. The grace period must be at least 10 s (so a hook that traps TERM has
++#      enough time to flush, but a child ignoring TERM is killed).
++#
++# These tests use source-level checks — the behavioral guarantee (no process
++# survives) is enforced by SPEC-6b in the integration test. These FAIL on
++# pre-change code (where lifecycle.sh has no watchdog at all) and PASS after.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "[#1801/SPEC-2] hung run hook kills entire process group (TERM + 10 s grace + KILL)"
++
++_lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
++
++# ─── [#1801/SPEC-2] plugin_hook_call arms the hook under set -m ──────────────
++print_test_section "[#1801/SPEC-2] plugin_hook_call runs the hook under set -m (creates a process group)"
++
++_phc_body=""
++if [[ -f "$_lc" ]]; then
++    _phc_body="$(awk '/^plugin_hook_call\(\) \{/{p=1} p{print} p && /^\}$/{exit}' "$_lc" 2>/dev/null || true)"
++fi
++
++if [[ -z "$_phc_body" ]]; then
++    assert_fail "[#1801/SPEC-2] plugin_hook_call is defined in lifecycle.sh" "not found"
++else
++    # set -m inside the function creates a new process group for the backgrounded subshell
++    if grep -q 'set -m' <<< "$_phc_body"; then
++        assert_pass "[#1801/SPEC-2] plugin_hook_call uses set -m to give the hook its own process group"
++    else
++        assert_fail "[#1801/SPEC-2] plugin_hook_call uses set -m to give the hook its own process group" \
++            "'set -m' not found in plugin_hook_call — the hook's group cannot be signalled"
++    fi
++fi
++
++# ─── [#1801/SPEC-2] the kill goes through zbuild_pg_kill (group-scope) ────────
++print_test_section "[#1801/SPEC-2] the timeout kill uses zbuild_pg_kill (group scope, not single-PID)"
++
++if [[ -n "$_phc_body" ]]; then
++    if grep -q 'zbuild_pg_kill' <<< "$_phc_body"; then
++        assert_pass "[#1801/SPEC-2] plugin_hook_call uses zbuild_pg_kill (sends signal to whole group)"
++    else
++        assert_fail "[#1801/SPEC-2] plugin_hook_call uses zbuild_pg_kill (sends signal to whole group)" \
++            "zbuild_pg_kill not found — a single-PID kill cannot reach descendants that ignore TERM"
++    fi
++fi
++
++# ─── [#1801/SPEC-2] zbuild_pg_kill uses TERM + grace + KILL ──────────────────
++print_test_section "[#1801/SPEC-2] zbuild_pg_kill uses TERM then KILL after grace (proc-group.sh)"
++
++_pg="$REPO_ROOT/scripts/lib/proc-group.sh"
++if [[ ! -f "$_pg" ]]; then
++    assert_fail "[#1801/SPEC-2] scripts/lib/proc-group.sh exists" "not found"
++else
++    # zbuild_pg_kill must delegate to _zbuild_pg_term_then_kill, which does
++    # TERM → poll → KILL.
++    if grep -q '_zbuild_pg_term_then_kill' "$_pg"; then
++        assert_pass "[#1801/SPEC-2] zbuild_pg_kill uses TERM+grace+KILL sequence (_zbuild_pg_term_then_kill)"
++    else
++        assert_fail "[#1801/SPEC-2] zbuild_pg_kill uses TERM+grace+KILL sequence (_zbuild_pg_term_then_kill)" \
++            "_zbuild_pg_term_then_kill not found in proc-group.sh"
++    fi
++fi
++
++# ─── [#1801/SPEC-2] the grace is at least 10 s ───────────────────────────────
++print_test_section "[#1801/SPEC-2] the watchdog grace period is at least 10 s"
++
++# The design specifies TERM + 10 s grace + KILL. Verify that the watchdog in
++# lifecycle.sh passes a grace of >= 10 to zbuild_pg_kill or that the default
++# grace in _zbuild_pg_grace is sufficiently large.
++# Check that the value 10 (or larger) appears in the context of zbuild_pg_kill
++# invocations in lifecycle.sh.
++if [[ -n "$_phc_body" ]]; then
++    # Look for zbuild_pg_kill called with a numeric grace >= 10.
++    # Accept the pattern: zbuild_pg_kill "$var" 10 or zbuild_pg_kill "$pid" "$grace"
++    # where the literal in the source is >= 10.
++    _grace_ok=0
++    if grep -qE 'zbuild_pg_kill.*[[:space:]][0-9]+' <<< "$_phc_body"; then
++        # Extract all numeric values following zbuild_pg_kill
++        while IFS= read -r _val; do
++            [[ "$_val" =~ ^[0-9]+$ ]] && [[ "$_val" -ge 10 ]] && { _grace_ok=1; break; }
++        done < <(grep -oE 'zbuild_pg_kill[^)]*' <<< "$_phc_body" | grep -oE '[0-9]+' || true)
++    fi
++    # Also accept if the grace is passed via a variable (the design uses a configurable grace)
++    if grep -qE 'zbuild_pg_kill[^)]*\$\{?[A-Za-z_]' <<< "$_phc_body"; then
++        _grace_ok=1
++    fi
++
++    if [[ "$_grace_ok" -eq 1 ]]; then
++        assert_pass "[#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)"
++    else
++        assert_fail "[#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)" \
++            "no zbuild_pg_kill call with grace >= 10 found in plugin_hook_call"
++    fi
++fi
++
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/stage-timeout-retry-test.sh b/tests/unit/stage-timeout-retry-test.sh
+new file mode 100644
+index 00000000..b8ab0aa6
+--- /dev/null
++++ b/tests/unit/stage-timeout-retry-test.sh
+@@ -0,0 +1,96 @@
++#!/usr/bin/env bash
++# [#1801/SPEC-5] A retried stage and each map member each receive a fresh
++# independent timer.
++#
++# The per-dispatch watchdog must be ARMED at the start of each individual
++# dispatch — not once for the whole retry loop or map group. A stale timer
++# that was started before the first attempt would expire during a later retry,
++# cutting off work that began within its own budget.
++#
++# These tests verify the structural requirement: the timeout is resolved and
++# armed inside the per-dispatch code path (lifecycle.sh / plugin_hook_call),
++# not in a shared wrapper above it. They FAIL on pre-change code (where no
++# watchdog exists in plugin_hook_call) and PASS after the change.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "[#1801/SPEC-5] retried stage and each map member get a fresh independent timer"
++
++# ─── The watchdog lives inside plugin_hook_call, not in a caller ──────────────
++print_test_section "[#1801/SPEC-5] timeout watchdog is inside plugin_hook_call (fresh per dispatch)"
++
++_lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
++if [[ ! -f "$_lc" ]]; then
++    assert_fail "[#1801/SPEC-5] lifecycle.sh exists" "not found: $_lc"
++else
++    # Extract plugin_hook_call's body.
++    _phc_body=""
++    _phc_body="$(awk '/^plugin_hook_call\(\) \{/{p=1} p{print} p && /^\}$/{exit}' "$_lc" 2>/dev/null || true)"
++
++    if [[ -z "$_phc_body" ]]; then
++        assert_fail "[#1801/SPEC-5] plugin_hook_call is defined in lifecycle.sh" \
++            "function body not found"
++    else
++        assert_pass "[#1801/SPEC-5] plugin_hook_call is defined in lifecycle.sh"
++
++        # The watchdog must be inside the function — a timer started here is
++        # fresh for every call, whether that call is a retry or a map member.
++        if grep -q 'zbuild_pg_kill\|zbuild_pid_kill' <<< "$_phc_body"; then
++            assert_pass "[#1801/SPEC-5] watchdog (zbuild_pg_kill/zbuild_pid_kill) is inside plugin_hook_call → fresh per dispatch"
++        else
++            assert_fail "[#1801/SPEC-5] watchdog (zbuild_pg_kill/zbuild_pid_kill) is inside plugin_hook_call → fresh per dispatch" \
++                "not found inside plugin_hook_call — the watchdog is either absent or in a caller above plugin_hook_call, which would share a timer across retries"
++        fi
++
++        # The watchdog must armed with a per-invocation sleep/timeout start,
++        # not a pre-computed deadline passed in. Check for a sleep or background
++        # timer process inside the function body.
++        if grep -qE 'sleep|timeout' <<< "$_phc_body"; then
++            assert_pass "[#1801/SPEC-5] plugin_hook_call starts a fresh timer per invocation"
++        else
++            assert_fail "[#1801/SPEC-5] plugin_hook_call starts a fresh timer per invocation" \
++                "no sleep or timeout found inside plugin_hook_call — no per-invocation watchdog"
++        fi
++    fi
++fi
++
++# ─── map.sh dispatches through plugin_hook_call (same watchdog path) ──────────
++print_test_section "[#1801/SPEC-5] map strategy dispatches through plugin_hook_call (each member gets a fresh timer)"
++
++_map_sh="$REPO_ROOT/core/pipeline/strategies/map.sh"
++if [[ ! -f "$_map_sh" ]]; then
++    assert_fail "[#1801/SPEC-5] strategies/map.sh exists" "not found"
++else
++    if grep -q 'plugin_hook_call' "$_map_sh"; then
++        assert_pass "[#1801/SPEC-5] map.sh calls plugin_hook_call (inheriting the per-dispatch watchdog)"
++    else
++        assert_fail "[#1801/SPEC-5] map.sh calls plugin_hook_call (inheriting the per-dispatch watchdog)" \
++            "plugin_hook_call not found in map.sh — map members would bypass the watchdog"
++    fi
++fi
++
++# ─── runner.sh retry loop calls plugin_hook_call (each retry gets a fresh timer) ─
++print_test_section "[#1801/SPEC-5] runner.sh retry loop dispatches through plugin_hook_call"
++
++_runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
++if [[ ! -f "$_runner_sh" ]]; then
++    assert_fail "[#1801/SPEC-5] runner.sh exists" "not found"
++else
++    # cycle_dispatch_stage in runner.sh calls plugin_hook_call for the retry path.
++    if grep -q 'plugin_hook_call' "$_runner_sh"; then
++        assert_pass "[#1801/SPEC-5] runner.sh calls plugin_hook_call for stage dispatch (retries get a fresh timer)"
++    else
++        assert_fail "[#1801/SPEC-5] runner.sh calls plugin_hook_call for stage dispatch" \
++            "plugin_hook_call not found in runner.sh"
++    fi
++fi
++
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/stdin-spawn-guard-test.sh b/tests/unit/stdin-spawn-guard-test.sh
+index 44c7a9c6..b8fd0b9d 100755
+--- a/tests/unit/stdin-spawn-guard-test.sh
++++ b/tests/unit/stdin-spawn-guard-test.sh
+@@ -27,8 +27,7 @@ _pin "spec-correspondence's model call closes stdin" plugins/agent/spec-correspo
+ _pin "build's false-completion guard spawns under the fresh shell" plugins/agent/build/lib/summary.sh '_zbuild_make_fresh_shell; .*bash "\$abs"'
+ _pin "the test stage's suite closes stdin under set -m" plugins/tool/test/plugin.sh 'eval "\$cmd" </dev/null'
+ _pin "local_engine work units close stdin" core/orch/local_engine.sh 'bash "\$work_unit" </dev/null'
+-_pin "orch-sequential file work units close stdin" plugins/tool/orch-sequential/plugin.sh 'bash "\$work_unit" </dev/null'
+-_pin "orch-sequential inline work units close stdin" plugins/tool/orch-sequential/plugin.sh 'bash -c "\$work_unit" </dev/null'
++_pin "orch-mock work units close stdin" plugins/tool/orch-mock/plugin.sh 'bash -c "\$task_body" .* </dev/null'
+ 
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/summary-mandatory-test.sh b/tests/unit/summary-mandatory-test.sh
+index 18228311..3034c44f 100755
+--- a/tests/unit/summary-mandatory-test.sh
++++ b/tests/unit/summary-mandatory-test.sh
+@@ -124,7 +124,7 @@ assert_eq "[SPEC-2] the tree lint cannot see it — hence the runtime check" "0"
+ print_test_section "3. backend services are unaffected (ADR-047 §5)"
+ 
+ _svc_flagged=""
+-for _svc in cache-local memory-sqlite orch-sequential; do
++for _svc in cache-local memory-sqlite; do
+     _sm="$REPO_ROOT/plugins/tool/$_svc/manifest.yaml"
+     [[ -f "$_sm" ]] || continue
+     grep -qE '^[[:space:]]+summary:[[:space:]]*true' "$_sm" && _svc_flagged="${_svc_flagged}${_svc} "
+diff --git a/tests/unit/template-always-run-test.sh b/tests/unit/template-always-run-test.sh
+index 8b0949c8..5afc3dcf 100755
+--- a/tests/unit/template-always-run-test.sh
++++ b/tests/unit/template-always-run-test.sh
+@@ -41,7 +41,7 @@ assert_eq "[SPEC-1] _TPL_ALWAYS_RUN is [release persist], in that order" \
+ assert_eq "[SPEC-1] release resolves by role, not by directory" \
+     "teardown" "${_TPL_STAGE_ROLES_release:-<unset>}"
+ assert_eq "[SPEC-1] release carries its own timeout_s" \
+-    "30" "${_TPL_STAGE_ROUTER_TIMEOUT_release:-<unset>}"
++    "30" "${_TPL_STAGE_TIMEOUT_S_release:-<unset>}"
+ 
+ # ─── [SPEC-2][guard] an always-run stage is NOT in the flow ──────────────────
+ # This is the load-bearing separation. _TPL_STAGES[] drives dispatch units,

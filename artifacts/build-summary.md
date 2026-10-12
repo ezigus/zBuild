@@ -1,8 +1,7 @@
-## build — scope_violation
+## build — incomplete
 
-- changed 33 file(s) over 1 pass(es), 3 iteration(s)
+- changed 39 file(s) over 4 pass(es), 12 iteration(s)
 
-- lines: +253 / -519
+- lines: +317 / -540
 - terminated: router_timeout
-- scope violation: true
-- needs files outside the contract's scope: plugins/tool/orch-mock/plugin.sh
+- scope violation: false
