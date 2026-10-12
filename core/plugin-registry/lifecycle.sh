@@ -495,10 +495,13 @@ plugin_hook_call() {
         [[ "$-" == *m* ]] && _lc_m_before=1
         set -m
         (
-            # Restore the caller's pre-call m state: plugin_hook_call uses set -m
-            # only for process-group creation. If the runner did not have m set,
-            # clear it here so the plugin's execution environment is unaffected.
-            (( _lc_m_before == 0 )) && set +m
+            # Always clear monitor mode: the hook subshell is already in its own
+            # process group (created by set -m + & above). Any background job the
+            # hook spawns must stay in that group so kill -KILL -- -<pgid> reaches
+            # them. If the caller had set -m (e.g. _runner_dispatch_always_run's
+            # outer subshell), the hook would inherit it and its children would get
+            # their own groups, escaping the KILL (#2333 SPEC-6b).
+            set +m
             # shellcheck disable=SC1090
             source "$plugin_sh"
             if declare -F "$hook_fn" >/dev/null 2>&1; then
