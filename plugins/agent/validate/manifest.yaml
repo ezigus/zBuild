@@ -39,10 +39,6 @@ config:
     - skipped
   tier_default: T2
 
-inputs:
-  - id: deploy_result
-    required: true
-
 outputs:
   - id: validate_result
     path: ${artifact_dir}/validate-result.json

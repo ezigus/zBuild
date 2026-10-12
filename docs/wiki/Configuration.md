@@ -32,7 +32,7 @@ Stages are resolved by role first, then by id (see [[Pipeline-and-Stages]]).
 
 **Shipped templates:**
 
-- **`simple`** (default) — `intake → plan → design_verify_cycle → impact → build_test_cycle → review_lenses → review-aggregator → pr`
+- **`simple`** (default) — `intake → plan → delivery_loop (design_verify_cycle → build_test_cycle) → review_lenses → review-aggregator → pr`
 - **`deployed`** — extends `simple`, adding `deploy → validate → monitor`
 
 You can write your own template by composing stages and [[Mechanics]] operators into a YAML file.

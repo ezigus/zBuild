@@ -7,9 +7,10 @@
 # (review.json from stage:review) → preflight_failed at `pipeline start`. The
 # roster tests passed; nothing exercised the RUNTIME contract. This test runs the
 # validator in enforce mode against every SHIPPED template (simple.yaml — the sole
-# shipped template after #979 retired standard.yaml) and asserts every required
-# input has a producer in the template (so a future cutover that strands a required
-# input fails HERE, not in a user's dogfood). ADR-020.
+# shipped template after #979 retired standard.yaml) and asserts the template
+# satisfies it — every stage's manifest is well-formed and declares no inputs
+# (ADR-055 §1, amended 2026-10-12), and the aggregator wiring is right — so a
+# future change that breaks it fails HERE, not in a user's dogfood. ADR-020.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,9 +58,9 @@ for _tpl in simple deployed; do
     _rc=$?
     set -e
     if [[ "$_rc" -eq 0 ]]; then
-        assert_pass "[$_tpl.yaml] preflight contract satisfied — every required input has a producer"
+        assert_pass "[$_tpl.yaml] preflight contract satisfied"
     else
-        assert_fail "[$_tpl.yaml] preflight contract satisfied — every required input has a producer" \
+        assert_fail "[$_tpl.yaml] preflight contract satisfied" \
             "validator rc=$_rc: $(printf '%s' "$_cv_out" | tr '\n' '|' | head -c 500)"
     fi
 done
@@ -79,7 +80,6 @@ write_fx() {
         [[ -n "$4" ]] && printf 'convergence: %s\n' "$4"
         printf 'version: 0.1.0\nhooks:\n  run: r\n'
         printf 'provides:\n  role: %s\n' "$5"
-        printf 'inputs: []\n'
         printf 'outputs:\n  - id: %s\n    type: %s.json@1\n    format: json\n    path: ${artifact_dir}/%s.json\n    required: true\n    primary: true\n' "$6" "$6" "$6"
         # ADR-055 §9 (#2000): every stage-bound plugin declares exactly one
         # summary. A fixture that omits it is refused at pre-flight, which is

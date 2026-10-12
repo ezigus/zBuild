@@ -13,8 +13,9 @@
 #             no stage declares whether it calls a model
 # C2 [change] map elements running in parallel never share a checkpoint file:
 #             `${map_element}` in a path resolves to each element's own name
-# C3 [change] a stage's notes file is listed under Previous work for every later
-#             stage, and comes back to the stage itself in full
+# C3 [change] a stage's notes come back to the stage itself in full; a later
+#             stage's Previous work does not list them (another stage's notes
+#             are its working file, not its output — ADR-067 §8)
 # C5 [change] with no map element set, `${map_element}` stays unresolved — it
 #             never collapses to "" and points at a file no element owns
 set -uo pipefail
@@ -57,7 +58,7 @@ else
     assert_pass "[C5] no element: the path does not collapse to lens--checkpoint.md"
 fi
 
-print_test_section "C3: a stage's notes file reaches the stages that follow"
+print_test_section "C3: a stage's notes come back to it, and only to it"
 # shellcheck source=../../core/pipeline/input-resolve.sh
 source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1 || true
 _s3="$TEST_TEMP_DIR/state-cut"; _p3="$TEST_TEMP_DIR/plugins-cut"
@@ -77,7 +78,11 @@ _n3="$(stage_notes_path "$_s3" cut)"; mkdir -p "${_n3%/*}"
 printf 'Read plugin.sh: the dry run writes no result.\n' > "$_n3"
 printf '{"stage_statuses":{"cut":"failed"},"stage_verdicts":{"cut":"error"}}\n' > "$_s3/pipeline-state.json"
 _cut="$( _TPL_STAGES=(cut); zb_test_previous_work "$_s3/pipeline-state.json" "$_p3" later )"
-assert_contains "[C3] the notes file is listed for the stages that follow" "$_cut" "- notes: $_n3"
+if grep -qF -- "$_n3" <<< "$_cut" || grep -qF "the dry run writes no result" <<< "$_cut"; then
+    assert_fail "[C3] a later stage does not get another stage's notes" "notes path or text found"
+else
+    assert_pass "[C3] a later stage does not get another stage's notes"
+fi
 _own="$( _TPL_STAGES=(cut); zb_test_previous_work "$_s3/pipeline-state.json" "$_p3" cut )"
 assert_contains "[C3] the stage itself gets its notes back, in full" "$_own" "the dry run writes no result"
 

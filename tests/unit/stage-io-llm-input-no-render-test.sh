@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Test (#785): stage-io LLM input side does NOT dispatch render_artifact.
 # The input to an LLM stage is the PROMPT (a text artifact). Renderers like
-# render_impact_md expect the structured RESPONSE shape; applying them to a
+# render_plan_md expect the structured RESPONSE shape; applying them to a
 # prompt mis-renders the embedded JSON schema literal and shunts the
 # OUTPUT CONTRACT into a "── llm comment ──" block. Output-side dispatch
 # is unchanged — only input-side is fixed.
@@ -44,9 +44,9 @@ else
 fi
 
 # T4: a known prompt containing an OUTPUT CONTRACT block + embedded JSON
-# schema literal must NOT be misrendered as the impact response shape.
+# schema literal must NOT be misrendered as a stage's response shape.
 # Synthesize the rendered output of `_stage_io_head` for the input.
-# This is a behavioral regression guard: feed the impact OUTPUT CONTRACT
+# This is a behavioral regression guard: feed an OUTPUT CONTRACT
 # header through what the input-banner path would do today and verify the
 # OUTPUT CONTRACT string survives as a top-level line, not as llm-comment body.
 
@@ -67,16 +67,16 @@ case "$SYNTHETIC_PROMPT" in
         assert_pass "T4: synthetic prompt contains OUTPUT CONTRACT marker" ;;
 esac
 
-# Confirm contract: if we ran render_impact_md on this input (the BUG behavior),
+# Confirm contract: if we ran a response renderer on this input (the BUG behavior),
 # the OUTPUT CONTRACT line would be moved into an llm-comment block.
-mis_rendered="$(render_impact_md "$SYNTHETIC_PROMPT" 2>/dev/null || true)"
+mis_rendered="$(render_plan_md "$SYNTHETIC_PROMPT" 2>/dev/null || true)"
 case "$mis_rendered" in
     *"── llm comment ──"*)
-        assert_pass "T4: confirmed render_impact_md MIS-renders prompts (the bug #785 prevents)" ;;
+        assert_pass "T4: confirmed render_plan_md MIS-renders prompts (the bug #785 prevents)" ;;
     *)
         # Fine if the renderer doesn't produce llm-comment; the point of T2/T3
         # is the contract — we no longer dispatch on input.
-        assert_pass "T4: render_impact_md output benign — contract is enforced in T2 regardless" ;;
+        assert_pass "T4: render_plan_md output benign — contract is enforced in T2 regardless" ;;
 esac
 
 cleanup_test_env

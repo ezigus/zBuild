@@ -491,87 +491,6 @@ render_review_md() {
     _artifact_emit_llm_comment "$_prose"
 }
 
-# ─── render_impact_md (#768) ─────────────────────────────────────────────────
-# Renders the impact stage's JSON envelope to a one-line summary header
-# (Impact: verdict=<v>, missing=<n>), then BUILDS the narrative from missing[]
-# -- step_id, files_to_add, reason, evidence. ADR-060: the model authors no
-# prose here; a legacy envelope still carrying the retired impact_feedback_md
-# is ignored, never rendered. A top-level `reason` explains a non-complete
-# verdict that produced no gaps (router_timeout, envelope_unparseable).
-# verdict=complete with no gaps renders the header only. Prose preamble
-# (contract violations, see #767) is kept as an LLM comment for forensics.
-render_impact_md() {
-    local input="$1"
-    if [[ -z "$input" ]]; then
-        printf '_empty impact_'
-        return 0
-    fi
-
-    local _prose _json
-    _artifact_split_prose_json "$input" _prose _json
-
-    if [[ -z "$_json" ]]; then
-        if [[ "$input" == *'{'* ]]; then
-            local fence; fence="$(_artifact_pick_fence "$input")"
-            printf '%s\n%s\n%s' "$fence" "$input" "$fence"
-            return 0
-        fi
-        if [[ -n "$_prose" ]]; then
-            printf '# Impact: (no JSON returned)'
-            _artifact_emit_llm_comment "$_prose"
-            return 0
-        fi
-        local fence; fence="$(_artifact_pick_fence "$input")"
-        printf '%s\n%s\n%s' "$fence" "$input" "$fence"
-        return 0
-    fi
-
-    if ! printf '%s' "$_json" | jq empty >/dev/null 2>&1; then
-        local fence; fence="$(_artifact_pick_fence "$_json")"
-        printf '%s\n%s\n%s' "$fence" "$_json" "$fence"
-        _artifact_emit_llm_comment "$_prose"
-        return 0
-    fi
-
-    input="$_json"
-
-    local verdict missing_count
-    verdict="$(printf '%s' "$input" | jq -r '.verdict // empty' 2>/dev/null)"
-    missing_count="$(printf '%s' "$input" | jq -r '.missing | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
-
-    printf 'Impact: verdict=%s, missing=%s\n' \
-        "$(_artifact_md_escape_inline "${verdict:-unknown}")" \
-        "$(_artifact_md_escape_inline "${missing_count:-0}")"
-
-    # ADR-060: the narrative is BUILT from missing[], never copied from a
-    # model-authored prose field (the retired impact_feedback_md). #777 applies
-    # here too - backticks are NOT escaped, so inline-code spans in reason and
-    # evidence render as monospace rather than literal backslash-backtick.
-    # A top-level reason explains a non-complete verdict that produced no gaps
-    # (router_timeout, envelope_unparseable). Pre-ADR-060 this rode in a
-    # model-authored prose note; it is structured now, so the engine surfaces it.
-    local _reason
-    _reason="$(printf '%s' "$input" | jq -r '.reason // empty' 2>/dev/null)"
-    if [[ -n "$_reason" ]]; then
-        printf '\nReason: %s\n' "$(_artifact_md_escape_inline "$_reason")"
-    fi
-
-    local _jq_esc='def esc: tostring
-        | gsub("\u001b\\[[0-9;?]*[A-Za-z~]"; "")
-        | gsub("\u001b."; "")
-        | gsub("[\r\n]"; " ");'
-    if [[ "$missing_count" =~ ^[0-9]+$ && "$missing_count" -gt 0 ]]; then
-        printf '%s' "$input" | jq -r "$_jq_esc"'
-            (.missing // [])[] |
-            "\n**\(.step_id // "(unnamed step)" | esc)** - \((.files_to_add // []) | length) file(s)",
-            ((.files_to_add // [])[] | "- `\(esc)`"),
-            (if (.reason // "") != "" then "Why: \(.reason|esc)" else empty end),
-            (if (.evidence // "") != "" then "Evidence: \(.evidence|esc)" else empty end)' 2>/dev/null || true
-    fi
-
-    _artifact_emit_llm_comment "$_prose"
-}
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Built-in renderer: render_review_report_md (#972 / ADR-038)
 # Input: review-report.json. Fields: merge_readiness (ready|advisory|
@@ -791,7 +710,6 @@ render_parallel_member_line() {
 register_artifact_renderer "plan"            "render_plan_md"            >/dev/null 2>&1 || true
 register_artifact_renderer "diff"            "render_diff_md"            >/dev/null 2>&1 || true
 register_artifact_renderer "review"          "render_review_md"          >/dev/null 2>&1 || true
-register_artifact_renderer "impact"          "render_impact_md"          >/dev/null 2>&1 || true
 register_artifact_renderer "review_report"   "render_review_report_md"   >/dev/null 2>&1 || true
 # Issue OUT: lens artifact ids render to prose (never raw-JSON passthrough).
 # review-lens (review_lenses group) + security-lens (compound_quality) share

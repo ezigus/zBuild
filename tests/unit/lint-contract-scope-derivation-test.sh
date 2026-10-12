@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # tests/unit/lint-contract-scope-derivation-test.sh — EPIC #1277 / issue #1279.
 #
-# lint-contract's check-scope is DERIVED from the manifest data-dependency graph
-# (ADR-047 §5), not a hardcoded roster. This test guards two properties:
+# lint-contract's check-scope is DERIVED from the manifests (ADR-047 §5), not a
+# hardcoded roster: a manifest is in scope iff it is a stage — it writes a stage
+# result (provides.result_contract). (Declared inputs, which the old graph was
+# built from, are retired — ADR-055 §1, amended 2026-10-12.) This test guards
+# two properties:
 #
 #   STRANGLER (SPEC-1): the derived scope is a SUPERSET-OR-EQUAL of the old curated
 #     list (_LC_STAGE_IDS_TO_CHECK) — scope can never silently NARROW below what the
 #     hand-maintained list validated.
 #
-#   FICTITIOUS-STAGE HARNESS (SPEC-2/3/4): a brand-new, fictitiously-named stage that
-#     participates in the data contract is picked up by lint-contract with ZERO edits
-#     to the mechanic (scripts/lib/lint-contract.sh) — proving the scope is
-#     stage-agnostic. A backend service (no stage io) stays out of scope for free.
+#   FICTITIOUS-STAGE HARNESS (SPEC-2/3/4): a brand-new, fictitiously-named stage is
+#     picked up by lint-contract with ZERO edits to the mechanic
+#     (scripts/lib/lint-contract.sh) — proving the scope is stage-agnostic. A
+#     backend service (writes no stage result) stays out of scope for free.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,50 +32,24 @@ print_test_header "lint-contract scope derivation + fictitious-stage harness (#1
 setup_test_env "lint-contract-scope-derivation"
 
 # ─── SPEC-1: strangler — derived scope ⊇ curated list ────────────────────────
-# Recompute data-graph participation over the REAL plugins tree the same way
-# lint-contract does, then assert every curated id that has a manifest is a node.
-# The curated list is the independent ground truth (a hand-maintained subset);
-# the derivation must not drop any of it.
-declare -A _HAS_INPUT=() _PROD_REF=() _MANIFEST_ID=() _ROLE_ID=() _INPUT_NAME=() _OUT_OWNER=()
+# Recompute stage membership over the REAL plugins tree the same way
+# lint-contract does, then assert every curated id that has a manifest is in it.
+declare -A _IS_STAGE=() _MANIFEST_ID=() _ROLE_ID=()
 while IFS= read -r -d '' m; do
     id="$(manifest_graph_get_stage_id "$m")"; [[ -z "$id" ]] && continue
     _MANIFEST_ID["$id"]=1
     _role="$(awk '/^provides:/{p=1;next} p&&/^[A-Za-z_]/{p=0} p&&/^[[:space:]]+role:/{sub(/^[[:space:]]+role:[[:space:]]*/,"");gsub(/["'"'"']/,"");print;exit}' "$m")"
     [[ -n "$_role" ]] && _ROLE_ID["$_role"]="$id"
-    # #1825: membership was read off `source: stage:X`; a consumer no longer names
-    # a producer, so it is read off the NAMES — any declared input makes this a
-    # consumer node, and a manifest whose output id some input names is a producer
-    # node. Mirrors _lc_id_in_scope, which this test exists to keep honest.
-    while IFS= read -r rec; do
-        [[ -z "$rec" ]] && continue
-        IFS='|' read -r _iid _it _isrc _ir _ip <<< "$rec"
-        [[ -z "$_iid" ]] && continue
-        _HAS_INPUT["$id"]=1
-        [[ -n "$_role" ]] && _HAS_INPUT["role:$_role"]=1
-        _INPUT_NAME["$_iid"]=1
-    done < <(manifest_graph_get_inputs "$m")
-    while IFS= read -r rec; do
-        [[ -z "$rec" ]] && continue
-        _oid="${rec%%|*}"; [[ -z "$_oid" ]] && continue
-        _OUT_OWNER["$_oid"]+=" $id"
-    done < <(manifest_graph_get_outputs "$m")
+    grep -qE '^[[:space:]]+result_contract:' "$m" && _IS_STAGE["$id"]=1
 done < <(find "$REPO_ROOT/plugins" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
 
-# resolve producer membership by name, after every manifest is indexed
-for _on in "${!_OUT_OWNER[@]}"; do
-    [[ -n "${_INPUT_NAME[$_on]:-}" ]] || continue
-    for _ow in ${_OUT_OWNER[$_on]}; do _PROD_REF["$_ow"]=1; done
-done
-
-# in-scope iff data-graph node (mirrors _lc_id_in_scope). Resolve curated ids
-# that are role-bound stage names (e.g. acceptance-gate) via the role→id map.
+# in-scope iff a stage (mirrors _lc_id_in_scope). Resolve curated ids that are
+# role-bound stage names (e.g. acceptance-gate) via the role→id map.
 _derived_in_scope() {
-    local s="$1"
-    [[ -n "${_HAS_INPUT[$s]:-}" || -n "${_PROD_REF[$s]:-}" ]] && return 0
-    # role-bound: acceptance-gate stage is served by spec-acceptance (role acceptance_gate)
-    local rid="${_ROLE_ID[${s//-/_}]:-}"
-    [[ -n "$rid" && ( -n "${_HAS_INPUT[$rid]:-}" || -n "${_PROD_REF[$rid]:-}" ) ]] && return 0
-    return 1
+    local s="$1" rid
+    [[ -n "${_IS_STAGE[$s]:-}" ]] && return 0
+    rid="${_ROLE_ID[${s//-/_}]:-}"
+    [[ -n "$rid" && -n "${_IS_STAGE[$rid]:-}" ]]
 }
 
 # #979: mirrors _LC_STAGE_IDS_TO_CHECK in scripts/lib/lint-contract.sh after the
@@ -98,37 +75,44 @@ id: producer
 name: Producer
 kind: agent
 version: 0.0.1
-inputs: []
+provides:
+  result_contract: 2
 outputs:
   - id: real_out
     path: "${artifact_dir}/producer.json"
-    type: producer.json
+    type: producer.json@1
+    format: json
     required: true
     primary: true
+  - id: producer_summary
+    path: "${artifact_dir}/producer-summary.md"
+    type: producer-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
-# frobnicate — a fictitiously-named stage that CONSUMES a stage artifact (data-graph
-# node) and declares a REQUIRED input whose output id the producer does NOT provide.
-# If the derivation onboards it, lint MUST flag the missing output.
+# frobnicate — a fictitiously-named STAGE (writes a stage result) that declares
+# no summary output. If the derivation onboards it, lint MUST flag the missing
+# summary (ADR-055 §9).
 cat > "$FIXROOT/agent/frobnicate/manifest.yaml" <<'EOF'
 id: frobnicate
 name: Frobnicate
 kind: agent
 version: 0.0.1
-inputs:
-  - id: nonexistent_out
-    source: stage:producer
-    required: true
+provides:
+  result_contract: 2
 outputs:
   - id: frob_out
     path: "${artifact_dir}/frob.json"
-    type: frob.json
+    type: frob.json@1
+    format: json
     required: true
     primary: true
 EOF
 
-# backend-svc — a service with NO stage io (not a data-graph node). It has a
-# deliberately MISSING inputs: block; if it were in scope, lint would flag it.
+# backend-svc — a service that writes no stage result. It deliberately declares
+# no summary; if it were in scope, lint would flag it.
 cat > "$FIXROOT/tool/backend-svc/manifest.yaml" <<'EOF'
 id: backend-svc
 name: Backend service
@@ -152,16 +136,16 @@ set -e
 
 # SPEC-2: the fictitiously-named stage entered scope via derivation → its contract
 # violation is caught (rc!=0, message names it).
-assert_eq "SPEC-2: fictitious contract-participant is linted (rc=1)" "1" "$_rc"
+assert_eq "SPEC-2: fictitious stage is linted (rc=1)" "1" "$_rc"
 assert_contains "SPEC-2: violation names the fictitious stage 'frobnicate'" "$_out" "frobnicate"
-assert_contains "SPEC-2: violation is the missing producer output" "$_out" "nonexistent_out"
+assert_contains "SPEC-2: violation is the missing summary" "$_out" "SUMMARY_MISSING"
 
-# SPEC-3: the backend service (no stage io) is NOT in scope — its missing inputs:
-# block is NOT flagged (would-be complaint absent).
+# SPEC-3: the backend service (writes no stage result) is NOT in scope — its
+# missing summary is NOT flagged (would-be complaint absent).
 if [[ "$_out" == *"backend-svc"* ]]; then
-    assert_fail "SPEC-3: backend-svc (no stage io) stays OUT of scope" "lint flagged backend-svc: $_out"
+    assert_fail "SPEC-3: backend-svc (no stage result) stays OUT of scope" "lint flagged backend-svc: $_out"
 else
-    assert_pass "SPEC-3: backend-svc (no stage io) stays OUT of scope"
+    assert_pass "SPEC-3: backend-svc (no stage result) stays OUT of scope"
 fi
 
 # SPEC-4: onboarding the fictitious stage required ZERO stage-specific code in the

@@ -125,18 +125,6 @@ config:
     - nothing_checked
   tier_default: T1
 
-inputs:
-  # The acceptance block lives in design.md. Declared required:false (ADR-020
-  # optional-input convention, #511) so the gate composes into templates that
-  # do not run design — absent block → no-op pass.
-  - id: design
-    required: false
-  # #2110: the test stage's per-file timings, so a negctl/reachability run is
-  # bounded by the file's measured time (never below negctl_timeout_s, never
-  # above the test stage's own ceiling). Optional: absent → the stage value.
-  - id: test_timing
-    required: false
-
 outputs:
   # #2183: this stage's error channel — whatever its subprocesses said when
   # they failed. Published to the other stages' prompts (bounded) when this

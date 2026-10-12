@@ -271,14 +271,12 @@ _cycle_member_is_blocking() {
 #   _CYCLE_UNTIL_OP     (eq|ne)
 #   _CYCLE_UNTIL_VALUE  (string)
 #   _CYCLE_PLATEAU_WINDOW / _CYCLE_DIVERGENCE_WINDOW / _CYCLE_VELOCITY_PLATEAU_WINDOW
-#   _CYCLE_FEEDBACK[]   (flat list: "from_stage:from_output:to_stage:to_field:required")
 # Returns: 0 valid; 1 invalid (emits cycle.config.invalid).
 _cycle_load_template() {
     local cycle_id="$1"
     local safe="${cycle_id//-/_}"
 
     _CYCLE_STAGES=()
-    _CYCLE_FEEDBACK=()
     _CYCLE_MAX_ITER=""
     _CYCLE_ON_MAX="continue"
     _CYCLE_UNTIL_STAGE=""
@@ -302,7 +300,6 @@ _cycle_load_template() {
     local uv_var="_TPL_CYCLE_UNTIL_VALUE_${safe}"
     local pw_var="_TPL_CYCLE_PLATEAU_W_${safe}"
     local dw_var="_TPL_CYCLE_DIVERGENCE_W_${safe}"
-    local fb_var="_TPL_CYCLE_FEEDBACK_${safe}"
 
     local stages_csv="${!stages_var:-}"
     if [[ -z "$stages_csv" ]]; then
@@ -445,15 +442,6 @@ _cycle_load_template() {
     local dw="${!dw_var:-}"; [[ -n "$dw" && "$dw" =~ ^[0-9]+$ ]] && _CYCLE_DIVERGENCE_WINDOW="$dw"
     local vpw_var="_TPL_CYCLE_VELOCITY_PLATEAU_W_${safe}"
     local vpw="${!vpw_var:-}"; [[ -n "$vpw" && "$vpw" =~ ^[0-9]+$ ]] && _CYCLE_VELOCITY_PLATEAU_WINDOW="$vpw"
-
-    # Feedback: pipe-delimited records "from_stage:from_output|to_stage:to_field:required"
-    local fb_blob="${!fb_var:-}"
-    if [[ -n "$fb_blob" ]]; then
-        local IFS_save2="$IFS"; IFS=$'\n'
-        # shellcheck disable=SC2206
-        _CYCLE_FEEDBACK=($fb_blob)
-        IFS="$IFS_save2"
-    fi
 
     return 0
 }
@@ -610,78 +598,16 @@ _cycle_stash_predicate() {
 }
 
 # ─── _cycle_render_feedback_digest <iter> <state_dir> (#833) ─────────────────
-# Builds the cycle INPUT-banner body: a comma-joined digest of the feedback
-# edges consumed this iter. For each edge in _CYCLE_FEEDBACK[] (same parse as
-# _cycle_apply_feedback), inspect the producer's latest output (no copy is kept):
-#   present       → "<to_field>(<digest>)"  (verdict from JSON, else ~40-char
-#                    head; a source stage that declares
-#                    capabilities.feedback_count_field also appends ", N changes")
-#   required+miss → "<to_field>(MISSING)"
-#   optional+miss → skipped
-# iter==1 → "(no feedback — first iteration)". iter≥2 with no edge consumed →
-# the STAGE SUMMARIES count (#2124): since #1979 the findings travel as
-# engine-collected summaries, not edges, and a banner that reported edges alone
-# read "(no feedback — first iteration)" on every iteration of #1841's run.
-# Pure/read-only, 2>/dev/null-guarded, never trips errexit.
+# The cycle INPUT-banner body. iter==1 → "(no feedback — first iteration)";
+# later iterations → how many stage summaries the next stage's Previous work
+# carries (#2124). Read-only, never trips errexit.
 _cycle_render_feedback_digest() {
     local iter="$1" state_dir="$2"
     if [[ "$iter" == "1" ]]; then
         printf '(no feedback — first iteration)'
         return 0
     fi
-    if [[ ${#_CYCLE_FEEDBACK[@]} -eq 0 ]]; then
-        _cycle_render_summaries_digest "$state_dir"
-        return 0
-    fi
-    local -a parts=()
-    local rec
-    local _fbd_plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
-    _manifest_graph_ensure_yaml_get 2>/dev/null || true
-    for rec in "${_CYCLE_FEEDBACK[@]}"; do
-        # "from_stage:from_output|to_stage:to_field:required"
-        local from_part="${rec%%|*}"
-        local from_stage="${from_part%%:*}"
-        local to_part="${rec#*|}"
-        local rest="${to_part#*:}"
-        local to_field="${rest%%:*}"
-        local required="${rest#*:}"
-        local f
-        f="$(_cycle_resolve_from_path "$state_dir" "$from_stage" "${from_part#*:}")"
-        if [[ -f "$f" ]]; then
-            local content digest
-            content="$(cat "$f" 2>/dev/null || true)"
-            # Prefer a JSON .verdict; else the first ~40 chars (single line).
-            digest="$(jq -r '.verdict // empty' <<< "$content" 2>/dev/null || true)"
-            if [[ -z "$digest" ]]; then
-                digest="$(printf '%s' "$content" | tr '\n' ' ' | cut -c1-40)"
-            fi
-            # ADR-047 §4: if the source stage declares capabilities.feedback_count_field,
-            # append the length of that JSON array field (no stage name literal).
-            local _fb_manifest _fb_count_field=""
-            _fb_manifest="$(manifest_graph_resolve_member "$_fbd_plugins_root" "$from_stage" 2>/dev/null)" || true
-            if [[ -n "$_fb_manifest" ]]; then
-                _fb_count_field="$(yaml_get "$_fb_manifest" "capabilities.feedback_count_field" 2>/dev/null || true)"
-            fi
-            if [[ -n "$_fb_count_field" ]]; then
-                local n_changes
-                n_changes="$(jq -r --arg f "$_fb_count_field" '(.[$f] // []) | length' <<< "$content" 2>/dev/null || true)"
-                if [[ "$n_changes" =~ ^[0-9]+$ ]]; then
-                    digest="${digest}, ${n_changes} changes"
-                fi
-            fi
-            parts+=( "${to_field}(${digest})" )
-        elif [[ "$required" == "true" ]]; then
-            parts+=( "${to_field}(MISSING)" )
-        fi
-    done
-    if [[ ${#parts[@]} -eq 0 ]]; then
-        _cycle_render_summaries_digest "$state_dir"
-        return 0
-    fi
-    local IFS_save="$IFS"; IFS=','
-    printf '%s' "${parts[*]}"
-    IFS="$IFS_save"
-    return 0
+    _cycle_render_summaries_digest "$state_dir"
 }
 
 # _cycle_render_summaries_digest <state_dir> (#2124) — how many stage summaries
@@ -697,7 +623,7 @@ _cycle_render_summaries_digest() {
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
     [[ "$r" =~ ^[0-9]+$ ]] || r=0
     if [[ "$n" -eq 0 ]]; then
-        printf '(no feedback edges, no stage summaries)'
+        printf '(no stage summaries)'
     else
         printf 'summaries(%s stage summaries, %s failing)' "$n" "$r"
     fi
@@ -975,7 +901,7 @@ _cycle_detect_velocity_plateau() {
 # Pin (silent-failure CRITICAL #1): blocked = verdict-PRESENT + value-in-set.
 #   verdict=missing is handled exclusively by cycle.iteration.verdict_missing
 #   emitted from _cycle_check_until — DO NOT double-emit.
-# Pin (silent-failure CRITICAL #2): distinct from cycle.feedback.missing (#526).
+# Pin (silent-failure CRITICAL #2).
 #   Blocked fires on verdict; feedback.missing fires on missing-artifact.
 # Pin (silent-failure HIGH #5): no debounce — these are structural failures
 #   (corrupt patch, dispatch error) and retry doesn't help. EXCEPT: bypass
@@ -1080,50 +1006,6 @@ _cycle_detect_divergence() {
     return 0
 }
 
-# ─── _cycle_apply_feedback <iter_next> ───────────────────────────────────────
-# Checks the cycle's feedback edges before the NEXT iteration. An edge only
-# declares that a stage's output flows back to an earlier stage; the consumer
-# reads the producer's latest output where the producer wrote it. Nothing is
-# copied: a copy taken as a try begins goes stale the moment its producer
-# rewrites the output in that try (#1932's run; ADR-021 §3, ADR-068 §6).
-# FAIL LOUDLY (emit cycle.feedback.missing) when a required output is missing.
-# ─── _cycle_resolve_from_path <state_dir> <from_stage> <from_output> ─────────
-# #511 Pin 2: resolve the feedback source path using the from-stage manifest's
-# outputs[id==<from_output>].path entry (which already supports ${artifact_dir}
-# templating), NOT the legacy hardcoded `artifacts/<stage>/<output>` shape.
-# Real plugins (build, test) write FLAT (e.g. artifacts/test-failures-summary.md),
-# so the old code silently failed to find anything. Backwards-compat fallback:
-# if the manifest is not available OR declares no path for the requested output
-# id, fall back to `artifacts/<from_stage>/<from_output>` (legacy mock layout).
-_cycle_resolve_from_path() {
-    local state_dir="$1" from_stage="$2" from_output="$3"
-    local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
-    local manifest=""
-    if declare -F manifest_graph_collect >/dev/null 2>&1; then
-        manifest="$(manifest_graph_collect "$plugins_root" "$from_stage" 2>/dev/null || true)"
-    fi
-    if [[ -n "$manifest" && -f "$manifest" ]] \
-       && declare -F manifest_graph_get_outputs >/dev/null 2>&1; then
-        local rec o_id o_type o_src o_req o_path
-        while IFS= read -r rec; do
-            [[ -z "$rec" ]] && continue
-            # shellcheck disable=SC2034  # o_type/o_src/o_req destructured for schema parity, only o_path read
-            IFS='|' read -r o_id o_type o_src o_req o_path <<< "$rec"
-            if [[ "$o_id" == "$from_output" && -n "$o_path" ]]; then
-                # Expand canonical templating vars.
-                local resolved="$o_path"
-                resolved="${resolved//\$\{artifact_dir\}/$state_dir/artifacts}"
-                resolved="${resolved//\$\{state_dir\}/$state_dir}"
-                printf '%s\n' "$resolved"
-                return 0
-            fi
-        done < <(manifest_graph_get_outputs "$manifest")
-    fi
-    # Legacy fallback (mock plugins / pre-F2 fixtures).
-    printf '%s/artifacts/%s/%s\n' "$state_dir" "$from_stage" "$from_output"
-    return 0
-}
-
 # ─── _cycle_resolve_scope_expansion <cycle_id> <state_dir> (#840 / ADR-030) ──
 # Reads a scope_expansion_request emitted by a member (build-summary.json),
 # resolves it against the cycle's scope_policy via scripts/lib/scope-governance.sh,
@@ -1185,8 +1067,12 @@ _cycle_resolve_scope_expansion() {
     echo "deny"; return 0
 }
 
+# ─── _cycle_apply_feedback <iter_next> <state_dir> ──────────────────────────
+# Before the next iteration: the targeted-test hand-offs for the test stage.
+# (Template feedback wires are retired, ADR-055 §4: every stage reads every
+# stage's latest output under Previous work.)
 _cycle_apply_feedback() {
-    local iter_next="$1" state_dir="$2"
+    local state_dir="$2"   # $1 (the next iteration) is kept in the call shape
 
     # ADR-034 / #846: wire targeted-test artifacts for the next iter's test stage.
     # ZBUILD_TEST_RED_SET  → path to test-red-set.json from the just-completed run.
@@ -1209,36 +1095,6 @@ _cycle_apply_feedback() {
         unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
     fi
 
-    [[ ${#_CYCLE_FEEDBACK[@]} -eq 0 ]] && return 0
-
-    local rec
-    for rec in "${_CYCLE_FEEDBACK[@]}"; do
-        # "from_stage:from_output|to_stage:to_field:required"
-        local from_part="${rec%%|*}"
-        local to_part="${rec#*|}"
-        local from_stage="${from_part%%:*}"
-        local from_output="${from_part#*:}"
-        local to_stage="${to_part%%:*}"
-        local rest="${to_part#*:}"
-        local to_field="${rest%%:*}"
-        local required="${rest#*:}"
-        local src
-        src="$(_cycle_resolve_from_path "$state_dir" "$from_stage" "$from_output")"
-        [[ -e "$src" ]] && continue
-        if [[ "$required" == "true" ]]; then
-            _cycle_emit "cycle.feedback.missing" \
-                "iter_next=$iter_next" "from_stage=$from_stage" \
-                "from_output=$from_output" "to_stage=$to_stage" \
-                "to_field=$to_field" "required=$required" \
-                "src=$src"
-            return 1
-        fi
-        _cycle_emit "cycle.feedback.absent" \
-            "iter_next=$iter_next" "from_stage=$from_stage" \
-            "from_output=$from_output" "to_stage=$to_stage" \
-            "to_field=$to_field" "required=$required" \
-            "src=$src"
-    done
     return 0
 }
 
@@ -1579,15 +1435,6 @@ _cycle_iter_dispatch() {
             fi
             export ZBUILD_SEQ_PREFIX="$_member_label"
             # Save outer cycle's state — recursion clobbers _CYCLE_* globals.
-            # ADR-026 / Wave 18-B (#707): also save _CYCLE_FEEDBACK (and the
-            # outer cycle's exit_when/abort_when arrays implicitly via
-            # _CYCLE_TRAP_CYCLE_ID, which _cycle_apply_feedback uses to
-            # rebuild the iter-next feedback dir path). Without restoring
-            # _CYCLE_FEEDBACK, the outer cycle's post-iter _cycle_apply_feedback
-            # would use the INNER cycle's feedback edges (e.g. inner
-            # build_test_cycle's prior_test_assessment) instead of the outer
-            # build_review_cycle's review→build prior_review_feedback edge, silently
-            # dropping the ADR-026 wiring.
             local _outer_cid="$_CYCLE_TRAP_CYCLE_ID"
             local _outer_iter="$_CYCLE_TRAP_ITER"
             local _outer_max="$_CYCLE_MAX_ITER"
@@ -1596,7 +1443,6 @@ _cycle_iter_dispatch() {
             local _outer_until_field="$_CYCLE_UNTIL_FIELD"
             local _outer_until_op="$_CYCLE_UNTIL_OP"
             local _outer_until_value="$_CYCLE_UNTIL_VALUE"
-            local -a _outer_feedback=( "${_CYCLE_FEEDBACK[@]}" )
             local -a _outer_stages=( "${_CYCLE_STAGES[@]}" )
             # #845: the termination-window globals are per-cycle config and the
             # nested run reloads them from the INNER cycle's template. They must
@@ -1647,7 +1493,6 @@ _cycle_iter_dispatch() {
             _CYCLE_UNTIL_FIELD="$_outer_until_field"
             _CYCLE_UNTIL_OP="$_outer_until_op"
             _CYCLE_UNTIL_VALUE="$_outer_until_value"
-            _CYCLE_FEEDBACK=( "${_outer_feedback[@]}" )
             _CYCLE_STAGES=( "${_outer_stages[@]}" )
             _CYCLE_PLATEAU_WINDOW="$_outer_plateau_w"
             _CYCLE_DIVERGENCE_WINDOW="$_outer_diverg_w"

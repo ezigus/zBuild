@@ -2,8 +2,9 @@
 # tests/unit/plugin-manifest-contract-audit-test.sh — ADR-020 (#496) drift audit.
 #
 # Asserts that every stage-bound plugin manifest in the repo satisfies the
-# inter-stage data contract. This is the regression test that catches a future
-# manifest edit that drops `source:` or `required:` from an entry.
+# inter-stage data contract: it declares no inputs (ADR-055 §1, amended
+# 2026-10-12 — every stage gets every stage's latest output), and every output
+# declares required: true|false.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,53 +37,12 @@ for rel in "${STAGE_MANIFESTS[@]}"; do
         continue
     fi
 
-    # Inputs block present (explicit `inputs: []` counts).
-    if manifest_graph_inputs_block_present "$m"; then
-        assert_pass "$rel: inputs: block present"
+    # Declared inputs are retired: no inputs: block at all.
+    if grep -qE '^inputs:' "$m"; then
+        assert_fail "$rel: declares no inputs: block" "inputs: is retired (ADR-055 §1)"
     else
-        assert_fail "$rel: inputs: block present" \
-            "no inputs: declared — use 'inputs: []' for zero-input plugins"
+        assert_pass "$rel: declares no inputs: block"
     fi
-
-    # #1825 / ADR-055 §1: an input declares its NAME and whether it is required,
-    # and nothing else. It names no producer, restates no path and restates no
-    # type — the producer already declared all three, and a second declaration
-    # that can disagree with the first is not a contract. `source: external` is
-    # the one survivor (§1.2), because it names something outside the pipeline
-    # and so has no producer to resolve.
-    #
-    # This replaces the inverse assertion ("every input HAS source:"), which was
-    # correct under ADR-020 and is exactly what this change deletes.
-    while IFS= read -r rec; do
-        [[ -z "$rec" ]] && continue
-        IFS='|' read -r in_id in_type in_source in_required in_path <<< "$rec"
-        [[ -z "$in_id" ]] && continue
-        if [[ -z "$in_source" || "$in_source" == "external" ]]; then
-            assert_pass "$rel: input '$in_id' declares no producer${in_source:+ (external)}"
-        else
-            assert_fail "$rel: input '$in_id' declares no producer" \
-                "source: '$in_source' — a consumer names an artifact, not a stage (ADR-055 §1.2)"
-        fi
-        if [[ -z "$in_path" ]]; then
-            assert_pass "$rel: input '$in_id' restates no path"
-        else
-            assert_fail "$rel: input '$in_id' restates no path" "path: '$in_path'"
-        fi
-        if [[ -z "$in_type" ]]; then
-            assert_pass "$rel: input '$in_id' restates no type"
-        else
-            assert_fail "$rel: input '$in_id' restates no type" "type: '$in_type'"
-        fi
-        case "${in_required:-}" in
-            true|false)
-                assert_pass "$rel: input '$in_id' required=$in_required"
-                ;;
-            *)
-                assert_fail "$rel: input '$in_id' required: is true|false" \
-                    "got '${in_required:-<empty>}'"
-                ;;
-        esac
-    done < <(manifest_graph_get_inputs "$m")
 
     # Every output has required: declared.
     while IFS= read -r rec; do

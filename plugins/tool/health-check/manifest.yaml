@@ -30,8 +30,6 @@ provides:
 config:
   tier_default: T0
 
-inputs: []
-
 # health-check returns its probe result via stdout + exit code (consumed in-process
 # by the validate agent); it writes NO file artifact. It therefore declares no
 # provides.artifact_type and no file outputs — like the orch-*/cache-*/memory-*

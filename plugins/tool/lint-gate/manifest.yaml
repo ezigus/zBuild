@@ -43,10 +43,6 @@ config:
     - skip
   tier_default: T0
 
-inputs:
-  - id: test_results
-    required: false
-
 outputs:
   - id: lint_result
     path: "${artifact_dir}/lint-result.json"

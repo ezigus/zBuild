@@ -65,12 +65,13 @@ assert_eq "cycle-converges-iter2: until.field=verdict" "verdict" "${_TPL_CYCLE_U
 assert_eq "cycle-converges-iter2: until.op=eq" "eq" "${_TPL_CYCLE_UNTIL_OP_build_test:-}"
 assert_eq "cycle-converges-iter2: until.value=pass" "pass" "${_TPL_CYCLE_UNTIL_VALUE_build_test:-}"
 
-# T3: cycle-feedback — feedback records parsed (no schema validation here;
-# orchestrator interprets later).
-load_template "$FIXT/cycle-feedback.yaml"
-fb="${_TPL_CYCLE_FEEDBACK_build_test:-}"
-assert_contains "cycle-feedback: feedback record references test/primary.txt" "$fb" "test:primary.txt"
-assert_contains "cycle-feedback: feedback record references build/prior_test_result" "$fb" "build:prior_test_result"
+# T3: a cycle `feedback:` wire is retired (ADR-055 §4, amended 2026-10-12) —
+# every stage gets every stage's latest output, so load_template refuses one.
+set +e
+fb_err="$(load_template "$FIXT/cycle-feedback.yaml" 2>&1)"; fb_rc=$?
+set -e
+assert_eq "cycle-feedback: a template wiring feedback: is refused" "1" "$fb_rc"
+assert_contains "cycle-feedback: the refusal says feedback: is retired" "$fb_err" "'feedback:' is retired"
 
 # T4: max_iterations out of range (11) → rc=1  (#585: v2 inline cycle syntax)
 BAD_MAX_TPL="$TEST_TEMP_DIR/bad-max.yaml"

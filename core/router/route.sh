@@ -560,7 +560,7 @@ _route_lookup_model() {
 
 # #1879: the count of retry-on-BUDGET-EXHAUSTION attempts. Deliberately its own
 # knob rather than a widening of `retries` (which is rc=124/timeout-only): the one
-# stage that sets `retries` today is `impact`, and quietly changing what that means
+# stage that sets `retries` relies on its timeout-only meaning, and quietly changing what that means
 # for it would be an unrequested behaviour change. Default 0 — opt in per stage.
 _route_resolve_exhaustion_retries() {
     local v; v="$(_route_resolve_knob template_stage_router_retry_on_exhaustion \
@@ -793,7 +793,7 @@ _route_call_claude() {
     # as rc=1 and so is invisible to the rc=124-only retry above. This is what
     # killed the #1708 plan stage: 46 turns, no plan, no retry, pipeline aborted.
     #
-    # A SEPARATE opt-in knob, not a widening of `retries`: `impact` already sets
+    # A SEPARATE opt-in knob, not a widening of `retries`: a stage may already set
     # retries: 1 for timeouts, and silently changing what that means for it would
     # be a behaviour change nobody asked for.
     #
@@ -1882,7 +1882,7 @@ ${_diff_pointer}"
             fi
             # #2183: the diagnostic reaches the OTHER stages, not only the
             # event log. One seam covers every router-backed stage — build,
-            # design, plan, impact, test-author, the judges and the lenses.
+            # design, plan, test-author, the judges and the lenses.
             if declare -F stage_errors_append >/dev/null 2>&1; then
                 stage_errors_append "${_iter_stage_id:-${ZBUILD_CURRENT_STAGE:-}}" \
                     "model call iter=$iter rc=$rc${_diag_subtype:+ subtype=$_diag_subtype}${_diag_num_turns:+ turns=$_diag_num_turns}${_diag_err_text:+: $_diag_err_text}"

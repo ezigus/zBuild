@@ -336,17 +336,16 @@ fi
 
 # ─── #842-B: stale ZBUILD_CYCLE_FEEDBACK_DIR set → still no headings ────────
 # Regression guard: even if the environment leaks a cycle feedback dir (e.g.
-# from a prior design_impact_cycle iter), plan must ignore it completely.
+# from a prior cycle iter), plan must ignore it completely.
 _842_clean
 export ZBUILD_CYCLE_ITER=2
 export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback-842"
 printf '%s' "STALE_SENTINEL_BODY" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"
-printf '%s' "STALE_IMPACT_SENTINEL" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_impact_feedback.txt"
 set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "#842-B: plan_run rc=0 with stale feedback env" "0" "$rc"
 captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 assert_contains "#842-B: prompt is non-empty (guard)" "$captured_prompt" "test goal"
-if grep -q "STALE_SENTINEL_BODY\|STALE_IMPACT_SENTINEL\|## PRIOR PLAN\|## PRIOR IMPACT" \
+if grep -q "STALE_SENTINEL_BODY\|## PRIOR PLAN" \
         <<<"$captured_prompt"; then
     assert_fail "#842-B: plan prompt must NOT splice stale cycle feedback (plan is a leaf)"
 else

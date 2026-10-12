@@ -7,9 +7,8 @@
 #     (the pipeline may still terminate downstream for other reasons; we
 #      only assert that pre-flight does NOT refuse)
 #
-# Scenario B: broken template (broken-contract-missing-producer fixture) —
-# build expects stage:plan but the template omits it (#979: reworked from the
-# retired standard-missing-test/review→stage:test coupling).
+# Scenario B: broken template (broken-contract-aggregator fixture) — its cycle
+# exits on an advisory aggregator, which ADR-040 §5 refuses at pre-flight.
 #   - default mode (no env override) → runner rc=1 BEFORE any stage runs (#1850: was 2)
 #   - structured error printed on stderr
 #   - pipeline.preflight.fail event emitted
@@ -34,7 +33,7 @@ setup_test_env "preflight-enforce-default"
 # `--template simple` has no per-repo override here, so it resolves the shipped
 # simple template from the engine tree.
 OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
-install_template_overlay "$OVERLAY_REPO" broken-contract-missing-producer
+install_template_overlay "$OVERLAY_REPO" broken-contract-aggregator
 
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
@@ -64,7 +63,7 @@ chmod +x "$DRIVER"
 # ── Scenario B: broken template → default mode refuses with rc=1 ────────────
 err1="$TEST_TEMP_DIR/run1.err"
 out1="$TEST_TEMP_DIR/run1.out"
-( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "should be rejected" --template broken-contract-missing-producer ) \
+( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "should be rejected" --template broken-contract-aggregator ) \
     >"$out1" 2>"$err1" || true
 exit_code1="$(grep -E '^EXIT_CODE=' "$out1" 2>/dev/null | tail -1 | cut -d= -f2 || echo "")"
 

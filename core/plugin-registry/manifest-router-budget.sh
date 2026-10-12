@@ -33,8 +33,8 @@ _manifest_router_range() {
         max_turns) echo "0 200" ;;    # ADR-018 (#466); 0 = omit --max-turns (#762)
         retries)   echo "0 10" ;;     # ADR-029 (#1230); 0 = opt-out
         # #1879: retry-on-budget-exhaustion. Its own knob, NOT a widening of
-        # `retries` (which is timeout/rc=124-only) — `impact` sets `retries`
-        # today and its semantics must not change underneath it. Capped low: a
+        # `retries` (which is timeout/rc=124-only) — a stage that sets `retries`
+        # relies on that meaning. Capped low: a
         # retry is only useful because the stage resumes from its checkpoint, and
         # more than a couple of attempts means the issue is too large to plan.
         retry_on_exhaustion) echo "0 5" ;;

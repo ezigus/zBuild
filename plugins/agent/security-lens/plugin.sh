@@ -265,7 +265,7 @@ _security_lens_run_inner() {
         # _llm_recover_envelope_json fires when LAST-wins selects a postamble
         # instead of the real findings envelope.
         # shellcheck disable=SC2034  # _sl_prose is a required output-param of
-        # _llm_envelope_parse; security-lens emits no prose sidecar (only impact does).
+        # _llm_envelope_parse; security-lens emits no prose sidecar.
         local stripped _sl_prose extracted
         _llm_envelope_parse --schema-gate _security_lens_envelope_schema_ok \
             "$raw_response" stripped _sl_prose

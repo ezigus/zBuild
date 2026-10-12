@@ -45,12 +45,6 @@ config:
     timeout_s: 300 # single-shot advisory; no exploration loop needed
     max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
 
-inputs:
-  - id: deploy_result
-    required: false
-  - id: pr_url
-    required: false
-
 outputs:
   - id: monitor_report
     path: "${artifact_dir}/monitor-report.json"

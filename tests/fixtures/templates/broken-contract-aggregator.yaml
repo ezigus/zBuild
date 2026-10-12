@@ -1,0 +1,40 @@
+id: broken-contract-aggregator
+name: Broken Contract — Advisory Aggregator Gating A Cycle (ADR-040 §5 keystone fixture)
+extends: simple
+
+# Pre-flight keystone fixture. The cycle's exit_when names review-aggregator,
+# a convergence:ADVISORY aggregator, while a cycle requires a convergence:gate
+# one. The template loads, and the contract validator MUST refuse it at
+# pre-flight with CYCLE_AGG_TYPE (ADR-040 §5) before any stage runs.
+#
+# (Replaces broken-contract-missing-producer: a stage missing from the flow is
+# no longer a contract violation now that stages declare no inputs — ADR-055
+# §1, amended 2026-10-12.)
+flow:
+  - intake
+  - build_loop
+
+build_loop:
+  type: cycle
+  flow:
+    - build
+    - review-aggregator
+  exit_when:
+    stage: review-aggregator
+    field: verdict
+    op: eq
+    value: ready
+  max_iterations: 1
+  on_max: halt
+
+intake:
+  gate: auto
+  roles: [intake]
+
+build:
+  gate: auto
+  roles: [builder]
+
+review-aggregator:
+  gate: auto
+  roles: [review_aggregator]

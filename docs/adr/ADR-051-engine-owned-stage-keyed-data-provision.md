@@ -81,7 +81,7 @@ model decides how it reaches the model** (`core/router/persona-delivery.sh`). A 
 run the call as an agent defines `provider_<name>_persona_args` and gets the persona's id, summary
 and `perspective`: Anthropic passes `--agents <json> --agent <id>`. A provider that cannot gets
 the persona as the prompt's first section, `## Who you are`, followed by the stage's contract
-prompt (ADR-067 §8). Either way, every call of a stage's model loop runs as the persona; a model
+prompt (ADR-067 §8). A review lens is a stage like any other: the review-lens stage writes one job and gives every lens the same evidence, and the question a lens asks is its persona's — there is no lens text table and no per-lens evidence (amended 2026-10-12). Either way, every call of a stage's model loop runs as the persona; a model
 call made outside any stage runs as none. `core/pipeline` holds no persona code (ADR-047).
 
 ### 4. Discovery spans the installed tree AND the target-repo overlay
@@ -204,6 +204,7 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
 - §1 (a persona is data: id, role, perspective; the resolvers and the live manifests) → `tests/unit/persona-resolver-test.sh`, `tests/unit/persona-kind-validation-test.sh`
 - §2, §5 (the template pin picks the persona; the env override wins) → `tests/unit/persona-agent-delivery-test.sh` PA2, PA3
 - §2 (a map element names its own persona, never inferred from its name; its stage's pin, else generic, when it names none; every named persona exists or the run is refused at startup; the shipped lenses each name theirs) → `tests/unit/map-element-persona-test.sh` ME1–ME6
+- §3 (a lens is a stage like any other: one job, the same evidence, its question its persona's) → `tests/unit/retired-impact-review-report-inputs-test.sh` RT3
 - §3 (the provider delivers the persona: Anthropic's `--agents`/`--agent`; `## Who you are` for a provider that cannot; every loop call; no persona outside a stage; a map element's declared persona) → `tests/unit/persona-agent-delivery-test.sh` PA1, PA2, PA5–PA8
 - §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; generic when none) → `tests/unit/persona-agent-delivery-test.sh` PA4; the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
 - §6 (the persona passes through the scope redaction, before the prompt's own) → `tests/unit/persona-agent-delivery-test.sh` PA10

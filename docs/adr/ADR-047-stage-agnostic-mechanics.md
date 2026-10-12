@@ -199,3 +199,14 @@ modified — so confidence is substituted by these deterministic gates):
 ### Amendment (2026-10-04, #2271)
 
 The preflight no longer considers stages "reachable by `route_back`". The engine keeps nothing but stage outputs and names no stage (ADR-068 §8, amended 2026-10-11). Test: `tests/unit/engine-keeps-only-stage-outputs-test.sh`.
+
+### Amendment (2026-10-12) — the contract lint's scope is every stage
+
+§5's manifest-derived scope for `scripts/lib/lint-contract.sh` was read from the declared-input graph
+(a manifest that declared an input, or whose output some input named). Declared inputs are retired
+(ADR-055, amended 2026-10-12), so the scope is now every stage: a manifest that writes a stage result
+(`provides.result_contract`). Backend services — orchestrators, caches, memory, personas, output
+destinations — write none and stay out, still with no stage named.
+
+Enforced by: `tests/unit/lint-contract-scope-derivation-test.sh`; `tests/unit/lint-contract-test.sh`
+TC-5 (a manifest with no `result_contract` is not linted).

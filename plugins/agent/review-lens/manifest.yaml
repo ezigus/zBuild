@@ -64,20 +64,6 @@ config:
     timeout_s: 600
     max_turns: 20
 
-
-inputs:
-  - id: scope_manifest
-    required: true
-  - id: diff_patch
-    required: true
-  # What the change was FOR (#1654, #1845 PR #2213): a lens that sees only the
-  # diff cannot tell a defect from what was asked for. Optional — a flow with no
-  # design still reviews.
-  - id: intake_goal
-    required: false
-  - id: design
-    required: false
-
 outputs:
   - id: lens_result
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"

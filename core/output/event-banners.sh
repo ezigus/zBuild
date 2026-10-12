@@ -33,7 +33,6 @@ source "$_ZBUILD_EVENT_BANNERS_ROOT/scripts/lib/helpers.sh"
 # consumer + the lint check, so severity lives here. Document additions in
 # the ADR-021 amendment block.
 readonly _HIGH_EVENT_TYPES=(
-    cycle.feedback.missing
     cycle.config.invalid
     cycle.iteration.verdict_missing
     cycle.history.lost

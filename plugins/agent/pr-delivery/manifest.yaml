@@ -39,23 +39,6 @@ config:
     - error
   tier_default: T2
 
-inputs:
-  # #979 (EPIC #1277): the standard.yaml `review` stage (review.json) was retired,
-  # so its stage:review input is dropped. The advisory review-aggregator
-  # (review-report.json, below) is the only remaining review source.
-  - id: review_report
-    required: false
-  - id: plan
-    required: false
-  - id: design
-    required: false
-  # #1849: merge and pr-open run inside this stage and read their inputs from
-  # its index — the gate verdict (merge) and the test verdict (pr-open's body).
-  - id: gate_aggregator_result
-    required: false
-  - id: test_results
-    required: false
-
 outputs:
   - id: pr_url
     path: ${artifact_dir}/pr-url.txt

@@ -7,9 +7,7 @@
 # everything from scratch. This lib (a) persists the planner's recovered
 # exploration to a namespaced cross-run cache so a rerun RESUMES, and (b)
 # recovers a complete plan from a max_turns envelope when the model happened to
-# emit one before exhausting its budget. It is the plan-stage analogue of the
-# impact-stage resilience work (#864/#891/#908); _plan_recover_envelope_json
-# deliberately mirrors _impact_recover_envelope_json (impact-prefilter.sh).
+# emit one before exhausting its budget (#864/#891/#908).
 #
 # WHY no emit_event here: the 4 new plan events (plan.context.persisted/resumed/
 # scope_too_large/envelope.recovered) are emitted from plugins/agent/plan/

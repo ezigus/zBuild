@@ -120,14 +120,6 @@ _review_lens_id() {
     printf '%s' "$lens"
 }
 
-# ─── _review_lens_evidence_path <lens> <artifact_dir> [<bundle_fallback>] ────
-# Pick the lens's preferred mechanical evidence artifact (ADR-038 §2: a lens
-# reads a *different artifact*), falling back to the shared change bundle. The
-# fallback defaults to the full-branch merge-base bundle (resolved by the caller
-# via zbuild_change_bundle, #896/#952) so a lens without a per-lens artifact
-# judges the same basis as `review`; an empty <bundle_fallback> degrades to the
-# incremental diff.patch. Returns a path that may not exist; the caller checks
-# readability + redacts it.
 # _rl_input <id> — the path the engine's input index names, or empty.
 _rl_input() {
     [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
@@ -194,22 +186,6 @@ _rl_context() {
     printf '%s' "$out"
 }
 
-_review_lens_evidence_path() {
-    local lens="$1" artifact_dir="$2" bundle_fallback="${3:-}" candidate
-    [[ -n "$bundle_fallback" ]] || bundle_fallback="$artifact_dir/diff.patch"
-    case "$lens" in
-        design-conformance) candidate="$artifact_dir/reachability-ablation.json" ;;
-        test-coverage)      candidate="$artifact_dir/coverage-map.json" ;;
-        architecture|correctness) candidate="$artifact_dir/call-graph.json" ;;
-        *)                  candidate="" ;;
-    esac
-    if [[ -n "$candidate" && -s "$candidate" ]]; then
-        printf '%s' "$candidate"
-    else
-        printf '%s' "$bundle_fallback"
-    fi
-}
-
 # ─── review_lens_run ──────────────────────────────────────────────────────────
 # Hook: review_lens_run(stage, state_file). Derives the lens id + artifact paths
 # and delegates to the unit-testable inner function.
@@ -232,11 +208,10 @@ review_lens_run() {
     fi
     [[ -n "$lens" ]] || lens="correctness"
 
-    # #896/#952: resolve the full-branch merge-base change bundle (falls back to
-    # the incremental diff.patch when no base resolves) so a lens without a
-    # per-lens artifact judges the same basis as `review`.
-    local bundle; bundle="$(zbuild_change_bundle "$artifact_dir")"
-    local evidence; evidence="$(_review_lens_evidence_path "$lens" "$artifact_dir" "$bundle")"
+    # #896/#952: every lens judges the full-branch merge-base change bundle
+    # (the incremental diff.patch when no base resolves) — the same evidence
+    # for every lens, as for any stage.
+    local evidence; evidence="$(zbuild_change_bundle "$artifact_dir")"
     _review_lens_run_inner \
         "$lens" \
         "$state_dir/scope-manifest.md" \
@@ -350,7 +325,7 @@ _review_lens_run_inner() {
     # ADR-028 §Migration (#2035): schema-gated envelope parser replaces bare
     # extract_first_json_object so postamble sign-offs don't discard the real answer.
     # shellcheck disable=SC2034  # prose is a required output-param of _llm_envelope_parse;
-    # review-lens emits no prose sidecar (only impact does).
+    # review-lens emits no prose sidecar.
     local json prose
     _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok "$raw_response" json prose
     if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then

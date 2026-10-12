@@ -46,23 +46,6 @@ config:
     timeout_s: 600
     max_turns: 45
 
-inputs:
-  # security-lens runs inside compound_quality (orchestrator). It does NOT
-  # participate in the linear inter-stage contract validated by ADR-020 at
-  # pipeline-start; compound_quality dynamic fan-in is tracked as a follow-up
-  # (`dynamic_inputs: from_role:`).
-  # 843-I (#924): the former `diff_patch` input was declared but never read by
-  # the plugin (a misleading contract). Removed. The scan-target question
-  # (intake goal vs diff.patch) is the separate V2 follow-up; if the scan pivots
-  # to the diff, the input is re-introduced there as a consumed edge.
-  - id: scope_manifest
-    required: true
-  # ADR-055 §1 (#1825): this stage READS the intake goal, so it declares it and
-  # the engine resolves the path — it no longer builds `$state_dir/intake.md` by
-  # hand, which pinned a producer's filename. Optional: a template with no
-  # intake stage runs the lens over the scope manifest alone.
-  - id: intake_goal
-    required: false
 outputs:
   - id: findings
     path: ${artifact_dir}/security-findings.json

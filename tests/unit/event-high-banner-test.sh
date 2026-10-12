@@ -15,10 +15,10 @@ setup_test_env "event-high-banner"
 source "$REPO_ROOT/core/output/event-banners.sh"
 
 # ─── T1: HIGH event emits a single-line WARN banner with ⚠ + type + k=v ──────
-out="$(_emit_high_event_banner "cycle.feedback.missing" \
+out="$(_emit_high_event_banner "cycle.iteration.verdict_missing" \
         "iter_next=2" "from_stage=test" "to_field=summary" "src=/tmp/x" 2>&1 >/dev/null)"
 assert_contains "banner contains ⚠ glyph" "$out" "⚠"
-assert_contains "banner contains event type verbatim" "$out" "cycle.feedback.missing"
+assert_contains "banner contains event type verbatim" "$out" "cycle.iteration.verdict_missing"
 assert_contains "banner contains k=v iter_next" "$out" "iter_next=2"
 assert_contains "banner contains k=v from_stage" "$out" "from_stage=test"
 assert_contains "banner contains src path" "$out" "src=/tmp/x"
@@ -54,16 +54,16 @@ rc=$?
 set -e
 assert_eq "closed stderr → rc=0 (no abort)" "0" "$rc"
 
-# ─── T5: all 5 HIGH event types are recognized ───────────────────────────────
-for ev in cycle.feedback.missing cycle.config.invalid \
+# ─── T5: every HIGH event type is recognized ─────────────────────────────────
+for ev in cycle.config.invalid \
           cycle.iteration.verdict_missing cycle.history.lost cycle.metric.invalid; do
     bout="$(_emit_high_event_banner "$ev" "k=v" 2>&1 >/dev/null)"
     assert_contains "HIGH event $ev produces banner" "$bout" "$ev"
 done
 
-# ─── T6: cycle.feedback.absent is NOT a HIGH event — no banner (SPEC-4 guard) ──
-out_absent="$(_emit_high_event_banner "cycle.feedback.absent" "src=/tmp/x" 2>&1 >/dev/null)"
-assert_eq "[SPEC-4] cycle.feedback.absent is not HIGH → no banner emitted" "" "$out_absent"
+# ─── T6: the retired cycle.feedback.* events (ADR-055 §4) are not HIGH ───────
+out_absent="$(_emit_high_event_banner "cycle.feedback.missing" "src=/tmp/x" 2>&1 >/dev/null)"
+assert_eq "retired cycle.feedback.missing → no banner emitted" "" "$out_absent"
 
 # ─── T7: indent is two spaces (nests under cycle divider) ────────────────────
 out6="$(_emit_high_event_banner "cycle.metric.invalid" "metric=foo" 2>&1 >/dev/null)"

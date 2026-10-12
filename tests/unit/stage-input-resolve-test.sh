@@ -255,13 +255,11 @@ assert_eq "[SPEC-5] \${stage_io_dir} resolves to state_dir/artifacts/stage-io" \
     "$STATE/artifacts/stage-io/x.json" \
     "$(_verdict_resolve_path '${stage_io_dir}/x.json' "$STATE")"
 # ADR-068 §8: the engine writes no feedback copy, so ${cycle_feedback_dir} names
-# nothing and is no longer a canonical var — a manifest path using it is refused.
-# shellcheck source=../../core/pipeline/contract-validator.sh
-source "$REPO_ROOT/core/pipeline/contract-validator.sh"
-if _cv_check_path_vars '${cycle_feedback_dir}/prior.txt'; then
-    assert_fail "[SPEC-5] \${cycle_feedback_dir} is refused as an unknown var" "accepted"
+# nothing and is no longer a canonical var.
+if grep -qw 'cycle_feedback_dir' <<< "$(manifest_graph_canonical_vars)"; then
+    assert_fail "[SPEC-5] \${cycle_feedback_dir} is not a canonical var" "listed"
 else
-    assert_pass "[SPEC-5] \${cycle_feedback_dir} is refused as an unknown var"
+    assert_pass "[SPEC-5] \${cycle_feedback_dir} is not a canonical var"
 fi
 assert_eq "[SPEC-5] \${run_id} resolves to ZBUILD_RUN_ID" \
     "$STATE/runs/run-42/x" \

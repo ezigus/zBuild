@@ -21,8 +21,6 @@ required_events=(
     "cycle.iteration.complete"
     "cycle.aborted"
     "cycle.config.invalid"
-    "cycle.feedback.missing"
-    "cycle.feedback.absent"
     "cycle.iteration.verdict_missing"
     "cycle.history.lost"
     "cycle.metric.invalid"
@@ -38,11 +36,14 @@ for ev in "${required_events[@]}"; do
     fi
 done
 
-# SPEC-3: cycle.feedback.absent must be registered (new event splitting optional absent).
-if jq -e --arg t "cycle.feedback.absent" '.known_types | index($t)' "$SCHEMA" >/dev/null 2>&1; then
-    assert_pass "[SPEC-3] cycle.feedback.absent registered in event-schema.json"
-else
-    assert_fail "[SPEC-3] cycle.feedback.absent registered in event-schema.json" "missing from known_types"
-fi
+# SPEC-3: the cycle.feedback.* events are retired with template feedback wires
+# (ADR-055 §4, amended 2026-10-12) and are no longer registered.
+for ev in cycle.feedback.missing cycle.feedback.absent; do
+    if jq -e --arg t "$ev" '.known_types | index($t)' "$SCHEMA" >/dev/null 2>&1; then
+        assert_fail "[SPEC-3] retired $ev is not registered" "still in known_types"
+    else
+        assert_pass "[SPEC-3] retired $ev is not registered"
+    fi
+done
 
 print_test_results

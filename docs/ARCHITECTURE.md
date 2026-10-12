@@ -40,7 +40,7 @@ System view, plugin contract, data flow, state model, glossary. Complements [KEE
 │    5 review lenses,    git, gh, CLI                                 │
 │    stage handlers:     integrations)                                │
 │    plan, design,                                                    │
-│    impact, build,                                                   │
+│    build,                                                           │
 │    review-lens,                                                     │
 │    review-aggregator)                                               │
 │                                                                     │
@@ -108,12 +108,8 @@ config:
     max_turns: 45       # 0..200    (constant: 25)
     retries: 1          # 0..10     (constant: 0)
 
-# I/O contract (ADR-055 §1). The producer describes an artifact once; a consumer
-# names it and says whether it needs it — no producer stage, no path, no type.
-# The engine resolves each input name to the single stage producing it.
-inputs:
-  - id: changed_files
-    required: true
+# I/O contract (ADR-055). A stage declares only what it writes; it declares no
+# inputs — every stage gets every stage's latest output, by id, in its index.
 outputs:
   - id: findings
     path: ${artifact_dir}/security-findings.json
@@ -332,7 +328,7 @@ zBuild has two distinct kinds of "memory." They share no storage and have indepe
 - **Plugin kind** — the type discriminator on a manifest: `agent | tool | orchestrator | claim-coordinator | daemon`. Determines required lifecycle hooks.
 - **Chokepoint** — a single function/seam through which all data of a certain kind must pass (e.g., redaction). Enforced by code review + test, not by language-level access control.
 - **Tier (T0–T4)** — model routing ordinal. T0 = no LLM (Agent Booster / WASM); T1 = micro / haiku; T2 = sonnet; T3 = opus; T4 = experimental. Models are data in `config/models.json`; tier numbers are stable, model names are not referenced in code.
-- **Scope manifest** — fenced markdown block in `design.md` (or runtime equivalent) listing allowed paths. Artifact-as-contract: humans edit visually, the engine reads it line by line. Design and build each carry a copy of `_extract_scope_from_design` (`plugins/agent/design/plugin.sh`, `plugins/agent/build/lib/scope.sh`) that accepts trailing whitespace on the opening and closing fence lines and drops whitespace-only lines inside the block, because build's guard for the block's presence matches only the start of the fence line, so an exact match there would silently fall back to `plan.json` on a padded fence. Impact's own `_impact_extract_scope_from_design` (`plugins/agent/impact/plugin.sh`) is stricter: it matches the fence lines exactly and drops only empty lines.
+- **Scope manifest** — fenced markdown block in `design.md` (or runtime equivalent) listing allowed paths. Artifact-as-contract: humans edit visually, the engine reads it line by line. Design and build each carry a copy of `_extract_scope_from_design` (`plugins/agent/design/plugin.sh`, `plugins/agent/build/lib/scope.sh`) that accepts trailing whitespace on the opening and closing fence lines and drops whitespace-only lines inside the block, because build's guard for the block's presence matches only the start of the fence line, so an exact match there would silently fall back to `plan.json` on a padded fence.
 - **Atomic write** — `tmp file + mv + fsync + .bak rotation`. Every state write goes through this.
 - **State read** — every read of a state file validates it first (`validate_json`, `scripts/lib/helpers.sh`); a corrupt file is restored from its `.bak` atomically. When both are corrupt, `get_state_field` (`core/state/resume.sh`) returns the caller's default, while `read_state` and `locked_state_update` (`core/state/atomic.sh`) fail closed with rc 2; `locked_state_update` also emits `state.corruption.unrecoverable`.
 - **Legacy citation** — a `legacy-DoNotUse/path/file:line` reference in a KEEPERS section or issue body. Resolves until that file is `git rm`'d when its keeper's replacement lands.

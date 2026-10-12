@@ -36,7 +36,7 @@ source "$_PLAN_ROOT/scripts/lib/test-output-sanitize.sh"
 # #1052: durable plan-context cache + max_turns envelope recovery (EPIC #966).
 # shellcheck source=../../../scripts/lib/plan-context.sh
 source "$_PLAN_ROOT/scripts/lib/plan-context.sh"
-# #1052: router rc → verdict/reason classifier (shared with impact).
+# #1052: router rc → verdict/reason classifier.
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_PLAN_ROOT/scripts/lib/router-rc-classify.sh"
 # ADR-050 (#1581): unified prior-work seam — seed from a prior run's plan.json.

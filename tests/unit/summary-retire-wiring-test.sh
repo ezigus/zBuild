@@ -20,9 +20,10 @@
 #   SPEC-3 [change]: both bespoke readers are gone
 #   SPEC-4 [change]: both retired wires are gone from both templates, and no
 #                    inert declaration is left behind (the #1865/#1898 lesson)
-#   SPEC-5 [guard] : design's self-feedback wire SURVIVES — it carries design's
-#                    own prior output for refinement, not another stage's
-#                    summary, and nothing here replaces it
+#   SPEC-5 [change]: design's self-feedback wire is retired too (ADR-055 §4,
+#                    amended 2026-10-12) — design gets its own latest output
+#                    under Previous work (ADR-068 §8), so no template wires any
+#                    feedback:
 #   SPEC-6 [guard] : no prompt section still cross-references a heading that no
 #                    longer exists
 set -uo pipefail
@@ -146,33 +147,25 @@ done
 for _m in "$REPO_ROOT/plugins/agent/build/manifest.yaml" \
           "$REPO_ROOT/plugins/agent/design/manifest.yaml"; do
     _n="$(basename "$(dirname "$_m")")"
-    _inputs_blob="$(manifest_graph_get_inputs "$_m")"
-    if grep -qE '^(gate_feedback|design_gate_feedback)\|' <<< "$_inputs_blob"; then
+    if grep -qE '^inputs:' "$_m"; then
         assert_fail "[SPEC-4] $_n leaves no inert input declaration" \
-            "a retired wire's input is still declared"
+            "an inputs: block is still declared"
     else
         assert_pass "[SPEC-4] $_n leaves no inert input declaration"
     fi
 done
 
-# ─── SPEC-5: design's self-feedback survives ─────────────────────────────────
-# It carries design's OWN prior output for refinement (#773), not another
-# stage's summary. Nothing in this change replaces it, so removing it would be
-# an unrelated regression.
-print_test_section "5. design's self-feedback wire is untouched"
-
-_sf="$(awk '/^ *feedback:/,/^[a-z_]+:/' "$REPO_ROOT/config/templates/simple.yaml")"
-assert_contains "[SPEC-5] design still receives its own prior design" "$_sf" "output: design"
-
-# #2042: the SPEC says the wire carries design's OWN prior output, NOT another
-# stage's summary. A `contains` check establishes the first half only — it would
-# pass just as well on a feedback block that ALSO wired a summary in, which is
-# precisely the regression the sentence rules out. Pin the edge's endpoints.
-_dfb="$(sed -n '/^design_verify_cycle:/,/^# ───/p' "$REPO_ROOT/config/templates/simple.yaml" \
-        | sed -n '/feedback:/,$p')"
-assert_contains "[SPEC-5] the edge's source stage is design itself" "$_dfb" "stage: design"
-assert_eq "[SPEC-5] and it wires no OTHER stage's output into design" \
-    "0" "$(grep -cE '^ +output: (summary|gate_feedback|acceptance|impact)' <<< "$_dfb" || true)"
+# ─── SPEC-5: no template wires feedback ──────────────────────────────────────
+# Design's own prior design.md reaches it under Previous work (ADR-068 §8), so
+# the self-feedback wire went with the others.
+print_test_section "5. no template wires feedback:"
+for _t in simple deployed; do
+    if grep -qE '^[[:space:]]+feedback:' "$REPO_ROOT/config/templates/$_t.yaml" 2>/dev/null; then
+        assert_fail "[SPEC-5] $_t.yaml wires no feedback:" "a feedback: block remains"
+    else
+        assert_pass "[SPEC-5] $_t.yaml wires no feedback:"
+    fi
+done
 
 # ─── SPEC-6: no dangling cross-reference ─────────────────────────────────────
 # The tautology section pointed at "the PRIOR GATE FEEDBACK above". A heading

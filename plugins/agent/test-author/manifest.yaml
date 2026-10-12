@@ -56,11 +56,6 @@ config:
 capabilities:
   writes_repository: true
 
-
-inputs:
-  - id: design
-    required: true
-
 outputs:
   - id: test_author_result
     path: "${artifact_dir}/test-author-result.json"

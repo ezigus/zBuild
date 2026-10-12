@@ -2,18 +2,19 @@
 # tests/integration/pipeline-preflight-missing-stage-test.sh
 # ADR-020 (#496) keystone test.
 #
-# Invokes a real subprocess against a template that omits the `plan` stage.
-# build's manifest declares `source: stage:plan` for its `plan` input, so the
-# pre-flight validator MUST detect the missing producer. (#979: the fixture was
-# reworked from the retired `review→stage:test` coupling to `build→stage:plan`
-# after the standard lattice — and the `review` plugin — was deleted; same
-# validator path, KEEP-set plugin.)
+# Invokes a real subprocess against a template that breaks the contract: its
+# cycle's exit_when names review-aggregator, a convergence:advisory aggregator,
+# where a cycle requires a convergence:gate one (ADR-040 §5). The pre-flight
+# validator MUST refuse it (CYCLE_AGG_TYPE) before any stage runs. (A stage
+# missing from the flow — this test's original case — is no longer a violation:
+# stages declare no inputs, ADR-055 §1, amended 2026-10-12. The filename is
+# kept for history.)
 #
 # Assertions (enforce mode):
 #   - rc=1 from the runner (validator returns 1, runner propagates it;
 #     #1850, ADR-054 §4 — it was 2; status=preflight_failed says why)
 #   - intake's `plugin.run.start` event is NOT emitted (halts BEFORE any stage)
-#   - structured error on stderr names 'build' and 'plan'
+#   - structured error on stderr names CYCLE_AGG_TYPE and review-aggregator
 #   - `pipeline.preflight.fail` event in events.jsonl
 #
 # Assertions (warn mode, default):
@@ -32,22 +33,22 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "pipeline pre-flight keystone — missing plan producer (#496, ADR-020)"
+print_test_header "pipeline pre-flight keystone — the runner halts on a contract violation (#496, ADR-020)"
 setup_test_env "preflight-keystone"
 
 # #1921 follow-up: reserved goal text, so the zbuild/state/goal-<hash> ref this
 # run produces is traceable to a test. No repo isolation needed here — the driver
 # already runs inside OVERLAY_REPO, and the template resolves through THAT repo's
 # .zbuild overlay, so a cd of our own would break template resolution.
-_ZB_GOAL="$(zb_test_goal preflight-missing-producer)"
+_ZB_GOAL="$(zb_test_goal preflight-keystone)"
 
-# ── Pre-conditions: a fixture template that omits `plan` ────────────────────
+# ── Pre-conditions: a fixture template that breaks the contract ─────────────
 # #1270: install the fixture as a per-repo `.zbuild/templates/` overlay in a temp
 # repo. The DRIVER runs with CWD = that repo (below) so the resolver reads the
 # overlay from $PWD; nothing lands in the tracked config/templates/, and the temp
 # repo is reaped by the master trap (no source-tree leak on early exit).
 OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
-install_template_overlay "$OVERLAY_REPO" broken-contract-missing-producer
+install_template_overlay "$OVERLAY_REPO" broken-contract-aggregator
 
 # Shared environment: route state into the temp dir so the run is hermetic.
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
@@ -72,7 +73,7 @@ set +e
 source "$REPO_ROOT/core/pipeline/runner.sh"
 set +e
 ZBUILD_CONTRACT_VALIDATOR="\${ZBUILD_CONTRACT_VALIDATOR:-enforce}" \
-    main --goal "$_ZB_GOAL" --template broken-contract-missing-producer
+    main --goal "$_ZB_GOAL" --template broken-contract-aggregator
 _rc=\$?
 set -e
 echo "EXIT_CODE=\$_rc"
@@ -87,9 +88,9 @@ out1="$TEST_TEMP_DIR/run1.out"
 exit_code1="$(grep -E '^EXIT_CODE=' "$out1" 2>/dev/null | tail -1 | cut -d= -f2 || echo "")"
 
 if [[ "$exit_code1" == "1" ]]; then
-    assert_pass "enforce: runner exits rc=1 on missing producer"
+    assert_pass "enforce: runner exits rc=1 on a contract violation"
 else
-    assert_fail "enforce: runner exits rc=1 on missing producer" \
+    assert_fail "enforce: runner exits rc=1 on a contract violation" \
         "got exit code '$exit_code1'; stderr-tail: $(tail -10 "$err1" 2>/dev/null | tr '\n' ' ')"
 fi
 
@@ -100,11 +101,11 @@ else
         "no 'Pipeline cannot start' in stderr; err-tail: $(tail -5 "$err1" 2>/dev/null)"
 fi
 
-if grep -qE "(id=plan|stage 'plan')" "$err1" 2>/dev/null; then
-    assert_pass "enforce: stderr names the missing producer/input"
+if grep -qE "CYCLE_AGG_TYPE \(id=review-aggregator\)" "$err1" 2>/dev/null; then
+    assert_pass "enforce: stderr names the violation and the stage"
 else
-    assert_fail "enforce: stderr names the missing producer/input" \
-        "no 'plan' producer/input reference in stderr"
+    assert_fail "enforce: stderr names the violation and the stage" \
+        "no 'CYCLE_AGG_TYPE (id=review-aggregator)' in stderr"
 fi
 
 # Pre-flight halts BEFORE intake runs — no plugin.run.start event for intake.

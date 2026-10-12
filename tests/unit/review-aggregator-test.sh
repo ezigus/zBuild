@@ -123,17 +123,6 @@ assert_contains "[SPEC-4] md names the correctness lens + score" "$_md" "#### co
 assert_contains "[SPEC-4] md renders a finding message (not blank)" "$_md" "off-by-one in loop"
 assert_contains "[SPEC-4] de-duped section names contributing lenses" "$_md" "lenses: correctness, security"
 
-# ─── SPEC-5: aggregation EQUIVALENCE with review-report's _rr_aggregate ──────
-# DoD: the collapsed report must match the current review-report aggregation.
-# Feed the SAME lenses array to both functions and assert byte-identical output.
-# shellcheck source=../../plugins/agent/review-report/lib/lenses.sh
-source "$REPO_ROOT/plugins/agent/review-report/lib/lenses.sh"
-_lenses_arr="$artifact_dir/review-aggregator-lenses.json"
-assert_file_exists "[SPEC-5] aggregator wrote its combined lenses array" "$_lenses_arr"
-_ra_out="$(_ra_aggregate "$_lenses_arr")"
-_rr_out="$(_rr_aggregate "$_lenses_arr")"
-assert_eq "[SPEC-5] _ra_aggregate output matches _rr_aggregate byte-for-byte" "$_rr_out" "$_ra_out"
-
 # ─── SPEC-6: empty lens group degrades to an empty report (rc 0 + event) ─────
 _empty_dir="$TEST_TEMP_DIR/empty"
 mkdir -p "$_empty_dir"
@@ -266,19 +255,6 @@ ZBUILD_ARTIFACT_DIR="$_d_s8/artifacts" ZBUILD_STAGE_INPUTS="$_si_s8" review_aggr
 _rc_s8=$?
 set -e
 assert_eq "[#1842/SPEC-8] hook returns 0 (advisory never aborts)" "0" "$_rc_s8"
-
-# ─── [#1842/SPEC-9]: _ra_aggregate ≡ _rr_aggregate byte-for-byte ─────────────
-# Guard: after the v2 migration the aggregation logic must remain byte-identical
-# to _rr_aggregate (ADR-038 / SPEC-5 predecessor invariant). Use a fresh input
-# independent of the earlier SPEC-5 run to verify equivalence independently.
-_lenses_s9="$TEST_TEMP_DIR/spec9-guard-lenses.json"
-printf '%s\n' \
-    '[{"name":"s9","score":6,"findings":[{"file":"g.sh","category":"logic","severity":"high","line":5,"message":"s9 guard issue","introduced":true}]}]' \
-    > "$_lenses_s9"
-_ra_out_s9="$(_ra_aggregate "$_lenses_s9")"
-_rr_out_s9="$(_rr_aggregate "$_lenses_s9")"
-assert_eq "[#1842/SPEC-9] _ra_aggregate output matches _rr_aggregate byte-for-byte" \
-    "$_rr_out_s9" "$_ra_out_s9"
 
 cleanup_test_env
 print_test_results

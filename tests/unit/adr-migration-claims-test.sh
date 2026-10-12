@@ -58,7 +58,7 @@ fi
 # every non-test .sh file in the plugin directory counts. Only code lines count:
 # a comment that names the old parser (review-lens explains why it left it) is
 # not a call.
-_MIGRATED_STAGES="plan security-lens monitor review-lens review-report"
+_MIGRATED_STAGES="plan security-lens monitor review-lens"
 
 # Prints why <plugin dir> is not migrated; prints nothing when it is.
 _stage_unmigrated_reason() {
@@ -87,7 +87,7 @@ fi
 
 # Negative control: SPEC-2's check must see a bare call put back. Copy each of
 # the two newly migrated plugins, add one code-line call, and expect a reason.
-for _s in review-lens review-report; do
+for _s in review-lens; do
     _nc="$TEST_TEMP_DIR/negctl-$_s"
     cp -R "$REPO_ROOT/plugins/agent/$_s" "$_nc"
     # shellcheck disable=SC2016  # the $1 is written into the copied plugin, not expanded here
@@ -98,20 +98,20 @@ for _s in review-lens review-report; do
 done
 # ...and a comment naming the old parser is not a call.
 _nc="$TEST_TEMP_DIR/negctl-comment"
-cp -R "$REPO_ROOT/plugins/agent/review-report" "$_nc"
+cp -R "$REPO_ROOT/plugins/agent/review-lens" "$_nc"
 printf '\n    # extract_first_json_object is the old parser\n' >> "$_nc/plugin.sh"
 assert_eq "SPEC-2 negative control: a comment naming extract_first_json_object is not a call" \
     "" "$(_stage_unmigrated_reason "$_nc")"
 
-# ── SPEC-3: the ADR names review-lens and review-report as migrated ────────
+# ── SPEC-3: the ADR names review-lens as migrated ──────────────────────────
 # The ADR said both were "**not** migrated" long after the code moved (#1840,
 # #1843). The code is migrated (SPEC-2), so the ADR must say so, name each
 # stage's schema gate, and keep no sentence saying the opposite.
 _mig_line="$(grep -E '^\*\*Migration\.\*\*' "$ADR" || true)"
-for _s in review-lens review-report; do
+for _s in review-lens; do
     assert_contains "SPEC-3: ADR-028's Migration paragraph lists $_s" "$_mig_line" "\`$_s\`"
 done
-for _g in _review_lens_envelope_schema_ok:review-lens _rr_lens_envelope_schema_ok:review-report; do
+for _g in _review_lens_envelope_schema_ok:review-lens; do
     _fn="${_g%%:*}"
     grep -rqE "^${_fn}\(\)" "$REPO_ROOT/plugins/agent/${_g#*:}" \
         || assert_fail "SPEC-3 setup: $_fn is defined in ${_g#*:}" "not found — update this test"

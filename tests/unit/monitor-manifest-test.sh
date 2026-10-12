@@ -16,7 +16,7 @@
 #   [#1847/SPEC-8]  assembled prompt contains a TURN BUDGET block before route_to_model
 #   [#1847/SPEC-9]  assembled prompt contains a WALL CLOCK BUDGET block before route_to_model
 #   config.valid_verdicts remains exactly [pass, degraded]
-#   inputs: declares only {deploy_result, pr_url}, both required:false, no restated source/path/type
+#   no inputs: block (retired, ADR-055 §1) — deploy_result/pr_url come from the index
 #   ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url win over the hardcoded artifacts_dir paths
 #   [#1847/SPEC-15] outputs: block still declares exactly one primary:true entry
 #   provides.role: monitor unchanged
@@ -94,30 +94,12 @@ else
     assert_fail "valid_verdicts includes degraded" "${_s11_stanza:-absent}"
 fi
 
-# ─── SPEC-12: inputs: declares only {deploy_result, pr_url}, both required:false ─
-print_test_section "inputs: declares only deploy_result and pr_url, both required:false, no source/path/type"
-
-_s12_inputs="$(awk '
-    /^inputs:/ { f=1; next }
-    f && /^[a-zA-Z]/ { exit }
-    f { print }
-' "$MON_MANIFEST" 2>/dev/null || true)"
-_s12_id_count="$(grep -c '^[[:space:]]*-[[:space:]]*id:' <<< "$_s12_inputs" 2>/dev/null || true)"
-assert_eq "inputs: declares exactly 2 input ids" "2" "$_s12_id_count"
-if grep -q 'id:[[:space:]]*deploy_result' <<< "$_s12_inputs"; then
-    assert_pass "inputs: declares deploy_result"
-else
-    assert_fail "inputs: declares deploy_result" "${_s12_inputs:-absent}"
-fi
-if grep -q 'id:[[:space:]]*pr_url' <<< "$_s12_inputs"; then
-    assert_pass "inputs: declares pr_url"
-else
-    assert_fail "inputs: declares pr_url" "${_s12_inputs:-absent}"
-fi
-_s12_required_false_count="$(grep -c 'required:[[:space:]]*false' <<< "$_s12_inputs" 2>/dev/null || true)"
-assert_eq "inputs: both entries have required:false" "2" "$_s12_required_false_count"
-_s12_restated="$(grep -cE '^\s*(source|path|type):' <<< "$_s12_inputs" 2>/dev/null || true)"
-assert_eq "inputs: no restated source/path/type keys" "0" "$_s12_restated"
+# ─── SPEC-12: monitor declares no inputs: (ADR-055 §1, amended 2026-10-12) ────
+# deploy_result / pr_url reach it through the index of every stage's latest
+# output (SPEC-18 covers that path), so the manifest declares nothing.
+print_test_section "monitor declares no inputs: block"
+assert_eq "inputs: none declared — every output arrives through the index" "" \
+    "$(grep -E '^inputs:' "$MON_MANIFEST" 2>/dev/null || true)"
 
 # ─── SPEC-15: outputs: block still declares exactly one primary:true entry ───
 print_test_section "[#1847/SPEC-15] outputs: block declares exactly one primary:true entry (monitor_report)"

@@ -80,14 +80,6 @@ config:
   # ADR-055 §4 — must be non-empty for a v2-compliant stage (#1708).
   valid_verdicts: [complete, degraded]
 
-inputs:
-  # The lens group's per-lens results: a map producer, so the engine hands over
-  # the SET of member paths (ADR-055 §1.4). Required (#1842): with no lens
-  # result there is nothing to aggregate, and the engine refuses the dispatch
-  # rather than letting an absent review read as a clean one (#1753).
-  - id: lens_result
-    required: true
-
 outputs:
   # FIRST entry — always written; keeps the stage green without opting into the
   # blocking artifact-contract (no provides.artifact_type above).

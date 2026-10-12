@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # tests/unit/core-pipeline-contract-validator-test.sh
 # ADR-020 (#496) — unit tests for _contract_validate_pipeline.
+#
+#   TC-1/2: a clean stage list passes, warn and enforce
+#   TC-3:   warn mode reports a violation and returns 0
+#   TC-4:   enforce mode returns 1 on the same violation
+#   TC-5:   an enforce failure writes the preflight_failed state stub, with
+#           reason contract_violation
+#   TC-6:   stage order decides nothing — no stage declares inputs
+#   TC-10:  an unset mode means enforce
+# The violation used throughout is a manifest still declaring inputs: — retired
+# (ADR-055 §1, amended 2026-10-12), refused as INPUTS_RETIRED.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,7 +37,6 @@ hooks:
   run: intake_run
 requires:
   core: [redaction]
-inputs: []
 outputs:
   - id: scope_manifest
     type: file@1
@@ -52,14 +61,6 @@ hooks:
   run: plan_run
 requires:
   core: [redaction]
-inputs:
-  - id: scope_manifest
-    type: file
-    required: true
-  - id: goal_string
-    type: string
-    source: external
-    required: true
 outputs:
   - id: plan
     type: file@1
@@ -84,10 +85,6 @@ hooks:
   run: build_run
 requires:
   core: [redaction]
-inputs:
-  - id: plan
-    type: file
-    required: true
 outputs:
   - id: diff_patch
     type: file@1
@@ -110,10 +107,6 @@ kind: tool
 version: 0.1.0
 hooks:
   run: test_run
-inputs:
-  - id: diff_patch
-    type: file
-    required: true
 outputs:
   - id: test_results
     type: file@1
@@ -138,16 +131,6 @@ hooks:
   run: review_run
 requires:
   core: [redaction]
-inputs:
-  - id: plan
-    type: file
-    required: true
-  - id: diff_patch
-    type: file
-    required: true
-  - id: test_results
-    type: file
-    required: true
 outputs:
   - id: review
     type: file@1
@@ -189,144 +172,76 @@ test
 review" "$PLUGINS_ROOT" "$STATE_FILE" 2>/dev/null || rc=$?
 assert_eq "TC-2: happy path passes in enforce mode" "0" "$rc"
 
-# TC-3: Missing test stage — warn returns 0 but emits diagnostics
+# A stage written for the old contract: it still declares inputs.
+mkdir -p "$PLUGINS_ROOT/agent/old-contract"
+cat > "$PLUGINS_ROOT/agent/old-contract/manifest.yaml" <<EOF
+id: old-contract
+name: Legacy
+kind: agent
+version: 0.1.0
+hooks:
+  run: old_contract_run
+requires:
+  core: [redaction]
+inputs:
+  - id: plan
+    required: true
+outputs:
+  - id: old_contract_out
+    type: file@1
+    format: text
+    path: \${artifact_dir}/old-contract.json
+    required: true
+  - id: old_contract_summary
+    path: "\${artifact_dir}/old-contract-summary.md"
+    type: old-contract-summary.md@1
+    format: markdown
+    required: true
+    summary: true
+EOF
+
+# TC-3: warn returns 0 but emits diagnostics
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=warn _contract_validate_pipeline "intake
 plan
-build
-review" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
+old-contract" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
 assert_eq "TC-3: warn mode returns 0 even on violation" "0" "$rc"
 assert_contains "TC-3: warn mode emits structured error" "$err_out" "Pipeline cannot start"
-assert_contains "TC-3: warn mode names missing producer" "$err_out" "test"
+assert_contains "TC-3: warn mode names the retired inputs" "$err_out" "INPUTS_RETIRED"
 
-# TC-4: Missing test stage — enforce returns 2
+# TC-4: enforce returns 1
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
 plan
-build
-review" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
+old-contract" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
 assert_eq "TC-4: enforce mode returns rc=1 on violation (#1850: was 2)" "1" "$rc"
-assert_contains "TC-4: enforce mode emits 'test'" "$err_out" "test"
+assert_contains "TC-4: enforce mode names the stage" "$err_out" "old-contract"
 
 # TC-5: enforce-failure writes preflight_failed state stub
 if [[ -f "$STATE_FILE" ]]; then
-    status_val="$(jq -r '.status' "$STATE_FILE" 2>/dev/null || echo "")"
-    assert_eq "TC-5: state stub status=preflight_failed" "preflight_failed" "$status_val"
+    assert_eq "TC-5: state stub status=preflight_failed" "preflight_failed" "$(jq -r '.status' "$STATE_FILE" 2>/dev/null)"
+    assert_eq "TC-5: state stub reason=contract_violation" "contract_violation" "$(jq -r '.reason' "$STATE_FILE" 2>/dev/null)"
 else
     assert_fail "TC-5: state stub written" "no state file at $STATE_FILE"
 fi
 rm -f "$STATE_FILE"
 
-# TC-6: stage ORDER no longer decides validity (#1825)
+# TC-6: order decides nothing — the clean set passes in any order.
 rc=0
-err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
-plan
+err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "review
+test
 build
-review
-test" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-# This ordering (review before test) was MISORDERED at the merge-base and is now
-# legal. ADR-055 §1.3 legalises a producer that runs later wherever the template
-# declares a re-entry reaching the consumer again — a cycle or a route_back — and
-# the old forward-only rule rejected exactly those cases, which is why
-# `source: artifacts` existed as an untyped escape hatch (#1768). Every name here
-# resolves, so there is nothing left to refuse.
-assert_eq "TC-6: a later producer is no longer refused on order alone" "0" "$rc"
-# [guard] not permissiveness — an unresolvable NAME in the same shape still fails.
-rc=0
-# Drop `build`, the producer of the `diff_patch` that `test` requires — dropping
-# `review` orphans nothing, so it would have proved the guard rather than the rule.
-err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
 plan
-test" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-6: but a name no stage produces still fails enforce" "1" "$rc"
-assert_contains "TC-6: and is reported as unresolved, not misordered" "$err_out" "INPUT_UNRESOLVED"
-
-# TC-7: External source allowlist — goal_string is OK
-# (already covered by TC-1; check for negative case below)
-
-# TC-8: Bad external source — fabricate a manifest with unknown external id
-mkdir -p "$PLUGINS_ROOT/agent/bad-ext"
-cat > "$PLUGINS_ROOT/agent/bad-ext/manifest.yaml" <<EOF
-id: design
-name: Design
-kind: agent
-version: 0.1.0
-hooks:
-  run: design_run
-requires:
-  core: [redaction]
-inputs:
-  - id: bogus_external_id
-    type: string
-    source: external
-    required: true
-outputs:
-  - id: design_doc
-    type: file@1
-    format: text
-    path: \${artifact_dir}/design.md
-    required: true
-  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
-  - id: design_summary
-    path: "\${artifact_dir}/design-summary.md"
-    type: design-summary.md@1
-    format: markdown
-    required: true
-    summary: true
-EOF
-rc=0
-err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "design" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-8: bogus external id detected" "1" "$rc"
-assert_contains_regex "TC-8: bogus external diagnostic" "$err_out" "external|allowlist"
+intake" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
+assert_eq "TC-6: reversed stage order passes" "0" "$rc"
 rm -f "$STATE_FILE"
-rm -rf "$PLUGINS_ROOT/agent/bad-ext"
-
-# TC-9: Bad path template variable
-mkdir -p "$PLUGINS_ROOT/agent/bad-var"
-cat > "$PLUGINS_ROOT/agent/bad-var/manifest.yaml" <<EOF
-id: design
-name: Design
-kind: agent
-version: 0.1.0
-hooks:
-  run: design_run
-requires:
-  core: [redaction]
-inputs:
-  - id: scope_manifest
-    type: file
-    required: true
-    path: \${bogus_var}/x.md
-outputs:
-  - id: design_doc
-    type: file@1
-    format: text
-    path: \${artifact_dir}/design.md
-    required: true
-  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
-  - id: design_summary
-    path: "\${artifact_dir}/design-summary.md"
-    type: design-summary.md@1
-    format: markdown
-    required: true
-    summary: true
-EOF
-rc=0
-err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
-design" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-9: unknown var detected" "1" "$rc"
-assert_contains_regex "TC-9: unknown var diagnostic" "$err_out" "bogus_var|unknown variable"
-rm -f "$STATE_FILE"
-rm -rf "$PLUGINS_ROOT/agent/bad-var"
 
 # TC-10: enforce-default (Wave 12-E #664) — empty ZBUILD_CONTRACT_VALIDATOR
-# now means `enforce`. A missing producer must therefore return rc=1.
+# means `enforce`.
 unset ZBUILD_CONTRACT_VALIDATOR
 rc=0
 _contract_validate_pipeline "intake
-plan
-build
-review" "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+old-contract" "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
 assert_eq "TC-10: default (unset) ≡ enforce (rc=1 on violation)" "1" "$rc"
 rm -f "$STATE_FILE"
 

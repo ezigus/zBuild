@@ -9,14 +9,12 @@ One page per **leaf node** (plugin). Each is generated from its `manifest.yaml` 
 | [[plugins/build]] | agent | builder |
 | [[plugins/deploy]] | agent | deploy_agent |
 | [[plugins/design]] | agent | designer |
-| [[plugins/impact]] | agent | impact_analyzer |
 | [[plugins/intake]] | agent | intake |
 | [[plugins/monitor]] | agent | monitor |
 | [[plugins/plan]] | agent | planner |
 | [[plugins/pr-delivery]] | agent | pr |
 | [[plugins/review-aggregator]] | agent | review_aggregator |
 | [[plugins/review-lens]] | agent | review_lens |
-| [[plugins/review-report]] | agent | review_report |
 | [[plugins/security-lens]] | agent | security-auditor |
 | [[plugins/spec-acceptance]] | agent | acceptance_gate |
 | [[plugins/validate]] | agent | validate_agent |

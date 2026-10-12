@@ -192,3 +192,14 @@ repeats it.
 Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh`
 (C13: for each lens in `config/templates/simple.yaml`'s `review_lenses`, the
 prompt the plugin sends carries the instruction).
+
+## Amendment (2026-10-12): every lens gets the same evidence; the lens's question is its persona's
+
+§2's per-lens evidence is retired. Nothing produced the per-lens artifacts once review-report went (the
+call graph was its own), and a lens is a stage like any other (ADR-051 §3, amended 2026-10-12): every
+lens judges the same change bundle (§2's merge-base basis), the review-lens stage writes one job for every
+lens, and the question each lens asks is the perspective of the persona its element names. review-report
+and `scripts/lib/call-graph.sh` are retired.
+
+Enforced by: `tests/unit/retired-impact-review-report-inputs-test.sh` RT2 (review-report and the call
+graph are gone), RT3 (one job, the same evidence, no lens text table).

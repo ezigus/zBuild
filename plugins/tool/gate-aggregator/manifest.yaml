@@ -70,22 +70,6 @@ config:
 # required:false at the wiring level keeps the aggregator composable
 # (a template need not wire every gate); the runtime fail-closes on a missing
 # REQUIRED gate independently of this static-wiring flag.
-inputs:
-  - id: test_results
-    required: false
-  - id: shape_floor_result
-    required: false
-  - id: gate_result
-    required: false
-  - id: lint_result
-    required: false
-  - id: coverage_result
-    required: false
-  - id: mutation_result
-    required: false
-  - id: secret_scan_result
-    required: false
-
 outputs:
   - id: gate_aggregator_result
     path: "${artifact_dir}/gate-aggregator-result.json"

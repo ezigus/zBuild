@@ -13,8 +13,8 @@
 #             misconfigured), rc 1, and still the summary — never a glob fallback
 # K5 [change] zero lens results is not "ready" (#1753): needs_attention, and the
 #             summary says no review happened
-# K6 [change] the manifest requires lens_result, so the engine refuses to
-#             dispatch an aggregator with nothing to aggregate
+# K6 [change] the manifest declares no inputs (retired, ADR-055 §1): the
+#             aggregator itself says when it has nothing to aggregate (K5)
 # K7 [change] roster and find discovery are gone from plugin.sh
 # K8 [change] a signal ends the stage with rc 1 and the guard's disposition
 # K9 [change] the verdict key is written literally, not assembled to dodge a grep
@@ -106,8 +106,8 @@ assert_eq "[K5] zero lens results → needs_attention, never ready" "needs_atten
     "$(_f merge_readiness "$_k5/review-report.json")"
 assert_contains "[K5] ...the summary says no review happened" \
     "$(_f summary "$_k5/review-report.json")" "no review happened"
-_req="$(awk '/- id: lens_result/{f=1; next} f && /required:/{print $2; exit}' "$MANIFEST")"
-assert_eq "[K6] lens_result is required: true" "true" "$_req"
+assert_eq "[K6] no inputs: declared — zero lenses is the stage's own finding (K5)" "" \
+    "$(grep -E '^inputs:' "$MANIFEST" 2>/dev/null || true)"
 
 print_test_section "K7/K9: no self-discovery, no dodged key"
 for _sym in _ra_resolve_group _ra_collect_lenses_roster _ra_member_manifest '_TPL_PARALLEL' 'find '; do

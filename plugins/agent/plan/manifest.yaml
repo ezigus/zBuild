@@ -63,12 +63,6 @@ config:
     - error
   tier_default: T2
 
-inputs:
-  - id: scope_manifest
-    required: true
-  - id: intake_goal
-    required: true
-
 outputs:
   - id: plan
     path: ${artifact_dir}/plan.json

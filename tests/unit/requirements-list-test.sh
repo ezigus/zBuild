@@ -12,9 +12,9 @@
 #           checkboxes (under any heading, not inside a code fence), numbered
 #           R-1, R-2, … in order by the engine; the text is kept as written. With
 #           no checkboxes, R-1 is the title and first paragraph. A goal run writes
-#           none (and leaves no stale list). The manifests declare the list as an
-#           intake output and an input of design, design-gate, spec-coverage and
-#           issue-acceptance.
+#           none (and leaves no stale list). Intake's manifest declares the list
+#           as an output; design, design-gate, spec-coverage and issue-acceptance
+#           declare no inputs and read it by id from the index of every output.
 # Q2 [code] the parser splits ` covers: R-1 R-3` from a requirement's text,
 #           before or after the evidence, and acceptance_spec_covers lists the ids.
 # Q3 [code] design-gate fails a design that leaves an R uncovered, naming it and
@@ -101,9 +101,16 @@ fi
 _out="$(awk '/^outputs:/{o=1;next} o&&/^[a-z_]+:/{exit} o' "$PLUGIN_DIR/manifest.yaml")"
 assert_contains "[Q1] intake declares the requirements output" "$_out" '- id: requirements'
 assert_contains "[Q1] at artifacts/requirements.json" "$_out" 'path: "${artifact_dir}/requirements.json"'
+# Declared inputs are retired (ADR-055 §1, amended 2026-10-12): each consumer
+# reads the list by its output id from the index of every stage's latest output.
 for _m in agent/design tool/design-gate agent/spec-coverage agent/issue-acceptance; do
-    _in="$(awk '/^inputs:/{o=1;next} o&&/^[a-z_]+:/{exit} o' "$REPO_ROOT/plugins/$_m/manifest.yaml")"
-    assert_contains "[Q1] $_m declares the requirements input" "$_in" '- id: requirements'
+    assert_eq "[Q1] $_m declares no inputs:" "" \
+        "$(grep -E '^inputs:' "$REPO_ROOT/plugins/$_m/manifest.yaml" 2>/dev/null || true)"
+    if grep -rqE 'inputs\.requirements|_input requirements' "$REPO_ROOT/plugins/$_m" --include='*.sh' --exclude-dir=tests; then
+        assert_pass "[Q1] $_m reads the requirements list from the index by id"
+    else
+        assert_fail "[Q1] $_m reads the requirements list from the index by id" "no read of the requirements id"
+    fi
 done
 unset ZBUILD_ISSUE ZBUILD_STAGE_INPUTS
 

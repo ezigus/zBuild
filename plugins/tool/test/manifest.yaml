@@ -58,17 +58,6 @@ config:
   # `scripts/run-tests.sh --files {files}` when the repo has it, else runs full.
   test_cmd_targeted_default: ""
 
-# Wave 12-C (#662): no declared inputs.
-# Post-#608 + Wave 12-B (#667), the test stage rsyncs the repo HEAD (which
-# already contains the committed iter work) and runs the test suite directly.
-# diff.patch is consumed by the review stage (LLM context) and operators
-# (audit) — not by test. See ADR-020 amendment §A.
-inputs:
-  # #2121: the design's declared TESTFILES join the targeted rerun set.
-  # Optional: a template without design runs the suite as before.
-  - id: design
-    required: false
-
 outputs:
   # #2183: this stage's error channel — whatever its subprocesses said when
   # they failed. Published to the other stages' prompts (bounded) when this

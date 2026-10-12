@@ -98,12 +98,6 @@ _c_design() { ( ad="$(_fixture design)"; export ZBUILD_REPO_ROOT="${ad%/state/ar
     route_to_model_loop() { cp "$2" "$RAW/design.txt"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 1; }
     _route_loop_close_final_banner() { :; }
     _design_stage_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/plan.json" "$ad/design-out.md" "$ad" ) >/dev/null 2>&1; }
-_c_impact() { ( ad="$(_fixture impact)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
-    source "$REPO_ROOT/plugins/agent/impact/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf '%s' "$2" > "$RAW/impact.txt"; printf '%s' '{"schema_version":1,"verdict":"complete","missing":[]}'; }
-    resolve_tier() { printf 'T2'; }
-    _impact_scope_prefilter() { printf '[]'; }
-    _impact_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/design.md" "$ad/plan.json" "$ad/impact.json" "$ad" ) >/dev/null 2>&1; }
 _c_build() { ( ad="$(_fixture build)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
     route_to_model_loop() { cp "$2" "$RAW/build.txt"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 1; }
@@ -131,13 +125,6 @@ _c_review_lens() { ( ad="$(_fixture review-lens)"
     resolve_tier() { printf 'T2'; }
     printf 'diff --git a/foo.sh b/foo.sh\n+echo hi\n' > "$ad/bundle.txt"
     _review_lens_run_inner correctness "${ad%/artifacts}/scope-manifest.md" "$ad/bundle.txt" "$ad/lens.json" "$ad" ) >/dev/null 2>&1; }
-_c_review_report() { ( ad="$(_fixture review-report)"
-    source "$REPO_ROOT/plugins/agent/review-report/plugin.sh" >/dev/null 2>&1
-    route_to_model() { return 1; }
-    _RR_LENSES=(correctness)
-    printf 'diff --git a/foo.sh b/foo.sh\n+echo hi\n' > "$ad/bundle.txt"
-    _rr_fanout_lenses "" "$ad/bundle.txt" "$ad" T2 >/dev/null
-    cp "$ad/lens-correctness-prompt.txt" "$RAW/review-report.txt" ) >/dev/null 2>&1; }
 _c_spec_coverage() { ( ad="$(_fixture spec-coverage)"; sd="${ad%/artifacts}"
     printf 'ISSUE-TEXT: make the stage write its result\n' > "$sd/intake.md"
     source "$REPO_ROOT/plugins/agent/spec-coverage/plugin.sh" >/dev/null 2>&1
@@ -177,7 +164,7 @@ for _s in "${STAGES[@]}"; do
     declare -F "_c_${_s//-/_}" >/dev/null 2>&1 || _missing+="$_s "
 done
 assert_eq "[E3] every model-calling stage has a composer here" "" "$_missing"
-assert_eq "[E3] the model-calling stages were found (fixture live)" "1" "$([[ ${#STAGES[@]} -ge 12 ]] && echo 1 || echo 0)"
+assert_eq "[E3] the model-calling stages were found (fixture live)" "1" "$([[ ${#STAGES[@]} -ge 10 ]] && echo 1 || echo 0)"
 
 SECTIONS=("## From the repo" "## What you own" "## What you judge against" "## Previous work" "## What you must not do" "## Rules for this stage")
 

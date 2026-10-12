@@ -53,10 +53,6 @@ config:
     - complete
     - degraded
 
-# Empty by construction. A declared input resolves to another stage's declared
-# OUTPUT (ADR-055 §5); this stage's source is a git ref, which no stage produces.
-inputs: []
-
 outputs:
   # #2183: this stage's error channel — whatever its subprocesses said when
   # they failed. Published to the other stages' prompts (bounded) when this

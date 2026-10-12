@@ -47,10 +47,6 @@ config:
   tier_default: T0
   coverage_floor: 29
 
-inputs:
-  - id: test_results
-    required: false
-
 outputs:
   - id: coverage_result
     path: "${artifact_dir}/coverage-result.json"

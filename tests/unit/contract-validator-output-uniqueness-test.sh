@@ -31,7 +31,6 @@ kind: agent
 version: 0.1.0
 hooks:
   run: intake_run
-inputs: []
 outputs:
   - id: scope_manifest
     type: file@1
@@ -54,10 +53,6 @@ kind: agent
 version: 0.1.0
 hooks:
   run: build_run
-inputs:
-  - id: scope_manifest
-    type: file
-    required: true
 outputs:
   - id: diff_patch
     type: file@1
@@ -82,10 +77,6 @@ kind: agent
 version: 0.1.0
 hooks:
   run: extra_build_run
-inputs:
-  - id: scope_manifest
-    type: file
-    required: true
 outputs:
   - id: diff_patch
     type: file@1

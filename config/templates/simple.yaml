@@ -128,14 +128,6 @@ design_verify_cycle:
       - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
   max_iterations: 2
   on_max: halt
-  feedback:
-    - from:
-        stage: design
-        output: design
-      to:
-        stage: design
-        input: design
-        required: false
 
 # ─── spec-coverage (leaf, gate) ──────────────────────────────────────────────
 # Model-judged but admissible on the convergence path (ADR-040 §5 / #2040): its
@@ -292,8 +284,8 @@ plan:
     tail_lines: 200
   router:
     timeout_s: 300
-    # 45 (raised from the 25 default, #1442) — same starvation the impact stage
-    # hit (#impact-max-turns): scope exploration needs headroom. The planner is
+    # 45 (raised from the 25 default, #1442): scope exploration needs
+    # headroom. The planner is
     # also told this budget in its prompt and biased to converge before it runs out.
     max_turns: 45
 

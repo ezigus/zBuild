@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lib/llm-agent.sh — Shared LLM-agent stage framework foundation (ADR-028)
 #
-# Pattern 1 (single-turn JSON envelope) helpers shared across plan, impact,
+# Pattern 1 (single-turn JSON envelope) helpers shared across plan,
 # review, test_assessment. Each plugin migrates incrementally — this PR ships
 # the foundation; PRs 2-5 of ADR-028 migrate one plugin at a time.
 #
@@ -151,7 +151,7 @@ CONTRACT_TAIL
 
 # ─── _llm_recover_envelope_json ─────────────────────────────────────────────
 # Generalized schema-aware LAST-wins recovery (#944, ADR-028 v1.2).
-# Mirrors _impact_recover_envelope_json and _plan_recover_envelope_json but
+# Mirrors _plan_recover_envelope_json but
 # parameterizes the schema gate as a function name rather than a hardcoded
 # per-stage check. The gate function accepts JSON text as $1 and returns rc=0
 # when the envelope is structurally valid for that stage.
@@ -175,8 +175,7 @@ _llm_recover_envelope_json() {
     [[ -z "$_raw" || -z "$_gate_func" ]] && return 1
 
     # Enumerate every top-level balanced object, RS-delimited with \x1e.
-    # Same awk brace-grammar as _impact_recover_envelope_json (impact-prefilter.sh)
-    # and _plan_recover_envelope_json (plan-context.sh).
+    # Same awk brace-grammar as _plan_recover_envelope_json (plan-context.sh).
     local _candidates
     _candidates="$(printf '%s' "$_raw" | awk '
         BEGIN { buf = "" }
@@ -403,8 +402,8 @@ _llm_envelope_validate() {
 # sequential invocations.
 #
 # Args:
-#   $1 = stage_name (e.g. "impact")
-#   $2 = event_class (e.g. "impact.contract.violation", or "plugin.contract.violated" default)
+#   $1 = stage_name (e.g. "plan")
+#   $2 = event_class (e.g. "plan.contract.violation", or "plugin.contract.violated" default)
 #   $3 = reason_code
 #   $4 = prose_length (for forensic metric)
 #   $5 = sidecar_path (where prose was persisted)

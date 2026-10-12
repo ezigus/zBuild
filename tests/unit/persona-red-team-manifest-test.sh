@@ -51,17 +51,6 @@ declare -F persona_lens_framing >/dev/null 2>&1; plf_defined_rc=$?
 set -e
 assert_eq "[SPEC-2] persona_lens_framing is not defined after sourcing the registry" "1" "$plf_defined_rc"
 
-# SPEC-6: manifest perspective is byte-identical to the charters.sh red-team
-# CASE-STATEMENT fallback — the invariant that removing the manifest would not
-# change the lens charter (data-driven parity, #1457). Derive the expected text
-# from charters.sh itself (not a hardcoded copy) so drift in EITHER file breaks
-# this test.
-# shellcheck source=../../plugins/agent/review-lens/lib/charters.sh
-source "$REPO_ROOT/plugins/agent/review-lens/lib/charters.sh"
-expected_charter="$(_rl_lens_charter red-team)"
-assert_eq "[SPEC-6] manifest perspective byte-identical to charters.sh red-team charter" \
-    "$expected_charter" "$rt_perspective"
-
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
