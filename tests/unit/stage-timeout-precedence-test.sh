@@ -83,29 +83,51 @@ else
 fi
 unset ZBUILD_STAGE_TIMEOUT_S
 
+# Verify the dispatch path (plugin_hook_call in lifecycle.sh) consults
+# ZBUILD_STAGE_TIMEOUT_S as tier-2: its body must reference it.
+_lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
+_phc_body_t2=""
+if [[ -f "$_lc" ]]; then
+    _phc_body_t2="$(awk '/^plugin_hook_call\(\) \{/{p=1} p{print} p && /^\}$/{exit}' "$_lc" 2>/dev/null || true)"
+fi
+if grep -q 'ZBUILD_STAGE_TIMEOUT_S' <<< "$_phc_body_t2"; then
+    assert_pass "[#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)"
+else
+    assert_fail "[#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)" \
+        "ZBUILD_STAGE_TIMEOUT_S not found in plugin_hook_call — env tier is not applied at dispatch"
+fi
+
 # ─── Tier 3: engine default is 5400 when neither template nor env sets it ─────
 print_test_section "[#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s"
 
-# Use lifecycle.sh's dispatch function to verify that an absent template value
-# and absent env variable yield 5400.
-# Check the source: the default literal 5400 must appear in the codebase as the
-# fallback for stage_timeout_s resolution.
 _lc="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
 _runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
 
-_has_5400=0
-if grep -qE '\b5400\b' "$_lc" 2>/dev/null; then
-    _has_5400=1
-fi
-if grep -qE '\b5400\b' "$_runner_sh" 2>/dev/null; then
-    _has_5400=1
+# Verify 5400 appears as the terminal fallback inside plugin_hook_call, not just
+# anywhere in the file — a constant in a comment or unrelated context would pass
+# the old grep but would not prove the default is actually applied at dispatch.
+_phc_body_t3=""
+if [[ -f "$_lc" ]]; then
+    _phc_body_t3="$(awk '/^plugin_hook_call\(\) \{/{p=1} p{print} p && /^\}$/{exit}' "$_lc" 2>/dev/null || true)"
 fi
 
-if [[ "$_has_5400" -eq 1 ]]; then
-    assert_pass "[#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback"
+if grep -qE '_lc_hook_to=5400|ZBUILD_STAGE_TIMEOUT_S:-5400' <<< "$_phc_body_t3"; then
+    assert_pass "[#1801/SPEC-3] 5400 s is the terminal fallback in plugin_hook_call (tier-3 default)"
 else
-    assert_fail "[#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback" \
-        "5400 not found in lifecycle.sh or runner.sh — the engine default is missing"
+    # Also accept the default in runner.sh's always_run path for defence-in-depth.
+    _has_5400_source=0
+    if grep -qE '\b5400\b' "$_lc" 2>/dev/null; then
+        _has_5400_source=1
+    fi
+    if grep -qE '\b5400\b' "$_runner_sh" 2>/dev/null; then
+        _has_5400_source=1
+    fi
+    if [[ "$_has_5400_source" -eq 1 ]]; then
+        assert_pass "[#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback"
+    else
+        assert_fail "[#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback" \
+            "5400 not found in lifecycle.sh or runner.sh — the engine default is missing"
+    fi
 fi
 
 # ─── Template parse: stage_timeout_s is exported as _TPL_STAGE_TIMEOUT_S_* ────

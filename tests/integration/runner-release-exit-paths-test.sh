@@ -102,6 +102,12 @@ build_run() {
     if [[ "${BUILD_SLEEP:-0}" == "1" ]]; then
         local _i; for _i in $(seq 1 300); do sleep 0.1; done
     fi
+    if [[ "${BUILD_RUN_SPAWN_IGNORE_TERM:-0}" == "1" ]]; then
+        # Spawn a child that ignores TERM and records its PID — used to verify
+        # that an external SIGTERM to the runner kills the run hook's process group.
+        ( trap '' TERM; printf '%s\n' "$BASHPID" >> "${BUILD_STARTED%/*}/run-child.pid"; sleep 120 ) &
+        local _j; for _j in $(seq 1 300); do sleep 0.1; done
+    fi
     local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
     [[ "${BUILD_ARM_ABORT:-0}" == "1" ]] && : > "${ZBUILD_STATE_DIR}/.abort.signal"
     if [[ "${BUILD_RC:-0}" == "0" ]]; then
@@ -401,6 +407,48 @@ elif [[ "$_alive" -eq 1 ]]; then
     kill -KILL "$_child_pid" 2>/dev/null || true
 else
     assert_pass "[SPEC-6b] a hook child that ignores TERM does not outlive the run"
+fi
+
+# ── SPEC-2ext [#1801/SPEC-2]: external SIGTERM kills the run hook's process group
+# SPEC-2 says: "when the runner is externally killed, its signal handler must
+# also kill any isolated hook process group". The run hook spawns a child that
+# ignores TERM. After the runner is externally killed, the child must not survive
+# because zbuild_pg_kill (or the equivalent KILL sequence) sends SIGKILL to the
+# entire process group, which the child cannot ignore.
+print_test_section "SPEC-2ext: external SIGTERM kills the run hook's process group [#1801/SPEC-2]"
+_prep sigterm-runpg
+export BUILD_RC=0 BUILD_RUN_SPAWN_IGNORE_TERM=1
+if command -v setsid >/dev/null 2>&1; then
+    setsid bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "release-sigterm-runpg" >"$CASE_DIR/out" 2>&1 &
+    RUNNER_PID=$!
+else
+    set -m
+    bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "release-sigterm-runpg" >"$CASE_DIR/out" 2>&1 &
+    RUNNER_PID=$!
+    set +m
+fi
+_run_child_pid=""
+for _ in $(seq 1 100); do
+    _run_child_pid="$(head -n 1 "$CASE_DIR/run-child.pid" 2>/dev/null || true)"
+    [[ -n "$_run_child_pid" ]] && break; sleep 0.1
+done
+kill -TERM "$RUNNER_PID" 2>/dev/null || true
+wait "$RUNNER_PID" 2>/dev/null || true
+unset BUILD_RUN_SPAWN_IGNORE_TERM
+_alive_run=1
+if [[ -n "$_run_child_pid" ]]; then
+    for _ in $(seq 1 50); do kill -0 "$_run_child_pid" 2>/dev/null || { _alive_run=0; break; }; sleep 0.1; done
+fi
+if [[ -z "$_run_child_pid" ]]; then
+    assert_fail "[#1801/SPEC-2] fixture: run hook child recorded its pid" "no $CASE_DIR/run-child.pid"
+elif [[ "$_alive_run" -eq 1 ]]; then
+    assert_fail "[#1801/SPEC-2] external SIGTERM: run hook process group is killed (TERM-ignoring child gone)" \
+        "pid $_run_child_pid still alive — hook process group was not killed when runner received SIGTERM"
+    kill -KILL "$_run_child_pid" 2>/dev/null || true
+else
+    assert_pass "[#1801/SPEC-2] external SIGTERM: run hook process group is killed (TERM-ignoring child gone)"
 fi
 
 cleanup_test_env

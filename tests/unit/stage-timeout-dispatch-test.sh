@@ -72,6 +72,21 @@ else
         "'timed_out' not found in lifecycle.sh or runner.sh — timeout result cannot produce the required disposition"
 fi
 
+# After the change: the timed_out event must name the stage and the limit.
+# The requirement says "ends with disposition timed_out naming the stage and the limit".
+# Check that the emit_event call for plugin.run.timed_out in lifecycle.sh carries
+# both stage= and timeout_s= fields.
+_timed_out_event_ctx=""
+if [[ -f "$_lc" ]]; then
+    _timed_out_event_ctx="$(grep -A4 'plugin\.run\.timed_out' "$_lc" 2>/dev/null | tr '\n' ' ' || true)"
+fi
+if grep -q 'stage=' <<< "$_timed_out_event_ctx" && grep -q 'timeout_s=' <<< "$_timed_out_event_ctx"; then
+    assert_pass "[#1801/SPEC-1] timed_out event names the stage (stage=) and the limit (timeout_s=)"
+else
+    assert_fail "[#1801/SPEC-1] timed_out event names the stage (stage=) and the limit (timeout_s=)" \
+        "plugin.run.timed_out event in lifecycle.sh is missing stage= or timeout_s= field"
+fi
+
 # ─── [#1801/SPEC-1] every dispatch route reaches plugin_hook_call ─────────────
 print_test_section "[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call"
 

@@ -142,11 +142,11 @@ if [[ -n "$_ar_body" ]]; then
             "zbuild_pg_kill not found in function body"
     fi
 
-    # The hand-rolled `kill -TERM -- -` pattern must be gone from this function.
-    # (The pattern is `kill -TERM -- -"$_ar_pid"` in the old code.)
-    if grep -qE 'kill -TERM -- -"\$_ar_pid"' <<< "$_ar_body"; then
+    # The hand-rolled `kill -(TERM|KILL) -- -"$_ar_pid"` pattern must be gone from
+    # this function — it bypasses zbuild_pg_kill's TERM+grace+KILL sequence.
+    if grep -qE 'kill -(TERM|KILL) -- -"\$_ar_pid"' <<< "$_ar_body"; then
         assert_fail "[#1801/SPEC-10] _runner_dispatch_always_run has no hand-rolled TERM/KILL sequence" \
-            "found 'kill -TERM -- -\"\$_ar_pid\"' — replace with zbuild_pg_kill"
+            "found 'kill -TERM/-KILL -- -\"\$_ar_pid\"' — replace with zbuild_pg_kill"
     else
         assert_pass "[#1801/SPEC-10] _runner_dispatch_always_run has no hand-rolled TERM/KILL sequence"
     fi

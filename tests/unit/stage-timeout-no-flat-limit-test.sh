@@ -47,6 +47,16 @@ for _sf in \
     else
         assert_pass "[#1801/SPEC-7] $_sf carries no ZBUILD_ORCH_TIMEOUT flat ceiling"
     fi
+
+    # Also verify orch_collect/orch_wait calls carry no --timeout flag.
+    # A hard-coded --timeout N in the orch call would impose a flat ceiling
+    # independent of ZBUILD_ORCH_TIMEOUT and would kill long-but-valid dispatches.
+    if grep -qE 'orch_collect.*--timeout|orch_wait.*--timeout' "$_file"; then
+        assert_fail "[#1801/SPEC-7] $_sf orch_collect/orch_wait carry no --timeout flag" \
+            "--timeout found in orch call — imposes a flat ceiling that overrides stage_timeout_s"
+    else
+        assert_pass "[#1801/SPEC-7] $_sf orch_collect/orch_wait carry no --timeout flag"
+    fi
 done
 
 print_test_results
