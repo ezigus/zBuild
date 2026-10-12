@@ -1,0 +1,107 @@
+unit: FAIL tests/integration/runner-job-control-abort-test.sh
+
+  runner job-control PG forwarding (Wave 15-H / #688)
+
+
+  T1: ZBUILD_RUNNER_JOB_CONTROL=1 enables set -m in runner
+  ✓ flag-off probe run rc=0
+  ✓ flag-on  probe run rc=0
+  ✓ flag-off: monitor mode OFF in runner shell
+  ✗ flag-on: monitor mode ON in runner shell
+    got: dash=huB
+monitor        	off
+
+  T2: end-to-end SIGTERM with flag-on (regression of trap chain)
+  ✓ runner exits 1, not 143 (flag-on, SIGTERM)
+  ✓ pipeline.aborted carries reason=sigterm exactly
+  ✓ signal-to-exit ≤60s (actual=1s)
+  ✓ test stage did NOT run after SIGTERM
+  ✓ status=interrupted
+  ✓ pipeline.aborted reason=sigterm emitted
+  ✓ no job-control errors in stderr
+
+
+  1 of 11 tests failed
+
+  ✗ flag-on: monitor mode ON in runner shell
+
+unit: FAIL tests/integration/runner-release-exit-paths-test.sh
+
+  runner dispatches cleanup(release) on every exit path (#1829)
+
+
+  SPEC-1: exit path = success (rc 0)
+  ✓ [SPEC-1] runner exits 0 on the success path
+  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  ✓ [SPEC-1] purge is never reachable from a run
+
+  SPEC-2: exit path = non-zero stage rc
+  ✓ [SPEC-2] runner exits non-zero when a stage fails
+  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-2] purge is never reachable from a run
+
+  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)
+  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  ✓ [SPEC-3] pipeline.aborted carries reason=sigint
+  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-3] purge is never reachable from a run
+
+  SPEC-4: exit path = external SIGTERM
+  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-4] purge is never reachable from a run
+
+  SPEC-5: exit path = external hard kill (timeout-style)
+  ✓ [SPEC-5] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-5] purge is never reachable from a run
+
+  SPEC-6: a cleanup hook that blocks cannot hang the runner
+  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
+  ✓ [SPEC-6] the blocked hook does not outlive the run
+
+  SPEC-6b: a hook child that ignores TERM does not outlive the run
+  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run
+    pid 3300836 still alive 5s after the runner returned
+
+
+  1 of 17 tests failed
+
+  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+unit: FAIL tests/unit/stage-timeout-dispatch-test.sh
+
+  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog
+
+
+  [#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook
+  ✓ [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh
+  ✓ [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only
+
+  [#1801/SPEC-1] watchdog writes disposition timed_out
+  ✓ [#1801/SPEC-1] timed_out disposition is used in the dispatch path
+
+  [#1801/SPEC-1] all dispatch routes lead through plugin_hook_call
+  ✓ [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)
+  ✓ [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)
+  ✓ [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)
+  ✓ [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
+
+  [#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch
+  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+    found:         kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true — replace with zbuild_pg_kill
+
+  [#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill
+  ✓ [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
+  ✓ [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
+
+  watchdog in lifecycle.sh is backend-agnostic (above the backend layer)
+  ✓ orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+
+  orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch
+  ✓ orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+
+
+  1 of 12 tests failed
+
+  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+
+unit: 26/29 passed

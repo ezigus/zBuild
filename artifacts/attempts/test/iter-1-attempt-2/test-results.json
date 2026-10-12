@@ -1,0 +1,64 @@
+{
+  "result_contract": 2,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "3 of 29 tests failed",
+  "test_output": "unit: FAIL tests/integration/runner-job-control-abort-test.sh\n\n  runner job-control PG forwarding (Wave 15-H / #688)\n\n\n  T1: ZBUILD_RUNNER_JOB_CONTROL=1 enables set -m in runner\n  ✓ flag-off probe run rc=0\n  ✓ flag-on  probe run rc=0\n  ✓ flag-off: monitor mode OFF in runner shell\n  ✗ flag-on: monitor mode ON in runner shell\n    got: dash=huB\nmonitor        \toff\n\n  T2: end-to-end SIGTERM with flag-on (regression of trap chain)\n  ✓ runner exits 1, not 143 (flag-on, SIGTERM)\n  ✓ pipeline.aborted carries reason=sigterm exactly\n  ✓ signal-to-exit ≤60s (actual=1s)\n  ✓ test stage did NOT run after SIGTERM\n  ✓ status=interrupted\n  ✓ pipeline.aborted reason=sigterm emitted\n  ✓ no job-control errors in stderr\n\n\n  1 of 11 tests failed\n\n  ✗ flag-on: monitor mode ON in runner shell\n\nunit: FAIL tests/integration/runner-release-exit-paths-test.sh\n\n  runner dispatches cleanup(release) on every exit path (#1829)\n\n\n  SPEC-1: exit path = success (rc 0)\n  ✓ [SPEC-1] runner exits 0 on the success path\n  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test\n  ✓ [SPEC-1] purge is never reachable from a run\n\n  SPEC-2: exit path = non-zero stage rc\n  ✓ [SPEC-2] runner exits non-zero when a stage fails\n  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-2] purge is never reachable from a run\n\n  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)\n  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)\n  ✓ [SPEC-3] pipeline.aborted carries reason=sigint\n  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-3] purge is never reachable from a run\n\n  SPEC-4: exit path = external SIGTERM\n  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-4] purge is never reachable from a run\n\n  SPEC-5: exit path = external hard kill (timeout-style)\n  ✓ [SPEC-5] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-5] purge is never reachable from a run\n\n  SPEC-6: a cleanup hook that blocks cannot hang the runner\n  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)\n  ✓ [SPEC-6] the blocked hook does not outlive the run\n\n  SPEC-6b: a hook child that ignores TERM does not outlive the run\n  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n    pid 3300836 still alive 5s after the runner returned\n\n\n  1 of 17 tests failed\n\n  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n\nunit: FAIL tests/unit/stage-timeout-dispatch-test.sh\n\n  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog\n\n\n  [#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook\n  ✓ [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh\n  ✓ [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only\n\n  [#1801/SPEC-1] watchdog writes disposition timed_out\n  ✓ [#1801/SPEC-1] timed_out disposition is used in the dispatch path\n\n  [#1801/SPEC-1] all dispatch routes lead through plugin_hook_call\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)\n\n  [#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch\n  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch\n    found:         kill -KILL -- -\"$_lc_hook_pid\" 2>/dev/null || true — replace with zbuild_pg_kill\n\n  [#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill\n  ✓ [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill\n  ✓ [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh\n\n  watchdog in lifecycle.sh is backend-agnostic (above the backend layer)\n  ✓ orch-mock plugin exists (backend-agnostic watchdog can be tested with it)\n\n  orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch\n  ✓ orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch\n\n\n  1 of 12 tests failed\n\n  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch\n\nunit: 26/29 passed",
+  "run_mode": "targeted",
+  "exit_code": 1,
+  "data": {
+    "exit_code": 1,
+    "passed": 26,
+    "failed": 3,
+    "test_output": "unit: FAIL tests/integration/runner-job-control-abort-test.sh\n\n  runner job-control PG forwarding (Wave 15-H / #688)\n\n\n  T1: ZBUILD_RUNNER_JOB_CONTROL=1 enables set -m in runner\n  ✓ flag-off probe run rc=0\n  ✓ flag-on  probe run rc=0\n  ✓ flag-off: monitor mode OFF in runner shell\n  ✗ flag-on: monitor mode ON in runner shell\n    got: dash=huB\nmonitor        \toff\n\n  T2: end-to-end SIGTERM with flag-on (regression of trap chain)\n  ✓ runner exits 1, not 143 (flag-on, SIGTERM)\n  ✓ pipeline.aborted carries reason=sigterm exactly\n  ✓ signal-to-exit ≤60s (actual=1s)\n  ✓ test stage did NOT run after SIGTERM\n  ✓ status=interrupted\n  ✓ pipeline.aborted reason=sigterm emitted\n  ✓ no job-control errors in stderr\n\n\n  1 of 11 tests failed\n\n  ✗ flag-on: monitor mode ON in runner shell\n\nunit: FAIL tests/integration/runner-release-exit-paths-test.sh\n\n  runner dispatches cleanup(release) on every exit path (#1829)\n\n\n  SPEC-1: exit path = success (rc 0)\n  ✓ [SPEC-1] runner exits 0 on the success path\n  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test\n  ✓ [SPEC-1] purge is never reachable from a run\n\n  SPEC-2: exit path = non-zero stage rc\n  ✓ [SPEC-2] runner exits non-zero when a stage fails\n  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-2] purge is never reachable from a run\n\n  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)\n  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)\n  ✓ [SPEC-3] pipeline.aborted carries reason=sigint\n  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-3] purge is never reachable from a run\n\n  SPEC-4: exit path = external SIGTERM\n  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-4] purge is never reachable from a run\n\n  SPEC-5: exit path = external hard kill (timeout-style)\n  ✓ [SPEC-5] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-5] purge is never reachable from a run\n\n  SPEC-6: a cleanup hook that blocks cannot hang the runner\n  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)\n  ✓ [SPEC-6] the blocked hook does not outlive the run\n\n  SPEC-6b: a hook child that ignores TERM does not outlive the run\n  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n    pid 3300836 still alive 5s after the runner returned\n\n\n  1 of 17 tests failed\n\n  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n\nunit: FAIL tests/unit/stage-timeout-dispatch-test.sh\n\n  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog\n\n\n  [#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook\n  ✓ [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh\n  ✓ [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only\n\n  [#1801/SPEC-1] watchdog writes disposition timed_out\n  ✓ [#1801/SPEC-1] timed_out disposition is used in the dispatch path\n\n  [#1801/SPEC-1] all dispatch routes lead through plugin_hook_call\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)\n\n  [#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch\n  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch\n    found:         kill -KILL -- -\"$_lc_hook_pid\" 2>/dev/null || true — replace with zbuild_pg_kill\n\n  [#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill\n  ✓ [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill\n  ✓ [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh\n\n  watchdog in lifecycle.sh is backend-agnostic (above the backend layer)\n  ✓ orch-mock plugin exists (backend-agnostic watchdog can be tested with it)\n\n  orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch\n  ✓ orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch\n\n\n  1 of 12 tests failed\n\n  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch\n\nunit: 26/29 passed",
+    "diff_applied": false,
+    "test_cmd": "bash scripts/run-tests.sh --files 'tests/integration/artifact-contract-test.sh' 'tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh' 'tests/integration/core-pipeline-runner-test.sh' 'tests/integration/core-pipeline-verdict-indicators-test.sh' 'tests/integration/cycle-acceptance-terminal-failure-test.sh' 'tests/integration/cycle-on-max-pipeline-continues-test.sh' 'tests/integration/design-pipeline-test.sh' 'tests/integration/full-pipeline-seq-cardinal-test.sh' 'tests/integration/leaf-dispatch-role-bound-verdict-test.sh' 'tests/integration/per-run-state-isolation-test.sh' 'tests/integration/pipeline-resume-test.sh' 'tests/integration/runner-exports-state-dir-test.sh' 'tests/integration/runner-init-state-abort-test.sh' 'tests/integration/runner-job-control-abort-test.sh' 'tests/integration/runner-release-exit-paths-test.sh' 'tests/integration/state-root-isolation-test.sh' 'tests/integration/worktree-run-isolation-test.sh' 'tests/unit/design-prompt-scope-charter-test.sh' 'tests/unit/event-schema-emitted-coverage-test.sh' 'tests/unit/orch-backend-misconfigured-test.sh' 'tests/unit/orch-sequential-retired-guard-test.sh' 'tests/unit/stage-timeout-always-run-test.sh' 'tests/unit/stage-timeout-dispatch-test.sh' 'tests/unit/stage-timeout-loader-validation-test.sh' 'tests/unit/stage-timeout-no-flat-limit-test.sh' 'tests/unit/stage-timeout-precedence-test.sh' 'tests/unit/stage-timeout-process-group-test.sh' 'tests/unit/stage-timeout-retry-test.sh' 'tests/unit/stdin-spawn-guard-test.sh'",
+    "run_mode": "targeted",
+    "timing": {
+      "tiers": {},
+      "slowest_files": [
+        {
+          "file": "tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 112330
+        },
+        {
+          "file": "tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 97453
+        },
+        {
+          "file": "tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 71158
+        },
+        {
+          "file": "tests/integration/core-pipeline-runner-test.sh",
+          "ms": 31167
+        },
+        {
+          "file": "tests/integration/per-run-state-isolation-test.sh",
+          "ms": 25508
+        },
+        {
+          "file": "tests/integration/worktree-run-isolation-test.sh",
+          "ms": 13904
+        },
+        {
+          "file": "tests/integration/runner-job-control-abort-test.sh",
+          "ms": 13250
+        },
+        {
+          "file": "tests/integration/core-pipeline-verdict-indicators-test.sh",
+          "ms": 11832
+        },
+        {
+          "file": "tests/integration/state-root-isolation-test.sh",
+          "ms": 11442
+        },
+        {
+          "file": "tests/integration/design-pipeline-test.sh",
+          "ms": 5307
+        }
+      ]
+    },
+    "findings": []
+  }
+}

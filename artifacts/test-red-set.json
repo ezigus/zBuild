@@ -1,23 +1,5 @@
 [
-  "tests/integration/artifact-contract-test.sh",
-  "tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh",
-  "tests/integration/core-pipeline-runner-test.sh",
-  "tests/integration/core-pipeline-verdict-indicators-test.sh",
-  "tests/integration/cycle-acceptance-terminal-failure-test.sh",
-  "tests/integration/cycle-on-max-pipeline-continues-test.sh",
-  "tests/integration/design-pipeline-test.sh",
-  "tests/integration/full-pipeline-seq-cardinal-test.sh",
-  "tests/integration/leaf-dispatch-role-bound-verdict-test.sh",
-  "tests/integration/per-run-state-isolation-test.sh",
-  "tests/integration/pipeline-resume-test.sh",
-  "tests/integration/runner-exports-state-dir-test.sh",
-  "tests/integration/runner-init-state-abort-test.sh",
   "tests/integration/runner-job-control-abort-test.sh",
   "tests/integration/runner-release-exit-paths-test.sh",
-  "tests/integration/state-root-isolation-test.sh",
-  "tests/integration/worktree-run-isolation-test.sh",
-  "tests/unit/design-prompt-scope-charter-test.sh",
-  "tests/unit/event-schema-emitted-coverage-test.sh",
-  "tests/unit/orch-sequential-retired-guard-test.sh",
-  "tests/unit/stdin-spawn-guard-test.sh"
+  "tests/unit/stage-timeout-dispatch-test.sh"
 ]

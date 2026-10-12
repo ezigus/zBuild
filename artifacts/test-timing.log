@@ -2198,3 +2198,62 @@ cpu 125 182 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.
 file 294 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/golden/golden-contracts-test.sh
 tier 347 golden
 tier 153280 lint
+run 2 targeted
+cpu 9468 21040 tests/integration/core-pipeline-runner-test.sh
+file 31167 tests/integration/core-pipeline-runner-test.sh
+cpu 1049 2577 tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh
+file 4369 tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh
+cpu 1243 2728 tests/integration/artifact-contract-test.sh
+file 4887 tests/integration/artifact-contract-test.sh
+cpu 1088 2902 tests/integration/design-pipeline-test.sh
+file 5307 tests/integration/design-pipeline-test.sh
+cpu 3025 6768 tests/integration/core-pipeline-verdict-indicators-test.sh
+file 11832 tests/integration/core-pipeline-verdict-indicators-test.sh
+cpu 894 2059 tests/integration/full-pipeline-seq-cardinal-test.sh
+file 3303 tests/integration/full-pipeline-seq-cardinal-test.sh
+cpu 650 1414 tests/integration/leaf-dispatch-role-bound-verdict-test.sh
+file 2270 tests/integration/leaf-dispatch-role-bound-verdict-test.sh
+cpu 1179 2490 tests/integration/pipeline-resume-test.sh
+file 4701 tests/integration/pipeline-resume-test.sh
+cpu 839 2145 tests/integration/runner-exports-state-dir-test.sh
+file 3629 tests/integration/runner-exports-state-dir-test.sh
+cpu 1303 2701 tests/integration/runner-init-state-abort-test.sh
+file 5047 tests/integration/runner-init-state-abort-test.sh
+cpu 5719 14180 tests/integration/per-run-state-isolation-test.sh
+file 25508 tests/integration/per-run-state-isolation-test.sh
+cpu 2946 6803 tests/integration/runner-job-control-abort-test.sh
+file 13250 tests/integration/runner-job-control-abort-test.sh
+cpu 2568 6301 tests/integration/state-root-isolation-test.sh
+file 11442 tests/integration/state-root-isolation-test.sh
+cpu 3253 7987 tests/integration/worktree-run-isolation-test.sh
+file 13904 tests/integration/worktree-run-isolation-test.sh
+cpu 166 278 tests/unit/design-prompt-scope-charter-test.sh
+file 465 tests/unit/design-prompt-scope-charter-test.sh
+cpu 500 1307 tests/unit/event-schema-emitted-coverage-test.sh
+file 1829 tests/unit/event-schema-emitted-coverage-test.sh
+cpu 171 451 tests/unit/orch-backend-misconfigured-test.sh
+file 1090 tests/unit/orch-backend-misconfigured-test.sh
+cpu 49 96 tests/unit/orch-sequential-retired-guard-test.sh
+file 141 tests/unit/orch-sequential-retired-guard-test.sh
+cpu 63 94 tests/unit/stage-timeout-always-run-test.sh
+file 131 tests/unit/stage-timeout-always-run-test.sh
+cpu 35 57 tests/unit/stage-timeout-dispatch-test.sh
+file 94 tests/unit/stage-timeout-dispatch-test.sh
+cpu 100 188 tests/unit/stage-timeout-loader-validation-test.sh
+file 302 tests/unit/stage-timeout-loader-validation-test.sh
+cpu 12 29 tests/unit/stage-timeout-no-flat-limit-test.sh
+file 43 tests/unit/stage-timeout-no-flat-limit-test.sh
+cpu 86 126 tests/unit/stage-timeout-precedence-test.sh
+file 215 tests/unit/stage-timeout-precedence-test.sh
+cpu 23 36 tests/unit/stage-timeout-process-group-test.sh
+file 65 tests/unit/stage-timeout-process-group-test.sh
+cpu 17 34 tests/unit/stage-timeout-retry-test.sh
+file 55 tests/unit/stage-timeout-retry-test.sh
+cpu 8 36 tests/unit/stdin-spawn-guard-test.sh
+file 43 tests/unit/stdin-spawn-guard-test.sh
+cpu 20668 41837 tests/integration/cycle-on-max-pipeline-continues-test.sh
+file 71158 tests/integration/cycle-on-max-pipeline-continues-test.sh
+cpu 35405 67292 tests/integration/cycle-acceptance-terminal-failure-test.sh
+file 112330 tests/integration/cycle-acceptance-terminal-failure-test.sh
+cpu 7401 17498 tests/integration/runner-release-exit-paths-test.sh
+file 97453 tests/integration/runner-release-exit-paths-test.sh

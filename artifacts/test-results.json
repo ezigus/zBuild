@@ -2,262 +2,63 @@
   "result_contract": 2,
   "verdict": "fail",
   "disposition": "complete",
-  "reason": "21 of 853 tests failed",
-  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/orch-sequential-retired-guard-test.sh\n\n  [#1801/SPEC-8] orch-sequential retired; [#1801/SPEC-11] ADR Enforced-by sections\n\n\n  [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent\n  ✓ [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent\n\n  [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential\n  ✗ [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential\n    found references:\n  tests/unit/orch-backend-misconfigured-test.sh\n\n\n  [#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured\n  ✓ [#1801/SPEC-8] configuring sequential as backend signals misconfigured\n\n  [#1801/SPEC-11] ADR-054 has ## Enforced by section\n  ✓ [#1801/SPEC-11] ADR-054 has ## Enforced by section\n\n  [#1801/SPEC-11] ADR-017 has ## Enforced by section\n  ✓ [#1801/SPEC-11] ADR-017 has ## Enforced by section\n\n  [#1801/SPEC-11] ADR-011 has ## Enforced by section\n  ✓ [#1801/SPEC-11] ADR-011 has ## Enforced by section\n\n  [#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt\n  ✓ [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt\n  ✓ [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt\n  ✓ [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt\n\n\n  1 of 9 tests failed\n\n  ✗ [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/event-schema-emitted-coverage-test.sh\n\n  event-schema emitted-⊆-composed known types (all plugins + core)\n\n  ✗ emitted type 'orch.backend.misconfigured' is in the composed known set\n    not in config/event-schema.json nor any manifest's provides.events\n  ✗ emitted type 'plugin.run.timed_out' is in the composed known set\n    not in config/event-schema.json nor any manifest's provides.events\n  ✓ [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest\n  ✓ [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace\n  ✓ [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself\n  ✓ [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types\n  ✓ [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types\n\n\n  2 of 7 tests failed\n\n  ✗ emitted type 'orch.backend.misconfigured' is in the composed known set\n  ✗ emitted type 'plugin.run.timed_out' is in the composed known set\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/design-prompt-scope-charter-test.sh\n\n  unit: design prompt exhaustive-scope charter + tools (#841)\n\n  ✓ design prompt written\n  ✓ T1: prompt invites Read/Grep tool use\n  ✓ T2: prompt states an exhaustive-enumeration charter\n  ✓ T3: prompt instructs finding files that pin/reference what changes\n  ✓ T4: 'superset' framing removed\n  ✓ T5: prompt keeps design read-only (no Edit/Write/Bash for impl)\n  ✗ T6: design timeout_s raised to 600\n    expected: 600, got: 3900\n\n\n  1 of 7 tests failed\n\n  ✗ T6: design timeout_s raised to 600\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/stdin-spawn-guard-test.sh\n\n  guard: spawns never inherit a data-bearing stdin (#2108)\n\n  ✓ [#2108] the fresh shell closes stdin\n  ✓ [#2108] negctl spawns under the fresh shell\n  ✓ [#2108] reachability spawns under the fresh shell\n  ✓ [#2108] spec-correspondence's model call closes stdin\n  ✓ [#2108] build's false-completion guard spawns under the fresh shell\n  ✓ [#2108] the test stage's suite closes stdin under set -m\n  ✓ [#2108] local_engine work units close stdin\n  ✗ [#2108] orch-mock work units close stdin\n    pattern not found in plugins/tool/orch-mock/plugin.sh: bash -c \"\\$task_body\" .* </dev/null\n\n\n  1 of 8 tests failed\n\n  ✗ [#2108] orch-mock work units close stdin\n\nunit: 548/552 passed (4 skipped)\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/core-pipeline-runner-test.sh\n\n  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)\n\n  ✓ no args exits 1\n  ✓ no args prints the usage\n  ✓ --help exits 0\n  ✓ --issue with no value exits 1\n  ✓ --issue with no value names the flag\n  ✓ --goal with no value exits 1\n  ✓ --goal with no value names the flag\n  ✓ dry-run shows intake stage\n  ✓ dry-run shows build stage\n  ✓ dry-run leaves state file untouched\n  ✗ happy path exits 0\n    expected: 0, got: 1\n  ✓ events.jsonl created\n  ✓ pipeline.start emitted once\n  ✓ pipeline.end emitted once\n  ✗ pipeline.end carries status=success\n    expected: 1, got: 0\n  ✗ [SPEC-1] stage.start emitted for each fixture stage (2x)\n    expected: 2, got: 1\n  ✗ [SPEC-1] stage.complete emitted for each fixture stage (2x)\n    expected: 2, got: 0\n  ✓ state file created\n  ✗ intake stage_status=complete (ADR-006 enum)\n    expected: complete, got: failed\n  ✗ build stage_status=complete (ADR-006 enum)\n    expected: complete, got: \n  ✓ mid-stage failure exits 1\n  ✓ events.jsonl present on failure\n  ✓ pipeline.end status=failed emitted\n  ✗ pipeline.end names the failing stage\n    expected: 1, got: 0\n  ✓ stage.fail event emitted\n  ✗ build stage_status=failed in state\n    expected: failed, got: \n  ✓ missing required plugin exits 1 (warn: caught at dispatch)\n  ✓ dispatch-time missing-plugin error names the unresolved stage 'intake'\n  ✓ missing plugin causes pipeline.end status=failed\n  ✗ kill mid-run emits pipeline.abort\n  ✓ --template runner-state-dir-minimal dry-run shows intake\n  ✓ --template runner-state-dir-minimal dry-run shows build\n  ✓ missing template fails closed (rc=1; #1850 — was 2) [#1283]\n  ✓ missing template error names the template\n  ✗ role-based dispatch exits 0\n    expected: 0, got: 1\n  ✗ role-based dispatch: 2 stage.complete events\n    expected: 2, got: 0\n  ✗ role-based: build stage_status=complete\n    expected: complete, got: \n  ✗ fanout 2 platforms exits 0\n    expected: 0, got: 1\n  ✗ fanout 2 platforms: 4 plugin.run.start events (2 stages × 2)\n    expected: 4, got: 0\n  ✓ partial fanout failure exits 1\n  ✗ partial fanout emits stage.fail with reason=partial\n    expected: 1, got: 0\n  ✓ partial fanout emits pipeline.end status=failed\n  ✗ A2 abort trap: pipeline.abort event emitted on kill\n  ✗ A2 abort trap: no state.error when state file writable\n  ✓ A2 abort trap: pipeline status=interrupted in state\n  ✗ A3 artifact contract: plugin.contract.violated event emitted\n    expected: 1, got: 0\n  ✗ A3 artifact contract: synthetic findings.json not created\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/artifact-contract-test.sh\n\n  artifact contract — A3: missing artifact triggers plugin.contract.violated\n\n▸ merge_policy: auto_unless_flagged\n▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/92500001/worktree\n▸ Pipeline started — run_id=20261012020901-1310446 issue=92500001 goal= template=artifact-contract-minimal engine=3a881a6(zbuild/issue-1801-ci)\n  ✗ plugin.contract.violated event emitted\n    not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/a3/events/events.jsonl\n  ✗ synthetic findings.json created\n    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/a3/state/artifacts/intake-intake-contract-violated-findings.json\n  ✗ plugin.contract.violated event names the expected artifact path\n    output missing: intake-findings.json\n  ✗ plugin.contract.violated event carries reason=artifact_missing_or_empty\n    expected: artifact_missing_or_empty, got: \n▸ merge_policy: auto_unless_flagged\n▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/92500001/worktree\n▸ Pipeline started — run_id=20261012020902-1313321 issue=92500001 goal= template=artifact-contract-minimal engine=3a881a6(zbuild/issue-1801-ci)\n  ✓ a plugin declaring no outputs raises no contract violation (#1906)\n\n\n  4 of 5 tests failed\n\n  ✗ plugin.contract.violated event emitted\n  ✗ synthetic findings.json created\n  ✗ plugin.contract.violated event names the expected artifact path\n  ✗ plugin.contract.violated event carries reason=artifact_missing_or_empty\n\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/cycle-on-max-pipeline-continues-test.sh\n\n  cycle on_max=continue → runner continues to next cycle (#766)\n\n\n  T1: events.jsonl chain around design_verify_cycle exhaustion\n  ✓ T1.1: cycle.complete fired with non-convergence reason for design_verify_cycle (count=2)\n  ✓ T1.2: cycle.unconverged event emitted (proves runner continues past cycle exit)\n  ✓ T1.3: pipeline.abort MUST NOT fire on on_max=continue cycle exhaustion\n  ✗ T1.4: pipeline.end emitted exactly once\n    expected: 1, got: 0\n  ✗ T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)\n    expected: failed, got: \n\n  T2: build_test_cycle + pr dispatched after design_verify_cycle exhausted\n  ✓ T2.1: build plugin ran (proves build_test_cycle was dispatched after design_verify_cycle exhausted)\n  ✗ T2.2: pr plugin did NOT run\n    pr_run_count=0\n\n\n  3 of 7 tests failed\n\n  ✗ T1.4: pipeline.end emitted exactly once\n  ✗ T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)\n  ✗ T2.2: pr plugin did NOT run\n\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/pipeline-resume-test.sh\n\n  pipeline resume — CLI + auto-resume policy (#225)\n\n\n  get_resume_recommendation: in_progress < 24h\n  ✓ in_progress recent → auto_resume\n\n  get_resume_recommendation: complete\n  ✓ complete → fresh_start\n\n  get_resume_recommendation: aborted\n  ✓ aborted → manual_resume_only\n\n  get_resume_recommendation: no state file\n  ✓ no state file → fresh_start\n\n  get_resume_recommendation: in_progress > 24h\n  ✓ in_progress old → manual_r",
-  "run_mode": "full",
+  "reason": "3 of 29 tests failed",
+  "test_output": "unit: FAIL tests/integration/runner-job-control-abort-test.sh\n\n  runner job-control PG forwarding (Wave 15-H / #688)\n\n\n  T1: ZBUILD_RUNNER_JOB_CONTROL=1 enables set -m in runner\n  ✓ flag-off probe run rc=0\n  ✓ flag-on  probe run rc=0\n  ✓ flag-off: monitor mode OFF in runner shell\n  ✗ flag-on: monitor mode ON in runner shell\n    got: dash=huB\nmonitor        \toff\n\n  T2: end-to-end SIGTERM with flag-on (regression of trap chain)\n  ✓ runner exits 1, not 143 (flag-on, SIGTERM)\n  ✓ pipeline.aborted carries reason=sigterm exactly\n  ✓ signal-to-exit ≤60s (actual=1s)\n  ✓ test stage did NOT run after SIGTERM\n  ✓ status=interrupted\n  ✓ pipeline.aborted reason=sigterm emitted\n  ✓ no job-control errors in stderr\n\n\n  1 of 11 tests failed\n\n  ✗ flag-on: monitor mode ON in runner shell\n\nunit: FAIL tests/integration/runner-release-exit-paths-test.sh\n\n  runner dispatches cleanup(release) on every exit path (#1829)\n\n\n  SPEC-1: exit path = success (rc 0)\n  ✓ [SPEC-1] runner exits 0 on the success path\n  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test\n  ✓ [SPEC-1] purge is never reachable from a run\n\n  SPEC-2: exit path = non-zero stage rc\n  ✓ [SPEC-2] runner exits non-zero when a stage fails\n  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-2] purge is never reachable from a run\n\n  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)\n  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)\n  ✓ [SPEC-3] pipeline.aborted carries reason=sigint\n  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-3] purge is never reachable from a run\n\n  SPEC-4: exit path = external SIGTERM\n  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-4] purge is never reachable from a run\n\n  SPEC-5: exit path = external hard kill (timeout-style)\n  ✓ [SPEC-5] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-5] purge is never reachable from a run\n\n  SPEC-6: a cleanup hook that blocks cannot hang the runner\n  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)\n  ✓ [SPEC-6] the blocked hook does not outlive the run\n\n  SPEC-6b: a hook child that ignores TERM does not outlive the run\n  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n    pid 3300836 still alive 5s after the runner returned\n\n\n  1 of 17 tests failed\n\n  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n\nunit: FAIL tests/unit/stage-timeout-dispatch-test.sh\n\n  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog\n\n\n  [#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook\n  ✓ [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh\n  ✓ [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only\n\n  [#1801/SPEC-1] watchdog writes disposition timed_out\n  ✓ [#1801/SPEC-1] timed_out disposition is used in the dispatch path\n\n  [#1801/SPEC-1] all dispatch routes lead through plugin_hook_call\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)\n\n  [#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch\n  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch\n    found:         kill -KILL -- -\"$_lc_hook_pid\" 2>/dev/null || true — replace with zbuild_pg_kill\n\n  [#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill\n  ✓ [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill\n  ✓ [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh\n\n  watchdog in lifecycle.sh is backend-agnostic (above the backend layer)\n  ✓ orch-mock plugin exists (backend-agnostic watchdog can be tested with it)\n\n  orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch\n  ✓ orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch\n\n\n  1 of 12 tests failed\n\n  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch\n\nunit: 26/29 passed",
+  "run_mode": "targeted",
   "exit_code": 1,
   "data": {
     "exit_code": 1,
-    "passed": 832,
-    "failed": 21,
-    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/orch-sequential-retired-guard-test.sh\n\n  [#1801/SPEC-8] orch-sequential retired; [#1801/SPEC-11] ADR Enforced-by sections\n\n\n  [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent\n  ✓ [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent\n\n  [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential\n  ✗ [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential\n    found references:\n  tests/unit/orch-backend-misconfigured-test.sh\n\n\n  [#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured\n  ✓ [#1801/SPEC-8] configuring sequential as backend signals misconfigured\n\n  [#1801/SPEC-11] ADR-054 has ## Enforced by section\n  ✓ [#1801/SPEC-11] ADR-054 has ## Enforced by section\n\n  [#1801/SPEC-11] ADR-017 has ## Enforced by section\n  ✓ [#1801/SPEC-11] ADR-017 has ## Enforced by section\n\n  [#1801/SPEC-11] ADR-011 has ## Enforced by section\n  ✓ [#1801/SPEC-11] ADR-011 has ## Enforced by section\n\n  [#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt\n  ✓ [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt\n  ✓ [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt\n  ✓ [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt\n\n\n  1 of 9 tests failed\n\n  ✗ [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/event-schema-emitted-coverage-test.sh\n\n  event-schema emitted-⊆-composed known types (all plugins + core)\n\n  ✗ emitted type 'orch.backend.misconfigured' is in the composed known set\n    not in config/event-schema.json nor any manifest's provides.events\n  ✗ emitted type 'plugin.run.timed_out' is in the composed known set\n    not in config/event-schema.json nor any manifest's provides.events\n  ✓ [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest\n  ✓ [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace\n  ✓ [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself\n  ✓ [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types\n  ✓ [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types\n\n\n  2 of 7 tests failed\n\n  ✗ emitted type 'orch.backend.misconfigured' is in the composed known set\n  ✗ emitted type 'plugin.run.timed_out' is in the composed known set\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/design-prompt-scope-charter-test.sh\n\n  unit: design prompt exhaustive-scope charter + tools (#841)\n\n  ✓ design prompt written\n  ✓ T1: prompt invites Read/Grep tool use\n  ✓ T2: prompt states an exhaustive-enumeration charter\n  ✓ T3: prompt instructs finding files that pin/reference what changes\n  ✓ T4: 'superset' framing removed\n  ✓ T5: prompt keeps design read-only (no Edit/Write/Bash for impl)\n  ✗ T6: design timeout_s raised to 600\n    expected: 600, got: 3900\n\n\n  1 of 7 tests failed\n\n  ✗ T6: design timeout_s raised to 600\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/stdin-spawn-guard-test.sh\n\n  guard: spawns never inherit a data-bearing stdin (#2108)\n\n  ✓ [#2108] the fresh shell closes stdin\n  ✓ [#2108] negctl spawns under the fresh shell\n  ✓ [#2108] reachability spawns under the fresh shell\n  ✓ [#2108] spec-correspondence's model call closes stdin\n  ✓ [#2108] build's false-completion guard spawns under the fresh shell\n  ✓ [#2108] the test stage's suite closes stdin under set -m\n  ✓ [#2108] local_engine work units close stdin\n  ✗ [#2108] orch-mock work units close stdin\n    pattern not found in plugins/tool/orch-mock/plugin.sh: bash -c \"\\$task_body\" .* </dev/null\n\n\n  1 of 8 tests failed\n\n  ✗ [#2108] orch-mock work units close stdin\n\nunit: 548/552 passed (4 skipped)\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/core-pipeline-runner-test.sh\n\n  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)\n\n  ✓ no args exits 1\n  ✓ no args prints the usage\n  ✓ --help exits 0\n  ✓ --issue with no value exits 1\n  ✓ --issue with no value names the flag\n  ✓ --goal with no value exits 1\n  ✓ --goal with no value names the flag\n  ✓ dry-run shows intake stage\n  ✓ dry-run shows build stage\n  ✓ dry-run leaves state file untouched\n  ✗ happy path exits 0\n    expected: 0, got: 1\n  ✓ events.jsonl created\n  ✓ pipeline.start emitted once\n  ✓ pipeline.end emitted once\n  ✗ pipeline.end carries status=success\n    expected: 1, got: 0\n  ✗ [SPEC-1] stage.start emitted for each fixture stage (2x)\n    expected: 2, got: 1\n  ✗ [SPEC-1] stage.complete emitted for each fixture stage (2x)\n    expected: 2, got: 0\n  ✓ state file created\n  ✗ intake stage_status=complete (ADR-006 enum)\n    expected: complete, got: failed\n  ✗ build stage_status=complete (ADR-006 enum)\n    expected: complete, got: \n  ✓ mid-stage failure exits 1\n  ✓ events.jsonl present on failure\n  ✓ pipeline.end status=failed emitted\n  ✗ pipeline.end names the failing stage\n    expected: 1, got: 0\n  ✓ stage.fail event emitted\n  ✗ build stage_status=failed in state\n    expected: failed, got: \n  ✓ missing required plugin exits 1 (warn: caught at dispatch)\n  ✓ dispatch-time missing-plugin error names the unresolved stage 'intake'\n  ✓ missing plugin causes pipeline.end status=failed\n  ✗ kill mid-run emits pipeline.abort\n  ✓ --template runner-state-dir-minimal dry-run shows intake\n  ✓ --template runner-state-dir-minimal dry-run shows build\n  ✓ missing template fails closed (rc=1; #1850 — was 2) [#1283]\n  ✓ missing template error names the template\n  ✗ role-based dispatch exits 0\n    expected: 0, got: 1\n  ✗ role-based dispatch: 2 stage.complete events\n    expected: 2, got: 0\n  ✗ role-based: build stage_status=complete\n    expected: complete, got: \n  ✗ fanout 2 platforms exits 0\n    expected: 0, got: 1\n  ✗ fanout 2 platforms: 4 plugin.run.start events (2 stages × 2)\n    expected: 4, got: 0\n  ✓ partial fanout failure exits 1\n  ✗ partial fanout emits stage.fail with reason=partial\n    expected: 1, got: 0\n  ✓ partial fanout emits pipeline.end status=failed\n  ✗ A2 abort trap: pipeline.abort event emitted on kill\n  ✗ A2 abort trap: no state.error when state file writable\n  ✓ A2 abort trap: pipeline status=interrupted in state\n  ✗ A3 artifact contract: plugin.contract.violated event emitted\n    expected: 1, got: 0\n  ✗ A3 artifact contract: synthetic findings.json not created\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/artifact-contract-test.sh\n\n  artifact contract — A3: missing artifact triggers plugin.contract.violated\n\n▸ merge_policy: auto_unless_flagged\n▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/92500001/worktree\n▸ Pipeline started — run_id=20261012020901-1310446 issue=92500001 goal= template=artifact-contract-minimal engine=3a881a6(zbuild/issue-1801-ci)\n  ✗ plugin.contract.violated event emitted\n    not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/a3/events/events.jsonl\n  ✗ synthetic findings.json created\n    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/a3/state/artifacts/intake-intake-contract-violated-findings.json\n  ✗ plugin.contract.violated event names the expected artifact path\n    output missing: intake-findings.json\n  ✗ plugin.contract.violated event carries reason=artifact_missing_or_empty\n    expected: artifact_missing_or_empty, got: \n▸ merge_policy: auto_unless_flagged\n▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/92500001/worktree\n▸ Pipeline started — run_id=20261012020902-1313321 issue=92500001 goal= template=artifact-contract-minimal engine=3a881a6(zbuild/issue-1801-ci)\n  ✓ a plugin declaring no outputs raises no contract violation (#1906)\n\n\n  4 of 5 tests failed\n\n  ✗ plugin.contract.violated event emitted\n  ✗ synthetic findings.json created\n  ✗ plugin.contract.violated event names the expected artifact path\n  ✗ plugin.contract.violated event carries reason=artifact_missing_or_empty\n\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/cycle-on-max-pipeline-continues-test.sh\n\n  cycle on_max=continue → runner continues to next cycle (#766)\n\n\n  T1: events.jsonl chain around design_verify_cycle exhaustion\n  ✓ T1.1: cycle.complete fired with non-convergence reason for design_verify_cycle (count=2)\n  ✓ T1.2: cycle.unconverged event emitted (proves runner continues past cycle exit)\n  ✓ T1.3: pipeline.abort MUST NOT fire on on_max=continue cycle exhaustion\n  ✗ T1.4: pipeline.end emitted exactly once\n    expected: 1, got: 0\n  ✗ T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)\n    expected: failed, got: \n\n  T2: build_test_cycle + pr dispatched after design_verify_cycle exhausted\n  ✓ T2.1: build plugin ran (proves build_test_cycle was dispatched after design_verify_cycle exhausted)\n  ✗ T2.2: pr plugin did NOT run\n    pr_run_count=0\n\n\n  3 of 7 tests failed\n\n  ✗ T1.4: pipeline.end emitted exactly once\n  ✗ T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)\n  ✗ T2.2: pr plugin did NOT run\n\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/pipeline-resume-test.sh\n\n  pipeline resume — CLI + auto-resume policy (#225)\n\n\n  get_resume_recommendation: in_progress < 24h\n  ✓ in_progress recent → auto_resume\n\n  get_resume_recommendation: complete\n  ✓ complete → fresh_start\n\n  get_resume_recommendation: aborted\n  ✓ aborted → manual_resume_only\n\n  get_resume_recommendation: no state file\n  ✓ no state file → fresh_start\n\n  get_resume_recommendation: in_progress > 24h\n  ✓ in_progress old → manual_r",
+    "passed": 26,
+    "failed": 3,
+    "test_output": "unit: FAIL tests/integration/runner-job-control-abort-test.sh\n\n  runner job-control PG forwarding (Wave 15-H / #688)\n\n\n  T1: ZBUILD_RUNNER_JOB_CONTROL=1 enables set -m in runner\n  ✓ flag-off probe run rc=0\n  ✓ flag-on  probe run rc=0\n  ✓ flag-off: monitor mode OFF in runner shell\n  ✗ flag-on: monitor mode ON in runner shell\n    got: dash=huB\nmonitor        \toff\n\n  T2: end-to-end SIGTERM with flag-on (regression of trap chain)\n  ✓ runner exits 1, not 143 (flag-on, SIGTERM)\n  ✓ pipeline.aborted carries reason=sigterm exactly\n  ✓ signal-to-exit ≤60s (actual=1s)\n  ✓ test stage did NOT run after SIGTERM\n  ✓ status=interrupted\n  ✓ pipeline.aborted reason=sigterm emitted\n  ✓ no job-control errors in stderr\n\n\n  1 of 11 tests failed\n\n  ✗ flag-on: monitor mode ON in runner shell\n\nunit: FAIL tests/integration/runner-release-exit-paths-test.sh\n\n  runner dispatches cleanup(release) on every exit path (#1829)\n\n\n  SPEC-1: exit path = success (rc 0)\n  ✓ [SPEC-1] runner exits 0 on the success path\n  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test\n  ✓ [SPEC-1] purge is never reachable from a run\n\n  SPEC-2: exit path = non-zero stage rc\n  ✓ [SPEC-2] runner exits non-zero when a stage fails\n  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-2] purge is never reachable from a run\n\n  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)\n  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)\n  ✓ [SPEC-3] pipeline.aborted carries reason=sigint\n  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-3] purge is never reachable from a run\n\n  SPEC-4: exit path = external SIGTERM\n  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-4] purge is never reachable from a run\n\n  SPEC-5: exit path = external hard kill (timeout-style)\n  ✓ [SPEC-5] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-5] purge is never reachable from a run\n\n  SPEC-6: a cleanup hook that blocks cannot hang the runner\n  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)\n  ✓ [SPEC-6] the blocked hook does not outlive the run\n\n  SPEC-6b: a hook child that ignores TERM does not outlive the run\n  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n    pid 3300836 still alive 5s after the runner returned\n\n\n  1 of 17 tests failed\n\n  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n\nunit: FAIL tests/unit/stage-timeout-dispatch-test.sh\n\n  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog\n\n\n  [#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook\n  ✓ [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh\n  ✓ [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only\n\n  [#1801/SPEC-1] watchdog writes disposition timed_out\n  ✓ [#1801/SPEC-1] timed_out disposition is used in the dispatch path\n\n  [#1801/SPEC-1] all dispatch routes lead through plugin_hook_call\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)\n  ✓ [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)\n\n  [#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch\n  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch\n    found:         kill -KILL -- -\"$_lc_hook_pid\" 2>/dev/null || true — replace with zbuild_pg_kill\n\n  [#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill\n  ✓ [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill\n  ✓ [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh\n\n  watchdog in lifecycle.sh is backend-agnostic (above the backend layer)\n  ✓ orch-mock plugin exists (backend-agnostic watchdog can be tested with it)\n\n  orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch\n  ✓ orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch\n\n\n  1 of 12 tests failed\n\n  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch\n\nunit: 26/29 passed",
     "diff_applied": false,
-    "test_cmd": "npm test",
-    "run_mode": "full",
+    "test_cmd": "bash scripts/run-tests.sh --files 'tests/integration/artifact-contract-test.sh' 'tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh' 'tests/integration/core-pipeline-runner-test.sh' 'tests/integration/core-pipeline-verdict-indicators-test.sh' 'tests/integration/cycle-acceptance-terminal-failure-test.sh' 'tests/integration/cycle-on-max-pipeline-continues-test.sh' 'tests/integration/design-pipeline-test.sh' 'tests/integration/full-pipeline-seq-cardinal-test.sh' 'tests/integration/leaf-dispatch-role-bound-verdict-test.sh' 'tests/integration/per-run-state-isolation-test.sh' 'tests/integration/pipeline-resume-test.sh' 'tests/integration/runner-exports-state-dir-test.sh' 'tests/integration/runner-init-state-abort-test.sh' 'tests/integration/runner-job-control-abort-test.sh' 'tests/integration/runner-release-exit-paths-test.sh' 'tests/integration/state-root-isolation-test.sh' 'tests/integration/worktree-run-isolation-test.sh' 'tests/unit/design-prompt-scope-charter-test.sh' 'tests/unit/event-schema-emitted-coverage-test.sh' 'tests/unit/orch-backend-misconfigured-test.sh' 'tests/unit/orch-sequential-retired-guard-test.sh' 'tests/unit/stage-timeout-always-run-test.sh' 'tests/unit/stage-timeout-dispatch-test.sh' 'tests/unit/stage-timeout-loader-validation-test.sh' 'tests/unit/stage-timeout-no-flat-limit-test.sh' 'tests/unit/stage-timeout-precedence-test.sh' 'tests/unit/stage-timeout-process-group-test.sh' 'tests/unit/stage-timeout-retry-test.sh' 'tests/unit/stdin-spawn-guard-test.sh'",
+    "run_mode": "targeted",
     "timing": {
-      "tiers": {
-        "lint": 153724,
-        "e2e": 149896,
-        "golden": 5115,
-        "unit": 476062,
-        "integration": 526760
-      },
+      "tiers": {},
       "slowest_files": [
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/run-status-comment-render-test.sh",
-          "ms": 104604
+          "file": "tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 112330
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/runner-release-exit-paths-test.sh",
-          "ms": 91764
+          "file": "tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 97453
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/cycle-acceptance-terminal-failure-test.sh",
-          "ms": 88272
+          "file": "tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 71158
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/stage-resolution-parity-test.sh",
-          "ms": 87912
+          "file": "tests/integration/core-pipeline-runner-test.sh",
+          "ms": 31167
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/plugins/agent/review-lens/tests/review-lens-v2-result-test.sh",
-          "ms": 86833
+          "file": "tests/integration/per-run-state-isolation-test.sh",
+          "ms": 25508
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/cycle-multi-exit-when-e2e-test.sh",
-          "ms": 79004
+          "file": "tests/integration/worktree-run-isolation-test.sh",
+          "ms": 13904
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/core-pipeline-cycle-reuse-and-route-back-test.sh",
-          "ms": 76823
+          "file": "tests/integration/runner-job-control-abort-test.sh",
+          "ms": 13250
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/runner-pipeline-end-test.sh",
-          "ms": 70074
+          "file": "tests/integration/core-pipeline-verdict-indicators-test.sh",
+          "ms": 11832
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh",
-          "ms": 68057
+          "file": "tests/integration/state-root-isolation-test.sh",
+          "ms": 11442
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/core-pipeline-cycle-stall-break-test.sh",
-          "ms": 63766
+          "file": "tests/integration/design-pipeline-test.sh",
+          "ms": 5307
         }
       ]
     },
-    "tree_sha": "8b315aa5a0f9998aa84faed045f718ce6a055f27",
-    "failures": [
-      {
-        "file": "tests/integration/artifact-contract-test.sh",
-        "reason": "✗ plugin.contract.violated event emitted — not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/a3/events/events.jsonl",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh",
-        "reason": "✗ runner exits 0 — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/core-pipeline-runner-test.sh",
-        "reason": "✗ happy path exits 0 — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/core-pipeline-verdict-indicators-test.sh",
-        "reason": "✗ Pipeline cannot start — inputs missing for declared stages:",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/cycle-acceptance-terminal-failure-test.sh",
-        "reason": "✗ Pipeline failed: status=failed run_id=20261012021142-1579736 issue=0 (took 19.4s)",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/cycle-on-max-pipeline-continues-test.sh",
-        "reason": "✗ T1.4: pipeline.end emitted exactly once — expected: 1, got: 0",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/design-pipeline-test.sh",
-        "reason": "✗ runner exits 0 — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/full-pipeline-seq-cardinal-test.sh",
-        "reason": "✗ pipeline exits 0 — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/leaf-dispatch-role-bound-verdict-test.sh",
-        "reason": "✗ [SPEC-4] the fixture stage dispatched (stage.complete emitted)",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/per-run-state-isolation-test.sh",
-        "reason": "✗ T1: run-aaa exits 0 — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/pipeline-resume-test.sh",
-        "reason": "✗ integration: --resume exits 0 when remaining stage succeeds — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/runner-exports-state-dir-test.sh",
-        "reason": "✗ runner exits 0 — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/runner-init-state-abort-test.sh",
-        "reason": "✗ SPEC-6: writable state dir → run completes — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/runner-job-control-abort-test.sh",
-        "reason": "✗ flag-off: monitor mode OFF in runner shell — got: dash=hmuB",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/runner-release-exit-paths-test.sh",
-        "reason": "✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/state-root-isolation-test.sh",
-        "reason": "✗ nested run exits 0 — expected: 0, got: 1",
-        "points_at": []
-      },
-      {
-        "file": "tests/integration/worktree-run-isolation-test.sh",
-        "reason": "✗ [SPEC-3a] the build stage must commit to the work branch",
-        "points_at": []
-      },
-      {
-        "file": "tests/unit/design-prompt-scope-charter-test.sh",
-        "reason": "✗ T6: design timeout_s raised to 600 — expected: 600, got: 3900",
-        "points_at": []
-      },
-      {
-        "file": "tests/unit/event-schema-emitted-coverage-test.sh",
-        "reason": "✗ emitted type 'orch.backend.misconfigured' is in the composed known set",
-        "points_at": []
-      },
-      {
-        "file": "tests/unit/orch-sequential-retired-guard-test.sh",
-        "reason": "✗ [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential — found references:",
-        "points_at": []
-      },
-      {
-        "file": "tests/unit/stdin-spawn-guard-test.sh",
-        "reason": "✗ [#2108] orch-mock work units close stdin — pattern not found in plugins/tool/orch-mock/plugin.sh: bash -c \"\\$task_body\" .* </dev/null",
-        "points_at": []
-      }
-    ],
-    "findings": [
-      {
-        "n": 1,
-        "text": "tests/integration/artifact-contract-test.sh fails: ✗ plugin.contract.violated event emitted — not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/a3/events/events.jsonl"
-      },
-      {
-        "n": 2,
-        "text": "tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh fails: ✗ runner exits 0 — expected: 0, got: 1"
-      },
-      {
-        "n": 3,
-        "text": "tests/integration/core-pipeline-runner-test.sh fails: ✗ happy path exits 0 — expected: 0, got: 1"
-      },
-      {
-        "n": 4,
-        "text": "tests/integration/core-pipeline-verdict-indicators-test.sh fails: ✗ Pipeline cannot start — inputs missing for declared stages:"
-      },
-      {
-        "n": 5,
-        "text": "tests/integration/cycle-acceptance-terminal-failure-test.sh fails: ✗ Pipeline failed: status=failed run_id=20261012021142-1579736 issue=0 (took 19.4s)"
-      },
-      {
-        "n": 6,
-        "text": "tests/integration/cycle-on-max-pipeline-continues-test.sh fails: ✗ T1.4: pipeline.end emitted exactly once — expected: 1, got: 0"
-      },
-      {
-        "n": 7,
-        "text": "tests/integration/design-pipeline-test.sh fails: ✗ runner exits 0 — expected: 0, got: 1"
-      },
-      {
-        "n": 8,
-        "text": "tests/integration/full-pipeline-seq-cardinal-test.sh fails: ✗ pipeline exits 0 — expected: 0, got: 1"
-      },
-      {
-        "n": 9,
-        "text": "tests/integration/leaf-dispatch-role-bound-verdict-test.sh fails: ✗ [SPEC-4] the fixture stage dispatched (stage.complete emitted)"
-      },
-      {
-        "n": 10,
-        "text": "tests/integration/per-run-state-isolation-test.sh fails: ✗ T1: run-aaa exits 0 — expected: 0, got: 1"
-      },
-      {
-        "n": 11,
-        "text": "tests/integration/pipeline-resume-test.sh fails: ✗ integration: --resume exits 0 when remaining stage succeeds — expected: 0, got: 1"
-      },
-      {
-        "n": 12,
-        "text": "tests/integration/runner-exports-state-dir-test.sh fails: ✗ runner exits 0 — expected: 0, got: 1"
-      },
-      {
-        "n": 13,
-        "text": "tests/integration/runner-init-state-abort-test.sh fails: ✗ SPEC-6: writable state dir → run completes — expected: 0, got: 1"
-      },
-      {
-        "n": 14,
-        "text": "tests/integration/runner-job-control-abort-test.sh fails: ✗ flag-off: monitor mode OFF in runner shell — got: dash=hmuB"
-      },
-      {
-        "n": 15,
-        "text": "tests/integration/runner-release-exit-paths-test.sh fails: ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run"
-      },
-      {
-        "n": 16,
-        "text": "tests/integration/state-root-isolation-test.sh fails: ✗ nested run exits 0 — expected: 0, got: 1"
-      },
-      {
-        "n": 17,
-        "text": "tests/integration/worktree-run-isolation-test.sh fails: ✗ [SPEC-3a] the build stage must commit to the work branch"
-      },
-      {
-        "n": 18,
-        "text": "tests/unit/design-prompt-scope-charter-test.sh fails: ✗ T6: design timeout_s raised to 600 — expected: 600, got: 3900"
-      },
-      {
-        "n": 19,
-        "text": "tests/unit/event-schema-emitted-coverage-test.sh fails: ✗ emitted type 'orch.backend.misconfigured' is in the composed known set"
-      },
-      {
-        "n": 20,
-        "text": "tests/unit/orch-sequential-retired-guard-test.sh fails: ✗ [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential — found references:"
-      },
-      {
-        "n": 21,
-        "text": "tests/unit/stdin-spawn-guard-test.sh fails: ✗ [#2108] orch-mock work units close stdin — pattern not found in plugins/tool/orch-mock/plugin.sh: bash -c \"\\$task_body\" .* </dev/null"
-      }
-    ]
+    "findings": []
   }
 }
