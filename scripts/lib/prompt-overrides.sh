@@ -3,9 +3,9 @@
 #
 # zBuild ships 100% target-agnostic stage prompts; an operator tailors a stage
 # for a specific TARGET repo by dropping `.zbuild/prompts/<stage>-overrides.md`
-# into that repo. At prompt-build time an agent stage appends the override
-# (after its core contract, before redaction) so the overlay can AUGMENT scope
-# discovery / domain guidance without weakening the shipped charter. The override
+# into that repo. The engine reads it into the stage's From the repo block
+# (scripts/lib/stage-prompt.sh, ADR-067 §8), as guidance that can AUGMENT the
+# stage's job without weakening it. The override
 # rides the same redaction chokepoint as the rest of the prompt — that is a
 # PATH-SCOPE gate (out-of-scope file paths get OOS-wrapped), NOT a secret
 # scrubber: an operator who puts secrets in their own override ships them, just
@@ -49,7 +49,7 @@ load_prompt_override() {
 
 # load_repo_rules [repo_root]
 #   The target repo's rules for every stage that declares `prompt.repo_rules`
-#   (scripts/lib/repo-rules.sh): <repo_root>/.zbuild/prompts/rules.md, under the
+#   (scripts/lib/stage-prompt.sh): <repo_root>/.zbuild/prompts/rules.md, under the
 #   same containment and size rules as an override. Empty when absent.
 load_repo_rules() {
     local repo_root="${1:-${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"
@@ -109,22 +109,4 @@ _po_load_repo_file() {
     fi
     cat "$override_file"
     return 0
-}
-
-# The delimiter under which every stage appends its operator override. Single-
-# sourced so the wording can't drift across stages.
-ZBUILD_PROMPT_OVERRIDE_DELIMITER="## Project-specific guidance (operator override)"
-
-# append_prompt_override <prompt_file> <stage> — append stage's per-repo override
-# (if any) to an ALREADY-ASSEMBLED prompt file, under the operator delimiter.
-# Call AFTER the core contract is written to the file and BEFORE redaction, so
-# the override is redaction-covered and cannot precede/weaken the charter. No-op
-# (byte-identical) when no override exists. Stages whose prompt is assembled in a
-# shell variable rather than a file (e.g. plan) inline the equivalent instead.
-append_prompt_override() {
-    local prompt_file="$1" stage="$2" ov
-    ov="$(load_prompt_override "$stage")"
-    [[ -n "$ov" ]] || return 0
-    { printf '\n\n%s\n\n' "$ZBUILD_PROMPT_OVERRIDE_DELIMITER"
-      printf '%s\n' "$ov"; } >> "$prompt_file"
 }

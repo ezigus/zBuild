@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Tests: core/router/route.sh — injects branch-cumulative context into iter
-# prompt when $ZBUILD_STATE_DIR/intake-baseline-ref.txt exists (#614).
+# tests/integration/route-loop-prompt-unchanged-test.sh — every call of a
+# stage's model loop gets the stage's prompt as the stage composed it
+# (ADR-067 §8, amended).
 #
-# Setup: seed branch with N commits AFTER an intake baseline SHA, then drive
-# route_to_model_loop and assert the iter-1 prompt the mock claude saw
-# contains the "## BRANCH STATE since intake" block including the commits
-# and the diff stat.
+# The loop used to add, on every call, an "## Iteration N/M" header, the diff so
+# far, a "previous round ran out of time" warning and a "## BRANCH STATE since
+# intake" summary — none of them in the stage's prompt order. The code is in the
+# worktree; the stage's notes file and Previous work carry what earlier calls did.
+#
+#   LP1 [change]: a later call in the loop sends exactly the stage's prompt
+#   LP2 [change]: no call carries an Iteration header or a BRANCH STATE block
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,8 +20,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "route: injects branch-cumulative context (#614)"
-setup_test_env "route-614-branch-context"
+print_test_header "route: a loop sends the stage prompt unchanged"
+setup_test_env "route-loop-prompt"
 
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
@@ -62,7 +66,8 @@ printf '%s' "$BASELINE_SHA" > "$STATE_DIR/intake-baseline-ref.txt"
 export ZBUILD_STATE_DIR="$STATE_DIR"
 
 # ─── Mock claude: record the prompt arg ($2 after -p) and emit LOOP_COMPLETE ─
-PROMPT_CAPTURE="$TEST_TEMP_DIR/claude-prompt-iter1.txt"
+PROMPT_DIR="$TEST_TEMP_DIR/prompts"
+mkdir -p "$PROMPT_DIR"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
 # Capture the -p prompt arg (claude is called: -p "<prompt>" --print --model ...).
@@ -76,11 +81,15 @@ done
 # The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
 [[ -n "\$prompt" ]] || prompt="\$(cat)"
 # Only capture the first iter prompt.
-if [[ ! -f "$PROMPT_CAPTURE" ]]; then
-    printf '%s' "\$prompt" > "$PROMPT_CAPTURE"
+n=\$(ls "$PROMPT_DIR" | wc -l | tr -d ' ')
+printf '%s' "\$prompt" > "$PROMPT_DIR/call-\$((n + 1)).txt"
+# A change each call, so the loop sees progress and calls again.
+echo "\$n" >> "$REPO/work-\$n.txt"
+if [[ "\$n" -ge 1 ]]; then
+    jq -n --arg r \$'done\nLOOP_COMPLETE' '{result:\$r, usage:{input_tokens:1, output_tokens:1}}'
+else
+    jq -n --arg r 'working' '{result:\$r, usage:{input_tokens:1, output_tokens:1}}'
 fi
-jq -n --arg r \$'done\nLOOP_COMPLETE' \
-   '{result:\$r, usage:{input_tokens:1, output_tokens:1}}'
 exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
@@ -89,51 +98,24 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 source "$REPO_ROOT/core/router/route.sh"
 
 PROMPT_FILE="$TEST_TEMP_DIR/prompt.txt"
-echo "static build prompt" > "$PROMPT_FILE"
+printf 'the stage prompt, as composed\n' > "$PROMPT_FILE"
 
 set +e
-route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 1 >/dev/null 2>&1
-rc=$?
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 3 >/dev/null 2>&1
 set +e
-assert_exit_code "loop rc=0 (DONE on iter 1)" "0" "$rc"
 
-assert_file_exists "iter-1 prompt captured" "$PROMPT_CAPTURE"
-captured="$(cat "$PROMPT_CAPTURE" 2>/dev/null || echo)"
-
-# Block header
-if [[ "$captured" == *"## BRANCH STATE since intake"* ]]; then
-    assert_pass "prompt contains '## BRANCH STATE since intake' header"
+assert_file_exists "the first call was made" "$PROMPT_DIR/call-1.txt"
+assert_file_exists "a second call was made" "$PROMPT_DIR/call-2.txt"
+assert_eq "[LP1] the first call sends the stage prompt exactly" \
+    "$(cat "$PROMPT_FILE")" "$(cat "$PROMPT_DIR/call-1.txt" 2>/dev/null)"
+assert_eq "[LP1] a later call sends the stage prompt exactly" \
+    "$(cat "$PROMPT_FILE")" "$(cat "$PROMPT_DIR/call-2.txt" 2>/dev/null)"
+all="$(cat "$PROMPT_DIR"/*.txt 2>/dev/null)"
+if [[ "$all" == *"## Iteration"* || "$all" == *"BRANCH STATE"* || "$all" == *"Cumulative diff"* ]]; then
+    assert_fail "[LP2] no call carries an Iteration header, a diff or a BRANCH STATE block" \
+        "found one in: $(printf '%s' "$all" | head -c 300)"
 else
-    assert_fail "prompt contains '## BRANCH STATE since intake' header" \
-        "got: $(printf '%s' "$captured" | head -c 400)"
-fi
-
-# Commits section
-for msg in "add a" "add b" "tweak a"; do
-    if [[ "$captured" == *"$msg"* ]]; then
-        assert_pass "branch state lists commit: $msg"
-    else
-        assert_fail "branch state lists commit: $msg" "missing from prompt"
-    fi
-done
-
-# Diff stat — at least one file path should show up in --stat output
-if [[ "$captured" == *"a.txt"* && "$captured" == *"b.txt"* ]]; then
-    assert_pass "diff stat references a.txt and b.txt"
-else
-    assert_fail "diff stat references a.txt and b.txt" "missing"
-fi
-
-# Both labels present (Commits + Changes since this run started)
-if [[ "$captured" == *"Commits:"* ]]; then
-    assert_pass "block contains 'Commits:' label"
-else
-    assert_fail "block contains 'Commits:' label" "missing"
-fi
-if [[ "$captured" == *"Changes since this run started"* ]]; then
-    assert_pass "block contains 'Changes since this run started' label"
-else
-    assert_fail "block contains 'Changes since this run started' label" "missing"
+    assert_pass "[LP2] no call carries an Iteration header, a diff or a BRANCH STATE block"
 fi
 
 cleanup_test_env

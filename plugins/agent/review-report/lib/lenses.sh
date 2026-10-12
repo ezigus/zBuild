@@ -102,16 +102,15 @@ _rr_lens_charter() {
     esac
 }
 
-# ─── _rr_build_lens_prompt <lens> <evidence_content> [<budget_guidance>] ─────
-# One prompt for ONE lens. Advisory contract: emit findings + a 0-10 score only.
+# ─── _rr_build_lens_prompt <lens> <evidence_content> ─────────────────────────
+# One lens's own three parts. Advisory contract: emit findings + a 0-10 score
+# only. The engine's blocks — its budget among its rules — are added by
+# stage_prompt_compose_parts (ADR-067 §8).
 _rr_build_lens_prompt() {
-    local lens="$1" evidence="$2" budget_guidance="${3:-}" charter
+    local lens="$1" evidence="$2" charter
     charter="$(_rr_lens_charter "$lens")"
-    local budget_block=""
-    [[ -n "$budget_guidance" ]] && budget_block="${budget_guidance}
-"
     cat <<PROMPT
-${budget_block}You are the "${lens}" review lens. ${charter}
+You are the "${lens}" review lens. ${charter}
 
 ## What you own
 An advisory report for this one lens: each problem you find, and a score.
@@ -225,14 +224,14 @@ _rr_lens_evidence() {
     return 0
 }
 
-# ─── _rr_fanout_lenses <scope_manifest> <evidence_file> <artifact_dir> <tier> [<budget_guidance>] ─
+# ─── _rr_fanout_lenses <scope_manifest> <evidence_file> <artifact_dir> <tier> ─
 # Bounded-parallel: run each lens as an isolated subshell LLM call, batched by
 # ZBUILD_RR_MAX_PARALLEL. ADR-043: redaction is owned by the router — each lens
 # prompt is redacted by route_to_model by construction, so this builds prompts
 # from RAW evidence. $1 (scope_manifest) is accepted for call-compat, unused.
 # Writes per-lens result JSON and echoes the path to the combined lenses array.
 _rr_fanout_lenses() {
-    local evidence_file="$2" artifact_dir="$3" tier="${4:-T2}" budget_guidance="${5:-}"
+    local evidence_file="$2" artifact_dir="$3" tier="${4:-T2}"
     local max="${ZBUILD_RR_MAX_PARALLEL:-4}"
     [[ "$max" -ge 1 ]] 2>/dev/null || max=1
     mkdir -p "$artifact_dir"
@@ -254,8 +253,12 @@ _rr_fanout_lenses() {
         else
             _lens_ev_content="$evidence_content"
         fi
-        _rr_build_lens_prompt "$lens" "$_lens_ev_content" "$budget_guidance" \
-            > "$artifact_dir/lens-$lens-prompt.txt"
+        # ADR-067 §8: composed with the engine's blocks. A lens whose prompt
+        # cannot be composed is not sent; it fails as misconfigured (rc 2).
+        rm -f "$artifact_dir/lens-$lens.composed-failed"
+        stage_prompt_compose_parts "$(_rr_build_lens_prompt "$lens" "$_lens_ev_content")" \
+            > "$artifact_dir/lens-$lens-prompt.txt" \
+            || : > "$artifact_dir/lens-$lens.composed-failed"
     done
 
     local total="${#_RR_LENSES[@]}" i=0
@@ -264,6 +267,11 @@ _rr_fanout_lenses() {
         local -a _batch_pids=()
         while [[ $j -lt $max && $((i + j)) -lt $total ]]; do
             lens="${_RR_LENSES[$((i + j))]}"
+            if [[ -e "$artifact_dir/lens-$lens.composed-failed" ]]; then
+                : > "$artifact_dir/lens-$lens.out"; printf '2' > "$artifact_dir/lens-$lens.rc"
+                rm -f "$artifact_dir/lens-$lens.composed-failed"
+                j=$((j + 1)); continue
+            fi
             (
                 # Isolation: unset the shared stage so concurrent route_to_model
                 # calls don't corrupt stage-io/banner/budget state.

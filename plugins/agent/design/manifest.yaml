@@ -41,6 +41,10 @@ config:
     timeout_s: 600
     max_turns: 45
 
+capabilities:
+  # ADR-067 §8: it calls the model in a loop, so the engine tells it how many calls it gets.
+  model_calls: loop
+
 inputs:
   - id: scope_manifest
     required: true
@@ -80,15 +84,6 @@ outputs:
     format: markdown
     required: true
     summary: true
-  # #2270: save as you go. A call cut off by time or turns returns nothing;
-  # this file is what it leaves, and the summary later stages read carries it.
-  - id: design-checkpoint
-    path: "${artifact_dir}/design-checkpoint.md"
-    type: checkpoint.md@1
-    format: markdown
-    required: false
-    role: checkpoint
-
 state:
   persisted: []
   reconstructed: []

@@ -71,11 +71,10 @@ _review_lens_envelope_schema_ok() {
 # or a signal returns nothing; this is all it leaves.
 _review_lens_saved_notes() {
     local cp
-    declare -F _checkpoint_declared_path >/dev/null 2>&1 || return 0
-    # Resolved against a stand-in state dir, then its artifacts folder swapped
-    # for the real one — so the notes are found whatever that folder is called.
-    cp="$(_checkpoint_declared_path "$_RL_DIR/manifest.yaml" "/_rl_sd" 2>/dev/null || true)"
-    [[ "$cp" == /_rl_sd/artifacts/* ]] || return 0
+    declare -F stage_notes_path >/dev/null 2>&1 || return 0
+    # The lens's notes file (ADR-067 §8), found in the artifacts folder it was
+    # given, whatever that folder is called.
+    cp="$(stage_notes_path "/_rl_sd" "${ZBUILD_CURRENT_STAGE:-review_lenses}")"
     cp="${1%/}/${cp#/_rl_sd/artifacts/}"
     [[ -s "$cp" ]] || return 0
     head -c 4000 "$cp" 2>/dev/null || true
@@ -110,33 +109,7 @@ _review_lens_interrupt_handler() {
     _rl_interrupted=1
 }
 
-# ─── _review_lens_budget_guidance <max_turns> ────────────────────────────────
-# TURN BUDGET block for the prompt (ADR-063 §1). Skipped when max_turns == 0.
-_review_lens_budget_guidance() {
-    local budget="${1:-}"
-    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
-    cat <<EOF
-TURN BUDGET (read this — you have a BOUNDED tool-call budget):
-- You have about ${budget} tool-call turns to complete this lens review.
-- A partial review with gaps named in prose BEATS exhausting the budget with no output.
-- STOP if you are running low and emit your best-effort findings NOW.
-EOF
-}
 
-# ─── _review_lens_wallclock_guidance <timeout_s> <elapsed_s> ─────────────────
-# WALL CLOCK BUDGET block (ADR-063 §1). Skipped when timeout_s == 0.
-_review_lens_wallclock_guidance() {
-    local budget_s="${1:-}" elapsed_s="${2:-}"
-    [[ "$budget_s" =~ ^[0-9]+$ && "$budget_s" -gt 0 ]] || { printf ''; return 0; }
-    [[ "$elapsed_s" =~ ^[0-9]+$ ]] || elapsed_s=0
-    [[ "$elapsed_s" -lt "$budget_s" ]] || { printf ''; return 0; }
-    local _stop_at=$(( budget_s * 70 / 100 ))
-    cat <<EOF
-WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of ${budget_s} seconds total; ~${elapsed_s}s have elapsed.
-- Target emitting your best-effort findings before ~${_stop_at}s of wall-clock time.
-EOF
-}
 
 # ─── _review_lens_id ─────────────────────────────────────────────────────────
 # Resolve the lens identity: explicit override, else the running stage id, else
@@ -282,7 +255,6 @@ _review_lens_run_inner() {
     # Redaction of the assembled prompt is the router's, by construction (ADR-043).
     local lens="$1" evidence="$3" out="$4"
     local artifact_dir="${5:-$(dirname "$out")}"
-    local _rl_start_s="$SECONDS"
 
     if [[ -z "$lens" || -z "$out" ]]; then
         error "_review_lens_run_inner: requires <lens> <scope_manifest> <evidence> <out>"
@@ -302,20 +274,18 @@ _review_lens_run_inner() {
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
     local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content" "$(_rl_context)")"
-    # No PRIOR REVIEW: a lens is not shown its own earlier verdict, as no
-    # judging stage is (#2212) — it re-judges from the change, not from itself.
 
-    local _budget_max_turns; _budget_max_turns="$(_route_resolve_max_turns)"
-    local _budget_timeout_s; _budget_timeout_s="$(_route_resolve_timeout)"
-    local _budget_elapsed_s=$(( SECONDS - _rl_start_s ))
-    local _budget_block; _budget_block="$(_review_lens_budget_guidance "$_budget_max_turns")"
-    if [[ -n "$_budget_block" ]]; then
-        prompt+=$'\n\n'"$_budget_block"
+    # ADR-067 §8: the lens's three parts and the engine's blocks — its budget
+    # and notes file among the engine's rules — in the one prompt order.
+    local _composed
+    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
+        _review_lens_write_result "$out" "degraded" "misconfigured" "prompt_not_composed"
+        stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
+            "the prompt could not be composed, so this lens reviewed nothing" \
+            "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
+        return 0
     fi
-    local _wallclock_block; _wallclock_block="$(_review_lens_wallclock_guidance "$_budget_timeout_s" "$_budget_elapsed_s")"
-    if [[ -n "$_wallclock_block" ]]; then
-        prompt+=$'\n\n'"$_wallclock_block"
-    fi
+    prompt="$_composed"
 
     # ─── ONE route_to_model call (ADR-017 per-stage tier; ADR-003 by tier) ──
     # ADR-018 Pattern 1: JSON envelope mode so reasoning turns don't leak as a

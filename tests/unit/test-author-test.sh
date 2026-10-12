@@ -185,9 +185,10 @@ _TA_RC=0
 _route_resolve_max_turns() { printf '45'; }
 _route_resolve_timeout() { printf '600'; }
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
-assert_contains "[SPEC-6][change] the prompt carries the TURN BUDGET block" "$(cat "$_TA_PROMPT")" "TURN BUDGET"
-assert_contains "[SPEC-6][change] …with the number the router enforces" "$(cat "$_TA_PROMPT")" "45 tool-call turns"
-assert_contains "[SPEC-6][change] …and the WALL CLOCK BUDGET block" "$(cat "$_TA_PROMPT")" "WALL CLOCK BUDGET"
+# ADR-067 §8: the budget is the engine's, stated in Rules for this stage from
+# the same resolvers (stage-prompt-contract-test R3); the prompt carries it.
+assert_eq "[SPEC-6][change] the prompt carries the engine's rules, where the budget is stated" "1" \
+    "$(grep -cxF '## Rules for this stage' "$_TA_PROMPT" || true)"
 unset -f _route_resolve_max_turns _route_resolve_timeout
 print_test_section "SPEC-7: simple.yaml gives test-author the same budget as build (#2188)"
 _tpl="$REPO_ROOT/config/templates/simple.yaml"

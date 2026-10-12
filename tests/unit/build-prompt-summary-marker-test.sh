@@ -10,11 +10,12 @@
 # #2032 run 37262224567 on engine 33ba7d5.
 #
 # M1 [change] the composed build prompt never says RESOLVE
-# M2 [change] it names the heading the summary block actually emits for a
-#             failing stage
+# M2 [change] it names the section the engine's block actually uses for earlier
+#             stages (Previous work), and a failing stage there by its verdict
 # M3 [change] finishing with no change requires answering each finding
 #             (`nothing to do` with a reason) or reporting it not reproduced
-# M4 [change] the prior-attempt context names the same heading, never RESOLVE
+# M4 (retired, ADR-067 §8): there is no separate prior-attempt context any
+#             more — build's own latest summary is under Previous work
 # M5 [change] the plain-prompt lint refuses RESOLVE in model-facing text
 # M6 [change] the run-status comment and the cycle banner do not label their
 #             count RESOLVE
@@ -40,9 +41,11 @@ S="$TEST_TEMP_DIR/state"; PR="$TEST_TEMP_DIR/plugins"; mkdir -p "$S/artifacts" "
 printf 'id: chk\nkind: tool\nprovides:\n  role: chk\n  result_contract: 2\noutputs:\n  - id: chk-summary\n    path: ${artifact_dir}/chk-summary.md\n    format: markdown\n    required: false\n    summary: true\n' > "$PR/tool/chk/manifest.yaml"
 printf '## chk — fail\n\n- a problem\n' > "$S/artifacts/chk-summary.md"
 printf '{"stage_statuses":{"chk":"failed"},"stage_verdicts":{"chk":"fail"}}\n' > "$S/pipeline-state.json"
-_blk="$( _TPL_STAGES=(chk); export ZBUILD_CURRENT_STAGE=build; stage_summaries_prompt_block "$S/pipeline-state.json" "$PR" 2>/dev/null )"
-_heading="$(grep -E '^### chk \(verdict: fail\) — ' <<< "$_blk" | sed -E 's/^### chk \(verdict: fail\) — //')"
-assert_contains "fixture: a failing stage's heading was read" "$_heading" "answer"
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh" >/dev/null 2>&1 || true
+_blk="$( _TPL_STAGES=(chk); _stage_block_previous_work build "$S" "$PR" "$(_inputs_resolve_stage build "$PR" "$S")" "$S" 2>/dev/null )"
+_heading="$(grep -E '^### chk \(verdict: fail\)' <<< "$_blk")"
+assert_contains "fixture: a failing stage's heading was read" "$_heading" "(verdict: fail)"
 
 # shellcheck source=../../plugins/agent/build/plugin.sh
 source "$REPO_ROOT/plugins/agent/build/plugin.sh" 2>/dev/null || true
@@ -59,7 +62,8 @@ if grep -qF 'RESOLVE' <<< "$PROMPT"; then
 else
     assert_pass "[M1] the build prompt never says RESOLVE"
 fi
-assert_contains "[M2] it names the heading the summaries actually use" "$PROMPT" "$_heading"
+assert_contains "[M2] it names the section earlier stages arrive in" "$PROMPT" "under Previous work"
+assert_contains "[M2] …and what makes a stage there red" "$PROMPT" "A failed stage under Previous work"
 assert_contains "[M3] finishing with no change needs each finding answered" "$PROMPT" "nothing to do"
 if grep -qF 'NOT_REPRODUCED' <<< "$PROMPT"; then
     assert_fail "[M7] the build prompt offers no separate NOT_REPRODUCED form" "$(grep -F NOT_REPRODUCED <<< "$PROMPT")"
@@ -68,21 +72,6 @@ else
 fi
 assert_contains "[M7] it asks for nothing to do, with not reproduced as the reason" "$PROMPT" \
     "nothing to do — not reproduced: <the path you ran>"
-
-# The prior-attempt context, for a build that changed nothing and one that did.
-# shellcheck disable=SC2329  # called by the context reader
-_read_prior_output() { printf '%s' "$_PRIOR"; }
-_PRIOR='{"verdict":"pass","files_changed":[]}'
-_c0="$(_build_read_prior_build_summary 2>/dev/null)"
-_PRIOR='{"verdict":"pass","files_changed":["lib/a.sh"]}'
-_c1="$(_build_read_prior_build_summary 2>/dev/null)"
-if grep -qF 'RESOLVE' <<< "$_c0$_c1"; then
-    assert_fail "[M4] the prior-attempt context never says RESOLVE" "found"
-else
-    assert_pass "[M4] the prior-attempt context never says RESOLVE"
-fi
-assert_contains "[M4] ...and names the real heading (nothing changed)" "$_c0" "$_heading"
-assert_contains "[M4] ...and names the real heading (files changed)" "$_c1" "$_heading"
 
 R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/config" "$R/plugins/x"
 printf '%s\n' 'cat <<EOF' 'If no summary is marked RESOLVE, stop.' 'EOF' > "$R/plugins/x/a.sh"

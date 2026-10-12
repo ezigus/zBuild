@@ -112,15 +112,6 @@ outputs:
     format: markdown
     required: true
     summary: true
-  # #2270: save as you go. A call cut off by time or turns returns nothing;
-  # this file is what it leaves, and the summary later stages read carries it.
-  - id: build-checkpoint
-    path: "${artifact_dir}/build-checkpoint.md"
-    type: checkpoint.md@1
-    format: markdown
-    required: false
-    role: checkpoint
-
 state:
   persisted: [last_files_changed, last_lines_added]
   reconstructed: [plan_json]
@@ -132,3 +123,5 @@ capabilities:
   writes_repository: true
   produces_commits: true
   empty_diff_legitimate: true
+  # ADR-067 §8: it calls the model in a loop, so the engine tells it how many calls it gets.
+  model_calls: loop

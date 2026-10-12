@@ -120,8 +120,10 @@ assert_file_exists "SPEC-2: prompt file written when architect manifest absent" 
 assert_contains "[SPEC-2] fallback text present when manifest absent" \
     "$(cat "$PROMPT2")" "Your job is to produce an ADR-style design.md for the task described in the plan below."
 _expected_open='Your job is to produce an ADR-style design.md for the task described in the plan below.'
+# ADR-067 §8: the prompt opens with From the repo; the stage's own text opens
+# What you own.
 assert_eq "[SPEC-2] fallback opening is behavior/task framing without persona role declaration" \
-    "$_expected_open" "$(head -1 "$PROMPT2")"
+    "$_expected_open" "$(awk 'f && NF { print; exit } /^## What you own$/ { f = 1 }' "$PROMPT2")"
 assert_eq "[SPEC-5] ZBUILD_STAGE_IO_PERSONA=architect:fallback exported when manifest absent" \
     "architect:fallback" "$(cat "$AD2/persona.cap" 2>/dev/null)"
 unset _CAPTURED_PERSONA_FILE

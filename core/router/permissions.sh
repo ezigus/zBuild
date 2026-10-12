@@ -132,9 +132,9 @@ _zbuild_build_permissions_settings() {
     # is the model allowed to write", and the only correct source for that answer
     # is "where does the engine TELL stages to write". Two directories are told
     # to models as literal paths: the design prompt's `$output_design_md` and
-    # every `role: checkpoint` output (scripts/lib/stage-checkpoint.sh injects the
-    # resolved path into the prompt, because env-scrub means a model cannot read
-    # an exported one). Both resolve under ${artifact_dir}. Omitting it made every
+    # every stage's notes file (scripts/lib/stage-prompt.sh puts the resolved
+    # path in the stage's rules, because env-scrub means a model cannot read an
+    # exported one). Both resolve under ${artifact_dir}. Omitting it made every
     # design stage die on a refused write while the grant looked deliberate.
     #
     # The run STATE dir is deliberately NOT granted. artifacts/ is the model's

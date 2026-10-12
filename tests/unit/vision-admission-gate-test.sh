@@ -82,7 +82,7 @@ make_over_limit_doc() {
 }
 
 # ── SPEC-1: valid vision passes load+validate ─────────────────────────────────
-VALID_DOC="$TEST_TEMP_DIR/valid-repo/docs/VISION.md"
+VALID_DOC="$TEST_TEMP_DIR/valid-repo/.zbuild/vision.md"
 make_valid_doc "$VALID_DOC"
 
 # load_vision_doc
@@ -109,13 +109,9 @@ assert_eq "[SPEC-2] missing vision: load_vision_doc rc=1" "1" "$rc"
 # Additional human-readable hint checking is done at the runner layer (SPEC-7).
 assert_eq "[SPEC-2] missing vision: rc=1 signals absence" "1" "$rc"
 
-# Verify the three canonical paths are known to the library
-assert_contains "[SPEC-2] search path 1: .zbuild/vision.md" \
-    "${_VISION_SEARCH_PATHS[0]}" ".zbuild/vision.md"
-assert_contains "[SPEC-2] search path 2: docs/VISION.md" \
-    "${_VISION_SEARCH_PATHS[1]}" "docs/VISION.md"
-assert_contains "[SPEC-2] search path 3: VISION.md" \
-    "${_VISION_SEARCH_PATHS[2]}" "VISION.md"
+# The one place the library reads: the repository's zBuild settings area
+assert_eq "[SPEC-2] the only search path is .zbuild/vision.md" \
+    ".zbuild/vision.md" "${_VISION_SEARCH_PATHS[*]}"
 
 # ── SPEC-3: doc missing ## Intent now passes validation (word-cap only) ───────
 NO_INTENT="$TEST_TEMP_DIR/no-intent/vision.md"
@@ -197,8 +193,8 @@ MALFORMED_REPO="$(setup_git_temp_repo malformed-vision-repo)"
 install_template_overlay "$MALFORMED_REPO" runner-state-dir-minimal
 # Place an over-word-count vision doc (fails new word-cap-only validator);
 # reuse the SPEC-4 fixture helper instead of a second python3 subprocess.
-mkdir -p "$MALFORMED_REPO/docs"
-make_over_limit_doc "$MALFORMED_REPO/docs/VISION.md"
+mkdir -p "$MALFORMED_REPO/.zbuild"
+make_over_limit_doc "$MALFORMED_REPO/.zbuild/vision.md"
 
 mkdir -p "$TEST_TEMP_DIR/malformed-events"
 rc=0

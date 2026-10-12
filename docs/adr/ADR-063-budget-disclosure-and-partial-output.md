@@ -126,6 +126,14 @@ call, and then the prompt is lying to the model with authority. `plan` computes
 its own stop target today and `impact` writes the budget as prose; both are
 correct now and neither is pinned to the enforcing value.
 
+**Amended 2026-10-12 (ADR-067 §8): the engine states the budget, once, for every stage.**
+The per-stage budget helpers and the shared `stage_budget_note` are removed. The engine
+states each stage's budget in its **Rules for this stage** block: seconds and turns per
+model call and how many calls the stage gets (`capabilities.model_calls: single | loop`),
+read from the same resolvers the router enforces (`scripts/lib/stage-limits.sh`, one copy
+for both). A stage with no turn limit is told so. Enforced by
+`tests/unit/stage-prompt-contract-test.sh` R3 and `tests/unit/save-as-you-go-test.sh` C1.
+
 ### 2. Every LLM stage declares a partial form of its deliverable
 
 A stage that cannot express "here is how far I got" has nothing to emit when it
@@ -234,6 +242,17 @@ was, and everything before that point belongs to earlier rounds. Enforced by
 nested loops included), O2 (round 2 labels round 1's notes), O3 (round 1 and its
 retries are unchanged), O4 (a retry inside round 2 reads its own notes as before)
 and O5 (the notes file is kept).
+
+**Amended 2026-10-12 (ADR-067 §8): every stage's notes file is the engine's.**
+No manifest declares a `role: checkpoint` output any more, and the separate notes
+block and its "previous round, not accepted" label are gone (#2325's rule is
+withdrawn: a stage's latest notes are its latest output, ADR-068 §8). Every stage has
+a notes file, `artifacts/notes/<stage>[-<element>].md` (a map element its own); the
+engine names it in the stage's rules, lists it for every later stage under Previous
+work, and gives the stage its own notes back in full there. Enforced by
+`tests/unit/stage-prompt-contract-test.sh` R1, `tests/unit/save-as-you-go-test.sh` C3,
+`tests/unit/stage-blocks-dispatch-test.sh` D4 and
+`tests/unit/router-permissions-grant-coverage-test.sh` SPEC-2 (the model may write it).
 
 ### 6. Carry-forward rides on the existing summary channel
 

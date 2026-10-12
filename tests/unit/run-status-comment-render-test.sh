@@ -59,10 +59,10 @@ ev 12:00:01 plugin.run.complete 1 intake plugin=intake kind=agent
 ev 12:00:01 stage.complete 1 intake stage=intake verdict=pass
 ev 12:20:14 plugin.run.start 6.1.1 build plugin=build kind=agent
 ev 12:20:20 plugin.run.start 6.1.1 build plugin=build-nested kind=tool    # nested hook: same seq
-ev 12:20:30 prompt.summaries.injected 6.1.1 build stage=build stages=16 resolve=4 bytes=9000
+ev 12:20:30 stage.previous_work.written 6.1.1 build stage=build stages=16 failing=4
 ev 13:21:47 cycle.member.dispatch.complete 6.1.1 build cycle_id=build_test_cycle iter=1 position=1 member=build rc=0 verdict=pass status=complete disposition=
 ev 13:22:00 plugin.run.start 6.1.2 test plugin=test kind=tool
-ev 13:22:05 prompt.summaries.injected 6.1.2 test stage=test stages=3 resolve=0 bytes=100
+ev 13:22:05 stage.previous_work.written 6.1.2 test stage=test stages=3 failing=0
 ev 13:40:00 cycle.iteration.reused "" "" cycle_id=build_test_cycle iter=2 member=build from_iter=1 reason=empty_diff
 ev 13:40:00 cycle.iteration.reused "" "" cycle_id=build_test_cycle iter=2 member=test from_iter=1 reason=empty_diff
 ev 14:00:00 plugin.run.start 7 review plugin=review kind=agent
@@ -112,7 +112,7 @@ assert_eq "[SPEC-3] linear row: no iter, <1s for equal timestamps" \
     "$intake_row"
 test_row="$(row_of '**6.1.2 test**')"
 assert_eq "[SPEC-3] open row: start, running, inputs, injected summaries count" \
-    '**9:22 AM ET → running** · **6.1.2 test** · iter 1 · inputs: diff, plan · 3 stage summaries (0 failing)' \
+    '**9:22 AM ET → running** · **6.1.2 test** · iter 1 · inputs: diff, plan · previous work from 3 stage(s) (0 failing)' \
     "$test_row"
 deploy_row="$(row_of '**9 deploy**')"
 assert_eq "[SPEC-3] open row without an injection: inputs only" \

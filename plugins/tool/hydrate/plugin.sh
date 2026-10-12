@@ -3,21 +3,17 @@
 #
 # Kind: tool  Tier: T0  (NO LLM calls — NEVER call route_to_model)
 #
-# Pulls prior artifacts for this issue out of `zbuild/state/issue-<N>` into the
-# run's restored-artifacts area. First stage in the flow, before intake.
+# Puts this issue's earlier outputs, saved on `zbuild/state/issue-<N>`, back in
+# their LIVE places in the run's artifacts folder. First stage in the flow,
+# before intake. A rerun of an issue continues it (ADR-050, amended; ADR-068
+# §8): an earlier run's output is that stage's latest output until the stage
+# writes a newer one, so there is one place to read and no "restored" area.
+# A file the run already has live is newer and is kept.
 #
-# THE PATH IS THE ENGINE'S, THE CONTENT IS THIS STAGE'S. A stage runs in its own
-# subshell, so an export from here would die with it — that is ADR-052's whole
-# diagnosis of #888. `ZBUILD_RESTORED_ARTIFACTS_DIR` is therefore exported by
-# the runner unconditionally, at a location it derives itself, and this stage
-# only fills it. Consumers already guard on `-s <file>`, so an empty or absent
-# area falls through to fresh, which is the documented behaviour.
-#
-# PARTIALITY IS IMPOSSIBLE, NOT DETECTED. `git archive | tar` can fail
-# mid-stream (disk full, permissions) leaving a half-extracted tree. PR #1880's
-# review caught the engine adopting one and gated on the status. Extracting to a
-# staging dir and promoting with a single `mv` removes the failure mode instead
-# of checking for it: the exported area is complete or it does not exist.
+# A PARTIAL TREE IS NEVER PUT BACK. `git archive | tar` can fail mid-stream
+# (disk full, permissions) leaving a half-extracted tree. PR #1880's review
+# caught the engine adopting one. Extraction goes to a staging dir and only a
+# complete one is copied into place.
 
 [[ -n "${_ZBUILD_HYDRATE_LOADED:-}" ]] && return 0
 _ZBUILD_HYDRATE_LOADED=1
@@ -55,6 +51,21 @@ _hydrate_fetch() {
     git remote get-url origin >/dev/null 2>&1 || return 0
     git fetch --quiet --no-tags origin \
         "+refs/heads/${branch}:refs/remotes/origin/${branch}" 2>/dev/null
+}
+
+# ─── _hydrate_put_back <from> <to> ───────────────────────────────────────────
+# Copy every file under <from> to the same place under <to>, skipping any file
+# <to> already has. One file at a time rather than `cp -n`, whose exit status on
+# a skipped file differs between BSD and newer GNU coreutils.
+_hydrate_put_back() {
+    local from="$1" to="$2" f rel
+    mkdir -p "$to" || return 1
+    while IFS= read -r -d '' f; do
+        rel="${f#"$from"/}"
+        [[ -e "$to/$rel" ]] && continue
+        mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
+    done < <(find "$from" -type f -print0 2>/dev/null)
+    return 0
 }
 
 # ─── hydrate_run <stage_id> <state_file> ─────────────────────────────────────
@@ -105,9 +116,7 @@ hydrate_run() {
         return 0
     fi
 
-    local _target="${ZBUILD_RESTORED_ARTIFACTS_DIR:-$_state_dir/restored-artifacts/artifacts}"
-    local _restored_root; _restored_root="$(dirname "$_target")"
-    local _staging="${_restored_root}.staging"
+    local _staging="$_state_dir/hydrate.staging"
 
     if ! _hydrate_fetch "$_issue"; then
         # Not fatal, and not silent. An offline developer still hydrates from a
@@ -138,24 +147,24 @@ hydrate_run() {
         warn "hydrate: restore failed: ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
     fi
 
-    # Promote ONLY a complete extraction. On failure the staging tree is
+    # Put back ONLY a complete extraction. On failure the staging tree is
     # discarded whole — a half-restored artifact set seeded into a stage is
-    # worse than no prior work at all (PR #1880 review).
+    # worse than no prior work at all (PR #1880 review). No-clobber: a live
+    # file is this run's own, and newer.
     if [[ "$_status" != "failed" && -d "$_staging/artifacts" ]] \
        && [[ -n "$(ls -A "$_staging/artifacts" 2>/dev/null)" ]]; then
         _count="$(find "$_staging/artifacts" -type f 2>/dev/null | /usr/bin/grep -c . || printf '0')"
-        rm -rf "$_restored_root" 2>/dev/null || true
-        if mkdir -p "$(dirname "$_restored_root")" && mv "$_staging" "$_restored_root"; then
+        if _hydrate_put_back "$_staging/artifacts" "$_artifacts_dir"; then
             [[ -n "$_reason" ]] || _reason="restored $_count artifact(s) from zbuild/state/issue-$_issue"
         else
             _verdict="degraded"
-            _reason="restored tree could not be promoted into place"
+            _reason="restored tree could not be put in place"
             _count=0
         fi
     else
-        rm -rf "$_staging" 2>/dev/null || true
         [[ -n "$_reason" ]] || _reason="no prior work for issue $_issue (first run)"
     fi
+    rm -rf "${_staging:?}" 2>/dev/null || true
 
     # Give the snapshot a parent to chain onto. A fetch only ever writes
     # refs/remotes/origin/<branch>, so on a CI runner refs/heads never exists —

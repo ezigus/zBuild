@@ -134,7 +134,7 @@ edited the read-only testfile each iteration, chased a lint finding into an out-
 and the scope denial ended the run one step before the rewind the gate's specification fault
 had armed. Now:
 
-- **Obligations follow the fault class.** The STAGE SUMMARIES heading stamps RESOLVE only on a
+- **Obligations follow the fault class.** The STAGE SUMMARIES heading (since 2026-10-12, the engine's Previous work block, ADR-067 §8) stamped RESOLVE only on a
   failure with no declared fault; a failure with `fault: specification` or `scope` is "context
   only — the engine routes this". Every stage still sees every summary; the engine decides who
   must act, from the same field `route_back` keys on.

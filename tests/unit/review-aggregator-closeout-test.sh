@@ -23,8 +23,9 @@
 # K11 [guard]  the real chain: a review_lenses map group's lens files, resolved by
 #             the engine against the real manifests, reach the aggregator as its
 #             lens set
-# K11 [change] with no lens result on disk, the engine refuses to dispatch the
-#             aggregator (the refusal that replaces a vacuous "ready")
+# K11 [change] with no lens result on disk, the aggregator itself says no review
+#             happened — never a vacuous "ready" (a missing prerequisite is the
+#             stage's own check, ADR-055 amended)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -179,9 +180,13 @@ review-aggregator:
   roles: [review_aggregator]
 EOF
 load_template "$_k11/tpl.yaml" >/dev/null 2>&1
-_err="$(_inputs_check_required review-aggregator "$REPO_ROOT/plugins" "$_k11/state" 2>&1)"; _rc=$?
-assert_eq "[K11] no lens result on disk → the engine refuses the dispatch" "1" "$_rc"
-assert_contains "[K11] ...naming the input" "$_err" "lens_result"
+_idx0="$(_inputs_resolve_stage review-aggregator "$REPO_ROOT/plugins" "$_k11/state" 2>/dev/null)"
+ZBUILD_ARTIFACT_DIR="$_k11/state/artifacts" ZBUILD_STAGE_INPUTS="$_idx0" \
+    review_aggregator_run review-aggregator "$_k11/x" >/dev/null 2>&1
+assert_eq "[K11] no lens result on disk → the aggregator says no review happened" "needs_attention" \
+    "$(jq -r '.merge_readiness // empty' "$_k11/state/artifacts/review-report.json" 2>/dev/null)"
+assert_contains "[K11] ...in words" \
+    "$(jq -r '.summary // empty' "$_k11/state/artifacts/review-report.json" 2>/dev/null)" "no review happened"
 _lens "$_k11/state/artifacts/lens-correctness.json" correctness 8
 _lens "$_k11/state/artifacts/lens-security.json" security 6
 _idx="$(_inputs_resolve_stage review-aggregator "$REPO_ROOT/plugins" "$_k11/state" 2>/dev/null)"

@@ -86,7 +86,7 @@ zBuild is at **version 1.1.0.0** today. Planned work is organized into *initiati
 
 > This section is for readers who already know zBuild and want the technical model. If you're new, you can skip it.
 
-zBuild is a deliberately small engine plus interchangeable plugins. Templates compose *stages* over a closed set of *operators* — `leaf`, `sequence`, `parallel`, `cycle`, and a data-driven `map`. All model-bound text passes through a single redaction chokepoint (ADR-004); run state is atomic and resumable (ADR-006); model selection is data-driven via stable tiers T0–T4 (ADR-003); stages resolve by role-then-id (ADR-042/047). Deeper design docs: [VISION](docs/VISION.md), [ARCHITECTURE](docs/ARCHITECTURE.md), [KEEPERS](docs/KEEPERS.md), and the [ADRs](docs/adr/).
+zBuild is a deliberately small engine plus interchangeable plugins. Templates compose *stages* over a closed set of *operators* — `leaf`, `sequence`, `parallel`, `cycle`, and a data-driven `map`. All model-bound text passes through a single redaction chokepoint (ADR-004); run state is atomic and resumable (ADR-006); model selection is data-driven via stable tiers T0–T4 (ADR-003); stages resolve by role-then-id (ADR-042/047). Deeper design docs: [VISION](.zbuild/vision.md), [ARCHITECTURE](docs/ARCHITECTURE.md), [KEEPERS](docs/KEEPERS.md), and the [ADRs](docs/adr/).
 
 ## Contributing & license
 

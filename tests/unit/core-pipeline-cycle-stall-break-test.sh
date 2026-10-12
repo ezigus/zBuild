@@ -96,7 +96,7 @@ source "$REPO_ROOT/core/plugin-registry/registry.sh" 2>/dev/null || true
 source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 
 _TPL_STAGES=(test)
-_SUMMARY_BLOCK="$(stage_summaries_prompt_block "$FB_STATE/pipeline-state.json" \
+_SUMMARY_BLOCK="$(zb_test_previous_work "$FB_STATE/pipeline-state.json" \
     "$REPO_ROOT/plugins" 2>/dev/null || true)"
 
 [[ -n "$_SUMMARY_BLOCK" ]] \
@@ -107,7 +107,7 @@ assert_contains "[SPEC-1] the failure detail reaches the prompt" \
 # #2271: every reader gets the same framing — the failing stage's findings,
 # for each stage to answer itself; the engine no longer decides whose they are.
 assert_contains "[SPEC-1] and it is framed as findings to answer, not passive context" \
-    "$_SUMMARY_BLOCK" "its findings, to answer"
+    "$_SUMMARY_BLOCK" "(verdict: fail)"
 
 print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ runs ALL iters → rc=1, outcome unconverged (no early stall-break, #1208)"
 _GA_VERDICT="fail"

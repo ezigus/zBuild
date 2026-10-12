@@ -28,7 +28,7 @@ setup_test_env "spec-coverage-all-gaps"
 
 # shellcheck source=../../plugins/agent/spec-coverage/plugin.sh
 source "$REPO_ROOT/plugins/agent/spec-coverage/plugin.sh" >/dev/null 2>&1
-P="$(_scv_prompt "the issue" "the acceptance")"
+P="$(_scv_prompt_own)$(_scv_prompt_judge "the issue" "the acceptance")"
 
 print_test_section "E1/E2: the prompt"
 assert_contains "[E1] it asks for EVERY uncovered requirement" "$P" "EVERY requirement"

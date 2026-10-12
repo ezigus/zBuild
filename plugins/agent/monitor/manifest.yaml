@@ -45,6 +45,10 @@ config:
     timeout_s: 300 # single-shot advisory; no exploration loop needed
     max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
 
+capabilities:
+  # ADR-067 §8: it calls the model once per prompt; the engine states that budget.
+  model_calls: single
+
 inputs:
   - id: deploy_result
     required: false
@@ -66,15 +70,6 @@ outputs:
     format: markdown
     required: true
     summary: true
-  # #2270: save as you go. A call cut off by time or turns returns nothing;
-  # this file is what it leaves, and the summary later stages read carries it.
-  - id: monitor-checkpoint
-    path: "${artifact_dir}/monitor-checkpoint.md"
-    type: checkpoint.md@1
-    format: markdown
-    required: false
-    role: checkpoint
-
 state:
   persisted: []
   reconstructed: []

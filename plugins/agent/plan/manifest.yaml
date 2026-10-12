@@ -37,13 +37,13 @@ provides:
 
 config:
   # #1879: retry ONCE when the model runs out of turns. Worth taking only because
-  # `role: checkpoint` below means attempt 2 resumes from what attempt 1 explored
+  # the notes file every stage keeps means attempt 2 resumes from what attempt 1 explored
   # — a retry on an empty context would just burn the budget twice (#1727).
   # Distinct from `retries`, which is timeout/rc=124-only and never fires here:
   # exhaustion surfaces as rc=1, which is why the #1708 run was never retried.
   # #1727: retry ONCE on a wall-clock timeout (rc=124) too. Same justification as
   # retry_on_exhaustion above and the same reason it is safe now but was not
-  # before: `role: checkpoint` means attempt 2 resumes from what attempt 1 wrote,
+  # before: the notes file means attempt 2 resumes from what attempt 1 wrote,
   # so the retry is not the naive re-derivation #1727 argued against. route.sh
   # escalates the timeout for the retry (+50%, capped at 2x base) and re-injects
   # the checkpoint, so the second attempt gets both more clock and prior context.
@@ -62,6 +62,10 @@ config:
     - pass
     - error
   tier_default: T2
+
+capabilities:
+  # ADR-067 §8: it calls the model once per prompt; the engine states that budget.
+  model_calls: single
 
 inputs:
   - id: scope_manifest
@@ -90,18 +94,6 @@ outputs:
     type: plan-context.json@1
     format: json
     required: false
-  # #1879: the engine-generic stage checkpoint. `role: checkpoint` is what the
-  # engine keys on — NOT the id, which must be unique across every stage in a
-  # template (core/pipeline/contract-validator.sh raises OUTPUT_DUP on a repeat),
-  # so a shared `id: checkpoint` across stages would fail validation.
-  # required:false because a stage that converges early writes nothing.
-  - id: plan-checkpoint
-    path: ${artifact_dir}/plan-checkpoint.md
-    type: checkpoint.md@1
-    format: markdown
-    required: false
-    role: checkpoint
-  # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: plan-summary.md
     path: "${artifact_dir}/plan-summary.md"

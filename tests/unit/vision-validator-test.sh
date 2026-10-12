@@ -116,8 +116,12 @@ rc=0
 out="$(validate_vision_doc "$HRULE_DOC" 2>&1)" || rc=$?
 assert_eq "[SPEC-4] mid-body '---' rule does not suppress word count (rc=1)" "1" "$rc"
 
-# ── SPEC-5: load_vision_doc walks three-path search order ───────────────────
-# Test 5a: .zbuild/vision.md wins when present (highest precedence)
+# ── SPEC-5: load_vision_doc reads ONLY the repo's settings area ─────────────
+# A repository's vision lives in its zBuild settings area, `.zbuild/vision.md`.
+# zBuild runs from its install on any repository, so it does not guess at a
+# repository's own layout: a `docs/VISION.md` or root `VISION.md` there was not
+# written for zBuild and is not read.
+# Test 5a: .zbuild/vision.md is found
 SEARCH_REPO="$TEST_TEMP_DIR/search-repo"
 mkdir -p "$SEARCH_REPO/.zbuild" "$SEARCH_REPO/docs"
 printf '## Intent\nhigh-precedence\n## Principles\n- p1\n' > "$SEARCH_REPO/.zbuild/vision.md"
@@ -125,25 +129,31 @@ printf '## Intent\nlow-precedence\n## Principles\n- p1\n'  > "$SEARCH_REPO/docs/
 rc=0
 resolved="$(load_vision_doc "$SEARCH_REPO" 2>&1)" || rc=$?
 assert_eq "[SPEC-5] load_vision_doc rc=0 when .zbuild/vision.md present" "0" "$rc"
-assert_contains "[SPEC-5] .zbuild/vision.md wins over docs/VISION.md" "$resolved" ".zbuild/vision.md"
+assert_contains "[SPEC-5] .zbuild/vision.md is the one read" "$resolved" ".zbuild/vision.md"
 
-# Test 5b: falls through to docs/VISION.md when .zbuild/vision.md absent
+# Test 5b: docs/VISION.md alone is NOT a vision document
 SEARCH_REPO2="$TEST_TEMP_DIR/search-repo2"
 mkdir -p "$SEARCH_REPO2/docs"
 printf '## Intent\ndocs-vision\n## Principles\n- p1\n' > "$SEARCH_REPO2/docs/VISION.md"
 rc=0
 resolved2="$(load_vision_doc "$SEARCH_REPO2" 2>&1)" || rc=$?
-assert_eq "[SPEC-5] falls through to docs/VISION.md (rc=0)" "0" "$rc"
-assert_contains "[SPEC-5] docs/VISION.md resolved when .zbuild absent" "$resolved2" "docs/VISION.md"
+assert_eq "[SPEC-5] docs/VISION.md alone is not read (rc=1)" "1" "$rc"
+assert_eq "[SPEC-5] docs/VISION.md alone resolves to nothing" "" "$resolved2"
 
-# Test 5c: falls through to VISION.md at root when both above are absent
+# Test 5c: a root VISION.md alone is NOT a vision document
 SEARCH_REPO3="$TEST_TEMP_DIR/search-repo3"
 mkdir -p "$SEARCH_REPO3"
 printf '## Intent\nroot-vision\n## Principles\n- p1\n' > "$SEARCH_REPO3/VISION.md"
 rc=0
 resolved3="$(load_vision_doc "$SEARCH_REPO3" 2>&1)" || rc=$?
-assert_eq "[SPEC-5] falls through to VISION.md at root (rc=0)" "0" "$rc"
-assert_contains "[SPEC-5] VISION.md at root resolved when others absent" "$resolved3" "VISION.md"
+assert_eq "[SPEC-5] root VISION.md alone is not read (rc=1)" "1" "$rc"
+assert_eq "[SPEC-5] root VISION.md alone resolves to nothing" "" "$resolved3"
+
+# Test 5d: zBuild's own vision lives in its settings area
+assert_eq "[SPEC-5] zBuild's own .zbuild/vision.md exists" "yes" \
+    "$([[ -f "$REPO_ROOT/.zbuild/vision.md" ]] && echo yes || echo no)"
+assert_eq "[SPEC-5] zBuild's docs/VISION.md is gone (moved, not copied)" "no" \
+    "$([[ -e "$REPO_ROOT/docs/VISION.md" ]] && echo yes || echo no)"
 
 # ── SPEC-6: load_vision_doc returns rc=1 when no vision doc present ──────────
 EMPTY_REPO="$TEST_TEMP_DIR/empty-repo"

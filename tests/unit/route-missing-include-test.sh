@@ -55,14 +55,14 @@ _INCLUDES=(
     # in this fixture (tier-resolve.sh is a stub and defines nothing), so the
     # guard is exercised exactly like the unconditional nine.
     core/plugin-registry/manifest-validation.sh
+    # ADR-067 §8: the limits a stage's calls run under, one copy shared with
+    # the engine's rules for the stage.
+    scripts/lib/stage-limits.sh
     scripts/lib/persona-resolve.sh
-    scripts/lib/vision.sh
     # [SPEC-4] proc-group.sh is now a guarded include (issue #1748).
     scripts/lib/proc-group.sh
-    # [SPEC-4] the stage blocks every model call carries (#1879, #2308):
-    # saving as it goes, the shared conduct part.
-    scripts/lib/stage-checkpoint.sh
-    scripts/lib/stage-conduct.sh
+    # [SPEC-4] ADR-067 §8: the engine/stage prompt contract the router checks.
+    scripts/lib/stage-prompt.sh
     # #1752: the shared timeout helper both model-call paths bound through.
     scripts/lib/timeout-cmd.sh
 )

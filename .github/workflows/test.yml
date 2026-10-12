@@ -38,12 +38,6 @@ jobs:
         # work onto that issue's state branch, and since #1970/#2006 that reaches
         # origin.
         run: bash scripts/lib/lint-test-identity.sh
-      - name: Declared stage checkpoints resolve (#1879)
-        if: always()
-        # ONE definition, shared with `npm run lint` (#1682). A `role: checkpoint`
-        # output that the engine cannot resolve is a declaration nothing enforces
-        # — the exact defect class ADR-054 catalogues.
-        run: bash scripts/lib/lint-stage-checkpoint.sh
       - name: Manifest verdicts are classified (#1708)
         if: always()
         # ONE definition, shared with `npm run lint` (#1682). Asserts every

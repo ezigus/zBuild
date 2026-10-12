@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# tests/unit/prompt-contract-every-stage-test.sh — every stage that calls a model
+# sends a prompt in the contract order (ADR-067 §8, amended).
+#
+# For every stage that declares it calls a model (capabilities.model_calls),
+# this runs the stage's real prompt code with only the model call stubbed, and
+# checks the prompt the stage actually sends:
+#
+#   E1 [change]: the six sections, each once, in the contract order — From the
+#                repo, What you own, What you judge against, Previous work, What
+#                you must not do, Rules for this stage
+#   E2 [change]: the engine's three blocks sit in their own sections, unchanged
+#   E3 [change]: every model-calling stage has a composer here: a new stage is
+#                covered or this test fails
+#   T1 [guard] : test-author is told to check the new value or file itself, not
+#                only that the step finished without an error
+#   E4 [guard] : the engine's rules tell every stage to read data the way the
+#                code that writes it writes it, and to make test data with that
+#                code, never by hand (#1799)
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
+print_test_header "every model-calling stage sends a prompt in the contract order"
+setup_test_env "prompt-contract-every-stage"
+
+export ZBUILD_EVENTS_DB="/dev/null"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
+export ZBUILD_RUN_ID="prompt-contract-$$"
+unset ZBUILD_STAGE_INPUTS ZBUILD_SCOPE_MANIFEST ZBUILD_CYCLE_FEEDBACK_DIR
+
+# The engine's blocks, each with a sentinel, so E2 can find them.
+export ZBUILD_STAGE_BLOCKS="$TEST_TEMP_DIR/blocks"
+mkdir -p "$ZBUILD_STAGE_BLOCKS"
+printf 'REPO-BLOCK-SENTINEL\n' > "$ZBUILD_STAGE_BLOCKS/from-repo.md"
+printf 'PREVIOUS-WORK-SENTINEL\n' > "$ZBUILD_STAGE_BLOCKS/previous-work.md"
+printf 'RULES-BLOCK-SENTINEL\n' > "$ZBUILD_STAGE_BLOCKS/rules.md"
+
+RAW="$TEST_TEMP_DIR/raw"; mkdir -p "$RAW"
+
+# _fixture <name> — a throwaway git repo with state/artifacts, a scope manifest,
+# a plan and a design. Echoes the artifacts dir.
+_fixture() {
+    local fix="$TEST_TEMP_DIR/fix-$1" ad
+    ad="$fix/state/artifacts"; mkdir -p "$ad" "$fix/tests"
+    git -C "$fix" init -q -b main >/dev/null 2>&1
+    git -C "$fix" config user.email t@e.st; git -C "$fix" config user.name t
+    printf 'assert_eq "[SPEC-1] placeholder" "1" "$got"\n' > "$fix/tests/acc-test.sh"
+    git -C "$fix" add -A >/dev/null 2>&1; git -C "$fix" commit -q -m seed >/dev/null 2>&1
+    printf 'scope: all\n' > "$fix/state/scope-manifest.md"
+    printf '{"schema_version":1}\n' > "$fix/state/pipeline-state.json"
+    printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$ad/plan.json"
+    cat > "$ad/design.md" <<'EOF'
+# Design
+
+## Decision
+Write the result on every exit.
+
+```scope
+foo.sh
+tests/acc-test.sh
+```
+
+```acceptance
+SPEC-1[code]: the stage writes its result on every exit
+TESTFILES:
+SPEC-1: tests/acc-test.sh
+WIRING: none
+```
+EOF
+    printf '%s' "$ad"
+}
+
+# One composer per model-calling stage. Each runs in a subshell, sources the
+# real plugin, stubs only the model call, and writes the prompt the plugin
+# built to $RAW/<stage>.txt.
+_c_plan() { ( ad="$(_fixture plan)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
+    source "$REPO_ROOT/plugins/agent/plan/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/plan.txt"; printf '%s' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'; }
+    _plan_run_inner "${ad%/artifacts}/scope-manifest.md" "Fix a typo in README.md" "$ad/plan.json" "$ad" ) >/dev/null 2>&1; }
+_c_design() { ( ad="$(_fixture design)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
+    source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
+    route_to_model_loop() { cp "$2" "$RAW/design.txt"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 1; }
+    _route_loop_close_final_banner() { :; }
+    _design_stage_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/plan.json" "$ad/design-out.md" "$ad" ) >/dev/null 2>&1; }
+_c_impact() { ( ad="$(_fixture impact)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
+    source "$REPO_ROOT/plugins/agent/impact/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/impact.txt"; printf '%s' '{"schema_version":1,"verdict":"complete","missing":[]}'; }
+    resolve_tier() { printf 'T2'; }
+    _impact_scope_prefilter() { printf '[]'; }
+    _impact_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/design.md" "$ad/plan.json" "$ad/impact.json" "$ad" ) >/dev/null 2>&1; }
+_c_build() { ( ad="$(_fixture build)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
+    source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
+    route_to_model_loop() { cp "$2" "$RAW/build.txt"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 1; }
+    _route_resolve_max_iterations() { echo 1; }
+    _route_loop_close_final_banner() { :; }
+    _build_stage_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/plan.json" "$ad/diff.patch" "$ad/build-summary.json" "$ad" ) >/dev/null 2>&1; }
+_c_test_author() { ( ad="$(_fixture test-author)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}" ZBUILD_ARTIFACT_DIR="$ad"
+    source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
+    route_to_model_loop() { cp "$2" "$RAW/test-author.txt"; _ROUTE_LOOP_TERMINATED_REASON=router_timeout; return 1; }
+    resolve_tier() { printf 'T2'; }
+    test_author_run test-author "${ad%/artifacts}/pipeline-state.json" ) >/dev/null 2>&1; }
+_c_monitor() { ( ad="$(_fixture monitor)"; export ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_STATE_DIR="${ad%/artifacts}"
+    source "$REPO_ROOT/plugins/agent/monitor/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/monitor.txt"; return 1; }
+    monitor_stage_run monitor "${ad%/artifacts}/pipeline-state.json" ) >/dev/null 2>&1; }
+_c_security_lens() { ( ad="$(_fixture security-lens)"
+    source "$REPO_ROOT/plugins/agent/security-lens/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/security-lens.txt"; return 1; }
+    resolve_tier() { printf 'T3'; }
+    printf 'diff --git a/foo.sh b/foo.sh\n+echo hi\n' > "$ad/bundle.txt"
+    _security_lens_run_inner "$ad/bundle.txt" "" "$ad/security.json" "$ad" ) >/dev/null 2>&1; }
+_c_review_lens() { ( ad="$(_fixture review-lens)"
+    source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/review-lens.txt"; return 1; }
+    resolve_tier() { printf 'T2'; }
+    printf 'diff --git a/foo.sh b/foo.sh\n+echo hi\n' > "$ad/bundle.txt"
+    _review_lens_run_inner correctness "${ad%/artifacts}/scope-manifest.md" "$ad/bundle.txt" "$ad/lens.json" "$ad" ) >/dev/null 2>&1; }
+_c_review_report() { ( ad="$(_fixture review-report)"
+    source "$REPO_ROOT/plugins/agent/review-report/plugin.sh" >/dev/null 2>&1
+    route_to_model() { return 1; }
+    _RR_LENSES=(correctness)
+    printf 'diff --git a/foo.sh b/foo.sh\n+echo hi\n' > "$ad/bundle.txt"
+    _rr_fanout_lenses "" "$ad/bundle.txt" "$ad" T2 >/dev/null
+    cp "$ad/lens-correctness-prompt.txt" "$RAW/review-report.txt" ) >/dev/null 2>&1; }
+_c_spec_coverage() { ( ad="$(_fixture spec-coverage)"; sd="${ad%/artifacts}"
+    printf 'ISSUE-TEXT: make the stage write its result\n' > "$sd/intake.md"
+    source "$REPO_ROOT/plugins/agent/spec-coverage/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/spec-coverage.txt"; printf 'VERDICT: covered\nREASON: r\n'; }
+    ZBUILD_ARTIFACT_DIR="$ad" spec_coverage_run spec-coverage "$sd/pipeline-state.json" ) >/dev/null 2>&1; }
+_c_issue_acceptance() { ( ad="$(_fixture issue-acceptance)"; sd="${ad%/artifacts}"
+    printf 'ISSUE-TEXT: make the stage write its result\n' > "$sd/intake.md"
+    printf 'diff --git a/foo.sh b/foo.sh\n' > "$ad/d.patch"
+    jq -n --arg g "$sd/intake.md" --arg d "$ad/design.md" --arg p "$ad/d.patch" \
+        '{schema_version:2, stage:"issue-acceptance", inputs:{intake_goal:$g, design:$d, diff_patch:$p}}' > "$sd/idx.json"
+    source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/issue-acceptance.txt"; return 1; }
+    ZBUILD_STAGE_INPUTS="$sd/idx.json" ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_REPO_ROOT="${sd%/state}" \
+        issue_acceptance_run issue-acceptance "$sd/pipeline-state.json" ) >/dev/null 2>&1; }
+# spec-correspondence builds two prompts: one pair, and every pair at once.
+_c_spec_correspondence() { ( source "$REPO_ROOT/plugins/agent/spec-correspondence/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$_SC_CAP"; return 1; }
+    _SC_CAP="$RAW/spec-correspondence.txt"
+    _sc_call T2 "$(_sc_prompt "the stage writes its result" 'assert_eq "[SPEC-1] x" 1 "$got"')" >/dev/null
+    # shellcheck disable=SC2034  # read through namerefs
+    { _ids=(SPEC-1); _txts=("the stage writes its result"); _srcs=('assert_eq "[SPEC-1] x" 1 "$got"'); }
+    _SC_CAP="$RAW/spec-correspondence-batch.txt"
+    _sc_call T2 "$(_sc_batch_prompt _ids _txts _srcs)" >/dev/null ) >/dev/null 2>&1; }
+
+# ─── E3: every model-calling stage has a composer ───────────────────────────
+STAGES=()
+for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
+    [[ "$(stage_model_calls "$_m")" == "none" ]] && continue
+    STAGES+=("$(basename "$(dirname "$_m")")")
+done
+_missing=""
+for _s in "${STAGES[@]}"; do
+    declare -F "_c_${_s//-/_}" >/dev/null 2>&1 || _missing+="$_s "
+done
+assert_eq "[E3] every model-calling stage has a composer here" "" "$_missing"
+assert_eq "[E3] the model-calling stages were found (fixture live)" "1" "$([[ ${#STAGES[@]} -ge 12 ]] && echo 1 || echo 0)"
+
+SECTIONS=("## From the repo" "## What you own" "## What you judge against" "## Previous work" "## What you must not do" "## Rules for this stage")
+
+# _section_of <file> <line-text> — the contract section a line sits in.
+_section_of() {
+    awk -v want="$2" '/^## (From the repo|What you own|What you judge against|Previous work|What you must not do|Rules for this stage)$/ { sec = $0 }
+        $0 == want { print sec; exit }' "$1"
+}
+
+_check() {
+    local s="$1" f="$2"
+    if [[ ! -s "$f" ]]; then
+        assert_fail "[E1] $s: the prompt it sends was captured" "nothing captured at $f"
+        return
+    fi
+    local rc=0; stage_prompt_check "$f" || rc=$?
+    assert_eq "[E1] $s: the six sections in the contract order" "0" "$rc"
+    local h counts=""
+    for h in "${SECTIONS[@]}"; do counts+="$(grep -cxF -- "$h" "$f" || true) "; done
+    assert_eq "[E1] $s: each section once" "1 1 1 1 1 1 " "$counts"
+    assert_eq "[E2] $s: From the repo holds the engine's block" "## From the repo" "$(_section_of "$f" REPO-BLOCK-SENTINEL)"
+    assert_eq "[E2] $s: Previous work holds the engine's block" "## Previous work" "$(_section_of "$f" PREVIOUS-WORK-SENTINEL)"
+    assert_eq "[E2] $s: Rules for this stage holds the engine's block" "## Rules for this stage" "$(_section_of "$f" RULES-BLOCK-SENTINEL)"
+}
+
+for _s in "${STAGES[@]}"; do
+    declare -F "_c_${_s//-/_}" >/dev/null 2>&1 || continue
+    "_c_${_s//-/_}"
+    _check "$_s" "$RAW/$_s.txt"
+done
+_check "spec-correspondence (batch)" "$RAW/spec-correspondence-batch.txt"
+
+# ─── T1: test-author checks the value itself ────────────────────────────────
+_ta="$(cat "$RAW/test-author.txt" 2>/dev/null)"
+assert_contains "[T1] test-author is told to check the new value or file itself" \
+    "$_ta" "the new value or file itself"
+assert_contains "[T1] ...not only that the step finished without an error" \
+    "$_ta" "not only that the step finished without an error"
+
+# ─── E4: read data the way its writer writes it ─────────────────────────────
+_rules="$(_stage_block_rules any-stage "$TEST_TEMP_DIR/s" "$TEST_TEMP_DIR/none.yaml")"
+assert_contains "[E4] the rules tell a stage to open the code that writes the data it reads" \
+    "$_rules" "open the code that writes it"
+assert_contains "[E4] ...to use the names and shapes that code really produces" \
+    "$_rules" "names and shapes it really produces"
+assert_contains "[E4] ...and to make test data with that code, not by hand" \
+    "$_rules" "should make it with that code,"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))

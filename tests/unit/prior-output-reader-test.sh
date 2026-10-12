@@ -3,7 +3,7 @@
 #
 # Covers:
 #   - Intra-cycle source wins when ZBUILD_CYCLE_ITER >= 2
-#   - Falls back to ZBUILD_RESTORED_ARTIFACTS_DIR when no cycle
+#   - Never reads a "restored" area (ADR-050, amended)
 #   - Falls back to ZBUILD_STATE_DIR/artifacts when neither
 #   - Returns empty (rc 0) when nothing exists
 #   - Precedence: cycle wins over restored over state
@@ -48,14 +48,13 @@ assert_eq "T1: a planted cycle copy is not read — the latest output wins (ADR-
 # Cleanup cycle-related env vars
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 
-# ─── T2: Falls back to restored when no cycle ──────────────────────────────
-# Keep ZBUILD_RESTORED_ARTIFACTS_DIR with prior content
-# Create for artifact with different extension
+# ─── T2: a "restored" area is never read (ADR-050, amended) ─────────────────
+# Hydrate puts an earlier run's outputs in their live places; there is no
+# second area to fall back to.
 printf 'restored plan' > "$ZBUILD_RESTORED_ARTIFACTS_DIR/plan.json"
-
+rm -f "$ZBUILD_STATE_DIR/artifacts/plan.json"
 result=$(_read_prior_output "plan.json")
-assert_eq "T2: restored artifacts fallback when no cycle" \
-    "restored plan" "$result"
+assert_eq "T2: a restored area is not read" "" "$result"
 
 # ─── T3: Falls back to state when neither cycle nor restored ───────────────
 # Clear restored dir, but keep state with content

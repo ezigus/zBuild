@@ -257,7 +257,7 @@ stage_summary_write "$T6_ART_DIR/shape-floor-detail.md" "shape-floor" "fail" \
 printf '{"schema_version":1,"stage_statuses":{"test":"failed","acceptance-gate":"failed","shape-floor":"failed"},"stage_verdicts":{"test":"fail","acceptance-gate":"fail","shape-floor":"fail"}}\n' \
     > "$T6_STATE_DIR/pipeline-state.json"
 _TPL_STAGES=(test acceptance-gate shape-floor)
-T6_BODY="$(stage_summaries_prompt_block "$T6_STATE_DIR/pipeline-state.json" \
+T6_BODY="$(zb_test_previous_work "$T6_STATE_DIR/pipeline-state.json" \
     "$REPO_ROOT/plugins" 2>/dev/null || true)"
 
 

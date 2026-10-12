@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# core/pipeline/input-resolve.sh — ADR-055 §1 / ADR-054 §2 (#1826).
+# core/pipeline/input-resolve.sh — the previous-work index (ADR-055, amended).
 #
+# Every stage receives the latest output of every stage that has run, its own
+# included — there is no "what a stage depends on". The index below lists them
+# all, keyed by output id; a stage reads the ones it needs and checks for itself
+# that what it needs is there.
+#
+# History:
 # `manifest_graph_get_inputs` had four call sites and all four were static
 # validators. No runtime path ever turned an input declaration into a PATH, so
 # every declaration was inert and 25 of 37 plugin.sh files hardcoded artifact
@@ -43,39 +49,14 @@ declare -F manifest_graph_get_inputs >/dev/null 2>&1 || \
 # shellcheck source=../../scripts/lib/helpers.sh
 declare -F atomic_write >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/scripts/lib/helpers.sh"
-# _verdict_resolve_path is the engine's single path-interpolation helper (#1879
-# says so in stage-checkpoint.sh, and this module is its third consumer).
+# _verdict_resolve_path is the engine's single path-interpolation helper.
 # shellcheck source=./verdict.sh
 declare -F _verdict_resolve_path >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/pipeline/verdict.sh"
-# #2270: a cut-off stage's save-as-you-go file is read through the same
-# declared-path reader the prompt block uses.
-# shellcheck source=../../scripts/lib/stage-checkpoint.sh
-declare -F _checkpoint_declared_path >/dev/null 2>&1 || \
-    source "$_ZBUILD_IR_ROOT/scripts/lib/stage-checkpoint.sh"
-# #2252: attempt_is_this_run — a live file older than this run's start is not this run's.
-# shellcheck source=../plugin-registry/attempt-archive.sh
-declare -F attempt_is_this_run >/dev/null 2>&1 || \
-    source "$_ZBUILD_IR_ROOT/core/plugin-registry/attempt-archive.sh"
-# #2326: the words for an earlier run's work, and the test for one.
-# shellcheck source=../../scripts/lib/prior-output-reader.sh
-declare -F prior_output_is_earlier_run >/dev/null 2>&1 || \
-    source "$_ZBUILD_IR_ROOT/scripts/lib/prior-output-reader.sh"
 # #2152: the manifest index _inputs_scan_manifests reads from.
 # shellcheck source=../plugin-registry/manifest-index.sh
 declare -F manifest_index_rows >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/plugin-registry/manifest-index.sh"
-
-# The marker the injected prompt block opens with. Idempotence guard, exactly as
-# _ZB_CHECKPOINT_MARKER is — the agentic loop redacts once per iteration against
-# the same file, so a plain append would stack the block.
-_ZB_STAGE_INPUTS_MARKER='## STAGE INPUTS (engine-resolved)'
-
-# #1976: the summaries block's marker. Same idempotence contract as above — the
-# agentic loop redacts the same file once per iteration, so a plain append would
-# stack the block and reintroduce the ADR-029 growth this feature is bounded to
-# avoid.
-_ZB_STAGE_SUMMARIES_MARKER='## STAGE SUMMARIES (engine-collected)'
 
 # Bounds (ADR-029). Per-iteration prompt growth caused three consecutive 900s
 # max_turns timeouts; the block is capped and LATEST-WINS per stage so it stays
@@ -84,7 +65,6 @@ _ZB_STAGE_SUMMARIES_MARKER='## STAGE SUMMARIES (engine-collected)'
 # there and puts the extracted ✗ lines LAST) — at 4096 the cut landed on the
 # one part the builder needed.
 _ZB_SUMMARY_MAX_BYTES="${ZBUILD_SUMMARY_MAX_BYTES:-8192}"
-_ZB_SUMMARY_TOTAL_MAX_BYTES="${ZBUILD_SUMMARY_TOTAL_MAX_BYTES:-24576}"
 # #2183: the bound on a stage's declared error output. Smaller than a summary —
 # it rides ALONGSIDE one, and ADR-029 records what unbounded prompt growth costs.
 _ZB_ERRORS_MAX_BYTES="${ZBUILD_ERRORS_MAX_BYTES:-4096}"
@@ -220,6 +200,22 @@ _inputs_output_paths() {
     done
 }
 
+# ─── _inputs_manifest_formats <manifest> ─────────────────────────────────────
+# "id<TAB>format" for every output the manifest declares, in one read.
+_inputs_manifest_formats() {
+    awk '
+        function flush() { if (id != "") print id "\t" fmt; id = ""; fmt = "" }
+        /^outputs:[[:space:]]*$/ { inb = 1; next }
+        inb && /^[a-zA-Z_]/ { flush(); inb = 0 }
+        inb && /^[[:space:]]*-[[:space:]]+id:[[:space:]]*/ {
+            flush(); l = $0; sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]*#.*/, "", l); gsub(/^["\047]|["\047]$/, "", l); id = l; next }
+        inb && /^[[:space:]]+format:[[:space:]]*/ {
+            l = $0; sub(/^[[:space:]]+format:[[:space:]]*/, "", l); sub(/[[:space:]]*#.*/, "", l)
+            gsub(/^["\047]|["\047]$/, "", l); fmt = l }
+        END { flush() }' "$1" 2>/dev/null
+}
+
 # ─── _inputs_build_producer_index <plugins_root> <state_dir> ─────────────────
 # Populates the three globals below, keyed by OUTPUT ID. Legal because ADR-055
 # §5 requires each output id to be claimed by exactly one stage per resolved
@@ -246,6 +242,11 @@ _inputs_build_producer_index() {
         manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
         [[ -n "$manifest" ]] || continue
         safe="${stage//-/_}"; type_var="_TPL_STAGE_TYPE_${safe}"
+        local -A _fmts=()
+        local _fid _ffmt
+        while IFS=$'\t' read -r _fid _ffmt; do
+            [[ -n "$_fid" ]] && _fmts[$_fid]="$_ffmt"
+        done < <(_inputs_manifest_formats "$manifest")
         while IFS= read -r rec; do
             [[ -z "$rec" ]] && continue
             out_id="${rec%%|*}"; out_path="${rec##*|}"
@@ -257,185 +258,70 @@ _inputs_build_producer_index() {
             _IR_PATHS["$out_id"]="$paths"
             # #1895: the producer DECLARES how its artifact is checked. Captured
             # here because the producer index is the only place that already
-            # knows which manifest owns this id.
-            _IR_FORMAT["$out_id"]="$(manifest_graph_output_format "$manifest" "$out_id" 2>/dev/null || true)"
+            # knows which manifest owns this id — all of a manifest's formats in
+            # one read (_inputs_manifest_formats), not one read per output.
+            _IR_FORMAT["$out_id"]="${_fmts[$out_id]:-}"
             [[ "${!type_var:-}" == "map" ]] && _IR_ISMAP["$out_id"]=1
         done < <(manifest_graph_get_outputs "$manifest")
     done < <(_inputs_flow_stages)
 }
 
-# ─── _inputs_effective_path <live_path> ──────────────────────────────────────
-# Per-input existence precedence: the LIVE artifact — the producer's latest
-# output — then the restored cross-run copy. Returns a PATH rather than the
-# content.
-#
-# Every stage reads what its producer wrote last, whichever stage it is and
-# wherever it sits in a loop. The cycle-feedback copy used to win on a loop's
-# later tries; it was taken as the try began, so a stage that rewrote its output
-# during the try had its checkers judge the version it had replaced (#1932's
-# run: spec-coverage judged the design design had already fixed). The engine
-# keeps no copy of a stage's output (ADR-021 §3, ADR-068 §6).
-#
-# This is NOT the order of prior-output-reader.sh, and #2095 is why. That
-# reader serves ADR-050 self-seeding — a stage reading its OWN earlier output as
-# advisory context — so "prior first" is its point. A declared input is the
-# opposite relationship: the consumer wants what its producer wrote THIS run.
-# Copying the reader's order here handed impact the prior run's design.md while
-# the fresh, gate-passed one sat next to it (run 34837524723), and every warm
-# start silently discarded each stage's work at the next stage. ADR-059 records
-# the corrected rule ("input-resolve.sh reads the live path first"); the
-# restored copy remains a fallback for the absent-live case only, the same rule
-# stage-checkpoint.sh applies.
-_inputs_effective_path() {
-    local live="$1"
-    local base="${live##*/}"
-    # #2252 (review on #2253): a live file older than this run's start is a
-    # reused state dir's leftover, not this run's — the same rule as below.
-    if [[ -s "$live" ]] && { ! declare -F attempt_is_this_run >/dev/null 2>&1 \
-            || attempt_is_this_run "$live"; }; then
-        printf '%s' "$live"; return 0
-    fi
-    # #2326 (ADR-050 §8): a stage that judges results never gets an earlier
-    # run's copy — for it, a result this run did not produce is missing.
-    local restored="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
-    if [[ "${_IR_THIS_RUN_ONLY:-0}" != 1 && -n "$restored" && -s "$restored/$base" ]]; then
-        printf '%s' "$restored/$base"; return 0
-    fi
-    printf '%s' "$live"
-}
-
-# ─── _inputs_judges_results <manifest> ───────────────────────────────────────
-# rc 0 when the stage judges results: a gate (`convergence: gate`) or a stage
-# that aggregates others' results (`aggregates:`). ADR-050 §8 (#2326): such a
-# stage never counts an earlier run's copy as this run's result. Pure bash read
-# of the two top-level keys — no fork on the dispatch path.
-# `aggregates:` takes one value, a convergence marker (ADR-040 §4), so only the
-# single-line form `aggregates: <marker>` is read; a YAML list there is not a
-# valid manifest.
-_inputs_judges_results() {
-    local manifest="${1:-}" line
-    [[ -n "$manifest" && -f "$manifest" ]] || return 1
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ "$line" =~ ^convergence:[[:space:]]*[\"\']?gate[\"\']?([[:space:]]|#|$) ]] && return 0
-        [[ "$line" =~ ^aggregates:[[:space:]]*[^[:space:]#] ]] && return 0
-    done < "$manifest"
-    return 1
-}
-
-# ─── _inputs_declared <manifest> ─────────────────────────────────────────────
-# The stage's declared inputs as "id|required", external sources dropped: an
-# `external` input names something from outside the pipeline (ADR-055 §3) and
-# has no producer and no artifact path to resolve.
-_inputs_declared() {
-    local manifest="$1" rec id req src
-    while IFS= read -r rec; do
-        [[ -z "$rec" ]] && continue
-        IFS='|' read -r id _ src req _ <<< "$rec"
-        [[ -z "$id" ]] && continue
-        [[ "$src" == "external" ]] && continue
-        [[ -z "$req" ]] && req="true"
-        printf '%s|%s\n' "$id" "$req"
-    done < <(manifest_graph_get_inputs "$manifest")
-}
-
-# ─── _inputs_note_earlier_run <stage> <input_id> <path> ──────────────────────
-# rc 0 when <path> is an earlier run's saved copy, after recording it on the
-# stage's input event (#2326, ADR-050 §8). rc 1 for this run's own file.
-_inputs_note_earlier_run() {
-    prior_output_is_earlier_run "$3" || return 1
-    if declare -F eb_emit_event >/dev/null 2>&1; then
-        eb_emit_event "stage.input.earlier_run" "stage=$1" "input=$2" "path=$3" \
-            "use=reference_only" 2>/dev/null || true
-    fi
-    return 0
-}
-
 # ─── _inputs_resolve_stage <stage> <plugins_root> <state_dir> [manifest] ─────
-# PUBLIC ENTRY. Writes the index and echoes its path. The optional 4th argument
-# is the consumer's own manifest — plugin_hook_call already holds it, and
-# passing it removes any chance of the handover disagreeing with the plugin the
-# engine actually dispatched.
+# PUBLIC ENTRY. Writes the index of every stage's latest output — every output
+# id in the flow whose file is there, the stage's own included — and echoes its
+# path. A map producer's id lists the members that are there.
+#
+# Only the latest output is listed: the live file, whichever try or run wrote
+# it (ADR-068 §8). A file that is there but unusable (#1894: empty, or JSON
+# that does not parse) is left out and the omission is announced, so a reader
+# sees it exactly as it sees an absent one.
 _inputs_resolve_stage() {
-    local stage="$1" plugins_root="$2" state_dir="$3" manifest="${4:-}"
+    local stage="$1" plugins_root="$2" state_dir="$3"
     # The stage id is interpolated into a filesystem path: a value with '/' or
     # '..' must never traverse.
     [[ "$stage" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || return 1
     [[ -n "$state_dir" ]] || return 1
-    if [[ -z "$manifest" ]]; then
-        manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
-    fi
-    [[ -n "$manifest" && -f "$manifest" ]] || return 1
 
     _inputs_build_producer_index "$plugins_root" "$state_dir"
 
-    # Read by _inputs_effective_path through bash's dynamic scope.
-    local _IR_THIS_RUN_ONLY=0
-    _inputs_judges_results "$manifest" && _IR_THIS_RUN_ONLY=1
-
-    local id req paths line eff tsv="" earlier=""
-    while IFS='|' read -r id req; do
-        [[ -z "$id" ]] && continue
-        paths="${_IR_PATHS[$id]:-}"
-        [[ -z "$paths" ]] && continue
-        if [[ -n "${_IR_ISMAP[$id]:-}" ]]; then
-            local joined=""
-            while IFS= read -r line; do
-                [[ -z "$line" ]] && continue
-                eff="$(_inputs_effective_path "$line")"
-                # A map input is a SET, and the per-element rule is the same one
-                # the scalar branch applies: a damaged member is not a usable
-                # member. Passing it through because its siblings are healthy is
-                # the silent degrade #1894 exists to close — the consumer cannot
-                # tell a truncated lens result from a complete one.
-                if _inputs_damaged "$eff" "$id"; then
-                    if declare -F eb_emit_event >/dev/null 2>&1; then
-                        eb_emit_event "stage.input.degraded" \
-                            "stage=$stage" "input=$id" "reason=damaged_member" \
-                            "format=$(_inputs_format_for "$eff" "$id")" "path=$eff" 2>/dev/null || true
-                    fi
-                    continue
-                fi
-                joined+="${eff}"$'\x1f'
-                _inputs_note_earlier_run "$stage" "$id" "$eff" && earlier+="${eff}"$'\x1f'
-            done <<< "$paths"
-            tsv+="${id}"$'\t'"A"$'\t'"${joined}"$'\n'
-        else
-            eff="$(_inputs_effective_path "${paths%%$'\n'*}")"
-            # #1894: an OPTIONAL input that is present but damaged is omitted
-            # from the index, so the consumer sees it exactly as it sees an
-            # absent one — a missing key, not an empty read. Degrading in
-            # silence is the failure shape this rule exists to close, so the
-            # omission is announced. A REQUIRED damaged input never reaches
-            # here; _inputs_check_required refuses the dispatch first.
-            if [[ "$req" != "true" ]] && _inputs_damaged "$eff" "$id"; then
+    local id paths line tsv="" joined
+    for id in "${!_IR_PATHS[@]}"; do
+        paths="${_IR_PATHS[$id]}"
+        joined=""
+        while IFS= read -r line; do
+            [[ -n "$line" && -e "$line" ]] || continue
+            if _inputs_damaged "$line" "$id"; then
                 if declare -F eb_emit_event >/dev/null 2>&1; then
+                    local _why="damaged"; [[ -n "${_IR_ISMAP[$id]:-}" ]] && _why="damaged_member"
                     eb_emit_event "stage.input.degraded" \
-                        "stage=$stage" "input=$id" "reason=damaged" \
-                        "format=$(_inputs_format_for "$eff" "$id")" "path=$eff" 2>/dev/null || true
+                        "stage=$stage" "input=$id" "reason=$_why" \
+                        "format=$(_inputs_format_for "$line" "$id")" "path=$line" 2>/dev/null || true
                 fi
                 continue
             fi
-            tsv+="${id}"$'\t'"S"$'\t'"${eff}"$'\n'
-            _inputs_note_earlier_run "$stage" "$id" "$eff" && earlier+="${eff}"$'\x1f'
+            joined+="${line}"$'\x1f'
+        done <<< "$paths"
+        [[ -n "$joined" ]] || continue
+        if [[ -n "${_IR_ISMAP[$id]:-}" ]]; then
+            tsv+="${id}"$'\t'"A"$'\t'"${joined}"$'\n'
+        else
+            tsv+="${id}"$'\t'"S"$'\t'"${joined%%$'\x1f'*}"$'\n'
         fi
-    done < <(_inputs_declared "$manifest")
+    done
 
     local index="${state_dir}/stage-inputs/${stage}.json"
     mkdir -p "${state_dir}/stage-inputs" 2>/dev/null || return 1
     # Built into a variable first: piping jq straight into atomic_write would let
-    # a jq failure write a zero-byte index and still return 0 — a silent empty
-    # handover that reads as "this stage declared nothing".
+    # a jq failure write a zero-byte index and still return 0.
     local json
-    json="$(printf '%s' "$tsv" | jq -nR --arg stage "$stage" --arg er "$earlier" '
-        {schema_version: 1, stage: $stage,
-         inputs: ([inputs | split("\t")
+    json="$(printf '%s' "$tsv" | jq -nR --arg stage "$stage" '
+        {schema_version: 2, stage: $stage,
+         inputs: ([inputs | select(length > 0) | split("\t")
                    | {key: .[0],
                       value: (if .[1] == "A"
                               then (.[2] | split("\u001f") | map(select(length > 0)))
                               else .[2] end)}]
-                  | from_entries)}
-        + (if $er == "" then {}
-           else {earlier_run: ($er | split("\u001f") | map(select(length > 0)))} end)' 2>/dev/null)"
+                  | from_entries)}' 2>/dev/null)"
     [[ -n "$json" ]] || return 1
     printf '%s\n' "$json" | atomic_write "$index" || return 1
     printf '%s\n' "$index"
@@ -504,113 +390,6 @@ _inputs_damaged() {
     return 1
 }
 
-# ─── _inputs_check_required <stage> <plugins_root> <state_dir> [manifest] ────
-# The PRE-DISPATCH presence check. A missing `required: true` input means the
-# stage is never launched; the message names producer, output id and consumer so
-# the operator does not have to reconstruct the wire. rc 0 clean, 1 violations.
-_inputs_check_required() {
-    local stage="$1" plugins_root="$2" state_dir="$3" manifest="${4:-}"
-    if [[ -z "$manifest" ]]; then
-        manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
-    fi
-    [[ -n "$manifest" && -f "$manifest" ]] || return 0
-    _inputs_build_producer_index "$plugins_root" "$state_dir"
-    # #2326: a stage that judges results is checked against this run's files only.
-    local _IR_THIS_RUN_ONLY=0
-    _inputs_judges_results "$manifest" && _IR_THIS_RUN_ONLY=1
-
-    local -a violations=()
-    local id req paths line eff producer present damaged
-    # ADR-055 §3: an external input has no producer, so _inputs_declared drops
-    # it — which left `required: true` on one unchecked. Check its supplier here.
-    local rec src
-    while IFS= read -r rec; do
-        [[ -z "$rec" ]] && continue
-        IFS='|' read -r id _ src req _ <<< "$rec"
-        [[ "$src" == "external" && -n "$id" ]] || continue
-        [[ -z "$req" || "$req" == "true" ]] || continue
-        manifest_graph_external_supplied "$id" && continue
-        violations+=("$stage|EXTERNAL_UNSUPPLIED|$id|stage '$stage' requires external input '$id', which this run does not supply (supplier: $(manifest_graph_external_supplier "$id"))")
-    done < <(manifest_graph_get_inputs "$manifest")
-    while IFS='|' read -r id req; do
-        [[ "$req" == "true" ]] || continue
-        paths="${_IR_PATHS[$id]:-}"
-        producer="${_IR_PRODUCER[$id]:-}"
-        if [[ -z "$paths" ]]; then
-            violations+=("$stage|INPUT_UNRESOLVED|$id|no stage in the resolved flow declares an output named '$id', which stage '$stage' requires (ADR-055 §1.5)")
-            continue
-        fi
-        present=0; damaged=""
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            eff="$(_inputs_effective_path "$line")"
-            # Damage is tested BEFORE presence, and this order is the whole
-            # point: a truncated file is non-empty, so `-s` accepts it and the
-            # stage receives half an artifact as though it were whole. That is
-            # the case #1894 opened with, and testing presence first silently
-            # restores it.
-            if _inputs_damaged "$eff" "$id"; then damaged="$eff"; continue; fi
-            # A map input is a SET, so the loop does NOT stop at the first healthy
-            # member — one good element must not excuse a broken sibling. For a
-            # scalar there is only ever one path, so breaking is correct.
-            if [[ -s "$eff" ]]; then
-                present=1
-                [[ -z "${_IR_ISMAP[$id]:-}" ]] && break
-            fi
-        done <<< "$paths"
-        # N-1 broken lens results would otherwise ride in on the strength of one.
-        [[ -n "${_IR_ISMAP[$id]:-}" && -n "$damaged" ]] && present=0
-        if [[ $present -eq 0 && -n "$damaged" ]]; then
-            violations+=("$stage|INPUT_DAMAGED|$id|producer '$producer' wrote output '$id' but it is unusable ($(_inputs_format_for "$damaged" "$id"), $(wc -c 2>/dev/null < "$damaged" | tr -d ' ') bytes); consumer '$stage' requires it: $damaged")
-        elif [[ $present -eq 0 ]]; then
-            violations+=("$stage|INPUT_MISSING|$id|producer '$producer' declares output '$id' but its artifact is absent; consumer '$stage' requires it (looked for: ${paths//$'\n'/, })")
-        fi
-    done < <(_inputs_declared "$manifest")
-
-    [[ ${#violations[@]} -eq 0 ]] && return 0
-    _inputs_render_violations \
-        "Stage '$stage' will not be launched: a required declared input is unavailable:" \
-        "Fix: run the producing stage first, or mark the input \`required: false\` in
-     $manifest.
-     See docs/adr/ADR-055-inter-stage-data-contract-v2.md §1." \
-        "${violations[@]}"
-    return 1
-}
-
-# ─── stage_inputs_prompt_block <index_path> ──────────────────────────────────
-# Env vars do not survive to the model: _zbuild_make_fresh_shell unsets the whole
-# ZBUILD_* namespace before every claude spawn (env-scrub.sh, ADR-024/#671), so
-# ZBUILD_STAGE_INPUTS is invisible to an agent stage by construction. The paths
-# therefore go into the prompt as LITERAL text — the same answer #1879 reached.
-# Empty output when the stage declares no resolvable inputs, so a non-declaring
-# stage's prompt stays byte-identical.
-stage_inputs_prompt_block() {
-    local idx="${1:-}"
-    [[ -n "$idx" && -s "$idx" ]] || return 0
-    jq -e '(.inputs // {}) | length > 0' "$idx" >/dev/null 2>&1 || return 0
-
-    printf '%s\n\n' "$_ZB_STAGE_INPUTS_MARKER"
-    printf 'The engine resolved every input this stage declared. These are the\n'
-    printf 'literal paths — read them with your normal file tools. Do NOT guess a\n'
-    printf 'filename, and do NOT search the tree for these artifacts.\n\n'
-    # #2326 (ADR-050 §8): an earlier run's copy is labelled where it is listed.
-    jq -r --arg label "($ZB_EARLIER_RUN_LABEL)" '
-           (.earlier_run // []) as $er
-           | def show: . as $p | $p + (if ($er | index($p)) != null then "   " + $label else "" end);
-           .inputs | to_entries[]
-           | if (.value | type) == "array"
-             then "  \(.key):\n" + ([.value[] | "    - " + show] | join("\n"))
-             else "  \(.key): " + (.value | show) end' "$idx" 2>/dev/null
-    printf '\n'
-    printf 'A path listed here may not exist yet if its producer declared it\n'
-    printf 'optional; treat an absent optional input as empty.\n'
-    if jq -e '(.earlier_run // []) | length > 0' "$idx" >/dev/null 2>&1; then
-        printf '\nA path marked "from an earlier run" is a copy an earlier run saved: this\n'
-        printf 'run has not produced that file. Use it only as a reference. It is not this\n'
-        printf 'run'"'"'s result, and anything it calls done was not done in this run.\n'
-    fi
-}
-
 # ─── _summaries_stage_summary_path <stage> <plugins_root> <state_dir> ────────
 # The resolved path of the ONE output <stage> marks `summary: true`, or empty.
 # Only a mechanical (`convergence: gate`) stage contributes: whether an advisory
@@ -631,82 +410,25 @@ _summaries_stage_summary_path() {
     done < <(manifest_graph_get_outputs "$manifest")
 }
 
-# ─── _summaries_stage_marker <stage> <plugins_root> <key> ────────────────────
-# A top-level scalar from the stage's manifest (`convergence:` / `aggregates:`),
-# or empty. Read rather than inferred: ADR-040 §5 makes `convergence:` the
-# authoritative mechanical-vs-advisory discriminator precisely because inferring
-# it from `kind:` mis-classified acceptance-gate.
-_summaries_stage_marker() {
-    local stage="$1" plugins_root="$2" key="$3" manifest
-    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
-    [[ -n "$manifest" && -f "$manifest" ]] || return 0
-    awk -v k="$key" '
-        $0 ~ "^" k ":[[:space:]]*" {
-            sub("^" k ":[[:space:]]*", ""); sub(/[[:space:]]*#.*/, "")
-            gsub(/^["\047]|["\047]$/, ""); print; exit
-        }
-    ' "$manifest" 2>/dev/null || true
-}
-
 # ─── _summaries_collect <state_file> <plugins_root> ──────────────────────────
 # One `stage|verdict|path` line per completed stage whose declared summary is
-# present and non-empty, in COMPLETION order — the key order of
-# .stage_statuses, which jq preserves, so the engine needs no separate
-# bookkeeping. A stage that re-ran keeps its first-run position and its LATEST
-# body, which is what makes the block flat in stage count rather than
-# iteration count (ADR-029). Shared by the renderer and the banner's count
-# (#2124) so the two can never disagree about what ships.
+# present and non-empty, in completion order (the key order of .stage_statuses).
+# Every stage is listed, the asking stage and aggregated members included: each
+# stage's latest output reaches every later stage (ADR-068 §8).
 _summaries_collect() {
     local state_file="$1" plugins_root="$2"
     local state_dir; state_dir="$(dirname "$state_file")"
-
-    # #1986: an aggregator declares the roster it COVERS (`aggregates: <marker>`).
-    # Where one is present, its members' own summaries are suppressed and only
-    # the aggregate ships — otherwise the prompt carries a member's detail AND
-    # the aggregator's rendering of that same detail, which is the contradiction
-    # #1979 removed, arriving from the other side. Removing it by construction
-    # rather than by convention is the point.
-    local _covered=" " _agg_of stage
+    local stage path verdict
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
-        _agg_of="$(_summaries_stage_marker "$stage" "$plugins_root" aggregates)"
-        [[ -n "$_agg_of" ]] && _covered="${_covered}${_agg_of} "
-    done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
-
-    local path verdict _conv _aggregates
-    while IFS= read -r stage; do
-        [[ -z "$stage" ]] && continue
-        # An aggregator is never suppressed by the roster it covers — it is the
-        # one shipping the aggregate, and matching naively would delete it.
-        _aggregates="$(_summaries_stage_marker "$stage" "$plugins_root" aggregates)"
-        if [[ -z "$_aggregates" ]]; then
-            _conv="$(_summaries_stage_marker "$stage" "$plugins_root" convergence)"
-            [[ -n "$_conv" && "$_covered" == *" $_conv "* ]] && continue
-        fi
         path="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
+        path="${path%%$'\n'*}"
         [[ -n "$path" && -s "$path" ]] || continue
         verdict="$(jq -r --arg s "$stage" '.stage_verdicts[$s] // "unknown"' "$state_file" 2>/dev/null || echo unknown)"
-        # #2270: a stage cut off by time or turns hands over what it saved.
-        local _cutcp=""
-        case "$verdict" in
-            fail|failed|error|broken|degraded|incomplete)
-                _cutcp="$(_summaries_cutoff_checkpoint "$stage" "$plugins_root" "$state_dir")" ;;
-        esac
-        # #2271 (ADR-068): no owner and no fault class — the engine does not
-        # decide who owns a finding; every reader judges each one itself.
-        printf '%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
-            "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")" "$_cutcp" \
-            "$(_summaries_result_path "$stage" "$plugins_root" "$state_dir")"
+        printf '%s|%s|%s\n' "$stage" "$verdict" "$path"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
 }
 
-# ─── _summaries_cutoff_checkpoint <stage> <plugins_root> <state_dir> (#2270) ─
-# The stage's save-as-you-go file, when the stage ended cut off (its result's
-# disposition is timed_out or out_of_turns) and the file holds notes; else "".
-# A cut-off call returns nothing — this file is the only thing it leaves.
-# A map stage's paths carry `${map_element}`, which stays unresolved here (no
-# element is set when summaries are collected), so a map stage is skipped: each
-# member hands over through its own result (`data.partial_notes`, #2270).
 # _summaries_result_path <stage> <plugins_root> <state_dir> — the stage's
 # primary (v2 result) file, resolved, when it exists; else "".
 _summaries_result_path() {
@@ -717,19 +439,6 @@ _summaries_result_path() {
     [[ -n "$raw" ]] || return 0
     res="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
     [[ "$res" == *.json && -s "$res" ]] && printf '%s' "$res"
-    return 0
-}
-
-_summaries_cutoff_checkpoint() {
-    local stage="$1" plugins_root="$2" state_dir="$3" manifest res disp cp
-    res="$(_summaries_result_path "$stage" "$plugins_root" "$state_dir")"
-    [[ -n "$res" ]] || return 0
-    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
-    disp="$(jq -r '.disposition // empty' "$res" 2>/dev/null || true)"
-    case "$disp" in timed_out|out_of_turns) ;; *) return 0 ;; esac
-    declare -F _checkpoint_declared_path >/dev/null 2>&1 || return 0
-    cp="$(_checkpoint_declared_path "$manifest" "$state_dir" 2>/dev/null || true)"
-    [[ -n "$cp" && -s "$cp" ]] && printf '%s' "$cp"
     return 0
 }
 
@@ -779,11 +488,6 @@ _summaries_stage_errors_path() {
 }
 
 
-# ─── stage_summaries_count <state_file> [plugins_root] ───────────────────────
-# "<stages> <resolve>": how many summaries the next prompt will carry and how
-# many of them are framed RESOLVE (a failing verdict). The cycle banner prints
-# this (#2124) — it used to report feedback EDGES, which a summaries-only cycle
-# has none of, and read "(no feedback — first iteration)" on every iteration.
 # ─── stage_declares_repo_writes <manifest> ──────────────────────────────────
 # rc 0 when the manifest declares capabilities.writes_repository: true — the
 # one fact (#2174) that says a stage may change the repository, and therefore
@@ -801,132 +505,19 @@ stage_declares_repo_writes() {
 }
 
 
+# ─── stage_summaries_count <state_file> [plugins_root] ───────────────────────
+# "<stages> <failing>": how many stage summaries the next prompt carries, and
+# how many of those stages failed. The cycle banner prints it (#2124).
 stage_summaries_count() {
-    local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
-    local n=0 r=0 rec verdict _cstage
+    local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_IR_ROOT/plugins}}"
+    local n=0 r=0 rec verdict
     if [[ -n "$state_file" && -s "$state_file" ]]; then
         while IFS= read -r rec; do
             [[ -n "$rec" ]] || continue
-            IFS='|' read -r _cstage verdict _ <<< "$rec"
-            # A stage never counts (or sees) its own earlier verdict.
-            [[ -n "${ZBUILD_CURRENT_STAGE:-}" && "$_cstage" == "$ZBUILD_CURRENT_STAGE" ]] && continue
+            IFS='|' read -r _ verdict _ <<< "$rec"
             n=$((n + 1))
-            # #2271 (ADR-068): every failing stage's findings are for every
-            # reader to answer — the engine no longer narrows them to an owner.
             case "$verdict" in fail|failed) r=$((r + 1)) ;; esac
         done < <(_summaries_collect "$state_file" "$plugins_root")
     fi
     printf '%s %s' "$n" "$r"
-}
-
-# ─── stage_summaries_prompt_block <state_file> [plugins_root] ────────────────
-# Renders every completed stage's declared summary, in COMPLETION order (see
-# _summaries_collect), each annotated with that stage's verdict.
-#
-# Empty output when no completed stage declares a summary, so a repo that has
-# not adopted the marker keeps byte-identical prompts.
-stage_summaries_prompt_block() {
-    local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
-    [[ -n "$state_file" && -s "$state_file" ]] || return 0
-
-    # #2124: the sanitizer that stripped ANSI and stage-io banners from the
-    # retired per-plugin readers (#721) now runs here — the one chokepoint
-    # every producer's body crosses. #1841's test summary shipped its ✗ lines
-    # wrapped in colour codes.
-    if ! declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
-        # shellcheck source=../../scripts/lib/test-output-sanitize.sh
-        source "$_ZBUILD_IR_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
-    fi
-
-    local stage path body verdict chunk rec
-    local -a _chunks=()
-    while IFS= read -r rec; do
-        [[ -n "$rec" ]] || continue
-        IFS='|' read -r stage verdict path errpath cutcp respath <<< "$rec"
-        # #1845 run 36274909946: issue-acceptance's own claim came back into
-        # its next prompt and it repeated it every iteration. Every judgment
-        # starts fresh — a stage is never shown its own earlier verdict.
-        [[ -n "${ZBUILD_CURRENT_STAGE:-}" && "$stage" == "$ZBUILD_CURRENT_STAGE" ]] && continue
-        body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
-        # #2271 (ADR-068): each finding on its own line, naming the stage that
-        # opened it — the reference later stages answer by.
-        if [[ -n "${respath:-}" ]]; then
-            local _nf
-            _nf="$(jq -r --arg s "$stage" '(.data.findings // [])[]?
-                    | select(type == "object" and (.n|type) == "number")
-                    | "- \($s) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' \
-                    "$respath" 2>/dev/null || true)"
-            [[ -n "$_nf" ]] && body="${_nf}"$'\n\n'"${body}"
-        fi
-        # #2183: a FAILING stage ships the errors it hit, bounded, verbatim. A
-        # passing stage ships none — nobody needs the noise of a clean run.
-        if [[ -n "$errpath" && -s "$errpath" ]]; then
-            case "$verdict" in
-                fail|failed|error|broken|partial|mismatch)
-                    local _errtail
-                    _errtail="$(tail -c "$_ZB_ERRORS_MAX_BYTES" "$errpath" 2>/dev/null || true)"
-                    if [[ -n "$_errtail" ]]; then
-                        body="${body}"$'\n\n'"errors this stage hit (last ${_ZB_ERRORS_MAX_BYTES}B of its declared error output):"$'\n'"$_errtail"
-                    fi ;;
-            esac
-        fi
-        # #2270: what a cut-off stage saved as it went — its own notes, unchecked.
-        if [[ -n "${cutcp:-}" && -s "$cutcp" ]]; then
-            local _cpnotes
-            _cpnotes="$(head -c "$_ZB_ERRORS_MAX_BYTES" "$cutcp" 2>/dev/null || true)"
-            [[ -n "$_cpnotes" ]] && body="${body}"$'\n\n'"What it found before it was cut off (unfinished — its own notes, not checked):"$'\n'"$_cpnotes"
-        fi
-        if declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
-            body="$(printf '%s' "$body" | _zbuild_sanitize_for_llm 2>/dev/null || printf '%s' "$body")"
-        fi
-        if [[ "$(wc -c 2>/dev/null < "$path" || echo 0)" -gt "$_ZB_SUMMARY_MAX_BYTES" ]]; then
-            body="${body}"$'\n'"[… truncated at ${_ZB_SUMMARY_MAX_BYTES}B —"
-            body="${body} read the artifact directly for the full text]"
-        fi
-        # #2271 (ADR-068): one framing for every reader. The engine does not
-        # decide whose finding this is — every stage judges each one itself and
-        # says in its own result what it did about it (stage-conduct.sh).
-        case "$verdict" in
-            fail|failed|partial|mismatch)
-                chunk="$(printf '### %s (verdict: %s) — its findings, to answer\n%s\n' "$stage" "$verdict" "$body")" ;;
-            *)  chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
-        esac
-        _chunks+=("$chunk")
-    done < <(_summaries_collect "$state_file" "$plugins_root")
-
-    # #2011: keep the NEWEST. This used to accumulate in completion order and
-    # break on the cap, which retained the summaries FURTHEST from the stage
-    # about to run and discarded its most recent findings. Latent while a handful
-    # of gates declared summaries; #2000 took the tree to 28 producers (114,688B
-    # potential against a 24,576B cap), making overflow the normal path.
-    # Raising the cap is not the fix — ADR-029 records that per-iteration prompt
-    # growth caused three consecutive 900s max_turns timeouts. Which END is
-    # dropped is the defect.
-    local total=0 _keep_from=${#_chunks[@]} _i
-    for (( _i=${#_chunks[@]}-1; _i>=0; _i-- )); do
-        total=$(( total + ${#_chunks[_i]} ))
-        [[ "$total" -gt "$_ZB_SUMMARY_TOTAL_MAX_BYTES" ]] && break
-        _keep_from=$_i
-    done
-    # The newest always ships, even alone and even if it alone exceeds the
-    # budget: it is already per-summary capped, and a block that drops the very
-    # findings it exists to carry is worse than one slightly over budget.
-    [[ ${#_chunks[@]} -gt 0 && "$_keep_from" -ge ${#_chunks[@]} ]] && _keep_from=$(( ${#_chunks[@]} - 1 ))
-
-    local rendered=""
-    # Marked, and counted, so an elision stays distinguishable from a stage that
-    # produced nothing — the property the per-summary marker already gets right.
-    if [[ "$_keep_from" -gt 0 ]]; then
-        rendered="[… ${_keep_from} earlier stage summaries truncated at"
-        rendered="${rendered} ${_ZB_SUMMARY_TOTAL_MAX_BYTES}B total]"$'\n'
-    fi
-    for (( _i=_keep_from; _i<${#_chunks[@]}; _i++ )); do
-        rendered="${rendered}${_chunks[_i]}"$'\n'
-    done
-
-    [[ -n "$rendered" ]] || return 0
-    printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
-    printf 'What each completed stage reported, newest content per stage. Each\n'
-    printf 'finding is on its own line with the stage that opened it.\n\n'
-    printf '%s' "$rendered"
 }

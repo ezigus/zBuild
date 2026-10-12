@@ -58,6 +58,16 @@
 ./artifacts/review-aggregator-lenses.json
 ./artifacts/review-report.json
 ./artifacts/review-report.md
+./artifacts/stage-context/build.txt
+./artifacts/stage-context/hydrate.txt
+./artifacts/stage-context/intake.txt
+./artifacts/stage-context/persist.txt
+./artifacts/stage-context/plan.txt
+./artifacts/stage-context/pr.txt
+./artifacts/stage-context/release.txt
+./artifacts/stage-context/review-aggregator.txt
+./artifacts/stage-context/review_lenses-correctness.txt
+./artifacts/stage-context/test.txt
 ./artifacts/stage-io/review_lenses-1.json
 ./artifacts/stage-reports.json
 ./artifacts/teardown-result.json

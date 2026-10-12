@@ -4,7 +4,7 @@
 #
 #   persist (snapshot to state branch)
 #     → CI cross-runner round-trip (bare remote push + fresh clone)
-#       → restore into ZBUILD_RESTORED_ARTIFACTS_DIR
+#       → hydrate puts the outputs back in their live places
 #         → _read_prior_output seam pickup (what every wired stage calls)
 #
 # Plus the pr-open remote-aware preflight ref math (the #1570 fix): local HEAD at
@@ -101,38 +101,26 @@ else
     assert_fail "T3 restore populated artifacts" "design.md absent after restore"
 fi
 
-# ─── T4: the seam picks up the restored artifacts (what every wired stage does) ─
-# runner.sh exports ZBUILD_RESTORED_ARTIFACTS_DIR at the artifacts subdir.
-export ZBUILD_RESTORED_ARTIFACTS_DIR="$restored_root/artifacts"
-unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
-export ZBUILD_STATE_DIR="$runner_ws/state"   # empty artifacts/ locally → not the source
+# ─── T4: hydrate puts them in the live places; the seam reads them there ─────
+# A rerun continues the issue (ADR-050, amended): an earlier run's output is the
+# stage's latest output until the stage writes a newer one.
+# shellcheck source=../../plugins/tool/hydrate/plugin.sh
+source "$REPO_ROOT/plugins/tool/hydrate/plugin.sh" >/dev/null 2>&1
+unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_RESTORED_ARTIFACTS_DIR
+export ZBUILD_STATE_DIR="$runner_ws/state"
+mkdir -p "$ZBUILD_STATE_DIR/artifacts"
+# A file this run already wrote is newer: hydrate keeps it.
+printf 'THIS RUN build summary\n' > "$ZBUILD_STATE_DIR/artifacts/build-summary.json"
+_hydrate_put_back "$restored_root/artifacts" "$ZBUILD_STATE_DIR/artifacts"
 
 got_design="$(_read_prior_output "design.md")"
-assert_contains "T4 seam returns the restored design (cross-run tier)" "$got_design" "acceptance contract from the earlier attempt"
+assert_contains "T4 the seam reads the earlier run's design from its live place" "$got_design" "acceptance contract from the earlier attempt"
 got_plan="$(_read_prior_output "plan.json")"
-assert_contains "T4 seam returns the restored plan.json" "$got_plan" "prior plan goal"
-got_bs="$(_read_prior_output "build-summary.json")"
-assert_contains "T4 seam returns the restored build-summary" "$got_bs" "empty_diff"
+assert_contains "T4 the seam reads the earlier run's plan.json" "$got_plan" "prior plan goal"
 
-# ─── T5: cross-run tier beats the local state fallback ────────────────────────
-# Seam order is intra-cycle > this run's own > restored (#2252). A local copy an
-# EARLIER run left in a reused state dir is not this run's, so the restored
-# (prior-run) artifact must win over it.
-mkdir -p "$ZBUILD_STATE_DIR/artifacts" "$ZBUILD_STATE_DIR/runtime"
-printf 'LOCAL STALE DESIGN — must not win\n' > "$ZBUILD_STATE_DIR/artifacts/design.md"
-# #2252: "stale" means left by an EARLIER run — older than this run's start. A
-# local copy THIS run wrote beats the restored one (own-run-artifacts-first-test).
-touch -t 202601010000 "$ZBUILD_STATE_DIR/artifacts/design.md"
-: > "$ZBUILD_STATE_DIR/runtime/run-start"
-export ZBUILD_RUN_START_MARKER="$ZBUILD_STATE_DIR/runtime/run-start"
-got_design2="$(_read_prior_output "design.md")"
-assert_contains "T5 restored (cross-run) beats local fallback" "$got_design2" "earlier attempt"
-if [[ "$got_design2" == *"LOCAL STALE"* ]]; then
-    assert_fail "T5 restored beats local fallback" "local stale copy leaked through"
-else
-    assert_pass "T5 local stale copy did not leak"
-fi
-unset ZBUILD_RUN_START_MARKER
+# ─── T5: a file the run already has is kept ──────────────────────────────────
+got_bs="$(_read_prior_output "build-summary.json")"
+assert_contains "T5 this run's own output is not overwritten by an earlier run's" "$got_bs" "THIS RUN build summary"
 
 # ─── T6: absent state branch → restore no-op, seam falls through to empty ──────
 runner_ws2="$TEST_TEMP_DIR/ci-runner-firstrun"

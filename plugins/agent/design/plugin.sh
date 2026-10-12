@@ -89,36 +89,6 @@ _design_write_result() {
         || warn "_design_write_result: failed to write design-verdict.json (verdict=$verdict)"
 }
 
-# _design_budget_guidance <max_turns> — TURN BUDGET block for the prompt (ADR-063 §1).
-# Mirrors _plan_budget_guidance from plugins/agent/plan/plugin.sh.
-_design_budget_guidance() {
-    local budget="${1:-}"
-    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
-    cat <<EOF
-TURN BUDGET (read this — you have a BOUNDED tool-call budget):
-- You have about ${budget} tool-call turns for BOTH exploration AND writing the design.
-- A design from partial exploration with gaps named in prose BEATS exhausting the budget and producing no design at all.
-- Explore with TARGETED reads/greps of specific files; avoid whole-repo sweeps that flood your context.
-- STOP exploring and WRITE the design well before you run out. If you are running low, emit your best-effort design NOW and name any unfinished sections.
-EOF
-}
-
-# _design_wallclock_guidance <timeout_s> <elapsed_s> — WALL CLOCK BUDGET block (ADR-063 §1).
-# Mirrors _plan_wallclock_guidance from plugins/agent/plan/plugin.sh.
-_design_wallclock_guidance() {
-    local budget_s="${1:-}" elapsed_s="${2:-}"
-    [[ "$budget_s" =~ ^[0-9]+$ && "$budget_s" -gt 0 ]] || { printf ''; return 0; }
-    [[ "$elapsed_s" =~ ^[0-9]+$ ]] || elapsed_s=0
-    [[ "$elapsed_s" -lt "$budget_s" ]] || { printf ''; return 0; }
-    local _stop_at=$(( budget_s * 70 / 100 ))
-    cat <<EOF
-WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of ${budget_s} seconds total; ~${elapsed_s}s have elapsed.
-- You cannot read a real-time clock, but estimate elapsed time from your tool-call history.
-- Target emitting your best-effort design before ~${_stop_at}s of wall-clock time has elapsed (70% of the ${budget_s}s budget). A partial design with named gaps BEATS a hard SIGTERM that produces no output.
-EOF
-}
-
 # ─── run ────────────────────────────────────────────────────────────────────
 # #2154: SPEC declarations only. The acceptance block's TESTFILES section binds
 # each SPEC on a line that also starts `SPEC-n:`; counting those doubled the
@@ -185,103 +155,18 @@ _design_gate_failed() {
 }
 
 # Design's prior design, to refine rather than re-create: its own latest
-# design.md when this run has written one, else the restored artifact from a
-# prior run (ADR-050). The engine keeps no copy between tries (ADR-021 §3):
-# design's latest output is the file it wrote. A design.md older than this run's
-# start is a reused state dir's leftover, not this run's (#2252).
-# _design_prior_design_path prints the path; the reader cats it. #2326: the
-# path is what says whether the design is an earlier run's.
+# design.md, whichever try or run wrote it — hydrate puts an earlier run's back
+# in place (ADR-050, ADR-068 §8). _design_prior_design_path prints the path; the
+# reader cats it.
 _design_prior_design_path() {
     local own="${1:-}"
-    if [[ -n "$own" && -s "$own" ]] && { ! declare -F attempt_is_this_run >/dev/null 2>&1 \
-            || attempt_is_this_run "$own"; }; then
-        printf '%s' "$own"; return 0
-    fi
-
-    local restored_dir="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
-    if [[ -n "$restored_dir" ]]; then
-        local restored_f="$restored_dir/design.md"
-        [[ -s "$restored_f" ]] && { printf '%s' "$restored_f"; return 0; }
-    fi
-
+    [[ -n "$own" && -s "$own" ]] && printf '%s' "$own"
     return 0
 }
 _design_read_prior_design() {
     local f; f="$(_design_prior_design_path "${1:-}")"
     [[ -n "$f" ]] && cat "$f" 2>/dev/null
     return 0
-}
-
-# _design_prior_drift_block — "SINCE THE PRIOR DESIGN": engine-collected facts
-# about what moved in the repository since the prior design was authored
-# (#2172). Reads the prior design's stamp from the restored design-verdict.json;
-# keyed on the DATE (a rebase makes the old commit unreachable). Lists the ADRs
-# added or changed since, each with its Supersedes line, and the prior design's
-# scope files that changed. Undated → says so; every claim is then unverified.
-_design_prior_drift_block() {
-    local restored="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" repo="${ZBUILD_REPO_ROOT:-.}"
-    local at="" sha="" n_commits="" adrs="" changed=""
-    if [[ -n "$restored" && -s "$restored/design-verdict.json" ]]; then
-        at="$(jq -r '.data.authored_at // empty' "$restored/design-verdict.json" 2>/dev/null || true)"
-        sha="$(jq -r '.data.authored_at_commit // empty' "$restored/design-verdict.json" 2>/dev/null || true)"
-    fi
-    printf '\n### SINCE THE PRIOR DESIGN (engine-collected)\n'
-    if [[ -z "$at" ]]; then
-        printf -- '- The prior design'"'"'s date is unknown: treat every claim it makes as unverified until you have checked it.\n'
-        return 0
-    fi
-    if [[ -n "$sha" ]]; then
-        printf -- '- The prior design was authored %s (commit %s).\n' "$at" "${sha:0:8}"
-    else
-        printf -- '- The prior design was authored %s.\n' "$at"
-    fi
-    n_commits="$(git -C "$repo" rev-list --count --since="$at" HEAD 2>/dev/null || true)"
-    [[ -n "$n_commits" ]] && printf -- '- Commits on this branch since then: %s.\n' "$n_commits"
-    # ADRs added or changed since, with the line that says what each replaces.
-    local f line
-    while IFS= read -r f; do
-        [[ -n "$f" && -f "$repo/$f" ]] || continue
-        line="$(grep -m1 -E '^\*\*Supersedes:\*\*' "$repo/$f" 2>/dev/null | sed 's/\*\*//g' || true)"
-        adrs+="  - ${f}${line:+ — ${line}}"$'\n'
-    done < <(git -C "$repo" log --since="$at" --name-only --pretty=format: -- docs/adr 2>/dev/null | grep -E '\.md$' | LC_ALL=C sort -u)
-    if [[ -n "$adrs" ]]; then
-        printf -- '- ADRs added or changed since (re-check every decision that cites one of these, or one they supersede):\n%s' "$adrs"
-    else
-        printf -- '- No ADR was added or changed since.\n'
-    fi
-    # Files in the prior design's scope that changed since.
-    local scope_files
-    scope_files="$(sed -n '/^```scope$/,/^```$/p' "$restored/design.md" 2>/dev/null | grep -vE '^```' || true)"
-    if [[ -n "$scope_files" ]]; then
-        while IFS= read -r f; do
-            [[ -n "$f" ]] || continue
-            if [[ -n "$(git -C "$repo" log --since="$at" --oneline -1 -- "$f" 2>/dev/null)" ]]; then
-                changed+="  - ${f}"$'\n'
-            fi
-        done <<< "$scope_files"
-    fi
-    if [[ -n "$changed" ]]; then
-        printf -- '- Files in the prior design'"'"'s scope changed since (its claims about them may be stale):\n%s' "$changed"
-    else
-        printf -- '- No file in the prior design'"'"'s scope changed since.\n'
-    fi
-}
-
-# ADR-050 (#1581): best-effort GitHub blob URL for the durable prior design on the
-# state branch (zbuild/state/issue-<N>/artifacts/design.md). Empty when the repo
-# slug or issue can't be resolved (local run / non-GitHub remote) — the prior
-# design CONTENT is injected regardless; this is just a browsable pointer.
-_design_state_blob_url() {
-    local issue="${ZBUILD_ISSUE:-0}"
-    [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]] || return 0
-    # ADR-059 §6 (#1930): one slug derivation, shared with release-tarball.sh.
-    # The local `case` this replaces matched exactly two literal prefixes and
-    # returned empty for anything else — so `ssh://git@github.com/o/r` produced
-    # a release tarball and NO blob URL. zbuild_repo_slug accepts it.
-    local slug
-    slug="$(zbuild_repo_slug || true)"
-    [[ -n "$slug" ]] || return 0
-    printf 'https://github.com/%s/blob/zbuild/state/issue-%s/artifacts/design.md' "$slug" "$issue"
 }
 
 # Inner implementation — unit-testable with explicit paths.
@@ -302,7 +187,6 @@ _design_stage_run_inner() {
     fi
 
     mkdir -p "$artifact_dir"
-    local _design_start_s=$SECONDS
 
     # #1261: the did_not_finish verdict sidecar (mirrors build's #1208 mid-flight
     # verdict). Cleared at the START of every run so a stale timeout verdict from
@@ -502,14 +386,14 @@ DESIGN_PROMPT
     # and prior design.md into the prompt so design EXPANDS its scope block
     # (impact feedback) and REFINES rather than re-creates (self-feedback).
     # #1825 established that this content is spliced exactly ONCE. #1979 keeps
-    # that invariant with the splice moved: the engine's STAGE SUMMARIES block
-    # carries design-gate's feedback now, so design only decides how to WORD the
+    # that invariant with the splice moved: the engine's Previous work carries
+    # the design check's findings, so design only decides how to WORD the
     # refinement instruction — from the recorded verdict, not from a file read.
     local _prior_design_body=""
-    # ADR-050 (#1826): check ZBUILD_STAGE_INPUTS for the 'design' input first —
-    # input-resolve.sh already consolidates Tier-1 and Tier-2 when writing the
-    # index, so we don't need to run the tier-1/tier-2 logic separately. Fall
-    # back to _design_prior_design_path when the index is absent or has no entry.
+    # Design refines its own latest design.md, whichever try or run wrote it
+    # (ADR-068 §8): a rerun of an issue continues it. What moved since design
+    # last ran — files and the issue text — is the engine's, under Previous
+    # work; every claim is checked against the tree as it is now.
     local _si_design_path=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         _si_design_path="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
@@ -519,39 +403,14 @@ DESIGN_PROMPT
     fi
     [[ -n "$_si_design_path" ]] && _prior_design_body="$(cat "$_si_design_path" 2>/dev/null || true)"
     if [[ -n "$_prior_design_body" ]]; then
-        # #2172: a design carried over from a PRIOR RUN is a HYPOTHESIS about
-        # a repository that has moved since it was written. The engine says
-        # what moved (the block below); the model re-checks every claim
-        # against the tree as it is now. "Refine, do not recreate" told it to
-        # trust the prior — on #1841 that carried a retired ADR's hook through
-        # weeks of runs. A design written EARLIER IN THIS RUN — any try, any
-        # round of the loop (#1932's round two was told otherwise) — is not
-        # that: the tree has not moved, and it is refined as before (review
-        # on #2173).
-        if ! prior_output_is_earlier_run "$_si_design_path"; then
-            printf '\n### PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)\n' >> "$prompt_input_file"
-        else
-            printf '\n### PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)\n' >> "$prompt_input_file"
-            # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
-            printf 'This design is %s.\n' "$ZB_EARLIER_RUN_LABEL" >> "$prompt_input_file"
-            printf 'The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
-            _design_prior_drift_block >> "$prompt_input_file"
-        fi
+        printf '\n### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)\n' >> "$prompt_input_file"
+        printf 'Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
         printf '\n%s\n' "$_prior_design_body" >> "$prompt_input_file"
-        # ADR-050 (#1581): when the prior design came from a restored PRIOR RUN,
-        # add a browsable pointer to its durable copy on the state branch. Guarded
-        # on ZBUILD_RESTORED_ARTIFACTS_DIR so intra-cycle-only refinements (and
-        # first-ever runs with no state branch) never emit a dead link.
-        if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
-            local _prior_design_blob; _prior_design_blob="$(_design_state_blob_url 2>/dev/null || true)"
-            [[ -n "$_prior_design_blob" ]] && printf '\n(Durable copy: %s — reference it, but VERIFY against the CURRENT inputs above; the code may have moved on since.)\n' \
-                "$_prior_design_blob" >> "$prompt_input_file"
-        fi
         if _design_gate_failed "$artifact_dir"; then
-            printf '\nExpand the PRIOR DESIGN scope block to cover the gaps the design-gate reported in the STAGE SUMMARIES section. Preserve all existing scope entries; only ADD the missing ones.\n' \
+            printf '\nExpand YOUR LATEST DESIGN'"'"'s scope block to cover the gaps the design check reported under Previous work. Preserve all existing scope entries; only ADD the missing ones.\n' \
                 >> "$prompt_input_file"
         else
-            printf '\nRefine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
+            printf '\nRefine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
                 >> "$prompt_input_file"
         fi
     fi
@@ -563,25 +422,11 @@ DESIGN_PROMPT
     if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
             "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.
-        printf '\nIf the STAGE SUMMARIES say a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
+        printf '\nIf Previous work says a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
             >> "$prompt_input_file"
     fi
 
-    # ADR-063 §1/§2: inject budget guidance BEFORE operator overlay so the
-    # operator cannot accidentally precede the shipped charter (ADR-032).
-    local _budget_max_turns _budget_timeout_s _budget_elapsed_s
-    _budget_max_turns="$(_route_resolve_max_turns 2>/dev/null || printf '0')"
-    _budget_timeout_s="$(_route_resolve_timeout 2>/dev/null || printf '0')"
-    [[ "$_budget_max_turns" =~ ^[0-9]+$ ]] || _budget_max_turns=0
-    [[ "$_budget_timeout_s" =~ ^[0-9]+$ ]] || _budget_timeout_s=0
-    _budget_elapsed_s=$(( SECONDS - _design_start_s ))
-    local _wc_guidance _tb_guidance
-    _wc_guidance="$(_design_wallclock_guidance "$_budget_timeout_s" "$_budget_elapsed_s")"
-    _tb_guidance="$(_design_budget_guidance "$_budget_max_turns")"
-    [[ -n "$_wc_guidance" ]] && printf '\n%s\n' "$_wc_guidance" >> "$prompt_input_file"
-    [[ -n "$_tb_guidance" ]] && printf '\n%s\n' "$_tb_guidance" >> "$prompt_input_file"
-    # #2308: the limits close the stage's own text; the router adds the part
-    # every stage shares (saving as you go, answering, reporting a partial result).
+    # #2308: the limits close the stage's own text.
     cat >> "$prompt_input_file" <<DESIGN_LIMITS
 
 ## What you must not do
@@ -593,14 +438,15 @@ DESIGN_PROMPT
   contract violation that will fail this stage.
 DESIGN_LIMITS
 
-    # ADR-032: append the per-repo prompt override AFTER the core contract (so
-    # the operator overlay can never precede or weaken the shipped charter).
-    # Fail-open: a repo with no .zbuild/prompts/design-overrides.md appends
-    # nothing and behaves byte-identically. ADR-043: redaction is owned by the
-    # router — route_to_model_loop redacts each iteration's prompt (this override
-    # included) by construction, using the runner-exported ZBUILD_SCOPE_MANIFEST
-    # + the --scope-allowlist passed below.
-    append_prompt_override "$prompt_input_file" "design"
+    # ADR-067 §8: design's three parts and the engine's blocks — the
+    # repository's guidance for design, its budget and notes file — in the one
+    # prompt order.
+    local _dp_composed
+    if ! _dp_composed="$(stage_prompt_compose_parts "$(cat "$prompt_input_file")")"; then
+        error "_design_stage_run_inner: the prompt could not be composed — the engine's blocks are missing"
+        return 1
+    fi
+    printf '%s\n' "$_dp_composed" > "$prompt_input_file"
 
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
     local tier; tier="$(resolve_tier design "$_DESIGN_DIR")" || return 1

@@ -21,7 +21,7 @@
 #             every other judging stage since #2212)
 # C7 [change] the aggregator counts only introduced findings; pre-existing ones
 #             are listed separately; a finding that does not say is counted
-# C8 [change] lenses are given the repository's rules, framed for a reviewer
+# C8 [change] the repository's rules come with every stage's From the repo, not by declaration
 # C9 [change] the scope lens does not report planned-but-untouched files
 # C11 [change] ...and the design's decisions (#1654 item 3): what was DECIDED,
 #              so a lens tells "odd" from "chosen"
@@ -131,17 +131,10 @@ assert_eq "[C7] the pre-existing one is listed separately" "OLD-ONE" \
 assert_contains "[C7] the summary counts 2 findings" "$(jq -r .summary <<< "$AGG" 2>/dev/null || true)" "2 merge-readiness finding(s)"
 
 print_test_section "C8/C9: rules and the scope lens"
-assert_eq "[C8] review-lens declares prompt.repo_rules" "true" \
+# C8: the repository's rules reach every stage under From the repo
+# (ADR-067 §8), so a lens no longer declares them.
+assert_eq "[C8] review-lens no longer declares prompt.repo_rules" "" \
     "$(yaml_get "$PLUGIN_DIR/manifest.yaml" "prompt.repo_rules" 2>/dev/null || true)"
-# shellcheck source=../../../../scripts/lib/repo-rules.sh
-source "$REPO_ROOT/scripts/lib/repo-rules.sh"
-_blk="$(repo_rules_prompt_block "$PLUGIN_DIR/manifest.yaml" "$REPO_ROOT" 2>/dev/null || true)"
-assert_contains "[C8] framed for a reviewer" "$_blk" "a change that breaks one is a finding"
-if grep -qF "Every file you write must follow" <<< "$_blk"; then
-    assert_fail "[C8] not framed as rules for writing" "writer framing given to a reviewer"
-else
-    assert_pass "[C8] not framed as rules for writing"
-fi
 _scope="$(resolve_persona_charter scope 2>/dev/null || true)"
 if grep -qiE "untouched|did not touch" <<< "$_scope"; then
     assert_fail "[C9] the scope lens does not report planned-but-untouched files" "$_scope"

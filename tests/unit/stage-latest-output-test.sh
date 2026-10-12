@@ -108,19 +108,18 @@ assert_eq "[L3] so the loop is not converged" "fail" "$(jq -r '.verdict' "$TEST_
 # ─── L6: a run refused before its hook ran has no result ────────────────────
 print_test_section "L6: a refused run is not credited with the previous result"
 NDIR="$(mock_plugin_factory "needy" "tool" 0)"
-python3 - "$NDIR/manifest.yaml" <<'PY'
-import sys; p=sys.argv[1]; s=open(p).read()
-s=s.replace("outputs:\n", "inputs:\n  - id: once_writer_result\n    required: true\noutputs:\n",1)
-open(p,'w').write(s)
-PY
 _TPL_STAGES=(once-writer needy)
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"r"}' \
-    > "$STATE/artifacts/once-writer-result.json"
 plugin_hook_call "$NDIR" run "needy" "$STATE/pipeline-state.json" >/dev/null 2>&1
 _verdict_read_result "$STATE" "$NDIR/manifest.yaml" "needy" 0 _n
 assert_eq "[L6-guard] the first run wrote its result" "ok|pass" "$_n_state|$_n_verdict"
 touch -t 202601010000 "$STATE/artifacts/needy-result.json"
-rm -f "$STATE/artifacts/once-writer-result.json"   # its required input is gone: refused
+# The engine refuses the next run before its hook: the manifest no longer
+# declares one (plugin.run.refused, reason=hook-not-declared).
+python3 - "$NDIR/manifest.yaml" <<'PY'
+import sys,re; p=sys.argv[1]; s=open(p).read()
+s=re.sub(r"\n  run: [^\n]*", "", s, count=1)
+open(p,'w').write(s)
+PY
 plugin_hook_call "$NDIR" run "needy" "$STATE/pipeline-state.json" >/dev/null 2>&1
 _verdict_read_result "$STATE" "$NDIR/manifest.yaml" "needy" 0 _n
 assert_eq "[L6] the refused run's result reads as absent" "absent" "$_n_state"

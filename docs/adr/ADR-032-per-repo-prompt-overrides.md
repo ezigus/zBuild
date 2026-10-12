@@ -1,6 +1,6 @@
 # ADR-032 — Per-repo prompt overrides (generic engine, operator overlay)
 
-**Status:** Proposed (2026-06-13)
+**Status:** Proposed (2026-06-13); amended 2026-10-12 (the repository's rules and its per-stage guidance reach every stage from the engine, under From the repo — ADR-067 §8)
 **Related:** ADR-016 (per-repo template resolution), ADR-004 (redaction chokepoint), ADR-030 (scope model / security floor), ADR-001 (plugin contract), ADR-024 (subprocess env isolation)
 **Issue:** #854 (OV-1); fans out in #855 (OV-2); compiler-layer companion in #856 (OV-3)
 
@@ -65,4 +65,26 @@ Ship **100% target-agnostic** stage prompts, and let an operator augment any age
 
 **Consequences.** Any stage can have repository rules by one manifest line. A rule stated there is still guidance — the enforcement is the repository's own tests, and the test stage now names the file a failure points at (`about`), which the engine resolves to the stage that owns it (#2180).
 
-**Implementation.** `scripts/lib/repo-rules.sh` (`repo_rules_prompt_block`), `load_repo_rules` in `scripts/lib/prompt-overrides.sh`, the injection in `core/router/route.sh`, `config/prompts/default-rules.md`, `.zbuild/prompts/rules.md`. Test: `tests/unit/repo-rules-test.sh`.
+**Implementation.** `load_repo_rules` in `scripts/lib/prompt-overrides.sh`, `config/prompts/default-rules.md`, `.zbuild/prompts/rules.md`. (The `prompt.repo_rules` declaration, `scripts/lib/repo-rules.sh` and the router injection are retired by the amendment below.)
+
+## Amendment (2026-10-12): every stage, from the engine
+
+**Decision.** The repository's settings reach every stage the same way, from the engine, as part of the
+**From the repo** block every stage receives at dispatch (ADR-067 §8, `scripts/lib/stage-prompt.sh`):
+
+1. **Rules for every stage.** The repository's `.zbuild/prompts/rules.md`, else zBuild's
+   `config/prompts/default-rules.md` from the install, for every stage — no declaration
+   (`prompt.repo_rules` is retired). Any stage can break a repository's rules; a stage that judges
+   reads them as what a change must meet.
+2. **Guidance for this stage, when the repository has it.** `.zbuild/prompts/<stage>-overrides.md` is
+   read by the engine for the dispatched stage, only when present — any stage, not only the four whose
+   code used to call the loader. It sits under its own heading ("Guidance for this stage"); it can add to
+   the stage's job, not take any of it away (the engine's own-job rule, ADR-067 §8). No stage appends it
+   itself (`append_prompt_override` is removed).
+3. **Two places, never mixed.** The repository layer is read only from the TARGET repository's `.zbuild/`;
+   the fallback only from the zBuild install. zBuild runs from its install on every repository,
+   itself included.
+4. The loader's safety is unchanged: string floor, symlink and hardlink containment, size cap, and the
+   whole prompt still passes the redaction chokepoint.
+
+Enforced by: `tests/unit/stage-prompt-contract-test.sh` F1, F2; `tests/unit/prompt-overrides-load-test.sh` (the loader's containment and size cap); `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh` C8.

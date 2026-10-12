@@ -171,14 +171,10 @@ _d7="$TEST_TEMP_DIR/s7"; _fixture "$_d7"
 ZBUILD_ROUTER_MAX_TURNS=77 ZBUILD_ROUTER_TIMEOUT=123 \
     _rr_run_inner "$_d7/scope.md" "$_d7/diff.patch" "$_d7/review-report.json" "$_d7/review-report.md" 2>/dev/null
 _p7="$(cat "$_RR_PROMPTS/correctness.txt" 2>/dev/null)"
-assert_contains "[SPEC-7] lens prompt carries a TURN BUDGET block" "$_p7" "TURN BUDGET"
-assert_contains "[SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)" "$_p7" "77"
-assert_contains "[SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)" "$_p7" "123"
-_d7b="$TEST_TEMP_DIR/s7b"; _fixture "$_d7b"
-ZBUILD_ROUTER_MAX_TURNS_OVERRIDE=13 ZBUILD_ROUTER_MAX_TURNS=77 \
-    _rr_run_inner "$_d7b/scope.md" "$_d7b/diff.patch" "$_d7b/review-report.json" "$_d7b/review-report.md" 2>/dev/null
-assert_contains "[SPEC-7] the engine's escalation override wins in the block too" \
-    "$(cat "$_RR_PROMPTS/correctness.txt" 2>/dev/null)" "13 tool-call"
+# ADR-067 §8: the budget is the engine's, stated in Rules for this stage from
+# the same resolvers (stage-prompt-contract-test R3); every lens prompt carries it.
+assert_eq "[SPEC-7] the lens prompt carries the engine's rules, where the budget is stated" "1" \
+    "$(grep -cxF '## Rules for this stage' <<< "$_p7" || true)"
 
 # ── SPEC-8: shared reply parser (#2035) — recover, but never go quiet ────────
 _d8="$TEST_TEMP_DIR/s8"; _fixture "$_d8"

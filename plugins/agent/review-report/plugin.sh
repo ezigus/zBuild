@@ -54,23 +54,6 @@ _rr_write_v2() {
         || warn "review_report: failed to write $out_json"
 }
 
-# ─── _rr_budget_guidance <max_turns> <timeout_s> ─────────────────────────────
-# TURN BUDGET block for lens prompts (ADR-063 §1). Both numbers come from the
-# resolvers that enforce them; a hand-copied literal drifts from what kills
-# the call. Empty when the budget is unknown.
-_rr_budget_guidance() {
-    local budget="${1:-}" timeout_s="${2:-}"
-    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
-    local wall=""
-    [[ "$timeout_s" =~ ^[0-9]+$ && "$timeout_s" -gt 0 ]] && wall=" and about ${timeout_s} seconds of wall clock"
-    cat <<EOF
-TURN BUDGET (read this — you have a BOUNDED tool-call budget):
-- You have about ${budget} tool-call turns for this review lens${wall}.
-- Review only what you can examine within your budget; flag unexamined areas explicitly.
-- STOP examining and emit your JSON findings object before you run out of turns. A partial review with named gaps BEATS exhausting the budget and producing no output at all.
-EOF
-}
-
 # ─── review_report_run ──────────────────────────────────────────────────────
 # Hook: review_report_run(stage, state_file). Derives artifact paths and
 # delegates to the unit-testable inner function.
@@ -151,15 +134,9 @@ _rr_run_inner() {
         _rr_register_lens_artifact "test-coverage" "$_cmap"
     fi
 
-    # Resolve router budget and build guidance block to inject into each lens prompt.
-    local _budget_max_turns _budget_timeout_s _budget_guidance
-    _budget_max_turns="$(_route_resolve_max_turns 2>/dev/null || printf '0')"
-    _budget_timeout_s="$(_route_resolve_timeout 2>/dev/null || printf '0')"
-    _budget_guidance="$(_rr_budget_guidance "$_budget_max_turns" "$_budget_timeout_s")"
-
     # Fan out the lenses (bounded-parallel) → combined per-lens results.
     local lenses_file
-    lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier" "$_budget_guidance")"
+    lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier")"
 
     # ADR-063 §3: a lens whose call returned non-zero ran out of something —
     # the report is still written (advisory), but the disposition reflects

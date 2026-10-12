@@ -58,9 +58,9 @@ rsc_rows_json() {
               # row shows the latest try.
               .rows[$seq] += {started_ts:$e.ts, ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null}
             else . end
-          elif $t == "prompt.summaries.injected" then
+          elif $t == "stage.previous_work.written" then
             open_for(.; ($d.stage // $e.stage // "")) as $k
-            | if $k == null then . else .rows[$k] += {summaries: $d.stages, resolve: $d.resolve} end
+            | if $k == null then . else .rows[$k] += {summaries: $d.stages, resolve: $d.failing} end
           elif $t == "cycle.member.dispatch.complete" then
             (if $seq != "" and .rows[$seq] != null then $seq else open_for(.; ($d.member // "")) end) as $k
             | close($k; $e; {verdict: ($d.verdict // "unknown"), rc: $d.rc, status: $d.status, disposition: $d.disposition})
@@ -250,7 +250,7 @@ rsc_render_row() {
         [[ -n "$iter" ]] && line+=" · iter ${iter}"
         local inputs; inputs="$(rsc_row_inputs_line "$state_dir" "$stage")"
         [[ -n "$inputs" ]] && line+=" · inputs: ${inputs}"
-        [[ -n "$summaries" ]] && line+=" · ${summaries} stage summaries (${resolve} failing)"
+        [[ -n "$summaries" ]] && line+=" · previous work from ${summaries} stage(s) (${resolve} failing)"
     else
         [[ -z "$ended" ]] && ended="$started"
         line="**$(_rsc_clock "$started") → $(_rsc_clock "$ended") ($(rsc_duration "$started" "$ended"))** · **${seq} ${stage}**"

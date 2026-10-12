@@ -144,8 +144,8 @@ if grep -qE 'IMPL-SECRET' <<< "$_all"; then
 else
     assert_pass "[A5] no prompt shows the implementation"
 fi
-assert_contains "[A5] ...while a later call still sees the testfile's own progress" \
-    "$(cat "$TEST_TEMP_DIR/a1/fake/prompt.2" 2>/dev/null)" "assertion 1"
+# A later call sees its own progress in the testfile on disk and in its notes
+# file; the loop adds nothing to the prompt (ADR-067 §8).
 
 print_test_section "A3: not finished within the loop"
 _rc3="$(_run a3 0 2)"

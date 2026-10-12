@@ -97,30 +97,24 @@ if ! declare -F manifest_router_knob >/dev/null 2>&1; then
     _zbuild_route_require "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
     source "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
 fi
+# shellcheck source=../../scripts/lib/stage-limits.sh
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
+source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
 # ADR-051 (#1305): resolve_persona + persona_text — resolve a stage persona from
 # the four-step precedence chain (env > template-stage > template-global > generic)
 # with two-root discovery (installed tree + per-repo overlay). Sourced here so
 # every routing plugin gets resolve_persona/persona_text by construction.
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
-# #1879: the engine-generic stage checkpoint. Sourced here because
-# _route_redact_prompt — the shared single-shot + loop funnel — injects its block.
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
-# shellcheck source=../../scripts/lib/stage-checkpoint.sh
-source "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
-# #2308: the part of every stage prompt that is the same for all stages.
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-conduct.sh"
-# shellcheck source=../../scripts/lib/stage-conduct.sh
-source "$_ZBUILD_ROOT/scripts/lib/stage-conduct.sh"
+# ADR-067 §8: the engine/stage prompt contract — the router checks a stage
+# prompt's order with stage_prompt_check before every model call.
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh"
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh"
 # #1752: the one shared timeout helper; both model-call paths bound through it.
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
 # shellcheck source=../../scripts/lib/timeout-cmd.sh
 source "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
-# VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
-# Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
-# can inject the advisory Intent preamble into every stage prompt.
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/vision.sh"
-source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 # Shared setsid capability probe + process-group kill helper.
 # Defines zbuild_pg_resolve and zbuild_pg_kill (extracted from the inline
 # probe that used to live here, so the test plugin can share one impl).
@@ -307,44 +301,6 @@ _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
 # valid only within the parent shell that sourced route.sh.
 _ROUTE_TOOL_USES_JSON="[]"
 
-# ─── _route_vision_preamble ──────────────────────────────────────────────────
-# VIS-C (ADR-049): resolve the advisory Intent preamble ONCE per repo root and
-# cache it in _ROUTE_VISION_PREAMBLE (empty = no/invalid vision doc). Memoized
-# because _route_redact_prompt runs on every stage prompt (single-shot + each
-# loop iteration) and must not fork git/load/validate/awk per call. Keyed on the
-# resolved root so distinct repos (and per-scenario tests) recompute correctly.
-_ROUTE_VISION_PREAMBLE=""
-_ROUTE_VISION_CACHE_ROOT=$'\x00'   # sentinel: "not yet resolved for any root"
-_route_vision_preamble() {
-    declare -F load_vision_doc >/dev/null 2>&1 || { _ROUTE_VISION_PREAMBLE=""; return 0; }
-    local _root="${ZBUILD_REPO_ROOT:-}"
-    if [[ -z "$_root" ]]; then
-        _root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-        [[ -z "$_root" ]] && _root="$(pwd)"
-    fi
-    # Cache hit: same root already resolved → keep the memoized preamble.
-    [[ "$_root" == "$_ROUTE_VISION_CACHE_ROOT" ]] && return 0
-    _ROUTE_VISION_CACHE_ROOT="$_root"
-    _ROUTE_VISION_PREAMBLE=""
-    local _path=""
-    _path="$(load_vision_doc "$_root" 2>/dev/null)" || return 0
-    { [[ -n "$_path" ]] && validate_vision_doc "$_path" >/dev/null 2>&1; } || return 0
-    # Read via stdin redirect so a path beginning with '-' can't be read as an
-    # awk option; strip YAML frontmatter (---…--- opening block) and emit the
-    # entire remaining body. Blank lines are stripped so the preamble is a
-    # single contiguous block (no internal \n\n), keeping the trailing \n\n
-    # as the sole separator between the preamble and the actual prompt.
-    local _body
-    _body="$(awk 'NR==1&&/^---/{fm=1;next} fm&&/^---/{fm=0;next} fm{next} NF{print}' \
-        2>/dev/null < "$_path" || true)"
-    [[ -n "$_body" ]] || return 0
-    # Size cap (defense-in-depth): validate_vision_doc enforces the ~300-word
-    # vision cap, but hard-cap the injected bytes so an oversized doc
-    # can't silently bloat every LLM call.
-    local _cap="${ZBUILD_VISION_PREAMBLE_MAX_BYTES:-4096}"
-    if (( ${#_body} > _cap )); then _body="${_body:0:_cap}"; fi
-    printf -v _ROUTE_VISION_PREAMBLE '# Intent (advisory)\n%s\n\n' "$_body"
-}
 
 # ─── _route_redact_prompt <input_file> <output_file> [cycle_id] [allowlist] ──
 # Shared redaction step for BOTH single-shot route_to_model and route_to_model_loop
@@ -362,174 +318,23 @@ _route_redact_prompt() {
     local allowlist="${4:-${ZBUILD_SCOPE_ALLOWLIST:-}}"
     local manifest="${ZBUILD_SCOPE_MANIFEST:-}"
 
-    # VIS-C (ADR-049): prepend the advisory Intent preamble when a valid vision
-    # doc is present. Resolved+cached once per repo root (_route_vision_preamble).
-    # Fail-open: absent/invalid doc leaves the prompt unchanged. Idempotent: skip
-    # if the input already carries the marker (guards re-entrancy / retries). The
-    # preamble is injected HERE, before apply_scope_redaction, so it passes
-    # through the redaction chokepoint by construction (ADR-004).
-    # The stage's scope, first: a stage whose manifest does not declare
-    # capabilities.writes_repository reads and reports. #1845 run 36332698182:
-    # spec-correspondence, told to RESOLVE three findings, edited a failing test
-    # instead of judging and the run halted. Prepended BEFORE the vision
-    # preamble below, which then takes line 1 (its guard is a first-line
-    # check); this block's own guard is the marker, wherever it sits.
-    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" && -f "${ZBUILD_PLUGIN_DIR}/manifest.yaml" ]]; then
-        if ! declare -F stage_declares_repo_writes >/dev/null 2>&1; then
-            # shellcheck source=../pipeline/input-resolve.sh
-            source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
+    # ADR-067 §8 (amended): a stage composes its whole prompt — its own three
+    # parts and the engine's three blocks — with stage_prompt_compose. The
+    # router adds nothing and edits nothing; for a model call a dispatched stage
+    # makes, it only checks the contract order and refuses a prompt that breaks
+    # it, rather than send a stage a prompt without its repository, its previous
+    # work or its rules. A call outside any stage (no ZBUILD_PLUGIN_DIR) is not
+    # a stage prompt and is not held to it.
+    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" ]]; then
+        declare -F stage_prompt_check >/dev/null 2>&1 \
+            || source "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh" 2>/dev/null || true
+        if ! stage_prompt_check "$input"; then
+            eb_emit_event "router.prompt.refused" "stage=${ZBUILD_CURRENT_STAGE:-}" \
+                "reason=not_in_contract_order" 2>/dev/null || true
+            printf 'router: refusing the %s prompt — it is not in the contract order (ADR-067 §8): compose it with stage_prompt_compose\n' \
+                "${ZBUILD_CURRENT_STAGE:-stage}" >&2
+            return 1
         fi
-        if declare -F stage_declares_repo_writes >/dev/null 2>&1 \
-            && ! stage_declares_repo_writes "${ZBUILD_PLUGIN_DIR}/manifest.yaml" \
-            && ! grep -qF "$_ZB_READ_ONLY_SCOPE_MARKER" "$input" 2>/dev/null; then
-            local _scope_tmp
-            _scope_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-scope.XXXXXX" 2>/dev/null)" || true
-            if [[ -z "$_scope_tmp" ]]; then
-                # Fail-open (a prompt must not die over a temp file), but not
-                # silently: the stage runs without being told its scope.
-                printf 'router: read-only scope not added to the prompt (no temp file under %s)\n' \
-                    "$(zbuild_engine_tmpdir 2>/dev/null || printf '?')" >&2
-            else
-                { printf '%s\n' "$_ZB_READ_ONLY_SCOPE_MARKER"
-                  printf 'You may not change the repository. Do not create, modify or delete any file in the repository — code, tests, or anything else. Write only the outputs your instructions below name.\n\n'
-                  cat "$input"; } > "$_scope_tmp" \
-                    && mv "$_scope_tmp" "$input" 2>/dev/null || rm -f "$_scope_tmp" 2>/dev/null || true
-            fi
-        fi
-    fi
-
-    _route_vision_preamble
-    if [[ -n "${_ROUTE_VISION_PREAMBLE:-}" ]] \
-        && [[ "$(head -n1 "$input" 2>/dev/null)" != '# Intent (advisory)' ]]; then
-        local _pre_tmp
-        _pre_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-vis-pre.XXXXXX" 2>/dev/null)" || true
-        if [[ -n "$_pre_tmp" ]]; then
-            { printf '%s' "$_ROUTE_VISION_PREAMBLE"; cat "$input"; } > "$_pre_tmp" \
-                && mv "$_pre_tmp" "$input" 2>/dev/null || rm -f "$_pre_tmp" 2>/dev/null || true
-        fi
-    fi
-
-    # #1879: the stage-checkpoint block. Injected HERE for the same reason the
-    # vision preamble is — this is the shared funnel for BOTH the single-shot path
-    # and the agentic loop, and injecting before apply_scope_redaction means the
-    # block passes through the redaction chokepoint by construction (ADR-004).
-    #
-    # It is NOT injected from _llm_output_contract: only 3 of the 9 plugins that
-    # call route_to_model* use that builder, and `design` and `build` — the two
-    # heaviest exploration stages, i.e. the ones this feature exists for — are not
-    # among them.
-    #
-    # Appended rather than prepended: the vision preamble's guard is a first-line
-    # check, and prepending here would move its marker off line 1 and make it
-    # re-inject on every retry.
-    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" ]] && declare -F checkpoint_prompt_block >/dev/null 2>&1; then
-        local _cp_state_dir="${ZBUILD_STATE_DIR:-}"
-        local _cp_block=""
-        if [[ -n "$_cp_state_dir" ]]; then
-            _cp_block="$(checkpoint_prompt_block "$ZBUILD_PLUGIN_DIR/manifest.yaml" "$_cp_state_dir" 2>/dev/null || true)"
-        fi
-        # Idempotence: the loop redacts once per iteration against the same file.
-        if [[ -n "$_cp_block" ]] && ! grep -qF "$_ZB_CHECKPOINT_MARKER" "$input" 2>/dev/null; then
-            printf '\n\n%s\n' "$_cp_block" >> "$input" 2>/dev/null || true
-        fi
-    fi
-
-    # ADR-032 amendment: the target repository's rules (or zBuild's defaults)
-    # for a stage whose manifest declares `prompt.repo_rules: true`. Here for
-    # the reason the checkpoint block is: the one funnel for every model call,
-    # before apply_scope_redaction. Lazily sourced so route.sh's load shape is
-    # unchanged for every caller that never reaches a declaring stage.
-    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" && -f "${ZBUILD_PLUGIN_DIR}/manifest.yaml" ]]; then
-        if ! declare -F repo_rules_prompt_block >/dev/null 2>&1; then
-            # shellcheck source=../../scripts/lib/repo-rules.sh
-            source "$_ZBUILD_ROOT/scripts/lib/repo-rules.sh" 2>/dev/null || true
-        fi
-        if declare -F repo_rules_prompt_block >/dev/null 2>&1 \
-            && ! grep -qF "$_ZB_REPO_RULES_MARKER" "$input" 2>/dev/null; then
-            local _rr_block=""
-            _rr_block="$(repo_rules_prompt_block "$ZBUILD_PLUGIN_DIR/manifest.yaml" \
-                "${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}" 2>/dev/null || true)"
-            [[ -n "$_rr_block" ]] && printf '\n\n%s\n' "$_rr_block" >> "$input" 2>/dev/null || true
-        fi
-    fi
-
-    # #1826 (ADR-055 §1): the resolved input paths, as LITERAL text. An agent
-    # stage cannot read ZBUILD_STAGE_INPUTS — _zbuild_make_fresh_shell unsets the
-    # whole ZBUILD_* namespace before every claude spawn — so the handover the
-    # engine makes to `run` has to be restated here to reach the model. Injected
-    # at the same point as the vision preamble and the checkpoint block: before
-    # apply_scope_redaction, so it rides the ADR-004 chokepoint by construction.
-    # Marker-guarded for idempotence (the loop redacts once per iteration).
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        # Lazy + flag-gated, so route.sh's load shape is unchanged by default.
-        if ! declare -F stage_inputs_prompt_block >/dev/null 2>&1; then
-            # shellcheck source=../pipeline/input-resolve.sh
-            source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
-        fi
-    fi
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
-        && declare -F stage_inputs_prompt_block >/dev/null 2>&1; then
-        local _si_block=""
-        _si_block="$(stage_inputs_prompt_block "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        if [[ -n "$_si_block" ]] && ! grep -qF "$_ZB_STAGE_INPUTS_MARKER" "$input" 2>/dev/null; then
-            printf '\n\n%s\n' "$_si_block" >> "$input" 2>/dev/null || true
-        fi
-    fi
-
-    # #1976: what each completed stage reported, collected from the outputs they
-    # marked `summary: true`. Unlike the block above this needs no declaration
-    # from the consumer — it is ambient context, not a resolved input. Injected
-    # at the same point and for the same reason: before apply_scope_redaction,
-    # so it rides the ADR-004 chokepoint by construction. Marker-guarded, and
-    # bounded per ADR-029 by the renderer.
-    if [[ -n "${ZBUILD_STATE_DIR:-}" && -s "${ZBUILD_STATE_DIR}/pipeline-state.json" ]]; then
-        if ! declare -F stage_summaries_prompt_block >/dev/null 2>&1; then
-            # shellcheck source=../pipeline/input-resolve.sh
-            source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
-        fi
-        if declare -F stage_summaries_prompt_block >/dev/null 2>&1 \
-            && ! grep -qF "$_ZB_STAGE_SUMMARIES_MARKER" "$input" 2>/dev/null; then
-            local _ss_block=""
-            _ss_block="$(stage_summaries_prompt_block \
-                "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
-            if [[ -n "$_ss_block" ]]; then
-                printf '\n\n%s\n' "$_ss_block" >> "$input" 2>/dev/null || true
-                # #2124: say what shipped. stages= is counted from the rendered
-                # block — after the ADR-029 cap — so it is what the stage was
-                # told, not what existed. The #1841 diagnosis had nothing to
-                # read here and concluded the builder never got the findings.
-                # Anchored to the renderer's heading shape (`### <stage>
-                # (verdict: …)`, then optionally ` — <framing>` to end of line),
-                # so a body's own `### …` lines (the test summary has them) do
-                # not count.
-                # resolve= comes from stage_summaries_count — the same rules
-                # that framed the block — not from re-reading its wording: the
-                # wording grew ("yours to fix", "context only …") and the old
-                # pattern logged resolve=0 while design was being told to fix
-                # (#1847 run 20260928102849-23575). That count is PRE-cap, so
-                # when the cap drops a finding, resolve= can exceed what the
-                # block shows (review #2218) — it says what the reader owes,
-                # not how much of it fit.
-                local _ss_n _ss_r _ss_b
-                _ss_n="$(grep -cE '^### [^ ]+ \(verdict: [^)]*\)( — .*)?$' <<< "$_ss_block" 2>/dev/null || true)"
-                _ss_r="$(stage_summaries_count "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
-                _ss_r="${_ss_r##* }"
-                _ss_b="$(printf '%s' "$_ss_block" | wc -c | tr -d ' ')"
-                eb_emit_event "prompt.summaries.injected" \
-                    "stage=${ZBUILD_CURRENT_STAGE:-}" "stages=${_ss_n:-0}" \
-                    "resolve=${_ss_r:-0}" "bytes=${_ss_b:-0}" 2>/dev/null || true
-            fi
-        fi
-    fi
-
-    # #2308 (ADR-067 §8): last, the part every stage shares — and the rule that
-    # opens each stage's limits. Only for a stage that calls a model, which is
-    # one that declares a save-as-you-go file (ADR-068 §6); any other prompt is
-    # left as it is.
-    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" ]] && declare -F stage_conduct_apply >/dev/null 2>&1 \
-        && declare -F _checkpoint_declared_path >/dev/null 2>&1 \
-        && [[ -n "$(_checkpoint_declared_path "$ZBUILD_PLUGIN_DIR/manifest.yaml" "${ZBUILD_STATE_DIR:-/nonexistent}" 2>/dev/null)" ]]; then
-        stage_conduct_apply "$input"
     fi
 
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
@@ -730,150 +535,11 @@ _route_lookup_model() {
     return 0
 }
 
-# ─── _route_manifest_knob <knob> — ADR-017 §11 (#1816) manifest layer ───────
-# The dispatched plugin's OWN declared default, read from its manifest via the
-# dispatch identity the engine exports at plugin_hook_call (ZBUILD_PLUGIN_DIR,
-# ADR-054 §3 / #1862). Empty whenever there is no dispatch, no manifest, no
-# declaration — or a declaration this router cannot use.
-#
-# Out-of-range and non-numeric values are IGNORED here, not fatal: the loud
-# gate is validate_manifest at load, and a plugin that got past it with a bad
-# value must fall back to the constant rather than hand the router a 0-second
-# timeout. Fail-safe on the hot path, fail-loud at the boundary.
-_route_manifest_knob() {
-    local knob="$1"
-    local dir="${ZBUILD_PLUGIN_DIR:-}"
-    [[ -n "$dir" && -f "$dir/manifest.yaml" ]] || return 0
-    declare -F manifest_router_knob >/dev/null 2>&1 || return 0
-    local v; v="$(manifest_router_knob "$dir/manifest.yaml" "$knob" 2>/dev/null || true)"
-    [[ "$v" =~ ^[0-9]+$ ]] || return 0
-    local range; range="$(_manifest_router_range "$knob" 2>/dev/null || true)"
-    [[ -n "$range" ]] || return 0
-    local min="${range% *}" max="${range#* }"
-    [[ "$v" -ge "$min" && "$v" -le "$max" ]] || return 0
-    printf '%s' "$v"
-}
-
-# ─── _route_resolve_knob — ADR-017 (#455) precedence chokepoint ──────────────
-# Generic helper: future knobs (tier_default, budget_usd, model_override) reuse
-# this. Accessor returns per-stage value or empty; env_var supplies session-wide
-# fallback; manifest_knob (#1816) names the plugin's own declared default; the
-# compile-time constant is the floor:
-#
-#   template accessor  >  env var  >  manifest config.router.*  >  constant
-#
-# The manifest sits BELOW env and template because it is a default, not an
-# override: a flow may right-size a stage for a fast lane, and the operator
-# escape hatch must still beat both. It sits ABOVE the constant because that is
-# what the constant always was — a default nobody could state per stage.
-_route_resolve_knob() {
-    local accessor_fn="$1" env_var="$2" default_val="$3"
-    local override_event="${4:-router.timeout.override_ignored}"
-    local manifest_knob="${5:-}"
-    local v=""
-    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F "$accessor_fn" >/dev/null 2>&1; then
-        v="$($accessor_fn "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
-    fi
-    if [[ -n "$v" ]]; then
-        # If env var ALSO set and differs, emit override-ignored event for audit.
-        # A manifest value losing to template or env is NOT this case: a default
-        # being replaced is the design, and eventing it would make every
-        # declaring plugin noisy on every dispatch.
-        local env_val="${!env_var:-}"
-        if [[ -n "$env_val" && "$env_val" != "$v" ]]; then
-            eb_emit_event "$override_event" \
-                "stage=${ZBUILD_CURRENT_STAGE:-}" \
-                "env_var=$env_var" \
-                "env_value=$env_val" \
-                "applied=$v" 2>/dev/null || true
-        fi
-        printf '%s\n' "$v"; return 0
-    fi
-    local env_v="${!env_var:-}"
-    if [[ -n "$env_v" ]]; then
-        printf '%s\n' "$env_v"; return 0
-    fi
-    if [[ -n "$manifest_knob" ]]; then
-        local mv; mv="$(_route_manifest_knob "$manifest_knob")"
-        if [[ -n "$mv" ]]; then
-            printf '%s\n' "$mv"; return 0
-        fi
-    fi
-    printf '%s\n' "$default_val"
-}
-
-# Concrete: per-stage router.timeout_s > $ZBUILD_ROUTER_TIMEOUT >
-# manifest config.router.timeout_s > 300s default.
-_route_resolve_timeout() {
-    _route_resolve_knob template_stage_router_timeout ZBUILD_ROUTER_TIMEOUT 300 \
-        router.timeout.override_ignored timeout_s
-}
-
-# ADR-018 (#466): per-stage router.max_turns > $ZBUILD_ROUTER_MAX_TURNS > 25 default.
-# ADR-029 G3 (#812): when the cycle orchestrator detects a router timeout for
-# this stage, it sets ZBUILD_ROUTER_MAX_TURNS_OVERRIDE so the next dispatch
-# of the same stage uses an escalated budget (+50%, capped at 2× base). The
-# override wins over the per-stage template AND the env knob because that's
-# the entire point — escalation must beat the static config that already
-# proved too small.
-_route_resolve_max_turns() {
-    if [[ "${ZBUILD_ROUTER_MAX_TURNS_OVERRIDE:-}" =~ ^[0-9]+$ ]]; then
-        printf '%s' "$ZBUILD_ROUTER_MAX_TURNS_OVERRIDE"
-        return 0
-    fi
-    _route_resolve_knob template_stage_router_max_turns ZBUILD_ROUTER_MAX_TURNS 25 \
-        router.max_turns.override_ignored max_turns
-}
-
-# ADR-018 Amendment N (#762): when max_turns resolves to the 0 sentinel,
-# classify which source set it (template > env > manifest > default) for
-# telemetry. Emits `template`, `env`, `manifest` (#1816), or `default`. The
-# `default` branch is currently unreachable (compile-time default is 25, not 0)
-# but kept for forward compatibility if the default ever changes.
-# Copilot review #764: compare numerically so "00", "000" etc. (accepted
-# by the ^[0-9]+$ validator) classify correctly.
-_route_classify_max_turns_source() {
-    local _tpl_val=""
-    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] \
-        && command -v template_stage_router_max_turns >/dev/null 2>&1; then
-        _tpl_val="$(template_stage_router_max_turns "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
-    fi
-    local _mf_val; _mf_val="$(_route_manifest_knob max_turns)"
-    if [[ "$_tpl_val" =~ ^[0-9]+$ ]] && [[ "$_tpl_val" -eq 0 ]]; then
-        printf '%s' "template"
-    elif [[ "${ZBUILD_ROUTER_MAX_TURNS:-}" =~ ^[0-9]+$ ]] && [[ "${ZBUILD_ROUTER_MAX_TURNS}" -eq 0 ]]; then
-        printf '%s' "env"
-    elif [[ "$_mf_val" =~ ^[0-9]+$ ]] && [[ "$_mf_val" -eq 0 ]]; then
-        # #1816: a plugin that declares `max_turns: 0` owns that sentinel. Left
-        # unclassified it would be recorded as `default`, which is the one thing
-        # it is not — the record would name a source that declared nothing.
-        printf '%s' "manifest"
-    else
-        printf '%s' "default"
-    fi
-}
-
-# ADR-018 (#467): per-stage router.max_iterations > $ZBUILD_ROUTER_MAX_ITERATIONS > 10 default.
-_route_resolve_max_iterations() {
-    _route_resolve_knob template_stage_router_max_iterations ZBUILD_ROUTER_MAX_ITERATIONS 10 \
-        router.max_iterations.override_ignored
-}
-
-# ADR-029 (#1230): per-stage router.retries > $ZBUILD_ROUTER_RETRIES > 0 default.
-# The count of retry-on-timeout (rc=124) attempts BEFORE the verbatim-124
-# fallback. Default 0 (opt-in). Honored by BOTH leaf paths — single-shot
-# (_route_call_claude) and agentic-loop (route_to_model_loop) — so every leaf
-# node respects the knob wherever it sits. Out-of-range values (validator
-# already bounds template 0..10; env is unbounded) clamp to 0 fail-safe.
-_route_resolve_retries() {
-    local v; v="$(_route_resolve_knob template_stage_router_retries ZBUILD_ROUTER_RETRIES 0 \
-        router.retries.override_ignored retries)"
-    if [[ "$v" =~ ^[0-9]+$ ]] && [[ "$v" -ge 0 ]] && [[ "$v" -le 10 ]]; then
-        printf '%s' "$v"
-    else
-        printf '0'
-    fi
-}
+# The limits a stage's model calls run under (_route_manifest_knob,
+# _route_resolve_knob, _route_resolve_timeout, _route_resolve_max_turns,
+# _route_resolve_max_iterations, _route_resolve_retries) live in
+# scripts/lib/stage-limits.sh, sourced above, so the engine states to every
+# stage the same numbers this router enforces (ADR-067 §8).
 
 # #1879: the count of retry-on-BUDGET-EXHAUSTION attempts. Deliberately its own
 # knob rather than a widening of `retries` (which is rc=124/timeout-only): the one
@@ -1729,7 +1395,7 @@ route_to_model_loop() {
     # shellcheck disable=SC2064
     trap "rm -rf '$_loop_tmp' 2>/dev/null || true" RETURN
 
-    local static_prompt prev_diff="" timeout_recur=0 prev_iter_timed_out=false
+    local static_prompt prev_diff="" timeout_recur=0
     static_prompt="$(cat "$prompt_file")"
     # #505: snapshot of prev_diff at start of THIS iteration, used to detect
     # an unchanged diff between iterations for the operator banner pointer.
@@ -1748,60 +1414,11 @@ route_to_model_loop() {
             _route_loop_clear_traps; return 1; }
         _ROUTE_LOOP_ITERATIONS=$iter
 
-        local iter_prompt _timeout_warn=""
-        if [[ "$prev_iter_timed_out" == "true" ]] && (( iter >= 2 )); then
-            _timeout_warn="
-> **WARNING — the previous round ran out of time:** The model's previous response
-> was cut off. LOOP_COMPLETE was NOT received. Re-verify the implementation
-> before emitting LOOP_COMPLETE.
-"
-        fi
-        if [[ -z "$prev_diff" ]]; then
-            # The stock parenthetical asserts "this is the first iteration",
-            # which is false — and contradicts the banner — when a timed-out
-            # predecessor committed nothing.
-            local _no_diff_note="(No prior changes — this is the first iteration.)"
-            [[ -n "$_timeout_warn" ]] && \
-                _no_diff_note="(The tree is unchanged — the timed-out iteration committed nothing.)"
-            iter_prompt="$static_prompt
-
-## Iteration ${iter}/${max_iterations}${_timeout_warn}
-${_no_diff_note}"
-        else
-            iter_prompt="$static_prompt
-
-## Iteration ${iter}/${max_iterations}${_timeout_warn}
-## Cumulative diff so far (\`git diff HEAD\`):
-${prev_diff}"
-        fi
-
-        # Wave 8 #614: branch-cumulative context.
-        # Show the LLM what's already committed on this branch since intake
-        # started. Critical for "already done" recognition: without this, the
-        # LLM sees an empty iter delta on iter 1 and doesn't know the branch
-        # has commits from prior pipeline runs / human work.
-        local _intake_ref _commits _stat _short_head
-        _intake_ref=""
-        if [[ -n "${ZBUILD_STATE_DIR:-}" && -f "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" ]]; then
-            _intake_ref="$(cat "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" 2>/dev/null || true)"
-        fi
-        if [[ -n "$_intake_ref" ]]; then
-            local -a _bctx=()
-            [[ -n "$context_paths" ]] && IFS=',' read -r -a _bctx <<< "$context_paths"
-            if _commits="$(git -C "$cwd" log "${_intake_ref}..HEAD" --oneline -n 10 -- "${_bctx[@]}" 2>/dev/null)"; then :; else
-                _commits="<unreadable>"
-            fi
-            _stat="$(git -C "$cwd" diff "${_intake_ref}..HEAD" --stat -- "${_bctx[@]}" 2>/dev/null || true)"
-            _short_head="$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-            iter_prompt="${iter_prompt}
-
-## BRANCH STATE since intake (HEAD: ${_short_head})
-Commits:
-${_commits:-  (none)}
-
-Changes since this run started:
-${_stat:-  (no changes)}"
-        fi
+        # Every call gets the stage's prompt as the stage composed it (ADR-067
+        # §8). No per-call header, diff or branch summary is added: the code is
+        # in the worktree, and the stage's notes file and Previous work carry
+        # what earlier calls did.
+        local iter_prompt="$static_prompt"
 
         # Per-iteration redaction by construction (ADR-043). Shared with
         # single-shot route_to_model via _route_redact_prompt: emits the
@@ -2284,13 +1901,7 @@ ${_diff_pointer}"
                 _route_loop_clear_traps
                 return 1
             fi
-            # Tracks the IMMEDIATELY preceding iteration only: clear on every
-            # error path first, so a rc=124 followed by a rc=1 does not leave
-            # the next iteration reading a banner about a timeout that was not
-            # its predecessor.
-            prev_iter_timed_out=false
             if [[ $rc -eq 124 ]]; then
-                prev_iter_timed_out=true
                 timeout_recur=$(( timeout_recur + 1 ))
                 if [[ $timeout_recur -ge 3 ]]; then
                     # Issue #1208 / ADR-013 (router-loop): a per-turn timeout is
@@ -2323,7 +1934,6 @@ ${_diff_pointer}"
             continue
         fi
         timeout_recur=0
-        prev_iter_timed_out=false
         rm -f "$stderr_file"
 
         # Extract .result and token usage from claude JSON output.

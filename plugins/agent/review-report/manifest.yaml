@@ -69,6 +69,10 @@ config:
     - red-team
     - maintainability
 
+capabilities:
+  # ADR-067 §8: it calls the model once per prompt; the engine states that budget.
+  model_calls: single
+
 inputs:
   - id: scope_manifest
     required: true
@@ -102,15 +106,6 @@ outputs:
     format: markdown
     required: true
     summary: true
-  # #2270: save as you go. A call cut off by time or turns returns nothing;
-  # this file is what it leaves, and the summary later stages read carries it.
-  - id: review-report-checkpoint
-    path: "${artifact_dir}/review-report-checkpoint.md"
-    type: checkpoint.md@1
-    format: markdown
-    required: false
-    role: checkpoint
-
 state:
   persisted:
     - last_merge_readiness

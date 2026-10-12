@@ -191,12 +191,15 @@ issue_acceptance_run() {
         fi
     fi
 
-    # #2252: the limits this call runs under, from the values the router enforces.
-    declare -F stage_budget_note >/dev/null 2>&1 || \
-        source "$_IA_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
-    local _budget_note=""
-    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your verdict")"
-    [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
+    # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
+    # prompt order. A prompt that cannot be composed is not sent.
+    local _composed
+    if ! _composed="$(stage_prompt_compose_parts "$_framed")"; then
+        _ia_write "$art" "unreadable" "misconfigured" \
+            "the prompt could not be composed — the engine's blocks are missing; the change was not judged"
+        return 1
+    fi
+    _framed="$_composed"
     local _raw="" rc=0
     # No 2>/dev/null: the stage-io banner writes to fd 2 (ADR-015 §v4).
     if declare -f route_to_model >/dev/null 2>&1; then

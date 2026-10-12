@@ -20,11 +20,8 @@ plugins/tool/design-gate/plugin.sh
 plugins/tool/shape-floor/plugin.sh
 scripts/lib/acceptance-reachability.sh
 scripts/lib/acceptance-negctl.sh
-scripts/lib/stage-budget-note.sh printf
-scripts/lib/stage-checkpoint.sh printf
-scripts/lib/repo-rules.sh printf
+scripts/lib/stage-prompt.sh printf
 config/prompts/default-rules.md
 core/pipeline/input-resolve.sh printf
 core/router/route.sh
 plugins/agent/intake/prompts/intake.md
-scripts/lib/stage-conduct.sh

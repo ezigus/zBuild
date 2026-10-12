@@ -28,11 +28,6 @@ _build_render_task_header() {
 # sentinel/rules text, identical across iterations.
 _build_compose_instructions() {
     : "${1:-}"   # plan files: the scope list is part of the limits (_build_compose_limits)
-    # #2138: the loop's wall clock, stated to the model. Resolved the way the
-    # router will resolve it for this stage; falls back to the stage default.
-    local _budget_wall
-    _budget_wall="$(_route_resolve_timeout 2>/dev/null || true)"
-    [[ "$_budget_wall" =~ ^[0-9]+$ ]] || _budget_wall=900
     # Persona seam (#1391): open with the developer persona's framing when its
     # manifest is present; falls back to $_task_intro directly when absent
     # (persona_stage_framing returns 1). Mirrors design/plugin.sh (#1324).
@@ -55,9 +50,9 @@ ORIGINAL TASK below."
 ${_framing}
 
 ### How the loop works
-- Each iteration you may make code changes via Edit/Write/Bash.
-- After each iteration the pipeline captures \`git diff HEAD\` and feeds it
-  back to you so you can verify progress.
+- Each call you may make code changes via Edit/Write/Bash. What you change
+  stays in the working tree for the next call; your notes file (in the rules
+  below) carries what you learned.
 - Do NOT emit a unified diff in your response — the pipeline derives the
   canonical \`diff.patch\` artifact from \`git diff HEAD\` automatically.
 
@@ -66,14 +61,14 @@ Emit \`LOOP_COMPLETE\` on its own line as the FINAL line of your response
 WHEN the implementation is complete — whether you just finished it OR
 it was already done before you started. If the branch already contains
 the required changes (check \`git log\` for commits + \`git diff\` for any
-remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer",
-emit \`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is
-nothing left to do. While any STAGE SUMMARY is headed that way, finishing
-with no change needs each of its findings answered: \`done\` (you changed
-something for it), or \`nothing to do\` with the reason.
+remaining gap) AND no stage under Previous work has failed findings left to
+answer, emit \`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is
+nothing left to do. While a failed stage's findings are open, finishing with
+no change needs each of them answered: \`done\` (you changed something for
+it), or \`nothing to do\` with the reason.
 
 ### When a finding does not reproduce
-If a failing summary names a test and that test PASSES when you run it on this
+If a failing stage names a test and that test PASSES when you run it on this
 tree, say so and stop. Answer that finding, on its own line before the sentinel:
 
     ANSWER <stage> finding <n>: nothing to do — not reproduced: <the path you ran>
@@ -82,16 +77,13 @@ one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
 stage that raised the finding to check. Do not keep searching for the cause of
 a failure you cannot produce, and do not change code to chase one.
 
-### Budget
-- Each iteration is ONE model call bounded by a ${_budget_wall}-second wall clock; a
-  command that runs longer than ~2 minutes will cost you the whole call.
-- Finish this call's work and commit before ~$(( _budget_wall * 70 / 100 ))s. Work you saved
-  survives a timeout; the call itself returns nothing, so say what is left as you go.
+### Running tests
 - Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline has
-  already run them and their findings are in the STAGE SUMMARIES below. Run
-  only the one failing test file a summary names, and only after changing code.
-- A STAGE SUMMARY headed "— its findings, to answer" is red RIGHT NOW on this tree.
-  Start from the failing line it quotes.
+  already run them and their results are under Previous work. Run only the one
+  failing test file a failed stage names, and only after changing code. A
+  command that runs longer than ~2 minutes can cost you the whole call.
+- A failed stage under Previous work is red RIGHT NOW on this tree. Start from
+  the failing line it quotes.
 
 ### Commit message (#608)
 Before the final \`LOOP_COMPLETE\` line, emit a single line of the form:
@@ -144,13 +136,12 @@ BUILD_LIMITS
 # _build_compose_prompt_body <output_file> <task_header> <plan_payload>
 #   <instructions> <design_decisions> <acceptance_testfiles>
 #   <acceptance_spec_ids> <iter_n> [limits]
-# #2308: in three parts — what build owns (the instructions), what it judges
-# against (the task, the design, the acceptance tests), and what it must not do.
-# Assembles the full framed prompt and writes it to <output_file>. Prior-stage
-# findings are NOT composed here: the router appends the engine-collected
-# STAGE SUMMARIES block (ADR-055 §9). The review/acceptance-gap/test-feedback
-# sections this once rendered were fed by readers no template wired (#2124);
-# the gap section told build to tag testfiles #2022 forbids it to edit.
+# #2308: build's own three parts — what it owns (the instructions), what it
+# judges against (the task, the design, the acceptance tests), and what it must
+# not do — written to <output_file>. Earlier stages' outputs are not composed
+# here: they reach build under the engine's Previous work (ADR-067 §8). The
+# task header is not part of the prompt: a banner saying "iter N/M" told the
+# model a different thing from the loop it was in.
 _build_compose_prompt_body() {
     local _prompt_input_file="$1"
     local _task_header="$2"
@@ -161,11 +152,9 @@ _build_compose_prompt_body() {
     local _acceptance_spec_ids="$7"
     local _iter_n="$8"
     local _limits="${9:-}"
-    # shellcheck disable=SC2034  # kept for the header's iter N/MAX only
-    : "$_iter_n"
+    : "$_task_header" "$_iter_n"
 
     {
-        printf '%s\n' "$_task_header"
         printf '## What you own\n'
         printf '### INSTRUCTIONS\n%s\n\n' "$_instructions"
         printf '## What you judge against\n'

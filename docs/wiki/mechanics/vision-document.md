@@ -14,11 +14,10 @@ gives the admission gate something concrete to validate (Phase 1.1, #1358/#1360)
 
 ## Resolution order
 
-The pipeline checks these paths in order and uses the first one it finds:
-
-1. `.zbuild/vision.md` — per-repo override (same `.zbuild/` seam as ADR-016/032)
-2. `docs/VISION.md` — conventional location alongside source docs
-3. `VISION.md` — flat-root fallback for minimal repos
+The vision document lives in the repository's zBuild settings area, `.zbuild/vision.md`,
+and nowhere else. zBuild runs from its install on any repository, so it does not guess at
+a repository's own layout: a `docs/VISION.md` or root `VISION.md` was not written for zBuild
+and is not read.
 
 ## Document format
 
@@ -85,7 +84,7 @@ the tenth release is as predictable as the first.
 
 ## zBuild's own vision (live example)
 
-zBuild dogfoods this standard. [`docs/VISION.md`](https://github.com/ezigus/zBuild/blob/main/docs/VISION.md) is the repository's own conforming vision — it steers every pipeline run, and the `lint-vision` CI check keeps it valid. It is deliberately **build-directional**: it guides *how zBuild is built*, not how it is used.
+zBuild dogfoods this standard. [`.zbuild/vision.md`](https://github.com/ezigus/zBuild/blob/main/.zbuild/vision.md) is the repository's own conforming vision — it steers every pipeline run, and the `lint-vision` CI check keeps it valid. It is deliberately **build-directional**: it guides *how zBuild is built*, not how it is used.
 
 ```markdown
 # zBuild — Vision
@@ -103,7 +102,7 @@ zBuild turns a delivery process into data — templates and plugins — so softw
 - **Dogfood every change** — build zBuild with zBuild; if the pipeline can't ship it, fix the pipeline.
 ```
 
-> The canonical source is `docs/VISION.md`; the copy above is illustrative.
+> The canonical source is `.zbuild/vision.md`; the copy above is illustrative.
 
 ## Bypassing the gate ("just run")
 

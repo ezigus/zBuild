@@ -47,16 +47,14 @@ the suite: it writes to the live working tree regardless of HOME isolation.
 ### State / RUN_ID  → A3b (#989)
 | Sev | File(s) | Issue | Fix |
 |-----|---------|-------|-----|
-| HIGH* | `build-prompt-includes-branch-state-end-to-end-test.sh:166`, `runner-exports-state-dir-test.sh:90` | Both invoke the runner with fixed `ZBUILD_RUN_ID="run-618"` → both write `$HOME/.zbuild/state/runs/run-618/`. Hermetic today (each test's own HOME) but collides if a parallel runner ever shares HOME. | `ZBUILD_RUN_ID="run-618-$$"` in both; recompute `EXPECTED_STATE_DIR` in `runner-exports-state-dir-test.sh`. |
+| HIGH* | `runner-exports-state-dir-test.sh:90` | Invokes the runner with fixed `ZBUILD_RUN_ID="run-618"` → writes `$HOME/.zbuild/state/runs/run-618/`. Hermetic today (the test's own HOME) but collides if a parallel runner ever shares HOME. (Its former twin, the BRANCH STATE end-to-end test, was retired with that block, ADR-067 §8.) | `ZBUILD_RUN_ID="run-618-$$"`; recompute `EXPECTED_STATE_DIR`. |
 | LOW (defensive) | `stage-io-banner-split-test.sh`, `stage-io-channel-split-test.sh`, `route-fresh-shell-test.sh`, `core-router-route-test.sh` (C6), `stage-io-capture-test.sh`, `stage-io-command-capture-test.sh`, `stage-io-gh-comment-ansi-strip-test.sh` | Fixed `ZBUILD_RUN_ID` values; cosmetic today (writes land under per-test HOME/`TEST_TEMP_DIR`). | Append `$$` to RUN_IDs as defense-in-depth before A3d. |
 
 \* "HIGH" = highest *in the RUN_ID class*, but conditional on a shared-HOME runner; not an active
 collision under per-subprocess execution. (The genuinely active write is the `$REPO_ROOT` one above.)
 
-\*\* **Asymmetry (review M6):** `build-prompt-includes-branch-state-end-to-end-test.sh:166` already pins
-`HOME="$HOME_DIR"` inline on the `env` invocation, so its `run-618` write is doubly contained;
-`runner-exports-state-dir-test.sh:90` relies solely on `setup_test_env`'s exported HOME. Both still need
-the `run-618-$$` fix, but the residual risk is asymmetric — the latter is the one to prioritize.
+\*\* **Note (review M6):** `runner-exports-state-dir-test.sh:90` relies solely on `setup_test_env`'s
+exported HOME for its `run-618` write; it still needs the `run-618-$$` fix.
 
 ### Temp-path fallbacks / CWD  → A3c (#990, repurposed)
 | Sev | File(s) | Issue | Fix |

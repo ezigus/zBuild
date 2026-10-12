@@ -4,6 +4,7 @@
 **Date:** 2026-08-09
 **Issue:** #1820
 **Supersedes:** ADR-020 (inter-stage data contract) — presented as a clean v2 at the current stable state; ADR-020 is retired in-place for audit history.
+**Amended:** 2026-10-12 (ADR-067 §8 prompt contract) — every stage receives the latest output of every stage that has run, its own included; declared `inputs:` no longer limit what a stage receives or block its launch, and the STAGE INPUTS and STAGE SUMMARIES prompt blocks are replaced by the engine's Previous work block. See the amendment at the end.
 **Amended:** 2026-08-31 (#1986) — §9's `MAY` becomes `MUST`: every stage-bound plugin declares exactly one summary output, enforced at pre-flight rather than by tree lint, because a stage may be authored outside this repository. Previously amended 2026-08-30 (#1976) — §9 added: a stage may mark ONE output `summary: true`, which the engine collects and injects as ambient prompt context. This is deliberately NOT an input: a consumer declares nothing. Previously amended 2026-08-19 (#1825) — §1's "no case needs an explicit binding" verified and made true by cleanup; §1.5 refined so the zero-producer refusal applies to required inputs only; §4's four codes retired in code; §5's output-id count corrected 29 → 27. Previously amended 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
 **Related:** ADR-001 (plugin contract), ADR-006 (resume contract), ADR-013 (canonical stages), ADR-015 §v4 (stage I/O capture), ADR-019 (review fail-closed), ADR-042 (stage portability — completed by §1), ADR-045 (bounded typed backward route — legalises a backwards data edge, §1.3), ADR-046 (design-verify shift-left — the cross-cycle feedback edge this ADR previously failed to account for), ADR-047 (stage-agnostic mechanics)
 
@@ -390,7 +391,7 @@ Three rules, all keyed on one manifest fact — `capabilities.writes_repository`
 An instruction lowers the odds; it guarantees nothing. The guarantee is the
 write boundary's undo-and-retry (ADR-058 C12 amendment).
 
-Verification: `tests/unit/judge-framing-test.sh` (J1–J7).
+Verification: `tests/unit/judge-framing-test.sh` (J1–J7) — retired 2026-10-12 with the block it tested; the read-only rule is now the engine's (`tests/unit/stage-prompt-contract-test.sh` R2).
 
 ## Amendment (2026-09-28): a finding belongs to the author of what was judged
 
@@ -458,7 +459,7 @@ the scope line.
 
 ### Amendment (2026-10-04, #2271) — the finding-owner rules are withdrawn
 
-The engine no longer resolves who owns a finding: `about`, `under_review` and the routed-fault owner are gone with `core/pipeline/finding-owner.sh`. Every reader gets the same framing for a failing stage, its numbered findings, and answers each one itself (ADR-068 §5–§7). Tests: `tests/unit/stage-boundaries-test.sh` SPEC-1, `tests/unit/judge-framing-test.sh`, `tests/unit/no-fault-routing-test.sh` R3.
+The engine no longer resolves who owns a finding: `about`, `under_review` and the routed-fault owner are gone with `core/pipeline/finding-owner.sh`. Every reader gets the same framing for a failing stage, its numbered findings, and answers each one itself (ADR-068 §5–§7). Tests: `tests/unit/stage-boundaries-test.sh` SPEC-1, `tests/unit/no-fault-routing-test.sh` R3.
 
 ### Amendment (2026-10-05, #2303) — issue-acceptance judges the whole issue
 
@@ -472,4 +473,28 @@ Enforced by: `tests/unit/issue-acceptance-test.sh` SPEC-9, which builds the prom
 
 §1.2 keeps prior-run reuse outside the input model, but since #2095 a declared input with no copy from this run falls back to the copy an earlier run saved. The index now says so: every such path is also listed under `earlier_run`, and the prompt's input block labels it as from an earlier run, for reference only. A stage that judges results (`convergence: gate`, or `aggregates:`) is never handed one. The rule is ADR-050 §8.
 
-Enforced by: `tests/unit/earlier-run-reference-test.sh` E1–E5.
+Withdrawn 2026-10-12 with ADR-050 §8 (see ADR-050 §9 and the amendment below): there is no earlier-run copy and no label.
+
+### Amendment (2026-10-12) — every stage's latest output goes to every later stage
+
+There is no "what a stage depends on". The engine hands every stage the latest output of every stage that
+has run — its own included, whichever try or run wrote it (ADR-068 §8, ADR-050 §9):
+
+- **The index lists every output.** `stage-inputs/<stage>.json` (`schema_version: 2`) has an entry for every
+  output id in the flow whose file is there, keyed by the producer's output id as before, so a stage reads
+  the ones it needs by name. A map producer's id lists the members that are there. A file that is there but
+  unusable (#1894) is left out and announced (`stage.input.degraded`).
+- **Nothing is refused over a missing output.** The pre-dispatch `INPUT_MISSING` / `INPUT_DAMAGED` /
+  `EXTERNAL_UNSUPPLIED` refusal is removed: a stage that finds something it needs missing says so in its
+  own result (e.g. review-aggregator's "no review happened").
+- **Declared `inputs:` stay, for the template checks only.** They no longer limit what a stage receives.
+  Two load-time checks still read them — ADR-040 §5 (a model-judged gate must judge against something
+  authored outside its own loop) and the cycle `feedback:` target — and the pre-flight validator's §1.5
+  refusal of a required name no stage produces. Retiring the declarations needs those checks redesigned.
+- **One prompt block replaces two.** The router's `## STAGE INPUTS` (declared paths) and `## STAGE
+  SUMMARIES` (summaries, the stage's own skipped, older stages dropped to fit a total, members of an
+  aggregate suppressed) are replaced by the engine's **Previous work** block (ADR-067 §8): every stage's
+  output paths, summary, findings, error output, notes file and what moved since it last ran. §9's
+  obligation stands: every stage-bound plugin declares exactly one summary output.
+
+Enforced by: `tests/unit/stage-prompt-contract-test.sh` P1–P8 (the block), `tests/unit/stage-input-resolve-test.sh` SPEC-1, SPEC-2, SPEC-9, SPEC-10, SPEC-12 (the index), `tests/unit/stage-blocks-dispatch-test.sh` D3 (no refusal), `tests/unit/review-aggregator-closeout-test.sh` K11 (a stage's own check).

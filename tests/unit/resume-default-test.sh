@@ -19,7 +19,7 @@
 # R5 [change] design always makes its model call, even for a prior design that
 #             passed design-gate and spec-coverage on the same issue text — it
 #             emits no design.reused, and the prior design reaches the prompt as
-#             a reference to check, not as this run's design (#2299, ADR-050 §6).
+#             its latest design, every claim re-checked (#2299, ADR-050 §6).
 #             #2035 run 37289704344 kept an untested design in 1 second.
 # R6–R11 [guard] design runs in each case the old reuse rule turned on:
 #             ZBUILD_RESUME=0, changed issue text,
@@ -119,12 +119,13 @@ export ZBUILD_REPO_ROOT="$FIX"
 _design_case() {
     local d="$TEST_TEMP_DIR/$1" fault="${2:-}" resume="${3:-1}" goal="${4:-Migrate the thing.}" existing="${5:-}"
     local coverage="${6:-covered}" mismatch="${7:-}"
-    local ad="$d/state/artifacts" rr="$d/state/restored-artifacts"
-    mkdir -p "$ad" "$rr/artifacts"
+    # An earlier run's outputs are where hydrate puts them: the live places
+    # (ADR-050, amended).
+    local ad="$d/state/artifacts" rr="$d/state"
+    mkdir -p "$ad"
     printf 'scope: all\n' > "$d/state/scope-manifest.md"
     printf '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}\n' > "$ad/plan.json"
     printf '%s\n' "$goal" > "$d/state/intake.md"
-    printf 'Migrate the thing.\n' > "$rr/intake.md"
     printf '# Design (prior)\n\n```scope\nfoo.sh\n```\n' > "$rr/artifacts/design.md"
     local _sha; _sha="$(git hash-object "$rr/artifacts/design.md")"
     [[ -n "$mismatch" ]] && _sha="0000000000000000000000000000000000000000"
@@ -136,7 +137,7 @@ _design_case() {
     fi
     [[ -n "$existing" ]] && printf '# Design (this run)\n' > "$ad/design.md"
     : > "$MODEL_CALLS"; : > "$DESIGN_EVENTS"
-    ( cd "$FIX" && ZBUILD_STATE_DIR="$d/state" ZBUILD_RESTORED_ARTIFACTS_DIR="$rr/artifacts" ZBUILD_RESUME="$resume" \
+    ( cd "$FIX" && ZBUILD_STATE_DIR="$d/state" ZBUILD_RESUME="$resume" \
         MOCK_DESIGN_WRITE_PATH="$ad/design.md" MOCK_PROMPT_COPY="$d/prompt-seen.txt" \
         _design_stage_run_inner "$d/state/scope-manifest.md" "$ad/plan.json" "$ad/design.md" "$ad" ) >/dev/null 2>&1
     echo "$?" > "$d/stage-rc"
@@ -154,7 +155,7 @@ assert_contains "[R5] ...this run's design is the one the model wrote" \
     "$(cat "$TEST_TEMP_DIR/r5/state/artifacts/design.md" 2>/dev/null)" "Design (fresh)"
 _r5_prompt="$(cat "$TEST_TEMP_DIR/r5/prompt-seen.txt" 2>/dev/null)"
 assert_contains "[R5] ...the prior design reaches the prompt" "$_r5_prompt" "# Design (prior)"
-assert_contains "[R5] ...as a reference to check, not a fact" "$_r5_prompt" "## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)"
+assert_contains "[R5] ...as design's latest design, every claim re-checked against the tree" "$_r5_prompt" "### YOUR LATEST DESIGN"
 # ADR-067 §9: a solution the issue proposes is a starting point for design too.
 assert_contains "[ADR-067 §9] design is told a recorded decision binds" "$_r5_prompt" \
     "A section that records a decision (for example \"Decision:\") is binding"

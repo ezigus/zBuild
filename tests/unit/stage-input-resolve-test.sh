@@ -7,14 +7,18 @@
 # artifact filenames instead.
 #
 #   1 [change] a plugin reads a declared input without knowing where it lives
-#   2 [guard]  a missing required input aborts BEFORE dispatch (sentinel absent)
-#   3 [change] the refusal names producer, output id and consumer
+#   2 [change] a missing output does not stop a stage: it is launched, and its
+#              index simply has no entry for it (ADR-055, amended — a missing
+#              prerequisite is the stage's own check)
+#   3 [retired] the refusal that named producer, output id and consumer
 #   4 [change] a `map` producer yields a JSON ARRAY of member paths (§1.4)
 #   5 [change] ${stage_io_dir}/${run_id} interpolate; ${cycle_feedback_dir} is retired
 #   6 [guard]  flag off (default) writes nothing and leaves the var unset
 #   7 [guard]  role-resolved stages resolve to the manifest DISPATCH would use
-#   8 [change] agent stages get the paths as prompt literals (env-scrub wall)
-#   9 [guard]  a REQUIRED damaged input refuses, saying damaged not absent
+#   8 [retired] the router's STAGE INPUTS block — the engine's Previous work
+#              carries the paths now (stage-prompt-contract-test)
+#   9 [change] a damaged output is left out of the index and announced, and the
+#              stage is still launched
 #  10 [change] an OPTIONAL damaged input is OMITTED and announced
 #  11 [guard]  the refusal is NON-RETRYABLE — no retry storm under #1887
 #  12 [change] a damaged MAP member is excluded, not carried by its siblings
@@ -215,7 +219,7 @@ if jq -e '.inputs | has("gh_issue_body")' "$STATE/stage-inputs/ir-consumer.json"
 else
     assert_pass "[SPEC-1] an external input is not indexed"
 fi
-assert_eq "[SPEC-1] the index declares its schema_version" "1" \
+assert_eq "[SPEC-1] the index declares its schema_version" "2" \
     "$(jq -r '.schema_version' "$STATE/stage-inputs/ir-consumer.json")"
 
 # ─── SPEC-4: a map producer yields an ARRAY under one id ────────────────────
@@ -233,46 +237,15 @@ assert_eq "[SPEC-4] a leaf producer's input stays a scalar string" "string" \
     "$(jq -r '.inputs.producer_out | type' "$STATE/stage-inputs/ir-consumer.json")"
 
 # ─── SPEC-2 / SPEC-3: the pre-dispatch refusal ──────────────────────────────
-print_test_section "2. a missing required input aborts BEFORE dispatch"
+print_test_section "2. a missing output does not stop the stage"
 rm -f "$ART/producer-out.json" "$TEST_TEMP_DIR/irc-ran.txt" "$TEST_TEMP_DIR/irc-seen.txt"
 rm -f "$STATE/stage-inputs/ir-consumer.json"
-
-_err="$TEST_TEMP_DIR/refusal.txt"
-ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>"$_err"
+ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>&1
 _rc2=$?
-
-if [[ "$_rc2" -ne 0 ]]; then
-    assert_pass "[SPEC-2] the dispatch was refused (rc=$_rc2)"
-else
-    assert_fail "[SPEC-2] the dispatch was refused" "rc=0 — the stage was launched anyway"
-fi
-# The load-bearing half: not "the run failed" but "the entrypoint never ran".
-if [[ -f "$TEST_TEMP_DIR/irc-ran.txt" ]]; then
-    assert_fail "[SPEC-2] the stage's own entrypoint never ran" \
-        "irc_run created its sentinel — the refusal happened after dispatch, not before"
-else
-    assert_pass "[SPEC-2] the stage's own entrypoint never ran"
-fi
-
-print_test_section "3. the refusal names producer, output id and consumer"
-_refusal="$(cat "$_err" 2>/dev/null)"
-assert_contains "[SPEC-3] it names the producer"  "$_refusal" "ir-producer"
-assert_contains "[SPEC-3] it names the output id" "$_refusal" "producer_out"
-assert_contains "[SPEC-3] it names the consumer"  "$_refusal" "ir-consumer"
-assert_contains "[SPEC-3] with a violation code"  "$_refusal" "INPUT_MISSING"
-# [guard] an OPTIONAL input that is also absent must NOT be reported — otherwise
-# the message is noise and the refusal fires on stages that are fine.
-rm -f "$ART/irlens-alpha.json" "$ART/irlens-beta.json"
+assert_eq "[SPEC-2] the stage is launched (rc=0)" "0" "$_rc2"
+assert_file_exists "[SPEC-2] its own entrypoint ran" "$TEST_TEMP_DIR/irc-ran.txt"
+assert_eq "[SPEC-2] and the index has no entry for the missing output" "<none>" "$(_seen producer_out)"
 printf '{"marker":"BACK"}\n' > "$ART/producer-out.json"
-_err2="$TEST_TEMP_DIR/refusal2.txt"
-ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>"$_err2"
-_rc3=$?
-assert_eq "[SPEC-3-guard] an absent OPTIONAL input does not refuse the stage" "0" "$_rc3"
-if grep -qF 'ir_lens_result' "$_err2" 2>/dev/null; then
-    assert_fail "[SPEC-3-guard] an optional input is not reported" "ir_lens_result named in the refusal"
-else
-    assert_pass "[SPEC-3-guard] an optional input is not reported"
-fi
 
 # ─── SPEC-5: the canonical templating vars ──────────────────────────────────
 print_test_section "5. the canonical templating vars interpolate"
@@ -360,66 +333,8 @@ fi
 # every claude spawn, ADR-024/#671), so paths go into the prompt as literal text
 # at _route_redact_prompt — before apply_scope_redaction, riding the ADR-004
 # chokepoint rather than bypassing it.
-print_test_section "8. an agent stage gets the paths as prompt literals"
-unset ZBUILD_PLUGIN_DIR 2>/dev/null || true   # keep the #1879 checkpoint block out of this
-# shellcheck source=../../core/router/route.sh
-source "$REPO_ROOT/core/router/route.sh" 2>/dev/null || true
-
-if declare -F _route_redact_prompt >/dev/null 2>&1; then
-    IDX="$TEST_TEMP_DIR/spec8-index.json"
-    cat > "$IDX" <<EOF
-{"schema_version": 1, "stage": "spec8",
- "inputs": {"producer_out": "$ART/producer-out.json",
-            "ir_lens_result": ["$ART/irlens-alpha.json", "$ART/irlens-beta.json"]}}
-EOF
-    IN="$TEST_TEMP_DIR/spec8-prompt.txt"; OUT="$TEST_TEMP_DIR/spec8-prompt.out"
-    printf 'ORIGINAL SPEC8 BODY\n' > "$IN"
-    ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STAGE_INPUTS="$IDX" ZBUILD_SCOPE_MANIFEST="" \
-        _route_redact_prompt "$IN" "$OUT" 0 "" >/dev/null 2>&1 || true
-
-    assert_contains "[SPEC-8] the funnel injects the block" "$(cat "$IN")" "STAGE INPUTS"
-    assert_contains "[SPEC-8] the scalar path is a literal in the prompt" \
-        "$(cat "$IN")" "$ART/producer-out.json"
-    assert_contains "[SPEC-8] every map member path is listed" "$(cat "$IN")" "$ART/irlens-beta.json"
-    assert_contains "[SPEC-8] the original prompt body survives" "$(cat "$IN")" "ORIGINAL SPEC8 BODY"
-
-    _n1="$(grep -c 'STAGE INPUTS' "$IN" 2>/dev/null)" || _n1=0
-    ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STAGE_INPUTS="$IDX" ZBUILD_SCOPE_MANIFEST="" \
-        _route_redact_prompt "$IN" "$OUT" 1 "" >/dev/null 2>&1 || true
-    _n2="$(grep -c 'STAGE INPUTS' "$IN" 2>/dev/null)" || _n2=0
-    # Pinned to EXACTLY 1, not merely n1 == n2: with the injection ablated both
-    # counts are 0 and an equality assertion passes vacuously.
-    assert_eq "[SPEC-8] exactly one block after the first pass" "1" "$_n1"
-    assert_eq "[SPEC-8] still exactly one after the loop's second redaction" "1" "$_n2"
-
-    # [guard] the two runs must match EACH OTHER, not the raw input:
-    # _route_redact_prompt also prepends the ADR-049 vision preamble, so
-    # byte-identity to the original would assert that preamble does not exist.
-    IDX0="$TEST_TEMP_DIR/spec8-empty.json"
-    printf '{"schema_version":1,"stage":"spec8b","inputs":{}}\n' > "$IDX0"
-    IN0="$TEST_TEMP_DIR/spec8-empty-prompt.txt"; printf 'SPEC8 BASELINE BODY\n' > "$IN0"
-    ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STAGE_INPUTS="$IDX0" ZBUILD_SCOPE_MANIFEST="" \
-        _route_redact_prompt "$IN0" "$TEST_TEMP_DIR/spec8-empty.out" 0 "" >/dev/null 2>&1 || true
-
-    # Same body, and NO index at all — a stage dispatched before resolution ran.
-    IN1="$TEST_TEMP_DIR/spec8-off-prompt.txt"; printf 'SPEC8 BASELINE BODY\n' > "$IN1"
-    ZBUILD_SCOPE_MANIFEST="" \
-        _route_redact_prompt "$IN1" "$TEST_TEMP_DIR/spec8-off.out" 0 "" >/dev/null 2>&1 || true
-
-    assert_eq "[SPEC-8-guard] an empty index and no index are byte-identical" \
-        "$(cat "$IN0")" "$(cat "$IN1")"
-    if grep -qF 'STAGE INPUTS' "$IN0" 2>/dev/null || grep -qF 'STAGE INPUTS' "$IN1" 2>/dev/null; then
-        assert_fail "[SPEC-8-guard] neither run gets the block" "the block leaked"
-    else
-        assert_pass "[SPEC-8-guard] neither run gets the block"
-    fi
-    assert_contains "[SPEC-8-guard] and the body survives both" "$(cat "$IN1")" "SPEC8 BASELINE BODY"
-else
-    assert_fail "[SPEC-8] _route_redact_prompt is available to test" "not defined after sourcing route.sh"
-fi
-
-# ─── SPEC-9: a REQUIRED input present-but-damaged refuses before dispatch ────
-print_test_section "9. a required input that is damaged refuses the dispatch"
+# ─── SPEC-9: a damaged output is left out, and the stage still runs ──────────
+print_test_section "9. a damaged output is left out of the index"
 # SPEC-7 leaves _TPL_STAGES holding the LIVE template's flow, and the producer
 # index is keyed on it — without restoring the fixture flow every input below
 # resolves to zero producers and passes for the wrong reason.
@@ -428,30 +343,16 @@ rm -f "$TEST_TEMP_DIR/irc-ran.txt" "$STATE/stage-inputs/ir-consumer.json"
 # Non-zero but invalid JSON: the half-written file that passes -s today.
 printf '{"verdict":' > "$ART/producer-out.json"
 
-_err9="$TEST_TEMP_DIR/refusal9.txt"
-ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>"$_err9"
+: > "$EVENTS"
+ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>&1
 _rc9=$?
-_ref9="$(cat "$_err9" 2>/dev/null)"
-
-if [[ "$_rc9" -ne 0 ]]; then
-    assert_pass "[SPEC-9] a damaged required input was refused (rc=$_rc9)"
+assert_eq "[SPEC-9] the stage is still launched (rc=0)" "0" "$_rc9"
+if jq -e '.inputs | has("producer_out")' "$STATE/stage-inputs/ir-consumer.json" >/dev/null 2>&1; then
+    assert_fail "[SPEC-9] the damaged output is left out of the index" "producer_out was handed over"
 else
-    assert_fail "[SPEC-9] a damaged required input was refused" \
-        "rc=0 — a truncated artifact was handed over as if it were complete"
+    assert_pass "[SPEC-9] the damaged output is left out of the index"
 fi
-if [[ -f "$TEST_TEMP_DIR/irc-ran.txt" ]]; then
-    assert_fail "[SPEC-9] the entrypoint never ran" "the sentinel exists — the stage was launched"
-else
-    assert_pass "[SPEC-9] the entrypoint never ran"
-fi
-assert_contains "[SPEC-9] the refusal says DAMAGED, not absent" "$_ref9" "INPUT_DAMAGED"
-# [guard] "absent" would send the operator to the producer, which DID write.
-if grep -qF 'INPUT_MISSING' <<< "$_ref9"; then
-    assert_fail "[SPEC-9] it does not also claim the artifact is absent" \
-        "reported INPUT_MISSING for a file that exists"
-else
-    assert_pass "[SPEC-9] it does not also claim the artifact is absent"
-fi
+assert_contains "[SPEC-9] the omission is announced" "$(cat "$EVENTS" 2>/dev/null)" "stage.input.degraded"
 
 # ─── SPEC-10: an OPTIONAL damaged input is omitted, and announced ────────────
 print_test_section "10. an optional damaged input is omitted from the index"
