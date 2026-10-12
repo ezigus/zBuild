@@ -4,7 +4,7 @@
   "disposition": "complete",
   "reason": "design_produced",
   "data": {
-    "authored_at": "2026-10-12T00:36:16Z",
+    "authored_at": "2026-10-12T00:50:35Z",
     "authored_at_commit": "8085cd3a045cb755eeb92bc75e12031e868ed33b",
     "wiring_files": [
       "core/orch/contract.sh",
@@ -39,9 +39,14 @@
       "plugins/tool/orch-sequential/tests/orch-sequential-test.sh",
       "scripts/lib/proc-group.sh",
       "tests/golden/orch-sequential-capabilities.golden",
+      "tests/integration/always-run-exit-paths-test.sh",
+      "tests/integration/router-timeout-precedence-e2e-test.sh",
       "tests/integration/runner-release-exit-paths-test.sh",
       "tests/unit/adr059-no-tmpdir-defaults-test.sh",
       "tests/unit/core-orch-run-id-isolation-test.sh",
+      "tests/unit/core-pipeline-template-cycles-test.sh",
+      "tests/unit/core-pipeline-template-parallel-test.sh",
+      "tests/unit/core-pipeline-template-test.sh",
       "tests/unit/dispatch-rc-guard-test.sh",
       "tests/unit/exit-path-teardown-budget-guard-test.sh",
       "tests/unit/map-strategy-test.sh",
@@ -57,7 +62,8 @@
       "tests/unit/stage-timeout-retry-test.sh",
       "tests/unit/stdin-spawn-guard-test.sh",
       "tests/unit/summary-mandatory-test.sh",
-      "tests/unit/template-always-run-test.sh"
+      "tests/unit/template-always-run-test.sh",
+      "tests/unit/template-loader-recursive-flow-test.sh"
     ]
   }
 }

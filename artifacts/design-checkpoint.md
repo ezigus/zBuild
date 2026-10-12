@@ -1,39 +1,33 @@
-# Design Checkpoint — Issue #1801
+# Design Checkpoint — Issue #1801 (iteration 2)
 
-## Files read so far
-- plan.json, requirements.json
-- core/plugin-registry/lifecycle.sh (full)
-- core/pipeline/runner.sh:1-1231 (rendered banner, always_run at 2380-2469)
-- core/pipeline/strategies/fanout.sh (full)
-- core/pipeline/strategies/sequential.sh (full)
-- core/pipeline/strategies/map.sh:1-80 (ZBUILD_ORCH_TIMEOUT at line 300)
-- core/orch/contract.sh (full - has orch-sequential fallback)
-- core/orch/local_engine.sh (full - _orch_local_collect_results, _orch_local_shutdown_pool)
-- core/pipeline/template.sh (partial - timeout parsing, _tpl_parse_always_run)
-- core/pipeline/disposition.sh (timed_out in disposition set, line 64)
-- core/pipeline/verdict.sh (partial)
-- scripts/lib/proc-group.sh (zbuild_pg_kill at line 146)
+## Files read
+- design.md (prior design - complete, has the 4 gaps below)
+- config/templates/simple.yaml (full - confirms router.timeout_s on release/persist; no stage_timeout_s anywhere yet)
+- runner.sh grep (cycle_orchestrator_run line 3236, parallel_group_run line 3363, always_run 2398)
+- cycle-orchestrator.sh / parallel-orchestrator.sh (route through runner hooks, not direct plugin_hook_call)
+- router.timeout_s grep in tests/ (17 files; key new one: router-timeout-precedence-e2e-test.sh)
 
-## Key findings
-1. ZBUILD_ORCH_TIMEOUT:-300 in fanout.sh:79, sequential.sh:62, map.sh:300 → remove all
-2. _runner_dispatch_always_run reads _TPL_STAGE_ROUTER_TIMEOUT_ (runner.sh:2426) → change to stage_timeout_s
-3. _orch_local_collect_results uses _orch_local_kill_slot TERM, sleep 0.5, KILL (0.5s grace)
-4. _orch_local_shutdown_pool uses _orch_local_kill_slot with 0.5s grace too
-5. orch_load_backend has fallback to orch-sequential (contract.sh:165-182) → remove
-6. _orch_load_backend defaults to "sequential" (contract.sh:203) → change to bash-parallel
-7. timed_out is already in the disposition set (disposition.sh:64)
-8. _TPL_STAGE_ROUTER_TIMEOUT_ for always_run stages stored in template.sh:679
-9. Tests using orch-sequential: summary-mandatory, dispatch-rc-guard, stdin-spawn-guard, core-orch-run-id-isolation, plugin-artifact-goldens, adr059-no-tmpdir-defaults
-10. runner-release-exit-paths-test.sh SPEC-5 (line 299) and SPEC-6 (line 347) pin router.timeout_s for always_run → superseded
-11. exit-path-teardown-budget-guard-test.sh SPEC-1 checks ZBUILD_RELEASE_TIMEOUT in SPEC-5 → superseded
+## Gaps being fixed in design.md
 
-## Additional scope beyond seed
-- tests/integration/runner-release-exit-paths-test.sh (SPEC-5/6 use router.timeout_s for always_run)
-- tests/unit/exit-path-teardown-budget-guard-test.sh (SPEC-1 pins ZBUILD_RELEASE_TIMEOUT)
-- docs/adr/ADR-035-orchestrator-run-state-isolation.md (references orch-sequential)
-- docs/wiki/plugins/orch-sequential.md (to be deleted)
-- plugins/tool/orch-sequential/ (to be deleted, includes tests/)
-- plugins/tool/orch-sequential/tests/orch-sequential-test.sh (to be deleted)
+### Gap 1: R-11 not covered
+Add SPEC-15[no-code]: grep for orch-sequential/ZBUILD_ORCH_TIMEOUT/router.timeout_s/always_run watchdog documented and all matching test files in scope covers: R-11
 
-## Complete
-Writing design.md now
+### Gap 2: R-13 not covered
+Add SPEC-16[no-code]: npm test + npm run lint pass covers: R-13
+
+### Gap 3: SPEC-1 omits cycle member, parallel-group member, always_run
+Update SPEC-1 to list ALL dispatch routes explicitly (was: map, fanout, sequential strategy, roleless leaf)
+
+### Gap 4: No multi-backend SPEC (R-1)
+Add SPEC-17[code]: timeout kill confirmed under orch-mock; ruflo-hive unaffected (lifecycle.sh is backend-agnostic) covers: R-1
+
+### Gap 5: SPEC-6 covers only release/persist (R-6)
+Expand SPEC-6 to list all simple.yaml stage_timeout_s values:
+test=5400s, build=4200s, design=3900s, plan=1200s, test-author=900s,
+spec-coverage/acceptance-gate/issue-acceptance/spec-correspondence/review_lenses=600s,
+intake/pr/hydrate/secret-scan/shape-floor/design-gate/gate-aggregator/assertion-integrity/review-aggregator=600s
+
+## Scope additions
+- tests/integration/router-timeout-precedence-e2e-test.sh (R-11: matches router.timeout_s grep in tests/)
+
+## Writing design.md now
