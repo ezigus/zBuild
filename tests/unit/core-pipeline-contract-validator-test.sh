@@ -173,28 +173,28 @@ review" "$PLUGINS_ROOT" "$STATE_FILE" 2>/dev/null || rc=$?
 assert_eq "TC-2: happy path passes in enforce mode" "0" "$rc"
 
 # A stage written for the old contract: it still declares inputs.
-mkdir -p "$PLUGINS_ROOT/agent/legacy"
-cat > "$PLUGINS_ROOT/agent/legacy/manifest.yaml" <<EOF
-id: legacy
+mkdir -p "$PLUGINS_ROOT/agent/old-contract"
+cat > "$PLUGINS_ROOT/agent/old-contract/manifest.yaml" <<EOF
+id: old-contract
 name: Legacy
 kind: agent
 version: 0.1.0
 hooks:
-  run: legacy_run
+  run: old_contract_run
 requires:
   core: [redaction]
 inputs:
   - id: plan
     required: true
 outputs:
-  - id: legacy_out
+  - id: old_contract_out
     type: file@1
     format: text
-    path: \${artifact_dir}/legacy.json
+    path: \${artifact_dir}/old-contract.json
     required: true
-  - id: legacy_summary
-    path: "\${artifact_dir}/legacy-summary.md"
-    type: legacy-summary.md@1
+  - id: old_contract_summary
+    path: "\${artifact_dir}/old-contract-summary.md"
+    type: old-contract-summary.md@1
     format: markdown
     required: true
     summary: true
@@ -204,7 +204,7 @@ EOF
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=warn _contract_validate_pipeline "intake
 plan
-legacy" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
+old-contract" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
 assert_eq "TC-3: warn mode returns 0 even on violation" "0" "$rc"
 assert_contains "TC-3: warn mode emits structured error" "$err_out" "Pipeline cannot start"
 assert_contains "TC-3: warn mode names the retired inputs" "$err_out" "INPUTS_RETIRED"
@@ -213,9 +213,9 @@ assert_contains "TC-3: warn mode names the retired inputs" "$err_out" "INPUTS_RE
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
 plan
-legacy" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
+old-contract" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
 assert_eq "TC-4: enforce mode returns rc=1 on violation (#1850: was 2)" "1" "$rc"
-assert_contains "TC-4: enforce mode names the stage" "$err_out" "legacy"
+assert_contains "TC-4: enforce mode names the stage" "$err_out" "old-contract"
 
 # TC-5: enforce-failure writes preflight_failed state stub
 if [[ -f "$STATE_FILE" ]]; then
@@ -241,7 +241,7 @@ rm -f "$STATE_FILE"
 unset ZBUILD_CONTRACT_VALIDATOR
 rc=0
 _contract_validate_pipeline "intake
-legacy" "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+old-contract" "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
 assert_eq "TC-10: default (unset) ≡ enforce (rc=1 on violation)" "1" "$rc"
 rm -f "$STATE_FILE"
 

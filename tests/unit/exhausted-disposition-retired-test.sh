@@ -10,7 +10,7 @@
 # Six sites are checked below, one assertion per site:
 #   1. core/pipeline/dispatch-rc.sh:166 comment
 #   2. plugins/agent/review-lens/plugin.sh:379 comment
-#   3. docs/wiki/plugins/review-report.md:137 prose
+#   3. docs/wiki/plugins/review-report.md:137 prose (the page went with review-report, 2026-10-12)
 #   4. .github/issues/keepers-manifest.yaml:1430 body
 #   5. docs/adr/ADR-054-stage-contract.md:163 rc=10 table row (annotated, not removed)
 #   6. docs/adr/ADR-001-plugin-contract.md:163 retirement passage (annotated, not removed)
@@ -38,12 +38,11 @@ setup_test_env "exhausted-disposition-retired"
 
 DISPATCH_RC="$REPO_ROOT/core/pipeline/dispatch-rc.sh"
 REVIEW_LENS="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
-REVIEW_REPORT="$REPO_ROOT/docs/wiki/plugins/review-report.md"
 KEEPERS_MANIFEST="$REPO_ROOT/.github/issues/keepers-manifest.yaml"
 ADR054="$REPO_ROOT/docs/adr/ADR-054-stage-contract.md"
 ADR001="$REPO_ROOT/docs/adr/ADR-001-plugin-contract.md"
 
-for _f in "$DISPATCH_RC" "$REVIEW_LENS" "$REVIEW_REPORT" "$KEEPERS_MANIFEST" "$ADR054" "$ADR001"; do
+for _f in "$DISPATCH_RC" "$REVIEW_LENS" "$KEEPERS_MANIFEST" "$ADR054" "$ADR001"; do
     if [[ ! -f "$_f" ]]; then
         assert_fail "required file for SPEC-3 (#2222) check" "not found: $_f"
     fi
@@ -77,14 +76,9 @@ _lens_comment="$(grep -c 'disposition:exhausted' "$REVIEW_LENS" 2>/dev/null || t
 assert_eq "[#2222/SPEC-3] review-lens/plugin.sh degrade-path comment does not name disposition:exhausted (renamed to out_of_turns)" \
     "0" "$_lens_comment"
 
-# ── Site 3: review-report.md wiki prose ──────────────────────────────────────
-# The wiki line listed `exhausted` as the disposition value emitted when a lens
-# call returned non-zero.  After the fix it must name `out_of_turns`.
-# Checks the whole file: any occurrence of the word is a prescriptive reference
-# in this disposition-vocabulary document.
-_wiki_exhausted="$(grep -c 'exhausted' "$REVIEW_REPORT" 2>/dev/null || true)"
-assert_eq "[#2222/SPEC-3] review-report.md carries no occurrence of exhausted (disposition word fully replaced with out_of_turns)" \
-    "0" "$_wiki_exhausted"
+# ── Site 3: review-report.md wiki prose — retired with review-report ─────────
+assert_eq "[#2222/SPEC-3] the review-report wiki page is gone with its plugin" "absent" \
+    "$([[ -e "$REPO_ROOT/docs/wiki/plugins/review-report.md" ]] && echo present || echo absent)"
 
 # ── Site 4: keepers-manifest.yaml issue body ─────────────────────────────────
 # The manifest body at line 1430 contained "`disposition: exhausted` escalates".
