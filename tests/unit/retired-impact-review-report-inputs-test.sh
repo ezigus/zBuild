@@ -78,6 +78,13 @@ assert_eq "[RT4] no template wires feedback:" "" \
     "$(/usr/bin/grep -nE '^[[:space:]]+feedback:' "$REPO_ROOT"/config/templates/*.yaml || true)"
 assert_eq "[RT4] no check reads declared inputs" "" \
     "$(_code_refs 'INPUT_UNRESOLVED|INPUT_AMBIGUOUS|SELF_REF|CYCLE_FB_UNDECLARED|GATE_REFERENCE_UNPROVEN|GATE_REFERENCE_MUTABLE|manifest_graph_get_inputs')"
+# A template that still wires feedback — block or inline form — is refused at load.
+# shellcheck source=../../core/pipeline/template.sh
+source "$REPO_ROOT/core/pipeline/template.sh"
+printf 'id: fb\nflow:\n  - c\nc:\n  type: cycle\n  flow: [x]\n  max_iterations: 1\n  feedback: []\n' > "$TEST_TEMP_DIR/fb-inline.yaml"
+_fb_rc=0; load_template "$TEST_TEMP_DIR/fb-inline.yaml" >/dev/null 2>&1 || _fb_rc=$?
+assert_eq "[RT4] an inline 'feedback: []' is refused at load" "1" "$([[ $_fb_rc -ne 0 ]] && echo 1 || echo 0)"
+assert_contains "[RT4] …saying feedback is retired" "$(load_template "$TEST_TEMP_DIR/fb-inline.yaml" 2>&1)" "'feedback:' is retired"
 # A third-party stage that still declares inputs is told, not silently ignored.
 # shellcheck source=../../core/pipeline/runner.sh
 source "$REPO_ROOT/core/pipeline/runner.sh"

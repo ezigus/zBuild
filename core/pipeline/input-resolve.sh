@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
 # core/pipeline/input-resolve.sh — the previous-work index (ADR-055, amended).
 #
-# Every stage receives the latest output of every stage that has run, its own
-# included — there is no "what a stage depends on". The index below lists them
-# all, keyed by output id; a stage reads the ones it needs and checks for itself
-# that what it needs is there.
-#
-# Index shape, written to ${state_dir}/stage-inputs/<stage>.json:
-#
-#   {"schema_version": 2, "stage": "build",
-#    "inputs": {"design": "/abs/design.md", "lens_result": ["/a.json","/b.json"]}}
-#
-# Every output id in the flow whose file exists, keyed by id; a `map` producer
-# yields a JSON ARRAY of its members' paths (ADR-055 §1.4). Stages declare no
-# inputs (ADR-055 §1, amended 2026-10-12).
+# Every stage gets the latest output of every stage that has run, its own
+# included; stages declare no inputs (ADR-055, amended 2026-10-12). The index,
+# ${state_dir}/stage-inputs/<stage>.json, lists every output id in the flow whose
+# file exists — {"schema_version": 2, "stage": "build", "inputs": {"design":
+# "/abs/design.md", "lens_result": ["/a.json", "/b.json"]}} — a `map` producer's
+# id listing its members' paths (ADR-055 §1.4).
 #
 # Sourced library: inherits the caller's pipefail settings; do NOT add set -euo.
 

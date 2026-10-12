@@ -79,7 +79,7 @@ load_template() {
     # ADR-055 §4 (amended 2026-10-12): cycle `feedback:` wires are retired —
     # every stage gets every stage's latest output under Previous work
     # (ADR-068 §8), so a wire would promise a delivery nothing makes.
-    if awk 'BEGIN{rc=1} /^[[:space:]]+feedback:[[:space:]]*$/ {rc=0; exit} END{exit rc}' "$template_file"; then
+    if awk 'BEGIN{rc=1} /^[[:space:]]+feedback:([[:space:]]|$)/ {rc=0; exit} END{exit rc}' "$template_file"; then
         error "load_template: 'feedback:' is retired (ADR-055 §4) in $template_file"
         error "  every stage already gets every stage's latest output under Previous work"
         error "  (ADR-068 §8); remove the feedback: block from the cycle."

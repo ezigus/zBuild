@@ -91,29 +91,6 @@ _cv_stage_convergence() {
     return 0
 }
 
-# ─── _cv_stage_in_any_cycle <stage> ──────────────────────────────────────────
-# rc 0 when the stage is a member of some `type: cycle` group. ADR-055 §1.3
-# legalises a backwards data edge only where the template declares a re-entry
-# that reaches the consumer again, and shared cycle membership is one of the two
-# forms of that. It is what makes design consuming its own prior design.md legal
-# while a straight-line stage waiting on itself stays a defect.
-_cv_stage_in_any_cycle() {
-    local _s="${1-}" _c _safe _var _stages
-    [[ -n "$_s" ]] || return 1
-    declare -p _TPL_CYCLES >/dev/null 2>&1 || return 1
-    for _c in "${_TPL_CYCLES[@]}"; do
-        _safe="${_c//-/_}"
-        _var="_TPL_CYCLE_STAGES_${_safe}"
-        # _TPL_CYCLE_STAGES_<x> is COMMA-separated ("design,design-gate"),
-        # so normalise before matching — a space-delimited test silently never
-        # matches and every cycle member reads as a straight-line stage.
-        _stages="${!_var:-}"
-        [[ ",${_stages// /}," == *",$_s,"* ]] && return 0
-    done
-    return 1
-}
-
-
 # ─── _contract_validate_pipeline <template_stage_list> <plugins_root> <state_file>
 # Public entry. The template_stage_list is a space-delimited ordered list of
 # stage ids (the runner's `active_stages`). plugins_root is the directory
@@ -122,8 +99,8 @@ _cv_stage_in_any_cycle() {
 # stub on hard failure (decision #4).
 #
 # Returns:
-#   0  — all required inputs satisfied OR mode=warn (warn always returns 0)
-#   2  — contract violation detected AND mode=enforce
+#   0  — no violation, OR mode=warn (warn always returns 0)
+#   1  — contract violation detected AND mode=enforce (#1850: was 2)
 #
 # Side-effects:
 #   - Emits `pipeline.preflight.fail` event on violation (mode-agnostic).
