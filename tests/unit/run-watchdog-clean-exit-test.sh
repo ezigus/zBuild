@@ -11,8 +11,8 @@
 #   2. With ZBUILD_MAX_RUN_S set, the completed run's status is the stage-reported
 #      status — not timed_out (impl must not fire the watchdog on a clean run)
 #   3. No pipeline.end status=timed_out in the events log (watchdog was reaped)
-#   4. ZBUILD_MAX_RUN_S is validated by the new function: a valid value leads to a
-#      clean run; the function is the one that resolves it (not the runner ignoring it)
+#   4. Watchdog process is dead after runner exits: abort sentinel is NOT written
+#      after the runner exits — an un-reaped watchdog would write it when it fires.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,14 +70,15 @@ stages:
       destinations: [file]
       tail_lines: 50
 EOF
+(cd "$CLEAN_OVERLAY" && git add .zbuild && git commit -q -m "add watchdog-single template") \
+    >/dev/null 2>&1
 
 # max_run_s=30 is generous: the pipeline completes in < 5s, well before the limit
-set +e
+_clean_rc=0
 ( cd "$CLEAN_OVERLAY" && ZBUILD_MAX_RUN_S=30 bash "$RUNNER" \
     --template watchdog-single --goal "clean run watchdog test" ) \
-    >"$TEST_TEMP_DIR/clean.stdout" 2>"$TEST_TEMP_DIR/clean.stderr"
-_clean_rc=$?
-set -e
+    >"$TEST_TEMP_DIR/clean.stdout" 2>"$TEST_TEMP_DIR/clean.stderr" \
+    || _clean_rc=$?
 
 _clean_sf="$ZBUILD_STATE_DIR/pipeline-state.json"
 
@@ -111,45 +112,46 @@ else
     assert_pass "[#1944/SPEC-3] no timed_out event (events file absent)"
 fi
 
-# ─── S3-4: watchdog process reaped — no lingering sleep from the run ────────
-# We cannot easily inspect the runner's internal _RUNNER_WATCHDOG_PID from
-# outside. We infer reaping by running with a VERY short max_run_s (3s) on a
-# pipeline that completes in < 2s, then sleeping past max_run_s and confirming
-# the pipeline status remains complete (not timed_out). If the watchdog were
-# not reaped, it would fire at max_run_s and attempt to signal whatever is
-# running — but since the runner has exited by then, the signal is benign
-# (no runner to receive it). We verify the status file is not mutated.
-print_test_section "[#1944/SPEC-3] watchdog reaped: status unchanged after waiting past max_run_s"
+# ─── S3-4: watchdog process is dead — abort sentinel NOT written after exit ──
+# The watchdog does `sleep $_wdg_lim` and writes to the abort sentinel when it
+# fires. The runner's EXIT trap kills the watchdog (kill -KILL) and disarms the
+# sentinel. If the watchdog is NOT reaped, it fires at max_run_s seconds after
+# the runner exits and writes to the sentinel file. We verify:
+#   - Runner exits cleanly within max_run_s=4s (fast stage, << 4s)
+#   - We wait past max_run_s=4 (sleep 5s)
+#   - The abort sentinel must not be present: neither created by the watchdog
+#     firing after the runner exited, nor left over from the run.
+print_test_section "[#1944/SPEC-3] watchdog killed: abort sentinel not written after runner exits"
 
-rm -f "$ZBUILD_STATE_DIR/pipeline-state.json" "$ZBUILD_EVENTS_JSONL"
+rm -f "$ZBUILD_EVENTS_JSONL"
+# Use a fresh state dir to keep sentinel check clean
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-sentinel"
+mkdir -p "$ZBUILD_STATE_DIR"
+_ABORT_SENTINEL="$ZBUILD_STATE_DIR/.abort.signal"
+rm -f "$_ABORT_SENTINEL"
 
-set +e
-( cd "$CLEAN_OVERLAY" && ZBUILD_MAX_RUN_S=5 bash "$RUNNER" \
-    --template watchdog-single --goal "watchdog reaped test" ) \
-    >"$TEST_TEMP_DIR/reaped.stdout" 2>"$TEST_TEMP_DIR/reaped.stderr"
-_reaped_rc=$?
-set -e
+# max_run_s=4: watchdog would fire 4s after runner exits if not reaped.
+# The fast stage completes in < 2s, so the runner exits well before max_run_s.
+_reaped_rc=0
+( cd "$CLEAN_OVERLAY" && ZBUILD_MAX_RUN_S=4 bash "$RUNNER" \
+    --template watchdog-single --goal "watchdog reaped sentinel test" ) \
+    >"$TEST_TEMP_DIR/reaped.stdout" 2>"$TEST_TEMP_DIR/reaped.stderr" \
+    || _reaped_rc=$?
 
-# Status captured immediately after runner exits
-_status_before_wait=""
-if [[ -f "$_clean_sf" ]]; then
-    _status_before_wait="$(jq -r '.status // empty' "$_clean_sf" 2>/dev/null || true)"
+assert_eq "[#1944/SPEC-3] clean run with max_run_s=4 exits 0" "0" "$_reaped_rc"
+
+# Wait past max_run_s=4: if watchdog not reaped, it would write the sentinel here
+sleep 5
+
+# The abort sentinel must NOT be present: the EXIT trap disarmed it (clean exit)
+# and a reaped watchdog cannot write it again after the runner exits.
+if [[ -f "$_ABORT_SENTINEL" ]]; then
+    _sentinel_content="$(cat "$_ABORT_SENTINEL" 2>/dev/null || true)"
+    assert_fail "[#1944/SPEC-3] watchdog killed before it fired: abort sentinel absent after runner exit" \
+        "sentinel exists with content '${_sentinel_content:-<empty>}' — watchdog fired AFTER runner exited"
+else
+    assert_pass "[#1944/SPEC-3] watchdog killed: abort sentinel absent after runner exits (watchdog was reaped)"
 fi
-
-# Wait past max_run_s=5 by 2 seconds: if watchdog is not reaped, it fires here
-sleep 7
-
-# Status must not have changed — a live orphan watchdog cannot mutate the state
-# file (the runner process that writes the file has already exited), but we
-# verify no NEW timed_out event appeared in the log since the runner exited.
-_timed_out_after_wait=0
-if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
-    _timed_out_after_wait="$(jq -r 'select(.type=="pipeline.end" and .data.status=="timed_out") | .type' \
-        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
-fi
-
-assert_eq "[#1944/SPEC-3] runner exits 0 with max_run_s=5 on a quick stage" "0" "$_reaped_rc"
-assert_eq "[#1944/SPEC-3] no timed_out event after waiting past max_run_s" "0" "$_timed_out_after_wait"
 
 cleanup_test_env
 print_test_results
