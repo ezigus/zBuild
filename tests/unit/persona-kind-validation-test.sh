@@ -101,8 +101,8 @@ set -e
 assert_eq "[SPEC-5] kind:persona is exempt from the agent redaction-declaration check" "0" "$rc"
 
 # ─── SPEC-5b (#1569): kind:persona with a role but NO perspective fails loudly ─
-# perspective is the behavior injected into the stage prompt; a role-only persona
-# is indistinguishable from an absent persona at persona_stage_framing, so
+# perspective is the persona's prompt (ADR-051: the provider's agent, or the
+# prompt's "Who you are"); a role-only persona has nothing to deliver, so
 # validation must reject it (not silently accept it).
 MANIFEST="$FIXTURE_DIR/persona-no-perspective.yaml"
 cat > "$MANIFEST" <<'EOF'

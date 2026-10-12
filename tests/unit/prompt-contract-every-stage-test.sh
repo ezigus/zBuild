@@ -14,6 +14,12 @@
 #                covered or this test fails
 #   T1 [guard] : test-author is told to check the new value or file itself, not
 #                only that the step finished without an error
+#   E5 [change]: no stage frames a persona itself — no prompt a stage sends
+#                carries the perspective of a persona a shipped template pins a
+#                stage to (a lens persona's perspective IS its lens question,
+#                which the lens states as its own job), and no plugin calls
+#                persona_stage_framing (the persona reaches the model through the
+#                provider, ADR-051 amended)
 #   E4 [guard] : the engine's rules tell every stage to read data the way the
 #                code that writes it writes it, and to make test data with that
 #                code, never by hand (#1799)
@@ -203,6 +209,26 @@ for _s in "${STAGES[@]}"; do
     _check "$_s" "$RAW/$_s.txt"
 done
 _check "spec-correspondence (batch)" "$RAW/spec-correspondence-batch.txt"
+
+# ─── E5: no stage frames a persona ──────────────────────────────────────────
+_persp=()
+_pinned="$(awk '/^  persona:/ { print $2 }' "$REPO_ROOT"/config/templates/*.yaml | sort -u)"
+for _pid in $_pinned generic; do
+    _pm="$REPO_ROOT/plugins/persona/$_pid/manifest.yaml"
+    _pp="$(awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*/, ""); gsub(/^"|"$/, ""); print; exit }' "$_pm")"
+    [[ ${#_pp} -ge 30 ]] && _persp+=("${_pp:0:60}")
+done
+assert_eq "[E5] the persona perspectives were read (fixture live)" "1" "$([[ ${#_persp[@]} -ge 4 ]] && echo 1 || echo 0)"
+_framed=""
+for _s in "${STAGES[@]}" spec-correspondence-batch; do
+    [[ -s "$RAW/$_s.txt" ]] || continue
+    for _pp in "${_persp[@]}"; do
+        grep -qF -- "$_pp" "$RAW/$_s.txt" && { _framed+="$_s "; break; }
+    done
+done
+assert_eq "[E5] no stage's prompt carries a persona's perspective" "" "$_framed"
+_callers="$(grep -rlE '^[^#]*persona_stage_framing' "$REPO_ROOT/plugins" --include='*.sh' 2>/dev/null | grep -v '/tests/' || true)"
+assert_eq "[E5] no plugin frames a persona itself" "" "$_callers"
 
 # ─── T1: test-author checks the value itself ────────────────────────────────
 _ta="$(cat "$RAW/test-author.txt" 2>/dev/null)"

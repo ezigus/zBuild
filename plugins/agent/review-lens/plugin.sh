@@ -45,8 +45,7 @@ source "$_RL_ROOT/scripts/lib/prior-output-reader.sh"
 # extract_acceptance_block: the SPECs a lens judges the change against.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_RL_ROOT/scripts/lib/acceptance-block.sh"
-# registry.sh is idempotent (guard flag); makes resolve_persona_charter available
-# when _rl_lens_charter is called. Established precedent: plan/plugin.sh:44.
+# registry.sh is idempotent (guard flag).
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_RL_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=lib/charters.sh
@@ -293,26 +292,10 @@ _review_lens_run_inner() {
     # an outer caller's intent is preserved.
     local tier; tier="$(resolve_tier review-lens "$_RL_DIR")" || return 1
     local raw_response="" router_rc=0
-    # #1577: probe resolve_persona_charter to set the #1567 carrier so INPUT
-    # banners show the resolved lens persona id. Second call alongside the one
-    # inside _rl_lens_charter; overhead is acceptable — mirrors the plan/build
-    # pattern. The probe happens before the save window so the carrier var
-    # shares the same save/restore block as ZBUILD_ROUTER_ARTIFACT_ID.
-    local _rl_persona_applied=0 _rl_persona_probe
-    if _rl_persona_probe="$(resolve_persona_charter "$lens" 2>/dev/null)" \
-       && [[ -n "${_rl_persona_probe//[[:space:]]/}" ]]; then
-        _rl_persona_applied=1
-    fi
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
-    local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1
     export ZBUILD_ROUTER_ARTIFACT_ID="review-lens"
-    if [[ "$_rl_persona_applied" -eq 1 ]]; then
-        export ZBUILD_STAGE_IO_PERSONA="$lens"
-    else
-        export ZBUILD_STAGE_IO_PERSONA="$lens:fallback"
-    fi
     # ADR-063 §3: register interrupt handler so disposition:interrupted is written
     # if the model call is cut short by SIGTERM or SIGINT (SPEC-13).
     _rl_out_ref="$out"
@@ -328,11 +311,6 @@ _review_lens_run_inner() {
         unset ZBUILD_ROUTER_ARTIFACT_ID
     else
         export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
-    fi
-    if [[ "$_prev_persona_env" == "__UNSET__" ]]; then
-        unset ZBUILD_STAGE_IO_PERSONA
-    else
-        export ZBUILD_STAGE_IO_PERSONA="$_prev_persona_env"
     fi
 
     # rc=130 (SIGINT propagated through subshell) — distinct from advisory rc=0

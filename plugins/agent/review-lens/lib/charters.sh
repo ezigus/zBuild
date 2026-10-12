@@ -5,6 +5,8 @@
 # no longer a sub-routine of one review stage. Each lens differs by the distinct
 # QUESTION it asks (its charter) over evidence it is fed — the ADR-038 §2
 # isolated-call principle: one prompt per lens, never one prompt with N sections.
+# The lens's persona (ADR-051) reaches the model through the provider (the map
+# element names it); the charter here is the lens's own question.
 # Charter text is shared with plugins/agent/review-report/lib/lenses.sh until the
 # C3 cutover retires that fan-out; duplicating the source here is intentional.
 #
@@ -15,18 +17,8 @@ _ZBUILD_REVIEW_LENS_CHARTERS_LOADED=1
 
 # ─── _rl_lens_charter <lens> ────────────────────────────────────────────────
 # The distinct question each lens asks. ADR-038 §2: lenses differ by the
-# evidence/charter, not by sectioning one mega-prompt. Consults the persona
-# registry first (resolve_persona_charter); on rc=0 with non-empty output the
-# manifest text is used and the case statement is skipped. Persona manifests
-# exist for all six configured lenses (correctness, security, performance,
-# scope, red-team, sre), so the case statement below is the fallback only when
-# a manifest is absent.
+# evidence/charter, not by sectioning one mega-prompt.
 _rl_lens_charter() {
-    local _charter
-    if _charter="$(resolve_persona_charter "$1" 2>/dev/null)" && [[ -n "$_charter" ]]; then
-        printf '%s' "$_charter"
-        return 0
-    fi
     case "$1" in
         correctness)
             printf '%s' "Examine the change for logic errors: off-by-one mistakes, unhandled null/undefined values, incorrect assumptions about data shapes, and control-flow bugs." ;;
@@ -63,7 +55,7 @@ _rl_lens_charter() {
 # scope (#1654, #1845 PR #2213): a lens that sees only the diff reads engine-set
 # values as attacker input and cannot tell a defect from what was asked for.
 # The "compare with the issue" paragraph is here, not in each charter, so every
-# lens (persona manifest or fallback) gets it from one source (#2307).
+# lens gets it from one source (#2307).
 _rl_build_lens_prompt() {
     local lens="$1" evidence="$2" context="${3:-}" charter
     charter="$(_rl_lens_charter "$lens")"

@@ -191,7 +191,6 @@ assert_eq "[#1140-8] test-coverage lens prefers coverage-map.json when present" 
 # ─── SPEC-9: no merge-decision vocabulary in plugin source (advisory, ADR-040) ─
 # [#1840/SPEC-10] 'verdict' is removed from this check: after the v2 migration
 # _review_lens_write_result uses 'verdict' as a jq field, not a coercion token.
-# SPEC-10 below independently verifies the full story.
 if grep -qiE '\b(approve|request_changes)\b|"block"' \
     "$PLUGIN_DIR/plugin.sh" "$PLUGIN_DIR/lib/charters.sh"; then
     assert_fail "[#1140-9] no coercion vocabulary in review-lens source" "found coercion token"
@@ -199,44 +198,9 @@ else
     assert_pass "[#1140-9] no coercion vocabulary in review-lens source"
 fi
 
-# ─── SPEC-10: persona manifest charter takes precedence over case statement ───
-# When a kind:persona manifest exists for the lens id (with persona.perspective),
-# _rl_lens_charter must use its text instead of the case-statement fallback.
-_prev_plugins_root="${ZBUILD_PLUGINS_ROOT:-}"
-_spec10_plugins="$TEST_TEMP_DIR/spec10-plugins"
-mkdir -p "$_spec10_plugins/persona/test-lens"
-cat > "$_spec10_plugins/persona/test-lens/manifest.yaml" <<'SPEC10_EOF'
-id: test-lens
-name: Test Lens Persona
-kind: persona
-version: 0.1.0
-persona:
-  role: a test lens persona
-  perspective: SENTINEL_PERSONA_CHARTER_XYZ987
-SPEC10_EOF
-export ZBUILD_PLUGINS_ROOT="$_spec10_plugins"
-out_spec10="$artifact_dir/lens-test-lens.json"
-: > "$_RL_CALLS"
-set +e
-_review_lens_run_inner "test-lens" "$scope_manifest" "$evidence" "$out_spec10" "$artifact_dir"
-_rc_spec10=$?
-set -e
-_pp_spec10="$(cat "$_RL_PROMPT")"
-assert_eq "[#1140-10] persona manifest lens returns 0 (advisory)" "0" "$_rc_spec10"
-assert_contains "[#1140-10] persona charter text reaches the prompt" \
-    "$_pp_spec10" "SENTINEL_PERSONA_CHARTER_XYZ987"
-# Ensure the wildcard fallback text is NOT used when persona manifest exists
-if grep -q "Examine the change for issues relevant to the test-lens concern" <<< "$_pp_spec10"; then
-    assert_fail "[#1140-10] wildcard fallback must NOT fire when persona manifest exists" "wildcard text found"
-else
-    assert_pass "[#1140-10] wildcard fallback is suppressed by persona manifest"
-fi
-export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root"
-
 # ─── SPEC-11 [SPEC-6]: live-tree correctness persona parity ──────────────────
-# With ZBUILD_PLUGINS_ROOT pointing at the live repo plugins tree,
-# _rl_lens_charter('correctness') must return the manifest perspective text
-# (containing 'logic errors') and must NOT fall through to the wildcard fallback.
+# _rl_lens_charter('correctness') is the lens's own question (the persona
+# reaches the model through the provider, ADR-051) (containing 'logic errors') and must NOT fall through to the wildcard fallback.
 _prev_plugins_root_spec11="${ZBUILD_PLUGINS_ROOT:-}"
 export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
 _corr_charter="$(_rl_lens_charter "correctness")"
@@ -253,9 +217,7 @@ fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec11"
 
 # ─── SPEC-12 [SPEC-6]: live-tree scope persona parity ────────────────────────
-# With ZBUILD_PLUGINS_ROOT pointing at the live repo plugins tree,
-# _rl_lens_charter('scope') must return the manifest perspective text
-# (containing 'WARN ONLY') and must NOT fall through to the wildcard fallback.
+# _rl_lens_charter('scope') is the lens's own question (containing 'WARN ONLY') and must NOT fall through to the wildcard fallback.
 _prev_plugins_root_spec12="${ZBUILD_PLUGINS_ROOT:-}"
 export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
 _scope_charter="$(_rl_lens_charter "scope")"
@@ -270,80 +232,6 @@ else
     assert_pass "[#1140-12] wildcard fallback is suppressed by scope persona manifest"
 fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec12"
-
-# ─── SPEC-1/2/3: ZBUILD_STAGE_IO_PERSONA carrier wiring (#1577) ─────────────
-# _review_lens_run_inner must export ZBUILD_STAGE_IO_PERSONA=<lens> when a
-# persona manifest exists for the lens id, and <lens>:fallback when absent,
-# so the INPUT banner shows the resolved persona via the #1567 carrier.
-# The carrier must be unset/restored after the call so it does not leak to
-# outer callers. Uses the in-process route_to_model shadow to capture the
-# carrier value at the moment route_to_model is invoked.
-export _RL_PERSONA_AT_CALL="$TEST_TEMP_DIR/persona-at-call.txt"
-# shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
-route_to_model() {
-    printf '%s' "${ZBUILD_STAGE_IO_PERSONA:-__unset__}" > "$_RL_PERSONA_AT_CALL"
-    printf 'call\n' >> "$_RL_CALLS"
-    printf '%s' '{"score":5,"findings":[]}'
-    return 0
-}
-
-# SPEC-1[change]: persona manifest present (security) → carrier = 'security'
-_prev_plugins_root_spec1="${ZBUILD_PLUGINS_ROOT:-}"
-export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-out_spec1="$artifact_dir/lens-spec1-security.json"
-: > "$_RL_PERSONA_AT_CALL"
-set +e
-_review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec1" "$artifact_dir"
-_rc_spec1=$?
-set -e
-assert_eq "[#1577-1] persona-present lens returns 0" "0" "$_rc_spec1"
-_persona_spec1="$(cat "$_RL_PERSONA_AT_CALL" 2>/dev/null || true)"
-assert_eq "[#1577-1] ZBUILD_STAGE_IO_PERSONA='security' when persona manifest present" \
-    "security" "$_persona_spec1"
-export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec1"
-
-# SPEC-2[change]: no persona manifest for lens id (edge-case) → carrier = 'edge-case:fallback'
-_prev_plugins_root_spec2="${ZBUILD_PLUGINS_ROOT:-}"
-export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-out_spec2="$artifact_dir/lens-spec2-edge-case.json"
-: > "$_RL_PERSONA_AT_CALL"
-set +e
-_review_lens_run_inner "edge-case" "$scope_manifest" "$evidence" "$out_spec2" "$artifact_dir"
-_rc_spec2=$?
-set -e
-assert_eq "[#1577-2] fallback lens returns 0" "0" "$_rc_spec2"
-_persona_spec2="$(cat "$_RL_PERSONA_AT_CALL" 2>/dev/null || true)"
-assert_eq "[#1577-2] ZBUILD_STAGE_IO_PERSONA='edge-case:fallback' when no persona manifest" \
-    "edge-case:fallback" "$_persona_spec2"
-export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec2"
-
-# SPEC-3[change]: carrier is unset/restored after _review_lens_run_inner returns
-# (must not leak to outer callers).
-_prev_plugins_root_spec3="${ZBUILD_PLUGINS_ROOT:-}"
-export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-unset ZBUILD_STAGE_IO_PERSONA
-out_spec3="$artifact_dir/lens-spec3-security.json"
-set +e
-_review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec3" "$artifact_dir"
-set -e
-assert_eq "[#1577-3] ZBUILD_STAGE_IO_PERSONA unset after _review_lens_run_inner (no leak)" \
-    "" "${ZBUILD_STAGE_IO_PERSONA:-}"
-export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3"
-
-# SPEC-3b[change]: when ZBUILD_STAGE_IO_PERSONA held a value BEFORE the call, it
-# is restored to that exact value afterward — the restore-to-prior-value branch,
-# distinct from the unset→unset path above (#1577 review, red-team).
-_prev_plugins_root_spec3b="${ZBUILD_PLUGINS_ROOT:-}"
-export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-export ZBUILD_STAGE_IO_PERSONA="outer-sentinel-1577"
-out_spec3b="$artifact_dir/lens-spec3b-security.json"
-set +e
-_review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec3b" "$artifact_dir"
-set -e
-assert_eq "[#1577-3b] ZBUILD_STAGE_IO_PERSONA restored to prior value after _review_lens_run_inner" \
-    "outer-sentinel-1577" "${ZBUILD_STAGE_IO_PERSONA:-}"
-unset ZBUILD_STAGE_IO_PERSONA
-export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3b"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 

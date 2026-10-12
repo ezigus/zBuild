@@ -55,11 +55,9 @@ assert_eq "[SPEC-2] persona_lens_framing is not defined after sourcing the regis
 # CASE-STATEMENT fallback — the invariant that removing the manifest would not
 # change the lens charter (data-driven parity, #1457). Derive the expected text
 # from charters.sh itself (not a hardcoded copy) so drift in EITHER file breaks
-# this test: force the persona-registry lookup to miss so _rl_lens_charter
-# returns its built-in fallback, then compare to the manifest-resolved value.
+# this test.
 # shellcheck source=../../plugins/agent/review-lens/lib/charters.sh
 source "$REPO_ROOT/plugins/agent/review-lens/lib/charters.sh"
-resolve_persona_charter() { return 1; }  # force the case-statement fallback path
 expected_charter="$(_rl_lens_charter red-team)"
 assert_eq "[SPEC-6] manifest perspective byte-identical to charters.sh red-team charter" \
     "$expected_charter" "$rt_perspective"

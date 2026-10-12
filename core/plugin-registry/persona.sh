@@ -108,30 +108,3 @@ resolve_persona_perspective() {
     local manifest; manifest="$(find_persona "$1" "${2:-}")" || return 1
     yaml_get "$manifest" "persona.perspective"
 }
-
-# ─── resolve_persona_charter <id> [plugins_root] ─────────────────────────────
-# Prints the persona's charter text (the perspective field). Returns 1 (prints
-# nothing) when the persona is absent — same absence-signal contract as siblings.
-# Delegates to resolve_persona_perspective: persona.perspective is the lens-specific
-# examination directive, used as the charter text when driving _rl_lens_charter.
-resolve_persona_charter() {
-    resolve_persona_perspective "$@"
-}
-
-# ─── persona_stage_framing <id> <task> [plugins_root] ───────────────────────
-# Stage seam: "{perspective}\n\n{task}" — perspective-first output (behavior, not
-# profession; #1569). persona.perspective is REQUIRED at manifest-validation time,
-# so for a valid persona this always emits behavior + task. Returns 1 (prints
-# nothing) when the persona is ABSENT; the empty-perspective guard below is a
-# defensive backstop, treated the same as absent so the caller keeps its own
-# framing rather than injecting an identity-less prompt. (role is manifest data —
-# resolvable via resolve_persona_role — but is deliberately NOT in this output.)
-# Callers must export ZBUILD_STAGE_IO_PERSONA=<id> (rc=0) or <id>:fallback (rc=1)
-# before calling stage_io_begin (or route_to_model, which calls it internally).
-persona_stage_framing() {
-    local id="$1" task="$2" root="${3:-}"
-    local manifest; manifest="$(find_persona "$id" "$root")" || return 1
-    local perspective; perspective="$(yaml_get "$manifest" "persona.perspective")"
-    [[ -n "$perspective" ]] || return 1
-    printf '%s\n\n%s' "$perspective" "$task"
-}

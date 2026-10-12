@@ -97,26 +97,13 @@ $2
 EOF
 }
 
-# _sc_call <tier> <task> [rc_file] — frame the task through the persona registry
-# and route it. persona_stage_framing emits "{perspective}\n\n{task}" and returns
-# 1 when the persona is absent, in which case the task stands alone (#1627/#1628).
+# _sc_call <tier> <task> [rc_file] — compose the task and route it. The persona
+# (ADR-051) reaches the model through the provider, not this text.
 # rc_file: if given, the first non-zero router exit code is kept there (subshell boundary
 # prevents a nameref from crossing; a file survives it — same pattern as
 # review-lens and other stages that need the rc from inside a command substitution).
 _sc_call() {
     local tier="$1" _task="$2" _rc_file="${3:-}" _framed="$2" _raw=""
-    if declare -f persona_stage_framing >/dev/null 2>&1; then
-        local _pid="quality-assurance" _pdir=""
-        if declare -f resolve_persona >/dev/null 2>&1; then
-            _pdir="$(resolve_persona spec-correspondence 2>/dev/null || true)"
-            [[ -n "$_pdir" ]] && _pid="$(basename "$_pdir")"
-        fi
-        local _f
-        if _f="$(persona_stage_framing "$_pid" "$_task" 2>/dev/null)" && [[ -n "$_f" ]]; then
-            _framed="$_f"
-            export ZBUILD_STAGE_IO_PERSONA="$_pid"   # ADR-015: the banner names the persona
-        fi
-    fi
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent: the call
     # fails as misconfigured (rc 2), the first failure kept like any other.

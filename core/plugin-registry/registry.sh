@@ -18,8 +18,7 @@
 #                                verify_plugin_for_source, find_plugin_for_role,
 #                                ZBUILD_LOCKFILE / ZBUILD_DISABLED_FILE
 #   - lifecycle.sh            → scan_plugin_outputs, plugin_hook_call
-#   - persona.sh              → find_persona, resolve_persona_role/perspective,
-#                                persona_stage_framing (#1304)
+#   - persona.sh              → find_persona, resolve_persona_role/perspective
 #
 # Every previous public entry point (and the ZBUILD_* env vars + the
 # _ZBUILD_REGISTRY_LOADED guard) is preserved, so existing callers see no

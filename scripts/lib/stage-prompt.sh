@@ -129,9 +129,16 @@ _stage_block_from_repo() {
     if [[ -n "$cache" && -s "$cache" ]]; then
         printf '%s\n' "$(<"$cache")"
     elif [[ -n "$cache" ]]; then
+        # Written whole, then moved into place: a stage running beside this one
+        # never reads half a block, and a failed write leaves no cache.
         [[ -d "${cache%/*}" ]] || mkdir -p "${cache%/*}" 2>/dev/null
-        _sp_repo_intent_and_rules "$repo_root" > "$cache" 2>/dev/null
-        printf '%s\n' "$(<"$cache")"
+        if _sp_repo_intent_and_rules "$repo_root" > "$cache.$$" 2>/dev/null \
+            && mv -f "$cache.$$" "$cache" 2>/dev/null; then
+            printf '%s\n' "$(<"$cache")"
+        else
+            rm -f "${cache:?}.$$"
+            _sp_repo_intent_and_rules "$repo_root"
+        fi
     else
         _sp_repo_intent_and_rules "$repo_root"
     fi

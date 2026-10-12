@@ -40,6 +40,8 @@
 #   R3 [change]: the budget comes from the limits the engine enforces: seconds
 #                and turns per model call — the same for every stage, with no
 #                declaration from the stage about how it calls a model
+#   F4 [change]: the repository block's cache is written whole or not at all —
+#                a write that fails part-way leaves no cache for the next stage
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -375,6 +377,18 @@ rut="$(ZBUILD_CURRENT_STAGE=pc-gate ZBUILD_ROUTER_TIMEOUT=555 _stage_block_rules
 assert_contains "[R3] every stage is told the same per-call budget, tool or agent" "$rut" "555 seconds"
 assert_eq "[R3] no manifest declares how it calls a model" "" \
     "$(grep -l 'model_calls:' "$REPO_ROOT"/plugins/*/*/manifest.yaml 2>/dev/null || true)"
+
+# ─── F4: the from-repo cache is never left half-written ─────────────────────
+print_test_section "F4: a failed cache write leaves no cache"
+_f4_cache="$TEST_TEMP_DIR/f4/from-repo.md"
+(
+    _sp_repo_intent_and_rules() { printf 'PARTIAL-F4\n'; return 1; }
+    _stage_block_from_repo pc-agent "$TGT" "$_f4_cache" >/dev/null 2>&1
+)
+assert_eq "[F4] no cache file after a failed write" "absent" \
+    "$([[ -e "$_f4_cache" ]] && echo present || echo absent)"
+assert_not_contains "[F4] the next stage does not read the partial text" \
+    "$(_stage_block_from_repo pc-agent "$TGT" "$_f4_cache" 2>/dev/null)" "PARTIAL-F4"
 
 cleanup_test_env
 print_test_results

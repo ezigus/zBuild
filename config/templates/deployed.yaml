@@ -125,6 +125,8 @@ intake:
 plan:
   gate: auto
   roles: [planner]
+  # ADR-051: the provider runs the stage as this persona (--agent).
+  persona: product-owner
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -138,6 +140,8 @@ plan:
 design:
   gate: auto
   roles: [designer]
+  # ADR-051: the provider runs the stage as this persona (--agent).
+  persona: architect
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -168,6 +172,8 @@ design-gate:
 build:
   gate: auto
   roles: [builder]
+  # ADR-051: the provider runs the stage as this persona (--agent).
+  persona: developer
   io:
     destinations: [file, stdout]
     tail_lines: 200

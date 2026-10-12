@@ -28,24 +28,11 @@ _build_render_task_header() {
 # sentinel/rules text, identical across iterations.
 _build_compose_instructions() {
     : "${1:-}"   # plan files: the scope list is part of the limits (_build_compose_limits)
-    # Persona seam (#1391): open with the developer persona's framing when its
-    # manifest is present; falls back to $_task_intro directly when absent
-    # (persona_stage_framing returns 1). Mirrors design/plugin.sh (#1324).
-    local _task_intro="You have Read, Edit, Write, and
+    # The persona (ADR-051) reaches the model through the provider, not this
+    # text: the stage writes only its own job.
+    local _framing="You have Read, Edit, Write, and
 Bash tools available. Your job is to edit the working tree to implement the
 ORIGINAL TASK below."
-    local _framing
-    # #1576: track whether the persona was applied (for the ZBUILD_STAGE_IO_PERSONA
-    # export at the call site). #1570: the fallback is behavior-first ($_task_intro),
-    # NOT the old "You are an autonomous build agent" profession sentence.
-    _BUILD_PERSONA_APPLIED=0
-    if _framing="$(persona_stage_framing developer "$_task_intro" "$_BUILD_ROOT/plugins" 2>/dev/null)"; then
-        _BUILD_PERSONA_APPLIED=1
-    else
-        _framing="$_task_intro"
-    fi
-    # Guard: rc=0 but empty output (e.g. perspective key absent in manifest).
-    [[ -n "$_framing" ]] || { _framing="$_task_intro"; _BUILD_PERSONA_APPLIED=0; }
     cat <<BUILD_PROMPT
 ${_framing}
 

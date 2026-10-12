@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # tests/unit/persona-resolver-test.sh
 # Unit tests for the kind:persona resolver + stage composition seam (#1304).
-# find_persona / resolve_persona_role / resolve_persona_perspective and the
-# persona_stage_framing composer, including the absent-persona byte-identical
-# fallback signal (return 1, print nothing).
+# find_persona / resolve_persona_role / resolve_persona_perspective, including
+# the absent-persona signal (return 1, print nothing).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,42 +74,6 @@ resolve_persona_role ghost "$PROOT" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] resolve_persona_role returns 1 for an unknown id" "1" "$rc"
 
-# ─── SPEC-5: persona_stage_framing composes the stage seam ───────────────────
-expected_stage=$'Judge structure and boundaries.\n\nProduce the design.'
-assert_eq "[SPEC-1][SPEC-5] persona_stage_framing leads with perspective (no role prefix)" \
-    "$expected_stage" "$(persona_stage_framing architect "Produce the design." "$PROOT")"
-
-# ─── SPEC-6: stage framing returns 1 (prints nothing) for the invalid persona ─
-# developer is excluded by discovery (#1569: perspective required), so the seam
-# resolves it as absent → rc=1, empty (the caller keeps its own framing).
-set +e
-out_np="$(persona_stage_framing developer "Write the code." "$PROOT")"; rc_np=$?
-set -e
-assert_eq "[SPEC-2][SPEC-6] stage framing returns 1 for a persona missing the required perspective" "1" "$rc_np"
-assert_eq "[SPEC-2][SPEC-6] stage framing prints nothing for a persona missing the required perspective" "" "$out_np"
-
-# ─── SPEC-8: absent persona ⇒ framing returns 1 AND prints nothing ───────────
-# This is the byte-identical fallback contract: the caller keeps its own framing.
-set +e
-out="$(persona_stage_framing ghost "task" "$PROOT")"; rc=$?
-set -e
-assert_eq "[SPEC-8] persona_stage_framing returns 1 for an unknown persona" "1" "$rc"
-assert_eq "[SPEC-8] persona_stage_framing prints nothing for an unknown persona" "" "$out"
-
-# ─── SPEC-9: resolve_persona_charter delegates to resolve_persona_perspective ──
-# resolve_persona_charter is an alias for resolve_persona_perspective; it returns
-# the persona.perspective field and signals absence the same way.
-assert_eq "[SPEC-9] resolve_persona_charter returns the perspective field" \
-    "Judge structure and boundaries." "$(resolve_persona_charter architect "$PROOT")"
-set +e
-resolve_persona_charter ghost "$PROOT" >/dev/null 2>&1; rc=$?
-set -e
-assert_eq "[SPEC-9] resolve_persona_charter returns 1 for an unknown persona" "1" "$rc"
-set +e
-out="$(resolve_persona_charter ghost "$PROOT")"; rc=$?
-set -e
-assert_eq "[SPEC-9] resolve_persona_charter prints nothing for an unknown persona" "" "$out"
-
 # ─── SPEC-10..SPEC-15: live-tree red-team persona (plugins/persona/red-team) ──
 # These specs exercise the real manifest shipped in the repo (not a fixture).
 REAL_PROOT="$REPO_ROOT/plugins"
@@ -142,15 +105,6 @@ validate_manifest "$rt_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-13] validate_manifest passes on the live red-team manifest" "0" "$rc"
 
-# SPEC-15: persona_stage_framing leads with perspective keyword (no role prefix)
-rt_stage="$(persona_stage_framing red-team "Assess the change." "$REAL_PROOT")"
-case "$rt_stage" in
-    *hostile*)     rt_stage_ok=1 ;;
-    *exploitable*) rt_stage_ok=1 ;;
-    *)             rt_stage_ok=0 ;;
-esac
-assert_eq "[SPEC-3][SPEC-15] stage framing leads with perspective keyword (hostile/exploitable) for live persona" "1" "$rt_stage_ok"
-
 # ─── SPEC-1..SPEC-5: live-tree test-strategist persona ───────────────────────
 # These specs exercise the real manifest shipped in the repo (not a fixture).
 
@@ -179,20 +133,6 @@ set +e
 validate_manifest "$ts_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live test-strategist manifest" "0" "$rc"
-
-# SPEC-5: persona_stage_framing leads with perspective + task (no role prefix)
-ts_stage="$(persona_stage_framing test-strategist "Write the tests." "$REAL_PROOT")"
-case "$ts_stage" in
-    *fail*)      ts_persp_ok=1 ;;
-    *invariant*) ts_persp_ok=1 ;;
-    *)           ts_persp_ok=0 ;;
-esac
-assert_eq "[SPEC-5] stage framing leads with perspective keyword (fail/invariant) for live persona" "1" "$ts_persp_ok"
-case "$ts_stage" in
-    *"Write the tests."*) ts_task_ok=1 ;;
-    *) ts_task_ok=0 ;;
-esac
-assert_eq "[SPEC-5] stage framing contains the supplied task" "1" "$ts_task_ok"
 
 # ─── SPEC-1..SPEC-5: live-tree security persona ──────────────────────────────
 # These specs exercise the real manifest shipped in the repo (not a fixture).

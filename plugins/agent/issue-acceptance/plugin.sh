@@ -174,23 +174,12 @@ issue_acceptance_run() {
     declare -f resolve_tier >/dev/null 2>&1 \
         && tier="$(resolve_tier issue-acceptance "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
 
-    local _task _framed _pid="product-owner" _pdir _f
+    local _task _framed
     # #2306 (ADR-070 §4): the issue's requirements as intake numbered them.
     local _reqs=""; declare -F acceptance_requirements_list >/dev/null 2>&1 \
         && _reqs="$(acceptance_requirements_list "$(_ia_input requirements)")"
     _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${diff:-<no diff>}" "${test_verdict:-unknown}" "$_reqs")"
     _framed="$_task"
-    if declare -f persona_stage_framing >/dev/null 2>&1; then
-        if declare -f resolve_persona >/dev/null 2>&1; then
-            _pdir="$(resolve_persona issue-acceptance 2>/dev/null || true)"
-            [[ -n "$_pdir" ]] && _pid="$(basename "$_pdir")"
-        fi
-        if _f="$(persona_stage_framing "$_pid" "$_task" 2>/dev/null)" && [[ -n "$_f" ]]; then
-            _framed="$_f"
-            export ZBUILD_STAGE_IO_PERSONA="$_pid"
-        fi
-    fi
-
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.
     local _composed
