@@ -26,7 +26,8 @@
 #                 choose in their own code (plan, design, build)
 #   PA10 [change]: the persona given to the provider has been through the
 #                 scope redaction like every other model-bound text, before the
-#                 prompt's own (its redaction.applied stays last before the call)
+#                 prompt's own (its redaction.applied stays last before the call);
+#                 with a scope manifest but no redaction to run, it is not sent
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -175,6 +176,17 @@ assert_contains "[PA7] the loop's call names the agent" "$(cat "$CAP"/args-1 2>/
 
 # ─── PA8: a map element named after a persona ────────────────────────────────
 print_test_section "PA8: a map element that is a persona"
+mkdir -p "$TGT/.zbuild/plugins/persona/security"
+cat > "$TGT/.zbuild/plugins/persona/security/manifest.yaml" <<'EOF'
+id: security
+name: Security (this repository)
+kind: persona
+version: 0.1.0
+summary: This repository's security reviewer.
+persona:
+  role: a security engineer
+  perspective: "REPO-SECURITY-PERSPECTIVE: look for the hostile input."
+EOF
 _reset_cap
 ( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent \
          ZBUILD_MAP_ELEMENT=security
@@ -208,6 +220,15 @@ assert_contains "[PA10] the agent's prompt is the redacted text" "$_p10" "[REDAC
 assert_not_contains "[PA10] the unredacted perspective is not sent" "$_p10" "REPO-ARCHITECT-PERSPECTIVE"
 assert_contains "[PA10] the prompt's own redaction runs last" \
     "$(tail -n1 "$TEST_TEMP_DIR/redaction-order")" "## From the repo"
+
+_reset_cap
+( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent \
+         ZBUILD_PA_AGENT_PERSONA=architect ZBUILD_SCOPE_MANIFEST="$TEST_TEMP_DIR/scope-manifest.txt"
+  _route_persona_prepare
+  unset -f apply_scope_redaction
+  _route_persona_redact "$ZBUILD_SCOPE_MANIFEST" "" 0
+  printf '%s\n' "${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}" > "$CAP/args-1" )
+assert_not_contains "[PA10] a persona that cannot be redacted is not sent" "$(cat "$CAP/args-1" 2>/dev/null)" "--agent"
 
 cleanup_test_env
 print_test_results

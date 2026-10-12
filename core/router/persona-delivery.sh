@@ -79,7 +79,8 @@ _route_persona_prepare() {
 _route_persona_redact() {
     local manifest="$1" allowlist="$2" cycle_id="$3" in out fn text=""
     [[ ${#_ROUTE_PERSONA_ARGS[@]} -gt 0 && "$_ROUTE_PERSONA_REDACTED" != "$_ROUTE_PERSONA_KEY" ]] || return 0
-    [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1 || return 0
+    [[ -n "$manifest" ]] || return 0
+    declare -F apply_scope_redaction >/dev/null 2>&1 || { _ROUTE_PERSONA_ARGS=(); return 0; }
     in="$(mktemp 2>/dev/null)" && out="$(mktemp 2>/dev/null)" || { _ROUTE_PERSONA_ARGS=(); return 0; }
     printf '%s\n' "$_ROUTE_PERSONA_TEXT" > "$in"
     if apply_scope_redaction "$in" "$out" "$manifest" "$allowlist" "$cycle_id" >/dev/null 2>&1; then
