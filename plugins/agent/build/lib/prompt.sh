@@ -143,7 +143,7 @@ _build_compose_prompt_body() {
 
     {
         printf '## What you own\n'
-        printf '### INSTRUCTIONS\n%s\n\n' "$_instructions"
+        printf '%s\n\n' "$_instructions"
         printf '## What you judge against\n'
         printf '### ORIGINAL TASK (immutable across iterations)\n'
         printf '%s\n' "$_plan_payload"

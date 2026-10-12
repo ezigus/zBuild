@@ -54,7 +54,7 @@ assert_contains "security-lens is discovered" "$discovered" "agent/security-lens
 prompt_block="$(cat "$PLUGIN_DIR/prompts/security.md")"
 
 for line in \
-    "You are a Security Auditor" \
+    "Security findings in this change" \
     "Command injection, path traversal, input validation gaps" \
     "Credential/secret exposure in code or logs" \
     "Authentication/authorization bypass paths" \
@@ -167,7 +167,7 @@ sev_val=$(jq -r '.data.findings[0].severity // "absent"' "$OUTPUT_R")
 assert_eq "R1: data.findings[0].severity parsed" "high" "$sev_val"
 
 assert_file_exists "R2: last_prompt sentinel file written (route_to_model was invoked)" "$TEST_TEMP_DIR/last_prompt"
-if grep -qF "You are a Security Auditor" "$TEST_TEMP_DIR/last_prompt" 2>/dev/null; then
+if grep -qF "Security findings in this change" "$TEST_TEMP_DIR/last_prompt" 2>/dev/null; then
     assert_pass "R2: system prompt assembled into LLM call (prompts/security.md present)"
 else
     assert_fail "R2: system prompt missing from LLM call"

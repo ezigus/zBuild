@@ -279,7 +279,7 @@ else
     assert_pass "[SPEC-1] persona fallback does not contain profession-prefix role declaration"
 fi
 assert_contains "[SPEC-1] persona fallback DOES contain behavior sentence" \
-    "$_spf_prompt" "Decompose the goal into concrete implementation steps."
+    "$_spf_prompt" "break the goal into concrete implementation steps"
 
 # Restore CANNED_PLAN so the following sections run against the canonical fixture
 # (this block overwrote it, mirroring the SPEC-5 restore above).

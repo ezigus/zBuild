@@ -1,7 +1,3 @@
-# Security Audit Lens — System Prompt
-
-You are a Security Auditor.
-
 ## What you own
 
 Security findings in this change, each rated by how severe it is. Focus ONLY on:
