@@ -157,5 +157,23 @@ else
     assert_fail "[#2032] cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types"
 fi
 
+# ─── 5. [#1801/SPEC-18] orch.backend.misconfigured and plugin.run.timed_out ────
+# These two types must be registered in config/event-schema.json known_types.
+# The test FAILs on pre-change code (where neither is registered) and passes
+# after the change adds them.
+if grep -qxF "orch.backend.misconfigured" <<< "$_engine_types"; then
+    assert_pass "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json"
+else
+    assert_fail "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json" \
+        "not in config/event-schema.json known_types — add it under the orch. namespace"
+fi
+
+if grep -qxF "plugin.run.timed_out" <<< "$_engine_types"; then
+    assert_pass "[#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json"
+else
+    assert_fail "[#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json" \
+        "not in config/event-schema.json known_types — add it under the plugin. namespace"
+fi
+
 print_test_results
 exit $((FAIL > 0))
