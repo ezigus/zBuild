@@ -1,7 +1,5 @@
-## plan — pass
+## plan — error
 
-- decomposed the goal into 9 step(s)
+- no valid plan.json produced (invalid_plan_response)
 
-- scope violations: 0
-- DoD discipline: 1
-- artifact: plan.json
+The goal was not decomposed into steps. A downstream stage has no plan to build against.
