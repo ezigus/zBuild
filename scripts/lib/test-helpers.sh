@@ -900,6 +900,16 @@ MOCKEOF
   export ZBUILD_MOCK_CLAUDE_RC="$rc"
 }
 
+# fixture_link_personas [plugins_root] — a fixture install that runs a template
+# naming personas carries them, as a real install does: the runner refuses a run
+# whose template names a persona that exists nowhere (ADR-051 §2).
+fixture_link_personas() {
+    local root="${1:-$TEST_TEMP_DIR/plugins}" src
+    src="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/plugins/persona"
+    mkdir -p "$root"
+    [[ -e "$root/persona" ]] || ln -s "$src" "$root/persona"
+}
+
 # ── mock_plugin_factory ───────────────────────────────────────────────────────
 # Creates a minimal valid stage plugin directory under $TEST_TEMP_DIR/plugins/.
 # Prints the directory path to stdout.

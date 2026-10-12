@@ -168,6 +168,7 @@ install_template_overlay "$GATE_REPO" runner-state-dir-minimal
 GATE_PLUGINS="$TEST_TEMP_DIR/gate-plugins"
 mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "build"  "agent" 0 >/dev/null
+fixture_link_personas "$TEST_TEMP_DIR/plugins"
 
 mkdir -p "$TEST_TEMP_DIR/gate-events"
 rc=0
