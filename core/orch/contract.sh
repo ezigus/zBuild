@@ -168,6 +168,16 @@ orch_load_backend() {
 
     # Fallback: lightweight scan without the full registry
     plugin_dir="$(_orch_find_backend_dir "$backend" 2>/dev/null)" || plugin_dir=""
+    # When ZBUILD_PLUGINS_ROOT is set to a directory other than the engine's own
+    # plugins (e.g. a test temp dir), also search the engine's plugins so that
+    # backends like bash-parallel remain resolvable without installing them there.
+    if [[ -z "$plugin_dir" || ! -f "${plugin_dir}/plugin.sh" ]]; then
+        local _engine_plugins="${_ZBUILD_ROOT}/plugins"
+        if [[ "${ZBUILD_PLUGINS_ROOT:-}" != "" && \
+              "${ZBUILD_PLUGINS_ROOT}" != "${_engine_plugins}" ]]; then
+            plugin_dir="$(_orch_find_backend_dir "$backend" "${_engine_plugins}" 2>/dev/null)" || plugin_dir=""
+        fi
+    fi
     if [[ -n "$plugin_dir" && -f "${plugin_dir}/plugin.sh" ]]; then
         # shellcheck disable=SC1090
         source "${plugin_dir}/plugin.sh"

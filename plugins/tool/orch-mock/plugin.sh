@@ -94,7 +94,7 @@ orch_dispatch() {
 
     # Execute synchronously; capture stdout; store rc.
     local task_rc=0
-    bash -c "$task_body" > "$stdout_file" 2>&1 || task_rc=$?
+    bash -c "$task_body" _ </dev/null > "$stdout_file" 2>&1 || task_rc=$?
     printf '%s' "$task_rc" > "$rc_file"
 
     # Always return 0: dispatch means "task accepted", not "task succeeded".

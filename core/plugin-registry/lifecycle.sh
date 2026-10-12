@@ -491,9 +491,14 @@ plugin_hook_call() {
         local _lc_hook_to="${!_lc_to_var:-}"
         [[ "$_lc_hook_to" =~ ^[0-9]+$ && "$_lc_hook_to" -gt 0 ]] || _lc_hook_to="${ZBUILD_STAGE_TIMEOUT_S:-5400}"
         [[ "$_lc_hook_to" =~ ^[0-9]+$ && "$_lc_hook_to" -gt 0 ]] || _lc_hook_to=5400
-        local _lc_hook_pid _lc_wd_pid
+        local _lc_hook_pid _lc_wd_pid _lc_m_before=0
+        [[ "$-" == *m* ]] && _lc_m_before=1
         set -m
         (
+            # Restore the caller's pre-call m state: plugin_hook_call uses set -m
+            # only for process-group creation. If the runner did not have m set,
+            # clear it here so the plugin's execution environment is unaffected.
+            (( _lc_m_before == 0 )) && set +m
             # shellcheck disable=SC1090
             source "$plugin_sh"
             if declare -F "$hook_fn" >/dev/null 2>&1; then
@@ -507,7 +512,14 @@ plugin_hook_call() {
         ( set +m; sleep "$_lc_hook_to"; zbuild_pg_kill "$_lc_hook_pid" 10 2>/dev/null || true ) &
         _lc_wd_pid=$!
         set +m
+        # Restore runner's monitor mode: set +m above always clears it, even when
+        # ZBUILD_RUNNER_JOB_CONTROL=1 had it enabled before this call.
+        (( _lc_m_before == 1 )) && set -m
         wait "$_lc_hook_pid" 2>/dev/null; rc=$?
+        # #2333: the group leader exiting does not mean its group members did.
+        # A child that ignored TERM would survive if the watchdog is cancelled before
+        # it delivers KILL, so KILL the whole group now.
+        kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true
         declare -F zbuild_pg_kill >/dev/null 2>&1 && zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true
         wait "$_lc_wd_pid" 2>/dev/null || true
         if (( rc == 143 || rc == 137 )); then

@@ -90,9 +90,11 @@ else
     assert_fail "T5: prompt must forbid Edit/Write/Bash (design is read-only enumeration)"
 fi
 
-# T6: simple.yaml design timeout raised to 600 (repo-wide grep headroom).
-tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
-assert_eq "T6: design timeout_s raised to 600" "600" "${tmo:-unset}"
+# T6: simple.yaml design stage carries stage_timeout_s: 3900 (the whole-stage
+# limit now owns the design stage; router.timeout_s: 600 remains the per-dispatch
+# limit but stage_timeout_s is the dominant, and larger, value).
+tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'stage_timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
+assert_eq "T6: design stage_timeout_s raised to 3900" "3900" "${tmo:-unset}"
 
 cleanup_test_env
 print_test_results
