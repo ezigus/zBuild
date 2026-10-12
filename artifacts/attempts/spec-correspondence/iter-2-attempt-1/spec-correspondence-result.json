@@ -1,0 +1,35 @@
+{
+  "result_contract": 2,
+  "verdict": "partial",
+  "disposition": "complete",
+  "reason": "judged 12 SPEC(s): 7 correspond, 5 partial, 0 mismatch, 0 uncheckable, 0 unjudged",
+  "data": {
+    "corresponds": 7,
+    "partial": 5,
+    "mismatch": 0,
+    "uncheckable": 0,
+    "unjudged": 0,
+    "findings": [
+      {
+        "n": 1,
+        "text": "SPEC-1 partial: The assertion checks fanout.sh, sequential.sh, map.sh, and runner.sh for calls to `plugin_hook_call`, but the `always_run` route (dispatched through `_runner_dispatch_always_run`, not `plugin_hook_call`) and the parallel-group member route are not covered, so not every named route is established."
+      },
+      {
+        "n": 2,
+        "text": "SPEC-3 partial: Tier 1 (template beats env) and tier 2 (env consulted when template absent) are verified, but tier 3 (5400 s default) is established only by grep-for-literal rather than an isolation test that runs with neither a template value nor ZBUILD_STAGE_TIMEOUT_S set and confirms 5400 is actually used."
+      },
+      {
+        "n": 3,
+        "text": "SPEC-7 partial: The assertion establishes that the flat ZBUILD_ORCH_TIMEOUT ceiling and any `--timeout` flag are absent from the three strategy files, but it does not demonstrate that a dispatch running longer than 300 s actually completes — other kill mechanisms could still fire within stage_timeout_s."
+      },
+      {
+        "n": 4,
+        "text": "SPEC-9 partial: The unknown-backend case is fully verified (output contains both \"misconfigured\" and the backend name), but for the unreadable-config case the assertion only checks that the exit code is non-zero — it does not verify that the output names the backend as the requirement specifies."
+      },
+      {
+        "n": 5,
+        "text": "SPEC-18 partial: The assertion confirms both event types are registered in `config/event-schema.json`, but the requirement also states the event-schema-emitted-coverage-test must pass — the assertion does not check this, and registration alone does not rule out other unregistered emitted events that could still fail that test."
+      }
+    ]
+  }
+}
