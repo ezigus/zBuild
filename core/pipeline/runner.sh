@@ -2506,8 +2506,10 @@ main() {
     _runner_abort_trap() {
         # ADR-054 §11 (#1944): disarm the watchdog before dispatching always-run
         # stages — it has already done its work (or was never needed on this path).
-        # Killing it here prevents it from firing during teardown.
-        kill "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
+        # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
+        # ignored and `wait` would block until the full sleep expires. SIGKILL
+        # cannot be caught or ignored, so the wait returns immediately.
+        kill -KILL "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
         wait "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
         # #1829: free live resources first, while the state file and the
         # process tree are still intact.
@@ -2758,6 +2760,7 @@ main() {
         _RUNNER_RUN_PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')" || _RUNNER_RUN_PGID="$$"
     fi
     [[ -z "$_RUNNER_RUN_PGID" ]] && _RUNNER_RUN_PGID="$$"
+    local _RUNNER_SELF_PID="$$"
     (
         # Ignore SIGTERM so the watchdog survives its own PG-wide TERM and
         # can escalate to KILL after the grace period. The runner's EXIT trap
@@ -2765,12 +2768,24 @@ main() {
         trap '' TERM
         _wdg_lim="${_RUNNER_MAX_RUN_S}"
         _wdg_pgid="${_RUNNER_RUN_PGID}"
+        _wdg_runner_pid="${_RUNNER_SELF_PID}"
         sleep "$_wdg_lim" || exit 0
         # Arm the sentinel BEFORE signalling so first-wins preserves timed_out.
         _zbuild_arm_abort_sentinel timed_out 2>/dev/null || true
         kill -TERM -- "-${_wdg_pgid}" 2>/dev/null || true
         sleep 10 || exit 0
-        kill -KILL -- "-${_wdg_pgid}" 2>/dev/null || true
+        # KILL escalation: target only children of the runner process (not the
+        # runner itself) so the runner's deferred SIGTERM trap fires after the
+        # stage is killed and the runner exits cleanly with rc=1, not rc=137.
+        # A PG-wide KILL also hits the runner process, preventing the EXIT trap
+        # from writing the timed_out state and dispatching always-run stages.
+        _wdg_self="${BASHPID}"
+        while IFS= read -r _wdg_child; do
+            [[ "$_wdg_child" == "$_wdg_self" ]] && continue
+            if [[ -n "$_wdg_child" ]]; then
+                kill -KILL "$_wdg_child" 2>/dev/null || true
+            fi
+        done < <(pgrep -P "$_wdg_runner_pid" 2>/dev/null)
     ) &
     _RUNNER_WATCHDOG_PID=$!
 
