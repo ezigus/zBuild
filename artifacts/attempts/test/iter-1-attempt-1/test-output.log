@@ -1,0 +1,1004 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/orch-sequential-retired-guard-test.sh
+
+  [#1801/SPEC-8] orch-sequential retired; [#1801/SPEC-11] ADR Enforced-by sections
+
+
+  [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
+  ✓ [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
+
+  [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+  ✗ [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+    found references:
+  tests/unit/orch-backend-misconfigured-test.sh
+
+
+  [#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured
+  ✓ [#1801/SPEC-8] configuring sequential as backend signals misconfigured
+
+  [#1801/SPEC-11] ADR-054 has ## Enforced by section
+  ✓ [#1801/SPEC-11] ADR-054 has ## Enforced by section
+
+  [#1801/SPEC-11] ADR-017 has ## Enforced by section
+  ✓ [#1801/SPEC-11] ADR-017 has ## Enforced by section
+
+  [#1801/SPEC-11] ADR-011 has ## Enforced by section
+  ✓ [#1801/SPEC-11] ADR-011 has ## Enforced by section
+
+  [#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt
+  ✓ [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
+  ✓ [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt
+  ✓ [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt
+
+
+  1 of 9 tests failed
+
+  ✗ [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/event-schema-emitted-coverage-test.sh
+
+  event-schema emitted-⊆-composed known types (all plugins + core)
+
+  ✗ emitted type 'orch.backend.misconfigured' is in the composed known set
+    not in config/event-schema.json nor any manifest's provides.events
+  ✗ emitted type 'plugin.run.timed_out' is in the composed known set
+    not in config/event-schema.json nor any manifest's provides.events
+  ✓ [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  ✓ [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  ✓ [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  ✓ [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  ✓ [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+
+
+  2 of 7 tests failed
+
+  ✗ emitted type 'orch.backend.misconfigured' is in the composed known set
+  ✗ emitted type 'plugin.run.timed_out' is in the composed known set
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/design-prompt-scope-charter-test.sh
+
+  unit: design prompt exhaustive-scope charter + tools (#841)
+
+  ✓ design prompt written
+  ✓ T1: prompt invites Read/Grep tool use
+  ✓ T2: prompt states an exhaustive-enumeration charter
+  ✓ T3: prompt instructs finding files that pin/reference what changes
+  ✓ T4: 'superset' framing removed
+  ✓ T5: prompt keeps design read-only (no Edit/Write/Bash for impl)
+  ✗ T6: design timeout_s raised to 600
+    expected: 600, got: 3900
+
+
+  1 of 7 tests failed
+
+  ✗ T6: design timeout_s raised to 600
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/unit/stdin-spawn-guard-test.sh
+
+  guard: spawns never inherit a data-bearing stdin (#2108)
+
+  ✓ [#2108] the fresh shell closes stdin
+  ✓ [#2108] negctl spawns under the fresh shell
+  ✓ [#2108] reachability spawns under the fresh shell
+  ✓ [#2108] spec-correspondence's model call closes stdin
+  ✓ [#2108] build's false-completion guard spawns under the fresh shell
+  ✓ [#2108] the test stage's suite closes stdin under set -m
+  ✓ [#2108] local_engine work units close stdin
+  ✗ [#2108] orch-mock work units close stdin
+    pattern not found in plugins/tool/orch-mock/plugin.sh: bash -c "\$task_body" .* </dev/null
+
+
+  1 of 8 tests failed
+
+  ✗ [#2108] orch-mock work units close stdin
+
+unit: 548/552 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/core-pipeline-runner-test.sh
+
+  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)
+
+  ✓ no args exits 1
+  ✓ no args prints the usage
+  ✓ --help exits 0
+  ✓ --issue with no value exits 1
+  ✓ --issue with no value names the flag
+  ✓ --goal with no value exits 1
+  ✓ --goal with no value names the flag
+  ✓ dry-run shows intake stage
+  ✓ dry-run shows build stage
+  ✓ dry-run leaves state file untouched
+  ✗ happy path exits 0
+    expected: 0, got: 1
+  ✓ events.jsonl created
+  ✓ pipeline.start emitted once
+  ✓ pipeline.end emitted once
+  ✗ pipeline.end carries status=success
+    expected: 1, got: 0
+  ✗ [SPEC-1] stage.start emitted for each fixture stage (2x)
+    expected: 2, got: 1
+  ✗ [SPEC-1] stage.complete emitted for each fixture stage (2x)
+    expected: 2, got: 0
+  ✓ state file created
+  ✗ intake stage_status=complete (ADR-006 enum)
+    expected: complete, got: failed
+  ✗ build stage_status=complete (ADR-006 enum)
+    expected: complete, got: 
+  ✓ mid-stage failure exits 1
+  ✓ events.jsonl present on failure
+  ✓ pipeline.end status=failed emitted
+  ✗ pipeline.end names the failing stage
+    expected: 1, got: 0
+  ✓ stage.fail event emitted
+  ✗ build stage_status=failed in state
+    expected: failed, got: 
+  ✓ missing required plugin exits 1 (warn: caught at dispatch)
+  ✓ dispatch-time missing-plugin error names the unresolved stage 'intake'
+  ✓ missing plugin causes pipeline.end status=failed
+  ✗ kill mid-run emits pipeline.abort
+  ✓ --template runner-state-dir-minimal dry-run shows intake
+  ✓ --template runner-state-dir-minimal dry-run shows build
+  ✓ missing template fails closed (rc=1; #1850 — was 2) [#1283]
+  ✓ missing template error names the template
+  ✗ role-based dispatch exits 0
+    expected: 0, got: 1
+  ✗ role-based dispatch: 2 stage.complete events
+    expected: 2, got: 0
+  ✗ role-based: build stage_status=complete
+    expected: complete, got: 
+  ✗ fanout 2 platforms exits 0
+    expected: 0, got: 1
+  ✗ fanout 2 platforms: 4 plugin.run.start events (2 stages × 2)
+    expected: 4, got: 0
+  ✓ partial fanout failure exits 1
+  ✗ partial fanout emits stage.fail with reason=partial
+    expected: 1, got: 0
+  ✓ partial fanout emits pipeline.end status=failed
+  ✗ A2 abort trap: pipeline.abort event emitted on kill
+  ✗ A2 abort trap: no state.error when state file writable
+  ✓ A2 abort trap: pipeline status=interrupted in state
+  ✗ A3 artifact contract: plugin.contract.violated event emitted
+    expected: 1, got: 0
+  ✗ A3 artifact contract: synthetic findings.json not created
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/artifact-contract-test.sh
+
+  artifact contract — A3: missing artifact triggers plugin.contract.violated
+
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/92500001/worktree
+▸ Pipeline started — run_id=20261012020901-1310446 issue=92500001 goal= template=artifact-contract-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  ✗ plugin.contract.violated event emitted
+    not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/a3/events/events.jsonl
+  ✗ synthetic findings.json created
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/a3/state/artifacts/intake-intake-contract-violated-findings.json
+  ✗ plugin.contract.violated event names the expected artifact path
+    output missing: intake-findings.json
+  ✗ plugin.contract.violated event carries reason=artifact_missing_or_empty
+    expected: artifact_missing_or_empty, got: 
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.vdtA9M/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/92500001/worktree
+▸ Pipeline started — run_id=20261012020902-1313321 issue=92500001 goal= template=artifact-contract-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  ✓ a plugin declaring no outputs raises no contract violation (#1906)
+
+
+  4 of 5 tests failed
+
+  ✗ plugin.contract.violated event emitted
+  ✗ synthetic findings.json created
+  ✗ plugin.contract.violated event names the expected artifact path
+  ✗ plugin.contract.violated event carries reason=artifact_missing_or_empty
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/cycle-on-max-pipeline-continues-test.sh
+
+  cycle on_max=continue → runner continues to next cycle (#766)
+
+
+  T1: events.jsonl chain around design_verify_cycle exhaustion
+  ✓ T1.1: cycle.complete fired with non-convergence reason for design_verify_cycle (count=2)
+  ✓ T1.2: cycle.unconverged event emitted (proves runner continues past cycle exit)
+  ✓ T1.3: pipeline.abort MUST NOT fire on on_max=continue cycle exhaustion
+  ✗ T1.4: pipeline.end emitted exactly once
+    expected: 1, got: 0
+  ✗ T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)
+    expected: failed, got: 
+
+  T2: build_test_cycle + pr dispatched after design_verify_cycle exhausted
+  ✓ T2.1: build plugin ran (proves build_test_cycle was dispatched after design_verify_cycle exhausted)
+  ✗ T2.2: pr plugin did NOT run
+    pr_run_count=0
+
+
+  3 of 7 tests failed
+
+  ✗ T1.4: pipeline.end emitted exactly once
+  ✗ T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)
+  ✗ T2.2: pr plugin did NOT run
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/pipeline-resume-test.sh
+
+  pipeline resume — CLI + auto-resume policy (#225)
+
+
+  get_resume_recommendation: in_progress < 24h
+  ✓ in_progress recent → auto_resume
+
+  get_resume_recommendation: complete
+  ✓ complete → fresh_start
+
+  get_resume_recommendation: aborted
+  ✓ aborted → manual_resume_only
+
+  get_resume_recommendation: no state file
+  ✓ no state file → fresh_start
+
+  get_resume_recommendation: in_progress > 24h
+  ✓ in_progress old → manual_resume_only
+
+  get_resume_recommendation: interrupted
+  ✓ interrupted → auto_resume
+
+  runner --resume skips completed stages
+  ✓ intake stage is complete in state
+  ✓ output stage is pending in state
+  ✓ completed stage (intake) would be skipped on resume
+
+  set_state_field updates pipeline status
+  ✓ set_state_field writes status=in_progress
+  ✓ set_state_field writes status=complete
+
+  --force: aborted pipeline can be resumed
+  ✓ aborted + force=true → can_resume
+  ✓ aborted + force=false → cannot auto-resume
+  ✓ aborted still returns manual_resume_only (force is caller's responsibility)
+
+  integration: runner --resume skips stages with status=complete
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/pipeline-resume.w9gPrz/home/.zbuild/repos/local/int-tpl-overlay-repo/issues/95810001/worktree
+▸ Pipeline resuming — run_id=integ-test-resume-225 issue=95810001 goal= template=runner-state-dir-minimal
+  ✗ integration: --resume exits 0 when remaining stage succeeds
+    expected: 0, got: 1
+  ✓ integration: state file still present after resume
+  ✗ integration: build stage_status=complete after resume
+    expected: complete, got: failed
+  ✓ integration: only 1 stage.start (skipped 1 complete stage)
+  ✓ integration: pipeline.resume event emitted
+
+  integration: --from-stage with unknown stage exits 1
+▸ merge_policy: auto_unless_flagged
+  ✓ --from-stage unknown stage exits 1
+  ✓ --from-stage unknown stage says it is not a known stage
+
+  integration: --from-stage without --resume exits 1
+  ✓ --from-stage without --resume exits 1
+  ✓ --from-stage without --resume says it needs --resume
+
+
+  2 of 23 tests failed
+
+  ✗ integration: --resume exits 0 when remaining stage succeeds
+  ✗ integration: build stage_status=complete after resume
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/per-run-state-isolation-test.sh
+
+  per-run state isolation (#887)
+
+  ---- nested runner run-aaa exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  |   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  |   WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  | 
+  | ✗ Pipeline cannot start — inputs missing for declared stages:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.4jWRNi/home/.zbuild/repos/local/tpl-overlay-repo/issues/99070001/worktree
+  | ▸ Pipeline started — run_id=run-aaa issue=99070001 goal= template=runner-state-dir-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:10:38 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:10:38 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1465151-1791771038586913974)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:10:38 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-aaa issue=99070001 (took 0.5s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1465151-1791771038586913974
+  ---- end run-aaa ----
+  ✗ T1: run-aaa exits 0
+    expected: 0, got: 1
+  ---- nested runner run-bbb exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  |   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  |   WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  | 
+  | ✗ Pipeline cannot start — inputs missing for declared stages:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.4jWRNi/home/.zbuild/repos/local/tpl-overlay-repo/issues/99070001/worktree
+  | ▸ Pipeline started — run_id=run-bbb issue=99070001 goal= template=runner-state-dir-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:10:40 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:10:40 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1468486-1791771040219306649)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:10:40 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-bbb issue=99070001 (took 0.5s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1468486-1791771040219306649
+  ---- end run-bbb ----
+  ✗ T2: run-bbb exits 0
+    expected: 0, got: 1
+  ✓ T1: run-aaa state under runs/run-aaa/
+  ✓ T2: run-bbb state under runs/run-bbb/
+  ✓ T2: run-aaa state has its own run_id (no clobber)
+  ✓ T2: run-bbb state has its own run_id (no clobber)
+  ✓ T3: latest → run-bbb (most recent)
+  ---- nested runner run-ccc exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  |   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  |   WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  | 
+  | ✗ Pipeline cannot start — inputs missing for declared stages:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.4jWRNi/home/.zbuild/repos/local/tpl-overlay-repo/issues/99070001/worktree
+  | ▸ Pipeline started — run_id=run-ccc issue=99070001 goal= template=runner-state-dir-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:10:41 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:10:41 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1471664-1791771041688109289)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:10:41 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ccc issue=99070001 (took 0.4s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1471664-1791771041688109289
+  ---- end run-ccc ----
+  ✗ T4: explicit-state run exits 0
+    expected: 0, got: 1
+  ✓ T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)
+  ✓ T4: explicit state dir not re-rooted
+  ---- nested runner run-ddd exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  |   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  |   WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  | 
+  | ✗ Pipeline cannot start — inputs missing for declared stages:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.4jWRNi/home/.zbuild/repos/local/tpl-overlay-repo/issues/99070001/worktree
+  | ▸ Pipeline started — run_id=run-ddd issue=99070001 goal= template=runner-state-dir-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:10:42 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:10:43 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1474142-1791771043018094245)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:10:43 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ddd issue=99070001 (took 0.5s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1474142-1791771043018094245
+  ---- end run-ddd ----
+  ✗ T5: ZBUILD_EVENTS_DIR not per-run
+    got: 
+  ---- nested runner t6 exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  |   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  |   WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  | 
+  | ✗ Pipeline cannot start — inputs missing for declared stages:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.4jWRNi/home/.zbuild/repos/local/tpl-overlay-repo/issues/99070001/worktree
+  | ▸ Pipeline started — run_id=run-eee issue=99070001 goal= template=runner-state-dir-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:10:44 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:10:44 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1477244-1791771044322521799)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:10:44 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-eee issue=99070001 (took 0.5s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1477244-1791771044322521799
+  ---- end t6 ----
+  ✗ T6: events did not follow STATE_FILE dir
+    runner_rc=1 got= (canon=/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ) expected=/home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.4jWRNi/home/.zbuild/state/runs/run-eee
+  ---- nested runner run-hyg exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  |   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  |   WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  | 
+  | ✗ Pipeline cannot start — inputs missing for declared stages:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.4jWRNi/home/.zbuild/repos/local/tpl-overlay-repo/issues/99070001/worktree
+  | ▸ Pipeline started — run_id=run-hyg issue=99070001 goal= template=runner-state-dir-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:10:45 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:10:45 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1479941-1791771045677514427)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:10:45 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-hyg issue=99070001 (took 0.5s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1479941-1791771045677514427
+  ---- end run-hyg ----
+  ✗ T7: run-hyg exits 0
+    expected: 0, got: 1
+  ✓ T7: --no-resume cleared stale global-default event log + locks
+  ✓ T8: run-hyg events under its per-run dir
+  ✓ T8: engine run kept events out of the shared global default
+  ✓ T9: unpinned ad-hoc emit → ephemeral dir under the data root
+  ✓ T9: unpinned ad-hoc emit wrote nothing under $TMPDIR (#2004)
+  ✓ T9: unpinned ad-hoc emit left the shared global default untouched
+  ---- nested runner run-ddd exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  |   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  |   WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+  | 
+  | ✗ Pipeline cannot start — inputs missing for declared stages:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.4jWRNi/home/.zbuild/repos/local/tpl-overlay-repo/issues/99070001/worktree
+  | ▸ Pipeline started — run_id=run-ddd issue=99070001 goal= template=runner-state-dir-minimal engine=3a881a6(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:10:47 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:10:47 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1483063-1791771047253018804)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:10:47 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ddd issue=99070001 (took 0.9s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1483063-1791771047253018804
+  ---- end run-ddd ----
+  ✗ T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state run
+    expected: 0, got: 1
+  ✓ T4b: the explicit dir is still what was used
+  ✓ T4b: T4 itself clears the ambient state-file setting
+
+
+  7 of 22 tests failed
+
+  ✗ T1: run-aaa exits 0
+  ✗ T2: run-bbb exits 0
+  ✗ T4: explicit-state run exits 0
+  ✗ T5: ZBUILD_EVENTS_DIR not per-run
+  ✗ T6: events did not follow STATE_FILE dir
+  ✗ T7: run-hyg exits 0
+  ✗ T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state run
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/cycle-acceptance-terminal-failure-test.sh
+
+  #1044: acceptance terminal failure halts pipeline
+
+
+  T1 [SPEC-4]: terminal acceptance failure (inert_wiring) halts cycle (rc=8)
+  ✓ T1 [SPEC-4]: pipeline.end status=failed on terminal acceptance failure
+  ✓ T1 [SPEC-4]: cycle.member.terminal_failure emitted
+  ✓ T1 [SPEC-4]: terminal_failure event names the failing member
+  ✓ T1 [SPEC-4]: build_test_cycle did NOT converge (no reason=converged)
+
+  T2 [SPEC-2]: untagged_spec-only acceptance failure does NOT halt (status=success)
+--- t2: no pipeline.end; events: orch.contract.not_implemented registry.role-unresolved stage.always_run.unresolved registry.role-unresolved stage.always_run.unresolved 
+exit_when stage=gate-aggregator field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=1 → score=-1
+
+✓ Cycle build_test_cycle converged in 1/3 iters
+
+↳ iter 1 complete: verdict=missing score=0 failure_count=0 elapsed=11s
+exit_when stage=build_test_cycle field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+⚠ orch contract: orch_spawn not implemented (context: map-review_lenses-1579736)
+
+══════════════════════════ pipeline.end ═══════════════════════════ 02:12:01 UTC
+✗ Pipeline failed: status=failed run_id=20261012021142-1579736 issue=0 (took 19.4s)
+The run finished with 1 open item.
+1. **acceptance-gate**: the acceptance-gate check did not pass: untagged_spec:SPEC-1
+   - What would settle it: the acceptance-gate check no longer reports it when it runs again: a change that resolves it, or evidence that it is already resolved
+✗ map group 'review_lenses': orch_spawn failed
+  ✗ T2 [SPEC-2]: pipeline.end status=success on untagged_spec-only (feedback preserved)
+    expected: success, got: 
+  ✓ T2 [SPEC-2]: cycle.member.terminal_failure NOT emitted for untagged_spec
+
+  T3 [SPEC-5]: infra negctl_error:timeout does NOT halt (status=success)
+--- t3: no pipeline.end; events: orch.contract.not_implemented registry.role-unresolved stage.always_run.unresolved registry.role-unresolved stage.always_run.unresolved 
+exit_when stage=gate-aggregator field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=1 → score=-1
+
+✓ Cycle build_test_cycle converged in 1/3 iters
+
+↳ iter 1 complete: verdict=missing score=0 failure_count=0 elapsed=12s
+exit_when stage=build_test_cycle field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+⚠ orch contract: orch_spawn not implemented (context: map-review_lenses-1609791)
+
+══════════════════════════ pipeline.end ═══════════════════════════ 02:12:23 UTC
+✗ Pipeline failed: status=failed run_id=20261012021204-1609791 issue=0 (took 19.1s)
+The run finished with 1 open item.
+1. **acceptance-gate**: the acceptance-gate check did not pass: negctl_error:timeout:SPEC-1
+   - What would settle it: the acceptance-gate check no longer reports it when it runs again: a change that resolves it, or evidence that it is already resolved
+✗ map group 'review_lenses': orch_spawn failed
+  ✗ T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)
+    expected: success, got: 
+  ✓ T3 [SPEC-5]: cycle.member.terminal_failure NOT emitted for infra timeout
+
+
+  2 of 8 tests failed
+
+  ✗ T2 [SPEC-2]: pipeline.end status=success on untagged_spec-only (feedback preserved)
+  ✗ T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/runner-release-exit-paths-test.sh
+
+  runner dispatches cleanup(release) on every exit path (#1829)
+
+
+  SPEC-1: exit path = success (rc 0)
+  ✓ [SPEC-1] runner exits 0 on the success path
+  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  ✓ [SPEC-1] purge is never reachable from a run
+
+  SPEC-2: exit path = non-zero stage rc
+  ✓ [SPEC-2] runner exits non-zero when a stage fails
+  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-2] purge is never reachable from a run
+
+  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)
+  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  ✓ [SPEC-3] pipeline.aborted carries reason=sigint
+  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-3] purge is never reachable from a run
+
+  SPEC-4: exit path = external SIGTERM
+  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-4] purge is never reachable from a run
+
+  SPEC-5: exit path = external hard kill (timeout-style)
+  ✓ [SPEC-5] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-5] purge is never reachable from a run
+
+  SPEC-6: a cleanup hook that blocks cannot hang the runner
+  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 33s)
+  ✓ [SPEC-6] the blocked hook does not outlive the run
+
+  SPEC-6b: a hook child that ignores TERM does not outlive the run
+  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run
+    pid 1657202 still alive 5s after the runner returned
+
+
+  1 of 17 tests failed
+
+  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/full-pipeline-seq-cardinal-test.sh
+
+  full pipeline cardinal seq labels (#682)
+
+  ✗ pipeline exits 0
+    expected: 0, got: 1
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/core-pipeline-verdict-indicators-test.sh
+
+  runner verdict-driven indicators (#507)
+
+
+  all-pass: every stage line ends with ✓
+--- runner.err on failure ---
+
+✗ Pipeline cannot start — inputs missing for declared stages:
+
+  intake: SUMMARY_MISSING (id=-)
+    stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+
+  build: SUMMARY_MISSING (id=-)
+    stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+
+  test: SUMMARY_MISSING (id=-)
+    stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+
+Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+     or the active template (config/templates/<id>.yaml).
+     See docs/adr/ADR-020-inter-stage-data-contract.md.
+
+  ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:45 UTC
+
+
+▸ Running stage: intake  (started 02:12:45 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1678619-1791771165752197571)
+
+══════════════════════════ pipeline.end ═══════════════════════════ 02:12:45 UTC
+✗ Pipeline failed: status=failed stage=intake run_id=20261012021245-1678619 issue=94320001 (took 0.4s)
+The run stopped before finishing.
+✗ Stage intake: orch_spawn failed for pool zbuild-intake-1678619-1791771165752197571
+--- end ---
+  ✗ all-pass: runner exits 0
+    expected: 0, got: 1
+  ✗ all-pass: ✓ on intake line
+    stage line not found
+  ✗ all-pass: ✓ on build line
+    stage line not found
+  ✗ all-pass: ✓ on test line
+    stage line not found
+  ✗ stage.complete carries verdict=pass for each stage
+    got 0
+  ✗ state.stage_verdicts.intake == pass
+    expected: pass, got: 
+
+  test verdict=fail produces ✗
+  ✗ test verdict=fail -> ✗ on test line
+      test: SUMMARY_MISSING (id=-)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ test ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:46 UTC
+▸ Running stage: test  (started 02:12:46 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-test-1680882-1791771166748994006)
+✗ Pipeline failed: status=failed stage=test run_id=20261012021246-1680882 issue=94320001 (took 0.3s)
+✗ Stage test: orch_spawn failed for pool zbuild-test-1680882-1791771166748994006
+  ✓ test verdict=fail -> ✗ on test line: the run stops (rc 1)
+
+  build scope_violation=true produces ✗
+  ✗ build scope_violation=true -> ✗ on build line
+      build: SUMMARY_MISSING (id=-)
+  ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ build ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:47 UTC
+▸ Running stage: build  (started 02:12:47 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-build-1681972-1791771167761993683)
+✗ Pipeline failed: status=failed stage=build run_id=20261012021247-1681972 issue=94320001 (took 0.4s)
+✗ Stage build: orch_spawn failed for pool zbuild-build-1681972-1791771167761993683
+  ✓ build scope_violation=true -> ✗ on build line: the run stops (rc 1)
+
+  review request_changes produces ⚠
+  ✗ review request_changes -> ⚠ on review line
+    no line
+
+
+  9 of 11 tests failed
+
+  ✗ all-pass: runner exits 0
+  ✗ all-pass: ✓ on intake line
+  ✗ all-pass: ✓ on build line
+  ✗ all-pass: ✓ on test line
+  ✗ stage.complete carries verdict=pass for each stage
+  ✗ state.stage_verdicts.intake == pass
+  ✗ test verdict=fail -> ✗ on test line
+  ✗ build scope_violation=true -> ✗ on build line
+  ✗ review request_changes -> ⚠ on review line
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/runner-job-control-abort-test.sh
+
+  runner job-control PG forwarding (Wave 15-H / #688)
+
+
+  T1: ZBUILD_RUNNER_JOB_CONTROL=1 enables set -m in runner
+  ✓ flag-off probe run rc=0
+  ✓ flag-on  probe run rc=0
+  ✗ flag-off: monitor mode OFF in runner shell
+    got: dash=hmuB
+monitor        	on
+  ✓ flag-on: monitor mode ON in runner shell
+
+  T2: end-to-end SIGTERM with flag-on (regression of trap chain)
+  ✓ runner exits 1, not 143 (flag-on, SIGTERM)
+  ✓ pipeline.aborted carries reason=sigterm exactly
+  ✓ signal-to-exit ≤60s (actual=0s)
+  ✓ test stage did NOT run after SIGTERM
+  ✓ status=interrupted
+  ✓ pipeline.aborted reason=sigterm emitted
+  ✓ no job-control errors in stderr
+
+
+  1 of 11 tests failed
+
+  ✗ flag-off: monitor mode OFF in runner shell
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/leaf-dispatch-role-bound-verdict-test.sh
+
+  leaf dispatch — a role-bound stage reports its real verdict (#1770)
+
+  ✗ [SPEC-4] the fixture stage dispatched (stage.complete emitted)
+    rc=1; stderr: ✗ Pipeline failed: status=failed stage=role-bound-leaf run_id=20261012021333-1751693 issue=95590001 (took 0.5s)
+The run stopped before finishing.
+✗ Stage role-bound-leaf: orch_spawn failed for pool zbuild-role-bound-leaf-1751693-1791771213679322251
+
+
+  1 of 1 tests failed
+
+  ✗ [SPEC-4] the fixture stage dispatched (stage.complete emitted)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/runner-init-state-abort-test.sh
+
+  runner — init_state write failure aborts the run (#1773)
+
+  ✓ SPEC-5: a refused state write aborts the run
+  ✓ SPEC-5: the abort names init_state as the failing writer
+  ✓ SPEC-5: the abort states the stateless-run consequence
+  ✓ SPEC-5: the runner reports a controlled abort, not a bare death
+  ✓ SPEC-5: no state file was persisted
+  ✓ SPEC-5: no stage runs after a refused state write
+  ✗ SPEC-6: writable state dir → run completes
+    expected: 0, got: 1
+  ✓ SPEC-6: state file is persisted
+  ✓ SPEC-6: stages run when state was persisted
+
+
+  1 of 9 tests failed
+
+  ✗ SPEC-6: writable state dir → run completes
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/design-pipeline-test.sh
+
+  design: design stage runs in pipeline and produces scope block (#754)
+
+  ✗ runner exits 0
+    expected: 0, got: 1
+  ✗ events.jsonl contains plugin.run.start plugin=design
+    (no events file)
+  ✗ design.md exists in state artifacts
+    searched under /home/runner/work/_temp/zbuild-state/scratch/test/design-pipeline-754.k70mUY/home/.zbuild
+
+
+  3 of 3 tests failed
+
+  ✗ runner exits 0
+  ✗ events.jsonl contains plugin.run.start plugin=design
+  ✗ design.md exists in state artifacts
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/worktree-run-isolation-test.sh
+
+  engine-owned per-run worktree (ADR-052, #1640)
+
+  ✓ [SPEC-1] the main checkout's HEAD is unmoved by a full run
+  ✓ [SPEC-2] the main checkout's branch is unmoved by a full run
+  ✗ [SPEC-3a] the build stage must commit to the work branch
+    rc=1 wt=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.Iuc77S/runroot/repos/local/target/issues/95030001/worktree build_root= branch_sha=zbuild/issue-95030001-wt base=7f09aaa734b9902b4bdd2abbec63d824761fde46
+  ✗ [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
+    build_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.Iuc77S/runroot/repos/local/target/issues/95030001/worktree
+  ✓ [SPEC-4] the worktree is recorded and lives outside the target repo
+  ✗ [SPEC-5] the main checkout must survive a run that never reaches pr
+    rc=1 head=4e0f5252a46a71d4ac35b086826d4784a0001670 (was 4e0f5252a46a71d4ac35b086826d4784a0001670) branch=main (was main) build_root=
+  ✗ [SPEC-6] the opt-out must keep in-place semantics
+    branch=main wt_recorded=0
+  ✗ [SPEC-7] resume must reuse the run's worktree
+    build_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.Iuc77S/runroot/repos/local/target/issues/95030001/worktree
+
+
+  5 of 8 tests failed
+
+  ✗ [SPEC-3a] the build stage must commit to the work branch
+  ✗ [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
+  ✗ [SPEC-5] the main checkout must survive a run that never reaches pr
+  ✗ [SPEC-6] the opt-out must keep in-place semantics
+  ✗ [SPEC-7] resume must reuse the run's worktree
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh
+
+  build prompt e2e: BRANCH STATE block appears (#618)
+
+  ✗ runner exits 0
+    expected: 0, got: 1
+  ✗ intake wrote baseline ref
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/build-618-branch-state-e2e.O385Bd/home/.zbuild/repos/local/tpl-overlay-repo/issues/90550001/runs/run-618-1837055/intake-baseline-ref.txt
+  ✗ build captured iter-1 prompt
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/build-618-branch-state-e2e.O385Bd/build-prompt-capture.txt
+  ✗ build prompt contains '## BRANCH STATE since intake (HEAD:' header
+    captured prompt: 
+  ✗ build prompt contains 'Commits:' label
+    captured prompt: 
+  ✗ build prompt lists at least one follow-on commit
+    expected 'add a' / 'add b' / 'tweak a' in: 
+
+
+  6 of 6 tests failed
+
+  ✗ runner exits 0
+  ✗ intake wrote baseline ref
+  ✗ build captured iter-1 prompt
+  ✗ build prompt contains '## BRANCH STATE since intake (HEAD:' header
+  ✗ build prompt contains 'Commits:' label
+  ✗ build prompt lists at least one follow-on commit
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/runner-exports-state-dir-test.sh
+
+  runner: exports ZBUILD_STATE_DIR to child plugins (#618)
+
+  ✗ runner exits 0
+    expected: 0, got: 1
+  ✗ build stub captured its env
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/runner-618-export-state-dir.TSfhOF/env-capture.txt
+  ✗ child plugin env contains ZBUILD_STATE_DIR
+    captured env: 
+  ✗ ZBUILD_STATE_DIR value matches runner's state_dir
+    expected substring: ZBUILD_STATE_DIR=/home/runner/work/_temp/zbuild-state/scratch/test/runner-618-export-state-dir.TSfhOF/home/.zbuild/repos/local/tpl-overlay-repo/issues/94380001/runs/run-618-1895438; got: 
+  ✗ child plugin env still contains ZBUILD_RUN_ID (regression)
+    missing from captured env
+  ✗ child plugin env still contains ZBUILD_ISSUE (regression)
+    missing from captured env
+  ✗ child plugin env still contains ZBUILD_GOAL (regression)
+    missing from captured env
+  ✓ [SPEC-C10] the runner establishes the run-scoped temp root
+
+
+  7 of 8 tests failed
+
+  ✗ runner exits 0
+  ✗ build stub captured its env
+  ✗ child plugin env contains ZBUILD_STATE_DIR
+  ✗ ZBUILD_STATE_DIR value matches runner's state_dir
+  ✗ child plugin env still contains ZBUILD_RUN_ID (regression)
+  ✗ child plugin env still contains ZBUILD_ISSUE (regression)
+  ✗ child plugin env still contains ZBUILD_GOAL (regression)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.pmUGkJ/tests/integration/state-root-isolation-test.sh
+
+  state-root isolation (#1127)
+
+  ✗ nested run exits 0
+    expected: 0, got: 1
+  ✓ A: parent latest still → PARENT run dir
+  ✓ A: fenced latest → nested run
+  ✓ B: parent pipeline-state.json byte-identical
+  ✓ B: nested state under the fence
+  ✓ B: nested state is contained by the fence tree
+  ✓ B: nested run kept out of the parent root
+  ✓ C: parent events.jsonl untouched (global-clear targets fence)
+  ✓ D: nested state has its own run_id
+  ✗ D: nested run not terminal
+    status=interrupted
+  ✓ D: nested events under the fence
+  ✗ E: default-root run exits 0
+    expected: 0, got: 1
+  ✓ E: unset root → state under $HOME/.zbuild/
+  ✓ E: and it is HOME-anchored
+  ✓ E2: zbuild --resume-latest honors ZBUILD_STATE_ROOT (empty fence → no state)
+  ✓ F: parent latest unchanged after test-stage nested run
+  ✓ F: parent state byte-identical after test-stage nested run
+  ✓ F: parent events unchanged after test-stage nested run
+  ✓ F: test-stage nested run stayed out of the parent root
+  ✓ [SPEC-7] nested runner reached state-init (persisted pipeline-state.json under the fence)
+  DIAGNOSTIC: nested runner log (tail):
+      WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)
+    
+    ✗ Pipeline cannot start — inputs missing for declared stages:
+    
+      intake: SUMMARY_MISSING (id=-)
+        stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+    
+      build: SUMMARY_MISSING (id=-)
+        stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+    
+    Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+         or the active template (config/templates/<id>.yaml).
+         See docs/adr/ADR-020-inter-stage-data-contract.md.
+    
+      ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+    
+    ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/state-root-isolation-1127.HD5tZ7/home/.zbuild/repos/local/zbuild-test-stage.6l6D4C/issues/94810001/worktree
+    ▸ Pipeline started — run_id=nested-suite issue=94810001 goal= template=runner-state-dir-minimal engine=3a881a6(zbuild/issue-1801-ci)
+    
+    
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:15:01 UTC
+    
+    
+    ▸ Running stage: intake  (started 02:15:01 UTC)
+    ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1903420-1791771301517682457)
+    
+    ══════════════════════════ pipeline.end ═══════════════════════════ 02:15:01 UTC
+    ✗ Pipeline failed: status=failed stage=intake run_id=nested-suite issue=94810001 (took 0.5s)
+    The run stopped before finishing.
+    ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1903420-1791771301517682457
+  DIAGNOSTIC: copied state: {  "schema_version": 1,  "run_id": "nested-suite",  "issue": 94810001,  "engine_sha": "3a881a68ec9f3aff6ec01f31e9a969d2b678cfcb",  "engine_branch": "zbuild/issue-1801-ci",  "stage_statuses": {    "intake": "failed"  },  "current_iteration": 0,  "self_heal_count": {},  "scope_manifest_hash": "",  "cost_ledger_pointer": 0,  "claim_lease_id": "",  "plugin_state": {},  "updated_at": "2026-10-12T02:15:
+  ✗ [SPEC-7] nested run used the fixture roster
+    stage_statuses keys=intake (expected the intake→build fixture, not the built-in fallback)
+
+
+  4 of 21 tests failed
+
+  ✗ nested run exits 0
+  ✗ D: nested run not terminal
+  ✗ E: default-root run exits 0
+  ✗ [SPEC-7] nested run used the fixture roster
+
+integration: 247/264 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 832/853 passed (4 skipped)
