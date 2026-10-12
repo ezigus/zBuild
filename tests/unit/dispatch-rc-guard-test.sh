@@ -84,7 +84,6 @@ core/pipeline/disposition.sh|0
 core/pipeline/contract-validator.sh|0
 core/orch/local_engine.sh|0
 plugins/tool/orch-mock/plugin.sh|0
-plugins/tool/orch-sequential/plugin.sh|0
 "
 
 _LEGACY_RE='(return|exit)[[:space:]]+(2|3|4|5|6|7|8|9|10|11|124|130|137|143)([[:space:]]|;|$)'

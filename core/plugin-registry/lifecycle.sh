@@ -477,18 +477,57 @@ plugin_hook_call() {
 
     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
 
-    # Run in a subshell to isolate plugin's variables/functions
-    (
-        # shellcheck disable=SC1090
-        source "$plugin_sh"
-        if declare -F "$hook_fn" >/dev/null 2>&1; then
-            "$hook_fn" "$@"
-        else
-            echo "plugin_hook_call: function $hook_fn not defined in $plugin_sh" >&2
-            exit 1
+    # Run in a subshell to isolate plugin's variables/functions.
+    # For the "run" hook: arm a per-dispatch watchdog so a hung stage is killed at
+    # stage_timeout_s (issue #1801, SPEC-1/SPEC-2). Precedence: template
+    # _TPL_STAGE_TIMEOUT_S_<stage> > ZBUILD_STAGE_TIMEOUT_S env > 5400 s default.
+    local rc=0
+    if [[ "$hook_name" == "run" ]]; then
+        if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
+            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/proc-group.sh" 2>/dev/null || true
         fi
-    )
-    local rc=$?
+        local _lc_stage_safe="${ZBUILD_CURRENT_STAGE//-/_}"
+        local _lc_to_var="_TPL_STAGE_TIMEOUT_S_${_lc_stage_safe}"
+        local _lc_hook_to="${!_lc_to_var:-}"
+        [[ "$_lc_hook_to" =~ ^[0-9]+$ && "$_lc_hook_to" -gt 0 ]] || _lc_hook_to="${ZBUILD_STAGE_TIMEOUT_S:-5400}"
+        [[ "$_lc_hook_to" =~ ^[0-9]+$ && "$_lc_hook_to" -gt 0 ]] || _lc_hook_to=5400
+        local _lc_hook_pid _lc_wd_pid
+        set -m
+        (
+            # shellcheck disable=SC1090
+            source "$plugin_sh"
+            if declare -F "$hook_fn" >/dev/null 2>&1; then
+                "$hook_fn" "$@"
+            else
+                echo "plugin_hook_call: function $hook_fn not defined in $plugin_sh" >&2
+                exit 1
+            fi
+        ) &
+        _lc_hook_pid=$!
+        ( set +m; sleep "$_lc_hook_to"; zbuild_pg_kill "$_lc_hook_pid" 10 2>/dev/null || true ) &
+        _lc_wd_pid=$!
+        set +m
+        wait "$_lc_hook_pid" 2>/dev/null; rc=$?
+        declare -F zbuild_pg_kill >/dev/null 2>&1 && zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true
+        wait "$_lc_wd_pid" 2>/dev/null || true
+        if (( rc == 143 || rc == 137 )); then
+            emit_event "plugin.run.timed_out" "plugin=$plugin_id" "kind=$kind" \
+                "stage=${ZBUILD_CURRENT_STAGE:-}" "timeout_s=${_lc_hook_to}" \
+                "disposition=timed_out" 2>/dev/null || true
+        fi
+    else
+        (
+            # shellcheck disable=SC1090
+            source "$plugin_sh"
+            if declare -F "$hook_fn" >/dev/null 2>&1; then
+                "$hook_fn" "$@"
+            else
+                echo "plugin_hook_call: function $hook_fn not defined in $plugin_sh" >&2
+                exit 1
+            fi
+        )
+        rc=$?
+    fi
 
     if [[ $rc -eq 0 ]]; then
         # #288: after a successful `run`, verify the plugin actually produced

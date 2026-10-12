@@ -2441,9 +2441,15 @@ main() {
                 continue
             fi
 
-            local _ar_to_var="_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
+            local _ar_to_var="_TPL_STAGE_TIMEOUT_S_${_ar_safe}"
             _ar_to="${!_ar_to_var:-}"
-            [[ "$_ar_to" =~ ^[0-9]+$ && "$_ar_to" -gt 0 ]] || _ar_to="${ZBUILD_RELEASE_TIMEOUT:-30}"
+            [[ "$_ar_to" =~ ^[0-9]+$ && "$_ar_to" -gt 0 ]] || _ar_to="${ZBUILD_STAGE_TIMEOUT_S:-30}"
+            [[ "$_ar_to" =~ ^[0-9]+$ && "$_ar_to" -gt 0 ]] || _ar_to=30
+
+            # Load process-group kill helpers if not already loaded.
+            if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
+                source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
+            fi
 
             # Bounded, because this runs inside the EXIT trap: a hook that blocks
             # would turn a Ctrl-C into a hang — the exact class of bug this
@@ -2462,16 +2468,15 @@ main() {
             # running the stage hooks, and anything it spawned, lived on after
             # the run and wrote into its state minutes later. `set -m` (as the
             # router's model spawn does, #2056) makes each job a process-group
-            # leader, so `kill -- -<pid>` reaches the whole tree — TERM, then
-            # KILL after a short grace for a hook that traps TERM. The watchdog
-            # gets its own group too, so cancelling it leaves no `sleep` behind.
+            # leader, so zbuild_pg_kill reaches the whole tree — TERM + 10 s
+            # grace + KILL. The watchdog gets its own group too, so cancelling
+            # it leaves no `sleep` behind.
             (
                 export ZBUILD_TEARDOWN_SCOPE=release
                 set -m
                 plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
                 _ar_pid=$!
-                ( set +m; sleep "$_ar_to"; kill -TERM -- -"$_ar_pid" 2>/dev/null || true
-                  sleep 2; kill -KILL -- -"$_ar_pid" 2>/dev/null || true ) &
+                ( set +m; sleep "$_ar_to"; zbuild_pg_kill "$_ar_pid" 10 2>/dev/null || true ) &
                 _wd_pid=$!
                 set +m
                 wait "$_ar_pid" 2>/dev/null || true

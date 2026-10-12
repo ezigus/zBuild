@@ -76,7 +76,7 @@ _strategy_run_fanout() {
     if [[ "$dispatch_count" -gt 0 ]]; then
         local collect_rc=0
         _ORCH_COLLECT_OUTCOME=""
-        orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
+        orch_collect "$pool_id" || collect_rc=$?
 
         # orch_collect: 0 = all passed; 1 otherwise, partial named on
         # _ORCH_COLLECT_OUTCOME (#1850 — it was rc 2).

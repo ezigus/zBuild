@@ -71,18 +71,17 @@ export ZBUILD_POOL_ROOT="/tmp/mypools-898"
 assert_eq "P3 ZBUILD_POOL_ROOT overrides" \
     "/tmp/mypools-898/zbuild-pool-poolX" "$(_orch_par_pool_dir poolX)"
 
-# ─── Sequential backend uses the same per-run namespacing (#898) ─────────────
+# ─── Mock backend pool dir uses ORCH_MOCK_DIR (sequential backend retired) ────
 unset ZBUILD_POOL_ROOT
 # shellcheck disable=SC1091
-source "$REPO_ROOT/plugins/tool/orch-sequential/plugin.sh"
-export ZBUILD_RUN_ID="run-AAA"
-sp_a="$(_orch_seq_pool_dir poolX)"
-assert_contains "P4 sequential pool dir is per-run (run-AAA)" \
-    "$sp_a" "run-AAA/pool/zbuild-pool-poolX"
-export ZBUILD_POOL_ROOT="/tmp/seqpools-898"
-assert_eq "P5 sequential ZBUILD_POOL_ROOT overrides" \
-    "/tmp/seqpools-898/zbuild-pool-poolX" "$(_orch_seq_pool_dir poolX)"
-unset ZBUILD_POOL_ROOT
+source "$REPO_ROOT/plugins/tool/orch-mock/plugin.sh"
+mp_a="$(_orch_mock_pool_dir poolX)"
+assert_contains "P4 mock pool dir is under ORCH_MOCK_DIR (TEST_TEMP_DIR/orch-mock)" \
+    "$mp_a" "orch-mock/poolX"
+export ORCH_MOCK_DIR="$TEST_TEMP_DIR/pinned-mock-898"
+assert_eq "P5 mock ORCH_MOCK_DIR override is respected" \
+    "$TEST_TEMP_DIR/pinned-mock-898/poolX" "$(_orch_mock_pool_dir poolX)"
+unset ORCH_MOCK_DIR
 
 cleanup_test_env
 print_test_results

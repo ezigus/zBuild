@@ -59,14 +59,20 @@ case "$_s3" in
     *)                   assert_fail "[SPEC-3] bash-parallel pool dir is under runs/<run_id>/pool" "got: $_s3" ;;
 esac
 
-# ─── SPEC-4: the sequential backend agrees ─────────────────────────────────
-# Both backends are covered, or a flow using the other one still leaks.
+# ─── SPEC-4: the mock backend uses ORCH_MOCK_DIR (sequential backend retired) ──
+# orch-mock is the test-time replacement for the retired sequential backend.
+# Its pool dir is ORCH_MOCK_DIR/<pool_id>; in test contexts ORCH_MOCK_DIR defaults
+# to $TEST_TEMP_DIR/orch-mock (not $TMPDIR).
+_s4_expected="${TEST_TEMP_DIR}/orch-mock/p1"
 _s4="$(env -u ZBUILD_POOL_ROOT TMPDIR="$FAKE_TMP" ZBUILD_STATE_DIR="$STATE_DIR" ZBUILD_RUN_ID="r1" \
-        bash -c 'source "'"$REPO_ROOT"'/plugins/tool/orch-sequential/plugin.sh" >/dev/null 2>&1; _orch_seq_pool_dir p1')"
-case "$_s4" in
-    "$STATE_DIR"/pool/*) assert_pass "[SPEC-4] sequential pool dir is under runs/<run_id>/pool" ;;
-    *)                   assert_fail "[SPEC-4] sequential pool dir is under runs/<run_id>/pool" "got: $_s4" ;;
-esac
+        ORCH_MOCK_DIR="$TEST_TEMP_DIR/orch-mock" \
+        bash -c 'source "'"$REPO_ROOT"'/plugins/tool/orch-mock/plugin.sh" >/dev/null 2>&1; _orch_mock_pool_dir p1')"
+if [[ "$_s4" == "$_s4_expected" ]]; then
+    assert_pass "[SPEC-4] mock pool dir is ORCH_MOCK_DIR/p1 (not under \$TMPDIR)"
+else
+    assert_fail "[SPEC-4] mock pool dir is ORCH_MOCK_DIR/p1 (not under \$TMPDIR)" \
+        "expected: $_s4_expected, got: $_s4"
+fi
 
 # ─── SPEC-5: an explicit ZBUILD_POOL_ROOT still wins ───────────────────────
 _s5="$(TMPDIR="$FAKE_TMP" ZBUILD_STATE_DIR="$STATE_DIR" ZBUILD_POOL_ROOT="$TEST_TEMP_DIR/pinned-pool" \
@@ -97,9 +103,8 @@ assert_eq "[SPEC-7] hive honours an explicit ZBUILD_POOL_ROOT" \
 # The ad-hoc/test caller. This arm used to root in ${TMPDIR}, which quietly
 # reintroduced the leak the rest of this file exists to prevent — the event bus
 # and the pool backends had answered the same question two different ways.
-for _b in orch-bash-parallel orch-sequential orch-ruflo-hive; do
+for _b in orch-bash-parallel orch-ruflo-hive; do
     _fn="_orch_par_pool_dir"
-    [[ "$_b" == "orch-sequential" ]] && _fn="_orch_seq_pool_dir"
     [[ "$_b" == "orch-ruflo-hive" ]] && _fn="_orch_hive_pool_dir"
     _s8="$(env -u ZBUILD_POOL_ROOT -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
             TMPDIR="$FAKE_TMP" ZBUILD_DATA_ROOT="$DATA_ROOT" ZBUILD_RUN_ID="r1" \

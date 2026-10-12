@@ -209,3 +209,9 @@ with its own reasoning, not folded into artifact reclamation.
 - [ADR-010 — CI / CLI Parity](ADR-010-ci-cli-parity.md) — cache backends follow same pattern
 - ruf-1..5 issues (#102-#106) — implement the ruflo memory backend as ONE of multiple options, not the only one
 - db-1..6 issues (#125-#130) — implement the SQLite default memory backend's tables
+
+## Enforced by
+
+- §(backend-misconfigured): `tests/unit/orch-backend-misconfigured-test.sh` — unknown/unreadable backend alias fails as misconfigured; orch_load_backend returns non-zero and names the backend
+- §(sequential-retired): `tests/unit/orch-sequential-retired-guard-test.sh` — plugins/tool/orch-sequential/ is absent; configuring sequential as a backend emits misconfigured; no non-ADR file references it
+- §(default-backend): `tests/unit/orch-sequential-retired-guard-test.sh` — default backend is bash-parallel; no sequential fallback in contract.sh

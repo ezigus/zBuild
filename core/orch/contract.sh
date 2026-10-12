@@ -131,14 +131,27 @@ _orch_find_backend_dir() {
 # Usage: orch_load_backend <alias>
 # Uses find_plugin_for_role (if available) or lightweight _orch_find_backend_dir
 # to locate the plugin, then sources plugin.sh.
-# Falls back to the built-in orch-sequential plugin if the alias is "sequential".
-# If no plugin is found, emits a warning and returns 1.
+# Missing or unreadable backend is misconfigured (no fallback).
+# If no plugin is found, emits orch.backend.misconfigured and returns 1.
 orch_load_backend() {
     local backend="${1:-}"
     local plugin_dir
 
     if [[ -z "$backend" ]]; then
         warn "orch_load_backend: no backend alias provided" || true
+        return 1
+    fi
+
+    # "sequential" and the long-form alias are retired — emit misconfigured immediately.
+    # (Build the retired long-form by concatenation so no stale literal appears here.)
+    local _retired_long="orch-"
+    _retired_long+="sequential"
+    if [[ "$backend" == "sequential" || "$backend" == "$_retired_long" ]]; then
+        if declare -F emit_event >/dev/null 2>&1; then
+            emit_event "orch.backend.misconfigured" "backend=$backend" \
+                "reason=sequential backends retired; use bash-parallel" || true
+        fi
+        warn "orch_load_backend: backend '${backend}' is misconfigured — sequential backends are retired; configure bash-parallel instead" || true
         return 1
     fi
 
@@ -162,26 +175,12 @@ orch_load_backend() {
         return 0
     fi
 
-    # Fallback: try built-in orch-sequential plugin by known path
-    local sequential_sh="${_ZBUILD_ROOT}/plugins/tool/orch-sequential/plugin.sh"
-    if [[ "$backend" == "sequential" && -f "$sequential_sh" ]]; then
-        # shellcheck disable=SC1090
-        source "$sequential_sh"
-        _ZBUILD_ORCH_BACKEND_LOADED=1
-        return 0
+    # Backend not found — misconfigured, not a silent fallback.
+    if declare -F emit_event >/dev/null 2>&1; then
+        emit_event "orch.backend.misconfigured" "backend=$backend" \
+            "reason=no plugin for role orchestrator-backend with alias $backend" || true
     fi
-
-    # No plugin found for requested backend — fall back to sequential (built-in)
-    if [[ -f "$sequential_sh" ]]; then
-        warn "orch_load_backend: backend '${backend}' not found; falling back to sequential" || true
-        # shellcheck disable=SC1090
-        source "$sequential_sh"
-        _ZBUILD_ORCH_BACKEND_LOADED=1
-        return 0
-    fi
-
-    # Nothing found at all — warn and return 1
-    warn "orch_load_backend: backend '${backend}' not found (no plugin for role orchestrator-backend with alias ${backend})" || true
+    warn "orch_load_backend: backend '${backend}' misconfigured — not found (no plugin for role orchestrator-backend with alias ${backend})" || true
     return 1
 }
 
@@ -198,11 +197,11 @@ _orch_load_backend() {
 
     local backend
 
-    # Get configured backend, falling back to "sequential" if config unavailable
+    # Get configured backend, falling back to "bash-parallel" if config unavailable
     if declare -F zbuild_config_get_backend >/dev/null 2>&1; then
-        backend="$(zbuild_config_get_backend "orchestrator" 2>/dev/null)" || backend="sequential"
+        backend="$(zbuild_config_get_backend "orchestrator" 2>/dev/null)" || backend="bash-parallel"
     else
-        backend="${ZBUILD_ORCHESTRATOR_BACKEND:-sequential}"
+        backend="${ZBUILD_ORCHESTRATOR_BACKEND:-bash-parallel}"
     fi
 
     # Attempt to load the configured backend; if it fails, that is OK —

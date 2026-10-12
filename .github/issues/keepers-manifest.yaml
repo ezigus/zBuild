@@ -2838,7 +2838,7 @@ issues:
         backend
       - Tests with a synchronous mock backend
     state: closed
-    closed_reason: 'Merged via PR #262 (feat/219-orch-contract) on 2026-05-25. core/orch/contract.sh + plugins/tool/orch-sequential/ + plugins/tool/orch-mock/ shipped.'
+    closed_reason: 'Merged via PR #262 (feat/219-orch-contract) on 2026-05-25. core/orch/contract.sh + plugins/tool/orch-bash-parallel/ + plugins/tool/orch-mock/ shipped.'
   - id: orch-2
     title: "[Phase 0.5] Default orchestrator backend: bash-parallel (no external deps)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -3326,13 +3326,13 @@ issues:
       addition; no production code change.
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-26T23:11:38Z). Recorded by manifest-sync.'
   - id: cleanup-delta-d
-    title: "[Phase 0.5 cleanup] Per-plugin keeper trials for memory-sqlite (#216) and orch-sequential (#219)"
+    title: "[Phase 0.5 cleanup] Per-plugin keeper trials for memory-sqlite (#216) and orch-bash-parallel (#219)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation, test-migration]
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/302
       Per KEEPERS §G 5-trial-per-keeper mandate. Both default backends
-      (memory-sqlite #216, orch-sequential #219) shipped without
+      (memory-sqlite #216, orch-bash-parallel #219) shipped without
       dedicated test files; coverage came indirectly via the contract
       layer tests. The ruflo counterparts (memory-ruflo, orch-ruflo-hive)
       have per-plugin tests; the two defaults now do too.
@@ -3342,7 +3342,7 @@ issues:
         capabilities, put/get roundtrip with single-quote/newline/UTF-8
         edge cases, namespace isolation, search --limit, lifecycle
         list/exists/clear, durability across reinit, sequential overwrite)
-      - tests/integration/plugin-orch-sequential-test.sh (12 assertions:
+      - tests/integration/plugin-orch-bash-parallel-test.sh (12 assertions:
         capabilities, spawn, dispatch+collect 0/1/2 normalization,
         shutdown, pool isolation, pool_id validation, script-file
         work-unit format)

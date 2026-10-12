@@ -297,7 +297,7 @@ _strategy_run_map() {
         if [[ $batch_dispatched -gt 0 ]]; then
             local collect_rc=0
             _ORCH_COLLECT_OUTCOME=""
-            orch_collect "$sub_pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
+            orch_collect "$sub_pool_id" || collect_rc=$?
 
             if [[ $collect_rc -eq 0 ]]; then
                 success_count=$(( success_count + 1 ))

@@ -59,7 +59,7 @@ _strategy_run_sequential() {
             }
 
             prc=0
-            orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || prc=$?
+            orch_collect "$pool_id" || prc=$?
             rm -f "$wu" 2>/dev/null || true
 
             if [[ $prc -ne 0 ]]; then

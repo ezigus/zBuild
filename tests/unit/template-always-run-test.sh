@@ -41,7 +41,7 @@ assert_eq "[SPEC-1] _TPL_ALWAYS_RUN is [release persist], in that order" \
 assert_eq "[SPEC-1] release resolves by role, not by directory" \
     "teardown" "${_TPL_STAGE_ROLES_release:-<unset>}"
 assert_eq "[SPEC-1] release carries its own timeout_s" \
-    "30" "${_TPL_STAGE_ROUTER_TIMEOUT_release:-<unset>}"
+    "30" "${_TPL_STAGE_TIMEOUT_S_release:-<unset>}"
 
 # ─── [SPEC-2][guard] an always-run stage is NOT in the flow ──────────────────
 # This is the load-bearing separation. _TPL_STAGES[] drives dispatch units,

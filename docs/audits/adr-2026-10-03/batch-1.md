@@ -217,8 +217,8 @@ Method: for every normative statement, the enforcing assertion was opened and re
 | Mem | Backend implements the 6 required fns (`memory_put/get/search/list_namespaces/namespace_exists/namespace_clear`) | tests/unit/core-memory-contract-test.sh:151; tests/integration/core-memory-contract-test.sh:145-286 | MEDIUM | Both run against **mock-memory** only. The default `memory-sqlite` backend's contract behaviour is untested; tests/unit/plugin-memory-sqlite-rc-test.sh only checks the init rc. |
 | Mem | Optional fns: **callers MUST handle their absence** | UNTESTED (weak) | LOW | tests/unit/core-memory-contract-test.sh:175 tests a capability missing from the list, not a missing `memory_capabilities` function (core/memory/contract.sh:24). |
 | Mem | Default memory = SQLite at `~/.zbuild/state/memory.db` | default name: tests/unit/core-config-load-test.sh:47; path UNTESTED | MEDIUM | The code prefers `${ZBUILD_STATE_DIR}/memory.db` (plugins/tool/memory-sqlite/plugin.sh:43-44), and the runner exports ZBUILD_STATE_DIR (core/pipeline/runner.sh:2141). See C5. |
-| Orch | `orch_collect` exits **0 all-pass / 1 all-fail / 2 partial — "all implementations must honour this"** | mock only: tests/integration/core-orch-contract-test.sh:71, :95, :154 | MEDIUM | Untested for orch-sequential, orch-bash-parallel (core/orch/local_engine.sh:149-153) and orch-ruflo-hive. No test drives a real backend to rc=2, and none checks the runner's `reason=partial`. |
-| Orch | Phase 0.5 **default orchestrator = `orch-sequential`** | CONTRADICTED | MEDIUM | core/config/config.sh:11 defaults to `bash-parallel`, and tests/unit/core-config-load-test.sh:48 asserts `bash-parallel`. See C4. |
+| Orch | `orch_collect` exits **0 all-pass / 1 all-fail / 2 partial — "all implementations must honour this"** | mock only: tests/integration/core-orch-contract-test.sh:71, :95, :154 | MEDIUM | Untested for orch-bash-parallel (core/orch/local_engine.sh:149-153) and orch-ruflo-hive. No test drives a real backend to rc=2, and none checks the runner's `reason=partial`. |
+| Orch | Phase 0.5 **default orchestrator = `bash-parallel`** | RESOLVED | MEDIUM | core/config/config.sh:11 defaults to `bash-parallel`, and tests/unit/core-config-load-test.sh:48 asserts `bash-parallel`. ADR-011 amended. See C4. |
 | Cache | `cache_pull <key> <dest_dir>` / `cache_push <key> <src_dir>`; a miss prints `CACHE_MISS` and returns 0 | tests/unit/core-cache-contract-test.sh:54-55, :81-82; tests/integration/core-cache-local-test.sh:92-95 | MEDIUM | |
 | Cache | Default cache = `local` under `$ZBUILD_CACHE_DIR` | tests/unit/core-config-load-test.sh:49; tests/unit/core-cache-contract-test.sh:81 | LOW | |
 | Sel | Model routing is **not** a selectable backend (ADR-003) | UNTESTED | LOW | |
@@ -384,7 +384,7 @@ The header says Accepted, but "Implementation Notes (Proposed — 2026-05-29)" s
   - core/output/destinations.sh:58 posts a fresh `gh issue comment` on every `emit_output` call.
   - Only scripts/lib/run-status-comment.sh follows the rule.
   - The check-run env var also differs: the ADR names `ZBUILD_EMIT_CHECK_RUN=true`, the code reads `ZBUILD_OUTPUT_GH_CHECK_RUN=1` (destinations.sh:66).
-- **C4 — ADR-011 §Orchestrator (Phase 0.5 default = `orch-sequential`) vs code.**
+- **C4 — ADR-011 §Orchestrator (Phase 0.5 default = `bash-parallel`) — resolved.**
   - core/config/config.sh:11 defaults to `bash-parallel`, pinned by tests/unit/core-config-load-test.sh:48.
   - The code follows `bash-parallel`.
 - **C5 — ADR-011 §Retention ("the memory store is never reclaimed") vs code (suspected; verify).**

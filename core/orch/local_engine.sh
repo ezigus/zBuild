@@ -22,6 +22,11 @@ if ! declare -F warn >/dev/null 2>&1; then
     source "$_ZBUILD_ORCH_LOCAL_ROOT/scripts/lib/helpers.sh"
 fi
 
+# Load process-group kill helpers (zbuild_pg_kill, zbuild_pid_kill).
+if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
+    source "$_ZBUILD_ORCH_LOCAL_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
+fi
+
 # _orch_local_make_slot_id — collision-resistant slot id (epoch-ns + PID + rand)
 _orch_local_make_slot_id() {
     date +%s%N
@@ -29,15 +34,6 @@ _orch_local_make_slot_id() {
     openssl rand -hex 8 2>/dev/null || printf '%05d%05d%05d' $RANDOM $RANDOM $RANDOM
 }
 
-# _orch_local_kill_slot <sig> <wrapper_pid> [inner_pid]
-# Sends signal to both the wrapper PID and the inner work-unit PID (if known).
-_orch_local_kill_slot() {
-    local sig="$1"
-    local wrapper_pid="$2"
-    local inner_pid="${3:-}"
-    kill "-${sig}" "$wrapper_pid" 2>/dev/null || true
-    [[ -n "$inner_pid" ]] && kill "-${sig}" "$inner_pid" 2>/dev/null || true
-}
 
 # _orch_local_dispatch_workunit <pool_dir> <pid_subdir> <work_unit> <caller_tag>
 # Dispatches <work_unit> (must be an executable file path) in a background
@@ -127,9 +123,13 @@ _orch_local_collect_results() {
 
         while [[ ! -f "${result_base}.exit" ]]; do
             if [[ "$timeout_s" -gt 0 && "${EPOCHSECONDS:-$(date +%s)}" -ge "$deadline" ]]; then
-                _orch_local_kill_slot TERM "$wrapper_pid" "$inner_pid"
-                sleep 0.5
-                _orch_local_kill_slot KILL "$wrapper_pid" "$inner_pid"
+                if declare -F zbuild_pg_kill >/dev/null 2>&1; then
+                    zbuild_pg_kill "$wrapper_pid" 10 2>/dev/null || true
+                    [[ -n "$inner_pid" ]] && zbuild_pid_kill "$inner_pid" 10 2>/dev/null || true
+                else
+                    kill -TERM "$wrapper_pid" 2>/dev/null || true
+                    [[ -n "$inner_pid" ]] && kill -TERM "$inner_pid" 2>/dev/null || true
+                fi
                 echo "124" > "${result_base}.exit"
                 break
             fi
@@ -176,17 +176,13 @@ _orch_local_shutdown_pool() {
         inner_pid=""
         [[ -f "${pool_dir}/results/${slot_id}.inner_pid" ]] && \
             inner_pid="$(cat "${pool_dir}/results/${slot_id}.inner_pid")"
-        _orch_local_kill_slot TERM "$wrapper_pid" "$inner_pid"
-    done
-    sleep 0.5
-    for pid_file in "${pool_dir}/${pid_subdir}/"*.pid; do
-        [[ -f "$pid_file" ]] || continue
-        slot_id="$(basename "${pid_file%.pid}")"
-        wrapper_pid="$(cat "$pid_file")"
-        inner_pid=""
-        [[ -f "${pool_dir}/results/${slot_id}.inner_pid" ]] && \
-            inner_pid="$(cat "${pool_dir}/results/${slot_id}.inner_pid")"
-        _orch_local_kill_slot KILL "$wrapper_pid" "$inner_pid"
+        if declare -F zbuild_pg_kill >/dev/null 2>&1; then
+            zbuild_pg_kill "$wrapper_pid" 10 2>/dev/null || true
+            [[ -n "$inner_pid" ]] && zbuild_pid_kill "$inner_pid" 10 2>/dev/null || true
+        else
+            kill -TERM "$wrapper_pid" 2>/dev/null || true
+            [[ -n "$inner_pid" ]] && kill -TERM "$inner_pid" 2>/dev/null || true
+        fi
     done
     rm -rf "$pool_dir"
     return 0

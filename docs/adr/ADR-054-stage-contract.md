@@ -478,3 +478,13 @@ A word off the list, a missing `outcome` or a missing `reason` is a broken resul
 
 **Enforced by** `tests/unit/result-outcome-test.sh` O1–O9 (O2b: `stage_result_add`); `tests/unit/result-outcome-readers-test.sh` R1–R5 (readers; the template tests only pass/fail); `tests/unit/contract2-retired-test.sh` V1–V5 (contract 2, the verdict words and their tooling are gone).
 
+## Enforced by
+
+- §9(stage_timeout_s): `tests/unit/stage-timeout-dispatch-test.sh` — plugin_hook_call has per-dispatch watchdog for the run hook, guarded to run only, uses zbuild_pg_kill
+- §9(precedence): `tests/unit/stage-timeout-precedence-test.sh` — template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S beats 5400 s default
+- §9(loader-validation): `tests/unit/stage-timeout-loader-validation-test.sh` — loader rejects stage_timeout_s below router.timeout_s and non-integer
+- §9(timed_out): `tests/unit/stage-timeout-dispatch-test.sh` — timed_out disposition is written on expiry
+- §9(process-group): `tests/unit/stage-timeout-process-group-test.sh` — hook runs under set -m; zbuild_pg_kill used; grace >= 10 s
+- §9(per-dispatch-timer): `tests/unit/stage-timeout-retry-test.sh` — watchdog inside plugin_hook_call is fresh per dispatch (retries and map members each get their own timer)
+- §9(always_run): `tests/unit/stage-timeout-always-run-test.sh` — _runner_dispatch_always_run reads stage_timeout_s; zbuild_pg_kill used
+- §9(no-flat-limit): `tests/unit/stage-timeout-no-flat-limit-test.sh` — ZBUILD_ORCH_TIMEOUT absent from all three strategy files

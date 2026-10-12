@@ -35,10 +35,10 @@ assert_file_exists "SPEC-0: the integration test exists" "$T"
 # Unpinned, it is the 30s default and the test is racing a number it does not
 # control. Pinning makes teardown's worst case knowable.
 _spec5_block="$(sed -n '/SPEC-5: exit path = external hard kill/,/SPEC-6/p' "$T")"
-if grep -q 'ZBUILD_RELEASE_TIMEOUT' <<< "$_spec5_block"; then
-    assert_pass "SPEC-1: the hard-kill case pins ZBUILD_RELEASE_TIMEOUT"
+if grep -q 'ZBUILD_STAGE_TIMEOUT_S' <<< "$_spec5_block"; then
+    assert_pass "SPEC-1: the hard-kill case pins ZBUILD_STAGE_TIMEOUT_S"
 else
-    assert_fail "SPEC-1: the hard-kill case pins ZBUILD_RELEASE_TIMEOUT" \
+    assert_fail "SPEC-1: the hard-kill case pins ZBUILD_STAGE_TIMEOUT_S" \
         "unpinned — teardown may take the 30s default per stage while the test force-kills far sooner"
 fi
 

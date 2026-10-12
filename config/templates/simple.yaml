@@ -139,6 +139,7 @@ spec-coverage:
   # which is wrong for judging an assertion against a SPEC (the bug there
   # survives charity) and exactly right here, where the question IS about intent.
   persona: product-owner
+  stage_timeout_s: 600
   router:
     timeout_s: 600
 
@@ -153,6 +154,7 @@ test-author:
   # writes its own tests, the defect #2022 exists to prevent (#1849 run
   # 35949629759). Its failure is retried first (the stage's `retry:` budget).
   blocking: true
+  stage_timeout_s: 900
   router:
     # #2188: the same budget as build — authoring a 15–25 SPEC contract is
     # build-sized work (#1849: two 600s calls both timed out mid-write).
@@ -176,6 +178,7 @@ spec-correspondence:
   # what separates it from test-strategist, whose instinct shown a mismatched
   # assertion is to repair it and answer yes.
   persona: quality-assurance
+  stage_timeout_s: 600
   router:
     timeout_s: 600
 
@@ -184,6 +187,7 @@ spec-correspondence:
 assertion-integrity:
   gate: auto
   roles: [assertion_integrity]
+  stage_timeout_s: 600
 
 # ─── issue-acceptance (leaf, gate) ───────────────────────────────────────────
 # #1849: the finished change against the ISSUE. A model call on the convergence
@@ -195,6 +199,7 @@ issue-acceptance:
   # Same question spec-coverage asks of the design — "was what was asked for
   # delivered?" — now asked of the code.
   persona: product-owner
+  stage_timeout_s: 600
   router:
     timeout_s: 600
 
@@ -268,6 +273,7 @@ build_test_cycle:
 intake:
   gate: auto
   roles: [intake]
+  stage_timeout_s: 600
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -278,6 +284,7 @@ plan:
   roles: [planner]
   # ADR-051: the provider runs the stage as this persona (--agent).
   persona: product-owner
+  stage_timeout_s: 1200
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -294,6 +301,7 @@ design:
   roles: [designer]
   # ADR-051: the provider runs the stage as this persona (--agent).
   persona: architect
+  stage_timeout_s: 3900
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -312,6 +320,7 @@ design:
 design-gate:
   gate: auto
   roles: [design_gate]
+  stage_timeout_s: 600
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -322,6 +331,7 @@ build:
   roles: [builder]
   # ADR-051: the provider runs the stage as this persona (--agent).
   persona: developer
+  stage_timeout_s: 4200
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -333,6 +343,7 @@ build:
 test:
   gate: auto
   roles: [tester]
+  stage_timeout_s: 5400
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -342,6 +353,7 @@ test:
 shape-floor:
   gate: auto
   roles: [shape_floor]
+  stage_timeout_s: 600
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -358,6 +370,7 @@ acceptance-gate:
   gate: auto
   roles: [acceptance_gate]
   negctl_timeout_s: 60
+  stage_timeout_s: 600
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -371,6 +384,7 @@ acceptance-gate:
 secret-scan:
   gate: auto
   roles: [secret_scan]
+  stage_timeout_s: 600
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -382,6 +396,7 @@ secret-scan:
 gate-aggregator:
   gate: auto
   roles: [gate_aggregator]
+  stage_timeout_s: 600
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -422,6 +437,7 @@ review_lenses:
   max_parallel: 4
   on_member_error: continue
   aggregate: advisory
+  stage_timeout_s: 600
   io:
     destinations: [file]
     tail_lines: 200
@@ -441,6 +457,7 @@ review_lenses:
 review-aggregator:
   gate: auto
   roles: [review_aggregator]
+  stage_timeout_s: 600
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -450,6 +467,7 @@ review-aggregator:
 pr:
   gate: auto
   roles: [pr]
+  stage_timeout_s: 600
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -466,8 +484,7 @@ pr:
 release:
   gate: auto
   roles: [teardown]
-  router:
-    timeout_s: 30
+  stage_timeout_s: 30
   io:
     destinations: [file]
     tail_lines: 50
@@ -484,8 +501,7 @@ release:
 persist:
   gate: auto
   roles: [persist]
-  router:
-    timeout_s: 120
+  stage_timeout_s: 120
   io:
     destinations: [file]
     tail_lines: 50
@@ -504,6 +520,7 @@ hydrate:
   # #2366: restoring less than all earlier work is reported as fail; the run
   # carries on without it rather than stopping.
   blocking: false
+  stage_timeout_s: 600
   router:
     timeout_s: 60
   io:

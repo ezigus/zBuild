@@ -35,7 +35,6 @@ One page per **leaf node** (plugin). Each is generated from its `manifest.yaml` 
 | [[plugins/orch-bash-parallel]] | tool | orchestrator-backend |
 | [[plugins/orch-mock]] | tool | orchestrator-backend |
 | [[plugins/orch-ruflo-hive]] | tool | orchestrator-backend |
-| [[plugins/orch-sequential]] | tool | orchestrator-backend |
 | [[plugins/output-github-comment]] | tool | output |
 | [[plugins/pr]] | tool | — |
 | [[plugins/secret-scan]] | tool | secret_scan |

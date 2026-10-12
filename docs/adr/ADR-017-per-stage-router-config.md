@@ -427,3 +427,9 @@ plugin noisy on every dispatch. The one record that did change is
 `router.max_turns` telemetry: a plugin declaring the `0` sentinel now
 classifies as `manifest` rather than `default`, which is the one source it is
 not.
+
+## Enforced by
+
+- §(router.timeout_s): `tests/unit/core-pipeline-template-test.sh` — load_template sets _TPL_STAGE_ROUTER_TIMEOUT_* from router.timeout_s
+- §(always_run-stage_timeout_s): `tests/unit/stage-timeout-always-run-test.sh` — _runner_dispatch_always_run reads stage_timeout_s not router.timeout_s; always_run stages lack router.timeout_s in simple.yaml
+- §(stage_timeout_s): `tests/unit/stage-timeout-loader-validation-test.sh` — template loader validates stage_timeout_s ≥ router.timeout_s; rejects non-integer

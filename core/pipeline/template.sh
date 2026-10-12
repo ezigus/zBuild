@@ -129,6 +129,12 @@ load_template() {
         unset "$_stale_bl"
     done
 
+    local _stale_to
+    for _stale_to in "${!_TPL_STAGE_TIMEOUT_S_@}"; do
+        [[ "$_stale_to" =~ ^_TPL_STAGE_TIMEOUT_S_[A-Za-z0-9_]+$ ]] || continue
+        unset "$_stale_to"
+    done
+
     _TPL_STAGES=()
     _TPL_ALWAYS_RUN=()
     _TPL_CYCLES=()
@@ -671,6 +677,8 @@ load_template() {
         printf -v "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}" '%s' "$_ar_to"
         export "_TPL_STAGE_ROLES_${_ar_safe}" "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
     done < <(_tpl_parse_always_run "$template_file")
+
+    _tpl_load_stage_timeout_s "$template_file" || return 1
 
     _tpl_validate_cycles || return 1
     _tpl_validate_parallel || return 1
@@ -2645,4 +2653,53 @@ template_config_persona() {
             print; exit
         }
     ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
+
+# issue #1801: scan the loaded template for per-stage `stage_timeout_s:` and export
+# _TPL_STAGE_TIMEOUT_S_<safe_id> for each valid entry.  Called from load_template
+# after the always_run parse so _TPL_STAGE_ROUTER_TIMEOUT_* vars are available for
+# the constraint check (stage_timeout_s must be >= router.timeout_s).
+_tpl_load_stage_timeout_s() {
+    local _f="$1"
+    [[ -f "$_f" ]] || return 0
+    local _sts_id _sts_val _sts_safe _sts_rt_var _sts_rt _sts_failed=0
+    while IFS='|' read -r _sts_id _sts_val; do
+        [[ -z "$_sts_id" || -z "$_sts_val" ]] && continue
+        if ! [[ "$_sts_val" =~ ^[0-9]+$ ]]; then
+            error "load_template: stage '$_sts_id': stage_timeout_s must be a positive integer, got '${_sts_val}'"
+            _sts_failed=1
+            continue
+        fi
+        _sts_safe="${_sts_id//-/_}"
+        _sts_rt_var="_TPL_STAGE_ROUTER_TIMEOUT_${_sts_safe}"
+        _sts_rt="${!_sts_rt_var:-}"
+        if [[ "$_sts_rt" =~ ^[0-9]+$ && "$_sts_rt" -gt 0 && "$_sts_val" -lt "$_sts_rt" ]]; then
+            error "load_template: stage '$_sts_id': stage_timeout_s=${_sts_val} is below router.timeout_s=${_sts_rt}"
+            _sts_failed=1
+            continue
+        fi
+        printf -v "_TPL_STAGE_TIMEOUT_S_${_sts_safe}" '%s' "$_sts_val"
+        export "_TPL_STAGE_TIMEOUT_S_${_sts_safe}"
+    done < <(awk '
+        /^[a-zA-Z][a-zA-Z0-9_-]*:[[:space:]]*$/ {
+            cur = $0; sub(/:.*/, "", cur)
+        }
+        /^  stage_timeout_s:[[:space:]]/ && cur != "" {
+            val = $0
+            sub(/^[[:space:]]+stage_timeout_s:[[:space:]]*/, "", val)
+            sub(/[[:space:]]*#.*/, "", val)
+            gsub(/[[:space:]]/, "", val)
+            print cur "|" val
+        }
+    ' "$_f")
+    return $(( _sts_failed ? 1 : 0 ))
+}
+
+# issue #1801: per-stage stage_timeout_s (empty when unset → dispatch resolves
+# ZBUILD_STAGE_TIMEOUT_S > 5400 s default at call time).
+template_stage_timeout_s() {
+    local stage_id="$1"
+    local safe_id="${stage_id//-/_}"
+    local var="_TPL_STAGE_TIMEOUT_S_${safe_id}"
+    echo "${!var:-}"
 }

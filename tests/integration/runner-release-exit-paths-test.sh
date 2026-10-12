@@ -294,8 +294,8 @@ else
     # #2029: the force-kill grace is DERIVED from the engine's own teardown
     # budget, not guessed.
     #
-    # The engine bounds each always-run stage by its template `router.timeout_s`,
-    # falling back to ZBUILD_RELEASE_TIMEOUT (default 30s) only when the template
+    # The engine bounds each always-run stage by its template `stage_timeout_s`,
+    # falling back to ZBUILD_STAGE_TIMEOUT_S (default 30s) only when the template
     # sets none (#2287) — so the pin below is a fallback, and this case relies on
     # its hooks returning promptly rather than on the bound. Three stages
     # release on this path, so an unpinned run is entitled to spend far longer
@@ -311,7 +311,7 @@ else
     _SPEC5_RELEASE_TIMEOUT=3
     _SPEC5_KILL_GRACE=$(( _SPEC5_RELEASE_TIMEOUT * 3 + 6 ))   # 3 stages + margin
     set -m
-    ZBUILD_RELEASE_TIMEOUT="$_SPEC5_RELEASE_TIMEOUT" \
+    ZBUILD_STAGE_TIMEOUT_S="$_SPEC5_RELEASE_TIMEOUT" \
     bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-minimal --goal "$3"' \
         _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
     RUNNER_PID=$!
@@ -342,8 +342,8 @@ set -e
 _elapsed=$(( $(date +%s) - _t0 ))
 unset BLOCK_CLEANUP
 # The blocking hook sleeps 120s. The bound is the release stage's own
-# `router.timeout_s` (30 in the template, which takes precedence over
-# ZBUILD_RELEASE_TIMEOUT), so the runner returns in about 30s. Allow generous
+# `stage_timeout_s` (30 in the template, which takes precedence over
+# ZBUILD_STAGE_TIMEOUT_S), so the runner returns in about 30s. Allow generous
 # headroom for a loaded host while still failing an unbounded wait.
 if [[ "$_elapsed" -lt 60 ]]; then
     assert_pass "[SPEC-6] blocking cleanup is bounded (runner exited in ${_elapsed}s)"
