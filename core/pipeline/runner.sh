@@ -258,8 +258,11 @@ _runner_note_push_failure() {
 # ─── _runner_push_work_branch <state_dir> <stage> (#2187) ────────────────────
 # When the run has a work branch on origin (ZBUILD_WORKSPACE_BRANCH — CI sets
 # zbuild/issue-N-ci), push the run's commits to it at every stage end, so a new
-# session can pick them up even if this runner dies. Only when HEAD carries
-# commits past the intake baseline. Advisory: a failure is reported, never fatal.
+# session can pick them up even if this runner dies. No changes, no save: only
+# when HEAD carries commits past the run's baseline — and before intake has
+# recorded that baseline the run has made none, so nothing is pushed (#1801 run
+# 38290215955: the end of hydrate force-pushed main over the branch's earlier
+# work). Advisory: a failure is reported, never fatal.
 _runner_push_work_branch() {
     local _branch="${ZBUILD_WORKSPACE_BRANCH:-}"
     [[ -n "$_branch" ]] || return 0
@@ -267,12 +270,11 @@ _runner_push_work_branch() {
     [[ -n "$_repo" ]] || _repo="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     [[ -n "$_repo" ]] || return 0
     git -C "$_repo" remote get-url origin >/dev/null 2>&1 || return 0
-    local _base=""
+    local _base="" _ahead
     [[ -f "${1:-}/intake-baseline-ref.txt" ]] && _base="$(cat "${1:-}/intake-baseline-ref.txt" 2>/dev/null || true)"
-    if [[ -n "$_base" ]]; then
-        local _ahead; _ahead="$(git -C "$_repo" rev-list --count "$_base..HEAD" 2>/dev/null || echo 0)"
-        [[ "$_ahead" =~ ^[0-9]+$ && "$_ahead" -gt 0 ]] || return 0
-    fi
+    [[ -n "$_base" ]] || return 0
+    _ahead="$(git -C "$_repo" rev-list --count "$_base..HEAD" 2>/dev/null || echo 0)"
+    [[ "$_ahead" =~ ^[0-9]+$ && "$_ahead" -gt 0 ]] || return 0
     local _err
     if _err="$(git -C "$_repo" push --force -q origin "HEAD:refs/heads/$_branch" 2>&1)"; then
         return 0
