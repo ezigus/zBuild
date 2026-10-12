@@ -1,0 +1,63 @@
+### SPEC-4 baseline tests/unit/stage-timeout-loader-validation-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-4] template loader validates stage_timeout_s[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s below router.timeout_s is rejected[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] stage_timeout_s=30 below router.timeout_s=600 is rejected (rc=1)
+    [2mexpected exit code: 1, got: 0[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] non-integer stage_timeout_s is rejected[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] non-integer stage_timeout_s ("1h") is rejected (rc=1)
+    [2mexpected exit code: 1, got: 0[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s at or above router.timeout_s is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=1200 >= router.timeout_s=600 is accepted (rc=0) (exit 0)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] accepted template exports _TPL_STAGE_TIMEOUT_S_gamma=1200
+    [2mexpected: 1200, got: <unset>[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s with no router block is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s with no router block is accepted (rc=0) (exit 0)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] exports _TPL_STAGE_TIMEOUT_S_delta=900
+    [2mexpected: 900, got: <unset>[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s equal to router.timeout_s is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=600 equal to router.timeout_s=600 is accepted (rc=0) (exit 0)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 7 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] stage_timeout_s=30 below router.timeout_s=600 is rejected (rc=1)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] non-integer stage_timeout_s ("1h") is rejected (rc=1)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] accepted template exports _TPL_STAGE_TIMEOUT_S_gamma=1200
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] exports _TPL_STAGE_TIMEOUT_S_delta=900
+
+### SPEC-4 head tests/unit/stage-timeout-loader-validation-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-4] template loader validates stage_timeout_s[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s below router.timeout_s is rejected[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=30 below router.timeout_s=600 is rejected (rc=1) (exit 1)
+
+  [38;2;0;212;255m[#1801/SPEC-4] non-integer stage_timeout_s is rejected[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] non-integer stage_timeout_s ("1h") is rejected (rc=1) (exit 1)
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s at or above router.timeout_s is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=1200 >= router.timeout_s=600 is accepted (rc=0) (exit 0)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] accepted template exports _TPL_STAGE_TIMEOUT_S_gamma=1200
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s with no router block is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s with no router block is accepted (rc=0) (exit 0)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] exports _TPL_STAGE_TIMEOUT_S_delta=900
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s equal to router.timeout_s is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=600 equal to router.timeout_s=600 is accepted (rc=0) (exit 0)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
+

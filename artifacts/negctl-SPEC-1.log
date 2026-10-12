@@ -1,0 +1,79 @@
+### SPEC-1 baseline tests/unit/stage-timeout-dispatch-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only
+    [2mzbuild_pg_kill/zbuild_pid_kill not found inside plugin_hook_call — no per-dispatch watchdog[0m
+
+  [38;2;0;212;255m[#1801/SPEC-1] watchdog writes disposition timed_out[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out disposition is used in the dispatch path
+
+  [38;2;0;212;255m[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
+
+  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+
+  [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
+    [2mnot found — _orch_local_collect_results still has a hand-rolled kill sequence[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
+    [2mstill present — the hand-rolled kill helper was not replaced by zbuild_pg_kill[0m
+
+  [38;2;0;212;255m[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+
+  [38;2;0;212;255m[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 12 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
+
+### SPEC-1 head tests/unit/stage-timeout-dispatch-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only
+
+  [38;2;0;212;255m[#1801/SPEC-1] watchdog writes disposition timed_out[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out disposition is used in the dispatch path
+
+  [38;2;0;212;255m[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
+
+  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+
+  [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
+
+  [38;2;0;212;255m[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+
+  [38;2;0;212;255m[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+

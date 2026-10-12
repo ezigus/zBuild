@@ -1,0 +1,47 @@
+### SPEC-5 baseline tests/unit/stage-timeout-retry-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-5] retried stage and each map member get a fresh independent timer[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-5] timeout watchdog is inside plugin_hook_call (fresh per dispatch)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] plugin_hook_call is defined in lifecycle.sh
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] watchdog (zbuild_pg_kill/zbuild_pid_kill) is inside plugin_hook_call → fresh per dispatch
+    [2mnot found inside plugin_hook_call — the watchdog is either absent or in a caller above plugin_hook_call, which would share a timer across retries[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] plugin_hook_call starts a fresh timer per invocation
+    [2mno sleep or timeout found inside plugin_hook_call — no per-invocation watchdog[0m
+
+  [38;2;0;212;255m[#1801/SPEC-5] map strategy dispatches through plugin_hook_call (each member gets a fresh timer)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] map.sh calls plugin_hook_call (inheriting the per-dispatch watchdog)
+
+  [38;2;0;212;255m[#1801/SPEC-5] runner.sh retry loop dispatches through plugin_hook_call[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh calls plugin_hook_call for stage dispatch (retries get a fresh timer)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 5 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] watchdog (zbuild_pg_kill/zbuild_pid_kill) is inside plugin_hook_call → fresh per dispatch
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] plugin_hook_call starts a fresh timer per invocation
+
+### SPEC-5 head tests/unit/stage-timeout-retry-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-5] retried stage and each map member get a fresh independent timer[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-5] timeout watchdog is inside plugin_hook_call (fresh per dispatch)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] plugin_hook_call is defined in lifecycle.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] watchdog (zbuild_pg_kill/zbuild_pid_kill) is inside plugin_hook_call → fresh per dispatch
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] plugin_hook_call starts a fresh timer per invocation
+
+  [38;2;0;212;255m[#1801/SPEC-5] map strategy dispatches through plugin_hook_call (each member gets a fresh timer)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] map.sh calls plugin_hook_call (inheriting the per-dispatch watchdog)
+
+  [38;2;0;212;255m[#1801/SPEC-5] runner.sh retry loop dispatches through plugin_hook_call[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh calls plugin_hook_call for stage dispatch (retries get a fresh timer)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 5 tests passed[0m
+

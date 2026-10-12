@@ -1,0 +1,51 @@
+### SPEC-2 baseline tests/unit/stage-timeout-process-group-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-2] hung run hook kills entire process group (TERM + 10 s grace + KILL)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] plugin_hook_call runs the hook under set -m (creates a process group)[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] plugin_hook_call uses set -m to give the hook its own process group
+    [2m'set -m' not found in plugin_hook_call — the hook's group cannot be signalled[0m
+
+  [38;2;0;212;255m[#1801/SPEC-2] the timeout kill uses zbuild_pg_kill (group scope, not single-PID)[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] plugin_hook_call uses zbuild_pg_kill (sends signal to whole group)
+    [2mzbuild_pg_kill not found — a single-PID kill cannot reach descendants that ignore TERM[0m
+
+  [38;2;0;212;255m[#1801/SPEC-2] zbuild_pg_kill uses TERM then KILL after grace (proc-group.sh)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] zbuild_pg_kill uses TERM+grace+KILL sequence (_zbuild_pg_term_then_kill)
+
+  [38;2;0;212;255m[#1801/SPEC-2] the watchdog grace period is at least 10 s[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
+    [2mno zbuild_pg_kill call with grace >= 10 found in plugin_hook_call[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 4 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] plugin_hook_call uses set -m to give the hook its own process group
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] plugin_hook_call uses zbuild_pg_kill (sends signal to whole group)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
+
+### SPEC-2 head tests/unit/stage-timeout-process-group-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-2] hung run hook kills entire process group (TERM + 10 s grace + KILL)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] plugin_hook_call runs the hook under set -m (creates a process group)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] plugin_hook_call uses set -m to give the hook its own process group
+
+  [38;2;0;212;255m[#1801/SPEC-2] the timeout kill uses zbuild_pg_kill (group scope, not single-PID)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] plugin_hook_call uses zbuild_pg_kill (sends signal to whole group)
+
+  [38;2;0;212;255m[#1801/SPEC-2] zbuild_pg_kill uses TERM then KILL after grace (proc-group.sh)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] zbuild_pg_kill uses TERM+grace+KILL sequence (_zbuild_pg_term_then_kill)
+
+  [38;2;0;212;255m[#1801/SPEC-2] the watchdog grace period is at least 10 s[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+

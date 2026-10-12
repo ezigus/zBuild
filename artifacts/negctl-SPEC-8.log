@@ -1,0 +1,109 @@
+### SPEC-8 baseline tests/unit/orch-sequential-retired-guard-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-8] orch-sequential retired; [#1801/SPEC-11] ADR Enforced-by sections[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
+    [2mdirectory still exists — the retired backend was not removed[0m
+
+  [38;2;0;212;255m[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+    [2mfound references:
+  plugins/tool/orch-ruflo-hive/plugin.sh
+  plugins/tool/orch-mock/tests/orch-mock-test.sh
+  plugins/tool/orch-sequential/manifest.yaml
+  plugins/tool/orch-sequential/tests/orch-sequential-test.sh
+  plugins/tool/orch-sequential/plugin.sh
+  .github/issues/keepers-manifest.yaml
+  tests/unit/summary-mandatory-test.sh
+  tests/unit/dispatch-rc-guard-test.sh
+  tests/unit/stdin-spawn-guard-test.sh
+  tests/unit/map-strategy-test.sh
+  tests/unit/orch-backend-misconfigured-test.sh
+  tests/unit/core-orch-run-id-isolation-test.sh
+  tests/unit/plugin-artifact-goldens-test.sh
+  tests/unit/adr059-no-tmpdir-defaults-test.sh
+  core/orch/contract.sh
+  docs/audits/adr-2026-10-03/batch-1.md
+  docs/wiki/plugins/orch-sequential.md
+  docs/wiki/Plugins.md
+[0m
+
+  [38;2;0;212;255m[#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] configuring sequential as backend signals misconfigured
+    [2moutput: rc=0[0m
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054 has ## Enforced by section[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-054 has ## Enforced by section
+    [2msection absent — ADR-054 §9 requires it[0m
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-017 has ## Enforced by section[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-017 has ## Enforced by section
+    [2msection absent[0m
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-011 has ## Enforced by section[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-011 has ## Enforced by section
+    [2msection absent[0m
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
+    [2mADR-054 still listed — remove after adding its Enforced-by section[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt
+    [2mADR-017 still listed — remove after adding its Enforced-by section[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt
+    [2mADR-011 still listed — remove after adding its Enforced-by section[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m9 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] configuring sequential as backend signals misconfigured
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-054 has ## Enforced by section
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-017 has ## Enforced by section
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-011 has ## Enforced by section
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt
+
+### SPEC-8 head tests/unit/orch-sequential-retired-guard-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-8] orch-sequential retired; [#1801/SPEC-11] ADR Enforced-by sections[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
+
+  [38;2;0;212;255m[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+    [2mfound references:
+  tests/unit/orch-backend-misconfigured-test.sh
+[0m
+
+  [38;2;0;212;255m[#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-8] configuring sequential as backend signals misconfigured
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-017 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-011 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+

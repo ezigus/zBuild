@@ -1,0 +1,33 @@
+### SPEC-7 baseline tests/unit/stage-timeout-no-flat-limit-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+    [2mZBUILD_ORCH_TIMEOUT still present — a plan dispatch longer than the default 300 s[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+    [2mZBUILD_ORCH_TIMEOUT still present — a plan dispatch longer than the default 300 s[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+    [2mZBUILD_ORCH_TIMEOUT still present — a plan dispatch longer than the default 300 s[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 3 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+
+### SPEC-7 head tests/unit/stage-timeout-no-flat-limit-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 3 tests passed[0m
+

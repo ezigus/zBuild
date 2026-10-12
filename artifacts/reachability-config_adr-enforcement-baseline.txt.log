@@ -1,0 +1,460 @@
+### config/adr-enforcement-baseline.txt reverted tests/unit/stage-timeout-dispatch-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only
+
+  [38;2;0;212;255m[#1801/SPEC-1] watchdog writes disposition timed_out[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out disposition is used in the dispatch path
+
+  [38;2;0;212;255m[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
+
+  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+
+  [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
+
+  [38;2;0;212;255m[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+
+  [38;2;0;212;255m[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/unit/stage-timeout-dispatch-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only
+
+  [38;2;0;212;255m[#1801/SPEC-1] watchdog writes disposition timed_out[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out disposition is used in the dispatch path
+
+  [38;2;0;212;255m[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
+
+  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+
+  [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
+
+  [38;2;0;212;255m[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+
+  [38;2;0;212;255m[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/stage-timeout-process-group-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-2] hung run hook kills entire process group (TERM + 10 s grace + KILL)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] plugin_hook_call runs the hook under set -m (creates a process group)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] plugin_hook_call uses set -m to give the hook its own process group
+
+  [38;2;0;212;255m[#1801/SPEC-2] the timeout kill uses zbuild_pg_kill (group scope, not single-PID)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] plugin_hook_call uses zbuild_pg_kill (sends signal to whole group)
+
+  [38;2;0;212;255m[#1801/SPEC-2] zbuild_pg_kill uses TERM then KILL after grace (proc-group.sh)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] zbuild_pg_kill uses TERM+grace+KILL sequence (_zbuild_pg_term_then_kill)
+
+  [38;2;0;212;255m[#1801/SPEC-2] the watchdog grace period is at least 10 s[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/unit/stage-timeout-process-group-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-2] hung run hook kills entire process group (TERM + 10 s grace + KILL)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] plugin_hook_call runs the hook under set -m (creates a process group)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] plugin_hook_call uses set -m to give the hook its own process group
+
+  [38;2;0;212;255m[#1801/SPEC-2] the timeout kill uses zbuild_pg_kill (group scope, not single-PID)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] plugin_hook_call uses zbuild_pg_kill (sends signal to whole group)
+
+  [38;2;0;212;255m[#1801/SPEC-2] zbuild_pg_kill uses TERM then KILL after grace (proc-group.sh)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] zbuild_pg_kill uses TERM+grace+KILL sequence (_zbuild_pg_term_then_kill)
+
+  [38;2;0;212;255m[#1801/SPEC-2] the watchdog grace period is at least 10 s[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/stage-timeout-precedence-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-3] stage_timeout_s precedence: template > env > 5400 s default[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-3] template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99
+
+  [38;2;0;212;255m[#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)
+
+  [38;2;0;212;255m[#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback
+
+  [38;2;0;212;255m[#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/unit/stage-timeout-precedence-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-3] stage_timeout_s precedence: template > env > 5400 s default[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-3] template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99
+
+  [38;2;0;212;255m[#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)
+
+  [38;2;0;212;255m[#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback
+
+  [38;2;0;212;255m[#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/stage-timeout-loader-validation-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-4] template loader validates stage_timeout_s[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s below router.timeout_s is rejected[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=30 below router.timeout_s=600 is rejected (rc=1) (exit 1)
+
+  [38;2;0;212;255m[#1801/SPEC-4] non-integer stage_timeout_s is rejected[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] non-integer stage_timeout_s ("1h") is rejected (rc=1) (exit 1)
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s at or above router.timeout_s is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=1200 >= router.timeout_s=600 is accepted (rc=0) (exit 0)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] accepted template exports _TPL_STAGE_TIMEOUT_S_gamma=1200
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s with no router block is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s with no router block is accepted (rc=0) (exit 0)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] exports _TPL_STAGE_TIMEOUT_S_delta=900
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s equal to router.timeout_s is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=600 equal to router.timeout_s=600 is accepted (rc=0) (exit 0)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/unit/stage-timeout-loader-validation-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-4] template loader validates stage_timeout_s[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s below router.timeout_s is rejected[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=30 below router.timeout_s=600 is rejected (rc=1) (exit 1)
+
+  [38;2;0;212;255m[#1801/SPEC-4] non-integer stage_timeout_s is rejected[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] non-integer stage_timeout_s ("1h") is rejected (rc=1) (exit 1)
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s at or above router.timeout_s is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=1200 >= router.timeout_s=600 is accepted (rc=0) (exit 0)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] accepted template exports _TPL_STAGE_TIMEOUT_S_gamma=1200
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s with no router block is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s with no router block is accepted (rc=0) (exit 0)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] exports _TPL_STAGE_TIMEOUT_S_delta=900
+
+  [38;2;0;212;255m[#1801/SPEC-4] stage_timeout_s equal to router.timeout_s is accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] stage_timeout_s=600 equal to router.timeout_s=600 is accepted (rc=0) (exit 0)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/stage-timeout-retry-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-5] retried stage and each map member get a fresh independent timer[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-5] timeout watchdog is inside plugin_hook_call (fresh per dispatch)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] plugin_hook_call is defined in lifecycle.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] watchdog (zbuild_pg_kill/zbuild_pid_kill) is inside plugin_hook_call → fresh per dispatch
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] plugin_hook_call starts a fresh timer per invocation
+
+  [38;2;0;212;255m[#1801/SPEC-5] map strategy dispatches through plugin_hook_call (each member gets a fresh timer)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] map.sh calls plugin_hook_call (inheriting the per-dispatch watchdog)
+
+  [38;2;0;212;255m[#1801/SPEC-5] runner.sh retry loop dispatches through plugin_hook_call[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh calls plugin_hook_call for stage dispatch (retries get a fresh timer)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 5 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/unit/stage-timeout-retry-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-5] retried stage and each map member get a fresh independent timer[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-5] timeout watchdog is inside plugin_hook_call (fresh per dispatch)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] plugin_hook_call is defined in lifecycle.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] watchdog (zbuild_pg_kill/zbuild_pid_kill) is inside plugin_hook_call → fresh per dispatch
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] plugin_hook_call starts a fresh timer per invocation
+
+  [38;2;0;212;255m[#1801/SPEC-5] map strategy dispatches through plugin_hook_call (each member gets a fresh timer)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] map.sh calls plugin_hook_call (inheriting the per-dispatch watchdog)
+
+  [38;2;0;212;255m[#1801/SPEC-5] runner.sh retry loop dispatches through plugin_hook_call[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh calls plugin_hook_call for stage dispatch (retries get a fresh timer)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 5 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/stage-timeout-always-run-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-6] always_run uses stage_timeout_s; [#1801/SPEC-10] zbuild_pg_kill[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run is defined in runner.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run no longer uses _TPL_STAGE_ROUTER_TIMEOUT_* as its time limit
+
+  [38;2;0;212;255m[#1801/SPEC-6] simple.yaml stage_timeout_s values[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml test: stage_timeout_s == 5400s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml build: stage_timeout_s == 4200s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml design: stage_timeout_s == 3900s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml plan: stage_timeout_s == 1200s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml test-author: stage_timeout_s == 900s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml spec-coverage: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml acceptance-gate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml issue-acceptance: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml spec-correspondence: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml review_lenses: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml intake: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml pr: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml hydrate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml secret-scan: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml shape-floor: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml design-gate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml gate-aggregator: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml assertion-integrity: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml review-aggregator: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: no router.timeout_s (converted to stage_timeout_s)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: no router.timeout_s (converted to stage_timeout_s)
+
+  [38;2;0;212;255m[#1801/SPEC-10] _runner_dispatch_always_run uses zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _runner_dispatch_always_run calls zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _runner_dispatch_always_run has no hand-rolled TERM/KILL sequence
+
+  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh uses zbuild_pg_kill (not hand-rolled TERM/KILL) for dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] lifecycle.sh calls zbuild_pg_kill for stage dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 29 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/unit/stage-timeout-always-run-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-6] always_run uses stage_timeout_s; [#1801/SPEC-10] zbuild_pg_kill[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run is defined in runner.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run no longer uses _TPL_STAGE_ROUTER_TIMEOUT_* as its time limit
+
+  [38;2;0;212;255m[#1801/SPEC-6] simple.yaml stage_timeout_s values[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml test: stage_timeout_s == 5400s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml build: stage_timeout_s == 4200s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml design: stage_timeout_s == 3900s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml plan: stage_timeout_s == 1200s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml test-author: stage_timeout_s == 900s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml spec-coverage: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml acceptance-gate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml issue-acceptance: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml spec-correspondence: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml review_lenses: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml intake: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml pr: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml hydrate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml secret-scan: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml shape-floor: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml design-gate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml gate-aggregator: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml assertion-integrity: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml review-aggregator: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: no router.timeout_s (converted to stage_timeout_s)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: no router.timeout_s (converted to stage_timeout_s)
+
+  [38;2;0;212;255m[#1801/SPEC-10] _runner_dispatch_always_run uses zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _runner_dispatch_always_run calls zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _runner_dispatch_always_run has no hand-rolled TERM/KILL sequence
+
+  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh uses zbuild_pg_kill (not hand-rolled TERM/KILL) for dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] lifecycle.sh calls zbuild_pg_kill for stage dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 29 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/stage-timeout-no-flat-limit-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 3 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/unit/stage-timeout-no-flat-limit-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 3 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/orch-sequential-retired-guard-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-8] orch-sequential retired; [#1801/SPEC-11] ADR Enforced-by sections[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
+    [2mdirectory still exists — the retired backend was not removed[0m
+
+  [38;2;0;212;255m[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+    [2mfound references:
+  tests/unit/orch-backend-misconfigured-test.sh
+[0m
+
+  [38;2;0;212;255m[#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-8] configuring sequential as backend signals misconfigured
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-017 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-011 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
+    [2mADR-054 still listed — remove after adding its Enforced-by section[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt
+    [2mADR-017 still listed — remove after adding its Enforced-by section[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt
+    [2mADR-011 still listed — remove after adding its Enforced-by section[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m5 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt
+  [38;2;248;113;113m✗[0m [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt
+
+### config/adr-enforcement-baseline.txt head tests/unit/orch-sequential-retired-guard-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-8] orch-sequential retired; [#1801/SPEC-11] ADR Enforced-by sections[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
+
+  [38;2;0;212;255m[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+    [2mfound references:
+  tests/unit/orch-backend-misconfigured-test.sh
+[0m
+
+  [38;2;0;212;255m[#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-8] configuring sequential as backend signals misconfigured
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-017 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-011 has ## Enforced by section[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 has ## Enforced by section
+
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 is not in adr-enforcement-baseline.txt
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 is not in adr-enforcement-baseline.txt
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
+
