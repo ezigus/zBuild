@@ -57,5 +57,18 @@
   "wiring_files": [
     "core/orch/contract.sh",
     "core/pipeline/runner.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/unit/orch-backend-misconfigured-test.sh",
+      "tests/unit/orch-sequential-retired-guard-test.sh",
+      "tests/unit/stage-timeout-always-run-test.sh",
+      "tests/unit/stage-timeout-dispatch-test.sh",
+      "tests/unit/stage-timeout-loader-validation-test.sh",
+      "tests/unit/stage-timeout-no-flat-limit-test.sh",
+      "tests/unit/stage-timeout-precedence-test.sh",
+      "tests/unit/stage-timeout-process-group-test.sh",
+      "tests/unit/stage-timeout-retry-test.sh"
+    ]
+  }
 }
