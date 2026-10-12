@@ -71,5 +71,4 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §8 (a stage's job is its What you own section; each finding answered only with what goes into its output) → `tests/unit/engine-keeps-only-stage-outputs-test.sh` K5
 - §8 (no text tells a stage to skip part of its job) → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P10–P11
 - §8 (spec-coverage's reworded exemption) → `tests/unit/spec-coverage-test.sh` SPEC-7, SPEC-9
-- §8 (findings: say in the result what was done) → `tests/unit/engine-keeps-only-stage-outputs-test.sh` K5
 - §9 → `plugins/agent/plan/tests/plan-test.sh` (Test 3c2, plan); `tests/unit/resume-default-test.sh` (the ADR-067 §9 assertions on design's prompt)

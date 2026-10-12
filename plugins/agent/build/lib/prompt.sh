@@ -30,9 +30,8 @@ _build_compose_instructions() {
     : "${1:-}"   # plan files: the scope list is part of the limits (_build_compose_limits)
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
-    local _framing="You have Read, Edit, Write, and
-Bash tools available. Your job is to edit the working tree to implement the
-ORIGINAL TASK below."
+    local _framing="Your job is to edit the working tree to implement the ORIGINAL TASK
+below. You have Read, Edit, Write, and Bash tools available."
     cat <<BUILD_PROMPT
 ${_framing}
 

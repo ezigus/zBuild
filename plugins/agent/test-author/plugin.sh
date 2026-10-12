@@ -227,7 +227,7 @@ ${sup_block}"
     local _spec_tag1; _spec_tag1="$(acceptance_spec_tag SPEC-1)"
     local prompt
     prompt="$(cat <<EOF
-You are the test author. Write the acceptance assertions for the requirements below, in the language and idiom the target repository already uses.
+Your job: write the acceptance assertions for the requirements below, in the language and idiom the target repository already uses.
 
 ## What you own
 An assertion for every requirement below, written to its testfile(s)${sup_block:+, and the existing checks listed below brought up to the new behaviour}.

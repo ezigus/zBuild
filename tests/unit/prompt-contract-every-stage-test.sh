@@ -21,8 +21,8 @@
 #                persona_stage_framing (the persona reaches the model through the
 #                provider, ADR-051 amended)
 #   E6 [change]: every stage's What you own opens with its job — not with a
-#                heading, the output-contract boilerplate, or a role sentence
-#                ("You are a …"): the engine's rules point at this section as
+#                heading, the output-contract boilerplate, a role sentence
+#                ("You are a/the …") or a list of its tools ("You have …"): the engine's rules point at this section as
 #                the whole of the stage's job, so it must say what that job is
 #                first (#1801: plan's job sentence sat 40 lines down)
 #   E4 [guard] : the engine's rules tell every stage to read data the way the
@@ -227,7 +227,8 @@ _bad=""
 for _s in "${STAGES[@]}" spec-correspondence-batch; do
     f="$RAW/$_s.txt"; [[ -s "$f" ]] || continue
     _first="$(awk '/^## What you own/{p=1;next} p && NF {print; exit}' "$f")"
-    if [[ "$_first" =~ ^# || "$_first" == *"OUTPUT CONTRACT"* || "$_first" =~ ^You\ are\ an?\  ]]; then
+    if [[ "$_first" =~ ^# || "$_first" == *"OUTPUT CONTRACT"* || "$_first" =~ ^You\ are\ (an?|the)\  \
+          || "$_first" =~ ^You\ have\  ]]; then
         _bad+="$_s($_first) "
     fi
 done
