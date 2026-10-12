@@ -257,7 +257,7 @@ get_resume_recommendation() {
         complete|"")
             echo "fresh_start"
             ;;
-        aborted)
+        aborted|timed_out)
             echo "manual_resume_only"
             ;;
         interrupted)

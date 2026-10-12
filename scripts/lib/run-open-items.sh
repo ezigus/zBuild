@@ -96,6 +96,8 @@ run_end_words() {
             printf 'stopped: the change needs files it was not allowed to edit%s' "$with" ;;
         cycle_abort)
             printf 'stopped: a check asked for the run to stop%s' "$with" ;;
+        timed_out)
+            printf 'stopped: the run exceeded its wall-clock limit%s' "$with" ;;
         sigterm)
             printf 'stopped: the run was told to stop (TERM signal)%s' "$with" ;;
         sigint)

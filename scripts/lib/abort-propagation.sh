@@ -11,7 +11,7 @@
 #   }
 #
 # Words: sigint | sigterm | cycle_abort | llm_unavailable | llm_rate_limited |
-# scope_too_large. The first recorded abort wins.
+# scope_too_large | timed_out. The first recorded abort wins.
 #
 # Two channels hold the word: `_ZB_ABORT_REASON` in this process, and the
 # sentinel file ${ZBUILD_STATE_DIR}/.abort.signal, which crosses subshells and
