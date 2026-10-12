@@ -39,10 +39,6 @@ config:
     - skipped
   tier_default: T2
 
-capabilities:
-  # ADR-067 §8: it calls no model, so the engine states no model budget to it.
-  model_calls: none
-
 inputs:
   - id: deploy_result
     required: true

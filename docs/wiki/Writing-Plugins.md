@@ -85,7 +85,6 @@ config:     { <key>: <default> }
 inputs:     [ { id, type, source: stage:<s>|role:<r>, required } ]
 outputs:    [ { id, path: ${artifact_dir}/<file>, type, required, primary } ]
 state:      { persisted: [...], reconstructed: [...] }
-capabilities: { model_calls: single | loop }   # a stage that calls a model says how; the engine states its budget (ADR-067 §8)
 ```
 
 ### The prompt contract (ADR-067 §8)
@@ -94,7 +93,8 @@ Every stage receives three blocks from the engine at dispatch, in `$ZBUILD_STAGE
 repo** (the target repository's `.zbuild/vision.md`, its `.zbuild/prompts/rules.md` or zBuild's default
 rules, and its `.zbuild/prompts/<stage>-overrides.md` if present), **Previous work** (the latest output of
 every stage that has run, yours included, with what moved since) and **Rules for this stage** (your notes
-file, your budget, and how every stage works). A stage that calls a model writes only its own three parts —
+file, your per-call budget, and how every stage works). The engine needs nothing from your
+manifest to give them. A stage that calls a model writes only its own three parts —
 `## What you own`, `## What you judge against`, `## What you must not do` — and passes that text to
 `stage_prompt_compose_parts` (`scripts/lib/stage-prompt.sh`), which puts the prompt in the one order. The
 router refuses a stage prompt that is not in that order. The index in `$ZBUILD_STAGE_INPUTS` lists every

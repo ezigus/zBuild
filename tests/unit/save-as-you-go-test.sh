@@ -9,8 +9,8 @@
 # go file (`role: checkpoint`, scripts/lib/stage-checkpoint.sh). Eric
 # (2026-10-03): every stage gets it.
 #
-# C1 [change] every plugin that calls the model declares it (capabilities.model_calls);
-#             every stage's notes file is the engine's (ADR-067 §8)
+# C1 [change] every stage's notes file and budget are the engine's (ADR-067 §8);
+#             no stage declares whether it calls a model
 # C2 [change] map elements running in parallel never share a checkpoint file:
 #             `${map_element}` in a path resolves to each element's own name
 # C3 [change] a stage's notes file is listed under Previous work for every later
@@ -28,22 +28,13 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "every stage saves as it goes, and hands over what it found (#2270)"
 setup_test_env "save-as-you-go"
 
-print_test_section "C1: every model-calling plugin says so, and so gets its budget"
-# Every stage gets a notes file from the engine (ADR-067 §8); a stage that calls
-# a model declares how (capabilities.model_calls), so its rules carry its budget.
+print_test_section "C1: the engine needs no declaration from a stage"
+# Every stage gets a notes file and the same per-call budget from the engine
+# (ADR-067 §8); no stage says whether or how it calls a model.
 # shellcheck source=../../scripts/lib/stage-prompt.sh
 source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
-_missing=""
-for d in "$REPO_ROOT"/plugins/*/*/; do
-    _calls=0
-    for f in "$d"*.sh "$d"lib/*.sh; do
-        [[ -f "$f" ]] || continue
-        grep -qE '^[^#]*route_to_model(_loop)?[[:space:]]' "$f" && { _calls=1; break; }
-    done
-    [[ $_calls -eq 1 ]] || continue
-    [[ "$(stage_model_calls "$d/manifest.yaml")" != "none" ]] || _missing+="${d#"$REPO_ROOT"/}"$'\n'
-done
-assert_eq "[C1] every plugin that calls the model declares model_calls" "" "$_missing"
+assert_eq "[C1] no manifest declares model_calls" "" \
+    "$(grep -l 'model_calls:' "$REPO_ROOT"/plugins/*/*/manifest.yaml 2>/dev/null || true)"
 
 print_test_section "C2: each map element has its own checkpoint"
 # shellcheck source=../../core/pipeline/verdict.sh

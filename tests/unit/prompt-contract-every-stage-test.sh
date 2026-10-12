@@ -2,7 +2,7 @@
 # tests/unit/prompt-contract-every-stage-test.sh — every stage that calls a model
 # sends a prompt in the contract order (ADR-067 §8, amended).
 #
-# For every stage that declares it calls a model (capabilities.model_calls),
+# For every stage whose code calls a model (route_to_model / route_to_model_loop),
 # this runs the stage's real prompt code with only the model call stubbed, and
 # checks the prompt the stage actually sends:
 #
@@ -158,9 +158,13 @@ _c_spec_correspondence() { ( source "$REPO_ROOT/plugins/agent/spec-correspondenc
 
 # ─── E3: every model-calling stage has a composer ───────────────────────────
 STAGES=()
-for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
-    [[ "$(stage_model_calls "$_m")" == "none" ]] && continue
-    STAGES+=("$(basename "$(dirname "$_m")")")
+for _d in "$REPO_ROOT"/plugins/*/*/; do
+    _calls=0
+    for _f in "$_d"*.sh "$_d"lib/*.sh; do
+        [[ -f "$_f" ]] || continue
+        grep -qE '^[^#]*route_to_model(_loop)?[[:space:]]' "$_f" && { _calls=1; break; }
+    done
+    [[ $_calls -eq 1 ]] && STAGES+=("$(basename "$_d")")
 done
 _missing=""
 for _s in "${STAGES[@]}"; do

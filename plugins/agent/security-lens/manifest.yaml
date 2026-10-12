@@ -46,10 +46,6 @@ config:
     timeout_s: 600
     max_turns: 45
 
-capabilities:
-  # ADR-067 §8: it calls the model once per prompt; the engine states that budget.
-  model_calls: single
-
 inputs:
   # security-lens runs inside compound_quality (orchestrator). It does NOT
   # participate in the linear inter-stage contract validated by ADR-020 at

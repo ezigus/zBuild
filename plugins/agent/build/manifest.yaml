@@ -123,5 +123,3 @@ capabilities:
   writes_repository: true
   produces_commits: true
   empty_diff_legitimate: true
-  # ADR-067 §8: it calls the model in a loop, so the engine tells it how many calls it gets.
-  model_calls: loop

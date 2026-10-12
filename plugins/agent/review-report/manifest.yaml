@@ -69,10 +69,6 @@ config:
     - red-team
     - maintainability
 
-capabilities:
-  # ADR-067 §8: it calls the model once per prompt; the engine states that budget.
-  model_calls: single
-
 inputs:
   - id: scope_manifest
     required: true

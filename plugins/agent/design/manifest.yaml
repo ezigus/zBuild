@@ -41,10 +41,6 @@ config:
     timeout_s: 600
     max_turns: 45
 
-capabilities:
-  # ADR-067 §8: it calls the model in a loop, so the engine tells it how many calls it gets.
-  model_calls: loop
-
 inputs:
   - id: scope_manifest
     required: true

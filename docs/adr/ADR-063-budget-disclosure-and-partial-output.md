@@ -129,8 +129,8 @@ correct now and neither is pinned to the enforcing value.
 **Amended 2026-10-12 (ADR-067 §8): the engine states the budget, once, for every stage.**
 The per-stage budget helpers and the shared `stage_budget_note` are removed. The engine
 states each stage's budget in its **Rules for this stage** block: seconds and turns per
-model call and how many calls the stage gets (`capabilities.model_calls: single | loop`),
-read from the same resolvers the router enforces (`scripts/lib/stage-limits.sh`, one copy
+model call, the same for every stage — the engine needs no declaration from a stage about
+whether or how it calls a model — read from the same resolvers the router enforces (`scripts/lib/stage-limits.sh`, one copy
 for both). A stage with no turn limit is told so. Enforced by
 `tests/unit/stage-prompt-contract-test.sh` R3 and `tests/unit/save-as-you-go-test.sh` C1.
 

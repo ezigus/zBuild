@@ -38,7 +38,8 @@
 #   R2 [change]: the read-only rule appears only for a stage that may not
 #                change the repository
 #   R3 [change]: the budget comes from the limits the engine enforces: seconds
-#                and turns per call, and the number of calls
+#                and turns per model call — the same for every stage, with no
+#                declaration from the stage about how it calls a model
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -189,8 +190,6 @@ id: pc-agent
 name: pc-agent
 kind: agent
 version: 0.0.1
-capabilities:
-  model_calls: single
 hooks:
   run: x_run
 outputs:
@@ -349,7 +348,6 @@ kind: agent
 version: 0.0.1
 capabilities:
   writes_repository: true
-  model_calls: loop
 hooks:
   run: x_run
 outputs:
@@ -367,14 +365,16 @@ assert_contains "[R1] the shared rules" "$ru" "### How every stage works"
 assert_contains "[R2] read-only for a stage that may not change the repository" "$ru" "You may not change the repository"
 assert_contains "[R3] seconds per call, from the engine's limit" "$ru" "777 seconds"
 assert_contains "[R3] max_turns 0 is no turn limit" "$ru" "no limit on turns"
-assert_contains "[R3] a single-call stage gets one call" "$ru" "one model call"
+assert_not_contains "[R3] no call count is stated" "$ru" "one model call"
 ruw="$(ZBUILD_CURRENT_STAGE=pc-writer ZBUILD_ROUTER_MAX_TURNS=40 ZBUILD_ROUTER_MAX_ITERATIONS=6 \
        _stage_block_rules pc-writer "$STATE" "$PROOT/agent/pc-writer/manifest.yaml")"
 assert_not_contains "[R2] no read-only rule for a stage that writes the repository" "$ruw" "You may not change the repository"
 assert_contains "[R3] turns per call" "$ruw" "40 turns"
-assert_contains "[R3] a loop stage gets its number of calls" "$ruw" "up to 6 model calls"
-rut="$(ZBUILD_CURRENT_STAGE=pc-gate _stage_block_rules pc-gate "$STATE" "$PROOT/tool/pc-gate/manifest.yaml")"
-assert_contains "[R3] a stage that calls no model is told so" "$rut" "calls no model"
+assert_not_contains "[R3] no call count, whatever the stage's loop setting" "$ruw" "up to 6 model calls"
+rut="$(ZBUILD_CURRENT_STAGE=pc-gate ZBUILD_ROUTER_TIMEOUT=555 _stage_block_rules pc-gate "$STATE" "$PROOT/tool/pc-gate/manifest.yaml")"
+assert_contains "[R3] every stage is told the same per-call budget, tool or agent" "$rut" "555 seconds"
+assert_eq "[R3] no manifest declares how it calls a model" "" \
+    "$(grep -l 'model_calls:' "$REPO_ROOT"/plugins/*/*/manifest.yaml 2>/dev/null || true)"
 
 cleanup_test_env
 print_test_results

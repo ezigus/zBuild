@@ -55,8 +55,6 @@ config:
 # #2174: the author writes the acceptance testfiles INTO the repository.
 capabilities:
   writes_repository: true
-  # ADR-067 §8: it calls the model in a loop, so the engine tells it how many calls it gets.
-  model_calls: loop
 
 
 inputs:

@@ -113,8 +113,8 @@ assert_eq "[D1] Previous work was written" "present" "$(_seen previous-work)"
 assert_eq "[D1] Rules were written" "present" "$(_seen rules)"
 assert_contains "[D1] Previous work lists the producer's output" \
     "$(cat "$TEST_TEMP_DIR/previous-work.md" 2>/dev/null)" "$ART/sb-producer-out.json"
-assert_contains "[D1] Rules: a tool calls no model" \
-    "$(cat "$TEST_TEMP_DIR/rules.md" 2>/dev/null)" "calls no model"
+assert_contains "[D1] Rules: the per-call budget, the same for every stage" \
+    "$(cat "$TEST_TEMP_DIR/rules.md" 2>/dev/null)" "Your budget: each model call has"
 assert_file_exists "[D2] what the repository and issue looked like is recorded" \
     "$ART/stage-context/sb-tool.txt"
 assert_eq "[D2] the recorded HEAD is the repository's" \

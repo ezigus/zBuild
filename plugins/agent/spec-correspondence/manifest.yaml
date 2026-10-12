@@ -62,10 +62,6 @@ config:
     - unjudged
   tier_default: T2
 
-capabilities:
-  # ADR-067 §8: it calls the model once per prompt; the engine states that budget.
-  model_calls: single
-
 inputs:
   - id: design
     required: true
