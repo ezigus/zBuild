@@ -16,6 +16,7 @@ print_test_header "core/pipeline/strategies — integration: runner delegates vi
 setup_test_env "core-pipeline-strategy-int"
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+fixture_link_personas "$PLUGINS_ROOT"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 ORCH_SPY_LOG="$TEST_TEMP_DIR/orch-spy.log"
@@ -283,6 +284,7 @@ print_test_section "3. sequential halt-on-fail: only one dispatch when first fai
 # (The shared PLUGINS_ROOT has intake-agent which would be resolved first and
 # succeed, masking the failure we want to test.)
 SEQ_PLUGINS_ROOT="$TEST_TEMP_DIR/seq-plugins"
+fixture_link_personas "$SEQ_PLUGINS_ROOT"
 mkdir -p "$SEQ_PLUGINS_ROOT"
 
 # Copy the spy orch backend into the isolated root

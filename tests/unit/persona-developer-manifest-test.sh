@@ -53,20 +53,6 @@ validate_manifest "$REAL_MANIFEST" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on developer manifest" "0" "$rc"
 
-# SPEC-5: persona_stage_framing leads with perspective + task
-task_intro="Build the implementation."
-framing="$(persona_stage_framing developer "$task_intro" "$REAL_PROOT")"
-case "$framing" in
-    *correctness*) persp_ok=1 ;;
-    *) persp_ok=0 ;;
-esac
-assert_eq "[SPEC-5] persona_stage_framing leads with perspective + task: perspective contains 'correctness'" "1" "$persp_ok"
-case "$framing" in
-    *"$task_intro"*) intro_ok=1 ;;
-    *) intro_ok=0 ;;
-esac
-assert_eq "[SPEC-5] stage framing contains the supplied task_intro" "1" "$intro_ok"
-
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

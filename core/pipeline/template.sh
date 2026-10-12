@@ -2240,15 +2240,23 @@ _tpl_translate_new_shape() {
                 in_map_elems = 0
                 if ($0 ~ /\[/) {
                     map_elements = strip_inline_list($0); in_map_elems = 0
-                } else { in_map_elems = 1 }
+                } else { in_map_elems = 1; match($0, /^ */); elems_ind = RLENGTH }
                 next
             }
+            # An element is a plain name (`- security`) or carries its own
+            # settings like a stage does (`- id: sec` then `persona: security`,
+            # ADR-051 §2); the list holds its id, its keys are read where used.
             if (in_map_elems && $0 ~ /^[[:space:]]+-[[:space:]]/) {
                 item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
+                if (item ~ /^id:/) { sub(/^id:[[:space:]]*/, "", item); item = trim(item) }
                 if (item != "") map_elements = (map_elements == "" ? item : map_elements "," item)
                 next
             }
-            if (in_map_elems && $0 ~ /^[[:space:]]+[a-z_]+:/) { in_map_elems = 0 }
+            if (in_map_elems && $0 ~ /^[[:space:]]+[a-z_]+:/) {
+                match($0, /^ */)
+                if (RLENGTH > elems_ind) next
+                in_map_elems = 0
+            }
             if ($0 ~ /^[[:space:]]+max_parallel:/) {
                 v = $0; sub(/^[[:space:]]+max_parallel:[[:space:]]*/, "", v); map_max = trim(v); next
             }
@@ -2717,9 +2725,33 @@ template_stage_router_persona() {
                 in_block = 0
             }
         }
-        in_block && $0 ~ "^[[:space:]]+persona:[[:space:]]" {
+        in_block && $0 ~ "^[[:space:]]+persona:[[:space:]]" && indent($0) == block_ind + 2 {
             sub(/^[[:space:]]+persona:[[:space:]]*/, "")
             sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
+
+# ADR-051 §2 (amended 2026-10-12): the `persona:` a map group's element names
+# for itself (`elements: - id: <element>` / `persona: <id>`). Empty when the
+# element names none, or is a plain name. Never inferred from the element's name.
+template_map_element_persona() {
+    local group="$1" element="$2"
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk -v group="$group" -v element="$element" '
+        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+        $0 ~ "^"group":[[:space:]]*$" { in_group = 1; next }
+        in_group && /^[^[:space:]#]/ { exit }
+        in_group && /^[[:space:]]+elements:[[:space:]]*$/ { in_els = 1; els_ind = indent($0); next }
+        in_els && /[^[:space:]]/ && indent($0) <= els_ind { exit }
+        in_els && /^[[:space:]]+-[[:space:]]/ {
+            item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); sub(/^id:[[:space:]]*/, "", item)
+            sub(/[[:space:]]*#.*/, "", item); gsub(/[[:space:]]/, "", item)
+            mine = (item == element); next
+        }
+        in_els && mine && /^[[:space:]]+persona:[[:space:]]/ {
+            sub(/^[[:space:]]+persona:[[:space:]]*/, ""); sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
             print; exit
         }
     ' "${_TPL_SOURCE_FILE}" 2>/dev/null

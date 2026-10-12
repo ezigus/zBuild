@@ -227,17 +227,9 @@ _design_stage_run_inner() {
 
     local prompt_input_file="$artifact_dir/design-prompt.txt"
 
-    # Persona seam (#1324): open the prompt with the architect persona's framing
-    # when its manifest is present; when absent, persona_stage_framing returns 1
-    # and we fall back to behavior/task framing without a persona role declaration.
-    local _task_intro="Your job is to produce an ADR-style design.md for the task described in the plan below."
-    local _persona_applied=0
-    local _framing
-    local _framing_fallback="Your job is to produce an ADR-style design.md for the task described in the plan below."
-    _framing="$(persona_stage_framing architect "$_task_intro" "$_DESIGN_ROOT/plugins" 2>/dev/null)" \
-        && _persona_applied=1 \
-        || { warn "design: persona_stage_framing failed — using fallback framing"; _framing="$_framing_fallback"; }
-    [[ -n "$_framing" ]] || { _framing="$_framing_fallback"; _persona_applied=0; }
+    # The persona (ADR-051) reaches the model through the provider, not this
+    # text: the stage writes only its own job.
+    local _framing="Your job is to produce an ADR-style design.md for the task described in the plan below."
 
     cat > "$prompt_input_file" <<DESIGN_PROMPT
 ${_framing}
@@ -460,23 +452,13 @@ DESIGN_LIMITS
     # the operator. The single-file-artifact's value is the file content.
     # Mirrors build's deferred-close pattern (plugins/agent/build/plugin.sh).
     local router_rc=0
-    local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
-    if [[ "$_persona_applied" -eq 1 ]]; then
-        export ZBUILD_STAGE_IO_PERSONA=architect
-    else
-        export ZBUILD_STAGE_IO_PERSONA=architect:fallback
-    fi
     # #2186: what design.md was before THIS call — on a timeout, whether the call
     # wrote a new design is the one fact that decides what gets published.
     local _design_before; _design_before="$(cksum 2>/dev/null < "$output_design_md" || printf 'absent')"
     route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" "$max_iter" \
         --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
-    if [[ "$_prev_persona_env" == "__UNSET__" ]]; then
-        unset ZBUILD_STAGE_IO_PERSONA
-    else
-        export ZBUILD_STAGE_IO_PERSONA="$_prev_persona_env"
-    fi
+
 
     if [[ $router_rc -eq 130 ]]; then
         warn "_design_stage_run_inner: route_to_model_loop rc=130 (SIGINT) — propagating abort"

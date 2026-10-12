@@ -41,6 +41,7 @@ export ZBUILD_CONTRACT_VALIDATOR=warn   # synthetic stubs have no honest contrac
 export ZBUILD_VISION_GATE=off
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+fixture_link_personas "$PLUGINS_ROOT"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 mkdir -p "$TEST_TEMP_DIR/events"
 

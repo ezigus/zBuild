@@ -32,8 +32,9 @@
 #                    ever escalated by a non-zero counter, so eight junk replies
 #                    incremented nothing and the stage wrote a complete pass
 #                    (#2062; run 33944161764 shipped exactly that artifact)
-#   SPEC-6 [change]: the QA persona's perspective REACHES the prompt, and the
-#                    template BINDS it. #1627 recorded that personas are
+#   SPEC-6 [change]: the template BINDS the QA persona, and the stage does not
+#                    frame it in its own text: the router hands it to the
+#                    provider (ADR-051 §3, persona-agent-delivery-test PA2/PA3). #1627 recorded that personas are
 #                    consumed only by review lenses and that no template carries
 #                    a persona: key — so a persona manifest that nothing
 #                    resolves is decoration, the "green-but-inert" shape #1628
@@ -135,9 +136,12 @@ assert_eq "[SPEC-4][guard] no exit_when in any template names it" \
            | xargs -I{} grep -A4 'exit_when:' {} 2>/dev/null \
            | grep -c 'spec-correspondence' || true)"
 
-# ── SPEC-6: the persona is resolved and reaches the prompt ─────────────────
-assert_contains "[SPEC-6][change] the QA persona's perspective reaches the prompt" \
-    "$_P" "You assure traceability, you do not test"
+# ── SPEC-6: the stage does not frame the persona itself ───────────────────
+if grep -qF "You assure traceability, you do not test" <<< "$_P"; then
+    assert_fail "[SPEC-6][change] the stage's own prompt does not frame the QA persona" "perspective found"
+else
+    assert_pass "[SPEC-6][change] the stage's own prompt does not frame the QA persona"
+fi
 
 # ── SPEC-6: and the TEMPLATE binds it, so it is not inert in a real run ────
 assert_contains "[SPEC-6][change] simple.yaml binds the persona to the stage" \

@@ -1,6 +1,6 @@
 # ADR-051 — Engine-owned, stage-keyed data provision (persona = first instance)
 
-**Status:** Accepted (2026-07-26)
+**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one)
 **Issue:** #1303 (Initiative 1.3 — "Personas as Data", #1551)
 **Related:** [ADR-047](ADR-047-stage-agnostic-mechanics.md) (stage-agnostic mechanics),
 [ADR-049](ADR-049-vision-document-standard.md) (generic preamble injection),
@@ -60,23 +60,29 @@ own personas (see §4). The engine never enumerates the persona set.
 ### 2. The binding is template data; `core/pipeline` passes it through blind
 
 Which persona a stage uses is a **declaration in the template**, not code in a plugin:
-`stage_definitions.<stage>.persona: <id>` for single-pin stages, or the `map over: agents`
-element id for the fan-out lenses. `core/pipeline` treats this as opaque per-stage data via a
+`stage_definitions.<stage>.persona: <id>` (or `persona:` in the stage's own section) for a
+stage, and, for a `type: map` group, each element's own `persona:` — an element carries its
+settings the way a stage does (`elements: - id: <element>` / `persona: <id>`). A persona is never
+inferred from an element's name: an element that names none runs as its stage's pin, else
+`generic` (amended 2026-10-12). Every persona the template names must exist (§4): the startup
+preflight refuses a run whose template names one that is in neither the repository's overlay nor
+the install, in its default mode too, so a misspelt id never quietly runs as `generic`. `core/pipeline` treats this as opaque per-stage data via a
 name-mangled accessor — a drop-in copy of the existing `template_stage_router_tier`
 (`core/pipeline/template.sh:2596`) / `template_stage_negctl_timeout` (`:2570`) lazy readers, with
 **zero persona semantics in the engine mechanics**. Onboarding a fictitious stage leaves the
 mechanics byte-identical, per ADR-047.
 
-### 3. Resolve + inject at the router seam; the engine stays plugin/stage-agnostic
+### 3. The router resolves the persona; the provider delivers it (amended 2026-10-12)
 
-Injection generalizes the [ADR-049](ADR-049-vision-document-standard.md) vision-preamble seam
-into one generic "inject engine-provided preamble data" mechanism at `_route_redact_prompt`.
-Keyed on `ZBUILD_CURRENT_STAGE`, the router reads the declared binding, resolves it to text via a
-**provider** — persona is the first provider; the resolver library `core/plugin-registry/persona.sh`
-supplies `id → perspective` — and prepends that text generically. The provider indirection keeps
-`core/pipeline` (the mechanics) free of any persona-specific code; the router, which already owns
-tier/timeout/redaction/vision resolution, hosts the generic injection. Future elements (tier,
-model) register as additional providers on the same seam — no new injection path per element.
+Every model call a dispatched stage makes runs as that stage's persona. The router resolves it
+(§4, §5) keyed on `ZBUILD_CURRENT_STAGE` — for a map element, the persona the template names for
+it (§2) — and the **provider module that calls the
+model decides how it reaches the model** (`core/router/persona-delivery.sh`). A provider that can
+run the call as an agent defines `provider_<name>_persona_args` and gets the persona's id, summary
+and `perspective`: Anthropic passes `--agents <json> --agent <id>`. A provider that cannot gets
+the persona as the prompt's first section, `## Who you are`, followed by the stage's contract
+prompt (ADR-067 §8). Either way, every call of a stage's model loop runs as the persona; a model
+call made outside any stage runs as none. `core/pipeline` holds no persona code (ADR-047).
 
 ### 4. Discovery spans the installed tree AND the target-repo overlay
 
@@ -97,32 +103,32 @@ leaked via `ZBUILD_PLUGINS_ROOT` into nested runners — preserving
 ### 5. Resolution precedence
 
 Mirroring `resolve_tier` (`scripts/lib/tier-resolve.sh:55`):
-`ZBUILD_<STAGE>_PERSONA` env  >  template `stage_definitions.<stage>.persona`  >  manifest default
+`ZBUILD_<STAGE>_PERSONA` env  >  a map element's own `persona:`  >  template `stage_definitions.<stage>.persona`  >  manifest default
 >  **generic default persona**. The first non-empty binding wins; a divergent env override against
 a template value is auditable, consistent with `_route_resolve_knob` (`route.sh:457`).
 
-### 6. Injection order: through redaction
+### 6. The persona goes through redaction (amended 2026-10-12)
 
-The resolved perspective is prepended **before** the single `apply_scope_redaction` pass, at the
-same point as the vision preamble, so it is scope-checked like all model-bound text
-([ADR-043](ADR-043-redaction-by-construction.md) / [ADR-004](ADR-004-redaction-chokepoint.md)) —
-no bypass of the chokepoint, one redaction pass, covering both model paths by construction.
+The persona's text is model-bound and passes through `apply_scope_redaction` like the prompt
+([ADR-043](ADR-043-redaction-by-construction.md) / [ADR-004](ADR-004-redaction-chokepoint.md)):
+as `## Who you are` it is part of the prompt the router redacts; given to the provider as an agent
+it is redacted on its own first, so the prompt's `redaction.applied` stays the last event before
+the call. A persona that cannot be redacted is not sent.
 
-### 7. Framing-migration: the plugin pins move to the template
+### 7. The pins live in the template; no stage frames a persona (amended 2026-10-12)
 
-The stage plugins **drop** their hardcoded `persona_stage_framing` calls (swept in #1604); the
-bindings (design→architect, plan→product-owner, impact→architect, build→developer) **move to the
-template** as declared data. A **generic default persona** supplies the byte-identical baseline
-when no binding resolves, reproducing each stage's current `_task_intro` text verbatim (note that
-`persona_stage_framing` joins with `\n\n{task}` and build's baseline carries literal newlines,
-`plugins/agent/build/lib/prompt.sh:31`). This is the outcome that actually *removes* 1.2's
-hardcoding rather than shadowing it, and it makes double-framing structurally impossible. The
-alternative (additive specialization) is rejected below.
+The stage plugins no longer call `persona_stage_framing` (#1604; the function is removed with its
+twin `resolve_persona_charter`). The shipped templates pin plan→product-owner, design→architect,
+build→developer, alongside the existing spec-coverage→product-owner,
+spec-correspondence→quality-assurance and issue-acceptance→product-owner. A stage keeps its own
+job sentence in its own `## What you own` — it is the stage's task, not a persona. A stage with no
+pin runs as `generic`. A review lens keeps its own question as its charter; a lens persona's
+`perspective` is that same question, delivered by the provider.
 
 ### 8. Boundary and breadth
 
-Once codified, **no plugin resolves its own persona (or tier)** — this boundary is lint-enforced
-(a grep-clean check landed with the injection/generalization work). Persona is normative now;
+**No plugin resolves or frames its own persona**: no stage prompt carries the perspective of a
+persona a shipped template pins, and no plugin calls `persona_stage_framing` (amended 2026-10-12). Persona is normative now;
 tier/model/timeout/max_turns/redaction follow the identical declared-data + provider pattern, with
 tier/model codified under EPIC #1308.
 
@@ -192,3 +198,14 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
 - Redaction chokepoint: [ADR-043](ADR-043-redaction-by-construction.md),
   [ADR-004](ADR-004-redaction-chokepoint.md).
 - Issue: #1303; initiative: #1551.
+
+## Enforced by
+
+- §1 (a persona is data: id, role, perspective; the resolvers and the live manifests) → `tests/unit/persona-resolver-test.sh`, `tests/unit/persona-kind-validation-test.sh`
+- §2, §5 (the template pin picks the persona; the env override wins) → `tests/unit/persona-agent-delivery-test.sh` PA2, PA3
+- §2 (a map element names its own persona, never inferred from its name; its stage's pin, else generic, when it names none; every named persona exists or the run is refused at startup; the shipped lenses each name theirs) → `tests/unit/map-element-persona-test.sh` ME1–ME6
+- §3 (the provider delivers the persona: Anthropic's `--agents`/`--agent`; `## Who you are` for a provider that cannot; every loop call; no persona outside a stage; a map element's declared persona) → `tests/unit/persona-agent-delivery-test.sh` PA1, PA2, PA5–PA8
+- §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; generic when none) → `tests/unit/persona-agent-delivery-test.sh` PA4; the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
+- §6 (the persona passes through the scope redaction, before the prompt's own) → `tests/unit/persona-agent-delivery-test.sh` PA10
+- §7 (the shipped templates pin plan, design, build) → `tests/unit/persona-agent-delivery-test.sh` PA9
+- §8 (no stage frames a persona) → `tests/unit/prompt-contract-every-stage-test.sh` E5

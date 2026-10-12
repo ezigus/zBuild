@@ -4,8 +4,11 @@
 #
 # Public functions:
 #   resolve_persona <stage_id>
-#     Walks the four-step precedence chain:
+#     Walks the precedence chain:
 #       1. ZBUILD_<STAGE>_PERSONA env (stage_id uppercased, '-'→'_')
+#       1b. for a map element (ZBUILD_MAP_ELEMENT), the persona the template
+#           names for that element (template_map_element_persona) — never one
+#           guessed from the element's name (ADR-051 §2, amended 2026-10-12)
 #       2. template_stage_router_persona (per-stage template binding)
 #       3. template_config_persona (global template default)
 #       4. id=generic (terminal fallback)
@@ -16,6 +19,10 @@
 #     The overlay scan uses a LOCAL variable — never ZBUILD_PLUGINS_ROOT (ADR-024).
 #     If the resolved id is absent from both roots, falls back to id=generic.
 #     Prints the persona directory path; returns 0 on success, 1 if not found.
+#
+#   persona_find_dir <persona_id>
+#     The persona's directory from the two roots (overlay first), no fallback.
+#     Returns 1 when the id exists in neither.
 #
 #   persona_text <persona_dir>
 #     Reads persona.perspective from <persona_dir>/manifest.yaml via yaml_get.
@@ -64,6 +71,12 @@ resolve_persona() {
     _env_name="ZBUILD_$(printf '%s' "$_stage" | tr '[:lower:]-' '[:upper:]_')_PERSONA"
     local persona_id="${!_env_name:-}"
 
+    # 1b. A map element's own declared persona (ADR-051 §2).
+    if [[ -z "$persona_id" && -n "${ZBUILD_MAP_ELEMENT:-}" ]] \
+        && declare -F template_map_element_persona >/dev/null 2>&1; then
+        persona_id="$(template_map_element_persona "$_stage" "$ZBUILD_MAP_ELEMENT" 2>/dev/null || true)"
+    fi
+
     # 2. Template per-stage binding (template_stage_router_persona, ADR-051 §5).
     if [[ -z "$persona_id" ]] && declare -F template_stage_router_persona >/dev/null 2>&1; then
         if [[ -n "$_stage" ]]; then
@@ -79,33 +92,32 @@ resolve_persona() {
     # 4. Fall through to id=generic — the terminal fallback.
     [[ -z "$persona_id" ]] && persona_id="generic"
 
-    # ── Two-root discovery (ADR-051 §4, ADR-024 hermeticity) ─────────────────
-    # Installed root: ZBUILD_PLUGINS_ROOT (operator-set) or repo default.
-    local _installed_root="${ZBUILD_PLUGINS_ROOT:-$_PERSONA_RESOLVE_ROOT/plugins}"
-
-    # Overlay root: derived from ZBUILD_REPO_ROOT or git — NEVER from
-    # ZBUILD_PLUGINS_ROOT (ADR-024: overlay root must stay a local variable).
-    local _repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
-    local _overlay_root=""
-    [[ -n "$_repo_root" ]] && _overlay_root="$_repo_root/.zbuild/plugins"
-
-    # find_persona scans both roots and returns the overlay manifest when found
-    # (overlay wins on same id; absent overlay dir is silent — ADR-051 §4).
-    local _found_mf=""
-    _found_mf="$(find_persona "$persona_id" "$_installed_root" "$_overlay_root" 2>/dev/null || true)"
-
     local persona_dir=""
-    [[ -n "$_found_mf" ]] && persona_dir="$(dirname "$_found_mf")"
-
+    persona_dir="$(persona_find_dir "$persona_id")" || persona_dir=""
     # Not found in either root: retry with the generic terminal fallback.
     if [[ -z "$persona_dir" && "$persona_id" != "generic" ]]; then
-        _found_mf="$(find_persona "generic" "$_installed_root" "$_overlay_root" 2>/dev/null || true)"
-        [[ -n "$_found_mf" ]] && persona_dir="$(dirname "$_found_mf")"
+        persona_dir="$(persona_find_dir generic)" || persona_dir=""
     fi
 
     [[ -n "$persona_dir" ]] || return 1
     printf '%s\n' "$persona_dir"
     return 0
+}
+
+# ── persona_find_dir <persona_id> ────────────────────────────────────────────
+# Two-root discovery (ADR-051 §4, ADR-024 hermeticity): the installed root
+# (ZBUILD_PLUGINS_ROOT or this install) and the target repository's overlay —
+# a LOCAL variable, never ZBUILD_PLUGINS_ROOT. The overlay wins on the same id.
+persona_find_dir() {
+    local id="${1:-}" mf=""
+    [[ -n "$id" ]] || return 1
+    local _installed_root="${ZBUILD_PLUGINS_ROOT:-$_PERSONA_RESOLVE_ROOT/plugins}"
+    local _repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
+    local _overlay_root=""
+    [[ -n "$_repo_root" ]] && _overlay_root="$_repo_root/.zbuild/plugins"
+    mf="$(find_persona "$id" "$_installed_root" "$_overlay_root" 2>/dev/null || true)"
+    [[ -n "$mf" ]] || return 1
+    printf '%s\n' "$(dirname "$mf")"
 }
 
 # ── persona_text <persona_dir> ───────────────────────────────────────────────

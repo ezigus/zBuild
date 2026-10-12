@@ -38,6 +38,7 @@ _ZB_ID="$(zb_test_issue)"
 
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+fixture_link_personas "$PLUGINS_ROOT"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 

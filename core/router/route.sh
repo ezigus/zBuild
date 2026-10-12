@@ -106,6 +106,11 @@ source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
 # every routing plugin gets resolve_persona/persona_text by construction.
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
+# ADR-051 (amended 2026-10-12): every call a dispatched stage makes runs as its
+# persona, delivered the way the provider takes it.
+_zbuild_route_require "$_ZBUILD_ROOT/core/router/persona-delivery.sh"
+# shellcheck source=persona-delivery.sh
+source "$_ZBUILD_ROOT/core/router/persona-delivery.sh"
 # ADR-067 §8: the engine/stage prompt contract — the router checks a stage
 # prompt's order with stage_prompt_check before every model call.
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh"
@@ -168,9 +173,11 @@ route_to_model() {
     # most-recent event for this run/stage) we proceed unchanged; otherwise the
     # router redacts now and hands _route_call_claude the redacted text. On a
     # fail-closed refusal (missing/empty manifest, no override) this returns 2.
+    # The model is looked up first: the provider it names decides how the
+    # stage's persona reaches the model, which redaction must know (ADR-051).
+    _route_lookup_model "$tier" "$model_override"          || return $?
     _route_ensure_redaction "$tier" "$skip_precondition" "$prompt" || return $?
     prompt="$_ROUTE_REDACTED_PROMPT"
-    _route_lookup_model "$tier" "$model_override"          || return $?
 
     # ADR-017 (#455): precedence-aware timeout resolution.
     # per-stage template router.timeout_s > ZBUILD_ROUTER_TIMEOUT env > 300s default.
@@ -337,6 +344,11 @@ _route_redact_prompt() {
                 "${ZBUILD_CURRENT_STAGE:-stage}" >&2
             return 1
         fi
+        # ADR-051: a provider that cannot take an agent gets the persona as the
+        # prompt's first section — here, so it rides the redaction below.
+        _route_persona_prepare
+        _route_persona_into_prompt "$input"
+        _route_persona_redact "$manifest" "$allowlist" "$cycle_id"
     fi
 
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
@@ -661,6 +673,9 @@ _route_call_claude() {
             "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+    # ADR-051: the stage's persona, as the provider takes it.
+    _route_persona_prepare
+    _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")
     # Ensure scratch dir is set before permissions.sh runs; in test/golden
     # contexts ZBUILD_STAGE_SCRATCH may be unset and the fallback warning event
     # would appear in the golden sequence. Pick the engine tmpdir as the default
@@ -782,10 +797,10 @@ _route_call_claude() {
     # retries: 1 for timeouts, and silently changing what that means for it would
     # be a behaviour change nobody asked for.
     #
-    # The retry is only worth taking because the stage wrote a checkpoint as it
-    # worked — _route_redact_prompt splices it into the next attempt's prompt, so
-    # attempt 2 continues from the exploration instead of re-deriving it on an
-    # empty context. Without the checkpoint this would just burn the budget twice
+    # The retry is only worth taking because the stage wrote its notes file as
+    # it worked (ADR-067 §8) — the prompt names that file, so attempt 2
+    # continues from the exploration instead of re-deriving it on an empty
+    # context. Without the checkpoint this would just burn the budget twice
     # (the argument #1727 makes against a naive retry).
     if [[ $rc -ne 0 && $_attempt -lt $_exhaust_retries ]] \
         && declare -F _router_is_budget_exhausted >/dev/null 2>&1 \
@@ -1544,6 +1559,9 @@ ${_diff_pointer}"
                 "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
         fi
         _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+        # ADR-051: the stage's persona, as the provider takes it.
+        _route_persona_prepare
+        _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")
         : "${ZBUILD_STAGE_SCRATCH:="$_rt_tmp"}"
         # #1919 (C10): abort iteration on settings build failure (SPEC-3).
         _zbuild_build_permissions_settings || { rc=2; break; }

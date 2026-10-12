@@ -39,6 +39,7 @@ mkdir -p "$EVENTS_DIR"
 # ─── Build a minimal isolated pipeline environment ───────────────────────────
 A3_DIR="$TEST_TEMP_DIR/a3"
 A3_PLUGINS="$A3_DIR/plugins"
+fixture_link_personas "$A3_PLUGINS"
 A3_STATE_DIR="$A3_DIR/state"
 A3_EVENTS_DIR="$A3_DIR/events"
 A3_EVENTS_JSONL="$A3_EVENTS_DIR/events.jsonl"
@@ -216,6 +217,7 @@ fi
 # enforcement, and that must be a visible consequence rather than a silent one.
 B_DIR="$TEST_TEMP_DIR/b"
 B_PLUGINS="$B_DIR/plugins"
+fixture_link_personas "$B_PLUGINS"
 B_STATE_DIR="$B_DIR/state"
 B_EVENTS_DIR="$B_DIR/events"
 B_EVENTS_JSONL="$B_EVENTS_DIR/events.jsonl"

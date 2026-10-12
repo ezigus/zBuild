@@ -10,6 +10,11 @@
 #   provider_<name>_call_cost <response>      → the call's cost in USD, or nothing
 #                                               when the provider cannot say
 #   provider_<name>_model_used <response>     → the concrete model that answered
+#   provider_<name>_persona_args <name> <description> <perspective>
+#                                             → the call's arguments that run it
+#                                               as a persona; absent or rc 1 when
+#                                               the provider cannot, and the router
+#                                               then puts the persona in the prompt
 #
 # <response> is the raw output of the call.
 
@@ -40,4 +45,17 @@ provider_anthropic_model_used() {
     jq -r 'if type == "object" then ((.modelUsage // {}) | to_entries
             | max_by(.value.outputTokens // 0) | .key // empty) else empty end' \
         <<< "${1:-}" 2>/dev/null || true
+}
+
+# provider_anthropic_persona_args <name> <description> <perspective> — how this
+# provider runs a call as a persona (ADR-051, amended 2026-10-12): the claude
+# CLI takes an agent definition and the agent to run as. One argument per line.
+# rc 1 (and nothing printed) when the name is not one the CLI accepts.
+provider_anthropic_persona_args() {
+    local name="${1:-}" desc="${2:-}" prompt="${3:-}" json
+    [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ && -n "$prompt" ]] || return 1
+    json="$(jq -cn --arg n "$name" --arg d "${desc:-$name}" --arg p "$prompt" \
+        '{($n): {description: $d, prompt: $p}}' 2>/dev/null)" || return 1
+    [[ -n "$json" ]] || return 1
+    printf '%s\n' --agents "$json" --agent "$name"
 }
