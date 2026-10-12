@@ -1,7 +1,5 @@
-## spec-coverage — uncovered
+## spec-coverage — covered
 
-- SPEC-1 enumerates only four dispatch routes and omits cycle member, parallel-group member, and always_run as explicit termination-at-limit cases, and no SPEC requires testing under all three backends; SPEC-6 covers only the release/persist always_run values while R-6 requires simple.yaml to carry the full stage_timeout_s table for all stages.
+- The revised design (SPECs 1–17) closes all prior gaps: SPEC-1 now names all seven dispatch routes including cycle member, parallel-group member, and always_run; SPEC-17 covers the backend dimension (orch-mock tested, ruflo-hive checked for no suppression); SPEC-6 explicitly enumerates every stage value required by R-6; and SPEC-15/SPEC-16 cover R-11 and R-13 as no-code specs.
 
-- NOT COVERED: R-1: SPEC-1 names only map, fanout, sequential strategy, and roleless leaf — it omits cycle member and parallel-group member as dispatch routes requiring explicit timeout-and-termination coverage, and omits always_run (SPEC-6 covers that _runner_dispatch_always_run reads stage_timeout_s rather than router.timeout_s, and SPEC-10 covers that kill goes through zbuild_pg_kill, but no SPEC asserts that a hung run hook on the always_run route ends timed_out naming the stage and the limit)
-- NOT COVERED: additionally no SPEC requires the regression test to be run or the timeout behavior to be verified under the ruflo-hive and mock backends, only under the default
-- NOT COVERED: R-6: SPEC-6 covers only release (30 s) and persist (120 s) in simple.yaml and the _runner_dispatch_always_run config-source change, but R-6 requires simple.yaml to carry stage_timeout_s values for every stage in the issue table — test (90 m), build (70 m), design (65 m), plan (20 m), test-author (15 m), acceptance-gate/issue-acceptance/spec-coverage/spec-correspondence/review_lenses (10 m), and intake/pr/hydrate/secret-scan/shape-floor/design-gate/gate-aggregator/assertion-integrity/review-aggregator (10 m) — and no SPEC names or tests any of these
+- every requirement the issue states maps to a declared SPEC
