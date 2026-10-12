@@ -1,0 +1,53 @@
+### SPEC-3 baseline tests/unit/run-watchdog-clean-exit-test.sh
+
+[38;2;0;212;255m[1m  run-watchdog-clean-exit: watchdog reaped, status unchanged (#1944 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-3] _runner_resolve_run_limit_s defined in stage-limits.sh[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-3] _runner_resolve_run_limit_s is defined
+    [2mfunction not found; watchdog arms only when this function exists[0m
+
+  [38;2;0;212;255m[#1944/SPEC-3] clean run with max_run_s=30 exits with complete status[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] clean run exits 0
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is complete (not timed_out)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is NOT timed_out
+
+  [38;2;0;212;255m[#1944/SPEC-3] no pipeline.end status=timed_out in events log after clean run[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no pipeline.end/timed_out event after clean run
+
+  [38;2;0;212;255m[#1944/SPEC-3] watchdog reaped: status unchanged after waiting past max_run_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] runner exits 0 with max_run_s=5 on a quick stage
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no timed_out event after waiting past max_run_s
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 7 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-3] _runner_resolve_run_limit_s is defined
+
+### SPEC-3 head tests/unit/run-watchdog-clean-exit-test.sh
+
+[38;2;0;212;255m[1m  run-watchdog-clean-exit: watchdog reaped, status unchanged (#1944 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-3] _runner_resolve_run_limit_s defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] _runner_resolve_run_limit_s is defined
+
+  [38;2;0;212;255m[#1944/SPEC-3] clean run with max_run_s=30 exits with complete status[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] clean run exits 0
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is complete (not timed_out)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is NOT timed_out
+
+  [38;2;0;212;255m[#1944/SPEC-3] no pipeline.end status=timed_out in events log after clean run[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no pipeline.end/timed_out event after clean run
+
+  [38;2;0;212;255m[#1944/SPEC-3] watchdog reaped: status unchanged after waiting past max_run_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] runner exits 0 with max_run_s=5 on a quick stage
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no timed_out event after waiting past max_run_s
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
+

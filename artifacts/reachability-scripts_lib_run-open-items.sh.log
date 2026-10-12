@@ -1,0 +1,308 @@
+### scripts/lib/run-open-items.sh reverted tests/integration/run-timed-out-test.sh
+
+[38;2;0;212;255m[1m  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mP1: slow stage timeout — status=timed_out written to pipeline-state.json[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
+
+  [38;2;0;212;255mP1: pipeline.end event fields — status=timed_out, stage, limit_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
+
+  [38;2;0;212;255mP2: watchdog fires even when engine is idle between dispatches[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: watchdog fired (stage may or may not have run before it)
+
+  [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 14s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 2816527 killed)
+
+  [38;2;0;212;255mP4: always_run release stage executes on timed-out exit path[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: pipeline status=timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 14 tests passed[0m
+
+### scripts/lib/run-open-items.sh head tests/integration/run-timed-out-test.sh
+
+[38;2;0;212;255m[1m  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mP1: slow stage timeout — status=timed_out written to pipeline-state.json[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
+
+  [38;2;0;212;255mP1: pipeline.end event fields — status=timed_out, stage, limit_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
+
+  [38;2;0;212;255mP2: watchdog fires even when engine is idle between dispatches[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: watchdog fired (stage may or may not have run before it)
+
+  [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 14s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 2763690 killed)
+
+  [38;2;0;212;255mP4: always_run release stage executes on timed-out exit path[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: pipeline status=timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 14 tests passed[0m
+
+### scripts/lib/run-open-items.sh reverted tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.dnnJJL/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.dnnJJL/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'
+### scripts/lib/run-open-items.sh head tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1944/worktree/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1944/worktree/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'
+### scripts/lib/run-open-items.sh reverted tests/unit/run-watchdog-clean-exit-test.sh
+
+[38;2;0;212;255m[1m  run-watchdog-clean-exit: watchdog reaped, status unchanged (#1944 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-3] _runner_resolve_run_limit_s defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] _runner_resolve_run_limit_s is defined
+
+  [38;2;0;212;255m[#1944/SPEC-3] clean run with max_run_s=30 exits with complete status[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] clean run exits 0
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is complete (not timed_out)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is NOT timed_out
+
+  [38;2;0;212;255m[#1944/SPEC-3] no pipeline.end status=timed_out in events log after clean run[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no pipeline.end/timed_out event after clean run
+
+  [38;2;0;212;255m[#1944/SPEC-3] watchdog reaped: status unchanged after waiting past max_run_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] runner exits 0 with max_run_s=5 on a quick stage
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no timed_out event after waiting past max_run_s
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
+
+### scripts/lib/run-open-items.sh head tests/unit/run-watchdog-clean-exit-test.sh
+
+[38;2;0;212;255m[1m  run-watchdog-clean-exit: watchdog reaped, status unchanged (#1944 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-3] _runner_resolve_run_limit_s defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] _runner_resolve_run_limit_s is defined
+
+  [38;2;0;212;255m[#1944/SPEC-3] clean run with max_run_s=30 exits with complete status[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] clean run exits 0
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is complete (not timed_out)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is NOT timed_out
+
+  [38;2;0;212;255m[#1944/SPEC-3] no pipeline.end status=timed_out in events log after clean run[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no pipeline.end/timed_out event after clean run
+
+  [38;2;0;212;255m[#1944/SPEC-3] watchdog reaped: status unchanged after waiting past max_run_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] runner exits 0 with max_run_s=5 on a quick stage
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no timed_out event after waiting past max_run_s
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
+
+### scripts/lib/run-open-items.sh reverted tests/integration/resume-after-run-timeout-test.sh
+
+[38;2;0;212;255m[1m  resume-after-run-timeout: watchdog armed from resumed run's wall-clock start (#1944 SPEC-4)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
+
+  [38;2;0;212;255m[#1944/SPEC-4] P2: _runner_resolve_run_limit_s defined (watchdog arms on every invocation)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run completes normally with generous max_run_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: resumed run did not time out (status=complete)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+
+### scripts/lib/run-open-items.sh head tests/integration/resume-after-run-timeout-test.sh
+
+[38;2;0;212;255m[1m  resume-after-run-timeout: watchdog armed from resumed run's wall-clock start (#1944 SPEC-4)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
+
+  [38;2;0;212;255m[#1944/SPEC-4] P2: _runner_resolve_run_limit_s defined (watchdog arms on every invocation)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run completes normally with generous max_run_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: resumed run did not time out (status=complete)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+
+### scripts/lib/run-open-items.sh reverted tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.dnnJJL/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.dnnJJL/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'
+### scripts/lib/run-open-items.sh head tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1944/worktree/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1944/worktree/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'
+### scripts/lib/run-open-items.sh reverted tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.dnnJJL/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.dnnJJL/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'
+### scripts/lib/run-open-items.sh head tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1944/worktree/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1944/worktree/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'

@@ -1,0 +1,46 @@
+### SPEC-2 baseline tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+    [2mfunction not found after sourcing scripts/lib/stage-limits.sh[0m
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-2] precedence checks skipped — function not found
+    [2mmissing implementation[0m
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-2] validation checks skipped — function not found
+    [2mmissing implementation[0m
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Ey8mzu/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Ey8mzu/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'
+### SPEC-2 head tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run: runner rejects invalid limit before dispatch[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1944/worktree/tests/unit/run-limit-precedence-test.sh: line 173: syntax error near unexpected token `('
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1944/worktree/tests/unit/run-limit-precedence-test.sh: line 173: `( cd "$MISCFG_OVERLAY" && bash "$RUNNER" --template limit-single --goal "test misconfigured limit" ) \'

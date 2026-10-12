@@ -1,0 +1,45 @@
+### SPEC-4 baseline tests/integration/resume-after-run-timeout-test.sh
+
+[38;2;0;212;255m[1m  resume-after-run-timeout: watchdog armed from resumed run's wall-clock start (#1944 SPEC-4)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
+    [2mexpected: manual_resume_only, got: fresh_start[0m
+
+  [38;2;0;212;255m[#1944/SPEC-4] P2: _runner_resolve_run_limit_s defined (watchdog arms on every invocation)[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
+    [2mfunction not found — the watchdog cannot be armed on resume without it[0m
+
+  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run completes normally with generous max_run_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: resumed run did not time out (status=complete)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 4 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
+  [38;2;248;113;113m✗[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+### SPEC-4 head tests/integration/resume-after-run-timeout-test.sh
+
+[38;2;0;212;255m[1m  resume-after-run-timeout: watchdog armed from resumed run's wall-clock start (#1944 SPEC-4)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
+
+  [38;2;0;212;255m[#1944/SPEC-4] P2: _runner_resolve_run_limit_s defined (watchdog arms on every invocation)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run completes normally with generous max_run_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: resumed run did not time out (status=complete)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+
