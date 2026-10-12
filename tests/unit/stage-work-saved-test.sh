@@ -18,6 +18,13 @@
 # SPEC-6 [change]: …but the run's code commits still go to the work branch — the
 #   scan covers artifacts, not the working tree.
 # SPEC-7 [change]: a credential scan that cannot load refuses the push.
+# SPEC-8 [change]: no changes, no save. Before the run knows where its work
+#   starts (intake has not recorded its baseline), a stage end pushes nothing:
+#   a work branch on origin that holds earlier work is left exactly as it was.
+#   #1801 run 38290215955: the end of hydrate force-pushed main over the
+#   branch's six earlier commits, before intake had run.
+# SPEC-9 [guard] : with the baseline recorded, a stage end that made no commits
+#   past it pushes nothing either.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -130,6 +137,26 @@ assert_contains "[SPEC-7] with no scanner available the push is refused" "$_s7" 
     _cycle_emit_member_dispatch_complete 1 "impact" 0 "pass" "complete" ) >/dev/null 2>&1
 assert_eq "[control] a passing member is snapshotted in this harness" "1" \
     "$(git -C "$REPO" rev-parse -q --verify "refs/heads/$STATE_BRANCH" >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# ─── SPEC-8/9: no changes, no save ────────────────────────────────────────────
+print_test_section "SPEC-8/9: a stage end with no changes of the run's own pushes nothing"
+WB="zbuild/issue-$_ID-prior-ci"
+# Earlier work on the branch, ahead of main.
+( cd "$REPO" && git checkout -q -b prior main && echo earlier > e.txt && git add e.txt \
+    && git commit -q -m "earlier run's work" && git push -q origin "prior:refs/heads/$WB" \
+    && git checkout -q --detach main ) >/dev/null 2>&1
+PRIOR="$(_on_origin "$WB")"
+STATE8="$TEST_TEMP_DIR/state8"; mkdir -p "$STATE8/artifacts"
+printf 'x\n' > "$STATE8/artifacts/hydrate-result.json"
+( cd "$REPO" && ZBUILD_STATE_DIR="$STATE8" ZBUILD_WORKSPACE_BRANCH="$WB" \
+    _runner_snapshot_artifacts "$STATE8" "hydrate" ) >/dev/null 2>&1
+assert_eq "[SPEC-8] the earlier work is on origin (fixture live)" "1" "$([[ -n "$PRIOR" ]] && echo 1 || echo 0)"
+assert_eq "[SPEC-8] before intake records a baseline, the work branch on origin is untouched" \
+    "$PRIOR" "$(_on_origin "$WB")"
+printf '%s' "$(git -C "$REPO" rev-parse HEAD)" > "$STATE8/intake-baseline-ref.txt"
+( cd "$REPO" && ZBUILD_STATE_DIR="$STATE8" ZBUILD_WORKSPACE_BRANCH="$WB" \
+    _runner_snapshot_artifacts "$STATE8" "plan" ) >/dev/null 2>&1
+assert_eq "[SPEC-9] no commits past the baseline, nothing pushed" "$PRIOR" "$(_on_origin "$WB")"
 
 print_test_results
 exit $((FAIL > 0))
