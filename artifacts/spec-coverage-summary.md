@@ -1,5 +1,5 @@
 ## spec-coverage — covered
 
-- The revised design (SPECs 1–17) closes all prior gaps: SPEC-1 now names all seven dispatch routes including cycle member, parallel-group member, and always_run; SPEC-17 covers the backend dimension (orch-mock tested, ruflo-hive checked for no suppression); SPEC-6 explicitly enumerates every stage value required by R-6; and SPEC-15/SPEC-16 cover R-11 and R-13 as no-code specs.
+- Every requirement R-1 through R-13 is fully demanded by at least one SPEC — SPEC-1/SPEC-18 for R-1 (all routes, all backends, timed_out disposition, event registration), SPEC-2 for R-2 (whole process group, both timeout and external-SIGTERM paths), SPEC-3–SPEC-7/SPEC-9–SPEC-10 for the remaining behavioral requirements, and SPEC-8/SPEC-11/SPEC-15/SPEC-16 for the retirement, ADR-amendment, grep-rl, and test-suite requirements.
 
 - every requirement the issue states maps to a declared SPEC
