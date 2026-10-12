@@ -1,6 +1,6 @@
 ### core/orch/contract.sh reverted tests/unit/stage-timeout-dispatch-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog[0m
 [2m  ══════════════════════════════════════════[0m
 
 
@@ -18,25 +18,28 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
 
   [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+    [2mfound:         kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true — replace with zbuild_pg_kill[0m
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
 
-  [38;2;0;212;255m[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+  [38;2;0;212;255mwatchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
+  [38;2;74;222;128m✓[0m orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
 
-  [38;2;0;212;255m[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+  [38;2;0;212;255morch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;248;113;113m[1m1 of 12 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
 
 ### core/orch/contract.sh head tests/unit/stage-timeout-dispatch-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog[0m
 [2m  ══════════════════════════════════════════[0m
 
 
@@ -54,21 +57,24 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
 
   [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+    [2mfound:         kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true — replace with zbuild_pg_kill[0m
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
 
-  [38;2;0;212;255m[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+  [38;2;0;212;255mwatchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
+  [38;2;74;222;128m✓[0m orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
 
-  [38;2;0;212;255m[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+  [38;2;0;212;255morch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;248;113;113m[1m1 of 12 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
 
 ### core/orch/contract.sh reverted tests/unit/stage-timeout-process-group-test.sh
 
@@ -113,6 +119,98 @@
 [2m  ──────────────────────────────────────────[0m
 
   [38;2;74;222;128m[1mAll 4 tests passed[0m
+
+### core/orch/contract.sh reverted tests/integration/runner-release-exit-paths-test.sh
+
+[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
+  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
+  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
+  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 33s)
+  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
+
+  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
+  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+    [2mpid 3369790 still alive 5s after the runner returned[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 17 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+### core/orch/contract.sh head tests/integration/runner-release-exit-paths-test.sh
+
+[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
+  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
+  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
+  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 33s)
+  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
+
+  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
+  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+    [2mpid 3353690 still alive 5s after the runner returned[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 17 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
 
 ### core/orch/contract.sh reverted tests/unit/stage-timeout-precedence-test.sh
 
@@ -387,7 +485,6 @@
   [38;2;0;212;255m[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
     [2mfound references:
-  tests/unit/orch-backend-misconfigured-test.sh
   core/orch/contract.sh
 [0m
 
@@ -425,10 +522,7 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
 
   [38;2;0;212;255m[#1801/SPEC-8] no file outside docs/adr/ names orch-sequential[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
-    [2mfound references:
-  tests/unit/orch-backend-misconfigured-test.sh
-[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
 
   [38;2;0;212;255m[#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-8] configuring sequential as backend signals misconfigured
@@ -449,48 +543,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 9 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
-
-### core/orch/contract.sh reverted tests/unit/orch-backend-misconfigured-test.sh
-
-[38;2;0;212;255m[1m  [#1801/SPEC-9] missing/unreadable orch backend → misconfigured[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1801/SPEC-9] orch_load_backend with unknown alias → misconfigured[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-9] unknown backend alias produces misconfigured + names the backend
-
-  [38;2;0;212;255m[#1801/SPEC-9] contract.sh has no fallback to orch-sequential[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-9] contract.sh has no fallback to orch-sequential
-    [2morch-sequential still referenced in contract.sh — the fallback was not removed[0m
-
-  [38;2;0;212;255m[#1801/SPEC-9] orch_load_backend fails (does not return 0) on missing backend[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-9] orch_load_backend returns non-zero on missing backend
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 3 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-9] contract.sh has no fallback to orch-sequential
-
-### core/orch/contract.sh head tests/unit/orch-backend-misconfigured-test.sh
-
-[38;2;0;212;255m[1m  [#1801/SPEC-9] missing/unreadable orch backend → misconfigured[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1801/SPEC-9] orch_load_backend with unknown alias → misconfigured[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-9] unknown backend alias produces misconfigured + names the backend
-
-  [38;2;0;212;255m[#1801/SPEC-9] contract.sh has no fallback to orch-sequential[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-9] contract.sh has no fallback to orch-sequential
-
-  [38;2;0;212;255m[#1801/SPEC-9] orch_load_backend fails (does not return 0) on missing backend[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-9] orch_load_backend returns non-zero on missing backend
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 3 tests passed[0m
+  [38;2;74;222;128m[1mAll 9 tests passed[0m
 

@@ -1,6 +1,6 @@
 ### SPEC-10 baseline tests/unit/stage-timeout-dispatch-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog[0m
 [2m  ══════════════════════════════════════════[0m
 
 
@@ -27,11 +27,11 @@
   [38;2;248;113;113m✗[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
     [2mstill present — the hand-rolled kill helper was not replaced by zbuild_pg_kill[0m
 
-  [38;2;0;212;255m[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+  [38;2;0;212;255mwatchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
+  [38;2;74;222;128m✓[0m orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
 
-  [38;2;0;212;255m[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+  [38;2;0;212;255morch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
 
 [2m  ──────────────────────────────────────────[0m
 
@@ -43,7 +43,7 @@
 
 ### SPEC-10 head tests/unit/stage-timeout-dispatch-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10/SPEC-17] per-dispatch stage timeout watchdog[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog[0m
 [2m  ══════════════════════════════════════════[0m
 
 
@@ -61,19 +61,83 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
 
   [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+    [2mfound:         kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true — replace with zbuild_pg_kill[0m
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
 
-  [38;2;0;212;255m[#1801/SPEC-17] watchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
+  [38;2;0;212;255mwatchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
+  [38;2;74;222;128m✓[0m orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
 
-  [38;2;0;212;255m[#1801/SPEC-17] orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-17] orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+  [38;2;0;212;255morch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
+  [38;2;74;222;128m✓[0m orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;248;113;113m[1m1 of 12 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+
+### SPEC-10 baseline tests/unit/stage-timeout-always-run-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-6] always_run uses stage_timeout_s; [#1801/SPEC-10] zbuild_pg_kill[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run is defined in runner.sh
+  [38;2;248;113;113m✗[0m [#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*
+    [2m_TPL_STAGE_TIMEOUT_S_* not found — still using old _TPL_STAGE_ROUTER_TIMEOUT_* or ZBUILD_RELEASE_TIMEOUT[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-6] _runner_dispatch_always_run no longer uses _TPL_STAGE_ROUTER_TIMEOUT_* as its time limit
+    [2mstill reads _TPL_STAGE_ROUTER_TIMEOUT_* for _ar_to — must use _TPL_STAGE_TIMEOUT_S_* instead[0m
+
+  [38;2;0;212;255m[#1801/SPEC-6] simple.yaml stage_timeout_s values[0m
+### SPEC-10 head tests/unit/stage-timeout-always-run-test.sh
+
+[38;2;0;212;255m[1m  [#1801/SPEC-6] always_run uses stage_timeout_s; [#1801/SPEC-10] zbuild_pg_kill[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run is defined in runner.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_*
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run no longer uses _TPL_STAGE_ROUTER_TIMEOUT_* as its time limit
+
+  [38;2;0;212;255m[#1801/SPEC-6] simple.yaml stage_timeout_s values[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml test: stage_timeout_s == 5400s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml build: stage_timeout_s == 4200s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml design: stage_timeout_s == 3900s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml plan: stage_timeout_s == 1200s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml test-author: stage_timeout_s == 900s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml spec-coverage: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml acceptance-gate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml issue-acceptance: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml spec-correspondence: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml review_lenses: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml intake: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml pr: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml hydrate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml secret-scan: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml shape-floor: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml design-gate: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml gate-aggregator: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml assertion-integrity: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml review-aggregator: stage_timeout_s == 600s
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: no router.timeout_s (converted to stage_timeout_s)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: no router.timeout_s (converted to stage_timeout_s)
+
+  [38;2;0;212;255m[#1801/SPEC-10] _runner_dispatch_always_run uses zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _runner_dispatch_always_run calls zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _runner_dispatch_always_run has no hand-rolled TERM/KILL sequence
+
+  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh uses zbuild_pg_kill (not hand-rolled TERM/KILL) for dispatch[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] lifecycle.sh calls zbuild_pg_kill for stage dispatch
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 29 tests passed[0m
 

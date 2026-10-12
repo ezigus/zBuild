@@ -1,0 +1,41 @@
+### SPEC-18 baseline tests/unit/event-schema-emitted-coverage-test.sh
+
+[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+  [38;2;248;113;113m✗[0m [#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json
+    [2mnot in config/event-schema.json known_types — add it under the orch. namespace[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json
+    [2mnot in config/event-schema.json known_types — add it under the plugin. namespace[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 8 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json
+  [38;2;248;113;113m✗[0m [#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json
+
+### SPEC-18 head tests/unit/event-schema-emitted-coverage-test.sh
+
+[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json
+  [38;2;74;222;128m✓[0m [#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
+

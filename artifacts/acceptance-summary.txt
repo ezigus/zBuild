@@ -1,4 +1,4 @@
-the acceptance check failed — SPEC-17: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong; SPEC-8/tests/unit/orch-sequential-retired-guard-test.sh: its test does not pass on the new code — the code or the test is wrong
+the acceptance check failed — SPEC-10: its test does not pass on the new code — the code or the test is wrong
 NEGCTL PASS SPEC-1
       design : a `run` hook that hangs is killed at the per-stage timeout on every dispatch route — map, fanout, se…
       asserts: assert_fail "[#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh" "not found"
@@ -20,13 +20,13 @@ NEGCTL PASS SPEC-6
 NEGCTL PASS SPEC-7
       design : removing ZBUILD_ORCH_TIMEOUT from all three strategy files means a plan dispatch running longer than…
       asserts: assert_fail "[#1801/SPEC-7] $_sf exists" "file not found: $_file"
-NEGCTL FAIL SPEC-8 not_passing_at_head
-      design : `plugins/tool/orch-sequential/` directory is absent; a guard fails if it exists or any file outside …
+NEGCTL PASS SPEC-8
+      design : `plugins/tool/orch-sequential/` directory is absent; a guard fails if it exists or if any file outsi…
       asserts: assert_fail "[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent" \
 NEGCTL PASS SPEC-9
       design : a configured orchestrator backend that cannot be found, or whose config is unreadable, fails the run…
       asserts: assert_pass "[#1801/SPEC-9] unknown backend alias produces misconfigured + names the backend"
-NEGCTL PASS SPEC-10
+NEGCTL FAIL SPEC-10 not_passing_at_head
       design : `_runner_dispatch_always_run` and `_orch_local_collect_results` kill through `zbuild_pg_kill`; no ha…
       asserts: assert_fail "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch" \
 NEGCTL SKIP SPEC-11 no_code
@@ -47,13 +47,14 @@ NEGCTL SKIP SPEC-15 no_code
 NEGCTL SKIP SPEC-16 no_code
       design : `npm test` and `npm run lint` pass after all code changes are applied
       asserts: <none found>
-NEGCTL FAIL SPEC-17 tautology
-      design : the per-dispatch timeout watchdog kills a hung hook under the orch-mock backend (confirming the watc…
-      asserts: assert_fail "[#1801/SPEC-17] plugins/tool/orch-mock/plugin.sh exists" "not found"
+NEGCTL PASS SPEC-18
+      design : `orch.backend.misconfigured` and `plugin.run.timed_out` are registered as known types in `config/eve…
+      asserts: assert_pass "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json"
 REACHABILITY PASS core/pipeline/runner.sh
 REACHABILITY PASS core/orch/contract.sh
-REACHABILITY FAIL not_passing_at_head .github/issues/keepers-manifest.yaml tests/unit/orch-sequential-retired-guard-test.sh
+REACHABILITY PASS change .github/issues/keepers-manifest.yaml
 REACHABILITY PASS change config/adr-enforcement-baseline.txt
+REACHABILITY PASS change config/event-schema.json
 REACHABILITY PASS change config/templates/simple.yaml
 REACHABILITY PASS change core/orch/local_engine.sh
 REACHABILITY PASS change core/pipeline/strategies/fanout.sh
@@ -61,4 +62,5 @@ REACHABILITY PASS change core/pipeline/strategies/map.sh
 REACHABILITY PASS change core/pipeline/strategies/sequential.sh
 REACHABILITY PASS change core/pipeline/template.sh
 REACHABILITY PASS change core/plugin-registry/lifecycle.sh
+REACHABILITY PASS change plugins/tool/orch-mock/plugin.sh
 REACHABILITY SKIP no_code plugins/tool/orch-ruflo-hive/plugin.sh
