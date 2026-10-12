@@ -1,0 +1,6 @@
+## design — pass
+
+- authored design.md — 20 file(s) in scope, 6 acceptance SPEC(s)
+
+- scope: config/adr-enforcement-baseline.txt,core/pipeline/runner.sh,core/pipeline/template.sh,core/state/resume.sh,docs/adr/ADR-006-resume-contract.md,docs/adr/ADR-015-stage-io-capture.md,docs/adr/ADR-025-abort-propagation.md,docs/adr/ADR-054-stage-contract.md,scripts/lib/abort-propagation.sh,scripts/lib/run-open-items.sh,scripts/lib/stage-limits.sh,tests/golden/pipeline-end/timed_out-w80.colored.txt,tests/golden/pipeline-end/timed_out-w80.layout.txt,tests/integration/resume-after-run-timeout-test.sh,tests/integration/run-timed-out-test.sh,tests/unit/abort-propagation-test.sh,tests/unit/run-limit-precedence-test.sh,tests/unit/run-open-items-test.sh,tests/unit/run-watchdog-clean-exit-test.sh,tests/unit/runner-pipeline-end-test.sh
+- artifact: design.md

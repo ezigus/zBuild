@@ -1,0 +1,14 @@
+{
+  "stage": "design",
+  "cycle_iter": 1,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-10-12T19:17:20Z",
+  "files": 3,
+  "outputs": {
+    "design.md": "changed",
+    "design-verdict.json": "changed",
+    "design-summary.md": "changed"
+  },
+  "progress": true
+}
