@@ -24,7 +24,6 @@ redaction.applied
 redaction.applied
 model.route
 model.outcome
-plan.context.persisted
 plugin.result
 plugin.run.complete
 stage.complete

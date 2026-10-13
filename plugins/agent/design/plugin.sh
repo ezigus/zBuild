@@ -214,10 +214,11 @@ _design_stage_run_inner() {
     local plan_json
     plan_json="$(cat "$plan_json_path")"
 
-    # Extract plan.files[] as the seed scope for design.md's scope block.
+    # plan.files[] and the work items' areas (#2363): the seed scope for
+    # design.md's scope block.
     local plan_files_csv=""
     plan_files_csv="$(printf '%s' "$plan_json" | \
-        jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
+        jq -r '[(.files // []), ([.steps[]?.files[]?] // []), ([.steps[]?.areas[]?] // [])] | flatten | unique | join(",")' \
         2>/dev/null || echo "")"
 
     local scope_list=""

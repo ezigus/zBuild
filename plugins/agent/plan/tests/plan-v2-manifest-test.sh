@@ -83,12 +83,10 @@ set -e
 unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
 _s5_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-5] plan_run rc=0 with ZBUILD_STAGE_INPUTS" "0" "$_s5_rc"
-if grep -qF "CUSTOM_SCOPE_1835/" <<< "$_s5_prompt"; then
-    assert_pass "[#1835/SPEC-5] scope_manifest read from ZBUILD_STAGE_INPUTS (custom prefix in prompt)"
-else
-    assert_fail "[#1835/SPEC-5] scope_manifest read from ZBUILD_STAGE_INPUTS (custom prefix missing from prompt)" \
-        "still reading from default state_dir/scope-manifest.md"
-fi
+# #2363: the prompt no longer carries the scope manifest (work items name
+# areas, not a scope); the inputs still come from the index only — the goal
+# named there is the one in the prompt.
+assert_contains "[#1835/SPEC-5] the goal named by ZBUILD_STAGE_INPUTS is in the prompt" "$_s5_prompt" "test goal"
 
 # ─── [#1835/SPEC-6][change] rc=1 (not rc=2) when state_file missing; disposition=broken ─
 print_test_section "[#1835/SPEC-6] rc=1 (not rc=2) when state_file missing; plan.json disposition=broken"
@@ -293,19 +291,16 @@ else
     assert_fail "[#1835/SPEC-13] manifest provides.role: planner"
 fi
 
-# ─── [#1835/SPEC-14][guard] manifest provides.events with 9-event vocabulary ─
-print_test_section "[#1835/SPEC-14] manifest provides.events with 9-event vocabulary (guard)"
+# ─── [#1835/SPEC-14] retired (#2363) ─────────────────────────────────────────
+# The nine plan.* events went with the resume cache, the reply parser, the scope
+# and DoD-phrase checks: plan declares no events of its own.
+print_test_section "[#1835/SPEC-14] plan declares no events of its own (#2363)"
 _s14_provides="$(awk '/^provides:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)"
-for _s14_ev in \
-    "plan.context.persisted" "plan.context.resume_skipped" "plan.context.resumed" \
-    "plan.dod_violation" "plan.envelope.recovered" "plan.flow_wiring_missing" \
-    "plan.scope.violation" "plan.scope_too_large" "plan.router_failed"; do
-    if grep -qF "$_s14_ev" <<< "$_s14_provides" 2>/dev/null; then
-        assert_pass "[#1835/SPEC-14] manifest declares event: $_s14_ev"
-    else
-        assert_fail "[#1835/SPEC-14] manifest declares event: $_s14_ev"
-    fi
-done
+if grep -q 'plan\.' <<< "$_s14_provides"; then
+    assert_fail "[#1835/SPEC-14] no plan.* events declared" "$_s14_provides"
+else
+    assert_pass "[#1835/SPEC-14] no plan.* events declared"
+fi
 
 # ─── [#1835/SPEC-15][guard] manifest declares plan-summary.md ─
 print_test_section "[#1835/SPEC-15] manifest output entries with summary and checkpoint roles (guard)"

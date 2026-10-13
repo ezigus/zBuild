@@ -304,7 +304,7 @@ _ZB_TEST_ISOLATED_VARS=(
     ZBUILD_STATE_ROOT ZBUILD_STATE_DIR ZBUILD_ARTIFACT_DIR ZBUILD_STATE_FILE
     ZBUILD_DATA_ROOT ZBUILD_RUN_ROOT ZBUILD_POOL_ROOT ZBUILD_SCRATCH_ROOT
     ZBUILD_WORKTREE_ROOT ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS
-    ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_NEGCTL_ARTIFACT_DIR ZBUILD_PLAN_CONTEXT_DIR
+    ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_NEGCTL_ARTIFACT_DIR
     ZBUILD_RUN_START_MARKER ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
     ZBUILD_MEMORY_DB ZBUILD_CACHE_DIR ZBUILD_COST_LEDGER ZBUILD_ROUTER_TOOL_USES_FILE
     ZBUILD_WIKI_ROOT ZBUILD_INSTALL_DIR ZBUILD_BIN_DIR
@@ -375,8 +375,7 @@ setup_test_env() {
     # values do not leak into this test process (#1713). stage-io falls back to
     # ${HOME}/.zbuild/state (sandboxed above) when both are unset, landing all
     # writes in the sandbox. We unset rather than redirect to avoid perturbing
-    # plan_context_recover_sidecar_reasoning (which uses these vars when set)
-    # and other callers that manage their own artifact paths after setup.
+    # callers that manage their own artifact paths after setup.
     mkdir -p "$TEST_TEMP_DIR/home/.zbuild/state"
     # #2252 F: every written location, not only STATE_DIR / ARTIFACT_DIR.
     unset "${_ZB_TEST_ISOLATED_VARS[@]}"

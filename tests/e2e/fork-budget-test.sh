@@ -216,7 +216,7 @@ TRACE="$TEST_TEMP_DIR/run.trace"
 set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
-    export FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR" ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/pc"
+    export FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR"
     _fb_traced "$TRACE" bash "$FIXTURE" >/dev/null 2>&1
 )
 _run_rc=$?

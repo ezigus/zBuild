@@ -144,7 +144,7 @@ the diff and was told "report only issues you can point to in the change below"
    under `pre_existing`; a finding that does not say is counted.
 4. **The repository's rules, as a reviewer.** the repository's rules
    reach every lens under From the repo (since 2026-10-12, ADR-067 §8, ADR-032;
-   previously by declaring `prompt.repo_rules`); work that breaks one is wrong, and the rules file's "Facts reviewers need" section states
+   previously by declaring `prompt.repo_rules`); work that breaks one is wrong, and the rules file's "Facts about this repo" section states
    what is trusted (e.g. engine-set `ZBUILD_*`).
 5. **Scope lens.** Planned-but-untouched files are not findings (the plan lists
    files that might change); edits beyond what the issue asked for are.

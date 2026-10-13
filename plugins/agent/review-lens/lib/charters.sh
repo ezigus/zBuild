@@ -31,6 +31,9 @@ Compare the change with the issue it was made for. If the change does not
 deliver part of what the issue asked for, report it as a finding: name any part
 of the issue that the change does not deliver, judged as the "${lens}" lens
 judges.
+Where the change reads data another part of the code writes, you open the
+code that writes it, then check the change uses the names and shapes it really
+produces, and that its tests make such data with that code, not by hand.
 
 OUTPUT CONTRACT (obey absolutely):
 - Respond with EXACTLY ONE JSON object. First character '{', last character '}'.

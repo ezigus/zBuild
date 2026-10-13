@@ -45,7 +45,7 @@ _run_rc=0
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
     FIXTURE_GH_PR_CREATE_FAIL=1 FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR" \
-        ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/pc" \
+        \
         bash "$FIXTURE" > "$TEST_TEMP_DIR/run.log" 2>&1
 ) || _run_rc=$?
 

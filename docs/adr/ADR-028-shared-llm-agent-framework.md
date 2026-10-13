@@ -2,7 +2,7 @@
 
 **Status:** Proposed (2026-06-11)
 **Supersedes:** N/A (formalizes pattern across ADR-018, ADR-020, ADR-022)
-**Amended:** 2026-08-28 (ADR-060) — the `--markdown-fields` escaping block is retired along with the markdown-document fields it existed to protect. It cited ADR-022, which has been Retired since #979. Envelopes carry structured data; the engine renders prose.
+**Amended:** 2026-10-13 (#2363) — `plan` leaves the shared reply parser: it writes plan.json itself and its reply is one line, so there is no envelope to parse; `_plan_envelope_schema_ok` and `_plan_recover_envelope_json` are retired with `scripts/lib/plan-context.sh`. The FORBIDDEN phrase list is removed from `_llm_output_contract`: the reply parser already pulls the one JSON object out of any surrounding text, so the list guarded nothing. Previously amended 2026-08-28 (ADR-060) — the `--markdown-fields` escaping block is retired along with the markdown-document fields it existed to protect. It cited ADR-022, which has been Retired since #979. Envelopes carry structured data; the engine renders prose.
 
 > **`test_assessment` no longer exists.** It was deleted in #979 with the
 > compound-quality lattice, along with ADR-022 which specified it. This document
@@ -182,17 +182,17 @@ Add `--schema-gate <func>` to `_llm_envelope_parse`. When provided and the LAST-
 - `_review_envelope_schema_ok` — type==object, schema_version==1, verdict in {approve,request_changes,block}, confidence number, issues array
 - `_test_assessment_envelope_schema_ok` — type==object, schema_version==1, verdict in {pass,fail,error,inconclusive}, summary string, required_changes array, agrees_with_build_complete boolean
 - `_security_lens_envelope_schema_ok` — type==object, findings array (no schema_version in LLM response for this stage)
-- `_plan_envelope_schema_ok` — type==object, schema_version==1, non-empty steps[] array (pre-existing gate from #1052, now the framework schema-gate for the plan stage)
+- `_plan_envelope_schema_ok` — retired 2026-10-13 (#2363): plan writes plan.json itself and parses no reply.
 - `_review_lens_envelope_schema_ok` — type==object, findings array (review-lens, #1840)
 
-**Migration.** `plan`, `security-lens`, `monitor` and `review-lens` (#1840) call `_llm_envelope_parse --schema-gate`. (`review-report` (#1843) and `impact` were retired 2026-10-12.)
+**Migration.** `security-lens`, `monitor` and `review-lens` (#1840) call `_llm_envelope_parse --schema-gate`. (`review-report` (#1843) and `impact` were retired 2026-10-12. `plan` parsed its reply this way until #2363, when it began writing plan.json itself.)
 
 *Corrected 2026-10-06 (#2035).* Until this date the paragraph here said `review-lens` was not migrated. That stopped being true when #1840 moved it onto the shared parser; the ADR was not updated with it. `tests/unit/adr-migration-claims-test.sh` (SPEC-2, SPEC-3) checks the listed stages against this paragraph.
 
 *Corrected 2026-09-02.* This paragraph previously asserted that the migration was complete across four stages, one of which had been deleted months earlier and one of which was never migrated. The wrong sentence is not reproduced here: a reader — person or agent — who meets it takes it as settled and builds on it, and that is exactly how a claim nobody can check comes to read like a claim that is true. `tests/unit/adr-migration-claims-test.sh` now checks this paragraph against the code, so it cannot drift back into fiction unnoticed.
 
 - `security-lens`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate <stage>_envelope_schema_ok`. `test_assessment` was deleted (#979).
-- `plan`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate _plan_envelope_schema_ok`, and its stage-local `_plan_recover_envelope_json` (scripts/lib/plan-context.sh) now delegates to `_llm_recover_envelope_json` — the duplicated awk brace-grammar is retired. plan's STRICT happy-path validator (which additionally requires `files[]` be strings) stays authoritative for rc=0 acceptance, so a recovered-but-invalid envelope remains a `schema_violation`. plan's `router_rc != 0` sidecar-recovery path (max_turns budget exhaustion) is unchanged and continues to call `_plan_recover_envelope_json` (now framework-backed).
+- `plan`: no longer parses a reply (#2363) — it writes plan.json to the path its prompt names and the stage reads that file.
 
 `impact` retains its stage-local `_impact_recover_envelope_json` helper by design — it is not part of this migration.
 

@@ -860,12 +860,11 @@ _cleanup_apply_worktree_plan() {
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # One retention number, two clocks. Most targets age from their own last touch:
-# they are garbage or regenerable. Three do not — `zbuild/issue-*` branches,
-# `zbuild/state/issue-*` branches, and the plan-context cache are LIVE WORK for
-# an open issue. A work branch holds unmerged code; the state branch and the
-# context cache are the prior work ADR-050 feeds into the next run of that same
-# issue. Ageing those from last touch destroys work mid-flight, so they age from
-# the issue's CLOSE instead.
+# they are garbage or regenerable. Two do not — `zbuild/issue-*` branches and
+# `zbuild/state/issue-*` branches are LIVE WORK for an open issue. A work branch
+# holds unmerged code; the state branch is the prior work ADR-050 feeds into the
+# next run of that same issue. Ageing those from last touch destroys work
+# mid-flight, so they age from the issue's CLOSE instead.
 
 # ─── _cleanup_issue_from_ref <ref> ──────────────────────────────────────────
 # Extract the issue number from a zbuild ref. Handles both shapes:
@@ -1060,7 +1059,7 @@ _cleanup_scan_scratch() {
 #
 # LAST-TOUCH CLOCK, deliberately, not the issue clock. The issue clock (#1632,
 # generalised by #1927) is for targets the NEXT run of an issue reads back: a
-# work branch's unmerged code, ADR-050's state branch, the plan-context cache.
+# work branch's unmerged code, ADR-050's state branch.
 # A terminal job folder is read by a human diagnosing one failure, and by
 # `zbuild resume` for a run that stopped mid-flight — the first is what retention
 # serves, the second is what the `interrupted` guard below preserves. Nothing

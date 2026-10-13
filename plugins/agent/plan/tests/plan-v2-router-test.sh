@@ -28,10 +28,10 @@ _plan_error_boundary_env
 print_test_header "Issue #1835 — plan contract v2: scope_too_large and router failure paths"
 
 # Restore clean state for #1835 tests.
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 PLAN_GOAL="a very large goal that exhausts the turn budget"
-unset ZBUILD_PLAN_RESUME ZBUILD_ISSUE_NUMBER 2>/dev/null || true
+unset ZBUILD_ISSUE_NUMBER 2>/dev/null || true
 
 # ─── [#1835/SPEC-3][change] scope_too_large path → rc=1, plan.json with disposition=out_of_turns ─
 # After migration: max_turns exhaustion writes plan.json with result_contract:2,
@@ -39,7 +39,7 @@ unset ZBUILD_PLAN_RESUME ZBUILD_ISSUE_NUMBER 2>/dev/null || true
 # MUST be present (not absent as in the pre-migration contract).
 # Fails at baseline because the current plugin returns rc=10 and writes no plan.json.
 print_test_section "[#1835/SPEC-3] max_turns → rc=1, plan.json with disposition=out_of_turns"
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 # Default error mock = error_max_turns, exit 1 (same mock as the existing SPEC-3 block).
 install_envelope_mock_claude_error
@@ -56,10 +56,8 @@ assert_eq "[#1835/SPEC-3] plan.json verdict=error on out_of_turns path" "error" 
     "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-3] plan.json disposition=out_of_turns" "out_of_turns" \
     "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-# plan.scope_too_large event must still fire — the signal is still needed even though
-# the exit code changed from 10 to 1.
-assert_event_emitted "[#1835/SPEC-3] plan.scope_too_large still emitted on v2 path" \
-    "$ZBUILD_EVENTS_JSONL" "plan.scope_too_large"
+# (#2363: plan.scope_too_large is retired — the disposition above is the signal,
+# named by the shared router mapping like every other stage's.)
 
 # ─── [#1835/SPEC-8][change] non-max_turns router failure → plan.json via router_reason_disposition ─
 # A router failure with subtype≠error_max_turns and no recoverable plan must
@@ -70,9 +68,8 @@ assert_event_emitted "[#1835/SPEC-3] plan.scope_too_large still emitted on v2 pa
 print_test_section "[#1835/SPEC-8] non-max_turns router failure writes plan.json via router_reason_disposition"
 
 # rc=124 (wall-clock timeout) → disposition=timed_out
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_PLAN_RESUME=0
 _S8_RESULT="$TEST_TEMP_DIR/s8-timeout-result.txt"
 printf '%s' "" > "$_S8_RESULT"
 _install_plan_error_mock_file --subtype "error_during_execution" \
@@ -91,7 +88,7 @@ assert_eq "[#1835/SPEC-8] router timeout disposition=timed_out" "timed_out" \
     "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 
 # rc=137 (OOM kill) → disposition=interrupted
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 _S8_OOM_RESULT="$TEST_TEMP_DIR/s8-oom-result.txt"
 printf '%s' "" > "$_S8_OOM_RESULT"
@@ -119,7 +116,7 @@ assert_eq "[#1835/SPEC-8] OOM kill disposition=interrupted" "interrupted" \
 # returns the invalid value, the validator fires, and route_to_model returns 2
 # without ever calling the claude binary. This is the router_config_error case
 # _router_rc_classify maps to disposition=misconfigured.
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 export ZBUILD_ROUTER_MAX_TURNS="INVALID_MAX_TURNS_1835"
 set +e

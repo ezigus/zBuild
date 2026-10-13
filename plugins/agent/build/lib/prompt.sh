@@ -71,6 +71,11 @@ a failure you cannot produce, and do not change code to chase one.
 - A failed stage under Previous work is red RIGHT NOW on this tree. Start from
   the failing line it quotes.
 
+### Data another part of the code writes
+When your change reads data that another part of the code writes — a file, a
+record, a field, a message — open the code that writes it and use the names
+and shapes it really produces, and when it produces them; never assume them.
+
 ### Commit message (#608)
 Before the final \`LOOP_COMPLETE\` line, emit a single line of the form:
 

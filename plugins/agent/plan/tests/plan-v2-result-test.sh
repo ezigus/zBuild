@@ -44,7 +44,7 @@ cat > "$_V2_STATE/scope-manifest.md" <<'_SCOPE_V2'
 _SCOPE_V2
 
 # ─── [#1835/SPEC-7][guard] success path still writes plan.json with original fields ─
-# Proves v2 migration does not remove schema_version, steps[], or scope_files.
+# Proves v2 migration does not remove schema_version or steps[].
 print_test_section "[#1835/SPEC-7] plan.json original fields survive v2 migration (guard)"
 : > "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true
 : > "$_CAPTURED_PROMPT_FILE"
@@ -59,14 +59,9 @@ _s7_sv="$(printf '%s' "$_s7_json" | jq -r '.schema_version // empty' 2>/dev/null
 assert_eq "[#1835/SPEC-7] plan.json schema_version=1 unchanged (guard)" "1" "$_s7_sv"
 _s7_steps="$(printf '%s' "$_s7_json" | jq '.steps | length' 2>/dev/null || echo 0)"
 assert_gt "[#1835/SPEC-7] plan.json steps[] non-empty (guard)" "$_s7_steps" "0"
-_s7_sf_len="$(printf '%s' "$_s7_json" | jq '.scope_files | length' 2>/dev/null || echo 0)"
-assert_gt "[#1835/SPEC-7] plan.json scope_files non-empty (guard)" "$_s7_sf_len" "0"
-# Content preserved: scope_files[] must contain the step's file path verbatim.
-# The pre-migration plugin already produced scope_files; the migration must not
-# strip or transform it. Fails if the migrated plugin omits the value.
-_s7_sf_first="$(printf '%s' "$_s7_json" | jq -r '.scope_files[0] // empty' 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-7] plan.json scope_files[0] preserves step file value (guard)" \
-    "core/foo.sh" "$_s7_sf_first"
+# #2363: plan reports no scope files — its work items name areas.
+assert_eq "[#1835/SPEC-7] plan.json carries no scope_files (#2363)" "false" \
+    "$(printf '%s' "$_s7_json" | jq 'has("scope_files")' 2>/dev/null)"
 # Content preserved: field values from the canned fixture must appear verbatim,
 # not just be present. Fails if the migration strips or transforms the plan data.
 _s7_step_id="$(printf '%s' "$_s7_json" | jq -r '.steps[0].id // empty' 2>/dev/null || true)"
@@ -125,8 +120,8 @@ cat > "$_S2_STATE/scope-manifest.md" <<'_S2SCOPE'
 + plugins/
 _S2SCOPE
 
-# schema_violation: files[] contains a non-string
-CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":[123],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+# schema_violation: areas[] contains a non-string
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","areas":[123]}],"open_questions":[]}'
 rm -f "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 set +e

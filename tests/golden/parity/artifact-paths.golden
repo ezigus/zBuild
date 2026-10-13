@@ -15,7 +15,6 @@
 ./artifacts/attempts/persist/iter-0-attempt-1/persist-result.json
 ./artifacts/attempts/persist/iter-0-attempt-1/persist-summary.md
 ./artifacts/attempts/plan/iter-0-attempt-1/attempt.json
-./artifacts/attempts/plan/iter-0-attempt-1/plan-context.json
 ./artifacts/attempts/plan/iter-0-attempt-1/plan-summary.md
 ./artifacts/attempts/plan/iter-0-attempt-1/plan.json
 ./artifacts/attempts/pr/iter-0-attempt-1/attempt.json
@@ -47,8 +46,6 @@
 ./artifacts/lens-correctness.json
 ./artifacts/persist-result.json
 ./artifacts/persist-summary.md
-./artifacts/plan-context.json
-./artifacts/plan-context.md
 ./artifacts/plan-summary.md
 ./artifacts/plan.json
 ./artifacts/pr-delivery-summary.md
@@ -58,18 +55,7 @@
 ./artifacts/review-aggregator-lenses.json
 ./artifacts/review-report.json
 ./artifacts/review-report.md
-./artifacts/stage-context/build.txt
-./artifacts/stage-context/hydrate.txt
-./artifacts/stage-context/intake.txt
-./artifacts/stage-context/persist.txt
-./artifacts/stage-context/plan.txt
-./artifacts/stage-context/pr.txt
-./artifacts/stage-context/release.txt
-./artifacts/stage-context/review-aggregator.txt
-./artifacts/stage-context/review_lenses-correctness.txt
-./artifacts/stage-context/test.txt
 ./artifacts/stage-io/review_lenses-1.json
-./artifacts/stage-reports.json
 ./artifacts/teardown-result.json
 ./artifacts/teardown-summary.md
 ./artifacts/test-failures-summary.md

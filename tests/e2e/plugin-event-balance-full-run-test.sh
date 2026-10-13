@@ -34,7 +34,7 @@ set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
     FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR" \
-        ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/pc" \
+        \
         bash "$FIXTURE" >/dev/null 2>&1
 )
 _run_rc=$?

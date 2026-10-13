@@ -98,6 +98,12 @@ assert_contains "P9 invalid JSON fence" "$(cat "$_p9_tmp")" '{not valid'
 render_plan_md '{"goal":"x","notes":"n"}' > "$_p9_tmp"
 assert_contains "P9 untitled placeholder" "$(cat "$_p9_tmp")" "# Plan: (untitled)"
 
+# P10 (#2363): a work item names its areas, and the plan its open questions.
+render_plan_md '{"title":"W","steps":[{"id":"step-1","description":"Stop a hung hook.","areas":["core/plugin-registry/","config/templates/"]}],"open_questions":["Is 90 minutes right?"]}' > "$_p9_tmp"
+assert_contains "P10 a work item's areas are shown" "$(cat "$_p9_tmp")" '   - Areas: `core/plugin-registry/`, `config/templates/`'
+assert_contains "P10 open questions are shown" "$(cat "$_p9_tmp")" '## Open questions'
+assert_contains "P10 ...each one" "$(cat "$_p9_tmp")" '- Is 90 minutes right?'
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

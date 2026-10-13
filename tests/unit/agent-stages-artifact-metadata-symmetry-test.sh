@@ -28,9 +28,9 @@ print_test_header "agent-stages: artifact metadata symmetry (#483)"
 
 # Row format: <plugin_id> <expected_artifact_id> <plugin_file>
 # (#979 retired the review agent stage and 2026-10-12 retired impact; their rows
-# were removed.)
+# were removed. #2363: plan writes plan.json itself — its reply is one line, not
+# the artifact — so it tags nothing.)
 _rows=(
-    "plan|plan|$REPO_ROOT/plugins/agent/plan/plugin.sh"
     "security-lens|security-lens|$REPO_ROOT/plugins/agent/security-lens/plugin.sh"
 )
 

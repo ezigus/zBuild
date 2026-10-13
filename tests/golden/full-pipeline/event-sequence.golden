@@ -2,7 +2,6 @@ pipeline.init
 redaction.applied
 plugin.run.error
 redaction.applied
-plan.context.persisted
 plugin.run.complete
 redaction.applied
 build.empty_diff

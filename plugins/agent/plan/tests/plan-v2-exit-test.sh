@@ -59,7 +59,14 @@ _stage() {
 source "$PLUGIN_DIR/plugin.sh"
 apply_scope_redaction() { cat "$1" > "$2"; return 0; }
 MODEL_CALLS="$TEST_TEMP_DIR/model-calls"; : > "$MODEL_CALLS"
-route_to_model() { echo call >> "$MODEL_CALLS"; printf '%s\n' "$CANNED_PLAN"; return 0; }
+# #2363: the model writes plan.json at the path its prompt names.
+route_to_model() {
+    local _out
+    echo call >> "$MODEL_CALLS"
+    _out="$(awk '/^Write the plan to this file/{f=1; next} f && /^  [^ ]/{sub(/^  /, ""); print; exit}' <<< "${2:-}")"
+    [[ -n "$_out" && -n "$CANNED_PLAN" ]] && printf '%s\n' "$CANNED_PLAN" > "$_out"
+    printf 'done\n'; return 0
+}
 
 print_test_section "P2/P5: success, read by the engine, in the engine's artifact dir"
 SF="$(_stage ok)"; D="$(dirname "$SF")"

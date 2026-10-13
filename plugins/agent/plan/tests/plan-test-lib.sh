@@ -32,12 +32,9 @@ cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + plugins/
 SCOPE
 
-# Canned plan.json the mock router will write. Tests override CANNED_PLAN
-# (the mock reads it at each invocation) to exercise violation cases without
-# needing to redefine the mock body.
-# shellcheck disable=SC2089,SC2090  # JSON literal stored verbatim; mocked
-# route_to_model echoes it as-is.
-CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+# Canned plan.json the mock model writes. Tests override CANNED_PLAN (the mock
+# reads it at each invocation); an empty CANNED_PLAN writes nothing.
+CANNED_PLAN='{"schema_version":1,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","areas":["core/"]}],"open_questions":[]}'
 
 # ─── Source plugin under test ─────────────────────────────────────────────────
 # Source the plugin first so its sourced dependencies (scope-redaction.sh,
@@ -75,28 +72,21 @@ apply_scope_redaction() {
     return 0
 }
 
-# ─── Mock: route_to_model — emit canned plan.json to stdout, succeed ─────────
-# Overrides the real function loaded by route.sh above. Captures the prompt
-# (arg $2) to a file so tests can assert what the plan plugin actually asks
-# the LLM for (issue #435). plan_run invokes route_to_model inside $(...),
-# so variable-based capture is lost to the subshell — use a file instead.
+# ─── Mock: route_to_model — the model writes plan.json, as plan asks ─────────
+# #2363: plan's model writes plan.json at the path its prompt names and answers
+# with one line. The mock writes CANNED_PLAN to that path and returns MOCK_RC
+# (default 0). It captures the prompt (arg $2) to a file: plan_run invokes
+# route_to_model in a subshell, so a variable would be lost.
 _CAPTURED_PROMPT_FILE="$TEST_TEMP_DIR/captured-plan-prompt.txt"
-_CAPTURED_ENVELOPE_FILE="$TEST_TEMP_DIR/captured-plan-envelope.txt"
-_CAPTURED_ARTIFACT_FILE="$TEST_TEMP_DIR/captured-plan-artifact.txt"
 : > "$_CAPTURED_PROMPT_FILE"
-: > "$_CAPTURED_ENVELOPE_FILE"
-: > "$_CAPTURED_ARTIFACT_FILE"
+MOCK_RC=0
 route_to_model() {
-    # Args: tier prompt [flags...]
-    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
-    # #476: capture envelope-mode state at call time so we can assert
-    # plan opted in (ADR-018 Pattern 1 §"JSON envelope is mandatory…").
-    printf '%s' "${ZBUILD_ROUTER_JSON_OUTPUT:-unset}" > "$_CAPTURED_ENVELOPE_FILE"
-    # #483: capture artifact-id env at call time so we can assert plan
-    # tagged the capture so its own banner renders via render_plan_md.
-    printf '%s' "${ZBUILD_ROUTER_ARTIFACT_ID:-unset}" > "$_CAPTURED_ARTIFACT_FILE"
-    printf '%s\n' "$CANNED_PLAN"
-    return 0
+    local _p="${2:-}" _out
+    printf '%s' "$_p" > "$_CAPTURED_PROMPT_FILE"
+    _out="$(awk '/^Write the plan to this file/{f=1; next} f && /^  \//{sub(/^  /, ""); print; exit}' <<< "$_p")"
+    [[ -n "$_out" && -n "$CANNED_PLAN" ]] && printf '%s\n' "$CANNED_PLAN" > "$_out"
+    printf 'done\n'
+    return "${MOCK_RC:-0}"
 }
 
 

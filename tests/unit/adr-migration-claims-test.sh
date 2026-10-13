@@ -58,7 +58,7 @@ fi
 # every non-test .sh file in the plugin directory counts. Only code lines count:
 # a comment that names the old parser (review-lens explains why it left it) is
 # not a call.
-_MIGRATED_STAGES="plan security-lens monitor review-lens"
+_MIGRATED_STAGES="security-lens monitor review-lens"
 
 # Prints why <plugin dir> is not migrated; prints nothing when it is.
 _stage_unmigrated_reason() {

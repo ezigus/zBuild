@@ -3,6 +3,7 @@
 **Status:** Proposed
 **Date:** 2026-05-29
 **Amends:** ADR-004 (extends scope-enforcement interpretation)
+**Amended:** 2026-10-13 (#2363) — plan no longer answers with its plan as a JSON reply: the model writes plan.json to the path its prompt names and updates it as it goes, and the stage reads that file (a valid plan the call wrote counts even when the call was cut off, ADR-050 §11). Plan's work items name areas, not files, so its scope post-validation (`_plan_validate_scope`, `plan.scope.violation`) and the inlined scope manifest are retired; design's scope block is the scope. The #468 notes on plan below describe history.
 
 ---
 

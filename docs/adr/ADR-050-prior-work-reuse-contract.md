@@ -1,6 +1,7 @@
 # ADR-050 — Prior-Work Reuse Contract (durable artifact store + per-stage self-seeding)
 
 **Status:** Accepted (2026-07-23)
+**Amended:** 2026-10-13 (#2363) — §11: an attempt that ends in error leaves the stage's last good output in view; §9: what the issue's work has changed is said once, at the top of Previous work, against the commit the work started from — the per-stage "what moved since it last ran" line and its record are gone.
 **Amended:** 2026-10-12 (ADR-067 §8 prompt contract) — §9: a rerun of an issue continues it. Hydrate puts an earlier run's outputs back in their live places; there is no separate restored area, no "earlier run" label, and a stage judges or refines the latest output whichever run wrote it. §5's restored tier and §8 are withdrawn.
 **Amended:** 2026-10-06 (#2326) — §8: anything a stage reads from an earlier run's saved work is labelled as that run's, for reference only, wherever it shows (input index, prompts, input events), and a stage that judges results never counts it as this run's result.
 **Amended:** 2026-10-06 (#2324) — design-gate no longer writes `data.design_sha`; its only reader was the reuse rule #2299 withdrew. Every statement below now names its test.
@@ -295,11 +296,11 @@ it** (ADR-068 §8).
   folder and copies every file into the run's `artifacts/`, skipping any the run already has (a live
   file is this run's own, and newer). There is no `restored-artifacts/` area and no
   `ZBUILD_RESTORED_ARTIFACTS_DIR`; the reader (§5), the input index and design read one place.
-- **No label.** Nothing says "from an earlier run". What a stage needs to know is what moved since the
-  output was written, and the engine says so for every stage in the Previous work block (ADR-067 §8):
-  the repository files changed since that stage last ran, and whether the issue text changed. The
-  record behind it (`artifacts/stage-context/<stage>.txt`: the repository's HEAD and a checksum of the
-  issue text intake read, at that stage's dispatch) is saved with the outputs, so a rerun can say it too.
+- **No label.** Nothing says "from an earlier run". Previous work opens with one line naming the files
+  this issue's work has changed so far, against the commit the work started from (the baseline intake
+  records) — the same for every stage, so said once (ADR-067 §8, amended 2026-10-13 by #2363; until then
+  each stage carried its own "since it last ran" line and a per-stage record of it). The issue text is
+  read once per run, so no line says whether it changed.
 - **A result still counts only if its stage's latest run wrote it.** A stage that runs again and writes
   no result has none (`stage_result_is_current`, ADR-068 §8) — that safeguard is per dispatch and
   unchanged.
@@ -316,6 +317,21 @@ recorded it, the run has made no change, and a stage end pushes nothing. #1801 r
 this: the end of hydrate, which runs before intake, found no baseline, skipped the check, and
 force-pushed main over the branch's six earlier commits, so plan was handed an earlier run's findings
 about code that was no longer there.
+
+### 11. Amendment (2026-10-13, #2363) — a failed attempt leaves the last good output in view
+
+**Status:** Accepted (2026-10-13).
+
+An attempt that ends in error produced no output, so it must not hide the output the stage last did
+produce. The live result file still says the attempt failed — the engine reads its verdict as it does
+every result — and Previous work, under that stage, also lists **its last good output, from an earlier
+attempt**: the files of the newest archived attempt (`artifacts/attempts/<stage>/…`, every dispatch's
+own copy, #2183) whose primary result is not an error, and that output's summary. #1801's plan timed
+out four times; each attempt's error record replaced the one plan it had written, so the next attempt
+had no plan to keep.
+
+A stage that writes its output as it works keeps what it wrote: a valid output on disk that the attempt
+wrote counts, even when the attempt's model call was cut off (plan, #2363).
 
 ## Consequences
 
@@ -425,7 +441,9 @@ no model ever reads that line.
 - §9 (hydrate puts an earlier run's outputs in the live places, keeping any the run already has; no restored area) → `tests/unit/hydrate-stage-test.sh` SPEC-1, SPEC-6; `tests/integration/prior-work-reuse-integration-test.sh` T4, T5
 - §9 (no restored area is read: the index and the reader see only the live file) → `tests/unit/stage-input-resolve-precedence-test.sh` SPEC-3; `tests/unit/own-run-artifacts-first-test.sh` O1, O7
 - §9 (no earlier-run label; one wording for design's latest design whichever run wrote it) → `tests/unit/stage-prompt-contract-test.sh` P2; `tests/unit/design-prior-hypothesis-test.sh` SPEC-5
-- §9 (what moved since a stage last ran: files changed and whether the issue text changed, recorded at dispatch) → `tests/unit/stage-prompt-contract-test.sh` P4; `tests/unit/stage-blocks-dispatch-test.sh` D2
+- §9 (what the issue's work has changed, said once at the top against the baseline; no per-stage line or record) → `tests/unit/engine-blocks-shared-only-test.sh` B2; `tests/unit/stage-blocks-dispatch-test.sh` D2
+- §11 (an attempt that ended in error shows the stage's last good output and its summary; the failure is still shown) → `tests/unit/engine-blocks-shared-only-test.sh` B3
+- §11 (a valid output the attempt wrote counts even when its call was cut off; one it did not write does not) → `plugins/agent/plan/tests/plan-work-items-test.sh` W3–W5; `plugins/agent/plan/tests/plan-integration-test.sh` I2, I3
 - #2111 (a run aborted with `llm_rate_limited` persists — persist pushes the state branch; the daemon's completion comment names the reset time and says to re-add the label) → `tests/unit/prior-work-reuse-contract-test.sh` C6
 
 ## References

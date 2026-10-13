@@ -415,8 +415,6 @@ plugin_hook_call() {
                 local _sb_repo="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
                 ZBUILD_STAGE_BLOCKS="$(stage_blocks_write "$ZBUILD_CURRENT_STAGE" "$_ir_state" "$manifest" \
                     "$_ir_proot" "$ZBUILD_STAGE_INPUTS" "$_sb_repo" 2>/dev/null || true)"
-                # After the blocks: they say what moved since this stage's LAST run.
-                stage_context_record "$_ir_state" "$ZBUILD_CURRENT_STAGE" "$_sb_repo"
                 # What Previous work carried, so a run's record says what each
                 # stage was given (#2124).
                 if [[ -s "${ZBUILD_STAGE_BLOCKS:-}/previous-work.md" ]]; then
