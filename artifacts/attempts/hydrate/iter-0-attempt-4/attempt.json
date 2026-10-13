@@ -1,0 +1,14 @@
+{
+  "stage": "hydrate",
+  "cycle_iter": 0,
+  "attempt": 4,
+  "rc": "0",
+  "generated_at": "2026-10-13T00:27:44Z",
+  "files": 2,
+  "outputs": {
+    "hydrate-errors.log": "absent",
+    "hydrate-result.json": "changed",
+    "hydrate-summary.md": "changed"
+  },
+  "progress": true
+}
