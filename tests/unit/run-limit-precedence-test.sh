@@ -391,6 +391,54 @@ else
     fi
 fi
 
+# ─── SPEC-6: run_end_words knows timed_out (run-open-items.sh) ──────────────
+# run-open-items.sh adds timed_out to run_end_words. If reverted, the
+# timed_out case falls through to a generic message that does not mention the
+# wall-clock limit, and the assertion fails.
+print_test_section "[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit"
+RUN_OPEN_ITEMS="$REPO_ROOT/scripts/lib/run-open-items.sh"
+
+# shellcheck source=../../scripts/lib/run-open-items.sh
+source "$RUN_OPEN_ITEMS" 2>/dev/null || true
+
+if declare -F run_end_words >/dev/null 2>&1; then
+    _to_words="$(run_end_words timed_out 0 2>/dev/null || true)"
+    if grep -qi 'wall-clock' <<< "$_to_words" 2>/dev/null; then
+        assert_pass "[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit"
+    else
+        assert_fail "[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit" \
+            "got: '${_to_words:-<empty>}' — timed_out case missing from run_end_words"
+    fi
+else
+    assert_fail "[#1944/SPEC-6] run_end_words defined in run-open-items.sh" \
+        "function not found after sourcing run-open-items.sh"
+fi
+
+# ─── SPEC-6: lint-adr-enforced-by passes ────────────────────────────────────
+# Verifies every ## Enforced by citation in all ADRs (including ADR-025 and
+# ADR-054) references a real file. Passes after this change (new test files
+# exist); would fail if an ADR cited a test that did not exist yet.
+print_test_section "[#1944/SPEC-6] lint-adr-enforced-by: all Enforced-by citations resolve"
+_adr_lint_rc=0
+bash "$REPO_ROOT/scripts/lib/lint-adr-enforced-by.sh" \
+    >"$TEST_TEMP_DIR/adr-lint.stdout" 2>"$TEST_TEMP_DIR/adr-lint.stderr" \
+    || _adr_lint_rc=$?
+assert_eq "[#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)" \
+    "0" "$_adr_lint_rc"
+
+# ─── SPEC-6: lint-test-errexit passes (npm run lint subset) ─────────────────
+# Verifies no new test file uses set -e mid-file (the pattern lint-test-errexit
+# rejects). This is the specific lint check that failed in previous attempts
+# when new test files had `set +e; ...; set -e` patterns. Running it here
+# provides a direct assertion for the "npm run lint passes" clause of SPEC-6.
+print_test_section "[#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files"
+_errexit_rc=0
+bash "$REPO_ROOT/scripts/lib/lint-test-errexit.sh" \
+    >"$TEST_TEMP_DIR/errexit-lint.stdout" 2>"$TEST_TEMP_DIR/errexit-lint.stderr" \
+    || _errexit_rc=$?
+assert_eq "[#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)" \
+    "0" "$_errexit_rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
