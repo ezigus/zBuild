@@ -125,6 +125,16 @@ else
     assert_pass "[W7] the DoD-phrase check is gone"
 fi
 
+print_test_section "W9: a plan whose result cannot be added still ends with a result"
+# rules.md: every stage writes a v2 result on every exit path. Adding the result
+# fields to a valid plan can fail; the stage then records that, not a plan
+# with no verdict.
+_reset; MOCK_WRITE="$_GOOD"
+_w9="$( atomic_write() { local _in; _in="$(cat)"; [[ "$_in" == *'"verdict":"pass"'* ]] && return 1; printf '%s\n' "$_in" > "$1"; }
+        _run_plan "$STATE_FILE" >/dev/null 2>&1; printf '%s' "$?" )"
+assert_eq "[W9] plan_run returns 1" "1" "$_w9"
+assert_eq "[W9] the result says error" "error" "$(jq -r '.verdict // "none"' "$_PJ" 2>/dev/null)"
+
 print_test_section "W8: a flow without a design scope works from the areas"
 # Until build stops reading plan.json (#2364), the areas a work item names are
 # what build may touch when no design scope exists — as a step's files were.

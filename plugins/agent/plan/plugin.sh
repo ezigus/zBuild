@@ -200,7 +200,10 @@ _plan_finish() {
     if ! v2="$(jq -c --arg r "plan has ${n} work item(s)" \
             'del(.scope_files) + {result_contract:2,verdict:"pass",disposition:"complete",reason:$r}' "$out")" \
         || ! atomic_write "$out" <<< "$v2"; then
-        error "_plan_run_inner: could not write $out"
+        # Every exit path writes a result: the plan stands on disk, but without
+        # its result fields it is not one the engine can read.
+        error "_plan_finish: could not add the result fields to $out"
+        _plan_write_result "$out" "error" "broken" "result_unwritable" || true
         return 1
     fi
     _PLAN_RESULT_WRITTEN=1
