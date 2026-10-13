@@ -211,10 +211,10 @@ _stage_block_rules() {
 
 These rules are the same for every stage.
 
-- In your result, say what you did about each finding you are given, judged
-  against your own job: what you changed for it, or why there was nothing for
-  you to change. Another stage having worked on a finding does not mean you
-  have nothing to do.
+- Your job is what the What you own section describes, and your result is the output it names.
+  Answer each finding only with what goes into that output, and say in your
+  result what you did about it. Anything a finding would need beyond that
+  output is not yours: say so in your result and do not do it.
 - Report your result in the form your instructions ask for. If you could not
   finish, say what is missing rather than leaving it out: an answer that names
   its gaps is worth more than one that hides them.

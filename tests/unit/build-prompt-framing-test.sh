@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests: build prompt v2 framing — ORIGINAL TASK / INSTRUCTIONS /
+# Tests: build prompt v2 framing — ORIGINAL TASK / the job /
 # CURRENT ITERATION FEEDBACK sections + iter N/MAX banner (#571).
 #
 # Verifies the three-section structure the LLM sees:
-#   - Iter 1: banner + ORIGINAL TASK + INSTRUCTIONS, NO FEEDBACK section.
+#   - Iter 1: banner + ORIGINAL TASK + the job, NO FEEDBACK section.
 #   - Iter 2+: same; prior-stage findings arrive as the router's STAGE
 #     SUMMARIES block, not a composed section (#2124 retired the readers).
 #   - Banner shows "iter N/MAX" accurately.
@@ -102,9 +102,9 @@ assert_eq "F2: iter 1 prompt opens with From the repo" "## From the repo" "${ite
 assert_contains "F3: iter 1 has ORIGINAL TASK section" "$iter1_prompt" \
     "## ORIGINAL TASK"
 
-# F4: INSTRUCTIONS section header present
-assert_contains "F4: iter 1 has INSTRUCTIONS section" "$iter1_prompt" \
-    "## INSTRUCTIONS"
+# F4: What you own opens with build's job
+assert_contains "F4: iter 1 states build's job" "$iter1_prompt" \
+    "Your job is to edit the working tree"
 
 # F5 (#2124): no per-iteration feedback section — findings arrive as the router's
 # STAGE SUMMARIES block, never composed here.
@@ -138,11 +138,11 @@ iter2_prompt="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
 assert_eq "F7: iter 2 prompt carries no iteration banner" "0" \
     "$(grep -c 'iter 2/3' <<< "$iter2_prompt" || true)"
 
-# F8: ORIGINAL TASK + INSTRUCTIONS still present
+# F8: ORIGINAL TASK + the job still present
 assert_contains "F8: iter 2 has ORIGINAL TASK section" "$iter2_prompt" \
     "## ORIGINAL TASK"
-assert_contains "F8: iter 2 has INSTRUCTIONS section" "$iter2_prompt" \
-    "## INSTRUCTIONS"
+assert_contains "F8: iter 2 states build's job" "$iter2_prompt" \
+    "Your job is to edit the working tree"
 
 # F9–F11 (#2124): retired with the readers they exercised — see the guard below.
 

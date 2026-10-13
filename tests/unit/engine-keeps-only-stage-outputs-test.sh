@@ -18,8 +18,11 @@
 # K4 [code] what is still open is read from the checks' latest results, never
 #           from a record kept beside them (#1668: the stop report listed a
 #           finding from an earlier round)
-# K5 [code] every stage is told to say in its own result what it did about each
-#           finding, not to fill in lines for the engine
+# K5 [code] every stage is told that its job is its What you own section and
+#           its result the output it names: it answers each finding only with
+#           what goes into that output, says so when a finding needs more, and
+#           does not do the rest (#1801: plan debugged build's failing tests and
+#           never wrote a plan); not to fill in lines for the engine
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -163,8 +166,12 @@ assert_eq "[K4] ...named by the check and its number" "issue-acceptance finding 
 
 print_test_section "K5: stages report on findings in their own result"
 _c="$(_stage_block_rules any-stage "$TEST_TEMP_DIR/s5" "$TEST_TEMP_DIR/none.yaml")"
-assert_contains "[K5] every stage is told to say what it did about each finding, in its result" \
-    "$_c" "In your result, say what you did about each finding"
+assert_contains "[K5] a stage's job is its What you own section, its result the output it names" \
+    "$_c" "Your job is what the What you own section describes, and your result is the output it names"
+assert_contains "[K5] each finding is answered only with what goes into that output" \
+    "$_c" "Answer each finding only with what goes into that output"
+assert_contains "[K5] …and what a finding needs beyond it is said, not done" \
+    "$_c" "say so in your result and do not do it"
 if grep -qF "Answer every finding you are given" <<< "$_c"; then
     assert_fail "[K5] no stage is told to fill in answer lines" "found 'Answer every finding you are given'"
 else

@@ -319,7 +319,7 @@ _plan_run_inner() {
 
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
-    local _framing="Decompose the goal into concrete implementation steps."
+    local _framing="Your job: break the goal into concrete implementation steps, the plan.json described below. You plan the work; you do not carry it out, debug it, or check it. A finding, such as a failing test or an unmet requirement, is answered with a step in the plan that addresses it."
 
     # Build prompt from the goal. The instruction block declares the
     # plan.json schema inline because the validator below (jq -e at the
@@ -366,8 +366,7 @@ PLAN_SCHEMA
 
     local _plan_instructions
     _plan_instructions="$(cat <<'PLAN_PROMPT'
-## What you own
-A plan for the goal below: the plan.json the output contract above describes.
+The plan is the plan.json the output contract above describes.
 
 Rules:
 - `schema_version` MUST be the integer 1.
@@ -443,11 +442,12 @@ PLAN_PROMPT
     fi
     _plan_wc_elapsed=$(( SECONDS - _plan_start_s ))
     _plan_wc_block="$(_plan_wallclock_guidance "$_plan_wc_budget" "$_plan_wc_elapsed")"
-    # Prepend: OUTPUT CONTRACT (ADR-028), then the job sentence,
-    # then budget guardrail (when a finite budget applies), then instructions.
-    _plan_instructions="$_output_contract_block
-
+    # The job first (What you own is the whole of it, ADR-067 §8), then the
+    # OUTPUT CONTRACT (ADR-028), the budget guardrails, then instructions.
+    _plan_instructions="## What you own
 $_framing
+
+$_output_contract_block
 ${_plan_budget_block:+
 $_plan_budget_block
 }${_plan_wc_block:+
