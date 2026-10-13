@@ -11,11 +11,13 @@
 # Phases:
 #   P1 — basic timeout: slow stage hits the watchdog; status=timed_out, event
 #        fields correct; runner exits non-zero within the limit
-#   P2 — idle between dispatches: two stages both finishing quickly; total
-#        wall-clock exceeds max_run_s (via overhead or runner startup); status=timed_out
+#   P2 — idle between dispatches: fast-one completes before watchdog fires;
+#        watchdog fires while fast-two is sleeping; fast-one being in "complete"
+#        state proves the watchdog runs independently of stage dispatch state
 #   P3 — TERM-ignore: a stage that traps and ignores SIGTERM is dead within
 #        TERM + 10 s (KILL escalation)
-#   P4 — release runs: always_run release stage executes on timed-out exit path
+#   P4 — release and persist run: always_run release + persist stages execute
+#        on every timed-out exit path
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,7 +66,7 @@ stages:
       max_turns: 0
 EOF
 
-# Two-stage template: both stages return quickly; for idle-between-dispatches test
+# Two-stage template: fast-one is instant; fast-two blocks for a long time
 cat > "$OVERLAY_REPO/.zbuild/templates/timeout-two-stage.yaml" <<'EOF'
 id: timeout-two-stage
 extends: simple
@@ -81,7 +83,7 @@ stages:
       tail_lines: 50
 EOF
 
-# Always-run (release) template: flow stage + always_run release stage
+# Always-run (release + persist) template: flow stage + always_run release + persist
 cat > "$OVERLAY_REPO/.zbuild/templates/timeout-with-release.yaml" <<'EOF'
 id: timeout-with-release
 extends: simple
@@ -90,6 +92,7 @@ flow:
 
 always_run:
   - release
+  - persist-stage
 
 outcome:
   gate: auto
@@ -100,6 +103,15 @@ outcome:
 release:
   gate: auto
   roles: [teardown]
+  router:
+    timeout_s: 30
+  io:
+    destinations: [file]
+    tail_lines: 50
+
+persist-stage:
+  gate: auto
+  roles: [persist]
   router:
     timeout_s: 30
   io:
@@ -129,12 +141,11 @@ print_test_section "P1: slow stage timeout — status=timed_out written to pipel
 
 # Run with ZBUILD_MAX_RUN_S=2 (2 seconds); wrap in timeout 25s to prevent hanging
 # before implementation (no watchdog → stage sleeps forever → outer timeout kills it)
-set +e
+p1_rc=0
 ( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 25 bash "$RUNNER" \
     --template timeout-single --goal "run-timed-out test p1" ) \
-    >"$TEST_TEMP_DIR/p1.stdout" 2>"$TEST_TEMP_DIR/p1.stderr"
-p1_rc=$?
-set -e
+    >"$TEST_TEMP_DIR/p1.stdout" 2>"$TEST_TEMP_DIR/p1.stderr" \
+    || p1_rc=$?
 
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 
@@ -185,7 +196,7 @@ else
     fi
 fi
 
-# ── P2: idle between dispatches — watchdog fires between stages ─────────────
+# ── P2: idle between dispatches — watchdog fires independently of stage state ─
 print_test_section "P2: watchdog fires even when engine is idle between dispatches"
 
 # Reset state/events for fresh run
@@ -193,13 +204,13 @@ rm -f "$STATE_FILE" "$EVENTS_JSONL"
 mock_plugin_factory "fast-one" "agent" 0 >/dev/null
 mock_plugin_factory "fast-two" "agent" 0 >/dev/null
 
-# Stage 1: returns immediately; Stage 2: sleeps long
-# max_run_s=2 — the run's total wall time must exceed 2s for the watchdog to fire.
-# Stage 2 is a slow blocker (sleeps 30s) so the watchdog fires while stage 2
-# is still dispatched (demonstrating the watchdog runs independently of stage state).
-# The "between dispatches" case is demonstrated by the fact that stage 1 completed
-# successfully before the watchdog fired — the watchdog did not need a stage to be
-# actively dispatching in order to arm and fire.
+# fast-one: returns immediately (proves it can complete BEFORE the watchdog fires)
+# fast-two: sleeps 30s (watchdog fires during fast-two's execution)
+# max_run_s=3: watchdog fires 3s into the run. fast-one completes in < 1s.
+# After 3s, fast-one's status in pipeline-state.json MUST be "complete", proving
+# the watchdog ran independently — it did not need a stage to be dispatching.
+# If the watchdog fired BEFORE fast-one completed, fast-one's status would not be
+# "complete", and the assertion below would fail.
 FAST_TWO_STARTED="$TEST_TEMP_DIR/fast-two-started"
 cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
 fast_one_run() {
@@ -216,12 +227,11 @@ fast_two_run() {
 }
 PLUG
 
-set +e
-( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 25 bash "$RUNNER" \
+p2_rc=0
+( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=3 timeout 25 bash "$RUNNER" \
     --template timeout-two-stage --goal "run-timed-out test p2" ) \
-    >"$TEST_TEMP_DIR/p2.stdout" 2>"$TEST_TEMP_DIR/p2.stderr"
-p2_rc=$?
-set -e
+    >"$TEST_TEMP_DIR/p2.stdout" 2>"$TEST_TEMP_DIR/p2.stderr" \
+    || p2_rc=$?
 
 assert_eq "[#1944/SPEC-1] P2: runner exits non-zero" "1" "$p2_rc"
 
@@ -229,17 +239,20 @@ if [[ -f "$STATE_FILE" ]]; then
     _p2_status="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || true)"
     assert_eq "[#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)" \
         "timed_out" "$_p2_status"
+
+    # fast-one MUST have completed before the watchdog fired: its status must be
+    # "complete". This is the falsifiable check — if the watchdog fired before
+    # fast-one completed, fast-one's status would not be "complete" and this fails.
+    # Stage names are stored with their literal name (hyphenated) as the key.
+    _p2_fast_one="$(jq -r '.stage_statuses["fast-one"] // empty' "$STATE_FILE" 2>/dev/null || true)"
+    if [[ "$_p2_fast_one" == "complete" ]]; then
+        assert_pass "[#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)"
+    else
+        assert_fail "[#1944/SPEC-1] P2: fast-one completed before watchdog fired" \
+            "fast-one status: '${_p2_fast_one:-<empty>}' — watchdog fired too early or fast-one did not run"
+    fi
 else
     assert_fail "[#1944/SPEC-1] P2: pipeline-state.json written" "state file not found"
-fi
-
-# fast-one must have completed (stage 1 finished before watchdog fired)
-_p2_fast_one="$(jq -r '.stage_statuses.fast_one // empty' "$STATE_FILE" 2>/dev/null || true)"
-if [[ "$_p2_fast_one" == "complete" ]]; then
-    assert_pass "[#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires idle too)"
-else
-    # fast-one may not have completed if watchdog fired before it — still proves watchdog works
-    assert_pass "[#1944/SPEC-1] P2: watchdog fired (stage may or may not have run before it)"
 fi
 
 # ── P3: TERM-ignore → KILL within TERM + 10s ────────────────────────────────
@@ -263,14 +276,13 @@ slow_stage_run() {
 PLUG
 
 _p3_start="$(date +%s)"
-set +e
 # max_run_s=2 → watchdog fires at 2s, sends TERM; stage ignores it;
 # watchdog escalates to KILL at 2+10=12s. The runner must exit within ~15s.
+p3_rc=0
 ( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 30 bash "$RUNNER" \
     --template timeout-single --goal "run-timed-out test p3 term-ignore" ) \
-    >"$TEST_TEMP_DIR/p3.stdout" 2>"$TEST_TEMP_DIR/p3.stderr"
-p3_rc=$?
-set -e
+    >"$TEST_TEMP_DIR/p3.stdout" 2>"$TEST_TEMP_DIR/p3.stderr" \
+    || p3_rc=$?
 _p3_elapsed=$(( $(date +%s) - _p3_start ))
 
 # Runner must exit (not hang past 30s timeout)
@@ -297,13 +309,14 @@ if [[ -f "$TERM_IGNORED_PID_FILE" ]]; then
     fi
 fi
 
-# ── P4: release stage runs on timed-out exit path ───────────────────────────
-print_test_section "P4: always_run release stage executes on timed-out exit path"
+# ── P4: release AND persist stages run on timed-out exit path ───────────────
+print_test_section "P4: always_run release and persist stages execute on timed-out exit path"
 
 rm -f "$STATE_FILE" "$EVENTS_JSONL"
 
-mock_plugin_factory "outcome"  "agent" 0 "" ""         >/dev/null
-mock_plugin_factory "teardown" "tool"  0 "" "teardown" >/dev/null
+mock_plugin_factory "outcome"       "agent" 0 "" ""        >/dev/null
+mock_plugin_factory "teardown"      "tool"  0 "" "teardown" >/dev/null
+mock_plugin_factory "persist-stage" "tool"  0 "" "persist"  >/dev/null
 
 # Outcome (flow) stage: sleeps 30s (will be killed by watchdog)
 OUTCOME_STARTED="$TEST_TEMP_DIR/outcome-started"
@@ -326,12 +339,21 @@ teardown_run() {
 }
 PLUG
 
-set +e
+# Persist stage: drops a marker to prove it ran
+PERSIST_MARKER="$TEST_TEMP_DIR/persist-ran-on-timeout"
+cat > "$PLUGINS_ROOT/tool/persist-stage/plugin.sh" <<PLUG
+persist_stage_run() {
+    : > "${PERSIST_MARKER}"
+    $(mock_v2_result_line persist-stage)
+    return 0
+}
+PLUG
+
+p4_rc=0
 ( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 25 bash "$RUNNER" \
-    --template timeout-with-release --goal "run-timed-out test p4 release" ) \
-    >"$TEST_TEMP_DIR/p4.stdout" 2>"$TEST_TEMP_DIR/p4.stderr"
-p4_rc=$?
-set -e
+    --template timeout-with-release --goal "run-timed-out test p4 release+persist" ) \
+    >"$TEST_TEMP_DIR/p4.stdout" 2>"$TEST_TEMP_DIR/p4.stderr" \
+    || p4_rc=$?
 
 assert_eq "[#1944/SPEC-1] P4: runner exits non-zero on timed-out path" "1" "$p4_rc"
 
@@ -346,7 +368,14 @@ if [[ -e "$RELEASE_MARKER" ]]; then
     assert_pass "[#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path"
 else
     assert_fail "[#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path" \
-        "release marker not found — always_run stage did not execute"
+        "release marker not found — always_run release stage did not execute"
+fi
+
+if [[ -e "$PERSIST_MARKER" ]]; then
+    assert_pass "[#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path"
+else
+    assert_fail "[#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path" \
+        "persist marker not found — always_run persist stage did not execute"
 fi
 
 print_test_results

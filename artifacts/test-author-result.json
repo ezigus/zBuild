@@ -12,10 +12,10 @@
       "tests/unit/run-watchdog-clean-exit-test.sh"
     ],
     "testfiles": {
-      "tests/integration/resume-after-run-timeout-test.sh": "20144dc60653c2c6d6a06ed5cbd521540ce70f47",
-      "tests/integration/run-timed-out-test.sh": "997f15681d1c3cf9506c6dcbe3412a99b4c31d52",
-      "tests/unit/run-limit-precedence-test.sh": "60b2513b048ca116385ec92ebe9b5f6acc38bc2c",
-      "tests/unit/run-watchdog-clean-exit-test.sh": "0c3e520dae907416dd2f2bc1b9cca855ae641978"
+      "tests/integration/resume-after-run-timeout-test.sh": "03ae61b61940bacdbf8adb783aa23771d25309e1",
+      "tests/integration/run-timed-out-test.sh": "1d688a87f40a9828313342d322537caa84674461",
+      "tests/unit/run-limit-precedence-test.sh": "6267dc4d5fae02457e01c6e3257551044415dbc7",
+      "tests/unit/run-watchdog-clean-exit-test.sh": "3c704e5ffc8cb817fe9bd31480a4c8cabaa6e07e"
     }
   }
 }

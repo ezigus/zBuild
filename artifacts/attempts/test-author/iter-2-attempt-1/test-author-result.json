@@ -1,0 +1,21 @@
+{
+  "result_contract": 2,
+  "verdict": "degraded",
+  "disposition": "timed_out",
+  "reason": "the author did not finish (router_timeout) — what it wrote is kept for the next attempt",
+  "data": {
+    "specs_covered": 6,
+    "owned_files": [
+      "tests/integration/resume-after-run-timeout-test.sh",
+      "tests/integration/run-timed-out-test.sh",
+      "tests/unit/run-limit-precedence-test.sh",
+      "tests/unit/run-watchdog-clean-exit-test.sh"
+    ],
+    "testfiles": {
+      "tests/integration/resume-after-run-timeout-test.sh": "03ae61b61940bacdbf8adb783aa23771d25309e1",
+      "tests/integration/run-timed-out-test.sh": "1d688a87f40a9828313342d322537caa84674461",
+      "tests/unit/run-limit-precedence-test.sh": "ebd35b63a2e5efdbd9b618d9d79fa29bc9948dfc",
+      "tests/unit/run-watchdog-clean-exit-test.sh": "3c704e5ffc8cb817fe9bd31480a4c8cabaa6e07e"
+    }
+  }
+}

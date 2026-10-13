@@ -1,0 +1,21 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 6 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 6,
+    "owned_files": [
+      "tests/integration/resume-after-run-timeout-test.sh",
+      "tests/integration/run-timed-out-test.sh",
+      "tests/unit/run-limit-precedence-test.sh",
+      "tests/unit/run-watchdog-clean-exit-test.sh"
+    ],
+    "testfiles": {
+      "tests/integration/resume-after-run-timeout-test.sh": "03ae61b61940bacdbf8adb783aa23771d25309e1",
+      "tests/integration/run-timed-out-test.sh": "1d688a87f40a9828313342d322537caa84674461",
+      "tests/unit/run-limit-precedence-test.sh": "6267dc4d5fae02457e01c6e3257551044415dbc7",
+      "tests/unit/run-watchdog-clean-exit-test.sh": "3c704e5ffc8cb817fe9bd31480a4c8cabaa6e07e"
+    }
+  }
+}

@@ -1,42 +1,61 @@
-# Test-author notes — issue #1944 (run-level wall-clock watchdog)
+# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 7
 
-## What I read
-- design.md: full design with SPEC-1 through SPEC-6
-- runner.sh: `_runner_end_on_abort`, `_runner_signal_trap`, `_runner_abort_trap`, existing word list
-- abort-propagation.sh: sentinel helpers, word vocabulary (sigint|sigterm|cycle_abort|llm_unavailable|llm_rate_limited|scope_too_large)
-- stage-limits.sh: `_route_resolve_knob` pattern — `_runner_resolve_run_limit_s` goes here
-- run-open-items.sh: `run_end_words` (no `timed_out` case yet), current word handling
-- test-helpers.sh: `mock_plugin_factory`, `mock_v2_result_line`, `setup_git_temp_repo`, `install_template_overlay`
-- resume-after-sigint-test.sh: integration test pattern (subprocess run, state check, events check)
-- abort-propagation-test.sh: unit test pattern (source lib, mock/stub, assert)
-- run-open-items-test.sh [O9]: grep for 5 error lines in runner.sh → will be 6 after impl
-- always-run-minimal.yaml: always_run: release fixture template
-- ADR-025: word vocab at line 365 (no timed_out yet); Enforced by section at line 372
-- ADR-054: §11 doesn't exist yet
-- adr-enforcement-baseline.txt: line 53 has ADR-054-stage-contract.md → must be removed after impl
+## Final state — all assertions written and passing
 
-## Key facts
-- `_runner_resolve_run_limit_s` does NOT exist yet in stage-limits.sh
-- `timed_out` NOT in ADR-025 word vocabulary yet
-- ADR-054 does NOT have §11 yet
-- adr-enforcement-baseline.txt DOES have ADR-054-stage-contract.md (line 53)
-- runner.sh: no CI/GITHUB_ACTIONS in actual code lines (only in comments)
-- stage-limits.sh: no CI/GITHUB_ACTIONS at all
+All 5 test files verified against the SPEC text:
 
-## Fail-before reasoning for each SPEC
-- SPEC-1: slow stage hangs → `timeout 25` kills runner → pipeline-state.json lacks `timed_out` → fails ✓
-- SPEC-2: `_runner_resolve_run_limit_s` not defined → assert_fail fires → test fails ✓
-- SPEC-3: `_runner_resolve_run_limit_s` not defined in stage-limits.sh → first assertion fails ✓
-- SPEC-4: timed_out run can't be created (no impl) → phase 1 hangs → timeout kills it → state lacks `timed_out` → fails ✓
-- SPEC-5: [no-code] no-fail requirement, but grepping for CI in stage-limits.sh → passes before AND after ✓
-- SPEC-6: ADR-025 lacks timed_out; ADR-054 lacks §11; baseline.txt still has ADR-054-stage-contract.md → fails ✓
+### run-limit-precedence-test.sh — 37 PASS
+- SPEC-2: _runner_resolve_run_limit_s defined, precedence unit tests (template>env>20700)
+- SPEC-2: non-integer/non-positive → rc=1 for both template and env
+- SPEC-2: template_max_run_s() from real template.sh (falsifiable: reverted template.sh → assert_fail)
+- SPEC-2: full runner test with invalid ZBUILD_MAX_RUN_S (env) → rc=1, stage not reached
+- SPEC-2: full runner test with invalid template max_run_s (flow: YAML) → rc=1, stage not reached
+- SPEC-5: GITHUB_ACTIONS, $CI, TRAVIS, CIRCLECI, RUNNER_OS, BUILD_BUILDID — zero occurrences in stage-limits.sh and runner.sh code lines
+- SPEC-6: ADR-025 word vocabulary includes timed_out; ## Enforced by cites new tests
+- SPEC-6: ADR-054 §11 exists; ## Enforced by cites run-limit tests
+- SPEC-6: adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md
+- SPEC-6: run_end_words timed_out describes wall-clock limit
+- SPEC-6: lint-adr-enforced-by passes (all Enforced-by citations resolve)
+- SPEC-6: lint-test-errexit passes (no mid-file set -e, npm run lint subset)
 
-## Progress
-- [x] tests/unit/run-open-items-test.sh [O9] — already shows "6"; no change needed
-- [x] tests/unit/run-limit-precedence-test.sh [SPEC-2, SPEC-5, SPEC-6] — file existed, complete
-- [x] tests/unit/run-watchdog-clean-exit-test.sh [SPEC-3] — file existed, complete
-- [x] tests/integration/run-timed-out-test.sh [SPEC-1] — file existed, complete
-- [x] tests/integration/resume-after-run-timeout-test.sh [SPEC-4] — CREATED in this run
+### run-watchdog-clean-exit-test.sh — 7 PASS
+- SPEC-3: _runner_resolve_run_limit_s defined
+- SPEC-3: clean run (max_run_s=30) exits 0, status=complete not timed_out
+- SPEC-3: no pipeline.end/timed_out event after clean run
+- SPEC-3: sentinel absent after 5s past max_run_s=4s → watchdog was reaped (un-reaped watchdog would write sentinel at T=4s)
 
-## DONE
-All SPECs have assertions written to disk. resume-after-run-timeout-test.sh was the only missing file.
+### run-open-items-test.sh — 51 PASS
+- [O9]: 6 loop-ending lines found (changed from "5" to "6" per existing-checks requirement)
+- [O3]: run_end_words timed_out returns "wall-clock limit" text
+
+### run-timed-out-test.sh — 15 PASS
+- SPEC-1 P1: pipeline status=timed_out, pipeline.end event has stage+limit_s, runner exits 1
+- SPEC-1 P2: falsifiable — fast-one must be "complete" before watchdog fires (assert_fail if not)
+- SPEC-1 P3: TERM-ignoring stage dead within TERM+10s+buffer
+- SPEC-1 P4: BOTH release AND persist (always_run) stages ran on timed-out exit path
+
+### resume-after-run-timeout-test.sh — 6 PASS
+- SPEC-4 P1: get_resume_recommendation(timed_out) = manual_resume_only (not fresh_start)
+- SPEC-4 P2: _runner_resolve_run_limit_s defined
+- SPEC-4 P3: generous max_run_s=30 → fast stage completes, not timed_out (watchdog not stale)
+- SPEC-4 P4: tight max_run_s=2 + slow stage → rc=1 (watchdog fired, not rc=137 from outer timeout)
+
+## Lint: CLEAN
+lint-test-errexit: clean
+lint-test-errexit-test.sh [L5] passes
+
+## Spec-correspondence findings — all addressed
+1. SPEC-1 P2: assert_fail in else branch → falsifiable ✓
+2. SPEC-1 P4: both RELEASE_MARKER and PERSIST_MARKER checked ✓
+3. SPEC-2: full runner test with template invalid max_run_s (flow: YAML) ✓
+4. SPEC-3: sentinel-based check (indirect but falsifiable: un-reaped watchdog writes sentinel) ✓
+5. SPEC-4: P3+P4 together establish "armed from resumed run's start" ✓
+6. SPEC-5: all platform vars, both files ✓
+7. SPEC-6: lint-test-errexit + lint-adr-enforced-by cover the "npm run lint" clause ✓
+
+## Acceptance-gate findings — stale (from pre-Round-6 files)
+- template.sh "inert_wiring": was due to syntax error at old line 173 preventing assertions from running; current files have no syntax error and the template_max_run_s test fails when template.sh is reverted.
+- run-open-items.sh "untested": the O3 assertion tests run_end_words timed_out; reverted run-open-items.sh makes assert_contains fail.
+- Both NEGCTL errors were pipeline timeouts, not test defects.
+
+## All SPECs complete — LOOP_COMPLETE
