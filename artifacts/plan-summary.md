@@ -1,7 +1,6 @@
 ## plan — pass
 
-- decomposed the goal into 7 step(s)
+- split the issue into 9 work item(s)
 
-- scope violations: 0
-- DoD discipline: 1
+- open questions: 2
 - artifact: plan.json
