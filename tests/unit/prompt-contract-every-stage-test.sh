@@ -25,9 +25,9 @@
 #                ("You are a/the …") or a list of its tools ("You have …"): the engine's rules point at this section as
 #                the whole of the stage's job, so it must say what that job is
 #                first (#1801: plan's job sentence sat 40 lines down)
-#   E4 [guard] : the engine's rules tell every stage to read data the way the
-#                code that writes it writes it, and to make test data with that
-#                code, never by hand (#1799)
+#   E4 [moved]  : (#2363) "read data the way its writer writes it" (#1799) is a
+#                rule about writing code: it left the engine's rules for build,
+#                test-author and the review lenses — engine-blocks-shared-only B4
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -240,15 +240,6 @@ assert_contains "[T1] test-author is told to check the new value or file itself"
     "$_ta" "the new value or file itself"
 assert_contains "[T1] ...not only that the step finished without an error" \
     "$_ta" "not only that the step finished without an error"
-
-# ─── E4: read data the way its writer writes it ─────────────────────────────
-_rules="$(_stage_block_rules any-stage "$TEST_TEMP_DIR/s" "$TEST_TEMP_DIR/none.yaml")"
-assert_contains "[E4] the rules tell a stage to open the code that writes the data it reads" \
-    "$_rules" "open the code that writes it"
-assert_contains "[E4] ...to use the names and shapes that code really produces" \
-    "$_rules" "names and shapes it really produces"
-assert_contains "[E4] ...and to make test data with that code, not by hand" \
-    "$_rules" "should make it with that code,"
 
 cleanup_test_env
 print_test_results

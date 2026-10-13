@@ -120,10 +120,11 @@ _build_load_context() {
     local _ctx_design_csv="" _ctx_scope_file_count=0 _ctx_granted="" _ctx_candidate=""
     local _ctx_state_dir_for_design
 
-    # Extract plan.files[] — the canonical scope for this build.
+    # Extract plan.files[] and the work items' areas (#2363) — the scope when
+    # design gives none.
     # shellcheck disable=SC2154  # plan_json injected via dynamic scope from caller
     plan_files_csv="$(printf '%s' "$plan_json" | \
-        jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
+        jq -r '[(.files // []), ([.steps[]?.files[]?] // []), ([.steps[]?.areas[]?] // [])] | flatten | unique | join(",")' \
         2>/dev/null || echo "")"
 
     # Resolve design.md path.

@@ -45,7 +45,7 @@ if grep -q "whether a finished CHANGE does what an ISSUE asked" <<< "$prompt"; t
     # issue-acceptance (#1849): the fixture's one-file change meets its issue.
     jq -n --arg r $'VERDICT: pass\nREASON: the fixture file the issue asks for is added' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
-elif grep -q 'review lens\. ' <<< "$prompt"; then
+elif grep -q 'An advisory report for the ' <<< "$prompt"; then
     # a review lens (#1842): no concerns — a real lens result for the engine to
     # hand the aggregator, as in production.
     jq -n --arg r '{"score":9,"findings":[]}' \
@@ -60,8 +60,11 @@ elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     jq -n --arg r $'Created fixture file.\nLOOP_COMPLETE' \
        '{result:$r, total_cost_usd:0.001, usage:{input_tokens:5, output_tokens:3}}'
 else
-    # plan stage (default — wrapped per #476)
-    jq -n --arg r '{"schema_version":1,"issue":90000359,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"add parity fixture file","files":["tests/fixtures/parity-fixture.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
+    # plan stage (default): the model writes plan.json at the path its prompt
+    # names and answers with one line (#2363). Redaction may wrap the path.
+    plan_out="$(awk '/^Write the plan to this file/{f=1; next} f && /^  [^ ]/{sub(/^  /, ""); gsub(/<\/?out-of-scope-context>/, ""); print; exit}' <<< "$prompt")"
+    [[ -n "$plan_out" ]] && printf '%s\n' '{"schema_version":1,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"Add the parity fixture file.","areas":["tests/fixtures/"]}],"open_questions":[]}' > "$plan_out"
+    jq -n --arg r '1 work item' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 fi
 exit 0

@@ -13,8 +13,8 @@
 #   wiring files — design.md is not read.
 # SPEC-5 [change]: a stage is denied edits to files ANOTHER stage reported owning,
 #   and never its own — no role name is consulted.
-# SPEC-6 [change]: the stages report them — plan its scope files (in plan.json),
-#   design its WIRING files, test-author the testfiles it owns.
+# SPEC-6 [change]: the stages report them — design its WIRING files, test-author
+#   the testfiles it owns. (Plan reported scope files until #2363.)
 # SPEC-7 [change]: reports recorded concurrently (parallel members) all land —
 #   none is lost to a sibling's read-modify-write.
 # SPEC-8 [change]: both group dispatch boundaries record their report — cycle
@@ -97,10 +97,8 @@ _t6="$( source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
         _ta_write_result "$S6" complete complete "ok" 1 >/dev/null 2>&1
         jq -c '.data.owned_files' "$S6/test-author-result.json" 2>/dev/null )"
 assert_eq "[SPEC-6] test-author reports the testfiles it owns" '["tests/acc-test.sh"]' "$_t6"
-_p6="$( source "$REPO_ROOT/plugins/agent/plan/plugin.sh" >/dev/null 2>&1
-        declare -F _plan_with_scope_files >/dev/null || { echo "plan plugin.sh did not load"; exit; }
-        _plan_with_scope_files '{"files":["a.sh"],"steps":[{"files":["b.sh","a.sh"]}]}' 2>/dev/null | jq -c '.scope_files' )"
-assert_eq "[SPEC-6] plan.json carries its scope files" '["a.sh","b.sh"]' "$_p6"
+# Plan no longer reports scope files (#2363): its work items name areas, and the
+# scope is design's — plan-work-items-test W7.
 
 print_test_section "SPEC-7: concurrent records all land"
 S7="$TEST_TEMP_DIR/s7"; mkdir -p "$S7/artifacts"

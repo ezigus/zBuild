@@ -191,7 +191,8 @@ _artifact_emit_llm_comment() {
 # ═══════════════════════════════════════════════════════════════════════════
 # Built-in renderer: render_plan_md
 # Input: plan.json text. Recognised fields: title, goal,
-#        steps[{description, files, estimated_lines}], notes. Missing fields
+#        steps[{description, areas, files, estimated_lines}], open_questions,
+#        notes (files/estimated_lines/notes: plans written before #2363). Missing fields
 #        are silently skipped (only what exists is rendered).
 #
 # #510: when the LLM emits prose alongside JSON in the same assistant turn
@@ -303,12 +304,28 @@ render_plan_md() {
             if [[ -n "$est" && "$est" != "null" ]]; then
                 printf '   - Estimated lines: %s\n' "$(_artifact_md_escape_inline "$est")"
             fi
+            # #2363: a work item names the areas it touches.
+            local areas_line="" a
+            while IFS= read -r a; do
+                [[ -n "$a" ]] || continue
+                a="$(_artifact_md_escape_inline "$a")"
+                areas_line="${areas_line:+$areas_line, }\`$a\`"
+            done < <(printf '%s' "$input" | jq -r ".steps[$i].areas // [] | .[] | strings" 2>/dev/null)
+            [[ -n "$areas_line" ]] && printf '   - Areas: %s\n' "$areas_line"
             i=$((i + 1))
         done
     fi
 
     if [[ -n "$notes" ]]; then
         printf '\n## Notes\n%s\n' "$(_artifact_md_escape_block "$notes")"
+    fi
+    local questions
+    questions="$(printf '%s' "$input" | jq -r '.open_questions // [] | .[] | strings' 2>/dev/null)"
+    if [[ -n "$questions" ]]; then
+        printf '\n## Open questions\n'
+        while IFS= read -r a; do
+            [[ -n "$a" ]] && printf -- '- %s\n' "$(_artifact_md_escape_inline "$a")"
+        done <<< "$questions"
     fi
 
     # #510: append surrounding prose as a ── llm comment ── block (no-op when

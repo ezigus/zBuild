@@ -4,11 +4,15 @@
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # Stage: plan (ADR-013, T2, blocking)
-# Produces: state/artifacts/plan.json
+# Produces: state/artifacts/plan.json — an ordered list of work items (#2363)
+#
+# The model writes plan.json itself, and updates it as it goes; this stage then
+# reads it from disk. A valid plan the model wrote counts even when its call
+# was cut off.
 #
 # Lifecycle:
-#   plan_run         — derive paths, delegate to _plan_run_inner
-#   _plan_run_inner  — redact → route → validate → emit stage.complete
+#   plan_run         — inputs from the engine's index (lib/entry.sh)
+#   _plan_run_inner  — prompt → model call → read and check plan.json
 #   plan_cleanup     — no-op (the engine brackets the hook, #1705), return 0
 
 [[ -n "${_ZBUILD_PLAN_LOADED:-}" ]] && return 0
@@ -25,877 +29,185 @@ _PLAN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_PLAN_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_PLAN_ROOT/core/router/route.sh"
-# ADR-028: shared LLM-agent stage framework (PR 2/5 — plan migration).
-# shellcheck source=../../../scripts/lib/llm-agent.sh
-source "$_PLAN_ROOT/scripts/lib/llm-agent.sh"
-# shellcheck source=../../../scripts/lib/prompt-overrides.sh
-source "$_PLAN_ROOT/scripts/lib/prompt-overrides.sh"
 # #721: strip OOS-marker tags and ANSI from goal text before LLM prompt.
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_PLAN_ROOT/scripts/lib/test-output-sanitize.sh"
-# #1052: durable plan-context cache + max_turns envelope recovery (EPIC #966).
-# shellcheck source=../../../scripts/lib/plan-context.sh
-source "$_PLAN_ROOT/scripts/lib/plan-context.sh"
-# #1052: router rc → verdict/reason classifier.
+# Router rc → the one disposition word for a failed call (#2225).
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_PLAN_ROOT/scripts/lib/router-rc-classify.sh"
-# ADR-050 (#1581): unified prior-work seam — seed from a prior run's plan.json.
-# shellcheck source=../../../scripts/lib/prior-output-reader.sh
-source "$_PLAN_ROOT/scripts/lib/prior-output-reader.sh"
-# Persona resolver + stage/lens composition seam (#1304, #1393).
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_PLAN_ROOT/core/plugin-registry/registry.sh"
-
-# _plan_budget_guidance <max_turns> — the turn-budget guardrail injected into the
-# planner prompt (#1442). Empty for the 0 (unlimited) sentinel or a non-numeric
-# value, so an uncapped plan stage reads exactly as before. With a finite budget
-# the planner is told its budget and biased to CONVERGE: emit a best-effort plan
-# before it runs out rather than exhausting the budget mid-exploration (which
-# yielded NO plan at all and left the cross-run cache nothing to carry forward).
-_plan_budget_guidance() {
-    local budget="${1:-}"
-    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
-    cat <<EOF
-TURN BUDGET (read this — you have a BOUNDED tool-call budget):
-- You have about ${budget} tool-call turns for BOTH exploration AND emitting the plan.
-- Producing a usable plan is the objective; exhaustive exploration is not. A plan
-  built from partial understanding, with the gaps noted in \`notes\`, BEATS running
-  out of turns and producing no plan at all.
-- Explore with TARGETED reads/greps of specific files. Avoid whole-repo
-  \`find | xargs grep\` sweeps — they flood your context and burn turns fast.
-- STOP exploring and EMIT the plan JSON well before you run out. If you are running
-  low, emit your best-effort plan NOW with assumptions in \`notes\` — never spend the
-  whole budget exploring and finish with nothing.
-EOF
-}
-
-# _plan_wallclock_guidance <budget_s> <elapsed_s> — wall-clock budget signal
-# injected into the planner prompt (#1550). Empty when budget_s is not a
-# positive integer or when elapsed_s >= budget_s (degenerate guard). Otherwise
-# emits a "WALL CLOCK BUDGET" block telling the planner its total budget,
-# elapsed time, and instructing it to emit a best-effort plan before the hard
-# OS SIGTERM fires — orthogonal to the turn-budget guardrail from #1442.
-_plan_wallclock_guidance() {
-    local budget_s="${1:-}" elapsed_s="${2:-}"
-    [[ "$budget_s" =~ ^[0-9]+$ && "$budget_s" -gt 0 ]] || { printf ''; return 0; }
-    [[ "$elapsed_s" =~ ^[0-9]+$ ]] || elapsed_s=0
-    [[ "$elapsed_s" -lt "$budget_s" ]] || { printf ''; return 0; }
-    local _stop_at=$(( budget_s * 70 / 100 ))
-    cat <<EOF
-WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of ${budget_s} seconds total; ~${elapsed_s}s have elapsed.
-- You cannot read a real-time clock, but estimate elapsed time from your tool-call
-  history (count of turns × typical latency per turn visible in your context window).
-- Target emitting your best-effort plan before ~${_stop_at}s of wall-clock time has elapsed
-  (70% of the ${budget_s}s budget). A partial plan with gaps in \`notes\` BEATS a hard
-  SIGTERM that produces no output at all — never spend the full budget exploring.
-EOF
-}
 
 # The stage's entry point, its inputs and its result writer (#1835) live in
 # lib/entry.sh — plan_run is defined there.
 # shellcheck source=lib/entry.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/entry.sh"
 
-# ─── _plan_with_scope_files <plan-json> (#2189) ───────────────────────────────
-# The plan with `scope_files` added: its files[] and every step's files[],
-# de-duplicated. On a jq failure the plan is returned unchanged.
-_plan_with_scope_files() {
-    jq -c '. + {scope_files: ([(.files // []), [.steps[]?.files[]?]] | flatten | map(select(type == "string")) | unique)}' \
-        <<< "$1" 2>/dev/null || printf '%s' "$1"
+# _plan_is_valid <file> — rc 0 when <file> holds a plan: one object with
+# schema_version 1 and at least one work item, each with an id and a
+# description; areas and open_questions, when present, are lists of strings.
+_plan_is_valid() {
+    [[ -s "$1" ]] || return 1
+    jq -e 'type == "object" and .schema_version == 1
+        and (.steps | type == "array" and length > 0)
+        and (.steps | all(type == "object"
+                and (.id | type == "string" and length > 0)
+                and (.description | type == "string" and length > 0)
+                and ((.areas // []) | type == "array" and all(type == "string"))))
+        and ((.open_questions // []) | type == "array" and all(type == "string"))' \
+        "$1" >/dev/null 2>&1
 }
 
-# ─── _plan_validate_dod_discipline ──────────────────────────────────────────
-# Wave 19-F (#738): validate the produced plan against the issue body's
-# Definition-of-done / Anti-patterns / 5-test trial discipline. Returns 0
-# if the plan honors the operational requirements, 1 otherwise. Side
-# effects: emits plan.dod_violation or plan.flow_wiring_missing events
-# describing the gap so the operator can see exactly which rule fired.
-#
-# Args:
-#   $1 = plan_json (string content, valid JSON per schema)
-#   $2 = goal_text (raw issue body the plan was decomposed from)
-_plan_validate_dod_discipline() {
-    local plan_json="$1"
-    local goal_text="$2"
+# _plan_prompt <goal> <plan-path> — plan's own three parts: What you own, What
+# you judge against, What you must not do.
+_plan_prompt() {
+    local goal="$1" plan_path="$2"
+    cat <<PLAN_PROMPT
+## What you own
+Your job: split the issue into an ordered list of work items, the plan.json described below. Each item says what changes and why, in one or two sentences, and names the areas it touches. Do not say how: no function names, no code, no line counts. If your earlier plan is under Previous work, keep the items that still stand, and change or add an item for each open finding, in one sentence that names it. Do not read code to diagnose a finding.
 
-    if [[ -z "$plan_json" || -z "$goal_text" ]]; then
-        return 0
-    fi
+Write the plan to this file, and update it as you go — a plan on disk when your
+time runs out still counts:
+  ${plan_path}
 
-    # Detect issue-body sections that trigger discipline.
-    local has_dod=0 has_5test=0 has_antipatterns=0
-    if grep -Eqi '^#+[[:space:]]*(Definition of done|Acceptance criteria)\b' <<< "$goal_text"; then
-        has_dod=1
-    fi
-    if grep -Eqi '^#+[[:space:]]*5-test trial\b' <<< "$goal_text"; then
-        has_5test=1
-    fi
-    if grep -Eqi '^#+[[:space:]]*Anti-patterns\b' <<< "$goal_text"; then
-        has_antipatterns=1
-    fi
-
-    # No operational sections → no enforcement.
-    if [[ $has_dod -eq 0 && $has_5test -eq 0 && $has_antipatterns -eq 0 ]]; then
-        return 0
-    fi
-
-    # Flatten plan steps + notes into a single searchable blob.
-    #
-    # `notes` is long by design, not by drift. The prompt tells the model three
-    # separate times to put gaps and assumptions there, because a usable partial
-    # plan beats burning the whole budget and emitting nothing. Do not cap it and
-    # do not restructure it into an array without moving this consumer in the
-    # same commit — it reads notes as a flat string.
-    #
-    # ADR-060 does not apply: its line is a multi-paragraph MARKDOWN DOCUMENT in
-    # an envelope field. Long plain text in a declared data field is data, which
-    # the ADR states explicitly, and lint-llm-envelope.sh agrees.
-    local plan_blob=""
-    plan_blob="$(printf '%s' "$plan_json" | jq -r '
-        [(.title // ""),
-         (.notes // ""),
-         (.steps // [] | map(.description // "") | join("\n"))
-        ] | join("\n")' 2>/dev/null || true)"
-
-    # Forbidden-phrase enforcement (DoD or Anti-patterns).
-    # Each alternative matches independently — `optional` alone is a hit,
-    # `gated by config` alone is a hit. Word-boundary anchored where
-    # plausible to avoid spurious matches against benign use ("optionally").
-    if [[ $has_dod -eq 1 || $has_antipatterns -eq 1 ]]; then
-        local _forbidden_re='may be toggled off|may be disabled|declared but disabled|gated by config|future follow-up|may be optional|\boptional\b'
-        if grep -Eqi "$_forbidden_re" <<< "$plan_blob"; then
-            local _matched
-            _matched="$(grep -m1 -Eoi "$_forbidden_re" <<< "$plan_blob")"
-            emit_event "plan.dod_violation" "plugin=plan" \
-                "reason=forbidden_phrase" "phrase=${_matched:-unknown}" \
-                2>/dev/null || true
-            return 1
-        fi
-    fi
-
-    # Anti-pattern matching against per-issue patterns (any quoted string
-    # after a ❌ marker in the Anti-patterns section). The awk range walks
-    # from the Anti-patterns header forward until either the NEXT header
-    # of equal-or-shallower depth OR EOF. Using only `/^#+[[:space:]]/` as
-    # the end pattern incorrectly matches the start header itself,
-    # collapsing the range to a single line. Track whether we've seen the
-    # opening header so we don't immediately close on it.
-    if [[ $has_antipatterns -eq 1 ]]; then
-        local _patterns
-        _patterns="$(printf '%s' "$goal_text" | awk '
-            BEGIN { in_section=0 }
-            /^#+[[:space:]]*Anti-patterns/ { in_section=1; next }
-            in_section && /^#+[[:space:]]/ { in_section=0; next }
-            in_section { print }
-        ' | grep -m20 -Eo '❌[[:space:]]*"[^"]+"' | sed 's/^❌[[:space:]]*"//; s/"$//')"
-        local _ap
-        while IFS= read -r _ap; do
-            [[ -z "$_ap" ]] && continue
-            if grep -Fqi "$_ap" <<< "$plan_blob"; then
-                emit_event "plan.dod_violation" "plugin=plan" \
-                    "reason=anti_pattern_match" "pattern=$_ap" \
-                    2>/dev/null || true
-                return 1
-            fi
-        done <<< "$_patterns"
-    fi
-
-    # Migration-keeper enforcement: if 5-test trial present, plan MUST touch
-    # config/templates/standard.yaml (or any file under config/templates/).
-    if [[ $has_5test -eq 1 ]]; then
-        local _touches_template=0
-        if grep -Eq '^config/templates/' <<< "$(printf '%s' "$plan_json" | jq -r '.steps // [] | map(.files // []) | flatten | .[]' 2>/dev/null)"; then
-            _touches_template=1
-        fi
-        if [[ $_touches_template -eq 0 ]]; then
-            emit_event "plan.flow_wiring_missing" "plugin=plan" \
-                "reason=no_template_change" \
-                2>/dev/null || true
-            return 1
-        fi
-    fi
-
-    return 0
+It is one JSON object in this shape:
+{
+  "schema_version": 1,
+  "title": "<short title>",
+  "goal": "<the goal in one line>",
+  "steps": [
+    {"id": "step-1", "description": "<what changes and why, in one or two sentences>", "areas": ["<a directory or file the issue names>"]}
+  ],
+  "open_questions": ["<one line: something the issue leaves unclear>"]
 }
+- \`steps\` is not empty; ids are "step-1", "step-2", … in order.
+- Keep each item small enough to build and test on its own.
+- \`open_questions\` holds only what the issue leaves unclear, one line each; it
+  is empty when nothing is.
 
-# Walk plan.json's steps[].files[] and emit one plan.scope.violation event per
-# offending path. Fail-soft: prints the violation count to stdout (caller adds
-# it to plugin.result) and returns 0 even when violations are found.
-# Args:
-#   $1 = plan_json (string content)
-#   $2 = scope_manifest path
-# Stdout: integer violation count.
-_plan_validate_scope() {
-    local plan_json="$1"
-    local manifest="$2"
+When the file is written, answer with one line saying how many work items it has.
 
-    if [[ -z "$plan_json" || ! -f "$manifest" ]]; then
-        printf '0'
-        return 0
-    fi
+## What you judge against
+The issue below, in its own words.
 
-    # Reuse the manifest parser shape from core/redaction/scope-redaction.sh:75.
-    local allow_lines
-    allow_lines="$(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$manifest")"
+A section of the issue that records a decision (for example "Decision:") is
+binding: follow it. Anything else it proposes, such as an approach or a file
+list, is a starting point: follow it unless it contradicts a decision.
 
-    local scope_hash; scope_hash="$(shasum -a 256 "$manifest" | cut -d' ' -f1)"
-    local manifest_abs; manifest_abs="$(cd "$(dirname "$manifest")" 2>/dev/null && pwd)/$(basename "$manifest")"
+If the issue has a "Definition of done", "Acceptance criteria", "Anti-patterns"
+or "5-test trial" section, or a similar checklist:
+1. Every Definition-of-done item is covered by at least one work item.
+2. No work item does what an Anti-pattern names. If one seems to, you have
+   misread the issue: add an open question instead.
+3. Do not invent permissions the issue does not grant. Nothing is "optional",
+   "gated by config" or a "future follow-up" unless the issue says so.
+4. If the issue moves behaviour from one place to another, include the item that
+   makes the running program use the new code, not only new files beside the old.
 
-    local violations=0
-    # Stream "step_id<TAB>file" pairs. Use TSV to keep paths intact.
-    while IFS=$'\t' read -r step_id raw_path; do
-        [[ -z "$step_id" || -z "$raw_path" ]] && continue
-        local reason=""
-        # Absolute path?
-        if [[ "$raw_path" == /* ]]; then
-            reason="absolute_path"
-        else
-            # Normalize: strip leading ./
-            local norm="$raw_path"
-            norm="${norm#./}"
-            # Traversal — any `..` segment escapes the repo.
-            if [[ "$norm" == ".." || "$norm" == "../"* || "$norm" == *"/../"* || "$norm" == *"/.." ]]; then
-                reason="out_of_repo"
-            else
-                # Prefix-match against allowlist
-                local in_scope=0 prefix
-                while IFS= read -r prefix; do
-                    [[ -z "$prefix" ]] && continue
-                    if [[ "$norm" == "$prefix"* || "./$norm" == "$prefix"* ]]; then
-                        in_scope=1
-                        break
-                    fi
-                done <<< "$allow_lines"
-                [[ "$in_scope" -eq 0 ]] && reason="out_of_scope"
-            fi
-        fi
-        if [[ -n "$reason" ]]; then
-            violations=$((violations + 1))
-            emit_event "plan.scope.violation" \
-                "plugin=plan" \
-                "stage=plan" \
-                "step_id=$step_id" \
-                "path=$raw_path" \
-                "reason=$reason" \
-                "scope_hash=$scope_hash" \
-                "manifest_path=$manifest_abs"
-        fi
-    done < <(printf '%s' "$plan_json" \
-        | jq -r '.steps[]? | .id as $id | (.files[]? | select(type=="string")) as $f | [$id, $f] | @tsv' 2>/dev/null || true)
+The issue:
+${goal}
 
-    printf '%s' "$violations"
+## What you must not do
+- Do not write any file other than the plan above and your notes file.
+PLAN_PROMPT
 }
 
 # Inner implementation — unit-testable with explicit paths.
 # Args:
-#   $1 = scope_manifest path
+#   $1 = scope manifest path (kept for the entry's call; the prompt no longer
+#        carries it — the work items name areas, not a scope)
 #   $2 = goal text (raw string)
 #   $3 = output plan.json path
 #   $4 = artifact dir for intermediate files
 _plan_run_inner() {
-    local scope_manifest="$1"
     local goal_text="$2"
     local output_plan_json="$3"
     local artifact_dir="${4:-$(dirname "$output_plan_json")}"
 
-    if [[ -z "$scope_manifest" || -z "$goal_text" || -z "$output_plan_json" ]]; then
+    if [[ -z "$goal_text" || -z "$output_plan_json" ]]; then
         error "_plan_run_inner: requires <scope_manifest> <goal_text> <output_plan_json> [artifact_dir]"
         return 1
     fi
-
     mkdir -p "$artifact_dir"
-    # Capture entry time for the wall-clock budget signal (#1550). $SECONDS is a
-    # Bash builtin — no subshell, no subprocess latency, never drifts from real time.
-    local _plan_start_s=$SECONDS
 
     # ADR-043: redaction is owned by the router (route_to_model) — it redacts the
-    # assembled prompt below by construction. This stage assembles RAW text and
-    # each spliced piece (goal, resumed context, operator override) rides that
-    # single redaction pass.
+    # assembled prompt by construction.
     local goal_content
-    # #721: strip ANSI codes / stray OOS-marker wrappers from the goal text.
     goal_content="$(printf '%s' "$goal_text" | _zbuild_sanitize_for_llm)"
 
-    # The persona (ADR-051) reaches the model through the provider, not this
-    # text: the stage writes only its own job.
-    local _framing="Your job: break the goal into concrete implementation steps, the plan.json described below. You plan the work; you do not carry it out, debug it, or check it. A finding, such as a failing test or an unmet requirement, is answered with a step in the plan that addresses it."
-
-    # Build prompt from the goal. The instruction block declares the
-    # plan.json schema inline because the validator below (jq -e at the
-    # response-parse step) enforces `schema_version=1` and a non-empty
-    # `steps[]`, and an underspecified prompt makes the LLM return prose
-    # (issue #435). Schema mirrors the canonical fixture at
-    # plugins/agent/plan/tests/plan-test.sh.
-    #
-    # The static instruction block is captured via single-quoted heredoc
-    # (no expansion); the dynamic goal is appended with an explicit \n
-    # separator (printf instead of $(...)) so the boundary is not eaten
-    # by command-substitution trailing-newline stripping.
-    # ADR-018 Pattern 1 (#468): plan runs as one-shot with tools available.
-    # Invite Read for context-gathering inside the scope-manifest; forbid
-    # mutating tools. Inline the scope-manifest verbatim as ground truth so
-    # the LLM does not hallucinate paths. Pipeline post-validates files[].
-    # ADR-028: canonical OUTPUT CONTRACT block from framework. Plan has no
-    # `.verdict` field so verdicts=none (omits the enum line and decouples
-    # validation from a verdict assumption).
-    local _plan_schema
-    _plan_schema="$(cat <<'PLAN_SCHEMA'
-  {
-    "schema_version": 1,
-    "title": "<short title>",
-    "goal": "<one-line restatement of the goal>",
-    "steps": [
-      {
-        "id": "step-1",
-        "description": "<what this step accomplishes>",
-        "files": ["<repo-relative path>", "..."],
-        "estimated_lines": <integer>
-      }
-    ],
-    "estimated_total_lines": <integer>,
-    "notes": "<gaps, assumptions and caveats behind this plan — the prompt above directs partial understanding here; not length-capped>"
-  }
-PLAN_SCHEMA
-)"
-    local _output_contract_block
-    _output_contract_block="$(_llm_output_contract \
-        --stage plan \
-        --verdicts none \
-        --schema-json "$_plan_schema")"
-
-    local _plan_instructions
-    _plan_instructions="$(cat <<'PLAN_PROMPT'
-The plan is the plan.json the output contract above describes.
-
-Rules:
-- `schema_version` MUST be the integer 1.
-- `steps` MUST be a non-empty array; each step MUST have id, description,
-  files, estimated_lines.
-- Step ids are stable handles ("step-1", "step-2", ...) in declaration order.
-- `files` lists every file the step expects to create or modify; every
-  entry MUST be a string repo-relative path under a scope-manifest prefix.
-- Keep steps small and independently testable.
-
-## What you judge against
-The goal below, in the issue's own words, and the scope manifest after it.
-
-The issue may describe a solution as well as the problem.
-A section that records a decision (for example "Decision:") is binding: follow it.
-Anything else it proposes — an approach, a file list, a scope, a claim that
-some files or tests are unaffected — is a starting point, not the answer: check
-it against the code yourself and come up with your own approach. Where yours
-differs, say why.
-
-Tool use:
-- Explore with READ-ONLY tools (Read, Grep, Glob, and read-only Bash such as
-  find/grep/cat/git-log) to inspect files within the scope-manifest before
-  producing the plan. Keep exploration TARGETED and bounded (see TURN BUDGET).
-
-### Following the issue's own checklists
-
-If the goal text contains sections titled "Definition of done", "Acceptance
-criteria", "Anti-patterns", or "5-test trial" (or similar operational
-checklists), you MUST honor the following:
-
-1. Treat every Definition-of-done checkbox as a hard requirement. Each step
-   in your plan MUST contribute to satisfying at least one DoD checkbox,
-   and your plan in aggregate MUST satisfy all DoD checkboxes. Steps that
-   leave any DoD item unmet are invalid — reject your own draft and re-plan.
-
-2. Refuse any step that matches an Anti-pattern enumerated in the issue.
-   If a reasonable-sounding step seems to match an Anti-pattern, that
-   proves you've misread the issue — add a note in `notes` requesting
-   clarification rather than producing a plan that violates the
-   Anti-pattern.
-
-3. Do not invent permissions the issue body doesn't grant. If the issue is
-   silent about whether something is optional, gated, or deferrable, treat
-   it as required. The plan MUST NOT contain phrases like "may be toggled
-   off", "optional", "gated by config", "future follow-up", or
-   "declared but disabled" unless the issue body explicitly grants that
-   latitude.
-
-4. If the issue moves behaviour from one place to another (a migration), the
-   plan MUST include the step that makes the running program use the new
-   code — not only new files beside the old. A plan that adds manifests,
-   plugin directories or template sections without changing what actually
-   runs is invalid. For example, if the issue moves stage X, include the step
-   that puts X into the template's `flow:` so it runs.
-
-Goal:
-PLAN_PROMPT
-)"
-    # #1442: resolve the turn budget the router will enforce and tell the planner,
-    # so it converges (emits a plan) before exhausting the budget mid-exploration.
-    local _plan_budget="" _plan_budget_block=""
-    if declare -F _route_resolve_max_turns >/dev/null 2>&1; then
-        _plan_budget="$(ZBUILD_CURRENT_STAGE="${ZBUILD_CURRENT_STAGE:-plan}" _route_resolve_max_turns 2>/dev/null || true)"
-    fi
-    _plan_budget_block="$(_plan_budget_guidance "$_plan_budget")"
-    # #1550: resolve the wall-clock timeout and inject a WALL CLOCK BUDGET signal
-    # so the planner self-arrests before the OS SIGTERM fires (orthogonal to the
-    # turn-budget guardrail: a slow T2 model can hit the wall-clock with turns left).
-    local _plan_wc_budget="" _plan_wc_elapsed=0 _plan_wc_block=""
-    if declare -F _route_resolve_timeout >/dev/null 2>&1; then
-        _plan_wc_budget="$(ZBUILD_CURRENT_STAGE="${ZBUILD_CURRENT_STAGE:-plan}" _route_resolve_timeout 2>/dev/null || true)"
-    fi
-    _plan_wc_elapsed=$(( SECONDS - _plan_start_s ))
-    _plan_wc_block="$(_plan_wallclock_guidance "$_plan_wc_budget" "$_plan_wc_elapsed")"
-    # The job first (What you own is the whole of it, ADR-067 §8), then the
-    # OUTPUT CONTRACT (ADR-028), the budget guardrails, then instructions.
-    _plan_instructions="## What you own
-$_framing
-
-$_output_contract_block
-${_plan_budget_block:+
-$_plan_budget_block
-}${_plan_wc_block:+
-$_plan_wc_block
-}
-$_plan_instructions"
-    # Inline the scope-manifest verbatim (ground truth). Falls back to a
-    # placeholder if the manifest file is unreadable so the prompt remains
-    # well-formed; redaction has already fail-closed in that case above.
-    local manifest_body=""
-    if [[ -f "$scope_manifest" ]]; then
-        manifest_body="$(cat "$scope_manifest")"
-    fi
-    local prompt=""
-    prompt+="$_plan_instructions"$'\n'
-    prompt+="$goal_content"$'\n\n'
-    prompt+=$'Scope manifest (allowed path prefixes):\n'
-    prompt+="$manifest_body"$'\n'
-
-    # ─── Resume (Pillar B, #1052) ───────────────────────────────────────────
-    # Before any operator override, look up a prior exhausted exploration for
-    # THIS repo+scope+goal and splice it in. plan_context_read_for_resume gates
-    # on ZBUILD_PLAN_RESUME != 0 AND goal_hash/repo_id/scope_manifest_ref match
-    # AND status != complete; any mismatch echoes nothing / rc=1 → no splice.
-    # The cached reasoning was redacted against the PRIOR run's manifest (which
-    # may differ), so it gets its OWN redaction pass here — NEVER splice
-    # unredacted cache (mirror the operator-override redaction below).
-    local _resume_repo_id _resume_goal_hash _resume_scope_ref _resume_text
-    _resume_repo_id="$(zbuild_repo_id)"
-    _resume_goal_hash="$(zbuild_goal_hash "$goal_text")"
-    if [[ -f "$scope_manifest" ]]; then
-        _resume_scope_ref="$(shasum -a 256 "$scope_manifest" | cut -d' ' -f1)"
-    else
-        _resume_scope_ref="absent"
-    fi
-    local _resume_scope_key
-    _resume_scope_key="$(zbuild_scope_key "${ZBUILD_ISSUE_NUMBER:-}" "$_resume_scope_ref")"
-    _resume_text="$(plan_context_read_for_resume \
-        "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash" "$_resume_scope_ref" 2>/dev/null || true)"
-    # Observability (#1052 review): when a cache leaf EXISTS for the computed key
-    # but resume returned empty/rejected (corrupt parse OR a guard mismatch —
-    # goal_hash/repo_id/scope_manifest_ref/status), surface it instead of a
-    # silent degrade. ZBUILD_PLAN_RESUME=0 is an explicit operator opt-out, not a
-    # skip worth reporting, so exclude it.
-    if [[ -z "$_resume_text" && "${ZBUILD_PLAN_RESUME:-1}" != "0" ]]; then
-        local _resume_leaf
-        _resume_leaf="$(plan_context_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-        if [[ -f "$_resume_leaf" ]]; then
-            emit_event "plan.context.resume_skipped" "plugin=plan" \
-                "goal_hash=$_resume_goal_hash" \
-                "reason=rejected_or_corrupt"
-        fi
-    fi
-    if [[ -n "$_resume_text" ]]; then
-        # Splice the resumed prior-exploration context verbatim. ADR-043: the
-        # router redacts the whole assembled prompt by construction, so the
-        # out-of-scope paths in this cached reasoning are wrapped in that single
-        # pass — no per-splice redaction / C6 bookkeeping is needed anymore.
-        prompt+=$'\n## PRIOR EXPLORATION CONTEXT (resumed)\n\n'
-        prompt+="$_resume_text"$'\n'
-
-        local _resume_json_path _prior_status _prior_turns
-        _resume_json_path="$(plan_context_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-        _prior_status="$(jq -r '.status // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
-        _prior_turns="$(jq -r '.num_turns // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
-        emit_event "plan.context.resumed" "plugin=plan" \
-            "goal_hash=$_resume_goal_hash" \
-            "prior_status=$_prior_status" \
-            "prior_num_turns=$_prior_turns"
-    fi
-
-    # #2308: the stage's limits close its own text, after everything it judges
-    # against.
-    prompt+=$'\n## What you must not do\n'
-    prompt+=$'- Do NOT call Edit or Write, and do NOT run any command that modifies the tree.\n  This stage is read-only.\n'
-
-    # ADR-067 §8: the stage's three parts and the engine's blocks — the
-    # repository's guidance for this stage among them — in the one prompt
-    # order. Plan's own latest plan reaches it under Previous work.
-    local _composed
-    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
+    # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
+    # prompt order. Plan's own latest plan reaches it under Previous work.
+    local prompt
+    if ! prompt="$(stage_prompt_compose_parts "$(_plan_prompt "$goal_content" "$output_plan_json")")"; then
         error "plan_run: the prompt could not be composed — the engine's blocks are missing"
         return 1
     fi
-    prompt="$_composed"
 
-    # ─── Route to LLM (T2, matching manifest config.tier_default) ───────────
-    # ADR-018 (#476): Pattern 1 stages with tools MUST use JSON envelope mode.
-    # Headless text mode streams every turn (reasoning + tools + final) as
-    # concatenated text; only .result from the JSON envelope is the
-    # final assistant message. Without this, reasoning turns leak as a prose
-    # preamble and break the strict-JSON parser below.
-    #
-    # Save/restore so a caller that set the flag externally is not clobbered.
+    # What plan.json held before the call: a valid plan the call did not write
+    # is not this call's work when the call failed.
+    local before="absent" after="absent"
+    [[ -e "$output_plan_json" ]] && before="$(cksum 2>/dev/null < "$output_plan_json" || printf 'unreadable')"
+
     local tier; tier="$(resolve_tier plan "$_PLAN_DIR")" || return 1
-    local raw_response="" router_rc=0
-    local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
-    export ZBUILD_ROUTER_JSON_OUTPUT=1
-    # ADR-018 (#483): tag the router's capture so plan's own banner renders
-    # the plan.json output via render_plan_md (mirror #476 save/restore).
-    local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
-    export ZBUILD_ROUTER_ARTIFACT_ID=plan
+    local router_rc=0 _reply
     # #491: do NOT redirect route_to_model's stderr — the stage-io input banner
-    # writes to fd 2 (ZBUILD_STAGE_IO_FD default) and 2>/dev/null would swallow
-    # it, breaking the ADR-015 §v4 input-before-action ordering contract.
-    raw_response="$(route_to_model "$tier" "$prompt")" || router_rc=$?
-    if [[ "$_prev_json_env" == "__UNSET__" ]]; then
-        unset ZBUILD_ROUTER_JSON_OUTPUT
-    else
-        export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
-    fi
-    if [[ "$_prev_artifact_env" == "__UNSET__" ]]; then
-        unset ZBUILD_ROUTER_ARTIFACT_ID
-    else
-        export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
+    # writes to fd 2. The reply is one line; the plan is the file.
+    _reply="$(route_to_model "$tier" "$prompt")" || router_rc=$?
+
+    [[ -e "$output_plan_json" ]] && after="$(cksum 2>/dev/null < "$output_plan_json" || printf 'unreadable')"
+    local wrote=0; [[ "$after" != "absent" && "$after" != "$before" ]] && wrote=1
+
+    # A valid plan counts when the call ended normally, or when this call wrote
+    # it before it was cut off (#2363: a valid output wins even on failure).
+    if _plan_is_valid "$output_plan_json" && { [[ $router_rc -eq 0 ]] || (( wrote )); }; then
+        _plan_finish "$output_plan_json" "$artifact_dir"
+        return
     fi
 
-
-    # ─── Parse: strip fences, validate JSON with .steps array ───────────────
-    local plan_json=""
-    # #1052: set when a plan was salvaged from a max_turns envelope; the
-    # recovery branch already persisted plan-context status=complete, so the
-    # success-persist block below must not re-emit plan.context.persisted.
-    local _plan_recovered=0
-    # #476: distinguish empty-envelope from schema-failure so a future
-    # regression (e.g. envelope mode silently disabled) emits a different
-    # `reason=` and is grep-detectable.
-    local schema_failed=0
-    if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
-        # ADR-028 v1.2 (#944): route the rc=0 parse through the shared framework
-        # _llm_envelope_parse --schema-gate _plan_envelope_schema_ok. LAST-wins
-        # selects the final balanced object; when that object fails the plan
-        # schema gate, _llm_recover_envelope_json fires and restores the real
-        # envelope from a brace-bearing postamble (supersedes the #478 bare
-        # extract_first_json_object). The STRICT validator below stays
-        # AUTHORITATIVE for rc=0 acceptance — it additionally requires files[]
-        # be strings — so a well-formed-but-invalid response (or a recovered one
-        # that still fails it) remains a schema_violation, never resurrected.
-        local stripped _plan_prose
-        _llm_envelope_parse --schema-gate _plan_envelope_schema_ok \
-            "$raw_response" stripped _plan_prose
-        if printf '%s' "$stripped" | jq -e 'type == "object" and (.schema_version == 1) and (.steps | type == "array") and (.steps | length > 0) and (.steps | all((.files | type == "array") and (.files | all(type == "string"))))' >/dev/null 2>&1; then
-            plan_json="$stripped"
+    local _reason="no_plan_written" _disp="unusable"
+    if (( wrote )) || [[ $router_rc -eq 0 && "$after" != "absent" ]]; then
+        _reason="schema_violation"
+    fi
+    if [[ $router_rc -ne 0 && "$_reason" == "no_plan_written" ]]; then
+        # A failed router CALL is named by the shared mapping, never by this
+        # plugin (#1835; #2225 "chosen once, not per plugin").
+        local _rc_verdict="" _rc_reason="" _rc_disp=""
+        _router_rc_classify "$router_rc" _rc_verdict _rc_reason
+        _rc_disp="$(router_reason_disposition "${_rc_reason:-}")"
+        if [[ -n "$_rc_disp" ]]; then
+            _disp="$_rc_disp"
         else
-            schema_failed=1
-            warn "_plan_run_inner: LLM response is not a valid plan.json (requires schema_version=1 and non-empty .steps)"
-        fi
-    elif [[ $router_rc -eq 0 && -z "$raw_response" ]]; then
-        warn "_plan_run_inner: router rc=0 but .result envelope is empty (model returned no final message)"
-    elif [[ $router_rc -eq 1 ]]; then
-        warn "_plan_run_inner: router rc=1 (recoverable); no plan produced"
-    elif [[ $router_rc -ne 0 ]]; then
-        # #1727: FALL THROUGH to the recovery block below instead of returning 1
-        # here. This `return 1` sat ABOVE the #1052 recovery/state-save path, so
-        # for exactly the rcs that path exists to serve — 124 (wall-clock
-        # timeout) and 137 (OOM kill) — it was unreachable, and a single timeout
-        # aborted the whole run with nothing persisted.
-        #
-        # Observed on runs 20260817184959-54622 / 20260817192215-57314 (#1832):
-        # plan killed at 300s mid-tool-use, `reason=router_fatal router_rc=124`,
-        # then `pipeline.abort`. route.sh now retries rc=124 once with an
-        # escalated timeout and the checkpoint re-injected (#1879); this makes
-        # the outcome AFTER that retry recoverable rather than terminal.
-        #
-        # Not silently downgraded: the diagnostic still fires, and the block
-        # below decides the real outcome — a recovered plan (success), a
-        # budget-exhaustion signal (rc=10 scope_too_large), or the existing
-        # claude_cli_failed path (rc=1). What changes is that the decision is now
-        # MADE rather than pre-empted.
-        # `plan.router_failed`, NOT `plugin.run.*`: this is emitted BY the plugin,
-        # and `plugin.*` is the ENGINE's namespace (lifecycle.sh). Plan already
-        # emitting into it is the pre-existing collision #1705 documents — 23
-        # starts vs 37 completes — so this does not add to it. Declared in the
-        # manifest's provides.events per #1717, which needs no engine-config edit.
-        #
-        # `recovery_attempted`, NOT `recoverable`: this fires BEFORE recovery
-        # runs, so it cannot claim the outcome. Pairing an optimistic
-        # `recoverable=1` with a later failure event would read as a
-        # contradiction in the event log. The outcome is carried by the events
-        # that follow — plan.envelope.recovered on success, plan.scope_too_large
-        # on a budget exhaustion, plugin.result verdict=error otherwise.
-        warn "_plan_run_inner: router rc=$router_rc — trying recovery before failing"
-        emit_event "plan.router_failed" "plugin=plan" \
-            "reason=router_failed" "router_rc=$router_rc" "recovery_attempted=1" \
-            2>/dev/null || true
-    fi
-
-    # ─── Recovery + scope_too_large (Pillars C/D, #1052) ────────────────────
-    # We have no plan from the happy path. Before failing, mirror impact's
-    # resilience: (1) try to RECOVER a complete plan an exhausted model may
-    # still have emitted (from raw_response AND the router's max_turns sidecar
-    # .result); (2) if the failure is specifically error_max_turns/timeout/oom,
-    # turn it into a TERMINAL scope_too_large signal (rc=10) instead of an empty
-    # plugin.result verdict=error; (3) otherwise keep the existing claude_cli_failed path.
-    if [[ -z "$plan_json" ]]; then
-        # (a) Envelope recovery — ONLY on a router FAILURE (rc != 0), i.e. the
-        # budget-exhaustion / crash path. A model that hit max_turns may still
-        # have emitted a valid final plan; try the captured response first, then
-        # the router's diagnostic sidecar .result (route.sh persists the failed
-        # envelope there; route_to_model returned empty on the non-zero exit).
-        # We deliberately do NOT recover on an rc=0 schema failure: the
-        # happy-path validator above is STRICTER than _plan_envelope_schema_ok
-        # (it also requires files[] be strings), so a well-formed-but-invalid
-        # rc=0 response must stay a schema_violation, not be resurrected here.
-        local _recovered="" _sidecar_blob=""
-        if [[ "$router_rc" -ne 0 ]]; then
-            if [[ -n "$raw_response" ]]; then
-                _recovered="$(_plan_recover_envelope_json "$raw_response" 2>/dev/null || true)"
-            fi
-            _sidecar_blob="$(plan_context_recover_sidecar_reasoning "${ZBUILD_CURRENT_STAGE:-plan}" "$artifact_dir" 2>/dev/null || true)"
-            if [[ -z "$_recovered" && -n "$_sidecar_blob" ]]; then
-                _recovered="$(_plan_recover_envelope_json "$_sidecar_blob" 2>/dev/null || true)"
-            fi
-        fi
-        if [[ -n "$_recovered" ]]; then
-            # A genuine, schema-valid plan surfaced — treat as success. plan.json
-            # is written by the shared "Write plan.json" path below (fall-through).
-            plan_json="$_recovered"
-            _plan_recovered=1
-            emit_event "plan.envelope.recovered" "plugin=plan" \
-                "artifact=plan.json" "recovered_bytes=${#_recovered}"
-            # Persist context status=complete + mirror into the per-run artifacts.
-            # Only emit plan.context.persisted when the write actually succeeded
-            # (its atomic mv rc) — a failed write must not report a false-positive.
-            local _rec_ctx_json _rec_ctx_rc=0
-            _rec_ctx_json="$(plan_context_write \
-                "$_resume_goal_hash" "$_resume_scope_key" "complete" "" "" "$_resume_scope_ref")" || _rec_ctx_rc=$?
-            if [[ "$_rec_ctx_rc" -eq 0 ]]; then
-                printf '%s\n' "$_rec_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
-                local _rec_md_path
-                _rec_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-                [[ -f "$_rec_md_path" ]] && cp "$_rec_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
-                emit_event "plan.context.persisted" "plugin=plan" \
-                    "goal_hash=$_resume_goal_hash" "status=complete" "recovered=1"
-            fi
-            # Fall through to the normal post-validate / run.complete path below.
-        else
-            # (b) No recoverable plan. The failure becomes the terminal
-            # scope_too_large abort iff the model exhausted its turn budget
-            # (sidecar subtype=error_max_turns). Anything else stays the existing
-            # claude_cli_failed / plugin.result verdict=error path.
-            local _stl_subtype=""
-            # Resolve the sidecar dir from the SAME expression route.sh writes it
-            # to, so a caller that set ZBUILD_ARTIFACT_DIR differently from the
-            # plugin's local $artifact_dir still finds the max_turns envelope.
-            # Fall back to $artifact_dir (existing behavior) when both env unset.
-            local _stl_sidecar_base
-            if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
-                _stl_sidecar_base="$ZBUILD_ARTIFACT_DIR"
-            elif [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
-                _stl_sidecar_base="$ZBUILD_STATE_DIR/artifacts"
-            else
-                _stl_sidecar_base="$artifact_dir"
-            fi
-            local _stl_sidecar="$_stl_sidecar_base/stage-io/${ZBUILD_CURRENT_STAGE:-plan}-sync-error.raw-claude-output.json"
-            if [[ ! -f "$_stl_sidecar" ]]; then
-                # Glob-fallback to the newest matching sidecar (mirror the lib).
-                local _stl_f _stl_newest=""
-                for _stl_f in "$_stl_sidecar_base"/stage-io/"${ZBUILD_CURRENT_STAGE:-plan}"-*error*.raw-claude-output.json; do
-                    [[ -e "$_stl_f" ]] || continue
-                    if [[ -z "$_stl_newest" || "$_stl_f" -nt "$_stl_newest" ]]; then _stl_newest="$_stl_f"; fi
-                done
-                _stl_sidecar="$_stl_newest"
-            fi
-            if [[ -n "$_stl_sidecar" && -f "$_stl_sidecar" ]]; then
-                _stl_subtype="$(jq -r '.subtype // ""' "$_stl_sidecar" 2>/dev/null || true)"
-            fi
-            # The deliberate discriminator (per the DoD): scope_too_large fires
-            # SOLELY on subtype=error_max_turns — the model burning its turn
-            # budget. A hard router timeout/oom WITHOUT that subtype is genuine
-            # CLI failure and correctly stays on the claude_cli_failed/rc=1 path.
-            # (A prior router_timeout/oom branch was unreachable: it required the
-            # same error_max_turns subtype the if above already matches.)
-            local _is_scope_too_large=0
-            if [[ "$_stl_subtype" == "error_max_turns" ]]; then
-                _is_scope_too_large=1
-            fi
-
-            if [[ "$_is_scope_too_large" -eq 1 ]]; then
-                # Recover partial reasoning + num_turns.
-                #
-                # #1879: prefer the MODEL-WRITTEN notes file over the sidecar
-                # distillation. The sidecar route cannot work: the CLI's
-                # error_max_turns envelope carries neither `.result` nor
-                # `.tool_uses` (verified against the real #1708 artifact), so
-                # plan_context_recover_sidecar_reasoning distils only
-                # "num_turns: N" — which is what made #1052's "re-running this
-                # issue will resume from it" an empty promise. The checkpoint is
-                # what the model actually recorded as it worked.
-                local _stl_reasoning _stl_turns _stl_checkpoint=""
-                if declare -F stage_notes_path >/dev/null 2>&1; then
-                    local _stl_cp_path
-                    _stl_cp_path="$(stage_notes_path "${ZBUILD_STATE_DIR:-$(dirname "$artifact_dir")}" \
-                        "${ZBUILD_CURRENT_STAGE:-plan}")"
-                    [[ -s "$_stl_cp_path" ]] && _stl_checkpoint="$(cat "$_stl_cp_path" 2>/dev/null || true)"
-                fi
-                _stl_reasoning="$_stl_checkpoint"
-                [[ -z "$_stl_reasoning" ]] && _stl_reasoning="$_sidecar_blob"
-                [[ -z "$_stl_reasoning" ]] && _stl_reasoning="$(plan_context_recover_sidecar_reasoning "${ZBUILD_CURRENT_STAGE:-plan}" "$artifact_dir" 2>/dev/null || true)"
-                _stl_turns="$(jq -r '.num_turns // ""' "$_stl_sidecar" 2>/dev/null || true)"
-
-                # Persist scope_too_large context (cross-run cache + per-run copy).
-                # Only emit plan.context.persisted when the write succeeded (its
-                # atomic mv rc); the terminal plan.scope_too_large + rc=10 still
-                # fire regardless so the abort signal is never lost.
-                local _stl_ctx_json _stl_ctx_rc=0
-                _stl_ctx_json="$(plan_context_write \
-                    "$_resume_goal_hash" "$_resume_scope_key" "scope_too_large" \
-                    "$_stl_turns" "$_stl_reasoning" "$_resume_scope_ref")" || _stl_ctx_rc=$?
-                if [[ "$_stl_ctx_rc" -eq 0 ]]; then
-                    printf '%s\n' "$_stl_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
-                    local _stl_md_path
-                    _stl_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-                    [[ -f "$_stl_md_path" ]] && cp "$_stl_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
-                    emit_event "plan.context.persisted" "plugin=plan" \
-                        "goal_hash=$_resume_goal_hash" "status=scope_too_large"
-                fi
-                emit_event "plan.scope_too_large" "plugin=plan" \
-                    "goal_hash=$_resume_goal_hash" \
-                    "num_turns=${_stl_turns:-unknown}" \
-                    "candidate_split=true"
-
-                # Terminal message (stderr) — mirror llm-agent.sh:349 shape.
-                printf '✗ Pipeline aborted: plan stage exhausted its turn budget (turns=%s) without a complete plan. The issue is likely too large — SPLIT IT into smaller sub-issues. Partial exploration saved to %s; re-running this issue will resume from it.\n' \
-                    "${_stl_turns:-unknown}" "$artifact_dir/plan-context.md" >&2
-
-                # D9 (#1024) guard: scope_too_large is a SUCCESSFUL model run that
-                # hit a budget, NOT CLI unavailability. The plan plugin never
-                # calls _zbuild_record_cli_fail (only review/test_assessment do),
-                # so the #1024 counter is untouched here — rc=1 (scope_too_large)
-                # and rc=9 (llm_unavailable) stay semantically distinct. Reset
-                # defensively in case a future wrapper records it for this path.
-                _zbuild_reset_cli_fail 2>/dev/null || true
-
-                # v2 contract: write plan.json with out_of_turns disposition so
-                # the engine's verdict reader can surface disposition to the run log.
-                _plan_write_result "$output_plan_json" "error" "out_of_turns" \
-                    "plan exhausted its turn budget (turns=${_stl_turns:-unknown}) without a complete plan"
-
-                return 1
-            fi
-
-            # (c) Genuine non-max_turns failure → write v2 result and return 1.
-            local _reason="invalid_plan_response"
-            [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
-            [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
-            # The model answered with something that is not a plan → unusable.
-            # A failed router CALL is named by the shared mapping, never by this
-            # plugin (#1835; #2225 "chosen once, not per plugin").
-            local _v2_disp="unusable"
-            if [[ $router_rc -ne 0 ]]; then
-                local _rc_verdict="" _rc_reason="" _rc_disp=""
-                _router_rc_classify "$router_rc" _rc_verdict _rc_reason
-                _rc_disp="$(router_reason_disposition "${_rc_reason:-}")"
-                if [[ -n "$_rc_disp" ]]; then
-                    _v2_disp="$_rc_disp"
-                else
-                    warn "plan: router_reason_disposition returned nothing for rc=$router_rc reason=${_rc_reason:-<none>} — recording 'unusable'"
-                fi
-            fi
-            _plan_write_result "$output_plan_json" "error" "$_v2_disp" "$_reason"
-            error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
-            stage_summary_write "$artifact_dir/plan-summary.md" "plan" "error" \
-                "no valid plan.json produced ($_reason)" \
-                "The goal was not decomposed into steps. A downstream stage has no plan to build against."
-            emit_event "plugin.result" "verdict=error" "plugin=plan" "reason=$_reason"
-            return 1
+            warn "plan: router_reason_disposition returned nothing for rc=$router_rc reason=${_rc_reason:-<none>} — recording 'unusable'"
         fi
     fi
-
-    # ─── Write plan.json ─────────────────────────────────────────────────────
-    # #2189: plan.json carries its own scope list, which the engine reads off
-    # the plan's report instead of re-deriving it from plan.json by path.
-    plan_json="$(_plan_with_scope_files "$plan_json")"
-
-    local step_count
-    step_count="$(printf '%s' "$plan_json" | jq '.steps | length' 2>/dev/null || echo 0)"
-
-    # v2 contract (#1835): merge result fields into plan.json so the engine's
-    # verdict reader can surface disposition. plan.json is the sole result file.
-    # A plan without the v2 fields is not a result the engine can read — never
-    # write one silently (the old `|| printf "$plan_json"` fallback did).
-    local _v2_plan
-    if ! _v2_plan="$(jq -c --arg r "plan decomposed into ${step_count} step(s)" \
-            '. + {result_contract:2,verdict:"pass",disposition:"complete",reason:$r}' <<< "$plan_json")" \
-        || ! atomic_write "$output_plan_json" <<< "$_v2_plan"; then
-        error "_plan_run_inner: could not write $output_plan_json"
-        return 1
-    fi
-    plan_json="$_v2_plan"
-    _PLAN_RESULT_WRITTEN=1
-
-    # ADR-018 Pattern 1 (#468): post-validate step.files[] against the
-    # scope-manifest. Fail-soft — plan.json is written regardless; review
-    # verdicts on violations rather than aborting the pipeline.
-    local scope_violations
-    scope_violations="$(_plan_validate_scope "$plan_json" "$scope_manifest")"
-    [[ -z "$scope_violations" ]] && scope_violations=0
-
-    # Wave 19-F (#738): DoD discipline check. Fail-soft like scope_violations
-    # so the plan.json reaches review for verdict; the diagnostic event
-    # gives review explicit signal to request_changes.
-    local dod_discipline_pass=1
-    if ! _plan_validate_dod_discipline "$plan_json" "$goal_content"; then
-        dod_discipline_pass=0
-    fi
-
-    # ─── Persist plan-context on success (Pillar A, #1052) ──────────────────
-    # plan.json stays the PRIMARY verdict-bearing artifact (ADR-020); the
-    # plan-context cache is SECONDARY (durable cross-run resume hint). On a
-    # normal valid plan, write status=complete to the namespaced cache and
-    # mirror it into the per-run artifacts dir. Skip when the plan was already
-    # persisted by the recovery branch above.
-    if [[ "$_plan_recovered" -ne 1 ]]; then
-        # Only emit plan.context.persisted when the write succeeded (its atomic
-        # mv rc); a failed cache write must not report a false-positive persist.
-        local _ok_ctx_json _ok_ctx_rc=0
-        _ok_ctx_json="$(plan_context_write \
-            "$_resume_goal_hash" "$_resume_scope_key" "complete" "" "" "$_resume_scope_ref")" || _ok_ctx_rc=$?
-        if [[ "$_ok_ctx_rc" -eq 0 ]]; then
-            printf '%s\n' "$_ok_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
-            local _ok_md_path
-            _ok_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-            [[ -f "$_ok_md_path" ]] && cp "$_ok_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
-            emit_event "plan.context.persisted" "plugin=plan" \
-                "goal_hash=$_resume_goal_hash" "status=complete"
-        fi
-    fi
-
-    # ADR-055 §9: state what this stage DID — the shape of the plan a later
-    # stage will be held to, not merely that it finished.
-    stage_summary_write "$artifact_dir/plan-summary.md" "plan" "pass" \
-        "decomposed the goal into $step_count step(s)" \
-        "$(printf -- '- scope violations: %s\n- DoD discipline: %s\n- artifact: plan.json' \
-            "$scope_violations" "$dod_discipline_pass")"
-    emit_event "plugin.result" "stage=plan" \
-        "plugin=plan" \
-        "step_count=$step_count" \
-        "scope_violations=$scope_violations" \
-        "dod_discipline_pass=$dod_discipline_pass" \
-        "artifact=plan.json"
-
-    # ─── Opportunistic GC (Pillar F, #1052) ─────────────────────────────────
-    # Self-trim the cross-run cache so it never grows unbounded; gated by
-    # ZBUILD_PLAN_CONTEXT_GC (default 1) and quota-bounded inside the helper.
-    plan_context_gc 2>/dev/null || true
-
-    return 0
+    _plan_write_result "$output_plan_json" "error" "$_disp" "$_reason"
+    error "_plan_run_inner: no valid plan.json (reason=$_reason, router_rc=$router_rc)"
+    stage_summary_write "$artifact_dir/plan-summary.md" "plan" "error" \
+        "no valid plan.json ($_reason)" \
+        "The issue was not split into work items."
+    emit_event "plugin.result" "verdict=error" "plugin=plan" "reason=$_reason"
+    return 1
 }
 
-# ─── cleanup ────────────────────────────────────────────────────────────────
+# _plan_finish <plan.json> <artifact_dir> — the plan with its result fields,
+# and its summary.
+_plan_finish() {
+    local out="$1" artifact_dir="$2" n q v2
+    n="$(jq '.steps | length' "$out" 2>/dev/null || echo 0)"
+    q="$(jq '(.open_questions // []) | length' "$out" 2>/dev/null || echo 0)"
+    # v2 contract (#1835): plan.json is the sole result file. Fields an earlier
+    # plan carried that this one does not own are dropped.
+    if ! v2="$(jq -c --arg r "plan has ${n} work item(s)" \
+            'del(.scope_files) + {result_contract:2,verdict:"pass",disposition:"complete",reason:$r}' "$out")" \
+        || ! atomic_write "$out" <<< "$v2"; then
+        error "_plan_run_inner: could not write $out"
+        return 1
+    fi
+    _PLAN_RESULT_WRITTEN=1
+    # ADR-055 §9: state what this stage DID.
+    stage_summary_write "$artifact_dir/plan-summary.md" "plan" "pass" \
+        "split the issue into $n work item(s)" \
+        "$(printf -- '- open questions: %s\n- artifact: plan.json' "$q")"
+    emit_event "plugin.result" "stage=plan" "plugin=plan" "step_count=$n" "artifact=plan.json"
+    return 0
+}

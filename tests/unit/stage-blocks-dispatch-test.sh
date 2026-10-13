@@ -5,8 +5,8 @@
 #
 #   D1 [change]: a dispatched stage sees ZBUILD_STAGE_BLOCKS with the three
 #                blocks written: From the repo, Previous work, Rules
-#   D2 [change]: the dispatch records what the repository and the issue looked
-#                like, so a later stage can be told what moved since
+#   D2 [retired]: (#2363) the per-stage record of what moved since a stage ran
+#                is gone; Previous work says once what the work has changed
 #   D3 [change]: a stage is launched even when an output it once declared it
 #                required is absent — a missing prerequisite is its own check
 #   D4 [change]: a map element gets its own blocks and its own notes file
@@ -115,10 +115,8 @@ assert_contains "[D1] Previous work lists the producer's output" \
     "$(cat "$TEST_TEMP_DIR/previous-work.md" 2>/dev/null)" "$ART/sb-producer-out.json"
 assert_contains "[D1] Rules: the per-call budget, the same for every stage" \
     "$(cat "$TEST_TEMP_DIR/rules.md" 2>/dev/null)" "Your budget: each model call has"
-assert_file_exists "[D2] what the repository and issue looked like is recorded" \
+assert_file_not_exists "[D2] no per-stage record of what moved (#2363)" \
     "$ART/stage-context/sb-tool.txt"
-assert_eq "[D2] the recorded HEAD is the repository's" \
-    "$(git -C "$REPO" rev-parse HEAD)" "$(head -n1 "$ART/stage-context/sb-tool.txt" 2>/dev/null)"
 
 # D4: a map element
 rm -f "$TEST_TEMP_DIR/sbt-seen.txt"

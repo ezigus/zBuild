@@ -36,17 +36,16 @@ source "$_LLM_AGENT_LIB_DIR/abort-propagation.sh"
 
 # ─── _llm_output_contract ───────────────────────────────────────────────────
 # Renders the canonical OUTPUT CONTRACT prompt block to stdout. Per-stage
-# variation is parameterized; the FORBIDDEN list, FINAL RULE, and
-# "begins with `{`" rules are common to all stages.
+# variation is parameterized; the FINAL RULE and "begins with `{`" rules are
+# common to all stages.
 #
 # Args (long-form):
 #   --stage <id>              — stage name (used in error events)
 #   --verdicts <csv|none>     — verdict vocabulary; "none" omits the enum line
-#                               entirely (use for plan which has no .verdict
-#                               field; the schema MUST NOT assert .verdict)
+#                               entirely (the schema MUST NOT assert .verdict)
 #   --schema-json <inline>    — required JSON schema shape (multi-line)
-#   [--extras <path>]         — per-stage extras file (FORBIDDEN extensions,
-#                               CORRECT examples, etc.); appended verbatim
+#   [--extras <path>]         — per-stage extras file (CORRECT examples,
+#                               etc.); appended verbatim
 #                               between the schema block and the closing rule.
 _llm_output_contract() {
     local stage="" verdicts="" schema_json="" extras_file=""
@@ -108,23 +107,6 @@ CONTRACT_HEAD
         printf -- '- Your `.verdict` field MUST be one of: %s\n' "$verdicts"
     fi
 
-    # Common FORBIDDEN list — preamble + postamble drift observed in dogfoods.
-    cat <<'_FORBIDDEN_BLOCK'
-
-FORBIDDEN — your response MUST NOT contain any of these strings ANYWHERE,
-not before the JSON, not after it, not inside any field:
-  - "Based on my analysis"
-  - "Based on my comprehensive analysis"
-  - "Here is"
-  - "Here's"
-  - "After reviewing"
-  - "I've identified"
-  - "Now I have"
-  - "Let me"
-  - "I have all the information"
-_FORBIDDEN_BLOCK
-
-
     cat <<'FINAL_RULE'
 
 FINAL RULE: after your closing brace `}`, output NOTHING — not even a
@@ -137,7 +119,7 @@ FINAL_RULE
 
     printf '%s\n' "$schema_json"
 
-    # Per-stage extras (FORBIDDEN extensions, additional CORRECT examples).
+    # Per-stage extras (additional CORRECT examples).
     if [[ -n "$extras_file" && -f "$extras_file" ]]; then
         printf '\n'
         cat "$extras_file"
@@ -175,7 +157,6 @@ _llm_recover_envelope_json() {
     [[ -z "$_raw" || -z "$_gate_func" ]] && return 1
 
     # Enumerate every top-level balanced object, RS-delimited with \x1e.
-    # Same awk brace-grammar as _plan_recover_envelope_json (plan-context.sh).
     local _candidates
     _candidates="$(printf '%s' "$_raw" | awk '
         BEGIN { buf = "" }

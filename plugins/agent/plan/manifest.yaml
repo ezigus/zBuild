@@ -4,8 +4,8 @@ kind: agent
 version: 0.1.0
 description: |
   Plan stage agent (ADR-013, T2). Consumes a scope-manifest and goal text,
-  routes to the T2 model tier, and produces a plan.json artifact describing
-  the ordered implementation steps, file estimates, and notes.
+  routes to the T2 model tier, and produces a plan.json artifact: the issue
+  split into an ordered list of work items, each with the areas it touches.
 
 hooks:
   run: plan_run
@@ -22,18 +22,6 @@ requires:
 provides:
   role: planner
   result_contract: 2
-  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
-  # the engine's known set at load. Adding one here needs no engine-config edit.
-  events:
-    - plan.context.persisted
-    - plan.context.resume_skipped
-    - plan.context.resumed
-    - plan.dod_violation
-    - plan.envelope.recovered
-    - plan.flow_wiring_missing
-    - plan.scope.violation
-    - plan.scope_too_large
-    - plan.router_failed
 
 config:
   # #1879: retry ONCE when the model runs out of turns. Worth taking only because
@@ -72,18 +60,6 @@ outputs:
     # ADR-020 amendment (#507): primary output. plan.json has no .verdict
     # field; runner falls back to pass when JSON is present and well-formed.
     primary: true
-  # #1052: secondary, non-primary resumable exploration artifact. Persisted on
-  # every terminal plan outcome (complete | scope_too_large) so a rerun can
-  # resume from prior exploration instead of re-deriving from scratch. NOT
-  # primary — plan.json stays the verdict-bearing primary (ADR-020 intact).
-  # GitHub-artifact naming contract (Pillar E): when uploaded, the artifact
-  # path must include <repo_id>/<scope_key>/<goal_hash> so two pipelines'
-  # uploads never collide in a shared artifacts bucket.
-  - id: plan-context
-    path: ${artifact_dir}/plan-context.json
-    type: plan-context.json@1
-    format: json
-    required: false
   # written on every terminal verdict, so absence means something went wrong.
   - id: plan-summary.md
     path: "${artifact_dir}/plan-summary.md"
@@ -93,5 +69,5 @@ outputs:
     summary: true
 
 state:
-  persisted: [last_plan_steps, plan_context_status]
+  persisted: [last_plan_steps]
   reconstructed: [goal_text]

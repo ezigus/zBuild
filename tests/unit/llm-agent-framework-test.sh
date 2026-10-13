@@ -29,7 +29,6 @@ assert_eq "C1: missing --stage → rc=2" "2" "$rc"
 out="$(_llm_output_contract --stage impact --verdicts complete,incomplete --schema-json '{"v":1}')"
 assert_contains "C2: contains OUTPUT CONTRACT header" "$out" "OUTPUT CONTRACT"
 assert_contains "C2: contains 'begins with' rule" "$out" "first output character MUST be"
-assert_contains "C2: contains FORBIDDEN list" "$out" "FORBIDDEN"
 assert_contains "C2: contains FINAL RULE" "$out" "FINAL RULE"
 assert_contains "C2: schema inlined" "$out" '"v":1'
 
@@ -93,10 +92,7 @@ for _sj in '{"schema_version":1,"missing":[{"step_id":"<id>","files_to_add":["<p
     assert_eq "C5d: a real in-tree schema is accepted" "0" "$_rc"
 done
 
-# C6: FORBIDDEN list pins all 9 observed phrases
-for phrase in 'Based on my analysis' 'Based on my comprehensive analysis' 'Here is' "Here's" 'After reviewing' "I've identified" 'Now I have' 'Let me' 'I have all the information'; do
-    assert_contains "C6: FORBIDDEN names '$phrase'" "$out" "$phrase"
-done
+# C6 retired (#2363): the FORBIDDEN phrase list is gone — engine-blocks-shared-only-test B5.
 
 # ─── _llm_envelope_parse ─────────────────────────────────────────────────────
 # P1: missing args

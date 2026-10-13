@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/stage-previous-work.sh — the Previous work block of the engine's
-# prompt contract (ADR-067 §8), and what moved since each stage last ran.
+# prompt contract (ADR-067 §8).
 #
 # Every stage receives the latest output of every stage that has run, its own
 # included, whichever try or run wrote it (ADR-068 §8, ADR-050 §9). Sourced by
@@ -12,82 +12,48 @@
 [[ -n "${_ZBUILD_STAGE_PREVIOUS_WORK_LOADED:-}" ]] && return 0
 _ZBUILD_STAGE_PREVIOUS_WORK_LOADED=1
 
-# ─── What moved since a stage last ran ───────────────────────────────────────
-# A stage's output is only as current as the repository and the issue it was
-# written against. At each dispatch the engine records both (the repository's
-# HEAD and a hash of the issue text intake last read); Previous work then says
-# what moved since. Kept under artifacts/ so it is saved with the outputs and a
-# rerun can still say it.
-_sp_context_path() { printf '%s/artifacts/stage-context/%s.txt' "$1" "$(_sp_unit "$2")"; }
-
-# _sp_issue_sha <state_dir> — a checksum of the issue text intake last read.
-_sp_issue_sha() {
-    local f="$1/intake.md" h
-    [[ -s "$f" ]] || return 0
-    h="$(cksum 2>/dev/null < "$f")" || return 0
-    printf '%s' "${h// /-}"
+# ─── What this issue's work has changed ─────────────────────────────────────
+# _sp_work_changed_line <state_dir> <repo_root> — one line naming the files this
+# issue's work has changed, against the commit it started from (the baseline
+# intake records). Said once, at the top: it is the same for every stage. No
+# baseline, or no readable repository: no line.
+_sp_work_changed_line() {
+    local state_dir="$1" repo_root="$2" base="" files line n=0 shown=""
+    [[ -s "$state_dir/intake-baseline-ref.txt" ]] && base="$(<"$state_dir/intake-baseline-ref.txt")"
+    base="${base%%[[:space:]]*}"
+    [[ -n "$base" && -n "$repo_root" ]] || return 0
+    files="$(git -C "$repo_root" diff --name-only "$base" -- 2>/dev/null)" || return 0
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        n=$((n + 1))
+        (( n <= 20 )) && shown+="${shown:+, }$line"
+    done <<< "$files"
+    if (( n == 0 )); then
+        printf "Files this issue's work has changed so far: none.\n"
+    else
+        (( n > 20 )) && shown+=", … ($n in all)"
+        printf "Files this issue's work has changed so far: %s\n" "$shown"
+    fi
 }
 
-# stage_context_record <state_dir> <stage> <repo_root> — fail-open.
-stage_context_record() {
-    local state_dir="$1" stage="$2" repo_root="$3" f head issue
-    [[ -n "$state_dir" && -n "$stage" ]] || return 0
-    f="$(_sp_context_path "$state_dir" "$stage")"
-    head="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
-    issue="$(_sp_issue_sha "$state_dir")"
-    [[ -d "${f%/*}" ]] || mkdir -p "${f%/*}" 2>/dev/null || return 0
-    printf '%s\n%s\n' "$head" "$issue" > "$f" 2>/dev/null || true
+# _sp_last_good_attempt <state_dir> <stage> <primary-basename> — the newest
+# archived attempt of <stage> whose primary result is not an error, i.e. the
+# last attempt that produced its output (core/plugin-registry/attempt-archive.sh
+# keeps a copy of every dispatch's outputs). Prints its directory; nothing when
+# there is none.
+_sp_last_good_attempt() {
+    local base="$1/artifacts/attempts/${2//[^A-Za-z0-9_-]/_}" name="$3" d best="" content
+    [[ -d "$base" && -n "$name" ]] || return 0
+    while IFS= read -r d; do
+        [[ -s "$d/$name" ]] || continue
+        content="$(<"$d/$name")"
+        [[ "$content" =~ \"verdict\"[[:space:]]*:[[:space:]]*\"error\" ]] && continue
+        best="$d"
+    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name 'iter-*-attempt-*' 2>/dev/null \
+                | awk -F'iter-|-attempt-' '{ printf "%09d %09d %s\n", $(NF-1), $NF, $0 }' \
+                | LC_ALL=C sort | cut -d' ' -f3-)
+    [[ -n "$best" ]] && printf '%s' "$best"
     return 0
-}
-
-# _sp_moved_line <state_dir> <stage> <repo_root> <issue_now> — what moved since
-# the stage last ran. The files changed since a given HEAD are worked out once
-# per HEAD (_SP_DIFF_CACHE), since most stages of a run share a few.
-declare -gA _SP_DIFF_CACHE 2>/dev/null || true
-_sp_moved_line() {
-    local state_dir="$1" stage="$2" repo_root="$3" now_issue="$4" f head="" issue="" files n=0 shown line
-    f="$(_sp_context_path "$state_dir" "$stage")"
-    if [[ ! -s "$f" ]]; then
-        printf 'Since it last ran: not recorded.\n'
-        return 0
-    fi
-    { IFS= read -r head; IFS= read -r issue; } < "$f"
-    local repo_part issue_part key="$repo_root|$head"
-    if [[ -n "$head" ]]; then
-        if [[ -z "${_SP_DIFF_CACHE[$key]+x}" ]]; then
-            if files="$(git -C "$repo_root" diff --name-only "$head" -- 2>/dev/null)"; then
-                _SP_DIFF_CACHE[$key]="ok"$'\n'"$files"
-            else
-                _SP_DIFF_CACHE[$key]="unknown"
-            fi
-        fi
-        files="${_SP_DIFF_CACHE[$key]}"
-    fi
-    if [[ -z "$head" || "$files" == "unknown" ]]; then
-        repo_part="what changed in the repository is not known"
-    else
-        files="${files#ok}"; files="${files#$'\n'}"
-        shown=""
-        while IFS= read -r line; do
-            [[ -n "$line" ]] || continue
-            n=$((n + 1))
-            (( n <= 20 )) && shown+="${shown:+, }$line"
-        done <<< "$files"
-        if (( n == 0 )); then
-            repo_part="nothing changed in the repository"
-        else
-            (( n > 20 )) && shown+=", …"
-            repo_part="$n file(s) changed in the repository ($shown)"
-        fi
-    fi
-    if [[ -z "$issue" || -z "$now_issue" ]]; then
-        issue_part="whether the issue text changed is not known"
-    elif [[ "$issue" == "$now_issue" ]]; then
-        issue_part="the issue text did not change"
-    else
-        issue_part="the issue text changed"
-    fi
-    printf 'Since it last ran: %s; %s.\n' "$repo_part" "$issue_part"
 }
 
 # ─── Previous work ───────────────────────────────────────────────────────────
@@ -138,9 +104,10 @@ _stage_block_previous_work() {
         || source "$_ZBUILD_SP_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
     _inputs_build_producer_index "$plugins_root" "$state_dir"
 
-    printf 'The latest output of every stage that has run, including yours. Each is\n'
-    printf 'the newest version, whichever try or run wrote it. Read the files you need\n'
-    printf 'with your normal file tools.\n'
+    printf 'The latest output of every stage that has run, with where to find it. Use\n'
+    printf 'what your job needs.\n'
+    local changed; changed="$(_sp_work_changed_line "$state_dir" "$repo_root")"
+    [[ -n "$changed" ]] && printf '\n%s\n' "$changed"
 
     # Everything read once: the stages in the order they first completed with
     # their verdicts, then every output in the index.
@@ -171,7 +138,6 @@ _stage_block_previous_work() {
                         "$index" 2>/dev/null | LC_ALL=C sort)
     fi
 
-    local now_issue; now_issue="$(_sp_issue_sha "$state_dir")"
     local s manifest roles summ errp res notes verdict own body any=0 raw content
     for s in "${order[@]}"; do
         # Only a stage's own notes come back to it (ADR-067 §8); another
@@ -201,7 +167,6 @@ _stage_block_previous_work() {
         fi
         own=""; [[ "$s" == "$stage" ]] && own=" — your own"
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
-        _sp_moved_line "$state_dir" "$s" "$repo_root" "$now_issue"
         [[ -n "${outs[$s]:-}" ]] && printf 'Outputs:\n%s' "${outs[$s]}"
 
         if [[ "$content" == *'"findings"'* ]]; then
@@ -231,6 +196,21 @@ _stage_block_previous_work() {
                     printf '\nErrors it hit (last %sB of %s):\n%s\n' "$_ZB_SP_ERRORS_MAX_BYTES" "$errp" "$body"
                 fi ;;
         esac
+        # An attempt that ended in error produced no output: show the last
+        # output this stage did produce, from the attempt that wrote it.
+        if [[ -n "$res" && "$content" =~ \"verdict\"[[:space:]]*:[[:space:]]*\"error\" ]]; then
+            local good f
+            good="$(_sp_last_good_attempt "$state_dir" "$s" "${res##*/}")"
+            if [[ -n "$good" ]]; then
+                printf '\nIts last good output, from an earlier attempt:\n'
+                for f in "$good"/*; do
+                    [[ -f "$f" && "${f##*/}" != attempt.json ]] && printf -- '- %s\n' "$f"
+                done
+                if [[ -n "$summ" && -s "$good/${summ##*/}" ]]; then
+                    printf '\nSummary of that output:\n%s\n' "$(_sp_read "$good/${summ##*/}" "$_ZB_SP_SUMMARY_MAX_BYTES")"
+                fi
+            fi
+        fi
         if [[ -n "$own" && -n "$notes" ]]; then
             printf '\nYour notes so far:\n%s\n' "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
         fi

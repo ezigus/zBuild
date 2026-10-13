@@ -30,12 +30,7 @@ fi
 set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
-    # #1052: each run gets its OWN empty plan-context cache (outside the run dir
-    # so it stays out of the artifact tree). A SHARED cache would let the second
-    # run see the first's leaf and emit an extra plan.context.resume_skipped,
-    # breaking the local==CI event-sequence parity (Test 7).
     FIXTURE_STATE_DIR="$RUN1_DIR" FIXTURE_BIN_DIR="$BIN_DIR" \
-        ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/pc-local" \
         bash "$FIXTURE" >/dev/null 2>&1
 )
 local_rc=$?
@@ -55,7 +50,6 @@ FIXTURE_STATE_DIR="$RUN2_DIR" FIXTURE_BIN_DIR="$BIN_DIR" \
 GITHUB_ACTIONS=true CI=true RUNNER_OS=Linux \
 GITHUB_STEP_SUMMARY="$SUMMARY_FILE" \
 ZBUILD_OUTPUT_GH_COMMENT=0 ZBUILD_OUTPUT_GH_CHECK_RUN=0 \
-ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/pc-ci" \
     bash "$FIXTURE" >/dev/null 2>&1
 ci_rc=$?
 set -e
@@ -170,13 +164,13 @@ _normalize_for_sha() {
     local f="$1" run_dir="$2"
     local body
     if [[ "$f" == *.json ]]; then
-        # created_at (#1052 plan-context mirror) is a legitimate per-run wall
+        # created_at is a legitimate per-run wall
         # clock — normalize it alongside the other ephemeral timestamp fields.
         # duration_ms (a stage-io record's wall-clock timing, #1842) likewise.
         body="$(jq -S 'del(.updated_at, .generated_at, .ts, .created_at, .duration_ms)' "$f" 2>/dev/null)" \
             || body="$(cat "$f")"
     else
-        # Non-JSON artifacts (e.g. plan-context.md) embed `created_at:` as a
+        # Non-JSON artifacts may embed `created_at:` as a
         # rendered line; drop it so the per-run timestamp doesn't mask divergence.
         body="$(sed '/created_at/d' "$f")"
     fi

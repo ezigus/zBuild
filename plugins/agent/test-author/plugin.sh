@@ -234,6 +234,8 @@ An assertion for every requirement below, written to its testfile(s)${sup_block:
 
 Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass. Check the new value or file itself — the output, the field, the file's content — not only that the step finished without an error: a test that only checks that something ran passes on the old code too.
 
+A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code: open the code that writes it and use what it really produces. Never make such data by hand: hand-made data holds whatever its author assumed.
+
 Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. ${_spec_tag1}. Tags that carry THIS issue's number are yours: one already there whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
 
 Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
