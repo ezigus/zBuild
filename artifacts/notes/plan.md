@@ -71,7 +71,13 @@ The issue says "ADR-054 §9 amended" but §9 already exists as "Per-stage router
 surface". The build correctly added §11. The Enforced by entries in §11 must name test files
 that exist on disk. This is a doc/lint sanity check.
 
-## Revised step list
+### F12 — SPEC-5 finite CI variable list (spec-correspondence finding)
+The test checks a finite enumerated set of CI/CD platform variables (GITHUB_ACTIONS, CI, TRAVIS,
+CIRCLECI, RUNNER_OS, BUILD_BUILDID) but the requirement prohibits any platform-specific variable,
+a category with no fixed boundary. Added as open question — the finite-list grep approach may be
+accepted as sufficient but needs explicit confirmation.
+
+## Revised step list (final — 9 items)
 
 1. Fix run-limit-precedence-test.sh: syntax error + lint-test-errexit + SPEC-2 disposition
 2. Fix run-watchdog-clean-exit-test.sh: lint-test-errexit + SPEC-3 PID check
@@ -82,3 +88,22 @@ that exist on disk. This is a doc/lint sanity check.
 7. Fix run-open-items.sh coverage: update/add run-open-items-test.sh count assertion (5→6)
 8. Update golden files: regenerate event-sequence.golden files
 9. Verify ADR-054 §11 Enforced by entries: confirm they name existing test files
+
+## Coverage matrix
+
+| Finding | Step |
+|---|---|
+| Syntax error run-limit-precedence-test.sh L173 | step-1 |
+| lint-test-errexit 8 files | steps 1–4 |
+| Integration test timeouts (disown missing) | step-5 |
+| template.sh inert | step-6 |
+| run-open-items.sh untested | step-7 |
+| SPEC-1 P2 unfalsifiable + persist on all paths | step-3 |
+| SPEC-2 disposition=misconfigured missing | step-1 |
+| SPEC-3 watchdog PID not proved gone | step-2 |
+| SPEC-4 timing assertion non-inferential | step-4 |
+| SPEC-5 finite CI variable list | open question |
+| SPEC-6 npm test/lint not executed in test | resolved by all other steps passing |
+| Golden files not updated | step-8 |
+| ADR-054 §11 Enforced by entries | step-9 |
+| R-9/§9 vs §11 | open question |
