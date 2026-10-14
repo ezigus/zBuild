@@ -8,13 +8,12 @@
 # REQUIRE 'core: [redaction]' in their manifest; the registry refuses
 # kind: agent plugins without it.
 #
-# Behavior (per ADR-004):
-#   1. Refuse to emit if scope manifest is unset, empty, or unreadable.
-#   2. Strip absolute and repo-relative paths outside the allowlist + scope.
-#      Replace with <out-of-scope-context> markers.
-#   3. Preserve code-fence boundaries verbatim.
-#   4. Emit redaction.applied event with stats.
-#   5. Idempotent.
+# Behavior (ADR-004, ADR-043; #2379):
+#   1. Every private path (scripts/lib/private-paths.sh) in the text, code
+#      fences included, is replaced with <private>. Nothing else is changed:
+#      every stage sees every other file.
+#   2. Emit redaction.applied with the count.
+#   3. Idempotent.
 # Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 
 [[ -n "${_ZBUILD_REDACTION_LOADED:-}" ]] && return 0
@@ -47,227 +46,71 @@ apply_scope_redaction() {
         return 2
     fi
 
-    # ─── Fail-closed: refuse to emit without scope manifest ─────────────────
-    if [[ -z "$manifest" || ! -f "$manifest" || ! -s "$manifest" ]]; then
-        # Check operator override (audit-trail required)
-        local override_token="${HOME}/.zbuild/scope-override-token"
-        if [[ "${ZBUILD_SCOPE_OVERRIDE:-0}" == "1" && -f "$override_token" && -n "${ZBUILD_RUN_ID:-}" ]]; then
-            local token_run_id; token_run_id="$(cat "$override_token" 2>/dev/null || echo "")"
-            if [[ "$token_run_id" == "$ZBUILD_RUN_ID" ]]; then
-                warn "apply_scope_redaction: operator override active for run_id=$ZBUILD_RUN_ID"
-                emit_event "redaction.refused.overridden" "run_id=$ZBUILD_RUN_ID" "input=$input"
-                cp "$input" "$output"
-                return 0
-            fi
-        fi
-        error "apply_scope_redaction: refusing — scope manifest missing/empty: ${manifest:-<unset>}"
-        emit_event "redaction.refused" "reason=missing_scope_manifest" "input=$input" "cycle=$cycle_id"
-        return 1
+    # #2379 (ADR-043): every stage sees every file except private ones. The
+    # scope no longer decides what a stage is shown — wrapping paths outside it
+    # only labelled them, and wrapped the files the engine tells a stage to
+    # write. What is taken out is a private path (scripts/lib/private-paths.sh:
+    # the engine's list plus the template's and the repository's), everywhere
+    # in the text, code fences included. <scope_manifest> and <allowlist> are
+    # accepted and unused.
+    : "$manifest" "$allowlist"
+    if ! declare -F private_paths_list >/dev/null 2>&1; then
+        # shellcheck source=../../scripts/lib/private-paths.sh
+        source "$_ZBUILD_ROOT/scripts/lib/private-paths.sh" || return 2
     fi
+    local repo="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}" patterns
+    patterns="$(private_paths_list "$repo")"
 
-    # ─── Build allowlist as in-memory string (no tempfile; #296 Δ-3) ───────
-    # Previously: wrote to mktemp + trap RETURN + awk read via getline < file.
-    # Race window: if a concurrent process deleted the tempfile between write
-    # and read, awk would silently see an empty allowlist (fail-safe but
-    # silent over-redaction). Inlining via environment variable eliminates
-    # the tempfile and the race entirely.
-    local allow_lines
-    allow_lines="$(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$manifest")"
-    if [[ -n "$allowlist" ]]; then
-        # printf instead of echo: echo mishandles "-n"/"-e"/backslashes on
-        # some platforms (Copilot caught this on PR #297).
-        local csv_lines; csv_lines="$(printf '%s\n' "$allowlist" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-        if [[ -n "$allow_lines" ]]; then
-            allow_lines="${allow_lines}"$'\n'"${csv_lines}"
-        else
-            allow_lines="$csv_lines"
-        fi
-    fi
-
-    # ─── Redact with awk (fence-aware, allowlist-driven) ────────────────────
     local size_before; size_before=$(wc -c < "$input")
-    local counter_skipped_log="$output.counter-skipped"
-    local counter_neutralized_log="$output.counter-neutralized"
-    : > "$counter_skipped_log"
-    : > "$counter_neutralized_log"
-
-    ZBUILD_REDACTION_ALLOW="$allow_lines" \
-    ZBUILD_REDACTION_COUNTER_LOG="$counter_skipped_log" \
-    ZBUILD_REDACTION_NEUTRALIZED_LOG="$counter_neutralized_log" \
-    awk '
-    BEGIN {
-        n_allow = 0
-        allow_data = ENVIRON["ZBUILD_REDACTION_ALLOW"]
-        counter_log = ENVIRON["ZBUILD_REDACTION_COUNTER_LOG"]
-        neutralized_log = ENVIRON["ZBUILD_REDACTION_NEUTRALIZED_LOG"]
-        n = split(allow_data, lines, "\n")
-        for (i = 1; i <= n; i++) {
-            if (length(lines[i]) > 0) {
-                allow[++n_allow] = lines[i]
-            }
+    ZBUILD_REDACTION_PRIVATE="$patterns" ZBUILD_REDACTION_REPO="$repo" awk '
+    function glob_re(g,    r, i, c) {
+        r = ""
+        for (i = 1; i <= length(g); i++) {
+            c = substr(g, i, 1)
+            if (c == "*") r = r "[^/]*"
+            else if (c == "?") r = r "[^/]"
+            else if (c ~ /[.+^$(){}|\[\]\\]/) r = r "\\" c
+            else r = r c
         }
-        in_fence = 0
+        return r
     }
-    /^```/ {
-        in_fence = 1 - in_fence
-        print
-        next
+    BEGIN {
+        repo = ENVIRON["ZBUILD_REDACTION_REPO"]
+        n = split(ENVIRON["ZBUILD_REDACTION_PRIVATE"], pats, "\n")
+        for (i = 1; i <= n; i++) {
+            p = pats[i]
+            if (p == "") continue
+            if (p ~ /\/$/)     { kind[++k] = "dir";  re[k] = "^" glob_re(p) }
+            else if (p ~ /\//) { kind[++k] = "path"; re[k] = "^" glob_re(p) "$" }
+            else               { kind[++k] = "name"; re[k] = "^" glob_re(p) "$" }
+        }
     }
-    in_fence == 1 {
-        print
-        next
+    function is_private(tok,    rel, base, j) {
+        rel = tok
+        if (repo != "" && index(rel, repo "/") == 1) rel = substr(rel, length(repo) + 2)
+        sub(/^\.\//, "", rel)
+        base = rel; sub(/.*\//, "", base)
+        for (j = 1; j <= k; j++) {
+            if (kind[j] == "name" && base ~ re[j]) return 1
+            if (kind[j] != "name" && rel ~ re[j]) return 1
+        }
+        return 0
     }
     {
-        line = $0
-        # Idempotence (#606 Bug A2): skip tokenization inside existing
-        # <out-of-scope-context>...</out-of-scope-context> spans. The path
-        # regex matches "/out-of-scope-context" inside the closing tag,
-        # which would cascade-nest markers on a second pass. Segment the
-        # line by markers and only tokenize outside-marker segments.
-        result = ""
-        rest = line
-        open_tag  = "<out-of-scope-context>"
-        close_tag = "</out-of-scope-context>"
-        depth = 0
-        while (length(rest) > 0) {
-            if (depth == 0) {
-                # Find next opening marker (if any) and tokenize text before it.
-                opos = index(rest, open_tag)
-                if (opos == 0) {
-                    # No more markers on this line; tokenize whole remainder.
-                    result = result tokenize_paths(rest)
-                    rest = ""
-                } else {
-                    pre = substr(rest, 1, opos - 1)
-                    result = result tokenize_paths(pre) open_tag
-                    rest = substr(rest, opos + length(open_tag))
-                    depth = 1
-                }
-            } else {
-                # Inside a marker: copy verbatim until matching close.
-                # Codex P1 on #610: if the opener was malformed (no matching
-                # close on this line), we MUST NOT fail-open by silently
-                # passing the remainder unwrapped — user-supplied input
-                # containing a rogue `<out-of-scope-context>` could smuggle
-                # paths past the redactor (e.g., `/etc/passwd`). Fail-CLOSED:
-                # neutralize the dangling opener so the LLM cannot parse it
-                # as a real marker, then resume normal tokenization for the
-                # remainder of the line. This preserves the chokepoint.
-                cpos = index(rest, close_tag)
-                if (cpos == 0) {
-                    n = length(open_tag)
-                    result = substr(result, 1, length(result) - n) "&lt;out-of-scope-context&gt;"
-                    print substr(rest, 1, 60) >> neutralized_log
-                    result = result tokenize_paths(rest)
-                    rest = ""
-                    depth = 0
-                } else {
-                    result = result substr(rest, 1, cpos - 1) close_tag
-                    rest = substr(rest, cpos + length(close_tag))
-                    depth = 0
-                }
-            }
+        line = $0; out = ""
+        while (match(line, /[A-Za-z0-9._\/~-]+/)) {
+            tok = substr(line, RSTART, RLENGTH)
+            out = out substr(line, 1, RSTART - 1)
+            if ((tok ~ /[.\/]/) && is_private(tok)) { out = out "<private>"; redacted++ }
+            else out = out tok
+            line = substr(line, RSTART + RLENGTH)
         }
-        print result
+        print out line
     }
-    # ── helper: tokenize path-like substrings in plain (non-marker) text ──
-    function tokenize_paths(text,    out, rest, before, token, after, in_scope, stripped, i, a, ext_ok, prefix_ok) {
-        out = ""
-        rest = text
-        while (match(rest, /[A-Za-z0-9._-]*\/[A-Za-z0-9._\/-]+/)) {
-            before = substr(rest, 1, RSTART - 1)
-            token  = substr(rest, RSTART, RLENGTH)
-            after  = substr(rest, RSTART + RLENGTH)
-            # Alpha-guard (#504): legitimate paths always contain at least one
-            # ASCII letter. Pure-digit tokens like "2/10" (iteration counters)
-            # or "2026/05/29" (date prefixes) are not paths — skip wrapping
-            # and log so we can emit a redaction.counter_skipped event.
-            if (token !~ /[A-Za-z]/) {
-                out = out before token
-                print token >> counter_log
-                rest = after
-                continue
-            }
-            # #818: tighten the path detector. The bare slash-and-letters
-            # regex above also matches prose fragments like "cycle/plateau"
-            # or "plateau/convergence". A token only counts as a path if it
-            # EITHER ends in a file extension (`.sh`, `.json`, `.yaml`, etc.)
-            # OR starts with a known repo-top-level directory
-            # OR is an absolute path (begins with `/` — covers /etc/passwd,
-            # /usr/bin/foo, and other Unix system paths that the redactor
-            # MUST continue to catch per the chokepoint contract).
-            ext_ok    = (token ~ /\.[A-Za-z0-9]{1,8}$/)
-            prefix_ok = (token ~ /^(\.\/)?(core|scripts|plugins|tests|docs|config|legacy-DoNotUse)\//) || (token ~ /^\//)
-            if (!ext_ok && !prefix_ok) {
-                # Not a path-looking token — leave verbatim, no wrap, no log
-                # (counter_log is reserved for the digit-only case).
-                out = out before token
-                rest = after
-                continue
-            }
-            # Check if token starts with any allowed prefix (with optional leading ./)
-            in_scope = 0
-            stripped = token
-            sub(/^\.\//, "", stripped)
-            for (i = 1; i <= n_allow; i++) {
-                a = allow[i]
-                # #818: treat `./` as universal allow. Intake emits `+ ./`
-                # for the `generic` platform meaning "everything"; the prior
-                # literal-prefix match required tokens to START with `./`,
-                # so paths like `plugins/agent/X/manifest.yaml` (no leading
-                # `./`) were spuriously wrapped. Universal `./` matches any
-                # token that survived the path-detection check above.
-                if (a == "./") {
-                    in_scope = 1
-                    break
-                }
-                # Match if stripped starts with allowed prefix, OR if token == allowed exactly
-                if (index(stripped, a) == 1 || index(token, a) == 1) {
-                    in_scope = 1
-                    break
-                }
-            }
-            if (in_scope) {
-                out = out before token
-            } else {
-                out = out before "<out-of-scope-context>" token "</out-of-scope-context>"
-            }
-            rest = after
-        }
-        return out rest
-    }
-    ' "$input" > "$output"
+    ' "$input" > "$output" || return 2
 
     local size_after; size_after=$(wc -c < "$output")
-    local redactions; redactions=$(grep -c '<out-of-scope-context>' "$output" || true)
-    local scope_hash; scope_hash="$(shasum -a 256 "$manifest" | cut -d' ' -f1)"
-
-    # Emit a debug-grade event when the alpha-guard skipped one or more
-    # candidate tokens (#504). Single event per call regardless of count, to
-    # keep volume low; sample tokens included for triage.
-    if [[ -s "$counter_skipped_log" ]]; then
-        local counter_count counter_sample
-        counter_count=$(wc -l < "$counter_skipped_log" | tr -d ' ')
-        counter_sample="$(head -3 "$counter_skipped_log" | tr '\n' ',' | sed 's/,$//')"
-        emit_event "redaction.counter_skipped" \
-            "input=$input" \
-            "count=$counter_count" \
-            "sample=$counter_sample" \
-            "cycle=$cycle_id"
-    fi
-    rm -f "$counter_skipped_log"
-
-    if [[ -s "$counter_neutralized_log" ]]; then
-        local neutralized_count neutralized_sample
-        neutralized_count=$(wc -l < "$counter_neutralized_log" | tr -d ' ')
-        neutralized_sample="$(head -3 "$counter_neutralized_log" | tr '\n' ',' | sed 's/,$//')"
-        emit_event "redaction.marker_neutralized" \
-            "input=$input" \
-            "count=$neutralized_count" \
-            "sample=$neutralized_sample" \
-            "cycle=$cycle_id"
-    fi
-    rm -f "$counter_neutralized_log"
+    local redactions; redactions=$(grep -o '<private>' "$output" | grep -c . || true)
 
     emit_event "redaction.applied" \
         "input=$input" \
@@ -275,7 +118,6 @@ apply_scope_redaction() {
         "size_before=$size_before" \
         "size_after=$size_after" \
         "redactions=$redactions" \
-        "scope_hash=$scope_hash" \
         "cycle=$cycle_id"
 
     return 0

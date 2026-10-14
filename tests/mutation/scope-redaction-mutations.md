@@ -1,27 +1,24 @@
+
 ## File
 `core/redaction/scope-redaction.sh`
 
 ## Mutation
-Invert the fail-closed guard in `apply_scope_redaction` — replace the `return 1` on a missing/empty scope manifest with `return 0`, so the function silently succeeds even when no manifest exists. This allows unredacted content to flow downstream.
+Stop taking private paths out: make `is_private` in `apply_scope_redaction` always answer "not private", so a key file or a secrets path reaches the model as it is.
 
 ## Patch
 ```bash
 python3 - <<'PY'
-import re, pathlib
+import pathlib
 p = pathlib.Path("core/redaction/scope-redaction.sh")
 text = p.read_text()
-new = re.sub(
-    r'(emit_event "redaction\.refused" "reason=missing_scope_manifest" "input=\$input" "cycle=\$cycle_id"\n\s*)return 1',
-    r'\1return 0',
-    text,
-)
-assert new != text, "regex did not match; mutation patch needs an update"
-p.write_text(new)
+old = "    function is_private(tok,    rel, base, j) {\n"
+assert old in text, "anchor not found; mutation patch needs an update"
+p.write_text(text.replace(old, old + "        return 0\n", 1))
 PY
 ```
 
 ## Expected failing test
-`tests/unit/core-redaction-test.sh` — asserts `apply_scope_redaction` returns non-zero when the scope manifest is missing, empty, or unreadable.
+`tests/unit/core-redaction-test.sh` — asserts a private path (`.env`, a `*.pem` file, `.zbuild/secrets/…`) is replaced with `<private>`.
 
 ## Test
 ```bash
@@ -29,4 +26,4 @@ bash tests/unit/core-redaction-test.sh
 ```
 
 ## Result
-The mutation is caught: the redaction unit test fails because the function returns 0 (success) for all three "missing manifest" cases instead of refusing.
+The mutation is caught: the private paths are left in the output.

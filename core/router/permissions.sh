@@ -32,6 +32,13 @@
 #       write ownership of #2174 is unaffected by the mode.
 # The name is unfortunate — it bypasses the PROMPT, not the deny rules.
 #
+# MEASURED on CLI 2.1.296 (#2379), bypassPermissions:
+#   P10 `Read(//abs/dir/**)` refuses the Read tool AND a Bash `cat` of a file
+#       under it — reading is enforced as well as editing.
+#   P11 `Read(//abs/**/*.pem)` matches a file in any folder below.
+#   P12 denying `.git/**` leaves `git status` / `git diff` working: only direct
+#       reads and edits of files under .git/ are refused.
+#
 # So: the SPAWN grants (--add-dir), and the settings file is the jq-validated
 # policy seam the spawn refuses on (SPEC-3) and where the evidence-based deny
 # list from the #1809 sweep will land.
@@ -111,6 +118,15 @@ _zbuild_build_permissions_settings() {
                         <<< "${ZBUILD_PERMISSION_DENY_EDIT}" | jq -sc .)" \
             || { error "router: permissions: jq failed to build deny rules"; return 1; }
     fi
+    # #2379: no stage reads or edits a private path (the engine's list plus the
+    # template's and the repository's) — P10–P12 above.
+    declare -F private_paths_deny_rules >/dev/null 2>&1 \
+        || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/private-paths.sh"
+    local _priv_json
+    _priv_json="$(private_paths_deny_rules "$_repo_root" | jq -R 'select(length > 0)' | jq -sc .)" \
+        || { error "router: permissions: jq failed to build private-path rules"; return 1; }
+    _deny_json="$(jq -cn --argjson a "$_deny_json" --argjson b "${_priv_json:-[]}" '$a + $b')" \
+        || { error "router: permissions: jq failed to merge deny rules"; return 1; }
     _json="$(jq -cn --argjson d "$_deny_json" '{permissions: {deny: $d}}')" \
         || { error "router: permissions: jq failed to build settings JSON"; return 1; }
 

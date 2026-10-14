@@ -133,6 +133,44 @@ independently. A member can NOT ride a sibling's `redaction.applied` — its own
 stage's most-recent event must be the redaction. Covered by
 `tests/integration/router-precondition-parallel-test.sh`.
 
+## Amendment — every stage sees every file except private ones (2026-10-14, #2379)
+
+Behavior 1–3 of the chokepoint change; 4 and 5 stay.
+
+1. **No scope manifest is needed.** A missing or empty manifest no longer
+   refuses: the arguments are accepted and unused. What a stage is shown is not
+   a property of the stage's scope.
+2. **Only private paths are taken out.** A private path — the engine's list in
+   `config/private-paths.txt` (`.zbuild/secrets/`, `.git/`, `.env`, `*.pem`,
+   `*.key`, SSH keys, cloud and package credentials), plus a template's
+   `private_paths:` and the repository's `.zbuild/private-paths` — is replaced
+   with `<private>` wherever it appears, code fences included. A template or a
+   repository can add to the list; it cannot remove an engine default.
+3. **Every other path is left as it is**, with no out-of-scope marker. The
+   marker only labelled a path (the model could still open the file) and it
+   wrapped the very files the engine tells a stage to write.
+
+Taking the name out of the prompt is half of it: every model call is also
+denied reading and editing a private path (`Read(...)`/`Edit(...)` deny rules
+from `private_paths_deny_rules`, merged by `core/router/permissions.sh`).
+
+The scope manifest contract below is unchanged: the scope check still reads it.
+
+## Enforced by
+
+- §Chokepoint (one function emits LLM-bound text) — `tests/unit/redaction-chokepoint-test.sh`.
+- Amendment §1 (no manifest needed) — `tests/e2e/redaction-edge-cases-test.sh`,
+  `tests/unit/core-redaction-test.sh`.
+- Amendment §2 (private paths taken out; engine defaults; template and
+  repository add, cannot remove) — `tests/unit/private-paths-test.sh` P1–P3,
+  `tests/unit/core-redaction-test.sh`.
+- Amendment §3 (every other path kept, no marker) — `tests/unit/private-paths-test.sh` P3,
+  `tests/unit/route-cli-redaction-test.sh` T1, `tests/unit/core-output-stage-io-test.sh`.
+- Amendment: reading and editing a private path denied — `tests/unit/private-paths-test.sh` P4,
+  `tests/unit/router-permissions-deny-test.sh`.
+- Behavior 4 (`redaction.applied` with the count) — `tests/integration/router-precondition-test.sh`.
+- Behavior 5 (idempotent) — `tests/unit/core-redaction-test.sh`.
+
 ## References
 
 - [KEEPERS.md §C](../KEEPERS.md#section-c--reliability--safety-expanded) — redaction has 9 prompt seams; no wrapper today.

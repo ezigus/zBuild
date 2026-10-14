@@ -1,0 +1,18 @@
+# The engine's private paths (#2379, ADR-043): no stage is shown, may read or
+# may write any of these, in any repository. A template (`private_paths:`) and a
+# repository (`.zbuild/private-paths`) add to this list; neither can remove an
+# entry. One pattern per line:
+#   ends with /   a folder, from the repository root, and everything in it
+#   contains /    a path from the repository root
+#   otherwise     a file name, matched in any folder (* and ? are wildcards)
+.zbuild/secrets/
+.git/
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+.aws/credentials
+.npmrc
+.netrc

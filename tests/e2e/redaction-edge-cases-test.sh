@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests: redaction edge-case scope manifests — missing, empty, CRLF
+# Tests: redaction edge-case scope manifests — missing, empty, CRLF (none
+# blocks redaction since #2379)
 # E2E: invokes real scripts/zbuild with PATH-shadowed externals
 set -euo pipefail
 
@@ -31,9 +32,8 @@ _test_cleanup_hook() { cleanup_test_env; }
 # The event-bus needs ZBUILD_EVENTS_JSONL set (done above)
 source "$REPO_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 
-# ─── Test 1: Missing scope manifest → apply_scope_redaction returns non-zero ──
-# We test the library directly (unit-style) since the CLI would need a full plugin
-# pipeline to trigger redaction. The spec says: "exits non-zero with a clear error".
+# ─── Test 1: Missing scope manifest → redaction still runs ───────────────────
+# #2379: redaction takes out private paths and needs no scope manifest.
 _redact_missing_input="$TEST_TEMP_DIR/input.txt"
 _redact_missing_output="$TEST_TEMP_DIR/output.txt"
 printf 'test content\n' > "$_redact_missing_input"
@@ -47,14 +47,10 @@ set +e
 redaction_missing_rc=$?
 set -e
 
-if [[ "$redaction_missing_rc" -ne 0 ]]; then
-    assert_pass "missing scope manifest: apply_scope_redaction returns non-zero (rc=$redaction_missing_rc)"
-else
-    assert_fail "missing scope manifest: apply_scope_redaction returns non-zero" \
-        "returned 0 (should have refused)"
-fi
+assert_eq "missing scope manifest: apply_scope_redaction still runs (rc=0)" "0" "$redaction_missing_rc"
+assert_eq "missing scope manifest: text with no private path is unchanged" "test content" "$(cat "$_redact_missing_output" 2>/dev/null)"
 
-# ─── Test 2: Empty scope manifest (0 bytes) → returns non-zero ───────────────
+# ─── Test 2: Empty scope manifest (0 bytes) → redaction still runs ───────────
 _redact_empty_input="$TEST_TEMP_DIR/input2.txt"
 _redact_empty_output="$TEST_TEMP_DIR/output2.txt"
 _empty_manifest="$TEST_TEMP_DIR/empty-scope.md"
@@ -70,12 +66,7 @@ set +e
 redaction_empty_rc=$?
 set -e
 
-if [[ "$redaction_empty_rc" -ne 0 ]]; then
-    assert_pass "empty scope manifest: apply_scope_redaction returns non-zero (rc=$redaction_empty_rc)"
-else
-    assert_fail "empty scope manifest: apply_scope_redaction returns non-zero" \
-        "returned 0 (should have refused)"
-fi
+assert_eq "empty scope manifest: apply_scope_redaction still runs (rc=0)" "0" "$redaction_empty_rc"
 
 # ─── Test 3: CRLF scope manifest — proceeds without crash ────────────────────
 # A CRLF manifest with a valid entry should either succeed (0) or fail with a

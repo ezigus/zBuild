@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Tests: core/redaction/scope-redaction.sh
-# Verifies the chokepoint refuses without scope, redacts out-of-scope paths,
-# preserves code fences, and is idempotent.
+# Tests: core/redaction/scope-redaction.sh — the chokepoint contract (ADR-004,
+# ADR-043; #2379). Every prompt passes through it; it takes private paths out
+# and changes nothing else. It needs no scope manifest.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,96 +14,39 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 # shellcheck source=../core/redaction/scope-redaction.sh
 source "$REPO_ROOT/core/redaction/scope-redaction.sh"
 
-print_test_header "core/redaction — chokepoint contract (ADR-004)"
+print_test_header "core/redaction — chokepoint contract (ADR-004, #2379)"
 
 setup_test_env "core-redaction"
 INPUT="$TEST_TEMP_DIR/prompt.txt"
 OUTPUT="$TEST_TEMP_DIR/redacted.txt"
-MANIFEST="$TEST_TEMP_DIR/scope.md"
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo"; mkdir -p "$ZBUILD_REPO_ROOT"
 
-# ─── Refuses without scope manifest ─────────────────────────────────────────
-echo "hello world" > "$INPUT"
-
-set +e
-apply_scope_redaction "$INPUT" "$OUTPUT" "" >/dev/null 2>&1
-rc=$?
-set -e
-assert_eq "refuses to emit when scope manifest is unset (fail-closed)" "1" "$rc"
-
-set +e
-apply_scope_redaction "$INPUT" "$OUTPUT" "/nonexistent/path" >/dev/null 2>&1
-rc=$?
-set -e
-assert_eq "refuses to emit when scope manifest does not exist" "1" "$rc"
-
-: > "$MANIFEST"
-set +e
-apply_scope_redaction "$INPUT" "$OUTPUT" "$MANIFEST" >/dev/null 2>&1
-rc=$?
-set -e
-assert_eq "refuses to emit when scope manifest is empty" "1" "$rc"
-
-# ─── Redacts out-of-scope paths ─────────────────────────────────────────────
-cat > "$MANIFEST" <<EOF
-+ src/included/
-+ docs/
-EOF
-cat > "$INPUT" <<EOF
-The file src/included/foo.ts is in scope.
-But /etc/passwd is out of scope.
-And ../../../sibling-repo/secrets.txt is also out.
-EOF
-apply_scope_redaction "$INPUT" "$OUTPUT" "$MANIFEST" >/dev/null
-assert_contains "in-scope path preserved" "$(cat "$OUTPUT")" "src/included/foo.ts"
-assert_contains "out-of-scope marker present" "$(cat "$OUTPUT")" "<out-of-scope-context>"
-
-if grep -q '/etc/passwd' "$OUTPUT" && ! grep -q '<out-of-scope-context>/etc/passwd' "$OUTPUT"; then
-    assert_fail "/etc/passwd was NOT redacted" "$(cat "$OUTPUT")"
-else
-    assert_pass "/etc/passwd was redacted"
-fi
-
-# ─── Preserves code fences ──────────────────────────────────────────────────
-cat > "$MANIFEST" <<EOF
-+ src/
-EOF
-cat > "$INPUT" <<'EOF'
-Outside the fence: /etc/passwd is leaked.
-```bash
-# Inside the fence, paths like /etc/passwd are preserved verbatim
-cat /etc/passwd
+cat > "$INPUT" <<'TXT'
+Edit src/included/foo.ts and read /etc/hosts.
+The token lives in .env and deploy/id_rsa.
 ```
-After the fence: /etc/passwd is leaked again.
-EOF
-apply_scope_redaction "$INPUT" "$OUTPUT" "$MANIFEST" >/dev/null
-# The inside-fence occurrence must NOT be wrapped in markers
-fence_lines="$(awk '/```/{n++; next} n==1' "$OUTPUT")"
-if grep -q '<out-of-scope-context>' <<< "$fence_lines"; then
-    assert_fail "code-fence contents were redacted (should be preserved verbatim)" "$fence_lines"
-else
-    assert_pass "code-fence contents preserved verbatim"
-fi
+cat config/server.pem
+```
+TXT
 
-# Outside-fence path must be wrapped
-outside="$(awk '/```/{n++; next} n==0 || n==2' "$OUTPUT")"
-if grep -q '<out-of-scope-context>' <<< "$outside"; then
-    assert_pass "outside-fence path is redacted"
-else
-    assert_fail "outside-fence path was NOT redacted" "$outside"
-fi
+print_test_section "needs no scope manifest"
+rc=0; apply_scope_redaction "$INPUT" "$OUTPUT" "" "" 0 >/dev/null 2>&1 || rc=$?
+assert_eq "redacts with no scope manifest" "0" "$rc"
+_o="$(cat "$OUTPUT")"
 
-# ─── Idempotent (marker count stable across re-application) ─────────────────
-cat > "$MANIFEST" <<EOF
-+ src/
-EOF
-cat > "$INPUT" <<EOF
-src/foo.ts is fine. /etc/passwd is not.
-EOF
-apply_scope_redaction "$INPUT" "$OUTPUT" "$MANIFEST" >/dev/null
-count1="$(grep -c '<out-of-scope-context>' "$OUTPUT" || true)"
-apply_scope_redaction "$OUTPUT" "$OUTPUT.2" "$MANIFEST" >/dev/null
-count2="$(grep -c '<out-of-scope-context>' "$OUTPUT.2" || true)"
-assert_eq "idempotent: marker count stable across re-application" "$count1" "$count2"
+print_test_section "takes private paths out, keeps the rest"
+assert_contains "a repository path is kept" "$_o" "src/included/foo.ts"
+assert_contains "a path outside the repository is kept" "$_o" "/etc/hosts"
+for _p in .env deploy/id_rsa config/server.pem; do
+    assert_eq "private path taken out: $_p" "0" "$(grep -cF -- "$_p" <<< "$_o" || true)"
+done
+assert_contains "a private path inside a code fence is taken out too" "$_o" "cat <private>"
+assert_eq "no out-of-scope marker" "0" "$(grep -c 'out-of-scope-context' <<< "$_o" || true)"
+
+print_test_section "idempotent"
+cp "$OUTPUT" "$TEST_TEMP_DIR/once.txt"
+apply_scope_redaction "$TEST_TEMP_DIR/once.txt" "$TEST_TEMP_DIR/twice.txt" "" "" 0 >/dev/null 2>&1
+assert_eq "applying it twice changes nothing" "$(cat "$TEST_TEMP_DIR/once.txt")" "$(cat "$TEST_TEMP_DIR/twice.txt")"
 
 cleanup_test_env
 print_test_results

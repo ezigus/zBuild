@@ -16,8 +16,8 @@
 #   SPEC-1 [change]: a path in ZBUILD_PERMISSION_DENY_EDIT becomes an Edit()
 #                    rule in the written settings file
 #   SPEC-2 [change]: every path is rendered, not just the first
-#   SPEC-3 [guard] : with the variable unset the deny list stays empty — the
-#                    shipped behaviour is unchanged for every existing spawn
+#   SPEC-3 [guard] : with the variable unset the deny list holds only the
+#                    private-path rules (#2379)
 #   SPEC-4 [guard] : the file still passes jq validation with rules present;
 #                    SPEC-3 of #1919 refuses the spawn if it does not
 set -uo pipefail
@@ -76,8 +76,10 @@ unset ZBUILD_PERMISSION_DENY_EDIT
 _ZBUILD_PERMISSIONS_SETTINGS_FILE=""
 set +e; _zbuild_build_permissions_settings; _rc2=$?; set -e
 assert_eq "[SPEC-3] the builder returns rc=0 with no rules" "0" "$_rc2"
-assert_eq "[SPEC-3][guard] the deny list stays empty when the engine hands nothing" \
-    "0" "$(jq -r '.permissions.deny | length' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" 2>/dev/null || echo BAD)"
+# #2379: the private-path rules are always there; with no test files handed,
+# they are all there is.
+assert_eq "[SPEC-3][guard] with nothing handed, the deny list holds only the private-path rules" \
+    "0" "$(jq -r '[.permissions.deny[] | select(test("^(Read|Edit)\\(/") | not)] | length' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" 2>/dev/null || echo BAD)"
 
 print_test_results
 exit $((FAIL > 0))
