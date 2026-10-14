@@ -1,0 +1,5 @@
+## spec-coverage — fail
+
+- SPEC-2 demands "exit 1 with a message naming the misconfigured source before any stage dispatch" but never requires that pipeline-state.json carries disposition=misconfigured, which is what R-5's "refused as `misconfigured`" explicitly demands under ADR-054.
+
+- NOT COVERED: R-5: SPEC-2 requires "exit 1 with a message naming the misconfigured source before any stage dispatch" for a non-integer or non-positive limit value, but does not require that the run state (pipeline-state.json) records disposition=misconfigured for either the invalid-template or invalid-env-var path — an implementation that prints an error and exits 1 without writing the misconfigured disposition satisfies SPEC-2 but not the "refused as `misconfigured`" condition R-5 states.

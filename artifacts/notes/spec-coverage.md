@@ -1,55 +1,68 @@
-# spec-coverage notes
+# spec-coverage notes — round 2 (re-judgment)
 
-## Design read: complete
+## Key discovery
 
-Design places `_runner_resolve_run_limit_s` in `scripts/lib/stage-limits.sh`, watchdog as inline
-subshell in `runner.sh` `main()`, abort word `timed_out` added to `abort-propagation.sh`,
-pipeline status `timed_out` wired through `_runner_end_on_abort` / `_runner_abort_trap`,
-resume path amended in `core/state/resume.sh`, ADRs amended (ADR-054 §11, ADR-025, ADR-006, ADR-015).
+The prior round's notes misquote SPEC-2. The notes claim SPEC-2 says
+"yields disposition misconfigured and the run does not reach the dispatch loop"
+but the actual SPEC-2 text (from the ACCEPTANCE block) is:
 
-## Mapping — R-1 through R-10
+> "_runner_resolve_run_limit_s resolves template max_run_s > ZBUILD_MAX_RUN_S > 20700;
+> a non-integer or non-positive value in either source causes the runner to exit 1
+> with a message naming the misconfigured source before any stage dispatch"
 
-**R-1**: Ends timed_out naming in-flight stage and limit — SPEC-1 says pipeline status timed_out
-in pipeline-state.json and pipeline.end event carrying status=timed_out, the in-flight stage, and
-limit_s. Fully covered. "Reddens at merge-base" = verification-only requirement; excluded per
-instructions.
+"exit 1 with a message" is NOT the same as "disposition=misconfigured in pipeline-state.json."
 
-**R-2**: Watchdog fires between stages — SPEC-1 "watchdog fires even when the engine is idle
-between dispatches (not only inside a stage)". Design confirms watchdog is a separate background
-subshell, not coupled to dispatch. Covered.
+## Re-mapping — all requirements
 
-**R-3**: Whole process group dies, TERM-ignoring child gone after TERM + 10 s — SPEC-1 "a process
-that ignores TERM is dead within TERM + 10 s". The worst-case (TERM-ignoring) child being
-guaranteed dead subsumes the whole group. Covered.
+**R-1**: SPEC-1 demands pipeline status timed_out in pipeline-state.json, pipeline.end carrying
+the in-flight stage name and limit_s. Covers "stops and ends timed_out naming in-flight stage and
+limit." COVERED.
 
-**R-4**: release and persist still run — SPEC-1 "release and persist execute on every timed-out
-exit path". Covered.
+**R-2**: SPEC-1 demands "watchdog fires even when the engine is idle between dispatches (not only
+inside a stage)." Matches R-2 exactly. COVERED.
 
-**R-5**: Precedence template > env > 20700, each layer tested; non-integer/non-positive refused as
-misconfigured — SPEC-2 "_runner_resolve_run_limit_s resolves template max_run_s > ZBUILD_MAX_RUN_S
-> 20700; a non-integer or non-positive value in template or env yields disposition misconfigured
-and the run does not reach the dispatch loop". All three layers named, validation named, test file
-run-limit-precedence-test.sh. Covered.
+**R-3**: SPEC-1 demands "a stage that ignores SIGTERM is dead within TERM+10 s."
+Worst-case child (TERM-ignoring) guaranteed dead subsumes the whole process group dying.
+COVERED.
 
-**R-6**: Run finishing inside limit untouched, watchdog gone after exit — SPEC-3 "a run that
-finishes within max_run_s exits with its own pipeline status unchanged; the watchdog process does
-not exist after the runner process exits". Covered.
+**R-4**: SPEC-1 demands "release and persist always_run stages both execute on the timed-out exit
+path." Covers "release and persist still run." COVERED.
 
-**R-7**: Resumed run gets fresh limit — SPEC-4 "a run resumed after a timed_out end is not stopped
-immediately — its watchdog is armed from the resumed run's wall-clock start, not the original
-run's". Covered.
+**R-5**: R-5 requires "a non-integer or non-positive value in either is refused as `misconfigured`."
+In zBuild, `misconfigured` is an ADR-054 disposition written to pipeline-state.json.
+SPEC-2 demands "exit 1 with a message naming the misconfigured source before any stage dispatch."
+Demanding exit-1-with-message is a weaker condition than demanding disposition=misconfigured in
+pipeline-state.json. An implementation that prints an error and exits 1 without writing
+disposition=misconfigured to run state satisfies SPEC-2 but does not satisfy R-5.
+SPEC-2 does not name the disposition, does not name pipeline-state.json, and does not require
+the misconfigured ADR-054 lifecycle value to be recorded. GAP.
 
-**R-8**: Same behaviour locally and in CI, no platform branch — SPEC-5 "the limit is resolved from
-template, env, or constant only; scripts/lib/stage-limits.sh and core/pipeline/runner.sh contain
-no reference to GITHUB_ACTIONS, CI, or any platform-specific variable in the new code". Covered.
+**R-6**: SPEC-3 demands "after waiting past max_run_s the status is still the stage-driven result,
+proving the watchdog was reaped." This covers "no leftover process" by inference via timing.
+A live but unfired watchdog would change state after max_run_s, so the observation that it does
+not change implies reaping. The SPEC itself states the inference ("proving the watchdog was
+reaped"). COVERED (spec-correspondence's concern is implementation quality, not SPEC scope).
 
-**R-9**: ADR-054 §9 and ADR-025 amended with ## Enforced by — SPEC-6 covers ADR-025 ## Enforced by
-+ ADR-054 new section (§11 in design, §9 in issue) with ## Enforced by. Section number is a design
-detail; the requirement is that the ADR is amended with the described content and ## Enforced by
-entries. Covered.
+**R-7**: SPEC-4 demands "a run resumed after a timed_out end is not stopped immediately — its
+watchdog is armed from the resumed run's wall-clock start, not the original run's." Covers the
+fresh-limit requirement. COVERED.
 
-**R-10**: npm test + npm run lint green — SPEC-6 "npm test and npm run lint pass". Covered.
+**R-8**: SPEC-5 demands no reference to GITHUB_ACTIONS, bare CI, TRAVIS, CIRCLECI, RUNNER_OS, or
+BUILD_BUILDID in limit-resolution code. R-8 says "no branch on the platform, nothing read from
+GitHub's job limit." The named variables cover all real-world CI platform identifiers. The
+"no branch on the platform" intent is satisfied by prohibiting the concrete variable names.
+COVERED.
+
+**R-9**: SPEC-6 demands ADR-025 amended with ## Enforced by and ADR-054 §11 amended with ##
+Enforced by. The issue's "§9" is a section-number label; the design places it at §11; the
+substantive requirement (amendment + Enforced by) is covered. COVERED.
+
+**R-10**: SPEC-6 demands "npm test and npm run lint pass." COVERED (whether they pass is a
+build/test concern, not a SPEC-coverage gap).
 
 ## Conclusion
 
-All ten requirements are fully covered by SPEC-1 through SPEC-6. VERDICT: covered.
+R-5 is NOT fully covered. SPEC-2 demands exit-1-with-message but not the `misconfigured`
+disposition in pipeline-state.json, which R-5 explicitly requires ("refused as `misconfigured`").
+
+VERDICT: uncovered
