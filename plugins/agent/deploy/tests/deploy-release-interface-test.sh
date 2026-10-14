@@ -70,14 +70,14 @@ source "$SCRIPT_DIR/deploy-test-lib.sh"
 _r2="$TEST_TEMP_DIR/r2-tagfail"
 _rc_r2="$(_deploy_case "$_r2" pass FAKE_GIT_TAG_RC=1)"
 assert_eq "[R2] a failed git tag → rc=1" "1" "$_rc_r2"
-assert_eq "[R2] ...deploy-release's disposition (broken) is what the engine reads" "broken" "$(_rj "$_r2" .disposition)"
+assert_eq "[R2] ...deploy-release's disposition (broken) is what the engine reads" "broken" "$(_rj "$_r2" .outcome)"
 assert_eq "[R2] ...with its reason" "git tag failed" "$(_rj "$_r2" .reason)"
 _v2_keys_ok "[#1846/SPEC-10] tag-fail exit path:" "$_r2/artifacts/deploy-result.json"
 
 _r3="$TEST_TEMP_DIR/r3-pushfail"
 _rc_r3="$(_deploy_case "$_r3" pass FAKE_GIT_PUSH_RC=1)"
 assert_eq "[R3] a failed git push → rc=1" "1" "$_rc_r3"
-assert_eq "[#1846/SPEC-20] a failed push keeps deploy-release's disposition (unavailable)" "unavailable" "$(_rj "$_r3" .disposition)"
+assert_eq "[#1846/SPEC-20] a failed push keeps deploy-release's disposition (unavailable)" "unavailable" "$(_rj "$_r3" .outcome)"
 assert_eq "[R3] ...with its reason" "git push tag failed" "$(_rj "$_r3" .reason)"
 assert_contains "[R3] ...and the local tag is rolled back" "$(cat "$_r3/git.log" 2>/dev/null)" "tag -d zbuild-run-"
 _v2_keys_ok "[#1846/SPEC-10] push-fail exit path:" "$_r3/artifacts/deploy-result.json"
@@ -93,8 +93,9 @@ _gl="$(cat "$_run_success/git.log" 2>/dev/null)"
 assert_contains "[#1846/SPEC-2] the release tag is created" "$_gl" "tag zbuild-run-r1-run"
 assert_contains "[R1] ...and pushed to origin" "$_gl" "push origin zbuild-run-r1-run"
 _v2_keys_ok "[#1846/SPEC-10] successful-deploy exit path:" "$_run_success/artifacts/deploy-result.json"
-_vs="$(_rj "$_run_success" .verdict)"
-assert_eq "[#1846/SPEC-14] successful deploy writes verdict=deployed (v2)" "deployed" "$_vs"
+_vs="$(_rj "$_run_success" .outcome)"
+assert_eq "[#1846/SPEC-14] successful deploy writes outcome=pass" "pass" "$_vs"
+assert_eq "[#1846/SPEC-14] ...and records that it deployed" "true" "$(_rj "$_run_success" .data.deployed)"
 assert_eq "[R1] the result names the tag deploy-release cut" "zbuild-run-r1-run" "$(_rj "$_run_success" .data.tag)"
 assert_eq "[R1] ...and the PR" "https://github.com/test/repo/pull/42" "$(_rj "$_run_success" .data.pr_url)"
 
@@ -103,7 +104,7 @@ assert_eq "[R1] ...and the PR" "https://github.com/test/repo/pull/42" "$(_rj "$_
 _r4="$TEST_TEMP_DIR/r4-elsewhere"; mkdir -p "$TEST_TEMP_DIR/r4-state"
 ( _make_state "$_r4"
   printf 'https://github.com/test/repo/pull/42\n' > "$_r4/artifacts/pr-url.txt"
-  printf '{"verdict":"pass"}\n' > "$_r4/artifacts/gate-aggregator-result.json"
+  stage_result_write "$_r4/artifacts/gate-aggregator-result.json" pass "gate pass"
   export PATH="$FAKE_BIN:$PATH" FAKE_GIT_LOG="$_r4/git.log" ZBUILD_DRY_RUN=0
   : > "$FAKE_GIT_LOG"
   printf '{}' > "$TEST_TEMP_DIR/r4-state/state.json"
@@ -119,7 +120,7 @@ fi
 _r5="$TEST_TEMP_DIR/r5-signal"
 _rc_r5="$(_deploy_case "$_r5" pass FAKE_GIT_PUSH_SIGNAL=1)"
 assert_eq "[R5] interrupted → rc=1" "1" "$_rc_r5"
-assert_eq "[R5] ...disposition=interrupted" "interrupted" "$(_rj "$_r5" .disposition)"
+assert_eq "[R5] ...disposition=interrupted" "interrupted" "$(_rj "$_r5" .outcome)"
 _v2_keys_ok "[#1846/SPEC-10] interrupted exit path:" "$_r5/artifacts/deploy-result.json"
 
 # R6: no ZBUILD_ARTIFACT_DIR — nowhere to write; the event is the record.
@@ -140,7 +141,7 @@ _rc_r7=0
       '{"inputs":{"pr_url":$pr,"gate_aggregator_result":$gr}}' > "$_r7/stage-inputs/deploy.json"
   ZBUILD_DRY_RUN=1 deploy_agent_run "deploy" "$_r7/state.json" ) >/dev/null 2>&1 || _rc_r7=$?
 assert_eq "[R7] an input outside the state directory → rc=1" "1" "$_rc_r7"
-assert_eq "[R7] ...disposition=broken (an engine index pointing outside the run is a defect)" "broken" "$(_rj "$_r7" .disposition)"
+assert_eq "[R7] ...disposition=broken (an engine index pointing outside the run is a defect)" "broken" "$(_rj "$_r7" .outcome)"
 if grep -qF "evil/repo" "$_r7/artifacts/deploy-result.json" 2>/dev/null; then
     assert_fail "[R7] ...and the outside file is never read" "its content reached the result"
 else

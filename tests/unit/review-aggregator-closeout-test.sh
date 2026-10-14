@@ -90,9 +90,8 @@ _k4="$TEST_TEMP_DIR/k4"; mkdir -p "$_k4"
 _lens "$_k4/lens-stray.json" stray 9
 ZBUILD_ARTIFACT_DIR="$_k4" review_aggregator_run review-aggregator "$_k4/x" >/dev/null 2>&1; _rc=$?
 assert_eq "[K4] no stage inputs → rc 1" "1" "$_rc"
-assert_eq "[K4] ...a v2 result" "2" "$(_f result_contract "$_k4/review-report.json")"
-assert_eq "[K4] ...verdict degraded" "degraded" "$(_f verdict "$_k4/review-report.json")"
-assert_eq "[K4] ...disposition misconfigured" "misconfigured" "$(_f disposition "$_k4/review-report.json")"
+assert_eq "[K4] ...a contract-3 result" "3" "$(_f result_contract "$_k4/review-report.json")"
+assert_eq "[K4] ...outcome misconfigured" "misconfigured" "$(_f outcome "$_k4/review-report.json")"
 assert_eq "[K4] ...no lens found by looking in the directory" "0" \
     "$(jq '.lenses | length' "$_k4/review-report.json" 2>/dev/null || echo MISSING)"
 assert_file_exists "[K4] ...and the summary is still written" "$_k4/review-report.md"
@@ -137,7 +136,7 @@ _pid=$!
 for _ in $(seq 1 50); do [[ -f "$_ready" ]] && break; sleep 0.1; done
 kill -TERM "$_pid" 2>/dev/null; wait "$_pid"; _rc=$?
 assert_eq "[K8] a signal ends the stage with rc 1" "1" "$_rc"
-assert_eq "[K8] ...disposition from the shared guard" "$STAGE_SIGNAL_DISPOSITION" "$(_f disposition "$_k8/review-report.json")"
+assert_eq "[K8] ...outcome from the shared guard" "$STAGE_SIGNAL_DISPOSITION" "$(_f outcome "$_k8/review-report.json")"
 assert_eq "[K8] ...reason from the shared guard" "$STAGE_SIGNAL_REASON" "$(_f reason "$_k8/review-report.json")"
 
 print_test_section "K10: a passing run is unchanged"
@@ -150,12 +149,12 @@ ZBUILD_ARTIFACT_DIR="$_k10" ZBUILD_STAGE_INPUTS="$_k10/inputs.json" \
     review_aggregator_run review-aggregator "$_k10/x" >/dev/null 2>&1
 assert_eq "[K10] the report matches main's v1 output, less the v2 envelope" \
     "$(cat "$REPO_ROOT/tests/golden/review-aggregator-output-v1.golden")" \
-    "$(jq -S 'del(.result_contract, .verdict, .disposition, .reason)' "$_k10/review-report.json" 2>/dev/null)"
+    "$(jq -S 'del(.result_contract, .outcome, .reason)' "$_k10/review-report.json" 2>/dev/null)"
 assert_eq "[K10] ...and the rendered summary matches" \
     "$(cat "$REPO_ROOT/tests/golden/review-aggregator-report-md-v1.golden")" \
     "$(cat "$_k10/review-report.md" 2>/dev/null)"
-assert_eq "[K10] ...with the envelope complete/complete" "complete/complete" \
-    "$(_f verdict "$_k10/review-report.json")/$(_f disposition "$_k10/review-report.json")"
+assert_eq "[K10] ...with the outcome pass" "pass" \
+    "$(_f outcome "$_k10/review-report.json")"
 
 print_test_section "K11: the engine hands the aggregator its lens set"
 # shellcheck source=../../core/pipeline/template.sh

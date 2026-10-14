@@ -35,6 +35,9 @@ _RA_DIR="$_ZBUILD_PLUGIN_DIR"; : "$_RA_DIR"
 _RA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_RA_ROOT/core/event-bus/event-bus.sh"
+# #2366 (ADR-054 §6): the one writer of a contract-3 result.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_RA_ROOT/scripts/lib/stage-result.sh"
 # render_review_report_md + atomic_write arrive via plugin-bootstrap (helpers.sh
 # + artifact-render.sh); no explicit source needed.
 
@@ -78,9 +81,11 @@ _ra_normalize_files() {
             {
               name: ((.name // $n) | tostring),
               score: ((.score // 0) | if type=="number" then floor else 0 end),
-              # #1849: a lens whose v2 result says it did not complete reviewed
-              # nothing. A file with no disposition (v1) ran.
-              ran: ((.disposition // "complete") == "complete"),
+              # #1849: a lens whose result says it did not finish reviewed
+              # nothing — a contract-3 outcome other than pass/fail, or a
+              # contract-2 disposition other than complete. No field: it ran.
+              ran: (if has("outcome") then (.outcome == "pass" or .outcome == "fail")
+                    else ((.disposition // "complete") == "complete") end),
               findings: [ (.findings // [])[] |
                 if type=="object" then {
                   file: (.file // "unknown"),
@@ -199,16 +204,16 @@ _ra_aggregate() {
 _ra_out_json_ref=""
 _ra_out_md_ref=""
 
-# _ra_write_result <out_json> <verdict> <disposition> <reason> [summary]
+# _ra_write_result <out_json> <outcome> <reason> [summary]
 # A report with no aggregation behind it (no inputs, or stopped by a signal):
-# empty lens/finding lists, the v2 envelope, and a summary saying why.
+# empty lens/finding lists, the contract-3 result fields, and a summary saying why.
 _ra_write_result() {
-    local out="$1" verdict="$2" disp="$3" reason="$4"
-    local summary="${5:-No review report: $reason.}"
-    jq -nc --arg v "$verdict" --arg d "$disp" --arg r "$reason" --arg s "$summary" \
-        '{result_contract:2, verdict:$v, disposition:$d, reason:$r,
-          schema_version:1, merge_readiness:"needs_attention", lenses:[], findings:[],
-          did_not_run:[], summary:$s}' | atomic_write "$out"
+    local out="$1" outcome="$2" reason="$3"
+    local summary="${4:-No review report: $reason.}"
+    jq -nc --arg s "$summary" \
+        '{schema_version:1, merge_readiness:"needs_attention", lenses:[], findings:[],
+          did_not_run:[], summary:$s}' | atomic_write "$out" \
+        && stage_result_add "$out" "$outcome" "$reason"
 }
 
 _ra_render_md() {
@@ -218,7 +223,7 @@ _ra_render_md() {
 
 # A signal stops the stage: record it in the words the shared guard passes.
 _ra_on_signal() {
-    _ra_write_result "$_ra_out_json_ref" "degraded" "$1" "$2" \
+    _ra_write_result "$_ra_out_json_ref" "$1" "$2" \
         "Review aggregation stopped by a signal; this report is incomplete." 2>/dev/null || true
     _ra_render_md
     stage_signal_end
@@ -249,7 +254,7 @@ _review_aggregator_run_inner() {
 
     if [[ -z "${ZBUILD_STAGE_INPUTS:-}" || ! -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         error "review-aggregator: no stage inputs (ZBUILD_STAGE_INPUTS='${ZBUILD_STAGE_INPUTS:-}') — the engine did not hand over the lens results"
-        _ra_write_result "$out_json" "degraded" "misconfigured" "stage_inputs_missing" \
+        _ra_write_result "$out_json" misconfigured "stage_inputs_missing" \
             "No review report: the engine did not hand this stage its lens results."
         _ra_render_md
         emit_event "plugin.result" "plugin=review-aggregator" \
@@ -286,10 +291,10 @@ _review_aggregator_run_inner() {
             | .summary = ("\($nr | length) of \($total) lens(es) did not run (\($nr | join(", "))) — "
                           + "their review is missing, not clean. " + .summary)
             | .escalation_note = "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline."
-          else . end
-        | . + {result_contract: 2, verdict: "complete", disposition: "complete",
-               reason: "aggregated \($total) lens result(s)"}' \
+          else . end' \
         "$out_json" 2>/dev/null | atomic_write "$out_json" || true
+    # The review is advisory: the stage finished, so its outcome is pass (#2366).
+    stage_result_add "$out_json" pass "aggregated ${lens_count:-0} lens result(s)" || true
 
     local merge_readiness
     merge_readiness="$(jq -r '.merge_readiness // "advisory"' "$out_json" 2>/dev/null || echo advisory)"

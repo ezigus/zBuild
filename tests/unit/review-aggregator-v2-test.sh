@@ -33,13 +33,12 @@ PLUGIN_DIR="$REPO_ROOT/plugins/agent/review-aggregator"
 MANIFEST="$PLUGIN_DIR/manifest.yaml"
 
 # ── SPEC-1: manifest provides.result_contract: 2 ─────────────────────────────
-assert_contains_regex "[#1842/SPEC-1] manifest declares result_contract: 2" \
-    "$(cat "$MANIFEST")" '^  result_contract: 2$'
+assert_contains_regex "[#1842/SPEC-1] manifest declares result_contract: 3 (#2366)" \
+    "$(cat "$MANIFEST")" '^  result_contract: 3$'
 
 # ── SPEC-2: manifest config.valid_verdicts lists complete and degraded ────────
-_vv="$(grep 'valid_verdicts:' "$MANIFEST")"
-assert_contains "[#1842/SPEC-2] valid_verdicts lists complete" "$_vv" "complete"
-assert_contains "[#1842/SPEC-2] valid_verdicts lists degraded" "$_vv" "degraded"
+assert_eq "[#1842/SPEC-2] manifest declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^[[:space:]]*#' "$MANIFEST" | grep -c 'valid_verdicts' || true)"
 
 # ── SPEC-3: manifest outputs review_report_md declares required: true ────────
 _rmd_required="$(awk '/id: review_report_md/{f=1} f && /required:/{print; exit}' "$MANIFEST")"
@@ -63,12 +62,12 @@ ZBUILD_STAGE_INPUTS="$_si4" _review_aggregator_run_inner \
 _rc4=$?
 set +e
 assert_eq "[#1842/SPEC-4] success-path rc=0" "0" "$_rc4"
-assert_eq "[#1842/SPEC-4] result_contract is 2" "2" \
+assert_eq "[#1842/SPEC-4] result_contract is 3" "3" \
     "$(_v2 result_contract "$_d4/review-report.json")"
-assert_eq "[#1842/SPEC-4] verdict=complete" "complete" \
-    "$(_v2 verdict "$_d4/review-report.json")"
-assert_eq "[#1842/SPEC-4] disposition=complete" "complete" \
-    "$(_v2 disposition "$_d4/review-report.json")"
+assert_eq "[#1842/SPEC-4] outcome=pass" "pass" \
+    "$(_v2 outcome "$_d4/review-report.json")"
+assert_eq "[#1842/SPEC-4] no verdict or disposition field" "" \
+    "$(_v2 verdict "$_d4/review-report.json")$(_v2 disposition "$_d4/review-report.json")"
 assert_contains_regex "[#1842/SPEC-4] reason is non-empty text" \
     "$(_v2 reason "$_d4/review-report.json")" '[a-z]'
 
@@ -113,12 +112,10 @@ set +e
 ZBUILD_STAGE_INPUTS="$_si11" _review_aggregator_run_inner \
     "$_d11" "$_d11/review-report.json" "$_d11/review-report.md"
 set +e
-assert_eq "[#1842/SPEC-11] empty-lenses result_contract is 2" "2" \
+assert_eq "[#1842/SPEC-11] empty-lenses result_contract is 3" "3" \
     "$(_v2 result_contract "$_d11/review-report.json")"
-assert_eq "[#1842/SPEC-11] empty-lenses verdict=complete" "complete" \
-    "$(_v2 verdict "$_d11/review-report.json")"
-assert_eq "[#1842/SPEC-11] empty-lenses disposition=complete" "complete" \
-    "$(_v2 disposition "$_d11/review-report.json")"
+assert_eq "[#1842/SPEC-11] empty-lenses outcome=pass" "pass" \
+    "$(_v2 outcome "$_d11/review-report.json")"
 assert_contains_regex "[#1842/SPEC-11] empty-lenses reason is non-empty text" \
     "$(_v2 reason "$_d11/review-report.json")" '[a-z]'
 
@@ -154,10 +151,8 @@ _sig_rc=$?
 set +e
 eval "$_ra_agg_save" 2>/dev/null || true
 assert_eq "[#1842/SPEC-7] SIGTERM ends the stage with rc 1" "1" "$_sig_rc"
-assert_eq "[#1842/SPEC-7] interrupted writes verdict:degraded" "degraded" \
-    "$(_v2 verdict "$_d7/review-report.json")"
-assert_eq "[#1842/SPEC-7] interrupted writes disposition:interrupted" "interrupted" \
-    "$(_v2 disposition "$_d7/review-report.json")"
+assert_eq "[#1842/SPEC-7] interrupted writes outcome:interrupted" "interrupted" \
+    "$(_v2 outcome "$_d7/review-report.json")"
 assert_file_exists "[#1842/SPEC-7] summary written on SIGTERM path" \
     "$_d7/review-report.md"
 

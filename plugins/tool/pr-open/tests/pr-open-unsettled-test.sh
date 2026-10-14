@@ -205,6 +205,16 @@ _u8="$(bash -c 'source "$1/scripts/lib/helpers.sh" 2>/dev/null; source "$1/plugi
 assert_contains "[U8] sourced alone, it still renders the gate check" "$_u8" "The final gate check did not pass"
 assert_not_contains "[U8] ...and still escapes" "$_u8" "<b>"
 
+# ─── U9 (#2366) ──────────────────────────────────────────────────────────────
+print_test_section "U9: a contract-3 gate result names its failed gates under data"
+# shellcheck source=../../../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+_u9_gates="$TEST_TEMP_DIR/u9-gates.json"
+stage_result_write "$_u9_gates" fail "gates failed: lint coverage" '{"gates":{},"failed":["lint","coverage"]}'
+_fresh_state; zb_engine_loop_state "$STATE_FILE" build_test_cycle 1 3 complete
+_u9="$(_pr_open_unsettled "$STATE_FILE" "$_u9_gates" 2>&1)"
+assert_contains "[U9] the failed gates are named" "$_u9" "lint, coverage"
+
 unset -f git gh
 cleanup_test_env
 print_test_results

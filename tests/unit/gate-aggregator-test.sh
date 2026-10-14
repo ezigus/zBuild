@@ -60,8 +60,8 @@ run_agg() {
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-1: all-pass → verdict=pass" "$OUT" '.verdict' "pass"
-assert_eq "TC-1: no failed gates" "0" "$(jq '.failed | length' <<< "$OUT")"
+assert_json_key "TC-1: all-pass → verdict=pass" "$OUT" '.outcome' "pass"
+assert_eq "TC-1: no failed gates" "0" "$(jq '.data.failed | length' <<< "$OUT")"
 
 # ── TC-2: skips are ignored (present, verdict=skip) → pass ───────────────────
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
@@ -70,14 +70,14 @@ write_verdict "$AD" "shape-floor-result.json" "skip"
 write_verdict "$AD" "secret-scan-result.json" "skip"
 write_verdict "$AD" "mutation-result.json" "skip"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-2: skips ignored → verdict=pass" "$OUT" '.verdict' "pass"
+assert_json_key "TC-2: skips ignored → verdict=pass" "$OUT" '.outcome' "pass"
 
 # ── TC-3: any single fail → verdict=fail (named in failed[]) ─────────────────
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 write_verdict "$AD" "coverage-result.json" "fail"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-3: one fail → verdict=fail" "$OUT" '.verdict' "fail"
+assert_json_key "TC-3: one fail → verdict=fail" "$OUT" '.outcome' "fail"
 assert_contains "TC-3: failed[] names the coverage gate" "$OUT" "coverage"
 
 # ── TC-4: a missing REQUIRED gate → fail-closed (NOT skip) ───────────────────
@@ -85,30 +85,30 @@ SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 rm -f "$AD/mutation-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-4: missing gate → fail-closed" "$OUT" '.verdict' "fail"
-assert_json_key "TC-4: missing gate status=missing" "$OUT" '.gates.mutation' "missing"
+assert_json_key "TC-4: missing gate → fail-closed" "$OUT" '.outcome' "fail"
+assert_json_key "TC-4: missing gate status=missing" "$OUT" '.data.gates.mutation' "missing"
 
 # ── TC-5: a malformed REQUIRED gate (no verdict key) → fail-closed ───────────
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 printf '{ this is not json ' > "$AD/lint-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-5: malformed gate → fail-closed" "$OUT" '.verdict' "fail"
-assert_json_key "TC-5: malformed gate status=malformed" "$OUT" '.gates.lint' "malformed"
+assert_json_key "TC-5: malformed gate → fail-closed" "$OUT" '.outcome' "fail"
+assert_json_key "TC-5: malformed gate status=malformed" "$OUT" '.data.gates.lint' "malformed"
 
 # ── TC-6: test stage 'error' verdict is indeterminate → fail ─────────────────
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 write_verdict "$AD" "test-results.json" "error"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-6: suite error → verdict=fail" "$OUT" '.verdict' "fail"
+assert_json_key "TC-6: suite error → verdict=fail" "$OUT" '.outcome' "fail"
 assert_contains "TC-6: failed[] names the suite gate" "$OUT" "suite"
 
 # ── TC-7: gates map records all seven gate names ─────────────────────────────
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 OUT="$(run_agg "$SF")"
-assert_eq "TC-7: gates map has seven entries" "7" "$(jq '.gates | length' <<< "$OUT")"
+assert_eq "TC-7: gates map has seven entries" "7" "$(jq '.data.gates | length' <<< "$OUT")"
 
 # ── TC-8: a member with verdict=fail BUT disposition=advisory is NON-blocking ─
 # (generic member-disposition contract, ADR-021): an advisory failure (e.g. an
@@ -118,9 +118,9 @@ write_all "$AD" "pass"
 printf '{"verdict":"fail","severity":"advisory","failures":["negctl_error:timeout:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-8: advisory fail → verdict=pass (non-blocking)" "$OUT" '.verdict' "pass"
-assert_json_key "TC-8: advisory member status=advisory" "$OUT" '.gates."acceptance-gate"' "advisory"
-assert_eq "TC-8: advisory member NOT in failed[]" "0" "$(jq '.failed | length' <<< "$OUT")"
+assert_json_key "TC-8: advisory fail → verdict=pass (non-blocking)" "$OUT" '.outcome' "pass"
+assert_json_key "TC-8: advisory member status=advisory" "$OUT" '.data.gates."acceptance-gate"' "advisory"
+assert_eq "TC-8: advisory member NOT in failed[]" "0" "$(jq '.data.failed | length' <<< "$OUT")"
 
 # ── TC-8b (#1850): the v1 shape — `advisory` in disposition, no severity — is
 # no longer read: it does not demote the failure (the word lives in severity).
@@ -129,7 +129,7 @@ write_all "$AD" "pass"
 printf '{"verdict":"fail","disposition":"advisory","failures":["negctl_error:timeout:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-8b: a v1-shape disposition=advisory does not demote the fail (#1850)" "$OUT" '.verdict' "fail"
+assert_json_key "TC-8b: a v1-shape disposition=advisory does not demote the fail (#1850)" "$OUT" '.outcome' "fail"
 
 # ── TC-9: verdict=fail with disposition=recoverable STAYS blocking ────────────
 # recoverable drives another build iteration — it must NOT satisfy convergence.
@@ -138,7 +138,7 @@ write_all "$AD" "pass"
 printf '{"verdict":"fail","severity":"recoverable","failures":["untagged_spec:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-9: recoverable fail → verdict=fail (still blocking)" "$OUT" '.verdict' "fail"
+assert_json_key "TC-9: recoverable fail → verdict=fail (still blocking)" "$OUT" '.outcome' "fail"
 assert_contains "TC-9: failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
 
 # ── TC-10 (#1219, retained mechanism): a FAILED gate carrying fault → verdict=route_<target> ─
@@ -154,7 +154,7 @@ OUT="$(run_agg "$SF")"
 # #1987: the verdict stays pass/fail and the FAULT says whose problem it is.
 # exit_when still binds to verdict==pass; the template's route_back keys on the
 # fault, so no stage names a stage.
-assert_json_key "TC-10: design-rooted fail → verdict stays fail" "$OUT" '.verdict' "fail"
+assert_json_key "TC-10: design-rooted fail → verdict stays fail" "$OUT" '.outcome' "fail"
 # #2271 (ADR-068): a fault a gate still writes is not rolled up — the engine no
 # longer decides whose problem a failure is.
 assert_eq "TC-10: a gate's fault is not rolled up into the aggregate" "" "$(jq -r '.fault // ""' <<< "$OUT")"
@@ -174,7 +174,7 @@ write_all "$AD" "pass"
 printf '{"verdict":"fail","severity":"recoverable","reason":"SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-10b: tautology (no fault) → verdict=fail" "$OUT" '.verdict' "fail"
+assert_json_key "TC-10b: tautology (no fault) → verdict=fail" "$OUT" '.outcome' "fail"
 assert_eq "TC-10b: no fault mirrored for tautology" "" "$(jq -r '.fault // ""' <<< "$OUT")"
 assert_file_not_exists "TC-10b: NO design-feedback.md for a tautology (build-fixable)" "$AD/design-feedback.md"
 assert_file_not_exists "TC-10b: the aggregator renders no build payload" \
@@ -188,7 +188,7 @@ SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 write_verdict "$AD" "coverage-result.json" "fail"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-11: no declared fault → verdict=fail" "$OUT" '.verdict' "fail"
+assert_json_key "TC-11: no declared fault → verdict=fail" "$OUT" '.outcome' "fail"
 assert_eq "TC-11: no fault mirrored" "" "$(jq -r '.fault // ""' <<< "$OUT")"
 assert_file_not_exists "TC-11: no design-feedback.md when not design-rooted" "$AD/design-feedback.md"
 
@@ -199,7 +199,7 @@ SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 printf '{"verdict":"pass","fault":"specification"}\n' > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-12: fault on a passing gate ignored → verdict=pass" "$OUT" '.verdict' "pass"
+assert_json_key "TC-12: fault on a passing gate ignored → verdict=pass" "$OUT" '.outcome' "pass"
 
 # ── TC-13 (#1244 → #1988): the suite gate's output reaches a reader ──────────
 # The aggregator used to surface .test_output in its rendered payload. It
@@ -227,7 +227,7 @@ printf '{"verdict":"fail","severity":"recoverable","fault":"specification","reas
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "[SPEC-3] wiring_not_on_path → verdict stays fail" \
-    "$OUT" '.verdict' "fail"
+    "$OUT" '.outcome' "fail"
 assert_eq "[SPEC-3] no fault in the aggregate (#2271)" "" "$(jq -r '.fault // ""' <<< "$OUT")"
 assert_contains "[SPEC-3] failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
 assert_file_not_exists "[SPEC-3] the aggregator renders no design payload" "$AD/design-feedback.md"
@@ -251,7 +251,7 @@ printf '{"verdict":"fail","test_output":"FAIL sigpipe-antipattern-guard-test.sh"
 OUT="$(run_agg "$SF")"
 
 assert_json_key "TC-15: one routed gate still leaves verdict=fail" \
-    "$OUT" '.verdict' "fail"
+    "$OUT" '.outcome' "fail"
 assert_file_not_exists "TC-15: the aggregator renders no design payload" \
     "$AD/design-feedback.md"
 # THE REGRESSION: this file used to be rm -f'd, taking both build-fixable
@@ -278,7 +278,7 @@ write_all "$AD" "pass"
 printf '{"verdict":"fail","reason":"missing_floor_files","fault":"specification"}\n' \
     > "$AD/shape-floor-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-16: all-routed → verdict stays fail" "$OUT" '.verdict' "fail"
+assert_json_key "TC-16: all-routed → verdict stays fail" "$OUT" '.outcome' "fail"
 assert_eq "TC-16: and no fault in the aggregate (#2271)" "" "$(jq -r '.fault // ""' <<< "$OUT")"
 assert_file_not_exists "TC-16: the aggregator renders no design payload" "$AD/design-feedback.md"
 assert_file_not_exists "TC-16: gate-feedback.md absent (nothing build can fix)" \
@@ -291,7 +291,7 @@ SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
 printf '{"verdict":"fail","reason":"coverage below floor"}\n' > "$AD/coverage-result.json"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-17: plain fail → verdict=fail (no route)" "$OUT" '.verdict' "fail"
+assert_json_key "TC-17: plain fail → verdict=fail (no route)" "$OUT" '.outcome' "fail"
 assert_file_not_exists "TC-17: the aggregator renders no build payload" \
     "$AD/gate-feedback.md"
 assert_file_not_exists "TC-17: design-feedback.md absent on a plain fail" \
@@ -304,7 +304,7 @@ assert_file_not_exists "TC-17: nor a build payload" "$AD/gate-feedback.md"
 # previous verdict must not be read as current.
 write_all "$AD" "pass"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-18: all-pass after a fail → verdict=pass" "$OUT" '.verdict' "pass"
+assert_json_key "TC-18: all-pass after a fail → verdict=pass" "$OUT" '.outcome' "pass"
 assert_file_not_exists "TC-18: stale gate-feedback.md removed on pass" \
     "$AD/gate-feedback.md"
 assert_file_not_exists "TC-18: stale design-feedback.md removed on pass" \
@@ -312,6 +312,15 @@ assert_file_not_exists "TC-18: stale design-feedback.md removed on pass" \
 
 # TC-19..TC-22 (#1757, #1987, #2269) tested the fault-class roll-up, its
 # conflict signal and its plain wording; #2271 retired fault classes.
+
+# ── TC-19 (#2366): the aggregator writes a contract-3 result ─────────────────
+# One outcome from the engine's list; its roll-up rides under data.
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" pass
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-19: result_contract 3" "$OUT" '.result_contract' "3"
+assert_eq "TC-19: no verdict or disposition field" "false" "$(jq 'has("verdict") or has("disposition")' <<< "$OUT")"
+assert_eq "TC-19: the gates map is under data" "7" "$(jq '.data.gates | length' <<< "$OUT")"
 
 cleanup_test_env
 print_test_results

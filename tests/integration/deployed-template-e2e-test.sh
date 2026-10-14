@@ -24,6 +24,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 print_test_header "deployed.yaml e2e — deploy+validate+monitor dry-run dispatch (#1328-A6)"
 setup_test_env "deployed-template-e2e"
@@ -168,7 +170,7 @@ printf 'https://github.com/example/repo/pull/42\n' > "$ARTIFACTS_DIR/pr-url.txt"
 # Write a mock gate-aggregator-result.json (deploy reads it in non-dry-run;
 # in dry-run mode deploy writes sentinel without reading the gate file, so this
 # is purely for completeness)
-jq -n '{schema_version:1,verdict:"pass"}' > "$ARTIFACTS_DIR/gate-aggregator-result.json"
+stage_result_write "$ARTIFACTS_DIR/gate-aggregator-result.json" pass "all gates passed"
 
 # ─── SPEC-3 + SPEC-9 (deploy): run + behavior preservation ───────────────────
 # CHANGE: ADR-056 removed init/finalize; deploy_agent_init and deploy_agent_finalize
@@ -225,8 +227,10 @@ unset ZBUILD_STAGE_INPUTS ZBUILD_ARTIFACT_DIR
 # if that block is absent, no deploy runs and assert_file_exists fails.
 assert_eq "[SPEC-9] deploy_agent_run exits 0 in dry-run" "0" "$_run_rc"
 assert_file_exists "[SPEC-9] deploy-result.json written" "$ARTIFACTS_DIR/deploy-result.json"
-_deploy_verdict="$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/deploy-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-9] deploy-result.json verdict=deployed" "deployed" "$_deploy_verdict"
+_deploy_verdict="$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/deploy-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-9] deploy-result.json outcome=pass (#2366)" "pass" "$_deploy_verdict"
+assert_eq "[SPEC-9] ...and deploy records that it deployed" "true" \
+    "$(jq -r '.data.deployed' "$ARTIFACTS_DIR/deploy-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-4 + SPEC-9 (validate): run + behavior preservation ─────────────────
 # CHANGE: validate_agent_init and validate_agent_finalize no longer exist.
@@ -260,13 +264,13 @@ _run_rc=$?
 set -e
 unset ZBUILD_STAGE_INPUTS ZBUILD_ARTIFACT_DIR
 assert_eq "[SPEC-9] validate_agent_run exits 0 in dry-run" "0" "$_run_rc"
-assert_eq "[#1845] validate-result.json is a v2 result" "2" \
+assert_eq "[#1845] validate-result.json is a contract-3 result (#2366)" "3" \
     "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/validate-result.json" 2>/dev/null || true)"
 
 # Behavior-preservation: validate-result.json exists and carries verdict=healthy
 assert_file_exists "[SPEC-9] validate-result.json written" "$ARTIFACTS_DIR/validate-result.json"
-_validate_verdict="$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/validate-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-9] validate-result.json verdict=healthy" "healthy" "$_validate_verdict"
+_validate_verdict="$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/validate-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-9] validate-result.json outcome=pass (#2366)" "pass" "$_validate_verdict"
 
 # ─── SPEC-5 + SPEC-9 (monitor): run + behavior preservation ──────────────────
 # CHANGE: monitor_stage_init and monitor_stage_finalize no longer exist.

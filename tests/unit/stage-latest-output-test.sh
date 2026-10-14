@@ -103,7 +103,7 @@ print_test_section "L3: gate-aggregator and a gate that wrote nothing this run"
 )
 assert_eq "[L3] the re-run gate counts as missing" "missing" \
     "$(jq -r '.data.gates["acceptance-gate"] // .gates["acceptance-gate"] // empty' "$TEST_TEMP_DIR/ga-out.json")"
-assert_eq "[L3] so the loop is not converged" "fail" "$(jq -r '.verdict' "$TEST_TEMP_DIR/ga-out.json")"
+assert_eq "[L3] so the loop is not converged" "fail" "$(jq -r '.outcome' "$TEST_TEMP_DIR/ga-out.json")"
 
 # ─── L6: a run refused before its hook ran has no result ────────────────────
 print_test_section "L6: a refused run is not credited with the previous result"

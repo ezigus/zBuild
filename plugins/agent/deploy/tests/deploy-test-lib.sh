@@ -31,25 +31,22 @@ _make_state() {
     export ZBUILD_ARTIFACT_DIR="$dir/artifacts"
 }
 
-# ─── Helper: assert all four mandatory v2 keys are present ───────────────────
+# ─── Helper: assert the contract-3 result shape (#2366) ──────────────────────
+# result_contract 3, an outcome, a non-empty reason, and no verdict or
+# disposition field. (Name kept: every call site reads "is the result whole".)
 _v2_keys_ok() {
     local lbl="$1" f="$2"
-    local _rc _vd _dp _rs
-    # One jq for all four keys (review #2219: this helper forked four times per call).
-    IFS=$'\t' read -r _rc _vd _dp _rs < <(jq -r \
-        '[(.result_contract // "" | tostring), (.verdict // ""), (.disposition // ""), (.reason // "")] | @tsv' \
+    local _rc _oc _old _rs
+    IFS=$'\t' read -r _rc _oc _old _rs < <(jq -r \
+        '[(.result_contract // "" | tostring), (.outcome // ""), (has("verdict") or has("disposition") | tostring), (.reason // "")] | @tsv' \
         "$f" 2>/dev/null || true) || true
-    assert_eq "$lbl result_contract=2" "2" "$_rc"
-    if [[ -n "$_vd" ]]; then
-        assert_pass "$lbl verdict key present"
+    assert_eq "$lbl result_contract=3" "3" "$_rc"
+    if [[ -n "$_oc" ]]; then
+        assert_pass "$lbl outcome key present"
     else
-        assert_fail "$lbl verdict key must be present" "absent"
+        assert_fail "$lbl outcome key must be present" "absent"
     fi
-    if [[ -n "$_dp" ]]; then
-        assert_pass "$lbl disposition key present"
-    else
-        assert_fail "$lbl disposition key must be present" "absent"
-    fi
+    assert_eq "$lbl no verdict or disposition key" "false" "$_old"
     if [[ -n "$_rs" ]]; then
         assert_pass "$lbl reason key present and non-empty"
     else
@@ -76,7 +73,10 @@ FAKE
 printf '#!/usr/bin/env bash\nprintf "gh %%s\\n" "$*" >> "$FAKE_GIT_LOG"\n' > "$FAKE_BIN/gh"
 chmod +x "$FAKE_BIN/git" "$FAKE_BIN/gh"
 
-# _deploy_case <dir> <gate verdict|-> [VAR=value ...] — one deploy run in a
+# shellcheck source=../../../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+
+# _deploy_case <dir> <gate outcome|-> [VAR=value ...] — one deploy run in a
 # SUBSHELL (nothing it exports reaches the next case), pr-url and gate result
 # seeded; prints the rc. The fake git logs to <dir>/git.log.
 _deploy_case() {
@@ -84,7 +84,8 @@ _deploy_case() {
     (
         _make_state "$dir"
         printf 'https://github.com/test/repo/pull/42\n' > "$dir/artifacts/pr-url.txt"
-        [[ "$gate" == "-" ]] || printf '{"verdict":"%s"}\n' "$gate" > "$dir/artifacts/gate-aggregator-result.json"
+        # The gate's result is made with the writer the gate uses (#2366).
+        [[ "$gate" == "-" ]] || stage_result_write "$dir/artifacts/gate-aggregator-result.json" "$gate" "gate $gate"
         export PATH="$FAKE_BIN:$PATH" FAKE_GIT_LOG="$dir/git.log" ZBUILD_DRY_RUN=0
         local kv; for kv in "$@"; do export "${kv?}"; done
         : > "$FAKE_GIT_LOG"

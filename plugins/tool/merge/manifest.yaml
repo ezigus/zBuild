@@ -24,15 +24,12 @@ requires:
     - state
 
 provides:
-  result_contract: 2
+  result_contract: 3
   role: merge_executor
   events:
     - plugin.result
 
 config:
-  valid_verdicts:
-    - pass
-    - error
   tier_default: T0
 
 outputs:

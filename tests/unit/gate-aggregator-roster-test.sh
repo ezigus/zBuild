@@ -77,16 +77,16 @@ write_verdict "$AD" "g-alpha-result.json" "pass"
 write_verdict "$AD" "g-beta-result.json"  "pass"
 write_verdict "$AD" "g-role-result.json"  "pass"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-1: all gates pass → verdict=pass" "$OUT" '.verdict' "pass"
+assert_json_key "TC-1: all gates pass → verdict=pass" "$OUT" '.outcome' "pass"
 assert_eq "TC-1: must-pass set has exactly 3 gates (the convergence:gate members)" \
-    "3" "$(jq '.gates | length' <<< "$OUT")"
-assert_eq "TC-1: id-matching gate g_alpha present"  "true" "$(jq '.gates | has("g_alpha")' <<< "$OUT")"
-assert_eq "TC-1: role-bound gate grole present"     "true" "$(jq '.gates | has("grole")'   <<< "$OUT")"
+    "3" "$(jq '.data.gates | length' <<< "$OUT")"
+assert_eq "TC-1: id-matching gate g_alpha present"  "true" "$(jq '.data.gates | has("g_alpha")' <<< "$OUT")"
+assert_eq "TC-1: role-bound gate grole present"     "true" "$(jq '.data.gates | has("grole")'   <<< "$OUT")"
 
 # ─── TC-2: advisory + marker-less members are NOT in the must-pass set ────────
 print_test_section "TC-2: advisory member (l_adv) and marker-less stage (worker) excluded"
-assert_eq "TC-2: advisory l_adv NOT in must-pass set" "false" "$(jq '.gates | has("l_adv")' <<< "$OUT")"
-assert_eq "TC-2: marker-less worker NOT in must-pass set" "false" "$(jq '.gates | has("worker")' <<< "$OUT")"
+assert_eq "TC-2: advisory l_adv NOT in must-pass set" "false" "$(jq '.data.gates | has("l_adv")' <<< "$OUT")"
+assert_eq "TC-2: marker-less worker NOT in must-pass set" "false" "$(jq '.data.gates | has("worker")' <<< "$OUT")"
 
 # ─── TC-3: one mechanical gate fails → verdict=fail, named in failed[] ────────
 print_test_section "TC-3: one gate fails → verdict=fail"
@@ -95,7 +95,7 @@ write_verdict "$AD" "g-alpha-result.json" "pass"
 write_verdict "$AD" "g-beta-result.json"  "fail"
 write_verdict "$AD" "g-role-result.json"  "pass"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-3: g_beta fail → verdict=fail" "$OUT" '.verdict' "fail"
+assert_json_key "TC-3: g_beta fail → verdict=fail" "$OUT" '.outcome' "fail"
 assert_contains "TC-3: failed[] names g_beta" "$OUT" "g_beta"
 # #1988: the consolidated artifact is retired — each gate publishes its own
 # detail now. The roster property this file tests is unchanged: a failing
@@ -113,16 +113,16 @@ write_verdict "$AD" "g-alpha-result.json" "pass"
 write_verdict "$AD" "g-beta-result.json"  "fail"   # present but no longer in roster
 write_verdict "$AD" "g-role-result.json"  "pass"
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-4: g_beta removed from cycle → verdict=pass despite its fail" "$OUT" '.verdict' "pass"
-assert_eq "TC-4: must-pass set shrank to 2 gates" "2" "$(jq '.gates | length' <<< "$OUT")"
-assert_eq "TC-4: g_beta no longer in must-pass set" "false" "$(jq '.gates | has("g_beta")' <<< "$OUT")"
+assert_json_key "TC-4: g_beta removed from cycle → verdict=pass despite its fail" "$OUT" '.outcome' "pass"
+assert_eq "TC-4: must-pass set shrank to 2 gates" "2" "$(jq '.data.gates | length' <<< "$OUT")"
+assert_eq "TC-4: g_beta no longer in must-pass set" "false" "$(jq '.data.gates | has("g_beta")' <<< "$OUT")"
 
 # ─── TC-5: adding a gate member (re-add g_beta) makes its fail block again ────
 print_test_section "TC-5: roster adapts when a member is added back (NO plugin edit)"
 export _TPL_CYCLE_STAGES_mycycle="worker,g_alpha,g_beta,l_adv,grole,gate-aggregator"
 OUT="$(run_agg "$SF")"   # same artifacts (g_beta still fail)
-assert_json_key "TC-5: g_beta re-added → its fail blocks again (verdict=fail)" "$OUT" '.verdict' "fail"
-assert_eq "TC-5: must-pass set back to 3 gates" "3" "$(jq '.gates | length' <<< "$OUT")"
+assert_json_key "TC-5: g_beta re-added → its fail blocks again (verdict=fail)" "$OUT" '.outcome' "fail"
+assert_eq "TC-5: must-pass set back to 3 gates" "3" "$(jq '.data.gates | length' <<< "$OUT")"
 
 # ─── TC-6: fallback path (no cycle env) still uses the legacy fixed set ───────
 print_test_section "TC-6: no cycle in scope → legacy fallback (7 fixed gates)"
@@ -133,9 +133,9 @@ for f in test-results.json shape-floor-result.json acceptance-gate-result.json \
     write_verdict "$AD" "$f" "pass"
 done
 OUT="$(run_agg "$SF")"
-assert_json_key "TC-6: fallback all-pass → verdict=pass" "$OUT" '.verdict' "pass"
-assert_eq "TC-6: fallback must-pass set has the 7 legacy gates" "7" "$(jq '.gates | length' <<< "$OUT")"
-assert_eq "TC-6: legacy 'suite' name present (not member-id mode)" "true" "$(jq '.gates | has("suite")' <<< "$OUT")"
+assert_json_key "TC-6: fallback all-pass → verdict=pass" "$OUT" '.outcome' "pass"
+assert_eq "TC-6: fallback must-pass set has the 7 legacy gates" "7" "$(jq '.data.gates | length' <<< "$OUT")"
+assert_eq "TC-6: legacy 'suite' name present (not member-id mode)" "true" "$(jq '.data.gates | has("suite")' <<< "$OUT")"
 
 cleanup_test_env
 print_test_results

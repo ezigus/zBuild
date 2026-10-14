@@ -26,7 +26,7 @@ requires:
 
 provides:
   role: deploy_agent
-  result_contract: 2
+  result_contract: 3
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -38,10 +38,6 @@ provides:
     - deploy.tool.failed
 
 config:
-  valid_verdicts:
-    - deployed
-    - error
-    - skipped
   tier_default: T2
 
 outputs:

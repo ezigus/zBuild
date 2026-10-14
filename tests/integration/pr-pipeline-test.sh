@@ -146,12 +146,12 @@ if [[ -f "$_art5/pr-result.json" ]]; then
     # Non-empty — ADR-054 §5 makes reason mandatory, and the engine refuses "".
     assert_contains "[#1844/SPEC-16] pr-result.json reason is pr-delivery's (names the hand-over)" \
         "$(jq -r '.reason // ""' "$_art5/pr-result.json" 2>/dev/null || true)" "PR opened by pr-open"
-    assert_eq "[#1844/SPEC-16] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-16] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-16] pr-result.json verdict is pass" "pass" \
-        "$(jq -r '.verdict // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-16] pr-result.json disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-16] pr-result.json outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-16] pr-result.json no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_art5/pr-result.json" 2>/dev/null || true)"
     _s16_url="$(jq -r '.data.pr_url // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
     [[ -n "$_s16_url" ]] \
         && assert_pass "[#1844/SPEC-16] pr-result.json data.pr_url is non-empty" \
@@ -216,8 +216,7 @@ cat > "$_fake8/plugins/tool/pr-open/plugin.sh" <<'PROMOCK'
 pr_open_run() {
     local d; d="$(dirname "$2")/artifacts"
     mkdir -p "$d"
-    jq -n '{result_contract:2,verdict:"blocked",disposition:"complete",reason:"review_signal_missing"}' \
-        > "$d/pr-result.json"
+    stage_result_write "$d/pr-result.json" fail "review_signal_missing"
     return 0
 }
 PROMOCK
@@ -229,12 +228,12 @@ printf '{"inputs":{}}\n' > "$_si8"
     ZBUILD_STAGE_INPUTS="$_si8" _pr_stage_run_inner "$_sf8" ) >/dev/null 2>&1; _rc8=$?
 assert_eq "[#1844/SPEC-8] pr-open blocked → rc=1" "1" "$_rc8"
 if [[ -f "$_art8/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-8] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-8] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-8] a refusal is verdict fail (Eric 2026-10-03)" "fail" \
-        "$(jq -r '.verdict // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-8] pr-result.json disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-8] a refusal is outcome fail (Eric 2026-10-03)" "fail" \
+        "$(jq -r '.outcome // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-8] pr-result.json no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_art8/pr-result.json" 2>/dev/null || true)"
     _s8_reason="$(jq -r '.reason // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
     if grep -q 'review_signal_missing' <<< "$_s8_reason"; then
         assert_pass "[#1844/SPEC-8] pr-result.json reason contains review_signal_missing"
@@ -275,12 +274,12 @@ printf '{"inputs":{}}\n' > "$_si10"
     _pr_stage_run_inner "$_sf10" ) >/dev/null 2>&1; _rc10=$?
 assert_eq "[#1844/SPEC-10] fallback gh failure → rc=1" "1" "$_rc10"
 if [[ -f "$_art10/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-10] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-10] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-10] pr-result.json verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-10] pr-result.json did not finish (outcome neither pass nor fail)" "true" \
+        "$(jq -r '(.outcome != null) and .outcome != "pass" and .outcome != "fail"' "$_art10/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-10] pr-result.json disposition is unavailable" "unavailable" \
-        "$(jq -r '.disposition // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+        "$(jq -r '.outcome // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-10] pr-result.json written on fallback gh failure" "file absent"
 fi

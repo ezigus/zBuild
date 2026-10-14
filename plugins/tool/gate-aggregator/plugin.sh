@@ -26,6 +26,9 @@ _GA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_GA_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# #2366 (ADR-054 §6): the one writer of a contract-3 result.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_GA_ROOT/scripts/lib/stage-result.sh"
 
 # Manifest libs for ROSTER-DRIVEN discovery (ADR-040 §2): the must-pass set is
 # derived at runtime from the cycle members' own `convergence:` markers — no
@@ -221,10 +224,9 @@ gate_aggregator_run() {
         _ga_reason="gates failed: $(printf '%s ' "${failed[@]}")"
         _ga_reason="${_ga_reason% }"
     fi
-    jq -n --arg v "$verdict" --argjson g "$gates_json" --argjson f "$failed_json" \
-        --arg r "$_ga_reason" \
-        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"gates":$g,"failed":$f}' \
-        | atomic_write "$result_path"
+    # One outcome (pass or fail); the roll-up rides under data (#2366).
+    stage_result_write "$result_path" "$verdict" "$_ga_reason" \
+        "$(jq -nc --argjson g "$gates_json" --argjson f "$failed_json" '{gates:$g, failed:$f}')"
 
     # ─── #1988: the aggregator no longer renders prose ───────────────────────
     # It used to partition failed[] and write gate-feedback.md / design-feedback.md,
