@@ -33,7 +33,7 @@ source "$_LDW_ROOT/core/pipeline/disposition.sh"
 _found=0 _bad=0
 while IFS= read -r -d '' f; do
     [[ "$f" == */tests/* ]] && continue
-    while IFS=$'\t' read -r line word noted; do
+    while IFS=$'\t' read -r line word noted kind; do
         [[ -n "$word" ]] || continue
         _found=$((_found + 1))
         # #2225: `unavailable` ends the run as "an external service zBuild depends
@@ -45,7 +45,13 @@ while IFS= read -r -d '' f; do
             echo "lint-disposition-words: ${f#"$PLUGINS_ROOT"/}:$line writes 'unavailable' without naming the external service — add '# disposition-ok: <service> is not responding' (or derive it from router_reason_disposition)" >&2
             _bad=$((_bad + 1))
         fi
-        if ! disposition_is_valid "$word"; then
+        if [[ "$kind" == outcome ]]; then
+            # #2366: a contract-3 outcome — pass, fail, or how the stage ended.
+            if ! outcome_is_valid "$word"; then
+                echo "lint-disposition-words: ${f#"$PLUGINS_ROOT"/}:$line writes outcome '$word', which the engine does not know" >&2
+                _bad=$((_bad + 1))
+            fi
+        elif ! disposition_is_valid "$word"; then
             echo "lint-disposition-words: ${f#"$PLUGINS_ROOT"/}:$line writes disposition '$word', which the engine does not know" >&2
             _bad=$((_bad + 1))
         fi
@@ -66,6 +72,13 @@ while IFS= read -r -d '' f; do
             if (match(s, /(^|[^a-zA-Z_])(disposition|_disp|_disposition|[a-z_]+_disposition)="[a-z_]+"/)) {
                 m = substr(s, RSTART, RLENGTH); sub(/.*="/, "", m); sub(/"$/, "", m)
                 print NR "\t" m "\t" ok
+            }
+            # #2366: the contract-3 writer — its second argument is the outcome.
+            if (match(s, /stage_result_(write|add)[[:space:]]+("[^"]*"|[^[:space:]]+)[[:space:]]+"?[a-z_]+"?([[:space:]]|$)/)) {
+                m = substr(s, RSTART, RLENGTH)
+                sub(/^stage_result_(write|add)[[:space:]]+("[^"]*"|[^[:space:]]+)[[:space:]]+/, "", m)
+                gsub(/["[:space:]]/, "", m)
+                print NR "\t" m "\t" ok "\toutcome"
             }
             # A result writer: the third quoted argument.
             if (match(s, /_write_(result|v2)[[:space:]]+"[^"]*"[[:space:]]+"[^"]*"[[:space:]]+"[a-z_]+"/)) {
