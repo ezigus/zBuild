@@ -52,6 +52,8 @@ for _tpl in "$REPO_ROOT"/config/templates/*.yaml; do
 done
 _dispatch_words=" ${_dispatch_words} "
 
+# shellcheck source=../../core/contract/version.sh
+source "$REPO_ROOT/core/contract/version.sh"
 _bad_contract="" _dispatched_helper="" _n_stage=0 _n_exempt=0
 for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
     _rel="${_m#"$REPO_ROOT"/}"
@@ -64,7 +66,8 @@ for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
     done < "$_m"
     if [[ "$_primary" -eq 1 ]]; then
         _n_stage=$((_n_stage + 1))
-        [[ "$_contract" == 2 ]] || _bad_contract+="$_rel(result_contract=${_contract:-none}) "
+        # #2366: any contract the engine speaks (its one range, never a literal).
+        contract_version_supported "$_contract" || _bad_contract+="$_rel(result_contract=${_contract:-none}) "
     else
         _n_exempt=$((_n_exempt + 1))
         for _w in "$_id" "$_role"; do
@@ -80,7 +83,7 @@ else
     assert_fail "[setup] the scan saw stage plugins and plugins with no stage result" \
         "stage=$_n_stage exempt=$_n_exempt"
 fi
-assert_eq "[G1] every plugin with a primary output declares result_contract: 2" "" "$_bad_contract"
+assert_eq "[G1] every plugin with a primary output declares a result contract the engine speaks" "" "$_bad_contract"
 assert_eq "[G2] no template dispatches a plugin that writes no stage result" "" "$_dispatched_helper"
 
 print_test_results
