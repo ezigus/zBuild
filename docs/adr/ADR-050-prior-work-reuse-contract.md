@@ -294,7 +294,8 @@ it** (ADR-068 §8).
 
 - **Hydrate puts them in the live places.** The hydrate stage extracts the state branch to a staging
   folder and copies every file into the run's `artifacts/`, skipping any the run already has (a live
-  file is this run's own, and newer). There is no `restored-artifacts/` area and no
+  file is this run's own, and newer). `stage-io/` is left out: it records one run's model calls and is
+  no stage's output (amended 2026-10-14, after #1801's rerun shipped a two-day-old one). There is no `restored-artifacts/` area and no
   `ZBUILD_RESTORED_ARTIFACTS_DIR`; the reader (§5), the input index and design read one place.
 - **No label.** Nothing says "from an earlier run". Previous work opens with one line naming the files
   this issue's work has changed so far, against where its branch left the default branch, so a rerun
@@ -440,7 +441,7 @@ no model ever reads that line.
 - Implementation notes (pr-open edits the existing open PR, never opens a second, and reports `status=updated`) → `tests/unit/prior-work-reuse-contract-test.sh` C5
 - #2225 (`ZBUILD_RESUME` defaults to 1; `--no-resume` restores nothing yet still fetches and adopts) → `tests/unit/resume-default-test.sh` R1–R4
 - #2324 (design-gate's result has no `design_sha`) → `tests/unit/resume-default-test.sh` R12
-- §9 (hydrate puts an earlier run's outputs in the live places, keeping any the run already has; no restored area) → `tests/unit/hydrate-stage-test.sh` SPEC-1, SPEC-6; `tests/integration/prior-work-reuse-integration-test.sh` T4, T5
+- §9 (hydrate puts an earlier run's outputs in the live places, keeping any the run already has; no restored area; stage-io/ is not put back) → `tests/unit/hydrate-stage-test.sh` SPEC-1, SPEC-6, SPEC-7; `tests/integration/prior-work-reuse-integration-test.sh` T4, T5
 - §9 (no restored area is read: the index and the reader see only the live file) → `tests/unit/stage-input-resolve-precedence-test.sh` SPEC-3; `tests/unit/own-run-artifacts-first-test.sh` O1, O7
 - §9 (no earlier-run label; one wording for design's latest design whichever run wrote it) → `tests/unit/stage-prompt-contract-test.sh` P2; `tests/unit/design-prior-hypothesis-test.sh` SPEC-5
 - §9 (what the issue's work has changed, said once at the top against the default branch; no per-stage line or record) → `tests/unit/engine-blocks-shared-only-test.sh` B2, B2b; `tests/unit/stage-blocks-dispatch-test.sh` D2

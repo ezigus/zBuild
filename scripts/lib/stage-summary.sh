@@ -61,17 +61,29 @@ stage_summary_write() {
 # into the summaries the other stages read when this stage fails.
 #
 # Path convention: ${artifact_dir}/<stage>-errors.log. Appends, so a stage with
-# several failing subprocesses keeps all of them. Cleared by the engine at the
-# start of each dispatch (the previous attempt's copy is already archived).
-# Fail-open: a diagnostic write never changes a stage's fate.
+# several failing subprocesses keeps all of them. Emptied by the engine at the
+# start of each dispatch (stage_errors_clear; the attempt archive keeps the
+# earlier copy). Fail-open: a diagnostic write never changes a stage's fate.
 stage_errors_append() {
     local stage="${1:-${ZBUILD_CURRENT_STAGE:-}}"; shift || true
-    [[ -n "$stage" ]] || return 0
-    local art="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:+$ZBUILD_STATE_DIR/artifacts}}"
-    [[ -n "$art" ]] || return 0
-    mkdir -p "$art" 2>/dev/null || true
-    local safe="${stage//[^A-Za-z0-9_-]/_}"
-    printf '%s\n' "$*" >> "$art/${safe}-errors.log" 2>/dev/null || true
+    local log; log="$(_stage_errors_log "$stage")"
+    [[ -n "$log" ]] || return 0
+    mkdir -p "${log%/*}" 2>/dev/null || true
+    printf '%s\n' "$*" >> "$log" 2>/dev/null || true
+    return 0
+}
+
+_stage_errors_log() {
+    local stage="${1:-}" art="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:+$ZBUILD_STATE_DIR/artifacts}}"
+    [[ -n "$stage" && -n "$art" ]] || return 0
+    printf '%s/%s-errors.log' "$art" "${stage//[^A-Za-z0-9_-]/_}"
+}
+
+# stage_errors_clear <stage> — empty the stage's error log, so it holds only the
+# latest dispatch's errors.
+stage_errors_clear() {
+    local log; log="$(_stage_errors_log "${1:-}")"
+    [[ -n "$log" && -e "$log" ]] && : > "$log" 2>/dev/null
     return 0
 }
 

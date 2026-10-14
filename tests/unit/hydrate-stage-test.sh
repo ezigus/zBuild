@@ -205,6 +205,19 @@ _h_local_tip="$( cd "$_H_SRC" && git rev-parse -q --verify refs/heads/zbuild/sta
 assert_eq "[SPEC-5] the local state ref now exists and matches the fetched tip" \
     "$_h_remote_tip" "$_h_local_tip"
 
+# ─── [SPEC-7][change] an earlier run's model-call records are not put back ──
+# stage-io/ records one run's model calls; it is no stage's output. #1801's
+# rerun shipped a stage-io error file from two days earlier with its own.
+print_test_section "[SPEC-7][change] stage-io records are not put back"
+_S7_FROM="$TEST_TEMP_DIR/s7-from"; _S7_TO="$TEST_TEMP_DIR/s7-to"
+mkdir -p "$_S7_FROM/stage-io"
+printf 'prior plan\n' > "$_S7_FROM/plan.json"
+printf '{}\n' > "$_S7_FROM/stage-io/design-iter4-error.json"
+_hydrate_put_back "$_S7_FROM" "$_S7_TO"
+assert_file_exists "[SPEC-7] a stage's output is put back" "$_S7_TO/plan.json"
+assert_file_not_exists "[SPEC-7] an earlier run's stage-io record is not" \
+    "$_S7_TO/stage-io/design-iter4-error.json"
+
 print_test_section "[SPEC-3][guard] a failed restore leaves the area absent, not partial"
 
 _P_STATE="$TEST_TEMP_DIR/partial-state"
