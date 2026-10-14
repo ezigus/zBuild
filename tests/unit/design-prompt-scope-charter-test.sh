@@ -61,11 +61,12 @@ else
     assert_fail "T1: prompt must invite Read/Grep" "got (head): $(head -40 "$PROMPT" | tr '\n' ' ' | cut -c1-200)"
 fi
 
-# T2: exhaustive-enumeration charter (not 'superset of seed').
-if grep -qi 'exhaustive' "$PROMPT"; then
-    assert_pass "T2: prompt states an exhaustive-enumeration charter"
+# T2 (#2376): the scope is found by searching for what the change alters —
+# an "exhaustive" read sent design through every file and out of time.
+if grep -qi 'search for the names, values and lists the change alters' "$PROMPT"; then
+    assert_pass "T2: prompt says to find the scope by searching for what changes"
 else
-    assert_fail "T2: prompt must demand exhaustive enumeration"
+    assert_fail "T2: prompt says to find the scope by searching for what changes"
 fi
 
 # T3: old-value-pinning instruction (grep repo for files pinning old values).

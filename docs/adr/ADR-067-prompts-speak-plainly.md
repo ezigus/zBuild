@@ -1,6 +1,6 @@
 # ADR-067 — Model-facing text speaks plainly
 
-**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8), 2026-10-07 (#1799, §8), 2026-10-11 (§8 findings wording, §9), 2026-10-12 (§8: the engine/stage prompt contract — three parts from the stage, three blocks from the engine, one order), 2026-10-13 (#2363, §8: the engine's blocks hold only what every stage shares; §9: plan does not read code)
+**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8), 2026-10-07 (#1799, §8), 2026-10-11 (§8 findings wording, §9), 2026-10-12 (§8: the engine/stage prompt contract — three parts from the stage, three blocks from the engine, one order), 2026-10-13 (#2363, §8: the engine's blocks hold only what every stage shares; §9: plan does not read code), 2026-10-14 (#2376, §8: design's job comes first, it writes design.md as it goes, finds its scope by searching, and may write its notes)
 **Issue:** #2269, #2308
 **Related:** ADR-066 (every ADR statement has a test), ADR-055 §9 (stage summaries are read by every later stage), ADR-036 (the acceptance check whose vocabulary leaked), ADR-050 §9 and ADR-068 §8 (each stage's latest output, any run), ADR-063 §1 (the budget is stated from the value that enforces it)
 
@@ -74,4 +74,5 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §8 (a stage's job is its What you own section; each finding answered only with what goes into its output) → `tests/unit/engine-keeps-only-stage-outputs-test.sh` K5
 - §8 (no text tells a stage to skip part of its job) → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P10–P11
 - §8 (spec-coverage's reworded exemption) → `tests/unit/spec-coverage-test.sh` SPEC-7, SPEC-9
+- §8 (design's What you own opens with its job — decisions, contract, scope — written as it goes; a finding is answered in the design; design does not debug code; the scope is found by searching, not an exhaustive read; design may write its notes) → `tests/unit/design-writes-as-it-goes-test.sh` D1–D3
 - §9 → `plugins/agent/plan/tests/plan-test.sh` (Test 3c2, plan); `plugins/agent/plan/tests/plan-work-items-test.sh` W1 (plan does not read code); `tests/unit/resume-default-test.sh` (the ADR-067 §9 assertions on design's prompt)
