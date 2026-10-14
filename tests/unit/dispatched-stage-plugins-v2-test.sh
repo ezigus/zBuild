@@ -13,7 +13,8 @@
 #     They are exempt for a reason, not by name: the engine calls them itself,
 #     and no template may dispatch one as a stage — which is what G2 checks.
 #
-# G1 [guard] every shipped plugin with a primary output declares result_contract: 2
+# G1 [guard] every shipped plugin with a primary output declares a result contract
+#            the engine reads (2 or 3 while stages move to contract 3, #2366)
 # G2 [guard] no shipped template names, as a stage or a stage role, a plugin that
 #            has no primary output
 set -uo pipefail
@@ -25,6 +26,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../core/contract/version.sh
+source "$REPO_ROOT/core/contract/version.sh"
 
 print_test_header "every dispatched stage plugin writes result contract v2 (#1850)"
 
@@ -64,7 +67,8 @@ for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
     done < "$_m"
     if [[ "$_primary" -eq 1 ]]; then
         _n_stage=$((_n_stage + 1))
-        [[ "$_contract" == 2 ]] || _bad_contract+="$_rel(result_contract=${_contract:-none}) "
+        # #2366: any contract the engine reads (2..3 while stages move to 3).
+        contract_version_supported "${_contract:-}" || _bad_contract+="$_rel(result_contract=${_contract:-none}) "
     else
         _n_exempt=$((_n_exempt + 1))
         for _w in "$_id" "$_role"; do
@@ -80,7 +84,7 @@ else
     assert_fail "[setup] the scan saw stage plugins and plugins with no stage result" \
         "stage=$_n_stage exempt=$_n_exempt"
 fi
-assert_eq "[G1] every plugin with a primary output declares result_contract: 2" "" "$_bad_contract"
+assert_eq "[G1] every plugin with a primary output declares a result contract the engine reads" "" "$_bad_contract"
 assert_eq "[G2] no template dispatches a plugin that writes no stage result" "" "$_dispatched_helper"
 
 print_test_results
