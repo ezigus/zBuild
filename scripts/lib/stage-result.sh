@@ -56,9 +56,13 @@ stage_result_add() {
     local path="${1-}" head merged
     [[ -s "$path" ]] || { printf 'stage_result_add: nothing at %s\n' "$path" >&2; return 1; }
     head="$(_stage_result_json "${2-}" "${3-}")" || return 1
+    if ! jq -e 'type == "object"' "$path" >/dev/null 2>&1; then
+        printf 'stage_result_add: %s is not a JSON object\n' "$path" >&2
+        return 1
+    fi
     merged="$(jq -c --argjson h "$head" \
-        'del(.verdict, .disposition, .outcome, .result_contract, .reason) + $h' "$path" 2>/dev/null)" || return 1
-    [[ -n "$merged" ]] || return 1
+        'del(.verdict, .disposition, .outcome, .result_contract, .reason) + $h' "$path")" \
+        || { printf 'stage_result_add: could not add the result to %s\n' "$path" >&2; return 1; }
     if declare -F atomic_write >/dev/null 2>&1; then
         atomic_write "$path" <<< "$merged"
     else

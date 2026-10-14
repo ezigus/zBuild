@@ -476,5 +476,5 @@ A word off the list, a missing `outcome` or a missing `reason` is a broken resul
 
 **Migration.** The engine reads contracts 2 and 3 while the stages move, one batch per PR; the last PR drops contract 2 by raising the contract minimum, and removes `valid_verdicts`, `verdict_classify` and their lints. Which outcomes block — today `convergence:` in each manifest — moves to the template in the same series.
 
-**Enforced by** `tests/unit/result-outcome-test.sh` O1–O9.
+**Enforced by** `tests/unit/result-outcome-test.sh` O1–O9 (O2b: `stage_result_add`).
 
