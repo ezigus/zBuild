@@ -28,7 +28,15 @@ _OPEN_ITEMS_JQ_PASSED='def passed: (.outcome // "" | ascii_downcase)
 open_items_json() {
     local sd="$1" f
     local -a files=()
-    for f in "$sd"/artifacts/*-result.json; do [[ -s "$f" ]] && files+=("$f"); done
+    # #2378: only results this run wrote. Hydrate restores an earlier run's
+    # results with their saved times, so one older than this run's start is not
+    # this run's — its stage did not run this time.
+    local start="$sd/runtime/run-start"
+    for f in "$sd"/artifacts/*-result.json; do
+        [[ -s "$f" ]] || continue
+        [[ -e "$start" && "$start" -nt "$f" ]] && continue
+        files+=("$f")
+    done
     [[ ${#files[@]} -gt 0 ]] || { printf '[]'; return 0; }
     # A result is a check's when it carries a verdict; it is open when that
     # verdict is not a pass. input_filename names the check: <check>-result.json.
