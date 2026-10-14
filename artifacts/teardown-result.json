@@ -4,6 +4,6 @@
   "disposition": "complete",
   "reason": "all cleanup hooks completed without error",
   "data": {
-    "targets": [{"stage":"hydrate","outcome":"no_op"},{"stage":"intake","outcome":"no_op"},{"stage":"plan","outcome":"no_op"},{"stage":"release","outcome":"no_op"}]
+    "targets": [{"stage":"hydrate","outcome":"no_op"},{"stage":"intake","outcome":"no_op"},{"stage":"plan","outcome":"no_op"},{"stage":"spec-coverage","outcome":"no_op"},{"stage":"design-gate","outcome":"no_op"},{"stage":"design_verify_cycle","outcome":"no_op"},{"stage":"design","outcome":"no_op"},{"stage":"release","outcome":"no_op"}]
   }
 }
