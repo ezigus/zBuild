@@ -1,4 +1,4 @@
-## persist — complete
+## persist — pass
 
 - snapshot saved; did NOT push to origin
 

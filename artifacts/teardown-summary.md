@@ -1,4 +1,4 @@
-## teardown — complete
+## teardown — pass
 
 - cleaned up scope release
 
