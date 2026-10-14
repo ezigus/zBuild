@@ -216,7 +216,7 @@ if [[ -f "$BODY_FILE" ]]; then
         "$spec4_body" "Review verdict:"
     # ADR-040 §4: a high-severity advisory finding must not block the PR.
     assert_json_key "PR still opened despite a high advisory finding" \
-        "$(cat "$PR_RESULT_JSON")" ".verdict" "pass"
+        "$(cat "$PR_RESULT_JSON")" ".outcome" "pass"
 else
     assert_fail "body captured from gh call" "BODY_FILE not written"
 fi

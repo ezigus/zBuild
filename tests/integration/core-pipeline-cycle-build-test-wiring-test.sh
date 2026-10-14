@@ -228,7 +228,7 @@ printf '{"verdict":"fail","test_output":"FAIL tests/unit/sigpipe-antipattern-gua
 gate_aggregator_run "gate-aggregator" "$T6_STATE_DIR/state.json" >/dev/null 2>&1 || true
 
 assert_json_key "T6: mixed failure set still leaves verdict=fail" \
-    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.verdict' "fail"
+    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.outcome' "fail"
 assert_eq "T6: and no fault is rolled up (#2271)" "" \
     "$(jq -r '.fault // ""' "$T6_ART_DIR/gate-aggregator-result.json")"
 assert_file_not_exists "T6: the aggregator renders no payload of its own" \

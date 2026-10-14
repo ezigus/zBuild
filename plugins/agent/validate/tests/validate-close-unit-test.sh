@@ -42,6 +42,10 @@ PLUGIN_FILE="$REPO_ROOT/plugins/agent/validate/plugin.sh"
 source "$PLUGIN_FILE"
 emit_event() { return 0; }
 
+# The deploy result is made with the writer deploy uses (#2366).
+# shellcheck source=../../../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+
 # The real health-check plugin is never sourced; this records whether it ran.
 _ZBUILD_HEALTH_CHECK_LOADED=1
 # The plugin calls it inside $( ), so a call is recorded in a FILE — a shell
@@ -55,7 +59,7 @@ _hc_calls() { if [[ -f "$_HC_CALLS_F" ]]; then wc -l < "$_HC_CALLS_F" | tr -d ' 
 _run_dir() {
     RUN="$TEST_TEMP_DIR/$1"
     mkdir -p "$RUN/artifacts" "$RUN/stage-inputs"
-    [[ "${2:-1}" == "1" ]] && printf '{"verdict":"deployed"}\n' > "$RUN/deploy-result.json"
+    [[ "${2:-1}" == "1" ]] && stage_result_write "$RUN/deploy-result.json" pass "deployed" '{"deployed":true}'
     jq -n --arg p "$RUN/deploy-result.json" '{inputs:{deploy_result:$p}}' > "$RUN/stage-inputs/validate.json"
     printf '{"run_id":"close"}\n' > "$RUN/state.json"
     export ZBUILD_STAGE_INPUTS="$RUN/stage-inputs/validate.json" ZBUILD_ARTIFACT_DIR="$RUN/artifacts"
@@ -80,7 +84,7 @@ jq -n --arg p "$RUN/deploy-result.json" '{inputs:{deploy_result:$p}}' > "$RUN/st
 unset ZBUILD_STAGE_INPUTS
 _rc=0; ZBUILD_DRY_RUN=1 _validate_agent_run_inner "$RUN/state.json" >/dev/null 2>&1 || _rc=$?
 assert_eq "[close-2] no engine index → the input is missing (rc=1)" "1" "$_rc"
-assert_eq "[close-2] ...recorded as broken, not found by a guessed path" "broken" "$(_res .disposition)"
+assert_eq "[close-2] ...recorded as broken, not found by a guessed path" "broken" "$(_res .outcome)"
 
 print_test_section "close-3: a failed probe keeps its diagnostics in the result"
 _run_dir c3 1
@@ -101,16 +105,16 @@ unset ZBUILD_HEALTH_CHECK_URL
 rm -f "$_HC_CALLS_F"
 _rc=0; ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$RUN/state.json" >/dev/null 2>&1 || _rc=$?
 assert_eq "[close-4] exits 1" "1" "$_rc"
-assert_eq "[close-4] disposition is misconfigured" "misconfigured" "$(_res .disposition)"
+assert_eq "[close-4] outcome is misconfigured" "misconfigured" "$(_res .outcome)"
 assert_contains "[close-4] the reason names what to set" "$(_res .reason)" "ZBUILD_HEALTH_CHECK_URL"
 assert_eq "[close-4] the probe is not run" "0" "$(_hc_calls)"
 
-print_test_section "close-5: the wrapper's no-state-file path writes a v2 result"
+print_test_section "close-5: the wrapper's no-state-file path writes a contract-3 result"
 _run_dir c5 1
 _rc=0; validate_agent_run "validate" >/dev/null 2>&1 || _rc=$?
 assert_eq "[close-5] exits 1" "1" "$_rc"
-assert_eq "[close-5] result_contract=2" "2" "$(_res '.result_contract // empty')"
-assert_eq "[close-5] disposition=broken" "broken" "$(_res .disposition)"
+assert_eq "[close-5] result_contract=3" "3" "$(_res '.result_contract // empty')"
+assert_eq "[close-5] outcome=broken" "broken" "$(_res .outcome)"
 
 print_test_section "close-6: no artifact dir given, none invented"
 _run_dir c6 1

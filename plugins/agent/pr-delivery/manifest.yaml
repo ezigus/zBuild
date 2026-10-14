@@ -22,7 +22,7 @@ requires:
 
 provides:
   role: pr
-  result_contract: 2
+  result_contract: 3
   events:
     - pr.delivery.blocked
     - pr.delivery.opened
@@ -33,10 +33,6 @@ config:
   # merge/pr-open which carry their own router config. Router budgets resolve from
   # those manifests, not this one. Analogous to plugins/tool/pr-open/manifest.yaml
   # lines 17-21 and plugins/tool/merge/manifest.yaml lines 15-16 (ADR-037 §3).
-  valid_verdicts:
-    - pass
-    - fail    # a refusal (pr-open blocked delivery) — a judgement, not a breakdown (#1844)
-    - error
   tier_default: T2
 
 outputs:

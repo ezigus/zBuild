@@ -46,16 +46,11 @@ PR_PLUGIN="$REPO_ROOT/plugins/agent/pr-delivery/plugin.sh"
 print_test_section "SPEC-1: manifest provides declares result_contract:2, valid_verdicts, events, role, primary, hooks"
 
 _prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$PR_MANIFEST" || echo '')"
-assert_eq "[#1844/SPEC-1] manifest provides.result_contract is 2" "2" "$_prov_rc"
+assert_eq "[#1844/SPEC-1] manifest provides.result_contract is 3" "3" "$_prov_rc"
 
-_vv_pass="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*- pass$' || true)"
-_vv_error="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*- error$' || true)"
-[[ "$_vv_pass" -gt 0 ]] \
-    && assert_pass "[#1844/SPEC-1] config.valid_verdicts includes pass" \
-    || assert_fail "[#1844/SPEC-1] config.valid_verdicts includes pass" "missing"
-[[ "$_vv_error" -gt 0 ]] \
-    && assert_pass "[#1844/SPEC-1] config.valid_verdicts includes error" \
-    || assert_fail "[#1844/SPEC-1] config.valid_verdicts includes error" "missing"
+# #2366: a contract-3 stage declares no verdict words.
+assert_eq "[#1844/SPEC-1] manifest declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$PR_MANIFEST" | grep -c 'valid_verdicts' || true)"
 
 _ev_blocked="$(grep -c 'pr\.delivery\.blocked' "$PR_MANIFEST" || true)"
 _ev_opened="$(grep -c 'pr\.delivery\.opened' "$PR_MANIFEST" || true)"
@@ -124,12 +119,12 @@ mkdir -p "$_s2_art"
 ) >/dev/null 2>&1; _s2_rc=$?
 assert_eq "[#1844/SPEC-2] missing state_file → rc=1 (not rc=2)" "1" "$_s2_rc"
 if [[ -f "$_s2_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-2] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-2] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s2_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-2] pr-result.json verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s2_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-2] pr-result.json did not finish (outcome neither pass nor fail)" "true" \
+        "$(jq -r '(.outcome != null) and .outcome != "pass" and .outcome != "fail"' "$_s2_art/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-2] pr-result.json disposition is misconfigured" "misconfigured" \
-        "$(jq -r '.disposition // empty' "$_s2_art/pr-result.json" 2>/dev/null || true)"
+        "$(jq -r '.outcome // empty' "$_s2_art/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-2] pr-result.json written on missing state_file" "file absent at $_s2_art/pr-result.json"
 fi
@@ -156,7 +151,7 @@ pr_open_run() {
     local d; d="\$(dirname "\$2")/artifacts"; mkdir -p "\$d"
     : > "$_s3_called"
     printf 'https://github.com/owner/repo/pull/3\n' > "\$d/pr-url.txt"
-    jq -n '{result_contract:2,verdict:"pass",disposition:"complete",reason:"PR opened"}' > "\$d/pr-result.json"
+    stage_result_write "\$d/pr-result.json" pass "PR opened"
     return 0
 }
 PROMOCK
@@ -169,8 +164,8 @@ PROMOCK
 ) >/dev/null 2>&1; _s3_rc=$?
 assert_eq "[#1844/SPEC-3] a needs_attention review does not refuse delivery (rc=0)" "0" "$_s3_rc"
 assert_file_exists "[#1844/SPEC-3] pr-open was called" "$_s3_called"
-assert_eq "[#1844/SPEC-3] pr-result.json verdict is pass" "pass" \
-    "$(jq -r '.verdict // empty' "$_s3_art/pr-result.json" 2>/dev/null || true)"
+assert_eq "[#1844/SPEC-3] pr-result.json outcome is pass" "pass" \
+    "$(jq -r '.outcome // empty' "$_s3_art/pr-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-4: dry-run → rc=0, result_contract:2, verdict=pass, disposition=complete
 print_test_section "SPEC-4: dry-run → rc=0, pr-result.json result_contract:2/pass/complete"
@@ -186,12 +181,12 @@ _mk_si "$_s4_si"
 ) >/dev/null 2>&1; _s4_rc=$?
 assert_eq "[#1844/SPEC-4] dry-run → rc=0" "0" "$_s4_rc"
 if [[ -f "$_s4_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-4] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-4] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s4_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-4] pr-result.json verdict is pass" "pass" \
-        "$(jq -r '.verdict // empty' "$_s4_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-4] pr-result.json disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_s4_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-4] pr-result.json outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_s4_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-4] pr-result.json no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s4_art/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-4] pr-result.json written on dry-run" "file absent"
 fi
@@ -205,8 +200,7 @@ cat > "$_s5_fake/plugins/tool/merge/plugin.sh" <<'MERGEMOCK'
 merge_run() {
     local d; d="$(dirname "$2")/artifacts"
     mkdir -p "$d"
-    jq -n '{result_contract:2,verdict:"pass",disposition:"complete",reason:"squash-merged"}' \
-        > "$d/merge-result.json"
+    stage_result_write "$d/merge-result.json" pass "squash-merged"
     return 0
 }
 MERGEMOCK
@@ -223,12 +217,12 @@ _mk_si "$_s5_si"
 ) >/dev/null 2>&1; _s5_rc=$?
 assert_eq "[#1844/SPEC-5] merge delegation success → rc=0" "0" "$_s5_rc"
 if [[ -f "$_s5_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-5] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-5] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s5_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-5] pr-result.json verdict is pass" "pass" \
-        "$(jq -r '.verdict // empty' "$_s5_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-5] pr-result.json disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_s5_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-5] pr-result.json outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_s5_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-5] pr-result.json no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s5_art/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-5] pr-result.json written on merge delegation success" "file absent"
 fi
@@ -257,12 +251,12 @@ _mk_si "$_s6_si"
 ) >/dev/null 2>&1; _s6_rc=$?
 assert_eq "[#1844/SPEC-6] merge delegation failure → rc=1" "1" "$_s6_rc"
 if [[ -f "$_s6_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-6] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-6] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s6_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-6] pr-result.json verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s6_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-6] pr-result.json did not finish (outcome neither pass nor fail)" "true" \
+        "$(jq -r '(.outcome != null) and .outcome != "pass" and .outcome != "fail"' "$_s6_art/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-6] pr-result.json disposition is unavailable" "unavailable" \
-        "$(jq -r '.disposition // empty' "$_s6_art/pr-result.json" 2>/dev/null || true)"
+        "$(jq -r '.outcome // empty' "$_s6_art/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-6] pr-result.json written on merge delegation failure" "file absent"
 fi
@@ -301,12 +295,12 @@ _mk_si "$_s7_si"
 # tagged assertion fails there — making the negctl check non-tautological.
 if [[ -f "$_s7_art/pr-result.json" ]]; then
     assert_pass "[#1844/SPEC-7] pr-result.json written on pr-open delegation success"
-    assert_eq "[#1844/SPEC-7] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-7] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s7_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-7] pr-result.json verdict is pass" "pass" \
-        "$(jq -r '.verdict // empty' "$_s7_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-7] pr-result.json disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_s7_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-7] pr-result.json outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_s7_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-7] pr-result.json no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s7_art/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-7] pr-result.json written on pr-open delegation success" "file absent"
 fi
@@ -321,8 +315,7 @@ cat > "$_s8_fake/plugins/tool/pr-open/plugin.sh" <<'PROMOCK'
 pr_open_run() {
     local d; d="$(dirname "$2")/artifacts"
     mkdir -p "$d"
-    jq -n '{result_contract:2,verdict:"blocked",disposition:"complete",reason:"review verdict is block"}' \
-        > "$d/pr-result.json"
+    stage_result_write "$d/pr-result.json" fail "no review signal — fail-closed per ADR-001"
     return 0
 }
 PROMOCK
@@ -339,14 +332,14 @@ _mk_si "$_s8_si"
 ) >/dev/null 2>&1; _s8_rc=$?
 assert_eq "[#1844/SPEC-8] pr-open verdict=blocked → rc=1" "1" "$_s8_rc"
 if [[ -f "$_s8_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-8] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-8] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-8] a refusal is verdict fail (Eric 2026-10-03)" "fail" \
-        "$(jq -r '.verdict // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-8] pr-result.json disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-8] a refusal is outcome fail (Eric 2026-10-03)" "fail" \
+        "$(jq -r '.outcome // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-8] pr-result.json no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s8_art/pr-result.json" 2>/dev/null || true)"
     _s8_reason="$(jq -r '.reason // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
-    if grep -q 'review verdict is block' <<< "$_s8_reason"; then
+    if grep -q 'no review signal' <<< "$_s8_reason"; then
         assert_pass "[#1844/SPEC-8] pr-result.json reason keeps pr-open's own reason"
     else
         assert_fail "[#1844/SPEC-8] pr-result.json reason keeps pr-open's own reason" \
@@ -391,12 +384,12 @@ _mk_si "$_s9_si"
 ) >/dev/null 2>&1; _s9_rc=$?
 assert_eq "[#1844/SPEC-9] fallback gh-pr-create success → rc=0" "0" "$_s9_rc"
 if [[ -f "$_s9_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-9] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-9] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s9_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-9] pr-result.json verdict is pass" "pass" \
-        "$(jq -r '.verdict // empty' "$_s9_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-9] pr-result.json disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_s9_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-9] pr-result.json outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_s9_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-9] pr-result.json no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s9_art/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-9] pr-result.json written on fallback gh success" "file absent"
 fi
@@ -435,12 +428,12 @@ _mk_si "$_s10_si"
 ) >/dev/null 2>&1; _s10_rc=$?
 assert_eq "[#1844/SPEC-10] fallback gh-pr-create failure → rc=1" "1" "$_s10_rc"
 if [[ -f "$_s10_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-10] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-10] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s10_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-10] pr-result.json verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s10_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-10] pr-result.json did not finish (outcome neither pass nor fail)" "true" \
+        "$(jq -r '(.outcome != null) and .outcome != "pass" and .outcome != "fail"' "$_s10_art/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-10] pr-result.json disposition is unavailable" "unavailable" \
-        "$(jq -r '.disposition // empty' "$_s10_art/pr-result.json" 2>/dev/null || true)"
+        "$(jq -r '.outcome // empty' "$_s10_art/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-10] pr-result.json written on fallback gh failure" "file absent"
 fi
@@ -509,12 +502,12 @@ mkdir -p "$_s14_fake/plugins/tool/merge" "$_s14_fake/plugins/tool/pr-open"
 # rc must be 1 (the run function exits 1 after the signal handler fires)
 assert_eq "[#1844/SPEC-14] signal → run exits rc=1" "1" "$_s14_rc"
 if [[ -f "$_s14_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-14] pr-result.json result_contract is 2" "2" \
+    assert_eq "[#1844/SPEC-14] pr-result.json result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s14_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-14] pr-result.json verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s14_art/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-14] pr-result.json did not finish (outcome neither pass nor fail)" "true" \
+        "$(jq -r '(.outcome != null) and .outcome != "pass" and .outcome != "fail"' "$_s14_art/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-14] pr-result.json disposition is interrupted" "interrupted" \
-        "$(jq -r '.disposition // empty' "$_s14_art/pr-result.json" 2>/dev/null || true)"
+        "$(jq -r '.outcome // empty' "$_s14_art/pr-result.json" 2>/dev/null || true)"
 else
     assert_fail "[#1844/SPEC-14] pr-result.json written on signal" "file absent"
 fi
@@ -540,8 +533,7 @@ _d4_fake="$TEST_TEMP_DIR/fake-d4"; mkdir -p "$_d4_fake/plugins/tool/merge"
 cat > "$_d4_fake/plugins/tool/merge/plugin.sh" <<'MERGEMOCK'
 merge_run() {
     local d; d="$(dirname "$2")/artifacts"; mkdir -p "$d"
-    jq -n '{result_contract:2,verdict:"pass",disposition:"complete",reason:"squash-merged",data:{pr_url:"https://github.com/owner/repo/pull/44"}}' \
-        > "$d/merge-result.json"
+    stage_result_write "$d/merge-result.json" pass "squash-merged" '{"pr_url":"https://github.com/owner/repo/pull/44"}'
     return 0
 }
 MERGEMOCK
@@ -570,7 +562,7 @@ _d9_sf="$(_mk_state d9)"; _d9_art="$(dirname "$_d9_sf")/artifacts"; _d9_si="$TES
     _pr_stage_run_inner "$_d9_sf"
 ) >/dev/null 2>&1
 assert_eq "[D9] a signal during a dry run leaves an interrupted result" "interrupted" \
-    "$(jq -r '.disposition // empty' "$_d9_art/pr-result.json" 2>/dev/null)"
+    "$(jq -r '.outcome // empty' "$_d9_art/pr-result.json" 2>/dev/null)"
 
 # D10: the direct-gh fallback reports gh's own error (review on #2285).
 _d10_sf="$(_mk_state d10)"; _d10_art="$(dirname "$_d10_sf")/artifacts"; _d10_si="$TEST_TEMP_DIR/d10-si.json"; _mk_si "$_d10_si"

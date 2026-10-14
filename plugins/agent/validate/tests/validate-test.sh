@@ -74,6 +74,10 @@ source "$REPO_ROOT/core/plugin-registry/manifest-router-budget.sh"
 # Override emit_event to no-op so tests don't require a real event-bus backend
 emit_event() { return 0; }
 
+# The deploy result is made with the writer deploy uses (#2366).
+# shellcheck source=../../../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+
 # Override apply_scope_redaction as a passthrough
 apply_scope_redaction() {
     local _in="$1" _out="$2"
@@ -134,12 +138,11 @@ _make_state "$_run9"; _sf9="$_MS_SF"
 # Review on #2213: the helper wrote the literal text "$_ZB_ID" (single quotes).
 assert_eq "[helper] state.json carries the test issue id, not the literal \$_ZB_ID" \
     "$_ZB_ID" "$(jq -r '.issue' "$_sf9" 2>/dev/null || true)"
-printf '{"schema_version":1,"verdict":"deployed","mode":"dry_run"}\n' \
-    > "$_run9/artifacts/deploy-result.json"
+stage_result_write "$_run9/artifacts/deploy-result.json" pass "dry run" '{"deployed":true,"mode":"dry_run"}'
 
 ZBUILD_DRY_RUN=1 _validate_agent_run_inner "$_sf9"
-_v9="$(jq -r '.verdict' "$_run9/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
-assert_eq "dry-run writes verdict=healthy" "healthy" "$_v9"
+_v9="$(jq -r '.outcome' "$_run9/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "dry-run writes outcome=pass" "pass" "$_v9"
 
 # ---------------------------------------------------------------------------
 # SPEC-10: missing deploy-result.json → validate_agent_run rc!=0
@@ -152,35 +155,33 @@ _rc10=0
 _validate_agent_run_inner "$_sf10" || _rc10=$?
 assert_gt "missing deploy-result.json → rc != 0" "$_rc10" "0"
 
-_v10="$(jq -r '.verdict' "$_run10/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
-assert_eq "missing deploy-result.json → verdict=error in output" "error" "$_v10"
+_v10="$(jq -r '.outcome' "$_run10/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "missing deploy-result.json → outcome=broken in output" "broken" "$_v10"
 
 # ---------------------------------------------------------------------------
 # SPEC-11: successful health probe (rc=0) → verdict=healthy in validate-result.json
 # ---------------------------------------------------------------------------
 _run11="$TEST_TEMP_DIR/run11"
 _make_state "$_run11"; _sf11="$_MS_SF"
-printf '{"schema_version":1,"verdict":"deployed"}\n' \
-    > "$_run11/artifacts/deploy-result.json"
+stage_result_write "$_run11/artifacts/deploy-result.json" pass "deployed" '{"deployed":true}'
 
 _MOCK_HC_RC=0  # probe succeeds
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_sf11"
-_v11="$(jq -r '.verdict' "$_run11/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
-assert_eq "healthy probe → verdict=healthy" "healthy" "$_v11"
+_v11="$(jq -r '.outcome' "$_run11/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "healthy probe → outcome=pass" "pass" "$_v11"
 
 # ---------------------------------------------------------------------------
 # SPEC-12: failed health probe (rc!=0) → verdict=error in validate-result.json
 # ---------------------------------------------------------------------------
 _run12="$TEST_TEMP_DIR/run12"
 _make_state "$_run12"; _sf12="$_MS_SF"
-printf '{"schema_version":1,"verdict":"deployed"}\n' \
-    > "$_run12/artifacts/deploy-result.json"
+stage_result_write "$_run12/artifacts/deploy-result.json" pass "deployed" '{"deployed":true}'
 
 _MOCK_HC_RC=1  # probe fails
 _rc12=0
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_sf12" || _rc12=$?
-_v12="$(jq -r '.verdict' "$_run12/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
-assert_eq "failed probe → verdict=error" "error" "$_v12"
+_v12="$(jq -r '.outcome' "$_run12/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "failed probe → outcome=fail" "fail" "$_v12"
 # #757 review fix: a failed probe must PROPAGATE a non-zero rc (was unconditional 0).
 assert_gt "failed probe → rc propagated (rc != 0)" "$_rc12" "0"
 _MOCK_HC_RC=0  # reset
@@ -208,25 +209,22 @@ fi
 # ===========================================================================
 
 # ─── v2 result key helper ────────────────────────────────────────────────────
-# Assert all four mandatory v2 keys are present and result_contract==2.
+# Assert the contract-3 shape (#2366): result_contract 3, an outcome, a reason,
+# and no verdict or disposition field.
 _v2_keys_ok() {
     local lbl="$1" f="$2"
-    local _rc _vd _dp _rs
+    local _rc _oc _old _rs
     _rc="$(jq -r '.result_contract // empty' "$f" 2>/dev/null || true)"
-    _vd="$(jq -r '.verdict // empty' "$f" 2>/dev/null || true)"
-    _dp="$(jq -r '.disposition // empty' "$f" 2>/dev/null || true)"
+    _oc="$(jq -r '.outcome // empty' "$f" 2>/dev/null || true)"
+    _old="$(jq -r 'has("verdict") or has("disposition")' "$f" 2>/dev/null || true)"
     _rs="$(jq -r '.reason // ""' "$f" 2>/dev/null || true)"
-    assert_eq "$lbl result_contract=2" "2" "$_rc"
-    if [[ -n "$_vd" ]]; then
-        assert_pass "$lbl verdict key present"
+    assert_eq "$lbl result_contract=3" "3" "$_rc"
+    if [[ -n "$_oc" ]]; then
+        assert_pass "$lbl outcome key present"
     else
-        assert_fail "$lbl verdict key must be present" "absent"
+        assert_fail "$lbl outcome key must be present" "absent"
     fi
-    if [[ -n "$_dp" ]]; then
-        assert_pass "$lbl disposition key present"
-    else
-        assert_fail "$lbl disposition key must be present" "absent"
-    fi
+    assert_eq "$lbl no verdict or disposition key" "false" "$_old"
     if [[ -n "$_rs" ]]; then
         assert_pass "$lbl reason key present and non-empty"
     else
@@ -243,7 +241,7 @@ _v2_run() {
     local dir="$TEST_TEMP_DIR/$name"
     mkdir -p "$dir/artifacts" "$dir/stage-inputs"
     local dr="$dir/deploy-result.json"
-    [[ "$make_dr" == "1" ]] && printf '{"verdict":"deployed"}\n' > "$dr"
+    [[ "$make_dr" == "1" ]] && stage_result_write "$dr" pass "deployed" '{"deployed":true}'
     jq -n --arg p "$dr" '{"inputs":{"deploy_result":$p}}' > "$dir/stage-inputs/validate.json"
     export ZBUILD_STAGE_INPUTS="$dir/stage-inputs/validate.json"
     export ZBUILD_ARTIFACT_DIR="$dir/artifacts"
@@ -256,10 +254,10 @@ _v2_run() {
 # ---------------------------------------------------------------------------
 _s15_provides="$(awk '/^provides:/{f=1;next} f && /^[^[:space:]]/{exit} f{print}' \
     "$_MANIFEST" 2>/dev/null || true)"
-if grep -q 'result_contract:.*2' <<< "$_s15_provides"; then
-    assert_pass "[SPEC-15] manifest provides block carries result_contract: 2"
+if grep -q 'result_contract:.*3' <<< "$_s15_provides"; then
+    assert_pass "[SPEC-15] manifest provides block carries result_contract: 3 (#2366)"
 else
-    assert_fail "[SPEC-15] manifest provides block must carry result_contract: 2" \
+    assert_fail "[SPEC-15] manifest provides block must carry result_contract: 3" \
         "${_s15_provides:-absent}"
 fi
 
@@ -291,34 +289,27 @@ fi
 # SPEC-19: manifest valid_verdicts declares exactly [healthy, error];
 #          test suite covers both via passing assertions
 # ---------------------------------------------------------------------------
-_s19_section="$(awk '/valid_verdicts:/{f=1;next} f && /^[[:space:]]*-/{print;next} f{exit}' \
-    "$_MANIFEST" 2>/dev/null || true)"
-if grep -q 'healthy' <<< "$_s19_section" && grep -q 'error' <<< "$_s19_section"; then
-    assert_pass "[SPEC-19] manifest config.valid_verdicts declares healthy and error"
-else
-    assert_fail "[SPEC-19] manifest config.valid_verdicts must declare healthy and error" \
-        "${_s19_section:-absent}"
-fi
-_s19_count="$(grep -c '^[[:space:]]*-' <<< "$_s19_section" 2>/dev/null || printf '0')"
-assert_eq "[SPEC-19] manifest config.valid_verdicts declares exactly 3 verdicts" "3" "$_s19_count"
+# #2366: a contract-3 stage declares no verdict words.
+assert_eq "[SPEC-19] manifest declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$_MANIFEST" | grep -c 'valid_verdicts' || true)"
 
 # SPEC-19 healthy coverage: a passing assertion with verdict=healthy
 _v2_run run19h 1; _run19h="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run19h/state.json"
 _MOCK_HC_RC=0
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run19h/state.json"
-_s19h_v="$(jq -r '.verdict // empty' "$_run19h/artifacts/validate-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-19] healthy probe → verdict=healthy (covering healthy verdict)" \
-    "healthy" "$_s19h_v"
+_s19h_v="$(jq -r '.outcome // empty' "$_run19h/artifacts/validate-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-19] healthy probe → outcome=pass" \
+    "pass" "$_s19h_v"
 
 # SPEC-19 error coverage: a passing assertion with verdict=error
 _v2_run run19e 1; _run19e="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run19e/state.json"
 _MOCK_HC_RC=1
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run19e/state.json" || true
-_s19e_v="$(jq -r '.verdict // empty' "$_run19e/artifacts/validate-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-19] failed probe → verdict=error (covering error verdict)" \
-    "error" "$_s19e_v"
+_s19e_v="$(jq -r '.outcome // empty' "$_run19e/artifacts/validate-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-19] failed probe → outcome=fail" \
+    "fail" "$_s19e_v"
 _MOCK_HC_RC=0
 
 # ---------------------------------------------------------------------------
@@ -404,20 +395,18 @@ printf '{"run_id":"test"}\n' > "$_run21/state.json"
 ZBUILD_DRY_RUN=1 _validate_agent_run_inner "$_run21/state.json"
 _s21_out="$_run21/artifacts/validate-result.json"
 
-assert_eq "[SPEC-21] dry-run writes result_contract=2" \
-    "2" "$(jq -r '.result_contract // empty' "$_s21_out" 2>/dev/null || printf MISSING)"
-assert_eq "[SPEC-21] dry-run writes verdict=healthy" \
-    "healthy" "$(jq -r '.verdict // empty' "$_s21_out" 2>/dev/null || printf MISSING)"
-assert_eq "[SPEC-21] dry-run writes disposition=complete" \
-    "complete" "$(jq -r '.disposition // empty' "$_s21_out" 2>/dev/null || printf MISSING)"
+assert_eq "[SPEC-21] dry-run writes result_contract=3" \
+    "3" "$(jq -r '.result_contract // empty' "$_s21_out" 2>/dev/null || printf MISSING)"
+assert_eq "[SPEC-21] dry-run writes outcome=pass" \
+    "pass" "$(jq -r '.outcome // empty' "$_s21_out" 2>/dev/null || printf MISSING)"
 _s21_reason="$(jq -r '.reason // ""' "$_s21_out" 2>/dev/null || true)"
 if [[ -n "$_s21_reason" ]]; then
     assert_pass "[SPEC-21] dry-run writes non-empty reason"
 else
     assert_fail "[SPEC-21] dry-run result must have non-empty reason" "empty or absent"
 fi
-_s21_data="$(jq -c '.data // "ABSENT"' "$_s21_out" 2>/dev/null || printf MISSING)"
-assert_eq "[SPEC-21] dry-run writes data={}" "{}" "$_s21_data"
+_s21_data="$(jq -c '.data // {}' "$_s21_out" 2>/dev/null || printf MISSING)"
+assert_eq "[SPEC-21] dry-run carries no data" "{}" "$_s21_data"
 _s21_sv="$(jq -r '.schema_version // "ABSENT"' "$_s21_out" 2>/dev/null || printf MISSING)"
 assert_eq "[SPEC-21] dry-run result must not have schema_version key" "ABSENT" "$_s21_sv"
 

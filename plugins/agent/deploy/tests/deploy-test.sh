@@ -118,10 +118,10 @@ fi
 # ---------------------------------------------------------------------------
 _s9_provides="$(awk '/^provides:/{f=1;next} f && /^[^[:space:]]/{exit} f{print}' \
     "$_MANIFEST" 2>/dev/null || true)"
-if grep -q 'result_contract:.*2' <<< "$_s9_provides"; then
-    assert_pass "[#1846/SPEC-9] manifest provides block declares result_contract: 2"
+if grep -q 'result_contract:.*3' <<< "$_s9_provides"; then
+    assert_pass "[#1846/SPEC-9] manifest provides block declares result_contract: 3 (#2366)"
 else
-    assert_fail "[#1846/SPEC-9] manifest provides block must declare result_contract: 2" \
+    assert_fail "[#1846/SPEC-9] manifest provides block must declare result_contract: 3" \
         "${_s9_provides:-absent}"
 fi
 
@@ -252,18 +252,9 @@ assert_eq "[#1846/SPEC-18] manifest hooks block declares exactly one hook (run o
 # SPEC-22 [#1846/SPEC-22]: manifest config.valid_verdicts lists exactly
 #                          deployed, error, skipped
 # ---------------------------------------------------------------------------
-_s22_section="$(awk '/valid_verdicts:/{f=1;next} f && /^[[:space:]]*-/{print;next} f{exit}' \
-    "$_MANIFEST" 2>/dev/null || true)"
-for _vv in "deployed" "error" "skipped"; do
-    if grep -q "$_vv" <<< "$_s22_section"; then
-        assert_pass "[#1846/SPEC-22] manifest config.valid_verdicts includes $_vv"
-    else
-        assert_fail "[#1846/SPEC-22] manifest config.valid_verdicts must include $_vv" \
-            "${_s22_section:-absent}"
-    fi
-done
-_s22_count="$(grep -c '^[[:space:]]*-' <<< "$_s22_section" 2>/dev/null || printf '0')"
-assert_eq "[#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 verdicts" "3" "$_s22_count"
+# #2366: a contract-3 stage declares no verdict words.
+assert_eq "[#1846/SPEC-22] manifest declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$PLUGIN_DIR/manifest.yaml" | grep -c 'valid_verdicts' || true)"
 
 # ---------------------------------------------------------------------------
 # SPEC-24 [#1846/SPEC-24]: manifest carries router-budget-absence comment
@@ -298,20 +289,19 @@ _run_dry="$TEST_TEMP_DIR/run_dry"
   ZBUILD_DRY_RUN=1 deploy_agent_run "deploy" "$_run_dry/state.json" ) >/dev/null 2>&1 || true
 _dry_out="$_run_dry/artifacts/deploy-result.json"
 
-_dry_v="$(jq -r '.verdict // empty' "$_dry_out" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-2] dry-run writes verdict=deployed" "deployed" "$_dry_v"
+_dry_v="$(jq -r '.outcome // empty' "$_dry_out" 2>/dev/null || printf MISSING)"
+assert_eq "[#1846/SPEC-2] dry-run writes outcome=pass" "pass" "$_dry_v"
+assert_eq "[#1846/SPEC-2] dry-run records that it deployed" "true" \
+    "$(jq -r '.data.deployed' "$_dry_out" 2>/dev/null || printf MISSING)"
 
 _dry_rc="$(jq -r '.result_contract // empty' "$_dry_out" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-7] dry-run deploy-result.json carries result_contract=2" "2" "$_dry_rc"
+assert_eq "[#1846/SPEC-7] dry-run deploy-result.json carries result_contract=3" "3" "$_dry_rc"
 
 _dry_sv="$(jq -r '.schema_version // "ABSENT"' "$_dry_out" 2>/dev/null || printf MISSING)"
 assert_eq "[#1846/SPEC-7] dry-run deploy-result.json must not carry schema_version key" \
     "ABSENT" "$_dry_sv"
 
-assert_eq "[#1846/SPEC-19] dry-run carries verdict=deployed" "deployed" "$_dry_v"
-
-_dry_dp="$(jq -r '.disposition // empty' "$_dry_out" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-19] dry-run carries disposition=complete" "complete" "$_dry_dp"
+assert_eq "[#1846/SPEC-19] dry-run carries outcome=pass" "pass" "$_dry_v"
 
 _dry_rs="$(jq -r '.reason // ""' "$_dry_out" 2>/dev/null || true)"
 if [[ -n "$_dry_rs" ]]; then
@@ -332,8 +322,8 @@ _rc3=0
 ( _make_state "$_run_nopr"; deploy_agent_run "deploy" "$_run_nopr/state.json" ) >/dev/null 2>&1 || _rc3=$?
 assert_gt "[#1846/SPEC-3] missing pr_url input → rc != 0" "$_rc3" "0"
 
-_v3="$(jq -r '.verdict // empty' "$_run_nopr/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-3] missing pr_url → verdict=error" "error" "$_v3"
+_v3="$(jq -r '.outcome // empty' "$_run_nopr/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+assert_eq "[#1846/SPEC-3] missing pr_url → outcome=broken" "broken" "$_v3"
 
 _v2_keys_ok "[#1846/SPEC-10] missing-pr_url exit path:" \
     "$_run_nopr/artifacts/deploy-result.json"
@@ -346,17 +336,20 @@ assert_eq "[#1846/SPEC-13] missing pr_url → rc=1 (not rc=2+)" "1" "$_rc3"
 # ---------------------------------------------------------------------------
 _run_gatefail="$TEST_TEMP_DIR/run_gatefail"
 _deploy_case "$_run_gatefail" fail >/dev/null
-_v4="$(jq -r '.verdict // empty' "$_run_gatefail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-4] gate verdict=fail → deploy-result verdict=skipped" "skipped" "$_v4"
+_v4="$(jq -r '.outcome // empty' "$_run_gatefail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+assert_eq "[#1846/SPEC-4] gate outcome=fail → deploy-result outcome=pass (nothing to do)" "pass" "$_v4"
+assert_eq "[#1846/SPEC-4] ...and records that nothing was deployed" "false" \
+    "$(jq -r '.data.deployed' "$_run_gatefail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
 
 _v2_keys_ok "[#1846/SPEC-10] gate-fail exit path:" \
     "$_run_gatefail/artifacts/deploy-result.json"
 
 # Fail-closed allowlist: non-pass verdict also skips
+# A gate that did not finish is not a pass either.
 _run_routedesign="$TEST_TEMP_DIR/run_routedesign"
-_deploy_case "$_run_routedesign" route_design >/dev/null
-_v4b="$(jq -r '.verdict // empty' "$_run_routedesign/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-4] gate verdict=route_design (non-pass) → skipped (allowlist)" "skipped" "$_v4b"
+_deploy_case "$_run_routedesign" timed_out >/dev/null
+_v4b="$(jq -r '.data.deployed' "$_run_routedesign/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+assert_eq "[#1846/SPEC-4] gate outcome=timed_out (non-pass) → nothing deployed (allowlist)" "false" "$_v4b"
 
 # ---------------------------------------------------------------------------
 # SPEC-8 [#1846/SPEC-8]: missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)
@@ -367,8 +360,8 @@ _run_nogate="$TEST_TEMP_DIR/run_nogate"
 _rc8="$(_deploy_case "$_run_nogate" -)"
 assert_eq "[#1846/SPEC-8] missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)" "1" "$_rc8"
 
-_v8="$(jq -r '.verdict // empty' "$_run_nogate/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-8] missing gate → verdict=error" "error" "$_v8"
+_v8="$(jq -r '.outcome // empty' "$_run_nogate/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+assert_eq "[#1846/SPEC-8] missing gate → outcome=broken" "broken" "$_v8"
 
 _v2_keys_ok "[#1846/SPEC-10] missing-gate exit path:" \
     "$_run_nogate/artifacts/deploy-result.json"
@@ -383,8 +376,8 @@ _run_drabsent="$TEST_TEMP_DIR/run_drabsent"
 mkdir -p "$TEST_TEMP_DIR/no-deploy-release"
 _rc21="$(_deploy_case "$_run_drabsent" pass _DEPLOY_ROOT="$TEST_TEMP_DIR/no-deploy-release")"
 
-_dp21="$(jq -r '.disposition // empty' "$_run_drabsent/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-21] deploy-release absent → disposition=broken" \
+_dp21="$(jq -r '.outcome // empty' "$_run_drabsent/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+assert_eq "[#1846/SPEC-21] deploy-release absent → outcome=broken" \
     "broken" "$_dp21"
 
 _v2_keys_ok "[#1846/SPEC-10] deploy-release-absent exit path:" \
@@ -405,12 +398,12 @@ _v2_keys_ok "[#1846/SPEC-14] verdict=error (missing pr_url):" \
 _v2_keys_ok "[#1846/SPEC-14] verdict=skipped (gate=fail):" \
     "$_run_gatefail/artifacts/deploy-result.json"
 
-_v14_d="$(jq -r '.verdict' "$_dry_out" 2>/dev/null || printf MISSING)"
-_v14_e="$(jq -r '.verdict' "$_run_nopr/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
-_v14_s="$(jq -r '.verdict' "$_run_gatefail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-14] verdict=deployed covered" "deployed" "$_v14_d"
-assert_eq "[#1846/SPEC-14] verdict=error covered" "error" "$_v14_e"
-assert_eq "[#1846/SPEC-14] verdict=skipped covered" "skipped" "$_v14_s"
+_v14_d="$(jq -r '.outcome' "$_dry_out" 2>/dev/null || printf MISSING)"
+_v14_e="$(jq -r '.outcome' "$_run_nopr/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+_v14_s="$(jq -r '.outcome' "$_run_gatefail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+assert_eq "[#1846/SPEC-14] deployed → pass covered" "pass" "$_v14_d"
+assert_eq "[#1846/SPEC-14] refused → broken covered" "broken" "$_v14_e"
+assert_eq "[#1846/SPEC-14] skipped → pass covered" "pass" "$_v14_s"
 
 # ─── Cleanup ─────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
