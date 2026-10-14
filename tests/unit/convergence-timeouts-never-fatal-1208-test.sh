@@ -345,9 +345,12 @@ build_verdict=""
 _build_write_build_summary 2>/dev/null
 
 _s9_rc="$(jq -r '.result_contract // ""' "$_spec9_summary" 2>/dev/null || echo "")"
-_s9_disp="$(jq -r '.disposition // ""' "$_spec9_summary" 2>/dev/null || echo "")"
-assert_eq "[SPEC-9] router_timeout build-summary has result_contract:2" "2" "$_s9_rc"
-assert_eq "[SPEC-9] router_timeout build-summary has disposition:timed_out (#2187)" "timed_out" "$_s9_disp"
+_s9_disp="$(jq -r '.outcome // ""' "$_spec9_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-9] router_timeout build-summary has result_contract:3" "3" "$_s9_rc"
+# #2366: the outcome is how the stage stopped, as the disposition was (#2187).
+assert_eq "[SPEC-9] router_timeout build-summary has outcome:timed_out (#2187, #2366)" "timed_out" "$_s9_disp"
+assert_eq "[SPEC-9] ...and reason router_timeout" "router_timeout" \
+    "$(jq -r '.reason // ""' "$_spec9_summary" 2>/dev/null || echo "")"
 
 # ─── SPEC-10 (#2183 review): a non-reproduction report survives an empty diff ─
 # The two `.data` contributions are separate jq terms and `+` is SHALLOW, so the

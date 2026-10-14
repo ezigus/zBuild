@@ -20,6 +20,9 @@ _MERGE_DIR="$_ZBUILD_PLUGIN_DIR"
 _MERGE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_MERGE_ROOT/core/event-bus/event-bus.sh"
+# #2366 (ADR-054 §6): the one writer of a contract-3 result.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_MERGE_ROOT/scripts/lib/stage-result.sh"
 # shellcheck source=../../../scripts/lib/git-remote.sh
 source "$_MERGE_ROOT/scripts/lib/git-remote.sh"
 # shellcheck source=../../../scripts/lib/run-branch.sh
@@ -55,7 +58,7 @@ merge_run() {
     # Read convergence gate verdict
     local gate_verdict=""
     if [[ -n "$gate_json" && -f "$gate_json" ]]; then
-        gate_verdict="$(jq -r '.verdict // empty' "$gate_json" 2>/dev/null || true)"
+        gate_verdict="$(jq -r '.outcome // .verdict // empty' "$gate_json" 2>/dev/null || true)"
     fi
 
     # Safety guard: fall back to PR when gate absent or verdict != pass
@@ -94,16 +97,19 @@ _merge_pr_fallback() {
         # The fallback's own failure is this stage's failure — never a pass.
         # pr-open already said how it stopped; carry its word, not a guess.
         local _pr_disp
-        _pr_disp="$(jq -r '.disposition // empty' "$(dirname "$merge_result_out")/pr-result.json" 2>/dev/null || true)"
-        jq -n --arg reason "$reason" --arg d "${_pr_disp:-broken}" \
-            '{"result_contract":2,"verdict":"error","disposition":$d,"reason":("gate not pass — fallback to PR failed: "+$reason),"data":{"mode":"pr_fallback"}}' \
-            > "$merge_result_out"
+        # pr-open's own ending: a contract-3 outcome, or a contract-2 disposition.
+        _pr_disp="$(jq -r '.outcome // .disposition // empty' "$(dirname "$merge_result_out")/pr-result.json" 2>/dev/null || true)"
+        # Keep pr-open's own ending only when it is one: a valid outcome other than
+    # pass or fail. Anything else is a broken result.
+    if ! outcome_is_valid "${_pr_disp:-}" || [[ "$_pr_disp" == pass || "$_pr_disp" == fail ]]; then
+        _pr_disp=broken
+    fi
+        stage_result_write "$merge_result_out" "$_pr_disp" \
+            "gate not pass — fallback to PR failed: $reason" '{"mode":"pr_fallback"}'
         return 1
     fi
-    jq -n \
-        --arg reason "$reason" \
-        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":("gate not pass — fallback to PR: "+$reason),"data":{"mode":"pr_fallback"}}' \
-        > "$merge_result_out"
+    stage_result_write "$merge_result_out" pass \
+        "gate not pass — fallback to PR: $reason" '{"mode":"pr_fallback"}'
     return 0
 }
 
@@ -124,9 +130,7 @@ _merge_run_inner() {
             "No merge was attempted; merging from the trunk into itself is never correct."
         emit_event "plugin.result" "verdict=error" "plugin=merge" \
             "reason=branch_is_main" "branch=${current_branch}"
-        jq -n --arg branch "$current_branch" \
-            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("refusing to merge from: "+$branch)}' \
-            > "$merge_result_out"
+        stage_result_write "$merge_result_out" broken "refusing to merge from: $current_branch"
         return 1
     fi
 
@@ -154,17 +158,14 @@ _merge_run_inner() {
             error "merge_run: HEAD and '${target_branch}' diverged — refusing to pick one and drop the other"
             emit_event "plugin.result" "verdict=error" "plugin=merge" \
                 "reason=head_diverged_from_branch" "branch=${target_branch}"
-            jq -n --arg branch "$target_branch" \
-                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("HEAD and the run branch diverged: "+$branch)}' \
-                > "$merge_result_out"
+            stage_result_write "$merge_result_out" broken "HEAD and the run branch diverged: $target_branch"
             return 1
         else
             error "merge_run: could not check whether HEAD is on '${target_branch}' (git error) — refusing"
             emit_event "plugin.result" "verdict=error" "plugin=merge" \
                 "reason=head_check_failed" "branch=${target_branch}"
-            jq -n --arg branch "$target_branch" \
-                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("could not check whether HEAD is on the run branch: "+$branch)}' \
-                > "$merge_result_out"
+            stage_result_write "$merge_result_out" broken \
+                "could not check whether HEAD is on the run branch: $target_branch"
             return 1
         fi
     fi
@@ -173,9 +174,7 @@ _merge_run_inner() {
     if [[ "$current_branch" != "$target_branch" ]]; then
         git checkout -b "$target_branch" 2>/dev/null || git checkout "$target_branch" 2>/dev/null || {
             error "merge_run: failed to checkout branch '${target_branch}'"
-            jq -n --arg branch "$target_branch" \
-                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to checkout: "+$branch)}' \
-                > "$merge_result_out"
+            stage_result_write "$merge_result_out" broken "failed to checkout: $target_branch"
             return 1
         }
     fi
@@ -186,9 +185,8 @@ _merge_run_inner() {
     if ! zbuild_push_reconcile "$target_branch"; then
         error "merge_run: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
         # disposition-ok: GitHub (git push) is not responding
-        jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
-            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":("failed to push: "+$branch+": "+$detail)}' \
-            > "$merge_result_out"
+        stage_result_write "$merge_result_out" unavailable \
+            "failed to push: $target_branch: $ZBUILD_PUSH_RECONCILE_ERR"
         return 1
     fi
 
@@ -213,9 +211,7 @@ _merge_run_inner() {
         --body "$pr_body" 2>&1)"; then
         error "merge_run: gh pr create failed: $gh_output"
         # disposition-ok: GitHub (gh pr create) is not responding
-        jq -n --arg reason "$gh_output" \
-            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
-            > "$merge_result_out"
+        stage_result_write "$merge_result_out" unavailable "${gh_output:-gh pr create failed}"
         return 1
     fi
 
@@ -229,9 +225,8 @@ _merge_run_inner() {
     if ! gh pr merge --squash --auto 2>/dev/null; then
         error "merge_run: gh pr merge failed"
         # disposition-ok: GitHub (gh pr merge) is not responding
-        jq -n --arg pr_url "$pr_url" \
-            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":"gh pr merge failed","data":{"pr_url":$pr_url}}' \
-            > "$merge_result_out"
+        stage_result_write "$merge_result_out" unavailable "gh pr merge failed" \
+            "$(jq -nc --arg pr_url "$pr_url" '{pr_url:$pr_url}')"
         return 1
     fi
 
@@ -239,29 +234,20 @@ _merge_run_inner() {
     local pr_url_out="$artifacts_dir/pr-url.txt"
     printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
 
-    jq -n \
-        --arg pr_url "$pr_url" \
-        --argjson pr_number "${pr_number:-0}" \
-        --arg branch "$target_branch" \
-        --argjson issue "${issue_num:-0}" \
-        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"squash-merged via gh pr merge",
-          "data":{"pr_url":$pr_url,"pr_number":$pr_number,"branch":$branch,"issue":$issue}}' \
-        > "$merge_result_out"
+    stage_result_write "$merge_result_out" pass "squash-merged via gh pr merge" \
+        "$(jq -nc --arg pr_url "$pr_url" --argjson pr_number "${pr_number:-0}" \
+            --arg branch "$target_branch" --argjson issue "${issue_num:-0}" \
+            '{pr_url:$pr_url, pr_number:$pr_number, branch:$branch, issue:$issue}')"
 
     # Manifest contract: pr-delivery declares pr-result.json as a REQUIRED output
     # (plugins/agent/pr-delivery/manifest.yaml). The auto-merge path must write it
     # too (mirror pr-open's schema, status=merged, draft=false) so the pr stage's
     # scan_plugin_outputs check is satisfied — the PR was created then squash-merged.
     local pr_result_out="$artifacts_dir/pr-result.json"
-    jq -n \
-        --arg pr_url "$pr_url" \
-        --argjson pr_number "${pr_number:-0}" \
-        --argjson draft false \
-        --arg branch "$target_branch" \
-        --argjson issue "${issue_num:-0}" \
-        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"squash-merged via gh pr merge",
-          "data":{"status":"merged","pr_url":$pr_url,"pr_number":$pr_number,"draft":$draft,"branch":$branch,"issue":$issue}}' \
-        > "$pr_result_out"
+    stage_result_write "$pr_result_out" pass "squash-merged via gh pr merge" \
+        "$(jq -nc --arg pr_url "$pr_url" --argjson pr_number "${pr_number:-0}" \
+            --arg branch "$target_branch" --argjson issue "${issue_num:-0}" \
+            '{status:"merged", pr_url:$pr_url, pr_number:$pr_number, draft:false, branch:$branch, issue:$issue}')"
 
     stage_summary_write "$artifacts_dir/merge-summary.md" "merge" "pass" \
         "merged PR ${pr_number}" \

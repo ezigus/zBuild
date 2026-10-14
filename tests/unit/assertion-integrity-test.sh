@@ -64,7 +64,7 @@ _result() { jq -r "$1" "$_A/assertion-integrity-result.json" 2>/dev/null || echo
 _setup unmodified
 assertion_integrity_record "$_A" "$_R" 2>/dev/null || true
 set +e; assertion_integrity_run "assertion-integrity" "$_S/pipeline-state.json"; _rc=$?; set -e
-assert_eq "[SPEC-1][change] an unmodified testfile passes" "pass" "$(_result '.verdict')"
+assert_eq "[SPEC-1][change] an unmodified testfile passes" "pass" "$(_result '.outcome')"
 assert_eq "[SPEC-4][guard] finding nothing is rc=0" "0" "$_rc"
 
 # ─── SPEC-2: modified testfile fails and names the file ─────────────────────
@@ -73,20 +73,20 @@ assertion_integrity_record "$_A" "$_R" 2>/dev/null || true
 printf '%s\n' 'assert_eq "[SPEC-1] the boundary holds" "0" "$got"' \
     > "$_R/tests/acc-test.sh"   # build weakens the assertion to match its code
 set +e; assertion_integrity_run "assertion-integrity" "$_S/pipeline-state.json"; _rc2=$?; set -e
-assert_eq "[SPEC-2][change] a modified testfile fails" "fail" "$(_result '.verdict')"
+assert_eq "[SPEC-2][change] a modified testfile fails" "fail" "$(_result '.outcome')"
 assert_contains "[SPEC-2][change] and the reason names the file" \
     "$(_result '.reason')" "tests/acc-test.sh"
 assert_eq "[SPEC-4][guard] finding a violation is STILL rc=0, not a nonzero rc" "0" "$_rc2"
-assert_eq "[SPEC-3][guard] a gate that merely finds a problem is disposition=complete" \
-    "complete" "$(_result '.disposition')"
-assert_eq "[SPEC-3][guard] the artifact declares result_contract 2" \
-    "2" "$(_result '.result_contract')"
+assert_eq "[SPEC-3][guard] a gate that merely finds a problem says fail, not broken (#2366)" \
+    "fail" "$(_result '.outcome')"
+assert_eq "[SPEC-3][guard] the artifact declares result_contract 3" \
+    "3" "$(_result '.result_contract')"
 
 # ─── SPEC-5: nothing recorded → skip, not a false fail ──────────────────────
 _setup norecord
 set +e; assertion_integrity_run "assertion-integrity" "$_S/pipeline-state.json"; _rc3=$?; set -e
 assert_eq "[SPEC-5][change] no recorded digest skips rather than failing closed" \
-    "skip" "$(_result '.verdict')"
+    "pass" "$(_result '.outcome')"
 assert_eq "[SPEC-4][guard] a skip is rc=0 too" "0" "$_rc3"
 
 print_test_results

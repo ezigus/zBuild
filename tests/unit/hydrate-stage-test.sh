@@ -232,8 +232,8 @@ if [[ -d "$_P_STATE/hydrate.staging" ]]; then
 else
     assert_pass "[SPEC-3] the staging tree is discarded whole"
 fi
-assert_eq "[SPEC-3] and the result records degraded" "degraded" \
-    "$(jq -r '.verdict' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
+assert_eq "[SPEC-3] and the result records fail (#2366)" "fail" \
+    "$(jq -r '.outcome' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

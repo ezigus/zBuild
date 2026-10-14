@@ -39,7 +39,7 @@ requires:
 
 provides:
   role: hydrate
-  result_contract: 2
+  result_contract: 3
   events:
     - hydrate.start
     - hydrate.complete
@@ -47,11 +47,6 @@ provides:
     - hydrate.restore.failed
     - hydrate.adopt.failed
     - hydrate.result.write_failed
-
-config:
-  valid_verdicts:
-    - complete
-    - degraded
 
 outputs:
   # #2183: this stage's error channel — whatever its subprocesses said when

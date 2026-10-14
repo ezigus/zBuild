@@ -57,6 +57,18 @@ printf '"'"'{"disposition":"complete"}'"'"'')"
 _out="$(bash "$LINT" "$_root" 2>&1)"; _rc=$?
 assert_eq "[SPEC-3] lint exits 0" "0" "$_rc"
 
+print_test_section "SPEC-6 (#2366): a contract-3 outcome passed to the writer"
+_root="$(_fx s6 'stage_result_write "$out" degraded "why"')"
+_out="$(bash "$LINT" "$_root" 2>&1)"; _rc=$?
+assert_eq "[SPEC-6] a word off the outcome list fails the lint" "1" "$_rc"
+assert_contains "[SPEC-6] it names the word" "$_out" "degraded"
+_root="$(_fx s6b 'stage_result_write "$out" pass "why"
+stage_result_add "$out" "fail" "why"
+stage_result_write "$out" timed_out "why"
+stage_result_write "$out" "$outcome" "why"')"
+_out="$(bash "$LINT" "$_root" 2>&1)"; _rc=$?
+assert_eq "[SPEC-6] pass, fail, a disposition word and a computed value pass" "0" "$_rc"
+
 print_test_section "SPEC-4: the shipped tree"
 _out="$(bash "$LINT" 2>&1)"; _rc=$?
 assert_eq "[SPEC-4] the shipped plugins/ tree passes" "0" "$_rc"

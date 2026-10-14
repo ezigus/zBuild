@@ -26,6 +26,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _ZBUILD_PERSIST_DIR="$_ZBUILD_PLUGIN_DIR"
 _ZBUILD_PERSIST_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
@@ -89,7 +92,8 @@ persist_run() {
 
     emit_event "persist.start" "stage=$_stage_id" "issue=$_issue" 2>/dev/null || true
 
-    local _verdict="complete" _reason="" _pushed="false" _snapshot="skipped"
+    # #2366: pass, or fail when the snapshot or the push did not happen.
+    local _verdict="pass" _reason="" _pushed="false" _snapshot="skipped"
     # #1966: the CI backstop must tell "nothing to push" (no issue, no goal) from
     # "did not push" (identity existed, the push did not happen). Without the
     # distinction it either fires on every identity-less run or cannot fire at all.
@@ -100,7 +104,7 @@ persist_run() {
         # Neither an issue nor a goal: no identity, so nothing to persist under.
         # A --goal run DOES have one (#1931) and no longer lands here.
         _reason="no identity — neither an issue nor a goal"
-        _persist_write_result "$_artifacts_dir" "complete" "$_reason" "$_snapshot" "$_pushed" "$_identity_present"
+        _persist_write_result "$_artifacts_dir" "pass" "$_reason" "$_snapshot" "$_pushed" "$_identity_present"
         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
             "pushed=false" "reason=no_issue" 2>/dev/null || true
         return 0
@@ -114,7 +118,7 @@ persist_run() {
         _snapshot="${_ARTIFACT_PERSIST_LAST_STATUS:-unknown}"
     else
         _snapshot="failed"
-        _verdict="degraded"
+        _verdict="fail"
         # Path-free: the library reason carries absolute paths, which differ
         # between runs and can be quoted into a GitHub comment (ADR-016).
         _reason="snapshot failed (see persist.snapshot.failed)"
@@ -164,7 +168,7 @@ persist_run() {
         emit_event "persist.push.refused" "stage=$_stage_id" "issue=$_issue" \
             "finding=${_finding}" 2>/dev/null || true
         warn "persist: refusing to push — artifact looks like it carries a credential (${_finding})"
-        _persist_write_result "$_artifacts_dir" "degraded" \
+        _persist_write_result "$_artifacts_dir" "fail" \
             "push refused: possible credential in ${_finding}" "$_snapshot" "false" "$_identity_present"
         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
             "pushed=false" "reason=secret_refused" 2>/dev/null || true
@@ -182,7 +186,7 @@ persist_run() {
         esac
     else
         _pushed="false"
-        _verdict="degraded"
+        _verdict="fail"
         _reason="push failed (see persist.push.failed)"
         # Loud. A silent push failure is how #1921 went unnoticed for the life
         # of the feature — hundreds of local commits and nothing on origin, with
@@ -213,12 +217,9 @@ _persist_write_result() {
     local _dir="$1" _verdict="$2" _reason="$3" _snap="$4" _pushed="$5" _ip="${6:-false}"
     mkdir -p "$_dir" 2>/dev/null || true
     local _file="$_dir/persist-result.json"
-    if ! jq -n \
-            --arg v "$_verdict" --arg r "$_reason" \
-            --arg s "$_snap" --argjson p "$_pushed" --argjson ip "$_ip" \
-            '{result_contract: 2, verdict: $v, disposition: "complete",
-              reason: $r, data: {snapshot: $s, pushed: $p, identity_present: $ip}}' \
-            | atomic_write "$_file"; then
+    if ! stage_result_write "$_file" "$_verdict" "${_reason:-no detail}" \
+            "$(jq -nc --arg s "$_snap" --argjson p "$_pushed" --argjson ip "$_ip" \
+                '{snapshot: $s, pushed: $p, identity_present: $ip}')"; then
         emit_event "persist.result.write_failed" "file=$_file" 2>/dev/null || true
     fi
     # ADR-055 §9: pushed=false is the fact #1921 hid for the life of the

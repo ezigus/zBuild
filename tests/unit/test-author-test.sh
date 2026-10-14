@@ -141,10 +141,11 @@ assert_eq "[SPEC-2][guard] nor the build summary" \
     "0" "$(grep -c 'files_changed_count' <<< "$_P" || true)"
 assert_file_exists "[SPEC-3][change] a completed pass records the assertion digests" \
     "$_A/assertion-digests.txt"
-assert_eq "[SPEC-4][guard] the result declares result_contract 2" "2" "$(_res '.result_contract')"
+assert_eq "[SPEC-4][guard] the result declares result_contract 3 (#2366)" "3" "$(_res '.result_contract')"
+assert_eq "[SPEC-4][guard] one outcome: no verdict or disposition field (#2366)" "false" "$(_res 'has("verdict") or has("disposition")')"
 assert_eq "[SPEC-4][guard] rc is binary — a good pass is 0" "0" "$_rc"
-assert_eq "[SPEC-4][guard] a completed pass is disposition=complete" \
-    "complete" "$(_res '.disposition')"
+assert_eq "[SPEC-4][guard] a completed pass is outcome=pass" \
+    "pass" "$(_res '.outcome')"
 
 # ─── T2 (#2304, ADR-069 §6): every requirement already done → no model call ─
 _setup alldone
@@ -160,7 +161,7 @@ rm -f "$_TA_PROMPT"
 set +e; test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1; _rc_ad=$?; set -e
 assert_eq "[T2] a design whose requirements are all done makes no model call" "absent" \
     "$([[ -e "$_TA_PROMPT" ]] && echo present || echo absent)"
-assert_eq "[T2] ...and completes" "complete" "$(_res '.disposition')"
+assert_eq "[T2] ...and passes" "pass" "$(_res '.outcome')"
 assert_contains "[T2] ...saying there is nothing to write" "$(_res '.reason')" "already done"
 assert_eq "[T2] ...rc 0" "0" "$_rc_ad"
 
@@ -169,9 +170,9 @@ _setup timeout
 _TA_RC=124
 set +e; test_author_run "test-author" "$_S/pipeline-state.json"; _rc2=$?; set -e
 assert_eq "[SPEC-5][change] a router timeout is NOT reported as a clean authoring pass" \
-    "degraded" "$(_res '.verdict')"
-assert_eq "[SPEC-5][change] and it maps to a non-complete disposition" \
-    "1" "$([[ "$(_res '.disposition')" != "complete" ]] && echo 1 || echo 0)"
+    "1" "$(_o="$(_res '.outcome // ""')"; [[ -n "$_o" && "$_o" != "pass" && "$_o" != "fail" ]] && echo 1 || echo 0)"
+assert_eq "[SPEC-5][change] and its outcome says how the stage stopped" \
+    "timed_out" "$(_res '.outcome')"
 assert_eq "[SPEC-4][guard] rc stays binary on failure" \
     "1" "$([[ "$_rc2" == "0" || "$_rc2" == "1" ]] && echo 1 || echo 0)"
 
@@ -241,7 +242,7 @@ route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'assert_eq "[SPEC-1]
 if [[ -z "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)" ]]; then assert_pass "[SPEC-11][guard] the fixture starts clean"; fi
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_eq "[SPEC-11][change] the partial testfile is committed for the next attempt" "" "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
-assert_eq "[SPEC-11][guard] …and the result still says the call did not finish" "timed_out" "$(_res '.disposition')"
+assert_eq "[SPEC-11][guard] …and the result still says the call did not finish" "timed_out" "$(_res '.outcome')"
 
 print_test_section "SPEC-12: the prompt tells the author to continue earlier work"
 _setup s12

@@ -100,7 +100,7 @@ cycle_dispatch_stage() {
             test_run "test" "$state_file" >/dev/null 2>&1 || true
             local rm; rm="$(jq -r '.run_mode // "?"' "$ad/test-results.json" 2>/dev/null || echo "?")"
             printf 'iter=%s run_mode=%s\n' "$iter" "$rm" >> "$RUN_MODES"
-            v="$(jq -r '.verdict // "fail"' "$ad/test-results.json" 2>/dev/null || echo fail)" ;;
+            v="$(jq -r '.outcome // .verdict // "fail"' "$ad/test-results.json" 2>/dev/null || echo fail)" ;;
     esac
     _CYCLE_DISPATCH_VERDICT="$v"; _CYCLE_DISPATCH_STATUS="complete"; return 0
 }

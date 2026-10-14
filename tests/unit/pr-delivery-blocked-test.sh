@@ -28,11 +28,12 @@ source "$REPO_ROOT/plugins/agent/pr-delivery/plugin.sh"
 
 # A stand-in pr-open: the plugin is re-sourced from _PR_ROOT on every call.
 FAKE="$TEST_TEMP_DIR/root"; mkdir -p "$FAKE/plugins/tool/pr-open"
-_fake_pr_open() {  # _fake_pr_open <verdict> <reason>
-    # The result is built with jq here (any reason text stays valid JSON) and
-    # the fake only copies it into place (review on #2255).
-    jq -n --arg v "$1" --arg r "$2" \
-        '{result_contract:2, verdict:$v, disposition:"complete", reason:$r}' > "$FAKE/pr-result.json"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+_fake_pr_open() {  # _fake_pr_open <outcome> <reason>
+    # The result is made with the writer pr-open uses (#2366), and the fake only
+    # copies it into place (review on #2255).
+    stage_result_write "$FAKE/pr-result.json" "$1" "$2"
     cat > "$FAKE/plugins/tool/pr-open/plugin.sh" <<EOF
 pr_open_run() {
     local d; d="\$(dirname "\$2")/artifacts"
@@ -47,7 +48,7 @@ S="$TEST_TEMP_DIR/state"; mkdir -p "$S/artifacts"; printf '{}\n' > "$S/pipeline-
 _summary() { cat "$S/artifacts/pr-delivery-summary.md" 2>/dev/null; }
 
 print_test_section "P1-P3: pr-open refused"
-_fake_pr_open blocked "no review signal — fail-closed per ADR-001"
+_fake_pr_open fail "no review signal — fail-closed per ADR-001"
 _pr_stage_run_inner "$S/pipeline-state.json" >/dev/null 2>&1; rc=$?
 assert_eq "[P1] the pr stage ends rc 1" "1" "$rc"
 assert_contains "[P2] the summary says no PR was opened" "$(_summary)" "No PR was opened"

@@ -102,8 +102,8 @@ assert_eq "[SPEC-2] y.sh stays a separate critical finding" "critical" \
 # The v2 verdict is the stage's execution status (#1842), never a merge call.
 assert_eq "[SPEC-3] critical finding → merge_readiness=needs_attention" "needs_attention" \
     "$(jq -r '.merge_readiness' "$out_json")"
-assert_eq "[SPEC-3] the verdict is execution status (complete), not a merge decision" "complete" \
-    "$(jq -r '.verdict // empty' "$out_json")"
+assert_eq "[SPEC-3] the outcome is pass (the stage finished), not a merge decision" "pass" \
+    "$(jq -r '.outcome // empty' "$out_json")"
 _esc_note="$(jq -r '.escalation_note // empty' "$out_json" 2>/dev/null)"
 if [[ -n "$_esc_note" ]]; then
     assert_pass "[SPEC-3] needs_attention report carries non-empty escalation_note"
@@ -231,6 +231,26 @@ assert_contains "[SPEC-10] the summary says so" \
 assert_eq "[SPEC-10] a review with a missing lens is never ready" "needs_attention" \
     "$(jq -r '.merge_readiness' "$_nr_dir/review-report.json" 2>/dev/null)"
 assert_contains "[SPEC-10] the rendered report says so too" "$(cat "$_nr_dir/review-report.md" 2>/dev/null)" "did not run"
+# #2366: a contract-3 lens that did not finish did not run; one that failed did.
+# #2366 review: if naming the lenses that did not run cannot be written, the
+# report is incomplete — the stage does not stamp it pass.
+_wf_dir="$TEST_TEMP_DIR/not-run-write-fails"; mkdir -p "$_wf_dir"
+write_lens "$_wf_dir" "correctness" '{"name":"correctness","score":8,"findings":[],"result_contract":3,"outcome":"pass","reason":"ok"}'
+write_lens "$_wf_dir" "security" '{"result_contract":3,"outcome":"unavailable","reason":"router_error"}'
+set +e
+( atomic_write() { local _in; _in="$(cat)"; [[ "$_in" == *did_not_run* ]] && return 1; printf '%s\n' "$_in" > "$1"; }
+  _run_inner "$_wf_dir" >/dev/null 2>&1 )
+set -e
+assert_eq "[SPEC-10] an incomplete report is not stamped pass" "broken" \
+    "$(jq -r '.outcome // "none"' "$_wf_dir/review-report.json" 2>/dev/null)"
+_c3_dir="$TEST_TEMP_DIR/not-run-c3"; mkdir -p "$_c3_dir"
+write_lens "$_c3_dir" "correctness" '{"name":"correctness","score":3,"findings":[],"result_contract":3,"outcome":"fail","reason":"found problems"}'
+write_lens "$_c3_dir" "security" '{"result_contract":3,"outcome":"unavailable","reason":"router_error"}'
+set +e
+_run_inner "$_c3_dir" >/dev/null 2>&1
+set -e
+assert_eq "[SPEC-10] a contract-3 lens that did not finish is named as not run" '["security"]' \
+    "$(jq -c '.did_not_run' "$_c3_dir/review-report.json" 2>/dev/null || echo MISSING)"
 # A legacy lens file (no disposition) ran — absence of the field is not failure.
 _lg_dir="$TEST_TEMP_DIR/legacy-ran"; mkdir -p "$_lg_dir"
 write_lens "$_lg_dir" "perf" '{"name":"perf","score":8,"findings":[]}'

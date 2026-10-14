@@ -28,7 +28,7 @@ requires:
 
 provides:
   role: lint_gate
-  result_contract: 2
+  result_contract: 3
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -37,10 +37,6 @@ provides:
     - lint_gate.skip
 
 config:
-  valid_verdicts:
-    - pass
-    - fail
-    - skip
   tier_default: T0
 
 outputs:

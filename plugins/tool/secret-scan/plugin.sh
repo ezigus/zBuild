@@ -22,6 +22,9 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _SS_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -135,7 +138,7 @@ _ss_scan_diff() {
 }
 
 # ─── secret_scan_run ──────────────────────────────────────────────────────────
-# Scans the merge-base..HEAD diff. Writes result_contract:2 verdict to
+# Scans the merge-base..HEAD diff. Writes a contract-3 outcome (#2366) to
 # secret-scan-result.json and the finding summary to secret-scan-detail.md.
 # ALWAYS returns 0.
 # Args: $1 = stage_id, $2 = state_file
@@ -153,11 +156,10 @@ secret_scan_run() {
     local result_path="$artifacts_dir/secret-scan-result.json"
 
     if ! declare -F zbuild_resolve_merge_base >/dev/null 2>&1 || [[ -n "${_ZBUILD_CONTRACT_LOAD_ERRORS:-}" ]]; then
-        jq -n '{"result_contract":2,"verdict":"fail","disposition":"broken","reason":"library_load_failure","finding_count":0,"findings":[]}' \
-            | atomic_write "$result_path"
-        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "fail" \
+        stage_result_write "$result_path" broken "library_load_failure" '{"finding_count":0,"locations":[]}'
+        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "broken" \
             "library load failure — merge-base.sh did not load whole (${_ZBUILD_CONTRACT_LOAD_ERRORS:- merge-base.sh} ); the diff was not scanned"
-        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=fail"
+        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=broken"
         return 0
     fi
 
@@ -167,12 +169,12 @@ secret_scan_run() {
 
     # No baseline → nothing to compare; skip rather than block.
     if [[ -z "$repo_root" || -z "$base" ]]; then
-        printf '{"result_contract":2,"verdict":"skip","disposition":"complete","reason":"no_baseline","baseline":"","finding_count":0,"findings":[]}\n' \
-            | atomic_write "$result_path"
-        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "skip" \
+        # #2366: nothing to scan is a pass; the reason says so.
+        stage_result_write "$result_path" pass "no_baseline" '{"baseline":"","finding_count":0,"locations":[]}'
+        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" \
             "no baseline — nothing to scan"
         _ss_emit "secret_scan.skip" "reason=no_baseline"
-        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
+        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=pass"
         return 0
     fi
 
@@ -181,12 +183,12 @@ secret_scan_run() {
 
     # Empty diff → skip.
     if [[ -z "$diff_text" ]]; then
-        printf '{"result_contract":2,"verdict":"skip","disposition":"complete","reason":"empty_diff","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
-            | atomic_write "$result_path"
-        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "skip" \
+        stage_result_write "$result_path" pass "empty_diff" \
+            "$(jq -nc --arg b "$base" '{baseline:$b, finding_count:0, locations:[]}')"
+        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" \
             "empty diff — nothing to scan"
         _ss_emit "secret_scan.skip" "reason=empty_diff"
-        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
+        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=pass"
         return 0
     fi
 
@@ -204,9 +206,11 @@ secret_scan_run() {
         # #2271 (ADR-068): each location as a numbered finding — never the value.
         local _ss_fnd
         _ss_fnd="$(jq -r '.[] | "a secret-like value (\(.rule)) was added at \(.file):\(.line); remove it"' <<< "$findings_json" 2>/dev/null | stage_findings_json)"
-        jq -n --arg base "$base" --argjson n "$count" --argjson f "$findings_json" --argjson fnd "${_ss_fnd:-[]}" \
-            '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"secret_found","baseline":$base,"finding_count":$n,"findings":$f,"data":{"findings":$fnd}}' \
-            | atomic_write "$result_path"
+        # The locations (file, line, rule — never the value) under data.locations;
+        # data.findings are the numbered findings (ADR-068).
+        stage_result_write "$result_path" fail "secret_found" \
+            "$(jq -nc --arg base "$base" --argjson n "$count" --argjson f "$findings_json" --argjson fnd "${_ss_fnd:-[]}" \
+                '{baseline:$base, finding_count:$n, locations:$f, findings:$fnd}')"
         # #1988: publish what only this gate knows. The finding LOCATIONS are
         # the actionable part and never reached a prompt — the aggregator
         # rendered a count. Values are deliberately NOT included: this gate
@@ -219,8 +223,8 @@ secret_scan_run() {
         return 0
     fi
 
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"clean","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
-        | atomic_write "$result_path"
+    stage_result_write "$result_path" pass "clean" \
+        "$(jq -nc --arg b "$base" '{baseline:$b, finding_count:0, locations:[]}')"
     stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" \
         "clean diff — no secrets found"
     _ss_emit "secret_scan.pass"

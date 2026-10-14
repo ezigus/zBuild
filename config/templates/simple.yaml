@@ -118,14 +118,13 @@ design_verify_cycle:
   # ISSUE, which design cannot re-author, so the only way to converge is to
   # actually cover it.
   #
-  # `ne uncovered` rather than `eq covered`: `unreadable` must not stall the
-  # cycle. intake writes a placeholder when the issue fetch fails (#1804), and
-  # failing closed there would break every offline run for a condition that is
-  # not design's fault. The finding still ships in the summary.
+  # #2366: every stage reports pass or fail, so the rule is `eq pass`. An issue
+  # spec-coverage cannot read is a fail too; intake already refuses an
+  # unreadable issue in a real run (#1804).
   exit_when:
     all:
       - { stage: design-gate, field: verdict, op: eq, value: pass }
-      - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
+      - { stage: spec-coverage, field: verdict, op: eq, value: pass }
   max_iterations: 2
   on_max: halt
 
@@ -502,6 +501,9 @@ persist:
 hydrate:
   gate: auto
   roles: [hydrate]
+  # #2366: restoring less than all earlier work is reported as fail; the run
+  # carries on without it rather than stopping.
+  blocking: false
   router:
     timeout_s: 60
   io:

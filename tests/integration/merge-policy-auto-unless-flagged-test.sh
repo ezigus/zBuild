@@ -117,7 +117,7 @@ export _TPL_MERGE_POLICY="auto_unless_flagged"
 assert_eq "[SPEC-1] pr_stage_run exits 0 on auto-merge path (ready)" "0" "$_rc1"
 assert_file_exists "[SPEC-1] merge-result.json written when gate+report both pass" \
     "$_art1/merge-result.json"
-_merge_status1="$(jq -r '.verdict // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
+_merge_status1="$(jq -r '.outcome // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
 assert_eq "[SPEC-1] merge-result.json verdict==pass (gate pass + ready)" "pass" "$_merge_status1"
 _merge_calls1="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _merge_called1=0
@@ -198,7 +198,7 @@ export _TPL_MERGE_POLICY="auto_unless_flagged"
 assert_eq "[SPEC-5] pr_stage_run exits 0 on auto-merge path (advisory)" "0" "$_rc5"
 assert_file_exists "[SPEC-5] merge-result.json written when gate pass + advisory" \
     "$_art5/merge-result.json"
-_merge_status5="$(jq -r '.verdict // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
+_merge_status5="$(jq -r '.outcome // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
 assert_eq "[SPEC-5] merge-result.json verdict==pass (gate pass + advisory)" "pass" "$_merge_status5"
 _merge_calls5="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _merge_called5=0

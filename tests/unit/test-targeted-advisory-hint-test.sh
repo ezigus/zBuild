@@ -155,7 +155,7 @@ RUN
 )
 
 run_mode3="$(jq -r '.data.run_mode // "?"' "$OUT3" 2>/dev/null)"
-verdict3="$(jq -r '.verdict // "?"' "$OUT3" 2>/dev/null)"
+verdict3="$(jq -r '.outcome // "?"' "$OUT3" 2>/dev/null)"
 assert_eq "3: all-dead red-set -> full regression (never a broken targeted run)" \
     "full" "$run_mode3"
 assert_eq "3: full regression sees the real (passing) result, zero phantom fails" \

@@ -46,6 +46,7 @@ for manifest in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
     #   (c) indirect-via-var + suffix: `atomic_write "$..."` AND the basename's
     #       trailing word (e.g. "findings.json") appears — covers manifests
     #       whose path interpolates a prefix (security${infix}-findings.json).
+    #   (d) stage_result_write / stage_result_add AND the basename appears (#2366)
     # Search plugin.sh AND lib/*.sh (decomposed plugins store logic in lib/).
     base_suffix="${base#*-}"  # strip leading "prefix-" if present
     # shellcheck disable=SC2207
@@ -56,6 +57,10 @@ for manifest in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
     fi
     if grep -E "atomic_write[^|]*${base//./\\.}" "${plugin_srcs[@]}" >/dev/null 2>&1; then
         assert_pass "$plugin_dir: primary $base written via atomic_write"
+    elif grep -E '^[^#]*stage_result_(write|add)[[:space:]]' "${plugin_srcs[@]}" >/dev/null 2>&1 \
+        && grep -F "$base" "${plugin_srcs[@]}" >/dev/null 2>&1; then
+        # #2366: the one result writer (scripts/lib/stage-result.sh) writes via atomic_write.
+        assert_pass "$plugin_dir: primary $base written via stage_result_write (atomic)"
     elif grep -E 'atomic_write[[:space:]]+"\$' "${plugin_srcs[@]}" >/dev/null 2>&1 \
         && grep -F "$base" "${plugin_srcs[@]}" >/dev/null 2>&1; then
         assert_pass "$plugin_dir: primary $base (indirect atomic_write reference)"
@@ -63,6 +68,10 @@ for manifest in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
         && [[ -n "$base_suffix" && "$base_suffix" != "$base" ]] \
         && grep -F "$base_suffix" "${plugin_srcs[@]}" >/dev/null 2>&1; then
         assert_pass "$plugin_dir: primary $base (indirect via *-${base_suffix})"
+    elif grep -E 'stage_result_(write|add)[[:space:]]' "${plugin_srcs[@]}" >/dev/null 2>&1 \
+        && grep -F "$base" "${plugin_srcs[@]}" >/dev/null 2>&1; then
+        # #2366: the one result writer writes through atomic_write.
+        assert_pass "$plugin_dir: primary $base (via stage_result_write)"
     else
         assert_fail "$plugin_dir: primary $base NOT written via atomic_write" \
             "see ${plugin_sh#$REPO_ROOT/}"

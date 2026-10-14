@@ -42,21 +42,15 @@ DR_MANIFEST="$REPO_ROOT/plugins/tool/deploy-release/manifest.yaml"
 print_test_section "SPEC-15: manifest provides declares result_contract:2 (role/events retained; valid_verdicts unchanged)"
 
 _s15_prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$DR_MANIFEST" || echo '')"
-assert_eq "[SPEC-15] manifest provides.result_contract is 2" "2" "$_s15_prov_rc"
+assert_eq "[SPEC-15] manifest provides.result_contract is 3 (#2366)" "3" "$_s15_prov_rc"
 
-# role:deploy_release_executor must be retained after adding result_contract:2
+# role:deploy_release_executor must be retained
 _s15_prov_role="$(awk '/^provides:/{f=1} f && /^[[:space:]]*role:/{print $2; exit}' "$DR_MANIFEST" || echo '')"
 assert_eq "[SPEC-15] manifest provides.role is deploy_release_executor" "deploy_release_executor" "$_s15_prov_role"
 
-# valid_verdicts must remain [deployed, error] — do not change them
-_vv_deployed="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*- deployed$' || true)"
-_vv_error="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*- error$' || true)"
-[[ "$_vv_deployed" -gt 0 ]] \
-    && assert_pass "[SPEC-15] valid_verdicts retains deployed" \
-    || assert_fail "[SPEC-15] valid_verdicts retains deployed" "missing"
-[[ "$_vv_error" -gt 0 ]] \
-    && assert_pass "[SPEC-15] valid_verdicts retains error" \
-    || assert_fail "[SPEC-15] valid_verdicts retains error" "missing"
+# #2366: a contract-3 stage declares no verdict words
+assert_eq "[SPEC-15] manifest declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$DR_MANIFEST" | grep -c 'valid_verdicts' || true)"
 
 # ─── SPEC-24: tier_default:T0, no router: block ──────────────────────────────
 print_test_section "SPEC-24: tier_default:T0 with no router: block"
@@ -157,12 +151,10 @@ assert_eq "[SPEC-17] state_file-absent: rc=1 (not rc=2)" "1" "$_sfabs_rc"
 
 # v2 contract: deploy-result.json written to ZBUILD_ARTIFACT_DIR even on state_file-absent
 if [[ -f "$ZBUILD_ARTIFACT_DIR/deploy-result.json" ]]; then
-    assert_eq "[SPEC-16] state_file-absent: result_contract is 2" "2" \
+    assert_eq "[SPEC-16] state_file-absent: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$ZBUILD_ARTIFACT_DIR/deploy-result.json" 2>/dev/null || true)"
-    _sfabs_disp="$(jq -r '.disposition // empty' "$ZBUILD_ARTIFACT_DIR/deploy-result.json" 2>/dev/null || true)"
-    [[ -n "$_sfabs_disp" ]] \
-        && assert_pass "[SPEC-16] state_file-absent: disposition present" \
-        || assert_fail "[SPEC-16] state_file-absent: disposition present" "absent"
+    assert_eq "[SPEC-16] state_file-absent: no verdict or disposition field (#2366)" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$ZBUILD_ARTIFACT_DIR/deploy-result.json" 2>/dev/null || true)"
     _sfabs_reason="$(jq -r '.reason // empty' "$ZBUILD_ARTIFACT_DIR/deploy-result.json" 2>/dev/null || true)"
     [[ -n "$_sfabs_reason" ]] \
         && assert_pass "[SPEC-16] state_file-absent: reason present" \
@@ -206,12 +198,10 @@ set +e
 
 assert_file_exists "[SPEC-16] dry-run: deploy-result.json written" "$_s_dry_art/deploy-result.json"
 if [[ -f "$_s_dry_art/deploy-result.json" ]]; then
-    assert_eq "[SPEC-16] dry-run: result_contract is 2" "2" \
+    assert_eq "[SPEC-16] dry-run: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s_dry_art/deploy-result.json" 2>/dev/null || true)"
-    _dry_disp="$(jq -r '.disposition // empty' "$_s_dry_art/deploy-result.json" 2>/dev/null || true)"
-    [[ -n "$_dry_disp" ]] \
-        && assert_pass "[SPEC-16] dry-run: disposition present" \
-        || assert_fail "[SPEC-16] dry-run: disposition present" "absent"
+    assert_eq "[SPEC-16] dry-run: no verdict or disposition field (#2366)" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s_dry_art/deploy-result.json" 2>/dev/null || true)"
     _dry_reason="$(jq -r '.reason // empty' "$_s_dry_art/deploy-result.json" 2>/dev/null || true)"
     [[ -n "$_dry_reason" ]] \
         && assert_pass "[SPEC-16] dry-run: reason present" \
@@ -234,14 +224,12 @@ set +e
 
 assert_file_exists "[SPEC-16/23] success: deploy-result.json written" "$_s_ok_art/deploy-result.json"
 if [[ -f "$_s_ok_art/deploy-result.json" ]]; then
-    assert_eq "[SPEC-16] success: result_contract is 2" "2" \
+    assert_eq "[SPEC-16] success: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-23] success: verdict is deployed" "deployed" \
-        "$(jq -r '.verdict // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
-    _ok_disp="$(jq -r '.disposition // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
-    [[ -n "$_ok_disp" ]] \
-        && assert_pass "[SPEC-16] success: disposition present" \
-        || assert_fail "[SPEC-16] success: disposition present" "absent"
+    assert_eq "[SPEC-23] success: outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-16] success: no verdict or disposition field (#2366)" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
     _ok_reason="$(jq -r '.reason // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
     [[ -n "$_ok_reason" ]] \
         && assert_pass "[SPEC-16] success: reason present" \
@@ -265,14 +253,12 @@ set +e
 
 assert_file_exists "[SPEC-16] tag-failure: deploy-result.json written" "$_s_tf_art/deploy-result.json"
 if [[ -f "$_s_tf_art/deploy-result.json" ]]; then
-    assert_eq "[SPEC-16] tag-failure: result_contract is 2" "2" \
+    assert_eq "[SPEC-16] tag-failure: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-16] tag-failure: verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
-    _tf_disp="$(jq -r '.disposition // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
-    [[ -n "$_tf_disp" ]] \
-        && assert_pass "[SPEC-16] tag-failure: disposition present" \
-        || assert_fail "[SPEC-16] tag-failure: disposition present" "absent"
+    assert_eq "[SPEC-16] tag-failure: outcome is broken" "broken" \
+        "$(jq -r '.outcome // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-16] tag-failure: no verdict or disposition field (#2366)" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
     _tf_reason="$(jq -r '.reason // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
     [[ -n "$_tf_reason" ]] \
         && assert_pass "[SPEC-16] tag-failure: reason present" \
@@ -295,14 +281,12 @@ set +e
 
 assert_file_exists "[SPEC-16] push-failure: deploy-result.json written" "$_s_pf_art/deploy-result.json"
 if [[ -f "$_s_pf_art/deploy-result.json" ]]; then
-    assert_eq "[SPEC-16] push-failure: result_contract is 2" "2" \
+    assert_eq "[SPEC-16] push-failure: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-16] push-failure: verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
-    _pf_disp="$(jq -r '.disposition // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
-    [[ -n "$_pf_disp" ]] \
-        && assert_pass "[SPEC-16] push-failure: disposition present" \
-        || assert_fail "[SPEC-16] push-failure: disposition present" "absent"
+    assert_eq "[SPEC-16] push-failure: outcome is unavailable" "unavailable" \
+        "$(jq -r '.outcome // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-16] push-failure: no verdict or disposition field (#2366)" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
     _pf_reason="$(jq -r '.reason // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
     [[ -n "$_pf_reason" ]] \
         && assert_pass "[SPEC-16] push-failure: reason present" \
@@ -321,7 +305,7 @@ assert_eq "[SPEC-17] push-failure rc=1" "1" "$_s_pf_rc"
 # ─── SPEC-30: outward failure is `unavailable` ────────────────────────────────
 print_test_section "SPEC-30: a failed tag push reports unavailable"
 assert_eq "[SPEC-30] push failure → unavailable" "unavailable" \
-    "$(jq -r '.disposition // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-18: pr_url resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
 print_test_section "SPEC-18: pr_url resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback"

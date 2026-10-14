@@ -56,7 +56,7 @@ _run_with() {
     shape_floor_run "shape-floor" "$STATE_FILE" >/dev/null 2>&1
 }
 
-_verdict_of() { jq -r '.verdict // ""' "$RESULT" 2>/dev/null || true; }
+_verdict_of() { jq -r '.outcome // ""' "$RESULT" 2>/dev/null || true; }
 
 # ─── [SPEC-1] the manifest still declares the output as required ─────────────
 # Every assertion below is only meaningful while this holds. If the declaration
@@ -86,7 +86,7 @@ fi
 
 # SPEC-3 — skip. This is the shape the #1834 run hit on both iterations.
 _run_with "SHAPE_FLOOR SKIP no_shape_change"
-assert_eq "[SPEC-3] skip → result verdict=skip" "skip" "$(_verdict_of)"
+assert_eq "[SPEC-3] skip → result outcome=pass (nothing to check, #2366)" "pass" "$(_verdict_of)"
 if [[ -s "$DETAIL" ]]; then
     assert_pass "[SPEC-3] skip writes a non-empty shape-floor-detail.md"
 else
@@ -173,7 +173,7 @@ assert_contains "[SPEC-7] the summary says so" "$(cat "$DETAIL" 2>/dev/null)" "c
 _run_with ""
 assert_eq "[SPEC-7] empty output → verdict=fail" "fail" "$(_verdict_of)"
 _run_with "SHAPE_FLOOR SKIP no_shape_change"
-assert_eq "[SPEC-7 guard] an explicit SKIP still skips" "skip" "$(_verdict_of)"
+assert_eq "[SPEC-7 guard] an explicit SKIP is still a pass (#2366)" "pass" "$(_verdict_of)"
 
 # ─── [SPEC-8] (#2180) the summary NAMES the files that would satisfy the floor ─
 # The gate already works the list out — it needs it, one line earlier, to decide

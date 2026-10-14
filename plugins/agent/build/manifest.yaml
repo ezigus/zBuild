@@ -20,7 +20,7 @@ requires:
 
 provides:
   role: builder
-  result_contract: 2
+  result_contract: 3
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -47,11 +47,6 @@ provides:
     - build.scratch.cleaned
 
 config:
-  valid_verdicts:
-    - pass
-    - scope_violation
-    - incomplete
-    - fail
   tier_default: T2
   # ADR-017 §11 (#1816): build's own budget, previously written only in the
   # template. `max_turns: 0` omits --max-turns — the build loop bounds itself by

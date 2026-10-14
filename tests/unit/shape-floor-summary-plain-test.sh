@@ -41,7 +41,7 @@ unset ZBUILD_STAGE_INPUTS
 
 shape_floor_run shape-floor "$S/pipeline-state.json" >/dev/null 2>&1
 _sum="$(cat "$S/artifacts/shape-floor-detail.md" 2>/dev/null)"
-assert_eq "fixture: the check failed" "fail" "$(jq -r '.verdict // empty' "$S/artifacts/shape-floor-result.json" 2>/dev/null)"
+assert_eq "fixture: the check failed" "fail" "$(jq -r '.outcome // empty' "$S/artifacts/shape-floor-result.json" 2>/dev/null)"
 
 for _w in missing_floor_files "in flight" "must change"; do
     if grep -qF -- "$_w" <<< "$_sum"; then

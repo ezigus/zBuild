@@ -114,7 +114,7 @@ EOF
 # which is _F_ARTIFACTS). Returns the verdict on stdout.
 _run_design_gate() {
     design_gate_run "design-gate" "$_F_STATE/state.json" >/dev/null 2>&1 || true
-    jq -r '.verdict // "MISSING"' "$_F_ARTIFACTS/design-gate-result.json" 2>/dev/null || echo "MISSING"
+    jq -r '.outcome // "MISSING"' "$_F_ARTIFACTS/design-gate-result.json" 2>/dev/null || echo "MISSING"
 }
 
 # ─── SPEC-1,2,3,4: router timeout YIELD → recoverable, gate-FAILING marker ────
@@ -170,37 +170,41 @@ fi
 # Fails at baseline where sidecar had verdict=did_not_finish.
 # [SPEC-9] (#1832): sidecar verdict=incomplete is the new timeout signal.
 _sidecar="$_F_ARTIFACTS/design-verdict.json"
-_sidecar_verdict="$(jq -r '.verdict // "MISSING"' "$_sidecar" 2>/dev/null || echo MISSING)"
-_sidecar_disp="$(jq -r '.disposition // "MISSING"' "$_sidecar" 2>/dev/null || echo MISSING)"
-if [[ -s "$_sidecar" ]] && [[ "$_sidecar_verdict" == "incomplete" ]]; then
-    assert_pass "[SPEC-8] timeout yield → design-verdict.json sidecar verdict=incomplete (ADR-054, #1832)"
+_sidecar_verdict="$(jq -r '.result_contract // "MISSING"' "$_sidecar" 2>/dev/null || echo MISSING)"
+_sidecar_disp="$(jq -r '.outcome // "MISSING"' "$_sidecar" 2>/dev/null || echo MISSING)"
+if [[ -s "$_sidecar" ]] && [[ "$_sidecar_verdict" == "3" ]]; then
+    assert_pass "[SPEC-8] timeout yield → design-verdict.json is a contract-3 result (#2366)"
 else
-    assert_fail "[SPEC-8] timeout yield → sidecar should have verdict=incomplete" \
+    assert_fail "[SPEC-8] timeout yield → sidecar should be a contract-3 result" \
         "sidecar=$(cat "$_sidecar" 2>/dev/null || echo ABSENT)"
 fi
-assert_eq "[SPEC-9] design sidecar disposition=timed_out for router-timeout (#2187)" \
+assert_eq "[SPEC-9] design sidecar outcome=timed_out for router-timeout (#2187)" \
     "timed_out" "$_sidecar_disp"
 
 # SPEC-10 (#1261, updated #1832): the sidecar exists and carries the right shape.
-if [[ -s "$_sidecar" ]] && [[ "$_sidecar_verdict" == "incomplete" ]] \
+if [[ -s "$_sidecar" ]] && [[ "$_sidecar_verdict" == "3" ]] \
     && [[ "$_sidecar_disp" == "timed_out" ]]; then
-    assert_pass "[SPEC-10] timeout yield → design-verdict.json sidecar verdict=incomplete + disposition=interrupted"
+    assert_pass "[SPEC-10] timeout yield → design-verdict.json sidecar outcome=timed_out"
 else
     assert_fail "[SPEC-10] timeout yield → incomplete+interrupted sidecar missing/wrong" \
         "sidecar=$(cat "$_sidecar" 2>/dev/null || echo ABSENT)"
 fi
 
-# SPEC-11 (#1261, updated #1832): the REAL verdict readers surface incomplete for
-# the design stage from the sidecar (design.md is non-JSON → would otherwise read "pass").
+# SPEC-11 (#1261, updated #1832, #2366): the REAL readers see that design did
+# not finish, from the sidecar (design.md is non-JSON → would otherwise read
+# "pass"). Contract 3: the outcome timed_out is the disposition; the raw verdict
+# is the engine's "did not finish" word, and the reason router_timeout is what
+# lets the cycle iterate instead of blocking (cycle-orchestrator G2 counter).
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh"
 _dm="$REPO_ROOT/plugins/agent/design/manifest.yaml"
+assert_eq "[SPEC-11] runner_read_stage_disposition(design) reads timed_out from sidecar (#2366)" \
+    "timed_out" "$(runner_read_stage_disposition "$_F_STATE" "$_dm" "design" 0)"
 _raw="$(runner_read_stage_verdict_raw "$_F_STATE" "$_dm" "design" 0)"
-assert_eq "[SPEC-11] runner_read_stage_verdict_raw(design) reads incomplete from sidecar (#1832)" \
-    "incomplete" "$_raw"
-_cls="$(runner_read_stage_verdict "$_F_STATE" "$_dm" "design" 0)"
-assert_eq "[SPEC-11b] runner_read_stage_verdict(design) classifies incomplete → warn" \
-    "warn" "$_cls"
+assert_eq "[SPEC-11] runner_read_stage_verdict_raw(design): not a pass (#2366)" \
+    "error" "$_raw"
+assert_eq "[SPEC-11b] ...with reason router_timeout, which the cycle iterates on" \
+    "router_timeout" "$(runner_read_stage_reason "$_F_STATE" "$_dm" "design" 0)"
 
 _MOCK_ROUTER_RC=0
 _MOCK_TERMINATED_REASON="done_sentinel"
@@ -258,9 +262,9 @@ fi
 # SPEC-10-guard (#1261): a converging design must NOT write an incomplete/interrupted
 # sidecar (v2 contract writes verdict=pass,disposition=complete on happy path — that is
 # fine; only did_not_finish / interrupted sidecars would trip the exhaustion halt).
-_sc10_verdict="$(jq -r '.verdict // "MISSING"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
-_sc10_disp="$(jq -r '.disposition // "MISSING"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
-if [[ "$_sc10_verdict" == "incomplete" || "$_sc10_disp" == "interrupted" ]]; then
+_sc10_verdict="$(jq -r '.outcome // "MISSING"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
+_sc10_disp="$_sc10_verdict"
+if [[ "$_sc10_verdict" != "pass" ]]; then
     assert_fail "[SPEC-10-guard] spurious did_not_finish sidecar on happy path" \
         "verdict=$_sc10_verdict disposition=$_sc10_disp"
 else
@@ -288,8 +292,8 @@ else
     assert_fail "[SPEC-9b] → reason=stale_design_not_removed missing" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
-assert_eq "[SPEC-9c] → the result says so: disposition broken" "broken" \
-    "$(jq -r '.disposition // "ABSENT"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
+assert_eq "[SPEC-9c] → the result says so: outcome broken" "broken" \
+    "$(jq -r '.outcome // "ABSENT"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
 rm -rf "$_F_DESIGN"
 
 # ─── SPEC-12: timeout AFTER this call wrote a new design → kept, gate judges ─

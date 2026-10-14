@@ -40,40 +40,9 @@ PLUGIN_DIR="$REPO_ROOT/plugins/tool/pr-open"
 # shellcheck source=../../../../plugins/tool/pr-open/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
-# ─── Test 2: blocked when review verdict=block ───────────────────────────────
-print_test_section "2. Blocked when review verdict is 'block'"
+# ─── Test 2 (#2366): retired — the review.json "block" path is gone; nothing
+# produces a block, and the review.json it read was the retired review stage's.
 
-rm -f "$PR_RESULT_JSON"
-cat > "$REVIEW_JSON" <<'JSON'
-{"schema_version":1,"verdict":"block","summary":"critical issues found"}
-JSON
-
-# Mock git to return a safe non-main branch so we reach the verdict check
-git() {
-    if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
-        echo "zbuild/issue-999"
-    else
-        command git "$@"
-    fi
-}
-export -f git
-
-set +e
-_pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
-rc=$?
-set -e
-
-assert_exit_code "blocked verdict returns rc=0 (blocked is a verdict outcome, not error)" "0" "$rc"
-assert_file_exists "pr-result.json written on block" "$PR_RESULT_JSON"
-
-if [[ -f "$PR_RESULT_JSON" ]]; then
-    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
-    assert_eq "pr-result.json verdict=blocked" "blocked" "$pr_status"
-fi
-
-unset -f git
-
-# ─── Test 2b: fail-closed when NO review signal (#358, #1142) ───────────────
 # #1142: pr-open now fails closed only when NEITHER review.json (blocking review,
 # standard.yaml) NOR review-report.json (advisory review-aggregator, simple.yaml)
 # is present. 2c covers the advisory path.
@@ -97,12 +66,12 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
 rc=$?
 set -e
 
-assert_exit_code "no review signal returns rc=0 (blocked is a verdict outcome, not error)" "0" "$rc"
+assert_exit_code "no review signal returns rc=0 (the refusal is the outcome, not an error)" "0" "$rc"
 assert_file_exists "pr-result.json written when no review signal" "$PR_RESULT_JSON"
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
-    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
-    assert_eq "pr-result.json verdict=blocked when no review signal" "blocked" "$pr_status"
+    pr_status="$(jq -r '.outcome' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_eq "pr-result.json outcome=fail when no review signal (fail-closed)" "fail" "$pr_status"
     pr_reason="$(jq -r '.reason' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
     if [[ "$pr_reason" == *"no review signal"* ]]; then
         assert_pass "pr-result.json reason names the missing review signal"
@@ -148,8 +117,8 @@ rm -f "$REVIEW_REPORT_JSON"
 
 assert_exit_code "advisory mode (review-report.json present) opens PR rc=0" "0" "$rc"
 if [[ -f "$PR_RESULT_JSON" ]]; then
-    assert_eq "advisory mode: verdict=pass (not blocked on advisory review)" \
-        "pass" "$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_eq "advisory mode: outcome=pass (advisory review never refuses)" \
+        "pass" "$(jq -r '.outcome' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
 fi
 
 unset -f git
@@ -182,8 +151,8 @@ assert_exit_code "main branch returns rc=1 (infrastructure error, not verdict ou
 assert_file_exists "pr-result.json written for main branch guard" "$PR_RESULT_JSON"
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
-    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
-    assert_eq "pr-result.json verdict=error for main branch" "error" "$pr_status"
+    pr_status="$(jq -r '.outcome' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_eq "pr-result.json outcome=broken for main branch" "broken" "$pr_status"
 fi
 
 unset -f git

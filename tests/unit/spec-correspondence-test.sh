@@ -22,7 +22,7 @@
 #                    judge must call narrow-but-correct coverage a mismatch
 #   SPEC-4 [guard] : advisory — never in an exit_when, so it cannot gate
 #                    (ADR-040 §5: only a mechanical stage may block)
-#   SPEC-5 [guard] : v2 contract — result_contract:2, rc binary, and a stage
+#   SPEC-5 [guard] : contract 3 (#2366) — result_contract:3, rc binary, and a stage
 #                    that merely FINDS a problem is disposition:complete
 #   SPEC-7 [change]: a reply with no parseable verdict is COUNTED, not silently
 #                    dropped — the counters ACCOUNT FOR every SPEC judged, so
@@ -116,17 +116,15 @@ assert_eq "[SPEC-2][guard] the prompt carries NO diff" \
 assert_eq "[SPEC-2][guard] nor the build summary" \
     "0" "$(grep -c 'files_changed_count' <<< "$_P" || true)"
 assert_contains "[SPEC-3][change] partial is offered as a verdict" "$_P" "partial"
-assert_eq "[SPEC-5][guard] result_contract is 2" "2" "$(_res '.result_contract')"
+assert_eq "[SPEC-5][guard] result_contract is 3" "3" "$(_res '.result_contract')"
 assert_eq "[SPEC-5][guard] rc is binary" "0" "$_rc"
-assert_eq "[SPEC-5][guard] a stage that merely reports is disposition=complete" \
-    "complete" "$(_res '.disposition')"
+assert_eq "[SPEC-5][guard] one outcome: a clean judgement is pass" "pass" "$(_res '.outcome')"
+assert_eq "[SPEC-5][guard] no verdict or disposition field" "false" "$(_res 'has("verdict") or has("disposition")')"
 
-# ── SPEC-3: the declared vocabulary carries all four words ──────────────────
+# ── #2366: contract 3 — no verdict words in the manifest ───────────────────
 _MAN="$REPO_ROOT/plugins/agent/spec-correspondence/manifest.yaml"
-for _w in corresponds partial mismatch uncheckable; do
-    assert_contains "[SPEC-3][change] valid_verdicts declares '$_w'" \
-        "$(sed -n '/valid_verdicts:/,/^[a-z]/p' "$_MAN")" "$_w"
-done
+assert_eq "[#2366] provides.result_contract: 3" "1" "$(grep -cE '^[[:space:]]+result_contract:[[:space:]]*3' "$_MAN" || true)"
+assert_eq "[#2366] no valid_verdicts" "0" "$(grep -c 'valid_verdicts' "$_MAN" || true)"
 
 # ── SPEC-4: advisory, and not on any convergence path ──────────────────────
 assert_contains "[SPEC-4][guard] the manifest marks it advisory" \
@@ -192,12 +190,12 @@ assert_eq "[SPEC-7][change] the counters account for every SPEC judged" \
 # (scripts/lib/lint-verdict-classify.sh) requires of every declared verdict.
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh" 2>/dev/null || true
-_cls2="$(verdict_classify "$(_res2 '.verdict')" 2>/dev/null || echo NO-CLASSIFIER)"
-assert_eq "[SPEC-8][change] zero successful judgments does not classify as a pass" \
-    "not-pass" "$([[ "$_cls2" == "pass" ]] && printf 'pass' || printf 'not-pass')"
-assert_eq "[SPEC-8][change] and the word it writes is one the engine classifies" \
-    "classified" "$([[ "$_cls2" == "unknown" || "$_cls2" == "NO-CLASSIFIER" ]] \
-        && printf '%s' "$_cls2" || printf 'classified')"
+# #2366: through the engine's own reader of the outcome.
+_o2="$(_res2 '.outcome')"
+assert_eq "[SPEC-8][change] zero successful judgments is not a pass" \
+    "not-pass" "$([[ "$_o2" == "pass" ]] && printf 'pass' || printf 'not-pass')"
+assert_eq "[SPEC-8][change] and the word it writes is on the engine's outcome list" \
+    "0" "$(outcome_is_valid "$_o2"; echo $?)"
 
 # ─── [#2108] a model that drains stdin does not eat the SPEC roster ──────────
 # `claude -p` reads a non-TTY stdin into its prompt (verified). The plugin
@@ -252,8 +250,8 @@ printf 'diff --git a/x b/x\n+y\n' > "$_A4/diff.patch"
 printf '{"verdict":"pass","files_changed_count":1}' > "$_A4/build-summary.json"
 printf '{}' > "$_SC4/pipeline-state.json"
 set +e; spec_correspondence_run "spec-correspondence" "$_SC4/pipeline-state.json" >/dev/null 2>&1; set -e
-assert_eq "[#2129] zero SPEC ids → verdict=uncheckable" "uncheckable" \
-    "$(jq -r '.verdict // ""' "$_A4/spec-correspondence-result.json" 2>/dev/null || true)"
+assert_eq "[#2129] zero SPEC ids → fail, judged uncheckable" "fail uncheckable" \
+    "$(jq -r '"\(.outcome) \(.data.judgement)"' "$_A4/spec-correspondence-result.json" 2>/dev/null || true)"
 assert_contains "[#2129] the reason says nothing was judged" \
     "$(jq -r '.reason // ""' "$_A4/spec-correspondence-result.json" 2>/dev/null || true)" "no SPEC ids"
 
@@ -315,8 +313,8 @@ printf '{}' > "$_SC5/pipeline-state.json"
 # After  fix: disposition=unavailable (rc=1 → router_rc_nonzero → unavailable).
 route_to_model() { cat >/dev/null; return 1; }
 set +e; spec_correspondence_run "spec-correspondence" "$_SC5/pipeline-state.json" >/dev/null 2>&1; set -e
-assert_eq "[#2032/SPEC-4] route_to_model rc=1 → disposition=unavailable (not hardcoded complete)" \
-    "unavailable" "$(jq -r '.disposition // empty' "$_A5/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[#2032/SPEC-4] route_to_model rc=1 → outcome=unavailable" \
+    "unavailable" "$(jq -r '.outcome // empty' "$_A5/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
 
 # SPEC-4 covers the full non-zero range, not just rc=1.
 # rc=124 (timeout) must also produce a classified disposition — router_reason_disposition
@@ -337,8 +335,8 @@ EOF
 printf '{}' > "$_SC6/pipeline-state.json"
 route_to_model() { cat >/dev/null; return 124; }
 set +e; spec_correspondence_run "spec-correspondence" "$_SC6/pipeline-state.json" >/dev/null 2>&1; set -e
-assert_eq "[#2032/SPEC-4] route_to_model rc=124 → disposition=timed_out (timeout rc also classified, not hardcoded complete)" \
-    "timed_out" "$(jq -r '.disposition // empty' "$_A6/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[#2032/SPEC-4] route_to_model rc=124 → outcome=timed_out (timeout rc also classified)" \
+    "timed_out" "$(jq -r '.outcome // empty' "$_A6/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
 
 # Review on PR #2262: the batch call and every per-SPEC fallback call share one
 # rc file. The batch times out (rc=124, no reply), the fallback for SPEC-1 then
@@ -371,8 +369,8 @@ route_to_model() {
 set +e; spec_correspondence_run "spec-correspondence" "$_SC7/pipeline-state.json" >/dev/null 2>&1; set -e
 assert_eq "[#2032/review] batch call timed out, fallback call succeeded → one call made it to the fallback" \
     "2" "$(wc -l < "$_SC7_CALLS" | tr -d '[:space:]')"
-assert_eq "[#2032/review] batch rc=124 then fallback rc=0 → disposition=timed_out (a later success does not hide an earlier timeout)" \
-    "timed_out" "$(jq -r '.disposition // empty' "$_A7/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[#2032/review] batch rc=124 then fallback rc=0 → outcome=timed_out (a later success does not hide an earlier timeout)" \
+    "timed_out" "$(jq -r '.outcome // empty' "$_A7/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
 
 print_test_results
 exit $((FAIL > 0))

@@ -82,7 +82,7 @@ design_verify_cycle:
   exit_when:
     all:
       - { stage: design-gate, field: verdict, op: eq, value: pass }
-      - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
+      - { stage: spec-coverage, field: verdict, op: eq, value: pass }
   max_iterations: 2
   on_max: halt
 
@@ -348,6 +348,9 @@ persist:
 hydrate:
   gate: auto
   roles: [hydrate]
+  # #2366: restoring less than all earlier work is reported as fail; the run
+  # carries on without it rather than stopping.
+  blocking: false
   router:
     timeout_s: 60
   io:

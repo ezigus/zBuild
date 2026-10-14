@@ -85,10 +85,11 @@ _setup s2
 _IA_ANSWER=$'VERDICT: fail\nREASON: the push failure is reported as broken\nUNMET: an interrupted push reports unavailable'
 _run; _rc=$?
 assert_eq "[SPEC-2] rc=0 (the verdict is in the artifact)" "0" "$_rc"
-assert_eq "[SPEC-2] verdict=fail" "fail" "$(_res .verdict)"
+assert_eq "[SPEC-2] outcome=fail" "fail" "$(_res .outcome)"
+assert_eq "[SPEC-2] contract 3 (#2366)" "3" "$(_res .result_contract)"
+assert_eq "[SPEC-2] no verdict or disposition field" "false" "$(_res 'has("verdict") or has("disposition")')"
 assert_contains "[SPEC-2] the unmet requirement is a numbered finding" "$(_res '.data.findings[0].text')" "an interrupted push reports unavailable"
 assert_eq "[SPEC-2] the unmet requirement is named" "an interrupted push reports unavailable" "$(_res '.data.unmet[0]')"
-assert_eq "[SPEC-2] the stage completed" "complete" "$(_res .disposition)"
 
 print_test_section "SPEC-3: no fault class — the stage does not decide who fixes it"
 _setup s3
@@ -105,21 +106,21 @@ print_test_section "SPEC-4: every requirement met → pass"
 _setup s4
 _IA_ANSWER=$'VERDICT: pass\nREASON: every requirement is met by the diff'
 _run
-assert_eq "[SPEC-4] verdict=pass" "pass" "$(_res .verdict)"
+assert_eq "[SPEC-4] outcome=pass" "pass" "$(_res .outcome)"
 assert_eq "[SPEC-4] no fault on a pass" "null" "$(_res .fault)"
 
 print_test_section "SPEC-5: a placeholder issue is never a pass"
 _setup s5 "GitHub issue #1849"
 _IA_ANSWER=$'VERDICT: pass\nREASON: fine'
 _run
-assert_eq "[SPEC-5] verdict=unreadable" "unreadable" "$(_res .verdict)"
+assert_eq "[SPEC-5] outcome=fail" "fail" "$(_res .outcome)"
+assert_eq "[SPEC-5] ...because the issue was unreadable" "unreadable" "$(_res .data.judgement)"
 
 print_test_section "SPEC-6: an unparseable answer is unusable, never a pass"
 _setup s6
 _IA_ANSWER="I think it mostly looks fine?"
 _run
-assert_eq "[SPEC-6] verdict is not pass" "unreadable" "$(_res .verdict)"
-assert_eq "[SPEC-6] disposition=unusable (the engine retries it)" "unusable" "$(_res .disposition)"
+assert_eq "[SPEC-6] outcome=unusable (the engine retries it)" "unusable" "$(_res .outcome)"
 
 print_test_section "SPEC-7: inputs from the index only"
 _setup s7
@@ -127,7 +128,7 @@ printf '{"inputs":{}}\n' > "$_S/stage-inputs.json"
 printf 'on-disk issue\n' > "$_S/intake.md"; printf 'x\n' > "$_A/design.md"
 _IA_ANSWER=$'VERDICT: pass\nREASON: ok'
 _run
-assert_eq "[SPEC-7] no index entry → nothing to judge against (unreadable), whatever is on disk" "unreadable" "$(_res .verdict)"
+assert_eq "[SPEC-7] no index entry → nothing to judge against (unreadable), whatever is on disk" "unreadable" "$(_res .data.judgement)"
 _code="$(grep -v '^[[:space:]]*#' "$PLUGIN_DIR/plugin.sh")"
 for _f in intake.md design.md diff.patch test-results.json; do
     assert_eq "[SPEC-7] plugin.sh constructs no $_f path" "0" "$(grep -cF "$_f" <<< "$_code" || true)"
@@ -176,6 +177,11 @@ assert_contains "[SPEC-9] the prompt says what the tests must catch is a require
 assert_contains "[SPEC-9] the prompt asks whether the tests would catch a broken change" \
     "$_p9" "if the change were broken, would its tests catch it?"
 assert_contains "[SPEC-9] the narrowed-SPEC rule is kept" "$_p9" "a SPEC that narrowed a"
+
+print_test_section "#2366: contract 3 and no verdict words"
+_M="$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml"
+assert_eq "[#2366] provides.result_contract: 3" "1" "$(grep -cE '^[[:space:]]+result_contract:[[:space:]]*3' "$_M" || true)"
+assert_eq "[#2366] no valid_verdicts" "0" "$(grep -c 'valid_verdicts' "$_M" || true)"
 
 print_test_results
 exit $((FAIL > 0))

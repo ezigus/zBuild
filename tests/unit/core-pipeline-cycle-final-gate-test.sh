@@ -97,7 +97,7 @@ assert_eq "T8: no ZBUILD_TEST_FULL_SUITE_GATE / full_suite_gate reference remain
 print_test_section "T9 [#2144]. a stale run_mode=targeted artifact does not hold a cycle open"
 # simple.yaml's design_verify_cycle is the cycle that spun: it has no test
 # member, so nothing ever cleans a test artifact left by another cycle. The
-# stub answers pass for every member (spec-coverage: covered).
+# stub answers pass for every member (#2366: spec-coverage reports pass too).
 # shellcheck source=../../core/pipeline/template.sh
 source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/simple.yaml"
@@ -110,7 +110,6 @@ jq -n '{result_contract:2, verdict:"pass", disposition:"complete", reason:"mock"
 cycle_dispatch_stage() {
     local stage="$1"
     _CYCLE_DISPATCH_VERDICT="pass"
-    [[ "$stage" == "spec-coverage" ]] && _CYCLE_DISPATCH_VERDICT="covered"
     _CYCLE_DISPATCH_STATUS="complete"; return 0
 }
 : > "$ZBUILD_EVENTS_JSONL"

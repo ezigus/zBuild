@@ -98,8 +98,8 @@ REPO_W="$(_build_repo wt-redirect)"
 _write_design "$REPO_W"
 set +e; _run_gate "$REPO_W" "$OVERRIDE_LIB"; set -e
 assert_eq "[SPEC-3] gate parses the new TESTS: token via override → rc=0" "0" "$RC"
-assert_eq "[SPEC-3] gate verdict=pass with working-tree grammar" \
-    "pass" "$(jq -r '.verdict' <<<"$RESULT")"
+assert_eq "[SPEC-3] gate outcome=pass with working-tree grammar" \
+    "pass" "$(jq -r .outcome <<<"$RESULT")"
 
 # ── CONTROL without override: the new token is NOT recognized → malformed fail ─
 print_test_section "2. control — without override the new token is unrecognized"
@@ -107,8 +107,8 @@ REPO_C="$(_build_repo wt-control)"
 _write_design "$REPO_C"
 set +e; _run_gate "$REPO_C" ""; set -e
 assert_eq "[SPEC-3] control: installed grammar rejects TESTS: token → rc=1" "1" "$RC"
-assert_eq "[SPEC-3] control: verdict=fail (malformed, token unrecognized)" \
-    "fail" "$(jq -r '.verdict' <<<"$RESULT")"
+assert_eq "[SPEC-3] control: outcome=fail (malformed, token unrecognized)" \
+    "fail" "$(jq -r .outcome <<<"$RESULT")"
 assert_contains "[SPEC-3] control: failure is malformed_acceptance_block" \
     "$(jq -r '.failures[]?, .reason // empty' <<<"$RESULT")" "malformed_acceptance_block"
 

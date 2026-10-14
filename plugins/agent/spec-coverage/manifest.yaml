@@ -36,7 +36,7 @@ requires:
 
 provides:
   role: spec_coverage
-  result_contract: 2
+  result_contract: 3
   events:
     - spec_coverage.judged
     - spec_coverage.unreadable_issue
@@ -44,10 +44,6 @@ provides:
     - spec_coverage.prompt.refused
 
 config:
-  valid_verdicts:
-    - covered
-    - uncovered
-    - unreadable
   tier_default: T2
 
 outputs:

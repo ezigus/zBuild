@@ -88,13 +88,13 @@ print_test_section "SPEC-6: the stages report the fields"
 S6="$TEST_TEMP_DIR/s6"; mkdir -p "$S6"
 printf '%s\n' '# D' '```acceptance' 'SPEC-1[change]: x' 'TESTFILES:' 'SPEC-1: tests/acc-test.sh' 'WIRING: scripts/lib/wired.sh' '```' > "$S6/design.md"
 _d6="$( source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
-        declare -F _design_write_result >/dev/null || { echo "design plugin.sh did not load"; exit; }
-        _design_write_result "$S6" pass complete "ok" >/dev/null 2>&1
+        declare -F _design_write_outcome >/dev/null || { echo "design plugin.sh did not load"; exit; }
+        _design_write_outcome "$S6" pass "ok" >/dev/null 2>&1
         jq -c '.data.wiring_files' "$S6/design-verdict.json" 2>/dev/null )"
 assert_eq "[SPEC-6] design reports its WIRING files" '["scripts/lib/wired.sh"]' "$_d6"
 _t6="$( source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
         declare -F _ta_write_result >/dev/null || { echo "test-author plugin.sh did not load"; exit; }
-        _ta_write_result "$S6" complete complete "ok" 1 >/dev/null 2>&1
+        _ta_write_result "$S6" pass "ok" 1 >/dev/null 2>&1
         jq -c '.data.owned_files' "$S6/test-author-result.json" 2>/dev/null )"
 assert_eq "[SPEC-6] test-author reports the testfiles it owns" '["tests/acc-test.sh"]' "$_t6"
 # Plan no longer reports scope files (#2363): its work items name areas, and the

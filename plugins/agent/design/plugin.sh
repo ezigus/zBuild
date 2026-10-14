@@ -48,12 +48,15 @@ source "$_DESIGN_ROOT/scripts/lib/identity.sh"
 # #963: read-only grammar lib from _ZBUILD_CONTRACT_LIB_DIR (self-host redirect).
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
+# #2366: one outcome from the engine's list, through the one writer.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_DESIGN_ROOT/scripts/lib/stage-result.sh"
 
-# _design_write_result <artifact_dir> <verdict> <disposition> <reason>
-# Writes design-verdict.json with the v2 result contract (result_contract:2).
+# _design_write_outcome <artifact_dir> <outcome> <reason>
+# Writes design-verdict.json (#2366: one outcome from the engine's list).
 # Called on every terminal exit path so the sidecar is always on disk.
-_design_write_result() {
-    local dir="$1" verdict="$2" disposition="$3" reason="$4"
+_design_write_outcome() {
+    local dir="$1" outcome="$2" reason="$3"
     mkdir -p "$dir" 2>/dev/null || true
     # #2172: the design is stamped with WHEN and against WHICH commit it was
     # written, so a later run that inherits it can say what moved since. The
@@ -80,13 +83,13 @@ _design_write_result() {
         _scope="$(jq -Rnc '[inputs | select(length > 0)]' <<< "$_sl" 2>/dev/null || true)"
         [[ -n "$_scope" ]] || _scope="[]"
     fi
-    jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --arg at "$_at" --arg sha "$_sha" \
+    local _data
+    _data="$(jq -nc --arg at "$_at" --arg sha "$_sha" \
         --argjson w "${_wiring:-[]}" --argjson sc "${_scope:-[]}" \
-        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
-          data: ({authored_at: $at, authored_at_commit: $sha, wiring_files: $w}
-                 + (if ($sc | length) > 0 then {scope_files: $sc} else {} end))}' \
-        | atomic_write "$dir/design-verdict.json" 2>/dev/null \
-        || warn "_design_write_result: failed to write design-verdict.json (verdict=$verdict)"
+        '{authored_at: $at, authored_at_commit: $sha, wiring_files: $w}
+         + (if ($sc | length) > 0 then {scope_files: $sc} else {} end)')"
+    stage_result_write "$dir/design-verdict.json" "$outcome" "$reason" "$_data" 2>/dev/null \
+        || warn "_design_write_outcome: failed to write design-verdict.json (outcome=$outcome)"
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
@@ -203,11 +206,11 @@ _design_stage_run_inner() {
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_design_stage_run_inner: plan.json not found at $plan_json_path"
-        _design_write_result "$artifact_dir" "error" "broken" "missing_plan_json"
+        _design_write_outcome "$artifact_dir" "broken" "missing_plan_json"
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "no plan.json to design against" \
             "The plan stage produced nothing this stage could read; no design was authored."
-        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_plan_json"
+        emit_event "plugin.result" "outcome=broken" "plugin=design" "reason=missing_plan_json"
         return 1
     fi
 
@@ -484,7 +487,7 @@ DESIGN_LIMITS
             stage_summary_write "$artifact_dir/design-summary.md" "design" "incomplete" \
                 "the model call timed out after writing a design" \
                 "The design is kept as written; spec-coverage and design-gate judge whether it is complete."
-            emit_event "plugin.result" "verdict=incomplete" "plugin=design" "reason=router_timeout" "rc=$router_rc"
+            emit_event "plugin.result" "outcome=timed_out" "plugin=design" "reason=router_timeout" "rc=$router_rc"
             emit_event "design.timeout.design_kept" "plugin=design" "reason=router_timeout"
             # The kept design is what the operator needs to see in the deferred
             # output banner (same close as the happy path below).
@@ -499,19 +502,18 @@ DESIGN_LIMITS
                 stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
                     "a stale design could not be removed" \
                     "An earlier pass's design.md is still on disk and would be judged as this one's."
-                emit_event "plugin.result" "verdict=error" "plugin=design" "reason=stale_design_not_removed" "rc=$router_rc"
-                _design_write_result "$artifact_dir" "error" "broken" "stale_design_not_removed"
+                emit_event "plugin.result" "outcome=broken" "plugin=design" "reason=stale_design_not_removed" "rc=$router_rc"
+                _design_write_outcome "$artifact_dir" "broken" "stale_design_not_removed"
                 return 1
             fi
             stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
                 "the model call timed out before a design was returned" \
                 "No design.md was authored. This is an infrastructure fault, not a design one."
-            emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_timeout" "rc=$router_rc"
+            emit_event "plugin.result" "outcome=timed_out" "plugin=design" "reason=router_timeout" "rc=$router_rc"
             emit_event "design.timeout.no_design" "plugin=design" "reason=router_timeout"
         fi
-        printf '{"result_contract":2,"verdict":"incomplete","disposition":"timed_out","reason":"router_timeout"}\n' \
-            > "$design_verdict_sidecar" 2>/dev/null \
-            || warn "_design_stage_run_inner: failed to write incomplete sidecar $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
+        stage_result_write "$design_verdict_sidecar" timed_out "router_timeout" 2>/dev/null \
+            || warn "_design_stage_run_inner: failed to write the timed-out result $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
         return 0
     fi
 
@@ -520,11 +522,11 @@ DESIGN_LIMITS
     # instead of falling through to "no design" and a gate-driven re-iteration.
     if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_rate_limited" ]]; then
         error "_design_stage_run_inner: router loop rate-limited (${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited})"
-        _design_write_result "$artifact_dir" "incomplete" "rate_limited" "router_rate_limited"
+        _design_write_outcome "$artifact_dir" "rate_limited" "router_rate_limited"
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "the model call was rate-limited (${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited})" \
             "No design.md was authored. The run ends here and resumes when the limit resets."
-        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_rate_limited" "rc=$router_rc"
+        emit_event "plugin.result" "outcome=rate_limited" "plugin=design" "reason=router_rate_limited" "rc=$router_rc"
         return 1
     fi
 
@@ -536,11 +538,11 @@ DESIGN_LIMITS
         local _rc_verdict _rc_reason
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
-        _design_write_result "$artifact_dir" "error" "$(router_reason_disposition "$_rc_reason")" "$_rc_reason"
+        _design_write_outcome "$artifact_dir" "$(router_reason_disposition "$_rc_reason")" "$_rc_reason"
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "the model call failed ($_rc_reason)" \
             "No usable design.md was returned."
-        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=$_rc_reason" "rc=$router_rc"
+        emit_event "plugin.result" "outcome=$(router_reason_disposition "$_rc_reason")" "plugin=design" "reason=$_rc_reason" "rc=$router_rc"
         return 1
     fi
 
@@ -557,7 +559,7 @@ DESIGN_LIMITS
         if [[ -f "$_stray" ]]; then
             if git -C "$repo_root" ls-files --error-unmatch "design.md" >/dev/null 2>&1; then
                 error "_design_stage_run_inner: tracked design.md at repo root; refusing to relocate (operator-owned)"
-                _design_write_result "$artifact_dir" "error" "unusable" "stray_conflict"
+                _design_write_outcome "$artifact_dir" "unusable" "stray_conflict"
                 stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
                     "design.md was written to the repo root, where a tracked file already lives" \
                     "The model ignored the destination path in the prompt. The root design.md is git-tracked and operator-owned, so it is left untouched and no design artifact was produced."
@@ -575,11 +577,11 @@ DESIGN_LIMITS
     # Assert the scope block is present in design.md.
     if [[ ! -f "$output_design_md" ]]; then
         error "_design_stage_run_inner: design.md not produced at $output_design_md"
-        _design_write_result "$artifact_dir" "error" "unusable" "missing_design_md"
+        _design_write_outcome "$artifact_dir" "unusable" "missing_design_md"
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "no design.md was produced" \
             "The model returned without writing the artifact this stage exists to produce."
-        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_design_md"
+        emit_event "plugin.result" "outcome=unusable" "plugin=design" "reason=missing_design_md"
         return 1
     fi
 
@@ -593,8 +595,8 @@ DESIGN_LIMITS
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "design.md has no fenced scope block" \
             "Without a scope block the build stage has no declared boundary to work inside."
-        _design_write_result "$artifact_dir" "error" "unusable" "missing_scope_block"
-        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_scope_block"
+        _design_write_outcome "$artifact_dir" "unusable" "missing_scope_block"
+        emit_event "plugin.result" "outcome=unusable" "plugin=design" "reason=missing_scope_block"
         # Failure path: don't override the banner output; let the deferred
         # close (if any) flush claude's stdout summary so the operator sees
         # the LLM's diagnostic message rather than a missing-file artifact.
@@ -610,8 +612,8 @@ DESIGN_LIMITS
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "design.md has no fenced acceptance block" \
             "Without acceptance SPECs there is nothing for the acceptance gate to verify."
-        _design_write_result "$artifact_dir" "error" "unusable" "missing_acceptance_block"
-        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_acceptance_block"
+        _design_write_outcome "$artifact_dir" "unusable" "missing_acceptance_block"
+        emit_event "plugin.result" "outcome=unusable" "plugin=design" "reason=missing_acceptance_block"
         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
             _route_loop_close_final_banner || true
         fi
@@ -632,7 +634,7 @@ DESIGN_LIMITS
 
     # v2 result contract (#1834): write sidecar BEFORE atomic_write of design.md
     # so the sidecar is always on disk when rc=0 (SPEC-1).
-    _design_write_result "$artifact_dir" "pass" "complete" "design_produced"
+    _design_write_outcome "$artifact_dir" "pass" "design_produced"
 
     # Atomically finalize design.md (#507 contract).
     atomic_write "$output_design_md" < "$output_design_md"

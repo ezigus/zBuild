@@ -41,8 +41,9 @@ source "$SCRIPT_DIR/intake-test-lib.sh"
 # The gh mock is only for the issue tests; intake here runs goal-first.
 rm -f "$TEST_TEMP_DIR/bin/gh"
 
-# _disp — the disposition intake last wrote; _reason — its reason.
-_disp()   { jq -r '.disposition // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true; }
+# _disp — the outcome intake last wrote (#2366: contract 3 carries one word);
+# _reason — its reason.
+_disp()   { jq -r '.outcome // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true; }
 _reason() { jq -r '.reason // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true; }
 # _run_intake — runs intake with a clean result file; prints rc.
 _run_intake() {
@@ -58,17 +59,15 @@ _run_intake() {
 
 _mf="$PLUGIN_DIR/manifest.yaml"
 
-# ─── SPEC-4 [change]: manifest declares provides.result_contract: 2 ─────────
+# ─── SPEC-4 [change]: manifest declares provides.result_contract: 3 (#2366) ─
 _s4_contract="$(yaml_get "$_mf" "provides.result_contract" 2>/dev/null || true)"
-assert_eq "[#1837/SPEC-4] manifest provides.result_contract == 2" "2" "$_s4_contract"
+assert_eq "[#1837/SPEC-4] manifest provides.result_contract == 3" "3" "$_s4_contract"
 
-# ─── SPEC-5 [change]: manifest config.valid_verdicts: [pass, fail] ───────────
-_s5_vv_section="$(grep -A6 'valid_verdicts' "$_mf" 2>/dev/null || true)"
-if grep -q 'pass' <<< "$_s5_vv_section" && grep -q 'fail' <<< "$_s5_vv_section"; then
-    assert_pass "[#1837/SPEC-5] manifest config.valid_verdicts declares pass and fail"
+# ─── SPEC-5 [change]: no per-stage verdict list (#2366) ──────────────────────
+if grep -q 'valid_verdicts' "$_mf" 2>/dev/null; then
+    assert_fail "[#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts" "found"
 else
-    assert_fail "[#1837/SPEC-5] manifest config.valid_verdicts must declare pass and fail" \
-        "${_s5_vv_section:-absent}"
+    assert_pass "[#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts"
 fi
 
 # ─── SPEC-6 [change]: intake-result.json primary:true IN outputs; scope_manifest not ─
@@ -220,23 +219,18 @@ intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
 set -e
 _s3_file="$ARTIFACT_DIR/intake-result.json"
 if [[ -f "$_s3_file" ]]; then
-    assert_eq "[#1837/SPEC-3] result_contract == 2" \
-        "2" "$(jq -r '.result_contract // empty' "$_s3_file" 2>/dev/null || true)"
-    _s3_verdict="$(jq -r '.verdict // empty' "$_s3_file" 2>/dev/null || true)"
-    if [[ "$_s3_verdict" == "pass" || "$_s3_verdict" == "fail" ]]; then
-        assert_pass "[#1837/SPEC-3] verdict is in {pass, fail}"
-    else
-        assert_fail "[#1837/SPEC-3] verdict must be pass or fail" "got: ${_s3_verdict:-empty}"
-    fi
-    _s3_disp="$(jq -r '.disposition // empty' "$_s3_file" 2>/dev/null || true)"
-    # The engine's closed set, not a hand-kept copy that drifts (review: the
-    # copy here had lost rate_limited).
+    assert_eq "[#1837/SPEC-3] result_contract == 3" \
+        "3" "$(jq -r '.result_contract // empty' "$_s3_file" 2>/dev/null || true)"
+    assert_eq "[#1837/SPEC-3] one outcome: no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s3_file" 2>/dev/null || true)"
+    _s3_disp="$(jq -r '.outcome // empty' "$_s3_file" 2>/dev/null || true)"
+    # The engine's closed list, not a hand-kept copy that drifts.
     # shellcheck source=../../../../core/pipeline/disposition.sh
     source "$REPO_ROOT/core/pipeline/disposition.sh"
-    if disposition_is_valid "$_s3_disp"; then
-        assert_pass "[#1837/SPEC-3] disposition is in engine vocabulary"
+    if outcome_is_valid "$_s3_disp"; then
+        assert_pass "[#1837/SPEC-3] outcome is in the engine's list"
     else
-        assert_fail "[#1837/SPEC-3] disposition must be in engine vocabulary" \
+        assert_fail "[#1837/SPEC-3] outcome must be in the engine's list" \
             "got: ${_s3_disp:-empty}"
     fi
     _s3_reason="$(jq -r '.reason // ""' "$_s3_file" 2>/dev/null || true)"
@@ -474,19 +468,15 @@ _err8="$( unset ZBUILD_ARTIFACT_DIR; ZBUILD_GOAL="no artifact dir check" ZBUILD_
 assert_file_not_exists "[D8] no result is written beside the state file" "$STATE_DIR/artifacts/intake-result.json"
 assert_contains "[D8] ...and intake says the engine gave it no artifact dir" "$_err8" "ZBUILD_ARTIFACT_DIR"
 
-print_test_section "D9: the disposition-word lint sees intake"
-_L="$TEST_TEMP_DIR/lint-plugins/agent/intake"; mkdir -p "$_L"
-cp "$PLUGIN_DIR/plugin.sh" "$_L/plugin.sh"
-_lint9="$(bash "$REPO_ROOT/scripts/lib/lint-disposition-words.sh" "$TEST_TEMP_DIR/lint-plugins" 2>&1 || true)"
-_n9="$(grep -oE '[0-9]+ literal' <<< "$_lint9" | grep -oE '[0-9]+' || true)"
-assert_gt "[D9] the lint reads intake's literal dispositions (found ${_n9:-0})" "${_n9:-0}" "4"
+# D9 retired (#2366): intake writes one outcome through stage_result_write,
+# which refuses a word off the engine's list when the result is written.
 
 print_test_section "D10: a signal after the result is written"
 _d10="$(
     ZBUILD_GOAL="late signal check" ZBUILD_ISSUE=0 _intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1
     _intake_on_signal "$STAGE_SIGNAL_DISPOSITION" "$STAGE_SIGNAL_REASON" >/dev/null 2>&1
 )" || true
-assert_eq "[D10] the pass intake wrote is still the result" "complete" "$(_disp)"
+assert_eq "[D10] the pass intake wrote is still the result" "pass" "$(_disp)"
 
 cleanup_test_env
 print_test_results

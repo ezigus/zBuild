@@ -200,13 +200,23 @@ _ag_fail_load() {
     failures_json="$(printf 'gate_load_failed:%s\n' $problems | jq -R . | jq -sc .)"
     reason="$(_ag_build_reason "gate_load_failed:${problems// /, }")"
     fnd="$(printf '%s\n' "${reason#the acceptance check failed — }" | stage_findings_json)"
-    jq -cn --arg r "$reason" --argjson f "$failures_json" --argjson fnd "${fnd:-[]}" \
-        '{result_contract:2,verdict:"fail",disposition:"broken",severity:"terminal",reason:$r,failures:$f,data:{findings:$fnd}}' \
-        | atomic_write "$result_file"
+    _ag_write_result "$result_file" broken "$reason" \
+        "$(jq -cn --argjson f "$failures_json" --argjson fnd "${fnd:-[]}" \
+            '{severity:"terminal",failures:$f,data:{findings:$fnd}}')"
     printf 'verdict=fail\nreason=%s\n' "$reason" \
         | atomic_write "$(dirname "$result_file")/acceptance-summary.txt"
     eb_emit_event "acceptance.gate.load_failed" "stage=acceptance-gate" "missing=$problems"
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
+}
+
+# _ag_write_result <result_file> <outcome> <reason> <fields-json> — the gate's
+# result (#2366, contract 3): the gate's own top-level fields (severity,
+# failures, precondition, data) with the one outcome added by the shared writer.
+_ag_write_result() {
+    local result_file="$1" outcome="$2" reason="$3" fields="${4:-}"
+    [[ -n "$fields" ]] || fields='{}'
+    printf '%s\n' "$fields" | atomic_write "$result_file" \
+        && stage_result_add "$result_file" "$outcome" "$reason"
 }
 
 # _ag_noop_precondition_unmet <result_file> <precondition_id> — write the no-op
@@ -217,8 +227,8 @@ _ag_fail_load() {
 # compose into repos that do not use SPEC.
 _ag_noop_precondition_unmet() {
     local result_file="$1" pc="$2"
-    printf '{"result_contract":2,"verdict":"pass","reason":"precondition_unmet","precondition":"%s","disposition":"complete","severity":"none","failures":[]}\n' \
-        "$pc" | atomic_write "$result_file"
+    _ag_write_result "$result_file" pass "precondition_unmet" \
+        "$(jq -cn --arg pc "$pc" '{precondition:$pc,severity:"none",failures:[]}')"
     local _summary_dir; _summary_dir="$(dirname "$result_file")"
     printf 'verdict=pass\nreason=precondition_unmet\nprecondition=%s\n' "$pc" \
         | atomic_write "${_summary_dir}/acceptance-summary.txt"

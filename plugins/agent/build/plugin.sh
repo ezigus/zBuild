@@ -51,6 +51,9 @@ source "$_BUILD_ROOT/scripts/lib/test-output-sanitize.sh"
 # ADR-050 (#1581): unified prior-work seam — read a prior run's build-summary.json.
 # shellcheck source=../../../scripts/lib/prior-output-reader.sh
 source "$_BUILD_ROOT/scripts/lib/prior-output-reader.sh"
+# #2366: one outcome from the engine's list, through the one writer.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_BUILD_ROOT/scripts/lib/stage-result.sh"
 
 # ─── lib modules (decomposed from this file per #1533) ───────────────────────
 # shellcheck source=lib/context.sh
@@ -80,9 +83,7 @@ build_stage_run() {
         # no state dir to derive the artifact dir from, so this is the one path
         # that depends on the engine having exported ZBUILD_ARTIFACT_DIR.
         if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
-            jq -n '{"schema_version":4,"result_contract":2,"verdict":"incomplete",
-                    "disposition":"broken","reason":"missing_state_file"}' \
-                | atomic_write "$ZBUILD_ARTIFACT_DIR/build-summary.json" 2>/dev/null || true
+            stage_result_write "$ZBUILD_ARTIFACT_DIR/build-summary.json" broken "missing_state_file" 2>/dev/null || true
         fi
         return 1
     fi
@@ -140,9 +141,7 @@ _build_stage_run_inner() {
         # nowhere to write it, and inventing a path would be worse.
         if [[ -n "$output_summary_json" ]]; then
             mkdir -p "$(dirname "$output_summary_json")" 2>/dev/null || true
-            jq -n '{"schema_version":4,"result_contract":2,"verdict":"incomplete",
-                    "disposition":"broken","reason":"missing_stage_inputs"}' \
-                | atomic_write "$output_summary_json" 2>/dev/null || true
+            stage_result_write "$output_summary_json" broken "missing_stage_inputs" 2>/dev/null || true
         fi
         return 1
     fi
@@ -154,11 +153,9 @@ _build_stage_run_inner() {
         stage_summary_write "$artifact_dir/build-summary.md" "build" "error" \
             "no plan.json to build from" \
             "The plan stage produced nothing to implement; no code was written."
-        emit_event "plugin.result" "verdict=error" "plugin=build" "reason=missing_plan_json"
-        # ADR-054 §4b: rc∈{0,1}; write a v2 result so the engine can classify disposition.
-        jq -n '{"schema_version":4,"result_contract":2,"verdict":"incomplete",
-                "disposition":"broken","reason":"missing_plan_json"}' \
-            | atomic_write "$output_summary_json" 2>/dev/null || true
+        emit_event "plugin.result" "outcome=broken" "plugin=build" "reason=missing_plan_json"
+        # ADR-054 §4b: rc∈{0,1}; a result on this exit path too.
+        stage_result_write "$output_summary_json" broken "missing_plan_json" 2>/dev/null || true
         return 1
     fi
 
@@ -293,10 +290,10 @@ _build_stage_run_inner() {
             # interrupted; it carries the round so the next pass of the same round
             # continues the count. Widening here would claim stats for a pass that
             # did not finish.
-            {"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
-              "disposition":"interrupted","reason":"sigint","iterations":$iterations}
+            {"schema_version":$schema_version,"iterations":$iterations}
              + (if $round != null then {passes: $round.passes, round: $round} else {} end)' \
-            | atomic_write "$output_summary_json" 2>/dev/null || true
+            | atomic_write "$output_summary_json" 2>/dev/null \
+            && stage_result_add "$output_summary_json" interrupted "sigint" 2>/dev/null || true
         # Best-effort: clear `git add -N` intent-to-add entries so a downstream
         # `git diff HEAD` after the abort sees a clean index.
         git -C "$repo_root" reset -q 2>/dev/null || true

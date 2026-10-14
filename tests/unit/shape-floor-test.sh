@@ -242,7 +242,7 @@ set -e
 _sf_ins_result="$_sf_art_ins/shape-floor-result.json"
 _sf_ins_rt="absent"; _sf_ins_verdict=""
 if [[ -f "$_sf_ins_result" ]]; then
-    _sf_ins_verdict="$(jq -r '.verdict // empty' "$_sf_ins_result" 2>/dev/null)"
+    _sf_ins_verdict="$(jq -r '.outcome // empty' "$_sf_ins_result" 2>/dev/null)"
     _sf_ins_rt="$(jq -r 'if has("route_target") then .route_target else "absent" end' \
         "$_sf_ins_result" 2>/dev/null)"
 fi

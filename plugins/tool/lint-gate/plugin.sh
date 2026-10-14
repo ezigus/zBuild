@@ -22,6 +22,9 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _LG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -61,40 +64,39 @@ lint_gate_run() {
         status="$(jq -r '(.data.lint.status // .lint.status) // empty' "$results_json" 2>/dev/null || echo)"
     fi
 
-    local verdict detail=""
+    # #2366: one outcome — nothing to check is a pass, its reason says so.
+    local outcome detail=""
     case "$status" in
         fail)
-            verdict="fail"
+            outcome="fail"
             detail="lint failed"
             _lg_emit "lint_gate.fail" "detail=$detail"
             ;;
         pass)
-            verdict="pass"
+            outcome="pass"
             detail="lint passed"
             _lg_emit "lint_gate.pass"
             ;;
         skipped)
-            verdict="skip"
+            outcome="pass"
             detail="lint skipped"
             _lg_emit "lint_gate.skip"
             ;;
         *)
-            verdict="skip"
+            outcome="pass"
             detail="no lint block in test-results.json"
             _lg_emit "lint_gate.skip"
             ;;
     esac
 
-    jq -n --arg v "$verdict" --arg s "$status" --arg d "$detail" \
-        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$d,"status":$s,"detail":$d}' \
-        | atomic_write "$result_path"
+    stage_result_write "$result_path" "$outcome" "$detail" "$(jq -nc --arg s "$status" '{status:$s}')"
     # #1988: publish what only this gate knows. Its detail used to reach a
     # prompt only through the aggregator's rendering; it is now a declared
     # summary output (#1976), and cleared on a non-fail so a stale file from a
     # previous iteration never renders as a current finding.
-    stage_summary_write "$artifacts_dir/lint-detail.md" "lint" "$verdict" "$detail"
+    stage_summary_write "$artifacts_dir/lint-detail.md" "lint" "$outcome" "$detail"
 
-    _lg_emit "plugin.result" "plugin=lint-gate" "verdict=$verdict"
+    _lg_emit "plugin.result" "plugin=lint-gate" "verdict=$outcome"
     return 0
 }
 

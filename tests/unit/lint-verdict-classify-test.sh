@@ -303,6 +303,22 @@ else
         "'blocked' is absent from $ADR019 — add a row to the verdict table (warn class)"
 fi
 
+# ─── SPEC-30 (#2366): a contract-3 stage declares no verdict words ───────────
+# Contract 3 carries one outcome from the engine's closed list; a manifest that
+# declares `provides.result_contract: 3` has no valid_verdicts, and declaring
+# one is refused — a per-stage word list is what contract 3 removes.
+print_test_section "30. contract 3: no valid_verdicts, and one declared is refused"
+R30="$TEST_TEMP_DIR/r30"
+_mk_manifest "$R30/v3" primary NONE
+printf 'provides:\n  result_contract: 3\n' >> "$R30/v3/manifest.yaml"
+_run_lint "$R30"
+assert_eq "[SPEC-30] a contract-3 manifest without valid_verdicts passes" "0" "$LINT_RC"
+_mk_manifest "$R30/v3list" primary pass fail
+printf 'provides:\n  result_contract: 3\n' >> "$R30/v3list/manifest.yaml"
+_run_lint "$R30"
+assert_eq "[SPEC-30] a contract-3 manifest that declares valid_verdicts is refused" "1" "$LINT_RC"
+assert_contains "[SPEC-30] ...and the failure names it" "$LINT_OUT" "v3list/manifest.yaml"
+
 # ─── Wiring: the lint is reachable from both entrypoints (#1682) ────────────
 print_test_section "9. wiring — npm run lint and the CI Lint job"
 assert_contains "[wiring] package.json lint chain invokes the checker" \

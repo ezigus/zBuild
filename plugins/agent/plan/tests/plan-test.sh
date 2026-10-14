@@ -72,7 +72,7 @@ _run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "non-string areas[] returns rc=1" "1" "$rc"
-err_reason="$(jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+err_reason="$(jq -r 'select(.type=="plugin.result" and (.data.outcome // "pass") != "pass") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
 assert_eq "malformed plan error reason=schema_violation (#476)" "schema_violation" "$err_reason"
 
 # ─── Test 13b: the model writes nothing — no_plan_written ───────────────────
@@ -84,7 +84,7 @@ rc=$?
 set -e
 assert_eq "no plan written returns rc=1" "1" "$rc"
 assert_eq "no plan written: reason=no_plan_written" "no_plan_written" \
-    "$(jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+    "$(jq -r 'select(.type=="plugin.result" and (.data.outcome // "pass") != "pass") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
 
 CANNED_PLAN='{"schema_version":1,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","areas":["core/"]}],"open_questions":[]}'
 

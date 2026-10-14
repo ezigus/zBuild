@@ -116,14 +116,14 @@ done
   export ZBUILD_RESTORED_ARTIFACTS_DIR="$_C3R"
   design_gate_run design-gate "$_C3/pipeline-state.json" ) >/dev/null 2>&1 || true
 assert_eq "[C3] design-gate fails the current design despite a restored pass" "fail" \
-    "$(jq -r '.verdict // empty' "$_C3/artifacts/design-gate-result.json" 2>/dev/null)"
+    "$(jq -r '.outcome // .verdict // empty' "$_C3/artifacts/design-gate-result.json" 2>/dev/null)"
 ( source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh" >/dev/null 2>&1
   eb_emit_event() { :; }
   unset ZBUILD_CYCLE_ID
   export ZBUILD_RESTORED_ARTIFACTS_DIR="$_C3R"
   gate_aggregator_run gate-aggregator "$_C3/pipeline-state.json" ) >/dev/null 2>&1 || true
 assert_eq "[C3] gate-aggregator fails when this run has no gate results, whatever the prior run said" "fail" \
-    "$(jq -r '.verdict // empty' "$_C3/artifacts/gate-aggregator-result.json" 2>/dev/null)"
+    "$(jq -r '.outcome // empty' "$_C3/artifacts/gate-aggregator-result.json" 2>/dev/null)"
 
 # ─── C5: pr-open reuses the existing PR ─────────────────────────────────────
 print_test_section "C5: pr-open updates an existing PR instead of opening a second"

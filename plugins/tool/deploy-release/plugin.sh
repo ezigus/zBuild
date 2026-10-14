@@ -15,6 +15,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage
 _DR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DR_ROOT/core/event-bus/event-bus.sh"
+# #2366 (ADR-054 §6): the one writer of a contract-3 result.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_DR_ROOT/scripts/lib/stage-result.sh"
 
 # ─── deploy_release_run ──────────────────────────────────────────────────────
 # Args: $1 = stage_id, $2 = state_file
@@ -25,8 +28,8 @@ deploy_release_run() {
         error "deploy_release_run: state_file argument required"
         if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
             mkdir -p "$ZBUILD_ARTIFACT_DIR"
-            atomic_write "$ZBUILD_ARTIFACT_DIR/deploy-result.json" <<< \
-                "$(jq -n '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"state_file argument required"}')"
+            stage_result_write "$ZBUILD_ARTIFACT_DIR/deploy-result.json" broken \
+                "state_file argument required" || true
         fi
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/deploy-release-summary.md}" "deploy-release" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
@@ -57,8 +60,8 @@ deploy_release_run() {
 
     # Dry-run: write sentinel without executing git/gh
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
-        atomic_write "$deploy_result_out" <<< "$(jq -n --arg pr_url "$pr_url" \
-            '{"result_contract":2,"verdict":"deployed","disposition":"complete","reason":"dry run — release simulated, no tag created","data":{"mode":"dry_run","pr_url":$pr_url}}')"
+        stage_result_write "$deploy_result_out" pass "dry run — release simulated, no tag created" \
+            "$(jq -nc --arg pr_url "$pr_url" '{mode:"dry_run",pr_url:$pr_url}')"
         emit_event "deploy.release.dry_run" "plugin=deploy-release"
         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "skip" \
             "dry run — no tag was created and nothing was pushed" \
@@ -75,8 +78,8 @@ deploy_release_run() {
 
     if ! git tag "$tag_name" 2>/dev/null; then
         error "deploy-release: git tag failed for $tag_name"
-        atomic_write "$deploy_result_out" <<< "$(jq -n --arg tag "$tag_name" \
-            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"git tag failed","data":{"tag":$tag}}')"
+        stage_result_write "$deploy_result_out" broken "git tag failed" \
+            "$(jq -nc --arg tag "$tag_name" '{tag:$tag}')"
         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \
             "could not create the release tag $tag_name" \
             "No release was cut. The tag may already exist from an earlier run."
@@ -88,16 +91,16 @@ deploy_release_run() {
         # Roll back the local tag so a retry is not blocked by a stale tag (#757 review).
         git tag -d "$tag_name" 2>/dev/null || true
         # disposition-ok: the git remote (tag push) is not responding
-        atomic_write "$deploy_result_out" <<< "$(jq -n --arg tag "$tag_name" \
-            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":"git push tag failed","data":{"tag":$tag}}')"
+        stage_result_write "$deploy_result_out" unavailable "git push tag failed" \
+            "$(jq -nc --arg tag "$tag_name" '{tag:$tag}')"
         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \
             "could not push the release tag $tag_name to origin" \
             "No release was cut. The local tag was rolled back so a retry is not blocked."
         return 1
     fi
 
-    atomic_write "$deploy_result_out" <<< "$(jq -n --arg tag "$tag_name" --arg pr_url "$pr_url" \
-        '{"result_contract":2,"verdict":"deployed","disposition":"complete","reason":"git tag created and pushed to origin","data":{"tag":$tag,"pr_url":$pr_url}}')"
+    stage_result_write "$deploy_result_out" pass "git tag created and pushed to origin" \
+        "$(jq -nc --arg tag "$tag_name" --arg pr_url "$pr_url" '{tag:$tag,pr_url:$pr_url}')"
     emit_event "deploy.release.complete" "plugin=deploy-release" "tag=$tag_name"
     stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "pass" \
         "cut release tag $tag_name and pushed it to origin" \

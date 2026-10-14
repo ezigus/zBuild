@@ -93,12 +93,12 @@ unset ZBUILD_DRY_RUN
 
 assert_eq "dry-run returns rc=0" "0" "$_s2_rc"
 assert_file_exists "dry-run writes monitor-report.json" "$ARTIFACTS_DIR/monitor-report.json"
-assert_eq "dry-run: result_contract is 2" "2" \
+assert_eq "dry-run: result_contract is 3 (#2366)" "3" \
     "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "dry-run: disposition is complete" "complete" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "dry-run: reason key is present and empty" "" \
-    "$(jq -r 'if has("reason") then .reason else "MISSING_KEY" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'MISSING_KEY')"
+assert_eq "dry-run: outcome is pass" "pass" \
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+assert_eq "dry-run: the result explains itself (a reason is required)" "MISSING_OR_EMPTY:no" \
+    "MISSING_OR_EMPTY:$(jq -r 'if (.reason // "") == "" then "yes" else "no" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo yes)"
 
 # ─── SPEC-3: live pass path — result_contract:2, disposition:complete, verdict:pass ─
 print_test_section "live pass-path monitor-report.json carries result_contract:2, disposition:complete, verdict:pass"
@@ -113,14 +113,14 @@ set -e
 
 assert_eq "live pass path returns rc=0" "0" "$_s3_rc"
 assert_file_exists "live pass path writes monitor-report.json" "$ARTIFACTS_DIR/monitor-report.json"
-assert_eq "live pass path: result_contract is 2" "2" \
+assert_eq "live pass path: result_contract is 3 (#2366)" "3" \
     "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "live pass path: disposition is complete" "complete" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "live pass path: verdict is still pass (unchanged)" "pass" \
-    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "live pass path: reason key is present and empty" "" \
-    "$(jq -r 'if has("reason") then .reason else "MISSING_KEY" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'MISSING_KEY')"
+assert_eq "live pass path: no verdict or disposition field (one outcome)" "false" \
+    "$(jq -r 'has("verdict") or has("disposition")' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+assert_eq "live pass path: outcome is pass" "pass" \
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+assert_eq "live pass path: the result explains itself (a reason is required)" "MISSING_OR_EMPTY:no" \
+    "MISSING_OR_EMPTY:$(jq -r 'if (.reason // "") == "" then "yes" else "no" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo yes)"
 
 # ─── SPEC-25: carried-over health-assessment fields are byte-identical to the ─
 # pre-migration v1-shaped baseline, contract-v2-only fields excluded ──────────
@@ -131,7 +131,7 @@ _s25_baseline="$PLUGIN_DIR/tests/fixtures/monitor-report-v1-baseline.json"
 # (schema_version/verdict/summary/checks, no result_contract/disposition/reason,
 # no data wrapper) so the comparison below is a real value diff, not a
 # coincidental match.
-_s25_live="$(jq -c '{schema_version, verdict, summary: .data.summary, checks: .data.checks}' \
+_s25_live="$(jq -c '{schema_version, verdict: .outcome, summary: .data.summary, checks: .data.checks}' \
     "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 _s25_expected="$(jq -c '{schema_version, verdict, summary, checks}' "$_s25_baseline" 2>/dev/null || true)"
 assert_eq "[#1847/SPEC-25] live pass-path health-assessment fields match the v1-shaped baseline byte-for-byte" \
@@ -152,12 +152,12 @@ set -e
 
 assert_file_exists "live degraded-verdict path writes monitor-report.json" \
     "$ARTIFACTS_DIR/monitor-report.json"
-assert_eq "live degraded-verdict path: verdict is degraded" "degraded" \
-    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "live degraded-verdict path: disposition is still complete" "complete" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "live degraded-verdict path: reason key is present and empty" "" \
-    "$(jq -r 'if has("reason") then .reason else "MISSING_KEY" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'MISSING_KEY')"
+assert_eq "live degraded-verdict path: outcome is fail" "fail" \
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+assert_eq "live degraded-verdict path: the model's word is kept as detail" "degraded" \
+    "$(jq -r '.data.judgement // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+assert_contains "live degraded-verdict path: the reason says what was assessed" \
+    "$(jq -r '.reason // "MISSING"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'MISSING')" "probe failed"
 
 # ─── SPEC-4: route_to_model failure path — disposition via router_reason_disposition ─
 print_test_section "route_to_model failure path carries a disposition derived via router_reason_disposition"
@@ -171,7 +171,7 @@ _s4_rc=$?
 set -e
 
 assert_file_exists "router-failure path writes monitor-report.json" "$ARTIFACTS_DIR/monitor-report.json"
-_s4_disp="$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+_s4_disp="$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 # rc=1 with no rate-limit/timeout signal classifies via _router_rc_classify as
 # router_rc_nonzero, which router_reason_disposition maps to "unavailable" — the
 # generic non-empty disposition case (not a bare verdict:degraded with no field).
@@ -199,8 +199,8 @@ monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
 set -e
 
 assert_file_exists "unparseable-reply path writes monitor-report.json" "$ARTIFACTS_DIR/monitor-report.json"
-assert_eq "unparseable-reply path: disposition is unusable" "unusable" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+assert_eq "unparseable-reply path: outcome is unusable" "unusable" \
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 
 # ─── SPEC-6/SPEC-21: SIGTERM/SIGINT during route_to_model writes disposition:interrupted, ─
 # reason:signal_interrupt, and monitor_stage_run returns rc=1 (NOT the raw signal rc=130) ─
@@ -254,8 +254,8 @@ assert_eq "SIGTERM during route_to_model: monitor_stage_run returns rc=1 (not th
     "1" "$_s6_rc"
 assert_file_exists "monitor-report.json written on interrupt" \
     "$ARTIFACTS_DIR/monitor-report.json"
-assert_eq "disposition is interrupted" "interrupted" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+assert_eq "outcome is interrupted" "interrupted" \
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 assert_eq "reason is signal_interrupt" "signal_interrupt" \
     "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 
@@ -382,7 +382,9 @@ rm -f "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt"
 print_test_section "[#1847/SPEC-24] a turn-budget hit (rc=1 + the router's budget marker) is classified through router_reason_disposition"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
-_S24_SENTINEL="SENTINEL_ROUTER_REASON_DISPOSITION_CALLED_4e21"
+# #2366: on the outcome list (the writer refuses anything else) but never the
+# real mapping for this reason, so it can only come from the stub.
+_S24_SENTINEL="misconfigured"
 _s24_orig_disposition="$(declare -f router_reason_disposition)"
 _s24_orig_route="$(declare -f route_to_model)"
 # shellcheck disable=SC2329
@@ -401,7 +403,7 @@ assert_eq "[#1847/SPEC-24] turn-budget path: monitor_stage_run returns rc=1" "1"
 assert_file_exists "[#1847/SPEC-24] monitor-report.json written on the turn-budget path" "$ARTIFACTS_DIR/monitor-report.json"
 assert_eq "[#1847/SPEC-24] turn-budget path: disposition comes from router_reason_disposition (the stubbed sentinel)" \
     "$_S24_SENTINEL" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 assert_eq "[#1847/SPEC-24] turn-budget path: reason is the classifier's router_out_of_turns" \
     "router_out_of_turns" \
     "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
@@ -415,7 +417,8 @@ assert_eq "[#1847/SPEC-24] turn-budget path: reason is the classifier's router_o
 print_test_section "[#1847/SPEC-23] router rc=124 (wall-clock timeout) is classified through the shared _router_rc_classify -> router_reason_disposition chokepoint"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
-_S23_SENTINEL="SENTINEL_ROUTER_TIMEOUT_9f3c"
+# #2366: on the outcome list, and never the real mapping for router_timeout.
+_S23_SENTINEL="throttled"
 _s23_orig_disposition="$(declare -f router_reason_disposition)"
 # shellcheck disable=SC2329
 router_reason_disposition() {
@@ -438,7 +441,7 @@ assert_eq "[#1847/SPEC-23] rc=124 (wall-clock timeout) path: monitor_stage_run r
 assert_file_exists "[#1847/SPEC-23] monitor-report.json written on rc=124 path" "$ARTIFACTS_DIR/monitor-report.json"
 assert_eq "[#1847/SPEC-23] rc=124 path: disposition equals the router_reason_disposition sentinel, not a hardcoded timed_out" \
     "$_S23_SENTINEL" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 assert_eq "[#1847/SPEC-23] rc=124 path: reason is router_timeout (from _router_rc_classify's own rc=124 case)" \
     "router_timeout" "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 

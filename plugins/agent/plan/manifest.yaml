@@ -21,7 +21,7 @@ requires:
 
 provides:
   role: planner
-  result_contract: 2
+  result_contract: 3
 
 config:
   # #1879: retry ONCE when the model runs out of turns. Worth taking only because
@@ -46,9 +46,6 @@ config:
     retry_on_exhaustion: 1
     timeout_s: 300
     max_turns: 45
-  valid_verdicts:
-    - pass
-    - error
   tier_default: T2
 
 outputs:

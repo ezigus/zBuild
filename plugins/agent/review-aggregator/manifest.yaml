@@ -53,7 +53,7 @@ requires:
   plugins: []
 
 provides:
-  result_contract: 2
+  result_contract: 3
   role: review_aggregator
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
@@ -72,13 +72,10 @@ provides:
 # (ADR-038). The proximity window is deliberately NOT declared in `config:` — the
 # plugin reads the env directly, so declaring it here would be
 # advertised-but-ignored (PR #1161 review). The `config:` block below exists only
-# for `valid_verdicts`, which the engine DOES read (#1708).
+# for its comment: the stage declares nothing the engine reads here (#2366).
 
 config:
-  # v2 verdicts: complete = aggregated; degraded = no report behind it (no
-  # stage inputs, or stopped by a signal).
-  # ADR-055 §4 — must be non-empty for a v2-compliant stage (#1708).
-  valid_verdicts: [complete, degraded]
+  # #2366: contract 3 — one outcome from the engine's list, no verdict words.
 
 outputs:
   # FIRST entry — always written; keeps the stage green without opting into the

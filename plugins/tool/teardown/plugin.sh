@@ -17,6 +17,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _ZBUILD_TEARDOWN_DIR="$_ZBUILD_PLUGIN_DIR"
 _ZBUILD_TEARDOWN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
@@ -236,30 +239,20 @@ teardown_run() {
 
     local _verdict _reason
     if [[ $_any_failed -eq 0 ]]; then
-        _verdict="complete"
+        _verdict="pass"
         _reason="all cleanup hooks completed without error"
     else
-        _verdict="degraded"
+        _verdict="fail"
         _reason="one or more cleanup hooks returned non-zero; see stage.cleanup.failed events"
     fi
 
-    # Write the v2 result file (ADR-054 §5, ADR-055). Guarded: the loop above
-    # re-enables errexit, so an unguarded pipe would abort teardown_run here on
-    # a failed write — before teardown.complete and before the `return 0` that
-    # ADR-054 §4 requires. The runner's EXIT-trap call site hides that today
-    # (runner.sh backgrounds the hook inside `|| true`), which only converts it
-    # into a silent loss of both the result and the completion event; dispatched
-    # as an ordinary stage (#1831) the rc would escape. Failure rides an event,
-    # like every other teardown failure.
-    if ! printf '%s\n' "{
-  \"result_contract\": 2,
-  \"verdict\": \"$_verdict\",
-  \"disposition\": \"complete\",
-  \"reason\": \"$_reason\",
-  \"data\": {
-    \"targets\": $_targets_json
-  }
-}" | atomic_write "$_result_file"; then
+    # Write the contract-3 result (ADR-054 §6, #2366). Guarded: the loop above
+    # re-enables errexit, so an unguarded write would abort teardown_run here on
+    # a failure — before teardown.complete and before the `return 0` that
+    # ADR-054 §4 requires. Failure rides an event, like every other teardown
+    # failure.
+    if ! stage_result_write "$_result_file" "$_verdict" "$_reason" \
+            "$(jq -nc --argjson t "$_targets_json" '{targets: $t}' 2>/dev/null || printf '{}')"; then
         emit_event "teardown.result.write_failed" \
             "file=$_result_file" "scope=$_scope" 2>/dev/null || true
     fi

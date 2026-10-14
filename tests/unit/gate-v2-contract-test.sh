@@ -2,8 +2,8 @@
 # Tests: gate v2 result contract — result_contract:2, disposition, reason across
 # all seven gate plugins (ADR-054, ADR-055 §9, issue #1848).
 #
-# SPEC-1: every manifest declares result_contract: 2
-# SPEC-2: every gate result JSON carries result_contract:2, disposition:complete, reason
+# SPEC-1: the six gates declare result_contract: 3 (#2366); gate-aggregator 2
+# SPEC-2: every gate result JSON carries its contract, its outcome (no disposition on contract 3) and a reason
 # SPEC-3: shape-floor emits disposition:broken when _sf_shape_floor is undefined
 # SPEC-4: design-gate writes feedback on every verdict (including pass); manifest required:true
 # SPEC-5: coverage/lint/mutation resolve test_results path via ZBUILD_STAGE_INPUTS
@@ -67,11 +67,11 @@ _write_all_ga() {
     done
 }
 
-# ── SPEC-1: all seven manifests declare result_contract: 2 under provides: ────
+# ── SPEC-1: all seven manifests declare result_contract: 3 under provides: (#2366) ─
 for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
-    assert_contains "[SPEC-1] $_plugin manifest declares result_contract: 2" \
-        "$(cat "$_mf")" "result_contract: 2"
+    assert_contains "[SPEC-1] $_plugin manifest declares result_contract: 3" \
+        "$(cat "$_mf")" "result_contract: 3"
 done
 
 # ── SPEC-4 (manifest): design_gate_feedback output must be required:true ──────
@@ -92,8 +92,8 @@ W="$(_mkwork cv-si5)"
 export ZBUILD_STAGE_INPUTS="$_CV_SI"
 set +e; coverage_gate_run "coverage-gate" "$W/state.json" >/dev/null 2>&1; set -e
 unset ZBUILD_STAGE_INPUTS
-assert_json_key "[SPEC-5] coverage-gate reads test_results from ZBUILD_STAGE_INPUTS → verdict=pass" \
-    "$(cat "$W/artifacts/coverage-result.json")" '.verdict' "pass"
+assert_json_key "[SPEC-5] coverage-gate reads test_results from ZBUILD_STAGE_INPUTS → outcome=pass" \
+    "$(cat "$W/artifacts/coverage-result.json")" '.outcome' "pass"
 
 jq -n '{lint:{status:"pass"}}' > "$_SI_DIR/lt.json"
 _LT_SI="$TEST_TEMP_DIR/lt-si.json"
@@ -103,8 +103,8 @@ W="$(_mkwork lt-si5)"
 export ZBUILD_STAGE_INPUTS="$_LT_SI"
 set +e; lint_gate_run "lint-gate" "$W/state.json" >/dev/null 2>&1; set -e
 unset ZBUILD_STAGE_INPUTS
-assert_json_key "[SPEC-5] lint-gate reads test_results from ZBUILD_STAGE_INPUTS → verdict=pass" \
-    "$(cat "$W/artifacts/lint-result.json")" '.verdict' "pass"
+assert_json_key "[SPEC-5] lint-gate reads test_results from ZBUILD_STAGE_INPUTS → outcome=pass" \
+    "$(cat "$W/artifacts/lint-result.json")" '.outcome' "pass"
 
 jq -n '{mutation:{status:"measured",score:"10/10",floor:0}}' > "$_SI_DIR/mg.json"
 _MG_SI="$TEST_TEMP_DIR/mg-si.json"
@@ -114,8 +114,8 @@ W="$(_mkwork mg-si5)"
 export ZBUILD_STAGE_INPUTS="$_MG_SI"
 set +e; mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1; set -e
 unset ZBUILD_STAGE_INPUTS
-assert_json_key "[SPEC-5] mutation-gate reads test_results from ZBUILD_STAGE_INPUTS → verdict=pass" \
-    "$(cat "$W/artifacts/mutation-result.json")" '.verdict' "pass"
+assert_json_key "[SPEC-5] mutation-gate reads test_results from ZBUILD_STAGE_INPUTS → outcome=pass" \
+    "$(cat "$W/artifacts/mutation-result.json")" '.outcome' "pass"
 
 # ── SPEC-6: design-gate resolves design.md via ZBUILD_STAGE_INPUTS ────────────
 _DG_REPO="$TEST_TEMP_DIR/dg-repo"
@@ -133,8 +133,8 @@ W="$(_mkwork dg-si6)"
 export ZBUILD_STAGE_INPUTS="$_DG_SI"
 set +e; design_gate_run "design-gate" "$W/state.json" >/dev/null 2>&1; set -e
 unset ZBUILD_STAGE_INPUTS
-assert_json_key "[SPEC-6] design-gate reads design.md from ZBUILD_STAGE_INPUTS path → verdict=pass" \
-    "$(cat "$W/artifacts/design-gate-result.json")" '.verdict' "pass"
+assert_json_key "[SPEC-6] design-gate reads design.md from ZBUILD_STAGE_INPUTS path → outcome=pass" \
+    "$(cat "$W/artifacts/design-gate-result.json")" '.outcome' "pass"
 
 # ── SPEC-4 (functional): design-gate writes feedback on every verdict ──────────
 W="$(_mkwork dg-pass4)"
@@ -160,22 +160,22 @@ _seed_results "$W" '{coverage:{status:"measured",pct:80,floor:29}}'
 set +e; coverage_gate_run "coverage-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] coverage-gate pass → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/coverage-result.json")"
-assert_json_key "[SPEC-2] coverage-gate pass → result_contract:2" "$_J" '.result_contract' "2"
-assert_json_key "[SPEC-2] coverage-gate pass → disposition:complete" "$_J" '.disposition' "complete"
+assert_json_key "[SPEC-2] coverage-gate pass → result_contract:3" "$_J" '.result_contract' "3"
+assert_json_key "[SPEC-2] coverage-gate pass → no disposition (contract 3)" "$_J" 'has("disposition")' "false"
 assert_contains "[SPEC-2] coverage-gate pass → reason present" "$_J" '"reason"'
 
 W="$(_mkwork cv-v2-fail)"
 _seed_results "$W" '{coverage:{status:"measured",pct:10,floor:29}}'
 set +e; coverage_gate_run "coverage-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] coverage-gate fail → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-2] coverage-gate fail → result_contract:2" \
-    "$(cat "$W/artifacts/coverage-result.json")" '.result_contract' "2"
+assert_json_key "[SPEC-2] coverage-gate fail → result_contract:3" \
+    "$(cat "$W/artifacts/coverage-result.json")" '.result_contract' "3"
 
 W="$(_mkwork cv-v2-skip)"
 set +e; coverage_gate_run "coverage-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] coverage-gate skip → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-2] coverage-gate skip → result_contract:2" \
-    "$(cat "$W/artifacts/coverage-result.json")" '.result_contract' "2"
+assert_json_key "[SPEC-2] coverage-gate skip → result_contract:3" \
+    "$(cat "$W/artifacts/coverage-result.json")" '.result_contract' "3"
 
 # lint-gate: pass / fail / skip
 W="$(_mkwork lt-v2-pass)"
@@ -183,8 +183,8 @@ _seed_results "$W" '{lint:{status:"pass"}}'
 set +e; lint_gate_run "lint-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] lint-gate pass → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/lint-result.json")"
-assert_json_key "[SPEC-2] lint-gate pass → result_contract:2" "$_J" '.result_contract' "2"
-assert_json_key "[SPEC-2] lint-gate pass → disposition:complete" "$_J" '.disposition' "complete"
+assert_json_key "[SPEC-2] lint-gate pass → result_contract:3" "$_J" '.result_contract' "3"
+assert_json_key "[SPEC-2] lint-gate pass → no disposition (contract 3)" "$_J" 'has("disposition")' "false"
 assert_contains "[SPEC-2] lint-gate pass → reason present" "$_J" '"reason"'
 assert_json_key "[SPEC-2] lint-gate pass → reason value non-empty" "$_J" '.reason' "lint passed"
 
@@ -192,14 +192,14 @@ W="$(_mkwork lt-v2-fail)"
 _seed_results "$W" '{lint:{status:"fail"}}'
 set +e; lint_gate_run "lint-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] lint-gate fail → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-2] lint-gate fail → result_contract:2" \
-    "$(cat "$W/artifacts/lint-result.json")" '.result_contract' "2"
+assert_json_key "[SPEC-2] lint-gate fail → result_contract:3" \
+    "$(cat "$W/artifacts/lint-result.json")" '.result_contract' "3"
 
 W="$(_mkwork lt-v2-skip)"
 set +e; lint_gate_run "lint-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] lint-gate skip → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-2] lint-gate skip → result_contract:2" \
-    "$(cat "$W/artifacts/lint-result.json")" '.result_contract' "2"
+assert_json_key "[SPEC-2] lint-gate skip → result_contract:3" \
+    "$(cat "$W/artifacts/lint-result.json")" '.result_contract' "3"
 
 # mutation-gate: pass / fail / skip
 W="$(_mkwork mg-v2-pass)"
@@ -207,22 +207,22 @@ _seed_results "$W" '{mutation:{status:"measured",score:"10/10",floor:0}}'
 set +e; mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] mutation-gate pass → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/mutation-result.json")"
-assert_json_key "[SPEC-2] mutation-gate pass → result_contract:2" "$_J" '.result_contract' "2"
-assert_json_key "[SPEC-2] mutation-gate pass → disposition:complete" "$_J" '.disposition' "complete"
+assert_json_key "[SPEC-2] mutation-gate pass → result_contract:3" "$_J" '.result_contract' "3"
+assert_json_key "[SPEC-2] mutation-gate pass → no disposition (contract 3)" "$_J" 'has("disposition")' "false"
 assert_contains "[SPEC-2] mutation-gate pass → reason present" "$_J" '"reason"'
 
 W="$(_mkwork mg-v2-fail)"
 _seed_results "$W" '{mutation:{status:"measured",score:"5/22",floor:15}}'
 set +e; mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] mutation-gate fail → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-2] mutation-gate fail → result_contract:2" \
-    "$(cat "$W/artifacts/mutation-result.json")" '.result_contract' "2"
+assert_json_key "[SPEC-2] mutation-gate fail → result_contract:3" \
+    "$(cat "$W/artifacts/mutation-result.json")" '.result_contract' "3"
 
 W="$(_mkwork mg-v2-skip)"
 set +e; mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] mutation-gate skip → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-2] mutation-gate skip → result_contract:2" \
-    "$(cat "$W/artifacts/mutation-result.json")" '.result_contract' "2"
+assert_json_key "[SPEC-2] mutation-gate skip → result_contract:3" \
+    "$(cat "$W/artifacts/mutation-result.json")" '.result_contract' "3"
 
 # secret-scan: skip (no baseline in temp dir with no git history)
 W="$(_mkwork ss-v2)"
@@ -233,8 +233,8 @@ set +e; secret_scan_run "secret-scan" "$W/state.json" >/dev/null 2>&1; _rc=$?; s
 unset ZBUILD_REPO_ROOT
 assert_eq "[SPEC-8] secret-scan skip → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/secret-scan-result.json")"
-assert_json_key "[SPEC-2] secret-scan skip → result_contract:2" "$_J" '.result_contract' "2"
-assert_json_key "[SPEC-2] secret-scan skip → disposition:complete" "$_J" '.disposition' "complete"
+assert_json_key "[SPEC-2] secret-scan skip → result_contract:3" "$_J" '.result_contract' "3"
+assert_json_key "[SPEC-2] secret-scan skip → no disposition (contract 3)" "$_J" 'has("disposition")' "false"
 assert_contains "[SPEC-2] secret-scan skip → reason present" "$_J" '"reason"'
 
 # shape-floor: normal path (stub _sf_shape_floor to return skip)
@@ -243,8 +243,8 @@ W="$(_mkwork sf-v2-skip)"
 set +e; shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] shape-floor skip → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/shape-floor-result.json")"
-assert_json_key "[SPEC-2] shape-floor skip → result_contract:2" "$_J" '.result_contract' "2"
-assert_json_key "[SPEC-2] shape-floor skip → disposition:complete" "$_J" '.disposition' "complete"
+assert_json_key "[SPEC-2] shape-floor skip → result_contract:3" "$_J" '.result_contract' "3"
+assert_json_key "[SPEC-2] shape-floor skip → no disposition (contract 3)" "$_J" 'has("disposition")' "false"
 assert_contains "[SPEC-2] shape-floor skip → reason present" "$_J" '"reason"'
 
 # shape-floor: pass path — verify specific non-empty reason string is written (#1848)
@@ -253,7 +253,7 @@ W="$(_mkwork sf-v2-pass)"
 set +e; shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] shape-floor pass → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/shape-floor-result.json")"
-assert_json_key "[SPEC-2] shape-floor pass → result_contract:2" "$_J" '.result_contract' "2"
+assert_json_key "[SPEC-2] shape-floor pass → result_contract:3" "$_J" '.result_contract' "3"
 assert_json_key "[SPEC-2] shape-floor pass → reason non-empty" \
     "$_J" '.reason' "all shape-change floor files present"
 
@@ -266,8 +266,8 @@ set +e; design_gate_run "design-gate" "$W/state.json" >/dev/null 2>&1; _rc=$?; s
 unset ZBUILD_REPO_ROOT
 assert_eq "[SPEC-8] design-gate pass → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/design-gate-result.json")"
-assert_json_key "[SPEC-2] design-gate pass → result_contract:2" "$_J" '.result_contract' "2"
-assert_json_key "[SPEC-2] design-gate pass → disposition:complete" "$_J" '.disposition' "complete"
+assert_json_key "[SPEC-2] design-gate pass → result_contract:3" "$_J" '.result_contract' "3"
+assert_json_key "[SPEC-2] design-gate pass → no disposition (contract 3)" "$_J" 'has("disposition")' "false"
 assert_contains "[SPEC-2] design-gate pass → reason present" "$_J" '"reason"'
 
 # gate-aggregator: v2 fields on pass path
@@ -276,8 +276,8 @@ _write_all_ga "$W/artifacts" "pass"
 set +e; gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] gate-aggregator pass → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/gate-aggregator-result.json")"
-assert_json_key "[SPEC-2] gate-aggregator pass → result_contract:2" "$_J" '.result_contract' "2"
-assert_json_key "[SPEC-2] gate-aggregator pass → disposition:complete" "$_J" '.disposition' "complete"
+assert_json_key "[SPEC-2] gate-aggregator pass → result_contract:3 (#2366)" "$_J" '.result_contract' "3"
+assert_json_key "[SPEC-2] gate-aggregator pass → outcome:pass" "$_J" '.outcome' "pass"
 assert_contains "[SPEC-2] gate-aggregator pass → reason present" "$_J" '"reason"'
 
 # ── SPEC-3: shape-floor emits disposition:broken when _sf_shape_floor undefined ─
@@ -286,7 +286,7 @@ W="$(_mkwork sf-broken)"
 set +e; shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-3][SPEC-8] shape-floor library not loaded → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/shape-floor-result.json")"
-assert_json_key "[SPEC-3] shape-floor library not loaded → disposition:broken" "$_J" '.disposition' "broken"
+assert_json_key "[SPEC-3] shape-floor library not loaded → outcome:broken (#2366)" "$_J" '.outcome' "broken"
 assert_json_key "[SPEC-3] shape-floor library not loaded → reason:library_load_failure" "$_J" '.reason' "library_load_failure"
 # ADR-055 §9: the broken path is a terminal verdict too — the summary must exist
 # so a reader learns the floor was DISABLED rather than seeing nothing (#1758).
@@ -299,8 +299,8 @@ W="$(_mkwork ga-7-pass)"
 _write_all_ga "$W/artifacts" "pass"
 set +e; gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-7][SPEC-8] gate-aggregator all-pass → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-7] gate-aggregator all-pass → verdict=pass" \
-    "$(cat "$W/artifacts/gate-aggregator-result.json")" '.verdict' "pass"
+assert_json_key "[SPEC-7] gate-aggregator all-pass → outcome=pass" \
+    "$(cat "$W/artifacts/gate-aggregator-result.json")" '.outcome' "pass"
 
 W="$(_mkwork ga-7-fail)"
 _write_all_ga "$W/artifacts" "pass"
@@ -308,16 +308,16 @@ printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":
     > "$W/artifacts/coverage-result.json"
 set +e; gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] gate-aggregator any-fail path → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-7] gate-aggregator any-fail → verdict=fail" \
-    "$(cat "$W/artifacts/gate-aggregator-result.json")" '.verdict' "fail"
+assert_json_key "[SPEC-7] gate-aggregator any-fail → outcome=fail" \
+    "$(cat "$W/artifacts/gate-aggregator-result.json")" '.outcome' "fail"
 
 W="$(_mkwork ga-7-advisory)"
 _write_all_ga "$W/artifacts" "pass"
 printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"advisory","reason":"infra flake"}\n' \
     > "$W/artifacts/acceptance-gate-result.json"
 set +e; gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
-assert_json_key "[SPEC-7] gate-aggregator advisory-demoted → verdict=pass" \
-    "$(cat "$W/artifacts/gate-aggregator-result.json")" '.verdict' "pass"
+assert_json_key "[SPEC-7] gate-aggregator advisory-demoted → outcome=pass" \
+    "$(cat "$W/artifacts/gate-aggregator-result.json")" '.outcome' "pass"
 
 W="$(_mkwork ga-7-missing)"
 _write_all_ga "$W/artifacts" "pass"
@@ -325,13 +325,16 @@ rm -f "$W/artifacts/lint-result.json"
 set +e; gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] gate-aggregator missing-gate → rc=0" "0" "$_rc"
 assert_json_key "[SPEC-7] gate-aggregator missing gate → fail-closed" \
-    "$(cat "$W/artifacts/gate-aggregator-result.json")" '.verdict' "fail"
+    "$(cat "$W/artifacts/gate-aggregator-result.json")" '.outcome' "fail"
 
 # ── SPEC-9: all seven manifests declare valid_verdicts in config ──────────────
-for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+# #2366: gate-aggregator writes contract 3 and declares no verdict words.
+assert_eq "[SPEC-9] gate-aggregator declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml" | grep -c 'valid_verdicts' || true)"
+for _plugin in coverage-gate design-gate lint-gate mutation-gate secret-scan shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
-    assert_contains "[SPEC-9] $_plugin manifest declares valid_verdicts" \
-        "$(cat "$_mf")" "valid_verdicts:"
+    assert_eq "[SPEC-9] $_plugin manifest declares no valid_verdicts (contract 3)" \
+        "0" "$(grep -c 'valid_verdicts' "$_mf" || true)"
 done
 
 # ── SPEC-10: all seven manifests declare tier_default: T0 ─────────────────────
@@ -342,7 +345,10 @@ for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate
 done
 
 # ── SPEC-11: each manifest declares exactly one output with primary: true ──────
-for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+# #2366: gate-aggregator writes contract 3 and declares no verdict words.
+assert_eq "[SPEC-9] gate-aggregator declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml" | grep -c 'valid_verdicts' || true)"
+for _plugin in coverage-gate design-gate lint-gate mutation-gate secret-scan shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_eq "[SPEC-11] $_plugin manifest has exactly one primary: true output" \
         "1" "$(grep -c 'primary: true' "$_mf")"
@@ -351,7 +357,10 @@ done
 # ── SPEC-12: no plugin.sh constructs a hardcoded cross-stage artifact path ─────
 # A cross-stage path literal looks like /stage-name/artifacts/ in source code.
 # Variable-based references ($artifacts_dir/file) are fine; literal stage paths are not.
-for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+# #2366: gate-aggregator writes contract 3 and declares no verdict words.
+assert_eq "[SPEC-9] gate-aggregator declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml" | grep -c 'valid_verdicts' || true)"
+for _plugin in coverage-gate design-gate lint-gate mutation-gate secret-scan shape-floor; do
     _ps="$REPO_ROOT/plugins/tool/$_plugin/plugin.sh"
     assert_eq "[SPEC-12] $_plugin/plugin.sh has no hardcoded cross-stage artifact path" \
         "" "$(grep -E '/[a-z][a-z0-9_-]+/artifacts/' "$_ps" || true)"
@@ -359,7 +368,10 @@ done
 
 # ── SPEC-13: gate manifests declare tier_default:T0; no config.router knobs ────
 # T0 plugins make no model calls, so no timeout_s/max_turns/retries are needed.
-for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+# #2366: gate-aggregator writes contract 3 and declares no verdict words.
+assert_eq "[SPEC-9] gate-aggregator declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml" | grep -c 'valid_verdicts' || true)"
+for _plugin in coverage-gate design-gate lint-gate mutation-gate secret-scan shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_eq "[SPEC-13] $_plugin manifest has no config.router budget knobs (T0: no model calls)" \
         "" "$(grep -E '^\s+(timeout_s|max_turns|retries):' "$_mf" || true)"
@@ -368,7 +380,10 @@ done
 # ── SPEC-14(a): each manifest has exactly one output with required:true AND summary:true ─
 # SPEC-9..13 check required/primary/summary fields in isolation; SPEC-14 asserts
 # the ADR-055 §9 mandatory pairing: both must coexist on the SAME output block.
-for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+# #2366: gate-aggregator writes contract 3 and declares no verdict words.
+assert_eq "[SPEC-9] gate-aggregator declares no valid_verdicts (#2366)" "0" \
+    "$(grep -v '^#' "$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml" | grep -c 'valid_verdicts' || true)"
+for _plugin in coverage-gate design-gate lint-gate mutation-gate secret-scan shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     # A comment may quote `summary: true` (coverage-gate does, citing #1976) —
     # skip comment lines or the count reads prose as config (#1848 dogfood).
@@ -433,8 +448,8 @@ export ZBUILD_REPO_ROOT="$_SS_PASS_REPO"
 set +e; secret_scan_run "secret-scan" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 unset ZBUILD_REPO_ROOT
 assert_eq "[SPEC-14] secret-scan pass (clean diff) → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-14] secret-scan pass → verdict=pass" \
-    "$(cat "$W/artifacts/secret-scan-result.json")" '.verdict' "pass"
+assert_json_key "[SPEC-14] secret-scan pass → outcome=pass" \
+    "$(cat "$W/artifacts/secret-scan-result.json")" '.outcome' "pass"
 assert_eq "[SPEC-14] secret-scan pass → secret-scan-detail.md written and non-empty" "present" \
     "$([[ -s "$W/artifacts/secret-scan-detail.md" ]] && echo present || echo absent)"
 # ADR-055 §9: "a summary states what the stage DID". The requirement is that the
@@ -477,6 +492,8 @@ W="$(_mkwork r15-mut)"; _seed_results "$W" '{mutation:{status:"measured",score:9
 mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1 || true
 _reader_ok "mutation-gate" "$W" mutation-gate mutation-gate
 W="$(_mkwork r15-sf)"
+# SPEC-3 above unset the library function; the skip path needs it back.
+_sf_shape_floor() { echo "SHAPE_FLOOR SKIP no shape-change files (test stub)"; }
 shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1 || true
 _reader_ok "shape-floor (skip path)" "$W" shape-floor shape-floor
 W="$(_mkwork r15-ga)"

@@ -31,6 +31,8 @@ source "$_TA_ROOT/core/router/route.sh"
 source "$_TA_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_TA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_TA_ROOT/scripts/lib/stage-result.sh"
 # shellcheck source=../../../plugins/tool/assertion-integrity/plugin.sh
 source "$_TA_ROOT/plugins/tool/assertion-integrity/plugin.sh" 2>/dev/null || true
 
@@ -78,12 +80,12 @@ _ta_drop_stale_tags() {
     return 0
 }
 
-# _ta_write_result <dir> <verdict> <disposition> <reason> <n_specs>
-# ADR-054 §5: one result file, every mandatory key. §6: `disposition` says how
-# the STAGE stopped; `verdict` says what it produced. A router timeout is not a
-# poor authoring pass, it is no authoring pass at all.
+# _ta_write_result <dir> <outcome> <reason> <n_specs>
+# ADR-054 §6 (#2366): one outcome from the engine's list — `pass` when the
+# author finished, otherwise how it stopped. A router timeout is not a poor
+# authoring pass, it is no authoring pass at all.
 _ta_write_result() {
-    local dir="$1" v="$2" d="$3" r="$4" n="${5:-0}"
+    local dir="$1" o="$2" r="$3" n="${4:-0}"
     mkdir -p "$dir" 2>/dev/null || true
     # #2189: the author REPORTS the testfiles it owns; the engine denies every
     # other stage edits to them from this report (never from design.md by path).
@@ -99,23 +101,22 @@ _ta_write_result() {
     # which is what the engine's per-attempt progress check compares (#2186).
     local _tfh="{}" _repo="${ZBUILD_REPO_ROOT:-$_TA_ROOT}" _tf _h
     if [[ "$_owned" != "[]" ]]; then
-        local _pairs=""
+        local _tf_pairs=""
         while IFS= read -r _tf; do
             [[ -n "$_tf" && -f "$_repo/$_tf" ]] || continue
             _h="$(git hash-object "$_repo/$_tf" 2>/dev/null || true)"
-            [[ -n "$_h" ]] && _pairs+="$_tf"$'\t'"$_h"$'\n'
+            [[ -n "$_h" ]] && _tf_pairs+="$_tf"$'\t'"$_h"$'\n'
         done < <(jq -r '.[]' <<< "$_owned" 2>/dev/null)
-        _tfh="$(jq -Rnc '[inputs | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {}' <<< "$_pairs" 2>/dev/null || true)"
+        _tfh="$(jq -Rnc '[inputs | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {}' <<< "$_tf_pairs" 2>/dev/null || true)"
         [[ -n "$_tfh" ]] || _tfh="{}"
     fi
-    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson n "${n:-0}" --argjson o "${_owned:-[]}" \
-            --argjson t "$_tfh" \
-        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
-          data: {specs_covered: $n, owned_files: $o, testfiles: $t}}' \
-        | atomic_write "$dir/test-author-result.json"; then
+    local _data
+    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" \
+        '{specs_covered: $n, owned_files: $o, testfiles: $t}')"
+    if ! stage_result_write "$dir/test-author-result.json" "$o" "$r" "$_data"; then
         _ta_emit "test_author.result.write_failed" "dir=$dir"
     fi
-    stage_summary_write "$dir/test-author-summary.md" "test-author" "$v" "$r" \
+    stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$r" \
         "$(printf -- '- SPECs in the contract: %s\n- assertions are authored from the SPEC text, never from the implementation' "${n:-0}")"
 }
 
@@ -161,7 +162,7 @@ test_author_run() {
 
     if [[ ! -f "$design" ]] || ! declare -f acceptance_list_spec_ids >/dev/null 2>&1; then
         _ta_emit "test_author.no_contract" "reason=no_design"
-        _ta_write_result "$art" "complete" "complete" \
+        _ta_write_result "$art" "pass" \
             "no design.md acceptance block — there is no contract to author against" 0
         return 0
     fi
@@ -192,13 +193,13 @@ test_author_run() {
 
     if [[ "$n" -eq 0 && "$n_done" -gt 0 ]]; then
         _ta_emit "test_author.no_contract" "reason=all_done"
-        _ta_write_result "$art" "complete" "complete" \
+        _ta_write_result "$art" "pass" \
             "every requirement is already done — there is no test to write" 0
         return 0
     fi
     if [[ "$n" -eq 0 ]]; then
         _ta_emit "test_author.no_contract" "reason=no_specs"
-        _ta_write_result "$art" "complete" "complete" \
+        _ta_write_result "$art" "pass" \
             "the acceptance block declares no SPECs — nothing to author" 0
         return 0
     fi
@@ -261,7 +262,7 @@ EOF
     # and notes file among the engine's rules — in the one prompt order.
     local _composed
     if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
-        _ta_write_result "$art" "degraded" "misconfigured" \
+        _ta_write_result "$art" "misconfigured" \
             "the prompt could not be composed — the engine's blocks are missing" "$n"
         return 1
     fi
@@ -271,7 +272,7 @@ EOF
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
 
     if ! declare -f route_to_model_loop >/dev/null 2>&1; then
-        _ta_write_result "$art" "degraded" "broken" \
+        _ta_write_result "$art" "broken" \
             "no router available to author assertions" "$n"
         return 1
     fi
@@ -286,7 +287,7 @@ EOF
     [[ -n "${ZBUILD_CYCLE_ITER:-}" && "$max_iter" -gt 15 ]] && max_iter=15
     local prompt_file
     prompt_file="$(mktemp "$(zbuild_engine_tmpdir 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}")/zb-ta-prompt.XXXXXX")" || {
-        _ta_write_result "$art" "degraded" "broken" "could not create the prompt file" "$n"
+        _ta_write_result "$art" "broken" "could not create the prompt file" "$n"
         return 1
     }
     printf '%s' "$prompt" > "$prompt_file"
@@ -318,7 +319,7 @@ EOF
         else
             _disp="$(router_reason_disposition "$_reason")"
         fi
-        _ta_write_result "$art" "degraded" "$_disp" \
+        _ta_write_result "$art" "$_disp" \
             "the author did not finish (${_reason}) — what it wrote is kept for the next attempt" "$n"
         _ta_commit_testfiles "$design" "$repo" "test-author: partial assertions (${_reason}) — continued by the next attempt"
         return 1
@@ -337,7 +338,7 @@ EOF
 
     _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s)"
     _ta_emit "test_author.authored" "specs=$n"
-    _ta_write_result "$art" "complete" "complete" \
+    _ta_write_result "$art" "pass" \
         "authored acceptance assertions for $n SPEC(s) from the design contract" "$n"
     return 0
 }

@@ -48,9 +48,9 @@ REPO1="$(setup_git_temp_repo ss-repo1)"
     "$GIT" add -A; "$GIT" commit -q -m "feat: add config"
 )
 OUT1="$(run_scan "$REPO1")"
-assert_json_key "C1: AWS key → verdict=fail" "$OUT1" '.verdict' "fail"
-assert_json_key "C1: finding rule is aws_access_key_id" "$OUT1" '.findings[0].rule' "aws_access_key_id"
-assert_json_key "C1: offending path reported" "$OUT1" '.findings[0].file' "src/config.sh"
+assert_json_key "C1: AWS key → outcome=fail" "$OUT1" '.outcome' "fail"
+assert_json_key "C1: finding rule is aws_access_key_id" "$OUT1" '.data.locations[0].rule' "aws_access_key_id"
+assert_json_key "C1: offending path reported" "$OUT1" '.data.locations[0].file' "src/config.sh"
 
 # ── Case 2: quoted credential assignment → fail ──────────────────────────────
 REPO2="$(setup_git_temp_repo ss-repo2)"
@@ -61,8 +61,8 @@ REPO2="$(setup_git_temp_repo ss-repo2)"
     "$GIT" add -A; "$GIT" commit -q -m "feat: creds"
 )
 OUT2="$(run_scan "$REPO2")"
-assert_json_key "C2: credential assignment → verdict=fail" "$OUT2" '.verdict' "fail"
-assert_json_key "C2: rule is credential_assignment" "$OUT2" '.findings[0].rule' "credential_assignment"
+assert_json_key "C2: credential assignment → outcome=fail" "$OUT2" '.outcome' "fail"
+assert_json_key "C2: rule is credential_assignment" "$OUT2" '.data.locations[0].rule' "credential_assignment"
 
 # ── Case 3: clean diff → pass ────────────────────────────────────────────────
 REPO3="$(setup_git_temp_repo ss-repo3)"
@@ -73,13 +73,13 @@ REPO3="$(setup_git_temp_repo ss-repo3)"
     "$GIT" add -A; "$GIT" commit -q -m "feat: app"
 )
 OUT3="$(run_scan "$REPO3")"
-assert_json_key "C3: clean diff → verdict=pass" "$OUT3" '.verdict' "pass"
-assert_json_key "C3: clean diff → 0 findings" "$OUT3" '.finding_count' "0"
+assert_json_key "C3: clean diff → outcome=pass" "$OUT3" '.outcome' "pass"
+assert_json_key "C3: clean diff → 0 findings" "$OUT3" '.data.finding_count' "0"
 
 # ── Case 4: empty diff (HEAD == merge-base on main) → skip ────────────────────
 REPO4="$(setup_git_temp_repo ss-repo4)"
 OUT4="$(run_scan "$REPO4")"
-assert_json_key "C4: empty diff → verdict=skip" "$OUT4" '.verdict' "skip"
+assert_json_key "C4: empty diff → outcome=pass (nothing to scan, #2366)" "$OUT4" '.outcome' "pass"
 
 # ── Case 5: allowlisted fixture → pass ───────────────────────────────────────
 # Same planted AWS key as C1, but the path is cleared by the allowlist file.
@@ -94,7 +94,7 @@ REPO5="$(setup_git_temp_repo ss-repo5)"
 ALLOW="$TEST_TEMP_DIR/allowlist.txt"
 printf '# obvious test fixtures\ntests/fixtures/*\n' > "$ALLOW"
 OUT5="$(run_scan "$REPO5" "$ALLOW")"
-assert_json_key "C5: allowlisted fixture → verdict=pass" "$OUT5" '.verdict' "pass"
+assert_json_key "C5: allowlisted fixture → outcome=pass" "$OUT5" '.outcome' "pass"
 
 # ── Case 6: .env file path → fail (env_file rule) ────────────────────────────
 REPO6="$(setup_git_temp_repo ss-repo6)"
@@ -105,8 +105,8 @@ REPO6="$(setup_git_temp_repo ss-repo6)"
     "$GIT" add -A; "$GIT" commit -q -m "chore: env"
 )
 OUT6="$(run_scan "$REPO6")"
-assert_json_key "C6: .env path → verdict=fail" "$OUT6" '.verdict' "fail"
-assert_json_key "C6: rule is env_file" "$OUT6" '.findings[0].rule' "env_file"
+assert_json_key "C6: .env path → outcome=fail" "$OUT6" '.outcome' "fail"
+assert_json_key "C6: rule is env_file" "$OUT6" '.data.locations[0].rule' "env_file"
 
 # ── Case 7: .env.example is NOT flagged (example variant excluded) → pass ─────
 REPO7="$(setup_git_temp_repo ss-repo7)"
@@ -117,7 +117,7 @@ REPO7="$(setup_git_temp_repo ss-repo7)"
     "$GIT" add -A; "$GIT" commit -q -m "docs: env example"
 )
 OUT7="$(run_scan "$REPO7")"
-assert_json_key "C7: .env.example → verdict=pass" "$OUT7" '.verdict' "pass"
+assert_json_key "C7: .env.example → outcome=pass" "$OUT7" '.outcome' "pass"
 
 # ── Case 8: PEM private-key header matcher (direct, fragment-assembled) ───────
 set +e; RULE8="$(_ss_scan_content "$PEM_HDR")"; set -e
@@ -132,7 +132,7 @@ REPO9="$(setup_git_temp_repo ss-repo9)"
     "$GIT" add -A; "$GIT" commit -q -m "feat: pragma"
 )
 OUT9="$(run_scan "$REPO9")"
-assert_json_key "C9: inline pragma → verdict=pass" "$OUT9" '.verdict' "pass"
+assert_json_key "C9: inline pragma → outcome=pass" "$OUT9" '.outcome' "pass"
 
 # SPEC ids below are the design's ids. The acceptance gate binds per-SPEC
 # TESTFILEs by id, so an assertion carrying the wrong id leaves the SPEC it was

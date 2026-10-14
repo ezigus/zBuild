@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
 # plugins/agent/plan/lib/entry.sh — plan's stage entry (#1835): the signal
-# guard, inputs from the engine's index, the engine's artifact dir, and the v2
+# guard, inputs from the engine's index, the engine's artifact dir, and the
 # result writer. Split out of plugin.sh (review #2237: the plugin is over the
 # 500-line guide). Sourced by plugin.sh; uses _plan_run_inner from there.
 
 [[ -n "${_ZBUILD_PLAN_ENTRY_LOADED:-}" ]] && return 0
 _ZBUILD_PLAN_ENTRY_LOADED=1
 
-# _plan_write_result <out-path> <verdict> <disposition> <reason>
-# Writes a minimal v2 result JSON to <out-path> via atomic_write.
-# Used by failure paths that have no plan content yet.
-_plan_write_result() {
-    local _out="$1" _verdict="$2" _disposition="$3" _reason="$4" _json
+# _plan_write_outcome <out-path> <outcome> <reason>
+# Writes a result with no plan in it — the failure paths — through the one
+# writer (#2366: one outcome from the engine's list).
+_plan_write_outcome() {
+    local _out="$1" _outcome="$2" _reason="$3"
     [[ -z "$_out" ]] && return 0
     # A result that cannot be written is reported, never skipped: a stage with
     # no result reads as one that explained nothing (#1837's rule, here too).
-    if _json="$(jq -nc --arg v "$_verdict" --arg d "$_disposition" --arg r "$_reason" \
-            '{result_contract:2,verdict:$v,disposition:$d,reason:$r}')" \
-        && atomic_write "$_out" <<< "$_json"; then
+    if stage_result_write "$_out" "$_outcome" "$_reason"; then
         _PLAN_RESULT_WRITTEN=1
         return 0
     fi
@@ -44,7 +42,7 @@ plan_run() {
 # written stands.
 _plan_on_signal() {
     if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" && -z "${_PLAN_RESULT_WRITTEN:-}" ]]; then
-        _plan_write_result "${ZBUILD_ARTIFACT_DIR}/plan.json" "error" \
+        _plan_write_outcome "${ZBUILD_ARTIFACT_DIR}/plan.json" \
             "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" || true
     fi
     exit 1
@@ -79,18 +77,18 @@ _plan_run_entry() {
         [[ -z "$scope_manifest" ]] && _missing="scope_manifest"
         [[ -z "$goal_path" ]] && _missing="${_missing:+$_missing, }intake_goal"
         error "plan_run: the engine's input index (ZBUILD_STAGE_INPUTS) names no $_missing"
-        _plan_write_result "${artifacts_dir}/plan.json" "error" "broken" "input_missing"
+        _plan_write_outcome "${artifacts_dir}/plan.json" "broken" "input_missing"
         return 1
     fi
     if [[ ! -f "$goal_path" ]]; then
         error "plan_run: intake_goal path unreadable: $goal_path"
-        _plan_write_result "${artifacts_dir}/plan.json" "error" "broken" "intake_goal_path_unreadable"
+        _plan_write_outcome "${artifacts_dir}/plan.json" "broken" "intake_goal_path_unreadable"
         return 1
     fi
     goal_text="$(cat "$goal_path")"
     if [[ -z "$goal_text" ]]; then
         error "plan_run: intake_goal is empty: $goal_path"
-        _plan_write_result "${artifacts_dir}/plan.json" "error" "broken" "intake_goal_missing"
+        _plan_write_outcome "${artifacts_dir}/plan.json" "broken" "intake_goal_missing"
         return 1
     fi
 

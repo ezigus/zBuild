@@ -87,11 +87,11 @@ print_test_section "SPEC-1: a green gate reads as pass — no contract violation
 REPO_PASS="$(_mk_repo "gate-v2-pass" "✓")"
 set +e; _run_gate "$REPO_PASS"; set -e
 assert_eq "[SPEC-1] the gate itself passed (rc 0)" "0" "$RC"
-assert_eq "[SPEC-1] verdict pass" "pass" "$(_field verdict)"
+assert_eq "[SPEC-1] outcome pass" "pass" "$(_field outcome)"
 _cls="$(_read)"
 assert_eq "[SPEC-1] runner_read_stage_verdict classifies the result as pass (was error: missing_field:reason)" "pass" "$_cls"
 assert_eq "[SPEC-1] no stage.verdict.contract_violation emitted" "0" "$(_violations)"
-assert_eq "[SPEC-1] disposition is complete (was none)" "complete" "$(_field disposition)"
+assert_eq "[SPEC-1] one outcome, no disposition field (#2366)" "" "$(_field disposition)"
 if [[ -n "$(_field reason)" ]]; then assert_pass "[SPEC-1] reason is non-empty: $(_field reason)"; else assert_fail "[SPEC-1] reason is non-empty" "absent"; fi
 assert_eq "[SPEC-1] severity none on a pass" "none" "$(_field severity)"
 
@@ -100,11 +100,10 @@ print_test_section "SPEC-2: a failing gate's result also passes the reader; poli
 REPO_FAIL="$(_mk_repo "gate-v2-fail" "✗")"   # red at HEAD too → not_passing_at_head (recoverable)
 set +e; _run_gate "$REPO_FAIL"; set -e
 assert_eq "[SPEC-2] the gate failed (rc 1)" "1" "$RC"
-assert_eq "[SPEC-2] verdict fail" "fail" "$(_field verdict)"
+assert_eq "[SPEC-2] outcome fail" "fail" "$(_field outcome)"
 _cls="$(_read)"
 assert_eq "[SPEC-2] read with rc 0 the reader still sees a valid v2 result (fail, not error)" "fail" "$_cls"
 assert_eq "[SPEC-2] no contract violation (was unknown_disposition:recoverable)" "0" "$(_violations)"
-assert_eq "[SPEC-2] disposition is complete" "complete" "$(_field disposition)"
 assert_eq "[SPEC-2] severity carries the cycle-policy word" "recoverable" "$(_field severity)"
 assert_contains "[SPEC-2] reason names the SPEC" "$(_field reason)" "SPEC-1"
 
@@ -112,14 +111,14 @@ assert_contains "[SPEC-2] reason names the SPEC" "$(_field reason)" "SPEC-1"
 print_test_section "SPEC-3: precondition-unmet no-op and malformed block pass the reader"
 REPO_NOOP="$(_mk_repo "gate-v2-noop" "✓")"; rm -f "$REPO_NOOP/design.md"
 set +e; _run_gate "$REPO_NOOP"; set -e
-assert_eq "[SPEC-3] no design → precondition_unmet pass" "pass|precondition_unmet" "$(_field verdict)|$(_field reason)"
+assert_eq "[SPEC-3] no design → precondition_unmet pass" "pass|precondition_unmet" "$(_field outcome)|$(_field reason)"
 assert_eq "[SPEC-3] …reads as pass with no violation" "pass|0" "$(_read)|$(_violations)"
-assert_eq "[SPEC-3] …disposition complete, severity none" "complete|none" "$(_field disposition)|$(_field severity)"
+assert_eq "[SPEC-3] …severity none" "none" "$(_field severity)"
 REPO_BAD="$(_mk_repo "gate-v2-bad" "✓")"
 printf '```acceptance\nthis is not a SPEC line\n```\n' > "$REPO_BAD/design.md"
 set +e; _run_gate "$REPO_BAD"; set -e
-assert_eq "[SPEC-3] malformed block → fail/malformed_acceptance_block" "fail|malformed_acceptance_block" "$(_field verdict)|$(_field reason)"
-assert_eq "[SPEC-3] …no violation; severity terminal; disposition complete" "0|terminal|complete" "$(_violations)|$(_field severity)|$(_field disposition)"
+assert_eq "[SPEC-3] malformed block → fail/malformed_acceptance_block" "fail|malformed_acceptance_block" "$(_field outcome)|$(_field reason)"
+assert_eq "[SPEC-3] …no violation; severity terminal" "0|terminal" "$(_violations)|$(_field severity)"
 
 # ─── SPEC-4: the two consumers of the policy word read severity ──────────────
 print_test_section "SPEC-4: orchestrator halt-on-terminal and aggregator advisory read severity"

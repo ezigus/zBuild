@@ -27,7 +27,7 @@ requires:
     - state
 
 provides:
-  result_contract: 2
+  result_contract: 3
   # Canonical artifact per ADR-013: pr-url.txt.
   # The plugin also writes pr-result.json (richer status payload, listed in
   # outputs[] below); both are written on success. See ADR-013 Implementation
@@ -39,10 +39,6 @@ provides:
     - plugin.pr_open.preflight_remote_has_work
 
 config:
-  valid_verdicts:
-    - pass
-    - blocked
-    - error
   tier_default: T0
   draft: false
 

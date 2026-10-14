@@ -22,6 +22,9 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _SF_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -57,11 +60,10 @@ shape_floor_run() {
     # Library failed to load — halts instead of silently skipping (#1758). #1752:
     # so does a library whose own dependency failed (the libs record it).
     if ! declare -f _sf_shape_floor >/dev/null 2>&1 || [[ -n "${_ZBUILD_CONTRACT_LOAD_ERRORS:-}" ]]; then
-        jq -n '{"result_contract":2,"verdict":"fail","disposition":"broken","reason":"library_load_failure"}' \
-            | atomic_write "$result_path"
-        stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "fail" \
+        stage_result_write "$result_path" broken "library_load_failure"
+        stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "broken" \
             "library load failure — shape-floor.sh did not load whole (${_ZBUILD_CONTRACT_LOAD_ERRORS:- shape-floor.sh} ); floor check disabled"
-        _sf_emit "plugin.result" "plugin=shape-floor" "verdict=fail"
+        _sf_emit "plugin.result" "plugin=shape-floor" "verdict=broken"
         return 0
     fi
 
@@ -106,7 +108,8 @@ shape_floor_run() {
             _sf_emit "shape_floor.fail" "reason=$detail"
             ;;
         *"SHAPE_FLOOR SKIP"*)
-            verdict="skip"
+            # #2366: no shape change to check is a pass; the reason says so.
+            verdict="pass"
             detail="${_shape_out##*SHAPE_FLOOR SKIP }"
             _sf_emit "shape_floor.skip"
             ;;
@@ -135,9 +138,8 @@ shape_floor_run() {
             _sf_fnd="$(printf 'the shape check failed: %s\n' "$detail" | stage_findings_json)"
         fi
     fi
-    jq -n --arg v "$verdict" --arg r "$detail" --argjson fnd "${_sf_fnd:-[]}" \
-        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"data":{"findings":$fnd}}' \
-        | atomic_write "$result_path"
+    stage_result_write "$result_path" "$verdict" "${detail:-no detail}" \
+        "$(jq -nc --argjson fnd "${_sf_fnd:-[]}" '{findings:$fnd}')"
 
     # #1988: publish what only this gate knows. Its detail used to reach a
     # prompt only through the aggregator's rendering; it is now a declared

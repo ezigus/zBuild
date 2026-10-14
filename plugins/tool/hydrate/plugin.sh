@@ -23,6 +23,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _ZBUILD_HYDRATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -87,7 +90,7 @@ hydrate_run() {
     if ! _artifact_persist_has_identity "$_issue"; then
         # Neither an issue nor a goal: no identity, so nothing to hydrate from.
         # A --goal run DOES have one (#1931) and no longer lands here.
-        _hydrate_write_result "$_artifacts_dir" "complete" \
+        _hydrate_write_result "$_artifacts_dir" "pass" \
             "no identity — neither an issue nor a goal" "skipped" 0
         emit_event "hydrate.complete" "stage=$_stage_id" "issue=$_issue" \
             "restored=0" "reason=no_issue" 2>/dev/null || true
@@ -109,7 +112,7 @@ hydrate_run() {
             emit_event "hydrate.adopt.failed" "stage=$_stage_id" "issue=$_issue" \
                 "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
         fi
-        _hydrate_write_result "$_artifacts_dir" "complete" \
+        _hydrate_write_result "$_artifacts_dir" "pass" \
             "fresh start (--no-resume): prior work not restored; the saved history is kept" "skipped" 0
         emit_event "hydrate.complete" "stage=$_stage_id" "issue=$_issue" \
             "restored=0" "reason=no_resume" 2>/dev/null || true
@@ -125,7 +128,8 @@ hydrate_run() {
     fi
 
     rm -rf "$_staging" 2>/dev/null || true
-    local _verdict="complete" _reason="" _status="empty" _count=0 _source=""
+    # #2366: pass, or fail when prior work exists but could not be put back.
+    local _verdict="pass" _reason="" _status="empty" _count=0 _source=""
 
     if _artifact_persist_restore "$_issue" "$_staging"; then
         _status="${_ARTIFACT_PERSIST_LAST_STATUS:-unknown}"
@@ -134,7 +138,7 @@ hydrate_run() {
         _source="${_ARTIFACT_PERSIST_LAST_SOURCE:-}"
     else
         _status="failed"
-        _verdict="degraded"
+        _verdict="fail"
         # PATH-FREE on purpose. The library's reason embeds absolute paths
         # (`repo_root=… git_dir=… cwd=…`), which differ between two runs of the
         # same pipeline — the parity test caught exactly that. ADR-016 also
@@ -157,7 +161,7 @@ hydrate_run() {
         if _hydrate_put_back "$_staging/artifacts" "$_artifacts_dir"; then
             [[ -n "$_reason" ]] || _reason="restored $_count artifact(s) from zbuild/state/issue-$_issue"
         else
-            _verdict="degraded"
+            _verdict="fail"
             _reason="restored tree could not be put in place"
             _count=0
         fi
@@ -189,12 +193,9 @@ _hydrate_write_result() {
     local _dir="$1" _verdict="$2" _reason="$3" _status="$4" _count="$5" _src="${6:-}"
     mkdir -p "$_dir" 2>/dev/null || true
     local _file="$_dir/hydrate-result.json"
-    if ! jq -n --arg v "$_verdict" --arg r "$_reason" --arg s "$_status" \
-            --argjson c "${_count:-0}" --arg src "$_src" \
-            '{result_contract: 2, verdict: $v, disposition: "complete",
-              reason: $r, data: {status: $s, restored: $c,
-                                 source: (if $src == "" then null else $src end)}}' \
-            | atomic_write "$_file"; then
+    if ! stage_result_write "$_file" "$_verdict" "${_reason:-no detail}" \
+            "$(jq -nc --arg s "$_status" --argjson c "${_count:-0}" --arg src "$_src" \
+                '{status: $s, restored: $c, source: (if $src == "" then null else $src end)}')"; then
         emit_event "hydrate.result.write_failed" "file=$_file" 2>/dev/null || true
     fi
     # ADR-055 §9: every hydrate terminal funnels through here, and the real

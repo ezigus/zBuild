@@ -25,6 +25,9 @@ _DG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_DG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$_DG_ROOT/scripts/lib/stage-summary.sh" 2>/dev/null || true
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 # #1783: source the grammar lib from the contract-reader seam, not from the
 # engine root. This gate parses the design's acceptance block, so a run that
 # edits the block grammar must be gated by ITS copy, not the installed one.
@@ -250,10 +253,10 @@ design_gate_run() {
     if [[ ${#violations[@]} -gt 0 ]]; then
         _dg_findings="$(for _dg_fv in "${violations[@]}"; do _dg_plain "$_dg_fv"; printf '\n'; done | stage_findings_json)"
     fi
-    atomic_write "$result_path" <<< "$(jq -n --arg v "$verdict" --argjson viol "$violations_json" \
-        --arg r "$reason" --argjson fnd "${_dg_findings:-[]}" \
-        '{"result_contract":2,"schema_version":1,"verdict":$v,"disposition":"complete","reason":$r,"violations":$viol,
-          "data":{"findings":$fnd}}')"
+    # #2366: contract 3 — the violation codes and the findings under data.
+    stage_result_write "$result_path" "$verdict" "$reason" \
+        "$(jq -nc --argjson viol "$violations_json" --argjson fnd "${_dg_findings:-[]}" \
+            '{violations:$viol, findings:$fnd}')"
 
     if [[ "$verdict" == "fail" ]]; then
         {

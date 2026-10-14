@@ -43,7 +43,7 @@ MERGE_MANIFEST="$REPO_ROOT/plugins/tool/merge/manifest.yaml"
 print_test_section "SPEC-1: manifest provides declares result_contract:2, role:merge_executor, events:[plugin.result]"
 
 _prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$MERGE_MANIFEST" || echo '')"
-assert_eq "[SPEC-1] manifest provides.result_contract is 2" "2" "$_prov_rc"
+assert_eq "[SPEC-1] manifest provides.result_contract is 3 (#2366)" "3" "$_prov_rc"
 
 _prov_role="$(awk '/^provides:/{f=1} f && /^[[:space:]]*role:/{print $2; exit}' "$MERGE_MANIFEST" || echo '')"
 assert_eq "[SPEC-1] manifest provides.role is merge_executor" "merge_executor" "$_prov_role"
@@ -53,17 +53,10 @@ _prov_ev="$(awk '/^provides:/{f=1} f && /plugin\.result/{print; exit}' "$MERGE_M
     && assert_pass "[SPEC-1] manifest provides.events includes plugin.result" \
     || assert_fail "[SPEC-1] manifest provides.events includes plugin.result" "plugin.result absent"
 
-# ─── SPEC-2: valid_verdicts includes pass and error ───────────────────────────
-print_test_section "SPEC-2: config valid_verdicts updated to [pass, error]"
-
-_vv_pass="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*- pass$' || true)"
-_vv_error="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*- error$' || true)"
-[[ "$_vv_pass" -gt 0 ]] \
-    && assert_pass "[SPEC-2] valid_verdicts includes pass" \
-    || assert_fail "[SPEC-2] valid_verdicts includes pass" "missing from $MERGE_MANIFEST"
-[[ "$_vv_error" -gt 0 ]] \
-    && assert_pass "[SPEC-2] valid_verdicts includes error" \
-    || assert_fail "[SPEC-2] valid_verdicts includes error" "missing from $MERGE_MANIFEST"
+# ─── SPEC-2: a contract-3 stage declares no verdict words (#2366) ───────────
+print_test_section "SPEC-2: no valid_verdicts (#2366)"
+assert_eq "[SPEC-2] manifest declares no valid_verdicts" "0" \
+    "$(grep -v '^#' "$MERGE_MANIFEST" | grep -c 'valid_verdicts' || true)"
 
 # ─── SPEC-24: tier_default:T0, no router: block ──────────────────────────────
 print_test_section "SPEC-24: tier_default:T0 with no router: block"
@@ -167,12 +160,12 @@ _mk_mocks "$TEST_TEMP_DIR/bin3" "zbuild/issue-1849-test"
 
 assert_file_exists "[SPEC-3] merge-result.json written on success" "$_s3_art/merge-result.json"
 if [[ -f "$_s3_art/merge-result.json" ]]; then
-    assert_eq "[SPEC-3] result_contract is 2" "2" \
+    assert_eq "[SPEC-3] result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-3] verdict is pass" "pass" \
-        "$(jq -r '.verdict // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-3] disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-3] outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-3] no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s3_art/merge-result.json" 2>/dev/null || true)"
     _s3_reason="$(jq -r '.reason // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
     [[ -n "$_s3_reason" ]] \
         && assert_pass "[SPEC-3] reason field is present" \
@@ -192,10 +185,10 @@ _mk_mocks "$TEST_TEMP_DIR/bin4a" "zbuild/issue-1849-test"
 
 assert_file_exists "[SPEC-4] gate-absent: merge-result.json written" "$_s4a_art/merge-result.json"
 if [[ -f "$_s4a_art/merge-result.json" ]]; then
-    assert_eq "[SPEC-4] gate-absent: result_contract is 2" "2" \
+    assert_eq "[SPEC-4] gate-absent: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s4a_art/merge-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-4] gate-absent: verdict is pass" "pass" \
-        "$(jq -r '.verdict // empty' "$_s4a_art/merge-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-4] gate-absent: outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_s4a_art/merge-result.json" 2>/dev/null || true)"
     assert_eq "[SPEC-4] gate-absent: data.mode is pr_fallback" "pr_fallback" \
         "$(jq -r '.data.mode // empty' "$_s4a_art/merge-result.json" 2>/dev/null || true)"
 fi
@@ -210,10 +203,10 @@ _mk_mocks "$TEST_TEMP_DIR/bin4b" "zbuild/issue-1849-test"
 
 assert_file_exists "[SPEC-4] gate-fail: merge-result.json written" "$_s4b_art/merge-result.json"
 if [[ -f "$_s4b_art/merge-result.json" ]]; then
-    assert_eq "[SPEC-4] gate-fail: result_contract is 2" "2" \
+    assert_eq "[SPEC-4] gate-fail: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s4b_art/merge-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-4] gate-fail: verdict is pass" "pass" \
-        "$(jq -r '.verdict // empty' "$_s4b_art/merge-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-4] gate-fail: outcome is pass" "pass" \
+        "$(jq -r '.outcome // empty' "$_s4b_art/merge-result.json" 2>/dev/null || true)"
     assert_eq "[SPEC-4] gate-fail: data.mode is pr_fallback" "pr_fallback" \
         "$(jq -r '.data.mode // empty' "$_s4b_art/merge-result.json" 2>/dev/null || true)"
 fi
@@ -231,14 +224,12 @@ _mk_mocks "$TEST_TEMP_DIR/bin5a" "main"
 
 assert_file_exists "[SPEC-5] branch-is-main: merge-result.json written" "$_s5a_art/merge-result.json"
 if [[ -f "$_s5a_art/merge-result.json" ]]; then
-    assert_eq "[SPEC-5] branch-is-main: result_contract is 2" "2" \
+    assert_eq "[SPEC-5] branch-is-main: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-5] branch-is-main: verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
-    _s5a_disp="$(jq -r '.disposition // empty' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
-    [[ -n "$_s5a_disp" ]] \
-        && assert_pass "[SPEC-5] branch-is-main: disposition present" \
-        || assert_fail "[SPEC-5] branch-is-main: disposition present" "absent"
+    assert_eq "[SPEC-5] branch-is-main: not finished: neither pass nor fail" "true" \
+        "$(jq -r '(.outcome != null) and .outcome != "pass" and .outcome != "fail"' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-5] branch-is-main: no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
     _s5a_rsn="$(jq -r '.reason // empty' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
     [[ -n "$_s5a_rsn" ]] \
         && assert_pass "[SPEC-5] branch-is-main: reason present" \
@@ -255,14 +246,12 @@ _mk_mocks "$TEST_TEMP_DIR/bin5b" "zbuild/issue-1849-test" 1
 
 assert_file_exists "[SPEC-5] push-failure: merge-result.json written" "$_s5b_art/merge-result.json"
 if [[ -f "$_s5b_art/merge-result.json" ]]; then
-    assert_eq "[SPEC-5] push-failure: result_contract is 2" "2" \
+    assert_eq "[SPEC-5] push-failure: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-5] push-failure: verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
-    _s5b_disp="$(jq -r '.disposition // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
-    [[ -n "$_s5b_disp" ]] \
-        && assert_pass "[SPEC-5] push-failure: disposition present" \
-        || assert_fail "[SPEC-5] push-failure: disposition present" "absent"
+    assert_eq "[SPEC-5] push-failure: not finished: neither pass nor fail" "true" \
+        "$(jq -r '(.outcome != null) and .outcome != "pass" and .outcome != "fail"' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-5] push-failure: no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
     _s5b_rsn="$(jq -r '.reason // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
     [[ -n "$_s5b_rsn" ]] \
         && assert_pass "[SPEC-5] push-failure: reason present" \
@@ -279,14 +268,12 @@ _mk_mocks "$TEST_TEMP_DIR/bin5c" "zbuild/issue-1849-test" 0 1
 
 assert_file_exists "[SPEC-5] gh-failure: merge-result.json written" "$_s5c_art/merge-result.json"
 if [[ -f "$_s5c_art/merge-result.json" ]]; then
-    assert_eq "[SPEC-5] gh-failure: result_contract is 2" "2" \
+    assert_eq "[SPEC-5] gh-failure: result_contract is 3" "3" \
         "$(jq -r '.result_contract // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
-    assert_eq "[SPEC-5] gh-failure: verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
-    _s5c_disp="$(jq -r '.disposition // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
-    [[ -n "$_s5c_disp" ]] \
-        && assert_pass "[SPEC-5] gh-failure: disposition present" \
-        || assert_fail "[SPEC-5] gh-failure: disposition present" "absent"
+    assert_eq "[SPEC-5] gh-failure: not finished: neither pass nor fail" "true" \
+        "$(jq -r '(.outcome != null) and .outcome != "pass" and .outcome != "fail"' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-5] gh-failure: no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
     _s5c_rsn="$(jq -r '.reason // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
     [[ -n "$_s5c_rsn" ]] \
         && assert_pass "[SPEC-5] gh-failure: reason present" \
@@ -327,7 +314,7 @@ printf '{"inputs":{"gate_aggregator_result":"%s"}}\n' "$_s7a_custom" > "$_s7a_si
 
 assert_file_exists "[SPEC-7] ZBUILD_STAGE_INPUTS: merge-result.json written" "$_s7a_art/merge-result.json"
 if [[ -f "$_s7a_art/merge-result.json" ]]; then
-    _s7a_verdict="$(jq -r '.verdict // empty' "$_s7a_art/merge-result.json" 2>/dev/null || true)"
+    _s7a_verdict="$(jq -r '.outcome // empty' "$_s7a_art/merge-result.json" 2>/dev/null || true)"
     _s7a_mode="$(jq -r '.data.mode // empty' "$_s7a_art/merge-result.json" 2>/dev/null || true)"
     # merge path taken: verdict=pass and NOT pr_fallback mode
     [[ "$_s7a_verdict" == "pass" && "$_s7a_mode" != "pr_fallback" ]] \
@@ -359,18 +346,18 @@ _mk_mocks "$TEST_TEMP_DIR/bin29" "zbuild/issue-1849-test" 0 1   # gh pr create f
 ( PATH="$TEST_TEMP_DIR/bin29:$PATH" ZBUILD_STAGE_INPUTS="$_s29_dir/stage-inputs.json" \
   merge_run "pr" "$_s29_sf" ) >/dev/null 2>&1; _s29_rc=$?
 assert_eq "[SPEC-29] rc=1" "1" "$_s29_rc"
-assert_eq "[SPEC-29] merge-result.json verdict is error, not pass" "error" \
-    "$(jq -r '.verdict // empty' "$_s29_dir/artifacts/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-29] …carrying pr-open's own disposition" \
-    "$(jq -r '.disposition // empty' "$_s29_dir/artifacts/pr-result.json" 2>/dev/null || echo none)" \
-    "$(jq -r '.disposition // empty' "$_s29_dir/artifacts/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-29] merge-result.json is not a pass" "true" \
+    "$(jq -r '.outcome != "pass"' "$_s29_dir/artifacts/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-29] …carrying pr-open's own outcome" \
+    "$(jq -r '.outcome // empty' "$_s29_dir/artifacts/pr-result.json" 2>/dev/null || echo none)" \
+    "$(jq -r '.outcome // empty' "$_s29_dir/artifacts/merge-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-30: outward failures are `unavailable` ──────────────────────────────
 print_test_section "SPEC-30: a failed outward action reports unavailable"
 assert_eq "[SPEC-30] push failure → unavailable" "unavailable" \
-    "$(jq -r '.disposition // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
 assert_eq "[SPEC-30] gh pr create failure → unavailable" "unavailable" \
-    "$(jq -r '.disposition // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
 _s30_dir="$TEST_TEMP_DIR/spec30"
 _s30_sf="$(_make_state "$_s30_dir" "pass")"
 _mk_mocks "$TEST_TEMP_DIR/bin30" "zbuild/issue-1849-test"
@@ -378,7 +365,7 @@ sed -i.bak 's|"pr merge")  exit 0 ;;|"pr merge")  exit 1 ;;|' "$TEST_TEMP_DIR/bi
 ( PATH="$TEST_TEMP_DIR/bin30:$PATH" ZBUILD_STAGE_INPUTS="$_s30_dir/stage-inputs.json" \
   merge_run "pr" "$_s30_sf" ) >/dev/null 2>&1
 assert_eq "[SPEC-30] gh pr merge failure → unavailable" "unavailable" \
-    "$(jq -r '.disposition // empty' "$_s30_dir/artifacts/merge-result.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_s30_dir/artifacts/merge-result.json" 2>/dev/null || true)"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env

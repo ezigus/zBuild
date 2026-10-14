@@ -242,10 +242,9 @@ assert_eq "[SPEC-16] there are two of them" \
 assert_eq "[SPEC-16] the first is design-gate == pass" \
     "design-gate|verdict|eq|pass" \
     "$_TPL_CYCLE_EXIT_1_STAGE_design_verify_cycle|$_TPL_CYCLE_EXIT_1_FIELD_design_verify_cycle|$_TPL_CYCLE_EXIT_1_OP_design_verify_cycle|$_TPL_CYCLE_EXIT_1_VALUE_design_verify_cycle"
-# `ne uncovered`, not `eq covered`: `unreadable` (a placeholder issue, #1804)
-# must not stall the cycle for something that is not design's fault.
-assert_eq "[SPEC-16] the second is spec-coverage != uncovered" \
-    "spec-coverage|verdict|ne|uncovered" \
+# #2366: every stage reports pass or fail, so the rule is `eq pass`.
+assert_eq "[SPEC-16] the second is spec-coverage == pass" \
+    "spec-coverage|verdict|eq|pass" \
     "$_TPL_CYCLE_EXIT_2_STAGE_design_verify_cycle|$_TPL_CYCLE_EXIT_2_FIELD_design_verify_cycle|$_TPL_CYCLE_EXIT_2_OP_design_verify_cycle|$_TPL_CYCLE_EXIT_2_VALUE_design_verify_cycle"
 
 # ─── SPEC-14 / SPEC-5: build_test_cycle registered with correct stages and max ─

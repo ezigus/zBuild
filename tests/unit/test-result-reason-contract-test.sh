@@ -207,13 +207,13 @@ fi
 # ─── [SPEC-6 guard] mandatory v2 fields are all present ──────────────────────
 # The reader checks verdict, disposition and reason as one set. Assert the whole
 # set so a future edit cannot fix `reason` by dropping a sibling.
-print_test_section "SPEC-6 (guard) — every mandatory v2 field is present"
+print_test_section "SPEC-6 (guard) — every mandatory field is present (#2366: contract 3)"
 
 rm -f "$RESULT"
 _test_write_result "$RESULT" "fail" "complete" 1 670 1 \
     "some output" "false" "npm test" "" "full"
 
-for _field in verdict disposition reason; do
+for _field in outcome reason; do
     if jq -e --arg f "$_field" \
         'has($f) and (.[$f] | type == "string") and (.[$f] | length > 0)' \
         "$RESULT" >/dev/null 2>&1; then
@@ -224,8 +224,8 @@ for _field in verdict disposition reason; do
     fi
 done
 
-assert_eq "[SPEC-6 guard] result_contract is still 2" \
-    "2" "$(jq -r '.result_contract // ""' "$RESULT" 2>/dev/null || true)"
+assert_eq "[SPEC-6 guard] result_contract is 3 (#2366)" \
+    "3" "$(jq -r '.result_contract // ""' "$RESULT" 2>/dev/null || true)"
 
 # ─── [SPEC-8] the whole chain: writer → reader → halt decision ───────────────
 # The bug's consequence was never the JSON — it was build_test_cycle giving up

@@ -88,7 +88,7 @@ else
 fi
 
 assert_eq "empty-diff: verdict=pass" "pass" \
-    "$(jq -r '.verdict' "$OUT_JSON" 2>/dev/null)"
+    "$(jq -r '.outcome' "$OUT_JSON" 2>/dev/null)"
 
 # ─── 2. zero-byte diff.patch: failing test rc is captured ───────────────────
 print_test_section "2. zero-byte diff.patch + failing tests → rc captured"
@@ -99,7 +99,7 @@ _test_run_inner "$EMPTY_PATCH" "$REPO_FIXTURE" "$OUT_FAIL_JSON" "$FAIL_CMD" \
     >/dev/null 2>&1 || true
 
 assert_eq "empty-diff fail: verdict=fail" "fail" \
-    "$(jq -r '.verdict' "$OUT_FAIL_JSON" 2>/dev/null)"
+    "$(jq -r '.outcome' "$OUT_FAIL_JSON" 2>/dev/null)"
 assert_eq "empty-diff fail: data.exit_code=1" "1" \
     "$(jq -r '.data.exit_code' "$OUT_FAIL_JSON" 2>/dev/null)"
 

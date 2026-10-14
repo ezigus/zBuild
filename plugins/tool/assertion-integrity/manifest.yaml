@@ -25,16 +25,12 @@ requires:
 
 provides:
   role: assertion_integrity
-  result_contract: 2
+  result_contract: 3
   events:
     - assertion_integrity.violation
     - assertion_integrity.result.write_failed
 
 config:
-  valid_verdicts:
-    - pass
-    - fail
-    - skip
 
 outputs:
   - id: assertion_integrity_result

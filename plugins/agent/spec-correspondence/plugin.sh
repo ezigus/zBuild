@@ -13,6 +13,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366: the one writer of a stage's result (contract 3).
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _SC_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # #2062: the stage calls route_to_model, and nothing else was ever going to
@@ -182,15 +185,15 @@ EOF
 EOF
 }
 
-# _sc_write_result <dir> <verdict> <reason> <counts_json> [disposition]
+# _sc_write_result <dir> <outcome> <reason> <data_json>
+# #2366 (ADR-054 §6, contract 3): one outcome. The per-SPEC tallies and the
+# worst judgement (corresponds, partial, mismatch, uncheckable, unjudged) stay
+# under data as detail.
 _sc_write_result() {
-    local dir="$1" v="$2" r="$3" d="${4:-{\}}" disp="${5:-complete}"
+    local dir="$1" o="$2" r="$3" d="${4:-}"
+    [[ -n "$d" ]] || d='{}'
     mkdir -p "$dir" 2>/dev/null || true
-    # ADR-054 §6: `disposition` says how the STAGE stopped. This stage completed
-    # whatever it concluded about the SPECs — the verdict carries that.
-    if ! jq -n --arg v "$v" --arg r "$r" --arg disp "$disp" --argjson d "$d" \
-        '{result_contract: 2, verdict: $v, disposition: $disp, reason: $r, data: $d}' \
-        | atomic_write "$dir/spec-correspondence-result.json"; then
+    if ! stage_result_write "$dir/spec-correspondence-result.json" "$o" "$r" "$d"; then
         _sc_emit "spec_correspondence.result.write_failed" "dir=$dir"
     fi
 }
@@ -214,9 +217,9 @@ spec_correspondence_run() {
 
     if [[ ! -f "$design" ]] || ! declare -f acceptance_list_spec_ids >/dev/null 2>&1; then
         _sc_emit "spec_correspondence.no_contract" "reason=no_design"
-        _sc_write_result "$art" "corresponds" "no acceptance block — nothing to judge" '{}'
+        _sc_write_result "$art" pass "no acceptance block — nothing to judge" '{"judgement":"corresponds"}'
         stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" \
-            "corresponds" "no acceptance block — nothing to judge" ""
+            pass "no acceptance block — nothing to judge" ""
         return 0
     fi
 
@@ -340,7 +343,7 @@ spec_correspondence_run() {
 
     # #2032/SPEC-4: classify the router rc into a disposition word so the engine
     # can act on it; a non-zero rc means the model was not reached.
-    local _sc_router_rc=0 _sc_disposition="complete"
+    local _sc_router_rc=0 _sc_disposition=""
     if [[ -n "$_sc_rc_file" && -f "$_sc_rc_file" ]]; then
         _sc_router_rc="$(cat "$_sc_rc_file" 2>/dev/null || echo 0)"
         rm -f "$_sc_rc_file" 2>/dev/null || true
@@ -353,13 +356,22 @@ spec_correspondence_run() {
         [[ -n "$_sc_disposition" ]] || _sc_disposition="unavailable"
     fi
 
-    _sc_write_result "$art" "$worst" "$reason" \
+    # #2366: one outcome. A call that failed is how the stage ended; otherwise
+    # every SPEC corresponding is a pass, a judge with no parseable answer for
+    # the worst SPEC is unusable, and anything else is a fail.
+    local _o
+    case "$worst" in
+        corresponds) _o=pass ;;
+        unjudged)    _o=unusable ;;
+        *)           _o=fail ;;
+    esac
+    [[ -n "$_sc_disposition" ]] && _o="$_sc_disposition"
+    _sc_write_result "$art" "$_o" "$reason" \
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
-                  --argjson u "$n_unch" --argjson j "$n_unj" \
+                  --argjson u "$n_unch" --argjson j "$n_unj" --arg w "$worst" \
                   --argjson fnd "$(stage_findings_json <<< "$_sc_fl")" \
-            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j, findings:$fnd}')" \
-        "$_sc_disposition"
-    stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" "$worst" \
+            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j, judgement:$w, findings:$fnd}')"
+    stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" "$_o" \
         "$reason" \
         "${findings:-- every judged assertion tests the SPEC it claims to cover}"
     return 0

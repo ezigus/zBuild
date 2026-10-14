@@ -31,20 +31,15 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage
 _VALIDATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_VALIDATE_ROOT/core/event-bus/event-bus.sh"
+# #2366 (ADR-054 §6): the one writer of a contract-3 result.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_VALIDATE_ROOT/scripts/lib/stage-result.sh"
 
 # ─── result helper ───────────────────────────────────────────────────────────
-# _validate_write_result <dir> <verdict> <disposition> <reason> [data_json]
-# Plugin-specific detail rides under `data` (ADR-054 v2).
+# _validate_write_result <dir> <outcome> <reason> [data_json]
+# Plugin-specific detail rides under `data` (ADR-054 §6, contract 3).
 _validate_write_result() {
-    local artifact_dir="$1" verdict="$2" disposition="$3" reason="$4" data="${5:-}"
-    [[ -n "$data" ]] || data='{}'
-    jq -n \
-        --arg v "$verdict" \
-        --arg d "$disposition" \
-        --arg r "$reason" \
-        --argjson data "$data" \
-        '{result_contract:2,verdict:$v,disposition:$d,reason:$r,data:$data}' \
-        | atomic_write "$artifact_dir/validate-result.json"
+    stage_result_write "$1/validate-result.json" "$2" "$3" "${4:-}"
 }
 
 # ─── run ─────────────────────────────────────────────────────────────────────
@@ -54,7 +49,7 @@ validate_agent_run() {
         error "validate_agent_run: state_file argument required"
         if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
             mkdir -p "$ZBUILD_ARTIFACT_DIR"
-            _validate_write_result "$ZBUILD_ARTIFACT_DIR" "error" "broken" \
+            _validate_write_result "$ZBUILD_ARTIFACT_DIR" broken \
                 "engine dispatched this stage with no state file"
         fi
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/validate-summary.md}" "validate" "error" \
@@ -88,7 +83,7 @@ _validate_agent_run_inner() {
     if [[ -z "$deploy_result_in" || ! -f "$deploy_result_in" ]]; then
         error "validate: missing required input deploy-result.json"
         emit_event "validate.input.missing" "plugin=validate" "input=deploy-result.json"
-        _validate_write_result "$artifacts_dir" "error" "broken" \
+        _validate_write_result "$artifacts_dir" broken \
             "missing required input: deploy-result.json was not provided or does not exist"
         stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
             "no deploy-result.json, so nothing could be validated" \
@@ -96,15 +91,18 @@ _validate_agent_run_inner() {
         return 1
     fi
 
-    # Validate checks the deployment deploy MADE. A deploy that did not deploy
-    # (skipped: the gate did not pass; error: the release failed) left nothing
-    # to validate — probing a fixed address and calling it healthy asserted
-    # something about a deployment that never happened.
-    local deploy_verdict
-    deploy_verdict="$(jq -r '.verdict // empty' "$deploy_result_in" 2>/dev/null || true)"
-    if [[ "$deploy_verdict" != "deployed" ]]; then
-        _validate_write_result "$artifacts_dir" "skipped" "complete" \
-            "nothing to validate: deploy reported '${deploy_verdict:-no verdict}', not deployed"
+    # Validate checks the deployment deploy MADE. A deploy that deployed nothing
+    # (the gate did not pass) or did not finish left nothing to validate —
+    # probing a fixed address and calling it healthy asserted something about a
+    # deployment that never happened. Deployed: a contract-3 pass whose data does
+    # not say `deployed: false`, or a contract-2 `deployed` verdict.
+    local deploy_verdict deployed
+    deploy_verdict="$(jq -r '.outcome // .verdict // empty' "$deploy_result_in" 2>/dev/null || true)"
+    deployed="$(jq -r 'if has("outcome") then (.outcome == "pass" and (.data.deployed != false))
+                       else (.verdict == "deployed") end' "$deploy_result_in" 2>/dev/null || true)"
+    if [[ "$deployed" != "true" ]]; then
+        _validate_write_result "$artifacts_dir" pass \
+            "nothing to validate: deploy reported '${deploy_verdict:-no outcome}', and nothing was deployed"
         stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "skip" \
             "nothing was deployed (deploy: ${deploy_verdict:-no verdict}), so nothing was validated" \
             "No probe ran."
@@ -113,7 +111,7 @@ _validate_agent_run_inner() {
 
     # Dry-run mode: write sentinel artifact without executing the health probe
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
-        _validate_write_result "$artifacts_dir" "healthy" "complete" \
+        _validate_write_result "$artifacts_dir" pass \
             "dry run — the health probe was not executed"
         stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "skip" \
             "dry run — the health probe was not executed" \
@@ -128,7 +126,7 @@ _validate_agent_run_inner() {
     probe_url="$(jq -r '.data.health_url // .health_url // empty' "$deploy_result_in" 2>/dev/null || true)"
     if [[ -n "$probe_url" && ! "$probe_url" =~ ^https?:// ]]; then
         error "validate: deploy reported a non-http(s) address: $probe_url"
-        _validate_write_result "$artifacts_dir" "error" "misconfigured" \
+        _validate_write_result "$artifacts_dir" misconfigured \
             "deploy reported an address that is not http(s): $probe_url"
         stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
             "deploy reported an address validate cannot probe" \
@@ -144,7 +142,7 @@ _validate_agent_run_inner() {
     # back as a non-zero rc.)
     if [[ -z "$probe_url" ]]; then
         error "validate: no probe target — set ZBUILD_HEALTH_CHECK_URL"
-        _validate_write_result "$artifacts_dir" "error" "misconfigured" \
+        _validate_write_result "$artifacts_dir" misconfigured \
             "no probe target configured: ZBUILD_HEALTH_CHECK_URL is not set"
         stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
             "no probe target is configured, so nothing could be validated" \
@@ -163,7 +161,7 @@ _validate_agent_run_inner() {
             local hc_out hc_rc=0
             hc_out="$(ZBUILD_HEALTH_CHECK_URL="$probe_url" health_check_run "validate" "$state_file" 2>&1)" || hc_rc=$?
             if [[ $hc_rc -eq 0 ]]; then
-                _validate_write_result "$artifacts_dir" "healthy" "complete" \
+                _validate_write_result "$artifacts_dir" pass \
                     "health probe reported the deployment healthy"
                 stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "pass" \
                     "the health probe reported the deployment healthy" \
@@ -175,7 +173,7 @@ _validate_agent_run_inner() {
             # The probe's own rc and output are the diagnosis (curl: 6 DNS,
             # 7 refused, 22 HTTP error, 28 timeout); the stage's rc is clamped
             # to 1 (ADR-054 §4), so they are kept here, under data.
-            _validate_write_result "$artifacts_dir" "error" "complete" \
+            _validate_write_result "$artifacts_dir" fail \
                 "health probe failed (rc=$hc_rc)" \
                 "$(jq -cn --argjson rc "$hc_rc" --arg out "$hc_snippet" '{probe_rc:$rc, probe_output:$out}')"
             stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "fail" \
@@ -186,7 +184,7 @@ _validate_agent_run_inner() {
     fi
 
     error "validate: health-check plugin not found at: $hc_plugin"
-    _validate_write_result "$artifacts_dir" "error" "broken" \
+    _validate_write_result "$artifacts_dir" broken \
         "health-check plugin missing — installation fault"
     stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
         "the health-check plugin is missing, so nothing could be validated" \
