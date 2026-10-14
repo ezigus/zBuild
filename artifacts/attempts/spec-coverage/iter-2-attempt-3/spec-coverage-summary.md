@@ -1,0 +1,5 @@
+## spec-coverage — pass
+
+- All three gaps from the previous run are closed — SPEC-1 now enumerates parallel-group member and claims all-backend coverage by construction; SPEC-17 demands fixture migration from orch-sequential to orch-mock/bash-parallel; SPEC-19 demands the installed-tree variant of the misconfigured-backend test; R-11 and R-13 are process/verification steps that cannot be judged before the change exists.
+
+- every requirement the issue states maps to a declared SPEC
