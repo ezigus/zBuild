@@ -1,1 +1,11 @@
-{"result_contract":2,"verdict":"incomplete","disposition":"timed_out","reason":"router_timeout"}
+{
+  "result_contract": 2,
+  "verdict": "incomplete",
+  "disposition": "rate_limited",
+  "reason": "router_rate_limited",
+  "data": {
+    "authored_at": "2026-10-14T01:28:36Z",
+    "authored_at_commit": "382915cf919d003beba30844c4caa1f3e30500fb",
+    "wiring_files": []
+  }
+}

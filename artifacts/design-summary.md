@@ -1,5 +1,5 @@
 ## design — error
 
-- the model call timed out before a design was returned
+- the model call was rate-limited (LLM rate-limited — resets 3:10am (UTC))
 
-No design.md was authored. This is an infrastructure fault, not a design one.
+No design.md was authored. The run ends here and resumes when the limit resets.
