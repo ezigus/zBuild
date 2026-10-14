@@ -98,7 +98,7 @@ fi
 # W12-C contract: diff.patch is NOT consulted; verdict comes from test_cmd
 # output, NOT a synthetic apply-failure path.
 assert_eq "bad-patch: verdict=pass (diff ignored, test_cmd parsed)" "pass" \
-    "$(jq -r '.verdict' "$APPLY_FAIL_JSON" 2>/dev/null)"
+    "$(jq -r '.outcome' "$APPLY_FAIL_JSON" 2>/dev/null)"
 APPLY_FAIL_REASON="$(jq -r '.reason // empty' "$APPLY_FAIL_JSON" 2>/dev/null)"
 if [[ "$APPLY_FAIL_REASON" == "diff_apply_failed" ]]; then
     assert_fail "bad-patch: no diff_apply_failed verdict (W12-C)" \

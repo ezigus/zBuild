@@ -37,6 +37,9 @@ source "$_PLAN_ROOT/scripts/lib/test-output-sanitize.sh"
 source "$_PLAN_ROOT/scripts/lib/router-rc-classify.sh"
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_PLAN_ROOT/core/plugin-registry/registry.sh"
+# #2366: one outcome from the engine's list, through the one writer.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_PLAN_ROOT/scripts/lib/stage-result.sh"
 
 # The stage's entry point, its inputs and its result writer (#1835) live in
 # lib/entry.sh — plan_run is defined there.
@@ -180,30 +183,31 @@ _plan_run_inner() {
             warn "plan: router_reason_disposition returned nothing for rc=$router_rc reason=${_rc_reason:-<none>} — recording 'unusable'"
         fi
     fi
-    _plan_write_result "$output_plan_json" "error" "$_disp" "$_reason"
+    _plan_write_outcome "$output_plan_json" "$_disp" "$_reason"
     error "_plan_run_inner: no valid plan.json (reason=$_reason, router_rc=$router_rc)"
-    stage_summary_write "$artifact_dir/plan-summary.md" "plan" "error" \
+    stage_summary_write "$artifact_dir/plan-summary.md" "plan" "$_disp" \
         "no valid plan.json ($_reason)" \
         "The issue was not split into work items."
-    emit_event "plugin.result" "verdict=error" "plugin=plan" "reason=$_reason"
+    emit_event "plugin.result" "outcome=$_disp" "plugin=plan" "reason=$_reason"
     return 1
 }
 
 # _plan_finish <plan.json> <artifact_dir> — the plan with its result fields,
 # and its summary.
 _plan_finish() {
-    local out="$1" artifact_dir="$2" n q v2
+    local out="$1" artifact_dir="$2" n q own
     n="$(jq '.steps | length' "$out" 2>/dev/null || echo 0)"
     q="$(jq '(.open_questions // []) | length' "$out" 2>/dev/null || echo 0)"
-    # v2 contract (#1835): plan.json is the sole result file. Fields an earlier
-    # plan carried that this one does not own are dropped.
-    if ! v2="$(jq -c --arg r "plan has ${n} work item(s)" \
-            'del(.scope_files) + {result_contract:2,verdict:"pass",disposition:"complete",reason:$r}' "$out")" \
-        || ! atomic_write "$out" <<< "$v2"; then
+    # plan.json is the sole result file (#1835): the result fields are added to
+    # the plan itself (#2366: one outcome). Fields an earlier plan carried that
+    # this one does not own are dropped first.
+    if ! own="$(jq -c 'del(.scope_files)' "$out" 2>/dev/null)" \
+        || ! atomic_write "$out" <<< "$own" \
+        || ! stage_result_add "$out" pass "plan has ${n} work item(s)"; then
         # Every exit path writes a result: the plan stands on disk, but without
         # its result fields it is not one the engine can read.
         error "_plan_finish: could not add the result fields to $out"
-        _plan_write_result "$out" "error" "broken" "result_unwritable" || true
+        _plan_write_outcome "$out" "broken" "result_unwritable" || true
         return 1
     fi
     _PLAN_RESULT_WRITTEN=1
@@ -211,6 +215,6 @@ _plan_finish() {
     stage_summary_write "$artifact_dir/plan-summary.md" "plan" "pass" \
         "split the issue into $n work item(s)" \
         "$(printf -- '- open questions: %s\n- artifact: plan.json' "$q")"
-    emit_event "plugin.result" "stage=plan" "plugin=plan" "step_count=$n" "artifact=plan.json"
+    emit_event "plugin.result" "stage=plan" "plugin=plan" "outcome=pass" "step_count=$n" "artifact=plan.json"
     return 0
 }

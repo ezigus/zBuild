@@ -98,12 +98,12 @@ set +e
 
 _sc1_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 _sc1_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
-_sc1_disp="$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+_sc1_disp="$(jq -r '.outcome // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 
 assert_eq "[SPEC-1] success → rc=0" "0" "$_rc"
-assert_eq "[SPEC-1] success → design-verdict.json result_contract=2" "2" "$_sc1_rc2"
-assert_eq "[SPEC-1] success → design-verdict.json verdict=pass" "pass" "$_sc1_verdict"
-assert_eq "[SPEC-1] success → design-verdict.json disposition=complete" "complete" "$_sc1_disp"
+assert_eq "[SPEC-1] success → design-verdict.json result_contract=3" "3" "$_sc1_rc2"
+assert_eq "[SPEC-1] success → design-verdict.json has no verdict field (#2366)" "MISSING" "$_sc1_verdict"
+assert_eq "[SPEC-1] success → design-verdict.json outcome=pass" "pass" "$_sc1_disp"
 assert_eq "[SPEC-1] sidecar written before atomic_write of design.md" "PRESENT" "$_SIDECAR_AT_ATOMIC_WRITE"
 
 # ─── SPEC-2: missing plan.json → sidecar verdict=error, disposition=broken ────
@@ -119,12 +119,12 @@ set +e
 
 _sc2_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 _sc2_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
-_sc2_disp="$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+_sc2_disp="$(jq -r '.outcome // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 
 assert_eq "[SPEC-2] missing plan → rc=1" "1" "$_rc"
-assert_eq "[SPEC-2] missing plan → design-verdict.json result_contract=2" "2" "$_sc2_rc2"
-assert_eq "[SPEC-2] missing plan → design-verdict.json verdict=error" "error" "$_sc2_verdict"
-assert_eq "[SPEC-2] missing plan → design-verdict.json disposition=broken" "broken" "$_sc2_disp"
+assert_eq "[SPEC-2] missing plan → design-verdict.json result_contract=3" "3" "$_sc2_rc2"
+assert_eq "[SPEC-2] missing plan → design-verdict.json has no verdict field (#2366)" "MISSING" "$_sc2_verdict"
+assert_eq "[SPEC-2] missing plan → design-verdict.json outcome=broken" "broken" "$_sc2_disp"
 
 # ─── SPEC-3 [guard]: timeout path writes verdict=incomplete, disposition=interrupted
 _setup_fixture t3
@@ -137,28 +137,21 @@ _rc=$?
 set +e
 
 _sc3_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
-_sc3_disp="$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+_sc3_disp="$(jq -r '.outcome // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 _sc3_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 
-assert_eq "[SPEC-3] timeout → verdict=incomplete (guard)" "incomplete" "$_sc3_verdict"
-assert_eq "[SPEC-3] timeout → disposition=timed_out (#2187)" "timed_out" "$_sc3_disp"
-assert_eq "[SPEC-3] timeout → result_contract=2 (guard)" "2" "$_sc3_rc2"
+assert_eq "[SPEC-3] timeout → no verdict field (#2366)" "MISSING" "$_sc3_verdict"
+assert_eq "[SPEC-3] timeout → outcome=timed_out (#2187)" "timed_out" "$_sc3_disp"
+assert_eq "[SPEC-3] timeout → result_contract=3 (guard)" "3" "$_sc3_rc2"
 
 # ─── SPEC-4 [change]: manifest declares result_contract:2 and valid_verdicts ──
 _DM="$REPO_ROOT/plugins/agent/design/manifest.yaml"
 
 _dm_rc2="$(grep -m1 'result_contract:' "$_DM" | awk '{print $2}' || true)"
-assert_eq "[SPEC-4] manifest provides.result_contract=2" "2" "$_dm_rc2"
-
-grep -q '^\s*-\s*pass\s*$' "$_DM" 2>/dev/null \
-    && assert_pass "[SPEC-4] manifest config.valid_verdicts contains 'pass'" \
-    || assert_fail "[SPEC-4] manifest config.valid_verdicts missing 'pass'"
-grep -q '^\s*-\s*error\s*$' "$_DM" 2>/dev/null \
-    && assert_pass "[SPEC-4] manifest config.valid_verdicts contains 'error'" \
-    || assert_fail "[SPEC-4] manifest config.valid_verdicts missing 'error'"
-grep -q '^\s*-\s*incomplete\s*$' "$_DM" 2>/dev/null \
-    && assert_pass "[SPEC-4] manifest config.valid_verdicts contains 'incomplete'" \
-    || assert_fail "[SPEC-4] manifest config.valid_verdicts missing 'incomplete'"
+assert_eq "[SPEC-4] manifest provides.result_contract=3 (#2366)" "3" "$_dm_rc2"
+grep -q 'valid_verdicts' "$_DM" 2>/dev/null \
+    && assert_fail "[SPEC-4] a contract-3 manifest declares no valid_verdicts" "found" \
+    || assert_pass "[SPEC-4] a contract-3 manifest declares no valid_verdicts"
 
 # ─── SPEC-5 [change]: design_stage_run reads paths from ZBUILD_STAGE_INPUTS ──
 _setup_fixture t5
@@ -202,7 +195,7 @@ assert_eq "[SPEC-5] design_stage_run uses plan from ZBUILD_STAGE_INPUTS (rc=0)" 
 # ─── SPEC-6..9: the remaining four error paths ───────────────────────────────
 # SPEC-2 covered missing_plan_json as the representative error path. The issue's
 # acceptance says "a conformant v2 result on EVERY exit path", and four paths
-# that call _design_write_result had no assertion, so the claim was not
+# that call _design_write_outcome had no assertion, so the claim was not
 # machine-verifiable. One SPEC each, driving the real _design_stage_run_inner.
 #
 # Each also asserts design-summary.md, which the manifest declares
@@ -215,12 +208,12 @@ assert_eq "[SPEC-5] design_stage_run uses plan from ZBUILD_STAGE_INPUTS (rc=0)" 
 _assert_error_path() {
     local spec="$1" label="$2" want_reason="$3" want_disp="${4:-unusable}"
     assert_eq "[$spec] $label → rc=1" "1" "$_rc"
-    assert_eq "[$spec] $label → result_contract=2" \
-        "2" "$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
-    assert_eq "[$spec] $label → verdict=error" \
-        "error" "$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
-    assert_eq "[$spec] $label → disposition=$want_disp" \
-        "$want_disp" "$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_eq "[$spec] $label → result_contract=3" \
+        "3" "$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_eq "[$spec] $label → no verdict field (#2366)" \
+        "MISSING" "$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_eq "[$spec] $label → outcome=$want_disp" \
+        "$want_disp" "$(jq -r '.outcome // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
     assert_eq "[$spec] $label → reason=$want_reason" \
         "$want_reason" "$(jq -r '.reason // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
     if [[ -s "$_F_ARTIFACTS/design-summary.md" ]]; then

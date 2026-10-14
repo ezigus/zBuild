@@ -163,7 +163,7 @@ fi
 
 lines_added="$(jq -r '.lines_added' "$SUMMARY" 2>/dev/null || echo 0)"
 files_changed_count="$(jq -r '.files_changed | length' "$SUMMARY" 2>/dev/null || echo 0)"
-verdict="$(jq -r '.verdict' "$SUMMARY" 2>/dev/null || echo error)"
+verdict="$(jq -r '.outcome' "$SUMMARY" 2>/dev/null || echo error)"
 
 # lines_added must be >= 2 (one line per iter, 2 iters)
 if [[ "$lines_added" =~ ^[0-9]+$ && "$lines_added" -ge 2 ]]; then
@@ -174,7 +174,7 @@ else
 fi
 
 assert_eq "build-summary.files_changed has 1 file" "1" "$files_changed_count"
-assert_eq "build-summary.verdict=pass" "pass" "$verdict"
+assert_eq "build-summary.outcome=pass" "pass" "$verdict"
 
 # Absence-test: no apply_check field present.
 has_ac="$(jq -r 'has("apply_check")' "$SUMMARY" 2>/dev/null || echo true)"

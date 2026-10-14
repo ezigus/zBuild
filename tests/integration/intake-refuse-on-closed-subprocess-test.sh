@@ -105,7 +105,7 @@ assert_gt "subprocess: intake.refused.issue_closed event in jsonl" "$refused_cou
 assert_file_exists "[#1837/SPEC-2] intake-result.json written on refusal" \
     "$ARTIFACT_DIR/intake-result.json"
 assert_eq "[#1837] a closed issue is misconfigured — nothing was down" "misconfigured" \
-    "$(jq -r '.disposition // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-16 [change] / SPEC-2 [change]: SIGTERM mid-run ────────────────────
 # The workspace-branch step — mid-stage, before any result exists — is stubbed
@@ -156,10 +156,10 @@ assert_file_exists "[#1837/SPEC-16] fixture: the stub was reached before the sig
 assert_file_exists "[#1837/SPEC-2][#1837/SPEC-16] SIGTERM: intake-result.json written before exit" \
     "$_s16_art_dir/intake-result.json"
 if [[ -f "$_s16_art_dir/intake-result.json" ]]; then
-    assert_eq "[#1837/SPEC-16] SIGTERM: verdict=fail" "fail" \
-        "$(jq -r '.verdict // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
-    assert_eq "[#1837/SPEC-16] SIGTERM: disposition=interrupted (retry), not broken (halt)" "interrupted" \
-        "$(jq -r '.disposition // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
+    assert_eq "[#1837/SPEC-16] SIGTERM: contract 3" "3" \
+        "$(jq -r '.result_contract // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
+    assert_eq "[#1837/SPEC-16] SIGTERM: outcome=interrupted (retry), not broken (halt)" "interrupted" \
+        "$(jq -r '.outcome // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
     assert_eq "[#1837/SPEC-16] SIGTERM: reason=signal_interrupt" "signal_interrupt" \
         "$(jq -r '.reason // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
 fi

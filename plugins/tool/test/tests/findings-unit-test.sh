@@ -93,7 +93,7 @@ OUT_JSON="$ARTIFACT_DIR/test-results.json"
 set +e
 _test_run_inner "$ARTIFACT_DIR/diff.patch" "$REPO" "$OUT_JSON" "bash bin/fake-suite.sh"
 set -e
-assert_eq "precondition: the fake suite reads as a failing run" "fail" "$(jq -r '.verdict' "$OUT_JSON")"
+assert_eq "precondition: the fake suite reads as a failing run" "fail" "$(jq -r '.outcome' "$OUT_JSON")"
 
 print_test_section "F1/F2: the result names the failing file, why, and what it points at"
 _f_file="$(jq -r '.data.failures[0].file // empty' "$OUT_JSON" 2>/dev/null || true)"

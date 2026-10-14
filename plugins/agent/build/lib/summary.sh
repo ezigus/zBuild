@@ -35,6 +35,10 @@ _BUILD_NUMSTAT_FILES_COUNT=0
 # shellcheck source=../../../../scripts/lib/router-rc-classify.sh
 declare -F router_reason_disposition >/dev/null 2>&1 \
     || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/router-rc-classify.sh"
+# #2366: the result fields come from the one writer.
+# shellcheck source=../../../../scripts/lib/stage-result.sh
+declare -F stage_result_add >/dev/null 2>&1 \
+    || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/stage-result.sh"
 
 _build_format_numstat() {
     local raw="$1"
@@ -137,10 +141,10 @@ _build_write_rate_limited_summary() {
         --argjson schema_version 4 \
         --argjson iterations "$iters" \
         --arg msg "${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited}" \
-        '{"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
-          "disposition":"rate_limited","reason":"router_rate_limited","iterations":$iterations,
+        '{"schema_version":$schema_version,"iterations":$iterations,
           "data":{"rate_limit":{"message":$msg}}}' \
-        | atomic_write "$out" 2>/dev/null || true
+        | atomic_write "$out" 2>/dev/null \
+        && stage_result_add "$out" rate_limited "router_rate_limited" 2>/dev/null || true
     git -C "$root" reset -q 2>/dev/null || true
     if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
         _route_loop_close_final_banner || true
@@ -184,32 +188,27 @@ _build_write_build_summary() {
     local _sum_scope_expansion_request_json=""
     local _sum_oos_paths
 
-    # Compute verdict (ADR-054: v2 contract uses disposition+reason for recoverability).
+    # #2366 (ADR-054 §6): one outcome. `pass` / `fail` when the loop finished;
+    # otherwise how it stopped, from the one shared mapping (#2187). build_verdict
+    # carries the outcome word to the caller (summary, events, commit).
     build_verdict="pass"
-    local build_disposition="" build_reason="" build_data_kind=""
+    local build_reason="" build_data_kind=""
     if [[ "${scope_violation:-false}" == "true" ]]; then
-        build_verdict="scope_violation"
-        # #2187: build ran; the verdict and the scope request carry the violation.
-        build_disposition="complete"
+        # #2187: build ran; scope_violation and the scope request carry it.
+        build_verdict="fail"
         build_reason="scope_violation"
     elif [[ "${terminated_reason:-error}" == "router_timeout" || "${terminated_reason:-error}" == "error" ]]; then
-        build_verdict="incomplete"
-        build_disposition="$(router_reason_disposition "${terminated_reason:-error}")"
+        build_verdict="$(router_reason_disposition "${terminated_reason:-error}")"
         build_reason="${terminated_reason:-error}"
     elif [[ "${terminated_reason:-}" == "done_sentinel" \
           && "${files_changed_count:-0}" -eq 0 ]]; then
-        build_verdict="pass"
-        build_disposition="complete"
         build_reason="build_complete_no_changes"
         build_data_kind="empty_diff"
     elif [[ "${terminated_reason:-}" == "done_sentinel" ]]; then
-        # done_sentinel with files changed: normal pass (ADR-054 disposition:complete)
-        build_disposition="complete"
         build_reason="build_complete"
     else
-        # Any other terminated_reason (max_iterations, etc.): incomplete
-        build_verdict="incomplete"
-        build_disposition="$(router_reason_disposition "${terminated_reason:-unknown}")"
+        # Any other terminated_reason (max_iterations, etc.): did not finish.
+        build_verdict="$(router_reason_disposition "${terminated_reason:-unknown}")"
         build_reason="${terminated_reason:-unknown}"
     fi
 
@@ -221,8 +220,7 @@ _build_write_build_summary() {
         _inert_failing_testfile="$(_build_guard_false_completion \
             "$_acceptance_testfiles" "${repo_root:-}" 2>/dev/null || true)"
         if [[ -n "$_inert_failing_testfile" ]]; then
-            build_verdict="fail"
-            build_disposition="complete"   # #2187: the verdict carries the false completion
+            build_verdict="fail"   # #2187: the outcome carries the false completion
             build_reason="false_completion_detected"
             build_data_kind="inert_build"
             emit_event "build.inert_build" "plugin=build" \
@@ -308,7 +306,6 @@ _build_write_build_summary() {
         --arg diff_patch_path "${output_diff_patch:-}" \
         --argjson iterations "${iterations:-0}" \
         --arg terminated_reason "${terminated_reason:-error}" \
-        --arg verdict "$build_verdict" \
         --argjson scope_violation "$([[ "${scope_violation:-false}" == "true" ]] && echo true || echo false)" \
         --argjson scope_violations "$_sum_violations_json" \
         --argjson loop_input_tokens "${loop_input_tokens:-0}" \
@@ -319,13 +316,10 @@ _build_write_build_summary() {
         --argjson scope_expansion_request "${_sum_scope_expansion_request_json:-null}" \
         --arg failing_acceptance_testfile "${_inert_failing_testfile:-}" \
         --arg notes "Build stage completed. Diff written to artifact; not applied." \
-        --arg build_disposition "${build_disposition:-}" \
-        --arg build_reason_v2 "${build_reason:-}" \
         --arg build_data_kind "${build_data_kind:-}" \
         --argjson round "$(_build_round_json "${iterations:-0}" 2>/dev/null || printf 'null')" \
         '{
             schema_version: $schema_version,
-            result_contract: 2,
             issue: $issue,
             files_changed: $files_changed,
             lines_added: $lines_added,
@@ -333,16 +327,13 @@ _build_write_build_summary() {
             diff_patch_path: $diff_patch_path,
             iterations: $iterations,
             terminated_reason: $terminated_reason,
-            verdict: $verdict,
-            disposition: $build_disposition,
-            reason: $build_reason_v2,
             scope_violation: $scope_violation,
             scope_violations: $scope_violations,
             loop_input_tokens: $loop_input_tokens,
             loop_output_tokens: $loop_output_tokens,
             notes: $notes
         }
-        + (if $reason != "" then {reason: $reason, out_of_scope_files: $out_of_scope_files} else {} end)
+        + (if $reason != "" then {out_of_scope_files: $out_of_scope_files} else {} end)
 
         + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
         + (if $failing_acceptance_testfile != "" then {failing_acceptance_testfile: $failing_acceptance_testfile} else {} end)
@@ -356,7 +347,8 @@ _build_write_build_summary() {
         + ( ( (if $build_data_kind != "" then {build_kind: $build_data_kind} else {} end)
             + (if ($not_reproduced | length) > 0 then {not_reproduced: $not_reproduced} else {} end)
             ) as $d | if ($d | length) > 0 then {data: $d} else {} end )
-        ' | atomic_write "$output_summary_json"
+        ' | atomic_write "$output_summary_json" \
+        && stage_result_add "$output_summary_json" "$build_verdict" "${_sum_build_reason:-${build_reason:-unknown}}"
 }
 
 # ─── _build_restore_authored_testfiles <artifact_dir> <repo_root> ────────────

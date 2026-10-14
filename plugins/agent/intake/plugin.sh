@@ -28,24 +28,23 @@ source "$_INTAKE_DIR/lib/branch-names.sh"
 source "$_INTAKE_DIR/lib/branch-ops.sh"
 # shellcheck source=lib/requirements.sh
 source "$_INTAKE_DIR/lib/requirements.sh"
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_INTAKE_ROOT/scripts/lib/stage-result.sh"
 
-# ─── v2 result writer ────────────────────────────────────────────────────────
-# _intake_write_result <art_dir> <verdict> <disposition> <reason> [data-json]
-# The disposition is the THIRD argument, as in every other stage's writer, so
-# lint-disposition-words reads intake's words. There is no fallback directory:
-# the engine names the artifact dir, and a result that cannot be written is
-# reported, never skipped — a stage with no result reads as a pass-less run.
+# ─── result writer (contract 3, #2366) ───────────────────────────────────────
+# _intake_write_result <art_dir> <outcome> <reason> [data-json]
+# One outcome from the engine's list (stage_result_write). There is no fallback
+# directory: the engine names the artifact dir, and a result that cannot be
+# written is reported, never skipped — a stage with no result reads as a
+# pass-less run.
 _intake_write_result() {
-    local art_dir="$1" verdict="$2" disposition="$3" reason="$4" data_json="${5:-null}"
+    local art_dir="$1" outcome="$2" reason="$3" data_json="${4:-}"
     if [[ -z "$art_dir" ]]; then
         error "intake: ZBUILD_ARTIFACT_DIR is not set — the engine gave intake nowhere to write intake-result.json"
         return 1
     fi
-    local json
-    json="$(jq -nc --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --argjson data "$data_json"         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r}
-         + (if $data == null then {} else {data: $data} end)')" \
-        && atomic_write "$art_dir/intake-result.json" <<< "$json" \
-        && _INTAKE_RESULT_VERDICT="$verdict" && return 0
+    stage_result_write "$art_dir/intake-result.json" "$outcome" "$reason" "$data_json" \
+        && _INTAKE_RESULT_VERDICT="$outcome" && return 0
     error "intake: could not write $art_dir/intake-result.json"
     return 1
 }
@@ -56,7 +55,7 @@ _intake_write_result() {
 _intake_on_signal() {
     case "${_INTAKE_RESULT_VERDICT:-}" in
         pass) exit 0 ;;
-        "")   _intake_write_result "${ZBUILD_ARTIFACT_DIR:-}" "fail" \
+        "")   _intake_write_result "${ZBUILD_ARTIFACT_DIR:-}" \
                   "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" || true ;;
     esac
     exit 1
@@ -141,7 +140,7 @@ _intake_run_inner() {
             _intake_check_issue_state "$issue" || _state_rc=$?
             if [[ $_state_rc -ne 0 ]]; then
                 # Closed is the operator's choice, not an outage: misconfigured.
-                _intake_write_result "$_art" "fail" "misconfigured" \
+                _intake_write_result "$_art" "misconfigured" \
                     "refused issue #$issue — it is not in an actionable state"
                 stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
                     "refused issue #$issue — it is not in an actionable state" \
@@ -215,13 +214,13 @@ _intake_run_inner() {
                 # possible way to discover the fetch had failed.
                 error "intake_run: could not read issue #${issue} (gh rc=${gh_rc}) and no --goal was supplied — refusing to run against a goal that says nothing about what to build. Supply --goal, or set ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1 for an offline smoke run."
                 # disposition-ok: GitHub (gh issue view) is not responding
-                _intake_write_result "$_art" "fail" "unavailable" \
+                _intake_write_result "$_art" "unavailable" \
                     "could not read issue #${issue} from GitHub (gh rc=${gh_rc}) and no goal was supplied"
                 return 1
             fi
         else
             error "intake_run: ZBUILD_GOAL is required (or pass --issue <N>)"
-            _intake_write_result "$_art" "fail" "misconfigured" \
+            _intake_write_result "$_art" "misconfigured" \
                 "ZBUILD_GOAL is required (or pass --issue <N>)"
             return 1
         fi
@@ -230,7 +229,7 @@ _intake_run_inner() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "intake_run: state_file argument required"
-        _intake_write_result "$_art" "fail" "broken" \
+        _intake_write_result "$_art" "broken" \
             "the engine dispatched this stage with no state file"
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/intake-summary.md}" "intake" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
@@ -244,7 +243,7 @@ _intake_run_inner() {
     if [[ -z "$sanitized" ]]; then
         error "intake_run: goal empty after sentinel sanitization"
         # The input is empty, not zBuild: misconfigured.
-        _intake_write_result "$_art" "fail" "misconfigured" \
+        _intake_write_result "$_art" "misconfigured" \
             "the goal was empty after sentinel sanitization"
         stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
             "the goal was empty after sanitization, so there is nothing to plan" \
@@ -310,7 +309,7 @@ _intake_run_inner() {
                 _b_disp="unavailable"
                 _b_reason="could not fetch the remote branch '${_INTAKE_BRANCH_FETCH_FAILED}' — the git remote is not responding"
             fi
-            _intake_write_result "$_art" "fail" "$_b_disp" "$_b_reason"
+            _intake_write_result "$_art" "$_b_disp" "$_b_reason"
             stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
                 "$_b_reason" \
                 "Fail-closed: work does not proceed on the current branch, which may be main."
@@ -323,7 +322,7 @@ _intake_run_inner() {
         warn "intake_run: could not write $_art/requirements.json — later stages judge the issue text alone"
     fi
 
-    _intake_write_result "$_art" "pass" "complete" \
+    _intake_write_result "$_art" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
         "{\"goal_len\": ${#sanitized}, \"platform_count\": ${#platforms[@]}}" || return 1
     stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "pass" \

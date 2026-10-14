@@ -95,7 +95,7 @@ SF4="$(_stage noindex)"; D4="$(dirname "$SF4")"
   plan_run plan "$SF4" ) >/dev/null 2>&1
 assert_eq "[P4] with no index, plan does not run the model on ZBUILD_GOAL / fallback paths" "0" "$(wc -l < "$MODEL_CALLS" | tr -d ' ')"
 assert_eq "[P4] ...and says the engine gave it no input (broken)" "broken" \
-    "$(jq -r '.disposition // empty' "$TEST_TEMP_DIR/noindex/art/plan.json" 2>/dev/null)"
+    "$(jq -r '.outcome // empty' "$TEST_TEMP_DIR/noindex/art/plan.json" 2>/dev/null)"
 SF4b="$(_stage nogoal)"; D4b="$(dirname "$SF4b")"
 jq '.inputs |= del(.intake_goal)' "$D4b/stage-inputs.json" > "$D4b/si.tmp" && mv "$D4b/si.tmp" "$D4b/stage-inputs.json"
 : > "$MODEL_CALLS"
@@ -104,7 +104,7 @@ jq '.inputs |= del(.intake_goal)' "$D4b/stage-inputs.json" > "$D4b/si.tmp" && mv
   plan_run plan "$SF4b" ) >/dev/null 2>&1
 assert_eq "[P4] an index without intake_goal is not rescued by ZBUILD_GOAL" "0" "$(wc -l < "$MODEL_CALLS" | tr -d ' ')"
 assert_eq "[P4] ...and says the engine gave it no intake_goal (broken)" "broken" \
-    "$(jq -r '.disposition // empty' "$TEST_TEMP_DIR/nogoal/art/plan.json" 2>/dev/null)"
+    "$(jq -r '.outcome // empty' "$TEST_TEMP_DIR/nogoal/art/plan.json" 2>/dev/null)"
 
 print_test_section "P7: a router failure the shared mapping cannot name"
 # Cannot happen today (the classifier has a catch-all the mapping covers), but
@@ -139,9 +139,9 @@ bash -c "
 " >/dev/null 2>&1
 assert_file_exists "[P1] fixture: the model call was reached before the signal" "$READY"
 _r1="$TEST_TEMP_DIR/sig/art/plan.json"
-assert_eq "[P1] a signal writes disposition=interrupted" "interrupted" "$(jq -r '.disposition // empty' "$_r1" 2>/dev/null)"
+assert_eq "[P1] a signal writes disposition=interrupted" "interrupted" "$(jq -r '.outcome // empty' "$_r1" 2>/dev/null)"
 assert_eq "[P1] ...reason=signal_interrupt" "signal_interrupt" "$(jq -r '.reason // empty' "$_r1" 2>/dev/null)"
-assert_eq "[P1] ...result_contract=2" "2" "$(jq -r '.result_contract // empty' "$_r1" 2>/dev/null)"
+assert_eq "[P1] ...result_contract=3" "3" "$(jq -r '.result_contract // empty' "$_r1" 2>/dev/null)"
 SF1b="$(_stage sig2)"; D1b="$(dirname "$SF1b")"
 _trap1="$(
     trap 'printf "CALLER\n"' TERM
