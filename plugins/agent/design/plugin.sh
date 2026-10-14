@@ -233,43 +233,30 @@ _design_stage_run_inner() {
 
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
-    local _framing="Your job is to produce an ADR-style design.md for the task described in the plan below."
+    local _framing="Your job: write design.md — the change's decisions, its acceptance contract and its scope — at the path below. Write a first version early and update it as you go: a design on disk when your time runs out still counts. A finding is answered in the design: what changes in the contract or the scope. You do not debug code or work out why a test fails."
 
     cat > "$prompt_input_file" <<DESIGN_PROMPT
+## What you own
 ${_framing}
 
-## What you own
 Write the design document to this EXACT absolute path:
   $output_design_md
 
 The design document MUST include:
 1. A brief architectural decision summary (goal, context, decision).
-2. A \`\`\`scope fenced block that is an EXHAUSTIVE enumeration of every file
-   in the repository that this change touches, invalidates, references,
-   validates, documents, or assumes anything about — NOT merely the seed
-   scope. The seed below is a starting point, never the answer. You MUST actively search the repo (Read/Grep/Glob) and include:
-     - every TEST that asserts behavior you are changing — INCLUDING tests
-       that hardcode a value you are changing (a stage count, an event
-       count, a name list, an ordering). For every constant, count, list,
-       or name your change alters, GREP the repo for the OLD value and add
-       every file that pins it.
-     - every file that EXHAUSTIVELY ENUMERATES a set you are GROWING and would
-       silently break by OMISSION. When your change adds a member to a closed
-       set — a new case, branch, entry, member, route, or stage — there is NO
-       old value to grep: the breakage is the MISSING new line, not a stale
-       one. Find these by the ENUMERATION PATTERN, not by a value — every place
-       that lists the CURRENT membership in full (a branch handling each
-       member, a registry or table naming each member, a fixture or assertion
-       pinning the set's SIZE or its exact roster). A downstream build that
-       grows the set but leaves an exhaustive enumeration untouched ships a
-       file that is now wrong by absence. If your repository defines which
-       enumerations matter, consult its design override overlay below, if present.
-     - every CONFIG/SCHEMA/GOLDEN that encodes a shape you are changing
-       (config/, *.json, event-schema, tests/golden/, snapshots).
-     - every DOC/ADR that describes the contract you are changing.
-     - every SOURCE file that references a symbol you add, remove, or rename.
-   A scope that merely echoes the seed is a FAILURE of this stage — the
-   downstream build can only touch files you list here.
+2. A \`\`\`scope fenced block listing every file this change touches, and every
+   file that pins what it changes. Find them by searching: search for the names, values and lists the change alters (Grep and Glob), rather than reading
+   files end to end. Include:
+     - the tests that assert a behaviour you change, or pin a value, count,
+       name list or order you change (search for the old value);
+     - when the change adds a member to a set (a case, entry, route, stage),
+       the files that list every current member — a table, a registry, a
+       fixture or an assertion pinning the set's size or its roster;
+     - the config, schema and golden files that encode a shape you change;
+     - the docs and ADRs that describe the contract you change;
+     - the source files that use a name you add, remove or rename.
+   The seed below is a starting point. The files you list are the files the
+   change may touch.
 
 The \`\`\`scope block format (one repo-relative path per line):
 \`\`\`scope
@@ -424,12 +411,11 @@ DESIGN_PROMPT
     cat >> "$prompt_input_file" <<DESIGN_LIMITS
 
 ## What you must not do
-- Do NOT call Edit, Write, or Bash for implementation. The ONLY file you
-  write is the design.md at the exact path above. Your job is to ENUMERATE
-  scope, not to implement.
-- Do NOT write to ./design.md, design.md, or any other path. The harvester
-  expects the file at the absolute path above; any other location is a
-  contract violation that will fail this stage.
+- Do not write any file other than the design.md above and your notes file.
+  Do not change the code: the design says what changes, it does not make the
+  change.
+- Do not write design.md anywhere else (./design.md, design.md): it is read
+  from the absolute path above only.
 DESIGN_LIMITS
 
     # ADR-067 §8: design's three parts and the engine's blocks — the

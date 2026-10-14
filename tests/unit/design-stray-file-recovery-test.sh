@@ -186,10 +186,10 @@ else
     assert_fail "T4: prompt missing absolute destination path" \
         "first 200 chars of prompt: $(head -c 200 "$_MOCK_ROUTE_PROMPT_CAPTURE")"
 fi
-if grep -qF 'Do NOT write to ./design.md' "$_MOCK_ROUTE_PROMPT_CAPTURE" 2>/dev/null; then
+if grep -qF 'Do not write design.md anywhere else (./design.md, design.md)' "$_MOCK_ROUTE_PROMPT_CAPTURE" 2>/dev/null; then
     assert_pass "T4: prompt forbids the historical default path"
 else
-    assert_fail "T4: prompt missing 'Do NOT write to ./design.md' forbiddance"
+    assert_fail "T4: prompt missing the ./design.md forbiddance"
 fi
 unset MOCK_DESIGN_WRITE_PATH
 
