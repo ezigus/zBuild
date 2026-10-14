@@ -101,7 +101,7 @@ _lc_artifacts_walk() {
     while IFS= read -r e; do
         [[ -n "$e" ]] || continue
         if [[ -d "$e" && ! -L "$e" ]]; then
-            if [[ "$keep" == *"$e/"* ]]; then
+            if [[ $'\n'"$keep" == *$'\n'"$e/"* ]]; then
                 _lc_artifacts_walk "$e" "$keep"
             else
                 _LC_DENY_OUT+="$e/**"$'\n'

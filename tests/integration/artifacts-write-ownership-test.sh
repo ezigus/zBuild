@@ -64,8 +64,11 @@ plugin_hook_call "$FX" run me-stage "$SF" >/dev/null 2>&1 || true
 D="$(cat "$CAP" 2>/dev/null)"
 
 print_test_section "A1: what another stage left is denied"
-assert_contains "[A1] another stage's notes" "$D" "$A/notes/plan.md"
-assert_contains "[A1] the stage reports" "$D" "$A/stage-reports.json"
+_has() { grep -qxF -- "$1" <<< "$D"; }
+if _has "$A/notes/plan.md"; then assert_pass "[A1] another stage's notes"
+else assert_fail "[A1] another stage's notes" "not denied"; fi
+if _has "$A/stage-reports.json"; then assert_pass "[A1] the stage reports"
+else assert_fail "[A1] the stage reports" "not denied"; fi
 
 print_test_section "A2: what is the stage's own is not"
 if grep -qxF "$A/notes/me-stage.md" <<< "$D"; then assert_fail "[A2] own notes are writable" "denied"
@@ -74,7 +77,8 @@ if grep -qxF "$A/me-result.json" <<< "$D"; then assert_fail "[A2] own declared o
 else assert_pass "[A2] own declared output is writable"; fi
 
 print_test_section "A3: a folder with nothing of the stage's is denied whole"
-assert_contains "[A3] attempts/ is denied as a folder" "$D" "$A/attempts/**"
+if _has "$A/attempts/**"; then assert_pass "[A3] attempts/ is denied as a folder"
+else assert_fail "[A3] attempts/ is denied as a folder" "not denied"; fi
 
 cleanup_test_env
 print_test_results
