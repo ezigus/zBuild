@@ -97,7 +97,7 @@ _fixture() {
     } > "$d/manifest.yaml"
     cat > "$d/plugin.sh" <<PEOF
 ${id//-/_}_run() {
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "\${ZBUILD_ARTIFACT_DIR:-$JOB/artifacts}/${id}-result.json"
+    printf '{"result_contract":3,"outcome":"pass","reason":"ok"}\n' > "\${ZBUILD_ARTIFACT_DIR:-$JOB/artifacts}/${id}-result.json"
 ${body}
 }
 PEOF

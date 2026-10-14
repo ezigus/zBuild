@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
-# tests/unit/verdict-undeclared-word-test.sh — a verdict a plugin never declared
-# is a failure of that stage, not a warning (#2242).
+# tests/unit/verdict-undeclared-word-test.sh — a word the engine does not know
+# is a failure of that stage, not a warning (#2242; contract 3 since #2366).
 #
 # Why: #1838's impact plugin wrote `verdict: broken` on two exits; its manifest
-# declares complete|incomplete|error. The engine's reader returned `warn` (and a
-# log event) for it — even for `verdict: banana` — so every gate passed it. #1708
-# and every Phase 0/F migration issue say an undeclared verdict is a structural
-# failure, the rule the reader already applies to an undeclared disposition.
+# declared complete|incomplete|error. The engine's reader returned `warn` (and a
+# log event) for it — even for `verdict: banana` — so every gate passed it.
+# Since #2366 a result carries one `outcome` from the engine's closed list, and
+# a word off that list is a structural failure.
 #
-# V1 [change] a v2 result whose verdict is not in valid_verdicts → `error`, with
-#             contract_violation:unknown_verdict:<word> on the event
-# V2 [guard]  a declared verdict still classifies as before (complete → pass)
-# V3 [guard]  a manifest that declares no list (absent or []) is not checked here
-#             (the lint owns a missing declaration)
-# V4 [change] a v1 result is refused outright since #1850 (it used to be read
-#             as v1 and skip this check)
-# V5 [guard]  an inline flow list `valid_verdicts: [complete, error]` is honoured
+# V1 [change] a contract-3 outcome off the list → `error`, with
+#             contract_violation:unknown_outcome:<word> on the event
+# V2 [guard]  an outcome on the list still classifies as before (pass → pass)
+# V4 [change] a v1 result is refused outright since #1850
 # V6 [change] a scalar `valid_verdicts: pass` is not a list — the parser says so
-#             (`invalid`), the reader does not treat it as one (review #2247)
+#             (`invalid`) (review #2247)
+# (V3 and V5 tested contract 2's per-stage `valid_verdicts` reading, which
+#  contract 3 does not have; they were removed with it.)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,13 +29,15 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 source "$REPO_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
-print_test_header "an undeclared verdict word fails the stage (#2242)"
+print_test_header "a word the engine does not know fails the stage (#2242, #2366)"
 setup_test_env "verdict-undeclared-word"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl"
 
 S="$TEST_TEMP_DIR/state"; mkdir -p "$S/artifacts"
-# _manifest <valid_verdicts-block> — a stage whose JSON primary is x.json.
+# _manifest <config-block> — a stage whose JSON primary is x.json.
 _manifest() {
     cat > "$TEST_TEMP_DIR/manifest.yaml" <<EOF
 id: x
@@ -48,47 +48,36 @@ outputs:
     format: json
     primary: true
 provides:
-  result_contract: 2
+  result_contract: 3
 config:
 $1
 EOF
 }
-# _read <verdict> [v1] → the reader's class for a result with that verdict.
+# _read <outcome> [v1|raw] → the reader's class for a result with that word.
+# A word on the list is written with the engine's writer; one off the list
+# cannot be (the writer refuses it), so it is written raw.
 _read() {
-    if [[ "${2:-}" == v1 ]]; then
-        printf '{"verdict":"%s"}\n' "$1" > "$S/artifacts/x.json"
-    else
-        printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"r"}\n' "$1" > "$S/artifacts/x.json"
-    fi
+    case "${2:-}" in
+        v1)  printf '{"verdict":"%s"}\n' "$1" > "$S/artifacts/x.json" ;;
+        raw) printf '{"result_contract":3,"outcome":"%s","reason":"r"}\n' "$1" > "$S/artifacts/x.json" ;;
+        *)   stage_result_write "$S/artifacts/x.json" "$1" "r" ;;
+    esac
     : > "$ZBUILD_EVENTS_JSONL"
     runner_read_stage_verdict "$S" "$TEST_TEMP_DIR/manifest.yaml" x 0 2>/dev/null
 }
 
-_manifest '  valid_verdicts:
-    - complete
-    - incomplete
-    - error'
-assert_eq "[V1] an undeclared verdict (broken) is error, not warn" "error" "$(_read broken)"
-assert_contains "[V1] ...and the event names it" "$(cat "$ZBUILD_EVENTS_JSONL")" "unknown_verdict:broken"
-assert_eq "[V1] even banana" "error" "$(_read banana)"
-assert_eq "[V2] a declared verdict still classifies (complete → pass)" "pass" "$(_read complete)"
-assert_eq "[V4] a v1 result is refused, whatever its word (#1850)" "error" "$(_read banana v1)"
-
-_manifest '  valid_verdicts: []'
-assert_eq "[V3] an empty declaration is not checked here" "warn" "$(_read banana)"
 _manifest '  tier_default: T1'
-assert_eq "[V3] an absent declaration is not checked here" "warn" "$(_read banana)"
-
-_manifest '  valid_verdicts: [complete, error]'
-assert_eq "[V5] a flow list is honoured (declared)" "pass" "$(_read complete)"
-assert_eq "[V5] a flow list is honoured (undeclared)" "error" "$(_read broken)"
+assert_eq "[V1] an outcome off the list (degraded) is error, not warn" "error" "$(_read degraded raw)"
+assert_contains "[V1] ...and the event names it" "$(cat "$ZBUILD_EVENTS_JSONL")" "unknown_outcome:degraded"
+assert_eq "[V1] even banana" "error" "$(_read banana raw)"
+assert_eq "[V2] an outcome on the list still classifies (pass → pass)" "pass" "$(_read pass)"
+assert_eq "[V4] a v1 result is refused, whatever its word (#1850)" "error" "$(_read banana v1)"
 
 _manifest '  valid_verdicts: complete'
 # shellcheck source=../../scripts/lib/manifest-valid-verdicts.sh
 source "$REPO_ROOT/scripts/lib/manifest-valid-verdicts.sh"
 assert_eq "[V6] a scalar is reported invalid, not a one-item list" "invalid complete" \
     "$(manifest_valid_verdicts_state "$TEST_TEMP_DIR/manifest.yaml")"
-assert_eq "[V6] ...and the reader does not check against it" "warn" "$(_read banana)"
 
 cleanup_test_env
 print_test_results

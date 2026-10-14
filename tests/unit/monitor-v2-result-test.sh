@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # tests/unit/monitor-v2-result-test.sh
-# Contract v2 result assertions for the monitor plugin (issue #1847, Phase 0/F).
+# Result-contract assertions for the monitor plugin (issue #1847, Phase 0/F;
+# contract 3 since #2366).
 # SPEC coverage:
-#    manifest declares provides.result_contract: 2
-#    dry-run monitor-report.json carries result_contract:2, disposition:complete
-#    live pass-path monitor-report.json carries result_contract:2, disposition:complete,
-#                   verdict:pass unchanged
+#    manifest declares provides.result_contract: 3
+#    dry-run monitor-report.json carries result_contract:3, outcome:pass
+#    live pass-path monitor-report.json carries result_contract:3, outcome:pass
 #    route_to_model failure path carries a disposition derived via
 #                   router_reason_disposition, not a bare verdict:degraded with no disposition
 #    unparseable/schema-gate-failed reply path carries disposition:unusable
@@ -80,8 +80,8 @@ route_to_model() {
     return "$MOCK_ROUTE_RC"
 }
 
-# ─── SPEC-2: dry-run path — result_contract:2, disposition:complete ─────────
-print_test_section "dry-run monitor-report.json carries result_contract:2, disposition:complete"
+# ─── SPEC-2: dry-run path — result_contract:3, outcome:pass ──────────────────
+print_test_section "dry-run monitor-report.json carries result_contract:3, outcome:pass"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
 export ZBUILD_DRY_RUN=1
@@ -100,8 +100,8 @@ assert_eq "dry-run: outcome is pass" "pass" \
 assert_eq "dry-run: the result explains itself (a reason is required)" "MISSING_OR_EMPTY:no" \
     "MISSING_OR_EMPTY:$(jq -r 'if (.reason // "") == "" then "yes" else "no" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo yes)"
 
-# ─── SPEC-3: live pass path — result_contract:2, disposition:complete, verdict:pass ─
-print_test_section "live pass-path monitor-report.json carries result_contract:2, disposition:complete, verdict:pass"
+# ─── SPEC-3: live pass path — result_contract:3, outcome:pass ────────────────
+print_test_section "live pass-path monitor-report.json carries result_contract:3, outcome:pass"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
 MOCK_ROUTE_RC=0

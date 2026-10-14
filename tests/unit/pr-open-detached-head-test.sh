@@ -120,7 +120,7 @@ print_test_section "M: merge has the same plumbing"
 # shellcheck source=../../plugins/tool/merge/plugin.sh
 source "$REPO_ROOT/plugins/tool/merge/plugin.sh"
 _gate_pass() {   # a passing gate, handed to merge by name
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' \
+    printf '{"result_contract":3,"outcome":"pass","reason":"ok"}\n' \
         > "$STATE_DIR/artifacts/gate-aggregator-result.json"
     printf '{"inputs":{"gate_aggregator_result":"%s"}}\n' "$STATE_DIR/artifacts/gate-aggregator-result.json" \
         > "$STATE_DIR/stage-inputs.json"

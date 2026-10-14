@@ -63,7 +63,7 @@ version: 0.0.1
 hooks:
   run: pp_run
 provides:
-  result_contract: 2
+  result_contract: 3
 inputs:
   - id: plan
 outputs:

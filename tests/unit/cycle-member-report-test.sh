@@ -68,7 +68,7 @@ EOF
 
 # ─── SPEC-1 ──────────────────────────────────────────────────────────────────
 print_test_section "SPEC-1: one report per member, from its primary result"
-jq -n '{result_contract:2, verdict:"scope_violation", disposition:"complete", reason:"r",
+jq -n '{result_contract:3, outcome:"fail", reason:"r",
         files_changed:["a.sh","b.sh"], lines_added:7, lines_removed:2,
         scope_expansion_request:{files:[{path:"docs/x.md",category:"collateral_docs"}]},
         data:{not_reproduced:["test"]}}' > "$ART/rp-result.json"
@@ -79,7 +79,7 @@ assert_eq "[SPEC-1] changes.removed" "2" "$(jq -r '.changes.removed' <<< "$_rep"
 assert_eq "[SPEC-1] scope_request" "docs/x.md" "$(jq -r '.scope_request.files[0].path' <<< "$_rep" 2>/dev/null)"
 assert_eq "[SPEC-1] not_reproduced" '["test"]' "$(jq -c '.not_reproduced' <<< "$_rep" 2>/dev/null)"
 # The v2 shape — fields under data.* — takes precedence over the legacy names.
-jq -n '{result_contract:2, verdict:"pass", disposition:"complete", reason:"r",
+jq -n '{result_contract:3, outcome:"pass", reason:"r",
         files_changed:["legacy.sh"],
         data:{changes:{files:["new.sh"],added:4,removed:0},
               scope_request:{files:[{path:"docs/y.md",category:"collateral_docs"}]}}}' > "$ART/rp-result.json"
@@ -117,11 +117,11 @@ assert_eq "[SPEC-5] none reported → empty" "" \
 
 # ─── SPEC-6 ──────────────────────────────────────────────────────────────────
 print_test_section "SPEC-6: test counts, failed items and the reason travel in the report"
-jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"3 failing", data:{failed:3, passed:9}}' > "$ART/rp-result.json"
+jq -n '{result_contract:3, outcome:"fail", reason:"3 failing", data:{failed:3, passed:9}}' > "$ART/rp-result.json"
 _rep="$(runner_read_stage_report "$STATE" "$PD/manifest.yaml" rp 0 2>/dev/null)"
 assert_eq "[SPEC-6] tests.failed" "3" "$(jq -r '.tests.failed' <<< "$_rep" 2>/dev/null)"
 assert_eq "[SPEC-6] reason" "3 failing" "$(jq -r '.reason' <<< "$_rep" 2>/dev/null)"
-jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"gates failed: lint", failed:["lint","secret-scan"]}' > "$ART/rp-result.json"
+jq -n '{result_contract:3, outcome:"fail", reason:"gates failed: lint", failed:["lint","secret-scan"]}' > "$ART/rp-result.json"
 _rep="$(runner_read_stage_report "$STATE" "$PD/manifest.yaml" rp 0 2>/dev/null)"
 assert_eq "[SPEC-6] failed_items" '["lint","secret-scan"]' "$(jq -c '.failed_items' <<< "$_rep" 2>/dev/null)"
 assert_eq "[SPEC-6] a list is not a test count" "null" "$(jq -c '.tests' <<< "$_rep" 2>/dev/null)"
@@ -140,7 +140,7 @@ assert_eq "[SPEC-7] none declares it → none" "" \
 
 # ─── SPEC-8 ──────────────────────────────────────────────────────────────────
 print_test_section "SPEC-8: tests failing is decided from reported counts"
-printf '{"result_contract":2,"verdict":"pass","data":{"failed":0}}' > "$ART/test-results.json"
+printf '{"result_contract":3,"outcome":"pass","data":{"failed":0}}' > "$ART/test-results.json"
 _b8='{"verify":{"verdict":"pass","report":{"tests":{"failed":3}}}}'
 if _cycle_tests_failing "$_b8"; then assert_pass "[SPEC-8] a member reporting 3 failures → failing (whatever its name, whatever is on disk)"
 else assert_fail "[SPEC-8] a member reporting 3 failures → failing"; fi

@@ -11,7 +11,8 @@
 # U1 [change] declared timed_out + a required output missing → the dispatch
 #             succeeds and no contract-violation marker is written
 # U2 [change] ...and the skip is announced, naming the disposition
-# U3 [guard]  declared complete + a required output missing → still a violation
+# U3 [guard]  a finished stage (outcome fail) + a required output missing → still
+#             a violation
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,9 +48,7 @@ requires:
   core:
     - redaction
 provides:
-  result_contract: 2
-config:
-  valid_verdicts: [complete, incomplete]
+  result_contract: 3
 outputs:
   - id: result
     path: "\${artifact_dir}/$1-result.json"
@@ -61,7 +60,7 @@ outputs:
 EOF
     cat > "$d/plugin.sh" <<EOF
 ${1//-/_}_run() {
-    printf '{"result_contract":2,"verdict":"incomplete","disposition":"$2","reason":"r"}\n' \\
+    printf '{"result_contract":3,"outcome":"$2","reason":"r"}\n' \\
         > "\$ZBUILD_ARTIFACT_DIR/$1-result.json"
     return 0
 }
@@ -79,10 +78,10 @@ assert_contains "[U2] the skip is announced with the disposition" \
     "$(grep 'artifact_check_skipped' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" "timed_out"
 
 rm -f "$S/runtime/artifact-contract-violated"
-P3="$(_plugin done-stage complete)"
+P3="$(_plugin done-stage fail)"
 export ZBUILD_CURRENT_STAGE=done-stage
 plugin_hook_call "$P3" run done-stage "$SF" >/dev/null 2>&1; rc=$?
-assert_eq "[U3] a complete stage missing a required output → still rc 1" "1" "$rc"
+assert_eq "[U3] a finished stage missing a required output → still rc 1" "1" "$rc"
 assert_eq "[U3] ...with the marker" "present" \
     "$([[ -e "$S/runtime/artifact-contract-violated" ]] && echo present || echo absent)"
 

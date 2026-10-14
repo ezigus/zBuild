@@ -47,8 +47,7 @@ write_fx() {
         printf 'convergence: %s\nversion: 0.1.0\nhooks:\n  run: r\n' "$conv"
         printf 'requires:\n  core:\n    - event-bus\n'
         [[ "$router" == "yes" ]] && printf '    - router\n'
-        printf 'provides:\n  role: %s\n  result_contract: 2\n' "${id//-/_}"
-        printf 'config:\n  valid_verdicts: [pass, fail]\n'
+        printf 'provides:\n  role: %s\n  result_contract: 3\n' "${id//-/_}"
         printf 'outputs:\n  - id: %s\n    path: ${artifact_dir}/%s.json\n' "$out" "$out"
         printf '    type: %s.json@1\n    format: json\n    required: true\n    primary: true\n' "$out"
         # ADR-055 §9 (#2000): every stage-bound plugin declares exactly one.

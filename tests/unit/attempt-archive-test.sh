@@ -124,7 +124,7 @@ source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 _TPL_STAGES=(aa-stage)
 printf '## aa-stage — fail\n\n- 1 of 19 tests failed\n' > "$ART/aa-summary.md"
 printf 'runner.sh: line 1499: refusing the run: state file names another issue\nTHE-NESTED-STDERR\n' > "$ART/aa-errors.log"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"1 failed"}\n' > "$ART/aa-result.json"
+printf '{"result_contract":3,"outcome":"fail","reason":"1 failed"}\n' > "$ART/aa-result.json"
 _blk="$(zb_test_previous_work "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
 assert_contains "[SPEC-4] the summary still ships" "$_blk" "1 of 19 tests failed"
 assert_contains "[SPEC-4] and the errors the stage hit ship with it" "$_blk" "THE-NESTED-STDERR"
@@ -132,7 +132,7 @@ assert_contains "[SPEC-4] and the errors the stage hit ship with it" "$_blk" "TH
 # ─── SPEC-5 (guard): a passing stage publishes no errors ────────────────────
 print_test_section "SPEC-5 (guard): errors ship only with a failure"
 printf '{"schema_version":1,"stage_statuses":{"aa-stage":"complete"},"stage_verdicts":{"aa-stage":"pass"}}\n' > "$STATE/pipeline-state.json"
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$ART/aa-result.json"
+printf '{"result_contract":3,"outcome":"pass","reason":"ok"}\n' > "$ART/aa-result.json"
 _blk_ok="$(zb_test_previous_work "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
 if grep -q 'THE-NESTED-STDERR' <<< "$_blk_ok"; then
     assert_fail "[SPEC-5] a passing stage does not publish its error channel" "$_blk_ok"
@@ -175,7 +175,7 @@ _TPL_STAGES=(aa-rev)
 printf '{"schema_version":1,"stage_statuses":{"aa-rev":"failed"},"stage_verdicts":{"aa-rev":"fail"}}\n' > "$STATE/pipeline-state.json"
 printf '## aa-rev — fail\n\n- it failed\n' > "$ART/aa-rev-summary.md"
 printf 'REVERSED-ORDER-STDERR\n' > "$ART/aa-rev-errors.log"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x"}\n' > "$ART/aa-rev-result.json"
+printf '{"result_contract":3,"outcome":"fail","reason":"x"}\n' > "$ART/aa-rev-result.json"
 _blk_rev="$(zb_test_previous_work "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
 assert_contains "[SPEC-6] the error channel is found with errors: before path:" \
     "$_blk_rev" "REVERSED-ORDER-STDERR"

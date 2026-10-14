@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Tests: design plugin v2 result contract (issue #1834).
-# SPEC-1 [change]: success path writes design-verdict.json with result_contract:2,
-#                  verdict=pass, disposition=complete BEFORE atomic_write of design.md
+# Tests: design plugin result contract (issue #1834; contract 3 since #2366).
+# SPEC-1 [change]: success path writes design-verdict.json with result_contract:3,
+#                  outcome=pass BEFORE atomic_write of design.md
 # SPEC-2 [change]: error path (missing plan.json) writes design-verdict.json with
-#                  result_contract:2, verdict=error, disposition=broken
-# SPEC-3 [guard]:  timeout path writes verdict=incomplete, disposition=interrupted
-# SPEC-4 [change]: manifest declares provides.result_contract:2 and
-#                  config.valid_verdicts includes pass, error, and incomplete
+#                  result_contract:3, outcome=broken
+# SPEC-3 [guard]:  timeout path writes the disposition as the outcome
+# SPEC-4 [change]: manifest declares provides.result_contract:3 and no
+#                  config.valid_verdicts
 # SPEC-5 [change]: design_stage_run reads scope_manifest and plan paths from
 #                  ZBUILD_STAGE_INPUTS index when the env var is set
 set -uo pipefail
@@ -86,7 +86,7 @@ EOF
     _SIDECAR_AT_ATOMIC_WRITE="UNSET"
 }
 
-# ─── SPEC-1: success path writes sidecar with result_contract:2 before atomic_write
+# ─── SPEC-1: success path writes sidecar with result_contract:3 before atomic_write
 _setup_fixture t1
 _MOCK_ROUTER_RC=0
 _MOCK_TERMINATED_REASON="done_sentinel"
@@ -144,7 +144,7 @@ assert_eq "[SPEC-3] timeout → no verdict field (#2366)" "MISSING" "$_sc3_verdi
 assert_eq "[SPEC-3] timeout → outcome=timed_out (#2187)" "timed_out" "$_sc3_disp"
 assert_eq "[SPEC-3] timeout → result_contract=3 (guard)" "3" "$_sc3_rc2"
 
-# ─── SPEC-4 [change]: manifest declares result_contract:2 and valid_verdicts ──
+# ─── SPEC-4 [change]: manifest declares result_contract:3, no valid_verdicts ──
 _DM="$REPO_ROOT/plugins/agent/design/manifest.yaml"
 
 _dm_rc2="$(grep -m1 'result_contract:' "$_DM" | awk '{print $2}' || true)"

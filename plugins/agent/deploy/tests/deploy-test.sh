@@ -10,7 +10,7 @@
 # SPEC-6  [#1846/SPEC-6]:  no route_to_model call in non-comment code
 # SPEC-7  [#1846/SPEC-7]:  dry-run deploy-result.json carries result_contract=2 (not schema_version=1)
 # SPEC-8  [#1846/SPEC-8]:  missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)
-# SPEC-9  [#1846/SPEC-9]:  manifest provides block declares result_contract: 2
+# SPEC-9  [#1846/SPEC-9]:  manifest provides block declares result_contract: 3 (#2366)
 # SPEC-10 [#1846/SPEC-10]: every terminal exit path writes v2 envelope
 # SPEC-11 [#1846/SPEC-11]: plugin.sh derives output path from ZBUILD_ARTIFACT_DIR; no state_file-derived path
 # SPEC-12 [#1846/SPEC-12]: pr_url and gate_aggregator_result resolved via ZBUILD_STAGE_INPUTS
@@ -114,7 +114,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# SPEC-9 [#1846/SPEC-9]: manifest provides block declares result_contract: 2
+# SPEC-9 [#1846/SPEC-9]: manifest provides block declares result_contract: 3 (#2366)
 # ---------------------------------------------------------------------------
 _s9_provides="$(awk '/^provides:/{f=1;next} f && /^[^[:space:]]/{exit} f{print}' \
     "$_MANIFEST" 2>/dev/null || true)"

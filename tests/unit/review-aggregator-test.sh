@@ -219,8 +219,8 @@ unset ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review_aggregator ZBUILD_ARTIFACT
 # "no findings" — a review that never happened, reported as a clean one.
 print_test_section "SPEC-10: a lens that did not run is reported as not run"
 _nr_dir="$TEST_TEMP_DIR/not-run"; mkdir -p "$_nr_dir"
-write_lens "$_nr_dir" "correctness" '{"name":"correctness","score":8,"findings":[],"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}'
-write_lens "$_nr_dir" "security" '{"result_contract":2,"verdict":"degraded","disposition":"unavailable","reason":"router_error"}'
+write_lens "$_nr_dir" "correctness" '{"name":"correctness","score":8,"findings":[],"result_contract":3,"outcome":"pass","reason":"ok"}'
+write_lens "$_nr_dir" "security" '{"result_contract":3,"outcome":"unavailable","reason":"router_error"}'
 set +e
 _run_inner "$_nr_dir" >/dev/null 2>&1
 set -e
