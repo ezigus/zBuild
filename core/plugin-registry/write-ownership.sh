@@ -5,7 +5,8 @@
 #
 # Two rules, no stage naming another:
 #   1. In the artifact dir a stage may write only the outputs its OWN manifest
-#      declares; every other plugin's declared output is read-only to it.
+#      declares and its own notes file; every other plugin's declared output,
+#      and anything else already there, is read-only to it (#2379).
 #   2. Only a plugin declaring capabilities.writes_repository: true may edit
 #      the target repository: every tracked top-level entry is denied otherwise.
 # Both results come back in _LC_DENY_OUT (newline-separated paths); callers
@@ -58,3 +59,55 @@ _lc_repo_entries_deny() {
     _LC_DENY_OUT="${_LC_REPO_ENTRIES_MEMO[$abs]}"
 }
 
+
+# _lc_artifacts_left_deny <own_manifest> <state_dir> <stage> — every file
+# already in the artifact dir that is not this stage's own (its declared
+# outputs and its notes file) into _LC_DENY_OUT (#2379). Another stage's notes,
+# its attempts, the stage reports: none is declared, so _lc_other_outputs_deny
+# never covered them. A folder with nothing of the stage's in it is denied as
+# <dir>/**, which also covers files written into it later.
+_lc_artifacts_left_deny() {
+    local manifest="$1" state_dir="$2" stage="$3" artifact_dir raw resolved keep=""
+    _LC_DENY_OUT=""
+    artifact_dir="${state_dir}/artifacts"
+    [[ -d "$artifact_dir" ]] || return 0
+    if declare -F _registry_resolve_output_path >/dev/null 2>&1; then
+        while IFS= read -r raw; do
+            [[ -n "$raw" ]] || continue
+            resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
+            [[ -n "$resolved" ]] && keep+="$resolved"$'\n'
+        done <<< "$(_lc_manifest_output_paths "$manifest")"
+    fi
+    declare -F stage_notes_path >/dev/null 2>&1 \
+        || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-prompt.sh"
+    keep+="$(stage_notes_path "$state_dir" "$stage")"$'\n'
+    _lc_artifacts_walk "$artifact_dir" "$keep"
+}
+
+# _lc_manifest_output_paths <manifest> — the `path:` values under `outputs:`,
+# read from the file itself: the stage's own manifest need not be in the index.
+_lc_manifest_output_paths() {
+    [[ -f "$1" ]] || return 0
+    awk '/^outputs:/{o=1;next} /^[^[:space:]#]/{o=0}
+         o && /^[[:space:]]+(-[[:space:]]+)?path:/ {
+             v=$0; sub(/^[[:space:]]+(-[[:space:]]+)?path:[[:space:]]*/, "", v)
+             gsub(/^["\047]|["\047][[:space:]]*$/, "", v); sub(/[[:space:]]+#.*$/, "", v); print v }' "$1"
+}
+
+# _lc_artifacts_walk <dir> <keep> — appends to _LC_DENY_OUT; recurses only
+# into a folder that holds something kept.
+_lc_artifacts_walk() {
+    local dir="$1" keep="$2" e
+    while IFS= read -r e; do
+        [[ -n "$e" ]] || continue
+        if [[ -d "$e" && ! -L "$e" ]]; then
+            if [[ "$keep" == *"$e/"* ]]; then
+                _lc_artifacts_walk "$e" "$keep"
+            else
+                _LC_DENY_OUT+="$e/**"$'\n'
+            fi
+        elif [[ $'\n'"$keep" != *$'\n'"$e"$'\n'* ]]; then
+            _LC_DENY_OUT+="$e"$'\n'
+        fi
+    done < <(find "$dir" -mindepth 1 -maxdepth 1 2>/dev/null)
+}
