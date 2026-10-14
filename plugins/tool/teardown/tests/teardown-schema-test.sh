@@ -2,10 +2,10 @@
 # Tests: plugins/tool/teardown — v2 result file schema (issue #1830)
 #
 # SPEC-1: teardown_run writes teardown-result.json with all mandatory v2 keys
-# SPEC-2: one target cleanup failure is recorded; remaining targets still run; verdict=degraded
+# SPEC-2: one target cleanup failure is recorded; remaining targets still run; outcome=fail
 # SPEC-3: no-cleanup-hook targets appear in data.targets with outcome=no_op
-# SPEC-4: aggregate verdict/disposition reflects partial failure (verdict=degraded, disposition=complete)
-# SPEC-6: manifest declares result_contract 2, the teardown_result output, and valid_verdicts
+# SPEC-4: a partial failure is outcome=fail (#2366; was verdict=degraded, disposition=complete)
+# SPEC-6: manifest declares result_contract 3, the teardown_result output, and no valid_verdicts
 # SPEC-7: an unwritable artifacts dir still yields rc=0 + teardown.complete, and names the loss
 #
 # SPEC-5 lives in tests/integration/cleanup-release-test.sh — it guards the rc=0
@@ -115,21 +115,17 @@ fi
 
 if [[ -f "$_spec1_result" ]]; then
     _rc_val="$(jq -r '.result_contract // empty' "$_spec1_result" 2>/dev/null || true)"
-    assert_eq "[SPEC-1] result_contract is 2" "2" "$_rc_val"
+    assert_eq "[SPEC-1] result_contract is 3 (#2366)" "3" "$_rc_val"
 
-    _verdict="$(jq -r '.verdict // empty' "$_spec1_result" 2>/dev/null || true)"
+    _verdict="$(jq -r '.outcome // empty' "$_spec1_result" 2>/dev/null || true)"
     if [[ -n "$_verdict" ]]; then
-        assert_pass "[SPEC-1] verdict key present in result"
+        assert_pass "[SPEC-1] outcome key present in result"
     else
-        assert_fail "[SPEC-1] verdict key present in result" "missing"
+        assert_fail "[SPEC-1] outcome key present in result" "missing"
     fi
 
-    _disp="$(jq -r '.disposition // empty' "$_spec1_result" 2>/dev/null || true)"
-    if [[ -n "$_disp" ]]; then
-        assert_pass "[SPEC-1] disposition key present in result"
-    else
-        assert_fail "[SPEC-1] disposition key present in result" "missing"
-    fi
+    assert_eq "[SPEC-1] no verdict or disposition key (contract 3)" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_spec1_result" 2>/dev/null)"
 
     _reason="$(jq -r '.reason // empty' "$_spec1_result" 2>/dev/null || true)"
     if [[ -n "$_reason" ]]; then
@@ -231,21 +227,17 @@ else
     assert_fail "[SPEC-3] teardown-result.json exists" "missing"
 fi
 
-# ─── SPEC-4: aggregate verdict/disposition reflects partial failure ────────────
+# ─── SPEC-4: a partial failure is outcome=fail (#2366) ──────────────────────────
 # CHANGE: at baseline teardown writes no result file.
-print_test_section "SPEC-4: partial failure → verdict=degraded, disposition=complete"
+print_test_section "SPEC-4: partial failure → outcome=fail (#2366)"
 
 # Reuses SPEC-2's run deliberately — same partial-failure scenario, different
 # claim. SPEC-2 above already asserted that run's rc, so a missing file here can
 # only mean the write itself failed.
 _spec4_result="$_spec2_artifacts/teardown-result.json"
 if [[ -f "$_spec4_result" ]]; then
-    _spec4_verdict="$(jq -r '.verdict' "$_spec4_result" 2>/dev/null || true)"
-    assert_eq "[SPEC-4] partial failure → verdict=degraded" "degraded" "$_spec4_verdict"
-
-    _spec4_disp="$(jq -r '.disposition' "$_spec4_result" 2>/dev/null || true)"
-    assert_eq "[SPEC-4] partial failure → disposition=complete (teardown itself completed)" \
-        "complete" "$_spec4_disp"
+    _spec4_verdict="$(jq -r '.outcome' "$_spec4_result" 2>/dev/null || true)"
+    assert_eq "[SPEC-4] partial failure → outcome=fail (teardown finished; a hook failed)" "fail" "$_spec4_verdict"
 else
     assert_fail "[SPEC-4] result file present (reusing SPEC-2 run)" "missing"
 fi
@@ -261,7 +253,7 @@ _spec6_manifest="$REPO_ROOT/plugins/tool/teardown/manifest.yaml"
 
 _spec6_rc_val="$(grep -m1 "result_contract:" "$_spec6_manifest" | awk '{print $2}' || echo '')"
 if [[ -n "$_spec6_rc_val" ]]; then
-    assert_eq "[SPEC-6] manifest result_contract is 2 (if declared)" "2" "$_spec6_rc_val"
+    assert_eq "[SPEC-6] manifest result_contract is 3 (if declared, #2366)" "3" "$_spec6_rc_val"
 else
     assert_pass "[SPEC-6] manifest has no result_contract declared (guard: vacuously true)"
 fi

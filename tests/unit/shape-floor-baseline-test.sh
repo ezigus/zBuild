@@ -24,7 +24,7 @@
 #   [SPEC-17] unresolvable baseline      → SKIP no_baseline, and NOT no_shape_change
 #   [SPEC-18] resolved baseline, non-shape diff → SKIP no_shape_change, NOT no_baseline
 #   [SPEC-19] resolved baseline, EMPTY diff     → SKIP no_shape_change, NOT no_baseline
-#   [SPEC-20] the honest reason reaches shape-floor-result.json, verdict still `skip`
+#   [SPEC-20] the honest reason reaches shape-floor-result.json, outcome `pass` (#2366)
 #
 # SPEC-19 is the load-bearing one. It and SPEC-17 hand every line below
 # _sf_diff_files the IDENTICAL input — zero changed files — so only the baseline
@@ -197,8 +197,8 @@ ZBUILD_ARTIFACT_DIR="$_sf_art_nb" \
 set -e
 
 _sf_nb_result="$_sf_art_nb/shape-floor-result.json"
-assert_eq "[SPEC-20] artifact verdict stays the declared 'skip'" \
-    "skip" "$(jq -r '.verdict // empty' "$_sf_nb_result" 2>/dev/null)"
+assert_eq "[SPEC-20] artifact outcome is pass: nothing to compare is not a failure (#2366)" \
+    "pass" "$(jq -r '.outcome // empty' "$_sf_nb_result" 2>/dev/null)"
 assert_eq "[SPEC-20] artifact reason is no_baseline, not no_shape_change" \
     "no_baseline" "$(jq -r '.reason // empty' "$_sf_nb_result" 2>/dev/null)"
 

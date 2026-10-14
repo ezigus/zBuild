@@ -27,6 +27,9 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _CG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -84,46 +87,46 @@ coverage_gate_run() {
     # Floor preference: recorded floor wins; otherwise the env default.
     [[ "$floor" =~ ^[0-9]+(\.[0-9]+)?$ ]] || floor="${ZBUILD_COVERAGE_FLOOR:-29}"
 
-    local verdict detail=""
+    # #2366: one outcome — nothing to check is a pass, its reason says so.
+    local outcome detail=""
     case "$status" in
         below_floor)
-            verdict="fail"
+            outcome="fail"
             detail="coverage below floor (pct=$pct floor=$floor)"
             _cg_emit "coverage_gate.fail" "detail=$detail"
             ;;
         measured)
             if _cg_lt "$pct" "$floor"; then
-                verdict="fail"
+                outcome="fail"
                 detail="coverage below floor (pct=$pct floor=$floor)"
                 _cg_emit "coverage_gate.fail" "detail=$detail"
             else
-                verdict="pass"
+                outcome="pass"
                 detail="coverage $pct >= floor $floor"
                 _cg_emit "coverage_gate.pass"
             fi
             ;;
         skipped | error)
-            verdict="skip"
+            outcome="pass"
             detail="coverage $status"
             _cg_emit "coverage_gate.skip"
             ;;
         *)
-            verdict="skip"
+            outcome="pass"
             detail="no coverage block in test-results.json"
             _cg_emit "coverage_gate.skip"
             ;;
     esac
 
-    jq -n --arg v "$verdict" --arg s "$status" --arg p "$pct" --arg f "$floor" --arg d "$detail" \
-        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$d,"status":$s,"pct":$p,"floor":$f,"detail":$d}' \
-        | atomic_write "$result_path"
+    stage_result_write "$result_path" "$outcome" "$detail" \
+        "$(jq -nc --arg s "$status" --arg p "$pct" --arg f "$floor" '{status:$s, pct:$p, floor:$f}')"
     # #1988: publish what only this gate knows. Its detail used to reach a
     # prompt only through the aggregator's rendering; it is now a declared
     # summary output (#1976), and cleared on a non-fail so a stale file from a
     # previous iteration never renders as a current finding.
-    stage_summary_write "$artifacts_dir/coverage-detail.md" "coverage" "$verdict" "$detail"
+    stage_summary_write "$artifacts_dir/coverage-detail.md" "coverage" "$outcome" "$detail"
 
-    _cg_emit "plugin.result" "plugin=coverage-gate" "verdict=$verdict"
+    _cg_emit "plugin.result" "plugin=coverage-gate" "verdict=$outcome"
     return 0
 }
 

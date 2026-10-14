@@ -150,9 +150,9 @@ printf '{"stage_statuses":{"spec6-ok":"complete"}}' \
 
 _spec6_result="$_spec6_artifacts/teardown-result.json"
 if [[ -f "$_spec6_result" ]]; then
-    _spec6_verdict="$(jq -r '.verdict // empty' "$_spec6_result" 2>/dev/null || true)"
-    assert_eq "[SPEC-6] teardown-result.json verdict=complete for scope=release run" \
-        "complete" "$_spec6_verdict"
+    _spec6_verdict="$(jq -r '.outcome // empty' "$_spec6_result" 2>/dev/null || true)"
+    assert_eq "[SPEC-6] teardown-result.json outcome=pass for scope=release run (#2366)" \
+        "pass" "$_spec6_verdict"
 
     _spec6_outcome="$(jq -r '.data.targets[] | select(.stage=="spec6-ok") | .outcome' \
         "$_spec6_result" 2>/dev/null || true)"

@@ -26,6 +26,9 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _MG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -74,7 +77,8 @@ mutation_gate_run() {
     # Floor preference: recorded integer floor wins; otherwise the env default.
     [[ "$floor" =~ ^-?[0-9]+$ ]] || floor="${ZBUILD_MUTATION_FLOOR:-0}"
 
-    local verdict detail=""
+    # #2366: one outcome — nothing to check is a pass, its reason says so.
+    local outcome detail=""
     case "$status" in
         measured)
             # Parse the killed/passed count N from "N/M".
@@ -83,37 +87,36 @@ mutation_gate_run() {
                 killed="${BASH_REMATCH[1]}"
             fi
             if [[ -n "$killed" ]] && (( killed < floor )); then
-                verdict="fail"
+                outcome="fail"
                 detail="mutation score below floor (score=$score floor=$floor)"
                 _mg_emit "mutation_gate.fail" "detail=$detail"
             else
-                verdict="pass"
+                outcome="pass"
                 detail="mutation score $score >= floor $floor"
                 _mg_emit "mutation_gate.pass"
             fi
             ;;
         skipped)
-            verdict="skip"
+            outcome="pass"
             detail="mutation skipped"
             _mg_emit "mutation_gate.skip"
             ;;
         *)
-            verdict="skip"
+            outcome="pass"
             detail="no mutation block in test-results.json"
             _mg_emit "mutation_gate.skip"
             ;;
     esac
 
-    jq -n --arg v "$verdict" --arg s "$status" --arg sc "$score" --arg f "$floor" --arg d "$detail" \
-        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$d,"status":$s,"score":$sc,"floor":$f,"detail":$d}' \
-        | atomic_write "$result_path"
+    stage_result_write "$result_path" "$outcome" "$detail" \
+        "$(jq -nc --arg s "$status" --arg sc "$score" --arg f "$floor" '{status:$s, score:$sc, floor:$f}')"
     # #1988: publish what only this gate knows. Its detail used to reach a
     # prompt only through the aggregator's rendering; it is now a declared
     # summary output (#1976), and cleared on a non-fail so a stale file from a
     # previous iteration never renders as a current finding.
-    stage_summary_write "$artifacts_dir/mutation-detail.md" "mutation" "$verdict" "$detail"
+    stage_summary_write "$artifacts_dir/mutation-detail.md" "mutation" "$outcome" "$detail"
 
-    _mg_emit "plugin.result" "plugin=mutation-gate" "verdict=$verdict"
+    _mg_emit "plugin.result" "plugin=mutation-gate" "verdict=$outcome"
     return 0
 }
 

@@ -61,7 +61,7 @@ _results() {
 }
 _verdict() {
     shape_floor_run shape-floor "$S/pipeline-state.json" >/dev/null 2>&1
-    jq -r '.verdict // empty' "$S/artifacts/shape-floor-result.json" 2>/dev/null
+    jq -r '.outcome // empty' "$S/artifacts/shape-floor-result.json" 2>/dev/null
 }
 
 _results "$TREE" full '[]'

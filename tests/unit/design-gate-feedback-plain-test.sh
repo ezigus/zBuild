@@ -33,7 +33,7 @@ _gate() {   # _gate <design.md> → $FB (feedback text), $VIOL (JSON violations)
     printf '%s' "$1" > "$d/artifacts/design.md"; printf '{"schema_version":1}' > "$d/pipeline-state.json"
     design_gate_run "design-gate" "$d/pipeline-state.json" >/dev/null 2>&1 || true
     FB="$(cat "$d/artifacts/design-gate-feedback.md" 2>/dev/null)"
-    VIOL="$(jq -r '.violations[]?' "$d/artifacts/design-gate-result.json" 2>/dev/null)"
+    VIOL="$(jq -r '.data.violations[]?' "$d/artifacts/design-gate-result.json" 2>/dev/null)"
 }
 
 _gate $'# Design\n\nNo blocks at all.\n'

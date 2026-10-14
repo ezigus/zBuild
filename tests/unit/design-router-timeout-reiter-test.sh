@@ -114,7 +114,7 @@ EOF
 # which is _F_ARTIFACTS). Returns the verdict on stdout.
 _run_design_gate() {
     design_gate_run "design-gate" "$_F_STATE/state.json" >/dev/null 2>&1 || true
-    jq -r '.verdict // "MISSING"' "$_F_ARTIFACTS/design-gate-result.json" 2>/dev/null || echo "MISSING"
+    jq -r '.outcome // "MISSING"' "$_F_ARTIFACTS/design-gate-result.json" 2>/dev/null || echo "MISSING"
 }
 
 # ─── SPEC-1,2,3,4: router timeout YIELD → recoverable, gate-FAILING marker ────

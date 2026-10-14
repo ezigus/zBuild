@@ -116,7 +116,7 @@ done
   export ZBUILD_RESTORED_ARTIFACTS_DIR="$_C3R"
   design_gate_run design-gate "$_C3/pipeline-state.json" ) >/dev/null 2>&1 || true
 assert_eq "[C3] design-gate fails the current design despite a restored pass" "fail" \
-    "$(jq -r '.verdict // empty' "$_C3/artifacts/design-gate-result.json" 2>/dev/null)"
+    "$(jq -r '.outcome // .verdict // empty' "$_C3/artifacts/design-gate-result.json" 2>/dev/null)"
 ( source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh" >/dev/null 2>&1
   eb_emit_event() { :; }
   unset ZBUILD_CYCLE_ID

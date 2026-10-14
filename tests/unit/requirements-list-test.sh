@@ -152,8 +152,8 @@ _q3() {   # _q3 <name> <covers-for-SPEC-1> <covers-for-SPEC-2> [no-req] [R-3 tex
         '{"id":"R-1","text":"fail on a missing file"},{"id":"R-2","text":"read the file"},' \
         "{\"id\":\"R-3\",\"text\":\"${5:-say which file is missing}\"}]}" > "$_A/requirements.json"
     design_gate_run "design-gate" "$_S/pipeline-state.json" >/dev/null 2>&1
-    _V="$(jq -r '.verdict' "$_A/design-gate-result.json" 2>/dev/null || echo MISSING)"
-    _VIOL="$(jq -r '.violations[]' "$_A/design-gate-result.json" 2>/dev/null || true)"
+    _V="$(jq -r '.outcome' "$_A/design-gate-result.json" 2>/dev/null || echo MISSING)"
+    _VIOL="$(jq -r '.data.violations[]' "$_A/design-gate-result.json" 2>/dev/null || true)"
     _FB="$(cat "$_A/design-gate-feedback.md" 2>/dev/null || true)"
 }
 _q3 uncovered " covers: R-1" " covers: R-2"

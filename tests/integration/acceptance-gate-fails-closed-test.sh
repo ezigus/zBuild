@@ -177,7 +177,8 @@ set +e
 ) >/dev/null 2>&1
 set -e
 _J5="$(cat "$W5/artifacts/shape-floor-result.json" 2>/dev/null || echo '{}')"
-assert_eq "[F5] shape-floor verdict fail" "fail" "$(jq -r .verdict <<<"$_J5")"
+# #2366: a stage that could not run says so as its outcome — broken.
+assert_eq "[F5] shape-floor outcome broken" "broken" "$(jq -r .outcome <<<"$_J5")"
 assert_eq "[F5] shape-floor reason library_load_failure" "library_load_failure" "$(jq -r .reason <<<"$_J5")"
 
 # ── F6: secret-scan — merge-base.sh is missing ───────────────────────────────
@@ -194,7 +195,7 @@ set +e
 ) >/dev/null 2>&1
 set -e
 _J6="$(cat "$W6/artifacts/secret-scan-result.json" 2>/dev/null || echo '{}')"
-assert_eq "[F6] secret-scan verdict fail, not skip" "fail" "$(jq -r .verdict <<<"$_J6")"
+assert_eq "[F6] secret-scan outcome broken, not pass" "broken" "$(jq -r .outcome <<<"$_J6")"
 assert_eq "[F6] secret-scan reason library_load_failure" "library_load_failure" "$(jq -r .reason <<<"$_J6")"
 
 cleanup_test_env

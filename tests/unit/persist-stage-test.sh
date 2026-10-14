@@ -180,8 +180,8 @@ _rc=0
 _R5="$(_mk_repo r5repo)"
 ( cd "$_R5" && ZBUILD_ISSUE_NUMBER=$_ZB_ID4 ZBUILD_STATE_DIR="$TEST_TEMP_DIR/r5" persist_run persist "" ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-5] a refused push still returns 0" "0" "$_rc"
-assert_eq "[SPEC-5] and records degraded, not complete" "degraded" \
-    "$(jq -r '.verdict' "$ZBUILD_ARTIFACT_DIR/persist-result.json" 2>/dev/null)"
+assert_eq "[SPEC-5] and records fail, not pass (#2366)" "fail" \
+    "$(jq -r '.outcome' "$ZBUILD_ARTIFACT_DIR/persist-result.json" 2>/dev/null)"
 assert_eq "[SPEC-5] and records that nothing was pushed" "false" \
     "$(jq -r '.data.pushed' "$ZBUILD_ARTIFACT_DIR/persist-result.json" 2>/dev/null)"
 

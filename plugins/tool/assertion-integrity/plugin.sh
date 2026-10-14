@@ -18,6 +18,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _AI_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
@@ -89,7 +92,8 @@ assertion_integrity_run() {
         # Nothing to compare against. A run whose author stage has not yet run
         # has no boundary to violate, and failing closed here would stall the
         # cycle on the first iteration for a condition that is not a defect.
-        verdict="skip"
+        # #2366: nothing to compare yet is a pass; the reason says so.
+        verdict="pass"
         reason="no recorded assertion digests — the author stage has not run yet"
     else
         local line want got path
@@ -116,15 +120,14 @@ assertion_integrity_run() {
         fi
     fi
 
-    # ADR-054 §5/§6: one result file; disposition describes how the STAGE
-    # stopped, not what it concluded. This stage completed either way.
+    # ADR-054 §6 (#2366): one result file, one outcome — pass or fail; this
+    # stage finishes either way.
     # #2271 (ADR-068): each changed acceptance file is a numbered finding.
     local _fnd _fv
     _fnd="$(for _fv in ${violated% }; do printf '%s was changed after the tests were written; the authored version is restored before the next build\n' "$_fv"; done | stage_findings_json)"
-    if ! jq -n --arg v "$verdict" --arg r "$reason" --arg f "${violated% }" --argjson fnd "${_fnd:-[]}" \
-        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r,
-          data: {violated: (if $f == "" then [] else ($f | split(" ")) end), findings: $fnd}}' \
-        | atomic_write "$art/assertion-integrity-result.json"; then
+    if ! stage_result_write "$art/assertion-integrity-result.json" "$verdict" "$reason" \
+        "$(jq -nc --arg f "${violated% }" --argjson fnd "${_fnd:-[]}" \
+            '{violated: (if $f == "" then [] else ($f | split(" ")) end), findings: $fnd}')"; then
         _ai_emit "assertion_integrity.result.write_failed" "dir=$art"
     fi
 

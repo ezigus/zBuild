@@ -50,7 +50,7 @@ _run_gate_with_md() {
     set -e
     RESULT_JSON="$art/design-gate-result.json"
     FEEDBACK_PATH="$art/design-gate-feedback.md"
-    VERDICT="$(jq -r '.verdict' "$RESULT_JSON" 2>/dev/null || echo MISSING)"
+    VERDICT="$(jq -r '.outcome' "$RESULT_JSON" 2>/dev/null || echo MISSING)"
 }
 
 # A well-formed, clean design (scope non-empty; every SPEC classified; [change]
@@ -95,7 +95,7 @@ WIRING: scripts/wire.sh
 '
 assert_eq "[SPEC-1] untagged TESTFILE → verdict=pass (C6 removed)" "pass" "$VERDICT"
 assert_eq "[SPEC-1] untagged TESTFILE → zero violations" \
-    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
+    "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-2 (C3 status): a requirement with no status → verdict=fail ─────────
 _run_gate_with_md '# Design
@@ -113,7 +113,7 @@ WIRING: scripts/wire.sh
 '
 assert_eq "[SPEC-2] unclassified SPEC → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-2] violation names NO_STATUS SPEC-1" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "NO_STATUS SPEC-1"
+    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "NO_STATUS SPEC-1"
 
 # ─── SPEC-3 (C5 wiring): a MISSING-WIRING design → verdict=fail ───────────────
 # WIRING section entirely absent from the acceptance block.
@@ -131,7 +131,7 @@ tests/a-test.sh
 '
 assert_eq "[SPEC-3] missing-WIRING design → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-3] violation names WIRING_MISSING" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "WIRING_MISSING"
+    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "WIRING_MISSING"
 
 # ─── SPEC-4 (C1 scope): an INCOMPLETE-SCOPE design → verdict=fail ─────────────
 # scope fence present but empty (no entries).
@@ -149,7 +149,7 @@ WIRING: scripts/wire.sh
 '
 assert_eq "[SPEC-4] incomplete-scope design → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-4] violation names SCOPE_MISSING" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "SCOPE_MISSING"
+    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "SCOPE_MISSING"
 
 # ─── SPEC-5 (#1649): a [change] SPEC may declare a testfile that does not ────
 # exist YET — design runs before anything is built, so proposing a new dedicated
@@ -172,13 +172,13 @@ WIRING: scripts/wire.sh
 '
 assert_eq "[SPEC-5] a not-yet-created testfile is NOT a design-time violation" "pass" "$VERDICT"
 assert_eq "[SPEC-5] declaring a future testfile yields zero violations" \
-    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
+    "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-6 (happy path): a CLEAN design → verdict=pass, proceeds to build ────
 _run_gate_with_md "$_clean_md"
 assert_eq "[SPEC-6] clean design → verdict=pass" "pass" "$VERDICT"
 assert_eq "[SPEC-6] clean design → zero violations" \
-    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
+    "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-7 (report-all): MANY violations reported in ONE pass ───────────────
 # scope empty (C1) + a [change] SPEC that declares NO testfile at all (C4) +
@@ -199,7 +199,7 @@ TESTFILES:
 SPEC-1: tests/does-not-exist-test.sh
 ```
 '
-_all="$(jq -r '.violations|join(" ")' "$RESULT_JSON")"
+_all="$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")"
 assert_eq "[SPEC-7] multi-violation design → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-7] reports SCOPE_MISSING in one pass"    "$_all" "SCOPE_MISSING"
 assert_contains "[SPEC-7] reports NO_STATUS in one pass"        "$_all" "NO_STATUS"
@@ -208,7 +208,7 @@ assert_contains "[SPEC-7] reports MISSING_TESTFILE_FOR_SPEC in one pass" "$_all"
 
 # ─── SPEC-8 (verdict-in-artifact): design_gate_run ALWAYS returns rc=0 ────────
 # Even on a failing verdict the plugin returns 0 — the verdict lives in the
-# artifact (shape-floor / gate-aggregator idiom); the cycle reads .verdict.
+# artifact (shape-floor / gate-aggregator idiom); the cycle reads its outcome (#2366).
 assert_eq "[SPEC-8] design_gate_run returns rc=0 on a FAIL verdict" "0" "$GATE_RC"
 _run_gate_with_md "$_clean_md"
 assert_eq "[SPEC-8] design_gate_run returns rc=0 on a PASS verdict" "0" "$GATE_RC"
@@ -244,7 +244,7 @@ _g_md() {
     printf '%s\n' "$@"
     printf 'WIRING: scripts/wire.sh\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n'
 }
-_viol() { jq -r '.violations|join(" ")' "$RESULT_JSON"; }
+_viol() { jq -r '.data.violations|join(" ")' "$RESULT_JSON"; }
 
 _run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2: no status here')"
 assert_eq "[G1] a requirement with no status → verdict=fail" "fail" "$VERDICT"
@@ -344,7 +344,7 @@ assert_contains "[G7] ...and, in the same pass, for describing contents" "$(_vio
 # SCOPE_MISSING. Build a clean design whose scope fence has a trailing space.
 _ws_md="$(printf '# Design\n\n```scope \nscripts/wire.sh\n```\n\n```acceptance\nSPEC-1[change]: the thing works\nTESTFILES:\ntests/a-test.sh\nWIRING: scripts/wire.sh\n```\n')"
 _run_gate_with_md "$_ws_md"
-_ws_viol="$(jq -r '.violations|join(" ")' "$RESULT_JSON")"
+_ws_viol="$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")"
 assert_eq "[SPEC-11] trailing-ws scope fence → no false SCOPE_MISSING" "absent" \
     "$([[ "$_ws_viol" == *SCOPE_MISSING* ]] && echo present || echo absent)"
 assert_eq "[SPEC-11] trailing-ws scope fence → verdict=pass" "pass" "$VERDICT"
@@ -369,7 +369,7 @@ SPEC-2: tests/b-test.sh
 '
 assert_eq "[SPEC-4] SPEC-12: per-SPEC binding, all files exist → verdict=pass" "pass" "$VERDICT"
 assert_eq "[SPEC-4] SPEC-12: per-SPEC binding → zero violations" \
-    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
+    "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-13 (C4 per-SPEC binding upgrade): per-SPEC path missing → fail ─────
 # SPEC-1 has a per-SPEC binding but the declared file does not exist on disk.
@@ -388,7 +388,7 @@ SPEC-1: tests/does-not-exist-per-spec-test.sh
 '
 assert_eq "[SPEC-4] SPEC-13: per-SPEC binding to a future file → verdict=pass (#1649)" "pass" "$VERDICT"
 assert_eq "[SPEC-4] SPEC-13: per-SPEC binding to a future file → zero violations" \
-    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
+    "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-14 (C4 per-SPEC binding upgrade): a [change] SPEC with NO binding ───
 # and no global bare-path fallback must be caught. This is the case the OLD
@@ -414,7 +414,7 @@ SPEC-1: tests/a-test.sh
 assert_eq "[SPEC-4] SPEC-14: [change] SPEC with no binding of its own → verdict=fail" \
     "fail" "$VERDICT"
 assert_contains "[SPEC-4] SPEC-14: violation attributes the gap to SPEC-2" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC SPEC-2"
+    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC SPEC-2"
 
 # ─── SPEC-15 (#1649): dropping the existence check opens no traversal hole ───
 # acceptance-block.sh already refuses absolute and ".."-containing paths while
@@ -438,7 +438,7 @@ assert_eq "[SPEC-15] a traversing testfile path → verdict=fail" "fail" "$VERDI
 # all — hence MISSING_TESTFILE_FOR_SPEC rather than a dedicated path violation.
 # Pinning it here proves dropping the existence check opened no traversal hole.
 assert_contains "[SPEC-15] a dropped traversing path surfaces as MISSING_TESTFILE_FOR_SPEC" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
+    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
 
 _run_gate_with_md '# Design
 
@@ -455,7 +455,7 @@ SPEC-1: /etc/passwd-test.sh
 '
 assert_eq "[SPEC-15] an absolute testfile path → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-15] a dropped absolute path also surfaces as MISSING_TESTFILE_FOR_SPEC" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
+    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
 
 # ─── SPEC-6 (ZBUILD_STAGE_INPUTS): design-gate reads design.md from env var ───
 _dg_si_dir="$TEST_TEMP_DIR/si-dir"
@@ -471,7 +471,7 @@ printf '{"schema_version":1}' > "$_dg_si_state/pipeline-state.json"
 ZBUILD_STAGE_INPUTS="$_dg_si_file" design_gate_run "design-gate" \
     "$_dg_si_state/pipeline-state.json" >/dev/null 2>&1
 assert_eq "[SPEC-6] design-gate reads design.md via ZBUILD_STAGE_INPUTS → verdict=pass" \
-    "pass" "$(jq -r '.verdict' "$_dg_si_state/artifacts/design-gate-result.json" 2>/dev/null || echo MISSING)"
+    "pass" "$(jq -r '.outcome' "$_dg_si_state/artifacts/design-gate-result.json" 2>/dev/null || echo MISSING)"
 unset ZBUILD_STAGE_INPUTS
 
 print_test_results
