@@ -84,7 +84,7 @@ _manifest() {
 print_test_section "R1–R3: a stage plugin must declare v2; a plugin with no stage result need not"
 _manifest "$TEST_TEMP_DIR/m/undeclared" undeclared-stage tool "" '${artifact_dir}/u-result.json'
 _manifest "$TEST_TEMP_DIR/m/v1"         v1-stage         tool 1  '${artifact_dir}/v1-result.json'
-_manifest "$TEST_TEMP_DIR/m/v2"         v2-stage         tool 2  '${artifact_dir}/v2-result.json'
+_manifest "$TEST_TEMP_DIR/m/v2"         v2-stage         tool 3  '${artifact_dir}/v2-result.json'
 _manifest "$TEST_TEMP_DIR/m/backend"    some-backend     tool "" ""
 _manifest "$TEST_TEMP_DIR/m/persona"    some-persona     persona "" ""
 
@@ -97,10 +97,10 @@ _load "$TEST_TEMP_DIR/m/backend" >/dev/null || _rc_b=$?
 _load "$TEST_TEMP_DIR/m/persona" >/dev/null || _rc_p=$?
 assert_eq "[R1] a stage plugin declaring no result_contract is refused" "1" "$_rc_u"
 assert_contains "[R1] ...naming the plugin" "$_out_u" "undeclared-stage"
-assert_contains "[R1] ...and the accepted range" "$_out_u" "2..3"
+assert_contains "[R1] ...and the accepted range" "$_out_u" "3..3"
 assert_eq "[R2] a stage plugin declaring result_contract: 1 is refused" "1" "$_rc_1"
 assert_contains "[R2] ...naming the plugin" "$_out_1" "v1-stage"
-assert_eq "[R3] guard: a v2 stage plugin loads" "0" "$_rc_2"
+assert_eq "[R3] guard: a v3 stage plugin loads" "0" "$_rc_2"
 assert_eq "[R3] a backend with no primary output loads without a contract" "0" "$_rc_b"
 assert_eq "[R3] a persona loads without a contract" "0" "$_rc_p"
 

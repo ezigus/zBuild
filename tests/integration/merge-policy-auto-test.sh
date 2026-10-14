@@ -49,7 +49,7 @@ _setup_run() {
     printf '{"issue":1050,"branch":"zbuild/issue-1050-test"}\n' \
         > "$d/pipeline-state.json"
     if [[ -n "$gate_verdict" ]]; then
-        printf '{"schema_version":1,"verdict":"%s"}\n' "$gate_verdict" \
+        printf '{"result_contract":3,"outcome":"%s","reason":"gate"}\n' "$gate_verdict" \
             > "$d/artifacts/gate-aggregator-result.json"
     fi
     # The engine's index for the pr stage (lifecycle.sh exports ZBUILD_STAGE_INPUTS

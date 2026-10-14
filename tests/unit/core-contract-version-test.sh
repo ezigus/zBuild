@@ -28,16 +28,17 @@ fi
 # shellcheck source=../../core/contract/version.sh
 source "$REPO_ROOT/core/contract/version.sh"
 
-# TC-2 [SPEC-2]: the range is legible. Since #1850 it starts at v2; #2366 adds v3.
-assert_eq "[SPEC-2] TC-2: range renders as MIN..MAX" "2..3" "$(contract_version_range)"
-set +e; contract_version_supported 1; r1=$?; contract_version_supported 2; r2=$?; set -e
+# TC-2 [SPEC-2]: the range is legible. #2366 made it v3 only.
+assert_eq "[SPEC-2] TC-2: range renders as MIN..MAX" "3..3" "$(contract_version_range)"
+set +e; contract_version_supported 1; r1=$?; contract_version_supported 2; r2=$?; contract_version_supported 3; r3=$?; set -e
 assert_eq "[SPEC-2] TC-2: v1 is no longer supported (#1850)" "1" "$r1"
-assert_eq "[SPEC-2] TC-2: v2 supported" "0" "$r2"
+assert_eq "[SPEC-2] TC-2: v2 is no longer supported (#2366)" "1" "$r2"
+assert_eq "[SPEC-2] TC-2: v3 supported" "0" "$r3"
 
 # TC-3 [SPEC-2]: outside the range, and non-integers, are unsupported. A typo'd
 # version must refuse rather than default to v1 — defaulting is how an
 # unreadable plugin gets read anyway.
-for bad in 0 4 99 "v2" "2.0" "" "1x"; do
+for bad in 0 2 4 99 "v2" "2.0" "" "1x"; do
     set +e; contract_version_supported "$bad"; rc=$?; set -e
     assert_eq "[SPEC-2] TC-3: '$bad' is unsupported" "1" "$rc"
 done
@@ -61,14 +62,15 @@ case "$msg" in
     *) assert_fail "[SPEC-4] TC-5: message names the declared version" "got: $msg" ;;
 esac
 case "$msg" in
-    *"2..3"*) assert_pass "[SPEC-4] TC-5: message names the accepted range" ;;
+    *"3..3"*) assert_pass "[SPEC-4] TC-5: message names the accepted range" ;;
     *) assert_fail "[SPEC-4] TC-5: message names the accepted range" "got: $msg" ;;
 esac
 
-# TC-6 [SPEC-5]: dropping v1 was a ONE-LINE change (#1850): the floor in the
-# single declaration is 2, and that alone retires v1 and the absent default.
-assert_eq "[SPEC-5] TC-6: the declared floor is 2" "1" \
-    "$(grep -cE '^_ZBUILD_CONTRACT_MIN=2$' "$REPO_ROOT/core/contract/version.sh" 2>/dev/null || true)"
+# TC-6 [SPEC-5]: dropping a version is a ONE-LINE change (#1850 dropped v1,
+# #2366 v2): the floor in the single declaration is 3, and that alone retires
+# every earlier version and the absent default.
+assert_eq "[SPEC-5] TC-6: the declared floor is 3" "1" \
+    "$(grep -cE '^_ZBUILD_CONTRACT_MIN=3$' "$REPO_ROOT/core/contract/version.sh" 2>/dev/null || true)"
 set +e; contract_version_supported 1; a=$?; contract_version_check "" "plugin 'y'" >/dev/null; b=$?; set -e
 assert_eq "[SPEC-5] TC-6: ...so v1 and an absent declaration are both refused" "1 1" "$a $b"
 
@@ -114,7 +116,7 @@ _mk() { # <file> <id> [declared-contract] — a stage plugin: it declares a prim
         printf 'outputs:\n  - id: result\n    path: ${artifact_dir}/t-result.json\n    type: t.json@1\n    required: true\n    primary: true\n'
     } > "$1"
 }
-_mk "$TEST_TEMP_DIR/ok.yaml"   "ok-plugin"   2
+_mk "$TEST_TEMP_DIR/ok.yaml"   "ok-plugin"   3
 _mk "$TEST_TEMP_DIR/none.yaml" "none-plugin" ""
 _mk "$TEST_TEMP_DIR/bad.yaml"  "bad-plugin"  7
 
@@ -127,23 +129,23 @@ assert_eq "[SPEC-7] TC-8: in-range manifest loads" "0" "$ok_rc"
 assert_eq "[SPEC-7] TC-8: a stage plugin with no declaration is REFUSED (v1 is gone, #1850)" "1" "$none_rc"
 assert_eq "[SPEC-7] TC-8: out-of-range manifest is REFUSED at load" "1" "$bad_rc"
 case "$bad_out" in
-    *"bad-plugin"*"2..3"*) assert_pass "[SPEC-7] TC-8: refusal names the plugin and the range" ;;
+    *"bad-plugin"*"3..3"*) assert_pass "[SPEC-7] TC-8: refusal names the plugin and the range" ;;
     *) assert_fail "[SPEC-7] TC-8: refusal names the plugin and the range" "got: $bad_out" ;;
 esac
 
 # TC-9 [SPEC-5]: the floor works THROUGH validate_manifest, not just the
 # library: an undeclared stage plugin is refused naming itself and the range,
-# and a declared v2 one still loads.
+# and a declared v3 one loads.
 (
     set +e
     out_none="$(validate_manifest "$TEST_TEMP_DIR/none.yaml" 2>&1)"; rc_none=$?
     out_v2="$(validate_manifest "$TEST_TEMP_DIR/ok.yaml" 2>&1)";     rc_v2=$?
     set -e
-    [[ "$rc_none" -eq 1 && "$out_none" == *"none-plugin"*"2..3"* && "$rc_v2" -eq 0 ]] && exit 0
+    [[ "$rc_none" -eq 1 && "$out_none" == *"none-plugin"*"3..3"* && "$rc_v2" -eq 0 ]] && exit 0
     printf 'none rc=%s out=%s | v2 rc=%s\n' "$rc_none" "$out_none" "$rc_v2" >&2
     exit 1
 )
-assert_eq "[SPEC-5] TC-9: undeclared stage plugins are refused at load, v2 loads" "0" "$?"
+assert_eq "[SPEC-5] TC-9: undeclared stage plugins are refused at load, v3 loads" "0" "$?"
 
 cleanup_test_env
 print_test_results
