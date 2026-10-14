@@ -353,7 +353,7 @@ $(printf '%s' "$plan_json" | jq -r '.description // .goal // ""' 2>/dev/null)
 ### Seed scope (from plan.files[])
 ${scope_list}
 
-### Tools (read-only — this stage may NOT modify the working tree)
+### Tools
 - You MAY use the Read tool to inspect any file in the repository.
 - You MAY use the Grep tool to search the whole repository for symbols,
   constants, references, and hardcoded values.
