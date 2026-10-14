@@ -3,8 +3,9 @@
 # The router redacts the prompt itself unless a plugin already did. C6 changes
 # from "refuse if not redacted" to "redact if not already redacted": a prompt
 # with no prior redaction.applied is now REDACTED (emitting redaction.applied
-# immediately before model.route), not refused. Fail-closed is preserved: a
-# configured-but-missing/empty manifest → redaction.refused → the call is blocked.
+# immediately before model.route), not refused. Since #2379 redaction takes out
+# private paths only and needs no scope manifest: a missing manifest no longer
+# blocks the call.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,10 +109,10 @@ else
         "applied_seq=$applied_seq route_seq=$route_seq"
 fi
 
-# ─── Test 2b: configured-but-MISSING manifest → redaction.refused → BLOCKED ──
-# Fail-closed regression: when ZBUILD_SCOPE_MANIFEST names a missing/empty file
-# (the production posture the runner sets up), the router MUST refuse the call.
-export ZBUILD_RUN_ID="precond-run-failclosed-$$"
+# ─── Test 2b: configured-but-MISSING manifest → still redacted, not blocked ──
+# #2379: redaction takes out private paths and needs no scope manifest, so a
+# missing one no longer blocks the call.
+export ZBUILD_RUN_ID="precond-run-nomanifest-$$"
 : > "$ZBUILD_EVENTS_JSONL"
 jq -cn --arg rid "$ZBUILD_RUN_ID" \
     '{ts:"2026-01-01T00:00:00Z", run_id:$rid, issue:0, type:"stage.start",
@@ -123,17 +124,13 @@ out="$(ZBUILD_SCOPE_MANIFEST="$TEST_TEMP_DIR/no-such-manifest.md" \
     route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "missing manifest → router refuses (fail-closed, rc=2)" "2" "$rc"
-refused_fc="$(grep -c '"redaction.refused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-assert_gt "redaction.refused emitted on missing manifest (fail-closed)" "$refused_fc" "0"
-route_fc="$(grep '"model.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
-    | jq -r --arg rid "$ZBUILD_RUN_ID" 'select(.run_id==$rid) | .type' 2>/dev/null \
-    | grep -c "model.route" || true)"
-assert_eq "no model.route when redaction refused (fail-closed)" "0" "$route_fc"
+assert_eq "missing manifest → router still redacts and calls (rc=0)" "0" "$rc"
+applied_nm="$(grep -c '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_gt "redaction.applied emitted with no manifest" "$applied_nm" "0"
 
 # ─── Test 2c: valid manifest, no prior redaction → router really redacts ─────
 # By-construction with a real manifest: the router runs apply_scope_redaction and
-# emits redaction.applied with a real scope_hash (not the passthrough sentinel).
+# emits redaction.applied counting the private paths it took out.
 export ZBUILD_RUN_ID="precond-run-realmanifest-$$"
 : > "$ZBUILD_EVENTS_JSONL"
 REAL_MANIFEST="$TEST_TEMP_DIR/scope-manifest.md"
@@ -145,18 +142,14 @@ jq -cn --arg rid "$ZBUILD_RUN_ID" \
 
 set +e
 out="$(ZBUILD_SCOPE_MANIFEST="$REAL_MANIFEST" \
-    route_to_model "T2" "please inspect /etc/passwd and core/router/route.sh" 2>/dev/null)"
+    route_to_model "T2" "please inspect .env and core/router/route.sh" 2>/dev/null)"
 rc=$?
 set -e
 assert_eq "valid manifest, no prior redaction → router redacts → rc=0" "0" "$rc"
 assert_eq "valid manifest: response passthrough" "OK-RESPONSE" "$out"
-real_hash="$(grep '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
-    | jq -r 'select(.type=="redaction.applied") | .data.scope_hash // empty' 2>/dev/null | tail -1 || true)"
-if [[ -n "$real_hash" && "$real_hash" != "router-passthrough" ]]; then
-    assert_pass "redaction.applied carries a real scope_hash (apply_scope_redaction ran)"
-else
-    assert_fail "redaction.applied carries a real scope_hash" "got scope_hash='$real_hash'"
-fi
+real_count="$(grep '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
+    | jq -r 'select(.type=="redaction.applied") | .data.redactions // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "redaction.applied counts the private path taken out (apply_scope_redaction ran)" "1" "$real_count"
 
 # ─── Test 3: run_id with redaction.applied as last event → succeeds ───────────
 export ZBUILD_RUN_ID="precond-run-satisfied-$$"

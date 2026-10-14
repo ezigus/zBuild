@@ -351,25 +351,15 @@ _route_redact_prompt() {
         _route_persona_redact "$manifest" "$allowlist" "$cycle_id"
     fi
 
-    if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
-        # A configured manifest is authoritative: apply_scope_redaction handles a
-        # missing/empty file itself by emitting redaction.refused (rc1, fail-closed)
-        # — we do NOT downgrade that to a passthrough here.
-        local _rc=0
-        apply_scope_redaction "$input" "$output" "$manifest" "$allowlist" "$cycle_id" \
-            >/dev/null 2>&1 || _rc=$?
-        return "$_rc"
-    fi
-
-    # No manifest configured (var unset) → unit-test/bootstrap passthrough. Emit a
-    # redaction.applied stub so the by-construction invariant (redaction.applied
-    # immediately precedes model.route) holds even without a manifest.
-    cp "$input" "$output" 2>/dev/null || true
-    eb_emit_event "redaction.applied" \
-        "input=$input" "output=$output" \
-        "size_before=0" "size_after=0" "redactions=0" \
-        "scope_hash=router-passthrough" "cycle=$cycle_id" 2>/dev/null || true
-    return 0
+    # #2379 (ADR-043): every prompt is redacted — private paths are taken out —
+    # whether or not the run has a scope manifest; the scope no longer decides
+    # what a stage sees.
+    declare -F apply_scope_redaction >/dev/null 2>&1 \
+        || source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh" 2>/dev/null || true
+    local _rc=0
+    apply_scope_redaction "$input" "$output" "$manifest" "$allowlist" "$cycle_id" \
+        >/dev/null 2>&1 || _rc=$?
+    return "$_rc"
 }
 
 # ─── _route_ensure_redaction <tier> <skip:bool> <prompt> ─────────────────────

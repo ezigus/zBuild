@@ -6,11 +6,11 @@
 # _route_ensure_redaction/_route_redact_prompt path does REAL redaction.
 #
 # Assertions:
-#   T1: with NO ZBUILD_RUN_ID, an out-of-scope absolute path (/etc/passwd) in the
-#       prompt is wrapped in <out-of-scope-context> in the text sent to claude,
-#       while an in-repo path (scripts/lib/foo.sh) passes through unwrapped.
-#   T2: the ephemeral context emits redaction.applied with a REAL scope_hash
-#       (NOT router-passthrough, NOT router.precondition.skipped).
+#   T1: with NO ZBUILD_RUN_ID, a private path (.env) in the prompt is replaced
+#       with <private> in the text sent to claude, while any other path
+#       (scripts/lib/foo.sh, /etc/hosts) passes through as it is (#2379).
+#   T2: the ephemeral context is provisioned and --skip-precondition is never
+#       passed (redaction stays by construction).
 #   T3: when already in a run (ZBUILD_RUN_ID + ZBUILD_EVENTS_JSONL set),
 #       route_to_model_cli is a pass-through that leaves those vars untouched.
 set -euo pipefail
@@ -54,12 +54,12 @@ _recorded_prompt() {
 # shellcheck source=../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh"
 
-# ─── T1: standalone call redacts out-of-scope paths, keeps in-repo paths ─────
+# ─── T1: standalone call takes out private paths, keeps every other path ─────
 # NO run context set → route_to_model_cli must provision an ephemeral one.
 unset ZBUILD_RUN_ID ZBUILD_EVENTS_JSONL ZBUILD_SCOPE_MANIFEST ZBUILD_CURRENT_STAGE
 # Point events at a temp file so the pre-existing-context branch is NOT taken and
 # any stub-path emits land somewhere harmless if the code changes.
-_prompt=$'document this: leaked /etc/passwd and ok scripts/lib/doc-generate.sh'
+_prompt=$'document this: leaked .env and ok scripts/lib/doc-generate.sh and /etc/hosts'
 
 set +e
 route_to_model_cli "T2" "$_prompt" >/dev/null 2>&1
@@ -68,13 +68,14 @@ set -e
 assert_eq "T1: route_to_model_cli returns rc=0 standalone" "0" "$t1_rc"
 
 sent="$(_recorded_prompt)"
-assert_contains "T1: out-of-scope /etc/passwd wrapped before reaching model" \
-    "$sent" "<out-of-scope-context>/etc/passwd</out-of-scope-context>"
+assert_contains "T1: private .env taken out before reaching model" \
+    "$sent" "leaked <private> and"
+assert_contains "T1: a path outside the repository is kept" "$sent" "/etc/hosts"
 assert_contains "T1: in-repo path survives to the model unwrapped" \
     "$sent" "scripts/lib/doc-generate.sh"
 inrepo_wrapped=0
-grep -qF "<out-of-scope-context>scripts/lib/doc-generate.sh" <<< "$sent" && inrepo_wrapped=1
-assert_eq "T1: in-repo path is NOT wrapped as out-of-scope" "0" "$inrepo_wrapped"
+grep -qF "out-of-scope-context" <<< "$sent" && inrepo_wrapped=1
+assert_eq "T1: no out-of-scope marker" "0" "$inrepo_wrapped"
 
 # ─── T2: helper provisions manifest+events context, NOT --skip-precondition ──
 # claude runs with a scrubbed ZBUILD_* env by design (_zbuild_make_fresh_shell),

@@ -126,6 +126,22 @@ reaches the model unredacted now rests on:
 - Plugins keep their `apply_scope_redaction` calls for now (removed in a
   follow-up); the dedup keeps them working with no double redaction.
 
+## Amendment — redaction needs no manifest (2026-10-14, #2379)
+
+"Fail-closed preserved" no longer holds for the manifest: redaction takes out
+private paths only (ADR-004, amendment of 2026-10-14) and needs no scope
+manifest, so a missing or empty one does not block the call, and the router
+always calls `apply_scope_redaction` — the passthrough stub for "no manifest
+configured" is gone. A degenerate environment (no `run_id` / no events log)
+still refuses, and the `--skip-precondition` operator override is unchanged.
+
+## Enforced by
+
+- §Decision (the router redacts unless the stage already did) — `tests/integration/router-precondition-test.sh`.
+- Amendment (no manifest needed; the router always redacts) — `tests/integration/router-precondition-test.sh` 2b,
+  `tests/unit/private-paths-test.sh` P5.
+- §The real anti-bypass guarantee — `tests/unit/redaction-chokepoint-test.sh`.
+
 ## References
 
 - [ADR-004](ADR-004-redaction-chokepoint.md) — the chokepoint this inverts.

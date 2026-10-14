@@ -114,8 +114,6 @@ so it is not edited, and this amendment governs.
 - `tests/unit/worktree-sparse-legacy-test.sh` — Amendment §5: issue worktrees leave all of it out.
 - `tests/unit/scope-governance-test.sh` — Amendment §5: `scope_floor_denied` refuses
   `legacy-DoNotUse` and every path under it.
-- `core/redaction/tests/scope-redaction-unit-test.sh` — T-818-5: the tree's name is a repo path
-  prefix to the read-scope redactor, so an out-of-scope path into it is wrapped.
 - Not enforced by a test: "every other legacy file is touched only by `git rm`" (§Sentinel-guard
   protocol) and Amendment §4 (where knowledge lands) are held by review.
 

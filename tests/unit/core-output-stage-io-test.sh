@@ -603,7 +603,7 @@ saved_path="$PATH"; PATH="$ghdir:$PATH"
 _stage_io_to_gh_comment "$rec46" >/dev/null 2>&1
 PATH="$saved_path"
 body46="$(cat "$ghdir/body.txt" 2>/dev/null || echo '')"
-assert_contains "T46 body has out-of-scope-context wrapper" "$body46" "<out-of-scope-context>"
+assert_contains "T46 body takes the private path out (#2379)" "$body46" "<private>"
 
 # ─── T47: redact: false opt-out for command kind ─────────────────────────────
 _MOCK_REDACT="false"
@@ -623,8 +623,8 @@ saved_path="$PATH"; PATH="$ghdir:$PATH"
 _stage_io_to_gh_comment "$rec47" >/dev/null 2>&1
 PATH="$saved_path"
 body47="$(cat "$ghdir/body.txt" 2>/dev/null || echo '')"
-if grep -qF '<out-of-scope-context>' <<< "$body47"; then
-    assert_fail "T47 command redact:false → no redaction" "out-of-scope-context wrapper unexpectedly present"
+if grep -qF '<private>' <<< "$body47"; then
+    assert_fail "T47 command redact:false → no redaction" "private marker unexpectedly present"
 else
     assert_pass "T47 command redact:false → no redaction wrapper"
 fi
@@ -649,7 +649,7 @@ saved_path="$PATH"; PATH="$ghdir:$PATH"
 _stage_io_to_gh_comment "$rec48" >/dev/null 2>&1
 PATH="$saved_path"
 body48="$(cat "$ghdir/body.txt" 2>/dev/null || echo '')"
-assert_contains "T48 LLM ignores redact:false (still redacted)" "$body48" "<out-of-scope-context>"
+assert_contains "T48 LLM ignores redact:false (still redacted)" "$body48" "<private>"
 _MOCK_REDACT=""
 
 # ─── T49: redaction failure → drop comment + emit error event ────────────────

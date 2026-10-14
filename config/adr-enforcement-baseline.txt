@@ -5,7 +5,6 @@
 # a new ADR ships with its section. Gaps are tracked from #2268.
 ADR-001-plugin-contract.md
 ADR-003-models-as-data.md
-ADR-004-redaction-chokepoint.md
 ADR-005-claim-coordinator.md
 ADR-006-resume-contract.md
 ADR-007-test-strategy.md
@@ -42,7 +41,6 @@ ADR-039-parallel-stage-groups.md
 ADR-040-composable-gate-lens-taxonomy.md
 ADR-041-flock-serialization-chokepoint.md
 ADR-042-stage-portability.md
-ADR-043-redaction-by-construction.md
 ADR-044-repo-declarable-test-count-contract.md
 ADR-046-design-verify-shift-left.md
 ADR-047-stage-agnostic-mechanics.md
