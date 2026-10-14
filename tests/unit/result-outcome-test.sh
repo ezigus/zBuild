@@ -79,6 +79,24 @@ assert_eq "[O2] detail goes under data" "t" "$(jq -r '.data.findings[0].text' "$
 _rc=0; stage_result_write "$R" degraded "x" >/dev/null 2>&1 || _rc=$?
 assert_eq "[O2] a word off the list is refused" "1" "$_rc"
 
+print_test_section "O2b: adding the result to an output that is itself the result"
+PJ="$TEST_TEMP_DIR/plan.json"
+printf '%s\n' '{"schema_version":1,"steps":[{"id":"step-1","description":"d"}],"result_contract":2,"verdict":"pass","disposition":"complete","reason":"old"}' > "$PJ"
+stage_result_add "$PJ" pass "1 work item" >/dev/null 2>&1; _rc=$?
+assert_eq "[O2b] adds a pass" "0" "$_rc"
+assert_eq "[O2b] contract 3" "3" "$(jq -r .result_contract "$PJ" 2>/dev/null)"
+assert_eq "[O2b] the outcome" "pass" "$(jq -r .outcome "$PJ" 2>/dev/null)"
+assert_eq "[O2b] the output's own content is kept" "d" "$(jq -r '.steps[0].description' "$PJ" 2>/dev/null)"
+assert_eq "[O2b] earlier result fields are gone" "false" "$(jq 'has("verdict") or has("disposition")' "$PJ" 2>/dev/null)"
+_before="$(cat "$PJ")"; _rc=0
+_err="$(stage_result_add "$PJ" degraded "x" 2>&1 >/dev/null)" || _rc=$?
+assert_eq "[O2b] a word off the list is refused" "1" "$_rc"
+assert_eq "[O2b] ...and the file is unchanged" "$_before" "$(cat "$PJ")"
+printf '[1,2]\n' > "$PJ"; _rc=0
+_err="$(stage_result_add "$PJ" pass "x" 2>&1 >/dev/null)" || _rc=$?
+assert_eq "[O2b] an output that is not an object is refused" "1" "$_rc"
+assert_contains "[O2b] ...saying why" "$_err" "not a JSON object"
+
 print_test_section "O3: pass and fail mean the stage finished"
 stage_result_write "$R" pass "ok" >/dev/null 2>&1
 assert_eq "[O3] pass reads as pass" "pass" "$(runner_read_stage_verdict "$S" "$M" oc 0 2>/dev/null)"
@@ -94,6 +112,7 @@ assert_eq "[O4] timed_out is the disposition" "timed_out" "$(runner_read_stage_d
 assert_eq "[O4] ...and not a pass" "error" "$(runner_read_stage_verdict "$S" "$M" oc 0 2>/dev/null)"
 stage_result_write "$R" misconfigured "no model tier" >/dev/null 2>&1
 assert_eq "[O4] misconfigured is the disposition" "misconfigured" "$(runner_read_stage_disposition "$S" "$M" oc 0 2>/dev/null)"
+assert_eq "[O4] ...and not a pass" "error" "$(runner_read_stage_verdict "$S" "$M" oc 0 2>/dev/null)"
 
 print_test_section "O5: a result the engine cannot read"
 printf '{"result_contract":3,"outcome":"degraded","reason":"x"}\n' > "$R"
@@ -118,6 +137,10 @@ stage_result_write "$O/artifacts/doc-result.json" pass "ok" >/dev/null 2>&1
 _oi="$(open_items_json "$O")"
 assert_eq "[O7] a failed outcome is an open item" "lint" "$(jq -r '.[].opener' <<< "$_oi" 2>/dev/null)"
 
+print_test_section "O8: contract 2 still reads"
+printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$R"
+assert_eq "[O8] a contract-2 pass" "pass" "$(runner_read_stage_verdict "$S" "$M" oc 0 2>/dev/null)"
+
 print_test_section "O9: Previous work reads a contract-3 result"
 # shellcheck source=../../scripts/lib/stage-prompt.sh
 source "$REPO_ROOT/scripts/lib/stage-prompt.sh" 2>/dev/null || true
@@ -131,10 +154,6 @@ _pw="$( _TPL_STAGES=(oc); _stage_block_previous_work later "$W" "$TEST_TEMP_DIR/
         "$(_inputs_resolve_stage later "$TEST_TEMP_DIR/plugins" "$W")" "$W" 2>/dev/null )"
 assert_contains "[O9] the stage's outcome is shown" "$_pw" "(verdict: timed_out)"
 assert_contains "[O9] a timed-out attempt shows the last good output" "$_pw" "iter-0-attempt-1/oc-result.json"
-
-print_test_section "O8: contract 2 still reads"
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$R"
-assert_eq "[O8] a contract-2 pass" "pass" "$(runner_read_stage_verdict "$S" "$M" oc 0 2>/dev/null)"
 
 cleanup_test_env
 print_test_results
