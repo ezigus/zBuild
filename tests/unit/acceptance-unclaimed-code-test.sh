@@ -108,7 +108,7 @@ _gate() {
 R4="$(_repo unclaimed-u4 scripts/x.sh tests/a-test.sh)"
 _design "$R4" "SPEC-1[no-code]: the docs explain the flag"
 ST4="$(_gate "$R4")"; RES4="$ST4/artifacts/acceptance-gate-result.json"
-assert_eq "[U4] the gate fails" "fail" "$(jq -r '.verdict // empty' "$RES4" 2>/dev/null)"
+assert_eq "[U4] the gate fails" "fail" "$(jq -r '.outcome // empty' "$RES4" 2>/dev/null)"
 assert_contains "[U4] failures has unclaimed_code:scripts/x.sh" \
     "$(jq -r '.failures[]?' "$RES4" 2>/dev/null)" "unclaimed_code:scripts/x.sh"
 assert_contains "[U4] the reason names the file and says what is missing" \
@@ -139,7 +139,7 @@ assert_eq "[U4] with a [code] requirement the gate does not report unclaimed cod
 assert_eq "[U4] ...and emits no such event" "" \
     "$(grep -F 'acceptance.gate.unclaimed_code' "$ST5/events/events.jsonl" 2>/dev/null || true)"
 assert_eq "[U4] ...the gate did run (a result was written)" "fail" \
-    "$(jq -r '.verdict // empty' "$RES5" 2>/dev/null)"
+    "$(jq -r '.outcome // empty' "$RES5" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

@@ -23,6 +23,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366: the one writer of a stage's result (contract 3).
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _RL_DIR="$_ZBUILD_PLUGIN_DIR"
 _RL_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -79,20 +82,24 @@ _review_lens_saved_notes() {
     head -c 4000 "$cp" 2>/dev/null || true
 }
 
+# #2366 (contract 3): a lens that reviewed nothing — score 0, no findings — with
+# the outcome saying how it ended; any partial notes under data.
 _review_lens_write_result() {
-    local out="$1" verdict="$2" disposition="$3" reason="$4" notes="${5:-}"
+    local out="$1" outcome="$2" reason="$3" notes="${4:-}"
     local _base _name
     _base="$(basename "$out")"
     _name="${_base%.json}"; _name="${_name#lens-}"
+    # Built beside the result and written to it ONCE: a signal that reaches the
+    # trap and the rc=130 branch must still leave exactly one write (#2165).
+    local _tmp="${out%/*}/.review-lens-result.$BASHPID.tmp"
     jq -nc \
         --arg n "$_name" \
-        --arg v "$verdict" \
-        --arg d "$disposition" \
-        --arg r "$reason" \
         --arg pn "$notes" \
-        '{result_contract:2, schema_version:1, name:$n, score:0, findings:[], verdict:$v, disposition:$d, reason:$r}
-         + (if $pn != "" then {data:{partial_notes:$pn}} else {} end)' \
-        | atomic_write "$out" 2>/dev/null || true
+        '{schema_version:1, name:$n, score:0, findings:[]}
+         + (if $pn != "" then {data:{partial_notes:$pn}} else {} end)' > "$_tmp" 2>/dev/null \
+        && stage_result_add "$_tmp" "$outcome" "$reason" 2>/dev/null \
+        && atomic_write "$out" 2>/dev/null < "$_tmp"
+    rm -f "$_tmp" 2>/dev/null || true
 }
 
 # ─── _review_lens_interrupt_handler ──────────────────────────────────────────
@@ -100,7 +107,7 @@ _review_lens_write_result() {
 # Reads $_rl_out_ref (set by _review_lens_run_inner before trap registration)
 # so it can be invoked directly in tests for SIGTERM simulation (SPEC-13).
 _review_lens_interrupt_handler() {
-    _review_lens_write_result "${_rl_out_ref:-}" "degraded" \
+    _review_lens_write_result "${_rl_out_ref:-}" \
         "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" \
         "$(_review_lens_saved_notes "${_rl_out_ref%/*}")"
     # Ctrl-C reaches the whole process group: this trap fires AND the router
@@ -293,7 +300,7 @@ _review_lens_run_inner() {
     if [[ "$router_rc" -eq 130 ]]; then
         stage_signal_end
         [[ "${_rl_interrupted:-0}" == "1" ]] \
-            || _review_lens_write_result "$out" "degraded" "interrupted" "signal_interrupt"
+            || _review_lens_write_result "$out" interrupted "signal_interrupt"
         return 130
     fi
     stage_signal_end
@@ -302,7 +309,7 @@ _review_lens_run_inner() {
     # degrade paths. Write disposition:out_of_turns and propagate rc=10 so the engine
     # can apply the §3 escalation (disposition.sh:97 → route.sh:749 +50% retry).
     if [[ "$router_rc" -eq 10 ]]; then
-        _review_lens_write_result "$out" "degraded" "out_of_turns" "budget_exhausted" \
+        _review_lens_write_result "$out" out_of_turns "budget_exhausted" \
             "$(_review_lens_saved_notes "$artifact_dir")"
         return 10
     fi
@@ -313,7 +320,7 @@ _review_lens_run_inner() {
         emit_event "review_lens.failed" "lens=$lens" "router_rc=$router_rc"
         local _rl_v="" _rl_r=""
         _router_rc_classify "$router_rc" _rl_v _rl_r 2>/dev/null || true
-        _review_lens_write_result "$out" "degraded" "$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")" "router_error" \
+        _review_lens_write_result "$out" "$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")" "router_error" \
             "$(_review_lens_saved_notes "$artifact_dir")"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the model call failed, so this lens reviewed nothing" \
@@ -330,7 +337,7 @@ _review_lens_run_inner() {
     _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok "$raw_response" json prose
     if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then
         emit_event "review_lens.unparseable" "lens=$lens"
-        _review_lens_write_result "$out" "degraded" "unusable" "unparseable_reply"
+        _review_lens_write_result "$out" unusable "unparseable_reply"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the model returned unparseable JSON, so this lens reviewed nothing" \
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
@@ -345,7 +352,6 @@ _review_lens_run_inner() {
     local normalized
     normalized="$(printf '%s' "$json" | jq -c --arg n "$lens" '
         {
-          result_contract: 2,
           schema_version: 1,
           name: $n,
           score: ((.score // 0) | if type=="number" then floor else 0 end),
@@ -364,14 +370,11 @@ _review_lens_run_inner() {
             } else {
               file: "unknown", category: "general", severity: "low",
               line: null, message: (.|tostring), introduced: true
-            } end ],
-          verdict: "complete",
-          disposition: "complete",
-          reason: "lens review complete"
+            } end ]
         }' 2>/dev/null || true)"
     if [[ -z "$normalized" ]]; then
         emit_event "review_lens.unparseable" "lens=$lens"
-        _review_lens_write_result "$out" "degraded" "unusable" "normalization_failed"
+        _review_lens_write_result "$out" unusable "normalization_failed"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the lens response could not be normalised, so this lens reviewed nothing" \
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
@@ -383,11 +386,21 @@ _review_lens_run_inner() {
     # lens-${ZBUILD_REVIEW_LENS_ID}.json — here "$out" resolves to
     # $artifact_dir/lens-$lens.json (same file; $lens is the resolved id). Written
     # atomically below to satisfy the #507 primary-output atomicity contract.
-    printf '%s' "$normalized" | atomic_write "$out"
+    # #2366: a lens is a stage like any other. It fails when it found a high or
+    # critical problem the change introduced; otherwise it passes. Whether a
+    # failing lens blocks anything is the template's to say, not the lens's.
+    local _rl_outcome _rl_reason
+    _rl_outcome="$(printf '%s' "$normalized" | jq -r \
+        'if any(.findings[]; .introduced and (.severity == "high" or .severity == "critical"))
+         then "fail" else "pass" end' 2>/dev/null || printf 'pass')"
+    _rl_reason="the ${lens} lens found no high or critical problem the change introduced"
+    [[ "$_rl_outcome" == fail ]] && _rl_reason="the ${lens} lens found a high or critical problem the change introduced"
+    printf '%s' "$normalized" | atomic_write "$out" \
+        && stage_result_add "$out" "$_rl_outcome" "$_rl_reason"
     local score findings_count
     score="$(printf '%s' "$normalized" | jq -r '.score // 0' 2>/dev/null || echo 0)"
     findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"
-    stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "pass" \
+    stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "$_rl_outcome" \
         "reviewed the change through the ${lens} lens — $findings_count finding(s), score $score" \
         "$(printf -- '- artifact: lens-%s.json' "${lens}")"
     emit_event "plugin.result" "plugin=review-lens" \

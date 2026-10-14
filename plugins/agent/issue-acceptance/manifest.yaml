@@ -30,7 +30,7 @@ requires:
 
 provides:
   role: issue_acceptance
-  result_contract: 2
+  result_contract: 3
   events:
     - issue_acceptance.judged
     # #2304 (ADR-069 §7): the judge could not tell whether a requirement is met.
@@ -39,10 +39,6 @@ provides:
     - issue_acceptance.result.write_failed
 
 config:
-  valid_verdicts:
-    - pass
-    - fail
-    - unreadable
   tier_default: T2
 
 outputs:

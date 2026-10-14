@@ -78,8 +78,8 @@ assert_eq "[SPEC-2] dry-run run returns rc=0" "0" "$rc_dry"
 assert_file_exists "[SPEC-2] monitor-report.json created in dry-run" \
     "$ARTIFACTS_DIR/monitor-report.json"
 
-_dry_report_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-2] dry-run monitor-report.json has .verdict=pass (embedded)" \
+_dry_report_verdict="$(jq -r '.outcome // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[SPEC-2] dry-run monitor-report.json has .outcome=pass (embedded)" \
     "pass" "$_dry_report_verdict"
 assert_eq "[SPEC-2] dry-run does NOT call route_to_model" \
     "0" "$_ROUTE_TO_MODEL_CALLED"
@@ -103,8 +103,8 @@ set -e
 assert_eq "[SPEC-3] live run returns rc=0" "0" "$rc_live"
 assert_file_exists "[SPEC-3] monitor-report.json created" "$ARTIFACTS_DIR/monitor-report.json"
 
-_live_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-3] monitor-report.json .verdict=pass on healthy response" \
+_live_verdict="$(jq -r '.outcome // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[SPEC-3] monitor-report.json .outcome=pass on healthy response" \
     "pass" "$_live_verdict"
 
 # [SPEC-3] robustness: a model that appends a bare {"verdict":"pass"} after a full
@@ -116,9 +116,9 @@ Actually, final verdict: {"verdict":"pass"}'
 set +e
 monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
 set -e
-_selfreport_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-3] appended bare pass object does NOT override the full report" \
-    "degraded" "$_selfreport_verdict"
+_selfreport_verdict="$(jq -r '.outcome // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[SPEC-3] appended bare pass object does NOT override the full report (degraded → fail)" \
+    "fail" "$_selfreport_verdict"
 
 # ─── [SPEC-4] model error → primary monitor-report.json (degraded) still written + non-zero rc ──
 print_test_section "[SPEC-4] route_to_model failure → primary monitor-report.json (degraded) STILL written, non-zero rc"
@@ -137,9 +137,9 @@ set -e
 # artifact contract) — this is the correctness gap the review flagged.
 assert_file_exists "[SPEC-4] monitor-report.json (primary) written on model error" \
     "$ARTIFACTS_DIR/monitor-report.json"
-_fail_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-4] monitor-report.json .verdict=degraded on model error" \
-    "degraded" "$_fail_verdict"
+_fail_verdict="$(jq -r '.outcome // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[SPEC-4] monitor-report.json .outcome=unavailable on model error — not a judgement (#2366)" \
+    "unavailable" "$_fail_verdict"
 if [[ "$rc_fail" -ne 0 ]]; then
     assert_pass "[SPEC-4] plugin returns non-zero rc on model error (rc=$rc_fail)"
 else
@@ -231,24 +231,12 @@ unset ZBUILD_DRY_RUN
 
 assert_eq "[#1847/SPEC-10] dry-run still returns rc=0" "0" "$_s1847_10_rc"
 assert_eq "[#1847/SPEC-10] dry-run still does NOT call route_to_model" "0" "$_ROUTE_TO_MODEL_CALLED"
-_s1847_10_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
-assert_eq "[#1847/SPEC-10] dry-run still writes verdict=pass" "pass" "$_s1847_10_verdict"
+_s1847_10_verdict="$(jq -r '.outcome // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[#1847/SPEC-10] dry-run still writes outcome=pass" "pass" "$_s1847_10_verdict"
 
-# ─── [#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded] ──
-print_test_section "[#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded]"
-
-_s1847_11_stanza="$(awk '
-    /^[[:space:]]*valid_verdicts:/ { f=1; next }
-    f && /^[[:space:]]*-[[:space:]]/ { print; next }
-    f { exit }
-' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
-_s1847_11_count="$(grep -c '^[[:space:]]*-[[:space:]]' <<< "$_s1847_11_stanza" 2>/dev/null || true)"
-assert_eq "[#1847/SPEC-11] manifest valid_verdicts has exactly 2 entries" "2" "$_s1847_11_count"
-if grep -qx '[[:space:]]*- pass' <<< "$_s1847_11_stanza" && grep -qx '[[:space:]]*- degraded' <<< "$_s1847_11_stanza"; then
-    assert_pass "[#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]"
-else
-    assert_fail "[#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]" "${_s1847_11_stanza:-absent}"
-fi
+# ─── [#1847/SPEC-11] (#2366): one outcome — no verdict words in the manifest ─
+print_test_section "[#1847/SPEC-11] the manifest declares no valid_verdicts (contract 3)"
+assert_eq "[#1847/SPEC-11] no valid_verdicts" "0" "$(grep -c 'valid_verdicts' "$PLUGIN_DIR/manifest.yaml" || true)"
 
 # ─── [#1847/SPEC-12] no inputs: block (ADR-055 §1, amended 2026-10-12) ──────
 print_test_section "[#1847/SPEC-12] monitor declares no inputs: — deploy_result/pr_url come from the index"

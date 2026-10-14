@@ -84,7 +84,7 @@ _run_gate() {  # _run_gate <repo> → sets RC, RESULT, EVENTS
     EVENTS="$ZBUILD_EVENTS_JSONL"
 }
 
-# ── S1: load-bearing tagged test → verdict=pass ───────────────────────────────
+# ── S1: load-bearing tagged test → outcome=pass ───────────────────────────────
 REPO1="$(_build_repo gate-lb '#!/usr/bin/env bash
 # [SPEC-1] feature is implemented
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
@@ -99,10 +99,10 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate "$REPO1"; set -e
 assert_eq "S1: load-bearing → rc=0" "0" "$RC"
-assert_eq "[SPEC-4] S1: verdict=pass (v2 migration preserves the behavioral contract)" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-4] S1: outcome=pass (v2 migration preserves the behavioral contract)" "pass" "$(jq -r .outcome <<<"$RESULT")"
 assert_event_emitted "S1: complete event" "$EVENTS" "acceptance.gate.complete"
 
-# ── S2: tautological tagged test → verdict=fail ───────────────────────────────
+# ── S2: tautological tagged test → outcome=fail ───────────────────────────────
 REPO2="$(_build_repo gate-taut '#!/usr/bin/env bash
 # [SPEC-1] always true
 exit 0')"
@@ -115,10 +115,10 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate "$REPO2"; set -e
 assert_eq "S2: tautological → rc=1" "1" "$RC"
-assert_eq "S2: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S2: outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
 assert_event_emitted "S2: tautology event" "$EVENTS" "acceptance.gate.tautology"
 
-# ── S3: untagged SPEC → verdict=fail (Level-1) ────────────────────────────────
+# ── S3: untagged SPEC → outcome=fail (Level-1) ────────────────────────────────
 REPO3="$(_build_repo gate-untagged '#!/usr/bin/env bash
 # no spec tag here
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
@@ -143,7 +143,7 @@ exit 0')"
 printf '# Design\nNo acceptance block here.\n' > "$REPO4/design.md"
 set +e; _run_gate "$REPO4"; set -e
 assert_eq "S4: no block → rc=0" "0" "$RC"
-assert_eq "S4: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S4: outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 assert_eq "S4: reason=precondition_unmet" "precondition_unmet" "$(jq -r .reason <<<"$RESULT")"
 assert_eq "S4: precondition=design_acceptance_block" "design_acceptance_block" "$(jq -r .precondition <<<"$RESULT")"
 assert_event_emitted "S4: skipped event" "$EVENTS" "acceptance.gate.skipped"
@@ -158,9 +158,9 @@ SPEC-1: missing testfiles section and closing fence
 EOF
 set +e; _run_gate "$REPO5"; set -e
 assert_eq "S5: malformed block → rc=1 (fail closed, not skipped)" "1" "$RC"
-assert_eq "S5: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S5: outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
 
-# ── S6 (#2304, ADR-069 §4): an already-done SPEC is not run → verdict=pass ─────
+# ── S6 (#2304, ADR-069 §4): an already-done SPEC is not run → outcome=pass ─────
 # Its test would fail everywhere; a done requirement has nothing on the old code
 # to fail, so it is skipped (NEGCTL SKIP already_done), never judged.
 REPO6="$(_build_repo gate-done '#!/usr/bin/env bash
@@ -174,7 +174,7 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate "$REPO6"; set -e
 assert_eq "S6: a done SPEC is not run → rc=0" "0" "$RC"
-assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S6: outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 assert_contains "S6: the pass reason counts it as already done" \
     "$(jq -r .reason <<<"$RESULT")" "1 already done"
 
@@ -243,7 +243,7 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate "$REPO7"; set -e
 assert_eq "S7: [change] SPEC with tautological test → rc=1" "1" "$RC"
-assert_eq "S7: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S7: outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
 
 # ── S8: a test that outlives the timeout → INFRA class, not a violation (#1188) ─
 # The plugin resolves ZBUILD_NEGCTL_TIMEOUT (env wins) and exports the artifact
@@ -264,7 +264,7 @@ EOF
     set +e; _run_gate "$REPO8"; set -e
     unset ZBUILD_NEGCTL_TIMEOUT
     assert_eq "S8: timeout → rc=1 (gate records infra failure)" "1" "$RC"
-    assert_eq "S8: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+    assert_eq "S8: outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
     assert_eq "S8: failure class is negctl_error:timeout:SPEC-1 (not a violation)" \
         "negctl_error:timeout:SPEC-1" "$(jq -r '.failures[0]' <<<"$RESULT")"
     assert_event_emitted "S8: negctl_timeout event" "$EVENTS" "acceptance.gate.negctl_timeout"
@@ -288,7 +288,7 @@ exit 0')"
 printf '```acceptance\nTESTFILES:\n```\n' > "$REPO9/design.md"
 set +e; _run_gate "$REPO9"; set -e
 assert_eq "S9: placeholder block → rc=0" "0" "$RC"
-assert_eq "S9: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S9: outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 assert_eq "S9: reason=precondition_unmet" "precondition_unmet" "$(jq -r .reason <<<"$RESULT")"
 assert_eq "S9: precondition=tagged_testfiles" "tagged_testfiles" "$(jq -r .precondition <<<"$RESULT")"
 
@@ -312,7 +312,7 @@ EOF
 set +e; _run_gate "$REPO10"; set -e
 FAILURES="$(jq -rc .failures <<<"$RESULT")"
 assert_eq "S10: both violations → rc=1" "1" "$RC"
-assert_eq "S10: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S10: outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
 assert_eq "S10: severity=recoverable (#1585 — tautology+untagged both build-fixable → cycle re-iterates)" "recoverable" "$(jq -r .severity <<<"$RESULT")"
 assert_contains "S10: untagged_spec:SPEC-2 present in one pass" "$FAILURES" "untagged_spec:SPEC-2"
 assert_contains "S10: tautology:SPEC-1 present in the SAME pass" "$FAILURES" "tautology:SPEC-1"
@@ -342,13 +342,13 @@ assert_contains "S11: reason names the already-passing class" "$REASON" "already
 # unchanged (still a fail until build fixes it).
 # RESULT here still holds REPO10's run (tautology SPEC-1 + untagged SPEC-2).
 assert_eq "S12: tautology → fault absent (build-fixable, #1583)" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
-assert_eq "S12: tautology verdict unchanged (still fail)" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S12: tautology verdict unchanged (still fail)" "fail" "$(jq -r .outcome <<<"$RESULT")"
 assert_eq "S12: tautology severity=recoverable (#1585 — cycle re-iterates, not terminal)" "recoverable" "$(jq -r .severity <<<"$RESULT")"
 
 # ── S13 (#1219): a build-fixable failure does NOT set fault ─────────────
 # As of #1583 NO failure class is design-rooted (tautology became build-fixable
 # too — see S12). An untagged_spec (recoverable, build-fixable) stays in the build
-# cycle — no fault, so the gate-aggregator keeps verdict=fail and the
+# cycle — no fault, so the gate-aggregator keeps outcome=fail and the
 # route_back never fires. REPO3 = untagged-only.
 set +e; _run_gate "$REPO3"; set -e
 assert_eq "S13: untagged-only (build-fixable) → fault absent" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
@@ -396,7 +396,7 @@ SPEC-1: tests/never-written-test.sh
 EOF
 set +e; _run_gate "$REPO10B"; set -e
 FAILURES_10B="$(jq -rc .failures <<<"$RESULT")"
-assert_eq "S10b: an unfulfilled testfile promise → verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S10b: an unfulfilled testfile promise → outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
 # Reported by the ADR-036 tagging check, which fires ahead of negctl's
 # no_testfile arm: with the file absent there is no [SPEC-1] assertion to find.
 # Either class is a correct refusal; this pins the one that actually happens.
@@ -408,7 +408,7 @@ assert_eq "S10b: unfulfilled promise is recoverable (cycle re-iterates)" \
 
 # ── S15 (#1686): WIRING target not in this commit's diff → wiring_not_on_path ───
 # A WIRING file declared in design.md that this commit never touched cannot flip
-# when reverted. The gate must emit verdict=fail, severity=recoverable and
+# when reverted. The gate must emit outcome=fail, severity=recoverable and
 # fault=specification, so the aggregator fires specification and route_back rewinds
 # to design_verify_cycle — the first live activation of the dormant carrier.
 #
@@ -438,7 +438,7 @@ set +e; _run_gate "$REPO15"; set -e
 RC15="$RC"; RESULT15="$RESULT"; EVENTS15="$EVENTS"
 
 assert_eq "[SPEC-3] S15: wiring_not_on_path → rc=1" "1" "$RC15"
-assert_eq "[SPEC-3] S15: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT15")"
+assert_eq "[SPEC-3] S15: outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT15")"
 assert_eq "[SPEC-3] S15: severity=recoverable (not a terminal halt)" \
     "recoverable" "$(jq -r .severity <<<"$RESULT15")"
 assert_eq "[#2271] S15: no fault class — the gate never decides who fixes it" \
@@ -467,7 +467,7 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate_with_summary "$REPO16"; set -e
 assert_eq "[SPEC-3] S16: load-bearing enriched → rc=0" "0" "$RC"
-assert_eq "[SPEC-3] S16: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-3] S16: outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 assert_contains "[SPEC-3] S16: summary contains SPEC desc enrichment" \
     "$SUMMARY" "design : feature works as expected"
 assert_contains "[SPEC-3] S16: summary contains assertion label enrichment" \
@@ -537,8 +537,8 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate_with_summary "$REPO16D"; set -e
 assert_eq "[SPEC-3] S16d: tautological SPEC → rc=1" "1" "$RC"
-assert_eq "[SPEC-3] S16d: verdict=fail (enrichment did not break classification)" \
-    "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-3] S16d: outcome=fail (enrichment did not break classification)" \
+    "fail" "$(jq -r .outcome <<<"$RESULT")"
 assert_event_emitted "[SPEC-3] S16d: tautology still recorded" \
     "$EVENTS" "acceptance.gate.tautology"
 assert_eq "[SPEC-3] S16d: FAIL verdict token still leads its own line" \

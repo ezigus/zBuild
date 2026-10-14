@@ -135,11 +135,13 @@ plugin_hook_call "$REPO_ROOT/plugins/agent/spec-coverage" run "spec-coverage" "$
 _dispatch_rc=$?
 set +e
 
-_verdict="$(_res '.verdict')"
+# #2366: contract 3 — the stage's judgement is in data.judgement, its outcome
+# in .outcome.
+_verdict="$(_res '.data.judgement')"
 _reason="$(_res '.reason')"
 
 # ─── SPEC-2: the design was actually judged ─────────────────────────────────
-if [[ "$_verdict" == "unreadable" && "$_reason" == *"no parseable verdict from the model"* ]]; then
+if [[ "$(_res '.outcome')" == "unusable" || "$_reason" == *"no parseable verdict from the model"* ]]; then
     assert_fail "[SPEC-2][change] a dispatched spec-coverage does not fall to the no-verdict path" \
         "verdict=$_verdict reason=$_reason (dispatch rc=$_dispatch_rc) — route_to_model was undefined at dispatch, so the model was never called"
 else
@@ -149,6 +151,7 @@ fi
 # ─── SPEC-3: the model's own answer reached the artifact ────────────────────
 assert_eq "[SPEC-3][change] the model's verdict is what the artifact records" \
     "uncovered" "$_verdict"
+assert_eq "[SPEC-3][change] ...as a fail" "fail" "$(_res '.outcome')"
 assert_eq "[SPEC-3][change] and the requirement it named is in data.uncovered[]" \
     "$_SCV_UNCOVERED_REQ" "$(_res '.data.uncovered[0]')"
 

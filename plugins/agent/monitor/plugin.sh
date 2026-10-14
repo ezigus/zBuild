@@ -26,6 +26,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366: the one writer of a stage's result (contract 3).
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _MONITOR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_MONITOR_ROOT/scripts/lib/llm-agent.sh"   # ADR-028 shared framework (also loads helpers.sh)
@@ -47,19 +50,22 @@ _monitor_envelope_schema_ok() {
         >/dev/null 2>&1
 }
 
-# ─── _monitor_write_result <out> <verdict> <disposition> <reason> <summary> <checks_json> ─
-# Write a v2-compliant result file atomically (ADR-055 §"Folds in"): the model's
-# health-assessment fields (summary, checks) live nested under data, alongside
-# the disposition/reason axis (ADR-054 §6 — did the stage RUN, distinct from
-# what it found). The primary artifact is REQUIRED on every exit path (ADR-047
-# §3). Never string-interpolate into JSON — jq builds it so escaping is correct.
+# ─── _monitor_write_result <out> <outcome> <reason> <summary> <checks_json> [judgement] ─
+# The result (#2366, contract 3): one outcome — pass when the deployment is
+# healthy, fail when the model assessed it degraded, otherwise how the stage
+# failed to finish. The health-assessment fields (summary, checks, the model's
+# own word as `judgement`) live under data. The primary artifact is REQUIRED on
+# every exit path (ADR-047 §3).
 _monitor_write_result() {
-    local out="$1" verdict="$2" disposition="$3" reason="$4" summary="$5" checks="${6:-[]}"
+    local out="$1" outcome="$2" reason="$3" summary="$4" checks="${5:-[]}" judgement="${6:-}"
+    [[ -n "$reason" ]] || reason="$outcome"
+    local _data
+    _data="$(jq -cn --arg s "$summary" --argjson c "$checks" --arg j "$judgement" \
+        '{summary:$s, checks:$c} + (if $j == "" then {} else {judgement:$j} end)')" || return 1
     # A here-string, not a pipe: the SIGPIPE rule (review #2221).
-    atomic_write "$out" <<< "$(jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason" \
-        --arg s "$summary" --argjson c "$checks" \
-        '{result_contract:2, schema_version:1, verdict:$v, disposition:$d, reason:$r,
-          data:{summary:$s, checks:$c}}')"
+    atomic_write "$out" <<< '{"schema_version":1}' \
+        && stage_result_add "$out" "$outcome" "$reason" \
+        && atomic_write "$out" <<< "$(jq -c --argjson d "$_data" '. + {data:$d}' "$out")"
 }
 
 # ─── _monitor_interrupt_handler ────────────────────────────────────────────────
@@ -71,7 +77,7 @@ _monitor_write_result() {
 # (_mon_out_ref, _mon_interrupted) are the ones it reads and sets — nothing
 # global to leak into the caller (review #2221).
 _monitor_interrupt_handler() {
-    _monitor_write_result "${_mon_out_ref:-}" "degraded" \
+    _monitor_write_result "${_mon_out_ref:-}" \
         "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" "" "[]"
     _mon_interrupted=1
 }
@@ -135,7 +141,7 @@ _monitor_stage_run_inner() {
         if ! _p="$(_monitor_input_path "$_id" "$root")"; then
             error "monitor: input $_id resolves outside the run's state directory — refusing it"
             emit_event "monitor.input.refused" "plugin=monitor" "input=$_id"
-            _monitor_write_result "$report_out" "degraded" "broken" \
+            _monitor_write_result "$report_out" broken \
                 "input $_id resolves outside the run's state directory" "" "[]"
             stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
                 "refused input $_id: it points outside this run" \
@@ -147,7 +153,7 @@ _monitor_stage_run_inner() {
 
     # Dry-run: sentinel primary artifact, no model call.
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
-        _monitor_write_result "$report_out" "pass" "complete" "" "dry-run monitor" "[]" || return 1
+        _monitor_write_result "$report_out" pass "dry run — no health assessment was performed" "dry-run monitor" "[]" || return 1
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "skip" \
             "dry run — no health assessment was performed" \
             "Nothing was monitored. This verdict asserts nothing about the deployment."
@@ -185,7 +191,7 @@ _monitor_stage_run_inner() {
     # among the engine's rules — in the one prompt order.
     local _composed
     if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
-        _monitor_write_result "$report_out" "degraded" "misconfigured" "prompt_not_composed" "" "[]"
+        _monitor_write_result "$report_out" misconfigured "prompt_not_composed" "" "[]"
         return 1
     fi
     prompt="$_composed"
@@ -208,7 +214,7 @@ _monitor_stage_run_inner() {
     # cover that race, then collapse to rc=1 per #1823 (rc ∈ {0,1} only).
     if [[ "$rc" -eq 130 || "${_mon_interrupted:-0}" == "1" ]]; then
         [[ "${_mon_interrupted:-0}" == "1" ]] \
-            || _monitor_write_result "$report_out" "degraded" "interrupted" "signal_interrupt" "" "[]"
+            || _monitor_write_result "$report_out" interrupted "signal_interrupt" "" "[]"
         emit_event "monitor.alert" "plugin=monitor" "reason=signal_interrupt" "rc=$rc"
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
             "the model call was interrupted by a signal, so no assessment was made" \
@@ -226,7 +232,7 @@ _monitor_stage_run_inner() {
         local disposition; disposition="$(router_reason_disposition "${_mon_r:-router_rc_nonzero}")"
         emit_event "monitor.alert" "plugin=monitor" "reason=${_mon_r:-router_rc_nonzero}" "rc=$rc"
         # Primary artifact is required on every exit path — surface a write failure.
-        _monitor_write_result "$report_out" "degraded" "$disposition" "${_mon_r:-router_rc_nonzero}" "" "[]" \
+        _monitor_write_result "$report_out" "$disposition" "${_mon_r:-router_rc_nonzero}" "" "[]" \
             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
             "the model call failed (rc=$rc, ${_mon_r:-router_rc_nonzero}), so no assessment was made" \
@@ -244,7 +250,7 @@ _monitor_stage_run_inner() {
     if [[ -z "$report_json" ]] || ! _llm_envelope_validate "$report_json" \
             '.schema_version == 1 and (.verdict|type=="string") and (.summary|type=="string") and (.checks|type=="array")' verr; then
         emit_event "monitor.alert" "plugin=monitor" "reason=unparseable_response" "detail=${verr:-empty}"
-        _monitor_write_result "$report_out" "degraded" "unusable" "${verr:-envelope_invalid}" "" "[]" \
+        _monitor_write_result "$report_out" unusable "${verr:-envelope_invalid}" "" "[]" \
             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
             "the model returned no usable report (${verr:-empty}), so no assessment was made" \
@@ -262,7 +268,11 @@ _monitor_stage_run_inner() {
     local _mon_summary; _mon_summary="$(jq -r '.summary // "no summary"' <<< "$report_json" 2>/dev/null || printf 'no summary')"
     local _mon_checks_json; _mon_checks_json="$(jq -c '.checks // []' <<< "$report_json" 2>/dev/null || printf '[]')"
     local _mon_checks_count; _mon_checks_count="$(jq -r '.checks | length' <<< "$report_json" 2>/dev/null || printf '0')"
-    _monitor_write_result "$report_out" "$verdict" "complete" "" "$_mon_summary" "$_mon_checks_json"
+    # #2366: the model's health word stays as detail; the outcome is pass or fail.
+    local _mon_outcome=fail
+    [[ "$verdict" == pass ]] && _mon_outcome=pass
+    _monitor_write_result "$report_out" "$_mon_outcome" "assessed the deployment as $verdict — $_mon_summary" \
+        "$_mon_summary" "$_mon_checks_json" "$verdict"
 
     if [[ "$verdict" != "pass" ]]; then
         emit_event "monitor.alert" "plugin=monitor" "verdict=$verdict"

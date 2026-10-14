@@ -38,7 +38,7 @@ requires:
 # writes lens-<name>.json, so it stays green.
 provides:
   role: review_lens
-  result_contract: 2
+  result_contract: 3
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -47,12 +47,9 @@ provides:
     - review_lens.unparseable
 
 config:
-  # complete = lens ran and produced a normalised result; degraded = router
-  # failed, reply was unparseable, normalization failed, or interrupted.
-  # The plugin is convergence:advisory so these verdicts never gate the pipeline.
-  valid_verdicts:
-    - complete
-    - degraded
+  # One outcome (#2366): fail when the lens found a high or critical problem
+  # the change introduced, else pass; otherwise how it failed to finish. The
+  # plugin is convergence:advisory so a failing lens never gates the pipeline.
   tier_default: T2
   # Default lens identity when neither ZBUILD_REVIEW_LENS_ID nor
   # ZBUILD_CURRENT_STAGE is set (e.g. a bare manual invocation).

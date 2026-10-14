@@ -56,6 +56,11 @@ for manifest in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
     fi
     if grep -E "atomic_write[^|]*${base//./\\.}" "${plugin_srcs[@]}" >/dev/null 2>&1; then
         assert_pass "$plugin_dir: primary $base written via atomic_write"
+    # (d) #2366: the shared result writer (scripts/lib/stage-result.sh) writes
+    #     with atomic_write itself; a stage that writes its result with it, to
+    #     a path naming its primary, is atomic.
+    elif grep -E "stage_result_write[^|]*${base//./\\.}" "${plugin_srcs[@]}" >/dev/null 2>&1; then
+        assert_pass "$plugin_dir: primary $base written via the shared result writer"
     elif grep -E 'atomic_write[[:space:]]+"\$' "${plugin_srcs[@]}" >/dev/null 2>&1 \
         && grep -F "$base" "${plugin_srcs[@]}" >/dev/null 2>&1; then
         assert_pass "$plugin_dir: primary $base (indirect atomic_write reference)"
