@@ -24,6 +24,7 @@ export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo"; mkdir -p "$ZBUILD_REPO_ROOT"
 cat > "$INPUT" <<'TXT'
 Edit src/included/foo.ts and read /etc/hosts.
 The token lives in .env and deploy/id_rsa.
+Copy the key id_ed25519 over.
 ```
 cat config/server.pem
 ```
@@ -40,6 +41,7 @@ assert_contains "a path outside the repository is kept" "$_o" "/etc/hosts"
 for _p in .env deploy/id_rsa config/server.pem; do
     assert_eq "private path taken out: $_p" "0" "$(grep -cF -- "$_p" <<< "$_o" || true)"
 done
+assert_contains "a bare private file name (no folder, no dot) is taken out" "$_o" "Copy the key <private> over."
 assert_contains "a private path inside a code fence is taken out too" "$_o" "cat <private>"
 assert_eq "no out-of-scope marker" "0" "$(grep -c 'out-of-scope-context' <<< "$_o" || true)"
 

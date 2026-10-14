@@ -101,7 +101,7 @@ apply_scope_redaction() {
         while (match(line, /[A-Za-z0-9._\/~-]+/)) {
             tok = substr(line, RSTART, RLENGTH)
             out = out substr(line, 1, RSTART - 1)
-            if ((tok ~ /[.\/]/) && is_private(tok)) { out = out "<private>"; redacted++ }
+            if (is_private(tok)) { out = out "<private>"; redacted++ }
             else out = out tok
             line = substr(line, RSTART + RLENGTH)
         }

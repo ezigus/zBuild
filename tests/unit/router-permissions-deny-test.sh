@@ -80,6 +80,8 @@ assert_eq "[SPEC-3] the builder returns rc=0 with no rules" "0" "$_rc2"
 # they are all there is.
 assert_eq "[SPEC-3][guard] with nothing handed, the deny list holds only the private-path rules" \
     "0" "$(jq -r '[.permissions.deny[] | select(test("^(Read|Edit)\\(/") | not)] | length' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" 2>/dev/null || echo BAD)"
+assert_gt "[SPEC-3] ...and the private-path rules are there" \
+    "$(jq -r '[.permissions.deny[] | select(test("^Read\\(/"))] | length' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" 2>/dev/null || echo 0)" "0"
 
 print_test_results
 exit $((FAIL > 0))
