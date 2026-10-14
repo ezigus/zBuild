@@ -11,6 +11,8 @@
     "scripts/lib/abort-propagation.sh",
     "scripts/lib/run-open-items.sh",
     "scripts/lib/stage-limits.sh",
+    "tests/golden/full-pipeline/event-sequence.golden",
+    "tests/golden/parity/event-sequence.golden",
     "tests/golden/pipeline-end/timed_out-w80.colored.txt",
     "tests/golden/pipeline-end/timed_out-w80.layout.txt",
     "tests/integration/resume-after-run-timeout-test.sh",
