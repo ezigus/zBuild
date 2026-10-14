@@ -2,7 +2,7 @@
 # tests/integration/acceptance-gate-v2-contract-test.sh
 # TDD red step for issue #1839: spec-acceptance adopts the v2 result contract.
 #
-# [SPEC-1] result_contract:2 is present on every terminal exit path of
+# [SPEC-1] result_contract:3 is present on every terminal exit path of
 #          acceptance_gate_run — precondition_unmet (all three preconditions),
 #          malformed_acceptance_block, pass, and fail
 # [SPEC-2] acceptance-summary.txt is written on the precondition_unmet path and
@@ -64,7 +64,7 @@ _run_gate() {
     EVENTS="$ZBUILD_EVENTS_JSONL"
 }
 
-# ── C1: precondition_unmet:design_acceptance_block → result_contract:2 ─────────
+# ── C1: precondition_unmet:design_acceptance_block → result_contract:3 ─────────
 # No design.md → ZBUILD_STAGE_INPUTS points to a non-existent file → no block.
 REPO_C1="$(_build_repo "v2c-c1" '#!/usr/bin/env bash
 # [SPEC-1] x
@@ -76,7 +76,7 @@ assert_eq "[SPEC-1] design_acceptance_block: result_contract:3 present (#2366)" 
 assert_eq "[SPEC-2] design_acceptance_block: acceptance-summary.txt written" "1" \
     "$([[ -f "$REPO_C1/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
 
-# ── C2: precondition_unmet:merge_base_resolvable → result_contract:2 ────────────
+# ── C2: precondition_unmet:merge_base_resolvable → result_contract:3 ────────────
 # Orphan branch with no ancestor: origin/main absent, main absent, HEAD~1 absent
 # → zbuild_resolve_merge_base returns empty → merge_base_resolvable unmet.
 REPO_C2="$TEST_TEMP_DIR/repo-c2"
@@ -106,7 +106,7 @@ assert_eq "[SPEC-1] merge_base_resolvable: result_contract:3 present (#2366)" "3
 assert_eq "[SPEC-2] merge_base_resolvable: acceptance-summary.txt written" "1" \
     "$([[ -f "$REPO_C2/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
 
-# ── C3: precondition_unmet:tagged_testfiles → result_contract:2 ─────────────────
+# ── C3: precondition_unmet:tagged_testfiles → result_contract:3 ─────────────────
 REPO_C3="$(_build_repo "v2c-c3" '#!/usr/bin/env bash
 # [SPEC-1] x
 exit 0')"
@@ -117,7 +117,7 @@ assert_eq "[SPEC-1] tagged_testfiles: result_contract:3 present (#2366)" "3" \
 assert_eq "[SPEC-2] tagged_testfiles: acceptance-summary.txt written" "1" \
     "$([[ -f "$REPO_C3/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
 
-# ── C4: malformed_acceptance_block → result_contract:2 ──────────────────────────
+# ── C4: malformed_acceptance_block → result_contract:3 ──────────────────────────
 REPO_C4="$(_build_repo "v2c-c4" '#!/usr/bin/env bash
 # [SPEC-1] x
 exit 0')"
@@ -131,7 +131,7 @@ assert_eq "[SPEC-1] malformed_acceptance_block: result_contract:3 present (#2366
 assert_eq "[SPEC-2] malformed_acceptance_block: acceptance-summary.txt written" "1" \
     "$([[ -f "$REPO_C4/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
 
-# ── C5: pass path → result_contract:2 ──────────────────────────────────────────
+# ── C5: pass path → result_contract:3 ──────────────────────────────────────────
 REPO_C5="$(_build_repo "v2c-c5" '#!/usr/bin/env bash
 # [SPEC-1] feature is implemented
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
@@ -150,7 +150,7 @@ assert_eq "[SPEC-1][SPEC-5] pass path: result_contract:3 present (#2366)" "3" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
 assert_eq "pass path: outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 
-# ── C6: fail path → result_contract:2 ──────────────────────────────────────────
+# ── C6: fail path → result_contract:3 ──────────────────────────────────────────
 REPO_C6="$(_build_repo "v2c-c6" '#!/usr/bin/env bash
 # [SPEC-1] always true
 exit 0')"

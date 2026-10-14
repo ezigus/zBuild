@@ -41,6 +41,8 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENT
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/issue-acceptance"
 # shellcheck source=../../plugins/agent/issue-acceptance/plugin.sh
 source "$PLUGIN_DIR/plugin.sh" 2>/dev/null
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 set +e
 
 _IA_PROMPT="$TEST_TEMP_DIR/prompt.txt"
@@ -70,7 +72,7 @@ _setup() {
         'SPEC-3[done]: the parser already reads flags evidence: scripts/x.sh:50' \
         'TESTFILES:' 'SPEC-1: tests/t.sh' 'WIRING: none' '```' > "$_in/design.md"
     printf 'diff --git a/p.sh b/p.sh\n+flag=1\n' > "$_in/diff.patch"
-    printf '{"result_contract":2,"verdict":"pass"}\n' > "$_in/test-results.json"
+    stage_result_write "$_in/test-results.json" pass "the suite passed" >/dev/null
     jq -n --arg i "$_in/issue.md" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
         '{inputs: {intake_goal: $i, design: $d, diff_patch: $p, test_results: $t}}' > "$_S/stage-inputs.json"
     export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A"

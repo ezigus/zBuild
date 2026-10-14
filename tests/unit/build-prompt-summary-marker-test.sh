@@ -38,7 +38,7 @@ export ZBUILD_EVENTS_DB="/dev/null"
 # shellcheck source=../../core/pipeline/input-resolve.sh
 source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1 || true
 S="$TEST_TEMP_DIR/state"; PR="$TEST_TEMP_DIR/plugins"; mkdir -p "$S/artifacts" "$PR/tool/chk"
-printf 'id: chk\nkind: tool\nprovides:\n  role: chk\n  result_contract: 2\noutputs:\n  - id: chk-summary\n    path: ${artifact_dir}/chk-summary.md\n    format: markdown\n    required: false\n    summary: true\n' > "$PR/tool/chk/manifest.yaml"
+printf 'id: chk\nkind: tool\nprovides:\n  role: chk\n  result_contract: 3\noutputs:\n  - id: chk-summary\n    path: ${artifact_dir}/chk-summary.md\n    format: markdown\n    required: false\n    summary: true\n' > "$PR/tool/chk/manifest.yaml"
 printf '## chk — fail\n\n- a problem\n' > "$S/artifacts/chk-summary.md"
 printf '{"stage_statuses":{"chk":"failed"},"stage_verdicts":{"chk":"fail"}}\n' > "$S/pipeline-state.json"
 # shellcheck source=../../scripts/lib/stage-prompt.sh

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Tests: plugins/tool/test/plugin.sh — `reason` is mandatory in the v2 result (#2050).
+# Tests: plugins/tool/test/plugin.sh — `reason` is mandatory in the result (#2050).
 #
-# test-results.json declares result_contract: 2. Since #1821 the reader treats a
+# test-results.json declares result_contract: 3. Since #1821 the reader treats a
 # missing/empty `reason` as a STRUCTURAL failure and returns raw `error`
 # (core/pipeline/verdict.sh:382-388,423) — which _cycle_detect_blocked halts on.
 # So a red suite that omits `reason` is reported as a broken stage rather than a
