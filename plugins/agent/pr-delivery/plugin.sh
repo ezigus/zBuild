@@ -51,11 +51,11 @@ _pr_delivery_write_result() {
 }
 
 # _pr_delivery_delegate_ending <result.json> — how a delegate (merge, pr-open)
-# that returned non-zero ended: its contract-3 outcome, or a contract-2
-# disposition. Anything that is not a way of failing to finish is `unavailable`.
+# that returned non-zero ended: its outcome. Anything that is not a way of
+# failing to finish is `unavailable`.
 _pr_delivery_delegate_ending() {
     local w=""
-    [[ -f "${1:-}" ]] && w="$(jq -r '.outcome // .disposition // empty' "$1" 2>/dev/null || true)"
+    [[ -f "${1:-}" ]] && w="$(jq -r '.outcome // empty' "$1" 2>/dev/null || true)"
     if outcome_is_valid "$w" && [[ "$w" != pass && "$w" != fail ]]; then
         printf '%s' "$w"
     else

@@ -11,6 +11,7 @@
 #   V4 [change] the engine's verdict classes are pass, fail and error — no
 #               stage's own word is known to it
 #   V5 [change] no stage reads a result's `.verdict`
+#   V6 [change] ...or its `.disposition`
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,6 +64,11 @@ _bad="$(cd "$REPO_ROOT" && /usr/bin/grep -rnE "\.verdict\b" plugins --include='*
         | /usr/bin/grep -v 'schema_version == 1 and (.verdict|type=="string")' \
         | /usr/bin/grep -v 'report_json' || true)"
 assert_eq "[V5] no stage reads a result's .verdict" "" "$_bad"
+
+print_test_section "V6: no stage reads a result's .disposition"
+_bad6="$(cd "$REPO_ROOT" && /usr/bin/grep -rnE "\.disposition //|\(\.disposition\b" plugins --include='*.sh' \
+        | /usr/bin/grep -v '/tests/' | /usr/bin/grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)"
+assert_eq "[V6] no stage reads a result's .disposition" "" "$_bad6"
 
 cleanup_test_env
 print_test_results
