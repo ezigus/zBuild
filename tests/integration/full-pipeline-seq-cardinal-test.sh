@@ -63,7 +63,7 @@ _make_logging_plugin() {
 ${fn}() {
     printf 'stage=%s label=%s\n' "$id" "\${ZBUILD_STAGE_IO_SEQ_LABEL:-MISSING}" \
         >> "\${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
-    $(mock_v2_result_line "$id")
+    $(mock_result_line "$id")
     return 0
 }
 EOF

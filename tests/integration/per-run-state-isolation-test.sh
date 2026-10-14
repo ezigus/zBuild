@@ -160,7 +160,7 @@ ENVCAP="$TEST_TEMP_DIR/envcap.txt"
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<EOF
 build_run() {
     env | grep '^ZBUILD_EVENTS_DIR=' > "$ENVCAP" 2>/dev/null || true
-    $(mock_v2_result_line build)
+    $(mock_result_line build)
     return 0
 }
 EOF
@@ -180,7 +180,7 @@ ENVCAP2="$TEST_TEMP_DIR/envcap2.txt"
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<EOF
 build_run() {
     env | grep '^ZBUILD_EVENTS_DIR=' > "$ENVCAP2" 2>/dev/null || true
-    $(mock_v2_result_line build)
+    $(mock_result_line build)
     return 0
 }
 EOF

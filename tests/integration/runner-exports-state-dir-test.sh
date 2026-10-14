@@ -59,7 +59,7 @@ _make_capture_plugin() {
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
     env | grep '^ZBUILD_' > "$ENV_CAPTURE" 2>/dev/null || true
-    $(mock_v2_result_line "$id")
+    $(mock_result_line "$id")
     return 0
 }
 EOF

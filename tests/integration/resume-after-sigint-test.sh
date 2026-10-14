@@ -122,7 +122,7 @@ TEST_MARKER="$TEST_TEMP_DIR/test-stage-ran-marker"
 cat > "$PLUGINS_ROOT/tool/test/plugin.sh" <<PLUG
 test_run() {
     : > "${TEST_MARKER}"
-    $(mock_v2_result_line test)
+    $(mock_result_line test)
     return 0
 }
 PLUG
@@ -193,7 +193,7 @@ INTAKE_RESUME_MARKER="$TEST_TEMP_DIR/intake-ran-on-resume"
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<PLUG
 intake_run() {
     : > "${INTAKE_RESUME_MARKER}"
-    $(mock_v2_result_line intake)
+    $(mock_result_line intake)
     return 0
 }
 PLUG
@@ -202,7 +202,7 @@ BUILD_RESUME_MARKER="$TEST_TEMP_DIR/build-ran-on-resume"
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<PLUG
 build_run() {
     : > "${BUILD_RESUME_MARKER}"
-    $(mock_v2_result_line build)
+    $(mock_result_line build)
     return 0
 }
 PLUG

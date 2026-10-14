@@ -286,7 +286,7 @@ intake_run() {
         printf 'running\n' > "\$ZBUILD_TEST_SLOW_MARK"
         sleep 20
     fi
-    $(mock_v2_result_line intake)
+    $(mock_result_line intake)
     return 0
 }
 PLUG

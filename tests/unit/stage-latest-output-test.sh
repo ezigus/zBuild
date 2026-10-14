@@ -48,7 +48,7 @@ cat > "$SDIR/plugin.sh" <<EOF
 once_writer_run() {
     [[ -f "$TEST_TEMP_DIR/once-written" ]] && return 0
     : > "$TEST_TEMP_DIR/once-written"
-    $(mock_v2_result_line once-writer pass)
+    $(mock_result_line once-writer pass)
     return 0
 }
 EOF
