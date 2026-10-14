@@ -97,7 +97,7 @@ _load "$TEST_TEMP_DIR/m/backend" >/dev/null || _rc_b=$?
 _load "$TEST_TEMP_DIR/m/persona" >/dev/null || _rc_p=$?
 assert_eq "[R1] a stage plugin declaring no result_contract is refused" "1" "$_rc_u"
 assert_contains "[R1] ...naming the plugin" "$_out_u" "undeclared-stage"
-assert_contains "[R1] ...and the accepted range" "$_out_u" "2..2"
+assert_contains "[R1] ...and the accepted range" "$_out_u" "2..3"
 assert_eq "[R2] a stage plugin declaring result_contract: 1 is refused" "1" "$_rc_1"
 assert_contains "[R2] ...naming the plugin" "$_out_1" "v1-stage"
 assert_eq "[R3] guard: a v2 stage plugin loads" "0" "$_rc_2"
