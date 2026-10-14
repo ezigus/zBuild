@@ -1,0 +1,13 @@
+{
+  "stage": "spec-coverage",
+  "cycle_iter": 1,
+  "attempt": 3,
+  "rc": "0",
+  "generated_at": "2026-10-14T00:41:26Z",
+  "files": 2,
+  "outputs": {
+    "spec-coverage-result.json": "changed",
+    "spec-coverage-summary.md": "changed"
+  },
+  "progress": true
+}
