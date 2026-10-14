@@ -20,7 +20,8 @@ _ZBUILD_RUN_OPEN_ITEMS_LOADED=1
 
 _OPEN_ITEMS_SETTLE_RE='[[:space:]]*What would settle it:[[:space:]]*'
 # The one rule for a check result that passed — every reader of results uses it.
-_OPEN_ITEMS_JQ_PASSED='def passed: (.verdict // "" | ascii_downcase)
+# A contract-3 result carries `outcome` (#2366); a contract-2 one `verdict`.
+_OPEN_ITEMS_JQ_PASSED='def passed: (.outcome // .verdict // "" | ascii_downcase)
     | IN("pass", "passed", "approve", "approved", "complete", "success", "skip", "skipped", "");'
 
 # open_items_json <state_dir> — [{ref, opener, text}].
@@ -33,7 +34,7 @@ open_items_json() {
     # verdict is not a pass. input_filename names the check: <check>-result.json.
     jq -n -c "$_OPEN_ITEMS_JQ_PASSED"'
         [ inputs as $r | (input_filename | split("/") | last | sub("-result\\.json$"; "")) as $c
-          | $r | select(type == "object" and (.verdict | type) == "string")
+          | $r | select(type == "object" and ((.outcome // .verdict) | type) == "string")
           | select(passed | not)
           | if ((.data.findings // []) | length) > 0 then
                 (.data.findings[] | {ref: "\($c) finding \(.n)", opener: $c, text: (.text // "")})

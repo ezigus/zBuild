@@ -36,6 +36,18 @@ _sp_work_changed_line() {
     fi
 }
 
+# _sp_no_output <result-text> — rc 0 when the result says the stage produced no
+# output: a contract-2 `verdict: error`, or a contract-3 outcome that is neither
+# pass nor fail (#2366: the stage did not finish).
+_sp_no_output() {
+    local c="${1-}"
+    [[ "$c" =~ \"verdict\"[[:space:]]*:[[:space:]]*\"error\" ]] && return 0
+    if [[ "$c" =~ \"outcome\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
+        [[ "${BASH_REMATCH[1]}" != pass && "${BASH_REMATCH[1]}" != fail ]] && return 0
+    fi
+    return 1
+}
+
 # _sp_last_good_attempt <state_dir> <stage> <primary-basename> — the newest
 # archived attempt of <stage> whose primary result is not an error, i.e. the
 # last attempt that produced its output (core/plugin-registry/attempt-archive.sh
@@ -47,7 +59,7 @@ _sp_last_good_attempt() {
     while IFS= read -r d; do
         [[ -s "$d/$name" ]] || continue
         content="$(<"$d/$name")"
-        [[ "$content" =~ \"verdict\"[[:space:]]*:[[:space:]]*\"error\" ]] && continue
+        _sp_no_output "$content" && continue
         best="$d"
     done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name 'iter-*-attempt-*' 2>/dev/null \
                 | awk -F'iter-|-attempt-' '{ printf "%09d %09d %s\n", $(NF-1), $NF, $0 }' \
@@ -162,8 +174,8 @@ _stage_block_previous_work() {
         [[ "$res" == *.json && -s "$res" ]] || res=""
         verdict="${verdicts[$s]:-}"
         content=""; [[ -n "$res" && -r "$res" ]] && content="$(<"$res")"
-        if [[ -z "$verdict" && -n "$content" && "$content" =~ \"verdict\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
-            verdict="${BASH_REMATCH[1]}"
+        if [[ -z "$verdict" && -n "$content" && "$content" =~ \"(outcome|verdict)\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
+            verdict="${BASH_REMATCH[2]}"
         fi
         own=""; [[ "$s" == "$stage" ]] && own=" — your own"
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
@@ -198,7 +210,7 @@ _stage_block_previous_work() {
         esac
         # An attempt that ended in error produced no output: show the last
         # output this stage did produce, from the attempt that wrote it.
-        if [[ -n "$res" && "$content" =~ \"verdict\"[[:space:]]*:[[:space:]]*\"error\" ]]; then
+        if [[ -n "$res" ]] && _sp_no_output "$content"; then
             local good f
             good="$(_sp_last_good_attempt "$state_dir" "$s" "${res##*/}")"
             if [[ -n "$good" ]]; then
