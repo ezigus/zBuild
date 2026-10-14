@@ -52,8 +52,8 @@ _rc_of() { local rc=0; "$@" >/dev/null 2>&1 || rc=$?; printf '%s' "$rc"; }
 
 # Build a stub stage whose `run` hook does <body>. It declares a primary output
 # and never writes it, so every case here is "rc non-zero, nothing to read" —
-# the exact shape #1823 classifies. #1850: it speaks result contract v2 (the
-# only one the engine loads), so a body that does write a result writes v2.
+# the exact shape #1823 classifies. #1850/#2366: it speaks result contract 3, so
+# a body that does write a result writes it with the engine's writer.
 _mkstage() {
     local id="$1"
     local body="$2"
@@ -67,13 +67,11 @@ version: 0.0.1
 hooks:
   run: ${id}_run
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: result
     path: \${artifact_dir}/${id}-result.json
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<EOF
 ${id}_run() { $body }
@@ -195,11 +193,10 @@ assert_eq "[SPEC-4] rc 200 is broken, not interrupted" "broken" "$_LAST_DISPOSIT
 print_test_section "5. A stage that wrote a result keeps its own word"
 
 # rc fills the silence; it never overwrites a declaration. A stage killed AFTER
-# writing a v2 result is not re-classified — the engine's inference applies only
+# writing a result is not re-classified — the engine's inference applies only
 # where the stage said nothing.
 _d="$(_mkstage spoke_then_died '
-    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"out_of_turns\",\"reason\":\"budget\"}" \
-        > "$ZBUILD_STATE_DIR/artifacts/spoke_then_died-result.json"
+    source "'"$REPO_ROOT"'/scripts/lib/stage-result.sh"; stage_result_write "$ZBUILD_STATE_DIR/artifacts/spoke_then_died-result.json" out_of_turns budget
     kill -TERM $BASHPID; sleep 5;')"
 _dispatch "$_d" spoke_then_died
 assert_eq "[SPEC-5] it really was killed (raw rc 143)" "143" "$_LAST_RAW_RC"
@@ -250,11 +247,10 @@ assert_eq "[SPEC-7] and is narrowed to 1 even with no result" "1" "$_LAST_NARROW
 assert_eq "[SPEC-7] and rc=10 is no longer read as a legacy word: it is broken" \
     "broken" "$_LAST_DISPOSITION"
 
-# A v2 stage returning the same rc IS narrowed — it declared a disposition, so
-# nothing is lost by dropping the number.
+# A stage that wrote a result and returned the same rc IS narrowed — it declared
+# how it ended, so nothing is lost by dropping the number.
 _d="$(_mkstage v2_scope_stage '
-    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"out_of_turns\",\"reason\":\"scope too large\"}" \
-        > "$ZBUILD_STATE_DIR/artifacts/v2_scope_stage-result.json"
+    source "'"$REPO_ROOT"'/scripts/lib/stage-result.sh"; stage_result_write "$ZBUILD_STATE_DIR/artifacts/v2_scope_stage-result.json" out_of_turns "scope too large"
     return 10;')"
 _dispatch "$_d" v2_scope_stage
 assert_eq "[SPEC-7] its raw rc really was 10" "10" "$_LAST_RAW_RC"
@@ -262,18 +258,18 @@ assert_eq "[SPEC-7] and it IS narrowed to 1" "1" "$_LAST_NARROW_RC"
 assert_eq "[SPEC-7] with the meaning carried by its declared word" \
     "out_of_turns" "$_LAST_DISPOSITION"
 
-# And the dictionary is enforced for v2 only. An off-set word is a structural
-# failure (#1822); the engine never substitutes a plausible member.
+# And the dictionary is enforced. An off-list outcome is a structural failure
+# (#1822, #2366); the engine never substitutes a plausible member.
 _d="$(_mkstage v2_bogus_stage '
-    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"wedged\",\"reason\":\"x\"}" \
+    printf %s "{\"result_contract\":3,\"outcome\":\"wedged\",\"reason\":\"x\"}" \
         > "$ZBUILD_STATE_DIR/artifacts/v2_bogus_stage-result.json"
     return 1;')"
 _dispatch "$_d" v2_bogus_stage
-assert_eq "[SPEC-7] a v2 word outside the dictionary resolves to broken" \
+assert_eq "[SPEC-7] an outcome outside the list resolves to broken" \
     "broken" "$_LAST_DISPOSITION"
 assert_contains "[SPEC-7] and is reported as a contract violation naming the word" \
     "$(runner_read_stage_reason "$ZBUILD_STATE_DIR" "$_d/manifest.yaml" v2_bogus_stage 1)" \
-    "unknown_disposition:wedged"
+    "unknown_outcome:wedged"
 
 # #1850: a v1 result — no result_contract — is no longer read at all. It is a
 # contract violation, so the stage resolves to broken and its reason channel
@@ -298,11 +294,10 @@ print_test_section "8. The narrowing depends on no reader's answer"
 # halves still hold end to end — a v2 stage that wrote a result and a stage
 # that wrote nothing are both narrowed.
 _d="$(_mkstage inert_probe_stage '
-    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"broken\",\"reason\":\"x\"}" \
-        > "$ZBUILD_STATE_DIR/artifacts/inert_probe_stage-result.json"
+    source "'"$REPO_ROOT"'/scripts/lib/stage-result.sh"; stage_result_write "$ZBUILD_STATE_DIR/artifacts/inert_probe_stage-result.json" broken x
     return 10;')"
 _dispatch "$_d" inert_probe_stage
-assert_eq "[SPEC-8] a v2 stage that wrote a result is narrowed" "1" "$_LAST_NARROW_RC"
+assert_eq "[SPEC-8] a stage that wrote a result is narrowed" "1" "$_LAST_NARROW_RC"
 assert_eq "[SPEC-8] and keeps its declared word" "broken" "$_LAST_DISPOSITION"
 
 _d="$(_mkstage inert_probe_silent_stage 'return 10;')"

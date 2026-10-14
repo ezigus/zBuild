@@ -6,11 +6,11 @@
 # SPEC-1[change]  manifest provides.result_contract == 2
 # SPEC-2[change]  manifest config.valid_verdicts lists complete and degraded
 # SPEC-3[change]  manifest outputs review_report_md declares required: true
-# SPEC-4[change]  success-path writes result_contract:2 + verdict:complete + ...
+# SPEC-4[change]  success-path writes result_contract:3 + verdict:complete + ...
 # SPEC-5[change]  _ra_collect_lenses_glob and lens-* absent from plugin.sh
 # SPEC-6[change]  review-report.md written on empty-lenses exit path
 # SPEC-7[change]  SIGTERM/SIGINT writes degraded/interrupted and ends with rc 1
-# SPEC-11[change] empty-lenses exit path writes result_contract:2 + verdict:complete + ...
+# SPEC-11[change] empty-lenses exit path writes result_contract:3 + verdict:complete + ...
 # SPEC-12[guard]  manifest config: declares no router: key
 set -uo pipefail
 
@@ -32,7 +32,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/review-aggregator"
 MANIFEST="$PLUGIN_DIR/manifest.yaml"
 
-# ── SPEC-1: manifest provides.result_contract: 2 ─────────────────────────────
+# ── SPEC-1: manifest provides.result_contract: 3 ─────────────────────────────
 assert_contains_regex "[#1842/SPEC-1] manifest declares result_contract: 3 (#2366)" \
     "$(cat "$MANIFEST")" '^  result_contract: 3$'
 

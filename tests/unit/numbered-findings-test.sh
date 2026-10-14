@@ -75,7 +75,7 @@ id: chk
 kind: tool
 provides:
   role: chk
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: chk-result
     path: ${artifact_dir}/chk-result.json
@@ -88,9 +88,10 @@ outputs:
     required: false
     summary: true
 MF
-jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"two problems",
-        data:{findings:[{n:1,text:"config/event-schema.json is not the file that calls the new code"},
-                        {n:2,text:"SPEC-3s test already passes on the old code"}]}}' > "$S/artifacts/chk-result.json"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+stage_result_write "$S/artifacts/chk-result.json" fail "two problems" \
+    '{"findings":[{"n":1,"text":"config/event-schema.json is not the file that calls the new code"},{"n":2,"text":"SPEC-3s test already passes on the old code"}]}' >/dev/null
 printf '## chk — fail\n\n- two problems\n' > "$S/artifacts/chk-summary.md"
 printf '{"stage_statuses":{"chk":"failed"},"stage_verdicts":{"chk":"fail"}}\n' > "$S/pipeline-state.json"
 # shellcheck source=../../scripts/lib/stage-prompt.sh

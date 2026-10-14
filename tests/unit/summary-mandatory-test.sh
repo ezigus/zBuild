@@ -70,7 +70,7 @@ convergence: gate
 hooks:
   run: ext_stage_run
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: ext_stage_result
     path: ${artifact_dir}/ext-stage-result.json

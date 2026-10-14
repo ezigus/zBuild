@@ -34,6 +34,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 print_test_header "pr-open: an unsettled run's PR is a draft, and says why (#1799)"
 
@@ -67,9 +69,8 @@ _fresh_state() {
     printf '{"schema_version":1,"run_id":"t","issue":"999","status":"running","stage_statuses":{}}\n' > "$STATE_FILE"
     rm -f "$RESULT" "$GATES" "$ZBUILD_EVENTS_JSONL"
 }
-_gates() {  # <verdict> <failed json array> <reason>
-    jq -n --arg v "$1" --argjson f "$2" --arg r "$3" \
-        '{result_contract:2, verdict:$v, disposition:"complete", reason:$r, gates:[], failed:$f}' > "$GATES"
+_gates() {  # <outcome> <failed json array> <reason> — gate-aggregator's result, by the engine's writer
+    stage_result_write "$GATES" "$1" "$3" "$(jq -nc --argjson f "$2" '{gates:[], failed:$f}')" >/dev/null
 }
 
 # gh/git mocks. EXISTING_PR="" → no open PR; else its number. EXISTING_DRAFT /
@@ -199,7 +200,7 @@ print_test_section "U8: lib/unsettled.sh works on its own"
 # It escapes with the definitions advisory-section.sh holds; sourced alone it
 # must load them itself, not silently render without escaping (review #2343).
 _u8_gates="$TEST_TEMP_DIR/u8-gates.json"
-jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"a <b>bold</b> claim", failed:["x"]}' > "$_u8_gates"
+stage_result_write "$_u8_gates" fail "a <b>bold</b> claim" '{"failed":["x"]}' >/dev/null
 _fresh_state; zb_engine_loop_state "$STATE_FILE" build_test_cycle 1 3 complete
 _u8="$(bash -c 'source "$1/scripts/lib/helpers.sh" 2>/dev/null; source "$1/plugins/tool/pr-open/lib/unsettled.sh"; _pr_open_unsettled "$2" "$3"' _ "$REPO_ROOT" "$STATE_FILE" "$_u8_gates" 2>&1)"
 assert_contains "[U8] sourced alone, it still renders the gate check" "$_u8" "The final gate check did not pass"

@@ -26,6 +26,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 # shellcheck source=../../core/state/artifact-persist.sh
 source "$REPO_ROOT/core/state/artifact-persist.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 print_test_header "ADR-050 prior-work reuse contract (#2324)"
 setup_test_env "prior-work-reuse-contract"
@@ -109,7 +111,7 @@ printf '# Design\n\nno scope, no acceptance\n' > "$_C3/artifacts/design.md"
 printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$_C3R/design.md"
 for _rf in design-gate-result.json test-results.json shape-floor-result.json acceptance-gate-result.json \
            lint-result.json coverage-result.json mutation-result.json secret-scan-result.json; do
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"prior run"}\n' > "$_C3R/$_rf"
+    stage_result_write "$_C3R/$_rf" pass "prior run" >/dev/null
 done
 ( source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh" >/dev/null 2>&1
   emit_event() { :; }; eb_emit_event() { :; }

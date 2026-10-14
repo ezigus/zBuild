@@ -79,8 +79,9 @@ assert_eq "[L1] the second run's result reads as absent, not the first run's pas
 print_test_section "L4/L5: report and build_kind of a run that wrote nothing"
 assert_eq "[L4] the stage report of that run is empty" "{}" \
     "$(runner_read_stage_report "$STATE" "$SDIR/manifest.yaml" "once-writer" 0)"
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"r","data":{"build_kind":"empty_diff"}}' \
-    > "$STATE/artifacts/once-writer-result.json"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+stage_result_write "$STATE/artifacts/once-writer-result.json" pass r '{"build_kind":"empty_diff"}' >/dev/null
 touch -t 202601010000 "$STATE/artifacts/once-writer-result.json"
 assert_eq "[L5] build_kind is not read from a result older than the run" "" \
     "$(runner_read_stage_data_kind "$STATE" "$SDIR/manifest.yaml" "once-writer")"
@@ -136,8 +137,7 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 STATE_FILE="$STATE/pipeline-state.json"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"try 1"}' \
-    > "$STATE/artifacts/test-result.json"
+stage_result_write "$STATE/artifacts/test-result.json" fail "try 1" >/dev/null
 SEEN="$TEST_TEMP_DIR/seen.txt"; : > "$SEEN"
 # The dispatch stub records, as each member starts, whether its own output from
 # the previous try is still where it wrote it.

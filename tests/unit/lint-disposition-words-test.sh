@@ -29,7 +29,7 @@ _fx() {   # <name> <plugin.sh body>
 }
 
 print_test_section "SPEC-1: an off-set word in a JSON literal"
-_root="$(_fx s1 'x() { printf '"'"'{"result_contract":2,"disposition":"exhausted"}'"'"'; }')"
+_root="$(_fx s1 'x() { printf '"'"'{"result_contract":3,"disposition":"exhausted"}'"'"'; }')"
 _out="$(bash "$LINT" "$_root" 2>&1)"; _rc=$?
 assert_eq "[SPEC-1] lint exits 1" "1" "$_rc"
 assert_contains "[SPEC-1] it names the word" "$_out" "exhausted"

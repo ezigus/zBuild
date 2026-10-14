@@ -2,9 +2,9 @@
 # tests/unit/deploy-release-v2-result-test.sh
 # Contract v2 result assertions for the deploy-release plugin (issue #1849).
 # SPEC coverage:
-#   [SPEC-15] manifest provides declares result_contract:2 (role:deploy_release_executor,
+#   [SPEC-15] manifest provides declares result_contract:3 (role:deploy_release_executor,
 #             events retained; valid_verdicts already correct and unchanged)
-#   [SPEC-16] deploy-result.json carries result_contract:2, disposition, reason on every
+#   [SPEC-16] deploy-result.json carries result_contract:3, disposition, reason on every
 #             exit path (dry-run, tag success, tag failure, push failure, state_file-absent)
 #   [SPEC-17] all exit paths return rc ∈ {0,1} — state_file-absent returns rc=1 not rc=2
 #   [SPEC-18] reads pr_url ONLY via ZBUILD_STAGE_INPUTS; plugin.sh constructs no pr-url.txt path
@@ -13,7 +13,7 @@
 #   [SPEC-23] deploy-result.json verdict=deployed and rc=0 on git tag+push success path
 #   [SPEC-24] tier_default:T0, no router: block
 #   [SPEC-25] outputs.deploy_result retains primary: true after v2 migration
-#   [SPEC-27] provides retains role:deploy_release_executor and events after result_contract:2 added
+#   [SPEC-27] provides retains role:deploy_release_executor and events after result_contract:3 added
 #   [SPEC-28] hooks section has only run:, no cleanup:
 set -uo pipefail
 
@@ -38,8 +38,8 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 DR_MANIFEST="$REPO_ROOT/plugins/tool/deploy-release/manifest.yaml"
 
-# ─── SPEC-15: manifest provides declares result_contract:2, role/events unchanged ──
-print_test_section "SPEC-15: manifest provides declares result_contract:2 (role/events retained; valid_verdicts unchanged)"
+# ─── SPEC-15: manifest provides declares result_contract:3, role/events unchanged ──
+print_test_section "SPEC-15: manifest provides declares result_contract:3 (role/events retained; valid_verdicts unchanged)"
 
 _s15_prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$DR_MANIFEST" || echo '')"
 assert_eq "[SPEC-15] manifest provides.result_contract is 3 (#2366)" "3" "$_s15_prov_rc"
@@ -69,8 +69,8 @@ _has_primary="$(grep -v '^#' "$DR_MANIFEST" | grep -c 'primary:[[:space:]]*true'
     && assert_pass "[SPEC-25] manifest has primary: true on deploy_result output" \
     || assert_fail "[SPEC-25] manifest has primary: true on deploy_result output" "missing"
 
-# ─── SPEC-27: provides retains role and events after result_contract:2 added ─
-print_test_section "SPEC-27: provides retains role:deploy_release_executor and events after result_contract:2"
+# ─── SPEC-27: provides retains role and events after result_contract:3 added ─
+print_test_section "SPEC-27: provides retains role:deploy_release_executor and events after result_contract:3"
 
 _s27_role="$(awk '/^provides:/{f=1} f && /^[[:space:]]*role:/{print $2; exit}' "$DR_MANIFEST" || echo '')"
 assert_eq "[SPEC-27] provides.role is deploy_release_executor" "deploy_release_executor" "$_s27_role"
@@ -137,7 +137,7 @@ GITMOCK
 }
 
 # ─── SPEC-16/SPEC-17: state_file-absent path — rc=1, not rc=2 ────────────────
-print_test_section "SPEC-17 (partial) / SPEC-16: state_file-absent path — rc=1, result_contract:2 in deploy-result.json"
+print_test_section "SPEC-17 (partial) / SPEC-16: state_file-absent path — rc=1, result_contract:3 in deploy-result.json"
 
 export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/absent-art"
 mkdir -p "$ZBUILD_ARTIFACT_DIR"
@@ -185,7 +185,7 @@ else
 fi
 
 # ─── SPEC-16 / SPEC-23: dry-run path ─────────────────────────────────────────
-print_test_section "SPEC-16: dry-run path — result_contract:2, disposition, reason"
+print_test_section "SPEC-16: dry-run path — result_contract:3, disposition, reason"
 
 _s_dry_dir="$TEST_TEMP_DIR/spec-dry"
 _s_dry_sf="$(_make_dr_state "$_s_dry_dir")"
@@ -209,7 +209,7 @@ if [[ -f "$_s_dry_art/deploy-result.json" ]]; then
 fi
 
 # ─── SPEC-16 / SPEC-23: tag+push success path — verdict=deployed, rc=0 ───────
-print_test_section "SPEC-16 / SPEC-23: tag+push success path — result_contract:2, verdict=deployed, rc=0"
+print_test_section "SPEC-16 / SPEC-23: tag+push success path — result_contract:3, verdict=deployed, rc=0"
 
 _s_ok_dir="$TEST_TEMP_DIR/spec-ok"
 _s_ok_sf="$(_make_dr_state "$_s_ok_dir")"
@@ -238,7 +238,7 @@ fi
 assert_eq "[SPEC-23] tag+push success: rc=0" "0" "$_s_ok_rc"
 
 # ─── SPEC-16: tag failure path ───────────────────────────────────────────────
-print_test_section "SPEC-16: tag failure path — result_contract:2, verdict=error, disposition, reason"
+print_test_section "SPEC-16: tag failure path — result_contract:3, verdict=error, disposition, reason"
 
 _s_tf_dir="$TEST_TEMP_DIR/spec-tagfail"
 _s_tf_sf="$(_make_dr_state "$_s_tf_dir")"
@@ -266,7 +266,7 @@ if [[ -f "$_s_tf_art/deploy-result.json" ]]; then
 fi
 
 # ─── SPEC-16: push failure path ──────────────────────────────────────────────
-print_test_section "SPEC-16: push failure path — result_contract:2, verdict=error, disposition, reason"
+print_test_section "SPEC-16: push failure path — result_contract:3, verdict=error, disposition, reason"
 
 _s_pf_dir="$TEST_TEMP_DIR/spec-pushfail"
 _s_pf_sf="$(_make_dr_state "$_s_pf_dir")"

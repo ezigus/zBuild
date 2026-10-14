@@ -108,8 +108,10 @@ source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1 || true
 S2="$TEST_TEMP_DIR/state2"; P2="$TEST_TEMP_DIR/plugins2"; mkdir -p "$S2/artifacts" "$P2/tool/test"
 printf 'id: test\nkind: tool\noutputs:\n  - id: test_result\n    path: ${artifact_dir}/test-result.json\n    format: json\n    required: true\n    primary: true\n' \
     > "$P2/tool/test/manifest.yaml"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","data":{"findings":[{"n":1,"text":"run-tests-test.sh fails on line 40"}]}}\n' \
-    > "$S2/artifacts/test-result.json"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+stage_result_write "$S2/artifacts/test-result.json" fail "1 test fails" \
+    '{"findings":[{"n":1,"text":"run-tests-test.sh fails on line 40"}]}' >/dev/null
 printf '{"schema_version":1,"stage_statuses":{"test":"failed"},"stage_verdicts":{"test":"fail"}}\n' > "$S2/pipeline-state.json"
 B2="$TEST_TEMP_DIR/blocks2"; mkdir -p "$B2"
 (
@@ -154,9 +156,8 @@ jq -n -c '[{ref:"issue-acceptance finding 5", opener:"issue-acceptance", text:""
 # shellcheck source=../../scripts/lib/stage-summary.sh
 source "$REPO_ROOT/scripts/lib/stage-summary.sh"
 _f4="$(printf 'R-1: the PR body does not state the red step\n' | stage_findings_json)"
-jq -n -c --argjson f "$_f4" '{result_contract:2, verdict:"fail", disposition:"complete",
-           reason:"one requirement unmet", data:{findings:$f}}' \
-    > "$S4/artifacts/issue-acceptance-result.json"
+stage_result_write "$S4/artifacts/issue-acceptance-result.json" fail "one requirement unmet" \
+    "$(jq -nc --argjson f "$_f4" '{findings:$f}')" >/dev/null
 _items="$(open_items_json "$S4")"
 assert_eq "[K4] one item is open" "1" "$(jq 'length' <<< "$_items" 2>/dev/null)"
 assert_eq "[K4] it is the check's latest finding" "R-1: the PR body does not state the red step" \

@@ -148,13 +148,16 @@ agg="$(cat "$AGG_OUT")"
 assert_contains "T11 prose report header on terminal" "$agg" "## Review Report"
 assert_contains "T11 merge-readiness line on terminal" "$agg" "**Merge Readiness:**"
 
-# ─── SPEC-9 [guard/#1840]: v2-format lens files don't break rendering ─────────
-# After the v2 migration, the review-lens plugin writes result_contract:2 +
-# verdict/disposition/reason into the primary lens file. The aggregator reads
+# ─── SPEC-9 [guard/#1840]: a lens file carrying its result doesn't break rendering ─
+# The review-lens plugin writes its result fields (#2366: result_contract 3,
+# outcome, reason) into the primary lens file. The aggregator reads
 # .findings/.score/.name via jq and silently ignores unknown fields (by design).
-# This guard verifies the rendering pipeline is not broken by v2 extras.
+# This guard verifies the rendering pipeline is not broken by those extras.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 _seed_lens security \
-    '{"schema_version":1,"name":"security","score":6,"findings":[{"file":"a.sh","severity":"high","line":4,"message":"unquoted var"}],"result_contract":2,"verdict":"complete","disposition":"complete","reason":"reviewed"}'
+    '{"schema_version":1,"name":"security","score":6,"findings":[{"file":"a.sh","severity":"high","line":4,"message":"unquoted var"}]}'
+stage_result_add "$ARTIFACT_DIR/lens-security.json" pass "reviewed" >/dev/null
 
 : > "$ZBUILD_EVENTS_JSONL"
 jq -n '{schema_version:1, stage_statuses:{}, stage_verdicts:{}, updated_at:"seed"}' > "$STATE_FILE"
@@ -166,9 +169,9 @@ set -e
 term_v2="$(cat "$OUT_FILE_V2")"
 term_v2_plain="$(printf '%s' "$term_v2" | _strip_ansi)"
 
-# T10-guard: v2 fields (result_contract, verdict, disposition) must not appear
+# T10-guard: result fields (result_contract, outcome) must not appear
 # as raw JSON on the terminal — the render pipeline must still suppress them.
-if grep -qE '\{"score"|"findings":\[|"result_contract":|"verdict":' <<< "$term_v2"; then
+if grep -qE '\{"score"|"findings":\[|"result_contract":|"outcome":|"verdict":' <<< "$term_v2"; then
     assert_fail "[SPEC-9] v2-format lens: no raw JSON on terminal" "raw JSON detected"
 else
     assert_pass "[SPEC-9] v2-format lens: raw JSON absent from terminal"

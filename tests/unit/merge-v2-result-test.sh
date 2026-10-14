@@ -2,11 +2,11 @@
 # tests/unit/merge-v2-result-test.sh
 # Contract v2 result assertions for the merge plugin (issue #1849).
 # SPEC coverage:
-#   [SPEC-1]  manifest provides declares result_contract:2, role:merge_executor, events:[plugin.result]
+#   [SPEC-1]  manifest provides declares result_contract:3, role:merge_executor, events:[plugin.result]
 #   [SPEC-2]  merge/config valid_verdicts updated to [pass, error]
-#   [SPEC-3]  merge-result.json carries result_contract:2, verdict=pass, disposition:complete, reason
-#   [SPEC-4]  merge-result.json carries result_contract:2, verdict=pass, data.mode=pr_fallback on fallback paths
-#   [SPEC-5]  merge-result.json carries result_contract:2, verdict=error, disposition, reason on error paths
+#   [SPEC-3]  merge-result.json carries result_contract:3, verdict=pass, disposition:complete, reason
+#   [SPEC-4]  merge-result.json carries result_contract:3, verdict=pass, data.mode=pr_fallback on fallback paths
+#   [SPEC-5]  merge-result.json carries result_contract:3, verdict=error, disposition, reason on error paths
 #   [SPEC-6]  all exit paths return rc ∈ {0,1} — no rc=2
 #   [SPEC-7]  reads gate_aggregator_result ONLY via ZBUILD_STAGE_INPUTS — plugin.sh
 #             constructs no gate-aggregator-result.json path (#1849 acceptance)
@@ -39,8 +39,8 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 MERGE_MANIFEST="$REPO_ROOT/plugins/tool/merge/manifest.yaml"
 
-# ─── SPEC-1: manifest provides declares result_contract:2, role, events ──────
-print_test_section "SPEC-1: manifest provides declares result_contract:2, role:merge_executor, events:[plugin.result]"
+# ─── SPEC-1: manifest provides declares result_contract:3, role, events ──────
+print_test_section "SPEC-1: manifest provides declares result_contract:3, role:merge_executor, events:[plugin.result]"
 
 _prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$MERGE_MANIFEST" || echo '')"
 assert_eq "[SPEC-1] manifest provides.result_contract is 3 (#2366)" "3" "$_prov_rc"
@@ -89,6 +89,8 @@ _has_run="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*run:[[:space:
 # ─── Plugin behavior setup ────────────────────────────────────────────────────
 # shellcheck source=../../plugins/tool/merge/plugin.sh
 source "$REPO_ROOT/plugins/tool/merge/plugin.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # _make_state <dir> [gate_verdict]
 # Sets up a state dir with pipeline-state.json, review.json, and optional
@@ -98,9 +100,9 @@ _make_state() {
     mkdir -p "$d/artifacts"
     printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
     printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$d/artifacts/review.json"
+    # gate-aggregator's result, by the engine's writer (#2366).
     [[ -n "$gate" ]] && \
-        printf '{"schema_version":1,"verdict":"%s"}\n' "$gate" \
-            > "$d/artifacts/gate-aggregator-result.json"
+        stage_result_write "$d/artifacts/gate-aggregator-result.json" "$gate" "gate roll-up" >/dev/null
     # The engine's index (lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
     # dispatched stage, pr-delivery included) is the only way a declared input
     # reaches the plugin.
@@ -149,7 +151,7 @@ GHMOCK
 }
 
 # ─── SPEC-3: squash-merge success path ───────────────────────────────────────
-print_test_section "SPEC-3: squash-merge success path — result_contract:2, verdict=pass, disposition=complete, reason"
+print_test_section "SPEC-3: squash-merge success path — result_contract:3, verdict=pass, disposition=complete, reason"
 
 _s3_dir="$TEST_TEMP_DIR/spec3"
 _s3_sf="$(_make_state "$_s3_dir" "pass")"
@@ -172,8 +174,8 @@ if [[ -f "$_s3_art/merge-result.json" ]]; then
         || assert_fail "[SPEC-3] reason field is present" "absent"
 fi
 
-# ─── SPEC-4: fallback paths — result_contract:2, verdict=pass, data.mode=pr_fallback
-print_test_section "SPEC-4: fallback paths — result_contract:2, verdict=pass, data.mode=pr_fallback"
+# ─── SPEC-4: fallback paths — result_contract:3, verdict=pass, data.mode=pr_fallback
+print_test_section "SPEC-4: fallback paths — result_contract:3, verdict=pass, data.mode=pr_fallback"
 
 # gate absent
 _s4a_dir="$TEST_TEMP_DIR/spec4a"
@@ -211,8 +213,8 @@ if [[ -f "$_s4b_art/merge-result.json" ]]; then
         "$(jq -r '.data.mode // empty' "$_s4b_art/merge-result.json" 2>/dev/null || true)"
 fi
 
-# ─── SPEC-5: error paths — result_contract:2, verdict=error, disposition, reason
-print_test_section "SPEC-5: error paths — result_contract:2, verdict=error, disposition, reason"
+# ─── SPEC-5: error paths — result_contract:3, verdict=error, disposition, reason
+print_test_section "SPEC-5: error paths — result_contract:3, verdict=error, disposition, reason"
 
 # branch is main
 _s5a_dir="$TEST_TEMP_DIR/spec5a"
@@ -304,7 +306,7 @@ _mk_mocks "$TEST_TEMP_DIR/bin7a" "zbuild/issue-1849-test"
 
 _s7a_custom="$TEST_TEMP_DIR/custom-gate/gate-aggregator-result.json"
 mkdir -p "$(dirname "$_s7a_custom")"
-printf '{"schema_version":1,"verdict":"pass"}\n' > "$_s7a_custom"
+stage_result_write "$_s7a_custom" pass "gate roll-up" >/dev/null
 
 _s7a_si="$TEST_TEMP_DIR/spec7a-si.json"
 printf '{"inputs":{"gate_aggregator_result":"%s"}}\n' "$_s7a_custom" > "$_s7a_si"

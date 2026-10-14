@@ -38,7 +38,11 @@ source "$SCRIPT_DIR/plan-test-lib.sh"
 PLAN_GOAL="Make stage timeouts apply on every dispatch."
 _PJ="$ARTIFACTS_DIR/plan.json"
 _GOOD='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"Stop a hung hook at its stage limit.","areas":["core/plugin-registry/"]}],"open_questions":[]}'
-_OLD='{"schema_version":1,"title":"old","goal":"g","steps":[{"id":"step-1","description":"earlier item","areas":["core/"]}],"open_questions":[],"result_contract":2,"verdict":"pass","disposition":"complete","reason":"plan has 1 work item(s)"}'
+_OLD='{"schema_version":1,"title":"old","goal":"g","steps":[{"id":"step-1","description":"earlier item","areas":["core/"]}],"open_questions":[]}'
+# shellcheck source=../../../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+# _write_old — an earlier plan on disk, its result added by the engine's writer.
+_write_old() { printf '%s\n' "$_OLD" > "$_PJ"; stage_result_add "$_PJ" pass "plan has 1 work item(s)" >/dev/null 2>&1; }
 
 # The model writes plan.json at the path its prompt names; MOCK_WRITE is what
 # it writes (empty: nothing), MOCK_RC how the call ends.
@@ -92,13 +96,13 @@ assert_eq "[W3] plan_run returns 0" "0" "$_rc"
 assert_eq "[W3] outcome pass" "pass" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
 
 print_test_section "W4: a failed call that wrote nothing is an error"
-_reset; printf '%s\n' "$_OLD" > "$_PJ"; MOCK_RC=124
+_reset; _write_old; MOCK_RC=124
 _run_plan "$STATE_FILE" >/dev/null 2>&1; _rc=$?
 assert_eq "[W4] plan_run returns 1" "1" "$_rc"
 assert_eq "[W4] outcome timed_out, not the earlier plan's pass" "timed_out" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
 
 print_test_section "W5: a call that ends normally keeps a valid plan it did not rewrite"
-_reset; printf '%s\n' "$_OLD" > "$_PJ"; MOCK_RC=0
+_reset; _write_old; MOCK_RC=0
 _run_plan "$STATE_FILE" >/dev/null 2>&1; _rc=$?
 assert_eq "[W5] plan_run returns 0" "0" "$_rc"
 assert_eq "[W5] the earlier plan stands" "earlier item" "$(jq -r '.steps[0].description' "$_PJ" 2>/dev/null)"

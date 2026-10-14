@@ -105,7 +105,7 @@ assert_eq "failsafe: passed is null"            "null"                 "$(jq -r 
 assert_eq "failsafe: failed is null"            "null"                 "$(jq -r '.data.failed'   "$JSON")"
 # [SPEC-11] test_output mirrored at top level with the SAME value as data.test_output.
 # Value equality (not has()) so the guard also reddens on a partial regression
-# that keeps result_contract:2 but moves the field back to data-only.
+# that keeps the contract-3 result but moves the field back to data-only.
 assert_eq "[SPEC-11] test_output mirrored at top level in v2 result (summary-format)" "true" \
     "$(jq '(.result_contract == 3) and (.data.test_output != null) and (.test_output == .data.test_output)' "$JSON" 2>/dev/null || echo false)"
 
