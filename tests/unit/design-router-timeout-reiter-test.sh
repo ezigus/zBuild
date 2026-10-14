@@ -20,6 +20,9 @@
 #   SPEC-2[guard]:  timeout yield → _design_stage_run_inner returns rc=0 (non-terminal)
 #   SPEC-3[guard]:  timeout yield → plugin.result emitted with reason=router_timeout
 #   SPEC-4[change]: timeout, nothing written → design.timeout.no_design emitted
+#   SPEC-4b[change]: ...and the summary says design wrote no design.md, without
+#                   blaming the infrastructure (#1801 run: design read and thought
+#                   for its whole time and wrote nothing)
 #   SPEC-5[guard]:  rc=137 (OOM) → returns rc=1 (terminal, unchanged)
 #   SPEC-6[guard]:  rc=137 (OOM) → plugin.result emitted with reason=router_oom_kill
 #   SPEC-7[guard]:  rc=137 (OOM) → no design.md written (terminal, unchanged)
@@ -163,6 +166,15 @@ if grep -q '"design.timeout.no_design"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
 else
     assert_fail "[SPEC-4] timeout, nothing written → design.timeout.no_design missing" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
+fi
+
+_summ="$(cat "$_F_ARTIFACTS/design-summary.md" 2>/dev/null)"
+assert_contains "[SPEC-4b] the summary says design wrote no design.md before its time ran out" "$_summ" \
+    "Design ran out of time before writing design.md."
+if grep -qi "infrastructure" <<< "$_summ"; then
+    assert_fail "[SPEC-4b] the summary does not blame the infrastructure" "$_summ"
+else
+    assert_pass "[SPEC-4b] the summary does not blame the infrastructure"
 fi
 
 # [SPEC-8] (#1832, ADR-054): timeout yield writes verdict=incomplete +
