@@ -326,7 +326,7 @@ Summary:
 - open questions: 2
 - artifact: plan.json
 
-### design (verdict: incomplete) — your own
+### design (verdict: warn) — your own
 Outputs:
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
@@ -413,27 +413,34 @@ Your notes so far:
 Primary: core/pipeline/runner.sh — calls _runner_resolve_run_limit_s(), arms watchdog, modifies _runner_abort_trap and _runner_end_on_abort for timed_out
 Secondary: core/pipeline/template.sh — provides template_max_run_s() which _runner_resolve_run_limit_s() calls
 
-### spec-coverage (verdict: covered)
+### spec-coverage (verdict: warn)
 Outputs:
 - spec_coverage_result: /home/runner/work/_temp/zbuild-state/artifacts/spec-coverage-result.json
 - spec_coverage_summary: /home/runner/work/_temp/zbuild-state/artifacts/spec-coverage-summary.md
 
 Summary:
-## spec-coverage — covered
+## spec-coverage — unreadable
 
-- Every behavioral requirement in R-1 through R-10 is fully demanded by at least one SPEC sentence; no requirement is addressed only partially or left to implication.
+- no acceptance block in design.md — there is no contract to compare against
 
 - every requirement the issue states maps to a declared SPEC
 
-### design-gate (verdict: pass)
+### design-gate (verdict: fail)
 Outputs:
 - design_gate_feedback: /home/runner/work/_temp/zbuild-state/artifacts/design-gate-feedback.md
 - design_gate_result: /home/runner/work/_temp/zbuild-state/artifacts/design-gate-result.json
 
-Summary:
-# Design-gate: all structural checks cleared
+Findings:
+- design-gate finding 1 (opened by design-gate): design.md has no scope block — add a ```scope block listing every file the change touches
+- design-gate finding 2 (opened by design-gate): design.md has no readable ```acceptance block — add one with a line per requirement
 
-The design is build-ready.
+Summary:
+# Design-gate: structural violations
+
+The design is not ready to build. Fix these and write design.md again:
+
+- design.md has no scope block — add a ```scope block listing every file the change touches
+- design.md has no readable ```acceptance block — add one with a line per requirement
 
 ### test-author (verdict: complete)
 Outputs:
