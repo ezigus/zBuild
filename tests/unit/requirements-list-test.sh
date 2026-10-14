@@ -65,7 +65,7 @@ export ZBUILD_ISSUE="$_ZB_ID"
 rm -f "$_REQ"
 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
 assert_eq "[Q1] intake passes on an issue with checkboxes" "pass" \
-    "$(jq -r '.verdict' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || echo MISSING)"
+    "$(jq -r '.outcome' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[Q1] requirements.json carries schema_version 1" "1" "$(jq -r '.schema_version' "$_REQ" 2>/dev/null || echo MISSING)"
 assert_eq "[Q1] the source is the checkboxes" "checkboxes" "$(jq -r '.source' "$_REQ" 2>/dev/null || echo MISSING)"
 assert_eq "[Q1] ids are R-1.. in order, assigned by the engine" "R-1 R-2 R-3" \

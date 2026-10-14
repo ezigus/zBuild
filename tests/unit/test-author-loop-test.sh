@@ -130,7 +130,7 @@ _res() { jq -r "$2 // empty" "$TEST_TEMP_DIR/$1/state/artifacts/test-author-resu
 print_test_section "A1/A2/A4: a contract that needs three calls"
 _rc1="$(_run a1 3 6)"
 assert_eq "[A1] three calls were made" "3" "$(_calls a1)"
-assert_eq "[A1] ...and the stage completed" "complete" "$(_res a1 .disposition)"
+assert_eq "[A1] ...and the stage passed" "pass" "$(_res a1 .outcome)"
 assert_eq "[A1] rc=0" "0" "$_rc1"
 _seen="$(tr '\n' ' ' < "$TEST_TEMP_DIR/a1/fake/commits-seen")"
 assert_eq "[A2] the work accumulates across calls — after each call the file holds every assertion so far (counts: $_seen)" \
@@ -151,14 +151,14 @@ print_test_section "A3: not finished within the loop"
 _rc3="$(_run a3 0 2)"
 assert_eq "[A3] the loop's calls were all made" "2" "$(_calls a3)"
 assert_eq "[A3] rc=1" "1" "$_rc3"
-assert_eq "[A3] disposition out_of_turns (the shared mapping)" "out_of_turns" "$(_res a3 .disposition)"
+assert_eq "[A3] outcome out_of_turns (the shared mapping)" "out_of_turns" "$(_res a3 .outcome)"
 assert_eq "[A3] the work is committed" "" "$(git -C "$TEST_TEMP_DIR/a3/repo" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
 
 print_test_section "A6: a loop that cannot start"
 mkdir -p "$TEST_TEMP_DIR/nobin"
 _rc6="$(ZB_HIDE_CLAUDE=1 _run a6 1 3)"
 assert_eq "[A6] no model CLI → rc=1" "1" "$_rc6"
-assert_eq "[A6] ...disposition misconfigured, not unavailable" "misconfigured" "$(_res a6 .disposition)"
+assert_eq "[A6] ...outcome misconfigured, not unavailable" "misconfigured" "$(_res a6 .outcome)"
 
 print_test_section "A7/A8: the loop's own end reasons"
 _a78="$(

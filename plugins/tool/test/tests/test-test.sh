@@ -68,10 +68,10 @@ set -e
 assert_exit_code "plugin exits 0 even when diff.patch missing" "0" "$rc2"
 assert_file_exists "test-results.json written on missing patch" "$OUT_JSON_2"
 
-verdict2="$(_json_key "$OUT_JSON_2" '.verdict')"
+verdict2="$(_json_key "$OUT_JSON_2" '.outcome')"
 diff_applied2="$(_json_key "$OUT_JSON_2" '.data.diff_applied')"
 
-assert_eq "verdict is 'error' for missing patch" "error" "$verdict2"
+assert_eq "outcome is 'broken' for missing patch (#2366)" "broken" "$verdict2"
 assert_eq "diff_applied is false for missing patch" "false" "$diff_applied2"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -119,7 +119,7 @@ set -e
 assert_exit_code "plugin exits 0 on passing test" "0" "$rc3"
 assert_file_exists "test-results.json written for passing test" "$OUT_JSON_3"
 
-verdict3="$(_json_key "$OUT_JSON_3" '.verdict')"
+verdict3="$(_json_key "$OUT_JSON_3" '.outcome')"
 exit_code3="$(_json_key "$OUT_JSON_3" '.data.exit_code')"
 diff_applied3="$(_json_key "$OUT_JSON_3" '.data.diff_applied')"
 
@@ -143,7 +143,7 @@ set -e
 assert_exit_code "plugin exits 0 even when tests fail" "0" "$rc4"
 assert_file_exists "test-results.json written for failing test" "$OUT_JSON_4"
 
-verdict4="$(_json_key "$OUT_JSON_4" '.verdict')"
+verdict4="$(_json_key "$OUT_JSON_4" '.outcome')"
 exit_code4="$(_json_key "$OUT_JSON_4" '.data.exit_code')"
 
 assert_eq "verdict is 'fail' when test_cmd exits 1" "fail" "$verdict4"
@@ -167,11 +167,11 @@ set -e
 
 assert_exit_code "plugin still exits 0 on no-op run" "0" "$rc4b"
 assert_file_exists "test-results.json written" "$OUT_JSON_4B"
-verdict4b="$(_json_key "$OUT_JSON_4B" '.verdict')"
+verdict4b="$(_json_key "$OUT_JSON_4B" '.outcome')"
 exit_code4b="$(_json_key "$OUT_JSON_4B" '.data.exit_code')"
 passed4b="$(_json_key "$OUT_JSON_4B" '.data.passed')"
 failed4b="$(_json_key "$OUT_JSON_4B" '.data.failed')"
-assert_eq "#485 no-op: verdict=error (not pass)" "error" "$verdict4b"
+assert_eq "#485 no-op: outcome=broken (not pass, #2366)" "broken" "$verdict4b"
 assert_eq "#485 no-op: exit_code=0 still recorded" "0" "$exit_code4b"
 # #584: fail-safe now records null counts (no fabricated numbers) when the
 # parser does not recognize the output. The fail-closed verdict=error remains.
@@ -380,7 +380,7 @@ assert_contains "[subprocess] input banner on fd 3" "$banner11" "seq=1 input"
 assert_contains "[subprocess] output banner on fd 3" "$banner11" "seq=1 output"
 assert_contains "[subprocess] summary in output banner (jest)" "$banner11" "9 passed, 0 failed"
 assert_file_exists "[subprocess] test-results.json still written" "$OUT_JSON_11"
-verdict11="$(_json_key "$OUT_JSON_11" '.verdict')"
+verdict11="$(_json_key "$OUT_JSON_11" '.outcome')"
 assert_eq "[subprocess] verdict=pass preserved" "pass" "$verdict11"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -444,7 +444,7 @@ hash -r
 
 assert_exit_code "#548: plugin exits 0 with dirty working tree" "0" "$rc12"
 assert_file_exists "#548: test-results.json written" "$OUT_JSON_12"
-verdict12="$(_json_key "$OUT_JSON_12" '.verdict')"
+verdict12="$(_json_key "$OUT_JSON_12" '.outcome')"
 diff_applied12="$(_json_key "$OUT_JSON_12" '.data.diff_applied')"
 assert_eq "#548: verdict=pass (patch applied against clean HEAD)" "pass" "$verdict12"
 assert_eq "W12-C: diff_applied=false (deprecated)" "false" "$diff_applied12"
@@ -600,7 +600,7 @@ assert_eq "T16 [#2144]: run_mode=targeted+full — the targeted pass was confirm
     "targeted+full" "$_run_mode_t16"
 assert_file_exists "T16 [#2144]: the full command ran after the targeted pass" "$FULL_MARK_T16"
 assert_eq "T16 [#2144]: the verdict is the FULL run's (it failed)" \
-    "fail" "$(_json_key "$OUT_JSON_T16" '.verdict')"
+    "fail" "$(_json_key "$OUT_JSON_T16" '.outcome')"
 assert_eq "T16 [#2144]: test_cmd records the full command" \
     "$FULL_CMD_T16" "$(_json_key "$OUT_JSON_T16" '.data.test_cmd')"
 assert_eq "T16 [#2144]: the targeted result is kept in data.targeted" \
@@ -639,7 +639,7 @@ set -e
 assert_exit_code "T17: plugin exits 0" "0" "$rc_t17"
 assert_eq "T17 [#2144]: run_mode=targeted (fast feedback, no confirmation of a failure)" \
     "targeted" "$(_json_key "$OUT_JSON_T17" '.data.run_mode')"
-assert_eq "T17 [#2144]: verdict=fail from the targeted run" "fail" "$(_json_key "$OUT_JSON_T17" '.verdict')"
+assert_eq "T17 [#2144]: verdict=fail from the targeted run" "fail" "$(_json_key "$OUT_JSON_T17" '.outcome')"
 if [[ -e "$FULL_MARK_T17" ]]; then
     assert_fail "T17 [#2144]: the full command did NOT run" "marker exists"
 else
@@ -686,33 +686,33 @@ print_test_section "SPEC. v2 result contract (#1836)"
 
 # [SPEC-1] test_output mirrored at top level with the SAME value as data.test_output.
 # `!= null` defeats the both-absent case, where null == null would pass vacuously.
-_spec1_has_to="$(jq '(.result_contract == 2) and (.data.test_output != null) and (.test_output == .data.test_output)' "$OUT_JSON_3" 2>/dev/null || echo false)"
+_spec1_has_to="$(jq '(.result_contract == 3) and (.data.test_output != null) and (.test_output == .data.test_output)' "$OUT_JSON_3" 2>/dev/null || echo false)"
 assert_eq "[SPEC-1] test_output mirrored at top level, value-equal to data.test_output" "true" "$_spec1_has_to"
 
 # [SPEC-2] run_mode mirrored at top level with the SAME value as data.run_mode.
-_spec2_has_rm="$(jq '(.result_contract == 2) and (.data.run_mode != null) and (.run_mode == .data.run_mode)' "$OUT_JSON_3" 2>/dev/null || echo false)"
+_spec2_has_rm="$(jq '(.result_contract == 3) and (.data.run_mode != null) and (.run_mode == .data.run_mode)' "$OUT_JSON_3" 2>/dev/null || echo false)"
 assert_eq "[SPEC-2] run_mode mirrored at top level, value-equal to data.run_mode" "true" "$_spec2_has_rm"
 
 # [SPEC-3] exit_code=0 at top level on pass path AND disposition=complete (CHANGE: exit_code absent at top level in baseline)
 _spec3_ec="$(_json_key "$OUT_JSON_3" '.exit_code')"
-_spec3_disp="$(_json_key "$OUT_JSON_3" '.disposition')"
+_spec3_disp="$(_json_key "$OUT_JSON_3" '.outcome')"
 assert_eq "[SPEC-3] exit_code=0 at top level on pass path" "0" "$_spec3_ec"
-assert_eq "[SPEC-3] disposition=complete when verdict=pass" "complete" "$_spec3_disp"
+assert_eq "[SPEC-3] outcome=pass on the pass path (#2366)" "pass" "$_spec3_disp"
 
 # [SPEC-4] exit_code=1 at top level on fail path AND disposition=complete (CHANGE: exit_code absent at top level in baseline)
 _spec4_ec="$(_json_key "$OUT_JSON_4" '.exit_code')"
-_spec4_disp="$(_json_key "$OUT_JSON_4" '.disposition')"
+_spec4_disp="$(_json_key "$OUT_JSON_4" '.outcome')"
 assert_eq "[SPEC-4] exit_code=1 at top level on fail path" "1" "$_spec4_ec"
-assert_eq "[SPEC-4] disposition=complete when verdict=fail" "complete" "$_spec4_disp"
+assert_eq "[SPEC-4] outcome=fail on the fail path (#2366)" "fail" "$_spec4_disp"
 
 # [SPEC-5] test_output at top level in v2 result on error path AND disposition=broken
-_spec5_has_to="$(jq '(.result_contract == 2) and (.data.test_output != null) and (.test_output == .data.test_output)' "$OUT_JSON_2" 2>/dev/null || echo false)"
-_spec5_disp="$(_json_key "$OUT_JSON_2" '.disposition')"
+_spec5_has_to="$(jq '(.result_contract == 3) and (.data.test_output != null) and (.test_output == .data.test_output)' "$OUT_JSON_2" 2>/dev/null || echo false)"
+_spec5_disp="$(_json_key "$OUT_JSON_2" '.outcome')"
 assert_eq "[SPEC-5] test_output mirrored at top level on error (missing diff)" "true" "$_spec5_has_to"
-assert_eq "[SPEC-5] disposition=broken on error (missing diff)" "broken" "$_spec5_disp"
+assert_eq "[SPEC-5] outcome=broken on error (missing diff)" "broken" "$_spec5_disp"
 
 # [SPEC-6] run_mode at top level in v2 result on missing-diff error AND reason=missing_diff_patch
-_spec6_has_rm="$(jq '(.result_contract == 2) and (.data.run_mode != null) and (.run_mode == .data.run_mode)' "$OUT_JSON_2" 2>/dev/null || echo false)"
+_spec6_has_rm="$(jq '(.result_contract == 3) and (.data.run_mode != null) and (.run_mode == .data.run_mode)' "$OUT_JSON_2" 2>/dev/null || echo false)"
 _spec6_reason="$(_json_key "$OUT_JSON_2" '.reason')"
 assert_eq "[SPEC-6] run_mode mirrored at top level on missing-diff error path" "true" "$_spec6_has_rm"
 assert_eq "[SPEC-6] reason=missing_diff_patch emitted on missing diff" "missing_diff_patch" "$_spec6_reason"
@@ -732,8 +732,8 @@ assert_eq "[SPEC-7] top-level exit_code agrees with data.exit_code" "true" "$_sp
 # `interrupted|` on a missing artifact without saying which half went wrong.
 _spec8_term="$(_test_disposition_from_rc 143 "error")"
 assert_eq "[SPEC-8] rc=143 (SIGTERM) → disposition=interrupted" "interrupted" "$_spec8_term"
-_spec8_rc2="$(jq '.result_contract == 2' "$OUT_JSON_3" 2>/dev/null || echo false)"
-assert_eq "[SPEC-8] result_contract=2 (v2 shape)" "true" "$_spec8_rc2"
+_spec8_rc2="$(jq '.result_contract == 3' "$OUT_JSON_3" 2>/dev/null || echo false)"
+assert_eq "[SPEC-8] result_contract=3 (#2366)" "true" "$_spec8_rc2"
 _spec8_kill="$(_test_disposition_from_rc 137 "error")"
 assert_eq "[SPEC-8] rc=137 (SIGKILL) → disposition=interrupted" "interrupted" "$_spec8_kill"
 _spec8_int="$(_test_disposition_from_rc 130 "error")"
@@ -784,10 +784,11 @@ assert_contains "[SPEC-12] guard summary records the verdict" "$(cat "$_spec12_s
 assert_contains "[SPEC-12] guard summary names the missing patch" "$(cat "$_spec12_sum" 2>/dev/null)" "missing_diff_patch"
 
 # [SPEC-10] manifest valid_verdicts covers every verdict the plugin emits (GUARD)
-_spec10_vv="$(grep -A10 'valid_verdicts:' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null)"
-assert_contains "[SPEC-10] valid_verdicts covers pass" "$_spec10_vv" "- pass"
-assert_contains "[SPEC-10] valid_verdicts covers fail" "$_spec10_vv" "- fail"
-assert_contains "[SPEC-10] valid_verdicts covers error" "$_spec10_vv" "- error"
+if grep -q 'valid_verdicts' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null; then
+    assert_fail "[SPEC-10] a contract-3 manifest declares no valid_verdicts (#2366)" "found"
+else
+    assert_pass "[SPEC-10] a contract-3 manifest declares no valid_verdicts (#2366)"
+fi
 
 # ─── #2124: the ✗ line is never the part that is cut ─────────────────────────
 # The extractor took the first 60 lines matching a broad pattern; a replayed

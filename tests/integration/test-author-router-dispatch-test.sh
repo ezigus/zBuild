@@ -133,14 +133,14 @@ assert_file_exists "[SPEC-1][guard] the dispatch wrote a result at all" \
 if [[ "$(_res '.reason')" == *"no router available"* ]]; then
     assert_fail "[SPEC-1][guard] the dispatched stage does not report 'no router available'" \
         "reason: $(_res '.reason')
-  disposition: $(_res '.disposition')  verdict: $(_res '.verdict')
+  outcome: $(_res '.outcome')
   dispatch log: $(tr '\n' '|' < "$DISPATCH_LOG")"
 else
     assert_pass "[SPEC-1][guard] the dispatched stage does not report 'no router available'"
 fi
 
-assert_eq "[SPEC-1][guard] nor disposition=unavailable" \
-    "1" "$([[ "$(_res '.disposition')" != "unavailable" ]] && echo 1 || echo 0)"
+assert_eq "[SPEC-1][guard] nor outcome=unavailable" \
+    "1" "$([[ "$(_res '.outcome')" != "unavailable" ]] && echo 1 || echo 0)"
 
 # ─── SPEC-2: it actually reached the model, and the pass completed ──────────
 print_test_section "SPEC-2: the stage reaches the model and completes"
@@ -150,8 +150,8 @@ print_test_section "SPEC-2: the stage reaches the model and completes"
 assert_file_exists "[SPEC-2][change] the router actually spawned the model" \
     "$CLAUDE_CALLED"
 
-assert_eq "[SPEC-2][change] the authoring pass completed" \
-    "complete" "$(_res '.disposition')"
+assert_eq "[SPEC-2][change] the authoring pass passed" \
+    "pass" "$(_res '.outcome')"
 assert_eq "[SPEC-2][change] and it authored against the design's one SPEC" \
     "1" "$(_res '.data.specs_covered')"
 

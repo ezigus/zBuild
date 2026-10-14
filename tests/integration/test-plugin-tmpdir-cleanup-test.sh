@@ -82,8 +82,8 @@ _test_run_inner "$MISSING_PATCH" "$REPO_FIXTURE" "$JSON1" "true" \
 # longer rm -rf's; purge is the cleanup hook's responsibility).
 test_cleanup "test" "$_STATE_FILE" "purge" >/dev/null 2>&1 || true
 
-assert_eq "missing-diff: artifact still written" \
-    "error" "$(jq -r '.verdict' "$JSON1" 2>/dev/null || echo MISSING)"
+assert_eq "missing-diff: artifact still written (outcome broken, #2366)" \
+    "broken" "$(jq -r '.outcome' "$JSON1" 2>/dev/null || echo MISSING)"
 assert_eq "missing-diff: no zbuild-test-stage.* leaked in TMPDIR" \
     "0" "$(_count_leaked)"
 
@@ -115,7 +115,7 @@ _test_run_inner "$BAD_PATCH" "$REPO_FIXTURE" "$JSON2" \
 test_cleanup "test" "$_STATE_FILE" "purge" >/dev/null 2>&1 || true
 
 assert_eq "non-empty-diff: verdict=pass (diff ignored, test_cmd parsed)" \
-    "pass" "$(jq -r '.verdict' "$JSON2" 2>/dev/null || echo MISSING)"
+    "pass" "$(jq -r '.outcome' "$JSON2" 2>/dev/null || echo MISSING)"
 NON_EMPTY_REASON="$(jq -r '.reason // empty' "$JSON2" 2>/dev/null)"
 if [[ "$NON_EMPTY_REASON" == "diff_apply_failed" ]]; then
     assert_fail "non-empty-diff: no diff_apply_failed reason (W12-C)" \

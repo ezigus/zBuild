@@ -56,7 +56,7 @@ printf '# Design\n\n```scope\ncore/pipeline/runner.sh\nlib/new.sh\n```\n' > "$D/
 _f3="$(
     # shellcheck source=../../plugins/agent/design/plugin.sh
     source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
-    _design_write_result "$D" pass complete "authored" >/dev/null 2>&1
+    _design_write_outcome "$D" pass "authored" >/dev/null 2>&1
     jq -c '.data.scope_files // empty' "$D/design-verdict.json" 2>/dev/null
 )"
 assert_eq "[F3] design reports its scope block" '["core/pipeline/runner.sh","lib/new.sh"]' "$_f3"

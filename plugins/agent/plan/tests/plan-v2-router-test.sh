@@ -50,12 +50,12 @@ _s3v2_rc=$?
 set -e
 assert_eq "[#1835/SPEC-3] max_turns plan_run returns rc=1 (not rc=10 after v2 migration)" "1" "$_s3v2_rc"
 assert_file_exists "[#1835/SPEC-3] plan.json written on scope_too_large path" "$ARTIFACTS_DIR/plan.json"
-assert_eq "[#1835/SPEC-3] plan.json result_contract=2 on out_of_turns path" "2" \
+assert_eq "[#1835/SPEC-3] plan.json result_contract=3 on out_of_turns path" "3" \
     "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-3] plan.json verdict=error on out_of_turns path" "error" \
+assert_eq "[#1835/SPEC-3] plan.json has no verdict field (#2366) on out_of_turns path" "" \
     "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-3] plan.json disposition=out_of_turns" "out_of_turns" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 # (#2363: plan.scope_too_large is retired — the disposition above is the signal,
 # named by the shared router mapping like every other stage's.)
 
@@ -80,12 +80,12 @@ _s8_timeout_rc=$?
 set -e
 assert_eq "[#1835/SPEC-8] router timeout (rc=124) → plugin rc=1" "1" "$_s8_timeout_rc"
 assert_file_exists "[#1835/SPEC-8] router timeout writes plan.json" "$ARTIFACTS_DIR/plan.json"
-assert_eq "[#1835/SPEC-8] router timeout result_contract=2" "2" \
+assert_eq "[#1835/SPEC-8] router timeout result_contract=3" "3" \
     "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] router timeout verdict=error" "error" \
+assert_eq "[#1835/SPEC-8] router timeout has no verdict field (#2366)" "" \
     "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-8] router timeout disposition=timed_out" "timed_out" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 
 # rc=137 (OOM kill) → disposition=interrupted
 rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
@@ -100,12 +100,12 @@ _s8_oom_rc=$?
 set -e
 assert_eq "[#1835/SPEC-8] OOM kill (rc=137) → plugin rc=1" "1" "$_s8_oom_rc"
 assert_file_exists "[#1835/SPEC-8] OOM kill writes plan.json" "$ARTIFACTS_DIR/plan.json"
-assert_eq "[#1835/SPEC-8] OOM kill result_contract=2" "2" \
+assert_eq "[#1835/SPEC-8] OOM kill result_contract=3" "3" \
     "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] OOM kill verdict=error" "error" \
+assert_eq "[#1835/SPEC-8] OOM kill has no verdict field (#2366)" "" \
     "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-8] OOM kill disposition=interrupted" "interrupted" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 
 # rc=2 (router config error) → disposition=misconfigured
 # route.sh normalises all non-124/137 claude binary exit codes to rc=1 (see
@@ -126,12 +126,12 @@ set -e
 unset ZBUILD_ROUTER_MAX_TURNS 2>/dev/null || true
 assert_eq "[#1835/SPEC-8] config error (rc=2) → plugin rc=1" "1" "$_s8_cfg_rc"
 assert_file_exists "[#1835/SPEC-8] config error writes plan.json" "$ARTIFACTS_DIR/plan.json"
-assert_eq "[#1835/SPEC-8] config error result_contract=2" "2" \
+assert_eq "[#1835/SPEC-8] config error result_contract=3" "3" \
     "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] config error verdict=error" "error" \
+assert_eq "[#1835/SPEC-8] config error has no verdict field (#2366)" "" \
     "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-8] config error disposition=misconfigured" "misconfigured" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 
 unset ZBUILD_PLAN_RESUME 2>/dev/null || true
 

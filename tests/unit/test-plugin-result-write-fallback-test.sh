@@ -135,14 +135,14 @@ ERR7="$TEST_TEMP_DIR/happy.stderr"
 _drive_writer "happy" "$OUT7" "$ERR7" -- \
     "$OUT7" "pass" "complete" 0 5 0 "ok" "true" "npm test"
 
-assert_eq "happy: .verdict" "pass" "$(jq -r '.verdict' "$OUT7" 2>/dev/null)"
+assert_eq "happy: .verdict" "pass" "$(jq -r '.outcome' "$OUT7" 2>/dev/null)"
 assert_eq "happy: .data.exit_code" "0" "$(jq -r '.data.exit_code' "$OUT7" 2>/dev/null)"
 assert_eq "happy: .data.passed" "5" "$(jq -r '.data.passed' "$OUT7" 2>/dev/null)"
 assert_eq "happy: .data.diff_applied" "true" "$(jq -r '.data.diff_applied' "$OUT7" 2>/dev/null)"
 # [SPEC-11] run_mode at top level, pinned to its value AND agreeing with data.
 # The value pin alone reddens at the v1 baseline; the data agreement is what
 # catches a later regression that drops the top-level mirror.
-_spec11_rm="$(jq '(.result_contract == 2) and (.run_mode == "full") and (.run_mode == .data.run_mode)' "$OUT7" 2>/dev/null || echo false)"
+_spec11_rm="$(jq '(.result_contract == 3) and (.run_mode == "full") and (.run_mode == .data.run_mode)' "$OUT7" 2>/dev/null || echo false)"
 assert_eq "[SPEC-11] run_mode=full at top level, agreeing with data.run_mode" "true" "$_spec11_rm"
 
 # ─── 8. forced jq failure exercises the fallback branch + event emission ────
@@ -188,17 +188,17 @@ fi
 
 assert_eq "forced-fail: .reason=result_write_failed" "result_write_failed" \
     "$(jq -r '.reason' "$OUT8" 2>/dev/null)"
-assert_eq "forced-fail: .verdict=error" "error" \
-    "$(jq -r '.verdict' "$OUT8" 2>/dev/null)"
+assert_eq "forced-fail: .outcome=broken (#2366)" "broken" \
+    "$(jq -r '.outcome' "$OUT8" 2>/dev/null)"
 
 # [SPEC-13] The fail-closed fallback is a v2 result too, in the SAME shape the
 # normal path emits — not a v2-flavoured subset. A consumer cannot know which
 # writer produced the artifact, so one that reads `.exit_code` at the top level
 # must not silently get null just because the primary write failed.
-assert_eq "[SPEC-13] fallback: .result_contract=2" "2" \
+assert_eq "[SPEC-13] fallback: .result_contract=3" "3" \
     "$(jq -r '.result_contract' "$OUT8" 2>/dev/null)"
-assert_eq "[SPEC-13] fallback: .disposition=broken" "broken" \
-    "$(jq -r '.disposition' "$OUT8" 2>/dev/null)"
+assert_eq "[SPEC-13] fallback: .outcome=broken" "broken" \
+    "$(jq -r '.outcome' "$OUT8" 2>/dev/null)"
 assert_eq "[SPEC-13] fallback carries the same top-level mirrors as the normal path" "true" \
     "$(jq '(.test_output == .data.test_output) and (.run_mode == .data.run_mode) and (.exit_code == .data.exit_code)' "$OUT8" 2>/dev/null || echo false)"
 

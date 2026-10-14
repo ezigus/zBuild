@@ -145,16 +145,16 @@ build_verdict=""
 
 _build_write_build_summary 2>/dev/null
 
-_s7_verdict="$(jq -r '.verdict' "$_spec7_summary" 2>/dev/null)"
+_s7_verdict="$(jq -r '.outcome // ""' "$_spec7_summary" 2>/dev/null)"
 _s7_kind="$(jq -r '.data.build_kind // ""' "$_spec7_summary" 2>/dev/null)"
-_s7_disp="$(jq -r '.disposition // ""' "$_spec7_summary" 2>/dev/null)"
-assert_eq "[SPEC-7] inert_build summary: verdict=fail (#1832)" "fail" "$_s7_verdict"
+assert_eq "[SPEC-7] inert_build summary: outcome=fail (#1832, #2366)" "fail" "$_s7_verdict"
 assert_eq "[SPEC-7] inert_build summary: data.build_kind=inert_build (#1832)" "inert_build" "$_s7_kind"
-assert_eq "[SPEC-7] inert_build summary: disposition=complete — the verdict carries it (#2187)" "complete" "$_s7_disp"
+assert_eq "[SPEC-7] inert_build summary: no verdict or disposition field (#2366)" "false" \
+    "$(jq 'has("verdict") or has("disposition")' "$_spec7_summary" 2>/dev/null)"
 
-# SPEC-10: result_contract:2 present on inert_build branch (guard — unchanged from prior work).
+# SPEC-10: the result contract on the inert_build branch (#2366: contract 3).
 _s7_rc="$(jq -r '.result_contract // ""' "$_spec7_summary" 2>/dev/null)"
-assert_eq "[SPEC-10] inert_build summary: result_contract:2 present" "2" "$_s7_rc"
+assert_eq "[SPEC-10] inert_build summary: result_contract:3 present" "3" "$_s7_rc"
 
 # ─── #2138: the guard reads the design's TESTFILES as the design writes them ──
 # The block binds testfiles per SPEC ("SPEC-1: tests/unit/failing-test.sh");

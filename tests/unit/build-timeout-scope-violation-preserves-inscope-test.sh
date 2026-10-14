@@ -135,8 +135,9 @@ _assert_inscope_kept() {
     fc="$(jq -r '(.files_changed // []) | join(",")' "$SUMMARY_JSON" 2>/dev/null || true)"
     assert_eq "$tag: build-summary reports the in-scope file it changed" "in_scope.txt" "$fc"
     local v
-    v="$(jq -r '.verdict // empty' "$SUMMARY_JSON" 2>/dev/null || true)"
-    assert_eq "$tag: the violation is still reported (verdict)" "scope_violation" "$v"
+    v="$(jq -r '.scope_violation // empty' "$SUMMARY_JSON" 2>/dev/null || true)"
+    assert_eq "$tag: the violation is still reported (scope_violation)" "true" "$v"
+    assert_eq "$tag: ...and the outcome is fail (#2366)" "fail" "$(jq -r '.outcome // empty' "$SUMMARY_JSON" 2>/dev/null || true)"
     if grep -q '"type":"build.scope.inscope_preserved"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
         assert_pass "$tag: build.scope.inscope_preserved emitted"
     else

@@ -34,21 +34,18 @@ unset ZBUILD_PLAN_RESUME ZBUILD_ISSUE_NUMBER ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEED
 # Restore canned plan for remaining tests.
 CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
-# ─── [#1835/SPEC-4][change] manifest declares result_contract=2 and valid_verdicts ─
-print_test_section "[#1835/SPEC-4] manifest declares result_contract=2 and valid_verdicts=[pass,error]"
+# ─── [#1835/SPEC-4][change] manifest declares result_contract=3 and valid_verdicts ─
+print_test_section "[#1835/SPEC-4] manifest declares result_contract=3 and no valid_verdicts (#2366)"
 _s4_provides="$(awk '/^provides:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)"
-if grep -q 'result_contract: 2' <<< "$_s4_provides" 2>/dev/null; then
-    assert_pass "[#1835/SPEC-4] manifest provides.result_contract: 2"
+if grep -q 'result_contract: 3' <<< "$_s4_provides" 2>/dev/null; then
+    assert_pass "[#1835/SPEC-4] manifest provides.result_contract: 3"
 else
-    assert_fail "[#1835/SPEC-4] manifest provides.result_contract: 2"
+    assert_fail "[#1835/SPEC-4] manifest provides.result_contract: 3"
 fi
-_s4_config="$(awk '/^config:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)"
-_s4_vv="$(awk '/valid_verdicts:/{found=1;next} found && /^[[:space:]]+-/{print;next} found{exit}' <<< "$_s4_config" 2>/dev/null || true)"
-if grep -q '\bpass\b' <<< "$_s4_vv" 2>/dev/null && \
-   grep -q '\berror\b' <<< "$_s4_vv" 2>/dev/null; then
-    assert_pass "[#1835/SPEC-4] manifest valid_verdicts contains pass and error"
+if grep -q 'valid_verdicts' "$_MANIFEST_FILE" 2>/dev/null; then
+    assert_fail "[#1835/SPEC-4] a contract-3 manifest declares no valid_verdicts" "found"
 else
-    assert_fail "[#1835/SPEC-4] manifest valid_verdicts contains pass and error"
+    assert_pass "[#1835/SPEC-4] a contract-3 manifest declares no valid_verdicts"
 fi
 
 # ─── [#1835/SPEC-5][change] reads scope_manifest from ZBUILD_STAGE_INPUTS ────
@@ -100,10 +97,10 @@ set -e
 unset ZBUILD_ARTIFACT_DIR 2>/dev/null || true
 assert_eq "[#1835/SPEC-6] plan_run returns rc=1 (not rc=2) when state_file missing" "1" "$_s6_rc"
 assert_file_exists "[#1835/SPEC-6] plan.json written with v2 fields on broken path" "$_S6_ARTIFACTS/plan.json"
-assert_eq "[#1835/SPEC-6] plan.json result_contract=2 on broken path" "2" \
+assert_eq "[#1835/SPEC-6] plan.json result_contract=3 on broken path" "3" \
     "$(jq -r '.result_contract // empty' "$_S6_ARTIFACTS/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-6] plan.json disposition=broken when state_file missing" "broken" \
-    "$(jq -r '.disposition // empty' "$_S6_ARTIFACTS/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_S6_ARTIFACTS/plan.json" 2>/dev/null || true)"
 
 # ─── [#1835/SPEC-9][change] manifest config.router max_turns=45 and timeout_s=300 ─
 print_test_section "[#1835/SPEC-9] manifest router budget knobs and resolver behavior"
@@ -230,7 +227,7 @@ assert_eq "[#1835/SPEC-11] absent intake_goal path → rc=1" "1" "$_s11b_rc"
 assert_file_exists "[#1835/SPEC-11] absent intake_goal writes plan.json with disposition=broken" \
     "$_S11B_STATE/artifacts/plan.json"
 assert_eq "[#1835/SPEC-11] absent intake_goal disposition=broken" "broken" \
-    "$(jq -r '.disposition // empty' "$_S11B_STATE/artifacts/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_S11B_STATE/artifacts/plan.json" 2>/dev/null || true)"
 
 # [#1835/SPEC-11] unreadable intake_goal file → rc=1, disposition=broken
 # The "file is unreadable" case is distinct from "file is absent": the path
@@ -262,7 +259,7 @@ assert_eq "[#1835/SPEC-11] unreadable intake_goal → rc=1" "1" "$_s11c_rc"
 assert_file_exists "[#1835/SPEC-11] unreadable intake_goal writes plan.json with disposition=broken" \
     "$_S11C_STATE/artifacts/plan.json"
 assert_eq "[#1835/SPEC-11] unreadable intake_goal disposition=broken" "broken" \
-    "$(jq -r '.disposition // empty' "$_S11C_STATE/artifacts/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_S11C_STATE/artifacts/plan.json" 2>/dev/null || true)"
 
 # Restore canned plan for remaining tests.
 CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'

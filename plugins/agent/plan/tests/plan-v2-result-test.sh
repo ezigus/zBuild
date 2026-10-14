@@ -77,11 +77,11 @@ assert_eq "[#1835/SPEC-7] plan.json steps[0].description matches fixture value (
 # current plugin writes only plan data without v2 result fields.
 print_test_section "[#1835/SPEC-1] success path writes v2 result fields into plan.json"
 _s1_rc2="$(printf '%s' "$_s7_json" | jq -r '.result_contract // empty' 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-1] plan.json result_contract=2 on success" "2" "$_s1_rc2"
+assert_eq "[#1835/SPEC-1] plan.json result_contract=3 on success" "3" "$_s1_rc2"
 _s1_verdict="$(printf '%s' "$_s7_json" | jq -r '.verdict // empty' 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-1] plan.json verdict=pass on success" "pass" "$_s1_verdict"
-_s1_disp="$(printf '%s' "$_s7_json" | jq -r '.disposition // empty' 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-1] plan.json disposition=complete on success" "complete" "$_s1_disp"
+assert_eq "[#1835/SPEC-1] plan.json has no verdict field on success (#2366)" "" "$_s1_verdict"
+_s1_disp="$(printf '%s' "$_s7_json" | jq -r '.outcome // empty' 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-1] plan.json outcome=pass on success" "pass" "$_s1_disp"
 _s1_reason="$(printf '%s' "$_s7_json" | jq -r '.reason // empty' 2>/dev/null || true)"
 if [[ -n "$_s1_reason" ]]; then
     assert_pass "[#1835/SPEC-1] plan.json reason is non-empty on success"
@@ -130,12 +130,12 @@ _s2a_rc=$?
 set -e
 assert_eq "[#1835/SPEC-2] schema_violation rc=1" "1" "$_s2a_rc"
 assert_file_exists "[#1835/SPEC-2] schema_violation writes plan.json with v2 fields" "$_S2_ARTIFACTS/plan.json"
-assert_eq "[#1835/SPEC-2] schema_violation plan.json result_contract=2" "2" \
+assert_eq "[#1835/SPEC-2] schema_violation plan.json result_contract=3" "3" \
     "$(jq -r '.result_contract // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-2] schema_violation plan.json verdict=error" "error" \
+assert_eq "[#1835/SPEC-2] schema_violation plan.json has no verdict field (#2366)" "" \
     "$(jq -r '.verdict // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-2] schema_violation plan.json disposition=unusable" "unusable" \
-    "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 
 # empty_result_envelope: router rc=0 but empty response
 CANNED_PLAN=''
@@ -147,12 +147,12 @@ _s2b_rc=$?
 set -e
 assert_eq "[#1835/SPEC-2] empty_result_envelope rc=1" "1" "$_s2b_rc"
 assert_file_exists "[#1835/SPEC-2] empty_result_envelope writes plan.json" "$_S2_ARTIFACTS/plan.json"
-assert_eq "[#1835/SPEC-2] empty_result_envelope result_contract=2" "2" \
+assert_eq "[#1835/SPEC-2] empty_result_envelope result_contract=3" "3" \
     "$(jq -r '.result_contract // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-2] empty_result_envelope verdict=error" "error" \
+assert_eq "[#1835/SPEC-2] empty_result_envelope has no verdict field (#2366)" "" \
     "$(jq -r '.verdict // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-2] empty_result_envelope disposition=unusable" "unusable" \
-    "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 
 # invalid_plan_response: the model ANSWERED (router rc=0) with content that is
 # not a plan — the output cannot be used. A failed router CALL is not this case:
@@ -170,12 +170,12 @@ unset -f route_to_model
 if [[ -n "$_ORIG_RTM_SPEC2" ]]; then eval "$_ORIG_RTM_SPEC2"; fi
 assert_eq "[#1835/SPEC-2] invalid_plan_response rc=1" "1" "$_s2c_rc"
 assert_file_exists "[#1835/SPEC-2] invalid_plan_response writes plan.json" "$_S2_ARTIFACTS/plan.json"
-assert_eq "[#1835/SPEC-2] invalid_plan_response result_contract=2" "2" \
+assert_eq "[#1835/SPEC-2] invalid_plan_response result_contract=3" "3" \
     "$(jq -r '.result_contract // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-2] invalid_plan_response verdict=error" "error" \
+assert_eq "[#1835/SPEC-2] invalid_plan_response has no verdict field (#2366)" "" \
     "$(jq -r '.verdict // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-2] invalid_plan_response disposition=unusable" "unusable" \
-    "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+    "$(jq -r '.outcome // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 
 # A failed router call (generic rc=1) is a model-call failure: its word comes
 # from the shared mapping, never a plugin's own choice (#1835 issue text;
@@ -193,7 +193,7 @@ set -e
 unset -f route_to_model
 if [[ -n "$_ORIG_RTM_SPEC2" ]]; then eval "$_ORIG_RTM_SPEC2"; fi
 assert_eq "[#1835/SPEC-8] a failed router call (rc=1) takes the shared mapping's word ($_s2_rc1_expect)" \
-    "$_s2_rc1_expect" "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+    "$_s2_rc1_expect" "$(jq -r '.outcome // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────

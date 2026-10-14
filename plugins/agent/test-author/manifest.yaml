@@ -34,7 +34,7 @@ requires:
 
 provides:
   role: test_author
-  result_contract: 2
+  result_contract: 3
   events:
     - test_author.authored
     - test_author.committed
@@ -43,13 +43,6 @@ provides:
     - test_author.stale_tags_dropped
 
 config:
-  # The v2 exemplars' vocabulary (hydrate/persist/teardown). `authored` and
-  # `unchanged` would both mean "did its job" and neither classifies, which is
-  # ADR-019's table asking whether a new word earns its place. It does not:
-  # the reason field already says which happened.
-  valid_verdicts:
-    - complete
-    - degraded
   tier_default: T2
 
 # #2174: the author writes the acceptance testfiles INTO the repository.

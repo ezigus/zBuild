@@ -79,7 +79,8 @@ print_test_section "W2: the model writes plan.json; a valid one is the plan"
 _reset; MOCK_WRITE="$_GOOD"
 _run_plan "$STATE_FILE" >/dev/null 2>&1; _rc=$?
 assert_eq "[W2] plan_run returns 0" "0" "$_rc"
-assert_eq "[W2] verdict pass" "pass" "$(jq -r .verdict "$_PJ" 2>/dev/null)"
+assert_eq "[W2] outcome pass" "pass" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
+assert_eq "[W2] contract 3 (#2366)" "3" "$(jq -r .result_contract "$_PJ" 2>/dev/null)"
 assert_eq "[W2] the model's work item is kept" "Stop a hung hook at its stage limit." \
     "$(jq -r '.steps[0].description' "$_PJ" 2>/dev/null)"
 assert_file_exists "[W2] plan writes its summary" "$ARTIFACTS_DIR/plan-summary.md"
@@ -88,13 +89,13 @@ print_test_section "W3: a valid plan written before a failed call still counts"
 _reset; MOCK_WRITE="$_GOOD"; MOCK_RC=124
 _run_plan "$STATE_FILE" >/dev/null 2>&1; _rc=$?
 assert_eq "[W3] plan_run returns 0" "0" "$_rc"
-assert_eq "[W3] verdict pass" "pass" "$(jq -r .verdict "$_PJ" 2>/dev/null)"
+assert_eq "[W3] outcome pass" "pass" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
 
 print_test_section "W4: a failed call that wrote nothing is an error"
 _reset; printf '%s\n' "$_OLD" > "$_PJ"; MOCK_RC=124
 _run_plan "$STATE_FILE" >/dev/null 2>&1; _rc=$?
 assert_eq "[W4] plan_run returns 1" "1" "$_rc"
-assert_eq "[W4] verdict error, not the earlier plan's pass" "error" "$(jq -r .verdict "$_PJ" 2>/dev/null)"
+assert_eq "[W4] outcome timed_out, not the earlier plan's pass" "timed_out" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
 
 print_test_section "W5: a call that ends normally keeps a valid plan it did not rewrite"
 _reset; printf '%s\n' "$_OLD" > "$_PJ"; MOCK_RC=0
@@ -126,14 +127,14 @@ else
 fi
 
 print_test_section "W9: a plan whose result cannot be added still ends with a result"
-# rules.md: every stage writes a v2 result on every exit path. Adding the result
+# rules.md: every stage writes a result on every exit path. Adding the result
 # fields to a valid plan can fail; the stage then records that, not a plan
 # with no verdict.
 _reset; MOCK_WRITE="$_GOOD"
-_w9="$( atomic_write() { local _in; _in="$(cat)"; [[ "$_in" == *'"verdict":"pass"'* ]] && return 1; printf '%s\n' "$_in" > "$1"; }
+_w9="$( atomic_write() { local _in; _in="$(cat)"; [[ "$_in" == *'"outcome":"pass"'* ]] && return 1; printf '%s\n' "$_in" > "$1"; }
         _run_plan "$STATE_FILE" >/dev/null 2>&1; printf '%s' "$?" )"
 assert_eq "[W9] plan_run returns 1" "1" "$_w9"
-assert_eq "[W9] the result says error" "error" "$(jq -r '.verdict // "none"' "$_PJ" 2>/dev/null)"
+assert_eq "[W9] the result says broken" "broken" "$(jq -r '.outcome // "none"' "$_PJ" 2>/dev/null)"
 
 print_test_section "W8: a flow without a design scope works from the areas"
 # Until build stops reading plan.json (#2364), the areas a work item names are

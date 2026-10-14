@@ -141,8 +141,9 @@ fi
 # ── (2) build-summary verdict=scope_violation; src/oops.txt in list ────────
 SUMMARY="$STATE_DIR/artifacts/build-summary.json"
 if [[ -f "$SUMMARY" ]]; then
-    verdict="$(jq -r '.verdict // ""' "$SUMMARY" 2>/dev/null || echo "")"
-    assert_eq "build verdict is scope_violation" "scope_violation" "$verdict"
+    verdict="$(jq -r '.scope_violation // ""' "$SUMMARY" 2>/dev/null || echo "")"
+    assert_eq "build reports a scope violation" "true" "$verdict"
+    assert_eq "...and its outcome is fail (#2366)" "fail" "$(jq -r '.outcome // ""' "$SUMMARY" 2>/dev/null || echo "")"
     if grep -Fxq 'src/oops.txt' <<< "$(jq -r '.scope_violations[]?' "$SUMMARY" 2>/dev/null)"; then
         assert_pass "src/oops.txt recorded in scope_violations"
     else

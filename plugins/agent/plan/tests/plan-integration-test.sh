@@ -38,7 +38,7 @@ rm -f "$_PJ"; : > "$ZBUILD_EVENTS_JSONL"
 _install_plan_writer_claude --plan-file "$_PLAN_SRC" --rc 0
 set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "[I1] plan_run rc=0" "0" "$rc"
-assert_eq "[I1] verdict pass" "pass" "$(jq -r .verdict "$_PJ" 2>/dev/null)"
+assert_eq "[I1] outcome pass" "pass" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
 assert_eq "[I1] the model's work item is the plan" "Stop a hung hook at its limit." \
     "$(jq -r '.steps[0].description' "$_PJ" 2>/dev/null)"
 
@@ -47,15 +47,15 @@ rm -f "$_PJ"; : > "$ZBUILD_EVENTS_JSONL"
 _install_plan_writer_claude --plan-file "$_PLAN_SRC" --rc 124
 set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "[I2] plan_run rc=0" "0" "$rc"
-assert_eq "[I2] verdict pass" "pass" "$(jq -r .verdict "$_PJ" 2>/dev/null)"
+assert_eq "[I2] outcome pass" "pass" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
 
 print_test_section "I3: nothing written and the call failed"
 rm -f "$_PJ"; : > "$ZBUILD_EVENTS_JSONL"
 _install_plan_writer_claude --plan-file "$TEST_TEMP_DIR/none.json" --rc 124
 set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "[I3] plan_run rc=1" "1" "$rc"
-assert_eq "[I3] verdict error" "error" "$(jq -r .verdict "$_PJ" 2>/dev/null)"
-assert_eq "[I3] the shared disposition for a timeout" "timed_out" "$(jq -r .disposition "$_PJ" 2>/dev/null)"
+assert_eq "[I3] contract 3: no verdict field" "null" "$(jq -r .verdict "$_PJ" 2>/dev/null)"
+assert_eq "[I3] the shared word for a timeout is the outcome" "timed_out" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
 assert_eq "[I3] reason no_plan_written" "no_plan_written" "$(jq -r .reason "$_PJ" 2>/dev/null)"
 
 print_test_section "I4: the model is told where to write"

@@ -25,6 +25,9 @@ _ZBUILD_TEST_STAGE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_ZBUILD_TEST_STAGE_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/stage-summary.sh"
+# #2366: one outcome from the engine's list, through the one writer.
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/stage-result.sh"
 # shellcheck source=../../../core/output/stage-io.sh
 # #497: stage_io_begin/_end wrap the eval below to satisfy ADR-015 §v4
 # input-before-action / output-after-action ordering contract.
@@ -1105,6 +1108,11 @@ _test_write_result() {
     dir="$(dirname "$path")"
     mkdir -p "$dir"
 
+    # #2366 (ADR-054 §6): one outcome — pass/fail when the suite ran to the end,
+    # otherwise how the stage stopped (the disposition word).
+    local outcome="$verdict"
+    case "$verdict" in pass|fail) ;; *) outcome="$disposition" ;; esac
+
     # #584: pass through "null" literal so --argjson treats it as JSON null;
     # numeric values pass through unchanged.
     # #626: defensive sanitizers — adversarial input (whitespace, control
@@ -1133,9 +1141,6 @@ _test_write_result() {
     # exists and emit test.result_write.fallback. All jq stderr is
     # suppressed so internal sanitization failures never leak.
     jq -n \
-        --arg verdict "$verdict" \
-        --arg disposition "$disposition" \
-        --arg reason "$reason" \
         --argjson exit_code "$exit_code_json" \
         --argjson passed "$passed_json" \
         --argjson failed "$failed_json" \
@@ -1153,12 +1158,6 @@ _test_write_result() {
         --argjson numbered "$(jq -r '.[]? | "\(.file) fails: \(.reason)"' <<< "${findings_json:-[]}" 2>/dev/null | stage_findings_json)" \
         '($findings | try fromjson catch []) as $fnd
         | {
-            result_contract: 2,
-            verdict: $verdict,
-            disposition: $disposition,
-            reason: $reason
-        }
-        + {
             test_output: $test_output,
             run_mode: $run_mode,
             exit_code: $exit_code
@@ -1188,6 +1187,7 @@ _test_write_result() {
         2>/dev/null \
       | atomic_write "$path"
     local _jq_rc="${PIPESTATUS[0]}"
+    (( _jq_rc != 0 )) || stage_result_add "$path" "$outcome" "$reason" 2>/dev/null || _jq_rc=1
 
     if (( _jq_rc != 0 )); then
         # Fail-closed: overwrite with a degenerate-but-valid JSON object so
@@ -1201,8 +1201,9 @@ _test_write_result() {
         # the declared tokens rather than trusting the caller's string.
         local _fb_run_mode="full"
         case "$run_mode" in targeted|targeted+full) _fb_run_mode="$run_mode" ;; esac
-        printf '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"result_write_failed","test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
-            "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" | atomic_write "$path"
+        printf '{"test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
+            "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" | atomic_write "$path" \
+            && stage_result_add "$path" broken "result_write_failed"
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
     fi
 }

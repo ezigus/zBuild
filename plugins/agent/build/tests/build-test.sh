@@ -217,10 +217,11 @@ else
 fi
 assert_event_emitted "build.empty_diff event fired" "$ZBUILD_EVENTS_JSONL" "build.empty_diff"
 # #2124: the summary the engine ships downstream is headed by the verdict the
-# stage actually reached — max_iterations here is `incomplete`, and a heading
-# that says `pass` tells the next prompt the opposite of build-summary.json.
-assert_eq "[#2124] build-summary.md heading carries the real verdict" \
-    "## build — incomplete" "$(head -1 "$ARTIFACT_DIR_PROSE/build-summary.md" 2>/dev/null)"
+# stage actually reached — max_iterations here is out_of_turns (#2366: the
+# outcome), and a heading that says `pass` tells the next prompt the opposite
+# of build-summary.json.
+assert_eq "[#2124] build-summary.md heading carries the real outcome" \
+    "## build — out_of_turns" "$(head -1 "$ARTIFACT_DIR_PROSE/build-summary.md" 2>/dev/null)"
 
 # Reset mock to default success
 MOCK_LOOP_RC=0
@@ -249,8 +250,8 @@ set -e
 assert_exit_code "[SPEC-5] missing plan.json yields rc=1 (not rc=2)" "1" "$rc_t2"
 assert_file_not_exists "no diff.patch written when plan.json missing" "$OUT_DIFF_T2"
 assert_file_exists "[SPEC-5] build-summary.json written with v2 result when plan.json missing" "$OUT_SUMMARY_T2"
-_t2_disp="$(jq -r '.disposition // ""' "$OUT_SUMMARY_T2" 2>/dev/null || echo "")"
-assert_eq "[SPEC-5] plan-missing summary has disposition:broken" "broken" "$_t2_disp"
+_t2_disp="$(jq -r '.outcome // ""' "$OUT_SUMMARY_T2" 2>/dev/null || echo "")"
+assert_eq "[SPEC-5] plan-missing summary has outcome:broken" "broken" "$_t2_disp"
 
 # ─── Test 3: produces diff.patch + build-summary.json via mocked loop ────────
 print_test_section "T3: produces diff.patch and build-summary.json with mocked loop"
@@ -317,9 +318,9 @@ fi
 print_test_section "T4: build-summary.json has schema_version=4 + loop fields + v2 contract (SPEC-23/24/22)"
 
 assert_json_key "[SPEC-22] schema_version remains 4 (independent of result_contract)" "$summary_json_t3" ".schema_version" "4"
-assert_json_key "verdict field present (#507)" "$summary_json_t3" ".verdict" "pass"
-assert_json_key "[SPEC-23] result_contract:2 on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".result_contract" "2"
-assert_json_key "[SPEC-24] disposition:complete on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".disposition" "complete"
+assert_json_key "outcome field present (#507, #2366)" "$summary_json_t3" ".outcome" "pass"
+assert_json_key "[SPEC-23] result_contract:3 on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".result_contract" "3"
+assert_json_key "[SPEC-24] no verdict or disposition field on normal-pass branch (#2366)" "$summary_json_t3" 'has("verdict") or has("disposition")' "false"
 
 files_changed_type="$(printf '%s' "$summary_json_t3" | jq -r '.files_changed | type' 2>/dev/null || echo "missing")"
 assert_eq "files_changed is an array" "array" "$files_changed_type"
@@ -383,8 +384,8 @@ assert_eq "diff.patch is empty on scope violation (0 bytes)" "0" "$t6_size"
 
 summary_t6="$(cat "$OUT_SUMMARY_T6")"
 assert_json_key "scope_violation == true" "$summary_t6" ".scope_violation" "true"
-assert_json_key "[SPEC-3] result_contract:2 on scope_violation branch" "$summary_t6" ".result_contract" "2"
-assert_json_key "[SPEC-4] disposition:complete on scope_violation branch — the verdict carries it (#2187)" "$summary_t6" ".disposition" "complete"
+assert_json_key "[SPEC-3] result_contract:3 on scope_violation branch" "$summary_t6" ".result_contract" "3"
+assert_json_key "[SPEC-4] outcome:fail on scope_violation branch — scope_violation and the scope request carry it (#2187, #2366)" "$summary_t6" ".outcome" "fail"
 
 t6_violation_count="$(printf '%s' "$summary_t6" | jq '.scope_violations | length' 2>/dev/null || echo 0)"
 if [[ "$t6_violation_count" -ge 1 ]]; then
@@ -786,11 +787,16 @@ MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
 
-# ─── SPEC-8: manifest declares result_contract:2 ──────────────────────────────
-print_test_section "SPEC-8: build manifest declares result_contract:2 under provides"
+# ─── SPEC-8: manifest declares result_contract:3 (#2366) ─────────────────────
+print_test_section "SPEC-8: build manifest declares result_contract:3 under provides"
 
 _manifest_rc="$(grep -oE 'result_contract:[[:space:]]*[0-9]+' "$PLUGIN_DIR/manifest.yaml" | grep -oE '[0-9]+')"
-assert_eq "[SPEC-8] manifest provides.result_contract == 2" "2" "$_manifest_rc"
+assert_eq "[SPEC-8] manifest provides.result_contract == 3" "3" "$_manifest_rc"
+if grep -q 'valid_verdicts' "$PLUGIN_DIR/manifest.yaml"; then
+    assert_fail "[SPEC-8] a contract-3 manifest declares no valid_verdicts" "found"
+else
+    assert_pass "[SPEC-8] a contract-3 manifest declares no valid_verdicts"
+fi
 
 # ─── SPEC-13: build_stage_run returns rc=1 when state_file absent ─────────────
 print_test_section "SPEC-27: build_stage_run returns rc=1 when state_file argument is absent"
@@ -806,10 +812,10 @@ assert_exit_code "[SPEC-27] build_stage_run returns rc=1 (not rc=2) when state_f
 # reached a state dir. #2053/#2057 were both this defect class in another plugin.
 _s13_summary="$_S13_ARTIFACT_DIR/build-summary.json"
 assert_file_exists "[SPEC-27] build-summary.json written when state_file absent" "$_s13_summary"
-assert_eq "[SPEC-27] state_file-absent summary has result_contract:2" \
-    "2" "$(jq -r '.result_contract // ""' "$_s13_summary" 2>/dev/null || echo "")"
-assert_eq "[SPEC-27] state_file-absent summary has disposition:broken" \
-    "broken" "$(jq -r '.disposition // ""' "$_s13_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-27] state_file-absent summary has result_contract:3" \
+    "3" "$(jq -r '.result_contract // ""' "$_s13_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-27] state_file-absent summary has outcome:broken" \
+    "broken" "$(jq -r '.outcome // ""' "$_s13_summary" 2>/dev/null || echo "")"
 assert_eq "[SPEC-27] state_file-absent summary has reason:missing_state_file" \
     "missing_state_file" "$(jq -r '.reason // ""' "$_s13_summary" 2>/dev/null || echo "")"
 
@@ -913,10 +919,10 @@ set -e
 assert_exit_code "[SPEC-28] SIGINT returns rc=1 (not rc=130)" "1" "$rc_s14"
 assert_file_exists "[SPEC-28] build-summary.json written on SIGINT path" "$OUT_SUMMARY_S14"
 _s14_rc="$(jq -r '.result_contract // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
-_s14_disp="$(jq -r '.disposition // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
+_s14_disp="$(jq -r '.outcome // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
 _s14_rsn="$(jq -r '.reason // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
-assert_eq "[SPEC-28] SIGINT summary has result_contract:2" "2" "$_s14_rc"
-assert_eq "[SPEC-28] SIGINT summary has disposition:interrupted" "interrupted" "$_s14_disp"
+assert_eq "[SPEC-28] SIGINT summary has result_contract:3" "3" "$_s14_rc"
+assert_eq "[SPEC-28] SIGINT summary has outcome:interrupted" "interrupted" "$_s14_disp"
 assert_eq "[SPEC-28] SIGINT summary has reason:sigint" "sigint" "$_s14_rsn"
 
 MOCK_LOOP_RC=0
@@ -939,8 +945,8 @@ _build_stage_run_inner "$SCOPE_MANIFEST" "$ARTIFACT_DIR_RL/plan.json" \
     "$ARTIFACT_DIR_RL/diff.patch" "$ARTIFACT_DIR_RL/build-summary.json" "$ARTIFACT_DIR_RL" >/dev/null 2>&1
 rc_rl=$?
 set -e
-assert_eq "[#2111] a rate-limited build declares disposition:rate_limited (#2187; not interrupted)" \
-    "rate_limited" "$(jq -r '.disposition // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")"
+assert_eq "[#2111] a rate-limited build declares outcome:rate_limited (#2187; not interrupted)" \
+    "rate_limited" "$(jq -r '.outcome // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")"
 assert_eq "[#2111] reason names the rate limit" \
     "router_rate_limited" "$(jq -r '.reason // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")"
 assert_contains "[#2111] the reset text rides under data.rate_limit.message" \
@@ -1077,10 +1083,10 @@ set -e
 assert_exit_code "[SPEC-31] build_stage_run returns rc=1 when ZBUILD_STAGE_INPUTS is absent" "1" "$rc_ni"
 _ni_summary="$STATE_DIR_NI/artifacts/build-summary.json"
 assert_file_exists "[SPEC-31] build-summary.json written when ZBUILD_STAGE_INPUTS is absent" "$_ni_summary"
-assert_eq "[SPEC-31] stage-inputs-absent summary has result_contract:2" \
-    "2" "$(jq -r '.result_contract // ""' "$_ni_summary" 2>/dev/null || echo "")"
-assert_eq "[SPEC-31] stage-inputs-absent summary has disposition:broken" \
-    "broken" "$(jq -r '.disposition // ""' "$_ni_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-31] stage-inputs-absent summary has result_contract:3" \
+    "3" "$(jq -r '.result_contract // ""' "$_ni_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-31] stage-inputs-absent summary has outcome:broken" \
+    "broken" "$(jq -r '.outcome // ""' "$_ni_summary" 2>/dev/null || echo "")"
 assert_eq "[SPEC-31] stage-inputs-absent summary has reason:missing_stage_inputs" \
     "missing_stage_inputs" "$(jq -r '.reason // ""' "$_ni_summary" 2>/dev/null || echo "")"
 

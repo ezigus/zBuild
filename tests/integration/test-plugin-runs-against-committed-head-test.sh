@@ -102,7 +102,7 @@ fi
 # verdict=pass derived from the test_cmd's parseable output — proves the
 # parser ran on real test runner output, not the apply-error path.
 assert_eq "verdict=pass from parsed test_cmd output" "pass" \
-    "$(jq -r '.verdict' "$OUT_JSON_A" 2>/dev/null)"
+    "$(jq -r '.outcome' "$OUT_JSON_A" 2>/dev/null)"
 
 # Marker present in test_output proves the test_cmd actually executed
 # (not short-circuited by an apply check).

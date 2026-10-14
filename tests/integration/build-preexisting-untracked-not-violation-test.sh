@@ -144,11 +144,11 @@ fi
 # ── (2) build-summary verdict is NOT scope_violation; stray not in list ────
 SUMMARY="$STATE_DIR/artifacts/build-summary.json"
 if [[ -f "$SUMMARY" ]]; then
-    verdict="$(jq -r '.verdict // ""' "$SUMMARY" 2>/dev/null || echo "")"
-    if [[ "$verdict" == "scope_violation" ]]; then
-        assert_fail "build verdict is not scope_violation" "verdict=scope_violation"
+    verdict="$(jq -r '.scope_violation // ""' "$SUMMARY" 2>/dev/null || echo "")"
+    if [[ "$verdict" == "true" ]]; then
+        assert_fail "build reports no scope violation" "scope_violation=true"
     else
-        assert_pass "build verdict is not scope_violation (got: ${verdict:-<empty>})"
+        assert_pass "build reports no scope violation (got: ${verdict:-<empty>})"
     fi
     if grep -Fxq 'config/templates/runner-state-dir-minimal.yaml' \
         <<< "$(jq -r '.scope_violations[]?' "$SUMMARY" 2>/dev/null)"; then
