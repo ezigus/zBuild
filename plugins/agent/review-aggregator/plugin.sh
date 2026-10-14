@@ -278,9 +278,9 @@ _review_aggregator_run_inner() {
     # review-report's _rr_aggregate): #1849 — a lens that did not run is named
     # and makes the report needs_attention; #1753 — no lens at all is no review,
     # never `ready` (all() over an empty score list is true). Then the envelope.
-    local _nr
+    local _nr _annotated _ra_ok=0
     _nr="$(jq -c '[.[] | select(.ran == false) | .name]' "$lenses_file" 2>/dev/null || printf '[]')"
-    jq --argjson nr "${_nr:-[]}" --argjson total "${lens_count:-0}" '
+    _annotated="$(jq --argjson nr "${_nr:-[]}" --argjson total "${lens_count:-0}" '
         . + {did_not_run: $nr}
         | if $total == 0 then
             .merge_readiness = "needs_attention"
@@ -292,9 +292,15 @@ _review_aggregator_run_inner() {
                           + "their review is missing, not clean. " + .summary)
             | .escalation_note = "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline."
           else . end' \
-        "$out_json" 2>/dev/null | atomic_write "$out_json" || true
-    # The review is advisory: the stage finished, so its outcome is pass (#2366).
-    stage_result_add "$out_json" pass "aggregated ${lens_count:-0} lens result(s)" || true
+        "$out_json" 2>/dev/null)" && [[ -n "$_annotated" ]] && atomic_write "$out_json" <<< "$_annotated" && _ra_ok=1
+    # The review is advisory: when the report is complete the stage finished and
+    # its outcome is pass (#2366). A report that could not say which lenses did
+    # not run is incomplete, and is never stamped pass.
+    if (( _ra_ok )); then
+        stage_result_add "$out_json" pass "aggregated ${lens_count:-0} lens result(s)" || true
+    else
+        stage_result_add "$out_json" broken "the review report could not record which lenses did not run" || true
+    fi
 
     local merge_readiness
     merge_readiness="$(jq -r '.merge_readiness // "advisory"' "$out_json" 2>/dev/null || echo advisory)"

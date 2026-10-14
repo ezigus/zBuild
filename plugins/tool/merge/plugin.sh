@@ -99,7 +99,11 @@ _merge_pr_fallback() {
         local _pr_disp
         # pr-open's own ending: a contract-3 outcome, or a contract-2 disposition.
         _pr_disp="$(jq -r '.outcome // .disposition // empty' "$(dirname "$merge_result_out")/pr-result.json" 2>/dev/null || true)"
-        outcome_is_valid "${_pr_disp:-}" && [[ "$_pr_disp" != pass && "$_pr_disp" != fail ]] || _pr_disp=broken
+        # Keep pr-open's own ending only when it is one: a valid outcome other than
+    # pass or fail. Anything else is a broken result.
+    if ! outcome_is_valid "${_pr_disp:-}" || [[ "$_pr_disp" == pass || "$_pr_disp" == fail ]]; then
+        _pr_disp=broken
+    fi
         stage_result_write "$merge_result_out" "$_pr_disp" \
             "gate not pass — fallback to PR failed: $reason" '{"mode":"pr_fallback"}'
         return 1
