@@ -1,11 +1,1 @@
-{
-  "result_contract": 2,
-  "verdict": "complete",
-  "disposition": "complete",
-  "reason": "snapshotted zbuild/state/issue-1944",
-  "data": {
-    "snapshot": "saved",
-    "pushed": null,
-    "identity_present": true
-  }
-}
+{"result_contract":3,"outcome":"pass","reason":"snapshotted zbuild/state/issue-1944","data":{"snapshot":"unchanged","pushed":null,"identity_present":true}}
