@@ -40,4 +40,6 @@ trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; ...' TERM
 This kills the inner group immediately when plugin_hook_call receives TERM from the outer watchdog.
 
 ## Design document structure
-Will produce design.md with all files in scope and SPEC list aligned to R-1..R-13.
+design.md written to /home/runner/work/_temp/zbuild-state/artifacts/design.md.
+Complete scope and acceptance blocks covering R-1..R-13 with 18 SPECs.
+Supersedes block covers runner-job-control-abort-test.sh flag-on and SPEC-6b.
