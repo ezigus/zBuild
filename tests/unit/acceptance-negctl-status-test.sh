@@ -181,7 +181,7 @@ printf '{"inputs":{"design":"%s"}}\n' "$ST5/artifacts/design.md" > "$ST5/stage-i
       && acceptance_gate_run "acceptance-gate" "$ST5/pipeline-state.json" ) >/dev/null 2>&1 || true
 RES5="$ST5/artifacts/acceptance-gate-result.json"
 REASON5="$(jq -r '.reason // empty' "$RES5" 2>/dev/null)"
-assert_eq "[N5] the gate passes" "pass" "$(jq -r '.verdict // empty' "$RES5" 2>/dev/null)"
+assert_eq "[N5] the gate passes" "pass" "$(jq -r '.outcome // empty' "$RES5" 2>/dev/null)"
 assert_contains "[N5] the reason counts the requirements checked on the old and new code" \
     "$REASON5" "1 checked on the old and new code"
 assert_contains "[N5] ...the ones already done" "$REASON5" "1 already done"

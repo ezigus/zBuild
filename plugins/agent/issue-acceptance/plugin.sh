@@ -14,6 +14,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366: the one writer of a stage's result (contract 3).
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _IA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_IA_ROOT/core/event-bus/event-bus.sh"
@@ -115,9 +118,12 @@ TEST VERDICT: $4
 EOF
 }
 
-# _ia_write <dir> <verdict> <disposition> <reason> [unmet_json] [unsure_json]
+# _ia_write <dir> <outcome> <reason> [unmet_json] [unsure_json] [judgement]
+# #2366 (ADR-054 §6, contract 3): one outcome — pass when every requirement is
+# met, fail when one is not, is unsure, or the issue cannot be read; otherwise
+# how the stage failed to finish. `judgement` keeps "unreadable" as detail.
 _ia_write() {
-    local dir="$1" v="$2" d="$3" r="$4" u="${5:-[]}" s="${6:-[]}"
+    local dir="$1" o="$2" r="$3" u="${4:-[]}" s="${5:-[]}" j="${6:-}"
     mkdir -p "$dir" 2>/dev/null || true
     # #2271 (ADR-068): each unmet acceptance item is a numbered finding. #2304
     # (ADR-069 §7): so is each requirement the judge is not sure of — nothing
@@ -127,15 +133,19 @@ _ia_write() {
         ($s[] | "Not sure this requirement is met: " + tostring
             + ". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.")' \
         <<< "$u" 2>/dev/null | stage_findings_json)"
-    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson u "$u" --argjson s "$s" --argjson fnd "${_fnd:-[]}" \
-        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {unmet: $u, unsure: $s, findings: $fnd}}' \
-        | atomic_write "$dir/issue-acceptance-result.json"; then
+    local _data
+    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson fnd "${_fnd:-[]}" --arg j "$j" \
+        '{unmet: $u, unsure: $s, findings: $fnd} + (if $j == "" then {} else {judgement: $j} end)' 2>/dev/null)"
+    [[ -n "$_data" ]] || _data='{}'
+    if ! stage_result_write "$dir/issue-acceptance-result.json" "$o" "$r" "$_data"; then
         _ia_emit "issue_acceptance.result.write_failed" "dir=$dir"
     fi
     local _body="- every requirement the issue states is met by the change"
     [[ "$u" != "[]" || "$s" != "[]" ]] && _body="$(jq -r --argjson s "$s" '(.[] | "- NOT MET: " + .), ($s[] | "- NOT SURE: " + . + " — what would settle it: a test that fails when it is not met, or the code or document that shows it is met")' <<< "$u" 2>/dev/null || printf -- '- see result')"
-    [[ "$v" == "unreadable" ]] && _body="- the change was not judged against the issue"
-    stage_summary_write "$dir/issue-acceptance-summary.md" "issue-acceptance" "$v" "$r" "$_body"
+    if [[ "$j" == unreadable ]] || [[ "$o" != pass && "$o" != fail ]]; then
+        _body="- the change was not judged against the issue"
+    fi
+    stage_summary_write "$dir/issue-acceptance-summary.md" "issue-acceptance" "$o" "$r" "$_body"
 }
 
 # ─── issue_acceptance_run <stage_id> <state_file> ────────────────────────────
@@ -155,8 +165,9 @@ issue_acceptance_run() {
 
     if _ia_issue_is_placeholder "$issue"; then
         _ia_emit "issue_acceptance.unreadable_issue" "stage=$stage_id"
-        _ia_write "$art" "unreadable" "complete" \
-            "the issue text is absent or a placeholder — the change was not judged against anything"
+        _ia_write "$art" fail \
+            "the issue text is absent or a placeholder — the change was not judged against anything" \
+            "[]" "[]" unreadable
         return 0
     fi
 
@@ -184,7 +195,7 @@ issue_acceptance_run() {
     # prompt order. A prompt that cannot be composed is not sent.
     local _composed
     if ! _composed="$(stage_prompt_compose_parts "$_framed")"; then
-        _ia_write "$art" "unreadable" "misconfigured" \
+        _ia_write "$art" misconfigured \
             "the prompt could not be composed — the engine's blocks are missing; the change was not judged"
         return 1
     fi
@@ -201,7 +212,7 @@ issue_acceptance_run() {
         declare -f _llm_router_classify >/dev/null 2>&1 && _llm_router_classify "$rc" _v _reason 2>/dev/null
         declare -f router_reason_disposition >/dev/null 2>&1 \
             && _disp="$(router_reason_disposition "${_reason:-router_rc_nonzero}")"
-        _ia_write "$art" "unreadable" "$_disp" \
+        _ia_write "$art" "$_disp" \
             "the model call failed (${_reason:-rc=$rc}) — the change was not judged"
         return 1
     fi
@@ -219,7 +230,7 @@ issue_acceptance_run() {
 
     if [[ -z "$_v" ]]; then
         # ADR-054 §6a: the stage ran but its output cannot be used — retry.
-        _ia_write "$art" "unreadable" "unusable" \
+        _ia_write "$art" unusable \
             "no parseable verdict from the model — the change was not judged"
         return 0
     fi
@@ -235,7 +246,7 @@ issue_acceptance_run() {
     fi
 
     _ia_emit "issue_acceptance.judged" "verdict=$_v"
-    _ia_write "$art" "$_v" "complete" "${_r:-judged the change against the issue}" "$_u_json" "$_s_json"
+    _ia_write "$art" "$_v" "${_r:-judged the change against the issue}" "$_u_json" "$_s_json"
     return 0
 }
 

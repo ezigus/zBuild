@@ -14,6 +14,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# #2366: the one writer of a stage's result (contract 3).
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _SCV_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_SCV_ROOT/core/event-bus/event-bus.sh"
@@ -121,24 +124,26 @@ _scv_prompt_limits() {
 EOF
 }
 
-# _scv_write <dir> <verdict> <reason> <uncovered_json> [disposition]
+# _scv_write <dir> <outcome> <reason> <uncovered_json> [judgement]
+# #2366 (ADR-054 §6, contract 3): one outcome — pass when the design covers the
+# issue, fail when it does not or cannot be judged against it, otherwise how the
+# stage failed to finish. `judgement` keeps what was judged (covered, uncovered,
+# unreadable) as detail. ADR-060 §1/§2: the finding is structured, never prose.
 _scv_write() {
-    local dir="$1" v="$2" r="$3" u="${4:-[]}" d="${5:-complete}"
+    local dir="$1" o="$2" r="$3" u="${4:-[]}" j="${5:-}"
     mkdir -p "$dir" 2>/dev/null || true
-    # ADR-054 §6: `disposition` says how the STAGE stopped, not what it
-    # concluded — this stage completed either way. ADR-060 §1/§2: the finding is
-    # structured, never a prose document.
     # #2271 (ADR-068): each uncovered requirement is a numbered finding.
     local _fnd; _fnd="$(jq -r '.[]? | "The issue asks for this and no SPEC covers it: " + tostring' <<< "$u" 2>/dev/null | stage_findings_json)"
-    if ! jq -n --arg v "$v" --arg r "$r" --arg d "$d" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
-        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
-          data: {uncovered: $u, findings: $fnd}}' \
-        | atomic_write "$dir/spec-coverage-result.json"; then
+    local _data
+    _data="$(jq -nc --argjson u "$u" --argjson fnd "${_fnd:-[]}" --arg j "$j" \
+        '{uncovered: $u, findings: $fnd} + (if $j == "" then {} else {judgement: $j} end)' 2>/dev/null)"
+    [[ -n "$_data" ]] || _data='{}'
+    if ! stage_result_write "$dir/spec-coverage-result.json" "$o" "$r" "$_data"; then
         _scv_emit "spec_coverage.result.write_failed" "dir=$dir"
     fi
     local _body="- every requirement the issue states maps to a declared SPEC"
     [[ "$u" != "[]" ]] && _body="$(jq -r '.[] | "- NOT COVERED: " + .' <<< "$u" 2>/dev/null || printf -- '- see result')"
-    stage_summary_write "$dir/spec-coverage-summary.md" "spec-coverage" "$v" "$r" "$_body"
+    stage_summary_write "$dir/spec-coverage-summary.md" "spec-coverage" "$o" "$r" "$_body"
 }
 
 # ─── spec_coverage_run <stage_id> <state_file> [resolved_inputs] ─────────────
@@ -164,8 +169,8 @@ spec_coverage_run() {
     # not read as satisfied.
     if _scv_issue_is_placeholder "$issue"; then
         _scv_emit "spec_coverage.unreadable_issue" "stage=$stage_id"
-        _scv_write "$art" "unreadable" \
-            "the issue text is absent or a placeholder — the design was not judged against anything" "[]"
+        _scv_write "$art" fail \
+            "the issue text is absent or a placeholder — the design was not judged against anything" "[]" unreadable
         return 0
     fi
 
@@ -173,8 +178,8 @@ spec_coverage_run() {
     declare -f extract_acceptance_block >/dev/null 2>&1 \
         && acc="$(extract_acceptance_block "$design" 2>/dev/null || true)"
     if [[ -z "$acc" ]]; then
-        _scv_write "$art" "unreadable" \
-            "no acceptance block in design.md — there is no contract to compare against" "[]"
+        _scv_write "$art" fail \
+            "no acceptance block in design.md — there is no contract to compare against" "[]" unreadable
         return 0
     fi
 
@@ -191,7 +196,7 @@ spec_coverage_run() {
     _task="$(_scv_prompt_own)"
     if ! _framed="$(stage_prompt_compose_text "$_task" "$(_scv_prompt_judge "$issue" "$acc" "$_reqs")" "$(_scv_prompt_limits)")"; then
         _scv_emit "spec_coverage.prompt.refused" "stage=$stage_id"
-        _scv_write "$art" "unreadable" "the prompt could not be composed: the engine's blocks are missing" "[]" "misconfigured"
+        _scv_write "$art" misconfigured "the prompt could not be composed: the engine's blocks are missing" "[]"
         return 0
     fi
     local _raw="" _rtm_rc=0 _scv_rc_file
@@ -218,7 +223,7 @@ spec_coverage_run() {
 
     # The call's rc is classified on EVERY path (review on PR #2262): a call
     # that printed a readable verdict and then timed out still timed out.
-    local _scv_disp="complete"
+    local _scv_disp=""
     if [[ "$_rtm_rc" -ne 0 ]]; then
         local _scv_rv _scv_rr
         _router_rc_classify "$_rtm_rc" _scv_rv _scv_rr 2>/dev/null || true
@@ -228,8 +233,10 @@ spec_coverage_run() {
     fi
 
     if [[ -z "$_v" ]]; then
-        _scv_write "$art" "unreadable" \
-            "no parseable verdict from the model — the design was not judged" "[]" "$_scv_disp"
+        # An answer with no verdict is an unusable answer, unless the call
+        # itself failed — then that is how the stage ended.
+        _scv_write "$art" "${_scv_disp:-unusable}" \
+            "no parseable verdict from the model — the design was not judged" "[]"
         return 0
     fi
 
@@ -240,8 +247,12 @@ spec_coverage_run() {
             | jq -sc . 2>/dev/null || printf '[]')"
     fi
 
+    # A call that printed a verdict and then failed still failed (review on
+    # PR #2262): how it ended is the outcome; what it read is kept as detail.
+    local _o=fail
+    [[ "$_v" == covered ]] && _o=pass
     _scv_emit "spec_coverage.judged" "verdict=$_v"
-    _scv_write "$art" "$_v" "${_r:-judged the design against the issue}" "$_u_json" "$_scv_disp"
+    _scv_write "$art" "${_scv_disp:-$_o}" "${_r:-judged the design against the issue}" "$_u_json" "$_v"
     return 0
 }
 

@@ -74,21 +74,16 @@ route_to_model() {
 
 # ─── SPEC-7 [change]: manifest provides.result_contract == 2 and valid_verdicts ─
 _1840_contract="$(yaml_get "$PLUGIN_DIR/manifest.yaml" "provides.result_contract" 2>/dev/null || true)"
-assert_eq "[SPEC-7] manifest provides.result_contract == 2" "2" "$_1840_contract"
-# config.valid_verdicts must declare both complete and degraded
-_1840_vv_section="$(grep -A5 'valid_verdicts' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
-if grep -q 'complete' <<< "$_1840_vv_section" && grep -q 'degraded' <<< "$_1840_vv_section"; then
-    assert_pass "[SPEC-7] config.valid_verdicts declares complete and degraded"
-else
-    assert_fail "[SPEC-7] config.valid_verdicts must declare complete and degraded" \
-        "${_1840_vv_section:-absent}"
-fi
+assert_eq "[SPEC-7] manifest provides.result_contract == 3 (#2366)" "3" "$_1840_contract"
+# A lens is a stage like any other: one outcome, no verdict words of its own.
+assert_eq "[SPEC-7] config declares no valid_verdicts (#2366)" "0" \
+    "$(grep -c 'valid_verdicts' "$PLUGIN_DIR/manifest.yaml" || true)"
 # validate_manifest must pass with the updated manifest
 set +e
 validate_manifest "$PLUGIN_DIR/manifest.yaml" >/dev/null 2>&1
 _1840_vm_rc=$?
 set -e
-assert_eq "[SPEC-7] validate_manifest passes with result_contract:2 and valid_verdicts" \
+assert_eq "[SPEC-7] validate_manifest passes with result_contract:3" \
     "0" "$_1840_vm_rc"
 
 # ─── SPEC-12 [guard]: outputs[].lens_result declares primary: true ────────────
@@ -142,12 +137,10 @@ _1840_s1_rc=$?
 set -e
 assert_eq "[SPEC-1] success path returns 0" "0" "$_1840_s1_rc"
 assert_file_exists "[SPEC-1] success path writes lens file" "$out_1840_s1"
-assert_eq "[SPEC-1] result_contract == 2 on success" \
-    "2" "$(jq -r '.result_contract // empty' "$out_1840_s1")"
-assert_eq "[SPEC-1] verdict == complete on success" \
-    "complete" "$(jq -r '.verdict // empty' "$out_1840_s1")"
-assert_eq "[SPEC-1] disposition == complete on success" \
-    "complete" "$(jq -r '.disposition // empty' "$out_1840_s1")"
+assert_eq "[SPEC-1] result_contract == 3 on success (#2366)" \
+    "3" "$(jq -r '.result_contract // empty' "$out_1840_s1")"
+assert_eq "[SPEC-1] no verdict or disposition field on success" \
+    "false" "$(jq -r 'has("verdict") or has("disposition")' "$out_1840_s1")"
 _1840_s1_reason="$(jq -r '.reason // ""' "$out_1840_s1" 2>/dev/null || true)"
 if [[ -n "$_1840_s1_reason" ]]; then
     assert_pass "[SPEC-1] reason is non-empty on success"
@@ -172,12 +165,10 @@ set +e
 _review_lens_run_inner "1840spec2" "$scope_manifest" "$evidence" "$out_1840_s2" "$artifact_dir"
 set -e
 assert_file_exists "[SPEC-2] router-failure degrade writes lens file" "$out_1840_s2"
-assert_eq "[SPEC-2] result_contract == 2 on router failure" \
-    "2" "$(jq -r '.result_contract // empty' "$out_1840_s2")"
-assert_eq "[SPEC-2] verdict == degraded on router failure" \
-    "degraded" "$(jq -r '.verdict // empty' "$out_1840_s2")"
-assert_eq "[SPEC-2] disposition == misconfigured on a router setup failure (rc=2, #2187)" \
-    "misconfigured" "$(jq -r '.disposition // empty' "$out_1840_s2")"
+assert_eq "[SPEC-2] result_contract == 3 on router failure" \
+    "3" "$(jq -r '.result_contract // empty' "$out_1840_s2")"
+assert_eq "[SPEC-2] outcome == misconfigured on a router setup failure (rc=2, #2187)" \
+    "misconfigured" "$(jq -r '.outcome // empty' "$out_1840_s2")"
 
 # ─── SPEC-3 [change]: unparseable-reply degrade writes result_contract:2 ──────
 # shellcheck disable=SC2329
@@ -187,12 +178,10 @@ set +e
 _review_lens_run_inner "1840spec3" "$scope_manifest" "$evidence" "$out_1840_s3" "$artifact_dir"
 set -e
 assert_file_exists "[SPEC-3] unparseable degrade writes lens file" "$out_1840_s3"
-assert_eq "[SPEC-3] result_contract == 2 on unparseable reply" \
-    "2" "$(jq -r '.result_contract // empty' "$out_1840_s3")"
-assert_eq "[SPEC-3] verdict == degraded on unparseable reply" \
-    "degraded" "$(jq -r '.verdict // empty' "$out_1840_s3")"
-assert_eq "[SPEC-3] disposition == unusable on unparseable reply (#2187)" \
-    "unusable" "$(jq -r '.disposition // empty' "$out_1840_s3")"
+assert_eq "[SPEC-3] result_contract == 3 on unparseable reply" \
+    "3" "$(jq -r '.result_contract // empty' "$out_1840_s3")"
+assert_eq "[SPEC-3] outcome == unusable on unparseable reply (#2187)" \
+    "unusable" "$(jq -r '.outcome // empty' "$out_1840_s3")"
 
 # ─── SPEC-4 [change]: schema-gate recovery from postamble-bearing response ────
 # The response has a valid lens object FIRST followed by a postamble containing
@@ -383,20 +372,11 @@ assert_eq "[SPEC-9] v1 field score present and unmodified (== 6)" \
 assert_eq "[SPEC-9] v1 field findings[] present with 1 entry (unmodified)" \
     "1" "$(jq '.findings | length' "$out_1840_s9")"
 # v2 additions must also be present — coexistence with v1 fields proves additive-only change
-assert_eq "[SPEC-9] v2 field result_contract present and == 2 (additive)" \
-    "2" "$(jq -r '.result_contract // empty' "$out_1840_s9")"
-_1840_s9_verdict="$(jq -r '.verdict // empty' "$out_1840_s9" 2>/dev/null || true)"
-if [[ -n "$_1840_s9_verdict" ]]; then
-    assert_pass "[SPEC-9] v2 field verdict present (additive)"
-else
-    assert_fail "[SPEC-9] v2 field verdict must be present alongside v1 fields (additive)" "absent"
-fi
-_1840_s9_disposition="$(jq -r '.disposition // empty' "$out_1840_s9" 2>/dev/null || true)"
-if [[ -n "$_1840_s9_disposition" ]]; then
-    assert_pass "[SPEC-9] v2 field disposition present (additive)"
-else
-    assert_fail "[SPEC-9] v2 field disposition must be present alongside v1 fields (additive)" "absent"
-fi
+assert_eq "[SPEC-9] result_contract present and == 3 (#2366)" \
+    "3" "$(jq -r '.result_contract // empty' "$out_1840_s9")"
+# A medium finding is not a high or critical problem the change introduced.
+assert_eq "[SPEC-9] a lens whose findings are below high passes (#2366)" \
+    "pass" "$(jq -r '.outcome // empty' "$out_1840_s9")"
 _1840_s9_reason="$(jq -r '.reason // empty' "$out_1840_s9" 2>/dev/null || true)"
 if [[ -n "$_1840_s9_reason" ]]; then
     assert_pass "[SPEC-9] v2 field reason present (additive)"
@@ -420,10 +400,10 @@ if grep -q '^_review_lens_write_result()' "$PLUGIN_DIR/plugin.sh" 2>/dev/null; t
         "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
     # "verdict" must appear as a jq field (.verdict, "verdict":, verdict:<val>, or --arg verdict),
     # not merely as a comment word — bare string match does not establish jq field.
-    if grep -qE '\.verdict[^a-z_]|"verdict"|--arg[[:space:]]+verdict|verdict:[^a-zA-Z_]' <<< "$_1840_s10_helper"; then
-        assert_pass "[SPEC-10] verdict appears in _review_lens_write_result body as jq field"
+    if grep -qE 'stage_result_(add|write)' <<< "$_1840_s10_helper"; then
+        assert_pass "[SPEC-10] _review_lens_write_result writes the outcome with the shared writer (#2366)"
     else
-        assert_fail "[SPEC-10] verdict must appear in _review_lens_write_result body (jq field)" "absent"
+        assert_fail "[SPEC-10] _review_lens_write_result must write the outcome with the shared writer" "absent"
     fi
     # The amended coercion grep (approve|request_changes|block) must NOT fire on the helper body
     if grep -qiE '\b(approve|request_changes)\b|"block"' <<< "$_1840_s10_helper"; then
@@ -435,6 +415,32 @@ else
     assert_fail "[SPEC-10] _review_lens_write_result must exist for SPEC-10 to be verifiable" "absent"
 fi
 
+
+# ─── #2366: a lens is a stage like any other — its own fail rule ─────────────
+# A lens fails when it found a high or critical problem the change introduced;
+# one the code before the change already had does not fail it.
+# shellcheck disable=SC2329
+route_to_model() {
+    printf 'call\n' >> "$_RL_CALLS"
+    printf '%s' '{"score":3,"findings":[{"file":"core/c.sh","category":"injection","severity":"high","line":9,"message":"unquoted eval","introduced":true}]}'
+    return 0
+}
+out_2366_f="$artifact_dir/lens-2366fail.json"
+set +e; _review_lens_run_inner "2366fail" "$scope_manifest" "$evidence" "$out_2366_f" "$artifact_dir"; set -e
+assert_eq "[#2366] a high problem the change introduced fails the lens" \
+    "fail" "$(jq -r '.outcome // empty' "$out_2366_f")"
+assert_eq "[#2366] ...its findings stay where the aggregator reads them" \
+    "1" "$(jq '.findings | length' "$out_2366_f")"
+# shellcheck disable=SC2329
+route_to_model() {
+    printf 'call\n' >> "$_RL_CALLS"
+    printf '%s' '{"score":4,"findings":[{"file":"core/c.sh","category":"injection","severity":"critical","line":9,"message":"old eval","introduced":false}]}'
+    return 0
+}
+out_2366_p="$artifact_dir/lens-2366pre.json"
+set +e; _review_lens_run_inner "2366pre" "$scope_manifest" "$evidence" "$out_2366_p" "$artifact_dir"; set -e
+assert_eq "[#2366] a critical problem the code already had does not fail the lens" \
+    "pass" "$(jq -r '.outcome // empty' "$out_2366_p")"
 
 cleanup_test_env
 print_test_results

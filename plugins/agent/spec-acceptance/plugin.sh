@@ -39,6 +39,9 @@ source "$_AG_ROOT/scripts/lib/acceptance-disposition.sh"
 source "$_AG_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$_AG_ROOT/scripts/lib/stage-summary.sh"
+# #2366: the one writer of a stage's result (contract 3).
+# shellcheck source=../../../scripts/lib/stage-result.sh
+source "$_AG_ROOT/scripts/lib/stage-result.sh"
 # #1241: mechanical gates open no router/command span, so this plugin sources the
 # stage-io chokepoint directly (router plugins get it via route.sh) to frame its
 # operator summary. Load-once sentinel makes this a no-op when the runner already
@@ -133,8 +136,8 @@ acceptance_gate_run() {
     # Fence present but unparseable → fail closed (a malformed contract must NOT
     # bypass the gate; this is a genuine violation, NOT an applicability no-op).
     if ! extract_acceptance_block "$design_md" >/dev/null 2>&1; then
-        printf '{"result_contract":2,"verdict":"fail","reason":"malformed_acceptance_block","disposition":"complete","severity":"terminal","failures":["malformed_acceptance_block"]}\n' \
-            | atomic_write "$result_file"
+        _ag_write_result "$result_file" fail "malformed_acceptance_block" \
+            '{"severity":"terminal","failures":["malformed_acceptance_block"]}'
         printf 'verdict=fail\nreason=malformed_acceptance_block\n' \
             | atomic_write "$artifact_dir/acceptance-summary.txt"
         eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
@@ -468,10 +471,14 @@ acceptance_gate_run() {
         local _ag_cl="${reason_msg#the acceptance check failed — }"
         _ag_fnd="$(printf '%s\n' "${_ag_cl//; /$'\n'}" | stage_findings_json)"
     fi
-    jq -cn --arg v "$verdict" --arg d "$disposition" --arg sv "$severity" --arg r "${reason_msg:-$_pass_reason}" \
-        --argjson f "$failures_json" --argjson fnd "${_ag_fnd:-[]}" \
-        '{result_contract:2,verdict:$v,disposition:$d,severity:$sv,reason:$r,failures:$f,data:{findings:$fnd}}' \
-        | atomic_write "$result_file"
+    # #2366 (contract 3): one outcome — pass or fail, or `broken` when the gate
+    # could not check anything. severity and failures stay top-level, where
+    # the cycle and the aggregator read them.
+    local _ag_outcome="$verdict"
+    [[ "$disposition" != complete ]] && _ag_outcome="$disposition"
+    _ag_write_result "$result_file" "$_ag_outcome" "${reason_msg:-$_pass_reason}" \
+        "$(jq -cn --arg sv "$severity" --argjson f "$failures_json" --argjson fnd "${_ag_fnd:-[]}" \
+            '{severity:$sv,failures:$f,data:{findings:$fnd}}')"
 
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"
 

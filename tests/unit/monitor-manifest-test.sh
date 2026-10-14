@@ -59,10 +59,10 @@ PLUGIN_DIR="$REPO_ROOT/plugins/agent/monitor"
 MON_MANIFEST="$PLUGIN_DIR/manifest.yaml"
 
 # ─── SPEC-1: manifest declares provides.result_contract: 2 ──────────────────
-print_test_section "manifest declares provides.result_contract: 2"
+print_test_section "manifest declares provides.result_contract: 3"
 
 _s1_rc="$(awk '/^provides:/{f=1;next} f && /^[a-zA-Z]/{f=0} f && /result_contract:/{print $2; exit}' "$MON_MANIFEST" || echo '')"
-assert_eq "manifest provides.result_contract is 2" "2" "$_s1_rc"
+assert_eq "manifest provides.result_contract is 3 (#2366)" "3" "$_s1_rc"
 
 # ─── SPEC-7: manifest declares config.router {timeout_s:300, max_turns:10} ──
 print_test_section "manifest declares config.router timeout_s:300, max_turns:10"
@@ -73,26 +73,9 @@ _s7_maxturns="$(grep 'max_turns:' <<< "$_s7_router_block" | awk '{print $2}' || 
 assert_eq "manifest config.router.timeout_s is 300" "300" "$_s7_timeout"
 assert_eq "manifest config.router.max_turns is 10" "10" "$_s7_maxturns"
 
-# ─── SPEC-11: config.valid_verdicts remains exactly [pass, degraded] ─────────
-print_test_section "config.valid_verdicts remains exactly [pass, degraded]"
-
-_s11_stanza="$(awk '
-    /^[[:space:]]*valid_verdicts:/ { f=1; next }
-    f && /^[[:space:]]*-[[:space:]]/ { print; next }
-    f { exit }
-' "$MON_MANIFEST" 2>/dev/null || true)"
-_s11_count="$(grep -c '^[[:space:]]*-[[:space:]]' <<< "$_s11_stanza" 2>/dev/null || true)"
-assert_eq "valid_verdicts has exactly 2 entries" "2" "$_s11_count"
-if grep -qx '[[:space:]]*- pass' <<< "$_s11_stanza"; then
-    assert_pass "valid_verdicts includes pass"
-else
-    assert_fail "valid_verdicts includes pass" "${_s11_stanza:-absent}"
-fi
-if grep -qx '[[:space:]]*- degraded' <<< "$_s11_stanza"; then
-    assert_pass "valid_verdicts includes degraded"
-else
-    assert_fail "valid_verdicts includes degraded" "${_s11_stanza:-absent}"
-fi
+# ─── SPEC-11 (#2366): one outcome — the manifest declares no verdict words ───
+print_test_section "config declares no valid_verdicts (contract 3)"
+assert_eq "no valid_verdicts in the manifest" "0" "$(grep -c 'valid_verdicts' "$MON_MANIFEST" || true)"
 
 # ─── SPEC-12: monitor declares no inputs: (ADR-055 §1, amended 2026-10-12) ────
 # deploy_result / pr_url reach it through the index of every stage's latest

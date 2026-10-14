@@ -71,7 +71,7 @@ REPO_C1="$(_build_repo "v2c-c1" '#!/usr/bin/env bash
 exit 0')"
 printf '# Design\nNo acceptance block here.\n' > "$REPO_C1/design.md"
 set +e; _run_gate "$REPO_C1"; set -e
-assert_eq "[SPEC-1] design_acceptance_block: result_contract:2 present" "2" \
+assert_eq "[SPEC-1] design_acceptance_block: result_contract:3 present (#2366)" "3" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
 assert_eq "[SPEC-2] design_acceptance_block: acceptance-summary.txt written" "1" \
     "$([[ -f "$REPO_C1/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
@@ -101,7 +101,7 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO_C2"; set -e
-assert_eq "[SPEC-1] merge_base_resolvable: result_contract:2 present" "2" \
+assert_eq "[SPEC-1] merge_base_resolvable: result_contract:3 present (#2366)" "3" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
 assert_eq "[SPEC-2] merge_base_resolvable: acceptance-summary.txt written" "1" \
     "$([[ -f "$REPO_C2/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
@@ -112,7 +112,7 @@ REPO_C3="$(_build_repo "v2c-c3" '#!/usr/bin/env bash
 exit 0')"
 printf '```acceptance\nTESTFILES:\n```\n' > "$REPO_C3/design.md"
 set +e; _run_gate "$REPO_C3"; set -e
-assert_eq "[SPEC-1] tagged_testfiles: result_contract:2 present" "2" \
+assert_eq "[SPEC-1] tagged_testfiles: result_contract:3 present (#2366)" "3" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
 assert_eq "[SPEC-2] tagged_testfiles: acceptance-summary.txt written" "1" \
     "$([[ -f "$REPO_C3/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
@@ -126,7 +126,7 @@ cat > "$REPO_C4/design.md" <<'EOF'
 SPEC-1: missing testfiles section and closing fence
 EOF
 set +e; _run_gate "$REPO_C4"; set -e
-assert_eq "[SPEC-1] malformed_acceptance_block: result_contract:2 present" "2" \
+assert_eq "[SPEC-1] malformed_acceptance_block: result_contract:3 present (#2366)" "3" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
 assert_eq "[SPEC-2] malformed_acceptance_block: acceptance-summary.txt written" "1" \
     "$([[ -f "$REPO_C4/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
@@ -146,9 +146,9 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO_C5"; set -e
-assert_eq "[SPEC-1][SPEC-5] pass path: result_contract:2 present" "2" \
+assert_eq "[SPEC-1][SPEC-5] pass path: result_contract:3 present (#2366)" "3" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
-assert_eq "pass path: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "pass path: outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 
 # ── C6: fail path → result_contract:2 ──────────────────────────────────────────
 REPO_C6="$(_build_repo "v2c-c6" '#!/usr/bin/env bash
@@ -162,10 +162,10 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO_C6"; set -e
-assert_eq "[SPEC-1] fail path: result_contract:2 present" "2" \
+assert_eq "[SPEC-1] fail path: result_contract:3 present (#2366)" "3" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
 assert_eq "[SPEC-5] fail path: verdict=fail (dedicated fail test case)" \
-    "fail" "$(jq -r .verdict <<<"$RESULT")"
+    "fail" "$(jq -r .outcome <<<"$RESULT")"
 
 # ── C7: SPEC-3 — zero grep hits for the literal '$artifact_dir/design.md' ───────
 _hits="$(grep -cF '$artifact_dir/design.md' \
@@ -208,7 +208,7 @@ _rc_c8=$?
 set -e
 _result_c8="$(cat "$_state_c8/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
 assert_eq "[SPEC-3] ZBUILD_STAGE_INPUTS non-standard path: gate processes acceptance block (verdict=pass)" \
-    "pass" "$(jq -r .verdict <<<"$_result_c8")"
+    "pass" "$(jq -r .outcome <<<"$_result_c8")"
 # #2161: a pass carries a reason too (ADR-054 mandatory) — assert it is not the no-op's.
 _reason_c8="$(jq -r '.reason // ""' <<<"$_result_c8")"
 if [[ -n "$_reason_c8" && "$_reason_c8" != "precondition_unmet" ]]; then
@@ -217,14 +217,10 @@ else
     assert_fail "[SPEC-3] ZBUILD_STAGE_INPUTS non-standard path: no precondition_unmet (block was found)" "reason=$_reason_c8"
 fi
 
-# ── C9: SPEC-5 — manifest declares valid_verdicts: [pass, fail] ─────────────────
+# ── C9: SPEC-5 — contract 3 (#2366): the manifest declares no verdict words ──
 MANIFEST_PATH="$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml"
-_vv_block="$(awk '/^  valid_verdicts:/{found=1; next} found && /^    - /{print; next} found{exit}' \
-    "$MANIFEST_PATH")"
-_vv_count="$(grep -c '^\s*-' <<< "$_vv_block" || true)"
-assert_eq "[SPEC-5] manifest declares exactly 2 valid_verdicts" "2" "$_vv_count"
-assert_contains "[SPEC-5] manifest valid_verdicts includes 'pass'" "$_vv_block" "- pass"
-assert_contains "[SPEC-5] manifest valid_verdicts includes 'fail'" "$_vv_block" "- fail"
+assert_eq "[SPEC-5] manifest declares no valid_verdicts (one outcome, #2366)" \
+    "0" "$(grep -c 'valid_verdicts' "$MANIFEST_PATH" || true)"
 
 # ── C10: SPEC-6 — manifest declares tier_default: T1; plugin.sh has no model.route call ──
 _manifest_text="$(cat "$MANIFEST_PATH")"
@@ -232,8 +228,8 @@ assert_contains "[SPEC-6] manifest declares tier_default: T1" "$_manifest_text" 
 _route_hits="$(grep -c 'model\.route' \
     "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" 2>/dev/null || true)"
 assert_eq "[SPEC-6] plugin.sh: zero model.route calls (non-routing mechanical gate)" "0" "$_route_hits"
-assert_contains "[SPEC-6] manifest provides section declares result_contract: 2 (v2 migration)" \
-    "$_manifest_text" "result_contract: 2"
+assert_contains "[SPEC-6] manifest provides section declares result_contract: 3 (#2366)" \
+    "$_manifest_text" "result_contract: 3"
 
 # ── C11: SPEC-7 — manifest declares exactly one primary: true output (gate_result) ──
 _primary_count="$(grep -c '^\s*primary: true' "$MANIFEST_PATH" 2>/dev/null || true)"

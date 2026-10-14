@@ -32,7 +32,7 @@ requires:
 
 provides:
   role: spec_correspondence
-  result_contract: 2
+  result_contract: 3
   events:
     - spec_correspondence.judged
     - spec_correspondence.stage_clock
@@ -54,12 +54,6 @@ config:
   # the stage wrote a complete pass. It is deliberately not folded into
   # `uncheckable`, which is a finding about the REQUIREMENT; this is a fact
   # about the judge, and an operator must be able to tell them apart.
-  valid_verdicts:
-    - corresponds
-    - partial
-    - mismatch
-    - uncheckable
-    - unjudged
   tier_default: T2
 
 outputs:

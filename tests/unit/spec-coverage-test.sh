@@ -13,10 +13,10 @@
 # cannot re-author. The standard here is the ISSUE, and design cannot edit it,
 # so the only way to converge is to actually cover it.
 #
-#   SPEC-1 [change]: an issue requirement no SPEC covers yields verdict=uncovered
+#   SPEC-1 [change]: an issue requirement no SPEC covers yields outcome=fail
 #                    and NAMES the requirement in structured data
-#   SPEC-2 [change]: a design that covers the issue yields verdict=covered
-#   SPEC-3 [change]: placeholder issue text yields `unreadable`, NEVER "covered".
+#   SPEC-2 [change]: a design that covers the issue yields outcome=pass
+#   SPEC-3 [change]: placeholder issue text yields `fail`, NEVER a pass.
 #                    intake writes the literal "GitHub issue #<N>" when the fetch
 #                    fails, with no marker in the artifact (#1804) — a design
 #                    judged against a placeholder must not read as satisfied.
@@ -24,8 +24,9 @@
 #                    check" and "the check did not happen"
 #   SPEC-4 [guard] : the prompt carries the issue text and the acceptance block,
 #                    and NOT the diff
-#   SPEC-5 [guard] : v2 contract — result_contract:2, rc binary, and a stage
-#                    that merely FINDS a problem is disposition:complete
+#   SPEC-5 [guard] : contract 3 (#2366) — result_contract:3, one outcome, rc
+#                    binary; a stage that FINDS a problem says fail, not a
+#                    failure to finish
 #   SPEC-6 [change]: findings are STRUCTURED data.uncovered[], not prose
 #   SPEC-8 [change]: a SPEC that demands less than its requirement does not
 #                    cover it — fidelity, not just a mapping (#1849)
@@ -94,11 +95,11 @@ _res() { jq -r "$1" "$_A/spec-coverage-result.json" 2>/dev/null || echo MISSING;
 # ── SPEC-2: a covering design passes ───────────────────────────────────────
 _setup covered
 set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc=$?; set -e
-assert_eq "[SPEC-2][change] a covering design yields covered" "covered" "$(_res '.verdict')"
+assert_eq "[SPEC-2][change] a covering design yields pass" "pass" "$(_res '.outcome')"
 assert_eq "[SPEC-5][guard] rc is binary" "0" "$_rc"
-assert_eq "[SPEC-5][guard] result_contract is 2" "2" "$(_res '.result_contract')"
-assert_eq "[SPEC-5][guard] a stage that merely reports is disposition=complete" \
-    "complete" "$(_res '.disposition')"
+assert_eq "[SPEC-5][guard] result_contract is 3" "3" "$(_res '.result_contract')"
+assert_eq "[SPEC-5][guard] no verdict or disposition field (one outcome, #2366)" \
+    "false" "$(_res 'has("verdict") or has("disposition")')"
 
 _P="$(cat "$_SCV_PROMPT" 2>/dev/null || true)"
 assert_contains "[SPEC-4][guard] the prompt carries the issue text" "$_P" "make it refuse a missing config"
@@ -111,7 +112,8 @@ _SCV_REPLY='VERDICT: uncovered
 REASON: the issue also requires refusing a missing config, which no SPEC covers
 UNCOVERED: refusing a missing config'
 set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc2=$?; set -e
-assert_eq "[SPEC-1][change] an uncovered requirement yields uncovered" "uncovered" "$(_res '.verdict')"
+assert_eq "[SPEC-1][change] an uncovered requirement yields fail" "fail" "$(_res '.outcome')"
+assert_eq "[SPEC-1][change] ...and names what was judged" "uncovered" "$(_res '.data.judgement')"
 assert_eq "[SPEC-5][guard] and rc stays binary" "0" "$_rc2"
 # Structured, not prose: the finding is an ARRAY ELEMENT, addressable by index —
 # a prose blob would satisfy a `contains` check on .reason just as well, which is
@@ -126,8 +128,9 @@ _SCV_REPLY='VERDICT: covered
 REASON: nothing to cover'
 _setup placeholder "GitHub issue #4242"
 set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc3=$?; set -e
-assert_eq "[SPEC-3][change] placeholder issue text yields unreadable" \
-    "unreadable" "$(_res '.verdict')"
+assert_eq "[SPEC-3][change] placeholder issue text yields fail" \
+    "fail" "$(_res '.outcome')"
+assert_eq "[SPEC-3][change] ...and says the issue was unreadable" "unreadable" "$(_res '.data.judgement')"
 # Three paths write `unreadable` (plugin.sh:126, :134, :179), so the verdict
 # alone cannot tell placeholder-detection from a router that never answered —
 # the #2061 defect would satisfy it. Pin the reason, which separates them.
@@ -179,8 +182,8 @@ set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc_s3=$?; 
 # Restore the module-level stub so later tests are unaffected (none exist, but safe).
 route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
 assert_eq "[#2032/SPEC-3] rc=0 — finding a timeout is not a stage failure" "0" "$_rc_s3"
-assert_eq "[#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)" \
-    "timed_out" "$(_res '.disposition')"
+assert_eq "[#2032/SPEC-3] route_to_model rc=124 → outcome=timed_out (not a judgement)" \
+    "timed_out" "$(_res '.outcome')"
 
 # SPEC-3 covers any non-zero rc, not just rc=124 (which is named only as an example).
 # rc=1 (generic non-zero, no output) must also produce a classified disposition, not 'complete'.
@@ -189,8 +192,8 @@ route_to_model() { return 1; }
 set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc_s3b=$?; set -e
 route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
 assert_eq "[#2032/SPEC-3] rc=0 for any non-zero router rc (not a stage failure)" "0" "$_rc_s3b"
-assert_eq "[#2032/SPEC-3] route_to_model rc=1 → disposition=unavailable (any non-zero rc classified, not hardcoded complete)" \
-    "unavailable" "$(_res '.disposition')"
+assert_eq "[#2032/SPEC-3] route_to_model rc=1 → outcome=unavailable (any non-zero rc classified)" \
+    "unavailable" "$(_res '.outcome')"
 
 # Review on PR #2262: a call that printed a readable verdict and THEN timed out
 # still timed out. Before the fix the rc was classified only when no verdict
@@ -199,11 +202,24 @@ _setup sc3_partial "# Add a --dry-run flag, and make it refuse a missing config"
 route_to_model() { printf 'VERDICT: covered\nREASON: every requirement maps to a SPEC\n'; return 124; }
 set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc_s3c=$?; set -e
 route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
-assert_eq "[#2032/review] verdict printed then rc=124 → the verdict is still read" \
-    "covered" "$(_res '.verdict')"
-assert_eq "[#2032/review] verdict printed then rc=124 → disposition=timed_out (the timeout is reported even when a verdict was read)" \
-    "timed_out" "$(_res '.disposition')"
+assert_eq "[#2032/review] verdict printed then rc=124 → what was read is kept" \
+    "covered" "$(_res '.data.judgement')"
+assert_eq "[#2032/review] verdict printed then rc=124 → outcome=timed_out (the timeout is reported even when a verdict was read)" \
+    "timed_out" "$(_res '.outcome')"
 assert_eq "[#2032/review] verdict printed then rc=124 → rc=0, not a stage failure" "0" "$_rc_s3c"
+
+# ─── #2366: an unparseable reply is unusable, not a judgement ────────────────
+print_test_section "#2366: no parseable verdict is an unusable answer"
+_setup unparseable "# Add a --dry-run flag, and make it refuse a missing config"
+route_to_model() { printf 'I think it is mostly fine.\n'; return 0; }
+set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; set -e
+route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
+assert_eq "[#2366] an answer with no verdict is unusable" "unusable" "$(_res '.outcome')"
+
+print_test_section "#2366: the manifest declares contract 3 and no verdict words"
+_M="$REPO_ROOT/plugins/agent/spec-coverage/manifest.yaml"
+assert_eq "[#2366] provides.result_contract: 3" "1" "$(grep -cE '^[[:space:]]+result_contract:[[:space:]]*3' "$_M" || true)"
+assert_eq "[#2366] no valid_verdicts" "0" "$(grep -c 'valid_verdicts' "$_M" || true)"
 
 print_test_results
 exit $((FAIL > 0))

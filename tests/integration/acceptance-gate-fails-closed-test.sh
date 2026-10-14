@@ -100,24 +100,22 @@ _run_gate() {
 print_test_section "control: the fixture passes with every lib present"
 R0="$(_build_repo fc-control)"
 _run_gate "$R0" "$(_lib_without control "")"
-assert_eq "control: verdict pass with every lib present" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "control: outcome pass with every lib present" "pass" "$(jq -r .outcome <<<"$RESULT")"
 
 # ── F1: a dependency of the gate's libraries does not load ───────────────────
 print_test_section "F1: a library's own dependency is missing"
 R1="$(_build_repo fc-f1)"
 _run_gate "$R1" "$(_lib_without f1 env-scrub.sh)"
-assert_eq "[F1] verdict fail when env-scrub.sh does not load" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[F1] outcome broken when env-scrub.sh does not load — the gate could not do its work (#2366)" "broken" "$(jq -r .outcome <<<"$RESULT")"
 assert_contains "[F1] the reason names the file that did not load" \
     "$(jq -r .reason <<<"$RESULT")" "env-scrub.sh"
-assert_eq "[F1] disposition broken — the gate could not do its work" "broken" \
-    "$(jq -r .disposition <<<"$RESULT")"
 assert_eq "[F1] rc 1" "1" "$RC"
 
 # ── F2: a library the gate loads itself does not load ───────────────────────
 print_test_section "F2: a library the gate loads is missing"
 R2="$(_build_repo fc-f2)"
 _run_gate "$R2" "$(_lib_without f2 acceptance-coverage.sh)"
-assert_eq "[F2] verdict fail when acceptance-coverage.sh does not load" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[F2] outcome broken when acceptance-coverage.sh does not load" "broken" "$(jq -r .outcome <<<"$RESULT")"
 assert_contains "[F2] the reason names it" "$(jq -r .reason <<<"$RESULT")" "acceptance-coverage.sh"
 
 # ── F3: the #1752 shape — nothing evaluated is not a pass ────────────────────
@@ -129,13 +127,12 @@ L3="$(_lib_without f3 "")"
 printf '\n# shellcheck source=/dev/null\nsource "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/zb-gone-1752.sh"\nunset -f _acceptance_timeout_prefix\n' \
     >> "$L3/acceptance-block.sh"
 _run_gate "$R3" "$L3"
-assert_eq "[F3] verdict fail when no SPEC got a status" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[F3] outcome broken when no SPEC got a status" "broken" "$(jq -r .outcome <<<"$RESULT")"
 assert_contains "[F3] failures name nothing_checked" \
     "$(jq -c '.failures' <<<"$RESULT")" "nothing_checked"
 assert_contains "[F3] the reason says no requirement was checked" \
     "$(jq -r .reason <<<"$RESULT")" "none of them was checked"
 assert_eq "[F3] rc 1" "1" "$RC"
-assert_eq "[F3] disposition broken" "broken" "$(jq -r .disposition <<<"$RESULT")"
 
 # ── F7: the reason names every file that did not load ────────────────────────
 print_test_section "F7: the reason keeps every gate_load_failed entry"
@@ -161,7 +158,7 @@ R4="$(setup_git_temp_repo fc-f4)"
 printf '%s\n' '```acceptance' 'SPEC-1: test-only' 'TESTFILES:' 'tests/feature-test.sh' '```' > "$R4/design.md"
 _run_gate "$R4"
 assert_eq "[F4] a test-only change (no_prod_delta for SPEC-1) still passes" "pass" \
-    "$(jq -r .verdict <<<"$RESULT")"
+    "$(jq -r .outcome <<<"$RESULT")"
 
 # ── F5: shape-floor — its library's dependency is missing ────────────────────
 print_test_section "F5: shape-floor fails when its library's dependency does not load"

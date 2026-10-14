@@ -109,7 +109,7 @@ _IA_ANSWER=$'VERDICT: unsure\nREASON: cannot tell whether the docs cover the fla
 : > "$ZBUILD_EVENTS_JSONL"
 _run; _rc=$?
 assert_eq "[I2] rc=0 (the verdict is in the artifact)" "0" "$_rc"
-assert_eq "[I2] verdict=fail" "fail" "$(_res .verdict)"
+assert_eq "[I2] outcome=fail" "fail" "$(_res .outcome)"
 assert_eq "[I2] data.unsure lists the requirement" "SPEC-2 the flag is documented" "$(_res '.data.unsure[0]')"
 assert_contains "[I2] a numbered finding says what would settle it (#2330)" \
     "$(_res '.data.findings[0].text')" "What would settle it:"
@@ -126,7 +126,7 @@ assert_contains "[I2] the prompt says how to name what it is not sure of" "$_p2"
 _setup i2b
 _IA_ANSWER=$'VERDICT: pass\nREASON: all met\nUNSURE: none'
 _run
-assert_eq "[I2] 'UNSURE: none' on a pass stays a pass" "pass" "$(_res .verdict)"
+assert_eq "[I2] 'UNSURE: none' on a pass stays a pass" "pass" "$(_res .outcome)"
 assert_eq "[I2] ...with nothing listed as unsure" "0" "$(_res '.data.unsure | length')"
 
 cleanup_test_env

@@ -70,7 +70,7 @@ print_test_section "M1/M2: the turn-budget path"
 MOCK_MODE=budget
 _rc1=0; monitor_stage_run monitor "$STATE_FILE" >/dev/null 2>&1 || _rc1=$?
 assert_eq "[M1] a budget hit → rc=1" "1" "$_rc1"
-assert_eq "[M1] ...disposition out_of_turns" "out_of_turns" "$(_rep .disposition)"
+assert_eq "[M1] ...outcome out_of_turns" "out_of_turns" "$(_rep .outcome)"
 assert_eq "[M1] ...reason router_out_of_turns (the classifier's word, not a hand-written one)" \
     "router_out_of_turns" "$(_rep .reason)"
 if grep -qE '"\$rc"[[:space:]]*-eq[[:space:]]*10|rc[[:space:]]*-eq[[:space:]]*10' "$PLUGIN_FILE"; then
@@ -92,7 +92,7 @@ _m3_out="$(
     printf 'leak_ref=%s leak_int=%s\n' "${_mon_out_ref-unset}" "${_mon_interrupted-unset}"
 )"
 assert_contains "[M2] the interrupted path raises monitor.alert" "$(_events)" "monitor.alert"
-assert_eq "[M2] ...and records disposition interrupted" "interrupted" "$(_rep .disposition)"
+assert_eq "[M2] ...and records outcome interrupted" "interrupted" "$(_rep .outcome)"
 assert_contains "[M3] the caller's TERM handler is back afterwards" "$_m3_out" "CALLER_TERM_HANDLER"
 assert_contains "[M9] no interrupt bookkeeping leaks into the caller" "$_m3_out" "leak_ref=unset leak_int=unset"
 
@@ -104,7 +104,7 @@ jq -n --arg d "$_out4/deploy-result.json" '{inputs:{deploy_result:$d}}' > "$STAT
 MOCK_MODE=pass
 _rc4=0; ZBUILD_STAGE_INPUTS="$STATE_DIR/stage-inputs/monitor.json" monitor_stage_run monitor "$STATE_FILE" >/dev/null 2>&1 || _rc4=$?
 assert_eq "[M4] an input outside the state directory → rc=1" "1" "$_rc4"
-assert_eq "[M4] ...disposition broken" "broken" "$(_rep .disposition)"
+assert_eq "[M4] ...outcome broken" "broken" "$(_rep .outcome)"
 assert_contains "[M4] ...with a monitor.input.refused event" "$(_events)" "monitor.input.refused"
 if grep -qF "OUTSIDE-CONTENT" "$PROMPT_FILE" 2>/dev/null; then
     assert_fail "[M4] ...and its content never reaches the prompt" "it did"

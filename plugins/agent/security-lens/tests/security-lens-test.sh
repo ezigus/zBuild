@@ -108,13 +108,13 @@ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/n
 assert_file_exists "findings.json created" "$OUTPUT"
 
 rc_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT")
-assert_eq "[SPEC-1] findings.json carries result_contract:2 on the pass exit path" "2" "$rc_contract"
+assert_eq "[SPEC-1] findings.json carries result_contract:3 on the pass exit path (#2366)" "3" "$rc_contract"
 
-verdict_v=$(jq -r '.verdict // "absent"' "$OUTPUT")
-assert_eq "[SPEC-2] normal exit path verdict=pass" "pass" "$verdict_v"
+verdict_v=$(jq -r '.outcome // "absent"' "$OUTPUT")
+assert_eq "[SPEC-2] normal exit path outcome=pass" "pass" "$verdict_v"
 
-disposition_v=$(jq -r '.disposition // "absent"' "$OUTPUT")
-assert_eq "[SPEC-2] normal exit path disposition=complete" "complete" "$disposition_v"
+disposition_v=$(jq -r 'has("verdict") or has("disposition")' "$OUTPUT")
+assert_eq "[SPEC-2] one outcome — no verdict or disposition field (#2366)" "false" "$disposition_v"
 
 # ─── Events emitted during the run ──────────────────────────────────────────
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
@@ -125,9 +125,9 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
         assert_fail "expected redaction.applied event in event log"
     fi
     _spec8_ev=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-        jq -r 'select(.type=="plugin.result" and .plugin=="security-lens" and (.data.result_contract // "0") == "2") | .type // empty' \
+        jq -r 'select(.type=="plugin.result" and .plugin=="security-lens" and (.data.result_contract // "0") == "3") | .type // empty' \
         2>/dev/null | head -1 || true)
-    assert_eq "[SPEC-8] plugin.result event carries result_contract:2 on normal exit path with plugin=security-lens" \
+    assert_eq "[SPEC-8] plugin.result event carries result_contract:3 on normal exit path with plugin=security-lens" \
         "plugin.result" "$_spec8_ev"
 else
     assert_fail "events.jsonl was not created"
@@ -151,11 +151,9 @@ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R" "$TEST_TEMP_DIR" >/dev
 
 assert_file_exists "R1: router run creates findings.json" "$OUTPUT_R"
 r1_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT_R")
-assert_eq "[SPEC-1] R1: result_contract:2 on normal pass path" "2" "$r1_contract"
-r1_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_R")
-assert_eq "[SPEC-2] R1: verdict=pass on normal pass path" "pass" "$r1_verdict"
-r1_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_R")
-assert_eq "[SPEC-2] R1: disposition=complete on normal pass path" "complete" "$r1_disp"
+assert_eq "[SPEC-1] R1: result_contract:3 on normal pass path" "3" "$r1_contract"
+r1_verdict=$(jq -r '.outcome // "absent"' "$OUTPUT_R")
+assert_eq "[SPEC-2] R1: outcome=pass on normal pass path" "pass" "$r1_verdict"
 # NOT `// "absent"`: jq's alternative operator treats a boolean false as empty,
 # so the fallback fires on the very value this asserts. Ask whether the key is
 # there, then render it.
@@ -192,6 +190,7 @@ r4_count=$(jq '.data.findings | length' "$OUTPUT_R4")
 assert_eq "R4: malformed response yields empty findings" "0" "$r4_count"
 r4_stub=$(jq -r '.data.stub' "$OUTPUT_R4")
 assert_eq "R4: stub is false even on parse failure" "false" "$r4_stub"
+assert_eq "R4: an unparseable answer is unusable, never a pass (#2366)" "unusable" "$(jq -r .outcome "$OUTPUT_R4")"
 
 # ─── R5: empty stdout (rc=0) ─────────────────────────────────────────────────
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
@@ -207,6 +206,7 @@ set -e
 assert_eq "R5: empty response returns rc=0" "0" "$rc"
 r5_count=$(jq '.data.findings | length' "$OUTPUT_R5")
 assert_eq "R5: empty response yields empty findings" "0" "$r5_count"
+assert_eq "R5: an empty answer is never a pass — the router reports it as a failed call (#2366)" "unavailable" "$(jq -r .outcome "$OUTPUT_R5")"
 
 # ─── R6: router rc=1 (recoverable) ───────────────────────────────────────────
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
@@ -222,6 +222,7 @@ set -e
 assert_eq "R6: router rc=1 returns plugin rc=0 (fail-open)" "0" "$rc"
 r6_count=$(jq '.data.findings | length' "$OUTPUT_R6")
 assert_eq "R6: router failure yields empty findings" "0" "$r6_count"
+assert_eq "R6: a failed call is how the stage ended, never a pass (#2366)" "unavailable" "$(jq -r .outcome "$OUTPUT_R6")"
 
 # ─── R7: router rc=2 (fatal) — invalid tier triggers router-internal fatal ────
 # claude exit codes map to rc=1 (recoverable); rc=2 comes from router internals
@@ -250,6 +251,7 @@ set -e
 assert_eq "R8: missing .findings returns rc=0" "0" "$rc"
 r8_count=$(jq '.data.findings | length' "$OUTPUT_R8")
 assert_eq "R8: missing .findings yields empty array (not null)" "0" "$r8_count"
+assert_eq "R8: an answer with no findings list is unusable (#2366)" "unusable" "$(jq -r .outcome "$OUTPUT_R8")"
 r8_findings_type=$(jq -r '.data.findings | type' "$OUTPUT_R8")
 assert_eq "R8: .findings is array not null" "array" "$r8_findings_type"
 
@@ -453,11 +455,9 @@ source "$PLUGIN_DIR/plugin.sh"
 # ─── [SPEC-3]: router-fatal path writes v2 result with verdict=error/broken ───
 if [[ -f "$OUTPUT_R7" ]]; then
     spec3_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-3] router-fatal path writes result_contract:2" "2" "$spec3_contract"
-    spec3_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-3] router-fatal path writes verdict=error" "error" "$spec3_verdict"
-    spec3_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-3] an unresolvable tier writes disposition=misconfigured (#2187)" "misconfigured" "$spec3_disp"
+    assert_eq "[SPEC-3] router-fatal path writes result_contract:3" "3" "$spec3_contract"
+    spec3_disp=$(jq -r '.outcome // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-3] an unresolvable tier writes outcome=misconfigured (#2187)" "misconfigured" "$spec3_disp"
 else
     assert_fail "[SPEC-3] router-fatal path writes v2 result (OUTPUT_R7 missing)"
 fi
@@ -473,7 +473,7 @@ set -e
 assert_eq "[SPEC-4] no-state-file path returns rc=1 (not rc=2)" "1" "$spec4_rc"
 if [[ -f "$SPEC4_DIR/security-findings.json" ]]; then
     spec4_contract=$(jq -r '.result_contract // "absent"' "$SPEC4_DIR/security-findings.json")
-    assert_eq "[SPEC-4] no-state-file path writes result_contract:2" "2" "$spec4_contract"
+    assert_eq "[SPEC-4] no-state-file path writes result_contract:3" "3" "$spec4_contract"
 else
     assert_fail "[SPEC-4] no-state-file path writes v2 result artifact"
 fi
@@ -513,19 +513,18 @@ assert_eq "[SPEC-5] manifest has NO cleanup: YAML key under hooks: (ADR-062 §3 
 # command", so the extraction returned nothing and this SPEC failed on macOS
 # while passing on ubuntu. Same shape as the SPEC-5 and SPEC-7 blocks above.
 _spec6_provides=$(awk '/^provides:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
-if grep -q 'result_contract: 2' <<< "$_spec6_provides" 2>/dev/null; then
-    assert_pass "[SPEC-6] manifest declares provides.result_contract: 2"
+if grep -q 'result_contract: 3' <<< "$_spec6_provides" 2>/dev/null; then
+    assert_pass "[SPEC-6] manifest declares provides.result_contract: 3"
 else
-    assert_fail "[SPEC-6] manifest declares provides.result_contract: 2"
+    assert_fail "[SPEC-6] manifest declares provides.result_contract: 3"
 fi
 
 _spec7_config=$(awk '/^config:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
 _spec7_vv=$(awk '/valid_verdicts:/{found=1;next} found && /^[[:space:]]+-/{print;next} found{exit}' <<< "$_spec7_config" 2>/dev/null || true)
-if grep -q '\bpass\b' <<< "$_spec7_vv" 2>/dev/null && \
-   grep -q '\berror\b' <<< "$_spec7_vv" 2>/dev/null; then
-    assert_pass "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
+if [[ -z "$_spec7_vv" ]] && ! grep -q 'valid_verdicts' <<< "$_spec7_config"; then
+    assert_pass "[SPEC-7] manifest declares no valid_verdicts (one outcome, #2366)"
 else
-    assert_fail "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
+    assert_fail "[SPEC-7] manifest declares no valid_verdicts (one outcome, #2366)"
 fi
 
 _spec11_config=$(awk '/^config:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
@@ -620,7 +619,7 @@ assert_eq "[SPEC-21] every event the manifest declares has an emit site in plugi
 # field means. Assert the TYPE, which is the only thing that can see it.
 print_test_section "[SPEC-22] stub is a boolean, not the string \"false\""
 _spec22_art="$TEST_TEMP_DIR/spec22-findings.json"
-_security_lens_write_result "$_spec22_art" "pass" "complete" "ok" '[]' 2>/dev/null || true
+_security_lens_write_result "$_spec22_art" pass "ok" '[]' 2>/dev/null || true
 assert_eq "[SPEC-22] top-level .stub is a boolean" "boolean" \
     "$(jq -r '.stub | type' "$_spec22_art" 2>/dev/null || true)"
 assert_eq "[SPEC-22] .data.stub is a boolean too" "boolean" \
@@ -655,10 +654,8 @@ set -e
 unset -f route_to_model
 assert_eq "[SPEC-23] a signal during the call returns the interrupt rc, not success" \
     "130" "$_spec23_rc"
-assert_eq "[SPEC-23] …and the artifact says error, not pass" "error" \
-    "$(jq -r '.verdict // ""' "$_spec23_out" 2>/dev/null)"
-assert_eq "[SPEC-23] …with disposition=interrupted" "interrupted" \
-    "$(jq -r '.disposition // ""' "$_spec23_out" 2>/dev/null)"
+assert_eq "[SPEC-23] …and the artifact says interrupted, not pass" "interrupted" \
+    "$(jq -r '.outcome // ""' "$_spec23_out" 2>/dev/null)"
 assert_eq "[SPEC-23] …and the declared failure event fired" "1" \
     "$( { grep -c '"security_lens.failed"' "$ZBUILD_EVENTS_JSONL" || true; } | awk '{print ($1>=1)?1:0}')"
 _sl_interrupted=0
@@ -709,17 +706,14 @@ spec18a_rc=$?
 set -e
 assert_eq "[SPEC-18] interrupt: router rc=130 returns plugin rc=130" "130" "$spec18a_rc"
 if [[ -f "$OUTPUT_SPEC18A" ]]; then
-    spec18a_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_SPEC18A" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-18a] interrupt artifact: verdict=error" "error" "$spec18a_verdict"
-    spec18a_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_SPEC18A" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-18a] interrupt artifact: disposition=interrupted" "interrupted" "$spec18a_disp"
+    spec18a_disp=$(jq -r '.outcome // "absent"' "$OUTPUT_SPEC18A" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18a] interrupt artifact: outcome=interrupted" "interrupted" "$spec18a_disp"
     spec18a_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT_SPEC18A" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-18a] interrupt artifact: result_contract=2" "2" "$spec18a_contract"
+    assert_eq "[SPEC-18a] interrupt artifact: result_contract=3" "3" "$spec18a_contract"
 else
     assert_fail "[SPEC-18a] interrupt path writes v2 result artifact (file absent)"
-    assert_fail "[SPEC-18a] interrupt artifact: verdict=error (file absent)"
-    assert_fail "[SPEC-18a] interrupt artifact: disposition=interrupted (file absent)"
-    assert_fail "[SPEC-18a] interrupt artifact: result_contract=2 (file absent)"
+    assert_fail "[SPEC-18a] interrupt artifact: outcome=interrupted (file absent)"
+    assert_fail "[SPEC-18a] interrupt artifact: result_contract=3 (file absent)"
 fi
 
 # (b) direct invocation of _security_lens_interrupt_handler — function must
@@ -735,14 +729,12 @@ set +e
 _security_lens_interrupt_handler
 set -e
 if [[ -f "$OUTPUT_SPEC18B" ]]; then
-    spec18b_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_SPEC18B" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-18b] direct handler: verdict=error" "error" "$spec18b_verdict"
-    spec18b_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_SPEC18B" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-18b] direct handler: disposition=interrupted" "interrupted" "$spec18b_disp"
+    spec18b_disp=$(jq -r '.outcome // "absent"' "$OUTPUT_SPEC18B" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18b] direct handler: outcome=interrupted" "interrupted" "$spec18b_disp"
 else
     assert_fail "[SPEC-18b] _security_lens_interrupt_handler writes v2 result artifact"
     assert_fail "[SPEC-18b] direct handler: verdict=error (file absent)"
-    assert_fail "[SPEC-18b] direct handler: disposition=interrupted (file absent)"
+    assert_fail "[SPEC-18b] direct handler: outcome=interrupted (file absent)"
 fi
 
 # (c) kill -TERM "$$" in a mock route_to_model — SIGTERM fires the registered
@@ -759,14 +751,12 @@ spec18c_rc=$?
 set -e
 assert_eq "[SPEC-18c] kill -TERM: plugin rc=130" "130" "$spec18c_rc"
 if [[ -f "$OUTPUT_SPEC18C" ]]; then
-    spec18c_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_SPEC18C" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-18c] kill -TERM artifact: verdict=error" "error" "$spec18c_verdict"
-    spec18c_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_SPEC18C" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-18c] kill -TERM artifact: disposition=interrupted" "interrupted" "$spec18c_disp"
+    spec18c_disp=$(jq -r '.outcome // "absent"' "$OUTPUT_SPEC18C" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18c] kill -TERM artifact: outcome=interrupted" "interrupted" "$spec18c_disp"
 else
     assert_fail "[SPEC-18c] kill -TERM path writes v2 result artifact"
     assert_fail "[SPEC-18c] kill -TERM artifact: verdict=error (file absent)"
-    assert_fail "[SPEC-18c] kill -TERM artifact: disposition=interrupted (file absent)"
+    assert_fail "[SPEC-18c] kill -TERM artifact: outcome=interrupted (file absent)"
 fi
 
 # ─── [SPEC-20]: manifest input entries declare only id and required: fields ──

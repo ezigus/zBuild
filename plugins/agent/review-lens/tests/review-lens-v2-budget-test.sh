@@ -85,12 +85,10 @@ set -e
 assert_eq "[SPEC-13] rc=130 path propagates rc=130 (distinct from advisory rc=0)" \
     "130" "$_1840_s13a_rc"
 assert_file_exists "[SPEC-13] rc=130 path writes lens file before returning" "$out_1840_s13a"
-assert_eq "[SPEC-13] rc=130 path result_contract == 2" \
-    "2" "$(jq -r '.result_contract // empty' "$out_1840_s13a")"
-assert_eq "[SPEC-13] rc=130 path verdict == degraded" \
-    "degraded" "$(jq -r '.verdict // empty' "$out_1840_s13a")"
-assert_eq "[SPEC-13] rc=130 path disposition == interrupted" \
-    "interrupted" "$(jq -r '.disposition // empty' "$out_1840_s13a")"
+assert_eq "[SPEC-13] rc=130 path result_contract == 3 (#2366)" \
+    "3" "$(jq -r '.result_contract // empty' "$out_1840_s13a")"
+assert_eq "[SPEC-13] rc=130 path outcome == interrupted" \
+    "interrupted" "$(jq -r '.outcome // empty' "$out_1840_s13a")"
 # Direct invocation of _review_lens_interrupt_handler (SIGTERM simulation)
 out_1840_s13b="$artifact_dir/lens-1840spec13b.json"
 rm -f "$out_1840_s13b" 2>/dev/null || true
@@ -101,12 +99,10 @@ if declare -F _review_lens_interrupt_handler >/dev/null 2>&1; then
     set -e
     assert_file_exists "[SPEC-13] interrupt_handler writes lens file (SIGTERM simulation)" \
         "$out_1840_s13b"
-    assert_eq "[SPEC-13] interrupt_handler result_contract == 2" \
-        "2" "$(jq -r '.result_contract // empty' "$out_1840_s13b")"
-    assert_eq "[SPEC-13] interrupt_handler verdict == degraded" \
-        "degraded" "$(jq -r '.verdict // empty' "$out_1840_s13b")"
-    assert_eq "[SPEC-13] interrupt_handler disposition == interrupted" \
-        "interrupted" "$(jq -r '.disposition // empty' "$out_1840_s13b")"
+    assert_eq "[SPEC-13] interrupt_handler result_contract == 3 (#2366)" \
+        "3" "$(jq -r '.result_contract // empty' "$out_1840_s13b")"
+    assert_eq "[SPEC-13] interrupt_handler outcome == interrupted" \
+        "interrupted" "$(jq -r '.outcome // empty' "$out_1840_s13b")"
 else
     assert_fail "[SPEC-13] _review_lens_interrupt_handler must exist in plugin.sh" "absent"
 fi
@@ -130,8 +126,8 @@ _1840_s13c_rc=$?
 set -e
 eval "$(declare -f _orig_atomic_write | sed '1s/_orig_atomic_write/atomic_write/')"
 assert_eq "[SPEC-13] signal + rc=130 still propagates rc=130" "130" "$_1840_s13c_rc"
-assert_eq "[SPEC-13] signal + rc=130: disposition == interrupted" \
-    "interrupted" "$(jq -r '.disposition // empty' "$out_1840_s13c" 2>/dev/null)"
+assert_eq "[SPEC-13] signal + rc=130: outcome == interrupted" \
+    "interrupted" "$(jq -r '.outcome // empty' "$out_1840_s13c" 2>/dev/null)"
 assert_eq "[SPEC-13] signal + rc=130 writes the result exactly once (trap + rc=130 branch)" \
     "1" "$(grep -c "lens-1840spec13c.json" "$_aw_log")"
 
@@ -189,12 +185,10 @@ set -e
 assert_eq "[SPEC-15] rc=10 path propagates rc=10 (distinct from advisory rc=0)" \
     "10" "$_1840_s15_rc"
 assert_file_exists "[SPEC-15] rc=10 path writes lens file before returning" "$out_1840_s15"
-assert_eq "[SPEC-15] rc=10 result_contract == 2" \
-    "2" "$(jq -r '.result_contract // empty' "$out_1840_s15")"
-assert_eq "[SPEC-15] rc=10 verdict == degraded" \
-    "degraded" "$(jq -r '.verdict // empty' "$out_1840_s15")"
-assert_eq "[SPEC-15] rc=10 disposition == out_of_turns (#2187)" \
-    "out_of_turns" "$(jq -r '.disposition // empty' "$out_1840_s15")"
+assert_eq "[SPEC-15] rc=10 result_contract == 3 (#2366)" \
+    "3" "$(jq -r '.result_contract // empty' "$out_1840_s15")"
+assert_eq "[SPEC-15] rc=10 outcome == out_of_turns (#2187)" \
+    "out_of_turns" "$(jq -r '.outcome // empty' "$out_1840_s15")"
 assert_eq "[SPEC-15] rc=10 reason == budget_exhausted" \
     "budget_exhausted" "$(jq -r '.reason // empty' "$out_1840_s15")"
 # Confirm rc=10 is strictly between advisory (rc=0) and interrupted (rc=130)

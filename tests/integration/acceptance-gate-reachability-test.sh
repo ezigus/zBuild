@@ -83,7 +83,7 @@ EOF
 
 set +e; _run_gate "$REPO_R1"; set -e
 assert_eq "[SPEC-5] R1: load-bearing wiring → gate rc=0" "0" "$RC"
-assert_eq "[SPEC-5][SPEC-4] R1: load-bearing wiring → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-5][SPEC-4] R1: load-bearing wiring → outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 
 # ── R2: wiring is inert (revert doesn't flip any test) → gate fails ──────────
 # Setup: impl.sh is the real implementation (test depends on it).
@@ -125,7 +125,7 @@ EOF
 
 set +e; _run_gate "$REPO_R2"; set -e
 assert_eq "[SPEC-6] R2: inert wiring → gate rc=1" "1" "$RC"
-assert_eq "[SPEC-6] R2: inert wiring → verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-6] R2: inert wiring → outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
 r2_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_contains "[SPEC-6] R2: failures contains inert_wiring" "$r2_failures" "inert_wiring:inert-wiring.sh"
 assert_event_emitted "[SPEC-6] R2: inert_wiring event emitted" "$EVENTS" "acceptance.gate.inert_wiring"
@@ -166,7 +166,7 @@ EOF
 
 set +e; _run_gate "$REPO_R3"; set -e
 assert_eq "R3: WIRING: none → gate rc=0" "0" "$RC"
-assert_eq "R3: WIRING: none → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "R3: WIRING: none → outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 assert_event_emitted "R3: wiring_exempt event emitted" "$EVENTS" "acceptance.gate.wiring_exempt"
 
 # ── R4: WIRING block with ONLY unsafe (traversal/absolute) paths → FAIL CLOSED ─
@@ -207,7 +207,7 @@ EOF
 
 set +e; _run_gate "$REPO_R4"; set -e
 assert_eq "[SPEC-6] R4: only-unsafe WIRING → gate fails closed (rc=1)" "1" "$RC"
-assert_eq "[SPEC-6] R4: only-unsafe WIRING → verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-6] R4: only-unsafe WIRING → outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
 r4_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_contains "[SPEC-6] R4: failures records empty_wiring_targets" "$r4_failures" "reachability_error:empty_wiring_targets"
 
@@ -259,7 +259,7 @@ EOF
 
     set +e; ZBUILD_ACCEPTANCE_RUN_CMD='python3 {files}' _run_gate "$REPO_R5"; set -e
     assert_eq "[SPEC-7] R5: python3 {files} seam → gate rc=0" "0" "$RC"
-    assert_eq "[SPEC-7] R5: python3 {files} seam → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+    assert_eq "[SPEC-7] R5: python3 {files} seam → outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 fi
 
 # ── R6: inert_wiring at ZBUILD_CYCLE_ITER≥2 escalates to fault=specification ───
@@ -323,7 +323,7 @@ export ZBUILD_CYCLE_ITER=2
 set +e; _run_gate "$REPO_R6"; set -e
 unset ZBUILD_CYCLE_ITER
 assert_eq "[SPEC-1] R6b: iter=2 still inert → rc=1" "1" "$RC"
-assert_eq "[SPEC-1] R6b: iter=2 → verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-1] R6b: iter=2 → outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
 r6b_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_contains "[SPEC-1] R6b: iter=2 failures contain inert_wiring YAML target" \
     "$r6b_failures" "inert_wiring:.github/workflows/test.yml"
