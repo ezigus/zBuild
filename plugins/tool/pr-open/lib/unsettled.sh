@@ -54,7 +54,7 @@ _pr_open_unsettled() {
           | select((.value.status // "") != "complete")
           | { id: (.key | esc), round: (.value.current_iter | num),
               limit: (.value.max_iterations | num), why: ((.value.status // "") | why) } ] as $loops
-        | ( if $g != null and (($g.verdict // "pass") != "pass")
+        | ( if $g != null and (($g.outcome // $g.verdict // "pass") != "pass")
             then { gates: (($g.failed // []) | map(esc) | join(", ")),
                    reason: (($g.reason // "") | if startswith("gates failed:") then "" else esc end) }
             else null end ) as $gate

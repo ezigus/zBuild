@@ -55,7 +55,7 @@ merge_run() {
     # Read convergence gate verdict
     local gate_verdict=""
     if [[ -n "$gate_json" && -f "$gate_json" ]]; then
-        gate_verdict="$(jq -r '.verdict // empty' "$gate_json" 2>/dev/null || true)"
+        gate_verdict="$(jq -r '.outcome // .verdict // empty' "$gate_json" 2>/dev/null || true)"
     fi
 
     # Safety guard: fall back to PR when gate absent or verdict != pass

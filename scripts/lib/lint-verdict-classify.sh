@@ -60,6 +60,12 @@ _lvc_has_primary() {
 # Scoped to the `config:` block so an unrelated key elsewhere cannot satisfy it.
 _lvc_verdicts_state() { manifest_valid_verdicts_state "$1"; }
 
+# ─── _lvc_contract <manifest> — the declared provides.result_contract ────────
+_lvc_contract() {
+    awk '/^provides:/ { inb=1; next } inb && /^[a-zA-Z_]/ { inb=0 }
+         inb && /^[[:space:]]+result_contract:/ { v=$0; sub(/.*result_contract:[[:space:]]*/, "", v); sub(/[[:space:]#].*/, "", v); print v; exit }' "$1"
+}
+
 violations=0
 checked=0
 
@@ -69,6 +75,18 @@ while IFS= read -r manifest; do
 
     plugin_rel="${manifest#"$_LVC_ROOT"/}"
     state="$(_lvc_verdicts_state "$manifest")"
+
+    # #2366 (ADR-054 §6): contract 3 carries one outcome from the engine's
+    # closed list — the stage declares no verdict words, and one that does is
+    # refused.
+    if [[ "$(_lvc_contract "$manifest")" == "3" ]]; then
+        if [[ "$state" != absent ]]; then
+            echo "✗ $plugin_rel: declares result_contract 3 and config.valid_verdicts" >&2
+            echo "    a contract-3 stage writes one outcome from the engine's list; remove valid_verdicts." >&2
+            violations=$((violations + 1))
+        fi
+        continue
+    fi
 
     case "$state" in
         absent)

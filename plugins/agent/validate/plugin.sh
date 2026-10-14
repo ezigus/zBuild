@@ -101,7 +101,7 @@ _validate_agent_run_inner() {
     # to validate — probing a fixed address and calling it healthy asserted
     # something about a deployment that never happened.
     local deploy_verdict
-    deploy_verdict="$(jq -r '.verdict // empty' "$deploy_result_in" 2>/dev/null || true)"
+    deploy_verdict="$(jq -r '.outcome // .verdict // empty' "$deploy_result_in" 2>/dev/null || true)"
     if [[ "$deploy_verdict" != "deployed" ]]; then
         _validate_write_result "$artifacts_dir" "skipped" "complete" \
             "nothing to validate: deploy reported '${deploy_verdict:-no verdict}', not deployed"

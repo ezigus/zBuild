@@ -181,7 +181,7 @@ _deploy_agent_run_inner() {
     fi
 
     local gate_verdict
-    gate_verdict="$(jq -r '.verdict // empty' "$gate_result_in" 2>/dev/null || true)"
+    gate_verdict="$(jq -r '.outcome // .verdict // empty' "$gate_result_in" 2>/dev/null || true)"
 
     # Fail-closed ALLOWLIST: proceed ONLY on an explicit pass. Any other verdict —
     # fail, route_<target>, an empty verdict, or a jq parse error (→ empty) — skips
