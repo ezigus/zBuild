@@ -45,6 +45,9 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENT
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/issue-acceptance"
 # shellcheck source=../../plugins/agent/issue-acceptance/plugin.sh
 source "$PLUGIN_DIR/plugin.sh" 2>/dev/null
+# #2366: input results are made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 set +e
 
 # Stubs AFTER the source (the plugin sources the real router).
@@ -62,7 +65,7 @@ _setup() {
     printf '%s\n' "${2:-Migrate the plugin. Acceptance: - [ ] no artifact paths in code - [ ] an interrupted push reports unavailable}" > "$_in/issue.md"
     printf '%s\n' '# Design' '```acceptance' 'SPEC-1[change]: the plugin reads its inputs from the index' 'TESTFILES:' 'SPEC-1: tests/t.sh' 'WIRING: none' '```' > "$_in/design.md"
     printf '%s\n' 'diff --git a/p.sh b/p.sh' '+gate="$(jq -r .inputs.gate "$ZBUILD_STAGE_INPUTS")"' > "$_in/diff.patch"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$_in/test-results.json"
+    stage_result_write "$_in/test-results.json" pass ok
     jq -n --arg i "$_in/issue.md" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
         '{inputs: {intake_goal: $i, design: $d, diff_patch: $p, test_results: $t}}' > "$_S/stage-inputs.json"
     export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A"

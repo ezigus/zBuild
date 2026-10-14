@@ -41,7 +41,7 @@ design_cycle:
     stage: design
     field: verdict
     op: eq
-    value: complete
+    value: pass
   max_iterations: 3
   on_max: continue
 
@@ -61,7 +61,7 @@ outer_cycle:
     stage: probe
     field: verdict
     op: eq
-    value: approve
+    value: pass
   max_iterations: 3
   on_max: continue
 

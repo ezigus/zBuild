@@ -36,18 +36,14 @@ result=$(verdict_classify "empty_diff")
 assert_eq "[SPEC-6] verdict_classify('empty_diff') = unknown (removed from table in #1832)" \
     "unknown" "$result"
 
-# Regression-lock the rest of the verdict table.
+# Regression-lock the rest of the table. #2366: the reader hands it only pass,
+# fail, or `error`; no stage's own word is classified any more.
 assert_eq "verdict_classify('pass') = pass" "pass" "$(verdict_classify pass)"
-assert_eq "verdict_classify('approve') = pass" "pass" "$(verdict_classify approve)"
-assert_eq "verdict_classify('request_changes') = warn" "warn" "$(verdict_classify request_changes)"
 assert_eq "verdict_classify('fail') = fail" "fail" "$(verdict_classify fail)"
-assert_eq "verdict_classify('scope_violation') = fail" "fail" "$(verdict_classify scope_violation)"
-
-# complete and skip must classify as pass — no unknown_verdict path
-assert_eq "verdict_classify(complete) = pass — no unknown_verdict path" \
-    "pass" "$(verdict_classify complete)"
-assert_eq "verdict_classify(skip) = pass — no unknown_verdict path" \
-    "pass" "$(verdict_classify skip)"
+assert_eq "verdict_classify('error') = fail" "fail" "$(verdict_classify error)"
+for _w in approve request_changes scope_violation complete skip; do
+    assert_eq "verdict_classify('$_w') = unknown (#2366)" "unknown" "$(verdict_classify "$_w")"
+done
 
 print_test_section "2. build plugin writes verdict=pass + data.build_kind=empty_diff (#1832)"
 
@@ -69,12 +65,14 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 : > "$ZBUILD_EVENTS_JSONL"
 
 # Synthesize the build-summary.json the way the build plugin produces it after
-# #1832: verdict=pass + disposition=complete + data.build_kind=empty_diff.
+# #1832/#2366: the summary object, then outcome=pass added with the engine's
+# writer (stage_result_add), data.build_kind=empty_diff.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 SUMMARY_FIXTURE="$ZBUILD_STATE_DIR/artifacts/build-summary.json"
 cat > "$SUMMARY_FIXTURE" <<'EOF'
 {
   "schema_version": 4,
-  "result_contract": 2,
   "issue": 12,
   "files_changed": [],
   "lines_added": 0,
@@ -82,9 +80,6 @@ cat > "$SUMMARY_FIXTURE" <<'EOF'
   "diff_patch_path": "/tmp/empty.patch",
   "iterations": 1,
   "terminated_reason": "done_sentinel",
-  "verdict": "pass",
-  "disposition": "complete",
-  "reason": "build_complete_no_changes",
   "data": {"build_kind": "empty_diff"},
   "scope_violation": false,
   "scope_violations": [],
@@ -93,21 +88,23 @@ cat > "$SUMMARY_FIXTURE" <<'EOF'
   "notes": "Build stage completed."
 }
 EOF
+stage_result_add "$SUMMARY_FIXTURE" pass "build_complete_no_changes"
 
-# [SPEC-2] After #1832, build writes verdict=pass (not empty_diff) when
-# done_sentinel + 0 files. Fails at baseline where verdict was "empty_diff".
-verdict_from_json=$(jq -r '.verdict' "$SUMMARY_FIXTURE")
-assert_eq "[SPEC-2] build-summary.json verdict=pass (empty_diff resting-point uses pass+kind)" \
+# [SPEC-2] After #1832, build reports pass (not empty_diff) when done_sentinel +
+# 0 files; #2366: the word is the contract-3 outcome.
+verdict_from_json=$(jq -r '.outcome' "$SUMMARY_FIXTURE")
+assert_eq "[SPEC-2] build-summary.json outcome=pass (empty_diff resting-point uses pass+kind)" \
     "pass" "$verdict_from_json"
 
 # [SPEC-2] data.build_kind carries the "empty_diff" signal.
 kind_from_json=$(jq -r '.data.build_kind // ""' "$SUMMARY_FIXTURE")
 assert_eq "[SPEC-2] build-summary.json data.build_kind=empty_diff" "empty_diff" "$kind_from_json"
 
-# [SPEC-3] disposition=complete for the empty_diff resting point.
-# Fails at baseline where there was no disposition field.
-disposition_from_json=$(jq -r '.disposition // ""' "$SUMMARY_FIXTURE")
-assert_eq "[SPEC-3] build-summary.json disposition=complete for empty_diff case" \
+# [SPEC-3] the engine reads the empty_diff resting point as a stage that
+# finished (disposition complete) — #2366: from the outcome, not a field.
+BUILD_MANIFEST="$REPO_ROOT/plugins/agent/build/manifest.yaml"
+disposition_from_json=$(runner_read_stage_disposition "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo missing)
+assert_eq "[SPEC-3] the engine reads the empty_diff case as finished (complete)" \
     "complete" "$disposition_from_json"
 
 # Verify runner_read_stage_verdict_raw returns the raw verdict ("pass") and
@@ -143,7 +140,6 @@ INERT_FIXTURE="$ZBUILD_STATE_DIR/artifacts/build-summary.json"
 cat > "$INERT_FIXTURE" <<'EOF'
 {
   "schema_version": 4,
-  "result_contract": 2,
   "issue": 12,
   "files_changed": [],
   "lines_added": 0,
@@ -151,9 +147,6 @@ cat > "$INERT_FIXTURE" <<'EOF'
   "diff_patch_path": "/tmp/empty.patch",
   "iterations": 1,
   "terminated_reason": "done_sentinel",
-  "verdict": "fail",
-  "disposition": "complete",
-  "reason": "false_completion_detected",
   "data": {"build_kind": "inert_build"},
   "failing_acceptance_testfile": "tests/unit/some-test.sh",
   "scope_violation": false,
@@ -163,6 +156,7 @@ cat > "$INERT_FIXTURE" <<'EOF'
   "notes": "Build stage completed."
 }
 EOF
+stage_result_add "$INERT_FIXTURE" fail "false_completion_detected"
 
 if [[ -f "$BUILD_MANIFEST" ]]; then
     classified_inert=$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo "missing")
@@ -183,9 +177,9 @@ assert_eq "failing_acceptance_testfile field is readable from inert_build summar
 inert_kind=$(jq -r '.data.build_kind // ""' "$INERT_FIXTURE")
 assert_eq "data.build_kind=inert_build in new format" "inert_build" "$inert_kind"
 
-# disposition=broken for the false-completion case
-inert_disp=$(jq -r '.disposition // ""' "$INERT_FIXTURE")
-assert_eq "disposition=complete for inert_build case — the verdict carries it (#2187)" "complete" "$inert_disp"
+# the false-completion case finished: its outcome (fail) carries it (#2187, #2366)
+inert_disp=$(runner_read_stage_disposition "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo missing)
+assert_eq "the engine reads the inert_build case as finished — the outcome carries it (#2187)" "complete" "$inert_disp"
 
 print_test_section "5. build plugin PRODUCES the inert_build signal from a red acceptance testfile"
 

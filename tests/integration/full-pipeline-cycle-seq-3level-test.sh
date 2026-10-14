@@ -83,8 +83,9 @@ _FIXTURE_TPL="$REPO_ROOT/tests/fixtures/templates/nested-cycle-seq.yaml"
 
 # Mock plugin factory: every plugin logs the seq label + the visibility of
 # ZBUILD_SEQ_PREFIX (so the assertions can pin both the recursive prefix shape
-# AND the no-leak-into-pre/post-cycle-stages contract). #1850: each is a v2
-# stage — result_contract 2, a JSON primary, a v2 result written there.
+# AND the no-leak-into-pre/post-cycle-stages contract). #1850/#2366: each is a
+# stage with result_contract 3, a JSON primary, a result written there with the
+# engine's writer.
 # $2 is the fixture's declared role: resolve_stage_plugin fails closed on a
 # stage that declares roles: but resolves none, so a stub needs provides.role.
 _make_plugin() {
@@ -99,7 +100,7 @@ kind: agent
 version: 0.0.1
 provides:
   role: $role
-  result_contract: 2
+  result_contract: 3
 hooks:
   run: $fn
 requires:
@@ -111,8 +112,6 @@ outputs:
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass]
 EOF
     cat > "$dir/plugin.sh" <<PLUGIN
 ${fn}() {
@@ -123,15 +122,16 @@ ${fn}() {
         >> "\${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
     local state_dir; state_dir="\$(dirname "\$2")"
     mkdir -p "\$state_dir/artifacts"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub"}' \\
-        > "\$state_dir/artifacts/${id}-result.json"
+    source "$REPO_ROOT/scripts/lib/stage-result.sh"
+    stage_result_write "\$state_dir/artifacts/${id}-result.json" pass "stub"
     return 0
 }
 PLUGIN
 }
 
-# Override for test: declares a primary output so exit_when can read the verdict,
-# and writes a v2 result with <verdict> so inner_cycle converges after iter 1.
+# Override for test: declares a primary output so exit_when can read the
+# outcome, and writes a result with <outcome> so inner_cycle converges after
+# iter 1. #2366: every exit rule in nested-cycle-seq.yaml tests `pass`.
 _make_verdict_plugin() {
     local id="$1" verdict="$2" role="$3"
     local dir="$PLUGINS_ROOT/agent/$id"
@@ -143,7 +143,7 @@ kind: agent
 version: 0.0.1
 provides:
   role: $role
-  result_contract: 2
+  result_contract: 3
 hooks:
   run: $fn
 requires:
@@ -155,8 +155,6 @@ outputs:
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [$verdict]
 EOF
     cat > "$dir/plugin.sh" <<PLUG
 ${fn}() {
@@ -167,8 +165,8 @@ ${fn}() {
         >> "\${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
     local state_dir; state_dir="\$(dirname "\$2")"
     mkdir -p "\$state_dir/artifacts"
-    printf '{"result_contract":2,"verdict":"$verdict","disposition":"complete","reason":"stub"}' \\
-        > "\$state_dir/artifacts/${id}.json"
+    source "$REPO_ROOT/scripts/lib/stage-result.sh"
+    stage_result_write "\$state_dir/artifacts/${id}.json" $verdict "stub"
     return 0
 }
 PLUG
@@ -188,9 +186,9 @@ probe reviewer
 STUBS
 # design converges design_cycle (verdict=complete); test converges inner_cycle
 # (verdict=pass); probe converges outer_cycle (verdict=approve).
-_make_verdict_plugin design complete designer
+_make_verdict_plugin design pass designer
 _make_verdict_plugin test pass tester
-_make_verdict_plugin probe approve reviewer
+_make_verdict_plugin probe pass reviewer
 
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 export ZBUILD_STATE_FILE="$STATE_DIR/pipeline-state.json"

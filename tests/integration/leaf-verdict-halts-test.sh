@@ -13,18 +13,22 @@
 # paths a leaf finishes on: the linear loop (flat flow) and the dispatch-unit
 # loop (a flow with a cycle, as every shipped template has).
 #
-# SPEC-1 [change]: verdict fail|error|block|scope_violation|corrupt_diff
-#   (a v2 result) → the run fails, the stage is `failed`, the run's end names
-#   the verdict, the next stage never runs, the runner exits non-zero.
+# SPEC-1 [change]: outcome fail, or broken (a contract-3 result, #2366) → the
+#   run fails, the stage is `failed`, the run's end names what it reported, the
+#   next stage never runs, the runner exits non-zero. (Contract 2's other
+#   failing words — error, block, scope_violation, corrupt_diff — no longer
+#   exist: a stage reports fail, or how it ended.)
 # SPEC-2 [guard]: a result that is not a verdict does not read as success.
 #   Truncated JSON and non-JSON end the run as a rejected result
-#   (contract_violation:malformed_json), and so does a v2 verdict word the stage
-#   never declared (contract_violation:unknown_verdict) — both since #2231. Kept
+#   (contract_violation:malformed_json), and so does an outcome off the engine's
+#   list (contract_violation:unknown_outcome, #2366; it was an undeclared
+#   verdict word, #2231). Kept
 #   here so the whole row is pinned in one place. (A v1 plugin no longer loads
 #   at all since #1850 — v1-retired-test.sh R1/R2.)
 # SPEC-3 [change]: a stage the template marks `blocking: false` is advisory:
 #   its failing verdict is recorded and the run goes on.
-# SPEC-4 [guard]: pass and warn-class verdicts (pass, degraded) still complete.
+# SPEC-4 [guard]: pass still completes. (Contract 2's warn class — degraded —
+#   is gone with #2366: a stage reports pass or fail.)
 # SPEC-5 (#1850): a leaf that exits 0 having written no result at all ends the
 #   run, and the RUN fails, not merely the verdict. [guard] a primary marked
 #   `required: true` was already refused by the artifact check (#1803);
@@ -60,7 +64,12 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export VL_AFTER_LOG="$AFTER_LOG"
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-# _plugin <id> <contract: 1|2> <body of the run function> [required: true|false]
+# #2366: stub bodies and results are written with the engine's writer.
+export STAGE_RESULT_LIB="$REPO_ROOT/scripts/lib/stage-result.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$STAGE_RESULT_LIB"
+
+# _plugin <id> <contract: 1|3> <body of the run function> [required: true|false]
 _plugin() {
     local id="$1" contract="$2" fn="${1//-/_}_run" dir="$PLUGINS_ROOT/tool/$1" req="${4:-true}"
     mkdir -p "$dir"
@@ -75,7 +84,7 @@ hooks:
 requires:
   core: [event-bus]
 EOF
-        [[ "$contract" == 2 ]] && printf 'provides:\n  result_contract: 2\n'
+        [[ "$contract" == 3 ]] && printf 'provides:\n  result_contract: 3\n'
         cat <<EOF
 inputs: []
 outputs:
@@ -84,29 +93,28 @@ outputs:
     type: json
     required: $req
     primary: true
-config:
-  valid_verdicts: [pass, degraded, fail, error, block, scope_violation, corrupt_diff]
 EOF
     } > "$dir/manifest.yaml"
     printf '%s() {\n    local d; d="$(dirname "$2")/artifacts"; mkdir -p "$d"\n%s\n}\n' \
         "$fn" "$3" > "$dir/plugin.sh"
 }
 
-# vl-leaf writes exactly VL_BODY (a whole result file), so a case can be a v2
-# result, a v1 result, or bytes that are not a result at all. Its manifest is
-# rewritten per case: VL_CONTRACT 2 declares contract v2, 1 leaves it v1.
+# vl-leaf writes exactly VL_BODY (a whole result file), so a case can be a
+# contract-3 result, or bytes that are not a result at all. Its manifest is
+# rewritten per case: 3 declares contract 3.
 _vl_leaf() {  # <contract> [required]
     _plugin vl-leaf "$1" '    if [[ -n "${VL_BODY:-}" ]]; then printf "%s" "$VL_BODY" > "$d/vl-leaf-result.json"; fi; return 0' "${2:-true}"
 }
-_plugin vl-noop 2 '    printf '"'"'{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}'"'"' > "$d/vl-noop-result.json"; return 0'
-_plugin vl-after 2 '    printf '"'"'ran\n'"'"' >> "${VL_AFTER_LOG:?}"
-    printf '"'"'{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}'"'"' > "$d/vl-after-result.json"; return 0'
+_plugin vl-noop 3 '    source "$STAGE_RESULT_LIB"; stage_result_write "$d/vl-noop-result.json" pass ok; return 0'
+_plugin vl-after 3 '    printf '"'"'ran\n'"'"' >> "${VL_AFTER_LOG:?}"
+    source "$STAGE_RESULT_LIB"; stage_result_write "$d/vl-after-result.json" pass ok; return 0'
 
 OVERLAY_REPO="$(setup_git_temp_repo vl-overlay-repo)"
 install_template_overlay "$OVERLAY_REPO" leaf-verdict-halt leaf-verdict-halt-units \
     leaf-verdict-halt-advisory leaf-verdict-halt-units-advisory
 
-_v2() { printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"the stage says %s"}' "$1" "$1"; }
+# _res <outcome> — a whole contract-3 result, made with the engine's writer.
+_res() { stage_result_write "$TEST_TEMP_DIR/res.json" "$1" "the stage says $1" && cat "$TEST_TEMP_DIR/res.json"; }
 
 _run() {  # <template> <cycles_enabled>
     rm -rf "$STATE_DIR" "$EVENTS_JSONL"; mkdir -p "$STATE_DIR"; : > "$AFTER_LOG"
@@ -152,31 +160,31 @@ for _loop in "linear:leaf-verdict-halt:0" "units:leaf-verdict-halt-units:1"; do
     IFS=: read -r _name _tpl _cyc <<< "$_loop"
 
     print_test_section "[SPEC-1][change] $_name loop — a failing verdict ends the run"
-    _vl_leaf 2
-    for _w in fail error block scope_violation corrupt_diff; do
-        export VL_BODY; VL_BODY="$(_v2 "$_w")"
-        _expect_halt "SPEC-1 $_name $_w" "$_tpl" "$_cyc" "$_w"
+    _vl_leaf 3
+    for _w in fail broken; do
+        export VL_BODY; VL_BODY="$(_res "$_w")"
+        _expect_halt "SPEC-1 $_name $_w" "$_tpl" "$_cyc" "${_w/broken/error}"
     done
 
     print_test_section "[SPEC-2][guard] $_name loop — a result that is not a verdict is not success"
-    _vl_leaf 2
-    VL_BODY='{"verdict":"pa'; _expect_halt "SPEC-2 $_name truncated JSON" "$_tpl" "$_cyc" "malformed_json"
+    _vl_leaf 3
+    VL_BODY='{"outcome":"pa'; _expect_halt "SPEC-2 $_name truncated JSON" "$_tpl" "$_cyc" "malformed_json"
     VL_BODY='this is not a result'; _expect_halt "SPEC-2 $_name non-JSON" "$_tpl" "$_cyc" "malformed_json"
-    VL_BODY="$(_v2 splendid)"; _expect_halt "SPEC-2 $_name undeclared word" "$_tpl" "$_cyc" "unknown_verdict"
+    VL_BODY='{"result_contract":3,"outcome":"splendid","reason":"the stage says splendid"}'
+    _expect_halt "SPEC-2 $_name word off the outcome list" "$_tpl" "$_cyc" "unknown_outcome"
 
     print_test_section "[SPEC-3][change] $_name loop — a stage marked blocking: false is advisory"
-    _vl_leaf 2
-    VL_BODY="$(_v2 fail)"; _expect_goes_on "SPEC-3 $_name advisory fail" "$_tpl-advisory" "$_cyc"
+    _vl_leaf 3
+    VL_BODY="$(_res fail)"; _expect_goes_on "SPEC-3 $_name advisory fail" "$_tpl-advisory" "$_cyc"
 
     print_test_section "[SPEC-5][change] $_name loop — exit 0 with no result written ends the run (#1850)"
     VL_BODY=""; _expect_halt "SPEC-5 $_name absent required result" "$_tpl" "$_cyc" ""
-    _vl_leaf 2 false
+    _vl_leaf 3 false
     VL_BODY=""; _expect_halt "SPEC-5 $_name absent result, primary not marked required" "$_tpl" "$_cyc" "contract_violation:missing_result"
-    _vl_leaf 2
+    _vl_leaf 3
 
-    print_test_section "[SPEC-4][guard] $_name loop — pass and warn still complete"
-    VL_BODY="$(_v2 pass)"; _expect_goes_on "SPEC-4 $_name pass" "$_tpl" "$_cyc"
-    VL_BODY="$(_v2 degraded)"; _expect_goes_on "SPEC-4 $_name degraded" "$_tpl" "$_cyc"
+    print_test_section "[SPEC-4][guard] $_name loop — pass still completes"
+    VL_BODY="$(_res pass)"; _expect_goes_on "SPEC-4 $_name pass" "$_tpl" "$_cyc"
 done
 unset VL_BODY
 

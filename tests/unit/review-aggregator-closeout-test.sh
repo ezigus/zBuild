@@ -141,9 +141,9 @@ assert_eq "[K8] ...reason from the shared guard" "$STAGE_SIGNAL_REASON" "$(_f re
 
 print_test_section "K10: a passing run is unchanged"
 _k10="$TEST_TEMP_DIR/k10"; mkdir -p "$_k10"
-printf '%s\n' '{"schema_version":1,"name":"correctness","score":6,"findings":[{"file":"core/x.sh","category":"logic","severity":"medium","line":42,"message":"off-by-one in loop"}],"result_contract":2,"verdict":"complete","disposition":"complete","reason":"reviewed"}' > "$_k10/lens-correctness.json"
-printf '%s\n' '{"schema_version":1,"name":"security","score":8,"findings":[{"file":"core/x.sh","category":"logic","severity":"high","line":47,"message":"same region higher severity"},{"file":"core/z.sh","category":"style","severity":"low","line":3,"message":"pre-existing","introduced":false}],"result_contract":2,"verdict":"complete","disposition":"complete","reason":"reviewed"}' > "$_k10/lens-security.json"
-printf '%s\n' '{"schema_version":1,"name":"performance","score":9,"findings":[],"result_contract":2,"verdict":"complete","disposition":"complete","reason":"reviewed"}' > "$_k10/lens-performance.json"
+printf '%s\n' '{"schema_version":1,"name":"correctness","score":6,"findings":[{"file":"core/x.sh","category":"logic","severity":"medium","line":42,"message":"off-by-one in loop"}],"result_contract":3,"outcome":"pass","reason":"reviewed"}' > "$_k10/lens-correctness.json"
+printf '%s\n' '{"schema_version":1,"name":"security","score":8,"findings":[{"file":"core/x.sh","category":"logic","severity":"high","line":47,"message":"same region higher severity"},{"file":"core/z.sh","category":"style","severity":"low","line":3,"message":"pre-existing","introduced":false}],"result_contract":3,"outcome":"pass","reason":"reviewed"}' > "$_k10/lens-security.json"
+printf '%s\n' '{"schema_version":1,"name":"performance","score":9,"findings":[],"result_contract":3,"outcome":"pass","reason":"reviewed"}' > "$_k10/lens-performance.json"
 _inputs "$_k10/inputs.json" "$_k10/lens-correctness.json" "$_k10/lens-security.json" "$_k10/lens-performance.json"
 ZBUILD_ARTIFACT_DIR="$_k10" ZBUILD_STAGE_INPUTS="$_k10/inputs.json" \
     review_aggregator_run review-aggregator "$_k10/x" >/dev/null 2>&1

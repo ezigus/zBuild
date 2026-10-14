@@ -35,6 +35,9 @@ print_test_header "shape-floor: a still-correct floor needs no edit (#1874)"
 setup_test_env "shape-floor-content-stable"
 # shellcheck source=../../plugins/tool/shape-floor/plugin.sh
 source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+# #2366: the test stage's result is made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 T="$TEST_TEMP_DIR/target"
 mkdir -p "$T/config" "$T/tests/golden/full" "$T/tests/unit" "$T/core/pipeline"
@@ -52,10 +55,12 @@ export ZBUILD_ARTIFACT_DIR="$S/artifacts"
 
 # _results <tree> <run_mode> <failures-json> — the test stage's result.
 _results() {
-    jq -n --arg t "$1" --arg m "$2" --argjson f "$3" \
-        '{result_contract:2, verdict:(if ($f|length)==0 then "pass" else "fail" end),
-          disposition:"complete", reason:"r", run_mode:$m,
-          data:{tree_sha:$t, run_mode:$m, failed:($f|length), failures:$f}}' > "$S/artifacts/test-results.json"
+    local _o=pass; [[ "$(jq 'length' <<< "$3")" -eq 0 ]] || _o=fail
+    jq -n --arg m "$2" '{run_mode:$m}' > "$S/artifacts/test-results.json"
+    stage_result_add "$S/artifacts/test-results.json" "$_o" r
+    jq --arg t "$1" --arg m "$2" --argjson f "$3" \
+        '. + {data:{tree_sha:$t, run_mode:$m, failed:($f|length), failures:$f}}' \
+        "$S/artifacts/test-results.json" > "$S/artifacts/t.tmp" && mv "$S/artifacts/t.tmp" "$S/artifacts/test-results.json"
     jq -n --arg p "$S/artifacts/test-results.json" '{inputs:{test_results:$p}}' > "$S/stage-inputs.json"
     export ZBUILD_STAGE_INPUTS="$S/stage-inputs.json"
 }

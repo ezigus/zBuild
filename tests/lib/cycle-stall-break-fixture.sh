@@ -30,6 +30,9 @@ source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 # sourced explicitly rather than relied on to arrive transitively.
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh"
+# #2366: results are made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 
 # ─── SPEC-3 / SPEC-4 (stall-break vs converge) ───────────────────────────────
@@ -48,9 +51,10 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_REASON=""
     case "$_st_stage" in
         build)
-            # ADR-054: new format — verdict=pass + disposition=complete + data.build_kind=empty_diff
-            printf '{"schema_version":1,"result_contract":2,"verdict":"pass","disposition":"complete","data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
+            # ADR-054/#2366: outcome=pass + data.build_kind=empty_diff
+            printf '{"schema_version":1,"data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
                 > "$_art/build-summary.json"
+            stage_result_add "$_art/build-summary.json" pass "done_sentinel"
             # #2183: a build that re-checked a finding and could not reproduce it.
             if [[ -n "${_BUILD_NOT_REPRODUCED:-}" ]]; then
                 jq --arg p "$_BUILD_NOT_REPRODUCED" '.data.not_reproduced = [$p]' \
@@ -71,19 +75,19 @@ cycle_dispatch_stage() {
             _CYCLE_DISPATCH_REPORT="$(_verdict_report_from_file "$_art/build-summary.json")"
             ;;
         test)
-            printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":1,"failed":0}}' "${_TEST_VERDICT:-pass}" \
-                > "$_art/test-results.json"
+            stage_result_write "$_art/test-results.json" "${_TEST_VERDICT:-pass}" mock \
+                '{"exit_code":0,"passed":1,"failed":0}'
             _CYCLE_DISPATCH_VERDICT="${_TEST_VERDICT:-pass}"
             _CYCLE_DISPATCH_VERDICT_RAW="${_TEST_VERDICT:-pass}"
-            # v2: a failing suite is verdict=fail with rc 0 (rc 1 = broken).
+            # a failing suite is outcome=fail with rc 0 (rc 1 = broken).
             ;;
         acceptance-gate)
             _CYCLE_DISPATCH_VERDICT="${_AG_VERDICT:-pass}"
             _CYCLE_DISPATCH_VERDICT_RAW="${_AG_VERDICT:-pass}"
             ;;
         gate-aggregator)
-            printf '{"schema_version":1,"verdict":"%s","summary":"x"}' "$_GA_VERDICT" \
-                > "$_art/gate-aggregator-result.json"
+            printf '{"schema_version":1,"summary":"x"}' > "$_art/gate-aggregator-result.json"
+            stage_result_add "$_art/gate-aggregator-result.json" "$_GA_VERDICT" x
             _CYCLE_DISPATCH_VERDICT="$_GA_VERDICT"
             _CYCLE_DISPATCH_VERDICT_RAW="$_GA_VERDICT"
             ;;

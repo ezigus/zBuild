@@ -149,17 +149,25 @@ outputs:
 EOF
 export ZBUILD_PLUGINS_ROOT="$PR4"
 _CYCLE_STAGES=(acceptance-gate)
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"terminal","reason":"malformed_acceptance_block","failures":["malformed_acceptance_block"]}\n' > "$SD/artifacts/acceptance-gate-result.json"
+# #2366: results made with the engine's writer — the policy word (severity) and
+# failures stay at the top level, where the readers look.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+printf '{"severity":"terminal","failures":["malformed_acceptance_block"]}\n' > "$SD/artifacts/acceptance-gate-result.json"
+stage_result_add "$SD/artifacts/acceptance-gate-result.json" fail "malformed_acceptance_block"
 _m="$(_cycle_member_terminal_failure "$SD" 2>/dev/null || true)"
 assert_eq "[SPEC-4] the orchestrator halts on severity=terminal (disposition=complete)" "acceptance-gate" "$_m"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"recoverable","reason":"x","failures":["untagged_spec:SPEC-1"]}\n' > "$SD/artifacts/acceptance-gate-result.json"
+printf '{"severity":"recoverable","failures":["untagged_spec:SPEC-1"]}\n' > "$SD/artifacts/acceptance-gate-result.json"
+stage_result_add "$SD/artifacts/acceptance-gate-result.json" fail "x"
 _m="$(_cycle_member_terminal_failure "$SD" 2>/dev/null || true)"
 assert_eq "[SPEC-4] …and not on severity=recoverable" "" "$_m"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"advisory","reason":"negctl harness","failures":["negctl_error:harness:SPEC-1"]}\n' > "$SD/artifacts/adv.json"
+printf '{"severity":"advisory","failures":["negctl_error:harness:SPEC-1"]}\n' > "$SD/artifacts/adv.json"
+stage_result_add "$SD/artifacts/adv.json" fail "negctl harness"
 assert_eq "[SPEC-4] the aggregator demotes severity=advisory to non-blocking" "advisory" "$(_ga_read_gate_verdict "$SD/artifacts/adv.json")"
 printf '{"verdict":"fail","disposition":"advisory","reason":"legacy fixture"}\n' > "$SD/artifacts/adv1.json"
-# #1850: the v1 fallback is gone — the word in `disposition` no longer demotes.
-assert_eq "[SPEC-4] a v1-shaped fixture with the word in disposition no longer demotes (#1850)" "fail" "$(_ga_read_gate_verdict "$SD/artifacts/adv1.json")"
+# #1850/#2366: the word in `disposition` never demotes, and a result with no
+# outcome is not a result at all — it does not satisfy the gate.
+assert_eq "[SPEC-4] a v1-shaped fixture with the word in disposition does not demote (#1850, #2366)" "malformed" "$(_ga_read_gate_verdict "$SD/artifacts/adv1.json")"
 
 cleanup_test_env
 print_test_results
