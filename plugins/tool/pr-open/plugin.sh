@@ -333,10 +333,10 @@ _pr_open_run_inner() {
         plan_summary="$(jq -r '.goal // ""' "$plan_json" 2>/dev/null || true)"
     fi
     if [[ -f "$review_json_path" ]]; then
-        review_verdict="$(jq -r '.outcome // .verdict // ""' "$review_json_path" 2>/dev/null || true)"
+        review_verdict="$(jq -r '.outcome // ""' "$review_json_path" 2>/dev/null || true)"
     fi
     if [[ -n "$test_results_json" && -f "$test_results_json" ]]; then
-        test_verdict="$(jq -r '.outcome // .verdict // ""' "$test_results_json" 2>/dev/null || true)"
+        test_verdict="$(jq -r '.outcome // ""' "$test_results_json" 2>/dev/null || true)"
     fi
 
     local pr_body

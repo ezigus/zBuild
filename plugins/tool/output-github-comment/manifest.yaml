@@ -22,7 +22,7 @@ provides:
 
 config:
   severity_order: [critical, high, medium, low, info]
-  # #1850: no `valid_verdicts` and no primary output. This plugin writes rendered
+  # #1850: no verdict list and no primary output. This plugin writes rendered
   # markdown, never a stage result, and no template dispatches it as a stage —
   # a primary output is the declaration "my result is here", which it is not.
 

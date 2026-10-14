@@ -5,7 +5,7 @@
 **Issue:** #485
 **Related:** ADR-013 (canonical stage list), ADR-018 (stage invocation modes),
 keeper #17 (gate semantics)
-**Amended:** 2026-07-08 (#1277, ADR-047) — fail-closed is re-expressed generically at the
+**Amended:** 2026-10-14 (#2366, ADR-054 §6) — the verdict table below is history: every stage now writes one outcome (`pass`, `fail`, or how it failed to finish) from the engine's closed list, `verdict_classify` knows only pass, fail and error, and `valid_verdicts`, `lint-verdict-classify` and `lint-verdict-words` are gone. Previously amended 2026-07-08 (#1277, ADR-047) — fail-closed is re-expressed generically at the
 mechanics layer: an unresolved leaf or an unsatisfied `inputs[].source: stage:X` **errors at
 load** for any repo's stages, independent of any stage name. See ADR-047 §5.
 

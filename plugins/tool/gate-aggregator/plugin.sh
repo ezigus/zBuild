@@ -146,7 +146,7 @@ _ga_read_gate_verdict() {
         echo "missing"; return 0
     fi
     local v
-    v="$(jq -r '.outcome // .verdict // empty' "$result_path" 2>/dev/null)" || { echo "malformed"; return 0; }
+    v="$(jq -r '.outcome // empty' "$result_path" 2>/dev/null)" || { echo "malformed"; return 0; }
     case "$v" in
         pass | skip) echo "$v" ;;
         fail | error)

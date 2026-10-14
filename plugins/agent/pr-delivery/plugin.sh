@@ -110,7 +110,7 @@ _pr_stage_run_inner() {
     # auto_unless_flagged path below.
     local _gate_verdict_early=""
     if [[ -n "$_gate_result" && -f "$_gate_result" ]]; then
-        _gate_verdict_early="$(jq -r '.outcome // .verdict // empty' "$_gate_result" 2>/dev/null || true)"
+        _gate_verdict_early="$(jq -r '.outcome // empty' "$_gate_result" 2>/dev/null || true)"
     fi
 
     # ADR-040 §4 (#1844): the review is advisory and never blocks delivery. A
@@ -227,7 +227,7 @@ _pr_stage_run_inner() {
             # — ADR-001 fail-closed). Its outcome says what happened.
             local _po_verdict="" _po_reason=""
             if [[ -s "$pr_result_out" ]]; then
-                _po_verdict="$(jq -r '.outcome // .verdict // empty' "$pr_result_out" 2>/dev/null || true)"
+                _po_verdict="$(jq -r '.outcome // empty' "$pr_result_out" 2>/dev/null || true)"
                 _po_reason="$(jq -r '.reason // empty' "$pr_result_out" 2>/dev/null || true)"
             fi
             if [[ "$_po_verdict" == "fail" ]]; then

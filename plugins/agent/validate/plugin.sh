@@ -94,12 +94,11 @@ _validate_agent_run_inner() {
     # Validate checks the deployment deploy MADE. A deploy that deployed nothing
     # (the gate did not pass) or did not finish left nothing to validate —
     # probing a fixed address and calling it healthy asserted something about a
-    # deployment that never happened. Deployed: a contract-3 pass whose data does
-    # not say `deployed: false`, or a contract-2 `deployed` verdict.
+    # deployment that never happened. Deployed: a pass whose data does not say
+    # `deployed: false`.
     local deploy_verdict deployed
-    deploy_verdict="$(jq -r '.outcome // .verdict // empty' "$deploy_result_in" 2>/dev/null || true)"
-    deployed="$(jq -r 'if has("outcome") then (.outcome == "pass" and (.data.deployed != false))
-                       else (.verdict == "deployed") end' "$deploy_result_in" 2>/dev/null || true)"
+    deploy_verdict="$(jq -r '.outcome // empty' "$deploy_result_in" 2>/dev/null || true)"
+    deployed="$(jq -r '.outcome == "pass" and (.data.deployed != false)' "$deploy_result_in" 2>/dev/null || true)"
     if [[ "$deployed" != "true" ]]; then
         _validate_write_result "$artifacts_dir" pass \
             "nothing to validate: deploy reported '${deploy_verdict:-no outcome}', and nothing was deployed"

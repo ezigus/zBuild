@@ -420,7 +420,7 @@ Under `result_contract: 2`, a verdict outside the manifest's `config.valid_verdi
 - `scripts/lib/lint-verdict-words.sh` refuses an undeclared literal in CI.
 - The list is read by one parser, `scripts/lib/manifest-valid-verdicts.sh`, shared by the reader and both lints.
 
-Verification: `tests/unit/verdict-undeclared-word-test.sh`, `tests/unit/lint-verdict-words-test.sh`.
+Verification (until #2366 retired it): `tests/unit/verdict-undeclared-word-test.sh`, `tests/unit/lint-verdict-words-test.sh`.
 
 ### Amendment (2026-10-04, #2271)
 
@@ -474,7 +474,7 @@ Every stage gives the engine the same interface. Splitting *what happened* from 
 
 A word off the list, a missing `outcome` or a missing `reason` is a broken result. Anything stage-specific goes in `reason` and `data`. A stage writes its result with the one writer, `stage_result_write` (or `stage_result_add` for an output that is itself the result), in `scripts/lib/stage-result.sh`, and a contract-3 result needs no `valid_verdicts`.
 
-**Migration.** The engine reads contracts 2 and 3 while the stages move, one batch per PR; the last PR drops contract 2 by raising the contract minimum, and removes `valid_verdicts`, `verdict_classify` and their lints. Which outcomes block — today `convergence:` in each manifest — moves to the template in the same series.
+**Migration — done (2026-10-14).** The engine read contracts 2 and 3 while the stages moved (#2373, #2374); contract 2 is now refused (`_ZBUILD_CONTRACT_MIN=3`), `valid_verdicts` is gone from every manifest, `verdict_classify` knows only `pass`, `fail` and `error` (a stage that did not finish), and `lint-verdict-classify`, `lint-verdict-words` and `manifest-valid-verdicts.sh` are deleted. `lint-disposition-words` checks the outcome passed to the writer. The #2242 amendment below (a verdict closed to the manifest's words) is superseded by this one. Which outcomes block — today `convergence:` in each manifest — and the lens fail rule move to the template with #2368, where the engine combines a group's outcomes.
 
-**Enforced by** `tests/unit/result-outcome-test.sh` O1–O9 (O2b: `stage_result_add`).
+**Enforced by** `tests/unit/result-outcome-test.sh` O1–O9 (O2b: `stage_result_add`); `tests/unit/result-outcome-readers-test.sh` R1–R5 (readers; the template tests only pass/fail); `tests/unit/contract2-retired-test.sh` V1–V5 (contract 2, the verdict words and their tooling are gone).
 
