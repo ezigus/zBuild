@@ -73,7 +73,9 @@ outputs:
     required: true
     primary: true
 MF
-jq -n '{result_contract:2,verdict:"error",disposition:"timed_out",reason:"stopped"}' > "$_s3/artifacts/cut-result.json"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+stage_result_write "$_s3/artifacts/cut-result.json" timed_out stopped >/dev/null
 _n3="$(stage_notes_path "$_s3" cut)"; mkdir -p "${_n3%/*}"
 printf 'Read plugin.sh: the dry run writes no result.\n' > "$_n3"
 printf '{"stage_statuses":{"cut":"failed"},"stage_verdicts":{"cut":"error"}}\n' > "$_s3/pipeline-state.json"

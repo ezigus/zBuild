@@ -37,9 +37,15 @@ fresh_artifacts() {
     printf '%s\n' "$d/state.json"
 }
 
-# write_verdict <artifacts_dir> <filename> <verdict>
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+# write_verdict <artifacts_dir> <filename> <word> — the gate's result, made with
+# the engine's writer (#2366): pass/skip → pass, fail → fail, error → broken.
 write_verdict() {
-    printf '{"verdict":"%s"}\n' "$3" > "$1/$2"
+    local o
+    case "$3" in pass|skip) o=pass ;; fail) o=fail ;; error) o=broken ;; *) o="$3" ;; esac
+    stage_result_write "$1/$2" "$o" "gate said $3" >/dev/null 2>&1 \
+        || printf '{"result_contract":3,"outcome":"%s","reason":"x"}\n' "$3" > "$1/$2"
 }
 
 # write_all <artifacts_dir> <verdict> — write the given verdict to every gate.
@@ -115,7 +121,7 @@ assert_eq "TC-7: gates map has seven entries" "7" "$(jq '.data.gates | length' <
 # infra flake) must NOT block convergence — status=advisory, NOT in failed[].
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","severity":"advisory","failures":["negctl_error:timeout:SPEC-1"]}\n' \
+printf '{"result_contract":3,"outcome":"fail","reason":"x","severity":"advisory","failures":["negctl_error:timeout:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-8: advisory fail → verdict=pass (non-blocking)" "$OUT" '.outcome' "pass"
@@ -135,7 +141,7 @@ assert_json_key "TC-8b: a v1-shape disposition=advisory does not demote the fail
 # recoverable drives another build iteration — it must NOT satisfy convergence.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","severity":"recoverable","failures":["untagged_spec:SPEC-1"]}\n' \
+printf '{"result_contract":3,"outcome":"fail","reason":"x","severity":"recoverable","failures":["untagged_spec:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-9: recoverable fail → verdict=fail (still blocking)" "$OUT" '.outcome' "fail"
@@ -148,7 +154,7 @@ assert_contains "TC-9: failed[] names the acceptance-gate" "$OUT" "acceptance-ga
 # fault=specification result to exercise the aggregator's generic rollup path.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","severity":"terminal","fault":"specification","reason":"a hypothetical design-rooted failure","failures":["some_design_rooted_class:SPEC-1"]}\n' \
+printf '{"result_contract":3,"outcome":"fail","severity":"terminal","fault":"specification","reason":"a hypothetical design-rooted failure","failures":["some_design_rooted_class:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 # #1987: the verdict stays pass/fail and the FAULT says whose problem it is.
@@ -171,7 +177,7 @@ assert_file_not_exists "TC-10: the aggregator renders no design payload" "$AD/de
 # build via the build_test_cycle gate_feedback → build edge.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","severity":"recoverable","reason":"SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
+printf '{"result_contract":3,"outcome":"fail","severity":"recoverable","reason":"SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-10b: tautology (no fault) → verdict=fail" "$OUT" '.outcome' "fail"
@@ -197,7 +203,7 @@ assert_file_not_exists "TC-11: no design-feedback.md when not design-rooted" "$A
 # fault on a gate whose verdict=pass must not trigger a specification fault.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"pass","fault":"specification"}\n' > "$AD/acceptance-gate-result.json"
+printf '{"result_contract":3,"outcome":"pass","reason":"x","fault":"specification"}\n' > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-12: fault on a passing gate ignored → verdict=pass" "$OUT" '.outcome' "pass"
 
@@ -209,7 +215,7 @@ assert_json_key "TC-12: fault on a passing gate ignored → verdict=pass" "$OUT"
 # still lands in the aggregate's failed[] list.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","test_output":"FAIL tests/unit/x-test.sh"}\n' > "$AD/test-results.json"
+printf '{"result_contract":3,"outcome":"fail","reason":"x","test_output":"FAIL tests/unit/x-test.sh"}\n' > "$AD/test-results.json"
 OUT="$(run_agg "$SF")"
 assert_contains "TC-13: a failing suite is named in failed[]" "$OUT" "suite"
 assert_file_not_exists "TC-13: and no payload is rendered" "$AD/gate-feedback.md"
@@ -223,7 +229,7 @@ assert_file_not_exists "TC-13: and no payload is rendered" "$AD/gate-feedback.md
 # a blocking fail (recoverable blocks convergence, only advisory is non-blocking).
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","severity":"recoverable","fault":"specification","reason":"WIRING .github/workflows/ci.yml referenced by no declared TESTFILE — declare WIRING: none or name a target the tests actually load","failures":["wiring_not_on_path:.github/workflows/ci.yml"]}\n' \
+printf '{"result_contract":3,"outcome":"fail","severity":"recoverable","fault":"specification","reason":"WIRING .github/workflows/ci.yml referenced by no declared TESTFILE — declare WIRING: none or name a target the tests actually load","failures":["wiring_not_on_path:.github/workflows/ci.yml"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "[SPEC-3] wiring_not_on_path → verdict stays fail" \
@@ -242,11 +248,11 @@ assert_file_not_exists "[SPEC-3] the aggregator renders no design payload" "$AD/
 # an empty prompt, made an empty diff, and the cycle spun for five iterations.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","reason":"missing_floor_files","fault":"specification"}\n' \
+printf '{"result_contract":3,"outcome":"fail","reason":"missing_floor_files","fault":"specification"}\n' \
     > "$AD/shape-floor-result.json"
-printf '{"verdict":"fail","severity":"recoverable","reason":"acceptance SPEC violations — SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
+printf '{"result_contract":3,"outcome":"fail","severity":"recoverable","reason":"acceptance SPEC violations — SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
-printf '{"verdict":"fail","test_output":"FAIL sigpipe-antipattern-guard-test.sh"}\n' \
+printf '{"result_contract":3,"outcome":"fail","reason":"x","test_output":"FAIL sigpipe-antipattern-guard-test.sh"}\n' \
     > "$AD/test-results.json"
 OUT="$(run_agg "$SF")"
 
@@ -275,7 +281,7 @@ assert_contains "TC-15: and so is the build-fixable one" "$OUT" "acceptance-gate
 # gate-feedback.md must stay absent — the pre-#1757 behaviour, unchanged.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","reason":"missing_floor_files","fault":"specification"}\n' \
+printf '{"result_contract":3,"outcome":"fail","reason":"missing_floor_files","fault":"specification"}\n' \
     > "$AD/shape-floor-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-16: all-routed → verdict stays fail" "$OUT" '.outcome' "fail"
@@ -289,7 +295,7 @@ assert_file_not_exists "TC-16: gate-feedback.md absent (nothing build can fix)" 
 # anywhere → residual[] == failed[], design-feedback.md dropped.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","reason":"coverage below floor"}\n' > "$AD/coverage-result.json"
+printf '{"result_contract":3,"outcome":"fail","reason":"coverage below floor"}\n' > "$AD/coverage-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-17: plain fail → verdict=fail (no route)" "$OUT" '.outcome' "fail"
 assert_file_not_exists "TC-17: the aggregator renders no build payload" \

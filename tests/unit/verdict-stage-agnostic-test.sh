@@ -2,8 +2,8 @@
 # tests/unit/verdict-stage-agnostic-test.sh — EPIC #1277 / issue #1280.
 #
 # Fictitious-stage harness (ADR-047 §3): the verdict reader names NO stage. A
-# stage PUSHES its verdict to the canonical channel — the .verdict of its v2
-# result, which is its primary artifact. #1850 retired the <stage>-verdict.json
+# stage PUSHES its outcome to the canonical channel — the .outcome of its
+# contract-3 result (#2366), which is its primary artifact. #1850 retired the <stage>-verdict.json
 # sidecar a non-JSON primary once used, and the channel-missing→warn overlay: a
 # stage with no readable v2 result has failed.
 #
@@ -37,6 +37,9 @@ _sha_before="$(shasum "$VERDICT_SH" | awk '{print $1}')"
 
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$VERDICT_SH"
+# #2366: results are made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 STATE_DIR="$TEST_TEMP_DIR/state"
 ART_DIR="$STATE_DIR/artifacts"
@@ -62,20 +65,18 @@ outputs:
     required: true
     primary: true
 provides:
-  result_contract: 2
-config:
-  valid_verdicts: [approve, block]
+  result_contract: 3
 EOF
 }
 
-# ─── SPEC-1: a fictitious stage pushes `block` in its v2 result ──────────────
+# ─── SPEC-1: a fictitious stage pushes outcome `fail` in its result ──────────
 FROB="$TEST_TEMP_DIR/plugins/frobnicate"
 _make_manifest "$FROB" "frobnicate" "${ART_DIR}/frobnicate-result.json" "frob_result" "json"
-printf '%s' '{"result_contract":2,"verdict":"block","disposition":"complete","reason":"r"}' > "$ART_DIR/frobnicate-result.json"
+stage_result_write "$ART_DIR/frobnicate-result.json" fail r
 got="$(runner_read_stage_verdict "$STATE_DIR" "$FROB/manifest.yaml" "frobnicate" 0)"
-assert_eq "SPEC-1: v2 result verdict=block -> block (structural pass-through #550)" "block" "$got"
+assert_eq "SPEC-1: result outcome=fail -> fail" "fail" "$got"
 raw="$(runner_read_stage_verdict_raw "$STATE_DIR" "$FROB/manifest.yaml" "frobnicate" 0)"
-assert_eq "SPEC-1: raw channel returns the pushed verdict 'block'" "block" "$raw"
+assert_eq "SPEC-1: raw channel returns the pushed outcome 'fail'" "fail" "$raw"
 
 # ─── SPEC-2: a non-JSON primary cannot carry a result — and no sidecar speaks
 # for it any more (#1850): the stage has failed, whatever file sits beside it.
@@ -86,14 +87,14 @@ printf '%s' '{"verdict":"approve"}' > "$ART_DIR/docstage-verdict.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$DOC/manifest.yaml" "docstage" 0)"
 assert_eq "SPEC-2: non-JSON primary, even with a sidecar -> error (#1850)" "error" "$got"
 
-# ─── SPEC-3: fictitious JSON-primary stage pushes .verdict directly ──────────
+# ─── SPEC-3: fictitious JSON-primary stage pushes .outcome directly ──────────
 WIDGET="$TEST_TEMP_DIR/plugins/widget"
 _make_manifest "$WIDGET" "widget" "${ART_DIR}/widget.json" "widget_out" "json"
-printf '%s' '{"result_contract":2,"verdict":"approve","disposition":"complete","reason":"r"}' > "$ART_DIR/widget.json"
+stage_result_write "$ART_DIR/widget.json" pass r
 got="$(runner_read_stage_verdict "$STATE_DIR" "$WIDGET/manifest.yaml" "widget" 0)"
-assert_eq "SPEC-3: JSON primary .verdict=approve -> classified pass" "pass" "$got"
+assert_eq "SPEC-3: JSON primary .outcome=pass -> classified pass" "pass" "$got"
 raw="$(runner_read_stage_verdict_raw "$STATE_DIR" "$WIDGET/manifest.yaml" "widget" 0)"
-assert_eq "SPEC-3: raw channel returns pushed .verdict 'approve'" "approve" "$raw"
+assert_eq "SPEC-3: raw channel returns pushed .outcome 'pass'" "pass" "$raw"
 
 # ─── SPEC-4: the mechanic is stage-agnostic ──────────────────────────────────
 if grep -qE '"frobnicate"|"widget"|"docstage"' "$VERDICT_SH"; then

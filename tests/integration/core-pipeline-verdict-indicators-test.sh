@@ -37,18 +37,16 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_CYCLES_ENABLED=0
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-# ─── Helper: synthetic plugin that writes test-results.json with verdict X ───
-# _make_verdict_plugin <stage_id> <kind> <output_relpath> <json> [role]
+# ─── Helper: synthetic plugin that writes its result with outcome X ───────────
+# _make_verdict_plugin <stage_id> <kind> <output_relpath> <outcome> [role] [data-json]
 _make_verdict_plugin() {
-    local id="$1" kind="$2" out_rel="$3" json="$4" role="${5:-}"
+    local id="$1" kind="$2" out_rel="$3" outcome="$4" role="${5:-}" data="${6:-}"
     local dir="$PLUGINS_ROOT/$kind/$id"
     fixture_link_personas "$PLUGINS_ROOT"
     mkdir -p "$dir"
     local fn; fn="${id//-/_}_run"
-    # #1850: the stub speaks result contract v2 — the JSON it writes gains the
-    # mandatory fields, and its verdict is the one word it declares.
-    local verdict; verdict="$(jq -r '.verdict' <<<"$json")"
-    json="$(jq -c '. + {result_contract: 2, disposition: "complete", reason: "stub"}' <<<"$json")"
+    # #1850/#2366: the stub speaks result contract 3 — one outcome, written by
+    # the engine's own writer.
     # Agent plugins must declare redaction in requires.core (registry rule).
     local core_list="[event-bus]"
     if [[ "$kind" == "agent" ]]; then
@@ -65,7 +63,7 @@ hooks:
 requires:
   core: $core_list
 EOF
-        printf 'provides:\n  result_contract: 2\n'
+        printf 'provides:\n  result_contract: 3\n'
         [[ -n "$role" ]] && printf '  role: %s\n' "$role"
         cat <<EOF
 inputs: []
@@ -76,8 +74,6 @@ outputs:
     format: json
     required: true
     primary: true
-config:
-  valid_verdicts: [$verdict]
 EOF
     } > "$dir/manifest.yaml"
     cat > "$dir/plugin.sh" <<EOF
@@ -86,7 +82,8 @@ ${fn}() {
     local state_dir; state_dir="\$(dirname "\$state_file")"
     local art_dir="\$state_dir/artifacts"
     mkdir -p "\$art_dir"
-    printf '%s' '$json' > "\$art_dir/$out_rel"
+    source "$REPO_ROOT/scripts/lib/stage-result.sh"
+    stage_result_write "\$art_dir/$out_rel" $outcome stub '$data'
     return 0
 }
 EOF
@@ -122,9 +119,9 @@ print_test_section "all-pass: every stage line ends with ✓"
 rm -rf "$PLUGINS_ROOT"
 _install_verdict_fixture verdict-indicator-allpass
 ALLPASS_STAGES=(intake build test)
-_make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
-_make_verdict_plugin build  agent build-summary.json '{"verdict":"pass","scope_violation":false}' builder
-_make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
+_make_verdict_plugin intake agent intake.json pass intake
+_make_verdict_plugin build  agent build-summary.json pass builder '{"scope_violation":false}'
+_make_verdict_plugin test   tool  test-results.json  pass tester
 set +e; _run_pipeline_template verdict-indicator-allpass; rc=$?; set -e
 if [[ $rc -ne 0 ]]; then
     echo "--- runner.err on failure ---" >&2
@@ -158,7 +155,7 @@ assert_eq "state.stage_verdicts.intake == pass" "pass" "$verdict_intake"
 print_test_section "test verdict=fail produces ✗"
 rm -rf "$PLUGINS_ROOT"
 _install_verdict_fixture verdict-indicator-test
-_make_verdict_plugin test tool test-results.json '{"verdict":"fail"}' tester
+_make_verdict_plugin test tool test-results.json fail tester
 set +e; _run_pipeline_template verdict-indicator-test; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 # #1798: a failing verdict now ENDS the run, so the ✗ is on the line that says
@@ -173,38 +170,25 @@ assert_eq "test verdict=fail -> ✗ on test line: the run stops (rc 1)" "1" "$rc
 # ─── Scenario 3: build scope_violation=true → ✗ on build line ────────────────
 # #1095 (PC2): minimal single-stage fixture roster — the assertion only inspects
 # the `build` stage glyph.
-# #1280 (ADR-047 §3): build PUSHES its verdict — a scope_violation rides
-# .verdict:"scope_violation" (build-summary schema v4), not a bare .scope_violation
-# flag the reader derives by name.
+# #2366: build PUSHES its outcome — a scope violation is outcome fail, with the
+# detail under data, not a per-stage verdict word.
 print_test_section "build scope_violation=true produces ✗"
 rm -rf "$PLUGINS_ROOT"
 _install_verdict_fixture verdict-indicator-build
-_make_verdict_plugin build agent build-summary.json '{"verdict":"scope_violation","scope_violation":true}' builder
+_make_verdict_plugin build agent build-summary.json fail builder '{"scope_violation":true}'
 set +e; _run_pipeline_template verdict-indicator-build; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 # #1798: a failing verdict now ENDS the run, so the ✗ is on the line that says
 # the stage reported it — not on a "complete" line, which no longer prints.
-if grep -E "✗.*Stage build reported scope_violation" <<<"$err" >/dev/null; then
+if grep -E "✗.*Stage build reported fail" <<<"$err" >/dev/null; then
     assert_pass "build scope_violation=true -> ✗ on build line"
 else
     assert_fail "build scope_violation=true -> ✗ on build line" "$(grep -i 'build' <<<"$err" || echo 'no line')"
 fi
 assert_eq "build scope_violation=true -> ✗ on build line: the run stops (rc 1)" "1" "$rc"
 
-# ─── Scenario 4: review request_changes → ⚠ on review line ───────────────────
-# #1095 (PC2): minimal single-stage fixture roster — the assertion only inspects
-# the `review` stage glyph.
-print_test_section "review request_changes produces ⚠"
-rm -rf "$PLUGINS_ROOT"
-_install_verdict_fixture verdict-indicator-review
-_make_verdict_plugin review agent review.json '{"verdict":"request_changes"}' reviewer
-set +e; _run_pipeline_template verdict-indicator-review; rc=$?; set -e
-err="$(cat "$TEST_TEMP_DIR/runner.err")"
-if grep -E "⚠.*Stage.*review.*complete" <<<"$err" >/dev/null; then
-    assert_pass "review request_changes -> ⚠ on review line"
-else
-    assert_fail "review request_changes -> ⚠ on review line" "$(grep -i 'review.*complete' <<<"$err" || echo 'no line')"
-fi
+# Scenario 4 (review request_changes → ⚠) retired by #2366: an outcome is pass
+# or fail, or how the stage failed to finish — there is no warn outcome.
 
 cleanup_test_env
 print_test_results

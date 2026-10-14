@@ -8,8 +8,8 @@
 
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
-    # #1850: a v2 stage stub (result_contract 2, JSON primary, a v2 result that
-    # says pass on rc 0 and error/broken otherwise) — mock_plugin_factory's.
+    # #1850/#2366: a stage stub (result_contract 3, JSON primary, a result that
+    # says pass on rc 0 and broken otherwise) — mock_plugin_factory's.
     mock_plugin_factory "$id" agent "$rc" "" "$role" >/dev/null
 }
 
@@ -28,7 +28,7 @@ requires:
     - redaction
 provides:
   role: designer
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: design_out
     path: ${artifact_dir}/design.md
@@ -39,15 +39,13 @@ outputs:
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, error, incomplete]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     printf '# Design\n```scope\nf.txt\n```\n' > "$state_dir/artifacts/design.md"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub design"}' \
+    printf '{"result_contract":3,"outcome":"pass","reason":"stub design"}' \
         > "$state_dir/artifacts/design-verdict.json"
     return 0
 }
@@ -69,21 +67,19 @@ requires:
     - redaction
 provides:
   role: planner
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: plan_out
     path: ${artifact_dir}/plan.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, error]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 plan_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub plan","schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
+    printf '{"result_contract":3,"outcome":"pass","reason":"stub plan","schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
         > "$state_dir/artifacts/plan.json"
     return 0
 }
@@ -108,15 +104,13 @@ requires:
     - redaction
 provides:
   role: acceptance_gate
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: gate_result
     path: ${artifact_dir}/acceptance-gate-result.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 acceptance_gate_run() {
@@ -124,7 +118,7 @@ acceptance_gate_run() {
     mkdir -p "$state_dir/artifacts"
     local f="${ZBUILD_TEST_GATE_FAILURE:-}"
     if [[ -z "$f" ]]; then
-        printf '{"result_contract":2,"verdict":"pass","disposition":"complete","severity":"none","reason":"no failures","failures":[]}' \
+        printf '{"result_contract":3,"outcome":"pass","severity":"none","reason":"no failures","failures":[]}' \
             > "$state_dir/artifacts/acceptance-gate-result.json"
         return 0
     fi
@@ -136,7 +130,7 @@ acceptance_gate_run() {
         negctl_error:* | reachability_error:*)  disp="advisory" ;;
         *)                                      disp="terminal" ;;
     esac
-    printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"%s","reason":"%s","failures":["%s"]}' "$disp" "$f" "$f" \
+    printf '{"result_contract":3,"outcome":"fail","severity":"%s","reason":"%s","failures":["%s"]}' "$disp" "$f" "$f" \
         > "$state_dir/artifacts/acceptance-gate-result.json"
     return 1
 }
@@ -160,21 +154,19 @@ requires:
     - redaction
 provides:
   role: design_gate
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: design_gate_out
     path: ${artifact_dir}/design-gate.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_gate_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"pass","summary":"ok"}' \
+    printf '{"result_contract":3,"reason":"stub","schema_version":1,"outcome":"pass","summary":"ok"}' \
         > "$state_dir/artifacts/design-gate.json"
     return 0
 }
@@ -203,21 +195,19 @@ requires:
     - redaction
 provides:
   role: gate_aggregator
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: gate_aggregator_out
     path: ${artifact_dir}/gate-aggregator.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 gate_aggregator_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"pass","summary":"ok","gates":[]}' \
+    printf '{"result_contract":3,"reason":"stub","schema_version":1,"outcome":"pass","summary":"ok","gates":[]}' \
         > "$state_dir/artifacts/gate-aggregator.json"
     return 0
 }
@@ -236,7 +226,7 @@ PLUG
 # leaf has no plugin — so without this stub the pipeline aborts before intake
 # and every assertion below fails for a reason unrelated to what it tests.
 
-# build: the router hit the account's rate limit. The stage says so in its v2
+# build: the router hit the account's rate limit. The stage says so in its
 # result the way build/lib/summary.sh does after #2111 — disposition
 # unavailable, the reset text under data.rate_limit — and returns 1.
 _make_build_plugin() {
@@ -254,7 +244,7 @@ requires:
     - redaction
 provides:
   role: builder
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: build_summary
     path: ${artifact_dir}/build-summary.json
@@ -266,14 +256,14 @@ MANIFEST
 build_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '%s\n' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub build","data":{}}' \
+    printf '%s\n' '{"result_contract":3,"outcome":"pass","reason":"stub build","data":{}}' \
         > "$state_dir/artifacts/build-summary.json"
     return 0
 }
 PLUG
 }
-# #1850: test and the slow intake are v2 stages built by mock_plugin_factory;
-# intake's own body still writes the factory's v2 result after its optional sleep.
+# #1850/#2366: test and the slow intake are stages built by mock_plugin_factory;
+# intake's own body still writes the factory's result after its optional sleep.
 _make_test_plugin() {
     mock_plugin_factory "test" agent 0 "" "tester" >/dev/null
 }
@@ -286,7 +276,7 @@ intake_run() {
         printf 'running\n' > "\$ZBUILD_TEST_SLOW_MARK"
         sleep 20
     fi
-    $(mock_v2_result_line intake)
+    $(mock_result_line intake)
     return 0
 }
 PLUG

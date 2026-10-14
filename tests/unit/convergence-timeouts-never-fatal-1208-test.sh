@@ -57,6 +57,9 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 source "$REPO_ROOT/core/pipeline/template.sh"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+# #2366: results are made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 FIXT="$REPO_ROOT/tests/fixtures/templates"
 
@@ -110,16 +113,20 @@ cycle_dispatch_stage() {
                 fail)       bv="fail"; tr="done_sentinel" ;;
                 *)          bv="pass" ;;
             esac
-            printf '{"schema_version":4,"result_contract":2,"verdict":"%s","terminated_reason":"%s","files_changed":%s}' \
-                "$bv" "$tr" "$fc" > "$art/build-summary.json"
+            # #2366: the result is made with the engine's writer — a build that
+            # did not finish (incomplete) reports how it ended (interrupted).
+            local bo="$bv"; [[ "$bv" == incomplete ]] && bo=interrupted
+            printf '{"schema_version":4,"terminated_reason":"%s","files_changed":%s}' "$tr" "$fc" \
+                > "$art/build-summary.json"
+            stage_result_add "$art/build-summary.json" "$bo" "$tr"
             _CYCLE_DISPATCH_VERDICT="$(verdict_classify "$bv" 2>/dev/null || echo warn)"
             _CYCLE_DISPATCH_VERDICT_RAW="$bv"
             ;;
         test)
             local tv="pass" nf=0
             [[ "$v" == "fail" ]] && { tv="fail"; nf=3; }
-            printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":5,"failed":%d,"run_mode":"full"}}' \
-                "$tv" "$nf" > "$art/test-results.json"
+            stage_result_write "$art/test-results.json" "$tv" mock \
+                "{\"exit_code\":0,\"passed\":5,\"failed\":$nf,\"run_mode\":\"full\"}"
             _CYCLE_DISPATCH_VERDICT="$(verdict_classify "$tv" 2>/dev/null || echo fail)"
             _CYCLE_DISPATCH_VERDICT_RAW="$tv"
             ;;
@@ -307,9 +314,9 @@ else
     assert_pass "[SPEC-8] orchestrator convergence path is repo-neutral (no runner/language hardcode)"
 fi
 
-# ─── SPEC-9: build plugin emits result_contract:2, disposition:interrupted on router_timeout ─
+# ─── SPEC-9: build plugin emits result_contract:3, outcome:timed_out on router_timeout ─
 # GUARD: this path already existed; tagged here per ADR-036 for acceptance-gate tracking.
-print_test_section "SPEC-9: build-summary.json carries result_contract:2, disposition:interrupted on router_timeout"
+print_test_section "SPEC-9: build-summary.json carries result_contract:3, outcome:timed_out on router_timeout"
 
 # Stubs for scope helpers not reached on the router_timeout path.
 # shellcheck disable=SC2317

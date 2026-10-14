@@ -23,7 +23,7 @@
 _ZBUILD_CONTRACT_VERSION_LOADED=1
 
 # ─── The declared range ─────────────────────────────────────────────────────
-_ZBUILD_CONTRACT_MIN=2
+_ZBUILD_CONTRACT_MIN=3
 _ZBUILD_CONTRACT_MAX=3
 
 # The version at which a result carries the ADR-054 shape (disposition, reason,
@@ -31,8 +31,8 @@ _ZBUILD_CONTRACT_MAX=3
 # "is this a v2 result" branch and this range have to move together, and a bare
 # literal at the reader is precisely the second copy #1824 exists to prevent.
 _ZBUILD_CONTRACT_V2=2
-# #2366: contract 3 — one `outcome` field (ADR-054 §6). v2 is read until every
-# stage has moved, then dropped by raising _ZBUILD_CONTRACT_MIN.
+# #2366: contract 3 — one `outcome` field (ADR-054 §6). Every stage moved, and
+# v2 was dropped by raising _ZBUILD_CONTRACT_MIN.
 _ZBUILD_CONTRACT_V3=3
 
 # The version assumed when a plugin or result file declares none: v1, which is

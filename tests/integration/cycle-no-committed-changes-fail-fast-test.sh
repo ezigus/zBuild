@@ -19,6 +19,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 print_test_header "build_test_cycle: 0-commit convergence fails fast (#1265)"
 setup_test_env "cycle-1265-no-commits"
@@ -136,8 +138,9 @@ cycle_dispatch_stage() {
     case "$stage" in
         build)
             # ADR-054: verdict=pass + disposition=complete + data.build_kind=empty_diff
-            printf '{"schema_version":1,"result_contract":2,"verdict":"pass","disposition":"complete","data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
+            printf '{"schema_version":1,"data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
                 > "$artdir/build-summary.json"
+            stage_result_add "$artdir/build-summary.json" pass "nothing to change"
             v="pass"
             _CYCLE_DISPATCH_DISPOSITION="complete"
             _CYCLE_DISPATCH_DATA_KIND="empty_diff"

@@ -56,7 +56,7 @@ hooks:
 requires:
   core: [event-bus]
 provides:
-  result_contract: 2
+  result_contract: 3
 inputs: []
 outputs:
   - id: ${fn}_out
@@ -64,7 +64,6 @@ outputs:
     type: json
     required: true
     primary: true
-valid_verdicts: [pass]
 EOF
     printf '%s() {\n    local d; d="$(dirname "$2")/artifacts"; mkdir -p "$d"\n%s\n}\n' \
         "$fn" "$2" > "$dir/plugin.sh"
@@ -72,14 +71,14 @@ EOF
 
 # cv-leaf: CV_REASON unset → the #1835 shape (no reason); set → conformant.
 _plugin cv-leaf '    if [[ -n "${CV_REASON:-}" ]]; then
-        printf '"'"'{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"%s"}'"'"' "$CV_REASON" > "$d/cv-leaf-result.json"
+        printf '"'"'{"result_contract":3,"outcome":"pass","reason":"%s"}'"'"' "$CV_REASON" > "$d/cv-leaf-result.json"
     else
-        printf '"'"'{"result_contract":2,"verdict":"pass","disposition":"complete"}'"'"' > "$d/cv-leaf-result.json"
+        printf '"'"'{"result_contract":3,"outcome":"pass"}'"'"' > "$d/cv-leaf-result.json"
     fi
     return 0'
-_plugin cv-noop '    printf '"'"'{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}'"'"' > "$d/cv-noop-result.json"; return 0'
+_plugin cv-noop '    printf '"'"'{"result_contract":3,"outcome":"pass","reason":"ok"}'"'"' > "$d/cv-noop-result.json"; return 0'
 _plugin cv-after '    printf '"'"'ran\n'"'"' >> "${CV_AFTER_LOG:?}"
-    printf '"'"'{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}'"'"' > "$d/cv-after-result.json"; return 0'
+    printf '"'"'{"result_contract":3,"outcome":"pass","reason":"ok"}'"'"' > "$d/cv-after-result.json"; return 0'
 
 OVERLAY_REPO="$(setup_git_temp_repo cv-overlay-repo)"
 install_template_overlay "$OVERLAY_REPO" leaf-contract-violation leaf-contract-violation-units

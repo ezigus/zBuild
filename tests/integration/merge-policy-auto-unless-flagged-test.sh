@@ -53,7 +53,7 @@ _setup_run() {
     printf '{"issue":1051,"branch":"zbuild/issue-1051-test"}\n' \
         > "$d/pipeline-state.json"
     if [[ -n "$gate_verdict" ]]; then
-        printf '{"schema_version":1,"verdict":"%s"}\n' "$gate_verdict" \
+        printf '{"result_contract":3,"outcome":"%s","reason":"gate"}\n' "$gate_verdict" \
             > "$d/artifacts/gate-aggregator-result.json"
     fi
     if [[ -n "$report_readiness" ]]; then

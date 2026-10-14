@@ -7,25 +7,19 @@
 # stage; now reflects the plugin's actual verdict).
 #
 # Verdict table (PINNED — see ADR-019 / ADR-020 amendment):
-#   pass, approve, complete, skip, skipped,
-#   healthy, deployed                             → ✓ GREEN
-#   request_changes, degraded                     → ⚠ YELLOW
-#   fail, error, block, scope_violation,
-#   corrupt_diff                                  → ✗ RED
-#   missing/malformed on declared-primary         → ⚠ YELLOW + stage.verdict.missing
+#   pass                                          → ✓ GREEN
+#   fail, error (a stage that did not finish)     → ✗ RED
+#   missing/malformed on declared-primary         → ✗ RED (`error`) + stage.verdict.contract_violation
 #   rc != 0 (any cause)                           → ✗ RED  (rc always wins)
 #
-# #1708: this table is no longer hand-maintained against drift. Every plugin
-# manifest with a `primary: true` output declares `config.valid_verdicts`, and
-# scripts/lib/lint-verdict-classify.sh fails the build when a declared verdict
-# is not classified here. The `*)` → unknown arm below stays as the RUNTIME
-# backstop for undeclared/malformed values; the lint means a shipped plugin can
-# no longer be the cause.
+# #2366 (ADR-054 §6): every stage writes one outcome from the engine's closed
+# list (result contract 3); no stage has its own verdict words.
 #
 # Public API:
 #   runner_read_stage_verdict <state_dir> <manifest_path> <stage> <rc>
 #       echoes one of: pass | warn | fail | unknown
-#         OR (#550 structural-failure pass-through): error | corrupt_diff | block
+#         OR (#550 structural-failure pass-through): error — a stage that did not
+#         finish, or a result the engine cannot read
 #       The structural-failure raw verdicts bypass classification so the
 #       cycle blocked predicate can distinguish them from generic "fail".
 #       side-effects: may emit stage.verdict.missing event
@@ -59,11 +53,6 @@ if ! declare -F disposition_is_valid >/dev/null 2>&1; then
     # shellcheck source=./disposition.sh
     source "$_ZBUILD_VERDICT_ROOT/core/pipeline/disposition.sh"
 fi
-# #2242: the declared verdict list, read the way the lints read it.
-if ! declare -F manifest_verdict_declared >/dev/null 2>&1; then
-    # shellcheck source=../../scripts/lib/manifest-valid-verdicts.sh
-    source "$_ZBUILD_VERDICT_ROOT/scripts/lib/manifest-valid-verdicts.sh"
-fi
 # #1823: the fallback classification for a dispatch that left no result. NOT
 # `|| true` — without it the reader would silently fall back to nothing at all
 # for exactly the dispatches that need explaining.
@@ -84,106 +73,13 @@ fi
 # Maps a raw verdict string (from a plugin's primary-output JSON) into one of
 # four indicator classes per the verdict table above.
 verdict_classify() {
-    local raw="${1:-}"
-    case "$raw" in
-        pass|approve)
-            echo "pass" ;;
-        # complete is a "nothing left to do" terminal success verdict (e.g.
-        # review-aggregator's valid_verdicts). skip is gates'
-        # "not-applicable this run" verdict (shape-floor, lint-gate, coverage-gate,
-        # mutation-gate, secret-scan) — declining to apply is not a failure. Both map
-        # to pass (✓ GREEN). Without this both fall through to *) → unknown, emitting
-        # spurious pipeline.indicator.unknown_verdict events on every dispatch.
-        complete|skip)
-            echo "pass" ;;
-        # #1708: terminal SUCCESS states of the deploy/validate stages.
-        #   skipped  — deploy declined to act because the gate was not pass. The
-        #              stage did its job (fail-closed); it is not a failure. Note
-        #              this is a DISTINCT string from the gates' `skip`.
-        #   healthy  — validate's health-check passed.
-        #   deployed — deploy / deploy-release completed the release.
-        # These stages are not in simple.yaml's flow today, so no run has ever
-        # surfaced them — the drift was already on disk waiting for the template
-        # to grow. Declared in their manifests' valid_verdicts and pinned by
-        # scripts/lib/lint-verdict-classify.sh.
-        skipped|healthy|deployed)
-            echo "pass" ;;
-        # #775: `incomplete` is a "cycle has not converged yet" verdict
-        # (analogous to review's `request_changes`) — iterating, not done.
-        # Maps to warn, not fail. Without this, every incomplete fired
-        # a `pipeline.indicator.unknown_verdict` event 1× per iter.
-        # #2076: there is deliberately NO `did_not_finish` arm. It was build's
-        # mid-flight verdict (#1208), but ADR-054 §6 split verdict from
-        # disposition and #1832 migrated it — with empty_diff, scope_too_large
-        # and inert_build — out of the verdict channel entirely. Mid-flight is
-        # now `disposition=interrupted`, which cycle-orchestrator.sh reads
-        # directly; verdict_classify is never consulted on that path. The word
-        # falling through to *) → unknown is correct: it is an undeclared verdict.
-        # Pinned by tests/unit/core-pipeline-verdict-test.sh SPEC-4.
-        # #1708: `degraded` is monitor's "service is up but below threshold"
-        # verdict — deliberately warn, not fail. monitor normalises anything that
-        # is not `pass` to `degraded` (plugins/agent/monitor/plugin.sh:143), so
-        # classifying it fail would make an unparseable model response
-        # indistinguishable from a genuine outage and would halt a cycle on an
-        # infrastructure hiccup — the #1702 failure mode. The stage still returns
-        # rc=1 on degraded, and rc always wins, so a real halt is unaffected;
-        # this classification governs the INDICATOR only.
-        # #1849: `blocked` is pr-open's terminal decision when a review blocks
-        # the PR (rc=0, intentional stop) — warn (⚠ YELLOW), not fail.
-        request_changes|incomplete|degraded|blocked)
-            echo "warn" ;;
-        # #2034 spec-correspondence: does the assertion test what its SPEC SAYS?
-        # `corresponds` is the clean answer. `partial` and `uncheckable` are
-        # findings, not failures — `partial` names a coverage gap (the assertion
-        # tests the right property, narrower than the sentence promises) and
-        # `uncheckable` is a finding against the REQUIREMENT. Both warn.
-        #
-        # `mismatch` is the one genuine disagreement, and it is `fail`. That
-        # split is measured, not chosen: with a three-word vocabulary the judge
-        # had nowhere to put narrow-but-correct coverage and called it mismatch,
-        # putting false mismatches at 6/15 on merged pairs. With `partial` split
-        # out it is 0/15, with no true positive lost. The stage is advisory
-        # (ADR-040 §5) so none of these gate today; the classification is what a
-        # promotion would bind to.
-        # #1683 spec-coverage: does the design cover what the ISSUE asked for?
-        # `uncovered` is the one blocking word — a requirement with no SPEC.
-        # `unreadable` warns rather than fails: intake writes a placeholder when
-        # the issue fetch fails (#1804), and failing closed there would break
-        # every offline run for something that is not design's fault.
-        covered)
-            echo "pass" ;;
-        uncovered)
-            echo "fail" ;;
-        unreadable)
-            echo "warn" ;;
-        corresponds)
-            echo "pass" ;;
-        partial|uncheckable)
-            echo "warn" ;;
-        mismatch)
-            echo "fail" ;;
-        # #2062: `unjudged` — the judge returned no parseable verdict, or the
-        # call never reached it. Warn, not fail, on the precedent recorded for
-        # `degraded` a few arms up (#1702): classifying an unparseable model
-        # response as fail makes an infrastructure hiccup indistinguishable from
-        # a genuine finding and would halt a cycle on the former. What matters
-        # for #2062 is only that it is NOT pass — before this, the stage had no
-        # word at all for "judged nothing" and wrote `corresponds`.
-        unjudged)
-            echo "warn" ;;
-        fail|error|block|scope_violation|corrupt_diff)
-            echo "fail" ;;
-        # #1219 (ADR-045): a gate-aggregator route verdict (route_design, or any
-        # future route_<target>) is a NON-pass, non-convergent outcome — classify
-        # it as fail so the indicator/glyph is ✗ (not an unknown_verdict warn).
-        # The cycle predicates read the RAW channel, so this is purely cosmetic;
-        # route_<target> stays distinct from plain `fail` in the raw verdict.
-        route_*)
-            echo "fail" ;;
-        ""|null)
-            echo "unknown" ;;
-        *)
-            echo "unknown" ;;
+    # #2366 (ADR-054 §6): every stage writes one outcome; the reader turns it
+    # into pass, fail, or `error` for a stage that did not finish. Those are
+    # the only words the engine knows — no stage's own word is classified.
+    case "${1:-}" in
+        pass)       echo "pass" ;;
+        fail|error) echo "fail" ;;
+        *)          echo "unknown" ;;
     esac
 }
 
@@ -358,17 +254,14 @@ _verdict_read_result() {
         printf -v "${p}_state" '%s' "absent"; return 0
     fi
     # One jq for every field (ADR-065): this runs on every read of every stage's
-    # result, and it used to cost eight. Lines: contract, verdict, disposition,
-    # the first mandatory field that is missing or empty, then the reason (last,
-    # because free text may span lines) ending in a \001 marker.
+    # result. Lines: contract, outcome, the first mandatory field that is
+    # missing or empty, then the reason (last, because free text may span lines)
+    # ending in a \001 marker.
     local _rr_out _rr_rest
     if ! _rr_out="$(jq -r '. as $o
         | def ok($f): ($o|has($f)) and ($o[$f]|type == "string") and ($o[$f]|length > 0);
-        (if ($o.result_contract // 1) == 3 then ["outcome", "reason"]
-           else ["verdict", "disposition", "reason"] end) as $need
+        ["outcome", "reason"] as $need
         | [ ($o.result_contract // 1 | tostring),
-          ($o.verdict // "" | tostring | gsub("\n"; " ")),
-          ($o.disposition // "" | tostring | gsub("\n"; " ")),
           ($o.outcome // "" | tostring | gsub("\n"; " ")),
           ([ $need[] | select(ok(.) | not) ] | first // ""),
           (($o.reason // "" | tostring) + "\u0001") ] | join("\n")' "$resolved" 2>/dev/null)"; then
@@ -377,11 +270,9 @@ _verdict_read_result() {
             printf -v "${p}_viol" '%s' "contract_violation:malformed_json"
             return 0
         fi
-        _rr_out=$'1\n\n\n\n\n\001'   # valid JSON but not an object: no contract, no fields
+        _rr_out=$'1\n\n\n\001'   # valid JSON but not an object: no contract, no fields
     fi
     local _sv="${_rr_out%%$'\n'*}"; _rr_rest="${_rr_out#*$'\n'}"
-    local _rr_verdict="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
-    local _rr_disp="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     local _rr_outcome="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     local _rr_missing="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
@@ -393,63 +284,31 @@ _verdict_read_result() {
     # fire: green, and inert. That is exactly what #1823 shipped for one commit
     # before review caught it. A caller that needs one of these values reads it
     # from a reader's stdout.
-    printf -v "${p}_verdict" '%s' "$_rr_verdict"
     # The \001 marks the end: `$( )` strips trailing newlines, so an empty
     # reason would otherwise shift every field above it.
     printf -v "${p}_reason" '%s' "${_rr_rest%$'\001'}"
 
-    if contract_version_supported "$_sv" && [[ "$_sv" == "$_ZBUILD_CONTRACT_V3" ]]; then
-        # #2366 (ADR-054 §6): contract 3 carries ONE word. pass and fail mean the
-        # stage finished and judged its work; any other word on the list is how
-        # it failed to finish, and the engine's disposition response applies.
-        # Mapped here onto the verdict/disposition pair the rest of the engine
-        # reads, so every reader sees a contract-3 result the same way.
-        if [[ -n "$_rr_missing" ]]; then
-            printf -v "${p}_viol" '%s' "contract_violation:missing_field:${_rr_missing}"
-        elif ! outcome_is_valid "$_rr_outcome"; then
-            printf -v "${p}_viol" '%s' "contract_violation:unknown_outcome:${_rr_outcome}"
-        else
-            case "$_rr_outcome" in
-                pass|fail) printf -v "${p}_verdict" '%s' "$_rr_outcome"
-                           printf -v "${p}_disp" '%s' "complete" ;;
-                *)         printf -v "${p}_verdict" '%s' "error"
-                           printf -v "${p}_disp" '%s' "$_rr_outcome" ;;
-            esac
-        fi
+    if ! contract_version_supported "$_sv"; then
+        # #1850/#2366: a result contract the engine does not read (an absent one,
+        # or contract 2). The range is core/contract/version.sh's, never a literal.
+        printf -v "${p}_viol" '%s' "contract_violation:unsupported_contract:${_sv}"
         return 0
     fi
-    if ! contract_version_supported "$_sv"; then
-        # #1850: v1 (an absent result_contract) or any other version the engine
-        # does not read. The range is core/contract/version.sh's, never a literal.
-        printf -v "${p}_viol" '%s' "contract_violation:unsupported_contract:${_sv}"
+    # #2366 (ADR-054 §6): a result carries ONE word. pass and fail mean the stage
+    # finished and judged its work; any other word on the list is how it failed
+    # to finish, and the engine's disposition response applies. Mapped here onto
+    # the verdict/disposition pair the rest of the engine reads.
+    if [[ -n "$_rr_missing" ]]; then
+        printf -v "${p}_viol" '%s' "contract_violation:missing_field:${_rr_missing}"
+    elif ! outcome_is_valid "$_rr_outcome"; then
+        printf -v "${p}_viol" '%s' "contract_violation:unknown_outcome:${_rr_outcome}"
     else
-        local _decl_disp="$_rr_disp"
-        printf -v "${p}_disp" '%s' "$_decl_disp"
-        # Every mandatory field must be present AND non-empty. `reason` counts:
-        # a result that cannot explain itself to an operator is incomplete.
-        local _missing="$_rr_missing"
-        if [[ -n "$_missing" ]]; then
-            printf -v "${p}_viol" '%s' "contract_violation:missing_field:${_missing}"
-        elif ! disposition_is_valid "$_decl_disp"; then
-            # #1822: `disposition` is a CLOSED set (ADR-054 §6). A word outside
-            # it is a STRUCTURAL failure — the engine never invents a default,
-            # because a default is exactly how "unrecognized is never a failure"
-            # grows back. The offending word rides the reason channel so an
-            # operator sees what the stage actually said, and <prefix>_disp keeps
-            # that same word rather than a substituted member.
-            printf -v "${p}_viol" '%s' "contract_violation:unknown_disposition:${_decl_disp}"
-        else
-            # #2242: the VERDICT is closed too — to the words the manifest
-            # declares (#1708). #1838 wrote `broken` (a disposition word) as a
-            # verdict and every gate passed it, because this read it as `warn`.
-            # A manifest that declares no list is the lint's to refuse.
-            # The verdict was read into <prefix>_verdict above — no second jq.
-            local _vd_rc=0 _vd_name="${p}_verdict" _decl_verdict
-            _decl_verdict="${!_vd_name}"
-            manifest_verdict_declared "$manifest" "$_decl_verdict" || _vd_rc=$?
-            [[ "$_vd_rc" -eq 1 ]] && \
-                printf -v "${p}_viol" '%s' "contract_violation:unknown_verdict:${_decl_verdict}"
-        fi
+        case "$_rr_outcome" in
+            pass|fail) printf -v "${p}_verdict" '%s' "$_rr_outcome"
+                       printf -v "${p}_disp" '%s' "complete" ;;
+            *)         printf -v "${p}_verdict" '%s' "error"
+                       printf -v "${p}_disp" '%s' "$_rr_outcome" ;;
+        esac
     fi
     return 0
 }
@@ -503,13 +362,14 @@ runner_read_stage_verdict() {
     # #550: preserve structural-failure raw verdicts so the cycle blocked
     # predicate (_cycle_detect_blocked) can distinguish them from generic
     # "fail" (which means "test ran and failed — keep iterating").
-    # error/corrupt_diff/block all mean "stage could not complete its work"
-    # and the cycle must abort early. Without this pass-through, verdict_classify
-    # collapses all three to "fail" and _cycle_detect_blocked never fires.
-    case "$raw_verdict" in
-        error|corrupt_diff|block)
-            echo "$raw_verdict"; return 0 ;;
-    esac
+    # `error` means "the stage could not complete its work" and the cycle must
+    # abort early. Without this pass-through, verdict_classify collapses it to
+    # "fail" and _cycle_detect_blocked never fires. (#2366: the reader maps
+    # every outcome that is not pass or fail to `error`; corrupt_diff and block
+    # can no longer occur.)
+    if [[ "$raw_verdict" == error ]]; then
+        echo "$raw_verdict"; return 0
+    fi
     if [[ "$cls" == "unknown" ]]; then
         eb_emit_event "pipeline.indicator.unknown_verdict" \
             "stage=$stage" "raw_verdict=$raw_verdict" "path=$_r_path" 2>/dev/null || true

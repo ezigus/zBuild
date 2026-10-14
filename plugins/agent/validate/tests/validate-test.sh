@@ -11,7 +11,7 @@
 # SPEC-13: validate plugin has legacy-citation in header comment
 # SPEC-14: every terminal exit path writes a v2 result (result_contract=2,
 #          verdict, disposition, reason)
-# SPEC-15: manifest provides block carries result_contract: 2
+# SPEC-15: manifest provides block carries result_contract: 3 (#2366)
 # SPEC-16: plugin.sh resolves deploy_result from ZBUILD_STAGE_INPUTS — no
 #          hardcoded $artifacts_dir/deploy-result.json path construction
 # SPEC-17: failed health probe causes validate_agent_run to return non-zero
@@ -250,7 +250,7 @@ _v2_run() {
 }
 
 # ---------------------------------------------------------------------------
-# SPEC-15: manifest provides block carries result_contract: 2
+# SPEC-15: manifest provides block carries result_contract: 3 (#2366)
 # ---------------------------------------------------------------------------
 _s15_provides="$(awk '/^provides:/{f=1;next} f && /^[^[:space:]]/{exit} f{print}' \
     "$_MANIFEST" 2>/dev/null || true)"

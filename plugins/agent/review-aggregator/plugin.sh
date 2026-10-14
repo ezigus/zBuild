@@ -82,10 +82,8 @@ _ra_normalize_files() {
               name: ((.name // $n) | tostring),
               score: ((.score // 0) | if type=="number" then floor else 0 end),
               # #1849: a lens whose result says it did not finish reviewed
-              # nothing — a contract-3 outcome other than pass/fail, or a
-              # contract-2 disposition other than complete. No field: it ran.
-              ran: (if has("outcome") then (.outcome == "pass" or .outcome == "fail")
-                    else ((.disposition // "complete") == "complete") end),
+              # nothing — an outcome other than pass or fail.
+              ran: (if has("outcome") then (.outcome == "pass" or .outcome == "fail") else true end),
               findings: [ (.findings // [])[] |
                 if type=="object" then {
                   file: (.file // "unknown"),

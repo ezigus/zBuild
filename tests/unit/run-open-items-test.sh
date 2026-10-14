@@ -57,17 +57,16 @@ _guard() { _GUARDED+=$'\n'"$1"; }
 # (Linux CI) the status renderer makes its temp file inside the state dir.
 mkdir -p "$TEST_TEMP_DIR/empty"
 S1="$TEST_TEMP_DIR/s1"; mkdir -p "$S1/artifacts"
-jq -n '{result_contract:2, verdict:"fail", reason:"not sure one requirement is met",
-        data:{unsure:["R-1: the flag is documented"],
-              findings:[{n:1, text:"Not sure this requirement is met: R-1: the flag is documented. What would settle it: a test that fails when the flag is not documented, or the page that documents it."}]}}' \
-    > "$S1/artifacts/judge-result.json"
-jq -n '{result_contract:2, verdict:"fail", reason:"one test failed",
-        data:{findings:[{n:1, text:"tests/unit/foo-test.sh fails: expected 3, got 2"}]}}' \
-    > "$S1/artifacts/tests-result.json"
-jq -n '{result_contract:2, verdict:"fail", reason:"the secret scan could not read the diff", data:{}}' \
-    > "$S1/artifacts/scan-result.json"
-jq -n '{result_contract:2, verdict:"pass", reason:"all good", data:{findings:[{n:1, text:"PASSING CHECK TEXT"}]}}' \
-    > "$S1/artifacts/ok-result.json"
+# #2366: results are made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+stage_result_write "$S1/artifacts/judge-result.json" fail "not sure one requirement is met" \
+    '{"unsure":["R-1: the flag is documented"],"findings":[{"n":1,"text":"Not sure this requirement is met: R-1: the flag is documented. What would settle it: a test that fails when the flag is not documented, or the page that documents it."}]}'
+stage_result_write "$S1/artifacts/tests-result.json" fail "one test failed" \
+    '{"findings":[{"n":1,"text":"tests/unit/foo-test.sh fails: expected 3, got 2"}]}'
+stage_result_write "$S1/artifacts/scan-result.json" fail "the secret scan could not read the diff"
+stage_result_write "$S1/artifacts/ok-result.json" pass "all good" \
+    '{"findings":[{"n":1,"text":"PASSING CHECK TEXT"}]}'
 jq -n '{pushed:true}' > "$S1/artifacts/persist-result.json"
 
 print_test_section "O1: failing checks are listed, each with what would settle it"

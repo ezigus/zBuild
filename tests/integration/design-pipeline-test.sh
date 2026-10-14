@@ -47,7 +47,7 @@ intake_run() {
     mkdir -p "$state_dir"
     printf 'scope: all\n' > "$state_dir/scope-manifest.md"
     local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
-    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub intake"}' > "$_art/intake-result.json"
+    printf '%s' '{"result_contract":3,"outcome":"pass","reason":"stub intake"}' > "$_art/intake-result.json"
     return 0
 }
 PLUGEOF
@@ -71,7 +71,7 @@ plan_run() {
 }
 JSONEOF
     local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
-    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub plan"}' > "$_art/plan-result.json"
+    printf '%s' '{"result_contract":3,"outcome":"pass","reason":"stub plan"}' > "$_art/plan-result.json"
     return 0
 }
 PLUGEOF
@@ -111,7 +111,7 @@ MDEOF
         emit_event "plugin.run.complete" "plugin=design" "stage=design"
     fi
     local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
-    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub design"}' > "$_art/design-result.json"
+    printf '%s' '{"result_contract":3,"outcome":"pass","reason":"stub design"}' > "$_art/design-result.json"
     return 0
 }
 PLUGEOF

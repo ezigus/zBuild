@@ -66,7 +66,7 @@ hooks:
   run: $fn
 provides:
   role: $role
-  result_contract: 2
+  result_contract: 3
 requires:
   core:
     - redaction
@@ -77,15 +77,14 @@ outputs:
     format: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass]
 EOF
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
     local _ad="\${ZBUILD_ARTIFACT_DIR:-\${ZBUILD_STATE_DIR:-.}/artifacts}"
     mkdir -p "\$_ad"
     printf 'artifact written by %s\n' "$id" > "\$_ad/${id}-output.txt"
-    printf '{"result_contract":2,"schema_version":1,"verdict":"pass","disposition":"complete","reason":"stub"}\n' > "\$_ad/${id}-result.json"
+    source "$REPO_ROOT/scripts/lib/stage-result.sh"
+    stage_result_write "\$_ad/${id}-result.json" pass stub
     return 0
 }
 EOF

@@ -183,7 +183,7 @@ _deploy_agent_run_inner() {
     fi
 
     local gate_verdict
-    gate_verdict="$(jq -r '.outcome // .verdict // empty' "$gate_result_in" 2>/dev/null || true)"
+    gate_verdict="$(jq -r '.outcome // empty' "$gate_result_in" 2>/dev/null || true)"
 
     # Fail-closed ALLOWLIST: proceed ONLY on an explicit pass. Any other verdict —
     # fail, route_<target>, an empty verdict, or a jq parse error (→ empty) — skips
@@ -229,9 +229,8 @@ _deploy_agent_run_inner() {
         # `unavailable` sent structural faults into the retry loop (review #2219).
         emit_event "deploy.tool.failed" "plugin=deploy" "rc=$_rc"
         local _d _r
-        # deploy-release's own ending: a contract-3 outcome, or a contract-2
-        # disposition.
-        _d="$(jq -r '.outcome // .disposition // empty' "$result" 2>/dev/null || true)"
+        # deploy-release's own ending: its outcome.
+        _d="$(jq -r '.outcome // empty' "$result" 2>/dev/null || true)"
         _r="$(jq -r '.reason // empty' "$result" 2>/dev/null || true)"
         if [[ -z "$_d" ]]; then
             _deploy_write_result "$artifacts_dir" broken \

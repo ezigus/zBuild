@@ -76,7 +76,7 @@ name: Producer
 kind: agent
 version: 0.0.1
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: real_out
     path: "${artifact_dir}/producer.json"
@@ -101,7 +101,7 @@ name: Frobnicate
 kind: agent
 version: 0.0.1
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: frob_out
     path: "${artifact_dir}/frob.json"

@@ -31,7 +31,7 @@ _write_test_results() {
     local run_mode="${1:-full}" verdict="${2:-pass}"
     mkdir -p "$STATE_DIR/artifacts"
     jq -n --arg rm "$run_mode" --arg v "$verdict" \
-        '{result_contract:2, verdict:$v, disposition:"complete", reason:"mock", data:{run_mode:$rm, exit_code:0, passed:1, failed:0}}' \
+        '{result_contract:3, outcome:$v, reason:"mock", data:{run_mode:$rm, exit_code:0, passed:1, failed:0}}' \
         > "$STATE_DIR/artifacts/test-results.json"
 }
 
@@ -104,7 +104,7 @@ load_template "$REPO_ROOT/config/templates/simple.yaml"
 STATE_T9="$TEST_TEMP_DIR/state-t9"
 mkdir -p "$STATE_T9/artifacts"
 printf '{"schema_version":1,"status":"in_progress"}' > "$STATE_T9/pipeline-state.json"
-jq -n '{result_contract:2, verdict:"pass", disposition:"complete", reason:"mock",
+jq -n '{result_contract:3, outcome:"pass", reason:"mock",
         data:{run_mode:"targeted", exit_code:0, passed:1, failed:0}}' \
     > "$STATE_T9/artifacts/test-results.json"
 cycle_dispatch_stage() {

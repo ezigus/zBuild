@@ -58,6 +58,9 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 source "$REPO_ROOT/core/pipeline/template.sh"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+# #2366: results are made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 # verdict_classify() lives in verdict.sh — cycle-orchestrator.sh does NOT pull it
 # in. The mock cycle_dispatch_stage below calls it to classify member verdicts;
 # without this source the calls would error and silently fall back to a hardcoded
@@ -149,8 +152,8 @@ cycle_dispatch_stage() {
         test)
             local tv="pass" nf=0
             [[ "$v" == "fail" ]] && { tv="fail"; nf=3; }
-            printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":5,"failed":%d,"run_mode":"full"}}' \
-                "$tv" "$nf" > "$art/test-results.json"
+            stage_result_write "$art/test-results.json" "$tv" mock \
+                "{\"exit_code\":0,\"passed\":5,\"failed\":$nf,\"run_mode\":\"full\"}"
             _CYCLE_DISPATCH_VERDICT="$(verdict_classify "$tv" 2>/dev/null || echo fail)"
             _CYCLE_DISPATCH_VERDICT_RAW="$tv"
             ;;

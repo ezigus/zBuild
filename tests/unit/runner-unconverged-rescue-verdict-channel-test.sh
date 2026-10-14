@@ -18,7 +18,8 @@
 # Pinned assertions (drive the extracted rescue helper _rescue_success directly
 # with a synthetic exit_when target + verdict, mirroring runner.sh exactly):
 #
-#   T1: exit_when target verdict == approve → rescued (downstream_success=1)
+#   T1: removed (#2366) — it asserted an `approve` verdict rescues; contract 3
+#       has no `approve` (one outcome: pass or fail), so no stage can write it.
 #   T2: exit_when target verdict == pass    → NOT rescued (mechanical gate, #979)
 #   T3: exit_when target verdict == fail    → NOT rescued
 #   T4: exit_when target verdict absent/""  → NOT rescued (safe default; #1298
@@ -103,34 +104,21 @@ requires:
   core:
     - redaction
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: out
     path: \${artifact_dir}/$_base
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [approve, pass, fail]
 EOF
 }
-
-# ─── T1: exit_when target verdict == approve → rescued ──────────────────────
-t1="$TEST_TEMP_DIR/t1"; mkdir -p "$t1/artifacts"
-export _TPL_CYCLE_UNTIL_STAGE_build_review_cycle="review"
-_install_target "review" "review.json"
-printf '{"result_contract":2,"verdict":"approve","disposition":"complete","reason":"fixture"}' > "$t1/artifacts/review.json"
-if _rescue_success "build_review_cycle" "$t1" "$PLUGINS_ROOT"; then
-    assert_pass "T1: exit_when target verdict=approve → rescued"
-else
-    assert_fail "T1: exit_when target verdict=approve → rescued" "not rescued"
-fi
 
 # ─── T2: exit_when target verdict == pass → NOT rescued (#979) ──────────────
 t2="$TEST_TEMP_DIR/t2"; mkdir -p "$t2/artifacts"
 export _TPL_CYCLE_UNTIL_STAGE_build_test_cycle="gate-aggregator"
 _install_target "gate-aggregator" "gate-aggregator-result.json"
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"fixture"}' > "$t2/artifacts/gate-aggregator-result.json"
+printf '{"result_contract":3,"outcome":"pass","reason":"fixture"}' > "$t2/artifacts/gate-aggregator-result.json"
 if _rescue_success "build_test_cycle" "$t2" "$PLUGINS_ROOT"; then
     assert_fail "T2: exit_when target verdict=pass → NOT rescued (mechanical gate)" \
         "incorrectly rescued on mechanical pass"
@@ -142,7 +130,7 @@ fi
 t3="$TEST_TEMP_DIR/t3"; mkdir -p "$t3/artifacts"
 export _TPL_CYCLE_UNTIL_STAGE_design_verify_cycle="design-gate"
 _install_target "design-gate" "design-gate.json"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"fixture"}' > "$t3/artifacts/design-gate.json"
+printf '{"result_contract":3,"outcome":"fail","reason":"fixture"}' > "$t3/artifacts/design-gate.json"
 if _rescue_success "design_verify_cycle" "$t3" "$PLUGINS_ROOT"; then
     assert_fail "T3: exit_when target verdict=fail → NOT rescued" "incorrectly rescued"
 else
@@ -173,8 +161,8 @@ fi
 # any approving artifact in the dir. Here gate-aggregator (the target) is pass,
 # and a stray review.json says approve — the run must NOT be rescued.
 t6="$TEST_TEMP_DIR/t6"; mkdir -p "$t6/artifacts"
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"fixture"}' > "$t6/artifacts/gate-aggregator-result.json"
-printf '{"result_contract":2,"verdict":"approve","disposition":"complete","reason":"fixture"}' > "$t6/artifacts/review.json"
+printf '{"result_contract":3,"outcome":"pass","reason":"fixture"}' > "$t6/artifacts/gate-aggregator-result.json"
+printf '{"result_contract":3,"outcome":"pass","reason":"fixture"}' > "$t6/artifacts/review.json"
 if _rescue_success "build_test_cycle" "$t6" "$PLUGINS_ROOT"; then
     assert_fail "T6: stray approve artifact + target=pass → NOT rescued (any-approve bug guard)" \
         "incorrectly rescued off a non-target artifact"
@@ -189,7 +177,7 @@ fi
 t7="$TEST_TEMP_DIR/t7"; mkdir -p "$t7/artifacts"
 export _TPL_CYCLE_UNTIL_STAGE_ghost_cycle="no-such-stage"   # not installed → unresolvable
 # Even a stray approving artifact must not rescue when the target can't resolve.
-printf '{"result_contract":2,"verdict":"approve","disposition":"complete","reason":"fixture"}' > "$t7/artifacts/review.json"
+printf '{"result_contract":3,"outcome":"pass","reason":"fixture"}' > "$t7/artifacts/review.json"
 if _rescue_success "ghost_cycle" "$t7" "$PLUGINS_ROOT"; then
     assert_fail "T7: unresolvable exit_when target → NOT rescued (empty-resolution guard)" \
         "incorrectly rescued when the target did not resolve"

@@ -185,10 +185,11 @@ assert_exit_code "disposition_retryable: an unknown word is not retryable" 1 \
 
 unk_dir="$TEST_TEMP_DIR/plugins/unkstage"
 _make_manifest "$unk_dir" "unkstage" "${ART_DIR}/unk-result.json"
-jq -nc '{result_contract:2,verdict:"pass",disposition:"wedged",reason:"a word off the list"}' \
+# Deliberately off-contract, so written by hand (the writer refuses the word).
+jq -nc '{result_contract:3,outcome:"wedged",reason:"a word off the list"}' \
     > "$ART_DIR/unk-result.json"
 
-assert_eq "v2 result with an off-list disposition -> structural failure (error)" \
+assert_eq "a result with an off-list outcome -> structural failure (error)" \
     "error" "$(runner_read_stage_verdict "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
 assert_eq "the raw channel agrees it is a structural failure" \
     "error" "$(runner_read_stage_verdict_raw "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
@@ -202,15 +203,14 @@ assert_contains "the violation names the offending word on the reason channel" \
 # Nothing is lost: the offending word survives verbatim on the reason channel
 # (asserted above). This is not an invented default — the engine is concluding a
 # defect and halting, not guessing a value in order to carry on.
-assert_eq "an off-list disposition resolves to broken (channels agree)" \
+assert_eq "an off-list outcome resolves to broken (channels agree)" \
     "broken" "$(runner_read_stage_disposition "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
 
-# The same rule for a violation on a DIFFERENT mandatory field: a valid
-# disposition on an otherwise-invalid result is still untrustworthy, because
-# nothing about the missing field is confined to the field it is missing from.
-jq -nc '{result_contract:2,disposition:"throttled",reason:"verdict is missing"}' \
+# The same rule for a violation on a DIFFERENT mandatory field: a result with a
+# reason but no outcome is untrustworthy, and is broken rather than defaulted.
+jq -nc '{result_contract:3,reason:"outcome is missing"}' \
     > "$ART_DIR/unk-result.json"
-assert_eq "a valid disposition on a result missing its verdict -> broken" \
+assert_eq "a result missing its outcome -> broken" \
     "broken" "$(runner_read_stage_disposition "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
 assert_eq "...and that result is a structural failure on the verdict channel" \
     "error" "$(runner_read_stage_verdict "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
@@ -250,8 +250,9 @@ rm -f "$ART_DIR/dead-result.json"
 # being fatal-by-default. rc≠0 must not overwrite a declared field.
 alive_dir="$TEST_TEMP_DIR/plugins/alivestage"
 _make_manifest "$alive_dir" "alivestage" "${ART_DIR}/alive-result.json"
-jq -nc '{result_contract:2,verdict:"incomplete",disposition:"interrupted",reason:"router_timeout"}' \
-    > "$ART_DIR/alive-result.json"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+stage_result_write "$ART_DIR/alive-result.json" interrupted router_timeout >/dev/null
 assert_eq "died (rc=1) but declared interrupted -> interrupted, not broken" \
     "interrupted" "$(runner_read_stage_disposition "$STATE_DIR" "$alive_dir/manifest.yaml" "alivestage" 1)"
 

@@ -203,6 +203,8 @@ EOF
     printf '%s' "$dir"
 }
 
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 _sd="$TEST_TEMP_DIR/sd"; mkdir -p "$_sd/artifacts"
 _pd="$(_mkplugin "$TEST_TEMP_DIR/fx" "fx-result.json")"
 
@@ -235,23 +237,22 @@ assert_eq "[SPEC-6] rc=0 with no result is broken, observation or not (#1850)" \
 # `interrupted` forever.
 # #2187: a non-retryable word, because a RETRYABLE one seen alongside a rate
 # limit is read as the rate limit it was (#2111) — see SPEC-6b.
-printf '{"result_contract":2,"verdict":"fail","disposition":"misconfigured","reason":"no tier"}' \
-    > "$_sd/artifacts/fx-result.json"
+stage_result_write "$_sd/artifacts/fx-result.json" misconfigured "no tier" >/dev/null
 assert_eq "[SPEC-6] a DECLARED disposition beats a signal observation" "misconfigured" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 signal 0)"
 assert_eq "[SPEC-6] a DECLARED disposition beats a rate-limit observation" "misconfigured" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 "" 1)"
 # SPEC-6b (#2111, #2187): a RETRYABLE declared word seen alongside a rate limit
 # was the rate limit — retrying would just be throttled again.
-printf '{"result_contract":2,"verdict":"fail","disposition":"timed_out","reason":"router_timeout"}' \
-    > "$_sd/artifacts/fx-result.json"
+stage_result_write "$_sd/artifacts/fx-result.json" timed_out router_timeout >/dev/null
 assert_eq "[SPEC-6b] a retryable word with a rate limit observed reads as rate_limited" "rate_limited" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 "" 1)"
 
 # A contract violation stays `broken` regardless of what was observed. The
 # engine has already rejected this result as structurally invalid; reporting it
 # as retryable would retry an invalid result forever (#1822's named regression).
-printf '{"result_contract":2,"verdict":"fail","disposition":"wedged","reason":"x"}' \
+# Deliberately off-contract, so written by hand (the writer refuses the word).
+printf '{"result_contract":3,"outcome":"wedged","reason":"x"}' \
     > "$_sd/artifacts/fx-result.json"
 assert_eq "[SPEC-6] an invalid declared disposition stays broken despite a signal" \
     "broken" "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 signal 0)"

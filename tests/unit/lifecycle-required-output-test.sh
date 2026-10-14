@@ -162,8 +162,10 @@ if [[ -f "$BUILD_PLUGIN/manifest.yaml" ]]; then
     # encoding for inert_build). scan_plugin_outputs checks artifact presence, not verdict
     # vocabulary — the manifest's valid_verdicts update (inert_build→fail) is invisible here,
     # so this is a guard: primary artifact present with any non-empty verdict JSON passes.
-    printf '{"result_contract":2,"verdict":"fail","disposition":"broken","data":{"build_kind":"inert_build"}}' \
-        > "$STATE_DIR/artifacts/build-summary.json"
+    # shellcheck source=../../scripts/lib/stage-result.sh
+    source "$REPO_ROOT/scripts/lib/stage-result.sh"
+    stage_result_write "$STATE_DIR/artifacts/build-summary.json" broken "inert build" \
+        '{"build_kind":"inert_build"}' >/dev/null
     set +e
     scan_plugin_outputs "$BUILD_PLUGIN" "$STATE_FILE" 2>/dev/null
     rc=$?

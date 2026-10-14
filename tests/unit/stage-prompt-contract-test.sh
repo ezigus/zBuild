@@ -210,18 +210,21 @@ EOF
 printf 'x_run() { return 0; }\n' > "$PROOT/agent/pc-agent/plugin.sh"
 _TPL_STAGES=(pc-old pc-gate pc-agent)
 
+# #2366: results are made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 init_state "$STATE/pipeline-state.json" run-1 7 >/dev/null 2>&1
 _update_stage_status "$STATE/pipeline-state.json" pc-gate complete
 _zbuild_state_set_stage_verdict "$STATE/pipeline-state.json" pc-gate fail
 _update_stage_status "$STATE/pipeline-state.json" pc-agent complete
 _zbuild_state_set_stage_verdict "$STATE/pipeline-state.json" pc-agent pass
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete"}\n' > "$ART/pc-gate-result.json"
+stage_result_write "$ART/pc-gate-result.json" fail fixture
 printf 'GATE-SUMMARY: two checks red\n' > "$ART/pc-gate-detail.md"
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete"}\n' > "$ART/pc-agent-result.json"
+stage_result_write "$ART/pc-agent-result.json" pass fixture
 printf 'AGENT-OWN-SUMMARY\n' > "$ART/pc-agent-summary.md"
 # pc-old ran in an EARLIER run: its output is here (hydrate put it back), it has
 # no status in this run's state.
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete"}\n' > "$ART/pc-old-result.json"
+stage_result_write "$ART/pc-old-result.json" pass fixture
 printf 'OLD-RUN-SUMMARY\n' > "$ART/pc-old-detail.md"
 
 idx="$(_inputs_resolve_stage pc-agent "$PROOT" "$STATE")"
@@ -296,7 +299,7 @@ outputs:
     errors: true
 EOF
 printf 'x_run() { return 0; }\n' > "$PROOT/tool/pc-err/plugin.sh"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete"}\n' > "$ART/pc-err-result.json"
+stage_result_write "$ART/pc-err-result.json" fail fixture
 printf 'ERR-SUMMARY\n' > "$ART/pc-err-summary.md"
 printf 'THE-NESTED-STDERR\n' > "$ART/pc-err-stderr.txt"
 _update_stage_status "$STATE/pipeline-state.json" pc-err complete
@@ -314,7 +317,7 @@ sed 's/pc-err/pc-agg/g; s/pc_err/pc_agg/g' "$PROOT/tool/pc-err/manifest.yaml" \
 printf 'x_run() { return 0; }\n' > "$PROOT/tool/pc-agg/plugin.sh"
 awk '/^hooks:/ { print "convergence: gate" } { print }' "$PROOT/tool/pc-gate/manifest.yaml" > "$TEST_TEMP_DIR/g.yaml" \
     && mv "$TEST_TEMP_DIR/g.yaml" "$PROOT/tool/pc-gate/manifest.yaml"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete"}\n' > "$ART/pc-agg-result.json"
+stage_result_write "$ART/pc-agg-result.json" fail fixture
 printf 'AGG-SUMMARY\n' > "$ART/pc-agg-summary.md"
 _update_stage_status "$STATE/pipeline-state.json" pc-agg complete
 _TPL_STAGES+=(pc-agg)

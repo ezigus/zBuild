@@ -179,7 +179,7 @@ issue_acceptance_run() {
     declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1 && [[ -n "$acc" ]] \
         && acc="$(printf '%s\n' "$acc" | _zbuild_sanitize_for_llm)"
     [[ -n "$diff_f" && -f "$diff_f" ]] && diff="$(cat "$diff_f" 2>/dev/null || true)"
-    [[ -n "$tests_f" && -f "$tests_f" ]] && test_verdict="$(jq -r '.outcome // .verdict // empty' "$tests_f" 2>/dev/null || true)"
+    [[ -n "$tests_f" && -f "$tests_f" ]] && test_verdict="$(jq -r '.outcome // empty' "$tests_f" 2>/dev/null || true)"
 
     local tier="T2"
     declare -f resolve_tier >/dev/null 2>&1 \

@@ -48,7 +48,10 @@ set +e
 STATE="$TEST_TEMP_DIR/state"; ART="$STATE/artifacts"; mkdir -p "$ART"
 
 print_test_section "SPEC-1: the report carries the setup fields"
-printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"r","data":{"scope_files":["a.sh"],"owned_files":["tests/t.sh"],"wiring_files":["scripts/lib/x.sh"]}}' > "$ART/r.json"
+# #2366: results are made with the engine's writer.
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+stage_result_write "$ART/r.json" pass r '{"scope_files":["a.sh"],"owned_files":["tests/t.sh"],"wiring_files":["scripts/lib/x.sh"]}'
 _r="$(_verdict_report_from_file "$ART/r.json")"
 assert_eq "[SPEC-1] scope_files" '["a.sh"]' "$(jq -c '.scope_files' <<< "$_r")"
 assert_eq "[SPEC-1] owned_files" '["tests/t.sh"]' "$(jq -c '.owned_files' <<< "$_r")"

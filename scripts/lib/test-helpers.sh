@@ -913,10 +913,10 @@ fixture_link_personas() {
 # Creates a minimal valid stage plugin directory under $TEST_TEMP_DIR/plugins/.
 # Prints the directory path to stdout.
 #
-# #1850: the engine reads result contract v2 only, and a stage that leaves no
-# readable v2 result has failed. So the mock declares result_contract 2 and a
-# JSON primary, and writes a v2 result before returning <exit_code>: `pass` on 0,
-# `error`/`broken` otherwise (a stage that fails still says so).
+# #1850/#2366: a stage that leaves no readable result has failed. So the mock
+# declares result_contract 3 and a JSON primary, and writes its result with the
+# engine's writer (stage_result_write) before returning <exit_code>: `pass` on 0,
+# `broken` otherwise (a stage that fails still says so).
 #
 # Usage: mock_plugin_factory <id> [kind=agent] [exit_code=0] [platform=] [role=] [version=0.0.1]
 mock_plugin_factory() {
@@ -937,7 +937,7 @@ requires:
     - redaction
 EOF
     [[ -n "$platform" ]] && printf 'platform: %s\n' "$platform" >> "$dir/manifest.yaml"
-    printf 'provides:\n  result_contract: 2\n' >> "$dir/manifest.yaml"
+    printf 'provides:\n  result_contract: 3\n' >> "$dir/manifest.yaml"
     [[ -n "$role" ]] && printf '  role: %s\n' "$role" >> "$dir/manifest.yaml"
     cat >> "$dir/manifest.yaml" <<EOF
 outputs:
@@ -947,17 +947,16 @@ outputs:
     format: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, error]
 EOF
-    local _verdict=pass _disp=complete
-    [[ "$exit_code" -ne 0 ]] && { _verdict=error; _disp=broken; }
+    local _outcome=pass _srl
+    [[ "$exit_code" -ne 0 ]] && _outcome=broken
+    _srl="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-result.sh"
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
     local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"
     mkdir -p "\$_art"
-    printf '{"result_contract":2,"verdict":"%s","disposition":"%s","reason":"mock %s"}' \\
-        "$_verdict" "$_disp" "$id" > "\$_art/${id}-result.json"
+    source "$_srl"
+    stage_result_write "\$_art/${id}-result.json" "$_outcome" "mock $id"
     return $exit_code
 }
 EOF
@@ -985,20 +984,21 @@ zb_engine_loop_state() {
       _cycle_state_write_iter_atomic "$sf" "$id" "$rounds" fail failed 1 "$final" )
 }
 
-# ── mock_v2_result_line ───────────────────────────────────────────────────────
-# Prints one shell line that writes the v2 result mock_plugin_factory's manifest
-# declares (`${artifact_dir}/<id>-result.json`). For a test that replaces the
-# factory's plugin.sh with its own body: embed `$(mock_v2_result_line <id>)` in
-# the unquoted heredoc, or the stage exits 0 with no readable result — which
-# #1850 makes a failure.
+# ── mock_result_line ──────────────────────────────────────────────────────────
+# Prints one shell line that writes the result mock_plugin_factory's manifest
+# declares (`${artifact_dir}/<id>-result.json`), with the engine's own writer
+# (stage_result_write, contract 3). For a test that replaces the factory's
+# plugin.sh with its own body: embed `$(mock_result_line <id>)` in the unquoted
+# heredoc, or the stage exits 0 with no readable result — which #1850 makes a
+# failure.
 #
-# Usage: mock_v2_result_line <id> [verdict=pass] [disposition=complete]
-mock_v2_result_line() {
-    local id="$1" verdict="${2:-pass}" disp="${3:-complete}"
+# Usage: mock_result_line <id> [outcome=pass]
+mock_result_line() {
+    local id="$1" outcome="${2:-pass}" srl
+    srl="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-result.sh"
     # shellcheck disable=SC2016  # the $-expressions are for the stub, not here
     printf '%s' 'local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"; '
-    printf "printf '%%s' '{\"result_contract\":2,\"verdict\":\"%s\",\"disposition\":\"%s\",\"reason\":\"mock %s\"}' > \"\$_art/%s-result.json\"" \
-        "$verdict" "$disp" "$id" "$id"
+    printf 'source "%s"; stage_result_write "$_art/%s-result.json" %s "mock %s"' "$srl" "$id" "$outcome" "$id"
 }
 
 # ── Standard-pipeline roster: REMOVED (#979, EPIC #1277) ──────────────────────

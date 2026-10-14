@@ -45,11 +45,13 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 # ─── Plugin stub helpers ──────────────────────────────────────────────────────
+# #2366: the stubs write their result with the engine's writer.
+export STAGE_RESULT_LIB="$REPO_ROOT/scripts/lib/stage-result.sh"
 
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
-    # #1850: a v2 stage stub (result_contract 2, JSON primary, a v2 result that
-    # says pass on rc 0 and error/broken otherwise) — mock_plugin_factory's.
+    # #1850/#2366: a stage stub (result_contract 3, JSON primary, a result that
+    # says pass on rc 0 and broken otherwise) — mock_plugin_factory's.
     mock_plugin_factory "$id" agent "$rc" "" "$role" >/dev/null
 }
 
@@ -68,7 +70,7 @@ requires:
     - redaction
 provides:
   role: designer
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: design_out
     path: ${artifact_dir}/design.md
@@ -79,16 +81,14 @@ outputs:
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, error, incomplete]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     printf '# Design\n```scope\nf.txt\n```\n' > "$state_dir/artifacts/design.md"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub design"}' \
-        > "$state_dir/artifacts/design-verdict.json"
+    source "$STAGE_RESULT_LIB"
+    stage_result_write "$state_dir/artifacts/design-verdict.json" pass "stub design"
     return 0
 }
 PLUG
@@ -109,22 +109,22 @@ requires:
     - redaction
 provides:
   role: planner
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: plan_out
     path: ${artifact_dir}/plan.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, error]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 plan_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub plan","schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
+    printf '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
         > "$state_dir/artifacts/plan.json"
+    source "$STAGE_RESULT_LIB"
+    stage_result_add "$state_dir/artifacts/plan.json" pass "stub plan"
     return 0
 }
 PLUG
@@ -148,24 +148,23 @@ requires:
     - redaction
 provides:
   role: acceptance_gate
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: gate_result
     path: ${artifact_dir}/acceptance-gate-result.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 acceptance_gate_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     local f="${ZBUILD_TEST_GATE_FAILURE:-}"
+    source "$STAGE_RESULT_LIB"
     if [[ -z "$f" ]]; then
-        printf '{"result_contract":2,"verdict":"pass","disposition":"complete","severity":"none","reason":"no failures","failures":[]}' \
-            > "$state_dir/artifacts/acceptance-gate-result.json"
+        printf '{"severity":"none","failures":[]}' > "$state_dir/artifacts/acceptance-gate-result.json"
+        stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" pass "no failures"
         return 0
     fi
     # Mirror the real gate's class→severity mapping (ADR-021 / ADR-036): the
@@ -176,8 +175,9 @@ acceptance_gate_run() {
         negctl_error:* | reachability_error:*)  disp="advisory" ;;
         *)                                      disp="terminal" ;;
     esac
-    printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"%s","reason":"%s","failures":["%s"]}' "$disp" "$f" "$f" \
+    printf '{"severity":"%s","failures":["%s"]}' "$disp" "$f" \
         > "$state_dir/artifacts/acceptance-gate-result.json"
+    stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" fail "$f"
     return 1
 }
 PLUG
@@ -200,22 +200,21 @@ requires:
     - redaction
 provides:
   role: design_gate
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: design_gate_out
     path: ${artifact_dir}/design-gate.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_gate_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"pass","summary":"ok"}' \
-        > "$state_dir/artifacts/design-gate.json"
+    printf '{"schema_version":1,"summary":"ok"}' > "$state_dir/artifacts/design-gate.json"
+    source "$STAGE_RESULT_LIB"
+    stage_result_add "$state_dir/artifacts/design-gate.json" pass "stub"
     return 0
 }
 PLUG
@@ -243,22 +242,21 @@ requires:
     - redaction
 provides:
   role: gate_aggregator
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: gate_aggregator_out
     path: ${artifact_dir}/gate-aggregator.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 gate_aggregator_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"pass","summary":"ok","gates":[]}' \
-        > "$state_dir/artifacts/gate-aggregator.json"
+    printf '{"schema_version":1,"summary":"ok","gates":[]}' > "$state_dir/artifacts/gate-aggregator.json"
+    source "$STAGE_RESULT_LIB"
+    stage_result_add "$state_dir/artifacts/gate-aggregator.json" pass "stub"
     return 0
 }
 PLUG

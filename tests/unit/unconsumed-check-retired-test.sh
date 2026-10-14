@@ -49,7 +49,7 @@ version: 0.0.1
 hooks:
   run: ucp_run
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: uc_producer_out
     path: ${artifact_dir}/uc-producer-out.json
@@ -74,7 +74,7 @@ version: 0.0.1
 hooks:
   run: ucc_run
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: uc_consumer_out
     path: ${artifact_dir}/uc-consumer-out.json
@@ -127,7 +127,7 @@ version: 0.0.1
 hooks:
   run: ucc_run
 provides:
-  result_contract: 2
+  result_contract: 3
 inputs:
   - id: nothing_produces_this
     required: true

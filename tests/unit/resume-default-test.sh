@@ -40,6 +40,8 @@ export REPO_ROOT
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 print_test_header "resume by default; --no-resume recreates (#2225 §4)"
 setup_test_env "resume-default"
@@ -118,7 +120,7 @@ export ZBUILD_REPO_ROOT="$FIX"
 # _design_case <name> [prior-gate-fault] [resume] [goal-now] [existing-design] [coverage] [sha-mismatch] — prints model calls.
 _design_case() {
     local d="$TEST_TEMP_DIR/$1" fault="${2:-}" resume="${3:-1}" goal="${4:-Migrate the thing.}" existing="${5:-}"
-    local coverage="${6:-covered}" mismatch="${7:-}"
+    local coverage="${6:-pass}" mismatch="${7:-}"
     # An earlier run's outputs are where hydrate puts them: the live places
     # (ADR-050, amended).
     local ad="$d/state/artifacts" rr="$d/state"
@@ -129,11 +131,11 @@ _design_case() {
     printf '# Design (prior)\n\n```scope\nfoo.sh\n```\n' > "$rr/artifacts/design.md"
     local _sha; _sha="$(git hash-object "$rr/artifacts/design.md")"
     [[ -n "$mismatch" ]] && _sha="0000000000000000000000000000000000000000"
-    jq -n --arg sha "$_sha" '{result_contract:2,verdict:"pass",disposition:"complete",reason:"build-ready",data:{design_sha:$sha}}' > "$rr/artifacts/design-gate-result.json"
-    jq -n --arg v "$coverage" '{result_contract:2,verdict:$v,disposition:"complete",reason:"x"}' > "$rr/artifacts/spec-coverage-result.json"
+    jq -n --arg sha "$_sha" '{result_contract:3,outcome:"pass",reason:"build-ready",data:{design_sha:$sha}}' > "$rr/artifacts/design-gate-result.json"
+    stage_result_write "$rr/artifacts/spec-coverage-result.json" "$coverage" "x"
     # $2 set → the prior run ended on an ordinary failed gate.
     if [[ -n "$fault" ]]; then
-        printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x"}\n' > "$rr/artifacts/gate-aggregator-result.json"
+        printf '{"result_contract":3,"outcome":"fail","reason":"x"}\n' > "$rr/artifacts/gate-aggregator-result.json"
     fi
     [[ -n "$existing" ]] && printf '# Design (this run)\n' > "$ad/design.md"
     : > "$MODEL_CALLS"; : > "$DESIGN_EVENTS"
@@ -165,7 +167,7 @@ assert_eq "[R6] under ZBUILD_RESUME=0 design runs" "1" "$(_design_case r6 "" 0)"
 assert_eq "[R7] when the issue text changed design runs" "1" "$(_design_case r7 "" 1 "Migrate the OTHER thing.")"
 assert_eq "[R8b] after an ordinary failed gate, design runs" "1" "$(_design_case r8b failed)"
 assert_eq "[R9] when this run already has a design (a rewind), design runs" "1" "$(_design_case r9 "" 1 "Migrate the thing." yes)"
-assert_eq "[R10] when the prior spec-coverage said uncovered, design runs" "1" "$(_design_case r10 "" 1 "Migrate the thing." "" uncovered)"
+assert_eq "[R10] when the prior spec-coverage said uncovered (fail), design runs" "1" "$(_design_case r10 "" 1 "Migrate the thing." "" fail)"
 assert_eq "[R11] when the gate's pass was for a different design.md, design runs" "1" "$(_design_case r11 "" 1 "Migrate the thing." "" covered yes)"
 
 print_test_section "R12: design-gate writes no design_sha"

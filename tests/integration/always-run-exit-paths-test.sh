@@ -82,13 +82,13 @@ PLUG
 # promises — pass on rc 0, error/broken otherwise — so a run that should succeed
 # is not failed for leaving no readable result.
 _arm_outcome() {
-    local _v=pass _d=complete
-    [[ "${2:-0}" -ne 0 ]] && { _v=error; _d=broken; }
+    local _o=pass
+    [[ "${2:-0}" -ne 0 ]] && _o=broken
     cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
 outcome_run() {
     : > "\${STAGE_STARTED:-/dev/null}"
     ${1:-:}
-    $(mock_v2_result_line outcome "$_v" "$_d")
+    $(mock_result_line outcome "$_o")
     return ${2:-0}
 }
 PLUG

@@ -34,8 +34,8 @@ PLAN_GOAL="a very large goal that exhausts the turn budget"
 unset ZBUILD_ISSUE_NUMBER 2>/dev/null || true
 
 # ─── [#1835/SPEC-3][change] scope_too_large path → rc=1, plan.json with disposition=out_of_turns ─
-# After migration: max_turns exhaustion writes plan.json with result_contract:2,
-# verdict=error, disposition=out_of_turns and returns rc=1 (not rc=10). plan.json
+# After migration: max_turns exhaustion writes plan.json with result_contract:3,
+# outcome=out_of_turns and returns rc=1 (not rc=10). plan.json
 # MUST be present (not absent as in the pre-migration contract).
 # Fails at baseline because the current plugin returns rc=10 and writes no plan.json.
 print_test_section "[#1835/SPEC-3] max_turns → rc=1, plan.json with disposition=out_of_turns"

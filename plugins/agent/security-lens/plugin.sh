@@ -286,10 +286,10 @@ _security_lens_run_inner() {
         _router_rc_classify "$router_rc" _sl_v1 _sl_r1 2>/dev/null || true
         _sl_outcome="$(router_reason_disposition "${_sl_r1:-router_rc_nonzero}" 2>/dev/null || true)"
         # The router's mapping names how the call ended; anything else is a call
-    # that did not get through.
-    if ! outcome_is_valid "$_sl_outcome" || [[ "$_sl_outcome" == pass || "$_sl_outcome" == fail ]]; then
-        _sl_outcome="unavailable"
-    fi
+        # that did not get through.
+        if ! outcome_is_valid "$_sl_outcome" || [[ "$_sl_outcome" == pass || "$_sl_outcome" == fail ]]; then
+            _sl_outcome="unavailable"
+        fi
     elif [[ $router_rc -ne 0 ]]; then
         error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
         local _sl_v="" _sl_r=""

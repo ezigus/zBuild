@@ -51,11 +51,11 @@ _pr_delivery_write_result() {
 }
 
 # _pr_delivery_delegate_ending <result.json> — how a delegate (merge, pr-open)
-# that returned non-zero ended: its contract-3 outcome, or a contract-2
-# disposition. Anything that is not a way of failing to finish is `unavailable`.
+# that returned non-zero ended: its outcome. Anything that is not a way of
+# failing to finish is `unavailable`.
 _pr_delivery_delegate_ending() {
     local w=""
-    [[ -f "${1:-}" ]] && w="$(jq -r '.outcome // .disposition // empty' "$1" 2>/dev/null || true)"
+    [[ -f "${1:-}" ]] && w="$(jq -r '.outcome // empty' "$1" 2>/dev/null || true)"
     if outcome_is_valid "$w" && [[ "$w" != pass && "$w" != fail ]]; then
         printf '%s' "$w"
     else
@@ -110,7 +110,7 @@ _pr_stage_run_inner() {
     # auto_unless_flagged path below.
     local _gate_verdict_early=""
     if [[ -n "$_gate_result" && -f "$_gate_result" ]]; then
-        _gate_verdict_early="$(jq -r '.outcome // .verdict // empty' "$_gate_result" 2>/dev/null || true)"
+        _gate_verdict_early="$(jq -r '.outcome // empty' "$_gate_result" 2>/dev/null || true)"
     fi
 
     # ADR-040 §4 (#1844): the review is advisory and never blocks delivery. A
@@ -227,7 +227,7 @@ _pr_stage_run_inner() {
             # — ADR-001 fail-closed). Its outcome says what happened.
             local _po_verdict="" _po_reason=""
             if [[ -s "$pr_result_out" ]]; then
-                _po_verdict="$(jq -r '.outcome // .verdict // empty' "$pr_result_out" 2>/dev/null || true)"
+                _po_verdict="$(jq -r '.outcome // empty' "$pr_result_out" 2>/dev/null || true)"
                 _po_reason="$(jq -r '.reason // empty' "$pr_result_out" 2>/dev/null || true)"
             fi
             if [[ "$_po_verdict" == "fail" ]]; then

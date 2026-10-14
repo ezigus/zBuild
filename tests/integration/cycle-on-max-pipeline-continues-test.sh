@@ -53,9 +53,15 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 # review_lenses → pr and ends status=success.
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
-    # #1850: a v2 stage stub (result_contract 2, JSON primary, a v2 result that
-    # says pass on rc 0 and error/broken otherwise) — mock_plugin_factory's.
+    # #1850/#2366: a contract-3 stage stub (JSON primary, an outcome of pass on
+    # rc 0 and broken otherwise) — mock_plugin_factory's.
     mock_plugin_factory "$id" agent "$rc" "" "$role" >/dev/null
+}
+
+# _fill_writer <plugin.sh> — point the stub at the engine's result writer. The
+# stub bodies are quoted heredocs, so the path is filled in afterwards.
+_fill_writer() {
+    sed "s|@STAGE_RESULT_LIB@|$REPO_ROOT/scripts/lib/stage-result.sh|" "$1" > "$1.tmp" && mv "$1.tmp" "$1"
 }
 
 # Override design to produce design.md with a scope block (so impact's input contract holds)
@@ -74,7 +80,7 @@ requires:
     - redaction
 provides:
   role: designer
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: design_out
     path: ${artifact_dir}/design.md
@@ -85,19 +91,18 @@ outputs:
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, error, incomplete]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     printf '# Design\n```scope\nf.txt\n```\n' > "$state_dir/artifacts/design.md"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub design"}' \
-        > "$state_dir/artifacts/design-verdict.json"
+    source "@STAGE_RESULT_LIB@"
+    stage_result_write "$state_dir/artifacts/design-verdict.json" pass "stub design"
     return 0
 }
 PLUG
+    _fill_writer "$dir/plugin.sh"
 }
 
 # Override design-gate to ALWAYS emit verdict=fail via its primary artifact
@@ -118,25 +123,25 @@ requires:
     - redaction
 provides:
   role: design_gate
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: design_gate_out
     path: ${artifact_dir}/design-gate.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_gate_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"fail","summary":"forced fail to test max_iterations"}' \
-        > "$state_dir/artifacts/design-gate.json"
+    source "@STAGE_RESULT_LIB@"
+    stage_result_write "$state_dir/artifacts/design-gate.json" fail stub \
+        '{"summary":"forced fail to test max_iterations"}'
     return 0
 }
 PLUG
+    _fill_writer "$dir/plugin.sh"
 }
 
 # Override gate-aggregator to ALWAYS emit verdict=pass via its primary artifact
@@ -156,25 +161,25 @@ requires:
     - redaction
 provides:
   role: gate_aggregator
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: gate_aggregator_out
     path: ${artifact_dir}/gate-aggregator.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 gate_aggregator_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"pass","summary":"ok","gates":[]}' \
-        > "$state_dir/artifacts/gate-aggregator.json"
+    source "@STAGE_RESULT_LIB@"
+    stage_result_write "$state_dir/artifacts/gate-aggregator.json" pass stub \
+        '{"summary":"ok","gates":[]}'
     return 0
 }
 PLUG
+    _fill_writer "$dir/plugin.sh"
 }
 
 # Override plan so it always produces a valid plan.json (plan is now a leaf — no cycle feedback).
@@ -193,25 +198,26 @@ requires:
     - redaction
 provides:
   role: planner
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: plan_out
     path: ${artifact_dir}/plan.json
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass, error]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 plan_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub plan","schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
+    printf '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
         > "$state_dir/artifacts/plan.json"
+    source "@STAGE_RESULT_LIB@"
+    stage_result_add "$state_dir/artifacts/plan.json" pass "stub plan"
     return 0
 }
 PLUG
+    _fill_writer "$dir/plugin.sh"
 }
 
 # Stubs for every role simple.yaml needs.

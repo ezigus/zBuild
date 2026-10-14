@@ -58,11 +58,12 @@ export ZBUILD_REPO_ROOT="$WT"
 _fixture() {  # <dir> <id> <body>
     local d="$1" id="$2"
     mkdir -p "$d"
-    printf 'id: %s\nname: %s\nkind: agent\nversion: 0.0.1\nhooks:\n  run: %s_run\noutputs:\n  - id: result\n    path: ${artifact_dir}/%s-result.json\n    required: true\n    primary: true\n' \
+    printf 'id: %s\nname: %s\nkind: agent\nversion: 0.0.1\nhooks:\n  run: %s_run\nprovides:\n  result_contract: 3\noutputs:\n  - id: result\n    path: ${artifact_dir}/%s-result.json\n    required: true\n    primary: true\n' \
         "$id" "$id" "${id//-/_}" "$id" > "$d/manifest.yaml"
     cat > "$d/plugin.sh" <<PEOF
 ${id//-/_}_run() {
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "\${ZBUILD_ARTIFACT_DIR:-$JOB/artifacts}/${id}-result.json"
+    source "$REPO_ROOT/scripts/lib/stage-result.sh"
+    stage_result_write "\${ZBUILD_ARTIFACT_DIR:-$JOB/artifacts}/${id}-result.json" pass ok
 $3
 }
 PEOF

@@ -67,12 +67,12 @@ unset ZBUILD_REPO_ROOT 2>/dev/null || true
 unset ZBUILD_SCRATCH_ROOT 2>/dev/null || true
 
 # ── Fixture factory ───────────────────────────────────────────────────────────
-# #1850: the engine reads result contract v2 only, and a stage that exits 0
-# without a readable v2 primary has failed (broken). So the fixture declares its
-# result as a v2 primary, and a body that means "the stage finished" writes
-# $_V2_PASS there. An optional 4th arg declares a second required output, which
+# #1850/#2366: a stage that exits 0 without a readable result has failed
+# (broken). So the fixture declares its result as a contract-3 primary, and a
+# body that means "the stage finished" writes $_V2_PASS there. An optional 4th arg declares a second required output, which
 # lets SPEC-3 miss a declared output while its result is still readable.
-_V2_PASS='{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"fixture"}'
+# A literal, not the writer: it is spliced into stub bodies as text.
+_V2_PASS='{"result_contract":3,"outcome":"pass","reason":"fixture"}'
 _make_fixture() {
     local _dir="$1" _id="$2" _body="$3" _extra="${4:-}" _extra_out=""
     mkdir -p "$_dir"
@@ -88,14 +88,12 @@ version: 0.0.1
 hooks:
   run: ${_id}_run
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - name: result
     path: \${artifact_dir}/${_id}-result.json
     required: true
     primary: true${_extra_out}
-config:
-  valid_verdicts: [pass]
 MEOF
     cat > "$_dir/plugin.sh" <<PEOF
 ${_id}_run() {

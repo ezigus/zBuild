@@ -44,6 +44,8 @@ source "$REPO_ROOT/core/pipeline/verdict.sh"
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # ─── Sub-test A: runner_read_stage_verdict returns raw error/corrupt_diff/block
 # directly from real plugin manifest path (not the unit-test synthetic manifest).
@@ -55,24 +57,26 @@ mkdir -p "$ART_DIR"
 TEST_MANIFEST="$REPO_ROOT/plugins/tool/test/manifest.yaml"
 [[ -f "$TEST_MANIFEST" ]] || { echo "test plugin manifest missing: $TEST_MANIFEST"; exit 1; }
 
-# #1850: the real test plugin speaks result contract v2, so each result below is
-# a v2 one — a result without result_contract would read as `error` for the
-# violation alone, and A1 would pass without testing the verdict pass-through.
-# A1: verdict=error (mirrors what PR #553 plugin.sh writes on diff_apply_failed)
-printf '%s\n' '{"result_contract":2,"verdict":"error","disposition":"complete","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}' \
-    > "$ART_DIR/test-results.json"
+# #1850/#2366: the real test plugin speaks result contract 3, so each result
+# below is written with the engine's writer — a result without result_contract
+# would read as `error` for the violation alone, and A1 would pass without
+# testing the pass-through.
+# A1: the stage could not run the suite (what the test plugin writes on
+# diff_apply_failed: outcome broken).
+printf '%s\n' '{"tests_run":0,"tests_passed":0,"tests_failed":0}' > "$ART_DIR/test-results.json"
+stage_result_add "$ART_DIR/test-results.json" broken "diff_apply_failed"
 got="$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$TEST_MANIFEST" "test" 0)"
 assert_eq "A1: real test plugin verdict=error → 'error' (NOT 'fail')" "error" "$got"
 
 # A2: verdict=fail still classifies to 'fail' (no regression)
-printf '%s\n' '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"1 test failed","tests_run":3,"tests_passed":2,"tests_failed":1}' \
-    > "$ART_DIR/test-results.json"
+printf '%s\n' '{"tests_run":3,"tests_passed":2,"tests_failed":1}' > "$ART_DIR/test-results.json"
+stage_result_add "$ART_DIR/test-results.json" fail "1 test failed"
 got="$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$TEST_MANIFEST" "test" 0)"
 assert_eq "A2: real test plugin verdict=fail → 'fail' (no regression)" "fail" "$got"
 
 # A3: verdict=pass still classifies to 'pass'
-printf '%s\n' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"all tests passed","tests_run":3,"tests_passed":3,"tests_failed":0}' \
-    > "$ART_DIR/test-results.json"
+printf '%s\n' '{"tests_run":3,"tests_passed":3,"tests_failed":0}' > "$ART_DIR/test-results.json"
+stage_result_add "$ART_DIR/test-results.json" pass "all tests passed"
 got="$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$TEST_MANIFEST" "test" 0)"
 assert_eq "A3: real test plugin verdict=pass → 'pass'" "pass" "$got"
 
@@ -104,7 +108,8 @@ cycle_dispatch_stage() {
             manifest="$REPO_ROOT/plugins/agent/build/manifest.yaml"
             art="$ZBUILD_STATE_DIR/artifacts/build-summary.json"
             mkdir -p "$(dirname "$art")"
-            printf '%s\n' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"built","scope_violation":false}' > "$art"
+            printf '%s\n' '{"scope_violation":false}' > "$art"
+            stage_result_add "$art" pass "built"
             ;;
         test)
             manifest="$REPO_ROOT/plugins/tool/test/manifest.yaml"
@@ -116,9 +121,8 @@ cycle_dispatch_stage() {
             # test plugin's documented contract — "always exits 0 so the
             # pipeline engine reads the verdict from the artifact rather
             # than the plugin exit code").
-            printf '%s\n' \
-                '{"result_contract":2,"verdict":"error","disposition":"complete","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}' \
-                > "$art"
+            printf '%s\n' '{"tests_run":0,"tests_passed":0,"tests_failed":0}' > "$art"
+            stage_result_add "$art" broken "diff_apply_failed"
             rc=0
             ;;
         *)

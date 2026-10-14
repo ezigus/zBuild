@@ -30,6 +30,8 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 # shellcheck source=../../plugins/tool/pr-open/plugin.sh
 source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # _make_pr_state <dir> [review_verdict]
 # Sets up a state dir. review_verdict is written to review.json when given.
@@ -174,7 +176,7 @@ _s31_dir="$TEST_TEMP_DIR/spec31"
 _make_pr_state "$_s31_dir" "approve" >/dev/null
 mkdir -p "$TEST_TEMP_DIR/elsewhere31"
 printf '{"schema_version":1,"goal":"INDEXED GOAL"}\n' > "$TEST_TEMP_DIR/elsewhere31/plan.json"
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$TEST_TEMP_DIR/elsewhere31/test-results.json"
+stage_result_write "$TEST_TEMP_DIR/elsewhere31/test-results.json" pass ok >/dev/null
 printf '{"inputs":{"plan":"%s","test_results":"%s"}}\n' \
     "$TEST_TEMP_DIR/elsewhere31/plan.json" "$TEST_TEMP_DIR/elsewhere31/test-results.json" > "$_s31_dir/stage-inputs.json"
 _s14b_body="$TEST_TEMP_DIR/spec31-body.txt"

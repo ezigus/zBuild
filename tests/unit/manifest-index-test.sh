@@ -45,7 +45,7 @@ _n() { wc -l < "$1" | tr -d ' '; }
 # ─── adversarial corpus ──────────────────────────────────────────────────────
 CORPUS="$TEST_TEMP_DIR/corpus"
 _m() { mkdir -p "$CORPUS/$1"; printf '%b' "$2" > "$CORPUS/$1/manifest.yaml"; }
-_m agent/a1 'id: a1\nname: Demo Plugin   # trailing comment\nkind: agent\nversion: 1.0.0\nsummary:\nname_quoted: "has spaces"\npersona:\n  role: a|b\n  perspective: |\n    block\nhooks:\n  run: run_a1\n  cleanup: '"'"'quoted single'"'"'\nprovides:\n  role: builder\n  result_contract: 2\n  alias: b\n'
+_m agent/a1 'id: a1\nname: Demo Plugin   # trailing comment\nkind: agent\nversion: 1.0.0\nsummary:\nname_quoted: "has spaces"\npersona:\n  role: a|b\n  perspective: |\n    block\nhooks:\n  run: run_a1\n  cleanup: '"'"'quoted single'"'"'\nprovides:\n  role: builder\n  result_contract: 3\n  alias: b\n'
 _m agent/a2 'id: a2\nid: a2-dup\nkind: agent\nhooks:\n  run: first\nhooks:\n  run: second\nprovides:\n  deep:\n    deeper:\n      role: depth4\n'
 _m agent/a3 'id:a3\nname: trailing spaces   \nkind: "#not-a-comment"\nversion: "unterminated\nsummary: value: with: colons | and pipes\nplatform: darwin\npersona: inline\nhooks:\n# a column-0 comment inside the block\n- a column-0 list item inside the block\n  run: still_in_block\nprovides:\n  role: rolename\nrole: top-level-role\n'
 _m agent/a4 'id: a4\r\nkind: agent\r\nhooks:\r\n  run: crlf\r\n'

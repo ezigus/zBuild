@@ -56,7 +56,16 @@ fresh_state() {
     mkdir -p "$d/artifacts"
     printf '%s\n' "$d/state.json"
 }
-write_verdict() { printf '{"verdict":"%s"}\n' "$3" > "$1/$2"; }
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+# write_verdict <artifacts_dir> <filename> <word> — the gate's result, made with
+# the engine's writer (#2366): pass/skip → pass, fail → fail, error → broken.
+write_verdict() {
+    local o
+    case "$3" in pass|skip) o=pass ;; fail) o=fail ;; error) o=broken ;; *) o="$3" ;; esac
+    stage_result_write "$1/$2" "$o" "gate said $3" >/dev/null 2>&1 \
+        || printf '{"result_contract":3,"outcome":"%s","reason":"x"}\n' "$3" > "$1/$2"
+}
 run_agg() {
     local sf="$1" ad; ad="$(dirname "$1")/artifacts"
     rm -f "$ad/gate-aggregator-result.json"

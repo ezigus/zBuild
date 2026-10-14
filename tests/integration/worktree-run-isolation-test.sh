@@ -68,7 +68,7 @@ _write_intake_stub() {
 intake_run() {
     git checkout -q -b "$WORK_BRANCH" >/dev/null 2>&1 || return 2
     printf '%s\n' "$WORK_BRANCH" > "\${ZBUILD_STATE_DIR}/intake-branch.txt"
-    $(mock_v2_result_line intake)
+    $(mock_result_line intake)
     return 0
 }
 EOF
@@ -80,8 +80,8 @@ EOF
 # any other way would not be reproducing the bug.
 # <rc> lets a case make the run FAIL here, before any later stage could notice.
 _write_build_stub() {
-    local rc="${1:-0}" _v=pass _d=complete
-    [[ "$rc" -ne 0 ]] && { _v=error; _d=broken; }
+    local rc="${1:-0}" _o=pass
+    [[ "$rc" -ne 0 ]] && _o=broken
     cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<EOF
 build_run() {
     local repo_root="\${ZBUILD_REPO_ROOT:-\$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
@@ -90,7 +90,7 @@ build_run() {
     git -C "\$repo_root" -c user.email=p@l -c user.name=zbuild-pipeline \
         commit -qm "build stage output" >/dev/null 2>&1
     printf '%s\n' "\$repo_root" > "\${ZBUILD_STATE_DIR}/build-repo-root.txt"
-    $(mock_v2_result_line build "$_v" "$_d")
+    $(mock_result_line build "$_o")
     return $rc
 }
 EOF
@@ -217,7 +217,7 @@ _write_intake_stub
 _write_build_stub 0
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<EOF
 intake_run() {   # branch already exists in the worktree from run-fresh
-    $(mock_v2_result_line intake)
+    $(mock_result_line intake)
     return 0
 }
 EOF

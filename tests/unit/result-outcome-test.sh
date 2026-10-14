@@ -19,8 +19,7 @@
 #   O6 [change] a contract-3 outcome needs no per-stage verdict list
 #   O7 [change] readers that open results directly see the outcome: open items
 #               and a member's terminal failure
-#   O8 [guard]  a contract-2 result still reads as before (until every stage
-#               has moved)
+#   O8 [retired] contract 2 is gone (contract2-retired-test V2)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -137,9 +136,7 @@ stage_result_write "$O/artifacts/doc-result.json" pass "ok" >/dev/null 2>&1
 _oi="$(open_items_json "$O")"
 assert_eq "[O7] a failed outcome is an open item" "lint" "$(jq -r '.[].opener' <<< "$_oi" 2>/dev/null)"
 
-print_test_section "O8: contract 2 still reads"
-printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$R"
-assert_eq "[O8] a contract-2 pass" "pass" "$(runner_read_stage_verdict "$S" "$M" oc 0 2>/dev/null)"
+# O8 retired: contract 2 is no longer read — contract2-retired-test V2.
 
 print_test_section "O9: Previous work reads a contract-3 result"
 # shellcheck source=../../scripts/lib/stage-prompt.sh

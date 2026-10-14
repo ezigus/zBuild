@@ -98,7 +98,7 @@ version: 0.1.0
 hooks:
   run: x_run
 provides:
-  result_contract: 2
+  result_contract: 3
   role: rt_stage
 inputs:
   - id: plan
