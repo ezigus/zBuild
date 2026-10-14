@@ -89,6 +89,8 @@ _has_run="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*run:[[:space:
 # ─── Plugin behavior setup ────────────────────────────────────────────────────
 # shellcheck source=../../plugins/tool/merge/plugin.sh
 source "$REPO_ROOT/plugins/tool/merge/plugin.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # _make_state <dir> [gate_verdict]
 # Sets up a state dir with pipeline-state.json, review.json, and optional
@@ -98,9 +100,9 @@ _make_state() {
     mkdir -p "$d/artifacts"
     printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
     printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$d/artifacts/review.json"
+    # gate-aggregator's result, by the engine's writer (#2366).
     [[ -n "$gate" ]] && \
-        printf '{"schema_version":1,"verdict":"%s"}\n' "$gate" \
-            > "$d/artifacts/gate-aggregator-result.json"
+        stage_result_write "$d/artifacts/gate-aggregator-result.json" "$gate" "gate roll-up" >/dev/null
     # The engine's index (lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
     # dispatched stage, pr-delivery included) is the only way a declared input
     # reaches the plugin.
@@ -304,7 +306,7 @@ _mk_mocks "$TEST_TEMP_DIR/bin7a" "zbuild/issue-1849-test"
 
 _s7a_custom="$TEST_TEMP_DIR/custom-gate/gate-aggregator-result.json"
 mkdir -p "$(dirname "$_s7a_custom")"
-printf '{"schema_version":1,"verdict":"pass"}\n' > "$_s7a_custom"
+stage_result_write "$_s7a_custom" pass "gate roll-up" >/dev/null
 
 _s7a_si="$TEST_TEMP_DIR/spec7a-si.json"
 printf '{"inputs":{"gate_aggregator_result":"%s"}}\n' "$_s7a_custom" > "$_s7a_si"

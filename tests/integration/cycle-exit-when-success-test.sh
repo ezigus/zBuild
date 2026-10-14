@@ -61,7 +61,7 @@ build_review_cycle:
     stage: review
     field: verdict
     op: eq
-    value: approve
+    value: pass
   max_iterations: 2
   on_max: continue
 
@@ -101,20 +101,16 @@ cycle_dispatch_stage() {
     case "$stage" in
         build)  _CYCLE_DISPATCH_VERDICT="pass" ;;
         test)   _CYCLE_DISPATCH_VERDICT="pass" ;;
-        review) _CYCLE_DISPATCH_VERDICT="approve" ;;
+        review) _CYCLE_DISPATCH_VERDICT="pass" ;;
         *)      _CYCLE_DISPATCH_VERDICT="pass" ;;
     esac
     _CYCLE_DISPATCH_STATUS="complete"
     return 0
 }
 
-# Pin: regression-lock verdict_classify still collapses approve→pass. This
-# was the silent shadow that hid the bug — the runner USED to feed the
-# orchestrator the classified value. If a future refactor changes
-# verdict_classify so approve no longer maps to pass, this assertion goes
-# loud and we can revisit whether the dispatch path still needs the raw
-# read or could rely on the classifier preserving the value.
-assert_eq "T0: verdict_classify(approve)=pass (regression-lock of the shadow that hid #717)" "pass" "$(verdict_classify approve)"
+# T0 retired (#2366): it pinned verdict_classify mapping `approve` to pass. A
+# result now carries one outcome from the engine's list, so the review reports
+# `pass` and the cycle exits on `eq pass`; there is no per-stage word to shadow.
 
 # shellcheck source=../../core/pipeline/template.sh
 source "$REPO_ROOT/core/pipeline/template.sh"
@@ -131,7 +127,7 @@ cycle_orchestrator_run "build_review_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; r
 set -e
 
 # T2: outer cycle rc=0 (converged via exit_when).
-assert_eq "T2: build_review_cycle rc=0 (converged on review.verdict==approve)" "0" "$rc"
+assert_eq "T2: build_review_cycle rc=0 (converged on review.verdict==pass)" "0" "$rc"
 
 # T3: cycle.iteration.complete fired for OUTER cycle (the bug — orchestrator
 # never reached this emit point for build_review_cycle in the dogfood).
