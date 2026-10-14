@@ -118,6 +118,11 @@ cycles:               # NEW overlay
 }
 ```
 
+*Amended 2026-10-15:* a loop that ends on several conditions (`exit_when` `all:`/`any:`) has no single
+"until" stage, so each history row's `verdict` and `status` name every condition's stage and its
+outcome — `"verdict":"design-gate=fail spec-coverage=pass"` — instead of `missing` (#1801 run
+38554963653). Enforced by `tests/unit/cycle-history-multi-exit-test.sh` H1.
+
 Older state files without `.cycle_iterations` are upgraded in-place by the
 defensive `(.cycle_iterations //= {})` init in every mutator.
 

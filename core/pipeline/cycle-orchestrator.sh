@@ -2274,6 +2274,18 @@ _cycle_orchestrator_run_body() {
             '.[$s].verdict // "missing"' <<< "$verdicts_blob" 2>/dev/null)"
         h_status="$(jq -r --arg s "$_CYCLE_UNTIL_STAGE" \
             '.[$s].status // "missing"' <<< "$verdicts_blob" 2>/dev/null)"
+        # A loop that ends on several conditions has no single until-stage:
+        # the row names each condition's stage and outcome instead of
+        # "missing" (#1801/#1944 runs, design_verify_cycle).
+        if [[ -n "${_CYCLE_EXIT_COMBINATOR:-}" && ${#_CYCLE_EXIT_CONDITIONS[@]} -gt 0 ]]; then
+            local _hc _hs _hv _hst; h_verdict=""; h_status=""
+            for _hc in "${_CYCLE_EXIT_CONDITIONS[@]}"; do
+                _hs="${_hc%%|*}"
+                _hv="$(jq -r --arg s "$_hs" '.[$s].verdict // "missing"' <<< "$verdicts_blob" 2>/dev/null)"
+                _hst="$(jq -r --arg s "$_hs" '.[$s].status // "missing"' <<< "$verdicts_blob" 2>/dev/null)"
+                h_verdict+="${h_verdict:+ }$_hs=$_hv"; h_status+="${h_status:+ }$_hs=$_hst"
+            done
+        fi
         # #1117: the build member's raw verdict, for the no-progress stall-break
         # below. Empty for cycles without a `build` member (naturally disables
         # the stall-break there).
