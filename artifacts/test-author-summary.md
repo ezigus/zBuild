@@ -1,6 +1,6 @@
-## test-author — complete
+## test-author — rate_limited
 
-- authored acceptance assertions for 14 SPEC(s) from the design contract
+- the author did not finish (router_rate_limited) — what it wrote is kept for the next attempt
 
-- SPECs in the contract: 14
+- SPECs in the contract: 16
 - assertions are authored from the SPEC text, never from the implementation
