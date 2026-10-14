@@ -607,6 +607,18 @@ but a stage that misbehaves once should cost a retry, not the run.
 
 Verification: `tests/integration/write-boundary-revert-test.sh` (D1–D5).
 
+## Amendment — in the artifacts folder a stage writes only its own (2026-10-14, #2379)
+
+#2174 made every other plugin's declared outputs read-only to a stage. Every
+other file already in the shared artifacts folder stayed writable: another
+stage's notes, its attempts, the run's stage reports. Now each model call is
+denied editing every file already in the artifacts folder except the stage's
+own declared outputs and its own notes file
+(`_lc_artifacts_left_deny`, `core/plugin-registry/write-ownership.sh`). A folder
+holding nothing of the stage's is denied as `<dir>/**`, which also covers files
+written into it later. Private paths are denied to every stage (ADR-004,
+amendment of 2026-10-14). Enforced by `tests/integration/artifacts-write-ownership-test.sh`.
+
 ## References
 
 - `core/pipeline/stage-scratch.sh` — the resolver (§2)

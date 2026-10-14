@@ -321,6 +321,10 @@ plugin_hook_call() {
         # other plugins' declared outputs, and the repo unless declared.
         _lc_other_outputs_deny "$plugin_dir" "$_ws_state_dir"   # parent shell: fills the memo
         ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
+        # #2379: and whatever else is already in the artifact dir that is not
+        # this stage's own — other stages' notes, attempts, the stage reports.
+        _lc_artifacts_left_deny "$manifest" "$_ws_state_dir" "${1:-}"
+        ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
         local _lc_wr; _lc_wr="$(manifest_index_get "$manifest" capabilities.writes_repository 2>/dev/null)" \
             || _lc_wr="$(yaml_get "$manifest" "capabilities.writes_repository" 2>/dev/null || true)"
         if [[ "${_lc_wr%$'\n'}" != "true" ]]; then
