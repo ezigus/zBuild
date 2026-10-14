@@ -1,5 +1,5 @@
-## spec-coverage — covered
+## spec-coverage — unreadable
 
-- Every behavioral requirement in R-1 through R-10 is fully demanded by at least one SPEC sentence; no requirement is addressed only partially or left to implication.
+- no acceptance block in design.md — there is no contract to compare against
 
 - every requirement the issue states maps to a declared SPEC
