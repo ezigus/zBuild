@@ -1,6 +1,7 @@
 # ADR-064 — One live run-status comment per run
 
 **Status:** Proposed (2026-09-18)
+**Amended:** 2026-10-14 (#2378) — the open items list only results this run wrote. Hydrate restores an earlier run's results with their saved times; one older than this run's start belongs to a stage that did not run this time, and is left out.
 **Issue:** #2131
 **Keeper:** e-1 (KEEPERS §E — live-updating GitHub comment, PATCH, atomic id)
 **Amends:** ADR-010 §3 (the `gh-pr-comment` destination row), ADR-015 (References — per-stage `gh_comment` capture is a separate surface and unchanged)
@@ -181,6 +182,8 @@ such events (stage-less, the largest share of the run's event volume) and 1,476 
   milliseconds on every host (ADR-065 §5, amended #1806).
 
 ## Enforced by
+
+- Open items list only results this run wrote (#2378) → `tests/unit/run-open-items-test.sh` O10
 
 - §1 → `tests/unit/runner-status-comment-hook-test.sh`; `tests/integration/run-status-comment-runner-test.sh` (a GitHub that fails every call leaves the exit status alone)
 - §2 → `tests/unit/run-status-comment-render-test.sh` SPEC-8 (no emit call, no event-bus source); `tests/unit/run-status-comment-quiet-test.sh` Q1 (a render with the real redactor adds nothing to `events.jsonl`), Q3 (a live sidecar with nothing new sends no PATCH and its events file does not grow)

@@ -83,11 +83,12 @@ else
     assert_pass "T4: 'superset' framing removed"
 fi
 
-# T5: design stays read-only (must NOT invite Edit/Write/Bash for impl).
-if grep -qiE 'do not .*(Edit|Write|Bash)|MUST NOT .*(Edit|Write)|forbidden.*Edit' "$PROMPT"; then
-    assert_pass "T5: prompt keeps design read-only (no Edit/Write/Bash for impl)"
+# T5 (#2376): design writes only design.md and its notes file, and changes no code.
+if grep -qF 'Do not write any file other than the design.md above and your notes file' "$PROMPT" \
+        && grep -qF 'Do not change the code' "$PROMPT"; then
+    assert_pass "T5: design writes only design.md and its notes, and changes no code"
 else
-    assert_fail "T5: prompt must forbid Edit/Write/Bash (design is read-only enumeration)"
+    assert_fail "T5: design writes only design.md and its notes, and changes no code"
 fi
 
 # T6: simple.yaml design timeout raised to 600 (repo-wide grep headroom).

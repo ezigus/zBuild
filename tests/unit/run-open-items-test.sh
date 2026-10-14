@@ -191,6 +191,21 @@ assert_eq "[O9] no such line prints rc=N or the reason code" "" \
 assert_eq "[O9] each says why through run_end_words" "$(grep -c . <<< "$_rn")" \
     "$(grep -c 'run_end_words' <<< "$_rn" || true)"
 
+print_test_section "O10 (#2378): only results this run wrote are open items"
+# On a rerun hydrate restores the earlier run's results, keeping each file's
+# saved time (git archive, then cp -p). A stage that did not run this time
+# leaves its old result on disk; it is not this run's open item.
+S10="$TEST_TEMP_DIR/s10"; mkdir -p "$S10/artifacts" "$S10/runtime"
+stage_result_write "$S10/artifacts/oldgate-result.json" fail "an earlier run's gate failed" >/dev/null 2>&1
+touch -t 202601010000 "$S10/artifacts/oldgate-result.json"
+: > "$S10/runtime/run-start"
+stage_result_write "$S10/artifacts/newgate-result.json" fail "this run's gate failed" >/dev/null 2>&1
+_md10="$(open_items_markdown "$S10")"
+assert_contains "[O10] a failing result this run wrote is listed" "$_md10" "this run's gate failed"
+assert_eq "[O10] an earlier run's restored result is not listed" "0" \
+    "$(grep -c "an earlier run's gate failed" <<< "$_md10" || true)"
+assert_eq "[O10] the count is this run's items" "1" "$(open_items_count "$S10")"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
