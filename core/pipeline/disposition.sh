@@ -75,6 +75,28 @@ disposition_vocabulary() {
     printf '%s' "$_ZBUILD_DISPOSITION_SET"
 }
 
+# ─── outcome_vocabulary / outcome_is_valid (#2366, ADR-054 §6) ───────────────
+# Result contract 3 carries ONE word, `outcome`, from this closed list: `pass`
+# or `fail` when the stage finished and judged its work, otherwise how it failed
+# to finish — the disposition words other than `complete`. Every stage uses the
+# same list; anything stage-specific goes in `reason` and `data`.
+outcome_vocabulary() {
+    local w out="pass fail"
+    for w in $_ZBUILD_DISPOSITION_SET; do
+        [[ "$w" == complete ]] || out+=" $w"
+    done
+    printf '%s' "$out"
+}
+
+outcome_is_valid() {
+    local o="${1-}"
+    [[ -n "$o" ]] || return 1
+    case " $(outcome_vocabulary) " in
+        *" $o "*) return 0 ;;
+        *)        return 1 ;;
+    esac
+}
+
 # ─── disposition_is_valid <disposition> ─────────────────────────────────────
 # rc 0 when the word is a member of the closed set, 1 otherwise. An empty
 # string is NOT a member: a v1 result declares no disposition at all, and that

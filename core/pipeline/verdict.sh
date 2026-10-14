@@ -364,21 +364,25 @@ _verdict_read_result() {
     local _rr_out _rr_rest
     if ! _rr_out="$(jq -r '. as $o
         | def ok($f): ($o|has($f)) and ($o[$f]|type == "string") and ($o[$f]|length > 0);
-        [ ($o.result_contract // 1 | tostring),
+        (if ($o.result_contract // 1) == 3 then ["outcome", "reason"]
+           else ["verdict", "disposition", "reason"] end) as $need
+        | [ ($o.result_contract // 1 | tostring),
           ($o.verdict // "" | tostring | gsub("\n"; " ")),
           ($o.disposition // "" | tostring | gsub("\n"; " ")),
-          ([ "verdict", "disposition", "reason" | select(ok(.) | not) ] | first // ""),
+          ($o.outcome // "" | tostring | gsub("\n"; " ")),
+          ([ $need[] | select(ok(.) | not) ] | first // ""),
           (($o.reason // "" | tostring) + "\u0001") ] | join("\n")' "$resolved" 2>/dev/null)"; then
         if ! jq empty "$resolved" >/dev/null 2>&1; then
             printf -v "${p}_state" '%s' "malformed"
             printf -v "${p}_viol" '%s' "contract_violation:malformed_json"
             return 0
         fi
-        _rr_out=$'1\n\n\n\n\001'   # valid JSON but not an object: no contract, no fields
+        _rr_out=$'1\n\n\n\n\n\001'   # valid JSON but not an object: no contract, no fields
     fi
     local _sv="${_rr_out%%$'\n'*}"; _rr_rest="${_rr_out#*$'\n'}"
     local _rr_verdict="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     local _rr_disp="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
+    local _rr_outcome="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     local _rr_missing="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
     printf -v "${p}_contract" '%s' "$_sv"
@@ -394,6 +398,26 @@ _verdict_read_result() {
     # reason would otherwise shift every field above it.
     printf -v "${p}_reason" '%s' "${_rr_rest%$'\001'}"
 
+    if contract_version_supported "$_sv" && [[ "$_sv" == "$_ZBUILD_CONTRACT_V3" ]]; then
+        # #2366 (ADR-054 §6): contract 3 carries ONE word. pass and fail mean the
+        # stage finished and judged its work; any other word on the list is how
+        # it failed to finish, and the engine's disposition response applies.
+        # Mapped here onto the verdict/disposition pair the rest of the engine
+        # reads, so every reader sees a contract-3 result the same way.
+        if [[ -n "$_rr_missing" ]]; then
+            printf -v "${p}_viol" '%s' "contract_violation:missing_field:${_rr_missing}"
+        elif ! outcome_is_valid "$_rr_outcome"; then
+            printf -v "${p}_viol" '%s' "contract_violation:unknown_outcome:${_rr_outcome}"
+        else
+            case "$_rr_outcome" in
+                pass|fail) printf -v "${p}_verdict" '%s' "$_rr_outcome"
+                           printf -v "${p}_disp" '%s' "complete" ;;
+                *)         printf -v "${p}_verdict" '%s' "error"
+                           printf -v "${p}_disp" '%s' "$_rr_outcome" ;;
+            esac
+        fi
+        return 0
+    fi
     if ! contract_version_supported "$_sv"; then
         # #1850: v1 (an absent result_contract) or any other version the engine
         # does not read. The range is core/contract/version.sh's, never a literal.

@@ -28,8 +28,8 @@ fi
 # shellcheck source=../../core/contract/version.sh
 source "$REPO_ROOT/core/contract/version.sh"
 
-# TC-2 [SPEC-2]: the range is legible. Since #1850 it is v2 only.
-assert_eq "[SPEC-2] TC-2: range renders as MIN..MAX" "2..2" "$(contract_version_range)"
+# TC-2 [SPEC-2]: the range is legible. Since #1850 it starts at v2; #2366 adds v3.
+assert_eq "[SPEC-2] TC-2: range renders as MIN..MAX" "2..3" "$(contract_version_range)"
 set +e; contract_version_supported 1; r1=$?; contract_version_supported 2; r2=$?; set -e
 assert_eq "[SPEC-2] TC-2: v1 is no longer supported (#1850)" "1" "$r1"
 assert_eq "[SPEC-2] TC-2: v2 supported" "0" "$r2"
@@ -37,7 +37,7 @@ assert_eq "[SPEC-2] TC-2: v2 supported" "0" "$r2"
 # TC-3 [SPEC-2]: outside the range, and non-integers, are unsupported. A typo'd
 # version must refuse rather than default to v1 — defaulting is how an
 # unreadable plugin gets read anyway.
-for bad in 0 3 99 "v2" "2.0" "" "1x"; do
+for bad in 0 4 99 "v2" "2.0" "" "1x"; do
     set +e; contract_version_supported "$bad"; rc=$?; set -e
     assert_eq "[SPEC-2] TC-3: '$bad' is unsupported" "1" "$rc"
 done
@@ -61,7 +61,7 @@ case "$msg" in
     *) assert_fail "[SPEC-4] TC-5: message names the declared version" "got: $msg" ;;
 esac
 case "$msg" in
-    *"2..2"*) assert_pass "[SPEC-4] TC-5: message names the accepted range" ;;
+    *"2..3"*) assert_pass "[SPEC-4] TC-5: message names the accepted range" ;;
     *) assert_fail "[SPEC-4] TC-5: message names the accepted range" "got: $msg" ;;
 esac
 
@@ -127,7 +127,7 @@ assert_eq "[SPEC-7] TC-8: in-range manifest loads" "0" "$ok_rc"
 assert_eq "[SPEC-7] TC-8: a stage plugin with no declaration is REFUSED (v1 is gone, #1850)" "1" "$none_rc"
 assert_eq "[SPEC-7] TC-8: out-of-range manifest is REFUSED at load" "1" "$bad_rc"
 case "$bad_out" in
-    *"bad-plugin"*"2..2"*) assert_pass "[SPEC-7] TC-8: refusal names the plugin and the range" ;;
+    *"bad-plugin"*"2..3"*) assert_pass "[SPEC-7] TC-8: refusal names the plugin and the range" ;;
     *) assert_fail "[SPEC-7] TC-8: refusal names the plugin and the range" "got: $bad_out" ;;
 esac
 
@@ -139,7 +139,7 @@ esac
     out_none="$(validate_manifest "$TEST_TEMP_DIR/none.yaml" 2>&1)"; rc_none=$?
     out_v2="$(validate_manifest "$TEST_TEMP_DIR/ok.yaml" 2>&1)";     rc_v2=$?
     set -e
-    [[ "$rc_none" -eq 1 && "$out_none" == *"none-plugin"*"2..2"* && "$rc_v2" -eq 0 ]] && exit 0
+    [[ "$rc_none" -eq 1 && "$out_none" == *"none-plugin"*"2..3"* && "$rc_v2" -eq 0 ]] && exit 0
     printf 'none rc=%s out=%s | v2 rc=%s\n' "$rc_none" "$out_none" "$rc_v2" >&2
     exit 1
 )

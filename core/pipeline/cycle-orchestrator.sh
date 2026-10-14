@@ -1984,7 +1984,8 @@ _cycle_member_terminal_failure() {
         [[ -z "$file" ]] && continue
         result="$artifacts_dir/$file"
         [[ -s "$result" ]] || continue
-        jq -e '.verdict == "fail"' "$result" >/dev/null 2>&1 || continue
+        # #2366: a contract-3 result says `outcome`, a contract-2 one `verdict`.
+        jq -e '(.outcome // .verdict) == "fail"' "$result" >/dev/null 2>&1 || continue
         # #2161: the cycle-policy word is `severity`; `disposition` is ADR-054's
         # "how did the stage stop" and never holds it. #1850 removed the v1
         # fallback that read the word from disposition.

@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
-**Amended:** 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
+**Amended:** 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
 **Amended:** 2026-09-16 (#2111) — §6: a rate limit observed by the router resolves to `unavailable`, not `throttled`. The engine now enforces `halt_unavailable` on the cycle dispatch path (it was announced only): the run ends `aborted` with `reason=llm_rate_limited` and the reset text under `.rate_limit.message`, state persisted for ADR-050 resume. `throttled` stays in the closed set with no rate-limit emitter. Waiting and retrying re-entered the same limit for five iterations on #1840/#1841, re-verifying an unchanged tree each time.
 **Amended:** 2026-08-23 (#141) — §7: the three-actor table is run-keyed in every row; the **issue** is a second scope, and `release` gains the `always-run` attribute plus a `persist` sibling (ADR-059).
 **Amended:** 2026-08-23 (#1920) — §7: the `release` "deletes nothing" promise scoped to the run's own lifecycle; operator-invoked reclamation (`zbuild cleanup --state-dirs`) named as a third actor with its own clock and guards.
@@ -461,3 +461,20 @@ Verification: `tests/integration/leaf-verdict-halts-test.sh` (SPEC-1–4, both l
 - Usage errors and the startup preflight refusal return 1 (they were 2), and so do the helpers under them: the contract validator in `enforce` mode (`status: preflight_failed` says why), the strategies' work-unit validation, and stage scratch for an unnameable stage. `disposition_halts` answers an off-list word with *halts* (it fails closed; it was a third rc, 2) and `disposition_retryable` with *not retryable*.
 
 Verification: `tests/unit/v1-retired-test.sh` R1–R7 and `tests/unit/dispatched-stage-plugins-v2-test.sh` G1/G2 (the contract); `tests/integration/leaf-verdict-halts-test.sh` SPEC-5 (a leaf that writes nothing ends the run); `tests/unit/dispatch-rc-guard-test.sh` SPEC-1/SPEC-16 (every guarded engine file at zero — returns and reads); `tests/unit/core-pipeline-cycle-orchestrator-run-test.sh` and `tests/unit/runner-cycle-rc-action-mapping-test.sh` (outcome words and what the runner does with each, `cycle_abort` distinct from `config_invalid`); `tests/unit/abort-propagation-test.sh` (the abort word); `tests/unit/map-strategy-test.sh` (strategy outcomes); `tests/integration/core-orch-contract-test.sh`, `plugins/tool/orch-sequential/tests/orch-sequential-test.sh`, `plugins/tool/orch-mock/tests/orch-mock-test.sh` (`partial`); `tests/unit/contract-validator-enforce-mode-test.sh`, `tests/integration/preflight-contract-templates-test.sh`, `tests/unit/stage-scratch-test.sh` SPEC-1, `tests/unit/core-pipeline-disposition-test.sh` (the helpers).
+
+### Amendment (2026-10-13, #2366) — one outcome from one closed list
+
+Every stage gives the engine the same interface. Splitting *what happened* from *what to do about it* was right; letting each stage invent its own verdict words was not. By 2026-10 the manifests declared about 30 verdict words, translated by `verdict_classify` into pass/warn/fail and read raw in several places, and most of them only repeated the disposition (`degraded`, `error`, `unjudged`, design's `incomplete` were always written next to `out_of_turns`, `unusable` or `timed_out`).
+
+**Result contract 3** carries one field, `outcome`, from one closed list the engine owns (`outcome_vocabulary`, `core/pipeline/disposition.sh`):
+
+- `pass` — the stage finished, and its work meets its bar;
+- `fail` — the stage finished, and its work does not;
+- any other disposition word (`unusable`, `timed_out`, `out_of_turns`, `interrupted`, `throttled`, `rate_limited`, `unavailable`, `misconfigured`, `broken`) — how the stage failed to finish; the engine's response table applies unchanged.
+
+A word off the list, a missing `outcome` or a missing `reason` is a broken result. Anything stage-specific goes in `reason` and `data`. A stage writes its result with the one writer, `stage_result_write` (or `stage_result_add` for an output that is itself the result), in `scripts/lib/stage-result.sh`, and a contract-3 result needs no `valid_verdicts`.
+
+**Migration.** The engine reads contracts 2 and 3 while the stages move, one batch per PR; the last PR drops contract 2 by raising the contract minimum, and removes `valid_verdicts`, `verdict_classify` and their lints. Which outcomes block — today `convergence:` in each manifest — moves to the template in the same series.
+
+**Enforced by** `tests/unit/result-outcome-test.sh` O1–O9 (O2b: `stage_result_add`).
+
