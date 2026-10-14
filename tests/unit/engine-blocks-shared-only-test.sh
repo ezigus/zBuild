@@ -66,7 +66,7 @@ _prev() {
 }
 
 print_test_section "B1: the header"
-jq -n '{result_contract:2,verdict:"pass",disposition:"complete",reason:"ok"}' > "$_S/artifacts/pw-result.json"
+jq -n '{result_contract:3,outcome:"pass",reason:"ok"}' > "$_S/artifacts/pw-result.json"
 printf '## pw — pass\n- did it\n' > "$_S/artifacts/pw-summary.md"
 printf '{"stage_statuses":{"pw":"complete"},"stage_verdicts":{"pw":"pass"}}\n' > "$_S/pipeline-state.json"
 _pw="$(_prev)"
@@ -91,10 +91,10 @@ assert_eq "[B2] the line comes before any stage" "1" \
 
 print_test_section "B3: a failed attempt shows the last good output"
 _good="$_S/artifacts/attempts/pw/iter-0-attempt-1"; mkdir -p "$_good"
-jq -n '{result_contract:2,verdict:"pass",disposition:"complete",reason:"ok"}' > "$_good/pw-result.json"
+jq -n '{result_contract:3,outcome:"pass",reason:"ok"}' > "$_good/pw-result.json"
 printf '## pw — pass\n- the good work items\n' > "$_good/pw-summary.md"
 _bad="$_S/artifacts/attempts/pw/iter-0-attempt-2"; mkdir -p "$_bad"
-jq -n '{result_contract:2,verdict:"error",disposition:"timed_out",reason:"stopped"}' > "$_bad/pw-result.json"
+jq -n '{result_contract:3,outcome:"timed_out",reason:"stopped"}' > "$_bad/pw-result.json"
 cp "$_bad/pw-result.json" "$_S/artifacts/pw-result.json"
 printf '## pw — error\n- no output\n' > "$_S/artifacts/pw-summary.md"
 cp "$_S/artifacts/pw-summary.md" "$_bad/pw-summary.md"

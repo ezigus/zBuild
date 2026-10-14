@@ -323,7 +323,7 @@ convergence: gate
 hooks:
   run: ssd_run
 provides:
-  result_contract: 2
+  result_contract: 3
 outputs:
   - id: ss_double_result
     path: ${artifact_dir}/ss-double-result.json

@@ -16,7 +16,7 @@
 #                    the build summary. Isolation is the whole mechanism
 #   SPEC-3 [change]: a completed authoring pass records the assertion digests,
 #                    so assertion-integrity has a baseline to compare against
-#   SPEC-4 [guard] : v2 contract — result_contract:2 on the result, rc binary
+#   SPEC-4 [guard] : result contract — result_contract:3 on the result, rc binary
 #   SPEC-5 [change]: a router failure maps to a DISPOSITION (ADR-054 §6), not to
 #                    a cheerful verdict — the stage did not do its job
 #   SPEC-7 [change]: same budget as build, and blocking (#2188)

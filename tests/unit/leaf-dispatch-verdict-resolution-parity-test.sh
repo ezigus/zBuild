@@ -63,7 +63,7 @@ hooks:
 requires:
   core: [event-bus]
 provides:
-  result_contract: 2
+  result_contract: 3
 inputs: []
 outputs:
   - id: my_result
@@ -71,12 +71,10 @@ outputs:
     type: json
     required: true
     primary: true
-config:
-  valid_verdicts: [pass]
 EOF
 
 # Write a passing verdict artifact so runner_read_stage_verdict returns 'pass'.
-printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"fixture"}' > "$ART_DIR/my-result.json"
+printf '%s' '{"result_contract":3,"outcome":"pass","reason":"fixture"}' > "$ART_DIR/my-result.json"
 
 FIXTURE_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 

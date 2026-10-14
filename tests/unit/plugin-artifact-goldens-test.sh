@@ -179,20 +179,20 @@ fi
 
 # ─── G4: pr-result-artifact ───────────────────────────────────────────────────
 # plugins/tool/pr-open produces state/artifacts/pr-result.json
-# v2 contract: result_contract=2, verdict, disposition, reason; plugin fields under data.*
+# contract 3 (#2366): result_contract=3, outcome, reason; plugin fields under data.*
 print_test_section "G4: pr-result-artifact.golden"
 assert_golden_exists "pr-result-artifact"
 assert_golden_is_valid_json "pr-result-artifact"
 assert_golden_contains "pr-result-artifact" '"result_contract"'
-assert_golden_contains "pr-result-artifact" '"verdict"'
+assert_golden_contains "pr-result-artifact" '"outcome"'
 assert_golden_contains "pr-result-artifact" '"data"'
 
 g4_content="$(cat "$GOLDEN_DIR/pr-result-artifact.golden" 2>/dev/null || echo '{}')"
 g4_rc="$(printf '%s' "$g4_content" | jq -r '.result_contract' 2>/dev/null || echo '')"
-if [[ "$g4_rc" == "2" ]]; then
-    assert_pass "G4: pr-result-artifact result_contract == 2"
+if [[ "$g4_rc" == "3" ]]; then
+    assert_pass "G4: pr-result-artifact result_contract == 3"
 else
-    assert_fail "G4: pr-result-artifact result_contract == 2" "got: $g4_rc"
+    assert_fail "G4: pr-result-artifact result_contract == 3" "got: $g4_rc"
 fi
 
 g4_draft="$(printf '%s' "$g4_content" | jq -r '.data.draft' 2>/dev/null || echo '')"
@@ -202,8 +202,8 @@ else
     assert_fail "[SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)" "got: $g4_draft"
 fi
 
-# [#1844/SPEC-16]: the golden encodes the v2 pr-delivery result shape —
-# result_contract=2, verdict=pass, disposition=complete, data.pr_url non-empty,
+# [#1844/SPEC-16]: the golden encodes the pr-delivery result shape (contract 3
+# since #2366) — result_contract=3, outcome=pass, data.pr_url non-empty,
 # data.draft=false — with a non-empty reason (ADR-054 §5: reason is mandatory, and
 # the engine refuses an empty one) and plugin fields under data only (no
 # top-level draft). The run's first golden had reason:"" and a top-level draft.
@@ -216,18 +216,11 @@ fi
 assert_eq "[#1844/SPEC-16] pr-result-artifact golden has no top-level draft" "false" \
     "$(printf '%s' "$g4_content" | jq -r 'has("draft")' 2>/dev/null || echo error)"
 
-g4_verdict="$(printf '%s' "$g4_content" | jq -r '.verdict' 2>/dev/null || echo '')"
-if [[ "$g4_verdict" == "pass" ]]; then
-    assert_pass "[#1844/SPEC-16] pr-result-artifact golden verdict == pass"
+g4_outcome="$(printf '%s' "$g4_content" | jq -r '.outcome' 2>/dev/null || echo '')"
+if [[ "$g4_outcome" == "pass" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden outcome == pass"
 else
-    assert_fail "[#1844/SPEC-16] pr-result-artifact golden verdict == pass" "got: $g4_verdict"
-fi
-
-g4_disp="$(printf '%s' "$g4_content" | jq -r '.disposition' 2>/dev/null || echo '')"
-if [[ "$g4_disp" == "complete" ]]; then
-    assert_pass "[#1844/SPEC-16] pr-result-artifact golden disposition == complete"
-else
-    assert_fail "[#1844/SPEC-16] pr-result-artifact golden disposition == complete" "got: $g4_disp"
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden outcome == pass" "got: $g4_outcome"
 fi
 
 g4_pr_url="$(printf '%s' "$g4_content" | jq -r '.data.pr_url // empty' 2>/dev/null || echo '')"
@@ -238,10 +231,10 @@ else
 fi
 
 g4_rc2="$(printf '%s' "$g4_content" | jq -r '.result_contract' 2>/dev/null || echo '')"
-if [[ "$g4_rc2" == "2" ]]; then
-    assert_pass "[#1844/SPEC-16] pr-result-artifact golden result_contract == 2"
+if [[ "$g4_rc2" == "3" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden result_contract == 3"
 else
-    assert_fail "[#1844/SPEC-16] pr-result-artifact golden result_contract == 2" "got: $g4_rc2"
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden result_contract == 3" "got: $g4_rc2"
 fi
 
 g4_dd="$(printf '%s' "$g4_content" | jq -r '.data.draft' 2>/dev/null || echo '')"

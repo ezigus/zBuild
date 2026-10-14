@@ -43,7 +43,7 @@ hooks:
 requires:
   core: [redaction]
 provides:
-  result_contract: 2
+  result_contract: 3
   role: planner
 EOF
         [[ -n "$extra" ]] && printf '%s\n' "$extra"
@@ -79,7 +79,7 @@ hooks:
 requires:
   core: [redaction]
 provides:
-  result_contract: 2
+  result_contract: 3
   role: intake
 outputs:
   - id: scope_manifest

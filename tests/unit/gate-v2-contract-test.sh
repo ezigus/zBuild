@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Tests: gate v2 result contract — result_contract:2, disposition, reason across
-# all seven gate plugins (ADR-054, ADR-055 §9, issue #1848).
+# Tests: gate result contract — result_contract:3, outcome, reason across all
+# seven gate plugins (ADR-054, ADR-055 §9, issue #1848; contract 3 since #2366).
 #
-# SPEC-1: the six gates declare result_contract: 3 (#2366); gate-aggregator 2
+# SPEC-1: all seven gates declare result_contract: 3 (#2366)
 # SPEC-2: every gate result JSON carries its contract, its outcome (no disposition on contract 3) and a reason
 # SPEC-3: shape-floor emits disposition:broken when _sf_shape_floor is undefined
 # SPEC-4: design-gate writes feedback on every verdict (including pass); manifest required:true
@@ -19,8 +19,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
-print_test_header "gate v2 contract — result_contract:2 disposition reason (#1848)"
+print_test_header "gate result contract — result_contract:3 outcome reason (#1848, #2366)"
 setup_test_env "gate-v2-contract"
 _test_cleanup_hook() { cleanup_test_env; }
 
@@ -59,11 +61,10 @@ _seed_results() {
 _GA_FILES=(test-results.json shape-floor-result.json acceptance-gate-result.json
            lint-result.json coverage-result.json mutation-result.json secret-scan-result.json)
 _write_all_ga() {
-    local dir="$1" verdict="$2"
+    local dir="$1" outcome="$2"
     local f
     for f in "${_GA_FILES[@]}"; do
-        printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"test"}\n' \
-            "$verdict" > "$dir/$f"
+        stage_result_write "$dir/$f" "$outcome" "test"
     done
 }
 
@@ -304,7 +305,7 @@ assert_json_key "[SPEC-7] gate-aggregator all-pass → outcome=pass" \
 
 W="$(_mkwork ga-7-fail)"
 _write_all_ga "$W/artifacts" "pass"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"cov below floor"}\n' \
+printf '{"result_contract":3,"outcome":"fail","reason":"cov below floor"}\n' \
     > "$W/artifacts/coverage-result.json"
 set +e; gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_eq "[SPEC-8] gate-aggregator any-fail path → rc=0" "0" "$_rc"
@@ -313,7 +314,7 @@ assert_json_key "[SPEC-7] gate-aggregator any-fail → outcome=fail" \
 
 W="$(_mkwork ga-7-advisory)"
 _write_all_ga "$W/artifacts" "pass"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"advisory","reason":"infra flake"}\n' \
+printf '{"result_contract":3,"outcome":"fail","severity":"advisory","reason":"infra flake"}\n' \
     > "$W/artifacts/acceptance-gate-result.json"
 set +e; gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_json_key "[SPEC-7] gate-aggregator advisory-demoted → outcome=pass" \
@@ -497,7 +498,7 @@ _sf_shape_floor() { echo "SHAPE_FLOOR SKIP no shape-change files (test stub)"; }
 shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1 || true
 _reader_ok "shape-floor (skip path)" "$W" shape-floor shape-floor
 W="$(_mkwork r15-ga)"
-for f in "${_GA_FILES[@]}"; do printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$W/artifacts/$f"; done
+for f in "${_GA_FILES[@]}"; do printf '{"result_contract":3,"outcome":"pass","reason":"ok"}\n' > "$W/artifacts/$f"; done
 gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1 || true
 _reader_ok "gate-aggregator" "$W" gate-aggregator gate-aggregator
 

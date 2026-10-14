@@ -212,18 +212,20 @@ source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
 T6_STATE_DIR="$TEST_TEMP_DIR/t6-state"
 T6_ART_DIR="$T6_STATE_DIR/artifacts"
 mkdir -p "$T6_ART_DIR"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
 for _g in test-results shape-floor-result acceptance-gate-result lint-result \
           coverage-result mutation-result secret-scan-result; do
-    printf '{"verdict":"pass"}\n' > "$T6_ART_DIR/$_g.json"
+    stage_result_write "$T6_ART_DIR/$_g.json" pass "ok"
 done
 # Three failing gates; one still writes a fault (an older plugin) — #2271: the
 # aggregator never rolls it up.
-printf '{"verdict":"fail","reason":"missing_floor_files","fault":"scope"}\n' \
-    > "$T6_ART_DIR/shape-floor-result.json"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"recoverable","reason":"tautology","failures":["tautology:SPEC-1"]}\n' \
-    > "$T6_ART_DIR/acceptance-gate-result.json"
-printf '{"verdict":"fail","test_output":"FAIL tests/unit/sigpipe-antipattern-guard-test.sh"}\n' \
-    > "$T6_ART_DIR/test-results.json"
+printf '{"fault":"scope"}\n' > "$T6_ART_DIR/shape-floor-result.json"
+stage_result_add "$T6_ART_DIR/shape-floor-result.json" fail "missing_floor_files"
+printf '{"severity":"recoverable","failures":["tautology:SPEC-1"]}\n' > "$T6_ART_DIR/acceptance-gate-result.json"
+stage_result_add "$T6_ART_DIR/acceptance-gate-result.json" fail "tautology"
+printf '{"test_output":"FAIL tests/unit/sigpipe-antipattern-guard-test.sh"}\n' > "$T6_ART_DIR/test-results.json"
+stage_result_add "$T6_ART_DIR/test-results.json" fail "1 test failed"
 
 gate_aggregator_run "gate-aggregator" "$T6_STATE_DIR/state.json" >/dev/null 2>&1 || true
 
