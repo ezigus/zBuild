@@ -62,7 +62,7 @@ print_test_section "V5: no stage reads .verdict"
 _bad="$(cd "$REPO_ROOT" && /usr/bin/grep -rnE "\.verdict\b" plugins --include='*.sh' \
         | /usr/bin/grep -v '/tests/' | /usr/bin/grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
         | /usr/bin/grep -v 'schema_version == 1 and (.verdict|type=="string")' \
-        | /usr/bin/grep -v 'report_json' || true)"
+        | /usr/bin/grep -v '^plugins/agent/monitor/plugin.sh:[0-9]*:.*report_json' || true)"
 assert_eq "[V5] no stage reads a result's .verdict" "" "$_bad"
 
 print_test_section "V6: no stage reads a result's .disposition"

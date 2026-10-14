@@ -9,7 +9,7 @@
 # Verdict table (PINNED — see ADR-019 / ADR-020 amendment):
 #   pass                                          → ✓ GREEN
 #   fail, error (a stage that did not finish)     → ✗ RED
-#   missing/malformed on declared-primary         → ⚠ YELLOW + stage.verdict.missing
+#   missing/malformed on declared-primary         → ✗ RED (`error`) + stage.verdict.contract_violation
 #   rc != 0 (any cause)                           → ✗ RED  (rc always wins)
 #
 # #2366 (ADR-054 §6): every stage writes one outcome from the engine's closed
@@ -18,7 +18,8 @@
 # Public API:
 #   runner_read_stage_verdict <state_dir> <manifest_path> <stage> <rc>
 #       echoes one of: pass | warn | fail | unknown
-#         OR (#550 structural-failure pass-through): error | corrupt_diff | block
+#         OR (#550 structural-failure pass-through): error — a stage that did not
+#         finish, or a result the engine cannot read
 #       The structural-failure raw verdicts bypass classification so the
 #       cycle blocked predicate can distinguish them from generic "fail".
 #       side-effects: may emit stage.verdict.missing event
@@ -361,13 +362,14 @@ runner_read_stage_verdict() {
     # #550: preserve structural-failure raw verdicts so the cycle blocked
     # predicate (_cycle_detect_blocked) can distinguish them from generic
     # "fail" (which means "test ran and failed — keep iterating").
-    # error/corrupt_diff/block all mean "stage could not complete its work"
-    # and the cycle must abort early. Without this pass-through, verdict_classify
-    # collapses all three to "fail" and _cycle_detect_blocked never fires.
-    case "$raw_verdict" in
-        error|corrupt_diff|block)
-            echo "$raw_verdict"; return 0 ;;
-    esac
+    # `error` means "the stage could not complete its work" and the cycle must
+    # abort early. Without this pass-through, verdict_classify collapses it to
+    # "fail" and _cycle_detect_blocked never fires. (#2366: the reader maps
+    # every outcome that is not pass or fail to `error`; corrupt_diff and block
+    # can no longer occur.)
+    if [[ "$raw_verdict" == error ]]; then
+        echo "$raw_verdict"; return 0
+    fi
     if [[ "$cls" == "unknown" ]]; then
         eb_emit_event "pipeline.indicator.unknown_verdict" \
             "stage=$stage" "raw_verdict=$raw_verdict" "path=$_r_path" 2>/dev/null || true
