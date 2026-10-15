@@ -79,9 +79,10 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # 19 -> 20: #1849 adds issue-acceptance before gate-aggregator — the finished
 # change judged against the ISSUE, the one link below the SPEC.
 # 19 -> 18: #2368 retires gate-aggregator — the engine combines the loop.
-assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 18" "18" "${#_TPL_STAGES[@]}"
+# 18 -> 17: #2368 retires review-aggregator — the engine sums up the lenses.
+assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 17" "17" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design spec-coverage design-gate test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance review_lenses review-aggregator pr)
+_expected_stages=(hydrate intake plan design spec-coverage design-gate test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance review_lenses pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -173,10 +174,8 @@ assert_eq "[SPEC-3] review_lenses io_dests"     "file" "${_TPL_STAGE_IO_DESTS_re
 assert_eq "[SPEC-3] review_lenses router timeout"   "300" "${_TPL_STAGE_ROUTER_TIMEOUT_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses router max_turns" "25"  "${_TPL_STAGE_ROUTER_MAX_TURNS_review_lenses:-}"
 
-# review-aggregator (C2 #1141): advisory merge of the lens results; no LLM call,
-# so no router section. Bound by role review_aggregator.
-assert_eq "[SPEC-3] review-aggregator roles"    "review_aggregator" "$_TPL_STAGE_ROLES_review_aggregator"
-assert_eq "[SPEC-3] review-aggregator io_dests" "file,stdout"       "$_TPL_STAGE_IO_DESTS_review_aggregator"
+# #2368: review-aggregator is retired — the engine sums up the lenses.
+assert_eq "[SPEC-3] review-aggregator stage removed" "" "${_TPL_STAGE_ROLES_review_aggregator:-}"
 
 # pr (T0 tool stage — no router section)
 assert_eq "[SPEC-3] pr roles"    "pr"           "$_TPL_STAGE_ROLES_pr"
@@ -200,16 +199,15 @@ assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
 
 # ─── SPEC-11: dispatch units (cycles + map groups each fold to one) ───────────
 # #2271 (ADR-068): design_verify_cycle, impact and build_test_cycle fold into
-# ONE outer loop, delivery_loop. Count is 7: hydrate, intake, plan,
-# cycle:delivery_loop, map:review_lenses, stage:review-aggregator, pr.
-assert_eq "[SPEC-11] dispatch units count is 7" "7" "${#_TPL_DISPATCH_UNITS[@]}"
+# ONE outer loop, delivery_loop. Count is 6: hydrate, intake, plan,
+# cycle:delivery_loop, map:review_lenses, pr (#2368: review-aggregator retired).
+assert_eq "[SPEC-11] dispatch units count is 6" "6" "${#_TPL_DISPATCH_UNITS[@]}"
 assert_eq "[SPEC-11] dispatch[0] stage:hydrate"        "stage:hydrate"        "${_TPL_DISPATCH_UNITS[0]}"
 assert_eq "[SPEC-11] dispatch[1] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[1]}"
 assert_eq "[SPEC-11] dispatch[2] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[2]}"
 assert_eq "[SPEC-11] dispatch[3] cycle:delivery_loop"  "cycle:delivery_loop"  "${_TPL_DISPATCH_UNITS[3]}"
 assert_eq "[SPEC-11] dispatch[4] map:review_lenses"    "map:review_lenses"    "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "[SPEC-11] dispatch[5] stage:review-aggregator" "stage:review-aggregator" "${_TPL_DISPATCH_UNITS[5]}"
-assert_eq "[SPEC-11] dispatch[6] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[6]}"
+assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[5]}"
 
 # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
 assert_eq "[SPEC-18] [#1668/SPEC-1] delivery_loop holds the design loop and the build loop (impact removed)" \

@@ -44,9 +44,9 @@
 #                  LLM stage sources route.sh and writes "no scope-redaction.sh
 #                  source, no apply_scope_redaction call". ADR-004's own intake
 #                  note records the same for a stage that emits no LLM-bound
-#                  text. Demanding a literal load would force deploy, validate
-#                  and review-aggregator — three plugins documented as making no
-#                  LLM calls — to source a redactor they must never invoke.
+#                  text. Demanding a literal load would force deploy and
+#                  validate — plugins documented as making no LLM calls — to
+#                  source a redactor they must never invoke.
 #   engine-ambient The engine pre-loads it before dispatch, so the declaration
 #                  is satisfied by construction and a plugin-side source line is
 #                  optional. `event-bus` and `state`.

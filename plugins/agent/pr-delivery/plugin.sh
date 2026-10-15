@@ -97,12 +97,6 @@ _pr_stage_run_inner() {
     local pr_url_out="$artifacts_dir/pr-url.txt"
     local pr_result_out="$artifacts_dir/pr-result.json"
 
-    # Resolve inputs from ZBUILD_STAGE_INPUTS (ADR-055 §1 — no hardcoded paths)
-    local _review_report=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        _review_report="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
-
     local _policy="${_TPL_MERGE_POLICY:-auto_unless_flagged}"
 
     # #2368: the engine says whether every loop that ran passed; anything but
@@ -161,16 +155,10 @@ _pr_stage_run_inner() {
         fi
     # Auto-unless-flagged path (ADR-037 §4 / I9-C #1051)
     elif [[ "$_policy" == "auto_unless_flagged" ]]; then
-        local _auf_gate_verdict="$_gate_verdict_early" _auf_readiness="" _auf_top_sev=0
-        if [[ -n "$_review_report" && -f "$_review_report" ]]; then
-            _auf_readiness="$(jq -r '.merge_readiness // empty' "$_review_report" 2>/dev/null || true)"
-            # DoD #1051: escalate on ANY top-severity finding, even if readiness is advisory.
-            _auf_top_sev="$(jq '[.findings[]? | select(.severity == "critical" or .severity == "high")] | length' \
-                "$_review_report" 2>/dev/null || echo 0)"
-            [[ "$_auf_top_sev" =~ ^[0-9]+$ ]] || _auf_top_sev=0
-        fi
-        if [[ "$_auf_gate_verdict" == "pass" && "$_auf_top_sev" -eq 0 && \
-              ( "$_auf_readiness" == "ready" || "$_auf_readiness" == "advisory" ) ]]; then
+        # #2368: "flagged" is the engine's word — a review lens found a high or
+        # critical problem the change introduced (ZBUILD_RUN_FLAGGED=yes). Only an
+        # explicit "no" lets it merge: no word at all is not a clean review.
+        if [[ "$_gate_verdict_early" == "pass" && "${ZBUILD_RUN_FLAGGED:-}" == "no" ]]; then
             local merge_plugin="$_PR_ROOT/plugins/tool/merge/plugin.sh"
             if [[ -f "$merge_plugin" ]]; then
                 # shellcheck source=../../tool/merge/plugin.sh

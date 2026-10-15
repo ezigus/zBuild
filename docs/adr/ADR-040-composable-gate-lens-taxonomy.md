@@ -457,3 +457,23 @@ must-pass gates; no `convergence:`, no gate-aggregator); `tests/integration/loop
 `tests/integration/simple-yaml-build-test-convergence-test.sh` SPEC-1, SPEC-3;
 `tests/integration/acceptance-gate-test.sh` S6c; `tests/unit/merge-v2-result-test.sh` SPEC-7;
 `plugins/agent/deploy/tests/deploy-test.sh` SPEC-8.
+
+### Amendment (2026-10-15, #2368 part 2) — the engine sums up the lenses; review-aggregator is retired; the PR body says what the PR is for
+
+Supersedes §4 and the #2301 amendment.
+
+- **The engine sums up a map group.** After the group runs it writes `artifacts/<group>-summary.md`
+  (every element, its outcome and its one-line reason, read from each element's own result) and tells
+  later stages whether any element failed: `ZBUILD_RUN_FLAGGED` is `yes` when a lens found a high or
+  critical problem the change introduced, `no` when none did, unset when no review group ran.
+  `review-aggregator` and its merged report (`review-report.json`) are retired: every later stage
+  already sees each lens's own output.
+- **What uses the word:** pr-delivery merges under `auto_unless_flagged` only on
+  `ZBUILD_RUN_LOOPS_PASSED=yes` and `ZBUILD_RUN_FLAGGED=no`; pr-open still refuses to open a PR when no
+  review ran at all (fail-closed, ADR-001), now judged by the word being unset.
+- **The PR body says what the PR is for:** the issue, the goal and the work items from the plan, the
+  files changed since the default branch, and the test result. Review findings stay out of it.
+
+Enforced by: `tests/unit/engine-combines-map-test.sh` M1, M2; `plugins/tool/pr-open/tests/pr-open-body-test.sh`
+B1–B3; `tests/unit/pr-delivery-v2-result-test.sh` SPEC-3; `tests/integration/merge-policy-auto-unless-flagged-test.sh`
+SPEC-1–SPEC-6; `tests/unit/retired-impact-review-report-inputs-test.sh` RT2.

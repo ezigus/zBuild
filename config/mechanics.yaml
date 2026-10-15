@@ -9,7 +9,7 @@ mechanics:
     adr: ADR-049
 
   - name: aggregators
-    summary: The advisory review-aggregator merge; a loop's members are combined by its exit_when (#2368).
+    summary: The engine combines a group — a loop by its exit_when, a map into a summary and ZBUILD_RUN_FLAGGED (#2368).
     defined_in: core/pipeline/verdict.sh
 
   - name: convergence

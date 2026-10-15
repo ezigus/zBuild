@@ -203,3 +203,11 @@ and `scripts/lib/call-graph.sh` are retired.
 
 Enforced by: `tests/unit/retired-impact-review-report-inputs-test.sh` RT2 (review-report and the call
 graph are gone), RT3 (one job, the same evidence, no lens text table).
+
+## Amendment (2026-10-15, #2368) — the merged review report is retired
+
+The lenses stay isolated stages (§2), each writing its own output, which every later stage sees. The
+merge of their results into one report — `review-aggregator` and `review-report.json` — is retired: the
+engine writes the lens group's summary and says whether a lens was flagged (ADR-040, #2368 part 2). The
+PR body no longer carries review findings. Enforced by `tests/unit/engine-combines-map-test.sh` M1, M2
+and `plugins/tool/pr-open/tests/pr-open-body-test.sh` B2.

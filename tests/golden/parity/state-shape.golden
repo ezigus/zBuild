@@ -17,7 +17,6 @@
     "intake": "complete",
     "plan": "complete",
     "pr": "complete",
-    "review-aggregator": "complete",
     "review_lenses": "complete",
     "test": "complete"
   },
@@ -27,7 +26,6 @@
     "intake": "pass",
     "plan": "pass",
     "pr": "pass",
-    "review-aggregator": "pass",
     "review_lenses": "pass",
     "test": "pass"
   },

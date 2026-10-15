@@ -13,8 +13,8 @@ description: |
   Parametrized per lens: the SAME plugin serves security / performance /
   red-team / correctness / scope etc. The lens id is read from
   ZBUILD_REVIEW_LENS_ID, else ZBUILD_CURRENT_STAGE, else config.lens. Packaged
-  as a member of the ADR-039 `aggregate: advisory` lens group; the
-  review-aggregator merges the per-lens results (the C3 cutover). This evolves
+  as a member of the ADR-039 `aggregate: advisory` lens group; the engine sums
+  the group up and says whether a lens was flagged (#2368). This evolves
   ADR-038's single-stage fan-out into composable lens stages while keeping its
   evidence-fed, isolated-call contract (ADR-038 §2).
 

@@ -53,7 +53,7 @@ zbuild_resolve_merge_base() {
 
 # zbuild_change_bundle <artifact_dir> [<repo_root>]
 # Resolve the review "change bundle" as a FILE path, mirroring review/plugin.sh's
-# fallback chain (#896) so review, review-lens and review-report all judge the
+# fallback chain (#896) so review and review-lens judge the
 # SAME basis — the full-branch merge-base diff, not the per-run intake-baseline
 # diff.patch (which is EMPTY on a resumed/green run or when the work was committed
 # before intake — the observed #952 lens failure).

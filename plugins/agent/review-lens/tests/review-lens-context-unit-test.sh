@@ -26,9 +26,8 @@
 # C11 [change] ...and the design's decisions (#1654 item 3): what was DECIDED,
 #              so a lens tells "odd" from "chosen"
 # C10 [change] end to end: a lens that says introduced:false produces a result
-#              file that still says so, and the aggregator lists it as
-#              pre-existing (review on #2215: the lens's own normalization
-#              dropped the field, and C7 fed the aggregator by hand)
+#              file that still says so (review on #2215: the lens's own
+#              normalization dropped the field)
 # C12 [change] the planned scope is the design's ```scope block, not the
 #              redaction allow-list the engine passes as scope_manifest (#2302:
 #              on #2035 the section read "+ ./", so the scope lens had no file
@@ -116,19 +115,7 @@ else
     assert_pass "[C6] the lens is not shown its own previous review"
 fi
 
-print_test_section "C7: the aggregator counts only what the change introduced"
-# shellcheck source=../../../../plugins/agent/review-aggregator/plugin.sh
-source "$REPO_ROOT/plugins/agent/review-aggregator/plugin.sh" 2>/dev/null || true
-LENSES="$TEST_TEMP_DIR/lenses.json"
-jq -n '[{name:"red-team", score:8, findings:[
-    {file:"a.sh", category:"x", severity:"medium", line:1, message:"NEW-ONE", introduced:true},
-    {file:"b.sh", category:"y", severity:"medium", line:9, message:"OLD-ONE", introduced:false},
-    {file:"c.sh", category:"z", severity:"low", line:3, message:"UNSAID"}]}]' > "$LENSES"
-AGG="$(_ra_aggregate "$LENSES" 2>/dev/null || true)"
-assert_eq "[C7] introduced + unsaid are counted (2)" "2" "$(jq '.findings | length' <<< "$AGG" 2>/dev/null || echo x)"
-assert_eq "[C7] the pre-existing one is listed separately" "OLD-ONE" \
-    "$(jq -r '.pre_existing[0].messages[0] // empty' <<< "$AGG" 2>/dev/null || true)"
-assert_contains "[C7] the summary counts 2 findings" "$(jq -r .summary <<< "$AGG" 2>/dev/null || true)" "2 merge-readiness finding(s)"
+# C7 retired with review-aggregator (#2368).
 
 print_test_section "C8/C9: rules and the scope lens"
 # C8: the repository's rules reach every stage under From the repo
@@ -198,10 +185,6 @@ route_to_model() { printf '%s' '{"score":7,"findings":[{"file":"a.sh","category"
 _review_lens_run_inner red-team "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1 || true
 assert_eq "[C10] the lens's result keeps introduced:false" "false" \
     "$(jq -r '[.findings[] | select(.message == "OLD-BEHAVIOUR") | .introduced][0] | tostring' "$ART/lens-red-team.json" 2>/dev/null || true)"
-jq -n --slurpfile l "$ART/lens-red-team.json" '[{name:"red-team", score:7, findings:$l[0].findings}]' > "$TEST_TEMP_DIR/l10.json"
-AGG10="$(_ra_aggregate "$TEST_TEMP_DIR/l10.json" 2>/dev/null || true)"
-assert_eq "[C10] ...and the aggregator lists it as pre-existing" "OLD-BEHAVIOUR" \
-    "$(jq -r '.pre_existing[0].messages[0] // empty' <<< "$AGG10" 2>/dev/null || true)"
 
 cleanup_test_env
 print_test_results

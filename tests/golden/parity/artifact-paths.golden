@@ -23,9 +23,6 @@
 ./artifacts/attempts/release/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/release/iter-0-attempt-1/teardown-result.json
 ./artifacts/attempts/release/iter-0-attempt-1/teardown-summary.md
-./artifacts/attempts/review-aggregator/iter-0-attempt-1/attempt.json
-./artifacts/attempts/review-aggregator/iter-0-attempt-1/review-report.json
-./artifacts/attempts/review-aggregator/iter-0-attempt-1/review-report.md
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness-summary.md
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness.json
@@ -51,9 +48,7 @@
 ./artifacts/pr-open-summary.md
 ./artifacts/pr-result.json
 ./artifacts/pr-url.txt
-./artifacts/review-aggregator-lenses.json
-./artifacts/review-report.json
-./artifacts/review-report.md
+./artifacts/review_lenses-summary.md
 ./artifacts/stage-io/review_lenses-1.json
 ./artifacts/teardown-result.json
 ./artifacts/teardown-summary.md
@@ -73,6 +68,5 @@
 ./stage-inputs/plan.json
 ./stage-inputs/pr.json
 ./stage-inputs/release.json
-./stage-inputs/review-aggregator.json
 ./stage-inputs/review_lenses.json
 ./stage-inputs/test.json

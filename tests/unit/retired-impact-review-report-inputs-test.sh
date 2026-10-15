@@ -4,7 +4,8 @@
 #
 #   RT1 [change]: impact is retired — no plugin, no impact-only library, no
 #                 renderer, no template entry (ADR-068 §1, amended 2026-10-12)
-#   RT2 [change]: review-report is retired — review_lenses + review-aggregator
+#   RT2 [change]: review-report is retired — review_lenses (#2368: the engine
+#                 sums them up; review-aggregator is retired too)
 #                 replaced it (ADR-040 §3)
 #   RT3 [change]: a lens is a stage like any other: the review-lens stage writes
 #                 one job for every lens and gives every lens the same evidence,
@@ -50,6 +51,7 @@ print_test_section "RT2: review-report is retired"
 assert_eq "[RT2] no review-report plugin" "absent" "$(_absent plugins/agent/review-report)"
 assert_eq "[RT2] nothing calls it or binds its role" "" "$(_code_refs 'review_report_run|role: review_report|review-report/lib')"
 assert_eq "[RT2] its call-graph evidence, which only it produced, is gone" "absent" "$(_absent scripts/lib/call-graph.sh)"
+assert_eq "[RT2] review-aggregator is retired too (#2368)" "absent" "$(_absent plugins/agent/review-aggregator)"
 
 # ─── RT3 ─────────────────────────────────────────────────────────────────────
 print_test_section "RT3: a lens is a stage like any other"

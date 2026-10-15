@@ -29,8 +29,8 @@ source "$_PR_OPEN_ROOT/scripts/lib/run-branch.sh"
 # #1265: merge-base resolver for the 0-commit preflight (halt before push/gh).
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_PR_OPEN_ROOT/scripts/lib/merge-base.sh"
-# shellcheck source=lib/advisory-section.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/advisory-section.sh"
+# shellcheck source=lib/body.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/body.sh"
 # shellcheck source=lib/unsettled.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/unsettled.sh"
 
@@ -138,10 +138,9 @@ _pr_open_run_inner() {
     # ADR-055 §1: declared inputs reach this plugin through the engine's index
     # and nowhere else. lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
     # dispatched stage — pr-delivery, which sources this plugin, included — so
-    # the index names the caller's inputs (review_report, plan, test_results).
-    local advisory_report="" plan_json="" test_results_json=""
+    # the index names the caller's inputs (plan, test_results).
+    local plan_json="" test_results_json=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        advisory_report="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
         plan_json="$(jq -r '.inputs.plan // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
         test_results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
@@ -172,14 +171,14 @@ _pr_open_run_inner() {
         return 1
     fi
 
-    # ── Safety check 2/3: a review signal must exist (#1142, ADR-040) ─────────
+    # ── Safety check 2/3: a review must have run (#1142, ADR-040) ─────────────
     # Advisory lenses never refuse a PR (ADR-040 §4); the run's convergence was
-    # already gated. Fail-closed (ADR-001/#358) only when NO review signal exists
-    # — neither the review_report input nor a review.json. (#2366: the review.json
-    # "block" check is gone — nothing produces a block; it was the retired review
-    # stage's file.) The refusal is this stage's judgement: outcome fail, rc 0.
-    if [[ ! -f "$review_json_path" && ! -f "$advisory_report" ]]; then
-        error "pr_open: refusing to open PR — no review signal (neither review.json nor the review_report input; fail-closed per ADR-001)"
+    # already gated. Fail-closed (ADR-001/#358) only when NO review ran — the
+    # engine sets ZBUILD_RUN_FLAGGED once a review group has run (#2368), and the
+    # retired review stage wrote review.json. The refusal is this stage's
+    # judgement: outcome fail, rc 0.
+    if [[ ! -f "$review_json_path" && -z "${ZBUILD_RUN_FLAGGED:-}" ]]; then
+        error "pr_open: refusing to open PR — no review ran (fail-closed per ADR-001)"
         stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "fail" \
             "no review signal was available to authorise a PR" \
             "No PR was opened. Fail-closed: absence of a review is not approval."
@@ -188,8 +187,6 @@ _pr_open_run_inner() {
         stage_result_write "$output_pr_result_json" fail "no review signal — fail-closed per ADR-001"
         return 0
     fi
-    [[ -f "$advisory_report" ]] && \
-        warn "pr_open: advisory-review mode (review_report input present; ADR-040 lenses never block, #1142)"
 
     # ── Determine target branch ───────────────────────────────────────────────
     # The run's branch, else the legacy zbuild/issue-N form.
@@ -320,21 +317,17 @@ _pr_open_run_inner() {
         pr_title="zbuild: automated draft PR"
     fi
 
-    # Build PR body from upstream artifacts (plan summary, review verdict, test results)
-    local plan_summary="" review_verdict="" test_verdict=""
-    if [[ -n "$plan_json" && -f "$plan_json" ]]; then
-        plan_summary="$(jq -r '.goal // ""' "$plan_json" 2>/dev/null || true)"
-    fi
-    if [[ -f "$review_json_path" ]]; then
-        review_verdict="$(jq -r '.outcome // ""' "$review_json_path" 2>/dev/null || true)"
-    fi
+    # #2368: the body says what the PR is for — the issue, the goal and work
+    # items, the files changed since the default branch, the test result.
+    local test_verdict="" files_changed=""
     if [[ -n "$test_results_json" && -f "$test_results_json" ]]; then
         test_verdict="$(jq -r '.outcome // ""' "$test_results_json" 2>/dev/null || true)"
     fi
+    [[ -n "$_merge_base" ]] && files_changed="$(git diff --name-only "$_merge_base" HEAD 2>/dev/null || true)"
 
     local pr_body
-    pr_body="$(_pr_open_compose_body "$issue_num" "$plan_summary" "$review_json_path" \
-        "$review_verdict" "$advisory_report" "$test_verdict" "$_unsettled_block" "$_forced_draft")"
+    pr_body="$(_pr_open_compose_body "$issue_num" "$plan_json" "$test_verdict" "$files_changed" \
+        "$_unsettled_block" "$_forced_draft")"
 
     local -a _gh_args=()
     [[ "${_draft_bool}" == "true" ]] && _gh_args+=("--draft")

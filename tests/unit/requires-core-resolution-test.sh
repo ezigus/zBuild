@@ -241,7 +241,7 @@ assert_contains "[SPEC-6] a kind:agent that reaches no model is not forced to lo
 
 # The three real plugins of that shape, by name — if one of them ever starts
 # calling the router this assertion is the thing that notices.
-for _p in deploy validate review-aggregator; do
+for _p in deploy validate; do
     _m="$REPO_ROOT/plugins/agent/$_p/manifest.yaml"
     if [[ ! -f "$_m" ]]; then
         assert_fail "[SPEC-6] fixture plugin missing: plugins/agent/$_p" "the premise moved"

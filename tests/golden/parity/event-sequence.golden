@@ -66,13 +66,6 @@ stage.start
 stage.previous_work.written
 plugin.run.start
 plugin.result
-plugin.run.complete
-stage.complete
-artifact.snapshot.saved
-stage.start
-stage.previous_work.written
-plugin.run.start
-plugin.result
 pr.delivery.opened
 plugin.run.complete
 stage.complete
@@ -82,7 +75,6 @@ stage.previous_work.written
 plugin.run.start
 teardown.start
 teardown.pgroups.killed
-plugin.cleanup.absent
 plugin.cleanup.absent
 plugin.cleanup.absent
 plugin.cleanup.absent

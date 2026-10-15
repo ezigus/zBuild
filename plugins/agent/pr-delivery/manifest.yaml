@@ -3,8 +3,9 @@ name: PR Stage
 kind: agent
 version: 0.1.0
 description: |
-  PR delivery agent (kind:agent, T2). Reads review_report via ZBUILD_STAGE_INPUTS
-  and refuses delivery if merge_readiness=needs_attention. Delegates to the merge
+  PR delivery agent (kind:agent, T2). Merges under auto_unless_flagged only when
+  the engine says every loop passed and no review lens was flagged
+  (ZBUILD_RUN_LOOPS_PASSED=yes, ZBUILD_RUN_FLAGGED=no, #2368). Delegates to the merge
   plugin (policy: auto or auto_unless_flagged) or the pr-open tool plugin (policy:
   manual or fallback), passing the run's state file through.
   ZBUILD_DRY_RUN=1 writes mock artifacts instead.
