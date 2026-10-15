@@ -127,10 +127,10 @@ load_template() {
     # the prior _TPL_STAGES was a no-op on the first load; prefix expansion over
     # the live environment closes that cold-start gap.
     local _stale_bl
-    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}"; do
+    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}" "${!_TPL_STAGE_FAIL_ON_@}"; do
         # Defensive: only unset well-formed identifier names ([A-Za-z0-9_]+),
         # never a name assembled from unvalidated input.
-        [[ "$_stale_bl" =~ ^_TPL_STAGE_BLOCKING_[A-Za-z0-9_]+$ ]] || continue
+        [[ "$_stale_bl" =~ ^_TPL_STAGE_(BLOCKING|FAIL_ON)_[A-Za-z0-9_]+$ ]] || continue
         unset "$_stale_bl"
     done
 
@@ -586,6 +586,14 @@ load_template() {
                            "_TPL_CYCLE_EXIT_${ew_i}_OP_${ew_safe}"    \
                            "_TPL_CYCLE_EXIT_${ew_i}_VALUE_${ew_safe}"
                 done
+                ;;
+            FO)
+                # #2368: a stage's fail rule, space-separated severities.
+                local fo_id fo_val
+                IFS='|' read -r fo_id fo_val <<< "$payload"
+                [[ "$fo_val" =~ ^[a-z\ ]+$ ]] || continue
+                printf -v "_TPL_STAGE_FAIL_ON_${fo_id//-/_}" '%s' "$fo_val"
+                export "_TPL_STAGE_FAIL_ON_${fo_id//-/_}"
                 ;;
             BL)
                 # ADR-013 blocking attribute (CQ-3 / issue #863).
@@ -1689,7 +1697,7 @@ _tpl_translate_new_shape() {
         # per-section accumulators
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
-        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""; sec_fail_on = ""
         # cycle accumulators
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
@@ -1715,7 +1723,7 @@ _tpl_translate_new_shape() {
     function reset_section(    i) {
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
-        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""; sec_fail_on = ""
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
@@ -1764,6 +1772,8 @@ _tpl_translate_new_shape() {
                                sec_io_tail "|" sec_io_redact "|" sec_rt "|" sec_rmt "|" sec_rmi "|" sec_rre
         # ADR-013 (CQ-3 / issue #863): stash blocking attribute for BL| row emission.
         sec_blocking_val[cur_key] = sec_blocking
+        # #2368: the fail rule of a stage — the severities that make it fail.
+        sec_fail_on_val[cur_key] = sec_fail_on
         if (sec_type == "cycle") {
             cyc_data[cur_key] = cyc_flow "|" cyc_max "|" cyc_on_max "|" \
                                 cyc_us "|" cyc_uf "|" cyc_uo "|" cyc_uv "|" \
@@ -1916,6 +1926,11 @@ _tpl_translate_new_shape() {
         # blocking: (ADR-013 / CQ-3 #863) — leaf stage attribute; ignored for cycles.
         if ($0 ~ /^[[:space:]]+blocking:/) {
             v = $0; sub(/^[[:space:]]+blocking:[[:space:]]*/, "", v); sec_blocking = trim(v); next
+        }
+        # fail_on: (#2368) — the severities that make the stage fail, a flow list.
+        if ($0 ~ /^[[:space:]]+fail_on:/) {
+            v = $0; sub(/^[[:space:]]+fail_on:[[:space:]]*/, "", v)
+            gsub(/[\[\],]/, " ", v); gsub(/[[:space:]]+/, " ", v); sec_fail_on = trim(v); next
         }
 
         # ── cycle-only ─────────────────────────────────────────────────────────
@@ -2175,6 +2190,9 @@ _tpl_translate_new_shape() {
             }
         }
         # ADR-013 (CQ-3 / issue #863): BL| rows for blocking leaf stages.
+        for (k in sec_fail_on_val) {
+            if (sec_fail_on_val[k] != "") print "FO|" k "|" sec_fail_on_val[k]
+        }
         for (k in sec_blocking_val) {
             if (sec_blocking_val[k] == "true" || sec_blocking_val[k] == "false") print "BL|" k "|" sec_blocking_val[k]
         }

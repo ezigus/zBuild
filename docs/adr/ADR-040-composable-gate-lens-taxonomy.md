@@ -478,3 +478,13 @@ Supersedes §4 and the #2301 amendment.
 Enforced by: `tests/unit/engine-combines-map-test.sh` M1–M3; `plugins/tool/pr-open/tests/pr-open-body-test.sh`
 B1–B3; `tests/unit/pr-delivery-v2-result-test.sh` SPEC-3; `tests/integration/merge-policy-auto-unless-flagged-test.sh`
 SPEC-1–SPEC-6; `tests/unit/retired-impact-review-report-inputs-test.sh` RT2.
+
+### Amendment (2026-10-15, #2368 part 3) — the template defines a lens's fail rule
+
+When a lens fails was written into review-lens's code ("a high or critical problem the change
+introduced"). A stage's group in the template now says it: `fail_on:` lists the severities of a problem
+the change introduced that make the stage fail (`review_lenses: fail_on: [high, critical]` in simple.yaml
+and deployed.yaml). The engine passes it to the stage as `_TPL_STAGE_FAIL_ON_<stage>`; a lens with no
+list never fails. Whether a failing lens blocks anything stays the template's too (§4, #2368 part 1).
+
+Enforced by: `tests/unit/lens-fail-rule-test.sh` F1–F3.

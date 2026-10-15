@@ -386,15 +386,19 @@ _review_lens_run_inner() {
     # lens-${ZBUILD_REVIEW_LENS_ID}.json — here "$out" resolves to
     # $artifact_dir/lens-$lens.json (same file; $lens is the resolved id). Written
     # atomically below to satisfy the #507 primary-output atomicity contract.
-    # #2366: a lens is a stage like any other. It fails when it found a high or
-    # critical problem the change introduced; otherwise it passes. Whether a
-    # failing lens blocks anything is the template's to say, not the lens's.
-    local _rl_outcome _rl_reason
-    _rl_outcome="$(printf '%s' "$normalized" | jq -r \
-        'if any(.findings[]; .introduced and (.severity == "high" or .severity == "critical"))
+    # #2366: a lens is a stage like any other. #2368: when it fails is the
+    # template's to say — its group's `fail_on:` lists the severities of a
+    # problem the change introduced that fail it (none listed: it never fails).
+    # Whether a failing lens blocks anything is the template's to say too.
+    local _rl_outcome _rl_reason _rl_stage _rl_fail_var _rl_fail_on
+    _rl_stage="${ZBUILD_CURRENT_STAGE:-}"; _rl_stage="${_rl_stage//[^A-Za-z0-9_]/_}"
+    _rl_fail_var="_TPL_STAGE_FAIL_ON_${_rl_stage}"
+    _rl_fail_on="${!_rl_fail_var:-}"
+    _rl_outcome="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " \
+        'if any(.findings[]; .severity as $s | .introduced and ($on | contains(" \($s) ")))
          then "fail" else "pass" end' 2>/dev/null || printf 'pass')"
-    _rl_reason="the ${lens} lens found no high or critical problem the change introduced"
-    [[ "$_rl_outcome" == fail ]] && _rl_reason="the ${lens} lens found a high or critical problem the change introduced"
+    _rl_reason="the ${lens} lens found no ${_rl_fail_on:+${_rl_fail_on// / or } }problem the change introduced that fails it"
+    [[ "$_rl_outcome" == fail ]] && _rl_reason="the ${lens} lens found a ${_rl_fail_on// / or } problem the change introduced"
     printf '%s' "$normalized" | atomic_write "$out" \
         && stage_result_add "$out" "$_rl_outcome" "$_rl_reason"
     local score findings_count
