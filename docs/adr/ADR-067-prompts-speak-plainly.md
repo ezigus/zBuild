@@ -51,6 +51,7 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §1, §3 (design) → `tests/unit/design-wiring-guidance-test.sh` G1–G4
 - §2 (acceptance check) → `tests/unit/acceptance-feedback-plain-test.sh` F1–F4
 - §2 (design check) → `tests/unit/design-gate-feedback-plain-test.sh` D1–D3
+- §2 (design's summary when its time runs out says it wrote no design.md and names no other cause) → `tests/unit/design-router-timeout-reiter-test.sh` SPEC-4b
 - §2 (shape check) → `tests/unit/shape-floor-summary-plain-test.sh` S1–S3
 - §6 (build) → `tests/unit/build-prompt-spec-text-test.sh` P1–P2
 - §1 (build's stop rule names the section earlier stages arrive in, never a retired marker) → `tests/unit/build-prompt-summary-marker-test.sh` M1–M3, M5, M6 (#2292)

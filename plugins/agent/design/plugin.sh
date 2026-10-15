@@ -493,8 +493,8 @@ DESIGN_LIMITS
                 return 1
             fi
             stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
-                "the model call timed out before a design was returned" \
-                "No design.md was authored. This is an infrastructure fault, not a design one."
+                "Design ran out of time before writing design.md." \
+                "No design.md was written."
             emit_event "plugin.result" "outcome=timed_out" "plugin=design" "reason=router_timeout" "rc=$router_rc"
             emit_event "design.timeout.no_design" "plugin=design" "reason=router_timeout"
         fi
