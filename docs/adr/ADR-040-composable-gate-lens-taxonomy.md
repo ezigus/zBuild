@@ -445,13 +445,15 @@ Supersedes §2, §5's preflight rules, §7 and the #1219 amendment.
   `advisory`-severity fail; acceptance-gate now reports such a result as pass itself, still listing the
   failures.
 - **Stages after the loops get the engine's word:** `ZBUILD_RUN_LOOPS_PASSED` is `yes` only when every
-  loop that ran passed. merge and pr-delivery merge only on `yes`; deploy deploys only on `yes` and
+  loop that ran passed — unset when a run starts, whatever the environment held. merge and pr-delivery merge only on `yes`; deploy deploys only on `yes` and
   refuses when the word is absent. pr-open makes the PR a draft from the loops' own records.
 - **The `approve` rescue is retired** (#2366 left no stage able to write `approve`): a loop that runs out
   of rounds is a run that did not pass.
 
-Enforced by: `tests/unit/engine-combines-loop-test.sh` L1–L4 (the loop's summary; a member with no
-outcome holds the loop; the templates name their must-pass gates; no `convergence:`, no gate-aggregator);
+Enforced by: `tests/unit/engine-combines-loop-test.sh` L1–L5 (the loop's summary, written too when a
+blocking member stops the loop; a member with no outcome holds the loop; the templates name their
+must-pass gates; no `convergence:`, no gate-aggregator); `tests/integration/loops-passed-word-test.sh` W1
+(the word starts unset each run);
 `tests/integration/simple-yaml-build-test-convergence-test.sh` SPEC-1, SPEC-3;
 `tests/integration/acceptance-gate-test.sh` S6c; `tests/unit/merge-v2-result-test.sh` SPEC-7;
 `plugins/agent/deploy/tests/deploy-test.sh` SPEC-8.

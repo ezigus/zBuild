@@ -13,6 +13,8 @@
 #   L3 [change] no shipped template has a gate-aggregator stage, and
 #               build_test_cycle's exit_when names the members that must pass
 #   L4 [change] no manifest declares `convergence:`; gate-aggregator is gone
+#   L5 [change] a loop stopped by a blocking member still writes that round's
+#               summary (review on #2390)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,15 +73,35 @@ for _t in "$REPO_ROOT"/config/templates/*.yaml; do
         assert_pass "[L3] ${_t##*/} has no gate-aggregator stage"
     fi
 done
-_ew="$(awk '/^build_test_cycle:/{f=1} f&&/exit_when:/{e=1} e&&/max_iterations:/{exit} e' "$REPO_ROOT/config/templates/simple.yaml")"
+# The parsed rule the engine evaluates (review on #2390: not the YAML text).
+_ew="$(bash -c 'source "$1/scripts/lib/helpers.sh"; source "$1/core/pipeline/template.sh"
+    load_template "$1/config/templates/simple.yaml" >/dev/null 2>&1
+    n="${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-0}"
+    for (( i = 1; i <= n; i++ )); do v="_TPL_CYCLE_EXIT_${i}_STAGE_build_test_cycle"; printf "%s\n" "${!v}"; done' _ "$REPO_ROOT")"
 for _m in test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance; do
-    assert_contains "[L3] simple: build_test_cycle must pass $_m" "$_ew" "stage: $_m,"
+    if grep -qxF "$_m" <<< "$_ew"; then assert_pass "[L3] simple: build_test_cycle must pass $_m"
+    else assert_fail "[L3] simple: build_test_cycle must pass $_m" "exit stages: $(tr '\n' ' ' <<< "$_ew")"; fi
 done
 
 print_test_section "L4: no stage declares its own convergence"
 _conv="$(grep -l '^convergence:' "$REPO_ROOT"/plugins/*/*/manifest.yaml 2>/dev/null || true)"
 assert_eq "[L4] no manifest declares convergence:" "" "$_conv"
 assert_eq "[L4] gate-aggregator is gone" "no" "$([[ -e "$REPO_ROOT/plugins/tool/gate-aggregator" ]] && echo yes || echo no)"
+
+print_test_section "L5: a blocking member's stop still writes the round's summary"
+_TPL="$TEST_TEMP_DIR/blocking.yaml"
+sed 's/^gate-a:$/gate-a:\n  blocking: true/' "$REPO_ROOT/tests/fixtures/templates/cycle-multi-exit-when-all.yaml" > "$_TPL"
+cycle_dispatch_stage() {
+    if [[ "$1" == gate-a ]]; then
+        _CYCLE_DISPATCH_VERDICT=fail; _CYCLE_DISPATCH_STATUS=failed; _CYCLE_DISPATCH_REASON="it broke"; return 1
+    fi
+    _CYCLE_DISPATCH_VERDICT=pass; _CYCLE_DISPATCH_STATUS=complete; _CYCLE_DISPATCH_REASON=ok; return 0
+}
+rm -f "$SUMMARY"
+load_template "$_TPL" >/dev/null 2>&1
+cycle_orchestrator_run "build-test-cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1
+assert_contains "[L5] the round's summary names the member that stopped it" \
+    "$(cat "$SUMMARY" 2>/dev/null)" "- gate-a: fail — it broke"
 
 cleanup_test_env
 print_test_results

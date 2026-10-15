@@ -1823,6 +1823,7 @@ _cycle_iter_dispatch() {
             _cycle_emit "cycle.member.blocking_failure" \
                 "iter=$iter" "stage=$s" "rc=$rc" "reason=${_halt_why:-blocking_member}"
             _CYCLE_LAST_TERMINATED_REASON="${_halt_why:-blocking_member_failure}"
+            _cycle_write_round_summary "$state_file" "$iter" "$blob"
             _CYCLE_LAST_VERDICTS_BLOB="$blob"
             _CYCLE_LAST_FAILURE_COUNT="$fail"
             [[ $_had_e -eq 1 ]] && set -e
