@@ -304,3 +304,22 @@ Adoption order, cheapest evidence first:
 The discriminating test, per stage: kill it at its bound and assert the next
 attempt starts from something. A stage that passes that with the mechanism
 removed is not testing it — the failure mode of every prior fix in this area.
+
+### Amendment (2026-10-15) — the engine bounds the whole stage
+
+`router.timeout_s` bounds one model call; nothing bounded a stage, so a stage that loops or a script
+that hangs ran forever, and the engine cannot trust a stage to stop itself. Each stage now has a
+whole-stage limit: the template's per-stage `timeout_s:` (directly under the stage, not under
+`router:`), 900 seconds (15 minutes) when unset. A stage that needs more says so in the template: the
+limit covers every model call, check and round inside the stage, plus a few minutes (simple.yaml:
+build 3600, test 2700, design 2700, test-author 3780, acceptance-gate 2700).
+
+- **What the engine does at the limit** (`plugin_hook_call`): it records the limit
+  (`runtime/stage-time-limit.<stage>`), emits `stage.time_limit.reached`, and stops the stage and
+  everything it started — TERM, then KILL. The stage's outcome is `timed_out`; whatever it saved as it
+  went is kept (§2), and the loop's own rules decide what happens next.
+- **The stage is told its limit** in its rules (§1): "The whole stage has N seconds."
+- Every dispatch arm, a `map:` member included, reads the same limit
+  (`scripts/lib/stage-time-limit.sh`, from the loaded template).
+
+Enforced by: `tests/integration/stage-time-limit-test.sh` S1–S5.

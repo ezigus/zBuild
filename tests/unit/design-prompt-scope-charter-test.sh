@@ -100,7 +100,8 @@ else
 fi
 
 # T6: simple.yaml design timeout raised to 600 (repo-wide grep headroom).
-tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
+# router.timeout_s (4-space indent), not the whole-stage limit (ADR-063, amended).
+tmo="$(awk '/^design:/{f=1;next} /^[a-z]/{f=0} f && /^    timeout_s:/{print $2; exit}' "$REPO_ROOT/config/templates/simple.yaml")"
 assert_eq "T6: design timeout_s raised to 600" "600" "${tmo:-unset}"
 
 cleanup_test_env

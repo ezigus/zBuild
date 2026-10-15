@@ -115,6 +115,9 @@ plan:
 design:
   gate: auto
   roles: [designer]
+  # The whole stage, every call and check inside it (2 rounds of a 10-minute design call and a 10-minute coverage call, plus a few minutes); the engine
+  # stops it here. The default for a stage is 900 (15 minutes).
+  timeout_s: 2700
   # ADR-051: the provider runs the stage as this persona (--agent).
   persona: architect
   io:
@@ -128,6 +131,9 @@ design:
 build:
   gate: auto
   roles: [builder]
+  # The whole stage, every call and check inside it (3 rounds of 15-minute model calls, and more); the engine
+  # stops it here. The default for a stage is 900 (15 minutes).
+  timeout_s: 3600
   # ADR-051: the provider runs the stage as this persona (--agent).
   persona: developer
   io:
@@ -141,6 +147,9 @@ build:
 test:
   gate: auto
   roles: [tester]
+  # The whole stage, every call and check inside it (the full test suite); the engine
+  # stops it here. The default for a stage is 900 (15 minutes).
+  timeout_s: 2700
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -157,6 +166,9 @@ shape-floor:
 acceptance-gate:
   gate: auto
   roles: [acceptance_gate]
+  # The whole stage, every call and check inside it (a test run per requirement); the engine
+  # stops it here. The default for a stage is 900 (15 minutes).
+  timeout_s: 2700
   negctl_timeout_s: 60
   io:
     destinations: [file, stdout]

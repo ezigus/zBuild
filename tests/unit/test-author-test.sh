@@ -195,7 +195,11 @@ print_test_section "SPEC-7: simple.yaml gives test-author the same budget as bui
 _tpl="$REPO_ROOT/config/templates/simple.yaml"
 _ta_field() { awk -v k="$1" '/^test-author:/{f=1;next} /^[a-z]/{f=0} f && $1==k":"{print $2}' "$_tpl"; }
 _b_field()  { awk -v k="$1" '/^build:/{f=1;next} /^[a-z]/{f=0} f && $1==k":"{print $2}' "$_tpl"; }
-assert_eq "[SPEC-7][change] test-author.router.timeout_s equals build's" "$(_b_field timeout_s)" "$(_ta_field timeout_s)"
+# router.timeout_s only (4-space indent): the stage-level timeout_s is the
+# whole-stage limit, which differs by design (ADR-063, amended 2026-10-15).
+_ta_rt() { awk '/^test-author:/{f=1;next} /^[a-z]/{f=0} f && /^    timeout_s:/{print $2}' "$_tpl"; }
+_b_rt()  { awk '/^build:/{f=1;next} /^[a-z]/{f=0} f && /^    timeout_s:/{print $2}' "$_tpl"; }
+assert_eq "[SPEC-7][change] test-author.router.timeout_s equals build's" "$(_b_rt)" "$(_ta_rt)"
 assert_eq "[SPEC-7][change] test-author.router.max_turns equals build's" "$(_b_field max_turns)" "$(_ta_field max_turns)"
 assert_eq "[SPEC-7][change] test-author is blocking: authoring nothing stops the cycle before build" "true" "$(_ta_field blocking)"
 assert_eq "[SPEC-7][change] …and the engine loads it as blocking" "true" \

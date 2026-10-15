@@ -561,6 +561,11 @@ runner_read_stage_disposition() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
     local observation="${5-}" rate_limited="${6:-0}"
     local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present
+    # The engine stopped this stage at its time limit (plugin_hook_call): that
+    # is how it ended, whatever it left behind.
+    if [[ -f "${state_dir}/runtime/stage-time-limit.${stage//[^A-Za-z0-9._-]/_}" ]]; then
+        printf '%s' "timed_out"; return 0
+    fi
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _d
 
     # #1850: at rc 0, leaving no readable result is a violation too — the stage
