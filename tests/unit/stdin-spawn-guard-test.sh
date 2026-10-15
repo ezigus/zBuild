@@ -23,7 +23,7 @@ _pin() {  # <label> <file> <grep-pattern-that-must-match>
 _pin "the fresh shell closes stdin" scripts/lib/env-scrub.sh '^[[:space:]]*exec </dev/null'
 _pin "negctl spawns under the fresh shell" scripts/lib/acceptance-negctl.sh '^[[:space:]]*_zbuild_make_fresh_shell'
 _pin "reachability spawns under the fresh shell" scripts/lib/acceptance-reachability.sh '^[[:space:]]*_zbuild_make_fresh_shell'
-_pin "spec-correspondence's model call closes stdin" plugins/agent/spec-correspondence/plugin.sh 'route_to_model "\$tier" "\$_framed" </dev/null'
+_pin "test-author's assertion check closes stdin" plugins/agent/test-author/lib/correspondence.sh 'route_to_model "\$tier" "\$_framed" </dev/null'
 _pin "build's false-completion guard spawns under the fresh shell" plugins/agent/build/lib/summary.sh '_zbuild_make_fresh_shell; .*bash "\$abs"'
 _pin "the test stage's suite closes stdin under set -m" plugins/tool/test/plugin.sh 'eval "\$cmd" </dev/null'
 _pin "local_engine work units close stdin" core/orch/local_engine.sh 'bash "\$work_unit" </dev/null'

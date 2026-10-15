@@ -192,12 +192,13 @@ Two halves, and neither is optional:
   (a gate reporting a passing verdict with `unavailable` ends the run with rc 9 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + abort word `llm_unavailable`)**
   before gate-aggregator runs).
 - **One stage, several model calls: the first failure is reported.** A stage
-  that makes more than one call (spec-correspondence: one batch call, then one
-  call per SPEC the batch left unjudged) reports the first non-zero exit code
-  it saw, so a later call that succeeds cannot hide an earlier timeout. A stage
-  that read a verdict from a call that then failed still reports that failure
-  (spec-coverage). Enforced by `tests/unit/spec-correspondence-test.sh` and
-  `tests/unit/spec-coverage-test.sh` (`[#2032/review]` assertions).
+  that makes more than one call (test-author's check of its assertions, was
+  spec-correspondence: one batch call, then one call per SPEC the batch left
+  unjudged) reports the first non-zero exit code it saw, so a later call that
+  succeeds cannot hide an earlier timeout. A stage that read a verdict from a
+  call that then failed still reports that failure (design's coverage call, was
+  spec-coverage). Enforced by `tests/unit/test-author-correspondence-test.sh` and
+  `tests/unit/design-coverage-test.sh` (`[#2032]` assertions).
 
 ### 5. Two implementation shapes, chosen by the work
 

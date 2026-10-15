@@ -90,7 +90,7 @@ delivery_loop:
   max_iterations: 2
   on_max: halt
 
-# ─── test-author (leaf, advisory) ────────────────────────────────────────────
+# ─── test-author (leaf, build_test_cycle member; the loop requires it) ───────
 # ADR-040 §5: it makes a model call, so it may not sit on the convergence path.
 # Its work is verified mechanically downstream — the test stage runs the
 # assertions and acceptance-gate proves they discriminate.
@@ -114,21 +114,6 @@ test-author:
     timeout_s: 900
     max_turns: 0
     max_iterations: 4
-
-# ─── spec-correspondence (leaf, advisory) ────────────────────────────────────
-# ADR-040 §5: it makes a model call, so it may not gate. Its finding reaches
-# test-author on the next iteration through the summary channel.
-spec-correspondence:
-  gate: auto
-  roles: [spec_correspondence]
-  # #1627: personas were consumed only by review lenses and NO template carried
-  # a persona: key, so a persona manifest resolved to nothing. This is the first
-  # stage-level binding. QA assures traceability; it does not test — which is
-  # what separates it from test-strategist, whose instinct shown a mismatched
-  # assertion is to repair it and answer yes.
-  persona: quality-assurance
-  router:
-    timeout_s: 600
 
 # ─── assertion-integrity (leaf, gate) ────────────────────────────────────────
 # Mechanical, no model.route — so it MAY gate (ADR-040 §5).
@@ -174,15 +159,10 @@ build_test_cycle:
     # #2022: test-author runs FIRST. It authors the acceptance assertions from
     # the design's SPEC sentences before build implements against them, so the
     # code and the assertion are two independent readings rather than two
-    # artifacts of one. It never sees the diff.
+    # artifacts of one. It never sees the diff. #2370: it then checks each
+    # assertion tests what its SPEC says (was spec-correspondence), and the loop
+    # requires it to pass — the SPEC is design's, which it cannot re-author.
     - test-author
-    # #2034: judges whether each assertion tests what its SPEC SAYS — the one
-    # link execution cannot reach (a passing test proves the implementation
-    # satisfies the ASSERTION, never that the assertion satisfies the SENTENCE).
-    # Before build, because its question needs the requirement and the assertion
-    # and not the implementation — which at this point does not exist yet, so
-    # its isolation is a fact of placement rather than a rule to enforce.
-    - spec-correspondence
     - build
     - test
     - shape-floor
@@ -200,6 +180,7 @@ build_test_cycle:
     - issue-acceptance
   exit_when:
     all:
+      - { stage: test-author, field: verdict, op: eq, value: pass }
       - { stage: test, field: verdict, op: eq, value: pass }
       - { stage: shape-floor, field: verdict, op: eq, value: pass }
       - { stage: acceptance-gate, field: verdict, op: eq, value: pass }

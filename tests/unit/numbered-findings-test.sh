@@ -109,7 +109,7 @@ assert_contains "[N3] finding 2 is listed on its own line" "$_blk" \
 
 print_test_section "N5: every check writes numbered findings"
 _missing=""
-for _p in plugins/agent/design plugins/agent/spec-correspondence \
+for _p in plugins/agent/design plugins/agent/test-author \
           plugins/tool/test plugins/tool/shape-floor plugins/agent/spec-acceptance \
           plugins/tool/secret-scan plugins/tool/assertion-integrity plugins/agent/issue-acceptance; do
     _hit=0

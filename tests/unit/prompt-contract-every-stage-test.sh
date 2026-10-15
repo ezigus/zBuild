@@ -145,14 +145,15 @@ _c_issue_acceptance() { ( ad="$(_fixture issue-acceptance)"; sd="${ad%/artifacts
     route_to_model() { printf '%s' "$2" > "$RAW/issue-acceptance.txt"; return 1; }
     ZBUILD_STAGE_INPUTS="$sd/idx.json" ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_REPO_ROOT="${sd%/state}" \
         issue_acceptance_run issue-acceptance "$sd/pipeline-state.json" ) >/dev/null 2>&1; }
-# spec-correspondence builds two prompts: one pair, and every pair at once.
-_c_spec_correspondence() { ( source "$REPO_ROOT/plugins/agent/spec-correspondence/plugin.sh" >/dev/null 2>&1
+# #2370: test-author's check of its own assertions builds two prompts: one
+# pair, and every pair at once. Checked beside test-author's own prompt.
+_c_test_author_check() { ( source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
     route_to_model() { printf '%s' "$2" > "$_SC_CAP"; return 1; }
-    _SC_CAP="$RAW/spec-correspondence.txt"
+    _SC_CAP="$RAW/test-author-check.txt"
     _sc_call T2 "$(_sc_prompt "the stage writes its result" 'assert_eq "[SPEC-1] x" 1 "$got"')" >/dev/null
     # shellcheck disable=SC2034  # read through namerefs
     { _ids=(SPEC-1); _txts=("the stage writes its result"); _srcs=('assert_eq "[SPEC-1] x" 1 "$got"'); }
-    _SC_CAP="$RAW/spec-correspondence-batch.txt"
+    _SC_CAP="$RAW/test-author-check-batch.txt"
     _sc_call T2 "$(_sc_batch_prompt _ids _txts _srcs)" >/dev/null ) >/dev/null 2>&1; }
 
 # ─── E3: every model-calling stage has a composer ───────────────────────────
@@ -170,7 +171,7 @@ for _s in "${STAGES[@]}"; do
     declare -F "_c_${_s//-/_}" >/dev/null 2>&1 || _missing+="$_s "
 done
 assert_eq "[E3] every model-calling stage has a composer here" "" "$_missing"
-assert_eq "[E3] the model-calling stages were found (fixture live; 9 since #2369 retired spec-coverage)" "1" "$([[ ${#STAGES[@]} -ge 9 ]] && echo 1 || echo 0)"
+assert_eq "[E3] the model-calling stages were found (fixture live; 8 since #2369/#2370 retired spec-coverage and spec-correspondence)" "1" "$([[ ${#STAGES[@]} -ge 8 ]] && echo 1 || echo 0)"
 
 SECTIONS=("## From the repo" "## What you own" "## What you judge against" "## Previous work" "## What you must not do" "## Rules for this stage")
 
@@ -201,7 +202,9 @@ for _s in "${STAGES[@]}"; do
     "_c_${_s//-/_}"
     _check "$_s" "$RAW/$_s.txt"
 done
-_check "spec-correspondence (batch)" "$RAW/spec-correspondence-batch.txt"
+_c_test_author_check
+_check "test-author (check, one pair)" "$RAW/test-author-check.txt"
+_check "test-author (check, batch)" "$RAW/test-author-check-batch.txt"
 _c_design_coverage
 _check "design (coverage call)" "$RAW/design-coverage.txt"
 
@@ -215,7 +218,7 @@ for _pid in $_pinned generic; do
 done
 assert_eq "[E5] the persona perspectives were read (fixture live)" "1" "$([[ ${#_persp[@]} -ge 4 ]] && echo 1 || echo 0)"
 _framed=""
-for _s in "${STAGES[@]}" spec-correspondence-batch design-coverage; do
+for _s in "${STAGES[@]}" test-author-check test-author-check-batch design-coverage; do
     [[ -s "$RAW/$_s.txt" ]] || continue
     for _pp in "${_persp[@]}"; do
         grep -qF -- "$_pp" "$RAW/$_s.txt" && { _framed+="$_s "; break; }
@@ -227,7 +230,7 @@ assert_eq "[E5] no plugin frames a persona itself" "" "$_callers"
 
 # ─── E6: What you own opens with the job ─────────────────────────────────────
 _bad=""
-for _s in "${STAGES[@]}" spec-correspondence-batch design-coverage; do
+for _s in "${STAGES[@]}" test-author-check test-author-check-batch design-coverage; do
     f="$RAW/$_s.txt"; [[ -s "$f" ]] || continue
     _first="$(awk '/^## What you own/{p=1;next} p && NF {print; exit}' "$f")"
     if [[ "$_first" =~ ^# || "$_first" == *"OUTPUT CONTRACT"* || "$_first" =~ ^You\ are\ (an?|the)\  \

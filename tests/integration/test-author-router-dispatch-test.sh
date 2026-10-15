@@ -78,7 +78,13 @@ CLAUDE_CALLED="$TEST_TEMP_DIR/claude-called.txt"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
 printf 'called\n' >> "$CLAUDE_CALLED"
-cat >/dev/null
+_in="\$(cat)"
+# #2370: test-author's check of its assertions is a model call too; answered
+# as a model would — every assertion corresponds.
+if [[ "\$_in" == *"does that establish the REQUIREMENT"* ]]; then
+    jq -n '{type:"result",result:"SPEC-1: VERDICT: corresponds | REASON: ok\nVERDICT: corresponds\nREASON: ok",usage:{input_tokens:1,output_tokens:1}}'
+    exit 0
+fi
 # #2225: answered the way the CLI answers the loop — JSON, with the done marker.
 jq -n '{type:"result",result:"authored the assertions\nLOOP_COMPLETE",usage:{input_tokens:1,output_tokens:1}}'
 exit 0

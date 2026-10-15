@@ -232,7 +232,6 @@ _make_design_plugin
 # #2187: build_test_cycle's newer members. Unresolved, each was a silent
 # `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
 _make_plugin "test-author"         "test_author"
-_make_plugin "spec-correspondence" "spec_correspondence"
 _make_plugin "assertion-integrity" "assertion_integrity"
 _make_plugin "issue-acceptance"    "issue_acceptance"   # #1849
 _make_plugin "build"           "builder"

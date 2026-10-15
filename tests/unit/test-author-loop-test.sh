@@ -66,7 +66,17 @@ YAML
 mkdir -p "$TEST_TEMP_DIR/bin"
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
 #!/usr/bin/env bash
-cat > "$FAKE_DIR/prompt.$(( $(wc -l < "$FAKE_DIR/calls") + 1 ))"
+_in="$(cat)"
+# #2370: test-author's check of its assertions is a model call too; the fake
+# answers it as a model would (every assertion corresponds) and it is not one
+# of the authoring calls this file counts.
+if [[ "$_in" == *"does that establish the REQUIREMENT"* ]]; then
+    _r="$(grep -oE '^### SPEC-[0-9]+' <<< "$_in" | sed 's/^### //' | while read -r i; do printf '%s: VERDICT: corresponds | REASON: ok\n' "$i"; done)"
+    [[ -n "$_r" ]] || _r="$(printf 'VERDICT: corresponds\nREASON: ok')"
+    jq -n --arg r "$_r" '{type:"result",result:$r,usage:{input_tokens:1,output_tokens:1}}'
+    exit 0
+fi
+printf '%s' "$_in" > "$FAKE_DIR/prompt.$(( $(wc -l < "$FAKE_DIR/calls") + 1 ))"
 echo x >> "$FAKE_DIR/calls"
 n="$(wc -l < "$FAKE_DIR/calls" | tr -d ' ')"
 printf 'assert_eq "[SPEC-%s] assertion %s" "1" "$v"\n' "$n" "$n" >> "$FAKE_REPO/tests/acc-test.sh"
