@@ -87,7 +87,6 @@ _run() {
         && git add -A && git commit -q -m seed ) >/dev/null 2>&1
     # An implementation the author must not see: a build commit since intake,
     # and an uncommitted change.
-    git -C "$d/repo" rev-parse HEAD > "$d/state/intake-baseline-ref.txt"
     mkdir -p "$d/repo/src"; printf 'impl_secret() { echo IMPL-SECRET-COMMITTED; }\n' > "$d/repo/src/impl.sh"
     ( cd "$d/repo" && git add -A && git commit -q -m "build: IMPL-SECRET-SUBJECT" ) >/dev/null 2>&1
     printf 'IMPL-SECRET-UNCOMMITTED\n' > "$d/repo/src/wip.sh"

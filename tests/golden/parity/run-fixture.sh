@@ -143,7 +143,7 @@ case "${1:-}" in
         # build's repo; intercept apply/push/checkout as before.
         _subcmd="${3:-}"
         case "$_subcmd" in
-            diff|add|status|init|config|commit|log|rev-parse)
+            diff|add|status|init|config|commit|log|rev-parse|symbolic-ref|checkout|show-ref|ls-files)
                 [[ -n "$_real_git" ]] && exec "$_real_git" "$@"
                 exit 0
                 ;;
@@ -291,11 +291,6 @@ mkdir -p "$MOCK_REPO"
     # build's commit reads as nothing to ship.
     "$_FIXTURE_REAL_GIT" update-ref refs/remotes/origin/main HEAD
 ) >/dev/null 2>&1
-# ZBUILD_INTAKE_SKIP_BRANCH=1 (below) skips the intake step that records the
-# run's baseline (plugins/agent/intake/lib/branch-ops.sh). Record what it would:
-# the seed commit. Without it build's cumulative diff is `diff HEAD` after its
-# own commit — empty — and no reviewer downstream sees the change (#1842).
-"$_FIXTURE_REAL_GIT" -C "$MOCK_REPO" rev-parse HEAD > "$FIXTURE_STATE_DIR/intake-baseline-ref.txt"
 
 # ── Wire up environment ───────────────────────────────────────────────────────
 export PATH="$FIXTURE_BIN_DIR:$PATH"
@@ -324,11 +319,6 @@ export ZBUILD_REPO_ROOT="$MOCK_REPO"
 # reported `error` (summary_unavailable) and the run carried on regardless,
 # which is the defect #1798 fixes. One passing suite line, run-tests.sh's shape.
 export ZBUILD_TEST_CMD="printf 'unit: 1/1 passed\n'"
-# Issue #484: intake's new branch path needs a real git repo; this fixture
-# stubs git on PATH so we can't run real symbolic-ref/checkout. The parity
-# test is about engine env-agnosticism, not branch behavior — skip it here.
-# Dedicated branch tests cover the new code path.
-export ZBUILD_INTAKE_SKIP_BRANCH=1
 # ADR-052 (#1640): same reasoning one step earlier. The engine acquires a per-run
 # worktree before the first stage, and `git worktree add` cannot work against the
 # PATH shim above — it exits 0 without creating anything. This fixture asserts the

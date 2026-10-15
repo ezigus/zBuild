@@ -89,7 +89,8 @@ EOF
 # Intake snapshot present, listing an UNRELATED stray — the exclusion is active
 # but does NOT cover src/oops.txt (which the build creates this run).
 printf 'config/templates/unrelated-stray.yaml\0' \
-    > "$STATE_DIR/intake-untracked-baseline.txt"
+    > "$STATE_DIR/untracked-at-start"
+export ZBUILD_RUN_UNTRACKED_AT_START="$STATE_DIR/untracked-at-start"
 STATE_FILE="$STATE_DIR/state.json"
 printf '{"issue":$_ZB_ID,"branch":"feat/1265"}' > "$STATE_FILE"
 

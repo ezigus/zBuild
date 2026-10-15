@@ -63,7 +63,7 @@ mkdir -p "$REPO"
 ) >/dev/null
 
 BASELINE="$(git -C "$REPO" rev-parse HEAD)"
-printf '%s' "$BASELINE" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+export ZBUILD_RUN_START_COMMIT="$BASELINE"
 
 # Pre-existing prior-iter commit on the branch (file_iter1.txt).
 (
@@ -186,7 +186,7 @@ fi
 
 # ─── Assertion 6: fallback path (no baseline ref) preserves `git diff HEAD` ─
 print_test_section "F: fallback when intake-baseline-ref.txt absent"
-rm -f "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+unset ZBUILD_RUN_START_COMMIT
 
 # Fresh repo for fallback case.
 REPO2="$TEST_TEMP_DIR/repo2"

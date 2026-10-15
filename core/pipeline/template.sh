@@ -101,6 +101,11 @@ load_template() {
     fi
     export _TPL_MERGE_POLICY
 
+    # #2367: the run's branch name; {key} is the run's identity (issue-<n>).
+    _TPL_BRANCH="$(yaml_get "$template_file" "branch")"
+    [[ -n "$_TPL_BRANCH" ]] || _TPL_BRANCH="zbuild/{key}"
+    export _TPL_BRANCH
+
     local _raw_pr_draft
     _raw_pr_draft="$(yaml_get "$template_file" "pr_draft")"
     if [[ -z "$_raw_pr_draft" ]]; then
@@ -1674,7 +1679,7 @@ _tpl_translate_new_shape() {
         # translator from emitting it as a phantom stage definition (#968 review).
         return (k == "id" || k == "name" || k == "extends" || k == "defaults" \
                 || k == "flow" || k == "_comment" || k == "merge_policy" \
-                || k == "always_run")
+                || k == "always_run" || k == "branch")
     }
     BEGIN {
         in_flow = 0
@@ -2452,6 +2457,12 @@ template_stage_blocking() {
 # Returns one of: auto_unless_flagged | auto | manual
 template_merge_policy() {
     echo "${_TPL_MERGE_POLICY:-auto_unless_flagged}"
+}
+
+# #2367: the loaded template's branch name pattern ({key} not yet filled in).
+template_branch() {
+    local d='zbuild/{key}'
+    echo "${_TPL_BRANCH:-$d}"
 }
 
 # ADR-036 #1188: per-stage `negctl_timeout_s:` knob (mechanical acceptance-gate).

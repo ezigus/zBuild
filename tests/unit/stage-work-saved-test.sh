@@ -62,7 +62,7 @@ mkdir -p "$REPO"
 BASELINE="$(git -C "$REPO" rev-parse HEAD)"
 
 STATE="$TEST_TEMP_DIR/state"; mkdir -p "$STATE/artifacts"
-printf '%s' "$BASELINE" > "$STATE/intake-baseline-ref.txt"
+export ZBUILD_RUN_START_COMMIT="$BASELINE"
 export ZBUILD_STATE_DIR="$STATE"
 export ZBUILD_REPO_ROOT="$REPO"
 _runner_issue="$_ID"
@@ -146,14 +146,15 @@ WB="zbuild/issue-$_ID-prior-ci"
     && git commit -q -m "earlier run's work" && git push -q origin "prior:refs/heads/$WB" \
     && git checkout -q --detach main ) >/dev/null 2>&1
 PRIOR="$(_on_origin "$WB")"
+unset ZBUILD_RUN_START_COMMIT
 STATE8="$TEST_TEMP_DIR/state8"; mkdir -p "$STATE8/artifacts"
 printf 'x\n' > "$STATE8/artifacts/hydrate-result.json"
 ( cd "$REPO" && ZBUILD_STATE_DIR="$STATE8" ZBUILD_WORKSPACE_BRANCH="$WB" \
     _runner_snapshot_artifacts "$STATE8" "hydrate" ) >/dev/null 2>&1
 assert_eq "[SPEC-8] the earlier work is on origin (fixture live)" "1" "$([[ -n "$PRIOR" ]] && echo 1 || echo 0)"
-assert_eq "[SPEC-8] before intake records a baseline, the work branch on origin is untouched" \
+assert_eq "[SPEC-8] with no starting commit set, the work branch on origin is untouched" \
     "$PRIOR" "$(_on_origin "$WB")"
-printf '%s' "$(git -C "$REPO" rev-parse HEAD)" > "$STATE8/intake-baseline-ref.txt"
+ZBUILD_RUN_START_COMMIT="$(git -C "$REPO" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 ( cd "$REPO" && ZBUILD_STATE_DIR="$STATE8" ZBUILD_WORKSPACE_BRANCH="$WB" \
     _runner_snapshot_artifacts "$STATE8" "plan" ) >/dev/null 2>&1
 assert_eq "[SPEC-9] no commits past the baseline, nothing pushed" "$PRIOR" "$(_on_origin "$WB")"

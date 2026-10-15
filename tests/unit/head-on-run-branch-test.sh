@@ -116,7 +116,7 @@ assert_eq "[H5] HEAD is on the run branch" "$B" "$(_on "$R")"
 
 print_test_section "R: every stage end keeps HEAD on the run branch"
 R="$TEST_TEMP_DIR/r1"; _repo "$R"; _detach_ahead "$R" >/dev/null 2>&1; HD="$(_sha "$R" HEAD)"
-STATE="$TEST_TEMP_DIR/state-r1"; mkdir -p "$STATE/artifacts"; printf '%s\n' "$B" > "$STATE/intake-branch.txt"
+STATE="$TEST_TEMP_DIR/state-r1"; mkdir -p "$STATE/artifacts"; export ZBUILD_RUN_BRANCH="$B"
 : > "$ZBUILD_EVENTS_JSONL"
 ( export ZBUILD_REPO_ROOT="$R"; _runner_issue=""; _runner_snapshot_artifacts "$STATE" build ) >/dev/null 2>&1
 assert_eq "[R1] the run branch holds the stage's commits" "$HD" "$(_sha "$R" "refs/heads/$B")"
@@ -128,7 +128,7 @@ R="$TEST_TEMP_DIR/r2"; _repo "$R"
 _g "$R" checkout -q --detach >/dev/null 2>&1; _commit "$R" headonly >/dev/null 2>&1; HD="$(_sha "$R" HEAD)"
 _g "$R" checkout -q "$B" >/dev/null 2>&1; _commit "$R" branchonly >/dev/null 2>&1; BR="$(_sha "$R" HEAD)"
 _g "$R" checkout -q --detach "$HD" >/dev/null 2>&1
-STATE="$TEST_TEMP_DIR/state-r2"; mkdir -p "$STATE/artifacts"; printf '%s\n' "$B" > "$STATE/intake-branch.txt"
+STATE="$TEST_TEMP_DIR/state-r2"; mkdir -p "$STATE/artifacts"; export ZBUILD_RUN_BRANCH="$B"
 : > "$ZBUILD_EVENTS_JSONL"
 ( export ZBUILD_REPO_ROOT="$R"; _runner_issue=""; _runner_snapshot_artifacts "$STATE" build ) >/dev/null 2>&1
 assert_eq "[R2] the branch keeps its own commit" "$BR" "$(_sha "$R" "refs/heads/$B")"

@@ -50,7 +50,7 @@ mkdir -p "$ARTIFACTS_DIR" "$ZBUILD_EVENTS_DIR"
 : > "$ZBUILD_EVENTS_JSONL"
 printf '{"schema_version":1,"status":"in_progress"}' > "$ZBUILD_STATE_FILE"
 # Raw SHA, no trailing newline (matches real intake).
-printf '%s' "$_BASELINE_SHA" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+export ZBUILD_RUN_START_COMMIT="$_BASELINE_SHA"
 cat > "$ZBUILD_STATE_DIR/scope-manifest.md" <<'SCOPE'
 + core/
 + plugins/
@@ -161,7 +161,6 @@ mkdir -p "$ZBUILD_STATE_DIR2/artifacts" "$ZBUILD_EVENTS_DIR"
 : > "$ZBUILD_EVENTS_JSONL"
 printf '{"schema_version":1,"status":"in_progress"}' > "$ZBUILD_STATE_DIR2/pipeline-state.json"
 # HEAD is still at baseline (build stub commits nothing) — _cycle_no_commits_ahead returns 0.
-cp "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" "$ZBUILD_STATE_DIR2/intake-baseline-ref.txt"
 cp "$ZBUILD_STATE_DIR/scope-manifest.md" "$ZBUILD_STATE_DIR2/scope-manifest.md"
 cp "$ARTIFACTS_DIR/plan.json" "$ZBUILD_STATE_DIR2/artifacts/plan.json"
 

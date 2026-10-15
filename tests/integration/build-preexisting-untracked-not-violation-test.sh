@@ -89,9 +89,11 @@ EOF
 cat > "$STATE_DIR/scope-manifest.md" <<'EOF'
 + tests/fixtures/
 EOF
-# The intake untracked snapshot: the pre-existing stray was present at run-start.
+# The engine's list of untracked files already there when the run started
+# (#2367; intake wrote it before): the pre-existing stray was present.
 printf 'config/templates/runner-state-dir-minimal.yaml\0' \
-    > "$STATE_DIR/intake-untracked-baseline.txt"
+    > "$STATE_DIR/untracked-at-start"
+export ZBUILD_RUN_UNTRACKED_AT_START="$STATE_DIR/untracked-at-start"
 STATE_FILE="$STATE_DIR/state.json"
 printf '{"issue":$_ZB_ID,"branch":"feat/1265"}' > "$STATE_FILE"
 

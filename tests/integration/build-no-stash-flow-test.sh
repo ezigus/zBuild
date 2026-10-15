@@ -117,7 +117,7 @@ printf '{"issue":$_ZB_ID,"branch":"feat/602"}' > "$STATE_FILE"
 # post-commit `git diff $baseline..HEAD` covers the agent's edits which
 # `git diff HEAD` no longer does after #608 committed them).
 # Mirror intake's `printf '%s'` write — raw 40-char SHA, no trailing newline.
-printf '%s' "$(git -C "$REPO" rev-parse HEAD)" > "$STATE_DIR/intake-baseline-ref.txt"
+ZBUILD_RUN_START_COMMIT="$(git -C "$REPO" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 
 STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
 jq -n \

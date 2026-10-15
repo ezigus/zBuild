@@ -1212,6 +1212,11 @@ install_template_overlay() {
         return 1
     fi
     mkdir -p "$_repo/.zbuild/templates"
+    # The overlay is test setup, not work: kept out of `git status` so the
+    # engine's dirty-tree check (#2367) does not refuse the run.
+    if [[ -d "$_repo/.git/info" ]] && ! grep -qxF '/.zbuild/' "$_repo/.git/info/exclude" 2>/dev/null; then
+        printf '/.zbuild/\n' >> "$_repo/.git/info/exclude"
+    fi
     # Repo root derived from THIS helper's location (…/scripts/lib → repo root),
     # not the caller's cwd, so it resolves regardless of where the test runs.
     local _hdir _src_root

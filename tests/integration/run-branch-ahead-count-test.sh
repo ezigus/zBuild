@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests: intake ahead_count uses resolved default branch, not hardcoded 'main'
+# Tests: the run branch's ahead_count uses the resolved default branch, not a
+# hardcoded 'main' (#1648; the engine sets the branch since #2367)
 # SPEC-1: reused path ahead_count correct when default branch is 'master'
 # SPEC-2: adopted path ahead_count correct when default branch is 'master'
 # Also exercises the unresolvable fallback → ahead_count=unknown
@@ -13,9 +14,9 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "intake ahead_count default-branch resolution (#1648)"
+print_test_header "run branch ahead_count default-branch resolution (#1648)"
 
-setup_test_env "intake-ahead-count"
+setup_test_env "run-branch-ahead-count"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
@@ -27,8 +28,10 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../core/pipeline/state_helpers.sh
 source "$REPO_ROOT/core/pipeline/state_helpers.sh"
-# shellcheck source=../../plugins/agent/intake/plugin.sh
-source "$REPO_ROOT/plugins/agent/intake/plugin.sh"
+# shellcheck source=../../scripts/lib/run-branch-setup.sh
+source "$REPO_ROOT/scripts/lib/run-branch-setup.sh"
+unset ZBUILD_REPO_ROOT ZBUILD_MAIN_REPO_ROOT ZBUILD_WORKSPACE_BRANCH
+_setup_branch() { mkdir -p "$TEST_TEMP_DIR/sd"; zbuild_run_branch_setup "$TEST_TEMP_DIR/sd" 1648 "" "$1"; }
 
 unset CI CI_MODE
 
@@ -68,13 +71,11 @@ echo "change2" > change2.txt && git add change2.txt && git commit -q -m "change 
 git checkout -q master
 
 _reset_events
-_intake_checkout_branch "zbuild/issue-1648-reused" >/dev/null 2>&1
+_setup_branch "zbuild/issue-1648-reused" >/dev/null 2>&1
 
-reused_count="$(grep -c '"intake.branch.reused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || reused_count=0
-assert_gt "[SPEC-1] intake.branch.reused emitted on feature branch re-checkout" \
-    "$reused_count" "0"
+assert_eq "[SPEC-1] the existing branch is reused" "reused" "$(_last_event_field "pipeline.branch.ready" "outcome")"
 
-ahead_val="$(_last_event_field "intake.branch.reused" "ahead_count")"
+ahead_val="$(_last_event_field "pipeline.branch.ready" "ahead_count")"
 assert_eq "[SPEC-1] ahead_count=2 when default branch is 'master' (not hardcoded 'main')" \
     "2" "$ahead_val"
 
@@ -102,13 +103,11 @@ git checkout -q master
 git branch -D zbuild/issue-1648-adopted
 
 _reset_events
-_intake_checkout_branch "zbuild/issue-1648-adopted" >/dev/null 2>&1
+_setup_branch "zbuild/issue-1648-adopted" >/dev/null 2>&1
 
-adopted_count="$(grep -c '"intake.branch.adopted"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || adopted_count=0
-assert_gt "[SPEC-2] intake.branch.adopted emitted for remote-only branch" \
-    "$adopted_count" "0"
+assert_eq "[SPEC-2] the remote-only branch is adopted" "adopted" "$(_last_event_field "pipeline.branch.ready" "outcome")"
 
-adopted_ahead="$(_last_event_field "intake.branch.adopted" "ahead_count")"
+adopted_ahead="$(_last_event_field "pipeline.branch.ready" "ahead_count")"
 assert_eq "[SPEC-2] ahead_count=2 on adopted branch (master-default repo)" \
     "2" "$adopted_ahead"
 
@@ -139,12 +138,11 @@ mkdir -p "$REPO_C"
 
 cd "$REPO_C" || { assert_fail "cd $REPO_C" "unreachable: $REPO_C"; cleanup_test_env; print_test_results; exit 1; }  # #2103
 _reset_events
-_intake_checkout_branch "zbuild/issue-1648-unresolvable" >/dev/null 2>&1
+_setup_branch "zbuild/issue-1648-unresolvable" >/dev/null 2>&1
 
-reused_c="$(grep -c '"intake.branch.reused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || reused_c=0
-assert_gt "unresolvable: intake.branch.reused emitted" "$reused_c" "0"
+assert_eq "unresolvable: the existing branch is reused" "reused" "$(_last_event_field "pipeline.branch.ready" "outcome")"
 
-unknown_ahead="$(_last_event_field "intake.branch.reused" "ahead_count")"
+unknown_ahead="$(_last_event_field "pipeline.branch.ready" "ahead_count")"
 assert_eq "ahead_count=unknown when default branch is unresolvable" \
     "unknown" "$unknown_ahead"
 

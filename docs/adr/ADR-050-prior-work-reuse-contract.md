@@ -314,8 +314,9 @@ it** (ADR-068 §8).
 
 Nothing is saved unless the run has changed it. A snapshot whose content matches the state branch's tip
 makes no commit (§4, already so). The run's code reaches its work branch only when HEAD carries commits
-past the run's baseline, the commit intake records when it sets the run's branch; before intake has
-recorded it, the run has made no change, and a stage end pushes nothing. #1801 run 38290215955 broke
+past the commit the run started from, which the engine sets before any stage (`ZBUILD_RUN_START_COMMIT`,
+ADR-052 amendment #2367; intake recorded it until then); with no starting commit set, a stage end pushes
+nothing. #1801 run 38290215955 broke
 this: the end of hydrate, which runs before intake, found no baseline, skipped the check, and
 force-pushed main over the branch's six earlier commits, so plan was handed an earlier run's findings
 about code that was no longer there.
@@ -437,9 +438,10 @@ no model ever reads that line.
 - §5 (`_read_prior_output` order; no restored tier, §9) → `tests/unit/prior-output-reader-test.sh` T2; `tests/unit/own-run-artifacts-first-test.sh` O5–O8
 - §6 (never skip a stage on the basis of prior output — design always runs, the prior design is a reference in its prompt) → `tests/unit/resume-default-test.sh` R5–R11 (#2299)
 - §7 (persist is an always-run stage) → `tests/unit/template-always-run-test.sh`
-- §10 (no changes, no save: before intake records the baseline a stage end pushes nothing and the work branch on origin is untouched; with no commits past the baseline, nothing is pushed) → `tests/unit/stage-work-saved-test.sh` SPEC-8, SPEC-9
+- §10 (no changes, no save: with no starting commit set a stage end pushes nothing and the work branch on origin is untouched; with no commits past it, nothing is pushed) → `tests/unit/stage-work-saved-test.sh` SPEC-8, SPEC-9
+- §10 (the starting commit is set by the engine before any stage, hydrate included) → `tests/integration/engine-run-branch-test.sh` E1
 - §7 (the local ref wins on read: unpushed local work is what restore returns) → `tests/unit/hydrate-stage-test.sh` SPEC-2
-- Implementation notes (intake adopts an existing remote work branch) → `tests/integration/intake-branch-ahead-count-test.sh`
+- Implementation notes (the run adopts an existing remote work branch; the engine since #2367) → `tests/integration/run-branch-ahead-count-test.sh`
 - Implementation notes (pr-open edits the existing open PR, never opens a second, and reports `status=updated`) → `tests/unit/prior-work-reuse-contract-test.sh` C5
 - #2225 (`ZBUILD_RESUME` defaults to 1; `--no-resume` restores nothing yet still fetches and adopts) → `tests/unit/resume-default-test.sh` R1–R4
 - #2324 (design-gate's result has no `design_sha`) → `tests/unit/resume-default-test.sh` R12

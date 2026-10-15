@@ -62,7 +62,7 @@ BASELINE_SHA="$(git -C "$REPO" rev-parse HEAD)"
 # ─── State dir: write intake-baseline-ref.txt ────────────────────────────────
 STATE_DIR="$TEST_TEMP_DIR/state-614"
 mkdir -p "$STATE_DIR"
-printf '%s' "$BASELINE_SHA" > "$STATE_DIR/intake-baseline-ref.txt"
+export ZBUILD_RUN_START_COMMIT="$BASELINE_SHA"
 export ZBUILD_STATE_DIR="$STATE_DIR"
 
 # ─── Mock claude: record the prompt arg ($2 after -p) and emit LOOP_COMPLETE ─

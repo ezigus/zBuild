@@ -1,5 +1,6 @@
 memory.backend.init
 pipeline.init
+pipeline.branch.ready
 pipeline.start
 stage.start
 stage.previous_work.written
@@ -14,7 +15,6 @@ stage.previous_work.written
 plugin.run.start
 plugin.result
 plugin.run.complete
-stage.outputs.unchanged
 stage.complete
 artifact.snapshot.saved
 stage.start
@@ -72,7 +72,6 @@ artifact.snapshot.saved
 stage.start
 stage.previous_work.written
 plugin.run.start
-plugin.pr_open.branch_fallback_used
 plugin.result
 pr.delivery.opened
 plugin.run.complete

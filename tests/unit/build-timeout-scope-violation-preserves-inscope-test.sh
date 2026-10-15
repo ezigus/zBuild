@@ -90,7 +90,7 @@ _setup_fixture() {
         git -c commit.gpgsign=false commit -q -m M0
     ) >/dev/null
     BASELINE="$(git -C "$REPO" rev-parse HEAD)"
-    printf '%s' "$BASELINE" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+    export ZBUILD_RUN_START_COMMIT="$BASELINE"
 
     ARTIFACT_DIR="$ZBUILD_STATE_DIR/artifacts-$test_id"
     mkdir -p "$ARTIFACT_DIR"
@@ -179,7 +179,7 @@ printf 'assert_eq "pins" "%s" "$n"\n' "'8 stages'" > "$REPO/$OOS_REL"
 git -C "$REPO" add "$OOS_REL"
 git -C "$REPO" -c commit.gpgsign=false commit -q -m "add oos test"
 BASELINE="$(git -C "$REPO" rev-parse HEAD)"
-printf '%s' "$BASELINE" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+export ZBUILD_RUN_START_COMMIT="$BASELINE"
 # Feedback names the OOS file with the old value → evidence for the grant.
 # shellcheck disable=SC2317
 _build_read_prior_assessment() { printf "test failed: %s pins '8 stages'\n" "$OOS_REL"; }

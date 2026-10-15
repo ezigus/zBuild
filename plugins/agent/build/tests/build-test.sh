@@ -136,9 +136,7 @@ export ZBUILD_REPO_ROOT="$REPO_PROMPT"
 # the dummy file the mock loop adds (rather than empty `git diff HEAD`).
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_prompt"
 mkdir -p "$ZBUILD_STATE_DIR"
-# Mirror intake's `printf '%s'` write — raw 40-char SHA, no trailing newline.
-printf '%s' "$(git -C "$REPO_PROMPT" rev-parse HEAD)" \
-    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_PROMPT" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
 MOCK_LOOP_EDIT_CONTENT="dummy"
 MOCK_LOOP_ITERATIONS=2
@@ -279,9 +277,7 @@ export ZBUILD_REPO_ROOT="$REPO_T3"
 # #661: pin baseline ref for cumulative diff.patch (see T_PROMPT_2 comment).
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_t3"
 mkdir -p "$ZBUILD_STATE_DIR"
-# Mirror intake's `printf '%s'` write — raw SHA, no trailing newline.
-printf '%s' "$(git -C "$REPO_T3" rev-parse HEAD)" \
-    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_T3" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
 MOCK_LOOP_EDIT_CONTENT="dummy content"
 MOCK_LOOP_ITERATIONS=3
@@ -614,8 +610,7 @@ REPO_TS="$(setup_build_repo "repo_ts")"
 export ZBUILD_REPO_ROOT="$REPO_TS"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_ts"
 mkdir -p "$ZBUILD_STATE_DIR"
-printf '%s' "$(git -C "$REPO_TS" rev-parse HEAD)" \
-    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_TS" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 
 # Mock: a turn that writes an in-scope edit AND strands two scratch siblings.
 MOCK_LOOP_EDIT_FILE="tests/fixtures/scratch-target.txt"
@@ -724,8 +719,7 @@ REPO_T2="$(setup_build_repo "repo_ts2")"
 export ZBUILD_REPO_ROOT="$REPO_T2"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_ts2"
 mkdir -p "$ZBUILD_STATE_DIR"
-printf '%s' "$(git -C "$REPO_T2" rev-parse HEAD)" \
-    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_T2" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 
 MOCK_LOOP_EDIT_FILE="tests/fixtures/in-scope.bak"
 MOCK_LOOP_EDIT_CONTENT="legitimate-in-scope-work"
@@ -856,8 +850,7 @@ printf '{}' > "$STATEFILE_SI"
 REPO_SI="$(setup_build_repo "repo_si")"
 export ZBUILD_REPO_ROOT="$REPO_SI"
 export ZBUILD_STATE_DIR="$STATE_DIR_SI"
-printf '%s' "$(git -C "$REPO_SI" rev-parse HEAD)" \
-    > "$STATE_DIR_SI/intake-baseline-ref.txt"
+ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_SI" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 MOCK_LOOP_EDIT_FILE="tests/fixtures/si-test.txt"
 MOCK_LOOP_EDIT_CONTENT="si-content"
 MOCK_LOOP_ITERATIONS=1
@@ -1002,8 +995,7 @@ REPO_S16="$(setup_build_repo "repo_s16")"
 export ZBUILD_REPO_ROOT="$REPO_S16"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_s16"
 mkdir -p "$ZBUILD_STATE_DIR"
-printf '%s' "$(git -C "$REPO_S16" rev-parse HEAD)" \
-    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_S16" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 MOCK_LOOP_EDIT_FILE=""
 MOCK_LOOP_EDIT_CONTENT=""
 MOCK_LOOP_ITERATIONS=1
