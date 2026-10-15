@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/integration/intake-branch-reclaim-test.sh
+# tests/integration/run-branch-reclaim-test.sh
 # Re-running an issue after a run died picks the branch back up (#1869).
 #
 # Every `zbuild pipeline start` mints a new run with its own worktree, and a run
@@ -9,7 +9,7 @@
 # with no flags and no cleanup, therefore hit a hard abort at intake for as long
 # as the dead tree existed. This is the behaviour test for the fix.
 #
-# SPEC-1: intake reclaims a finished run's tree and continues on that branch,
+# SPEC-1: the engine (intake until #2367) reclaims a finished run's tree and continues on that branch,
 #         with the commits the dead run made still present
 # SPEC-2 [guard]: a LIVE run still holds its branch — intake refuses, with the
 #         diagnostic, rather than pulling the tree out from under it
@@ -28,13 +28,12 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "intake: re-run reclaims a dead run's branch (#1869)"
-setup_test_env "intake-branch-reclaim"
+print_test_header "run branch: re-run reclaims a dead run's branch (#1869; engine-owned since #2367)"
+setup_test_env "run-branch-reclaim"
 
-# shellcheck disable=SC1091
-source "$REPO_ROOT/plugins/agent/intake/lib/branch-names.sh"
-# shellcheck disable=SC1091
-source "$REPO_ROOT/plugins/agent/intake/lib/branch-ops.sh"
+# shellcheck source=../../scripts/lib/run-branch-setup.sh
+source "$REPO_ROOT/scripts/lib/run-branch-setup.sh"
+unset ZBUILD_REPO_ROOT
 set +e
 
 export ZBUILD_RUN_ROOT="$TEST_TEMP_DIR/rr"
@@ -85,7 +84,7 @@ WT_DEAD="$(_prior_run dead-run "$BR1")"
 _state dead-run aborted
 WT_NEW="$(_new_run second-run)"
 
-_out="$( cd "$WT_NEW" && _intake_checkout_branch "$BR1" 2>&1 )"; _rc=$?
+_out="$( cd "$WT_NEW" && zbuild_run_branch_checkout "$BR1" 2>&1 )"; _rc=$?
 
 if [[ "$_rc" -eq 0 ]]; then
     assert_pass "[SPEC-1] intake succeeds on a branch the dead run left checked out"
@@ -125,7 +124,7 @@ WT_LIVE="$(_prior_run live-run "$BR2")"
 _state live-run in_progress
 WT_NEW2="$(_new_run third-run)"
 
-_out2="$( cd "$WT_NEW2" && _intake_checkout_branch "$BR2" 2>&1 )"; _rc2=$?
+_out2="$( cd "$WT_NEW2" && zbuild_run_branch_checkout "$BR2" 2>&1 )"; _rc2=$?
 
 if [[ "$_rc2" -ne 0 ]]; then
     assert_pass "[SPEC-2] intake refuses a branch held by a live run"

@@ -22,10 +22,6 @@ source "$_INTAKE_ROOT/core/output/stage-io.sh"
 source "$_INTAKE_DIR/lib/sanitize.sh"
 # shellcheck source=lib/issue-state.sh
 source "$_INTAKE_DIR/lib/issue-state.sh"
-# shellcheck source=lib/branch-names.sh
-source "$_INTAKE_DIR/lib/branch-names.sh"
-# shellcheck source=lib/branch-ops.sh
-source "$_INTAKE_DIR/lib/branch-ops.sh"
 # shellcheck source=lib/requirements.sh
 source "$_INTAKE_DIR/lib/requirements.sh"
 # shellcheck source=../../../scripts/lib/stage-result.sh
@@ -277,45 +273,8 @@ _intake_run_inner() {
     } | atomic_write "$state_dir/scope-manifest.md"
     printf '%s\n' "$sanitized"   | atomic_write "$state_dir/intake.md"
 
-    # Issue #484: derive title from first line of sanitized goal for branch slug.
-    # Mirrors legacy's `slug=$(echo "$GOAL" | tr ... | sed ... | cut ...)`,
-    # but we use the title line (first \n-terminated chunk) so multi-line
-    # issue bodies don't bloat the slug. The 40-char cut in _intake_derive
-    # provides the same bound legacy:84 used.
     local _title_line
     _title_line="${sanitized%%$'\n'*}"
-
-    # Load state_helpers if available so _set_pipeline_branch can record the
-    # branch on the pipeline-state.json. Defer-loaded to avoid hard coupling.
-    if ! declare -F _set_pipeline_branch >/dev/null 2>&1; then
-        # shellcheck source=../../../core/pipeline/state_helpers.sh
-        [[ -f "$_INTAKE_ROOT/core/pipeline/state_helpers.sh" ]] && \
-            source "$_INTAKE_ROOT/core/pipeline/state_helpers.sh" 2>/dev/null || true
-    fi
-
-    # Branch creation is fail-CLOSED — any refusal propagates as rc=2 so
-    # the pipeline halts before downstream stages corrupt main/HEAD. Tests
-    # that don't exercise the real git path set ZBUILD_INTAKE_SKIP_BRANCH=1.
-    if [[ "${ZBUILD_INTAKE_SKIP_BRANCH:-0}" != "1" ]]; then
-        local _branch_rc=0
-        _intake_create_workspace_branch "$state_dir" "$issue" "$_title_line" \
-            || _branch_rc=$?
-        if [[ $_branch_rc -ne 0 ]]; then
-            # Only fetching the remote branch reaches the network; every other
-            # refusal (dirty tree, bad name, mid-rebase) is the setup's to fix.
-            local _b_disp="misconfigured" _b_reason="could not create the workspace branch"
-            if [[ -n "${_INTAKE_BRANCH_FETCH_FAILED:-}" ]]; then
-                # disposition-ok: the git remote (fetch) is not responding
-                _b_disp="unavailable"
-                _b_reason="could not fetch the remote branch '${_INTAKE_BRANCH_FETCH_FAILED}' — the git remote is not responding"
-            fi
-            _intake_write_result "$_art" "$_b_disp" "$_b_reason"
-            stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
-                "$_b_reason" \
-                "Fail-closed: work does not proceed on the current branch, which may be main."
-            return 1
-        fi
-    fi
 
     # #2306 (ADR-070 §1): the issue's requirements, numbered by the engine.
     if [[ -n "$fetched_ok" && -n "$_art" ]] && ! _intake_write_requirements "$_art" "$_raw_json"; then

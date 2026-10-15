@@ -21,7 +21,8 @@
 #   [MB-5] a consumer (reachability) reports baseline_resolve_failed, no verdict
 #   [MB-6] the HEAD~1 candidate is gone from the resolver source
 #   [MB-7] one shared resolver in scripts/lib/ that MAY return empty
-#   [MB-8] intake has no duplicate default-branch implementation
+#   [MB-8] the run-branch code (the engine's since #2367) has no duplicate
+#          default-branch implementation
 #   [MB-9] the CI pipeline workflow checks out full history (fetch-depth: 0)
 #   [MB-10] zbuild_change_bundle degrades to diff.patch when no baseline resolves,
 #           and still spans the whole branch when one does
@@ -291,20 +292,20 @@ else
     assert_fail "[MB-7] zbuild_resolve_default_branch must be defined" "absent"
 fi
 
-# ─── [MB-8] intake carries no duplicate implementation ───────────────────────
-print_test_section "[MB-8] intake is migrated onto the shared resolver"
+# ─── [MB-8] the run-branch code carries no duplicate implementation ──────────
+print_test_section "[MB-8] the run-branch code uses the shared resolver"
 
-_BOPS="$REPO_ROOT/plugins/agent/intake/lib/branch-ops.sh"
-if grep -qE '^_intake_resolve_default_branch\(\)' "$_BOPS"; then
-    assert_fail "[MB-8] intake must not define its own default-branch resolver" \
-        "_intake_resolve_default_branch() is still defined in branch-ops.sh"
+_BOPS="$REPO_ROOT/scripts/lib/run-branch-setup.sh"
+if grep -qE '^_[a-z_]*resolve_default_branch\(\)' "$_BOPS"; then
+    assert_fail "[MB-8] the run-branch code must not define its own default-branch resolver" \
+        "a private resolver is defined in run-branch-setup.sh"
 else
-    assert_pass "[MB-8] intake defines no private default-branch resolver"
+    assert_pass "[MB-8] the run-branch code defines no private default-branch resolver"
 fi
 if grep -q 'zbuild_resolve_default_branch' "$_BOPS"; then
-    assert_pass "[MB-8] intake calls the shared zbuild_resolve_default_branch"
+    assert_pass "[MB-8] the run-branch code calls the shared zbuild_resolve_default_branch"
 else
-    assert_fail "[MB-8] intake must call zbuild_resolve_default_branch" "absent"
+    assert_fail "[MB-8] the run-branch code must call zbuild_resolve_default_branch" "absent"
 fi
 
 # ─── [MB-9] CI checks out full history ───────────────────────────────────────

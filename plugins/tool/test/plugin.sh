@@ -644,6 +644,9 @@ _test_spawn_suite() {
         export ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state"
         export ZBUILD_COST_LEDGER="$tmp/.zbuild-nested-state/cost-ledger.jsonl"
         export ZBUILD_CACHE_DIR="$tmp/.zbuild-nested-state/cache"
+        # #2367: the fence is not the repository's work — kept out of `git
+        # status`, so a nested run's dirty-tree check does not refuse it.
+        [[ -d "$tmp/.git/info" ]] && printf '/.zbuild-nested-state/\n' >> "$tmp/.git/info/exclude"
         # #1208: re-supply the repo-declarable count-contract vars AFTER the
         # fresh-shell scrub so a repo's test wrapper (e.g. an xcodebuild/
         # xcresulttool shim) can honor them — write its {passed,failed,total}

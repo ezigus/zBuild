@@ -12,8 +12,7 @@
 # D3 [guard]  no goal and no issue → misconfigured
 # D4 [change] a goal that sanitizes to nothing → misconfigured (the input is
 #             empty; zBuild is not broken)
-# D5 [change] the workspace branch: a failed fetch of the remote branch →
-#             unavailable; any other refusal → misconfigured
+# D5          moved to the engine (#2367): tests/integration/engine-run-branch-test.sh E6
 # D6 [change] the caller's own TERM handler is back after intake returns
 # D7 [change] a result file that cannot be written is reported: rc 1 and a
 #             message naming the file — never a silent pass with no result
@@ -192,22 +191,6 @@ assert_eq "[#1837/SPEC-1] empty-after-sanitization returns rc=1" "1" "$_s1_empty
 assert_file_exists "[#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure" \
     "$ARTIFACT_DIR/intake-result.json"
 
-# Branch-refused path (SPEC-1 + SPEC-2)
-rm -f "$ARTIFACT_DIR/intake-result.json"
-export ZBUILD_GOAL="spec-1-2 branch-refused path check"
-export ZBUILD_ISSUE="0"
-# Stub the branch op inside a subshell: `unset -f` afterwards would delete the
-# REAL function for every later test in this file, not restore it.
-_s1_branch_rc="$(
-    # shellcheck disable=SC2317  # called indirectly via intake_run
-    _intake_create_workspace_branch() { return 1; }
-    unset ZBUILD_INTAKE_SKIP_BRANCH
-    intake_run "intake" "$STATE_FILE" >/dev/null 2>&1; printf '%s' "$?"
-)"
-assert_eq "[#1837/SPEC-1] branch-refused returns rc=1" "1" "$_s1_branch_rc"
-assert_file_exists "[#1837/SPEC-2] intake-result.json written on branch-refused failure" \
-    "$ARTIFACT_DIR/intake-result.json"
-
 # ─── SPEC-3 [change]: result file structure ──────────────────────────────────
 # Use the success-path file written above (if present) to verify v2 structure.
 # Re-run a clean success to get a predictable result.
@@ -305,46 +288,16 @@ fi
 _s12_role="$(yaml_get "$_mf" "provides.role" 2>/dev/null || true)"
 assert_eq "[#1837/SPEC-12] manifest provides.role == intake" "intake" "$_s12_role"
 
-# ─── SPEC-13 [guard]: manifest provides.events lists >= 17 intake.* events ───
-# Count floor plus per-event check: adding new events while dropping old ones
-# would satisfy a count-only assertion but violate the no-drop requirement.
-_s13_count="$(grep -c '^[[:space:]]*-[[:space:]]*intake\.' "$_mf" 2>/dev/null || true)"
-if [[ "$_s13_count" -ge 17 ]]; then
-    assert_pass "[#1837/SPEC-13] manifest provides.events has >= 17 intake.* events (found: $_s13_count)"
-else
-    assert_fail "[#1837/SPEC-13] manifest must list >= 17 intake.* events" \
-        "found: ${_s13_count:-0}"
-fi
-_s13_required=(
-    "intake.baseline.captured"
-    "intake.branch.adopted"
-    "intake.branch.created"
-    "intake.branch.from_detached"
-    "intake.branch.noop"
-    "intake.branch.reclaim_refused"
-    "intake.branch.reclaimed"
-    "intake.branch.reused"
-    "intake.error"
-    "intake.override.closed_issue_allowed"
-    "intake.refused.branch_exists_remote_only"
-    "intake.refused.dirty_tree"
-    "intake.refused.git_unavailable"
-    "intake.refused.invalid_branch_name"
-    "intake.refused.issue_closed"
-    "intake.refused.repo_state"
-    "intake.untracked_baseline.captured"
-)
+# ─── SPEC-13 [guard]: manifest provides.events lists intake's own events ─────
+# #2367: the branch events moved to the engine (pipeline.branch.*).
 _s13_missing=()
-for _s13_ev in "${_s13_required[@]}"; do
-    if ! grep -q "^[[:space:]]*-[[:space:]]*${_s13_ev}[[:space:]]*$" "$_mf"; then
-        _s13_missing+=("$_s13_ev")
-    fi
+for _s13_ev in intake.override.closed_issue_allowed intake.refused.issue_closed; do
+    grep -q "^[[:space:]]*-[[:space:]]*${_s13_ev}[[:space:]]*$" "$_mf" || _s13_missing+=("$_s13_ev")
 done
 if [[ "${#_s13_missing[@]}" -eq 0 ]]; then
-    assert_pass "[#1837/SPEC-13] all 17 pre-migration intake.* events are still present"
+    assert_pass "[#1837/SPEC-13] intake's own events are declared"
 else
-    assert_fail "[#1837/SPEC-13] no pre-migration event must be dropped" \
-        "missing: ${_s13_missing[*]}"
+    assert_fail "[#1837/SPEC-13] intake's own events are declared" "missing: ${_s13_missing[*]}"
 fi
 
 # ─── SPEC-14 [change]: template_stage_router_timeout > manifest config.router.* ─
@@ -421,28 +374,6 @@ assert_eq "[D3] no goal and no issue → misconfigured" "misconfigured" "$(_disp
 export ZBUILD_GOAL=$'\n\nHUMAN FEEDBACK\ngoal that sanitizes to nothing'
 _run_intake >/dev/null
 assert_eq "[D4] a goal that sanitizes to nothing → misconfigured" "misconfigured" "$(_disp)"
-
-print_test_section "D5: the workspace branch"
-# A real repo whose remote-tracking ref exists but whose remote cannot be
-# reached: adopting the branch needs a fetch, and the fetch fails.
-_REPO="$TEST_TEMP_DIR/branch-repo"
-mkdir -p "$_REPO"
-git -C "$_REPO" init -q
-git -C "$_REPO" config user.email t@t
-git -C "$_REPO" config user.name t
-git -C "$_REPO" commit -q --allow-empty -m seed
-git -C "$_REPO" remote add origin "$TEST_TEMP_DIR/no-such-remote.git"
-git -C "$_REPO" update-ref refs/remotes/origin/zb/fetch-fails HEAD
-export ZBUILD_GOAL="branch disposition check"
-unset ZBUILD_INTAKE_SKIP_BRANCH
-_rc5="$( cd "$_REPO" && ZBUILD_WORKSPACE_BRANCH="zb/fetch-fails" CI=false CI_MODE=false _run_intake )"
-assert_eq "[D5] a branch that cannot be fetched fails the stage" "1" "$_rc5"
-assert_eq "[D5] ...as unavailable: the remote is not responding" "unavailable" "$(_disp)"
-assert_contains "[D5] ...and the reason names the branch" "$(_reason)" "zb/fetch-fails"
-_rc5b="$( cd "$_REPO" && ZBUILD_WORKSPACE_BRANCH="bad..name" CI=false CI_MODE=false _run_intake )"
-assert_eq "[D5] an invalid branch name fails the stage" "1" "$_rc5b"
-assert_eq "[D5] ...as misconfigured" "misconfigured" "$(_disp)"
-export ZBUILD_INTAKE_SKIP_BRANCH=1
 
 print_test_section "D6: the caller's TERM handler"
 _out6="$(

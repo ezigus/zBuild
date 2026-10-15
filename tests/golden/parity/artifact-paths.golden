@@ -6,7 +6,6 @@
 ./artifacts/attempts/hydrate/iter-0-attempt-1/hydrate-result.json
 ./artifacts/attempts/hydrate/iter-0-attempt-1/hydrate-summary.md
 ./artifacts/attempts/intake/iter-0-attempt-1/attempt.json
-./artifacts/attempts/intake/iter-0-attempt-1/intake-baseline-ref.txt
 ./artifacts/attempts/intake/iter-0-attempt-1/intake-result.json
 ./artifacts/attempts/intake/iter-0-attempt-1/intake-summary.md
 ./artifacts/attempts/intake/iter-0-attempt-1/intake.md
@@ -61,7 +60,6 @@
 ./artifacts/test-failures-summary.md
 ./artifacts/test-output.log
 ./artifacts/test-results.json
-./intake-baseline-ref.txt
 ./intake.md
 ./mock-repo/seed.txt
 ./mock-repo/tests/fixtures/parity-fixture.txt

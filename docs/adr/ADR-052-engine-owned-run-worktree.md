@@ -2,7 +2,8 @@
 
 **Status:** Accepted (2026-07-28)
 **Issue:** #1640 (Bugs-found EPIC #1600) — supersedes the ownership model introduced by #888
-**Amended:** 2026-08-23 (#141) — the tree is keyed by the **issue**, not the run (ADR-059)
+**Amended:** 2026-08-23 (#141) — the tree is keyed by the **issue**, not the run (ADR-059);
+2026-10-15 (#2367) — the engine also owns the run's **branch** and the commit it started from
 **Related:** [ADR-023](ADR-023-install-isolation.md) (engine isolation — "which zBuild code runs"),
 [ADR-051](ADR-051-engine-owned-stage-keyed-data-provision.md) (engine-owned, stage-keyed data
 provision), [ADR-047](ADR-047-stage-agnostic-mechanics.md) (stage-agnostic mechanics),
@@ -164,6 +165,44 @@ Two consequences that are not optional:
   ADR-059 §4 therefore makes issue exclusivity a **precondition of this amendment**, not a
   follow-up: a run takes an exclusive lock on its issue before entering the tree, and refuses if it
   cannot. Landing this key change without that lock trades a recoverable collision for a silent one.
+
+## Amendment (#2367) — the engine owns the run's branch and starting commit
+
+**Status:** Accepted (2026-10-15). Supersedes §Decision 1's "intake still decides the branch" and the
+#1869 amendment's "only intake can detect this".
+
+The branch a run works on and the commit it started from are plumbing every repository needs, and the
+engine needs both to save the work. Intake decided them and wrote `intake-branch.txt` and
+`intake-baseline-ref.txt`, which build, pr-open, merge and the engine's own save step opened — the
+engine depending on a stage. Hydrate runs before intake, so in #1801 the end of hydrate pushed main over
+the issue branch: nothing had set the starting commit yet.
+
+1. **The engine sets them when the run starts**, in the run's tree, before any stage runs
+   (`zbuild_run_branch_setup`, `scripts/lib/run-branch-setup.sh`, called by the runner right after it
+   enters the worktree). It keeps intake's rules: refuse a missing git, a directory that is not a
+   repository, one mid-rebase/merge/bisect, or an operator checkout with uncommitted changes
+   (`ZBUILD_ALLOW_DIRTY=1` overrides); reuse a local branch (releasing a finished run's tree that holds
+   it, the #1869 rule, unchanged), adopt the remote's branch with earlier work, or create one.
+2. **The name** is `ZBUILD_WORKSPACE_BRANCH` when set (a setting; CI sets it), else the repository's
+   `.zbuild/branch`, else the template's `branch:`, else `zbuild/{key}`; `{key}` is the run's identity
+   (`issue-<n>`, or the goal key). The title slug is gone.
+3. **Every stage gets them from the engine under plain names**: `ZBUILD_RUN_BRANCH`,
+   `ZBUILD_RUN_START_COMMIT`, and `ZBUILD_RUN_UNTRACKED_AT_START` (the untracked files already there,
+   so build never counts an earlier run's stray as its own). No stage writes or reads the files above.
+4. **A branch that cannot be set up stops the run before any stage.** A remote that cannot be fetched
+   is an outage and leaves the run resumable (`interrupted`); any other refusal fails it.
+5. **Events** are the engine's: `pipeline.branch.ready` (branch, how — created, reused, adopted or
+   already there — the starting commit, and how far ahead of the default branch),
+   `pipeline.branch.refused` (with the reason), `pipeline.branch.reclaimed`. The `intake.branch.*`,
+   `intake.refused.*` (except `issue_closed`), `intake.baseline.captured` and
+   `intake.untracked_baseline.captured` events are gone.
+
+Enforced by `tests/integration/engine-run-branch-test.sh` E1–E6 (set before the first stage; the
+name's sources; no intake files; a failed setup stops the run), `tests/unit/run-branch-setup-test.sh`
+(name, validation, refusals, reuse/adopt/create), `tests/unit/run-branch-start-test.sh` S1–S3 (starting
+commit, untracked list, the event), `tests/integration/run-branch-reclaim-test.sh`,
+`tests/integration/run-branch-held-diagnostic-test.sh`, `tests/integration/run-branch-ahead-count-test.sh`
+and `tests/integration/worktree-ownership-test.sh` SPEC-1–SPEC-4.
 
 ## Alternatives considered
 

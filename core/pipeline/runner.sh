@@ -108,6 +108,8 @@ source "$_ZBUILD_ROOT/scripts/lib/worktree.sh"
 # #2264: a stage can leave HEAD off the run branch; every stage end puts it back.
 # shellcheck source=../../scripts/lib/run-branch.sh
 source "$_ZBUILD_ROOT/scripts/lib/run-branch.sh"
+# shellcheck source=../../scripts/lib/run-branch-setup.sh
+source "$_ZBUILD_ROOT/scripts/lib/run-branch-setup.sh"
 
 _usage() {
     # Usage shown on error or --help. Unix convention: stderr (#619).
@@ -259,10 +261,10 @@ _runner_note_push_failure() {
 # When the run has a work branch on origin (ZBUILD_WORKSPACE_BRANCH — CI sets
 # zbuild/issue-N-ci), push the run's commits to it at every stage end, so a new
 # session can pick them up even if this runner dies. No changes, no save: only
-# when HEAD carries commits past the run's baseline — and before intake has
-# recorded that baseline the run has made none, so nothing is pushed (#1801 run
-# 38290215955: the end of hydrate force-pushed main over the branch's earlier
-# work). Advisory: a failure is reported, never fatal.
+# when HEAD carries commits past the commit the run started from, which the
+# engine sets before any stage (#2367; #1801 run 38290215955: the end of hydrate
+# force-pushed main over the branch's earlier work). Advisory: a failure is
+# reported, never fatal.
 _runner_push_work_branch() {
     local _branch="${ZBUILD_WORKSPACE_BRANCH:-}"
     [[ -n "$_branch" ]] || return 0
@@ -270,8 +272,7 @@ _runner_push_work_branch() {
     [[ -n "$_repo" ]] || _repo="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     [[ -n "$_repo" ]] || return 0
     git -C "$_repo" remote get-url origin >/dev/null 2>&1 || return 0
-    local _base="" _ahead
-    [[ -f "${1:-}/intake-baseline-ref.txt" ]] && _base="$(cat "${1:-}/intake-baseline-ref.txt" 2>/dev/null || true)"
+    local _base="${ZBUILD_RUN_START_COMMIT:-}" _ahead
     [[ -n "$_base" ]] || return 0
     _ahead="$(git -C "$_repo" rev-list --count "$_base..HEAD" 2>/dev/null || echo 0)"
     [[ "$_ahead" =~ ^[0-9]+$ && "$_ahead" -gt 0 ]] || return 0
@@ -292,9 +293,7 @@ _runner_push_work_branch() {
 # every stage end, put HEAD back on the branch when that drops nothing, and say
 # which stage left it off; when the two diverged, move nothing and say so.
 _runner_keep_head_on_branch() {
-    local _sd="${1:-}" _stage="${2:-unknown}" _branch=""
-    [[ -f "$_sd/intake-branch.txt" ]] && read -r _branch 2>/dev/null < "$_sd/intake-branch.txt"
-    _branch="${_branch//[[:space:]]/}"
+    local _stage="${2:-unknown}" _branch="${ZBUILD_RUN_BRANCH:-}"
     [[ -n "$_branch" ]] || return 0
     local _repo="${ZBUILD_REPO_ROOT:-}"
     [[ -n "$_repo" ]] || _repo="$(git rev-parse --show-toplevel 2>/dev/null || true)"
@@ -2200,10 +2199,8 @@ main() {
         state_file="$state_dir/$(basename "$state_file")"
         _runner_state_file="$state_file"
     fi
-    # #618: child plugins (e.g. core/router/route.sh:route_to_model_loop, which
-    # reads $ZBUILD_STATE_DIR/intake-baseline-ref.txt per #617) need to see
-    # the resolved state_dir. Without this export the var is unset in plugin
-    # subshells and the #617 BRANCH STATE block is silently skipped.
+    # #618: child plugins need to see the resolved state_dir; without this
+    # export the var is unset in plugin subshells.
     export ZBUILD_STATE_DIR="$state_dir"
     # #2252: the moment this run began. A file in a reused state dir, or in its
     # attempt archive, is THIS run's only if it is not older than this marker —
@@ -2346,6 +2343,20 @@ main() {
         _wt_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
     fi
     if ! _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key"; then
+        zbuild_run_cap_release || true
+        return 1
+    fi
+    # #2367: the engine sets the run's branch and starting commit, before any
+    # stage (hydrate included) runs.
+    if ! zbuild_run_branch_setup "$state_dir" "$_runner_issue" "${goal:-}" "$(template_branch)"; then
+        # A remote that is not responding is an outage: the run can be resumed.
+        if [[ -n "$ZBUILD_RUN_BRANCH_FETCH_FAILED" ]]; then
+            error "could not fetch the run's branch '$ZBUILD_RUN_BRANCH_FETCH_FAILED' — the git remote is not responding"
+            _set_pipeline_status "$state_file" "interrupted" 2>/dev/null || true
+        else
+            error "could not set up the run's branch (see above)"
+            _set_pipeline_status "$state_file" "failed" 2>/dev/null || true
+        fi
         zbuild_run_cap_release || true
         return 1
     fi

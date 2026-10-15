@@ -2052,16 +2052,12 @@ _cycle_abort_reason_word() {
 }
 
 # ─── _cycle_no_commits_ahead <state_dir> (#1265) ────────────────────────────
-# True (rc=0) when the branch HEAD is EQUAL to (0 commits ahead of) the run's
-# intake baseline SHA — i.e. this run committed nothing. Reads the bare SHA from
-# ${state_dir}/intake-baseline-ref.txt (written by intake). Fail-soft: absent /
-# empty baseline, or any git failure → rc=1 (cannot assert → do NOT fire the
-# guard, so a resumed/non-intake run never gets a false no_committed_changes).
+# True (rc=0) when the branch HEAD is EQUAL to (0 commits ahead of) the commit
+# the run started from (ZBUILD_RUN_START_COMMIT, set by the engine, #2367) — i.e.
+# this run committed nothing. Fail-soft: no starting commit, or any git failure
+# → rc=1 (cannot assert → do NOT fire the guard).
 _cycle_no_commits_ahead() {
-    local state_dir="$1"
-    local ref_file="$state_dir/intake-baseline-ref.txt"
-    [[ -f "$ref_file" ]] || return 1
-    local baseline; baseline="$(cat "$ref_file" 2>/dev/null || true)"
+    local baseline="${ZBUILD_RUN_START_COMMIT:-}"
     [[ -n "$baseline" ]] || return 1
     local ahead
     ahead="$(git rev-list --count "${baseline}..HEAD" 2>/dev/null || echo -1)"

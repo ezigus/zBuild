@@ -57,17 +57,14 @@ install_template_overlay "$TARGET" runner-state-dir-minimal
 mock_plugin_factory "intake" "agent" 0 "" "" >/dev/null
 mock_plugin_factory "build"  "agent" 0 "" "" >/dev/null
 
-WORK_BRANCH="zbuild/issue-$_ZB_ID-wt"
+# #2367: the engine puts the run on its branch before any stage runs.
+WORK_BRANCH="zbuild/issue-$_ZB_ID"
 
-# Stage 1 stub — stands in for intake's branch checkout. It does exactly what the
-# real plugin does (checkout in whatever tree it is standing in) and, crucially,
-# knows NOTHING about worktrees: under ADR-052 it must not have to. #1850: each
-# stub writes the v2 result its (mock_plugin_factory) manifest declares.
+# Stage 1 stub — knows nothing about worktrees or branches. #1850: each stub
+# writes the v2 result its (mock_plugin_factory) manifest declares.
 _write_intake_stub() {
     cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<EOF
 intake_run() {
-    git checkout -q -b "$WORK_BRANCH" >/dev/null 2>&1 || return 2
-    printf '%s\n' "$WORK_BRANCH" > "\${ZBUILD_STATE_DIR}/intake-branch.txt"
     $(mock_result_line intake)
     return 0
 }

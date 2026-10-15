@@ -5,6 +5,10 @@ extends: null
 # ADR-037 §4: per-template merge policy. Wired to runtime behavior in #975.
 merge_policy: auto_unless_flagged
 
+# #2367: the run's branch; {key} is the run's identity (issue-<n>). A repository
+# overrides it in .zbuild/branch; ZBUILD_WORKSPACE_BRANCH overrides both.
+branch: zbuild/{key}
+
 defaults:
   strategy: map
 

@@ -46,26 +46,6 @@ outputs:
     type: intake.md@1
     format: markdown
     required: true
-  # ADR-020 / #663: side-channel outputs previously documented as
-  # "intentional side-effects". intake-baseline-ref.txt is written when
-  # the intake-baseline capture succeeds; intake-branch.txt is written
-  # when branch creation succeeds (opt-out via ZBUILD_INTAKE_SKIP_BRANCH;
-  # tests that aren't git repos disable it). Both are required:false
-  # so downstream consumers must fall back gracefully when absent
-  # (pr-open does this; see #484). primary:false — scope_manifest is the
-  # canonical primary artifact per #507.
-  - id: intake_baseline_ref
-    path: ${state_dir}/intake-baseline-ref.txt
-    type: intake-baseline-ref.txt@1
-    format: text
-    primary: false
-    required: false
-  - id: intake_branch
-    path: ${state_dir}/intake-branch.txt
-    type: intake-branch.txt@1
-    format: text
-    primary: false
-    required: false
   # #2306 (ADR-070 §1): the issue's requirements, numbered R-1, R-2, … by the
   # engine. Written only for an issue run (a --goal run has no issue), so
   # required:false; design, design-gate, spec-coverage and issue-acceptance
@@ -91,23 +71,8 @@ provides:
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
-    - intake.baseline.captured
-    - intake.branch.adopted
-    - intake.branch.created
-    - intake.branch.from_detached
-    - intake.branch.noop
-    - intake.branch.reclaim_refused
-    - intake.branch.reclaimed
-    - intake.branch.reused
-    - intake.error
     - intake.override.closed_issue_allowed
-    - intake.refused.branch_exists_remote_only
-    - intake.refused.dirty_tree
-    - intake.refused.git_unavailable
-    - intake.refused.invalid_branch_name
     - intake.refused.issue_closed
-    - intake.refused.repo_state
-    - intake.untracked_baseline.captured
 
 # ADR-047 §6: after this stage completes, the runner merges the operator's
 # --scope override (scope-override.md) into this stage's scope-manifest.md. The

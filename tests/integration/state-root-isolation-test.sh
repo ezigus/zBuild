@@ -125,11 +125,11 @@ fi
 # precisely so the fence keeps fencing. Derive the expected path from the same
 # resolver the writer uses; pinning "<fence>/runs/<id>" would assert the LAYOUT
 # SHAPE, when what this file exists to prove is CONTAINMENT.
-_nested_sd() {   # <state_root> <home> <run_id>
+_nested_sd() {   # <state_root> <home> <run_id> [<repo>]
     HOME="$2" ZBUILD_STATE_ROOT="$1" env -u ZBUILD_STATE_DIR -u ZBUILD_DATA_ROOT \
         bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
                  zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
-        "$REPO_ROOT" "$OVERLAY_REPO" "$_ZB_ID" "$3"
+        "$REPO_ROOT" "${4:-$OVERLAY_REPO}" "$_ZB_ID" "$3"
 }
 # ─── SPEC-B: parent state byte-identical; nested state under the fence ───────
 if cmp -s "$PARENT_STATE" "$PARENT_STATE_GOLD"; then
@@ -178,9 +178,14 @@ fi
 
 # ─── SPEC-E: production default preserved (ZBUILD_STATE_ROOT unset) ──────────
 HOME_DIR2="$TEST_TEMP_DIR/home2"; mkdir -p "$HOME_DIR2/.zbuild"
+# #2367: a repository of its own. The run's branch is set before any stage, and
+# the earlier sections' worktree (under the other HOME) still holds this issue's
+# branch in OVERLAY_REPO.
+E_REPO="$(setup_git_temp_repo tpl-overlay-repo-e)"
+install_template_overlay "$E_REPO" runner-state-dir-minimal
 set +e
 # #1270: CWD = overlay repo so the resolver finds the fixture.
-( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL \
+( cd "$E_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL \
     -u ZBUILD_STATE_FILE -u ZBUILD_EVENTS_DB -u ZBUILD_STATE_ROOT \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
@@ -192,7 +197,7 @@ assert_eq "E: default-root run exits 0" "0" "$e_rc"
 # #141: with the root unset the run still roots at $HOME/.zbuild — under the
 # ISSUE now, not the flat runs/. Derived, and then asserted to be HOME-anchored,
 # which is the property this case guards.
-_E_SD="$(_nested_sd "" "$HOME_DIR2" def-1)"
+_E_SD="$(_nested_sd "" "$HOME_DIR2" def-1 "$E_REPO")"
 assert_file_exists "E: unset root → state under \$HOME/.zbuild/" \
     "$_E_SD/pipeline-state.json"
 case "$_E_SD" in

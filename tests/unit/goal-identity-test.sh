@@ -68,14 +68,15 @@ assert_exit_code "[SPEC-3] whitespace-only goal is refused too" "1" "$_rc"
 # ─── [SPEC-4][change] the branch name carries the identity ────────────────
 print_test_section "[SPEC-4][change] a goal run's branch is not zbuild/issue-0-*"
 
-# shellcheck source=../../plugins/agent/intake/lib/branch-names.sh
-source "$REPO_ROOT/plugins/agent/intake/lib/branch-names.sh"
+# #2367: the engine names the branch (scripts/lib/run-branch-setup.sh).
+# shellcheck source=../../scripts/lib/run-branch-setup.sh
+source "$REPO_ROOT/scripts/lib/run-branch-setup.sh"
+unset ZBUILD_WORKSPACE_BRANCH
 
-_b_issue="$(_intake_derive_branch_name $_ZB_ID 'Add a retry')"
-assert_eq "[SPEC-4] an issue branch is unchanged" \
-    "zbuild/issue-$_ZB_ID-add-a-retry" "$_b_issue"
+_b_issue="$(zbuild_run_branch_name $_ZB_ID "" "" "")"
+assert_eq "[SPEC-4] an issue branch is zbuild/issue-<n>" "zbuild/issue-$_ZB_ID" "$_b_issue"
 
-_b_goal="$(ZBUILD_GOAL='add a retry to the uploader' _intake_derive_branch_name 0 'Add a retry')"
+_b_goal="$(zbuild_run_branch_name 0 'add a retry to the uploader' "" "")"
 assert_contains "[SPEC-4] a goal branch carries the goal key" "$_b_goal" "zbuild/goal-"
 if [[ "$_b_goal" == *"issue-0"* ]]; then
     assert_fail "[SPEC-4] a goal branch must not be zbuild/issue-0-*" "$_b_goal"
@@ -83,35 +84,19 @@ else
     assert_pass "[SPEC-4] a goal branch is no longer zbuild/issue-0-*"
 fi
 
-# Two goals with the SAME title produce different branches — the title is not
-# the identity, the goal text is. Without this the slug alone could collide.
-_b_a="$(ZBUILD_GOAL='goal alpha' _intake_derive_branch_name 0 'Same Title')"
-_b_b="$(ZBUILD_GOAL='goal beta'  _intake_derive_branch_name 0 'Same Title')"
+# Two different goals produce different branches: the goal text is the identity.
+_b_a="$(zbuild_run_branch_name 0 'goal alpha' "" "")"
+_b_b="$(zbuild_run_branch_name 0 'goal beta' "" "")"
 if [[ "$_b_a" == "$_b_b" ]]; then
-    assert_fail "[SPEC-4] same title + different goals must not collide" "$_b_a"
+    assert_fail "[SPEC-4] different goals must not collide" "$_b_a"
 else
-    assert_pass "[SPEC-4] same title, different goals → different branches"
+    assert_pass "[SPEC-4] different goals → different branches"
 fi
 
-# No goal text at all: the old deterministic shape, because there is no
-# identity to encode.
-_b_none="$(ZBUILD_GOAL='' _intake_derive_branch_name 0 '')"
-assert_eq "[SPEC-4] no issue and no goal keeps the old shape" \
-    "zbuild/issue-0-untitled" "$_b_none"
-
-# A TITLE IS NOT A GOAL. The first cut fell back to ${ZBUILD_GOAL:-$title},
-# which manufactures an identity for a run that has none — contradicting
-# SPEC-3's rule above. plugins/agent/intake/tests/intake-branch-test.sh caught
-# it, and that test was right: a run invoked without --goal must keep the old
-# shape even when it has a perfectly good title.
-_b_titled="$(ZBUILD_GOAL='' _intake_derive_branch_name 0 'something')"
-assert_eq "[SPEC-4][guard] a title alone does NOT become a goal identity" \
-    "zbuild/issue-0-something" "$_b_titled"
-
-# Every branch produced must pass the existing validator — the key becomes a
-# ref component, and a ref with bad characters is refused by git, not by us.
-for _b in "$_b_issue" "$_b_goal" "$_b_a" "$_b_none"; do
-    if _intake_validate_branch_name "$_b"; then
+# Every branch produced must pass the validator — the key becomes a ref
+# component, and a ref with bad characters is refused by git, not by us.
+for _b in "$_b_issue" "$_b_goal" "$_b_a"; do
+    if zbuild_run_branch_valid "$_b"; then
         assert_pass "[SPEC-4] '$_b' is a valid branch name"
     else
         assert_fail "[SPEC-4] '$_b' failed branch validation" "invalid"

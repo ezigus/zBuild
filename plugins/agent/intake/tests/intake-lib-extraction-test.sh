@@ -13,13 +13,12 @@
 #
 # SPEC-1: lib/sanitize.sh exists and defines the goal-sanitisation function
 # SPEC-2: lib/issue-state.sh exists and defines the closed-issue gate
-# SPEC-3: lib/branch-names.sh exists and defines both branch-name functions
-# SPEC-4: lib/branch-ops.sh exists and defines the three branch-workflow functions
+# SPEC-3/4: retired by #2367 — the engine sets the run's branch
+#         (scripts/lib/run-branch-setup.sh, tested by run-branch-setup-test.sh)
 # SPEC-5: plugin.sh is under the 500-line ceiling (the point of the issue)
-# SPEC-6: sourcing plugin.sh still exposes every extracted function, and branch
-#         derivation is byte-identical — the movement preserved behaviour
+# SPEC-6: sourcing plugin.sh still exposes every extracted function
 set -uo pipefail
-# Deliberately NOT `set -e`, matching intake-branch-test.sh in this directory.
+# Deliberately NOT `set -e`.
 # assert_fail's last statement is `[[ -n "$detail" ]] && echo …`, so it returns
 # NON-ZERO whenever it is called without a detail argument. Under -e that aborts
 # the file mid-run, before print_test_results — a failing test that exits 0 and
@@ -72,25 +71,6 @@ else
         "exists=$([[ -f "$_LIB/issue-state.sh" ]] && echo yes || echo no)"
 fi
 
-if [[ -f "$_LIB/branch-names.sh" ]] \
-   && _defines "$_LIB/branch-names.sh" _intake_derive_branch_name \
-   && _defines "$_LIB/branch-names.sh" _intake_validate_branch_name; then
-    assert_pass "[SPEC-3] lib/branch-names.sh defines both branch-name functions"
-else
-    assert_fail "[SPEC-3] lib/branch-names.sh must define both branch-name functions" \
-        "exists=$([[ -f "$_LIB/branch-names.sh" ]] && echo yes || echo no)"
-fi
-
-if [[ -f "$_LIB/branch-ops.sh" ]] \
-   && _defines "$_LIB/branch-ops.sh" _intake_check_preflight \
-   && _defines "$_LIB/branch-ops.sh" _intake_checkout_branch \
-   && _defines "$_LIB/branch-ops.sh" _intake_create_workspace_branch; then
-    assert_pass "[SPEC-4] lib/branch-ops.sh defines the three branch-workflow functions"
-else
-    assert_fail "[SPEC-4] lib/branch-ops.sh must define the three branch-workflow functions" \
-        "exists=$([[ -f "$_LIB/branch-ops.sh" ]] && echo yes || echo no)"
-fi
-
 # ─── SPEC-5: the ceiling this issue exists to restore ────────────────────────
 # CLAUDE.md: "Keep files under 500 lines unless there is a strong reason."
 _plugin_lines="$(wc -l < "$_INTAKE_DIR/plugin.sh" | tr -d ' ')"
@@ -108,16 +88,12 @@ _probe="$(
     set +u
     source "$_INTAKE_DIR/plugin.sh" >/dev/null 2>&1
     _missing=""
-    for _fn in _intake_strip_synthesized _intake_check_issue_state \
-               _intake_derive_branch_name _intake_validate_branch_name \
-               _intake_check_preflight _intake_checkout_branch \
-               _intake_create_workspace_branch intake_run; do
+    for _fn in _intake_strip_synthesized _intake_check_issue_state intake_run; do
         declare -F "$_fn" >/dev/null 2>&1 || _missing="$_missing $_fn"
     done
-    printf '%s|%s' "${_missing# }" "$(_intake_derive_branch_name 1 'fix bug' 2>/dev/null)"
+    printf '%s' "${_missing# }"
 )"
-_missing="${_probe%%|*}"
-_derived="${_probe#*|}"
+_missing="$_probe"
 
 if [[ -z "$_missing" ]]; then
     assert_pass "[SPEC-6] sourcing plugin.sh exposes every extracted function"
@@ -125,8 +101,6 @@ else
     assert_fail "[SPEC-6] plugin.sh must still expose every extracted function" \
         "undefined:$_missing"
 fi
-assert_eq "[SPEC-6] branch derivation is unchanged by the extraction" \
-    "zbuild/issue-1-fix-bug" "$_derived"
 
 cleanup_test_env
 print_test_results

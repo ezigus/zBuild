@@ -15,14 +15,14 @@ fi
 [[ -n "${_ZBUILD_BUILD_DIFF_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_DIFF_LOADED=1
 
-# _build_load_preexisting_untracked <state_dir> (#1265)
-# Materialize the intake pre-existing-untracked snapshot to a sorted temp file
-# for `grep -Fxq` membership lookup. Echoes the temp-file path on success
-# (caller rm's it); returns 1 when the baseline file is absent.
+# _build_load_preexisting_untracked (#1265)
+# Materialize the untracked files already there when the run started (the
+# engine's ZBUILD_RUN_UNTRACKED_AT_START, #2367) to a sorted temp file for
+# `grep -Fxq` membership lookup. Echoes the temp-file path on success (caller
+# rm's it); returns 1 when there is none.
 _build_load_preexisting_untracked() {
-    local state_dir="$1"
-    local baseline="$state_dir/intake-untracked-baseline.txt"
-    [[ -f "$baseline" ]] || return 1
+    local baseline="${ZBUILD_RUN_UNTRACKED_AT_START:-}"
+    [[ -n "$baseline" && -f "$baseline" ]] || return 1
     local tmp
     tmp="$(mktemp "$(zbuild_engine_tmpdir)/zbuild-preexist.XXXXXX")" || return 1
     tr '\0' '\n' < "$baseline" | sort -u > "$tmp"
@@ -52,8 +52,7 @@ _build_harvest_diff() {
 
     # #1265: selective intent-add — skip pre-existing strays.
     local _preexist_untracked=""
-    local _pu_state_dir; _pu_state_dir="$(dirname "$_artifact_dir")"
-    _preexist_untracked="$(_build_load_preexisting_untracked "$_pu_state_dir" 2>/dev/null || true)"
+    _preexist_untracked="$(_build_load_preexisting_untracked 2>/dev/null || true)"
     if [[ -n "$_preexist_untracked" && -f "$_preexist_untracked" ]]; then
         local -a _add_paths=()
         local _u
@@ -299,16 +298,7 @@ _build_rewrite_cumulative_diff() {
     local _output_diff_patch="$4"
     local _diff_failure="${5:-false}"
 
-    local _baseline_sha="" _state_dir_for_baseline=""
-    _state_dir_for_baseline="$(dirname "$_artifact_dir")"
-    if [[ -f "$_state_dir_for_baseline/intake-baseline-ref.txt" ]]; then
-        _baseline_sha="$(cat "$_state_dir_for_baseline/intake-baseline-ref.txt" \
-            2>/dev/null || true)"
-    elif [[ -n "${ZBUILD_STATE_DIR:-}" \
-          && -f "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" ]]; then
-        _baseline_sha="$(cat "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" \
-            2>/dev/null || true)"
-    fi
+    local _baseline_sha="${ZBUILD_RUN_START_COMMIT:-}"
 
     local _do_rewrite="false"
     if [[ -n "$_baseline_sha" ]]; then

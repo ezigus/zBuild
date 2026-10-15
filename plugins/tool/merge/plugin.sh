@@ -137,13 +137,10 @@ _merge_run_inner() {
     local issue_num target_branch
     issue_num="$(jq -r '.issue // "0"' "$state_file" 2>/dev/null || echo "0")"
     issue_num="${issue_num//\"/}"
-    target_branch="$(jq -r '.branch // empty' "$state_file" 2>/dev/null || true)"
-    if [[ -z "$target_branch" || "$target_branch" == "null" ]]; then
-        local _state_dir; _state_dir="$(dirname "$state_file")"
-        if [[ -f "$_state_dir/intake-branch.txt" ]]; then
-            target_branch="$(head -n1 "$_state_dir/intake-branch.txt" 2>/dev/null | tr -d '[:space:]' || true)"
-        fi
-    fi
+    # #2367: the engine names the run's branch.
+    target_branch="${ZBUILD_RUN_BRANCH:-}"
+    [[ -n "$target_branch" ]] || target_branch="$(jq -r '.branch // empty' "$state_file" 2>/dev/null || true)"
+    [[ "$target_branch" == "null" ]] && target_branch=""
     if [[ -z "$target_branch" ]]; then
         target_branch="zbuild/issue-${issue_num}"
     fi

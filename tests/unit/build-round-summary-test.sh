@@ -79,7 +79,7 @@ mkdir -p "$REPO"
     git -c commit.gpgsign=false commit -q -m M0
 ) >/dev/null
 BASELINE="$(git -C "$REPO" rev-parse HEAD)"
-printf '%s' "$BASELINE" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+export ZBUILD_RUN_START_COMMIT="$BASELINE"
 
 ARTIFACT_DIR="$ZBUILD_STATE_DIR/artifacts"
 PLAN_JSON="$ARTIFACT_DIR/plan.json"

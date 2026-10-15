@@ -55,7 +55,7 @@ mkdir -p "$REPO"
 ) >/dev/null
 
 BASELINE="$(git -C "$REPO" rev-parse HEAD)"
-printf '%s' "$BASELINE" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+export ZBUILD_RUN_START_COMMIT="$BASELINE"
 
 # ─── Shared stubs ───────────────────────────────────────────────────────────
 # shellcheck disable=SC2317

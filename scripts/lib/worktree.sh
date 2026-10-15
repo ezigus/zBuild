@@ -335,7 +335,7 @@ zbuild_worktree_run_id() {
 # A human label for whoever owns <worktree_path> — "issue 1921", "goal goal-ab…"
 # or "run 20260824-1". For OPERATOR MESSAGES only; never parse it. Exists so the
 # #141 move does not cost the diagnostics that used to say which run held a
-# branch (intake/lib/branch-ops.sh), now that the answer is an issue, not a run.
+# branch (scripts/lib/run-branch-setup.sh), now that the answer is an issue, not a run.
 zbuild_worktree_owner() {
     local wt="${1:-}" ident
     [[ -n "$wt" ]] || return 1

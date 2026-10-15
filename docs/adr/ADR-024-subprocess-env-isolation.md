@@ -527,7 +527,7 @@ fence to keep the class from recurring.
 
 **What happened.** On 2026-09-15 `npm test` in a worktree left it on a new
 branch `master` carrying a `seed` commit, and created `origin/master` on the
-real GitHub repository. `tests/integration/intake-branch-ahead-count-test.sh`
+real GitHub repository. `tests/integration/run-branch-ahead-count-test.sh`
 had cloned a temp repo to seed it; the clone failed (the machine's git
 exec-path was broken); and its seeding subshell —
 

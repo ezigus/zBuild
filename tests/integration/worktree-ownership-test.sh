@@ -11,9 +11,10 @@
 # worktree-run-isolation-test.sh, which dispatches through the real runner. This
 # file covers the seams underneath it, plus the intake-side contract change.
 #
-# SPEC-1: intake checks out in whatever tree it is given — no worktree of its own
-# SPEC-2: intake records no worktree file (it no longer owns one)
-# SPEC-3: intake's dirty-tree preflight targets the MAIN checkout, not $PWD
+# SPEC-1: the run's branch is checked out in the run's tree (#2367: the engine
+#         sets it; intake no longer does)
+# SPEC-2: no worktree file is recorded by the branch step
+# SPEC-3: the dirty-tree preflight targets the MAIN checkout, not $PWD
 # SPEC-4: ZBUILD_NO_WORKTREE=1 restores in-place behaviour (the opt-out works)
 # SPEC-5: _runner_enter_worktree acquires a tree, exports it, and cd's there
 # SPEC-6: a recorded worktree that has vanished fails CLOSED (rc=1)
@@ -57,24 +58,25 @@ SD1="$TEST_TEMP_DIR/state-handed"; mkdir -p "$SD1"
     export ZBUILD_RUN_ID="run-a" ZBUILD_STATE_DIR="$SD1"
     export ZBUILD_MAIN_REPO_ROOT="$TARGET"
     export ZBUILD_WORKSPACE_BRANCH="zbuild/issue-777-wt"
-    # shellcheck disable=SC1091
-    source "$REPO_ROOT/plugins/agent/intake/plugin.sh" 2>/dev/null
-    _intake_create_workspace_branch "$SD1" 777 "worktree ownership" >/dev/null 2>&1
+    unset ZBUILD_REPO_ROOT
+    # shellcheck source=../../scripts/lib/run-branch-setup.sh
+    source "$REPO_ROOT/scripts/lib/run-branch-setup.sh" 2>/dev/null
+    zbuild_run_branch_setup "$SD1" 777 "" "" >/dev/null 2>&1
     printf '%s' "$?" > "$SD1/rc"
 )
 _rc1="$(cat "$SD1/rc" 2>/dev/null || echo 99)"
 _wt1_head="$(git -C "$WT1" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 if [[ "$_rc1" -eq 0 && "$_wt1_head" == "zbuild/issue-777-wt" && "$(_main_head)" == "main" ]]; then
-    assert_pass "[SPEC-1] intake checks out in the tree it was handed; main tree untouched"
+    assert_pass "[SPEC-1] the branch is checked out in the tree it was handed; main tree untouched"
 else
-    assert_fail "[SPEC-1] intake must check out in the tree it was handed" \
+    assert_fail "[SPEC-1] the branch must be checked out in the tree it was handed" \
         "rc=$_rc1 worktree_head=$_wt1_head main_head=$(_main_head)"
 fi
 
 if [[ ! -f "$SD1/intake-worktree.txt" && ! -f "$SD1/run-worktree.txt" ]]; then
-    assert_pass "[SPEC-2] intake records no worktree of its own (the engine owns it)"
+    assert_pass "[SPEC-2] the branch step records no worktree"
 else
-    assert_fail "[SPEC-2] intake must not record a worktree" \
+    assert_fail "[SPEC-2] the branch step must not record a worktree" \
         "intake-worktree.txt=$([[ -f "$SD1/intake-worktree.txt" ]] && echo present || echo absent) run-worktree.txt=$([[ -f "$SD1/run-worktree.txt" ]] && echo present || echo absent)"
 fi
 
@@ -97,14 +99,15 @@ SD_D="$TEST_TEMP_DIR/state-dirty"; mkdir -p "$SD_D"
     export ZBUILD_RUN_ID="run-dirty" ZBUILD_STATE_DIR="$SD_D"
     export ZBUILD_MAIN_REPO_ROOT="$TARGET_D"
     export ZBUILD_WORKSPACE_BRANCH="zbuild/issue-779-dirty"
-    # shellcheck disable=SC1091
-    source "$REPO_ROOT/plugins/agent/intake/plugin.sh" 2>/dev/null
-    _intake_create_workspace_branch "$SD_D" 779 "dirty main" >/dev/null 2>&1
+    unset ZBUILD_REPO_ROOT
+    # shellcheck source=../../scripts/lib/run-branch-setup.sh
+    source "$REPO_ROOT/scripts/lib/run-branch-setup.sh" 2>/dev/null
+    zbuild_run_branch_setup "$SD_D" 779 "" "" >/dev/null 2>&1
     printf '%s' "$?" > "$SD_D/rc"
 )
 _rc_d="$(cat "$SD_D/rc" 2>/dev/null || echo 99)"
 assert_eq "[SPEC-3] a dirty MAIN checkout still refuses, from a clean worktree CWD" \
-    "2" "$_rc_d"
+    "1" "$_rc_d"
 
 # ── SPEC-4: the opt-out restores in-place behaviour ────────────────────────
 TARGET2="$TEST_TEMP_DIR/target2"
@@ -117,9 +120,10 @@ SD2="$TEST_TEMP_DIR/state-inplace"; mkdir -p "$SD2"
     cd "$TARGET2" || exit 90
     export ZBUILD_RUN_ID="run-b" ZBUILD_STATE_DIR="$SD2" ZBUILD_NO_WORKTREE=1
     export ZBUILD_WORKSPACE_BRANCH="zbuild/issue-778-inplace"
-    # shellcheck disable=SC1091
-    source "$REPO_ROOT/plugins/agent/intake/plugin.sh" 2>/dev/null
-    _intake_create_workspace_branch "$SD2" 778 "in place" >/dev/null 2>&1
+    unset ZBUILD_REPO_ROOT
+    # shellcheck source=../../scripts/lib/run-branch-setup.sh
+    source "$REPO_ROOT/scripts/lib/run-branch-setup.sh" 2>/dev/null
+    zbuild_run_branch_setup "$SD2" 778 "" "" >/dev/null 2>&1
     printf '%s' "$?" > "$SD2/rc"
 )
 _rc2="$(cat "$SD2/rc" 2>/dev/null || echo 99)"
