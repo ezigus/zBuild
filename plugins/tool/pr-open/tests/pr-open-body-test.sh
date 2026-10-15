@@ -42,6 +42,8 @@ assert_not_contains "[B2] no review verdict" "$_body" "Review verdict"
 
 print_test_section "B3: escaped"
 assert_not_contains "[B3] no raw HTML from the plan" "$_body" "<b>"
+assert_contains "[B3] ...it is escaped, not dropped" "$_body" '\<b\>twice'
+
 
 cleanup_test_env
 print_test_results

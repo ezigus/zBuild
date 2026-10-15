@@ -465,7 +465,8 @@ Supersedes §4 and the #2301 amendment.
 - **The engine sums up a map group.** After the group runs it writes `artifacts/<group>-summary.md`
   (every element, its outcome and its one-line reason, read from each element's own result) and tells
   later stages whether any element failed: `ZBUILD_RUN_FLAGGED` is `yes` when a lens found a high or
-  critical problem the change introduced, `no` when none did, unset when no review group ran.
+  critical problem the change introduced, `incomplete` when none failed but one did not finish or
+  wrote no result (not a clean review), `no` when every one passed, unset when no review group ran.
   `review-aggregator` and its merged report (`review-report.json`) are retired: every later stage
   already sees each lens's own output.
 - **What uses the word:** pr-delivery merges under `auto_unless_flagged` only on
@@ -474,6 +475,6 @@ Supersedes §4 and the #2301 amendment.
 - **The PR body says what the PR is for:** the issue, the goal and the work items from the plan, the
   files changed since the default branch, and the test result. Review findings stay out of it.
 
-Enforced by: `tests/unit/engine-combines-map-test.sh` M1, M2; `plugins/tool/pr-open/tests/pr-open-body-test.sh`
+Enforced by: `tests/unit/engine-combines-map-test.sh` M1–M3; `plugins/tool/pr-open/tests/pr-open-body-test.sh`
 B1–B3; `tests/unit/pr-delivery-v2-result-test.sh` SPEC-3; `tests/integration/merge-policy-auto-unless-flagged-test.sh`
 SPEC-1–SPEC-6; `tests/unit/retired-impact-review-report-inputs-test.sh` RT2.
