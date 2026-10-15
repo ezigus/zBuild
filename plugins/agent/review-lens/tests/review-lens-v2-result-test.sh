@@ -426,7 +426,9 @@ route_to_model() {
     return 0
 }
 out_2366_f="$artifact_dir/lens-2366fail.json"
-set +e; _review_lens_run_inner "2366fail" "$scope_manifest" "$evidence" "$out_2366_f" "$artifact_dir"; set -e
+# #2368: the template says when a lens fails (fail_on); give it simple.yaml's.
+set +e; ZBUILD_CURRENT_STAGE=review_lenses _TPL_STAGE_FAIL_ON_review_lenses="high critical" \
+    _review_lens_run_inner "2366fail" "$scope_manifest" "$evidence" "$out_2366_f" "$artifact_dir"; set -e
 assert_eq "[#2366] a high problem the change introduced fails the lens" \
     "fail" "$(jq -r '.outcome // empty' "$out_2366_f")"
 assert_eq "[#2366] ...its findings stay where the aggregator reads them" \
