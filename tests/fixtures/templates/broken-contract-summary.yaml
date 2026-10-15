@@ -1,0 +1,37 @@
+id: broken-contract-summary
+name: Broken Contract — a stage that declares no summary (pre-flight keystone fixture)
+extends: simple
+
+# The `no-summary` stage's plugin declares no `summary: true` output, which the
+# pre-flight contract validator refuses (SUMMARY_MISSING, ADR-055 §9) before
+# any stage runs. The tests that use this fixture put that plugin in their own
+# plugins root. (#2368: was an advisory aggregator gating a cycle — the
+# typed-aggregator rule it broke is retired.)
+flow:
+  - intake
+  - build_loop
+
+build_loop:
+  type: cycle
+  flow:
+    - build
+    - no-summary
+  exit_when:
+    stage: build
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 1
+  on_max: halt
+
+intake:
+  gate: auto
+  roles: [intake]
+
+build:
+  gate: auto
+  roles: [builder]
+
+no-summary:
+  gate: auto
+  roles: [no_summary]

@@ -21,9 +21,9 @@ defaults:
 # I10-A..C historically wrapped build/test/objective-gate in build_test_cycle.
 # B6 (#1138, ADR-040 — amends ADR-013/ADR-021/ADR-019; executes ADR-037 §6) CUT
 # OVER convergence from the retired monolithic objective-gate to the composable
-# mechanical gates + gate-aggregator; the objective-gate plugin was then removed
-# in B7 (#1139). The single merge-blocking construct is the gate-aggregator
-# verdict (ADR-040 §5), reached via the cycle's exit_when.
+# mechanical gates; the objective-gate plugin was then removed in B7 (#1139).
+# #2368: the engine combines the gates by build_test_cycle's exit_when, which
+# names every member that must pass; gate-aggregator is retired.
 #
 # C3 (#1142, ADR-040 §3 — supersedes ADR-038's single-stage fan-out; ADR-039
 # parallel group; follows ADR-030 scope governance) CUTS OVER the lens side: the
@@ -33,7 +33,7 @@ defaults:
 # one work unit per lens element — followed by
 # `review-aggregator`, which merges the per-lens results into ONE advisory
 # merge-readiness report. The lens group is ADVISORY: it NEVER feeds the cycle's
-# exit_when/convergence (that remains the gate-aggregator, ADR-040 §5) and never
+# exit_when/convergence (build_test_cycle's exit_when, ADR-040 §5) and never
 # blocks merge. The B5 no-LLM-on-convergence-path invariant therefore holds.
 flow:
   - hydrate
@@ -95,10 +95,7 @@ delivery_loop:
 #
 # Members: design → design-gate. design-gate is a T0 tool (ADR-037 §3): a pure-grep
 # PRE-build structural gate over design.md + the red-first stubs design writes. It
-# is BOTH a cycle member AND convergence:gate, so the typed-aggregator preflight
-# rule (A) is satisfied by binding exit_when directly to it — a single gate, no
-# separate aggregator needed (contrast build_test_cycle's gate-aggregator, which
-# rolls up MANY gates). exit_when fires on design-gate.verdict == pass.
+# is a cycle member and exit_when binds directly to it (with spec-coverage).
 # max_iterations: 2, on_max: halt (#2176): a contract the gate still rejects is
 # not built. Nested in delivery_loop (#2271), running out of rounds ends that
 # loop's round — build is skipped — and the outer loop goes round.
@@ -204,10 +201,9 @@ issue-acceptance:
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 # B6 (#1138, ADR-040 §2/§5): the cycle re-runs build/test then the decomposed
-# mechanical gates (shape-floor, acceptance-gate, secret-scan) and finally the
-# gate-aggregator, which collapses every must-pass gate into ONE convergence
-# verdict. exit_when fires on gate-aggregator.verdict == pass — the ADR-019
-# fail-closed contract re-expressed as a single composable construct (ADR-040 §5).
+# mechanical gates. #2368: the engine combines them — exit_when names every
+# member that must pass this round; one with no outcome this round counts as
+# failed (the ADR-019 fail-closed contract). gate-aggregator is retired.
 # (#1129 Change C, ADR-012: the lint/coverage/mutation read-out gates were
 # DROPPED as cycle members — they were redundant. mutation and lint both run in
 # the test suite (run-tests.sh --tier all / npm test, which the `test` cycle
@@ -223,7 +219,7 @@ issue-acceptance:
 # which goes round from design.
 build_test_cycle:
   type: cycle
-  description: Build, test, and run the mechanical gates until gate-aggregator passes
+  description: Build, test, and run the mechanical gates until every one passes
   flow:
     # #2022: test-author runs FIRST. It authors the acceptance assertions from
     # the design's SPEC sentences before build implements against them, so the
@@ -249,25 +245,19 @@ build_test_cycle:
     # rewritten assertion.
     - assertion-integrity
     # #1849: the finished change judged against the ISSUE, not the SPECs — the
-    # only check after spec-coverage that reads the issue at all. A convergence
-    # gate, so gate-aggregator's roster makes it must-pass; each unmet
+    # only check after spec-coverage that reads the issue at all; each unmet
     # requirement is a numbered finding.
     - issue-acceptance
-    - gate-aggregator
   exit_when:
-    stage: gate-aggregator
-    field: verdict
-    op: eq
-    value: pass
+    all:
+      - { stage: test, field: verdict, op: eq, value: pass }
+      - { stage: shape-floor, field: verdict, op: eq, value: pass }
+      - { stage: acceptance-gate, field: verdict, op: eq, value: pass }
+      - { stage: secret-scan, field: verdict, op: eq, value: pass }
+      - { stage: assertion-integrity, field: verdict, op: eq, value: pass }
+      - { stage: issue-acceptance, field: verdict, op: eq, value: pass }
   max_iterations: 3
   on_max: continue
-  # The cycle CONVERGES rather than spinning build(no-op)→…→gate-aggregator(fail)
-  # because the aggregator's consolidated gate-feedback.md reaches build. B2
-  # (ADR-040): the gate-aggregator is the SINGLE collector of failure detail,
-  # merging every failing mechanical gate into one document. It used to arrive
-  # through a feedback: wire plus a bespoke reader; #1979 retired both — the
-  # aggregator marks that output `summary: true` (#1976) and the engine injects
-  # it, framed by verdict, with no per-consumer wiring.
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:
   gate: auto
@@ -379,17 +369,6 @@ secret-scan:
     destinations: [file, stdout]
     tail_lines: 200
 
-# ─── gate-aggregator (leaf, cycle member) ────────────────────────────────────
-# T0 convergence aggregator (ADR-040 §2/§5, #1137): collapses the must-pass gate
-# set into ONE verdict. This is the cycle's exit_when source and the single
-# merge-blocking construct in the decomposed pipeline. verdict-in-artifact.
-gate-aggregator:
-  gate: auto
-  roles: [gate_aggregator]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-
 # ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
 # issue #1295 (ADR-047 §2): converted from `type: parallel` to `type: map`.
 # Each element (security, performance, red-team, correctness, scope) becomes one
@@ -401,7 +380,7 @@ gate-aggregator:
 # lens-<element>.json artifact names (ADR-038 §2 isolated-call discipline).
 #
 # aggregate: advisory — this group is NEVER on a merge-blocking path (ADR-040 §4).
-# Convergence is owned by the build_test_cycle's gate-aggregator exit_when above;
+# Convergence is owned by build_test_cycle's exit_when above;
 # the B5 (#1137) no-LLM-on-convergence-path invariant therefore holds.
 review_lenses:
   type: map

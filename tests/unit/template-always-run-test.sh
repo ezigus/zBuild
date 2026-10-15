@@ -56,11 +56,11 @@ for _s in "${_TPL_STAGES[@]}"; do
     [[ "$_s" == "release" || "$_s" == "persist" ]] && _in_flow=1
 done
 assert_eq "[SPEC-2] neither release nor persist is in _TPL_STAGES[]" "0" "$_in_flow"
-# The count is 19 after #1668 removed impact from the delivery_loop flow. The
+# The count is 18 (#1668 removed impact; #2368 removed gate-aggregator). The
 # assertion is about the always-run stages NOT being in here: release and persist
 # would make it 21 if they leaked into the flow.
 assert_eq "[SPEC-2] [#1668/SPEC-9] simple.yaml flow count excludes both always-run stages" \
-    "19" "${#_TPL_STAGES[@]}"
+    "18" "${#_TPL_STAGES[@]}"
 
 # ─── [SPEC-3][guard] state does not leak between loads ──────────────────────
 # load_template is called repeatedly in one process. A template with no

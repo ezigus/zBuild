@@ -254,7 +254,7 @@ wiring is present and type-correct.
   their own `exit_when` predicate (the §5 path guard / check (A)) and need no separate aggregator stage.
   Marker resolution is id-first then by `provides.role` — the same resolution the roster-driven
   gate-aggregator uses. Tests: `tests/integration/preflight-contract-templates-test.sh`,
-  `tests/unit/lint-contract-convergence-test.sh`, `tests/unit/core-pipeline-template-parallel-test.sh`.
+  `tests/unit/core-pipeline-template-parallel-test.sh` (the convergence lint itself was retired by #2368).
 
 The original ADR PR (issue #1143, D1) authored the ADR text only — no code/template/test changes beyond
 the two new ADR files. The taxonomy + invariant landed in later EPIC #1129 issues (the Phase 1 section
@@ -396,7 +396,7 @@ The shape floor (the event goldens and `_TPL_STAGES[N]` tests a pipeline-shape c
 
 ### Amendment (2026-10-04, #2271)
 
-The gate aggregator no longer rolls up a fault class (ADR-068 §9); it emits the one convergence verdict. Tests: `tests/unit/gate-aggregator-test.sh` TC-10/TC-16, `tests/unit/gate-detail-outputs-test.sh` SPEC-5.
+The gate aggregator no longer rolls up a fault class (ADR-068 §9); it emits the one convergence verdict. (Retired by #2368 below.)
 
 ### Amendment (2026-10-05, #2301) — every lens finding reaches the PR body
 
@@ -424,6 +424,36 @@ Test: `tests/unit/pr-open-advisory-review-test.sh` SPEC-24.
   `review-aggregator` replaced it (§3, §4); no template used it.
 
 Enforced by: `tests/integration/adr040-isolated-gate-test.sh` SPEC-1 (a model-judged gate member is
-admitted; no `GATE_REFERENCE` violation), SPEC-6 (the aggregator wiring is still checked);
+admitted; no `GATE_REFERENCE` violation);
 `tests/unit/retired-impact-review-report-inputs-test.sh` RT2 (review-report is gone), RT4 (no check reads
 declared inputs).
+
+### Amendment (2026-10-15, #2368 part 1) — the engine combines a loop; gate-aggregator is retired
+
+Supersedes §2, §5's preflight rules, §7 and the #1219 amendment.
+
+- **The engine combines a loop's members by the template's rule.** A loop's `exit_when` names every
+  member that must pass (`all:`); the engine evaluates it each round. A member with no outcome this round
+  counts as failed — gate-aggregator's fail-closed rule, now the engine's. `gate-aggregator` is retired;
+  simple.yaml's and deployed.yaml's `build_test_cycle` list their gates instead.
+- **Each loop writes what happened** to `artifacts/<loop>-summary.md` after every round: every member, its
+  outcome and its one-line reason.
+- **`convergence:` leaves the manifests.** What blocks is the template's: a loop's `exit_when`, and a
+  stage's `blocking:`. The typed-aggregator preflight (`CYCLE_AGG_NOT_MEMBER`, `CYCLE_AGG_TYPE`,
+  `PARALLEL_NO_AGG`) and the §5 convergence-path lint went with the marker.
+- **A check the gate could only not measure does not block.** gate-aggregator excused an
+  `advisory`-severity fail; acceptance-gate now reports such a result as pass itself, still listing the
+  failures.
+- **Stages after the loops get the engine's word:** `ZBUILD_RUN_LOOPS_PASSED` is `yes` only when every
+  loop that ran passed — unset when a run starts, whatever the environment held. merge and pr-delivery merge only on `yes`; deploy deploys only on `yes` and
+  refuses when the word is absent. pr-open makes the PR a draft from the loops' own records.
+- **The `approve` rescue is retired** (#2366 left no stage able to write `approve`): a loop that runs out
+  of rounds is a run that did not pass.
+
+Enforced by: `tests/unit/engine-combines-loop-test.sh` L1–L5 (the loop's summary, written too when a
+blocking member stops the loop; a member with no outcome holds the loop; the templates name their
+must-pass gates; no `convergence:`, no gate-aggregator); `tests/integration/loops-passed-word-test.sh` W1
+(the word starts unset each run);
+`tests/integration/simple-yaml-build-test-convergence-test.sh` SPEC-1, SPEC-3;
+`tests/integration/acceptance-gate-test.sh` S6c; `tests/unit/merge-v2-result-test.sh` SPEC-7;
+`plugins/agent/deploy/tests/deploy-test.sh` SPEC-8.

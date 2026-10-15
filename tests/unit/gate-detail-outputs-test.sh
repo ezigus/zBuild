@@ -20,12 +20,8 @@
 #
 #   SPEC-1 [change]: each of the five gates declares a summary output
 #   SPEC-2 [change]: a failing gate writes its detail; a passing one does not
-#   SPEC-3 [change]: the aggregator no longer declares gate_feedback /
-#                    design_feedback, and no consumer is left naming them
-#   SPEC-4 [change]: the aggregator no longer covers a roster, so the members it
-#                    used to render now reach prompts themselves
-#   SPEC-5 [guard] : the aggregator still emits ONE convergence verdict — the
-#                    job only it can do (#2271 retired the fault roll-up)
+#   SPEC-3 [change]: no manifest names gate_feedback / design_feedback
+#   SPEC-4/5 retired with gate-aggregator (#2368): the engine combines a loop
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,7 +37,6 @@ print_test_header "gates publish their own detail; the aggregator stops renderin
 setup_test_env "gate-detail-outputs"
 
 _GATES="shape-floor secret-scan lint-gate coverage-gate mutation-gate"
-AGG="$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml"
 
 # ─── SPEC-1: every gate declares a summary ───────────────────────────────────
 print_test_section "1. each gate declares a summary output"
@@ -115,14 +110,6 @@ done
 # ─── SPEC-3: the aggregator stops rendering ──────────────────────────────────
 print_test_section "3. the aggregator no longer renders prose"
 
-for _o in gate_feedback design_feedback; do
-    _agg_outs="$(manifest_graph_get_outputs "$AGG")"
-    if grep -qE "^${_o}\|" <<< "$_agg_outs"; then
-        assert_fail "[SPEC-3] the aggregator no longer declares $_o" "output survives"
-    else
-        assert_pass "[SPEC-3] the aggregator no longer declares $_o"
-    fi
-done
 # No inert declaration left behind — the #1865/#1898 lesson.
 _orphans=""
 while IFS= read -r -d '' _m; do
@@ -133,27 +120,6 @@ while IFS= read -r -d '' _m; do
 done < <(find "$REPO_ROOT/plugins" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
 assert_eq "[SPEC-3] no consumer still names the retired outputs" "" \
     "$(printf '%s' "$_orphans" | sed 's/[[:space:]]*$//')"
-
-# ─── SPEC-4: the aggregator stops covering a roster ──────────────────────────
-# It publishes no text now, so if it still covered `gate` the engine would
-# suppress the members and ship an aggregate containing nothing.
-print_test_section "4. the aggregator no longer suppresses its members"
-
-if grep -qE '^aggregates:[[:space:]]*gate' "$AGG" 2>/dev/null; then
-    assert_fail "[SPEC-4] the aggregator stopped covering the gate roster" \
-        "it still suppresses members while publishing no text of its own"
-else
-    assert_pass "[SPEC-4] the aggregator stopped covering the gate roster"
-fi
-
-# ─── SPEC-5: the jobs only it can do survive ─────────────────────────────────
-print_test_section "5. the convergence verdict survives"
-
-assert_contains "[SPEC-5] it is still the convergence gate" \
-    "$(cat "$AGG")" "convergence: gate"
-_agg_ids="$(manifest_graph_get_outputs "$AGG" | cut -d'|' -f1 | tr '\n' ' ')"
-assert_contains "[SPEC-5] it still declares its result artifact" \
-    "$_agg_ids" "gate_aggregator_result"
 
 
 cleanup_test_env

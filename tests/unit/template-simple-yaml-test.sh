@@ -78,9 +78,10 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # exists) and `assertion-integrity` guards them just before the aggregate.
 # 19 -> 20: #1849 adds issue-acceptance before gate-aggregator — the finished
 # change judged against the ISSUE, the one link below the SPEC.
-assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 19" "19" "${#_TPL_STAGES[@]}"
+# 19 -> 18: #2368 retires gate-aggregator — the engine combines the loop.
+assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 18" "18" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design spec-coverage design-gate test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance gate-aggregator review_lenses review-aggregator pr)
+_expected_stages=(hydrate intake plan design spec-coverage design-gate test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance review_lenses review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -115,7 +116,7 @@ assert_eq "[SPEC-3] plan router timeout"    "300"         "$_TPL_STAGE_ROUTER_TI
 assert_eq "[SPEC-3] plan router max_turns"  "45"          "$_TPL_STAGE_ROUTER_MAX_TURNS_plan"
 
 # decomposed mechanical gates (B6 #1138, ADR-040) — bound by role, not stage id.
-# shape-floor / secret-scan / gate-aggregator are T0 tools (no router section);
+# shape-floor / secret-scan are T0 tools (no router section);
 # acceptance-gate is the mechanical T1 contract gate.
 # (#1129 Change C: lint/coverage/mutation dropped as cycle members — their roles
 # are no longer present in simple.yaml; the plugins stay canonical but dormant.)
@@ -125,8 +126,7 @@ assert_eq "[SPEC-3] lint stage removed (role var unset)"     "" "${_TPL_STAGE_RO
 assert_eq "[SPEC-3] coverage stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_coverage:-}"
 assert_eq "[SPEC-3] mutation stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_mutation:-}"
 assert_eq "[SPEC-3] secret-scan roles"      "secret_scan"     "$_TPL_STAGE_ROLES_secret_scan"
-assert_eq "[SPEC-3] gate-aggregator roles"  "gate_aggregator" "$_TPL_STAGE_ROLES_gate_aggregator"
-assert_eq "[SPEC-3] gate-aggregator io_dests" "file,stdout"   "$_TPL_STAGE_IO_DESTS_gate_aggregator"
+assert_eq "[SPEC-3] gate-aggregator stage removed (#2368)" "" "${_TPL_STAGE_ROLES_gate_aggregator:-}"
 
 # design
 assert_eq "[SPEC-3] design roles"            "designer"    "$_TPL_STAGE_ROLES_design"
@@ -258,7 +258,7 @@ _btc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
 assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles"
 assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "test-author,spec-correspondence,build,test,shape-floor,acceptance-gate,secret-scan,assertion-integrity,issue-acceptance,gate-aggregator" \
+    "test-author,spec-correspondence,build,test,shape-floor,acceptance-gate,secret-scan,assertion-integrity,issue-acceptance" \
     "$_TPL_CYCLE_STAGES_build_test_cycle"
 assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)" \
     "3" "$_TPL_CYCLE_MAX_build_test_cycle"
@@ -267,14 +267,10 @@ assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)" \
 # CHANGE (I10-A #976): the exit_when block must parse into UNTIL_* vars so the
 # cycle validator and runner can resolve the break-out condition.
 
-assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_STAGE_build_test_cycle" \
-    "gate-aggregator" "$_TPL_CYCLE_UNTIL_STAGE_build_test_cycle"
-assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_FIELD_build_test_cycle" \
-    "verdict" "$_TPL_CYCLE_UNTIL_FIELD_build_test_cycle"
-assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_OP_build_test_cycle" \
-    "eq" "$_TPL_CYCLE_UNTIL_OP_build_test_cycle"
-assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
-    "pass" "$_TPL_CYCLE_UNTIL_VALUE_build_test_cycle"
+# #2368: exit_when names every must-pass gate (all:), not one aggregator.
+assert_eq "[SPEC-15] build_test_cycle exit_when combines with all" \
+    "all" "${_TPL_CYCLE_EXIT_COMBINATOR_build_test_cycle:-}"
+assert_eq "[SPEC-15] ...over its six gates" "6" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
 
 # ─── SPEC-12: shape-floor is at index 7 in _TPL_STAGES (after build/test) ─────
 # CHANGE (#1218, ADR-046): design-gate + impact inserted at indices 3,4 shift the
@@ -283,8 +279,8 @@ assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
 assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[10] == shape-floor" "shape-floor" "${_TPL_STAGES[10]}"
-assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[15] == gate-aggregator (cycle exit_when source)" \
-    "gate-aggregator" "${_TPL_STAGES[15]}"
+assert_eq "[SPEC-12] _TPL_STAGES[14] == issue-acceptance (the loop's last gate, #2368)" \
+    "issue-acceptance" "${_TPL_STAGES[14]}"
 
 # ─── SPEC-13: design is at index 3; design-gate at 5 ─────────────────────────
 # CHANGE: design sits at index 3 (after hydrate, intake, plan); its verifier

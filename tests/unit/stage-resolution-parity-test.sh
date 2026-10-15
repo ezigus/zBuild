@@ -88,7 +88,6 @@ assert_eq "[SPEC-3] shape-floor → shape-floor"               "shape-floor"    
 # spec-acceptance plugin (id ≠ stage name); role-then-id resolves it correctly.
 assert_eq "[SPEC-3] acceptance-gate → spec-acceptance (role acceptance_gate)" "spec-acceptance" "$(_resolve acceptance-gate)"
 assert_eq "[SPEC-3] secret-scan → secret-scan"               "secret-scan"     "$(_resolve secret-scan)"
-assert_eq "[SPEC-3] gate-aggregator → gate-aggregator"       "gate-aggregator" "$(_resolve gate-aggregator)"
 assert_eq "[SPEC-3] build → build (role: builder)"           "build"           "$(_resolve build)"
 
 # ─── SPEC-4: unknown stage with no role and no id resolves to nothing ────────

@@ -1,9 +1,6 @@
 id: review-aggregator
 name: Review Aggregator (advisory merge-readiness)
 kind: agent
-# ADR-040 §5: convergence marker. `advisory` = NEVER blocks convergence; must
-# NOT appear on a must-pass / exit_when path.
-convergence: advisory
 # #1986: this stage AGGREGATES the advisory stages in its flow — the advisory lenses it already merges into one merge-readiness report.
 # The engine therefore ships only this aggregate downstream and
 # suppresses those members' own summaries, so a prompt never carries

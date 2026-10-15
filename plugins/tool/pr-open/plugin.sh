@@ -139,19 +139,18 @@ _pr_open_run_inner() {
     # and nowhere else. lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
     # dispatched stage — pr-delivery, which sources this plugin, included — so
     # the index names the caller's inputs (review_report, plan, test_results).
-    local advisory_report="" plan_json="" test_results_json="" gate_result=""
+    local advisory_report="" plan_json="" test_results_json=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         advisory_report="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
         plan_json="$(jq -r '.inputs.plan // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
         test_results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        gate_result="$(jq -r '.inputs.gate_aggregator_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
 
     # #1799 (ADR-019 fall-through): a run whose work did not settle still opens
     # its PR, as a draft, saying why at the top (lib/unsettled.sh). Line 1 of the
     # answer is the short reason; the rest is the description's warning block.
     local _unsettled _draft_reason="" _unsettled_block="" _forced_draft=false
-    _unsettled="$(_pr_open_unsettled "$state_file" "$gate_result")"
+    _unsettled="$(_pr_open_unsettled "$state_file")"
     if [[ -n "$_unsettled" ]]; then
         _draft_reason="${_unsettled%%$'\n'*}"
         _unsettled_block="${_unsettled#*$'\n'}"

@@ -366,9 +366,6 @@ _inputs_damaged() {
 
 # ─── _summaries_stage_summary_path <stage> <plugins_root> <state_dir> ────────
 # The resolved path of the ONE output <stage> marks `summary: true`, or empty.
-# Only a mechanical (`convergence: gate`) stage contributes: whether an advisory
-# LLM stage's output may reach the build loop is #1898's open decision, and
-# auto-collection must not answer it by accident (ADR-040 §4).
 _summaries_stage_summary_path() {
     local stage="$1" plugins_root="$2" state_dir="$3"
     local manifest rec out_id

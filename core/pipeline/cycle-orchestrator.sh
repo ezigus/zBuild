@@ -582,6 +582,23 @@ _cycle_check_until() {
     return $_rc
 }
 
+# ─── _cycle_write_round_summary <state_file> <iter> <blob> (#2368) ──────────
+# The loop's summary of what happened this round: every member, its outcome and
+# its one-line reason, in artifacts/<loop>-summary.md. Rewritten each round, so
+# it always says what the latest round did. Fail-open.
+_cycle_write_round_summary() {
+    local art; art="$(dirname "$1")/artifacts"
+    local cid="${_CYCLE_TRAP_CYCLE_ID:-}" m line body=""
+    [[ -n "$cid" ]] || return 0
+    for m in "${_CYCLE_STAGES[@]}"; do
+        line="$(jq -r --arg s "$m" '.[$s] // empty | "- \($s): \(.verdict // "missing")\(if (.reason // "") != "" then " — " + (.reason | gsub("[\r\n]+"; " ")) else "" end)"' <<< "$3" 2>/dev/null)"
+        body+="${line:-- $m: missing}"$'\n'
+    done
+    mkdir -p "$art" 2>/dev/null || true
+    printf '## %s — round %s\n\n%s' "$cid" "$2" "$body" > "$art/${cid//[^A-Za-z0-9_.-]/_}-summary.md" 2>/dev/null || true
+    return 0
+}
+
 # ─── _cycle_stash_predicate — record last predicate eval for OUTPUT banner ───
 # #833: the cycle OUTPUT banner restates the most-recently evaluated
 # termination predicate. Both _cycle_check_until and _cycle_check_abort_when
@@ -701,9 +718,8 @@ _cycle_reported_changed_files() {
 #   code-change PROGRESS (lines_added+lines_removed this iter) − DEFECTS (fc)
 #     → SCORE. A zero-diff iter explicitly reads "no progress" (distinct from a
 #   regression).
-# #1241: the optional <state_dir> also plumbs the gate-aggregator rollup so the
-# banner names WHICH gate blocked (not just "NOT MATCHED (got=fail)"); omitted →
-# no failed-gates line. Pure/read-only; no errexit hazard.
+# #1241: the optional <state_dir> lets the banner name what blocked (not just
+# "NOT MATCHED (got=fail)"); omitted → no failed-gates line. Pure/read-only; no errexit hazard.
 _cycle_render_predicate_result() {
     local iter="$1"
     local state_dir="${2:-}"
@@ -735,10 +751,9 @@ _cycle_render_predicate_result() {
         "$kind" "$stage" "$field" "$op" "$expected" "$matched_str" \
         "$health_line"
     # #1241: on a NOT-MATCHED terminating iter, name the failing gate(s) + reason
-    # from the gate-aggregator rollup so the operator sees the cause. A pass
+    # so the operator sees the cause. A pass
     # (MATCHED) is never annotated with failures. Best-effort/read-only.
-    # #2189: what the cycle's own exit_when stage reported this iteration — not
-    # gate-aggregator-result.json by path.
+    # #2189: what the cycle's own exit_when stage reported this iteration.
     local _u_stage="${_CYCLE_LAST_PREDICATE_STAGE:-${_CYCLE_UNTIL_STAGE:-}}"
     if [[ "$match" != "true" && -n "$state_dir" && -n "$_u_stage" ]]; then
         local _failed _reason
@@ -1759,8 +1774,9 @@ _cycle_iter_dispatch() {
         fi
         blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
             --arg d "${_CYCLE_DISPATCH_DISPOSITION:-}" --arg k "${_CYCLE_DISPATCH_DATA_KIND:-}" \
+            --arg r "${_CYCLE_DISPATCH_REASON:-}" \
             --argjson rp "$(jq -c 'if type == "object" then . else {} end' <<< "${_CYCLE_DISPATCH_REPORT:-{\}}" 2>/dev/null || printf '{}')" \
-            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, report:$rp}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, reason:$r, report:$rp}}' <<< "$blob" 2>/dev/null)" || blob="{}"
         # #2183: a member reported that it re-checked a finding and it did not
         # reproduce. Captured HERE, right after the dispatch that wrote it: the
         # reuse decision this feeds is at the NEXT iteration, by which time the
@@ -1807,6 +1823,7 @@ _cycle_iter_dispatch() {
             _cycle_emit "cycle.member.blocking_failure" \
                 "iter=$iter" "stage=$s" "rc=$rc" "reason=${_halt_why:-blocking_member}"
             _CYCLE_LAST_TERMINATED_REASON="${_halt_why:-blocking_member_failure}"
+            _cycle_write_round_summary "$state_file" "$iter" "$blob"
             _CYCLE_LAST_VERDICTS_BLOB="$blob"
             _CYCLE_LAST_FAILURE_COUNT="$fail"
             [[ $_had_e -eq 1 ]] && set -e
@@ -1889,6 +1906,7 @@ _cycle_iter_dispatch() {
     else
         unset ZBUILD_CURRENT_STAGE
     fi
+    _cycle_write_round_summary "$state_file" "$iter" "$blob"
     _CYCLE_LAST_VERDICTS_BLOB="$blob"
     _CYCLE_LAST_FAILURE_COUNT="$fail"
     # #511 Pin 10 / ADR-047 §4: failure_count fidelity. The orchestrator's
@@ -1958,8 +1976,7 @@ _cycle_member_halt_reason() {
 #   absent      → NON-terminal (fail-safe: only an EXPLICIT terminal halts, so a
 #                 disposition-unaware plugin never hard-fails the pipeline).
 # Member→manifest→artifact resolution reuses the SHARED roster mechanism
-# (manifest_graph_resolve_member / manifest_graph_result_filename) — identical to
-# the gate-aggregator. jq absence / missing artifact / parse failure on a member
+# (manifest_graph_resolve_member / manifest_graph_result_filename). jq absence / missing artifact / parse failure on a member
 # is skipped (never falsely blocks). rc 1 when no member is terminal.
 # #1220: on a terminal member, exposes its id and its GENERIC human `reason`
 # string via globals so the caller can surface a specific operator message
@@ -2327,7 +2344,7 @@ _cycle_orchestrator_run_body() {
         # RESTING POINT (LOOP_COMPLETE, or a legitimate empty-diff stall). A build
         # that did NOT finish (router_timeout / dispatch error → verdict
         # did_not_finish) is mid-flight: even if a stale/partial tree spuriously
-        # satisfies the gate-aggregator, the iteration must NOT converge. This is
+        # satisfies the loop's exit rule, the iteration must NOT converge. This is
         # NON-FATAL — the cycle iterates (or, at exhaustion, the by-severity
         # cascade routes passing→review / failing→failed). A clean empty_diff
         # stall (nothing-to-do via LOOP_COMPLETE) is a resting point and is NOT
@@ -2608,7 +2625,7 @@ _cycle_orchestrator_run_body() {
             local _cycle_out_body
             # #1243/#1241: plumb state_dir so the banner can compute the
             # multi-axis health score (artifacts/build-summary.json) and name
-            # the failing gate(s) (artifacts/gate-aggregator-result.json).
+            # the failing gate(s).
             _cycle_out_body="$(_cycle_render_predicate_result "$iter" "$state_dir")"
             # Suppress stdout only (stage_io_end prints nothing useful on fd 1);
             # do NOT redirect fd 2 — a `2>&1` here would swallow the OUTPUT

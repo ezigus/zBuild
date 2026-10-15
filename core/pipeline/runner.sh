@@ -1701,6 +1701,9 @@ _runner_rearm_traps() {
 }
 
 main() {
+    # #2368: the loops' word is this run's to give; one left in the environment
+    # (a nested run, a stale CI variable) must never reach a stage.
+    unset ZBUILD_RUN_LOOPS_PASSED
     local issue="" goal="" dry_run=false template="simple"
     local resume_mode=false from_stage="" no_resume=false force=false
     # #963: self-host mode — redirect read-only contract-grammar libs to a
@@ -3370,6 +3373,14 @@ main() {
                         esac
                         warn "$(_runner_unconverged_msg "$_cyc_id" "$_rc" "$_CYCLE_LAST_TERMINATED_REASON" "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX")"
                     fi
+                    # #2368: every stage is told whether every loop that ran
+                    # passed — "yes" only then; unset until a loop has run, so a
+                    # stage that acts on it (merge, deploy) fails closed.
+                    if [[ "$_RUNNER_CYCLE_UNCONVERGED" -eq 1 ]]; then
+                        export ZBUILD_RUN_LOOPS_PASSED=no
+                    else
+                        export ZBUILD_RUN_LOOPS_PASSED=yes
+                    fi
                     ;;
                 parallel:*)
                     # ADR-039 (#1131): a parallel stage group occupies ONE
@@ -3585,44 +3596,10 @@ main() {
         # aggregator now honors per-cycle on_max semantics + downstream
         # success. The cycle.unconverged event still fires for forensics.
         #
-        # Determine downstream success. Two paths:
-        #  - No unconverged: treat as success (preserves pre-#796 behavior
-        #    where a converged pipeline is always pipeline=complete).
-        #  - Unconverged with on_max=continue: the run is rescued to success
-        #    ONLY when the unconverged cycle's own convergence-decision stage
-        #    (its `exit_when` target — the stage-agnostic analog of the old
-        #    single `review` stage this rescue was written for) emitted an
-        #    explicit merge-APPROVAL verdict. #1298 (EPIC #1277): the target is
-        #    derived from the cycle's declared exit_when (_TPL_CYCLE_UNTIL_STAGE),
-        #    naming no stage; its verdict is read via the ADR-047 §3 manifest
-        #    verdict channel (runner_read_stage_verdict_raw over the target's
-        #    resolved manifest). Only `approve` rescues — a merge-readiness
-        #    approval that arrived without formal convergence (#796's intent).
-        #    A mechanical `pass` does NOT rescue: an unconverged cycle by
-        #    definition never satisfied its exit_when at check time, so a bare
-        #    gate `pass` is not a late merge-approval. Absent/other verdict →
-        #    not rescued (safe default; mirrors the pre-#979 absent-artifact case).
+        # #2368: an unconverged loop is a run that did not pass. The `approve`
+        # rescue is gone — no stage can write `approve` since #2366.
         local _downstream_success=1
-        if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]]; then
-            _downstream_success=0
-            local _uc_id="$_RUNNER_CYCLE_UNCONVERGED_ID"
-            local _uc_until_var="_TPL_CYCLE_UNTIL_STAGE_${_uc_id//-/_}"
-            local _uc_until="${!_uc_until_var:-}"
-            if [[ -n "$_uc_until" ]]; then
-                local _uc_plugin_dir _uc_manifest _uc_verdict
-                _uc_plugin_dir="$(resolve_stage_plugin "$_uc_until" "$plugins_root" 2>/dev/null || true)"
-                # Guard the empty-resolution case: an unresolved target would make
-                # _uc_manifest a bare "/manifest.yaml" (filesystem root) and mask
-                # the failure. Only read the verdict when the target resolved to a
-                # real manifest file; otherwise no-rescue (→ failed), the safe default.
-                if [[ -n "$_uc_plugin_dir" && -f "$_uc_plugin_dir/manifest.yaml" ]]; then
-                    _uc_manifest="$_uc_plugin_dir/manifest.yaml"
-                    _uc_verdict="$(runner_read_stage_verdict_raw "$state_dir" "$_uc_manifest" "$_uc_until" 0 2>/dev/null || true)"
-                    # Only an explicit merge-approval rescues (not a mechanical pass).
-                    [[ "$_uc_verdict" == "approve" ]] && _downstream_success=1
-                fi
-            fi
-        fi
+        [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]] && _downstream_success=0
 
         local _final_status=""
         _runner_compute_final_status \

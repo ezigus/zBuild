@@ -89,19 +89,19 @@ design_verify_cycle:
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 build_test_cycle:
   type: cycle
-  description: Build, test, and run the mechanical gates until gate-aggregator passes
+  description: Build, test, and run the mechanical gates until every one passes
   flow:
     - build
     - test
     - shape-floor
     - acceptance-gate
     - secret-scan
-    - gate-aggregator
   exit_when:
-    stage: gate-aggregator
-    field: verdict
-    op: eq
-    value: pass
+    all:
+      - { stage: test, field: verdict, op: eq, value: pass }
+      - { stage: shape-floor, field: verdict, op: eq, value: pass }
+      - { stage: acceptance-gate, field: verdict, op: eq, value: pass }
+      - { stage: secret-scan, field: verdict, op: eq, value: pass }
   max_iterations: 3
   on_max: continue
 
@@ -209,14 +209,6 @@ secret-scan:
     destinations: [file, stdout]
     tail_lines: 200
 
-# ─── gate-aggregator (leaf, cycle member) ────────────────────────────────────
-gate-aggregator:
-  gate: auto
-  roles: [gate_aggregator]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-
 # ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
 review_lenses:
   type: map
@@ -266,7 +258,7 @@ pr:
 
 # ─── deploy (leaf) ───────────────────────────────────────────────────────────
 # ADR-018 Pattern 1 (one-shot): guard gate verdict → delegate to deploy-release tool.
-# T2 agent (kind:agent); no LLM call. Fail-closed on gate-aggregator verdict.
+# T2 agent (kind:agent); no LLM call. Fail-closed: deploys only when every loop passed.
 deploy:
   gate: auto
   roles: [deploy_agent]

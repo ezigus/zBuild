@@ -200,14 +200,10 @@ fi
 # container semantic no longer exists, so T6 was removed with the lattice.
 
 # ─── T6 (#1757): a MIXED gate failure reaches build across the real seam ─────
-# Unit coverage pins the aggregator's two payloads; this walks the whole chain
-# the #1831 run walked and found broken end-to-end: real gate_aggregator_run →
-# real _cycle_apply_feedback (manifest-driven, gate-aggregator:gate_feedback →
-# build:gate_feedback) → real _build_read_prior_gate. Before #1757 the chain
-# produced an EMPTY body whenever any gate declared a fault, and build
-# was handed a prompt with no failure section at all.
-# shellcheck disable=SC1090
-source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
+# This walks the chain the #1831 run walked and found broken end-to-end: each
+# failing gate's own detail on disk → the prompt build gets. Before #1757 it
+# produced an EMPTY body whenever any gate declared a fault. (#2368: the
+# gate-aggregator hop is retired; each gate publishes its own detail.)
 
 T6_STATE_DIR="$TEST_TEMP_DIR/t6-state"
 T6_ART_DIR="$T6_STATE_DIR/artifacts"
@@ -226,15 +222,6 @@ printf '{"severity":"recoverable","failures":["tautology:SPEC-1"]}\n' > "$T6_ART
 stage_result_add "$T6_ART_DIR/acceptance-gate-result.json" fail "tautology"
 printf '{"test_output":"FAIL tests/unit/sigpipe-antipattern-guard-test.sh"}\n' > "$T6_ART_DIR/test-results.json"
 stage_result_add "$T6_ART_DIR/test-results.json" fail "1 test failed"
-
-gate_aggregator_run "gate-aggregator" "$T6_STATE_DIR/state.json" >/dev/null 2>&1 || true
-
-assert_json_key "T6: mixed failure set still leaves verdict=fail" \
-    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.outcome' "fail"
-assert_eq "T6: and no fault is rolled up (#2271)" "" \
-    "$(jq -r '.fault // ""' "$T6_ART_DIR/gate-aggregator-result.json")"
-assert_file_not_exists "T6: the aggregator renders no payload of its own" \
-    "$T6_ART_DIR/gate-feedback.md"
 
 # #1988: the last hop is the engine's summary collector reading each GATE's own
 # detail, not the aggregator's rendering. Re-pointed rather than deleted: this is

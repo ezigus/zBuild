@@ -14,8 +14,7 @@
 #                    admitted at pre-flight; no GATE_REFERENCE violation exists
 #   SPEC-3 [guard] : a mechanical gate is admitted as before
 #   SPEC-5 [guard] : an ADVISORY model stage is admitted as before
-#   SPEC-6 [guard] : the aggregator wiring is still checked — a cycle exiting
-#                    on an advisory member is refused (CYCLE_AGG_TYPE)
+#   SPEC-6 retired (#2368): the typed-aggregator preflight is gone
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,14 +100,6 @@ export _TPL_CYCLE_STAGES_c1="iso-producer,iso-mech"
 export _TPL_CYCLE_UNTIL_STAGE_c1="iso-mech"
 _run "$(printf 'iso-producer\niso-advisory\niso-mech\n')"
 assert_eq "[SPEC-5][guard] an ADVISORY model stage is admitted" "0" "$RC"
-
-# ── SPEC-6: the aggregator wiring is still checked ─────────────────────────
-_reset
-export _TPL_CYCLE_STAGES_c1="iso-producer,iso-advisory"
-export _TPL_CYCLE_UNTIL_STAGE_c1="iso-advisory"
-_run "$(printf 'iso-producer\niso-advisory\n')"
-assert_eq "[SPEC-6][guard] a cycle exiting on an advisory member is refused" "1" "$RC"
-assert_contains "[SPEC-6][guard] as CYCLE_AGG_TYPE" "$OUT" "CYCLE_AGG_TYPE"
 
 print_test_results
 exit $((FAIL > 0))

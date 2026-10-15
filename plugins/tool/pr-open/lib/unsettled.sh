@@ -14,8 +14,6 @@
 #     some other way before passing (in_progress is what a plateau or divergence leaves).
 #     A loop nested in an outer one restarts its count each outer round, so its
 #     numbers are its last run's.
-#   * the final gate roll-up, gate_aggregator_result — a declared input — when
-#     its verdict is not `pass`.
 # The run's own `status` is not read: the engine marks a run failed only on the
 # paths that stop it, and the pr stage never runs after those.
 
@@ -34,19 +32,14 @@ _pr_open_forced_draft_marker() {
     printf '%s' '<!-- zbuild: draft because the run did not settle (#1799) -->'
 }
 
-# _pr_open_unsettled <state_file> <gate_aggregator_result path, may be empty>
-# The gate roll-up writes its own reason as "gates failed: <the list>", which
-# would only repeat the list; a reason is shown only when it says more.
+# _pr_open_unsettled <state_file>
 # Prints nothing when the work settled. Otherwise line 1 is a one-line reason
 # (for the result and the event) and the rest is the description's warning
-# block. One jq for both files (ADR-065).
+# block. One jq (ADR-065).
 _pr_open_unsettled() {
-    local state_file="$1" gate_path="${2:-}" gates='null'
+    local state_file="$1"
     [[ -f "$state_file" ]] || return 0
-    if [[ -n "$gate_path" && -s "$gate_path" ]] && jq -e 'type == "object"' "$gate_path" >/dev/null 2>&1; then
-        gates="$(cat "$gate_path")"
-    fi
-    jq -r --argjson g "$gates" "${_PR_OPEN_FINDING_JQ_DEFS}"'
+    jq -r "${_PR_OPEN_FINDING_JQ_DEFS}"'
         def why: if . == "max_iterations" then "it ran out of rounds"
                  else "it ended before it passed" end;
         def num: if type == "number" then tostring else "?" end;
@@ -54,18 +47,10 @@ _pr_open_unsettled() {
           | select((.value.status // "") != "complete")
           | { id: (.key | esc), round: (.value.current_iter | num),
               limit: (.value.max_iterations | num), why: ((.value.status // "") | why) } ] as $loops
-        | ( if $g != null and (($g.outcome // "pass") != "pass")
-            then { gates: (($g.data.failed // $g.failed // []) | map(esc) | join(", ")),
-                   reason: (($g.reason // "") | if startswith("gates failed:") then "" else esc end) }
-            else null end ) as $gate
-        | if ($loops | length) == 0 and $gate == null then empty else
-            ( [ ($loops[] | "\(.id) stopped after round \(.round) of \(.limit)"),
-                (if $gate then "gates failed: \($gate.gates)" else empty end) ] | join("; ") ),
+        | if ($loops | length) == 0 then empty else
+            ( [ $loops[] | "\(.id) stopped after round \(.round) of \(.limit)" ] | join("; ") ),
             "> ⚠️ **This change did not settle, so the PR is a draft.**",
-            ( $loops[] | "> - `\(.id)` stopped after round \(.round) of \(.limit) without passing: \(.why)." ),
-            ( if $gate then "> - The final gate check did not pass: \($gate.gates)"
-                  + (if $gate.reason != "" then " (\($gate.reason))" else "" end) + "."
-              else empty end )
+            ( $loops[] | "> - `\(.id)` stopped after round \(.round) of \(.limit) without passing: \(.why)." )
           end' "$state_file" 2>/dev/null || true
 }
 

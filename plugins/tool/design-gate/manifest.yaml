@@ -1,11 +1,6 @@
 id: design-gate
 name: Design Gate Stage
 kind: tool
-# ADR-046 §/ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate.
-# The design_verify_cycle's exit_when binds this member directly (design-gate is
-# both a cycle member AND convergence:gate — the typed-aggregator preflight
-# rule (A) is satisfied without a separate aggregator; there is a single gate).
-convergence: gate
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 tool stage (ADR-046, ADR-037 §1/§3, EPIC #1216

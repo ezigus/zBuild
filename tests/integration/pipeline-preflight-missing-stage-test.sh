@@ -3,9 +3,8 @@
 # ADR-020 (#496) keystone test.
 #
 # Invokes a real subprocess against a template that breaks the contract: its
-# cycle's exit_when names review-aggregator, a convergence:advisory aggregator,
-# where a cycle requires a convergence:gate one (ADR-040 §5). The pre-flight
-# validator MUST refuse it (CYCLE_AGG_TYPE) before any stage runs. (A stage
+# `no-summary` stage's plugin declares no summary output (ADR-055 §9). The
+# pre-flight validator MUST refuse it (SUMMARY_MISSING) before any stage runs. (A stage
 # missing from the flow — this test's original case — is no longer a violation:
 # stages declare no inputs, ADR-055 §1, amended 2026-10-12. The filename is
 # kept for history.)
@@ -14,7 +13,7 @@
 #   - rc=1 from the runner (validator returns 1, runner propagates it;
 #     #1850, ADR-054 §4 — it was 2; status=preflight_failed says why)
 #   - intake's `plugin.run.start` event is NOT emitted (halts BEFORE any stage)
-#   - structured error on stderr names CYCLE_AGG_TYPE and review-aggregator
+#   - structured error on stderr names SUMMARY_MISSING and no-summary
 #   - `pipeline.preflight.fail` event in events.jsonl
 #
 # Assertions (warn mode, default):
@@ -48,7 +47,14 @@ _ZB_GOAL="$(zb_test_goal preflight-keystone)"
 # overlay from $PWD; nothing lands in the tracked config/templates/, and the temp
 # repo is reaped by the master trap (no source-tree leak on early exit).
 OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
-install_template_overlay "$OVERLAY_REPO" broken-contract-aggregator
+install_template_overlay "$OVERLAY_REPO" broken-contract-summary
+# The shipped plugins plus one, `no-summary`, that declares no summary output —
+# the contract violation the fixture template's stage triggers (#2368). The
+# copies source ../../../{core,scripts}, so those sit beside them as links.
+mkdir -p "$TEST_TEMP_DIR/plugins"; cp -R "$REPO_ROOT/plugins/." "$TEST_TEMP_DIR/plugins/"
+for _d in core scripts config; do ln -s "$REPO_ROOT/$_d" "$TEST_TEMP_DIR/$_d"; done
+mock_plugin_factory "no-summary" "tool" 0 "" "no_summary" >/dev/null
+export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
 # Shared environment: route state into the temp dir so the run is hermetic.
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
@@ -73,7 +79,7 @@ set +e
 source "$REPO_ROOT/core/pipeline/runner.sh"
 set +e
 ZBUILD_CONTRACT_VALIDATOR="\${ZBUILD_CONTRACT_VALIDATOR:-enforce}" \
-    main --goal "$_ZB_GOAL" --template broken-contract-aggregator
+    main --goal "$_ZB_GOAL" --template broken-contract-summary
 _rc=\$?
 set -e
 echo "EXIT_CODE=\$_rc"
@@ -101,11 +107,11 @@ else
         "no 'Pipeline cannot start' in stderr; err-tail: $(tail -5 "$err1" 2>/dev/null)"
 fi
 
-if grep -qE "CYCLE_AGG_TYPE \(id=review-aggregator\)" "$err1" 2>/dev/null; then
+if grep -qE "no-summary: SUMMARY_MISSING" "$err1" 2>/dev/null; then
     assert_pass "enforce: stderr names the violation and the stage"
 else
     assert_fail "enforce: stderr names the violation and the stage" \
-        "no 'CYCLE_AGG_TYPE (id=review-aggregator)' in stderr"
+        "no 'no-summary: SUMMARY_MISSING' in stderr"
 fi
 
 # Pre-flight halts BEFORE intake runs — no plugin.run.start event for intake.

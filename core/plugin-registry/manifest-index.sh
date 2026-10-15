@@ -19,7 +19,7 @@
 _ZBUILD_MANIFEST_INDEX_LOADED=1
 
 # The 12 prewarm keys plus the four the census found read from `$( )` outside
-# the prewarm set (discovery.sh provides.alias, contract-validator.sh convergence,
+# the prewarm set (discovery.sh provides.alias,
 # lifecycle.sh capabilities.empty_diff_legitimate, tier-resolve.sh
 # config.tier_default). One-level nesting only, like yaml_get.
 _ZBUILD_MIDX_KEYS=(
@@ -27,7 +27,7 @@ _ZBUILD_MIDX_KEYS=(
     persona.role persona.perspective
     hooks.run hooks.cleanup
     provides.role provides.result_contract provides.alias
-    convergence capabilities.empty_diff_legitimate config.tier_default
+    capabilities.empty_diff_legitimate config.tier_default
     capabilities.writes_repository capabilities.iteration_aware
 )
 # -g: this file can be sourced from inside a function (see manifest-validation.sh).

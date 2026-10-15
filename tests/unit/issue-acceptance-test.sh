@@ -19,8 +19,8 @@
 #   SPEC-6 [change]: an unparseable answer is `unusable` (the engine retries it),
 #                    never a pass
 #   SPEC-7 [change]: inputs come from the engine's index only — no path in code
-#   SPEC-8 [change]: simple.yaml runs it in build_test_cycle before the
-#                    gate-aggregator, and the aggregator's roster includes it
+#   SPEC-8 [change]: simple.yaml runs it in build_test_cycle after the tests,
+#                    and the loop's exit_when names it (#2368)
 #   SPEC-9 [change]: the prompt judges what the tests must catch too, and asks
 #                    whether the tests would catch a broken change (#2303)
 set -uo pipefail
@@ -141,25 +141,15 @@ print_test_section "SPEC-8: wired into build_test_cycle as a gate"
 _tpl="$REPO_ROOT/config/templates/simple.yaml"
 _flow="$(awk '/^build_test_cycle:/{f=1} f&&/^  flow:/{g=1;next} g&&/^  [a-z_]+:/{exit} g&&/^    - /{print $2}' "$_tpl" | paste -sd, -)"
 _ia_pos="$(tr ',' '\n' <<< "$_flow" | grep -n '^issue-acceptance$' | cut -d: -f1)"
-_ga_pos="$(tr ',' '\n' <<< "$_flow" | grep -n '^gate-aggregator$' | cut -d: -f1)"
 _t_pos="$(tr ',' '\n' <<< "$_flow" | grep -n '^test$' | cut -d: -f1)"
-if [[ -n "$_ia_pos" && -n "$_ga_pos" && "$_ia_pos" -lt "$_ga_pos" && "$_ia_pos" -gt "$_t_pos" ]]; then
-    assert_pass "[SPEC-8] issue-acceptance runs after test and before gate-aggregator"
+if [[ -n "$_ia_pos" && "$_ia_pos" -gt "$_t_pos" ]]; then
+    assert_pass "[SPEC-8] issue-acceptance runs after test"
 else
-    assert_fail "[SPEC-8] issue-acceptance runs after test and before gate-aggregator" "flow: $_flow"
+    assert_fail "[SPEC-8] issue-acceptance runs after test" "flow: $_flow"
 fi
-assert_eq "[SPEC-8] the manifest marks it a convergence gate" "gate" \
-    "$(awk '/^convergence:/{print $2; exit}' "$PLUGIN_DIR/manifest.yaml")"
-# The aggregator's roster is built from the cycle's members — prove it picks this one up.
-(
-    # shellcheck source=../../plugins/tool/gate-aggregator/plugin.sh
-    source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh" 2>/dev/null
-    export ZBUILD_CYCLE_ID="build_test_cycle" _TPL_CYCLE_STAGES_build_test_cycle="$_flow"
-    _ga_build_roster "$REPO_ROOT/plugins"
-    printf '%s\n' "${_GA_ROSTER[@]}"
-) > "$TEST_TEMP_DIR/roster.txt" 2>/dev/null
-assert_contains "[SPEC-8] gate-aggregator's must-pass roster includes it" \
-    "$(cat "$TEST_TEMP_DIR/roster.txt")" "issue-acceptance:issue-acceptance-result.json"
+# #2368: the loop's exit_when names it, so it must pass.
+assert_contains "[SPEC-8] build_test_cycle must pass it" \
+    "$(awk '/^build_test_cycle:/{f=1} f&&/exit_when:/{e=1} e&&/max_iterations:/{exit} e' "$_tpl")" "stage: issue-acceptance,"
 
 # #2303: on #2035 this stage passed PR #2298 while the issue's "the tests must
 # catch X" requirements were unmet, because its prompt said a requirement about

@@ -6,8 +6,7 @@
 # A stage that moves to contract 3 writes `outcome`, not `verdict`, so each of
 # those readers must read the outcome first or it misreads the moved stage.
 #
-#   R1 [change] gate-aggregator reads a member's contract-3 pass and fail
-#   R2 [change] gate-aggregator counts a member that did not finish as failed
+#   R1/R2 retired with gate-aggregator (#2368)
 #   R3 [guard]  no stage reads `.verdict` from a result without `.outcome`
 set -uo pipefail
 
@@ -21,23 +20,6 @@ print_test_header "every reader of a result sees a contract-3 outcome (#2366)"
 setup_test_env "result-outcome-readers"
 # shellcheck source=../../scripts/lib/stage-result.sh
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
-# shellcheck source=../../plugins/tool/gate-aggregator/plugin.sh
-source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh" >/dev/null 2>&1
-
-R="$TEST_TEMP_DIR/member-result.json"
-
-print_test_section "R1/R2: gate-aggregator"
-stage_result_write "$R" pass "ok" >/dev/null 2>&1
-assert_eq "[R1] a contract-3 pass satisfies the gate" "pass" "$(_ga_read_gate_verdict "$R" 2>/dev/null)"
-stage_result_write "$R" fail "2 tests fail" >/dev/null 2>&1
-assert_eq "[R1] a contract-3 fail blocks" "fail" "$(_ga_read_gate_verdict "$R" 2>/dev/null)"
-stage_result_write "$R" timed_out "the call timed out" >/dev/null 2>&1
-_r2="$(_ga_read_gate_verdict "$R" 2>/dev/null)"
-if [[ "$_r2" == pass || "$_r2" == skip || "$_r2" == advisory ]]; then
-    assert_fail "[R2] a member that did not finish does not satisfy the gate" "got $_r2"
-else
-    assert_pass "[R2] a member that did not finish does not satisfy the gate"
-fi
 
 print_test_section "R3: no reader of .verdict without .outcome"
 # A stage model's own reply may carry a `verdict` key (monitor's report); that

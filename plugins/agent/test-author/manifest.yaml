@@ -1,10 +1,6 @@
 id: test-author
 name: Test Author
 kind: agent
-# ADR-040 §5: advisory — it makes a model call, so it may not sit on the
-# convergence path. Its work is verified mechanically downstream (the test
-# stage runs the assertions; assertion-integrity guards them).
-convergence: advisory
 version: 0.1.0
 description: |
   Authors the acceptance assertions from the design's SPEC sentences, in the

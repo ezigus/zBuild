@@ -169,7 +169,7 @@ assert_eq "R3: WIRING: none → gate rc=0" "0" "$RC"
 assert_eq "R3: WIRING: none → outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 assert_event_emitted "R3: wiring_exempt event emitted" "$EVENTS" "acceptance.gate.wiring_exempt"
 
-# ── R4: WIRING block with ONLY unsafe (traversal/absolute) paths → FAIL CLOSED ─
+# ── R4: WIRING block with ONLY unsafe (traversal/absolute) paths → recorded ───
 # A declared WIRING section whose every target is rejected by the path-traversal
 # guard must NOT silently skip Level-3 (that would let an author bypass the gate).
 # Load-bearing setup (L1/L2 pass) so the run reaches Level-3.
@@ -206,8 +206,11 @@ tests/feature-test.sh
 EOF
 
 set +e; _run_gate "$REPO_R4"; set -e
-assert_eq "[SPEC-6] R4: only-unsafe WIRING → gate fails closed (rc=1)" "1" "$RC"
-assert_eq "[SPEC-6] R4: only-unsafe WIRING → outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
+# #2368: the class is reachability_error (advisory) — gate-aggregator already
+# let the loop pass on it; with the aggregator retired the gate says so itself:
+# outcome pass, rc 0, and the failure is still recorded (not silently skipped).
+assert_eq "[SPEC-6] R4: only-unsafe WIRING → rc=0 (advisory, as the loop treated it)" "0" "$RC"
+assert_eq "[SPEC-6] R4: only-unsafe WIRING → outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
 r4_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_contains "[SPEC-6] R4: failures records empty_wiring_targets" "$r4_failures" "reachability_error:empty_wiring_targets"
 

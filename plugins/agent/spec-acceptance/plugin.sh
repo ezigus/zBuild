@@ -422,6 +422,10 @@ acceptance_gate_run() {
         reason_msg="$(_ag_build_reason "${failures[@]}")"
         # #1752: a check that reported on nothing did not do its work.
         [[ " ${failures[*]} " == *" nothing_checked:"* ]] && disposition="broken"
+        # #2368: failures this gate could only not MEASURE (advisory) do not
+        # block the loop. gate-aggregator used to excuse them; it is retired,
+        # so the gate says so itself — pass, with the reason naming them.
+        [[ "$severity" == "advisory" ]] && verdict="pass"
     fi
     # ADR-054: reason is mandatory; a pass says what it verified. Kept apart
     # from reason_msg, which is the VIOLATION prose the operator summary leads

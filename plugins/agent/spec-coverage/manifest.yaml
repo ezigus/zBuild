@@ -6,7 +6,6 @@ kind: agent
 # is the ISSUE, and design cannot edit it — the only way to converge is to
 # actually cover it. `intake_goal` is produced by intake, outside this cycle,
 # which is what the load-time check requires.
-convergence: gate
 version: 0.1.0
 description: |
   Judges whether the design's acceptance block covers what the ISSUE asked for.

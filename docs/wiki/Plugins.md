@@ -25,7 +25,6 @@ One page per **leaf node** (plugin). Each is generated from its `manifest.yaml` 
 | [[plugins/coverage-gate]] | tool | coverage_gate |
 | [[plugins/deploy-release]] | tool | deploy_release_executor |
 | [[plugins/design-gate]] | tool | design_gate |
-| [[plugins/gate-aggregator]] | tool | gate_aggregator |
 | [[plugins/health-check]] | tool | health_check_executor |
 | [[plugins/lint-gate]] | tool | lint_gate |
 | [[plugins/memory-ruflo]] | tool | memory-backend |

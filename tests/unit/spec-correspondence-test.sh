@@ -127,8 +127,6 @@ assert_eq "[#2366] provides.result_contract: 3" "1" "$(grep -cE '^[[:space:]]+re
 assert_eq "[#2366] no valid_verdicts" "0" "$(grep -c 'valid_verdicts' "$_MAN" || true)"
 
 # ── SPEC-4: advisory, and not on any convergence path ──────────────────────
-assert_contains "[SPEC-4][guard] the manifest marks it advisory" \
-    "$(cat "$_MAN")" "convergence: advisory"
 assert_eq "[SPEC-4][guard] no exit_when in any template names it" \
     "0" "$(grep -rl 'spec-correspondence' "$REPO_ROOT/config/templates/" 2>/dev/null \
            | xargs -I{} grep -A4 'exit_when:' {} 2>/dev/null \

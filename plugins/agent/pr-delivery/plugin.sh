@@ -98,20 +98,17 @@ _pr_stage_run_inner() {
     local pr_result_out="$artifacts_dir/pr-result.json"
 
     # Resolve inputs from ZBUILD_STAGE_INPUTS (ADR-055 §1 — no hardcoded paths)
-    local _review_report="" _gate_result=""
+    local _review_report=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         _review_report="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        _gate_result="$(jq -r '.inputs.gate_aggregator_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
 
     local _policy="${_TPL_MERGE_POLICY:-auto_unless_flagged}"
 
-    # Read gate verdict early — needed by both the block guard and the
-    # auto_unless_flagged path below.
+    # #2368: the engine says whether every loop that ran passed; anything but
+    # "yes" is not a pass.
     local _gate_verdict_early=""
-    if [[ -n "$_gate_result" && -f "$_gate_result" ]]; then
-        _gate_verdict_early="$(jq -r '.outcome // empty' "$_gate_result" 2>/dev/null || true)"
-    fi
+    [[ "${ZBUILD_RUN_LOOPS_PASSED:-}" == "yes" ]] && _gate_verdict_early="pass"
 
     # ADR-040 §4 (#1844): the review is advisory and never blocks delivery. A
     # report that needs attention keeps auto_unless_flagged from MERGING (below);
