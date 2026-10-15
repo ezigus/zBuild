@@ -52,18 +52,24 @@ _sp_no_output() {
     return 1
 }
 
-# _sp_last_good_attempt <state_dir> <stage> <primary-basename> — the newest
-# archived attempt of <stage> whose primary result is not an error, i.e. the
-# last attempt that produced its output (core/plugin-registry/attempt-archive.sh
-# keeps a copy of every dispatch's outputs). Prints its directory; nothing when
-# there is none.
+# _sp_last_good_attempt <state_dir> <stage> <primary-basename> [<required-basenames>]
+# — the newest archived attempt of <stage> whose primary result is not an error
+# and that wrote every output the stage marks `required: true` (one basename per
+# line), i.e. the last attempt that produced its output
+# (core/plugin-registry/attempt-archive.sh keeps a copy of every dispatch's
+# outputs). Prints its directory; nothing when there is none.
 _sp_last_good_attempt() {
-    local base="$1/artifacts/attempts/${2//[^A-Za-z0-9_-]/_}" name="$3" d best="" content
+    local base="$1/artifacts/attempts/${2//[^A-Za-z0-9_-]/_}" name="$3" req="${4:-}" d best="" content r ok
     [[ -d "$base" && -n "$name" ]] || return 0
     while IFS= read -r d; do
         [[ -s "$d/$name" ]] || continue
         content="$(<"$d/$name")"
         _sp_no_output "$content" && continue
+        ok=1
+        while IFS= read -r r; do
+            [[ -z "$r" || -s "$d/$r" ]] || { ok=0; break; }
+        done <<< "$req"
+        (( ok )) || continue
         best="$d"
     done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name 'iter-*-attempt-*' 2>/dev/null \
                 | awk -F'iter-|-attempt-' '{ printf "%09d %09d %s\n", $(NF-1), $NF, $0 }' \
@@ -75,7 +81,7 @@ _sp_last_good_attempt() {
 # ─── Previous work ───────────────────────────────────────────────────────────
 # _sp_manifest_roles <manifest> <state_dir> — one line per output that plays a
 # role: "S<TAB>path" (summary: true), "E<TAB>path" (errors: true), "P<TAB>path"
-# (primary: true). Read once per manifest per run and kept under the run's
+# (primary: true), "R<TAB>path" (required: true). Read once per manifest per run and kept under the run's
 # runtime/ folder: the block is written at every dispatch, each dispatch is its
 # own subshell, and the fork budget (ADR-065) counts every read.
 _sp_manifest_roles() {
@@ -89,8 +95,9 @@ _sp_manifest_roles() {
                     if (summ) print "S\t" path
                     if (err)  print "E\t" path
                     if (prim) print "P\t" path
+                    if (req)  print "R\t" path
                 }
-                path = ""; summ = 0; err = 0; prim = 0
+                path = ""; summ = 0; err = 0; prim = 0; req = 0
             }
             /^outputs:[[:space:]]*$/ { inb = 1; next }
             inb && /^[a-zA-Z_]/ { flush(); inb = 0 }
@@ -101,6 +108,7 @@ _sp_manifest_roles() {
             inb && /^[[:space:]]+summary:[[:space:]]*true/ { summ = 1 }
             inb && /^[[:space:]]+errors:[[:space:]]*true/  { err = 1 }
             inb && /^[[:space:]]+primary:[[:space:]]*true/ { prim = 1 }
+            inb && /^[[:space:]]+required:[[:space:]]*true/ { req = 1 }
             END { flush() }' "$m" > "$c.$$" 2>/dev/null && mv -f "$c.$$" "$c" 2>/dev/null \
             || { rm -f "$c.$$" 2>/dev/null; return 0; }
     fi
@@ -154,7 +162,7 @@ _stage_block_previous_work() {
                         "$index" 2>/dev/null | LC_ALL=C sort)
     fi
 
-    local s manifest roles summ errp res notes verdict own body any=0 raw content
+    local s manifest roles summ errp res req notes verdict own body any=0 raw content
     for s in "${order[@]}"; do
         # Only a stage's own notes come back to it (ADR-067 §8); another
         # stage's notes are its working file, not its output.
@@ -164,7 +172,7 @@ _stage_block_previous_work() {
         [[ -n "${outs[$s]:-}" || -n "$notes" ]] || continue
         any=1
         manifest="$(_inputs_stage_manifest "$s" "$plugins_root" 2>/dev/null || true)"
-        summ=""; errp=""; res=""
+        summ=""; errp=""; res=""; req=""
         if [[ -n "$manifest" ]]; then
             roles="$(_sp_manifest_roles "$manifest" "$state_dir")"
             while IFS=$'\t' read -r k raw; do
@@ -172,6 +180,7 @@ _stage_block_previous_work() {
                     S) [[ -z "$summ" ]] && { summ="$(_inputs_output_paths "$s" "$raw" "$state_dir")"; summ="${summ%%$'\n'*}"; } ;;
                     E) [[ -z "$errp" ]] && errp="$(_verdict_resolve_path "$raw" "$state_dir")" ;;
                     P) [[ -z "$res" ]] && res="$(_verdict_resolve_path "$raw" "$state_dir")" ;;
+                    R) req+="${raw##*/}"$'\n' ;;
                 esac
             done <<< "$roles"
         fi
@@ -216,7 +225,7 @@ _stage_block_previous_work() {
         # output this stage did produce, from the attempt that wrote it.
         if [[ -n "$res" ]] && _sp_no_output "$content"; then
             local good f
-            good="$(_sp_last_good_attempt "$state_dir" "$s" "${res##*/}")"
+            good="$(_sp_last_good_attempt "$state_dir" "$s" "${res##*/}" "$req")"
             if [[ -n "$good" ]]; then
                 printf '\nIts last good output, from an earlier attempt:\n'
                 for f in "$good"/*; do
