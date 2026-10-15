@@ -13,15 +13,15 @@
 #           R-1, R-2, … in order by the engine; the text is kept as written. With
 #           no checkboxes, R-1 is the title and first paragraph. A goal run writes
 #           none (and leaves no stale list). Intake's manifest declares the list
-#           as an output; design, design-gate, spec-coverage and issue-acceptance
+#           as an output; design and issue-acceptance
 #           declare no inputs and read it by id from the index of every output.
 # Q2 [code] the parser splits ` covers: R-1 R-3` from a requirement's text,
 #           before or after the evidence, and acceptance_spec_covers lists the ids.
-# Q3 [code] design-gate fails a design that leaves an R uncovered, naming it and
+# Q3 [code] design's checks fail a design that leaves an R uncovered, naming it and
 #           its text in plain words; passes when every R is covered (a [done]
 #           SPEC counts); skips the check when there is no requirements.json.
 # Q4 [code] the design prompt shows the R list and asks for ` covers: ` on each SPEC.
-# Q5 [code] the spec-coverage prompt presents the R list to judge.
+# Q5 [code] design's coverage call presents the R list to judge (#2369).
 # Q6 [code] the issue-acceptance prompt presents the R list to judge.
 set -uo pipefail
 
@@ -103,7 +103,7 @@ assert_contains "[Q1] intake declares the requirements output" "$_out" '- id: re
 assert_contains "[Q1] at artifacts/requirements.json" "$_out" 'path: "${artifact_dir}/requirements.json"'
 # Declared inputs are retired (ADR-055 §1, amended 2026-10-12): each consumer
 # reads the list by its output id from the index of every stage's latest output.
-for _m in agent/design tool/design-gate agent/spec-coverage agent/issue-acceptance; do
+for _m in agent/design agent/issue-acceptance; do
     assert_eq "[Q1] $_m declares no inputs:" "" \
         "$(grep -E '^inputs:' "$REPO_ROOT/plugins/$_m/manifest.yaml" 2>/dev/null || true)"
     if grep -rqE 'inputs\.requirements|_input requirements' "$REPO_ROOT/plugins/$_m" --include='*.sh' --exclude-dir=tests; then
@@ -134,16 +134,15 @@ assert_eq "[Q2] covers after evidence: the evidence stops before covers" "script
 assert_eq "[Q2] covers after evidence: ids" "R-4" "$(acceptance_spec_covers "$_DM" SPEC-3)"
 assert_eq "[Q2] no covers part: no ids" "" "$(acceptance_spec_covers "$_DM" SPEC-4)"
 
-# ─── Q3: design-gate ─────────────────────────────────────────────────────────
-print_test_section "Q3: design-gate fails a requirement no SPEC covers"
-# shellcheck source=../../plugins/tool/design-gate/plugin.sh
-source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh"
+# ─── Q3: design's checks (#2369; were the design-gate stage) ─────────────────
+print_test_section "Q3: design's checks fail a requirement no SPEC covers"
+# shellcheck source=../../plugins/agent/design/lib/checks.sh
+source "$REPO_ROOT/plugins/agent/design/lib/checks.sh"
 _ROOT="$TEST_TEMP_DIR/repo"; mkdir -p "$_ROOT/scripts"
 printf 'one\ntwo\nthree\n' > "$_ROOT/scripts/x.sh"
 export ZBUILD_REPO_ROOT="$_ROOT"
 _q3() {   # _q3 <name> <covers-for-SPEC-1> <covers-for-SPEC-2> [no-req] [R-3 text as JSON]
     _S="$TEST_TEMP_DIR/q3-$1"; _A="$_S/artifacts"; mkdir -p "$_A"
-    printf '{}' > "$_S/pipeline-state.json"
     printf '%s\n' '# Design' '```scope' 'scripts/x.sh' '```' '```acceptance' \
         "SPEC-1[code]: the gate fails on a missing file$2" \
         "SPEC-2[done]: the loader reads the file$3 evidence: scripts/x.sh:2" \
@@ -151,10 +150,11 @@ _q3() {   # _q3 <name> <covers-for-SPEC-1> <covers-for-SPEC-2> [no-req] [R-3 tex
     [[ "${4:-}" == "no-req" ]] || printf '%s\n' '{"schema_version":1,"source":"checkboxes","requirements":[' \
         '{"id":"R-1","text":"fail on a missing file"},{"id":"R-2","text":"read the file"},' \
         "{\"id\":\"R-3\",\"text\":\"${5:-say which file is missing}\"}]}" > "$_A/requirements.json"
-    design_gate_run "design-gate" "$_S/pipeline-state.json" >/dev/null 2>&1
-    _V="$(jq -r '.outcome' "$_A/design-gate-result.json" 2>/dev/null || echo MISSING)"
-    _VIOL="$(jq -r '.data.violations[]' "$_A/design-gate-result.json" 2>/dev/null || true)"
-    _FB="$(cat "$_A/design-gate-feedback.md" 2>/dev/null || true)"
+    local _v
+    _design_checks "$_A/design.md" "$_ROOT" "$_A/requirements.json"
+    _V=pass; [[ ${#_DESIGN_VIOLATIONS[@]} -gt 0 ]] && _V=fail
+    _VIOL="$(printf '%s\n' "${_DESIGN_VIOLATIONS[@]}")"
+    _FB="$(for _v in "${_DESIGN_VIOLATIONS[@]}"; do _dck_plain "$_v"; printf '\n'; done)"
 }
 _q3 uncovered " covers: R-1" " covers: R-2"
 assert_eq "[Q3] a design that leaves R-3 uncovered fails" "fail" "$_V"
@@ -181,9 +181,11 @@ assert_eq "[Q3] with no requirements.json (a goal run) the check is skipped" "pa
 print_test_section "Q4: the design prompt shows the list"
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
+# #2369: design's coverage call is a model call too — stubbed here.
+route_to_model() { printf 'VERDICT: covered\nREASON: ok\n'; return 0; }
 route_to_model_loop() {
     local _bt='```'
-    printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[code]: x covers: R-1\nTESTFILES:\nSPEC-1: tests/t.sh\nWIRING: none\n%s\n' \
+    printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[code]: x covers: R-1 R-2\nTESTFILES:\nSPEC-1: tests/t.sh\nWIRING: none\n%s\n' \
         "$_bt" "$_bt" "$_bt" "$_bt" > "$_Q4_OUT"
     _ROUTE_LOOP_ITERATIONS=1; _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
     _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
@@ -204,21 +206,17 @@ assert_contains "[Q4] and R-2" "$_P4" "- R-2: name the missing file"
 assert_contains "[Q4] and asks each SPEC to say which it covers" "$_P4" "covers: R-1 R-2"
 assert_contains "[Q4] covers comes before any evidence" "$_P4" 'before any ` evidence: `'
 
-# ─── Q5: spec-coverage ───────────────────────────────────────────────────────
-print_test_section "Q5: spec-coverage judges the list"
-# shellcheck source=../../plugins/agent/spec-coverage/plugin.sh
-source "$REPO_ROOT/plugins/agent/spec-coverage/plugin.sh"
+# ─── Q5: design's coverage call (#2369; was the spec-coverage stage) ─────────
+print_test_section "Q5: design's coverage call judges the list"
 _PROMPT="$TEST_TEMP_DIR/prompt.txt"
 route_to_model() { printf '%s' "$2" > "$_PROMPT"; printf 'VERDICT: covered\nREASON: ok\n'; return 0; }
-resolve_tier() { printf 'T2'; }
-_S5="$TEST_TEMP_DIR/q5"; mkdir -p "$_S5/artifacts"; printf '{}' > "$_S5/pipeline-state.json"
-printf 'Make the gate fail. See SPEC-2 in the test file.\n' > "$_S5/intake.md"
+_S5="$TEST_TEMP_DIR/q5"; mkdir -p "$_S5/artifacts"
 printf '%s\n' '# Design' '```acceptance' 'SPEC-1[code]: the gate fails covers: R-1' 'TESTFILES:' 'SPEC-1: tests/t.sh' 'WIRING: none' '```' > "$_S5/artifacts/design.md"
 printf '%s\n' '{"schema_version":1,"source":"checkboxes","requirements":[{"id":"R-1","text":"the gate fails on a missing file"},{"id":"R-2","text":"the SPEC-2 label still passes"}]}' > "$_S5/artifacts/requirements.json"
 : > "$_PROMPT"
-ZBUILD_ARTIFACT_DIR="$_S5/artifacts" ZBUILD_STATE_DIR="$_S5" spec_coverage_run spec-coverage "$_S5/pipeline-state.json" >/dev/null 2>&1
+_design_coverage "$_S5/artifacts/design.md" "$(acceptance_requirements_list "$_S5/artifacts/requirements.json")" T2 >/dev/null 2>&1
 _P5="$(cat "$_PROMPT")"
-assert_contains "[Q5] the spec-coverage prompt lists R-1 with its text" "$_P5" "- R-1: the gate fails on a missing file"
+assert_contains "[Q5] the coverage prompt lists R-1 with its text" "$_P5" "- R-1: the gate fails on a missing file"
 assert_contains "[Q5] and R-2, whose words mention a SPEC label" "$_P5" "- R-2: the SPEC-2 label still passes"
 assert_contains "[Q5] and says the list is what to judge" "$_P5" "Judge every requirement in REQUIREMENTS"
 

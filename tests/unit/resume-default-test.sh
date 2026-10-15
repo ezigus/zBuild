@@ -27,7 +27,8 @@
 #             a gate pass for a different design.md.
 #             With the reuse rule gone no code path tells these apart: each
 #             one guards against a skip coming back under that condition.
-# R12 [change] design-gate's result carries no design_sha: its only reader was
+# R12 [change] design's result carries no design_sha (#2369: the checks that
+#             were design-gate are design's own): its only reader was
 #             the design-reuse skip #2299 removed, so a field nobody reads is
 #             gone (#2324)
 set -uo pipefail
@@ -170,19 +171,14 @@ assert_eq "[R9] when this run already has a design (a rewind), design runs" "1" 
 assert_eq "[R10] when the prior spec-coverage said uncovered (fail), design runs" "1" "$(_design_case r10 "" 1 "Migrate the thing." "" fail)"
 assert_eq "[R11] when the gate's pass was for a different design.md, design runs" "1" "$(_design_case r11 "" 1 "Migrate the thing." "" covered yes)"
 
-print_test_section "R12: design-gate writes no design_sha"
-_G="$TEST_TEMP_DIR/gate/state"; mkdir -p "$_G/artifacts"
-printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$_G/artifacts/design.md"
-printf '{}' > "$_G/pipeline-state.json"
-( source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh" >/dev/null 2>&1
-  emit_event() { :; }; eb_emit_event() { :; }
-  unset ZBUILD_STAGE_INPUTS
-  design_gate_run design-gate "$_G/pipeline-state.json" ) >/dev/null 2>&1 || true
-# Vacuity guard: the gate must have written its result, or "no design_sha" is trivially true.
-assert_eq "[R12] design-gate wrote its result with an outcome" "yes" \
-    "$(jq -r 'if (.outcome // "") != "" then "yes" else "no" end' "$_G/artifacts/design-gate-result.json" 2>/dev/null)"
+print_test_section "R12: design's result carries no design_sha"
+# #2369: design-gate's checks are design's own; its result is design-verdict.json.
+_design_case r12 >/dev/null
+# Vacuity guard: design must have written its result, or "no design_sha" is trivially true.
+assert_eq "[R12] design wrote its result with an outcome" "yes" \
+    "$(jq -r 'if (.outcome // "") != "" then "yes" else "no" end' "$TEST_TEMP_DIR/r12/state/artifacts/design-verdict.json" 2>/dev/null)"
 assert_eq "[R12] ...and the result has no design_sha" "absent" \
-    "$(jq -r 'if (.data | has("design_sha")) or has("design_sha") then "present" else "absent" end' "$_G/artifacts/design-gate-result.json" 2>/dev/null)"
+    "$(jq -r 'if (.data | has("design_sha")) or has("design_sha") then "present" else "absent" end' "$TEST_TEMP_DIR/r12/state/artifacts/design-verdict.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

@@ -53,35 +53,19 @@ always_run:
   - persist
 
 # ─── delivery_loop (cycle) — #2271, ADR-068; mirrors simple.yaml ────────────
+# #2369: design checks its own design.md; a design that still fails ends the
+# round, so build does not run on it.
 delivery_loop:
   type: cycle
   description: Design, then build, until both pass — going round when a finding needs design
   flow:
-    - design_verify_cycle
+    - design
     - build_test_cycle
   exit_when:
     all:
-      - { stage: design_verify_cycle, field: verdict, op: eq, value: pass }
+      - { stage: design, field: verdict, op: eq, value: pass }
       - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
-  max_iterations: 2
-  on_max: halt
-
-# ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
-design_verify_cycle:
-  type: cycle
-  description: Verify the design contract is build-ready until design-gate passes
-  flow:
-    - design
-    # #1683: mirrors simple.yaml. deployed.yaml carries its OWN copy of this
-    # cycle rather than inheriting it, so the member and its exit condition must
-    # be added here too — a stage added only to simple.yaml would leave every
-    # deployed run without the check.
-    - spec-coverage
-    - design-gate
-  exit_when:
-    all:
-      - { stage: design-gate, field: verdict, op: eq, value: pass }
-      - { stage: spec-coverage, field: verdict, op: eq, value: pass }
+  stop_round_on_fail: [design]
   max_iterations: 2
   on_max: halt
 
@@ -127,7 +111,7 @@ plan:
     # deployed.yaml fully overrides the plan section so it missed the #1442 bump.
     max_turns: 45
 
-# ─── design (leaf, design_verify_cycle member) ───────────────────────────────
+# ─── design (leaf, delivery_loop member) ───────────────────────────────
 design:
   gate: auto
   roles: [designer]
@@ -139,25 +123,6 @@ design:
   router:
     timeout_s: 600
     max_turns: 0
-
-# ─── spec-coverage (leaf, design_verify_cycle member, gate) ──────────────────
-# #1683: admissible on the convergence path under ADR-040 §5 / #2040 — the
-# standard it judges against is the ISSUE, produced by intake outside this
-# cycle, so design cannot re-author it.
-spec-coverage:
-  gate: auto
-  roles: [spec_coverage]
-  persona: product-owner
-  router:
-    timeout_s: 600
-
-# ─── design-gate (leaf, design_verify_cycle member) ──────────────────────────
-design-gate:
-  gate: auto
-  roles: [design_gate]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
 
 # ─── build (leaf, cycle member) ──────────────────────────────────────────────
 build:

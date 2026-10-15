@@ -153,17 +153,17 @@ assert_eq "T4: cycle_no_desc has empty description (no leak from sibling)" \
 
 # ─── T5: the shipped default template's cycles all carry descriptions ────
 # #979: standard.yaml retired; simple.yaml is the shipped default. Its cycles
-# (design_verify_cycle, build_test_cycle) must each declare a description so
+# (delivery_loop, build_test_cycle) must each declare a description so
 # the operator-facing UX text renders. Sanity check the shipped template.
 set +e
 load_template "$REPO_ROOT/config/templates/simple.yaml" >/dev/null 2>&1
 rc=$?
 set +e
 assert_eq "T5: simple.yaml loads rc=0" "0" "$rc"
-if [[ -n "${_TPL_CYCLE_DESCRIPTION_design_verify_cycle:-}" ]]; then
-    assert_pass "T5: design_verify_cycle has description ('${_TPL_CYCLE_DESCRIPTION_design_verify_cycle}')"
+if [[ -n "${_TPL_CYCLE_DESCRIPTION_delivery_loop:-}" ]]; then
+    assert_pass "T5: delivery_loop has description ('${_TPL_CYCLE_DESCRIPTION_delivery_loop}')"
 else
-    assert_fail "T5: design_verify_cycle missing description"
+    assert_fail "T5: delivery_loop missing description"
 fi
 if [[ -n "${_TPL_CYCLE_DESCRIPTION_build_test_cycle:-}" ]]; then
     assert_pass "T5: build_test_cycle has description ('${_TPL_CYCLE_DESCRIPTION_build_test_cycle}')"

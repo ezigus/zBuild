@@ -14,7 +14,7 @@
 # N1 [change] stage_findings_json turns one finding per line into
 #             [{n, text}], skipping blank lines
 # N2 [change] a check's result carries its findings as numbered items, in the
-#             same plain sentences its feedback uses (design-gate)
+#             same plain sentences its feedback uses (design's own checks, #2369)
 # N3 [change] later stages see each finding on its own line, naming the stage
 #             that opened it: "- design-gate finding 1 (opened by design-gate): …"
 # N4 [guard]  a check with nothing to report lists no findings
@@ -40,20 +40,23 @@ assert_eq "[N1] two findings, numbered from 1" \
     '[{"n":1,"text":"first problem"},{"n":2,"text":"second problem"}]' "$(jq -c . <<< "$_j" 2>/dev/null)"
 assert_eq "[N1] no input → an empty list" "[]" "$(printf '' | stage_findings_json 2>/dev/null | jq -c . 2>/dev/null)"
 
-print_test_section "N2/N4: design-gate's result"
-# shellcheck source=../../scripts/lib/acceptance-block.sh
-source "$REPO_ROOT/scripts/lib/acceptance-block.sh"
-# shellcheck source=../../plugins/tool/design-gate/plugin.sh
-source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh"
+print_test_section "N2/N4: design's result"
+# #2369: design checks its own design.md; its result lists what still fails.
+# shellcheck source=../../plugins/agent/design/plugin.sh
+source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
+apply_scope_redaction() { cp "$1" "$2"; return 0; }
 ROOT="$TEST_TEMP_DIR/repo"; mkdir -p "$ROOT/tests" "$ROOT/lib"; : > "$ROOT/lib/a.sh"; export ZBUILD_REPO_ROOT="$ROOT"
+_DESIGN_BODY=""
+route_to_model_loop() { printf '%s' "$_DESIGN_BODY" > "$_DG_OUT"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 0; }
 _dg() {   # _dg <dir> <design.md>
-    mkdir -p "$1/artifacts"; printf '%s' "$2" > "$1/artifacts/design.md"
-    printf '{"schema_version":1}' > "$1/pipeline-state.json"
-    design_gate_run "design-gate" "$1/pipeline-state.json" >/dev/null 2>&1 || true
+    mkdir -p "$1/artifacts"; _DG_OUT="$1/artifacts/design.md"; _DESIGN_BODY="$2"
+    printf '{"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["lib/a.sh"]}]}\n' > "$1/artifacts/plan.json"
+    printf 'scope\n' > "$1/scope-manifest.md"
+    _design_stage_run_inner "$1/scope-manifest.md" "$1/artifacts/plan.json" "$_DG_OUT" "$1/artifacts" >/dev/null 2>&1 || true
 }
 D1="$TEST_TEMP_DIR/dg1"
 _dg "$D1" $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[code]: a\nSPEC-2: b\nTESTFILES:\n```\n'
-_f="$(jq -c '.data.findings // empty' "$D1/artifacts/design-gate-result.json" 2>/dev/null)"
+_f="$(jq -c '.data.findings // empty' "$D1/artifacts/design-verdict.json" 2>/dev/null)"
 assert_eq "[N2] the findings are numbered from 1" "1" "$(jq -r '.[0].n // empty' <<< "$_f" 2>/dev/null)"
 assert_contains "[N2] a finding is the plain sentence" "$(jq -r '.[].text' <<< "$_f" 2>/dev/null)" "SPEC-2 has no status"
 if grep -qE 'NO_STATUS|MISSING_TESTFILE' <<< "$_f"; then
@@ -64,7 +67,8 @@ fi
 D2="$TEST_TEMP_DIR/dg2"
 _dg "$D2" $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[code]: a\nWIRING: none\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n'
 assert_eq "[N4] a passing check lists no findings" "0" \
-    "$(jq -r '(.data.findings // []) | length' "$D2/artifacts/design-gate-result.json" 2>/dev/null)"
+    "$(jq -r '(.data.findings // []) | length' "$D2/artifacts/design-verdict.json" 2>/dev/null)"
+assert_eq "[N4] ...and passes" "pass" "$(jq -r '.outcome' "$D2/artifacts/design-verdict.json" 2>/dev/null)"
 
 print_test_section "N3: later stages see each finding and who opened it"
 # shellcheck source=../../core/pipeline/input-resolve.sh
@@ -105,7 +109,7 @@ assert_contains "[N3] finding 2 is listed on its own line" "$_blk" \
 
 print_test_section "N5: every check writes numbered findings"
 _missing=""
-for _p in plugins/agent/spec-coverage plugins/tool/design-gate plugins/agent/spec-correspondence \
+for _p in plugins/agent/design plugins/agent/spec-correspondence \
           plugins/tool/test plugins/tool/shape-floor plugins/agent/spec-acceptance \
           plugins/tool/secret-scan plugins/tool/assertion-integrity plugins/agent/issue-acceptance; do
     _hit=0

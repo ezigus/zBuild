@@ -56,7 +56,7 @@ route_to_model_loop() {
         _body="$MOCK_DESIGN_BODY"
     else
         local _bt='```'
-        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: foo works\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
+        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: foo works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
     fi
     if [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]]; then
         mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"

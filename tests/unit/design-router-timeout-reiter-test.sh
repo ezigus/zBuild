@@ -6,9 +6,9 @@
 # _ROUTE_LOOP_TERMINATED_REASON=router_timeout (core/router/route.sh; the #1208
 # contract), NOT rc=124. _design_stage_run_inner detects that signal and must
 # NOT converge on a gate-passing stub: it overwrites design.md with a MINIMAL
-# marker that carries NO ```acceptance block, so the design-gate REJECTS it (C2
-# ACCEPTANCE_MISSING) and design_verify_cycle RE-ITERATES rather than accepting
-# an incomplete design. Genuine infra failures (rc=137 OOM) stay terminal.
+# marker that carries NO ```acceptance block (#2186 replaced the marker: no design
+# is published), and the loop goes round rather than accepting an incomplete
+# design. Genuine infra failures (rc=137 OOM) stay terminal.
 #
 # #2186: a timeout is judged on what THIS call did to design.md, never by
 # fabricating a design. #1849 run 35949629759: the model wrote a complete design
@@ -30,7 +30,7 @@
 #   SPEC-9[change]: timeout, the stale design cannot be removed → returns rc=1
 #                   (terminal), reason=stale_design_not_removed
 #   SPEC-12[change]: timeout AFTER this call wrote a new design → that design is
-#                   kept as written, the gate judges it, design.timeout.design_kept
+#                   kept as written, design checks it, design.timeout.design_kept
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,10 +49,6 @@ setup_test_env "design-router-timeout-reiter"
 # override with mocks (same ordering as design-stray-file-recovery-test.sh).
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
-# Source the REAL design-gate so SPEC-1 asserts against its actual verdict
-# (verdict-in-artifact convention, ADR-040) rather than the marker's shape.
-# shellcheck source=../../plugins/tool/design-gate/plugin.sh
-source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh"
 
 # _MOCK_ROUTER_RC controls what route_to_model_loop returns.
 _MOCK_ROUTER_RC=0
@@ -82,7 +78,9 @@ route_to_model_loop() {
 }
 
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
-atomic_write()          { local dest="$1"; cat - > "$dest"; }
+# Through a temp file, as the real atomic_write does: design finalises
+# design.md by reading it into itself.
+atomic_write()          { local dest="$1"; cat - > "$dest.tmp" && mv -f "$dest.tmp" "$dest"; }
 
 # ─── Per-test fixture helper ──────────────────────────────────────────────────
 _setup_fixture() {
@@ -112,12 +110,10 @@ EOF
     _F_DESIGN="$artifact_dir/design.md"
 }
 
-# _run_design_gate — run the REAL design-gate over the fixture's design.md and
-# echo the resulting verdict (design-gate reads $(dirname state_file)/artifacts,
-# which is _F_ARTIFACTS). Returns the verdict on stdout.
+# _run_design_gate — design's own outcome for this call (#2369: the checks are
+# design's; a design that did not finish is never a pass).
 _run_design_gate() {
-    design_gate_run "design-gate" "$_F_STATE/state.json" >/dev/null 2>&1 || true
-    jq -r '.outcome // "MISSING"' "$_F_ARTIFACTS/design-gate-result.json" 2>/dev/null || echo "MISSING"
+    jq -r '.outcome // "MISSING"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo "MISSING"
 }
 
 # ─── SPEC-1,2,3,4: router timeout YIELD → recoverable, gate-FAILING marker ────
@@ -137,7 +133,7 @@ _rc=$?
 set +e
 
 # SPEC-1: no design is published — the stale one is gone and nothing is
-# fabricated in its place — and the real gate fails, so the cycle re-iterates.
+# fabricated in its place — and design does not pass, so the loop goes round.
 _verdict="$(_run_design_gate)"
 if [[ ! -e "$_F_DESIGN" ]]; then
     assert_pass "[SPEC-1] timeout with design.md unchanged → no design published (stale removed, nothing fabricated)"
@@ -146,9 +142,9 @@ else
         "design.md=$(head -5 "$_F_DESIGN" 2>/dev/null)"
 fi
 if [[ "$_verdict" != "pass" ]]; then
-    assert_pass "[SPEC-1b] the design-gate does not pass without a design → re-iterate"
+    assert_pass "[SPEC-1b] design does not pass without a design → the loop goes round"
 else
-    assert_fail "[SPEC-1b] the design-gate passed with no design"
+    assert_fail "[SPEC-1b] design passed with no design"
 fi
 
 assert_eq "[SPEC-2] timeout yield → _design_stage_run_inner returns rc=0 (non-terminal)" "0" "$_rc"
@@ -308,7 +304,7 @@ assert_eq "[SPEC-9c] → the result says so: outcome broken" "broken" \
     "$(jq -r '.outcome // "ABSENT"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
 rm -rf "$_F_DESIGN"
 
-# ─── SPEC-12: timeout AFTER this call wrote a new design → kept, gate judges ─
+# ─── SPEC-12: timeout AFTER this call wrote a new design → kept, checked ────
 _setup_fixture t5
 printf '# Design\n\nstale from an earlier pass\n' > "$_F_DESIGN"
 _MOCK_ROUTER_RC=0
@@ -325,7 +321,7 @@ else
     assert_fail "[SPEC-12] the design this call wrote was replaced" \
         "design.md=$(head -5 "$_F_DESIGN" 2>/dev/null)"
 fi
-assert_eq "[SPEC-12] the gate judges the kept design (it is complete → pass)" "pass" "$(_run_design_gate)"
+assert_eq "[SPEC-12] design checks the kept design (it is complete → pass)" "pass" "$(_run_design_gate)"
 if grep -q '"design.timeout.design_kept"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_pass "[SPEC-12] design.timeout.design_kept emitted"
 else

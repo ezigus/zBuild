@@ -69,79 +69,26 @@ always_run:
   - persist
 
 # ─── delivery_loop (cycle) — #2271, ADR-068 ─────────────────────────────────
-# One outer loop holds the design loop and the build loop. Every stage sees
-# every finding and says in its own result what it did about each; the engine
-# never decides who owns a finding, and nothing jumps backwards.
-#   - A design loop that runs out of rounds ends this round (build is skipped)
-#     and this loop goes round. When this loop's rounds are spent, the run stops.
+# One outer loop holds design and the build loop. Every stage sees every
+# finding and says in its own result what it did about each; the engine never
+# decides who owns a finding, and nothing jumps backwards.
+#   - design checks its own design.md and goes back to its model until the
+#     checks pass or its rounds run out (#2369). A design that still fails ends
+#     this round — stop_round_on_fail: build does not run on it — and this loop
+#     goes round. When this loop's rounds are spent, the run stops.
 delivery_loop:
   type: cycle
   description: Design, then build, until both pass — going round when a finding needs design
   flow:
-    - design_verify_cycle
+    - design
     - build_test_cycle
   exit_when:
     all:
-      - { stage: design_verify_cycle, field: verdict, op: eq, value: pass }
+      - { stage: design, field: verdict, op: eq, value: pass }
       - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
+  stop_round_on_fail: [design]
   max_iterations: 2
   on_max: halt
-
-# ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
-# ADR-046 (#1218, EPIC #1216): give the design stage an independent verifier that
-# loops back TO it BEFORE the build cycle — so design/contract defects are caught
-# where they are authored, not deep in the build cycle. Modelled on standard.yaml's
-# design_impact_cycle (standard.yaml:40-67), which simple.yaml historically lacked.
-#
-# Members: design → design-gate. design-gate is a T0 tool (ADR-037 §3): a pure-grep
-# PRE-build structural gate over design.md + the red-first stubs design writes. It
-# is a cycle member and exit_when binds directly to it (with spec-coverage).
-# max_iterations: 2, on_max: halt (#2176): a contract the gate still rejects is
-# not built. Nested in delivery_loop (#2271), running out of rounds ends that
-# loop's round — build is skipped — and the outer loop goes round.
-#
-# Feedback: design.design → design.prior_design (self-edge) — mirrors
-# design_impact_cycle so iter N+1 refines rather than re-creates (#773 lesson).
-#
-design_verify_cycle:
-  type: cycle
-  description: Verify the design contract is build-ready until design-gate passes
-  flow:
-    - design
-    # #1683: does the design cover what the ISSUE asked for? Design is the only
-    # reader of the issue, so nothing else confirms the SPECs are a faithful
-    # statement of the ask. Inside the cycle, so a finding reaches design itself
-    # on the next iteration.
-    - spec-coverage
-    - design-gate
-  # #1284/ADR-047 multi-condition: BOTH must hold. spec-coverage may gate under
-  # ADR-040 §5 as amended by #2040 — the standard it judges against is the
-  # ISSUE, which design cannot re-author, so the only way to converge is to
-  # actually cover it.
-  #
-  # #2366: every stage reports pass or fail, so the rule is `eq pass`. An issue
-  # spec-coverage cannot read is a fail too; intake already refuses an
-  # unreadable issue in a real run (#1804).
-  exit_when:
-    all:
-      - { stage: design-gate, field: verdict, op: eq, value: pass }
-      - { stage: spec-coverage, field: verdict, op: eq, value: pass }
-  max_iterations: 2
-  on_max: halt
-
-# ─── spec-coverage (leaf, gate) ──────────────────────────────────────────────
-# Model-judged but admissible on the convergence path (ADR-040 §5 / #2040): its
-# standard is the issue, produced by intake OUTSIDE this cycle, so the judged
-# party cannot re-author it.
-spec-coverage:
-  gate: auto
-  roles: [spec_coverage]
-  # A product owner asks "was what was asked for delivered?" — intent-seeking,
-  # which is wrong for judging an assertion against a SPEC (the bug there
-  # survives charity) and exactly right here, where the question IS about intent.
-  persona: product-owner
-  router:
-    timeout_s: 600
 
 # ─── test-author (leaf, advisory) ────────────────────────────────────────────
 # ADR-040 §5: it makes a model call, so it may not sit on the convergence path.
@@ -188,12 +135,12 @@ assertion-integrity:
 
 # ─── issue-acceptance (leaf, gate) ───────────────────────────────────────────
 # #1849: the finished change against the ISSUE. A model call on the convergence
-# path is allowed for the same reason as spec-coverage (ADR-040 §5 as amended by
+# path is allowed for the same reason as design's coverage check (ADR-040 §5 as amended by
 # #2040): its standard is the issue, which the judged stages cannot re-author.
 issue-acceptance:
   gate: auto
   roles: [issue_acceptance]
-  # Same question spec-coverage asks of the design — "was what was asked for
+  # Same question design's coverage check asks of the design — "was what was asked for
   # delivered?" — now asked of the code.
   persona: product-owner
   router:
@@ -245,7 +192,7 @@ build_test_cycle:
     # rewritten assertion.
     - assertion-integrity
     # #1849: the finished change judged against the ISSUE, not the SPECs — the
-    # only check after spec-coverage that reads the issue at all; each unmet
+    # only check after design's own coverage check that reads the issue; each unmet
     # requirement is a numbered finding.
     - issue-acceptance
   exit_when:
@@ -282,7 +229,7 @@ plan:
     # also told this budget in its prompt and biased to converge before it runs out.
     max_turns: 45
 
-# ─── design (leaf, design_verify_cycle member) ───────────────────────────────
+# ─── design (leaf, delivery_loop member) ───────────────────────────────
 design:
   gate: auto
   roles: [designer]
@@ -294,21 +241,6 @@ design:
   router:
     timeout_s: 600
     max_turns: 0
-
-# ─── design-gate (leaf, design_verify_cycle member) ──────────────────────────
-# T0 tool gate (ADR-046, #1218): PRE-build mechanical structural gate. Pure grep
-# over design.md (NO LLM, NO baseline — ADR-037 §3). Runs the 5 structural
-# checks (scope non-empty; acceptance block well-formed; every SPEC has a status
-# — [code], [no-code] or [done] with evidence that exists (ADR-069); every [code]
-# SPEC declares a TESTFILE; WIRING present/none + paths exist) and reports ALL
-# violations in ONE pass. verdict-in-artifact; the design_verify_cycle exit_when
-# reads design-gate.verdict == pass. Bound by role design_gate.
-design-gate:
-  gate: auto
-  roles: [design_gate]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
 
 # ─── build (leaf, cycle member) ──────────────────────────────────────────────
 build:

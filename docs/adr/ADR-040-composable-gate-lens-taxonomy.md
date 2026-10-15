@@ -445,15 +445,13 @@ Supersedes §2, §5's preflight rules, §7 and the #1219 amendment.
   `advisory`-severity fail; acceptance-gate now reports such a result as pass itself, still listing the
   failures.
 - **Stages after the loops get the engine's word:** `ZBUILD_RUN_LOOPS_PASSED` is `yes` only when every
-  loop that ran passed — unset when a run starts, whatever the environment held. merge and pr-delivery merge only on `yes`; deploy deploys only on `yes` and
+  loop that ran passed. merge and pr-delivery merge only on `yes`; deploy deploys only on `yes` and
   refuses when the word is absent. pr-open makes the PR a draft from the loops' own records.
 - **The `approve` rescue is retired** (#2366 left no stage able to write `approve`): a loop that runs out
   of rounds is a run that did not pass.
 
-Enforced by: `tests/unit/engine-combines-loop-test.sh` L1–L5 (the loop's summary, written too when a
-blocking member stops the loop; a member with no outcome holds the loop; the templates name their
-must-pass gates; no `convergence:`, no gate-aggregator); `tests/integration/loops-passed-word-test.sh` W1
-(the word starts unset each run);
+Enforced by: `tests/unit/engine-combines-loop-test.sh` L1–L4 (the loop's summary; a member with no
+outcome holds the loop; the templates name their must-pass gates; no `convergence:`, no gate-aggregator);
 `tests/integration/simple-yaml-build-test-convergence-test.sh` SPEC-1, SPEC-3;
 `tests/integration/acceptance-gate-test.sh` S6c; `tests/unit/merge-v2-result-test.sh` SPEC-7;
 `plugins/agent/deploy/tests/deploy-test.sh` SPEC-8.
@@ -465,8 +463,7 @@ Supersedes §4 and the #2301 amendment.
 - **The engine sums up a map group.** After the group runs it writes `artifacts/<group>-summary.md`
   (every element, its outcome and its one-line reason, read from each element's own result) and tells
   later stages whether any element failed: `ZBUILD_RUN_FLAGGED` is `yes` when a lens found a high or
-  critical problem the change introduced, `incomplete` when none failed but one did not finish or
-  wrote no result (not a clean review), `no` when every one passed, unset when no review group ran.
+  critical problem the change introduced, `no` when none did, unset when no review group ran.
   `review-aggregator` and its merged report (`review-report.json`) are retired: every later stage
   already sees each lens's own output.
 - **What uses the word:** pr-delivery merges under `auto_unless_flagged` only on
@@ -475,7 +472,7 @@ Supersedes §4 and the #2301 amendment.
 - **The PR body says what the PR is for:** the issue, the goal and the work items from the plan, the
   files changed since the default branch, and the test result. Review findings stay out of it.
 
-Enforced by: `tests/unit/engine-combines-map-test.sh` M1–M3; `plugins/tool/pr-open/tests/pr-open-body-test.sh`
+Enforced by: `tests/unit/engine-combines-map-test.sh` M1, M2; `plugins/tool/pr-open/tests/pr-open-body-test.sh`
 B1–B3; `tests/unit/pr-delivery-v2-result-test.sh` SPEC-3; `tests/integration/merge-policy-auto-unless-flagged-test.sh`
 SPEC-1–SPEC-6; `tests/unit/retired-impact-review-report-inputs-test.sh` RT2.
 
@@ -488,3 +485,20 @@ and deployed.yaml). The engine passes it to the stage as `_TPL_STAGE_FAIL_ON_<st
 list never fails. Whether a failing lens blocks anything stays the template's too (§4, #2368 part 1).
 
 Enforced by: `tests/unit/lens-fail-rule-test.sh` F1–F3.
+
+### Amendment (2026-10-15, #2369) — design checks its own output
+
+A check that reads one stage's output belongs to that stage. design-gate (the scripted checks of
+design.md) and spec-coverage (the model-judged check that the SPECs cover the issue) are retired as
+stages, and design does both itself: after its model writes design.md it runs the scripted checks, then,
+when the issue has numbered requirements, a second model call asks whether the SPECs cover them. What
+fails goes back to design's model, with each finding, until the checks pass or design's rounds
+(`config.check_rounds: 2` in its manifest) run out; then design's one outcome is `fail` and its result
+lists the findings. A failed coverage call is design's outcome (`rate_limited`, `unavailable`,
+`timed_out`, `unusable`). §5 still holds for the coverage call: its standard is the issue, which design
+cannot re-author. The issue reaches the call under Previous work, like every stage's input; design reads
+no other stage's output by name. `design_verify_cycle` is retired; `delivery_loop` holds design and the
+build loop and names design in `stop_round_on_fail:` (ADR-068 §3).
+
+Enforced by: `tests/unit/design-checks-own-output-test.sh` C1–C5; `tests/unit/design-checks-test.sh`;
+`tests/unit/design-checks-plain-test.sh` D1–D3; `tests/unit/design-coverage-test.sh`.

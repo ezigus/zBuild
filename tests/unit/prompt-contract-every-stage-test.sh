@@ -130,11 +130,12 @@ _c_review_lens() { ( ad="$(_fixture review-lens)"
     resolve_tier() { printf 'T2'; }
     printf 'diff --git a/foo.sh b/foo.sh\n+echo hi\n' > "$ad/bundle.txt"
     _review_lens_run_inner correctness "${ad%/artifacts}/scope-manifest.md" "$ad/bundle.txt" "$ad/lens.json" "$ad" ) >/dev/null 2>&1; }
-_c_spec_coverage() { ( ad="$(_fixture spec-coverage)"; sd="${ad%/artifacts}"
-    printf 'ISSUE-TEXT: make the stage write its result\n' > "$sd/intake.md"
-    source "$REPO_ROOT/plugins/agent/spec-coverage/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf '%s' "$2" > "$RAW/spec-coverage.txt"; printf 'VERDICT: covered\nREASON: r\n'; }
-    ZBUILD_ARTIFACT_DIR="$ad" spec_coverage_run spec-coverage "$sd/pipeline-state.json" ) >/dev/null 2>&1; }
+# #2369: design's second model call — does the design cover the issue? Captured
+# beside design's own prompt and checked like a stage.
+_c_design_coverage() { ( ad="$(_fixture design-coverage)"
+    source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/design-coverage.txt"; printf 'VERDICT: covered\nREASON: r\n'; }
+    _design_coverage "$ad/design.md" "- R-1: make the stage write its result" T2 ) >/dev/null 2>&1; }
 _c_issue_acceptance() { ( ad="$(_fixture issue-acceptance)"; sd="${ad%/artifacts}"
     printf 'ISSUE-TEXT: make the stage write its result\n' > "$sd/intake.md"
     printf 'diff --git a/foo.sh b/foo.sh\n' > "$ad/d.patch"
@@ -169,7 +170,7 @@ for _s in "${STAGES[@]}"; do
     declare -F "_c_${_s//-/_}" >/dev/null 2>&1 || _missing+="$_s "
 done
 assert_eq "[E3] every model-calling stage has a composer here" "" "$_missing"
-assert_eq "[E3] the model-calling stages were found (fixture live)" "1" "$([[ ${#STAGES[@]} -ge 10 ]] && echo 1 || echo 0)"
+assert_eq "[E3] the model-calling stages were found (fixture live; 9 since #2369 retired spec-coverage)" "1" "$([[ ${#STAGES[@]} -ge 9 ]] && echo 1 || echo 0)"
 
 SECTIONS=("## From the repo" "## What you own" "## What you judge against" "## Previous work" "## What you must not do" "## Rules for this stage")
 
@@ -201,6 +202,8 @@ for _s in "${STAGES[@]}"; do
     _check "$_s" "$RAW/$_s.txt"
 done
 _check "spec-correspondence (batch)" "$RAW/spec-correspondence-batch.txt"
+_c_design_coverage
+_check "design (coverage call)" "$RAW/design-coverage.txt"
 
 # ─── E5: no stage frames a persona ──────────────────────────────────────────
 _persp=()
@@ -212,7 +215,7 @@ for _pid in $_pinned generic; do
 done
 assert_eq "[E5] the persona perspectives were read (fixture live)" "1" "$([[ ${#_persp[@]} -ge 4 ]] && echo 1 || echo 0)"
 _framed=""
-for _s in "${STAGES[@]}" spec-correspondence-batch; do
+for _s in "${STAGES[@]}" spec-correspondence-batch design-coverage; do
     [[ -s "$RAW/$_s.txt" ]] || continue
     for _pp in "${_persp[@]}"; do
         grep -qF -- "$_pp" "$RAW/$_s.txt" && { _framed+="$_s "; break; }
@@ -224,7 +227,7 @@ assert_eq "[E5] no plugin frames a persona itself" "" "$_callers"
 
 # ─── E6: What you own opens with the job ─────────────────────────────────────
 _bad=""
-for _s in "${STAGES[@]}" spec-correspondence-batch; do
+for _s in "${STAGES[@]}" spec-correspondence-batch design-coverage; do
     f="$RAW/$_s.txt"; [[ -s "$f" ]] || continue
     _first="$(awk '/^## What you own/{p=1;next} p && NF {print; exit}' "$f")"
     if [[ "$_first" =~ ^# || "$_first" == *"OUTPUT CONTRACT"* || "$_first" =~ ^You\ are\ (an?|the)\  \

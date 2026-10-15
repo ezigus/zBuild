@@ -50,7 +50,7 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §1, §5 → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P1–P7
 - §1, §3 (design) → `tests/unit/design-wiring-guidance-test.sh` G1–G4
 - §2 (acceptance check) → `tests/unit/acceptance-feedback-plain-test.sh` F1–F4
-- §2 (design check) → `tests/unit/design-gate-feedback-plain-test.sh` D1–D3
+- §2 (design check) → `tests/unit/design-checks-plain-test.sh` D1–D3
 - §2 (design's summary when its time runs out says it wrote no design.md and names no other cause) → `tests/unit/design-router-timeout-reiter-test.sh` SPEC-4b
 - §2 (shape check) → `tests/unit/shape-floor-summary-plain-test.sh` S1–S3
 - §6 (build) → `tests/unit/build-prompt-spec-text-test.sh` P1–P2
@@ -74,6 +74,6 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §8 (What you own opens with the stage's job: no heading, output contract or role sentence first) → `tests/unit/prompt-contract-every-stage-test.sh` E6
 - §8 (a stage's job is its What you own section; each finding answered only with what goes into its output) → `tests/unit/engine-keeps-only-stage-outputs-test.sh` K5
 - §8 (no text tells a stage to skip part of its job) → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P10–P11
-- §8 (spec-coverage's reworded exemption) → `tests/unit/spec-coverage-test.sh` SPEC-7, SPEC-9
+- §8 (spec-coverage's reworded exemption) → `tests/unit/design-coverage-test.sh` SPEC-7, SPEC-9
 - §8 (design's What you own opens with its job — decisions, contract, scope — written as it goes; a finding is answered in the design; design does not debug code; the scope is found by searching, not an exhaustive read; design may write its notes; nothing in its prompt calls it read-only) → `tests/unit/design-writes-as-it-goes-test.sh` D1–D3; `tests/unit/design-prompt-scope-charter-test.sh` T7
 - §9 → `plugins/agent/plan/tests/plan-test.sh` (Test 3c2, plan); `plugins/agent/plan/tests/plan-work-items-test.sh` W1 (plan does not read code); `tests/unit/resume-default-test.sh` (the ADR-067 §9 assertions on design's prompt)

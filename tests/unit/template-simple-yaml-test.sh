@@ -80,9 +80,11 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # change judged against the ISSUE, the one link below the SPEC.
 # 19 -> 18: #2368 retires gate-aggregator — the engine combines the loop.
 # 18 -> 17: #2368 retires review-aggregator — the engine sums up the lenses.
-assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 17" "17" "${#_TPL_STAGES[@]}"
+# 17 -> 15: #2369 — design checks its own design.md; spec-coverage and
+# design-gate are retired.
+assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 15" "15" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design spec-coverage design-gate test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance review_lenses pr)
+_expected_stages=(hydrate intake plan design test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance review_lenses pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -135,10 +137,9 @@ assert_eq "[SPEC-3] design io_dests"         "file,stdout" "$_TPL_STAGE_IO_DESTS
 assert_eq "[SPEC-3] design router timeout"   "600"         "$_TPL_STAGE_ROUTER_TIMEOUT_design"
 assert_eq "[SPEC-3] design router max_turns" "0"           "$_TPL_STAGE_ROUTER_MAX_TURNS_design"
 
-# design-gate (#1218, ADR-046): T0 tool PRE-build structural gate; bound by role
-# design_gate (no router section — no LLM). design_verify_cycle member.
-assert_eq "[SPEC-3] design-gate roles"    "design_gate" "$_TPL_STAGE_ROLES_design_gate"
-assert_eq "[SPEC-3] design-gate io_dests" "file,stdout" "$_TPL_STAGE_IO_DESTS_design_gate"
+# #2369: design-gate and spec-coverage are retired — design checks its own design.md.
+assert_eq "[SPEC-3] design-gate stage removed (#2369)" "" "${_TPL_STAGE_ROLES_design_gate:-}"
+assert_eq "[SPEC-3] spec-coverage stage removed (#2369)" "" "${_TPL_STAGE_ROLES_spec_coverage:-}"
 
 # impact removed from simple.yaml delivery_loop (#1668): all four impact stage vars
 # must be unset once the impact section is absent from the template.
@@ -198,7 +199,7 @@ assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
 # ─── SPEC-11: dispatch units (cycles + map groups each fold to one) ───────────
-# #2271 (ADR-068): design_verify_cycle, impact and build_test_cycle fold into
+# #2271 (ADR-068): design, impact and build_test_cycle fold into
 # ONE outer loop, delivery_loop. Count is 6: hydrate, intake, plan,
 # cycle:delivery_loop, map:review_lenses, pr (#2368: review-aggregator retired).
 assert_eq "[SPEC-11] dispatch units count is 6" "6" "${#_TPL_DISPATCH_UNITS[@]}"
@@ -210,8 +211,10 @@ assert_eq "[SPEC-11] dispatch[4] map:review_lenses"    "map:review_lenses"    "$
 assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[5]}"
 
 # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
-assert_eq "[SPEC-18] [#1668/SPEC-1] delivery_loop holds the design loop and the build loop (impact removed)" \
-    "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[SPEC-18] [#1668/SPEC-1] delivery_loop holds design and the build loop (#2369)" \
+    "design,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[SPEC-18] a design that still fails ends the round (#2369)" \
+    "design" "${_TPL_CYCLE_STOP_ROUND_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop runs at most 2 rounds" "2" "${_TPL_CYCLE_MAX_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop halts when its rounds are spent" "halt" "${_TPL_CYCLE_ON_MAX_delivery_loop:-}"
 # ADR-068 §8 (amended 2026-10-11): the template declares no `unowned:` — a
@@ -219,31 +222,10 @@ assert_eq "[SPEC-18] delivery_loop halts when its rounds are spent" "halt" "${_T
 assert_eq "[SPEC-18] simple.yaml declares no unowned: key" "0" \
     "$(grep -cE '^[[:space:]]+unowned:' "$REPO_ROOT/config/templates/simple.yaml" || true)"
 
-# ─── SPEC-16 (#1218, ADR-046): design_verify_cycle registered correctly ───────
-# _TPL_CYCLES must ALSO contain design_verify_cycle (design → design-gate); its
-# exit_when binds design-gate.verdict == pass (the convergence:gate member is the
-# exit_when target directly — a single gate, no separate aggregator). max_iter 3.
+# ─── SPEC-16 (#2369): design_verify_cycle is retired ─────────────────────────
 _dvc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "design_verify_cycle" ]] && _dvc_in_cycles=1; done
-assert_eq "[SPEC-16] _TPL_CYCLES contains design_verify_cycle" "1" "$_dvc_in_cycles"
-assert_eq "[SPEC-16] _TPL_CYCLE_STAGES_design_verify_cycle" \
-    "design,spec-coverage,design-gate" "$_TPL_CYCLE_STAGES_design_verify_cycle"
-assert_eq "[SPEC-16] _TPL_CYCLE_MAX_design_verify_cycle is 2 (#2271)" \
-    "2" "$_TPL_CYCLE_MAX_design_verify_cycle"
-# #1683: design_verify_cycle converges on TWO conditions now (#1284/ADR-047
-# multi-condition), so the single-condition UNTIL_* vars are deliberately empty
-# and the combinator vars carry the contract instead.
-assert_eq "[SPEC-16] design_verify_cycle converges on ALL conditions" \
-    "all" "$_TPL_CYCLE_EXIT_COMBINATOR_design_verify_cycle"
-assert_eq "[SPEC-16] there are two of them" \
-    "2" "$_TPL_CYCLE_EXIT_COUNT_design_verify_cycle"
-assert_eq "[SPEC-16] the first is design-gate == pass" \
-    "design-gate|verdict|eq|pass" \
-    "$_TPL_CYCLE_EXIT_1_STAGE_design_verify_cycle|$_TPL_CYCLE_EXIT_1_FIELD_design_verify_cycle|$_TPL_CYCLE_EXIT_1_OP_design_verify_cycle|$_TPL_CYCLE_EXIT_1_VALUE_design_verify_cycle"
-# #2366: every stage reports pass or fail, so the rule is `eq pass`.
-assert_eq "[SPEC-16] the second is spec-coverage == pass" \
-    "spec-coverage|verdict|eq|pass" \
-    "$_TPL_CYCLE_EXIT_2_STAGE_design_verify_cycle|$_TPL_CYCLE_EXIT_2_FIELD_design_verify_cycle|$_TPL_CYCLE_EXIT_2_OP_design_verify_cycle|$_TPL_CYCLE_EXIT_2_VALUE_design_verify_cycle"
+assert_eq "[SPEC-16] _TPL_CYCLES has no design_verify_cycle (#2369)" "0" "$_dvc_in_cycles"
 
 # ─── SPEC-14 / SPEC-5: build_test_cycle registered with correct stages and max ─
 # CHANGE (B6 #1138, ADR-040): _TPL_CYCLES must contain build_test_cycle with its
@@ -276,17 +258,13 @@ assert_eq "[SPEC-15] ...over its six gates" "6" "${_TPL_CYCLE_EXIT_COUNT_build_t
 # gate-aggregator from 8 to 10 (design=2,design-gate=3,impact=4,build=5,test=6,
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
-assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[10] == shape-floor" "shape-floor" "${_TPL_STAGES[10]}"
-assert_eq "[SPEC-12] _TPL_STAGES[14] == issue-acceptance (the loop's last gate, #2368)" \
-    "issue-acceptance" "${_TPL_STAGES[14]}"
+assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[8] == shape-floor (#2369)" "shape-floor" "${_TPL_STAGES[8]}"
+assert_eq "[SPEC-12] _TPL_STAGES[12] == issue-acceptance (the loop's last gate, #2368)" \
+    "issue-acceptance" "${_TPL_STAGES[12]}"
 
-# ─── SPEC-13: design is at index 3; design-gate at 5 ─────────────────────────
-# CHANGE: design sits at index 3 (after hydrate, intake, plan); its verifier
-# design-gate follows at 5 (spec-coverage at 4), then test-author at 6 (#1668).
-# The advisory impact stage has been removed from simple.yaml (#1668).
-
+# ─── SPEC-13: design is at index 3; test-author follows at 4 (#2369) ─────────
 assert_eq "[SPEC-13] _TPL_STAGES[3] == design" "design" "${_TPL_STAGES[3]}"
-assert_eq "[SPEC-13] _TPL_STAGES[5] == design-gate" "design-gate" "${_TPL_STAGES[5]}"
+assert_eq "[SPEC-13] _TPL_STAGES[4] == test-author (#2369)" "test-author" "${_TPL_STAGES[4]}"
 
 # ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
 # GUARD: simple.yaml's pr stage declares roles: [pr]. Since #1704 that role is

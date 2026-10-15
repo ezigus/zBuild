@@ -156,3 +156,10 @@ The feedback file says each of these in plain words (#2269). Verification: `test
 - **C7 REQUIREMENTS**: when intake wrote `requirements.json` (an issue run), every requirement in it (`R-1`, `R-2`, …) is named after ` covers: ` on at least one SPEC line, whatever that SPEC's status. A requirement nobody covers is `REQUIREMENT_NOT_COVERED R-n (<its text>)`, and the feedback names it and its words in plain English. A goal run has no list and skips the check. The number C6 stays retired.
 
 Verification: `tests/unit/requirements-list-test.sh` Q3.
+
+### Amendment (2026-10-15, #2369) — the checks are design's own
+
+design-gate is no longer a stage, and `design_verify_cycle` is retired. Its checks (C1–C5, C7) moved
+unchanged into the design stage (`plugins/agent/design/lib/checks.sh`), which runs them on its own
+design.md and goes back to its model with what failed, within its own rounds (ADR-040 amendment of the
+same date; ADR-068 §1–§3). The checks still run no model and execute nothing.

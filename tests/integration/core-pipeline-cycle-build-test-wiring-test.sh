@@ -41,10 +41,10 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/simple.yaml"
-# #2271: 3 cycles — delivery_loop (top level) holding design_verify_cycle and
-# build_test_cycle.
-assert_eq "T1: simple.yaml declares 3 cycles (delivery_loop + design_verify + build_test)" \
-    "3" "${#_TPL_CYCLES[@]}"
+# #2271: delivery_loop (top level) holding design and build_test_cycle;
+# #2369 retired design_verify_cycle, so 2 cycles.
+assert_eq "T1: simple.yaml declares 2 cycles (delivery_loop + build_test)" \
+    "2" "${#_TPL_CYCLES[@]}"
 has_inner=0
 for c in "${_TPL_CYCLES[@]}"; do
     [[ "$c" == "build_test_cycle" ]] && has_inner=1
@@ -57,8 +57,8 @@ for u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$u" == "cycle:delivery_loop" ]] && has_outer=1
 done
 assert_eq "T1: dispatch units include cycle:delivery_loop" "1" "$has_outer"
-assert_eq "T1: [#1668/SPEC-3] delivery_loop runs the design loop then build_test_cycle (impact removed)" \
-    "design_verify_cycle,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "T1: [#1668/SPEC-3] delivery_loop runs design then build_test_cycle (#2369)" \
+    "design,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
 # ADR-040 (#1138): the inner cycle's feedback edge is now the consolidated
 # gate-aggregator payload (gate-aggregator:gate_feedback → build:gate_feedback)
 # — the composable-gate successor to standard's test_assessment feedback.

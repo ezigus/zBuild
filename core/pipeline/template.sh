@@ -127,10 +127,10 @@ load_template() {
     # the prior _TPL_STAGES was a no-op on the first load; prefix expansion over
     # the live environment closes that cold-start gap.
     local _stale_bl
-    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}" "${!_TPL_STAGE_FAIL_ON_@}"; do
+    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}" "${!_TPL_STAGE_FAIL_ON_@}" "${!_TPL_CYCLE_STOP_ROUND_@}"; do
         # Defensive: only unset well-formed identifier names ([A-Za-z0-9_]+),
         # never a name assembled from unvalidated input.
-        [[ "$_stale_bl" =~ ^_TPL_STAGE_(BLOCKING|FAIL_ON)_[A-Za-z0-9_]+$ ]] || continue
+        [[ "$_stale_bl" =~ ^_TPL_(STAGE_BLOCKING|STAGE_FAIL_ON|CYCLE_STOP_ROUND)_[A-Za-z0-9_]+$ ]] || continue
         unset "$_stale_bl"
     done
 
@@ -586,6 +586,14 @@ load_template() {
                            "_TPL_CYCLE_EXIT_${ew_i}_OP_${ew_safe}"    \
                            "_TPL_CYCLE_EXIT_${ew_i}_VALUE_${ew_safe}"
                 done
+                ;;
+            SR)
+                # #2369: the loop members whose failure ends the round.
+                local sr_id sr_val
+                IFS='|' read -r sr_id sr_val <<< "$payload"
+                [[ "$sr_val" =~ ^[A-Za-z0-9_\ -]+$ ]] || continue
+                printf -v "_TPL_CYCLE_STOP_ROUND_${sr_id//-/_}" '%s' "$sr_val"
+                export "_TPL_CYCLE_STOP_ROUND_${sr_id//-/_}"
                 ;;
             FO)
                 # #2368: a stage's fail rule, space-separated severities.
@@ -1706,7 +1714,7 @@ _tpl_translate_new_shape() {
         cyc_rb_declared = 0
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
-        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""; cyc_unowned = ""
+        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""; cyc_unowned = ""; cyc_stop = ""
         # #1284 (ADR-047): multi-condition exit_when accumulators.
         cyc_ew_comb = ""; cyc_ew_n = 0; cyc_ew_cur_s = ""; cyc_ew_cur_f = ""; cyc_ew_cur_o = ""; cyc_ew_cur_v = ""
         delete cyc_ew_cond_s; delete cyc_ew_cond_f; delete cyc_ew_cond_o; delete cyc_ew_cond_v
@@ -1731,7 +1739,7 @@ _tpl_translate_new_shape() {
         cyc_rb_declared = 0
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
-        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""; cyc_unowned = ""
+        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""; cyc_unowned = ""; cyc_stop = ""
         # #1284 (ADR-047): multi-condition exit_when accumulators.
         cyc_ew_comb = ""; cyc_ew_n = 0; cyc_ew_cur_s = ""; cyc_ew_cur_f = ""; cyc_ew_cur_o = ""; cyc_ew_cur_v = ""
         delete cyc_ew_cond_s; delete cyc_ew_cond_f; delete cyc_ew_cond_o; delete cyc_ew_cond_v
@@ -1781,6 +1789,7 @@ _tpl_translate_new_shape() {
                                 cyc_expand "|" cyc_autogrant "|" cyc_escalate "|" cyc_ondeny
             cyc_abort[cur_key] = cyc_as "|" cyc_af "|" cyc_ao "|" cyc_av
             if (cyc_unowned != "") cyc_unowned_v[cur_key] = cyc_unowned
+            if (cyc_stop != "") cyc_stop_v[cur_key] = cyc_stop
             if (cyc_rb_declared) cyc_rb_seen[cur_key] = 1
             # #1284 (ADR-047): stash multi-condition exit_when data.
             if (cyc_ew_comb != "" && cyc_ew_n > 0) {
@@ -1954,6 +1963,11 @@ _tpl_translate_new_shape() {
             }
             if ($0 ~ /^[[:space:]]+on_max:/) {
                 v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); cyc_on_max = trim(v); next
+            }
+            # #2369: the members whose failure ends the round, a flow list.
+            if ($0 ~ /^[[:space:]]+stop_round_on_fail:/) {
+                v = $0; sub(/^[[:space:]]+stop_round_on_fail:[[:space:]]*/, "", v)
+                gsub(/[\[\],]/, " ", v); gsub(/[[:space:]]+/, " ", v); cyc_stop = trim(v); next
             }
             # ADR-068 §8 (amended 2026-10-11): read only so the loader can
             # refuse it (UO row) — the key was removed.
@@ -2190,6 +2204,7 @@ _tpl_translate_new_shape() {
             }
         }
         # ADR-013 (CQ-3 / issue #863): BL| rows for blocking leaf stages.
+        for (k in cyc_stop_v) print "SR|" k "|" cyc_stop_v[k]
         for (k in sec_fail_on_val) {
             if (sec_fail_on_val[k] != "") print "FO|" k "|" sec_fail_on_val[k]
         }

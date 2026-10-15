@@ -5,7 +5,8 @@
 #   G1 [change] each manifest declares result_contract 3 and no valid_verdicts
 #   G2 [change] lint/coverage/mutation: pass → pass, fail → fail, skip → pass;
 #               no verdict or disposition field; the detail under data
-#   G3 [change] design-gate: pass and fail; the violations under data
+#   G3 retired with design-gate (#2369: design checks its own design.md and
+#      writes one outcome — design-checks-own-output-test.sh C1, C2)
 #   G4 [change] assertion-integrity: nothing recorded yet → pass
 #   G5 [change] secret-scan: no baseline → pass
 #   G6 [change] teardown: hooks all clean → pass
@@ -21,7 +22,7 @@ print_test_header "gate and housekeeping stages write contract 3 (#2366)"
 setup_test_env "gates-contract3"
 export ZBUILD_EVENTS_DB="/dev/null"
 
-for _p in lint-gate coverage-gate mutation-gate secret-scan shape-floor assertion-integrity design-gate hydrate persist teardown; do
+for _p in lint-gate coverage-gate mutation-gate secret-scan shape-floor assertion-integrity hydrate persist teardown; do
     # shellcheck source=/dev/null
     source "$REPO_ROOT/plugins/tool/$_p/plugin.sh" >/dev/null 2>&1
 done
@@ -35,7 +36,7 @@ _v3() {  # _v3 <label> <file> <outcome>
 _mkwork() { local w="$TEST_TEMP_DIR/$1"; mkdir -p "$w/artifacts"; printf '{}\n' > "$w/state.json"; printf '%s' "$w"; }
 
 print_test_section "G1: manifests"
-for _p in lint-gate coverage-gate mutation-gate secret-scan shape-floor assertion-integrity design-gate hydrate persist teardown; do
+for _p in lint-gate coverage-gate mutation-gate secret-scan shape-floor assertion-integrity hydrate persist teardown; do
     _mf="$REPO_ROOT/plugins/tool/$_p/manifest.yaml"
     assert_eq "[G1] $_p declares result_contract 3" "3" \
         "$(awk '/^provides:/{f=1;next} f&&/^[a-zA-Z]/{exit} f&&/result_contract:/{sub(/.*result_contract:[[:space:]]*/,""); print; exit}' "$_mf")"
@@ -67,19 +68,6 @@ W="$(_mkwork mut-pass)"
 jq -n '{mutation:{status:"measured",score:"10/10",floor:0}}' > "$W/artifacts/test-results.json"
 mutation_gate_run mutation-gate "$W/state.json" >/dev/null 2>&1
 _v3 "[G2] mutation at floor" "$W/artifacts/mutation-result.json" pass
-
-print_test_section "G3: design-gate"
-_DR="$TEST_TEMP_DIR/dg-repo"; mkdir -p "$_DR/scripts"; touch "$_DR/scripts/wire.sh"
-W="$(_mkwork dg-pass)"
-printf '# Design\n\n```scope\nscripts/wire.sh\n```\n\n```acceptance\nSPEC-1[change]: thing\nTESTFILES:\ntests/v3-test.sh\nWIRING: scripts/wire.sh\n```\n' > "$W/artifacts/design.md"
-ZBUILD_REPO_ROOT="$_DR" design_gate_run design-gate "$W/state.json" >/dev/null 2>&1
-_v3 "[G3] a clean design" "$W/artifacts/design-gate-result.json" pass
-W="$(_mkwork dg-fail)"
-printf '# Design\n\nno blocks\n' > "$W/artifacts/design.md"
-ZBUILD_REPO_ROOT="$_DR" design_gate_run design-gate "$W/state.json" >/dev/null 2>&1
-_v3 "[G3] a design with violations" "$W/artifacts/design-gate-result.json" fail
-assert_eq "[G3] the violations are under data" "true" \
-    "$(jq '(.data.violations | length) > 0' "$W/artifacts/design-gate-result.json" 2>/dev/null)"
 
 print_test_section "G4: assertion-integrity"
 W="$(_mkwork ai)"

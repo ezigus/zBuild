@@ -7,7 +7,7 @@
 #          artifact area round-trip through snapshot → restore, including names
 #          no stage has, and the persistence code names no plugin
 # C3 [§3]  a deterministic gate never reuses a prior verdict: no gate plugin
-#          reads prior work, and design-gate judges the
+#          reads prior work, and design's own checks judge the
 #          current state even when the restored prior run says "pass"
 # C5 [impl notes] pr-open reuses an existing open PR: it edits that PR and
 #          never runs `gh pr create`; the result says status=updated
@@ -93,7 +93,7 @@ assert_eq "[C1] the persistence code names no stage" "" "$_c1_named"
 print_test_section "C3 §3: a deterministic gate never reuses a prior verdict"
 _c3_readers=""
 for _g in tool/test tool/shape-floor agent/spec-acceptance tool/secret-scan \
-          tool/design-gate; do
+          agent/design/lib; do
     [[ -d "$REPO_ROOT/plugins/$_g" ]] || { _c3_readers+="$_g(missing) "; continue; }
     while IFS= read -r _f; do
         if grep -qE '_read_prior_output|ZBUILD_RESTORED_ARTIFACTS_DIR|restored-artifacts|prior-output-reader' "$_f"; then
@@ -109,16 +109,18 @@ mkdir -p "$_C3/artifacts" "$_C3R"
 printf '{}' > "$_C3/pipeline-state.json"
 printf '# Design\n\nno scope, no acceptance\n' > "$_C3/artifacts/design.md"
 printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$_C3R/design.md"
-for _rf in design-gate-result.json test-results.json shape-floor-result.json acceptance-gate-result.json \
+for _rf in design-verdict.json test-results.json shape-floor-result.json acceptance-gate-result.json \
            lint-result.json coverage-result.json mutation-result.json secret-scan-result.json; do
     stage_result_write "$_C3R/$_rf" pass "prior run" >/dev/null
 done
-( source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh" >/dev/null 2>&1
-  emit_event() { :; }; eb_emit_event() { :; }
+# #2369: design's own checks (were the design-gate stage) judge the design on disk.
+_c3_n="$( source "$REPO_ROOT/scripts/lib/acceptance-block.sh" >/dev/null 2>&1
+  source "$REPO_ROOT/plugins/agent/design/lib/checks.sh" >/dev/null 2>&1
   export ZBUILD_RESTORED_ARTIFACTS_DIR="$_C3R"
-  design_gate_run design-gate "$_C3/pipeline-state.json" ) >/dev/null 2>&1 || true
-assert_eq "[C3] design-gate fails the current design despite a restored pass" "fail" \
-    "$(jq -r '.outcome // .verdict // empty' "$_C3/artifacts/design-gate-result.json" 2>/dev/null)"
+  _design_checks "$_C3/artifacts/design.md" "$TEST_TEMP_DIR" "" >/dev/null 2>&1
+  printf '%s' "${#_DESIGN_VIOLATIONS[@]}" )"
+assert_eq "[C3] design's checks fail the current design despite a restored pass" "yes" \
+    "$([[ "${_c3_n:-0}" -gt 0 ]] && echo yes || echo no)"
 
 # ─── C5: pr-open reuses the existing PR ─────────────────────────────────────
 print_test_section "C5: pr-open updates an existing PR instead of opening a second"

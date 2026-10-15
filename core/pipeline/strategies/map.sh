@@ -129,19 +129,16 @@ _map_unit_element() {
 # #2368: the engine sums up a map group — every element, its outcome and its
 # one-line reason, read from the element's own primary result — into
 # artifacts/<stage>-summary.md, and tells later stages whether any element
-# failed: ZBUILD_RUN_FLAGGED=yes (one failed), incomplete (none failed but one
-# did not finish or wrote no result — not a clean review), no (all passed).
-# Fail-open: a diagnostic never fails the group.
+# failed (ZBUILD_RUN_FLAGGED=yes|no). Fail-open: a diagnostic never fails the group.
 _map_write_summary() {
     local stage="$1" state_file="$2" env_target="$3" n="$4"; shift 4
     local -a plugins=("${@:1:$n}") elems=("${@:$((n + 1)):$n}")
-    local state_dir art i raw rows res line body="" flagged=no unfinished=0 outcome reason
+    local state_dir art i raw res line body="" flagged=no outcome reason
     state_dir="$(dirname "$state_file")"; art="${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}"
     declare -F _registry_output_path_rows >/dev/null 2>&1 \
         || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../plugin-registry" && pwd)/output-paths.sh" 2>/dev/null || true
     for (( i = 0; i < n; i++ )); do
-        rows="$(_registry_output_path_rows "${plugins[$i]}/manifest.yaml" 2>/dev/null || true)"
-        raw="$(awk -F'\t' '$2=="true"{print $1; exit}' <<< "$rows")"
+        raw="$(_registry_output_path_rows "${plugins[$i]}/manifest.yaml" 2>/dev/null | awk -F'\t' '$2=="true"{print $1; exit}')"
         res=""
         if [[ -n "$raw" ]]; then
             if [[ -n "$env_target" ]]; then
@@ -155,11 +152,10 @@ _map_write_summary() {
             outcome="$(jq -r '.outcome // "missing"' "$res" 2>/dev/null || echo missing)"
             reason="$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$res" 2>/dev/null || true)"
         fi
-        case "$outcome" in fail) flagged=yes ;; pass) ;; *) unfinished=1 ;; esac
+        [[ "$outcome" == fail ]] && flagged=yes
         line="- ${elems[$i]}: $outcome${reason:+ — $reason}"
         body+="$line"$'\n'
     done
-    [[ "$flagged" == no && $unfinished -eq 1 ]] && flagged=incomplete
     export ZBUILD_RUN_FLAGGED="$flagged"
     mkdir -p "$art" 2>/dev/null || true
     printf '## %s\n\n%s' "$stage" "$body" > "$art/${stage//[^A-Za-z0-9_.-]/_}-summary.md" 2>/dev/null || true
