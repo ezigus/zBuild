@@ -59,13 +59,14 @@ _hydrate_fetch() {
 # ─── _hydrate_put_back <from> <to> ───────────────────────────────────────────
 # Copy every file under <from> to the same place under <to>, skipping any file
 # <to> already has. One file at a time rather than `cp -n`, whose exit status on
-# a skipped file differs between BSD and newer GNU coreutils.
+# a skipped file differs between BSD and newer GNU coreutils. stage-io/ is left
+# out: it records one run's model calls and is no stage's output.
 _hydrate_put_back() {
     local from="$1" to="$2" f rel
     mkdir -p "$to" || return 1
     while IFS= read -r -d '' f; do
         rel="${f#"$from"/}"
-        [[ -e "$to/$rel" ]] && continue
+        [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
         mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
     done < <(find "$from" -type f -print0 2>/dev/null)
     return 0

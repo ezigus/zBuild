@@ -25,6 +25,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/write-ownership.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/attempt-archive.sh"
 # shellcheck source=../../scripts/lib/stage-dispatch-mark.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-dispatch-mark.sh"
+# shellcheck source=../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-summary.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -299,6 +301,7 @@ plugin_hook_call() {
     if [[ "${2:-}" == /* ]]; then
         local _ws_state_dir; _ws_state_dir="$(dirname "$2")"
         local -x ZBUILD_ARTIFACT_DIR="${_ws_state_dir}/artifacts"
+        [[ "$hook_name" == "run" ]] && stage_errors_clear "${1:-}"
 
         # #2022: the acceptance TESTFILES belong to the stage that AUTHORS them.
         # Every other spawn is denied Edit() on them, so build cannot rewrite an
