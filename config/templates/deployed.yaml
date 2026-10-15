@@ -211,6 +211,8 @@ secret-scan:
 # ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
 review_lenses:
   type: map
+  # #2368: a lens fails on a problem the change introduced of these severities.
+  fail_on: [high, critical]
   over: lenses
   # ADR-051 §2: each lens names the persona it runs as; none is inferred
   # from the lens's name.
