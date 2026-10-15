@@ -13,15 +13,19 @@
 _ZBUILD_STAGE_PREVIOUS_WORK_LOADED=1
 
 # ─── What this issue's work has changed ─────────────────────────────────────
-# _sp_work_changed_line <state_dir> <repo_root> — one line naming the files this
-# issue's work has changed, against the commit it started from (the baseline
-# intake records). Said once, at the top: it is the same for every stage. No
-# baseline, or no readable repository: no line.
+# shellcheck source=./merge-base.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/merge-base.sh"
+
+# _sp_work_changed_line <repo_root> — one line naming the files this
+# issue's work has changed, against where its branch left the default branch,
+# so a rerun still lists what earlier runs committed. Said once, at the top: it
+# is the same for every stage. No default branch, or no readable repository: no
+# line.
 _sp_work_changed_line() {
-    local state_dir="$1" repo_root="$2" base="" files line n=0 shown=""
-    [[ -s "$state_dir/intake-baseline-ref.txt" ]] && base="$(<"$state_dir/intake-baseline-ref.txt")"
-    base="${base%%[[:space:]]*}"
-    [[ -n "$base" && -n "$repo_root" ]] || return 0
+    local repo_root="$1" base files line n=0 shown=""
+    [[ -n "$repo_root" ]] || return 0
+    base="$(zbuild_resolve_merge_base "$repo_root")"
+    [[ -n "$base" ]] || return 0
     files="$(git -C "$repo_root" diff --name-only "$base" -- 2>/dev/null)" || return 0
     while IFS= read -r line; do
         [[ -n "$line" ]] || continue
@@ -118,7 +122,7 @@ _stage_block_previous_work() {
 
     printf 'The latest output of every stage that has run, with where to find it. Use\n'
     printf 'what your job needs.\n'
-    local changed; changed="$(_sp_work_changed_line "$state_dir" "$repo_root")"
+    local changed; changed="$(_sp_work_changed_line "$repo_root")"
     [[ -n "$changed" ]] && printf '\n%s\n' "$changed"
 
     # Everything read once: the stages in the order they first completed with

@@ -297,8 +297,9 @@ it** (ADR-068 §8).
   file is this run's own, and newer). There is no `restored-artifacts/` area and no
   `ZBUILD_RESTORED_ARTIFACTS_DIR`; the reader (§5), the input index and design read one place.
 - **No label.** Nothing says "from an earlier run". Previous work opens with one line naming the files
-  this issue's work has changed so far, against the commit the work started from (the baseline intake
-  records) — the same for every stage, so said once (ADR-067 §8, amended 2026-10-13 by #2363; until then
+  this issue's work has changed so far, against where its branch left the default branch, so a rerun
+  still lists what earlier runs committed (amended 2026-10-14; it compared against the commit intake
+  recorded, and #1801's rerun said "none") — the same for every stage, so said once (ADR-067 §8, amended 2026-10-13 by #2363; until then
   each stage carried its own "since it last ran" line and a per-stage record of it). The issue text is
   read once per run, so no line says whether it changed.
 - **A result still counts only if its stage's latest run wrote it.** A stage that runs again and writes
@@ -442,7 +443,7 @@ no model ever reads that line.
 - §9 (hydrate puts an earlier run's outputs in the live places, keeping any the run already has; no restored area) → `tests/unit/hydrate-stage-test.sh` SPEC-1, SPEC-6; `tests/integration/prior-work-reuse-integration-test.sh` T4, T5
 - §9 (no restored area is read: the index and the reader see only the live file) → `tests/unit/stage-input-resolve-precedence-test.sh` SPEC-3; `tests/unit/own-run-artifacts-first-test.sh` O1, O7
 - §9 (no earlier-run label; one wording for design's latest design whichever run wrote it) → `tests/unit/stage-prompt-contract-test.sh` P2; `tests/unit/design-prior-hypothesis-test.sh` SPEC-5
-- §9 (what the issue's work has changed, said once at the top against the baseline; no per-stage line or record) → `tests/unit/engine-blocks-shared-only-test.sh` B2; `tests/unit/stage-blocks-dispatch-test.sh` D2
+- §9 (what the issue's work has changed, said once at the top against the default branch; no per-stage line or record) → `tests/unit/engine-blocks-shared-only-test.sh` B2, B2b; `tests/unit/stage-blocks-dispatch-test.sh` D2
 - §11 (an attempt that ended in error shows the stage's last good output and its summary; the failure is still shown) → `tests/unit/engine-blocks-shared-only-test.sh` B3
 - §11 (a valid output the attempt wrote counts even when its call was cut off; one it did not write does not) → `plugins/agent/plan/tests/plan-work-items-test.sh` W3–W5; `plugins/agent/plan/tests/plan-integration-test.sh` I2, I3; design: `tests/unit/design-writes-as-it-goes-test.sh` D4
 - #2111 (a run aborted with `llm_rate_limited` persists — persist pushes the state branch; the daemon's completion comment names the reset time and says to re-add the label) → `tests/unit/prior-work-reuse-contract-test.sh` C6

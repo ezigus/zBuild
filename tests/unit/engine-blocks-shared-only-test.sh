@@ -13,6 +13,8 @@
 #   B2 [change] one line at the top lists the files this issue's work has
 #               changed, against the commit it started from; no per-stage
 #               "Since it last ran" lines
+#   B2b [change] on a rerun the line still lists what earlier runs committed:
+#               it compares against the default branch, not where this run began
 #   B3 [change] a stage whose latest attempt ended in error shows its last good
 #               output, from the attempt that wrote it
 #   B4 [change] the rules say each thing once, and hold no rule about a kind of
@@ -38,12 +40,13 @@ source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
 # shellcheck source=../../core/pipeline/input-resolve.sh
 source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1 || true
 
-# A run in a real repository: one commit the work started from, then one file
-# the work changed.
+# A run in a real repository: one commit on the default branch the work started
+# from, then one file the work changed on its own branch.
 _S="$TEST_TEMP_DIR/state"; _P="$TEST_TEMP_DIR/plugins"; _R="$TEST_TEMP_DIR/repo"
 mkdir -p "$_S/artifacts" "$_P/agent/pw" "$_R"
-git -C "$_R" init -q && git -C "$_R" config user.email t@t && git -C "$_R" config user.name t
+git -C "$_R" init -q -b main && git -C "$_R" config user.email t@t && git -C "$_R" config user.name t
 printf 'a\n' > "$_R/kept.sh"; git -C "$_R" add . && git -C "$_R" commit -qm base
+git -C "$_R" checkout -qb issue
 git -C "$_R" rev-parse HEAD > "$_S/intake-baseline-ref.txt"
 printf 'b\n' > "$_R/changed-by-work.sh"; git -C "$_R" add . && git -C "$_R" commit -qm work
 cat > "$_P/agent/pw/manifest.yaml" <<'MF'
@@ -88,6 +91,21 @@ else
 fi
 assert_eq "[B2] the line comes before any stage" "1" \
     "$(awk '/^Files this issue.s work has changed so far/{print (seen ? 0 : 1); exit} /^### /{seen=1}' <<< "$_pw")"
+
+print_test_section "B2b: a rerun still lists what earlier runs committed"
+# #1801's rerun: the issue branch already held an earlier run's commit, and this
+# run began on top of it. The line said "none" — it compared against where this
+# run began, not against the default branch.
+printf 'e\n' > "$_R/earlier-run.sh"; git -C "$_R" add . && git -C "$_R" commit -qm earlier-run
+git -C "$_R" rev-parse HEAD > "$_S/intake-baseline-ref.txt"
+_pw2="$(_prev)"
+assert_contains "[B2b] the earlier run's file is listed" "$_pw2" "earlier-run.sh"
+assert_contains "[B2b] ...with the first run's file" "$_pw2" "changed-by-work.sh"
+if grep -qF "changed so far: none" <<< "$_pw2"; then
+    assert_fail "[B2b] the line does not say none" "found"
+else
+    assert_pass "[B2b] the line does not say none"
+fi
 
 print_test_section "B3: a failed attempt shows the last good output"
 _good="$_S/artifacts/attempts/pw/iter-0-attempt-1"; mkdir -p "$_good"
