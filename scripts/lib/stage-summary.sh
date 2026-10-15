@@ -83,7 +83,7 @@ _stage_errors_log() {
 # latest dispatch's errors.
 stage_errors_clear() {
     local log; log="$(_stage_errors_log "${1:-}")"
-    [[ -n "$log" && -e "$log" ]] && : > "$log" 2>/dev/null
+    [[ -n "$log" && -e "$log" ]] && { : > "$log"; } 2>/dev/null || true
     return 0
 }
 

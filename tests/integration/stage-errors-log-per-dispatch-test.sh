@@ -31,7 +31,10 @@ JOB="$TEST_TEMP_DIR/state/runs/el"; A="$JOB/artifacts"
 SF="$JOB/pipeline-state.json"
 mkdir -p "$A" "$JOB/runtime"
 echo '{}' > "$SF"
-printf 'an earlier dispatch failed\n' > "$A/me-errors.log"
+# An earlier dispatch's error, written with the stage's own writer.
+# shellcheck source=../../scripts/lib/stage-summary.sh
+source "$REPO_ROOT/scripts/lib/stage-summary.sh"
+ZBUILD_ARTIFACT_DIR="$A" stage_errors_append me "an earlier dispatch failed"
 WT="$TEST_TEMP_DIR/wt"; mkdir -p "$WT"; git -C "$WT" init -q
 export ZBUILD_REPO_ROOT="$WT"
 
