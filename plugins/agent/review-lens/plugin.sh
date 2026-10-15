@@ -397,7 +397,7 @@ _review_lens_run_inner() {
     _rl_outcome="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " \
         'if any(.findings[]; .severity as $s | .introduced and ($on | contains(" \($s) ")))
          then "fail" else "pass" end' 2>/dev/null || printf 'pass')"
-    _rl_reason="the ${lens} lens found no ${_rl_fail_on:-failing} problem the change introduced"
+    _rl_reason="the ${lens} lens found no ${_rl_fail_on:+${_rl_fail_on// / or } }problem the change introduced that fails it"
     [[ "$_rl_outcome" == fail ]] && _rl_reason="the ${lens} lens found a ${_rl_fail_on// / or } problem the change introduced"
     printf '%s' "$normalized" | atomic_write "$out" \
         && stage_result_add "$out" "$_rl_outcome" "$_rl_reason"

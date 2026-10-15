@@ -49,6 +49,8 @@ _high='[{"file":"a.sh","category":"x","severity":"high","line":1,"message":"h","
 assert_eq "[F2] fail_on medium: a medium problem the change introduced fails" "fail" "$(_lens "medium" "$_med")"
 assert_eq "[F2] fail_on critical: a high problem passes" "pass" "$(_lens "critical" "$_high")"
 assert_eq "[F2] fail_on high: a high problem the change did NOT introduce passes" "pass" "$(_lens "high critical" "$_high_old")"
+# ADR-040 (#2368 part 3): a lens with no list never fails (review on PR #2392).
+assert_eq "[F2] no fail_on: a high problem the change introduced passes" "pass" "$(_lens "" "$_high")"
 
 print_test_section "F3: the shipped templates"
 for _t in simple deployed; do
