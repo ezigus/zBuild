@@ -91,6 +91,14 @@ else
     assert_fail "T5: design writes only design.md and its notes, and changes no code"
 fi
 
+# T7 (#1801 run): design writes design.md as it goes, so nothing in its prompt
+# may call it read-only — the old Tools heading did, and design wrote nothing.
+if grep -qiE 'read-only|may NOT modify' "$PROMPT"; then
+    assert_fail "T7: prompt does not call design read-only" "$(grep -iE 'read-only|may NOT modify' "$PROMPT")"
+else
+    assert_pass "T7: prompt does not call design read-only"
+fi
+
 # T6: simple.yaml design timeout raised to 600 (repo-wide grep headroom).
 tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
 assert_eq "T6: design timeout_s raised to 600" "600" "${tmo:-unset}"
