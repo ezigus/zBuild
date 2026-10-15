@@ -37,9 +37,15 @@ provides:
     - test_author.no_contract
     - test_author.result.write_failed
     - test_author.stale_tags_dropped
+    - test_author.checks.failed
+    - test_author.check.prompt_refused
 
 config:
   tier_default: T2
+  # #2370: rounds test-author spends checking that each assertion tests what
+  # its SPEC says, going back to its model with what does not; still failing
+  # after the last is outcome fail.
+  check_rounds: 2
 
 # #2174: the author writes the acceptance testfiles INTO the repository.
 capabilities:

@@ -502,3 +502,20 @@ build loop and names design in `stop_round_on_fail:` (ADR-068 §3).
 
 Enforced by: `tests/unit/design-checks-own-output-test.sh` C1–C5; `tests/unit/design-checks-test.sh`;
 `tests/unit/design-checks-plain-test.sh` D1–D3; `tests/unit/design-coverage-test.sh`.
+
+### Amendment (2026-10-15, #2370) — test-author checks its own assertions
+
+spec-correspondence (the model-judged check that each assertion tests what its SPEC says) is retired as
+a stage, and test-author does it itself: after its model writes the assertions, a second model call
+judges each (requirement, assertion) pair — one batch call, then one call per pair the batch left
+unjudged. A pair that is `partial`, `mismatch` or `uncheckable`, or a SPEC with no tagged assertion, goes
+back to test-author's model with the finding, until every assertion corresponds or test-author's rounds
+(`config.check_rounds: 2` in its manifest) run out; then its one outcome is `fail` and its result lists
+the findings. A failed check call is test-author's outcome; a judge with no verdict is `unusable`.
+The check was advisory; it now gates: build_test_cycle's `exit_when` requires test-author to pass.
+§5 allows it — the standard is the SPEC, which is design's and test-author cannot re-author. The
+assertion fingerprints test-author records are unchanged; whether build changed the assertions is
+checked by test (#2372).
+
+Enforced by: `tests/unit/test-author-checks-own-output-test.sh` A1–A5;
+`tests/unit/test-author-correspondence-test.sh`.

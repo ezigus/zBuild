@@ -35,6 +35,12 @@ source "$_TA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
 source "$_TA_ROOT/scripts/lib/stage-result.sh"
 # shellcheck source=../../../plugins/tool/assertion-integrity/plugin.sh
 source "$_TA_ROOT/plugins/tool/assertion-integrity/plugin.sh" 2>/dev/null || true
+# #2370: test-author checks its own assertions against their SPECs; the
+# assertion finder lives in acceptance-coverage.sh.
+# shellcheck source=../../../scripts/lib/acceptance-coverage.sh
+source "$_TA_ROOT/scripts/lib/acceptance-coverage.sh"
+# shellcheck source=./lib/correspondence.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/correspondence.sh"
 
 _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
@@ -85,7 +91,7 @@ _ta_drop_stale_tags() {
 # author finished, otherwise how it stopped. A router timeout is not a poor
 # authoring pass, it is no authoring pass at all.
 _ta_write_result() {
-    local dir="$1" o="$2" r="$3" n="${4:-0}"
+    local dir="$1" o="$2" r="$3" n="${4:-0}" fnd="${5:-[]}"
     mkdir -p "$dir" 2>/dev/null || true
     # #2189: the author REPORTS the testfiles it owns; the engine denies every
     # other stage edits to them from this report (never from design.md by path).
@@ -111,8 +117,9 @@ _ta_write_result() {
         [[ -n "$_tfh" ]] || _tfh="{}"
     fi
     local _data
-    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" \
-        '{specs_covered: $n, owned_files: $o, testfiles: $t}')"
+    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" --argjson f "$fnd" \
+        '{specs_covered: $n, owned_files: $o, testfiles: $t}
+         + (if ($f | length) > 0 then {findings: $f} else {} end)')"
     if ! stage_result_write "$dir/test-author-result.json" "$o" "$r" "$_data"; then
         _ta_emit "test_author.result.write_failed" "dir=$dir"
     fi
@@ -258,15 +265,13 @@ ${spec_block}${sup_section}
 EOF
 )"
 
-    # ADR-067 §8: the stage's three parts and the engine's blocks — its budget
-    # and notes file among the engine's rules — in the one prompt order.
-    local _composed
-    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
-        _ta_write_result "$art" "misconfigured" \
-            "the prompt could not be composed — the engine's blocks are missing" "$n"
-        return 1
-    fi
-    prompt="$_composed"
+    # #2370: the limits are kept apart from the rest so each round can add what
+    # the check found before them.
+    local _ta_text="${prompt%%$'\n'## What you must not do*}"
+    local _ta_limits="## What you must not do${prompt#*$'\n'## What you must not do}"
+    local _rounds; _rounds="$(yaml_get "$(dirname "${BASH_SOURCE[0]}")/manifest.yaml" config.check_rounds 2>/dev/null || true)"
+    [[ "$_rounds" =~ ^[1-9][0-9]*$ ]] || _rounds=2
+    local _round=1 _found=""
 
     local tier="T2" rc=0
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
@@ -285,6 +290,17 @@ EOF
     local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || printf '10')"
     [[ "$max_iter" =~ ^[0-9]+$ && "$max_iter" -gt 0 ]] || max_iter=10
     [[ -n "${ZBUILD_CYCLE_ITER:-}" && "$max_iter" -gt 15 ]] && max_iter=15
+    while :; do
+    # ADR-067 §8: the stage's three parts and the engine's blocks — its budget
+    # and notes file among the engine's rules — in the one prompt order.
+    local _composed
+    if ! _composed="$(stage_prompt_compose_parts "${_ta_text}${_found}
+${_ta_limits}")"; then
+        _ta_write_result "$art" "misconfigured" \
+            "the prompt could not be composed — the engine's blocks are missing" "$n"
+        return 1
+    fi
+    prompt="$_composed"
     local prompt_file
     prompt_file="$(mktemp "$(zbuild_engine_tmpdir 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}")/zb-ta-prompt.XXXXXX")" || {
         _ta_write_result "$art" "broken" "could not create the prompt file" "$n"
@@ -325,14 +341,40 @@ EOF
         return 1
     fi
 
-    # The digests are recorded HERE, by the author, immediately after authoring.
-    # Recording anywhere else would baseline someone else's edit as if it were
-    # the author's — which is precisely what the guard exists to catch.
     # #2174: the stage enforces its own invariant — a [SPEC-n] tag whose
     # number is not in THIS contract is stale (an earlier contract's), and the
     # gate would match it instead of the authored assertion. Drop the tag,
-    # keep the assertion. Runs before the digests are recorded.
+    # keep the assertion. #2370: then test-author checks its own assertions —
+    # does each one test what its SPEC says? What does not goes back to its
+    # model, within its rounds.
     _ta_drop_stale_tags "$design" "$repo"
+    _ta_correspondence "$design" "$repo" "$tier"
+    if [[ -n "$_TA_CORR_OUTCOME" ]]; then
+        declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
+        _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), unchecked"
+        _ta_write_result "$art" "$_TA_CORR_OUTCOME" \
+            "the check that each assertion tests its SPEC could not be run ($_TA_CORR_OUTCOME)" "$n"
+        return 0
+    fi
+    [[ ${#_TA_CORR_FINDINGS[@]} -eq 0 ]] && break
+    _ta_emit "test_author.checks.failed" "round=$_round" "rounds=$_rounds" "findings=${#_TA_CORR_FINDINGS[@]}"
+    if (( _round >= _rounds )); then
+        declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
+        _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), still failing their check"
+        _ta_write_result "$art" "fail" \
+            "${#_TA_CORR_FINDINGS[@]} assertion(s) still do not test what their SPEC says after $_rounds rounds" "$n" \
+            "$(printf '%s\n' "${_TA_CORR_FINDINGS[@]}" | stage_findings_json)"
+        return 0
+    fi
+    _round=$(( _round + 1 ))
+    _found="$(printf '\n### What the check of your assertions found (round %s of %s)\nYour assertions were checked against their requirements, and these do not hold. Fix each one in its testfile; keep what already holds.\n' "$_round" "$_rounds"; printf -- '- %s\n' "${_TA_CORR_FINDINGS[@]}")"
+    done
+
+    # The digests are recorded HERE, by the author, immediately after authoring.
+    # Recording anywhere else would baseline someone else's edit as if it were
+    # the author's — which is precisely what the guard exists to catch.
+    # (#2174: stale tags were dropped before the check above, so the digests
+    # are of the assertions as checked.)
     declare -f assertion_integrity_record >/dev/null 2>&1 \
         && assertion_integrity_record "$art" "$repo"
 

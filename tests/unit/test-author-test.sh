@@ -71,7 +71,19 @@ source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
 # all: it prepares one either way. tests/integration/test-author-router-dispatch-test.sh
 # is the test that can see that, and it dispatches in a fresh process for exactly
 # this reason.
-route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
+# #2370: test-author then checks its assertions with a second model call. The
+# fake model answers that check as a model would — every assertion corresponds
+# — so these tests of the authoring keep seeing only the authoring prompt.
+_ta_judge() {
+    [[ "$1" == *"does that establish the REQUIREMENT"* ]] || return 1
+    local _ids; _ids="$(grep -oE '^### SPEC-[0-9]+' <<< "$1" | sed 's/^### //')"
+    if [[ -n "$_ids" ]]; then
+        while IFS= read -r _i; do printf '%s: VERDICT: corresponds | REASON: ok\n' "$_i"; done <<< "$_ids"
+    else
+        printf 'VERDICT: corresponds\nREASON: ok\n'
+    fi
+}
+route_to_model() { _ta_judge "$2" && return 0; printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
 resolve_tier() { printf 'T2'; }
 # #2225: test-author calls the model through route_to_model_loop now. These
 # tests' requirements are unchanged, so the loop is stubbed to hand its prompt
@@ -233,7 +245,7 @@ assert_eq "[SPEC-9][change] the strip is recorded as an event" "1" "$(grep -c '"
 print_test_section "SPEC-10: authored testfiles are committed"
 _setup s10
 _TA_RC=0
-route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'assert_eq "[SPEC-1] data lives under data" "1" "$n"\n' >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"; return $_TA_RC; }
+route_to_model() { _ta_judge "$2" && return 0; printf '%s' "$2" > "$_TA_PROMPT"; printf 'assert_eq "[SPEC-1] data lives under data" "1" "$n"\n' >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"; return $_TA_RC; }
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_eq "[SPEC-10][change] the authored testfile is committed" "" "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
 assert_contains "[SPEC-10][change] …in a commit that says who wrote it" "$(git -C "$_R" log -1 --format=%s 2>/dev/null)" "test-author"
@@ -242,7 +254,7 @@ print_test_section "SPEC-11: a call that timed out mid-write still keeps what it
 _setup s11
 _TA_RC=124
 # Its own stub: the call writes part of the testfile, then times out.
-route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'assert_eq "[SPEC-1] partial" "1" "$n"\n' >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"; return 124; }
+route_to_model() { _ta_judge "$2" && return 0; printf '%s' "$2" > "$_TA_PROMPT"; printf 'assert_eq "[SPEC-1] partial" "1" "$n"\n' >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"; return 124; }
 if [[ -z "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)" ]]; then assert_pass "[SPEC-11][guard] the fixture starts clean"; fi
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_eq "[SPEC-11][change] the partial testfile is committed for the next attempt" "" "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
@@ -251,11 +263,11 @@ assert_eq "[SPEC-11][guard] …and the result still says the call did not finish
 print_test_section "SPEC-12: the prompt tells the author to continue earlier work"
 _setup s12
 _TA_RC=0
-route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return 0; }
+route_to_model() { _ta_judge "$2" && return 0; printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return 0; }
 : > "$_TA_PROMPT"
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_contains "[SPEC-12][change] the prompt says an earlier attempt's assertions may be there" "$(cat "$_TA_PROMPT")" "earlier attempt"
-route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
+route_to_model() { _ta_judge "$2" && return 0; printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
 
 print_test_section "SPEC-13: one testfile at a time, each saved before the next"
 _setup s13
@@ -282,7 +294,7 @@ route_to_model() { return 124; }
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_eq "[SPEC-14][guard] an attempt that wrote nothing leaves the result identical" \
     "$_r2" "$(cat "$_A/test-author-result.json" 2>/dev/null)"
-route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
+route_to_model() { _ta_judge "$2" && return 0; printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
 
 print_test_results
 exit $((FAIL > 0))
