@@ -189,7 +189,11 @@ _stage_block_rules() {
 
     # The limits every model call runs under, the same for every stage: the
     # engine needs no word from the stage about whether or how it calls one.
-    tv="_TPL_STAGE_TIMEOUT_S_${stage//-/_}"; stage_secs="${!tv:-}"
+    if declare -F template_stage_time_limit >/dev/null 2>&1; then
+        stage_secs="$(template_stage_time_limit "$stage" 2>/dev/null)"
+    else
+        tv="_TPL_STAGE_TIMEOUT_S_${stage//-/_}"; stage_secs="${!tv:-}"
+    fi
     secs="$(ZBUILD_CURRENT_STAGE="$stage" _route_resolve_timeout 2>/dev/null)"
     turns="$(ZBUILD_CURRENT_STAGE="$stage" _route_resolve_max_turns 2>/dev/null)"
     local per_call="${secs:-?} seconds"

@@ -27,6 +27,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/attempt-archive.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-dispatch-mark.sh"
 # shellcheck source=../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-summary.sh"
+# shellcheck source=../../scripts/lib/stage-time-limit.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-time-limit.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -179,6 +181,14 @@ _lc_owned_by_others_deny() {
     jq -r --arg me "$me" --arg root "${ZBUILD_REPO_ROOT:-.}" '
         [(.owned_files // {}) | to_entries[] | select(.key != $me) | .value[] | "\($root)/\(.)"]
         | unique[]' <<< "$_body" 2>/dev/null
+}
+
+# _lc_kill_tree <pid> <signal> — signal a process and everything under it,
+# children first, so nothing the stage started outlives it.
+_lc_kill_tree() {
+    local p="$1" sig="$2" c
+    for c in $(pgrep -P "$p" 2>/dev/null); do _lc_kill_tree "$c" "$sig"; done
+    kill "-$sig" "$p" 2>/dev/null || true
 }
 
 # ─── plugin_hook_call ───────────────────────────────────────────────────────
@@ -484,8 +494,41 @@ plugin_hook_call() {
 
     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
 
-    # Run in a subshell to isolate plugin's variables/functions
+    # The engine bounds the WHOLE stage (the template's per-stage `timeout_s:`,
+    # 15 minutes by default): it cannot trust a stage to stop itself. Only a
+    # flow stage's run — one with a stage name and a job folder — is bounded.
+    local _tl_marker="" _tl_secs=""
+    if [[ "$hook_name" == "run" && -n "${ZBUILD_CURRENT_STAGE:-}" && "${2:-}" == /* ]]; then
+        _tl_secs="$(template_stage_time_limit "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
+        [[ "$_tl_secs" =~ ^[1-9][0-9]*$ ]] || _tl_secs=900
+        _tl_marker="$(dirname "$2")/runtime/stage-time-limit.${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9._-]/_}"
+        mkdir -p "${_tl_marker%/*}" 2>/dev/null || true
+        rm -f "$_tl_marker" 2>/dev/null || true
+    fi
+
+    # Run in a subshell to isolate plugin's variables/functions. It runs in the
+    # foreground, as it always has: signals reach the runner on the same terms.
+    local _tl_wd="" _tl_pidf=""
+    if [[ -n "$_tl_marker" ]]; then
+        # The watchdog: when the time is up it records the limit, says so, and
+        # stops the stage and everything it started — TERM, then KILL. The
+        # stage's subshell names itself in a file, as its first act.
+        _tl_pidf="${_tl_marker}.pid"; rm -f "$_tl_pidf" 2>/dev/null || true
+        (
+            sleep "$_tl_secs" & _tl_s=$!
+            trap 'kill "$_tl_s" 2>/dev/null; exit 0' TERM
+            wait "$_tl_s" 2>/dev/null || exit 0
+            _tl_p="$(cat "$_tl_pidf" 2>/dev/null)"
+            [[ -n "$_tl_p" ]] && kill -0 "$_tl_p" 2>/dev/null || exit 0
+            : > "$_tl_marker" 2>/dev/null
+            emit_event "stage.time_limit.reached" "stage=${ZBUILD_CURRENT_STAGE}" "seconds=$_tl_secs" 2>/dev/null || true
+            _lc_kill_tree "$_tl_p" TERM; sleep 2; _lc_kill_tree "$_tl_p" KILL
+        ) &
+        _tl_wd=$!
+    fi
+    local rc=0
     (
+        [[ -n "$_tl_pidf" ]] && printf '%s' "$BASHPID" > "$_tl_pidf"
         # shellcheck disable=SC1090
         source "$plugin_sh"
         if declare -F "$hook_fn" >/dev/null 2>&1; then
@@ -494,8 +537,12 @@ plugin_hook_call() {
             echo "plugin_hook_call: function $hook_fn not defined in $plugin_sh" >&2
             exit 1
         fi
-    )
-    local rc=$?
+    ) || rc=$?
+    if [[ -n "$_tl_wd" ]]; then
+        kill -TERM "$_tl_wd" 2>/dev/null; wait "$_tl_wd" 2>/dev/null || true
+        rm -f "$_tl_pidf" 2>/dev/null || true
+        [[ -f "$_tl_marker" && $rc -eq 0 ]] && rc=1
+    fi
 
     if [[ $rc -eq 0 ]]; then
         # #288: after a successful `run`, verify the plugin actually produced
