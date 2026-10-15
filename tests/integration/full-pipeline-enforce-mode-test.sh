@@ -7,8 +7,8 @@
 #     (the pipeline may still terminate downstream for other reasons; we
 #      only assert that pre-flight does NOT refuse)
 #
-# Scenario B: broken template (broken-contract-aggregator fixture) — its cycle
-# exits on an advisory aggregator, which ADR-040 §5 refuses at pre-flight.
+# Scenario B: broken template (broken-contract-summary fixture) — a stage whose
+# plugin declares no summary output, which ADR-055 §9 refuses at pre-flight.
 #   - default mode (no env override) → runner rc=1 BEFORE any stage runs (#1850: was 2)
 #   - structured error printed on stderr
 #   - pipeline.preflight.fail event emitted
@@ -33,7 +33,14 @@ setup_test_env "preflight-enforce-default"
 # `--template simple` has no per-repo override here, so it resolves the shipped
 # simple template from the engine tree.
 OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
-install_template_overlay "$OVERLAY_REPO" broken-contract-aggregator
+install_template_overlay "$OVERLAY_REPO" broken-contract-summary
+# The shipped plugins plus one, `no-summary`, that declares no summary output —
+# the contract violation the fixture template's stage triggers (#2368).
+# The copies source ../../../{core,scripts}, so those sit beside them as links.
+mkdir -p "$TEST_TEMP_DIR/plugins"; cp -R "$REPO_ROOT/plugins/." "$TEST_TEMP_DIR/plugins/"
+for _d in core scripts config; do ln -s "$REPO_ROOT/$_d" "$TEST_TEMP_DIR/$_d"; done
+mock_plugin_factory "no-summary" "tool" 0 "" "no_summary" >/dev/null
+export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
@@ -63,7 +70,7 @@ chmod +x "$DRIVER"
 # ── Scenario B: broken template → default mode refuses with rc=1 ────────────
 err1="$TEST_TEMP_DIR/run1.err"
 out1="$TEST_TEMP_DIR/run1.out"
-( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "should be rejected" --template broken-contract-aggregator ) \
+( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "should be rejected" --template broken-contract-summary ) \
     >"$out1" 2>"$err1" || true
 exit_code1="$(grep -E '^EXIT_CODE=' "$out1" 2>/dev/null | tail -1 | cut -d= -f2 || echo "")"
 

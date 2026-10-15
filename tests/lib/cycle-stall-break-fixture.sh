@@ -37,9 +37,9 @@ source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # ─── SPEC-3 / SPEC-4 (stall-break vs converge) ───────────────────────────────
 # Drive the REAL cycle_orchestrator_run with a stubbed dispatch hook. build always
-# emits empty_diff; every mechanical gate passes; the gate-aggregator (the cycle's
-# exit_when stage after the B6 #1138 cutover) verdict is parameterized.
-_GA_VERDICT="fail"
+# emits empty_diff; every mechanical gate passes but secret-scan, whose verdict
+# is parameterized (#2368: the loop's exit_when names every must-pass member).
+_GATE_VERDICT="fail"
 # shellcheck disable=SC2317
 cycle_dispatch_stage() {
     local _st_stage="$1" _st_iter="$2" _st_state_file="$3"
@@ -85,16 +85,13 @@ cycle_dispatch_stage() {
             _CYCLE_DISPATCH_VERDICT="${_AG_VERDICT:-pass}"
             _CYCLE_DISPATCH_VERDICT_RAW="${_AG_VERDICT:-pass}"
             ;;
-        gate-aggregator)
-            printf '{"schema_version":1,"summary":"x"}' > "$_art/gate-aggregator-result.json"
-            stage_result_add "$_art/gate-aggregator-result.json" "$_GA_VERDICT" x
-            _CYCLE_DISPATCH_VERDICT="$_GA_VERDICT"
-            _CYCLE_DISPATCH_VERDICT_RAW="$_GA_VERDICT"
+        secret-scan)
+            stage_result_write "$_art/secret-scan-result.json" "$_GATE_VERDICT" x
+            _CYCLE_DISPATCH_VERDICT="$_GATE_VERDICT"
+            _CYCLE_DISPATCH_VERDICT_RAW="$_GATE_VERDICT"
             ;;
         *)
-            # shape-floor, acceptance-gate, secret-scan: all pass (verdict
-            # defaults set above) so only the aggregator gates. (#1129 Change C
-            # dropped lint/coverage/mutation as cycle members.)
+            # shape-floor and the rest: pass (verdict defaults set above).
             :
             ;;
     esac
@@ -120,6 +117,6 @@ _run_cycle() {
 # #1208: the #1117 empty-diff STALL-BREAK was REMOVED. "Run all tries": an
 # empty_diff that never converges no longer terminates early — the cycle uses ALL
 # its iterations (each cheap: build self-yields on an empty diff) and then
-# terminates by-severity. Here the mock's `test` stage passes (gate-aggregator
+# terminates by-severity. Here the mock's `test` stage passes (secret-scan
 # fails), so exhaustion routes to rc=1, outcome unconverged (→review, reason
 # max_iterations), NOT the old reason=stalled / ≤2-iter early break.

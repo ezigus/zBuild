@@ -1,11 +1,6 @@
 id: spec-correspondence
 name: Spec Correspondence
 kind: agent
-# ADR-040 §5: it makes a model call, so it may NOT sit on a convergence path.
-# Its finding reaches test-author on the next iteration through the summary
-# channel. Promotion to blocking is a separate decision needing a §5 amendment
-# and observed accuracy — deliberately not taken here.
-convergence: advisory
 version: 0.1.0
 description: |
   Judges whether each acceptance assertion tests what its SPEC sentence says.

@@ -177,6 +177,11 @@ acceptance_gate_run() {
     esac
     printf '{"severity":"%s","failures":["%s"]}' "$disp" "$f" \
         > "$state_dir/artifacts/acceptance-gate-result.json"
+    # #2368: like the real gate, a check it could only not measure is a pass.
+    if [[ "$disp" == advisory ]]; then
+        stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" pass "$f"
+        return 0
+    fi
     stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" fail "$f"
     return 1
 }
@@ -220,48 +225,6 @@ design_gate_run() {
 PLUG
 }
 
-# gate-aggregator stub: rolls the acceptance-gate result into the cycle's
-# convergence verdict. A TERMINAL acceptance disposition is hard-halted by the
-# orchestrator BEFORE the aggregator (rc=8), so this only governs the
-# non-terminal cases: for pass / recoverable / advisory it emits verdict=pass so
-# build_test_cycle converges (and status=success WITHOUT the retired review
-# rescue). This mirrors the real gate-aggregator, which never blocks on an
-# advisory/recoverable member.
-_make_gate_aggregator_plugin() {
-    local dir="$PLUGINS_ROOT/agent/gate-aggregator"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: gate-aggregator
-name: Test gate-aggregator
-kind: agent
-version: 0.0.1
-hooks:
-  run: gate_aggregator_run
-requires:
-  core:
-    - redaction
-provides:
-  role: gate_aggregator
-  result_contract: 3
-outputs:
-  - id: gate_aggregator_out
-    path: ${artifact_dir}/gate-aggregator.json
-    type: json
-    required: true
-    primary: true
-EOF
-    cat > "$dir/plugin.sh" <<'PLUG'
-gate_aggregator_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"summary":"ok","gates":[]}' > "$state_dir/artifacts/gate-aggregator.json"
-    source "$STAGE_RESULT_LIB"
-    stage_result_add "$state_dir/artifacts/gate-aggregator.json" pass "stub"
-    return 0
-}
-PLUG
-}
-
 # ─── Build common plugin stubs (rc=0 unless overridden below) ─────────────────
 # #979: standard.yaml retired → drive the shipped default simple.yaml. The
 # acceptance-gate is a member of simple.yaml's build_test_cycle; its
@@ -290,7 +253,6 @@ _make_plugin "test"            "tester"
 _make_plugin "shape-floor"     "shape_floor"
 _make_acceptance_gate_plugin
 _make_plugin "secret-scan"     "secret_scan"
-_make_gate_aggregator_plugin   # verdict mirrors acceptance disposition
 # review_lenses is now a map group (#1295): one plugin for role review_lens
 # handles all elements (security, performance, red-team, correctness, scope).
 _make_plugin "review-lens"      "review_lens"
@@ -359,19 +321,19 @@ assert_eq "T1 [SPEC-4]: build_test_cycle did NOT converge (no reason=converged)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-2] untagged_spec-only failure is RECOVERABLE — must NOT hard-abort.
-#          The cycle CONVERGES (gate-aggregator passes on a non-terminal member)
-#          → pipeline reaches status=success. (#979: no review-rescue needed —
-#          convergence means no unconverged cycle, so the terminal status is
-#          success by the normal converged path.)
+#          The loop goes round again to fix it. (#2368: it used to converge
+#          only because this test's own gate-aggregator stub passed everything;
+#          the real one, and now the engine, keep a failing gate from passing.)
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "T2 [SPEC-2]: untagged_spec-only acceptance failure does NOT halt (status=success)"
+print_test_section "T2 [SPEC-2]: untagged_spec-only acceptance failure does NOT halt — the loop goes round"
 
 export ZBUILD_TEST_GATE_FAILURE="untagged_spec:SPEC-1"
 _run_pipeline t2
 
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
-# [SPEC-2]
-assert_eq "T2 [SPEC-2]: pipeline.end status=success on untagged_spec-only (feedback preserved)" "success" "$end_status"
+rounds="$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="build_test_cycle")' \
+    "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_gt "T2 [SPEC-2]: build_test_cycle goes round again (more than one round)" "$rounds" "1"
 
 # No terminal-failure event for the recoverable class.
 term_evt="$(jq -c 'select(.type=="cycle.member.terminal_failure")' \
@@ -380,8 +342,9 @@ assert_eq "T2 [SPEC-2]: cycle.member.terminal_failure NOT emitted for untagged_s
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-5] infra failure (negctl_error:timeout) is NON-terminal (ADR-036 #1188).
-#          A flaky/slow sandbox must NOT hard-fail the pipeline — the cycle
-#          converges → status=success, and NO terminal-failure event fires.
+#          A flaky/slow sandbox must NOT hard-fail the pipeline — the gate
+#          reports pass (#2368), the cycle converges → status=success, and NO
+#          terminal-failure event fires.
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "T3 [SPEC-5]: infra negctl_error:timeout does NOT halt (status=success)"
 

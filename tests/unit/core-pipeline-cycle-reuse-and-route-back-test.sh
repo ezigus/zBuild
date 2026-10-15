@@ -10,11 +10,11 @@
 # SPEC-2: the simple.yaml edge parses + the producer (gate-aggregator:gate_feedback)
 #         resolves to a path that EXISTS in simple.yaml's flow (no required-edge
 #         cycle.feedback.missing surprise — it is required:false regardless).
-# SPEC-3: the stall-break fires — build verdict=empty_diff + gate-aggregator
+# SPEC-3: the stall-break fires — build verdict=empty_diff + a failing gate
 #         verdict!=pass ⇒ cycle terminates reason=stalled within <=2 iterations
 #         (NOT max_iterations=5), emitting cycle.stalled.
-# SPEC-4: empty_diff + gate-aggregator verdict=pass ⇒ converged (no false stall).
-# B6 (#1138, ADR-040): build_test_cycle converges on the gate-aggregator verdict
+# SPEC-4: empty_diff + every gate pass ⇒ converged (no false stall).
+# B6 (#1138, ADR-040): build_test_cycle converges when every gate named by exit_when passes (#2368)
 # — the stub drives the decomposed gate roster.
 # #2191: split from core-pipeline-cycle-stall-break-test.sh (SPEC-5/6/7), which
 # ran past the 480s per-file timeout on loaded CI runners.
@@ -40,7 +40,7 @@ source "$REPO_ROOT/tests/lib/cycle-stall-break-fixture.sh"
 # again to fail the same way, five times. #2117 reused only PASSING members;
 # a deterministic member's failure on the same tree is just as reusable.
 print_test_section "SPEC-5: empty_diff on the tree a previous iteration FAILED ⇒ that failure is reused, not re-run"
-_GA_VERDICT="fail"; _TEST_VERDICT="fail"; _AG_VERDICT="fail"
+_GATE_VERDICT="fail"; _TEST_VERDICT="fail"; _AG_VERDICT="fail"
 _run_cycle "refail"
 _n_test_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[SPEC-5] the FAILING test member is dispatched exactly ONCE across the 3 iterations" "1" "$_n_test_f"
@@ -67,7 +67,7 @@ _TEST_VERDICT="pass"
 # previous verdict — which is the only way to tell a real intermittent failure
 # from a stale one.
 print_test_section "SPEC-7: a reported non-reproduction re-runs the member that raised it"
-_GA_VERDICT="fail"; _TEST_VERDICT="fail"; _AG_VERDICT="fail"
+_GATE_VERDICT="fail"; _TEST_VERDICT="fail"; _AG_VERDICT="fail"
 # Baseline: an unchanged tree reuses the failing member exactly once (#2170).
 _BUILD_NOT_REPRODUCED=""
 _run_cycle "no-report"
@@ -94,7 +94,7 @@ _TEST_VERDICT="pass"; _AG_VERDICT="pass"
 # outer loop (delivery_loop) then goes round from design, which owns the scope.
 print_test_section "SPEC-6: a denied scope request ends the build loop after one round"
 _BUILD_SCOPE_REQUEST='{"files":[{"path":"tests/unit/other-test.sh","category":"collateral_tests","evidence":"","reason":"named in test feedback"}]}'
-_GA_VERDICT="fail"
+_GATE_VERDICT="fail"
 _run_cycle "scope-rb"
 assert_eq "[SPEC-6] the loop ends blocked_on_scope (rc=1, outcome interrupted; was rc=7)" \
     "1 interrupted" "$_RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"

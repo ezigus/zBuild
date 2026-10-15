@@ -371,8 +371,8 @@ _manifest_graph_ensure_yaml_get() {
 
 # ─── manifest_graph_resolve_member <plugins_root> <member> ─────────────────────
 # Resolve a cycle/parallel member stage id to its plugin manifest path — the
-# SHARED roster-resolution primitive used by both the gate-aggregator (ADR-040
-# §2) and the cycle engine's generic member-disposition contract (ADR-021). Two
+# roster-resolution primitive used by the cycle engine's generic
+# member-disposition contract (ADR-021). Two
 # strategies, in order:
 #   1) id-match (manifest_graph_collect) — most members' ids match their manifest.
 #   2) role binding — a template may name a member by an id that binds BY ROLE

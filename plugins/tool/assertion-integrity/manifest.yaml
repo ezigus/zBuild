@@ -1,10 +1,6 @@
 id: assertion-integrity
 name: Assertion Integrity
 kind: tool
-# ADR-040 §5: mechanical, no model.route — so it may sit on the convergence
-# path. Its fail verdict is what keeps the cycle from converging when build has
-# rewritten an assertion.
-convergence: gate
 version: 0.1.0
 description: |
   Compares the declared acceptance TESTFILES against the digests the

@@ -9,7 +9,7 @@ mechanics:
     adr: ADR-049
 
   - name: aggregators
-    summary: Mechanical (gate-aggregator) and advisory (review-aggregator) verdict merges.
+    summary: The advisory review-aggregator merge; a loop's members are combined by its exit_when (#2368).
     defined_in: core/pipeline/verdict.sh
 
   - name: convergence

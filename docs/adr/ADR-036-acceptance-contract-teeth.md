@@ -1024,7 +1024,7 @@ Level 3 put back only the file the design named under `WIRING:`, and `WIRING: no
 - Amendment (#951) → `tests/unit/build-acceptance-spec-feedback-test.sh` L1a–L1c (build's prompt lists every SPEC id)
 - Amendment (#956) → `tests/integration/acceptance-gate-reachability-test.sh` R1–R5; `tests/unit/acceptance-block-test.sh` TC-8–TC-13 (`acceptance_list_wiring`, path-traversal guard); `tests/unit/acceptance-gate-reachability-test.sh` #2109-B1, B2, B4, B5; `tests/unit/acceptance-gate-runs-per-file-test.sh` #2110-1 to #2110-4
 - Amendment (#1188) → `tests/unit/acceptance-negctl-test.sh` NC-G, NC-H; `tests/integration/acceptance-gate-test.sh` S8; `tests/unit/acceptance-gate-reachability-test.sh` REACH-GUARD
-- Amendment (Phase 2) → `tests/unit/acceptance-disposition-classify-test.sh`; `tests/unit/core-pipeline-cycle-acceptance-terminal-test.sh` SPEC-1, SPEC-2, SPEC-5, DECOUPLING; `tests/unit/gate-aggregator-test.sh` TC-8
+- Amendment (Phase 2) → `tests/unit/acceptance-disposition-classify-test.sh`; `tests/unit/core-pipeline-cycle-acceptance-terminal-test.sh` SPEC-1, SPEC-2, SPEC-5, DECOUPLING; `tests/integration/acceptance-gate-test.sh` S6c, S8 (#2368: an advisory-only result is a pass)
 - Amendment (#1211) → `tests/integration/acceptance-gate-quiet-test.sh` SPEC-1–SPEC-4
 - Amendment (#1219) → superseded (#1583, then ADR-068/#2271); `tests/integration/acceptance-gate-test.sh` S13, S14 check that no fault is set
 - Amendment (#1265) → `tests/integration/cycle-no-committed-changes-fail-fast-test.sh`; `tests/unit/pr-open-zero-commits-halts-test.sh` SPEC-21

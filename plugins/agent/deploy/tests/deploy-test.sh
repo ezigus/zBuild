@@ -9,11 +9,11 @@
 # SPEC-5  [#1846/SPEC-5]:  plugin.sh has "Role: deploy_agent" preamble comment
 # SPEC-6  [#1846/SPEC-6]:  no route_to_model call in non-comment code
 # SPEC-7  [#1846/SPEC-7]:  dry-run deploy-result.json carries result_contract=2 (not schema_version=1)
-# SPEC-8  [#1846/SPEC-8]:  missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)
+# SPEC-8  [#1846/SPEC-8]:  no word on the loops (non-dry-run) → fail-closed rc=1 (not rc=2)
 # SPEC-9  [#1846/SPEC-9]:  manifest provides block declares result_contract: 3 (#2366)
 # SPEC-10 [#1846/SPEC-10]: every terminal exit path writes v2 envelope
 # SPEC-11 [#1846/SPEC-11]: plugin.sh derives output path from ZBUILD_ARTIFACT_DIR; no state_file-derived path
-# SPEC-12 [#1846/SPEC-12]: pr_url and gate_aggregator_result resolved via ZBUILD_STAGE_INPUTS
+# SPEC-12 [#1846/SPEC-12]: pr_url resolved via ZBUILD_STAGE_INPUTS; the loops word from the engine (#2368)
 # SPEC-13 [#1846/SPEC-13]: all error exit paths return rc=1; no exit path returns rc=2 or higher
 # SPEC-14 [#1846/SPEC-14]: all three valid verdicts exercised with v2-shaped result
 # SPEC-15 [#1846/SPEC-15]: manifest has no config.router block; manifest_router_knob returns empty
@@ -356,7 +356,7 @@ assert_eq "[#1846/SPEC-4] gate outcome=timed_out (non-pass) → nothing deployed
 #        and verdict=error
 # ---------------------------------------------------------------------------
 _run_nogate="$TEST_TEMP_DIR/run_nogate"
-# Do NOT create gate-aggregator-result.json
+# No word from the engine on the run's loops.
 _rc8="$(_deploy_case "$_run_nogate" -)"
 assert_eq "[#1846/SPEC-8] missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)" "1" "$_rc8"
 

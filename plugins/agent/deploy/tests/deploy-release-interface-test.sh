@@ -104,7 +104,7 @@ assert_eq "[R1] ...and the PR" "https://github.com/test/repo/pull/42" "$(_rj "$_
 _r4="$TEST_TEMP_DIR/r4-elsewhere"; mkdir -p "$TEST_TEMP_DIR/r4-state"
 ( _make_state "$_r4"
   printf 'https://github.com/test/repo/pull/42\n' > "$_r4/artifacts/pr-url.txt"
-  stage_result_write "$_r4/artifacts/gate-aggregator-result.json" pass "gate pass"
+  export ZBUILD_RUN_LOOPS_PASSED=yes
   export PATH="$FAKE_BIN:$PATH" FAKE_GIT_LOG="$_r4/git.log" ZBUILD_DRY_RUN=0
   : > "$FAKE_GIT_LOG"
   printf '{}' > "$TEST_TEMP_DIR/r4-state/state.json"
@@ -137,8 +137,8 @@ _r7="$TEST_TEMP_DIR/r7-outside"; _r7x="$TEST_TEMP_DIR/r7-elsewhere"; mkdir -p "$
 printf 'https://github.com/evil/repo/pull/1\n' > "$_r7x/pr-url.txt"
 _rc_r7=0
 ( _make_state "$_r7"
-  jq -n --arg pr "$_r7x/pr-url.txt" --arg gr "$_r7/artifacts/gate-aggregator-result.json" \
-      '{"inputs":{"pr_url":$pr,"gate_aggregator_result":$gr}}' > "$_r7/stage-inputs/deploy.json"
+  jq -n --arg pr "$_r7x/pr-url.txt" \
+      '{"inputs":{"pr_url":$pr}}' > "$_r7/stage-inputs/deploy.json"
   ZBUILD_DRY_RUN=1 deploy_agent_run "deploy" "$_r7/state.json" ) >/dev/null 2>&1 || _rc_r7=$?
 assert_eq "[R7] an input outside the state directory → rc=1" "1" "$_rc_r7"
 assert_eq "[R7] ...disposition=broken (an engine index pointing outside the run is a defect)" "broken" "$(_rj "$_r7" .outcome)"
@@ -154,8 +154,8 @@ _r7b="$TEST_TEMP_DIR/r7b-nodir"; _r7bev="$TEST_TEMP_DIR/r7b-events.jsonl"; : > "
 _rc_r7b=0
 ( _make_state "$_r7b"
   emit_event() { printf '%s\n' "$*" >> "$_r7bev"; }
-  jq -n --arg pr "$TEST_TEMP_DIR/no-such-dir/pr-url.txt" --arg gr "$_r7b/artifacts/gate-aggregator-result.json" \
-      '{"inputs":{"pr_url":$pr,"gate_aggregator_result":$gr}}' > "$_r7b/stage-inputs/deploy.json"
+  jq -n --arg pr "$TEST_TEMP_DIR/no-such-dir/pr-url.txt" \
+      '{"inputs":{"pr_url":$pr}}' > "$_r7b/stage-inputs/deploy.json"
   ZBUILD_DRY_RUN=1 deploy_agent_run "deploy" "$_r7b/state.json" ) >/dev/null 2>&1 || _rc_r7b=$?
 assert_eq "[R7b] an unresolvable input directory outside the run → rc=1" "1" "$_rc_r7b"
 assert_contains "[R7b] ...refused, not reported missing" "$(cat "$_r7bev")" "deploy.input.refused"

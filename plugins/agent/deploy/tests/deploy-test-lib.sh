@@ -14,8 +14,8 @@ apply_scope_redaction() {
 }
 
 # ─── Helper: make a minimal state dir and set v2 dispatch env vars ────────────
-# Sets ZBUILD_STAGE_INPUTS (the engine's input index with pr_url and
-# gate_aggregator_result) and ZBUILD_ARTIFACT_DIR. Called in THIS shell
+# Sets ZBUILD_STAGE_INPUTS (the engine's input index with pr_url) and
+# ZBUILD_ARTIFACT_DIR. Called in THIS shell
 # (not a subshell) so the exports reach the calling test.
 _make_state() {
     local dir="$1"
@@ -24,8 +24,7 @@ _make_state() {
         '{issue:$iss, run_id:$run}' > "$dir/state.json"
     jq -n \
         --arg pr  "$dir/artifacts/pr-url.txt" \
-        --arg gr  "$dir/artifacts/gate-aggregator-result.json" \
-        '{"inputs":{"pr_url":$pr,"gate_aggregator_result":$gr}}' \
+        '{"inputs":{"pr_url":$pr}}' \
         > "$dir/stage-inputs/deploy.json"
     export ZBUILD_STAGE_INPUTS="$dir/stage-inputs/deploy.json"
     export ZBUILD_ARTIFACT_DIR="$dir/artifacts"
@@ -77,15 +76,17 @@ chmod +x "$FAKE_BIN/git" "$FAKE_BIN/gh"
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # _deploy_case <dir> <gate outcome|-> [VAR=value ...] — one deploy run in a
-# SUBSHELL (nothing it exports reaches the next case), pr-url and gate result
-# seeded; prints the rc. The fake git logs to <dir>/git.log.
+# SUBSHELL (nothing it exports reaches the next case), pr-url and the engine's
+# loops word seeded; prints the rc. The fake git logs to <dir>/git.log.
 _deploy_case() {
     local dir="$1" gate="$2"; shift 2
     (
         _make_state "$dir"
         printf 'https://github.com/test/repo/pull/42\n' > "$dir/artifacts/pr-url.txt"
         # The gate's result is made with the writer the gate uses (#2366).
-        [[ "$gate" == "-" ]] || stage_result_write "$dir/artifacts/gate-aggregator-result.json" "$gate" "gate $gate"
+        # #2368: the engine's word on the run's loops; "-" means it gave none.
+        unset ZBUILD_RUN_LOOPS_PASSED
+        case "$gate" in -) ;; pass) export ZBUILD_RUN_LOOPS_PASSED=yes ;; *) export ZBUILD_RUN_LOOPS_PASSED=no ;; esac
         export PATH="$FAKE_BIN:$PATH" FAKE_GIT_LOG="$dir/git.log" ZBUILD_DRY_RUN=0
         local kv; for kv in "$@"; do export "${kv?}"; done
         : > "$FAKE_GIT_LOG"

@@ -128,20 +128,17 @@ _deploy_agent_run_inner() {
     local root=""
     [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
         && root="$(cd "$(dirname "$ZBUILD_STAGE_INPUTS")/.." 2>/dev/null && pwd -P || true)"
-    local pr_url_in="" gate_result_in="" _id _p
-    for _id in pr_url gate_aggregator_result; do
-        if ! _p="$(_deploy_input_path "$_id" "$root")"; then
-            error "deploy: input $_id resolves outside the run's state directory — refusing it"
-            emit_event "deploy.input.refused" "plugin=deploy" "input=$_id"
-            _deploy_write_result "$artifacts_dir" broken \
-                "input $_id resolves outside the run's state directory"
-            stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
-                "refused input $_id: it points outside this run" \
-                "The engine's input index only points inside the run; this is a defect, not a deploy failure."
-            return 1
-        fi
-        case "$_id" in pr_url) pr_url_in="$_p" ;; *) gate_result_in="$_p" ;; esac
-    done
+    local pr_url_in=""
+    if ! pr_url_in="$(_deploy_input_path pr_url "$root")"; then
+        error "deploy: input pr_url resolves outside the run's state directory — refusing it"
+        emit_event "deploy.input.refused" "plugin=deploy" "input=pr_url"
+        _deploy_write_result "$artifacts_dir" broken \
+            "input pr_url resolves outside the run's state directory"
+        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
+            "refused input pr_url: it points outside this run" \
+            "The engine's input index only points inside the run; this is a defect, not a deploy failure."
+        return 1
+    fi
 
     # Guard: pr_url input must exist (required input from pr-delivery stage)
     if [[ ! -f "$pr_url_in" ]]; then
@@ -167,35 +164,28 @@ _deploy_agent_run_inner() {
         return 0
     fi
 
-    # Guard: gate-aggregator verdict — FAIL-CLOSED. The deploy side-effect must not
-    # run without a gate decision: a MISSING gate result is refused, not silently
-    # skipped (#757 review finding — gate bypass). (When wired in #1328 the gate is a
-    # required upstream input; here we enforce its presence at runtime, outside dry-run.)
-    if [[ ! -f "$gate_result_in" ]]; then
-        error "deploy: gate-aggregator result missing — refusing deploy (fail-closed)"
+    # Guard: did every loop that ran pass? FAIL-CLOSED (#757): the engine says
+    # so (ZBUILD_RUN_LOOPS_PASSED, #2368). No word at all is refused — an absent
+    # decision is not an approval to deploy; anything but "yes" skips.
+    local gate_verdict="${ZBUILD_RUN_LOOPS_PASSED:-}"
+    if [[ -z "$gate_verdict" ]]; then
+        error "deploy: the engine has not said whether the run's loops passed — refusing deploy (fail-closed)"
         emit_event "deploy.gate.missing" "plugin=deploy"
         _deploy_write_result "$artifacts_dir" broken \
-            "gate-aggregator-result missing"
+            "no word on whether the run's loops passed"
         stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
-            "refused to deploy: no gate-aggregator verdict was present" \
-            "Fail-closed. An absent gate decision is not an approval to deploy."
+            "refused to deploy: the engine has not said whether the run's loops passed" \
+            "Fail-closed. An absent decision is not an approval to deploy."
         return 1
     fi
-
-    local gate_verdict
-    gate_verdict="$(jq -r '.outcome // empty' "$gate_result_in" 2>/dev/null || true)"
-
-    # Fail-closed ALLOWLIST: proceed ONLY on an explicit pass. Any other verdict —
-    # fail, route_<target>, an empty verdict, or a jq parse error (→ empty) — skips
-    # the deploy side-effect rather than proceeding (#757 review / Copilot: a
-    # skip-only-on-fail denylist would let route_design or a malformed gate proceed).
+    [[ "$gate_verdict" == "yes" ]] && gate_verdict="pass"
     if [[ "$gate_verdict" != "pass" ]]; then
-        warn "deploy: gate-aggregator verdict='${gate_verdict:-<none>}' is not pass — skipping deploy"
+        warn "deploy: the run's loops did not all pass (${gate_verdict:-not set}) — skipping deploy"
         emit_event "deploy.skipped" "plugin=deploy" "reason=gate_not_pass"
         _deploy_write_result "$artifacts_dir" pass \
-            "nothing deployed: the gate's outcome was ${gate_verdict:-<none>}, not pass" "$pr_url" "" "" false
+            "nothing deployed: the run's loops did not all pass" "$pr_url" "" "" false
         stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "skip" \
-            "skipped the deploy: the gate verdict was ${gate_verdict:-<none>}, not pass" \
+            "skipped the deploy: the run's loops did not all pass" \
             "Nothing was deployed. Only an explicit pass authorises the release side-effect."
         return 0
     fi

@@ -9,7 +9,8 @@
 #               loop re-ran the stage (#511 Pin 8); now the reader tells by time.
 #   L1b [guard] a stage that does rewrite its result is read as usual.
 #   L2 [change] a loop does not delete a stage's output before running it again.
-#   L3 [change] gate-aggregator does not count a gate's result from before the
+#   L3 retired with gate-aggregator (#2368): the engine counts a member with no
+#      outcome this round as failed — engine-combines-loop-test.sh L2. Was: does not count a gate's result from before the
 #               gate's latest run (a suite that timed out on try 2 must not pass
 #               on try 1's result) — review on #2357.
 #   L4 [change] the stage report is empty for a run that wrote no result.
@@ -85,26 +86,6 @@ stage_result_write "$STATE/artifacts/once-writer-result.json" pass r '{"build_ki
 touch -t 202601010000 "$STATE/artifacts/once-writer-result.json"
 assert_eq "[L5] build_kind is not read from a result older than the run" "" \
     "$(runner_read_stage_data_kind "$STATE" "$SDIR/manifest.yaml" "once-writer")"
-
-# ─── L3: gate-aggregator ignores a gate's result from before its latest run ──
-print_test_section "L3: gate-aggregator and a gate that wrote nothing this run"
-(
-    source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
-    GA_STATE="$TEST_TEMP_DIR/ga"; mkdir -p "$GA_STATE/artifacts"
-    for f in test-results shape-floor-result acceptance-gate-result lint-result \
-             coverage-result mutation-result secret-scan-result; do
-        printf '{"verdict":"pass"}\n' > "$GA_STATE/artifacts/$f.json"
-        touch -t 202601010000 "$GA_STATE/artifacts/$f.json"
-    done
-    # acceptance-gate ran again (its mark is newer) and wrote nothing.
-    mkdir -p "$GA_STATE/runtime/dispatched"; : > "$GA_STATE/runtime/dispatched/acceptance-gate"
-    unset ZBUILD_CYCLE_ID
-    gate_aggregator_run "gate-aggregator" "$GA_STATE/pipeline-state.json" >/dev/null 2>&1 || true
-    cat "$GA_STATE/artifacts/gate-aggregator-result.json" > "$TEST_TEMP_DIR/ga-out.json"
-)
-assert_eq "[L3] the re-run gate counts as missing" "missing" \
-    "$(jq -r '.data.gates["acceptance-gate"] // .gates["acceptance-gate"] // empty' "$TEST_TEMP_DIR/ga-out.json")"
-assert_eq "[L3] so the loop is not converged" "fail" "$(jq -r '.outcome' "$TEST_TEMP_DIR/ga-out.json")"
 
 # ─── L6: a run refused before its hook ran has no result ────────────────────
 print_test_section "L6: a refused run is not credited with the previous result"

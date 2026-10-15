@@ -7,7 +7,7 @@
 #          artifact area round-trip through snapshot → restore, including names
 #          no stage has, and the persistence code names no plugin
 # C3 [§3]  a deterministic gate never reuses a prior verdict: no gate plugin
-#          reads prior work, and design-gate / gate-aggregator judge the
+#          reads prior work, and design-gate judges the
 #          current state even when the restored prior run says "pass"
 # C5 [impl notes] pr-open reuses an existing open PR: it edits that PR and
 #          never runs `gh pr create`; the result says status=updated
@@ -93,7 +93,7 @@ assert_eq "[C1] the persistence code names no stage" "" "$_c1_named"
 print_test_section "C3 §3: a deterministic gate never reuses a prior verdict"
 _c3_readers=""
 for _g in tool/test tool/shape-floor agent/spec-acceptance tool/secret-scan \
-          tool/gate-aggregator tool/design-gate agent/review-aggregator; do
+          tool/design-gate agent/review-aggregator; do
     [[ -d "$REPO_ROOT/plugins/$_g" ]] || { _c3_readers+="$_g(missing) "; continue; }
     while IFS= read -r _f; do
         if grep -qE '_read_prior_output|ZBUILD_RESTORED_ARTIFACTS_DIR|restored-artifacts|prior-output-reader' "$_f"; then
@@ -119,13 +119,6 @@ done
   design_gate_run design-gate "$_C3/pipeline-state.json" ) >/dev/null 2>&1 || true
 assert_eq "[C3] design-gate fails the current design despite a restored pass" "fail" \
     "$(jq -r '.outcome // .verdict // empty' "$_C3/artifacts/design-gate-result.json" 2>/dev/null)"
-( source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh" >/dev/null 2>&1
-  eb_emit_event() { :; }
-  unset ZBUILD_CYCLE_ID
-  export ZBUILD_RESTORED_ARTIFACTS_DIR="$_C3R"
-  gate_aggregator_run gate-aggregator "$_C3/pipeline-state.json" ) >/dev/null 2>&1 || true
-assert_eq "[C3] gate-aggregator fails when this run has no gate results, whatever the prior run said" "fail" \
-    "$(jq -r '.outcome // empty' "$_C3/artifacts/gate-aggregator-result.json" 2>/dev/null)"
 
 # ─── C5: pr-open reuses the existing PR ─────────────────────────────────────
 print_test_section "C5: pr-open updates an existing PR instead of opening a second"

@@ -121,11 +121,9 @@ assert_eq "[SPEC-3] malformed block → fail/malformed_acceptance_block" "fail|m
 assert_eq "[SPEC-3] …no violation; severity terminal" "0|terminal" "$(_violations)|$(_field severity)"
 
 # ─── SPEC-4: the two consumers of the policy word read severity ──────────────
-print_test_section "SPEC-4: orchestrator halt-on-terminal and aggregator advisory read severity"
+print_test_section "SPEC-4: the orchestrator halts on severity=terminal"
 # shellcheck source=../../core/pipeline/cycle-orchestrator.sh
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
-# shellcheck source=../../plugins/tool/gate-aggregator/plugin.sh
-source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
 SD="$TEST_TEMP_DIR/sd"; mkdir -p "$SD/artifacts"
 # A member id that resolves by id (the live gate resolves by ROLE through the
 # template, which this unit-level probe does not load).
@@ -135,7 +133,6 @@ id: acceptance-gate
 name: probe
 kind: agent
 version: 0.0.1
-convergence: gate
 hooks:
   run: acceptance_gate_run
 provides:
@@ -161,13 +158,8 @@ printf '{"severity":"recoverable","failures":["untagged_spec:SPEC-1"]}\n' > "$SD
 stage_result_add "$SD/artifacts/acceptance-gate-result.json" fail "x"
 _m="$(_cycle_member_terminal_failure "$SD" 2>/dev/null || true)"
 assert_eq "[SPEC-4] …and not on severity=recoverable" "" "$_m"
-printf '{"severity":"advisory","failures":["negctl_error:harness:SPEC-1"]}\n' > "$SD/artifacts/adv.json"
-stage_result_add "$SD/artifacts/adv.json" fail "negctl harness"
-assert_eq "[SPEC-4] the aggregator demotes severity=advisory to non-blocking" "advisory" "$(_ga_read_gate_verdict "$SD/artifacts/adv.json")"
-printf '{"verdict":"fail","disposition":"advisory","reason":"legacy fixture"}\n' > "$SD/artifacts/adv1.json"
-# #1850/#2366: the word in `disposition` never demotes, and a result with no
-# outcome is not a result at all — it does not satisfy the gate.
-assert_eq "[SPEC-4] a v1-shaped fixture with the word in disposition does not demote (#1850, #2366)" "malformed" "$(_ga_read_gate_verdict "$SD/artifacts/adv1.json")"
+# #2368: gate-aggregator is retired; an advisory-only result is the gate's own
+# pass (tests/integration/acceptance-gate-test.sh S6c).
 
 cleanup_test_env
 print_test_results

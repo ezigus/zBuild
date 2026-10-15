@@ -12,15 +12,14 @@
 #   * a loop (any template's — keyed by its own id) whose last recorded status
 #     is not `complete`: it ran out of rounds, stopped with findings no stage
 #     could act on, or ended without passing;
-#   * the final gate roll-up (gate_aggregator_result) that did not pass.
 #
 # U1 [change] an unsettled loop opens the PR as a draft; the result records why
 # U2 [change] the description names each unsettled loop with its real round
 #             counts, and the warning comes before the footer and the plan
 # U3 [guard]  loops that settled are not named; all settled + gates passing →
 #             not a draft
-# U4 [change] a failed final gate roll-up → draft, and the failing gates and
-#             reason are listed, escaped
+# U4, U9     retired with gate-aggregator (#2368): a loop that did not pass is
+#             what makes the PR a draft
 # U5 [change] a re-run onto an open ready PR turns it into a draft
 # U6 [change] a settled re-run turns back to ready only a PR zBuild itself made
 #             a draft — never one a person made a draft
@@ -56,21 +55,16 @@ STATE_DIR="$TEST_TEMP_DIR/state"
 ART="$STATE_DIR/artifacts"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 RESULT="$ART/pr-result.json"
-GATES="$ART/gate-aggregator-result.json"
 mkdir -p "$ART"
 printf '{"schema_version":1,"verdict":"pass","findings":[]}\n' > "$ART/review-report.json"
-jq -n --arg a "$ART" '{inputs: {review_report: ($a + "/review-report.json"),
-    gate_aggregator_result: ($a + "/gate-aggregator-result.json")}}' > "$STATE_DIR/stage-inputs.json"
+jq -n --arg a "$ART" '{inputs: {review_report: ($a + "/review-report.json")}}' > "$STATE_DIR/stage-inputs.json"
 export ZBUILD_STAGE_INPUTS="$STATE_DIR/stage-inputs.json"
 
 # The engine's own loop writers, via the shared helper (scripts/lib/test-helpers.sh).
 _loop() { zb_engine_loop_state "$STATE_FILE" "$@" || assert_fail "[setup] the engine's loop writers ran for $1" "they failed"; }
 _fresh_state() {
     printf '{"schema_version":1,"run_id":"t","issue":"999","status":"running","stage_statuses":{}}\n' > "$STATE_FILE"
-    rm -f "$RESULT" "$GATES" "$ZBUILD_EVENTS_JSONL"
-}
-_gates() {  # <outcome> <failed json array> <reason> — gate-aggregator's result, by the engine's writer
-    stage_result_write "$GATES" "$1" "$3" "$(jq -nc --argjson f "$2" '{gates:[], failed:$f}')" >/dev/null
+    rm -f "$RESULT" "$ZBUILD_EVENTS_JSONL"
 }
 
 # gh/git mocks. EXISTING_PR="" → no open PR; else its number. EXISTING_DRAFT /
@@ -142,23 +136,10 @@ assert_not_contains "[U3] a loop that settled is not named" "$_b" "design_verify
 print_test_section "U3: everything settled"
 _fresh_state; EXISTING_PR=""
 _loop build_test_cycle 2 3 complete
-_gates pass '[]' "all 6 gate(s) passed"
 _run
 assert_not_contains "[U3] all settled → not a draft" "$(cat "$TEST_TEMP_DIR/create.args" 2>/dev/null)" "--draft"
 assert_eq "[U3] the result records no draft" "false" "$(jq -r '.data.draft' "$RESULT" 2>/dev/null)"
 assert_not_contains "[U3] ...and no warning" "$(_body)" "did not settle"
-
-# ─── U4 ─────────────────────────────────────────────────────────────────────
-print_test_section "U4: the final gate roll-up did not pass"
-_fresh_state; EXISTING_PR=""
-_loop build_test_cycle 2 3 complete
-_gates fail '["acceptance-gate","test"]' "acceptance-gate: SPEC-3 <b>still fails</b> at the merge-base"
-_run
-assert_contains "[U4] a failed gate roll-up → draft" "$(cat "$TEST_TEMP_DIR/create.args" 2>/dev/null)" "--draft"
-_b="$(_body)"
-assert_contains "[U4] the failing gates are listed" "$_b" "acceptance-gate, test"
-assert_contains "[U4] the reason is shown when it adds something" "$_b" "still fails"
-assert_not_contains "[U4] ...escaped, not raw HTML" "$_b" "<b>"
 
 # ─── U5 ─────────────────────────────────────────────────────────────────────
 print_test_section "U5: a re-run onto an open ready PR"
@@ -199,22 +180,10 @@ assert_contains "[U7] ...and the whole reason, as one field" "$_ev" '"draft_reas
 print_test_section "U8: lib/unsettled.sh works on its own"
 # It escapes with the definitions advisory-section.sh holds; sourced alone it
 # must load them itself, not silently render without escaping (review #2343).
-_u8_gates="$TEST_TEMP_DIR/u8-gates.json"
-stage_result_write "$_u8_gates" fail "a <b>bold</b> claim" '{"failed":["x"]}' >/dev/null
-_fresh_state; zb_engine_loop_state "$STATE_FILE" build_test_cycle 1 3 complete
-_u8="$(bash -c 'source "$1/scripts/lib/helpers.sh" 2>/dev/null; source "$1/plugins/tool/pr-open/lib/unsettled.sh"; _pr_open_unsettled "$2" "$3"' _ "$REPO_ROOT" "$STATE_FILE" "$_u8_gates" 2>&1)"
-assert_contains "[U8] sourced alone, it still renders the gate check" "$_u8" "The final gate check did not pass"
+_fresh_state; zb_engine_loop_state "$STATE_FILE" "a<b>loop" 3 3 max_iterations
+_u8="$(bash -c 'source "$1/scripts/lib/helpers.sh" 2>/dev/null; source "$1/plugins/tool/pr-open/lib/unsettled.sh"; _pr_open_unsettled "$2"' _ "$REPO_ROOT" "$STATE_FILE" 2>&1)"
+assert_contains "[U8] sourced alone, it still renders the warning" "$_u8" "did not settle"
 assert_not_contains "[U8] ...and still escapes" "$_u8" "<b>"
-
-# ─── U9 (#2366) ──────────────────────────────────────────────────────────────
-print_test_section "U9: a contract-3 gate result names its failed gates under data"
-# shellcheck source=../../../../scripts/lib/stage-result.sh
-source "$REPO_ROOT/scripts/lib/stage-result.sh"
-_u9_gates="$TEST_TEMP_DIR/u9-gates.json"
-stage_result_write "$_u9_gates" fail "gates failed: lint coverage" '{"gates":{},"failed":["lint","coverage"]}'
-_fresh_state; zb_engine_loop_state "$STATE_FILE" build_test_cycle 1 3 complete
-_u9="$(_pr_open_unsettled "$STATE_FILE" "$_u9_gates" 2>&1)"
-assert_contains "[U9] the failed gates are named" "$_u9" "lint, coverage"
 
 unset -f git gh
 cleanup_test_env

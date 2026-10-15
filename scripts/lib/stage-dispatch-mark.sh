@@ -5,8 +5,8 @@
 # The engine never deletes a stage's output. So a stage that runs again and
 # writes nothing leaves its previous result in place, and every reader must not
 # take that result as this run's. One writer and one check, so no reader can
-# decide it differently: _verdict_read_result, the stage report, build_kind and
-# gate-aggregator all ask stage_result_is_current.
+# decide it differently: _verdict_read_result, the stage report and build_kind
+# all ask stage_result_is_current.
 
 [[ -n "${_ZBUILD_STAGE_DISPATCH_MARK_LOADED:-}" ]] && return 0
 _ZBUILD_STAGE_DISPATCH_MARK_LOADED=1

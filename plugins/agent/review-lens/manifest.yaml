@@ -1,9 +1,6 @@
 id: review-lens
 name: Review Lens (single, advisory)
 kind: agent
-# ADR-040 §5: convergence marker. `advisory` = NEVER blocks convergence; must
-# NOT appear on a must-pass / exit_when path.
-convergence: advisory
 version: 0.1.0
 description: |
   A single advisory review lens as its OWN isolated LLM stage (ADR-040 §3,
@@ -48,8 +45,8 @@ provides:
 
 config:
   # One outcome (#2366): fail when the lens found a high or critical problem
-  # the change introduced, else pass; otherwise how it failed to finish. The
-  # plugin is convergence:advisory so a failing lens never gates the pipeline.
+  # the change introduced, else pass; otherwise how it failed to finish. No
+  # loop's exit rule names a lens, so a failing lens never gates the pipeline.
   tier_default: T2
   # Default lens identity when neither ZBUILD_REVIEW_LENS_ID nor
   # ZBUILD_CURRENT_STAGE is set (e.g. a bare manual invocation).

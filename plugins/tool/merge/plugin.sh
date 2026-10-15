@@ -4,7 +4,7 @@
 # passes. Falls back to pr_open_run (draft PR) when gate is absent or != pass.
 # Safety constraints:
 #   - Refuses if on main/master (rc=2)
-#   - Falls back to PR path if gate-aggregator-result.json absent or verdict != pass
+#   - Falls back to PR path unless every loop passed (ZBUILD_RUN_LOOPS_PASSED=yes, #2368)
 #   - Never opens a draft PR on the merge path
 # Sourced library: no set -euo pipefail.
 
@@ -47,23 +47,16 @@ merge_run() {
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    # ADR-055 §1: a declared input reaches this plugin through the engine's
-    # index and nowhere else. No index entry means the gate is absent.
-    local gate_json=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        gate_json="$(jq -r '.inputs.gate_aggregator_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
     local merge_result_out="$artifacts_dir/merge-result.json"
 
-    # Read convergence gate verdict
+    # #2368: the engine says whether every loop that ran passed. Anything but
+    # "yes" (unset included) is not a pass.
     local gate_verdict=""
-    if [[ -n "$gate_json" && -f "$gate_json" ]]; then
-        gate_verdict="$(jq -r '.outcome // empty' "$gate_json" 2>/dev/null || true)"
-    fi
+    [[ "${ZBUILD_RUN_LOOPS_PASSED:-}" == "yes" ]] && gate_verdict="pass"
 
     # Safety guard: fall back to PR when gate absent or verdict != pass
     if [[ "$gate_verdict" != "pass" ]]; then
-        local _reason="${gate_verdict:-absent}"
+        local _reason="loops_not_passed"
         _merge_pr_fallback "$stage_id" "$state_file" "$merge_result_out" "$_reason"
         return $?
     fi

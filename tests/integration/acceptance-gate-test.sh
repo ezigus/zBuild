@@ -200,9 +200,10 @@ assert_eq "[SPEC-2] S6b: no guard class is reported" "false" \
 # ── S6c: [SPEC-3] a test that cannot RUN → advisory, does not block ───────────
 # #1670's third criterion: a test that cannot RUN (rc 127) proves nothing, so it
 # must warn rather than block. The unit tests
-# pin the emitted token; this pins the consequence that actually matters — the
-# gate declares severity=advisory, which gate-aggregator demotes from a
-# blocking fail to a satisfied member (plugin.sh:195,243).
+# pin the emitted token; this pins the consequence that actually matters.
+# #2368: gate-aggregator, which demoted an advisory fail, is retired — the gate
+# itself reports pass when its only failures are ones it could not measure,
+# and still lists them.
 REPO6c="$(_build_repo gate-harness '#!/usr/bin/env bash
 set -euo pipefail
 # [SPEC-1] invariant
@@ -221,12 +222,11 @@ assert_eq "[SPEC-3] S6c: a harness error does NOT become a test failure" \
     "false" "$(jq -r '[.failures[]|test("tautology|not_passing_at_head")]|any' <<<"$RESULT")"
 assert_eq "[SPEC-3] S6c: severity=advisory (warns, does not block the cycle)" \
     "advisory" "$(jq -r .severity <<<"$RESULT")"
-# Pin BOTH halves of the two-layer contract: the gate still reports rc=1 ("I
-# could not form an opinion"), and only severity=advisory demotes that to
-# non-blocking. Asserting the disposition alone would stay green if the gate
-# silently started returning rc=0, which would break the contract from the
-# other side. Same gap the review caught in NC-F4a/b.
-assert_eq "[SPEC-3] S6c: gate-level rc=1; the aggregator is what demotes it" "1" "$RC"
+assert_eq "[SPEC-3] S6c: outcome pass — it does not block the loop (#2368)" \
+    "pass" "$(jq -r .outcome <<<"$RESULT")"
+assert_contains "[SPEC-3] S6c: ...and the reason says what could not be measured" \
+    "$(jq -r .reason <<<"$RESULT")" "SPEC-1"
+assert_eq "[SPEC-3] S6c: rc=0 (#2368)" "0" "$RC"
 
 # ── S7: change SPEC with tautological test still caught ───────────────────────
 # A [change]-classified SPEC with a tautological test must still fail (negctl
@@ -263,8 +263,10 @@ EOF
     export ZBUILD_NEGCTL_TIMEOUT=1
     set +e; _run_gate "$REPO8"; set -e
     unset ZBUILD_NEGCTL_TIMEOUT
-    assert_eq "S8: timeout → rc=1 (gate records infra failure)" "1" "$RC"
-    assert_eq "S8: outcome=fail" "fail" "$(jq -r .outcome <<<"$RESULT")"
+    # #2368: a check the gate could not measure does not block — pass, rc 0,
+    # the failure still listed.
+    assert_eq "S8: timeout → rc=0 (an unmeasured check does not block)" "0" "$RC"
+    assert_eq "S8: outcome=pass" "pass" "$(jq -r .outcome <<<"$RESULT")"
     assert_eq "S8: failure class is negctl_error:timeout:SPEC-1 (not a violation)" \
         "negctl_error:timeout:SPEC-1" "$(jq -r '.failures[0]' <<<"$RESULT")"
     assert_event_emitted "S8: negctl_timeout event" "$EVENTS" "acceptance.gate.negctl_timeout"
@@ -566,7 +568,7 @@ EOF
     export ZBUILD_NEGCTL_TIMEOUT=1
     set +e; _run_gate_with_summary "$REPO17"; set -e
     unset ZBUILD_NEGCTL_TIMEOUT
-    assert_eq "[SPEC-1] S17: timeout → rc=1" "1" "$RC"
+    assert_eq "[SPEC-1] S17: timeout → rc=0 (#2368: does not block)" "0" "$RC"
     assert_contains "[SPEC-1] S17: summary contains ERROR timeout line" \
         "$SUMMARY" "NEGCTL ERROR timeout:SPEC-1"
     assert_contains "[SPEC-1] S17: timeout line carries design enrichment" \

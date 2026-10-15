@@ -8,11 +8,11 @@
 #         a non-empty <to_field>.txt in the next-iter feedback dir referencing the
 #         failure (B2/ADR-040: build's gate_feedback input).
 # SPEC-2: simple.yaml wires no feedback edge (retired, ADR-055 §4).
-# SPEC-3: the stall-break fires — build verdict=empty_diff + gate-aggregator
+# SPEC-3: the stall-break fires — build verdict=empty_diff + a failing gate
 #         verdict!=pass ⇒ cycle terminates reason=stalled within <=2 iterations
 #         (NOT max_iterations=5), emitting cycle.stalled.
-# SPEC-4: empty_diff + gate-aggregator verdict=pass ⇒ converged (no false stall).
-# B6 (#1138, ADR-040): build_test_cycle converges on the gate-aggregator verdict
+# SPEC-4: empty_diff + every gate pass ⇒ converged (no false stall).
+# B6 (#1138, ADR-040): build_test_cycle converges when every gate named by exit_when passes (#2368)
 # — the stub drives the decomposed gate roster.
 # #2191: SPEC-5/6/7 moved to core-pipeline-cycle-reuse-and-route-back-test.sh.
 set -uo pipefail
@@ -87,7 +87,7 @@ assert_contains "[SPEC-1] and it is framed as findings to answer, not passive co
     "$_SUMMARY_BLOCK" "(verdict: fail)"
 
 print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ runs ALL iters → rc=1, outcome unconverged (no early stall-break, #1208)"
-_GA_VERDICT="fail"
+_GATE_VERDICT="fail"
 _run_cycle "stall"
 # #1850 (ADR-054 §4): was rc=2. The loop returns 1 and names the end.
 assert_eq "[SPEC-3] cycle rc=1, outcome unconverged (→review)" "1 unconverged" "$_RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"
@@ -111,14 +111,14 @@ assert_eq "[SPEC-3c] iterations 2–3 reuse the test member's verdict (2 reuse e
     "2" "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | grep -c '"member":"test"' || true)"
 assert_contains "[SPEC-3c] a reuse event names the iteration it reuses" \
     "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | head -1)" '"from_iter":"1"'
-_n_ga="$(grep -c '"cycle.member.dispatch.complete".*"member":"gate-aggregator"' "$ZBUILD_EVENTS_JSONL" || true)"
+_n_ga="$(grep -c '"cycle.member.dispatch.complete".*"member":"secret-scan"' "$ZBUILD_EVENTS_JSONL" || true)"
 # #2170: a failing member on an unchanged tree is reused like a passing one
 # (was: re-dispatched every iteration — the 25-minute suite ran five times to
 # fail identically on #1841).
-assert_eq "[SPEC-3d] the FAILING gate-aggregator is dispatched once and reused on an unchanged tree" "1" "$_n_ga"
+assert_eq "[SPEC-3d] the FAILING gate (secret-scan) is dispatched once and reused on an unchanged tree" "1" "$_n_ga"
 
 print_test_section "SPEC-3f: a tree that CHANGED between iterations is fully re-verified"
-_GA_VERDICT="fail"
+_GATE_VERDICT="fail"
 # The orchestrator reads the fingerprint inside a $( ), so the stub cannot
 # keep a counter in shell state — a file does.
 _FP_COUNTER="$TEST_TEMP_DIR/fp.count"; : > "$_FP_COUNTER"
@@ -146,7 +146,7 @@ fi
 # cannot resolve now runs it out of rounds, and the outer loop goes round.
 
 print_test_section "SPEC-4/SPEC-10: empty_diff + gate=pass ⇒ converged (no false stall)"
-_GA_VERDICT="pass"
+_GATE_VERDICT="pass"
 _run_cycle "converge"
 assert_eq "[SPEC-4] cycle rc=0 (converged)" "0" "$_RUN_RC"
 assert_eq "[SPEC-4] terminated reason is converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}"

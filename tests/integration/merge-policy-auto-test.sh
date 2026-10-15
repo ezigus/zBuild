@@ -39,6 +39,9 @@ _MERGE_RECORD="$TEST_TEMP_DIR/merge-calls.txt"
 # Helper: build a state dir with review.json and optional gate-aggregator artifact.
 # Usage: _setup_run <tag> [gate_verdict]
 #   gate_verdict: omit = absent, "pass" or "fail"
+# #2368: the engine says whether every loop passed (ZBUILD_RUN_LOOPS_PASSED);
+# a helper records the word for its gate outcome beside the state file.
+_loops() { cat "$(dirname "$1")/loops-passed" 2>/dev/null; }
 _setup_run() {
     local tag="$1" gate_verdict="${2:-}"
     local d="$TEST_TEMP_DIR/run-${tag}"
@@ -57,6 +60,7 @@ _setup_run() {
     jq -n --arg a "$d/artifacts" '{inputs: {gate_aggregator_result: ($a + "/gate-aggregator-result.json"),
         review_report: ($a + "/review-report.json"), plan: ($a + "/plan.json"),
         test_results: ($a + "/test-results.json")}}' > "$d/stage-inputs.json"
+    case "${gate_verdict:-}" in pass) printf yes ;; "") : ;; *) printf no ;; esac > "$d/loops-passed"
     printf '%s/pipeline-state.json' "$d"
 }
 
@@ -104,7 +108,7 @@ _art1="$(dirname "$_sf1")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto"
-( ZBUILD_STAGE_INPUTS="$(dirname "$_sf1")/stage-inputs.json" pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf1")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf1")/stage-inputs.json" pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
 
 assert_eq "pr_stage_run exits 0 on merge path" "0" "$_rc1"
 assert_file_exists "merge-result.json written on merge path" \
@@ -130,7 +134,7 @@ _art2="$(dirname "$_sf2")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto"
-( ZBUILD_STAGE_INPUTS="$(dirname "$_sf2")/stage-inputs.json" pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf2")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf2")/stage-inputs.json" pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
 
 assert_eq "pr_stage_run exits 0 on PR fallback (gate fail)" "0" "$_rc2"
 assert_file_exists "pr-url.txt written on gate-fail fallback" "$_art2/pr-url.txt"
@@ -154,7 +158,7 @@ _art3="$(dirname "$_sf3")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto"
-( ZBUILD_STAGE_INPUTS="$(dirname "$_sf3")/stage-inputs.json" pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf3")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf3")/stage-inputs.json" pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
 
 assert_eq "pr_stage_run exits 0 on PR fallback (gate absent)" "0" "$_rc3"
 assert_file_exists "pr-url.txt written on gate-absent fallback" "$_art3/pr-url.txt"
@@ -184,7 +188,7 @@ _art8="$(dirname "$_sf8")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto"
-( ZBUILD_STAGE_INPUTS="$(dirname "$_sf8")/stage-inputs.json" pr_stage_run "pr" "$_sf8" ) >/dev/null 2>&1; _rc8=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf8")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf8")/stage-inputs.json" pr_stage_run "pr" "$_sf8" ) >/dev/null 2>&1; _rc8=$?
 
 assert_eq "pr_stage_run exits 0 on specification PR fallback" "0" "$_rc8"
 assert_file_exists "pr-url.txt written on specification fallback" "$_art8/pr-url.txt"
@@ -207,7 +211,7 @@ _art4="$(dirname "$_sf4")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf4")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
 
 assert_eq "pr_stage_run exits 0 for auto_unless_flagged" "0" "$_rc4"
 assert_file_exists "pr-url.txt written (PR opened, not merged)" "$_art4/pr-url.txt"
@@ -231,7 +235,7 @@ rm -f "$_art5/review.json"   # no review verdict on disk
 
 export _TPL_MERGE_POLICY="auto"
 _rc5=0
-( ZBUILD_STAGE_INPUTS="$(dirname "$_sf5")/stage-inputs.json" pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1 || _rc5=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf5")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf5")/stage-inputs.json" pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1 || _rc5=$?
 
 _merge_verdict5="$(jq -r '.outcome // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
 _merge_mode5="$(jq -r '.data.mode // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
