@@ -9,8 +9,7 @@
 #
 # N1 [change] a lens whose call times out, with notes in its notes file, puts
 #             them in its result (data.partial_notes)
-# N2 [change] the review report shows them under that lens, marked unfinished
-# N3 [guard]  a lens that times out with nothing saved still reads "did not run"
+# N2, N3 retired with review-aggregator (#2368)
 # N4 [change] a lens stopped by a signal also hands over what it saved
 # N5 [change] the notes are found whatever the artifacts folder is called
 set -uo pipefail
@@ -58,17 +57,7 @@ out2="$artifact_dir/lens-red-team.json"
 ( export ZBUILD_MAP_ELEMENT=red-team ZBUILD_REVIEW_LENS_ID=red-team
   _review_lens_run_inner "red-team" "$scope_manifest" "$evidence" "$out2" "$artifact_dir" ) >/dev/null 2>&1
 
-# The aggregator's report, from both lens results.
-# shellcheck source=../../review-aggregator/plugin.sh
-source "$REPO_ROOT/plugins/agent/review-aggregator/plugin.sh" >/dev/null 2>&1
-printf '{"schema_version":1}\n' > "$state/pipeline-state.json"
-printf '{"inputs":{"lens_result":["%s","%s"]}}\n' "$out" "$out2" > "$state/stage-inputs.json"
-( export ZBUILD_STAGE_INPUTS="$state/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$artifact_dir"
-  review_aggregator_run review-aggregator "$state/pipeline-state.json" ) >/dev/null 2>&1
-_md="$(cat "$artifact_dir/review-report.md" 2>/dev/null)"
-assert_contains "[N2] the report shows the correctness lens's notes" "$_md" "draft is written twice"
-assert_contains "[N2] marked unfinished" "$_md" "did not finish"
-assert_contains "[N3] a lens with nothing saved still reads did not run" "$_md" "red-team"
+# N2/N3 retired with review-aggregator (#2368): each lens's own result carries its notes.
 
 # A lens stopped by a signal, with notes saved.
 out4="$artifact_dir/lens-architecture.json"

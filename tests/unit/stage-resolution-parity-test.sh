@@ -73,8 +73,6 @@ assert_eq "[SPEC-1] id-only returns EMPTY for review_lenses (no id-match plugin,
 # map dispatch BOTH call this helper, so this proves both paths.
 # #1295: review_lenses is now a map group (role review_lens → review-lens plugin).
 assert_eq "[SPEC-2] map group review_lenses → review-lens" "review-lens" "$(_resolve review_lenses)"
-assert_eq "[SPEC-2] review-aggregator → review-aggregator (role review_aggregator)" \
-    "review-aggregator" "$(_resolve review-aggregator)"
 
 # Returned path is a real plugin directory with a manifest.
 assert_file_exists "[SPEC-2] resolved review-lens plugin dir has a manifest" "$(_resolve_raw review_lenses)/manifest.yaml"

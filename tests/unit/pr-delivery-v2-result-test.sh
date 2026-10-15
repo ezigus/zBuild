@@ -5,7 +5,7 @@
 # SPEC coverage:
 #   [#1844/SPEC-1]  manifest: result_contract:2, valid_verdicts, events, role, primary, hooks
 #   [#1844/SPEC-2]  missing state_file → rc=1, pr-result.json verdict=error/misconfigured
-#   [#1844/SPEC-3]  review_report via ZBUILD_STAGE_INPUTS signals block → rc=1/error/complete
+#   [#1844/SPEC-3]  a flagged review (ZBUILD_RUN_FLAGGED=yes, #2368) never blocks delivery
 #   [#1844/SPEC-4]  dry-run → rc=0, verdict=pass, disposition=complete
 #   [#1844/SPEC-5]  merge delegation success → rc=0, verdict=pass, disposition=complete
 #   [#1844/SPEC-6]  merge delegation failure → rc=1, verdict=error, disposition=unavailable
@@ -134,16 +134,13 @@ fi
 # critical finding) does not refuse delivery; pr-delivery hands over to pr-open,
 # which opens the PR without merging — exactly what main did before #1844. The
 # run's code refused delivery outright here (review_blocked); Eric 2026-10-03:
-# remove it. The report is read through ZBUILD_STAGE_INPUTS (non-standard path).
-print_test_section "SPEC-3: a needs_attention review does not block — pr-open is called"
+# remove it. #2368: the engine says a lens was flagged (ZBUILD_RUN_FLAGGED=yes).
+print_test_section "SPEC-3: a flagged review does not block — pr-open is called"
 
 _s3_sf="$(_mk_state s3)"
 _s3_art="$(dirname "$_s3_sf")/artifacts"
-_s3_rr="$TEST_TEMP_DIR/spec3-review-report.json"
-jq -n '{merge_readiness:"needs_attention",findings:[{severity:"critical",summary:"blocking issue"}],summary:"test"}' \
-    > "$_s3_rr"
 _s3_si="$TEST_TEMP_DIR/spec3-si.json"
-_mk_si "$_s3_si" "$_s3_rr"
+_mk_si "$_s3_si"
 _s3_fake="$TEST_TEMP_DIR/fake-s3"; _s3_called="$TEST_TEMP_DIR/s3-pr-open-called"
 mkdir -p "$_s3_fake/plugins/tool/merge" "$_s3_fake/plugins/tool/pr-open"
 cat > "$_s3_fake/plugins/tool/pr-open/plugin.sh" <<PROMOCK
@@ -158,11 +155,12 @@ PROMOCK
 (
     _PR_ROOT="$_s3_fake"
     ZBUILD_STAGE_INPUTS="$_s3_si"
+    export ZBUILD_RUN_FLAGGED=yes
     ZBUILD_DRY_RUN=0
     _TPL_MERGE_POLICY=manual
     _pr_stage_run_inner "$_s3_sf"
 ) >/dev/null 2>&1; _s3_rc=$?
-assert_eq "[#1844/SPEC-3] a needs_attention review does not refuse delivery (rc=0)" "0" "$_s3_rc"
+assert_eq "[#1844/SPEC-3] a flagged review does not refuse delivery (rc=0)" "0" "$_s3_rc"
 assert_file_exists "[#1844/SPEC-3] pr-open was called" "$_s3_called"
 assert_eq "[#1844/SPEC-3] pr-result.json outcome is pass" "pass" \
     "$(jq -r '.outcome // empty' "$_s3_art/pr-result.json" 2>/dev/null || true)"

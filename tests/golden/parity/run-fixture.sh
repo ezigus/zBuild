@@ -191,10 +191,9 @@ defaults:
   strategy: fanout
 
 # #1842: `flow:` (not the old `stages:` list) so the review family can run as in
-# production: review_lenses (a map group, one lens to keep the run small) ->
-# review-aggregator -> pr. The aggregator requires lens_result, and pr-open
-# fails closed without the review report — an aggregator over zero lenses used to
-# hand it a "ready" review that never happened (#1753).
+# production: review_lenses (a map group, one lens to keep the run small) -> pr.
+# pr-open fails closed when no review ran (#2368: the engine's
+# ZBUILD_RUN_FLAGGED, set once the lens group has run).
 flow:
   - hydrate
   - intake
@@ -202,7 +201,6 @@ flow:
   - build
   - test
   - review_lenses
-  - review-aggregator
   - pr
 
 # A `flow:` override is a FULL replace (ADR-016 lock 1, template-resolver.sh):
@@ -221,10 +219,6 @@ pr:
   gate: auto
   # pr-delivery provides role: pr (canonical, ADR-042).
   roles: [pr]
-
-review-aggregator:
-  gate: auto
-  roles: [review_aggregator]
 
 release:
   gate: auto

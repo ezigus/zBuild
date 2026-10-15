@@ -125,6 +125,47 @@ _map_unit_element() {
     if [[ "$2" -gt 1 ]]; then printf -v "$1" '%s.%s' "$3" "$4"; else printf -v "$1" '%s' "$4"; fi
 }
 
+# _map_write_summary <stage> <state_file> <env_target> <n> <plugin_dir…> <element…>
+# #2368: the engine sums up a map group — every element, its outcome and its
+# one-line reason, read from the element's own primary result — into
+# artifacts/<stage>-summary.md, and tells later stages whether any element
+# failed: ZBUILD_RUN_FLAGGED=yes (one failed), incomplete (none failed but one
+# did not finish or wrote no result — not a clean review), no (all passed).
+# Fail-open: a diagnostic never fails the group.
+_map_write_summary() {
+    local stage="$1" state_file="$2" env_target="$3" n="$4"; shift 4
+    local -a plugins=("${@:1:$n}") elems=("${@:$((n + 1)):$n}")
+    local state_dir art i raw rows res line body="" flagged=no unfinished=0 outcome reason
+    state_dir="$(dirname "$state_file")"; art="${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}"
+    declare -F _registry_output_path_rows >/dev/null 2>&1 \
+        || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../plugin-registry" && pwd)/output-paths.sh" 2>/dev/null || true
+    for (( i = 0; i < n; i++ )); do
+        rows="$(_registry_output_path_rows "${plugins[$i]}/manifest.yaml" 2>/dev/null || true)"
+        raw="$(awk -F'\t' '$2=="true"{print $1; exit}' <<< "$rows")"
+        res=""
+        if [[ -n "$raw" ]]; then
+            if [[ -n "$env_target" ]]; then
+                res="$(export "$env_target=${elems[$i]}"; _registry_resolve_output_path "$raw" "$state_dir" "$art")"
+            else
+                res="$(_registry_resolve_output_path "$raw" "$state_dir" "$art")"
+            fi
+        fi
+        outcome="missing"; reason=""
+        if [[ -n "$res" && -s "$res" ]]; then
+            outcome="$(jq -r '.outcome // "missing"' "$res" 2>/dev/null || echo missing)"
+            reason="$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$res" 2>/dev/null || true)"
+        fi
+        case "$outcome" in fail) flagged=yes ;; pass) ;; *) unfinished=1 ;; esac
+        line="- ${elems[$i]}: $outcome${reason:+ — $reason}"
+        body+="$line"$'\n'
+    done
+    [[ "$flagged" == no && $unfinished -eq 1 ]] && flagged=incomplete
+    export ZBUILD_RUN_FLAGGED="$flagged"
+    mkdir -p "$art" 2>/dev/null || true
+    printf '## %s\n\n%s' "$stage" "$body" > "$art/${stage//[^A-Za-z0-9_.-]/_}-summary.md" 2>/dev/null || true
+    return 0
+}
+
 _strategy_run_map() {
     # #1850 (ADR-054 §4): rc is 0 or 1; WHY rides this word, which the caller
     # reads in the same shell — ok | partial | empty | no_plugin | bad_dimension
@@ -188,7 +229,7 @@ _strategy_run_map() {
 
     # Build the ordered list of (plugin_dir, element) work items by iterating
     # roles × elements — same order as before, just collected before dispatch.
-    local -a wu_list=() plugin_list=()
+    local -a wu_list=() plugin_list=() elem_list=()
     local role element plugin_dir wu
     while IFS= read -r role; do
         [[ -z "$role" ]] && continue
@@ -221,6 +262,7 @@ _strategy_run_map() {
             }
             wu_list+=("$wu")
             plugin_list+=("$plugin_dir")
+            elem_list+=("$element")
         done
     done <<< "$roles_out"
 
@@ -315,6 +357,8 @@ _strategy_run_map() {
     done
 
     _strategy_cleanup_work_units "${wu_list[@]+"${wu_list[@]}"}"
+    _map_write_summary "$stage" "$state_file" "$env_target" "${#plugin_list[@]}" \
+        "${plugin_list[@]+"${plugin_list[@]}"}" "${elem_list[@]+"${elem_list[@]}"}"
     # Shut down the original pool_id (caller spawned it; we use sub-pools per batch
     # but the caller's pool must still be closed via orch_shutdown for contract compliance).
     orch_shutdown "$pool_id" 2>/dev/null || true

@@ -46,6 +46,9 @@ _MERGE_RECORD="$TEST_TEMP_DIR/merge-calls.txt"
 # #2368: the engine says whether every loop passed (ZBUILD_RUN_LOOPS_PASSED);
 # a helper records the word for its gate outcome beside the state file.
 _loops() { cat "$(dirname "$1")/loops-passed" 2>/dev/null; }
+# ...and whether a review lens was flagged (ZBUILD_RUN_FLAGGED): the old report's
+# needs_attention is "yes", ready/advisory "no", no report no word at all.
+_flag() { cat "$(dirname "$1")/flagged" 2>/dev/null; }
 _setup_run() {
     local tag="$1" gate_verdict="${2:-}" report_readiness="${3:-}"
     local d="$TEST_TEMP_DIR/run-${tag}"
@@ -69,6 +72,7 @@ _setup_run() {
         review_report: ($a + "/review-report.json"), plan: ($a + "/plan.json"),
         test_results: ($a + "/test-results.json")}}' > "$d/stage-inputs.json"
     case "${gate_verdict:-}" in pass) printf yes ;; "") : ;; *) printf no ;; esac > "$d/loops-passed"
+    case "${report_readiness:-}" in needs_attention) printf yes ;; "") : ;; *) printf no ;; esac > "$d/flagged"
     printf '%s/pipeline-state.json' "$d"
 }
 
@@ -116,7 +120,7 @@ _art1="$(dirname "$_sf1")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf1")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf1")/stage-inputs.json" pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf1")" ZBUILD_RUN_FLAGGED="$(_flag "$_sf1")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf1")/stage-inputs.json" pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
 
 assert_eq "[SPEC-1] pr_stage_run exits 0 on auto-merge path (ready)" "0" "$_rc1"
 assert_file_exists "[SPEC-1] merge-result.json written when gate+report both pass" \
@@ -139,7 +143,7 @@ _art2="$(dirname "$_sf2")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf2")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf2")/stage-inputs.json" pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf2")" ZBUILD_RUN_FLAGGED="$(_flag "$_sf2")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf2")/stage-inputs.json" pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
 
 assert_eq "[SPEC-2] pr_stage_run exits 0 on PR-open path (needs_attention)" "0" "$_rc2"
 assert_file_exists "[SPEC-2] pr-url.txt written (PR opened, not merged)" "$_art2/pr-url.txt"
@@ -158,7 +162,7 @@ _art3="$(dirname "$_sf3")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf3")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf3")/stage-inputs.json" pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf3")" ZBUILD_RUN_FLAGGED="$(_flag "$_sf3")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf3")/stage-inputs.json" pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
 
 assert_eq "[SPEC-3] pr_stage_run exits 0 when gate absent" "0" "$_rc3"
 assert_file_exists "[SPEC-3] pr-url.txt written (PR opened, gate absent)" "$_art3/pr-url.txt"
@@ -177,7 +181,7 @@ _art4="$(dirname "$_sf4")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf4")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf4")" ZBUILD_RUN_FLAGGED="$(_flag "$_sf4")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
 
 assert_eq "[SPEC-4] pr_stage_run exits 0 when review-report absent (fail-closed)" "0" "$_rc4"
 assert_file_exists "[SPEC-4] pr-url.txt written (fail-closed, review-report absent)" \
@@ -197,7 +201,7 @@ _art5="$(dirname "$_sf5")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf5")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf5")/stage-inputs.json" pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1; _rc5=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf5")" ZBUILD_RUN_FLAGGED="$(_flag "$_sf5")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf5")/stage-inputs.json" pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1; _rc5=$?
 
 assert_eq "[SPEC-5] pr_stage_run exits 0 on auto-merge path (advisory)" "0" "$_rc5"
 assert_file_exists "[SPEC-5] merge-result.json written when gate pass + advisory" \
@@ -217,7 +221,7 @@ _art6="$(dirname "$_sf6")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf6")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf6")/stage-inputs.json" pr_stage_run "pr" "$_sf6" ) >/dev/null 2>&1; _rc6=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf6")" ZBUILD_RUN_FLAGGED="$(_flag "$_sf6")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf6")/stage-inputs.json" pr_stage_run "pr" "$_sf6" ) >/dev/null 2>&1; _rc6=$?
 
 assert_eq "[SPEC-6] pr_stage_run exits 0 when gate fails (PR open)" "0" "$_rc6"
 assert_file_exists "[SPEC-6] pr-url.txt written when gate fails" "$_art6/pr-url.txt"
@@ -236,13 +240,14 @@ assert_eq "[SPEC-6] gh pr merge NOT called when gate verdict=fail" "0" "$_gh_mer
 print_test_section "SPEC-7: auto_unless_flagged + gate pass + high finding + advisory → PR open"
 
 _sf7="$(_setup_run s7 pass advisory)"
-printf '{"schema_version":1,"merge_readiness":"advisory","findings":[{"severity":"high","title":"SQL injection in query builder"}]}\n' \
-    > "$(dirname "$_sf7")/artifacts/review-report.json"
+# #2368: a lens that finds a high problem the change introduced fails, and the
+# engine flags the run — whatever the merged readiness said.
+printf yes > "$(dirname "$_sf7")/flagged"
 _art7="$(dirname "$_sf7")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf7")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf7")/stage-inputs.json" pr_stage_run "pr" "$_sf7" ) >/dev/null 2>&1; _rc7=$?
+( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf7")" ZBUILD_RUN_FLAGGED="$(_flag "$_sf7")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf7")/stage-inputs.json" pr_stage_run "pr" "$_sf7" ) >/dev/null 2>&1; _rc7=$?
 
 assert_eq "[SPEC-7] pr_stage_run exits 0 on PR-open path (high+advisory)" "0" "$_rc7"
 assert_file_exists "[SPEC-7] pr-url.txt written (escalated despite advisory)" "$_art7/pr-url.txt"

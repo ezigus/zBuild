@@ -14,7 +14,7 @@ defaults:
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
 # Simplified pipeline (ADR-037 EPIC #966 / ADR-040 EPIC #1129): 7 top-level flow
-# units — intake, plan, design, build_test_cycle, review_lenses, review-aggregator,
+# units — intake, plan, design, build_test_cycle, review_lenses,
 # pr — where build_test_cycle groups the build/test leaves plus the decomposed
 # mechanical gate stages, and review_lenses is the advisory lens group.
 #
@@ -30,9 +30,10 @@ defaults:
 # monolithic `review` stage (ADR-038's hand-rolled review-report fan-out, now
 # UNREFERENCED here) is replaced by `review_lenses` — a `type: map over: lenses`
 # `aggregate: advisory` group (issue #1295, ADR-047 §2; was `type: parallel`) —
-# one work unit per lens element — followed by
-# `review-aggregator`, which merges the per-lens results into ONE advisory
-# merge-readiness report. The lens group is ADVISORY: it NEVER feeds the cycle's
+# one work unit per lens element. #2368: the engine sums the lenses up
+# (review_lenses-summary.md) and says whether one was flagged
+# (ZBUILD_RUN_FLAGGED); review-aggregator is retired. The lens group is
+# ADVISORY: it NEVER feeds the cycle's
 # exit_when/convergence (build_test_cycle's exit_when, ADR-040 §5) and never
 # blocks merge. The B5 no-LLM-on-convergence-path invariant therefore holds.
 flow:
@@ -41,7 +42,6 @@ flow:
   - plan
   - delivery_loop
   - review_lenses
-  - review-aggregator
   - pr
 
 # ─── always_run (#1831) ──────────────────────────────────────────────────────
@@ -411,22 +411,6 @@ review_lenses:
   router:
     timeout_s: 300
     max_turns: 25
-
-# ─── review-aggregator (leaf, ADVISORY) ──────────────────────────────────────
-# C2 (#1141, ADR-040 §3/§4): merges the review_lenses members' results — the
-# lens_result set the engine hands it (ADR-055 §1.4, #1842) — into ONE advisory
-# merge-readiness report (review-report.json + review-report.md). Does NO LLM call
-# — it merges lens JSON only. Bound by role review_aggregator to
-# plugins/agent/review-aggregator. Requires lens_result: with no lens result the
-# engine refuses it, and an empty set reports needs_attention, never "ready"
-# (#1753). Never recommends a merge action, never blocks.
-# The report.json filename is unchanged, so merge / pr-delivery consume it as before.
-review-aggregator:
-  gate: auto
-  roles: [review_aggregator]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
 
 # ─── pr (leaf) ───────────────────────────────────────────────────────────────
 # T0 tool stage (ADR-013): opens the pull request; no LLM call.

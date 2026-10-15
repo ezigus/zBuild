@@ -128,25 +128,7 @@ fi
 # The highest-severity finding surfaces in the security one-liner (spot check).
 assert_contains "T10 security one-liner shows top finding" "$term" "top: high"
 
-# ─── T11: aggregator surfaces prose merge-readiness report to the terminal ───
-print_test_section "T11: aggregator prints prose report"
-# shellcheck disable=SC1090
-source "$REPO_ROOT/plugins/agent/review-aggregator/plugin.sh"
-AGG_OUT="$TEST_TEMP_DIR/agg.out"
-export _TPL_STAGE_IO_DESTS_review_aggregator="file,stdout"   # io dests include stdout
-export ZBUILD_CURRENT_STAGE="review-aggregator"
-# The engine hands the aggregator its lens set and output dir (#1842).
-_agg_inputs="$TEST_TEMP_DIR/agg-inputs.json"
-jq -n '{schema_version:1, stage:"review-aggregator", inputs:{lens_result:$ARGS.positional}}' \
-    --args "$ARTIFACT_DIR"/lens-*.json > "$_agg_inputs"
-set +e
-ZBUILD_ARTIFACT_DIR="$ARTIFACT_DIR" ZBUILD_STAGE_INPUTS="$_agg_inputs" \
-    review_aggregator_run "review-aggregator" "$STATE_FILE" 2>"$AGG_OUT" >/dev/null
-set -e
-unset ZBUILD_CURRENT_STAGE
-agg="$(cat "$AGG_OUT")"
-assert_contains "T11 prose report header on terminal" "$agg" "## Review Report"
-assert_contains "T11 merge-readiness line on terminal" "$agg" "**Merge Readiness:**"
+# T11 retired with review-aggregator (#2368).
 
 # ─── SPEC-9 [guard/#1840]: a lens file carrying its result doesn't break rendering ─
 # The review-lens plugin writes its result fields (#2366: result_contract 3,

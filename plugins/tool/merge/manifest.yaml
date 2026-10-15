@@ -6,8 +6,8 @@ description: |
   Auto-merge tool plugin (ADR-037 §4, I9-B / #1050, I9-C / #1051). When
   merge_policy: auto is active and every loop passed (ZBUILD_RUN_LOOPS_PASSED=yes),
   merges via `gh pr merge --squash --auto`. When merge_policy: auto_unless_flagged,
-  pr-delivery additionally requires review-report.json merge_readiness to be ready
-  or advisory before delegating here; absent review-report is fail-closed (PR path).
+  pr-delivery additionally requires the engine's word that no review lens was
+  flagged (ZBUILD_RUN_FLAGGED=no) before delegating here; no word is fail-closed.
   Falls back to pr_open_run when the loops did not all pass. Refuses on main/master.
   No LLM dependency — T0 tool stage (ADR-013).
 

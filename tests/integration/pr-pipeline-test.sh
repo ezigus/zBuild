@@ -109,24 +109,21 @@ exit 0
 MOCK
 chmod +x "$_mockbin/gh" "$_mockbin/git"
 
-# ─── SPEC-4: a review that needs attention never blocks delivery ──────────────
-# ADR-040 §4 (#1844, Eric 2026-10-03): the review is advisory. A needs_attention
-# report — read through ZBUILD_STAGE_INPUTS at a non-standard path — does not
-# refuse delivery; pr-delivery hands over to pr-open, which opens the PR.
+# ─── SPEC-4: a flagged review never blocks delivery ───────────────────────────
+# ADR-040 §4 (#1844, Eric 2026-10-03): the review is advisory. A lens flagged by
+# the engine (ZBUILD_RUN_FLAGGED=yes, #2368) does not refuse delivery;
+# pr-delivery hands over to pr-open, which opens the PR.
 # Runs under the gh/git mocks: unmocked, the real pr-open would create a branch
 # in the checkout the suite runs from (it did, in the #1844 worktree).
-print_test_section "SPEC-4: a needs_attention review does not block — pr-open opens the PR"
+print_test_section "SPEC-4: a flagged review does not block — pr-open opens the PR"
 _sf4="$(_setup_run approve s4)"
 _art4="$(dirname "$_sf4")/artifacts"
-_rr4="$TEST_TEMP_DIR/review-report-s4.json"
-jq -n '{merge_readiness:"needs_attention",findings:[{severity:"critical",summary:"blocking"}],summary:"t"}' \
-    > "$_rr4"
 _si4="$TEST_TEMP_DIR/si-s4.json"
-printf '{"inputs":{"review_report":"%s"}}\n' "$_rr4" > "$_si4"
-( unset ZBUILD_STATE_FILE; PATH="$_mockbin:$PATH" ZBUILD_STAGE_INPUTS="$_si4" ZBUILD_DRY_RUN=0 \
+printf '{"inputs":{}}\n' > "$_si4"
+( unset ZBUILD_STATE_FILE; PATH="$_mockbin:$PATH" ZBUILD_STAGE_INPUTS="$_si4" ZBUILD_DRY_RUN=0 ZBUILD_RUN_FLAGGED=yes \
     pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
-assert_eq "[SPEC-4] a needs_attention review → pr_stage_run delivers (rc=0)" "0" "$_rc4"
-assert_file_exists "[SPEC-4] a needs_attention review → pr-open wrote pr-url.txt" "$_art4/pr-url.txt"
+assert_eq "[SPEC-4] a flagged review → pr_stage_run delivers (rc=0)" "0" "$_rc4"
+assert_file_exists "[SPEC-4] a flagged review → pr-open wrote pr-url.txt" "$_art4/pr-url.txt"
 ( unset ZBUILD_STATE_FILE; PATH="$_mockbin:$PATH" ZBUILD_DRY_RUN=0 \
     pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1; _rc5=$?
 assert_eq "[SPEC-5] non-dry-run pr_stage_run exits 0 (state file threaded to pr-open)" "0" "$_rc5"
