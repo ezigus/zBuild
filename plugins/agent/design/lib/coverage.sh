@@ -85,7 +85,7 @@ EOF2
 # Sets _DESIGN_UNCOVERED (one entry per uncovered requirement) and
 # _DESIGN_COV_OUTCOME: empty when the call judged the design, otherwise the
 # outcome word for how the call failed (rate_limited, unavailable, unusable,
-# misconfigured). rc 0 always.
+# misconfigured, broken). rc 0 always.
 _design_coverage() {
     local design_md="$1" reqs="$2" tier="${3:-T2}"
     _DESIGN_UNCOVERED=(); _DESIGN_COV_OUTCOME=""
@@ -98,7 +98,12 @@ _design_coverage() {
         return 0
     fi
     local raw="" rc=0 rc_file
-    rc_file="$(mktemp)" || rc_file=""
+    # Without a file to keep the call's exit code in, a failed call would read
+    # as a verdict (review on PR #2393): the check cannot run.
+    if ! rc_file="$(mktemp)" || [[ -z "$rc_file" ]]; then
+        _DESIGN_COV_OUTCOME=broken
+        return 0
+    fi
     # No 2>/dev/null on this call: the stage-io input banner writes to fd 2 and
     # suppressing it breaks ADR-015 §v4's ordering (the #491 defect).
     raw="$(route_to_model "$tier" "$framed"; printf '%s' "$?" > "$rc_file" || true)"

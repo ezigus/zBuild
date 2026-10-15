@@ -11,6 +11,8 @@
 #             goes round
 # R2 [guard]  the same member fails but is not named: the later members run
 # R3 [guard]  the named member passes: the later members run
+# R4 [change] a name that is not a member of the loop is refused at load
+#             (review on PR #2393: a typo would silently do nothing)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,6 +115,16 @@ assert_eq "[R2] not named: build still runs" "2" "$(_count build)"
 # ── R3 ───────────────────────────────────────────────────────────────────────
 DESIGN=pass _run "$TPL_NAMED"
 assert_eq "[R3] design passes: build runs" "1" "$(_count build)"
+
+# ── R4 ───────────────────────────────────────────────────────────────────────
+TPL_TYPO="$TEST_TEMP_DIR/typo.yaml"; _write_tpl "$TPL_TYPO" "  stop_round_on_fail: [desgin]"
+_TPL_STAGES=(); _TPL_CYCLES=()
+if load_template "$TPL_TYPO" >/dev/null 2>"$TEST_TEMP_DIR/typo.err"; then
+    assert_fail "[R4] a name that is not a member is refused" "the template loaded"
+else
+    assert_pass "[R4] a name that is not a member is refused"
+fi
+assert_contains "[R4] ...and the error names it" "$(cat "$TEST_TEMP_DIR/typo.err")" "desgin"
 
 cleanup_test_env
 print_test_results

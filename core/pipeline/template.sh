@@ -1076,6 +1076,16 @@ _tpl_validate_cycles() {
         local -a cs=($stages_csv)
         IFS="$IFS_save"
 
+        # #2369: every name in stop_round_on_fail is a member of this loop — a
+        # typo would otherwise silently end no round (review on PR #2393).
+        local _sr_v="_TPL_CYCLE_STOP_ROUND_${safe}" _sr_n
+        for _sr_n in ${!_sr_v:-}; do
+            if [[ ",${stages_csv}," != *",${_sr_n},"* ]]; then
+                error "cycle '$cid': stop_round_on_fail names '$_sr_n', which is not a member of the loop"
+                return 1
+            fi
+        done
+
         # Every stage of the loop — its inner loops and parallel groups expanded
         # where they sit (#2271: an outer loop's own stages may sit between its
         # inner loops) — must be a known _TPL_STAGES entry, contiguous and in

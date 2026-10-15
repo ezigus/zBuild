@@ -19,6 +19,8 @@
 #   E1/E2  every gap in one answer, not capped (#2245); E3 three gaps travel
 #   #2032  a failed call is classified, even after a verdict was printed
 #   #2366  an answer with no verdict is unusable
+#   R1     a call whose exit code cannot be kept is not read as covered
+#          (review on PR #2393: mktemp failing left rc at 0)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,6 +104,13 @@ assert_eq "[#2032] a verdict printed and then a timeout is still a timeout" "tim
 route_to_model() { printf 'I think it is mostly fine.\n'; return 0; }
 _cov
 assert_eq "[#2366] an answer with no verdict is unusable" "unusable" "$_DESIGN_COV_OUTCOME"
+
+# ── R1 ───────────────────────────────────────────────────────────────────────
+route_to_model() { printf 'VERDICT: covered\nREASON: fine\n'; return 1; }
+mktemp() { [[ "${1:-}" == -d ]] && { command mktemp "$@"; return; }; return 1; }
+_cov
+unset -f mktemp
+assert_eq "[R1] mktemp failed: the call is not read as covered" "broken" "$_DESIGN_COV_OUTCOME"
 
 cleanup_test_env
 print_test_results
