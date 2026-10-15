@@ -328,7 +328,9 @@ An attempt that ends in error produced no output, so it must not hide the output
 produce. The live result file still says the attempt failed — the engine reads its verdict as it does
 every result — and Previous work, under that stage, also lists **its last good output, from an earlier
 attempt**: the files of the newest archived attempt (`artifacts/attempts/<stage>/…`, every dispatch's
-own copy, #2183) whose primary result is not an error, and that output's summary. #1801's plan timed
+own copy, #2183) whose primary result is not an error and that holds every output the stage marks
+`required: true`, not empty, and that output's summary (amended 2026-10-14: #1801's rerun named attempts
+that had written no design.md). #1801's plan timed
 out four times; each attempt's error record replaced the one plan it had written, so the next attempt
 had no plan to keep.
 
@@ -445,7 +447,7 @@ no model ever reads that line.
 - §9 (no restored area is read: the index and the reader see only the live file) → `tests/unit/stage-input-resolve-precedence-test.sh` SPEC-3; `tests/unit/own-run-artifacts-first-test.sh` O1, O7
 - §9 (no earlier-run label; one wording for design's latest design whichever run wrote it) → `tests/unit/stage-prompt-contract-test.sh` P2; `tests/unit/design-prior-hypothesis-test.sh` SPEC-5
 - §9 (what the issue's work has changed, said once at the top against the default branch; no per-stage line or record) → `tests/unit/engine-blocks-shared-only-test.sh` B2, B2b; `tests/unit/stage-blocks-dispatch-test.sh` D2
-- §11 (an attempt that ended in error shows the stage's last good output and its summary; the failure is still shown) → `tests/unit/engine-blocks-shared-only-test.sh` B3
+- §11 (an attempt that ended in error shows the stage's last good output and its summary; the failure is still shown; an attempt missing a required output is not good) → `tests/unit/engine-blocks-shared-only-test.sh` B3, B3b
 - §11 (a valid output the attempt wrote counts even when its call was cut off; one it did not write does not) → `plugins/agent/plan/tests/plan-work-items-test.sh` W3–W5; `plugins/agent/plan/tests/plan-integration-test.sh` I2, I3; design: `tests/unit/design-writes-as-it-goes-test.sh` D4
 - #2111 (a run aborted with `llm_rate_limited` persists — persist pushes the state branch; the daemon's completion comment names the reset time and says to re-add the label) → `tests/unit/prior-work-reuse-contract-test.sh` C6
 

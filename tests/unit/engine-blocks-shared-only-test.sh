@@ -17,6 +17,8 @@
 #               it compares against the default branch, not where this run began
 #   B3 [change] a stage whose latest attempt ended in error shows its last good
 #               output, from the attempt that wrote it
+#   B3b [change] an attempt counts as good only if every output its stage marks
+#               required: true is there and not empty
 #   B4 [change] the rules say each thing once, and hold no rule about a kind of
 #               work: "open the code that writes it" is in build, test-author
 #               and the review lenses instead
@@ -62,6 +64,10 @@ outputs:
     path: ${artifact_dir}/pw-summary.md
     format: markdown
     summary: true
+  - id: pw-doc
+    path: ${artifact_dir}/pw-doc.md
+    format: markdown
+    required: true
 MF
 _prev() {
     ( _TPL_STAGES=(pw)
@@ -111,6 +117,7 @@ print_test_section "B3: a failed attempt shows the last good output"
 _good="$_S/artifacts/attempts/pw/iter-0-attempt-1"; mkdir -p "$_good"
 jq -n '{result_contract:3,outcome:"pass",reason:"ok"}' > "$_good/pw-result.json"
 printf '## pw — pass\n- the good work items\n' > "$_good/pw-summary.md"
+printf '# doc\n' > "$_good/pw-doc.md"
 _bad="$_S/artifacts/attempts/pw/iter-0-attempt-2"; mkdir -p "$_bad"
 jq -n '{result_contract:3,outcome:"timed_out",reason:"stopped"}' > "$_bad/pw-result.json"
 cp "$_bad/pw-result.json" "$_S/artifacts/pw-result.json"
@@ -121,6 +128,22 @@ _pw3="$(_prev)"
 assert_contains "[B3] the last good output's path is given" "$_pw3" "$_good/pw-result.json"
 assert_contains "[B3] the last good output's summary is shown" "$_pw3" "the good work items"
 assert_contains "[B3] the latest attempt's failure is still shown" "$_pw3" "(verdict: error)"
+
+print_test_section "B3b: an attempt without its required output is not good"
+# #1801's rerun: "last good output" named attempts that had written no
+# design.md — their result was not an error, but the output was missing.
+_nodoc="$_S/artifacts/attempts/pw/iter-0-attempt-3"; mkdir -p "$_nodoc"
+jq -n '{result_contract:3,outcome:"fail",reason:"no doc"}' > "$_nodoc/pw-result.json"
+printf '## pw — fail\n- wrote no doc\n' > "$_nodoc/pw-summary.md"
+_bad4="$_S/artifacts/attempts/pw/iter-0-attempt-4"; mkdir -p "$_bad4"
+cp "$_bad/pw-result.json" "$_bad4/pw-result.json"
+_pw3b="$(_prev)"
+assert_contains "[B3b] the attempt that wrote its required output is named" "$_pw3b" "$_good/pw-result.json"
+if grep -qF "$_nodoc" <<< "$_pw3b"; then
+    assert_fail "[B3b] the attempt missing its required output is not named" "$(grep -F "$_nodoc" <<< "$_pw3b")"
+else
+    assert_pass "[B3b] the attempt missing its required output is not named"
+fi
 
 print_test_section "B4: each rule once, and only rules every stage shares"
 _rules="$(_stage_block_rules pw "$_S" "$_P/agent/pw/manifest.yaml" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
