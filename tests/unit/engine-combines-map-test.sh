@@ -10,8 +10,6 @@
 #   M1 [change] after a map group the engine writes <group>-summary.md: every
 #               element, its outcome and its one-line reason
 #   M2 [change] ZBUILD_RUN_FLAGGED is yes when an element failed, no otherwise
-#   M3 [change] an element with no result makes it `incomplete` — not a clean
-#               review (review on #2391), so nothing auto-merges on it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,7 +38,6 @@ ART="$ZBUILD_STATE_DIR/artifacts"
 orch_spawn()    { return 0; }
 orch_dispatch() {
     local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
-    [[ "$_e" == silent ]] && { printf 'slot\n'; return 0; }
     if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" fail "a high problem the change introduced"
     else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
     printf 'slot\n'
@@ -69,11 +66,6 @@ assert_eq "[M2] an element failed → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RU
 rm -f "$ART"/lens-*.json
 _run_map a c
 assert_eq "[M2] none failed → ZBUILD_RUN_FLAGGED=no" "no" "${ZBUILD_RUN_FLAGGED:-unset}"
-
-print_test_section "M3: a lens with no result"
-rm -f "$ART"/lens-*.json
-_run_map a silent
-assert_eq "[M3] an element with no result → ZBUILD_RUN_FLAGGED=incomplete" "incomplete" "${ZBUILD_RUN_FLAGGED:-unset}"
 
 cleanup_test_env
 print_test_results

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Tests: plugins/tool/design-gate — the PRE-build mechanical structural gate
-# (ADR-046, EPIC #1216 issue #1218). T0, no-LLM, no-baseline; pure grep over
-# design.md. Runs 5 structural checks (C1..C5), reports ALL violations in ONE
-# pass, verdict-in-artifact, ALWAYS exits rc=0. C3 is the requirement status
-# (#2304, ADR-069): G1–G6 below; G7 (#2305) reads a [code] requirement's words.
+# Tests: design's scripted checks of its own design.md (plugins/agent/design/
+# lib/checks.sh; #2369 moved them out of the design-gate stage, ADR-046, #1218).
+# No model, nothing executed; pure reads of design.md and the files it names.
+# Runs the structural checks (C1..C5, C7), reports ALL violations in ONE pass.
+# C3 is the requirement status (#2304, ADR-069): G1–G6 below; G7 (#2305) reads a
+# [code] requirement's words.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,43 +15,43 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "design-gate — PRE-build mechanical structural gate (#1218, ADR-046)"
-setup_test_env "design-gate"
+print_test_header "design checks its own design.md — the scripted checks (#2369, #1218)"
+setup_test_env "design-checks"
 _test_cleanup_hook() { cleanup_test_env; }
 
-# design-gate is a T0 tool: no event-bus/db needed, but plug the events sink so
-# emits are no-ops rather than errors.
-export ZBUILD_EVENTS_DB="/dev/null"
 
 # shellcheck source=../../scripts/lib/acceptance-block.sh
 source "$REPO_ROOT/scripts/lib/acceptance-block.sh"
-# shellcheck source=../../plugins/tool/design-gate/plugin.sh
-source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh"
+# shellcheck source=../../plugins/agent/design/lib/checks.sh
+source "$REPO_ROOT/plugins/agent/design/lib/checks.sh"
 
 # repo_root for the checks = a temp tree where declared TESTFILES/WIRING live.
 ROOT="$TEST_TEMP_DIR/repo"
 mkdir -p "$ROOT/tests" "$ROOT/scripts"
 export ZBUILD_REPO_ROOT="$ROOT"
 
-# _run_gate_with_md <design.md content>  → runs design_gate_run against a fresh
-# state dir; sets $VERDICT + $RESULT_JSON + $FEEDBACK_PATH + $GATE_RC.
+# _run_gate_with_md <design.md content>  → runs _design_checks on it; sets
+# $VERDICT, $RESULT_JSON (.data.violations), $FEEDBACK_PATH (the plain sentences
+# design is sent back with) and $GATE_RC.
 _state_seq=0
 _run_gate_with_md() {
-    local md_content="$1"
     _state_seq=$((_state_seq + 1))
-    local state_dir="$TEST_TEMP_DIR/state-$_state_seq"
-    local art="$state_dir/artifacts"
+    local art="$TEST_TEMP_DIR/state-$_state_seq/artifacts" v
     mkdir -p "$art"
-    printf '%s' "$md_content" > "$art/design.md"
-    local state_file="$state_dir/pipeline-state.json"
-    printf '{"schema_version":1}' > "$state_file"
+    printf '%s' "$1" > "$art/design.md"
     set +e
-    design_gate_run "design-gate" "$state_file"
+    _design_checks "$art/design.md" "$ROOT" "${REQ_JSON:-}"
     GATE_RC=$?
     set -e
-    RESULT_JSON="$art/design-gate-result.json"
-    FEEDBACK_PATH="$art/design-gate-feedback.md"
-    VERDICT="$(jq -r '.outcome' "$RESULT_JSON" 2>/dev/null || echo MISSING)"
+    RESULT_JSON="$art/checks.json"
+    FEEDBACK_PATH="$art/checks-feedback.md"
+    if [[ ${#_DESIGN_VIOLATIONS[@]} -eq 0 ]]; then
+        VERDICT=pass; printf '{"data":{"violations":[]}}' > "$RESULT_JSON"; : > "$FEEDBACK_PATH"
+    else
+        VERDICT=fail
+        printf '%s\n' "${_DESIGN_VIOLATIONS[@]}" | jq -R . | jq -s '{data:{violations:.}}' > "$RESULT_JSON"
+        for v in "${_DESIGN_VIOLATIONS[@]}"; do _dck_plain "$v"; printf '\n'; done > "$FEEDBACK_PATH"
+    fi
 }
 
 # A well-formed, clean design (scope non-empty; every SPEC classified; [change]
@@ -206,12 +207,12 @@ assert_contains "[SPEC-7] reports NO_STATUS in one pass"        "$_all" "NO_STAT
 assert_contains "[SPEC-7] reports WIRING_MISSING in one pass"   "$_all" "WIRING_MISSING"
 assert_contains "[SPEC-7] reports MISSING_TESTFILE_FOR_SPEC in one pass" "$_all" "MISSING_TESTFILE_FOR_SPEC"
 
-# ─── SPEC-8 (verdict-in-artifact): design_gate_run ALWAYS returns rc=0 ────────
+# ─── SPEC-8: _design_checks ALWAYS returns rc=0 ────────
 # Even on a failing verdict the plugin returns 0 — the verdict lives in the
 # artifact (shape-floor / gate-aggregator idiom); the cycle reads its outcome (#2366).
-assert_eq "[SPEC-8] design_gate_run returns rc=0 on a FAIL verdict" "0" "$GATE_RC"
+assert_eq "[SPEC-8] _design_checks returns rc=0 on a FAIL verdict" "0" "$GATE_RC"
 _run_gate_with_md "$_clean_md"
-assert_eq "[SPEC-8] design_gate_run returns rc=0 on a PASS verdict" "0" "$GATE_RC"
+assert_eq "[SPEC-8] _design_checks returns rc=0 on a PASS verdict" "0" "$GATE_RC"
 
 # ─── SPEC-9 / SPEC-4 (feedback): feedback markdown written on every verdict ───
 # ADR-055 §9: written on every terminal verdict (pass and fail); absence is never
@@ -456,22 +457,5 @@ SPEC-1: /etc/passwd-test.sh
 assert_eq "[SPEC-15] an absolute testfile path → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-15] a dropped absolute path also surfaces as MISSING_TESTFILE_FOR_SPEC" \
     "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
-
-# ─── SPEC-6 (ZBUILD_STAGE_INPUTS): design-gate reads design.md from env var ───
-_dg_si_dir="$TEST_TEMP_DIR/si-dir"
-mkdir -p "$_dg_si_dir"
-printf '%s' "$_clean_md" > "$_dg_si_dir/custom-design.md"
-_dg_si_file="$TEST_TEMP_DIR/dg-si.json"
-jq -n --arg p "$_dg_si_dir/custom-design.md" '{inputs:{design:$p}}' > "$_dg_si_file"
-_state_seq=$((_state_seq + 1))
-_dg_si_state="$TEST_TEMP_DIR/state-$_state_seq"
-mkdir -p "$_dg_si_state/artifacts"
-printf '{"schema_version":1}' > "$_dg_si_state/pipeline-state.json"
-# No design.md in artifacts/ — path must come from ZBUILD_STAGE_INPUTS.
-ZBUILD_STAGE_INPUTS="$_dg_si_file" design_gate_run "design-gate" \
-    "$_dg_si_state/pipeline-state.json" >/dev/null 2>&1
-assert_eq "[SPEC-6] design-gate reads design.md via ZBUILD_STAGE_INPUTS → verdict=pass" \
-    "pass" "$(jq -r '.outcome' "$_dg_si_state/artifacts/design-gate-result.json" 2>/dev/null || echo MISSING)"
-unset ZBUILD_STAGE_INPUTS
 
 print_test_results

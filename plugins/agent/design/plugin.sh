@@ -51,12 +51,18 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
 # #2366: one outcome from the engine's list, through the one writer.
 # shellcheck source=../../../scripts/lib/stage-result.sh
 source "$_DESIGN_ROOT/scripts/lib/stage-result.sh"
+# #2369: design checks its own design.md — by script, then by a second model call.
+# shellcheck source=./lib/checks.sh
+source "$_DESIGN_DIR/lib/checks.sh"
+# shellcheck source=./lib/coverage.sh
+source "$_DESIGN_DIR/lib/coverage.sh"
 
-# _design_write_outcome <artifact_dir> <outcome> <reason>
+# _design_write_outcome <artifact_dir> <outcome> <reason> [findings_json]
 # Writes design-verdict.json (#2366: one outcome from the engine's list).
-# Called on every terminal exit path so the sidecar is always on disk.
+# Called on every terminal exit path so the sidecar is always on disk. #2369:
+# what design's checks still find is carried as numbered findings.
 _design_write_outcome() {
-    local dir="$1" outcome="$2" reason="$3"
+    local dir="$1" outcome="$2" reason="$3" findings="${4:-[]}"
     mkdir -p "$dir" 2>/dev/null || true
     # #2172: the design is stamped with WHEN and against WHICH commit it was
     # written, so a later run that inherits it can say what moved since. The
@@ -85,9 +91,10 @@ _design_write_outcome() {
     fi
     local _data
     _data="$(jq -nc --arg at "$_at" --arg sha "$_sha" \
-        --argjson w "${_wiring:-[]}" --argjson sc "${_scope:-[]}" \
+        --argjson w "${_wiring:-[]}" --argjson sc "${_scope:-[]}" --argjson f "$findings" \
         '{authored_at: $at, authored_at_commit: $sha, wiring_files: $w}
-         + (if ($sc | length) > 0 then {scope_files: $sc} else {} end)')"
+         + (if ($sc | length) > 0 then {scope_files: $sc} else {} end)
+         + (if ($f | length) > 0 then {findings: $f} else {} end)')"
     stage_result_write "$dir/design-verdict.json" "$outcome" "$reason" "$_data" 2>/dev/null \
         || warn "_design_write_outcome: failed to write design-verdict.json (outcome=$outcome)"
 }
@@ -137,25 +144,6 @@ design_stage_run() {
         "$artifacts_dir"
 }
 
-
-# _design_gate_failed <artifact_dir>  (#1979)
-# True when the design-gate's recorded verdict for this run is a failure.
-#
-# This replaces reading design-gate-feedback.md to decide how to word the PRIOR
-# DESIGN instruction. The content itself now reaches the prompt as an
-# engine-collected summary (#1976, ADR-055 §9), so the old reader would have
-# spliced it a second time — recreating exactly the duplication #1825 removed.
-# Keying on the recorded verdict keeps ONE source for the content and makes the
-# switch a fact read from state rather than a side effect of a file read.
-_design_gate_failed() {
-    local artifact_dir="${1:-}"
-    [[ -n "$artifact_dir" ]] || return 1
-    local state_file; state_file="$(dirname "$artifact_dir")/pipeline-state.json"
-    [[ -s "$state_file" ]] || return 1
-    local v
-    v="$(jq -r '.stage_verdicts["design-gate"] // empty' "$state_file" 2>/dev/null || true)"
-    [[ "$v" == "fail" || "$v" == "failed" ]]
-}
 
 # Design's prior design, to refine rather than re-create: its own latest
 # design.md, whichever try or run wrote it — hydrate puts an earlier run's back
@@ -360,7 +348,7 @@ ${scope_list}
 - You MAY use the Glob tool to discover files by pattern.
 DESIGN_PROMPT
     # #2306 (ADR-070 §3): the issue's requirements, numbered by the engine; every
-    # one is covered by a SPEC, and the design-gate checks that by script.
+    # one is covered by a SPEC, and design's own checks see to that by script.
     local _req_f="" _reqs; [[ -s "${ZBUILD_STAGE_INPUTS:-}" ]] && _req_f="$(jq -r '.inputs.requirements // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null)"
     _reqs="$(acceptance_requirements_list "${_req_f:-$artifact_dir/requirements.json}")"
     [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (numbered by the engine)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
@@ -387,19 +375,14 @@ DESIGN_PROMPT
         printf '\n### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)\n' >> "$prompt_input_file"
         printf 'Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
         printf '\n%s\n' "$_prior_design_body" >> "$prompt_input_file"
-        if _design_gate_failed "$artifact_dir"; then
-            printf '\nExpand YOUR LATEST DESIGN'"'"'s scope block to cover the gaps the design check reported under Previous work. Preserve all existing scope entries; only ADD the missing ones.\n' \
-                >> "$prompt_input_file"
-        else
-            printf '\nRefine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
-                >> "$prompt_input_file"
-        fi
+        printf '\nRefine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
+            >> "$prompt_input_file"
     fi
 
     # When the acceptance check failed, say what design can do about a [code]
     # requirement whose test already passes (build may not touch acceptance
     # assertions, ADR-036). #2304 (ADR-069): no relabel offer — [done] needs
-    # evidence the design-gate checks.
+    # evidence design's own checks look at.
     if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
             "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.
@@ -407,8 +390,11 @@ DESIGN_PROMPT
             >> "$prompt_input_file"
     fi
 
-    # #2308: the limits close the stage's own text.
-    cat >> "$prompt_input_file" <<DESIGN_LIMITS
+    # #2308: the limits close the stage's own text. #2369: kept apart, so each
+    # round can add what the checks found before them.
+    local _dp_stage_text _dp_limits
+    _dp_stage_text="$(cat "$prompt_input_file")"
+    _dp_limits="$(cat <<DESIGN_LIMITS
 
 ## What you must not do
 - Do not write any file other than the design.md above and your notes file.
@@ -417,21 +403,30 @@ DESIGN_PROMPT
 - Do not write design.md anywhere else (./design.md, design.md): it is read
   from the absolute path above only.
 DESIGN_LIMITS
-
-    # ADR-067 §8: design's three parts and the engine's blocks — the
-    # repository's guidance for design, its budget and notes file — in the one
-    # prompt order.
-    local _dp_composed
-    if ! _dp_composed="$(stage_prompt_compose_parts "$(cat "$prompt_input_file")")"; then
-        error "_design_stage_run_inner: the prompt could not be composed — the engine's blocks are missing"
-        return 1
-    fi
-    printf '%s\n' "$_dp_composed" > "$prompt_input_file"
+)"
 
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
     local tier; tier="$(resolve_tier design "$_DESIGN_DIR")" || return 1
     local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || echo 5)"
     [[ "$max_iter" =~ ^[0-9]+$ ]] || max_iter=5
+    # #2369: design's own rounds of checking its design.md, from its manifest.
+    local _rounds; _rounds="$(yaml_get "$_DESIGN_DIR/manifest.yaml" config.check_rounds 2>/dev/null || true)"
+    [[ "$_rounds" =~ ^[1-9][0-9]*$ ]] || _rounds=2
+    # _ours: design.md on disk is this run's own — a round produced it. Only an
+    # earlier run's copy is stale; this run's is never removed (#2369).
+    local _round=1 _found="" _ours=0
+
+    while :; do
+    # ADR-067 §8: design's three parts and the engine's blocks — the
+    # repository's guidance for design, its budget and notes file — in the one
+    # prompt order.
+    local _dp_composed
+    if ! _dp_composed="$(stage_prompt_compose_parts "${_dp_stage_text}${_found}
+${_dp_limits}")"; then
+        error "_design_stage_run_inner: the prompt could not be composed — the engine's blocks are missing"
+        return 1
+    fi
+    printf '%s\n' "$_dp_composed" > "$prompt_input_file"
 
     # #825: opt into --defer-final-banner-close so the OUTPUT banner stays
     # open until we override _ROUTE_LOOP_FINAL_OUTPUT below with the actual
@@ -458,29 +453,20 @@ DESIGN_LIMITS
     # #2186: what gets published depends only on what THIS call did to
     # design.md. Never fabricate a design (the #945 marker overwrote a complete
     # one on #1849, run 35949629759):
-    #   - changed by this call → keep it as written; spec-coverage and
-    #     design-gate judge whether it is complete.
+    #   - changed by this call → keep it as written and check it (#2369).
     #   - unchanged → publish nothing: remove the stale copy so an earlier
-    #     pass's design is not judged as this one's; the gate then fails and
-    #     the cycle re-iterates. A copy that cannot be removed is terminal.
+    #     pass's design is not taken as this one's; the loop goes round. A copy
+    #     that cannot be removed is terminal.
     # Either way the sidecar says incomplete/interrupted (#1261), which the
     # cycle reads as "this iteration did not finish".
     if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_timeout" ]]; then
         local _design_after; _design_after="$(cksum 2>/dev/null < "$output_design_md" || printf 'absent')"
         mkdir -p "$artifact_dir"
-        if [[ -s "$output_design_md" && "$_design_after" != "$_design_before" ]]; then
-            warn "_design_stage_run_inner: router loop timed out after writing design.md — keeping it for the gates to judge"
-            stage_summary_write "$artifact_dir/design-summary.md" "design" "incomplete" \
-                "the model call timed out after writing a design" \
-                "The design is kept as written; spec-coverage and design-gate judge whether it is complete."
-            emit_event "plugin.result" "outcome=timed_out" "plugin=design" "reason=router_timeout" "rc=$router_rc"
+        if [[ -s "$output_design_md" && ( "$_design_after" != "$_design_before" || $_ours -eq 1 ) ]]; then
+            # A design on disk when the time runs out still counts: it is
+            # checked like any other (#2369), and the checks decide.
+            warn "_design_stage_run_inner: router loop timed out after writing design.md — keeping it and checking it"
             emit_event "design.timeout.design_kept" "plugin=design" "reason=router_timeout"
-            # The kept design is what the operator needs to see in the deferred
-            # output banner (same close as the happy path below).
-            if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
-                _ROUTE_LOOP_FINAL_OUTPUT="$(cat "$output_design_md" 2>/dev/null || true)"
-                _route_loop_close_final_banner || true
-            fi
         else
             error "_design_stage_run_inner: router loop timed out without writing a design — publishing none"
             if ! rm -f "$output_design_md" 2>/dev/null || [[ -e "$output_design_md" ]]; then
@@ -497,10 +483,10 @@ DESIGN_LIMITS
                 "No design.md was written."
             emit_event "plugin.result" "outcome=timed_out" "plugin=design" "reason=router_timeout" "rc=$router_rc"
             emit_event "design.timeout.no_design" "plugin=design" "reason=router_timeout"
+            stage_result_write "$design_verdict_sidecar" timed_out "router_timeout" 2>/dev/null \
+                || warn "_design_stage_run_inner: failed to write the timed-out result $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
+            return 0
         fi
-        stage_result_write "$design_verdict_sidecar" timed_out "router_timeout" 2>/dev/null \
-            || warn "_design_stage_run_inner: failed to write the timed-out result $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
-        return 0
     fi
 
     # #2111: the router hit the account's rate limit. Say so in the result —
@@ -571,52 +557,51 @@ DESIGN_LIMITS
         return 1
     fi
 
-    # #817: single-quoted backticks need no escaping. Prior pattern
-    # '^\`\`\`scope' worked on macOS BSD grep (silently drops unknown \X
-    # escapes) but failed on Linux GNU grep (treats \` as backslash+backtick).
-    # Use plain literal triple-backticks; the existing _extract_scope_from_design
-    # below already uses the unescaped form, so this aligns the two.
-    if ! grep -q '^```scope' "$output_design_md" 2>/dev/null; then
-        warn "_design_stage_run_inner: design.md missing scope block — design output incomplete"
-        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
-            "design.md has no fenced scope block" \
-            "Without a scope block the build stage has no declared boundary to work inside."
-        _design_write_outcome "$artifact_dir" "unusable" "missing_scope_block"
-        emit_event "plugin.result" "outcome=unusable" "plugin=design" "reason=missing_scope_block"
-        # Failure path: don't override the banner output; let the deferred
-        # close (if any) flush claude's stdout summary so the operator sees
-        # the LLM's diagnostic message rather than a missing-file artifact.
-        if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
-            _route_loop_close_final_banner || true
-        fi
-        return 1
-    fi
-
-    # Assert the acceptance block is present in design.md.
-    if ! extract_acceptance_block "$output_design_md" >/dev/null 2>&1; then
-        warn "_design_stage_run_inner: design.md missing acceptance block — design output incomplete"
-        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
-            "design.md has no fenced acceptance block" \
-            "Without acceptance SPECs there is nothing for the acceptance gate to verify."
-        _design_write_outcome "$artifact_dir" "unusable" "missing_acceptance_block"
-        emit_event "plugin.result" "outcome=unusable" "plugin=design" "reason=missing_acceptance_block"
-        if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
-            _route_loop_close_final_banner || true
-        fi
-        return 1
-    fi
-
-    # #825: override the OUTPUT banner payload with the actual design.md
-    # content BEFORE flushing the deferred-close banner. Without this,
-    # the banner shows claude's stdout summary ("Design document written
-    # to...") rather than the on-disk artifact. The single-file-artifact's
-    # value IS the file content; show that to the operator. Existing
-    # stage-io tail-N truncation handles long files naturally (40-line tail
-    # + "full at <path>" hint).
+    # #825: show the operator the design.md this round wrote, not the model's
+    # stdout summary ("Design document written to..."). Existing stage-io tail-N
+    # truncation handles long files.
     if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
         _ROUTE_LOOP_FINAL_OUTPUT="$(cat "$output_design_md" 2>/dev/null || true)"
         _route_loop_close_final_banner || true
     fi
+
+    # #2369: design checks its own design.md — by script, then, when the issue
+    # has numbered requirements, by a second model call that asks whether the
+    # SPECs cover them. What fails goes back to the model until it clears or the
+    # rounds run out.
+    local -a _fnd=()
+    local _v _u
+    _ours=1
+    _design_checks "$output_design_md" "$repo_root" "${_req_f:-$artifact_dir/requirements.json}"
+    for _v in "${_DESIGN_VIOLATIONS[@]}"; do _fnd+=("$(_dck_plain "$_v")"); done
+    if [[ -n "$_reqs" ]] && extract_acceptance_block "$output_design_md" >/dev/null 2>&1; then
+        _design_coverage "$output_design_md" "$_reqs" "$tier"
+        if [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
+            error "_design_stage_run_inner: the coverage check could not be run ($_DESIGN_COV_OUTCOME)"
+            _design_write_outcome "$artifact_dir" "$_DESIGN_COV_OUTCOME" "coverage_check_failed"
+            stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+                "the check that the design covers the issue could not be run ($_DESIGN_COV_OUTCOME)" \
+                "design.md is kept as written, unchecked."
+            emit_event "plugin.result" "outcome=$_DESIGN_COV_OUTCOME" "plugin=design" "reason=coverage_check_failed"
+            return 1
+        fi
+        for _u in "${_DESIGN_UNCOVERED[@]}"; do _fnd+=("The issue asks for this and no SPEC covers it: $_u"); done
+    fi
+    [[ ${#_fnd[@]} -eq 0 ]] && break
+
+    emit_event "design.checks.failed" "plugin=design" "round=$_round" "rounds=$_rounds" "findings=${#_fnd[@]}"
+    if (( _round >= _rounds )); then
+        local _fj; _fj="$(printf '%s\n' "${_fnd[@]}" | stage_findings_json)"
+        _design_write_outcome "$artifact_dir" "fail" "design.md still fails its checks after $_rounds rounds" "${_fj:-[]}"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "fail" \
+            "design.md still fails ${#_fnd[@]} check(s) after $_rounds rounds" \
+            "$(printf -- '- %s\n' "${_fnd[@]}")"
+        emit_event "plugin.result" "outcome=fail" "plugin=design" "reason=checks_failed"
+        return 0
+    fi
+    _round=$(( _round + 1 ))
+    _found="$(printf '\n### What your design'"'"'s checks found (round %s of %s)\nYour design.md at the path above was checked, and these do not hold. Fix each one in design.md; keep what already passes.\n' "$_round" "$_rounds"; printf -- '- %s\n' "${_fnd[@]}")"
+    done
 
     # v2 result contract (#1834): write sidecar BEFORE atomic_write of design.md
     # so the sidecar is always on disk when rc=0 (SPEC-1).

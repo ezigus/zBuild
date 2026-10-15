@@ -30,9 +30,13 @@ provides:
     - design.stray.recovered
     - design.timeout.design_kept
     - design.timeout.no_design
+    - design.checks.failed
 
 config:
   tier_default: T2
+  # #2369: rounds design spends checking its own design.md and going back to
+  # its model with what failed; still failing after the last is outcome fail.
+  check_rounds: 2
   router:
     timeout_s: 600
     max_turns: 45

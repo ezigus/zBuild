@@ -224,6 +224,25 @@ _assert_error_path() {
     fi
 }
 
+# _assert_checks_fail <spec> <label> <finding words>  (#2369)
+# A design.md that fails design's own checks is a finding the model fixes in its
+# next round; when the rounds run out the outcome is fail, rc stays 0, and the
+# result lists the finding.
+_assert_checks_fail() {
+    local spec="$1" label="$2" words="$3"
+    assert_eq "[$spec] $label → rc=0" "0" "$_rc"
+    assert_eq "[$spec] $label → outcome=fail" \
+        "fail" "$(jq -r '.outcome // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_contains "[$spec] $label → the result lists the finding" \
+        "$(jq -r '.data.findings[]?.text' "$_F_SIDECAR" 2>/dev/null)" "$words"
+    if [[ -s "$_F_ARTIFACTS/design-summary.md" ]]; then
+        assert_pass "[$spec] $label → design-summary.md written (required:true)"
+    else
+        assert_fail "[$spec] $label → design-summary.md written (required:true)" \
+            "missing or empty: $_F_ARTIFACTS/design-summary.md"
+    fi
+}
+
 # SPEC-6 — router returns cleanly but writes no design.md, and no stray at root.
 _setup_fixture t6
 _MOCK_ROUTER_RC=0
@@ -252,7 +271,7 @@ set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
-_assert_error_path "SPEC-7" "design.md without a scope block" "missing_scope_block"
+_assert_checks_fail "SPEC-7" "design.md without a scope block" "has no scope block"
 
 # SPEC-8 — a design.md with a scope block but no ```acceptance block.
 _setup_fixture t8
@@ -269,7 +288,7 @@ set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
-_assert_error_path "SPEC-8" "design.md without an acceptance block" "missing_acceptance_block"
+_assert_checks_fail "SPEC-8" "design.md without an acceptance block" "acceptance block"
 
 # SPEC-9 — the model wrote design.md to the repo root, where a TRACKED file
 # already lives. The plugin must refuse to relocate it (operator-owned) rather

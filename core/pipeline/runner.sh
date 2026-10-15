@@ -1701,9 +1701,6 @@ _runner_rearm_traps() {
 }
 
 main() {
-    # #2368: the loops' word is this run's to give; one left in the environment
-    # (a nested run, a stale CI variable) must never reach a stage.
-    unset ZBUILD_RUN_LOOPS_PASSED
     local issue="" goal="" dry_run=false template="simple"
     local resume_mode=false from_stage="" no_resume=false force=false
     # #963: self-host mode — redirect read-only contract-grammar libs to a

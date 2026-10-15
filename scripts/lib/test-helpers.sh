@@ -1176,26 +1176,24 @@ setup_git_master_origin() {
 # engine tree unchanged — only the overlay id needs a fixture.
 #
 # Usage: install_template_overlay <repo> <id> [<id> ...]
-# install_simple_design_continue <repo> — overlay template `simple-design-continue`:
-# the shipped simple.yaml with design_verify_cycle set to on_max: continue.
-# #2241: simple.yaml's design cycle is on_max: halt (#2176), and the runner now
-# honours it. Tests whose subject is the CONTINUE path past an exhausted design
-# cycle (#766, #1217) drive this instead — generated from the real template at
-# test time, so it never drifts from it.
-install_simple_design_continue() {
-    local _repo="${1:?install_simple_design_continue: <repo> required}" _src_root
+# install_simple_loop_continue <repo> — overlay template `simple-loop-continue`:
+# the shipped simple.yaml with delivery_loop set to on_max: continue.
+# #2241: simple.yaml's outer loop is on_max: halt, and the runner honours it.
+# Tests whose subject is the CONTINUE path past an exhausted loop (#766, #1217)
+# drive this instead — generated from the real template at test time, so it
+# never drifts from it. (#2369: the design loop it once also changed is retired.)
+install_simple_loop_continue() {
+    local _repo="${1:?install_simple_loop_continue: <repo> required}" _src_root
     _src_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
     mkdir -p "$_repo/.zbuild/templates"
     awk '
-        /^id: simple$/ { print "id: simple-design-continue"; print "extends: simple"; next }
-        # #2271: the design loop is nested in delivery_loop, which is the
-        # top-level loop now — both continue past exhaustion in this overlay.
-        /^(design_verify_cycle|delivery_loop):/ { in_dvc = 1; print; next }
-        in_dvc && /^[a-z_-]+:/ { in_dvc = 0 }
-        in_dvc && /^  on_max: halt$/ { print "  on_max: continue"; next }
+        /^id: simple$/ { print "id: simple-loop-continue"; print "extends: simple"; next }
+        /^delivery_loop:/ { in_dl = 1; print; next }
+        in_dl && /^[a-z_-]+:/ { in_dl = 0 }
+        in_dl && /^  on_max: halt$/ { print "  on_max: continue"; next }
         { print }
-    ' "$_src_root/config/templates/simple.yaml" > "$_repo/.zbuild/templates/simple-design-continue.yaml"
-    grep -q '^id: simple-design-continue$' "$_repo/.zbuild/templates/simple-design-continue.yaml" || return 1
+    ' "$_src_root/config/templates/simple.yaml" > "$_repo/.zbuild/templates/simple-loop-continue.yaml"
+    grep -q '^id: simple-loop-continue$' "$_repo/.zbuild/templates/simple-loop-continue.yaml" || return 1
     # Committed, as install_template_overlay_committed does: an untracked
     # overlay leaves the tree dirty and intake refuses to start on it.
     local _git; _git="$(command -v git 2>/dev/null || echo /usr/bin/git)"

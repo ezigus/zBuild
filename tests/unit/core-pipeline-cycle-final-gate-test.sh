@@ -95,12 +95,37 @@ assert_eq "T8: no ZBUILD_TEST_FULL_SUITE_GATE / full_suite_gate reference remain
 # artifacts/test-results.json and the gate read it. A cycle whose members all
 # pass converges on iteration 1 whatever a test artifact from elsewhere says.
 print_test_section "T9 [#2144]. a stale run_mode=targeted artifact does not hold a cycle open"
-# simple.yaml's design_verify_cycle is the cycle that spun: it has no test
-# member, so nothing ever cleans a test artifact left by another cycle. The
-# stub answers pass for every member (#2366: spec-coverage reports pass too).
+# The cycle that spun was simple.yaml's design_verify_cycle (retired, #2369): it
+# had no test member, so nothing ever cleaned a test artifact left by another
+# cycle. The same shape, a loop with no test member, is built here. The stub
+# answers pass for every member.
 # shellcheck source=../../core/pipeline/template.sh
 source "$REPO_ROOT/core/pipeline/template.sh"
-load_template "$REPO_ROOT/config/templates/simple.yaml"
+cat > "$TEST_TEMP_DIR/t9.yaml" <<'YAML'
+id: t9
+name: a loop with no test member
+defaults:
+  strategy: fanout
+flow:
+  - verify_loop
+verify_loop:
+  type: cycle
+  flow:
+    - design
+    - checker
+  exit_when:
+    stage: checker
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 2
+  on_max: halt
+design:
+  roles: [designer]
+checker:
+  roles: [checker]
+YAML
+load_template "$TEST_TEMP_DIR/t9.yaml"
 STATE_T9="$TEST_TEMP_DIR/state-t9"
 mkdir -p "$STATE_T9/artifacts"
 printf '{"schema_version":1,"status":"in_progress"}' > "$STATE_T9/pipeline-state.json"
@@ -114,7 +139,7 @@ cycle_dispatch_stage() {
 }
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
-cycle_orchestrator_run "design_verify_cycle" "$STATE_T9" "$STATE_T9/pipeline-state.json" >/dev/null 2>&1
+cycle_orchestrator_run "verify_loop" "$STATE_T9" "$STATE_T9/pipeline-state.json" >/dev/null 2>&1
 _rc_t9=$?
 set -e
 assert_eq "T9: the cycle converged (rc=0)" "0" "$_rc_t9"

@@ -1823,7 +1823,6 @@ _cycle_iter_dispatch() {
             _cycle_emit "cycle.member.blocking_failure" \
                 "iter=$iter" "stage=$s" "rc=$rc" "reason=${_halt_why:-blocking_member}"
             _CYCLE_LAST_TERMINATED_REASON="${_halt_why:-blocking_member_failure}"
-            _cycle_write_round_summary "$state_file" "$iter" "$blob"
             _CYCLE_LAST_VERDICTS_BLOB="$blob"
             _CYCLE_LAST_FAILURE_COUNT="$fail"
             [[ $_had_e -eq 1 ]] && set -e
@@ -1889,6 +1888,14 @@ _cycle_iter_dispatch() {
             # re-anchors from the (possibly re-tuned) current budget.
             unset "_CYCLE_TURNS_BASE[$s]"
             unset "_CYCLE_TURNS_BASE_PERSIST[${_CYCLE_TRAP_CYCLE_ID}:$s]"
+        fi
+        # #2369: the template names the members whose failure ends the round —
+        # the later members do not run on what it failed to produce.
+        local _sr_var="_TPL_CYCLE_STOP_ROUND_${_CYCLE_TRAP_CYCLE_ID//-/_}"
+        if [[ " ${!_sr_var:-} " == *" $s "* && "${_CYCLE_DISPATCH_VERDICT:-}" != "pass" ]]; then
+            _cycle_emit "cycle.round.ended_early" "iter=$iter" "stage=$s" \
+                "reason=member_failed" 2>/dev/null || true
+            break
         fi
     done
     # #2117: this tree, as it stands after every member ran, is what the next

@@ -46,11 +46,11 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 # ─── Stub plugins (every required role) ──────────────────────────────────
 # #979: standard.yaml retired → drive the shipped default simple.yaml. The
-# on_max=continue continue-past-exhaustion mechanic is identical; simple.yaml's
-# design_verify_cycle (on_max=continue in the overlay, #2241) is the exhausting cycle here, forced by a
-# design-gate stub that never returns verdict=pass. All other stages succeed so
-# the runner walks past the exhausted cycle to build_test_cycle →
-# review_lenses → pr and ends status=success.
+# on_max=continue continue-past-exhaustion mechanic is identical. #2369: the
+# exhausting loop is build_test_cycle (on_max: continue in simple.yaml), forced by
+# a test stub that never passes; delivery_loop then runs out of rounds too
+# (on_max: continue in the overlay, #2241), and the runner walks past it to
+# review_lenses → pr.
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
     # #1850/#2366: a contract-3 stage stub (JSON primary, an outcome of pass on
@@ -105,38 +105,38 @@ PLUG
     _fill_writer "$dir/plugin.sh"
 }
 
-# Override design-gate to ALWAYS emit verdict=fail via its primary artifact
-# (so design_verify_cycle exit_when on design-gate.verdict==pass never matches,
-# exhausting max_iterations with on_max=continue — the exhaustion under test).
-_make_design_gate_plugin() {
-    local dir="$PLUGINS_ROOT/agent/design-gate"
+# A test stage that ALWAYS reports fail (outcome fail, rc 0), so build_test_cycle
+# never converges and runs out of rounds with on_max=continue — the exhaustion
+# under test. (A stub that returned non-zero would be `broken`, which halts.)
+_make_failing_test_plugin() {
+    local dir="$PLUGINS_ROOT/agent/test"
     mkdir -p "$dir"
     cat > "$dir/manifest.yaml" <<'EOF'
-id: design-gate
-name: Test design-gate
+id: test
+name: Test test (always fails)
 kind: agent
 version: 0.0.1
 hooks:
-  run: design_gate_run
+  run: test_stage_run
 requires:
   core:
     - redaction
 provides:
-  role: design_gate
+  role: tester
   result_contract: 3
 outputs:
-  - id: design_gate_out
-    path: ${artifact_dir}/design-gate.json
+  - id: test_out
+    path: ${artifact_dir}/test-results.json
     type: json
     required: true
     primary: true
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
-design_gate_run() {
+test_stage_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     source "@STAGE_RESULT_LIB@"
-    stage_result_write "$state_dir/artifacts/design-gate.json" fail stub \
+    stage_result_write "$state_dir/artifacts/test-results.json" fail stub \
         '{"summary":"forced fail to test max_iterations"}'
     return 0
 }
@@ -229,11 +229,6 @@ _make_plugin "hydrate"         "hydrate"
 _make_plugin "intake"          "intake"
 _make_plan_plugin
 _make_design_plugin
-_make_design_gate_plugin   # forces design_verify_cycle to exhaust
-# #1683: spec-coverage joined design_verify_cycle. Unresolved, the cycle
-# reports reason='blocked' at iter 1 instead of exhausting, and every
-# assertion below fails for a reason unrelated to on_max=continue.
-_make_plugin "spec-coverage"   "spec_coverage"
 # #2187: build_test_cycle's newer members. Unresolved, each was a silent
 # `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
 _make_plugin "test-author"         "test_author"
@@ -241,7 +236,7 @@ _make_plugin "spec-correspondence" "spec_correspondence"
 _make_plugin "assertion-integrity" "assertion_integrity"
 _make_plugin "issue-acceptance"    "issue_acceptance"   # #1849
 _make_plugin "build"           "builder"
-_make_plugin "test"            "tester"
+_make_failing_test_plugin   # forces build_test_cycle to exhaust
 # Decomposed mechanical gates (ADR-040) — all pass so build_test_cycle converges.
 _make_plugin "shape-floor"     "shape_floor"
 _make_plugin "acceptance-gate" "acceptance_gate"
@@ -270,13 +265,13 @@ RUNNER_STDERR="$TEST_TEMP_DIR/runner.stderr"
 # failure.
 [[ -d "$_ZB_REPO" ]] || { echo "zb_test_repo did not produce a repo" >&2; exit 1; }
 set +e
-# #2241: simple.yaml's design cycle is on_max: halt, and the runner honours
-# it — this file's subject is the CONTINUE path, so it drives simple.yaml with
-# that one cycle set to continue (the halt path: runner-cycle-on-max-halt-test).
-install_simple_design_continue "$_ZB_REPO" || { echo "overlay install failed" >&2; exit 1; }
+# #2241: simple.yaml's outer loop is on_max: halt, and the runner honours it —
+# this file's subject is the CONTINUE path, so it drives simple.yaml with that
+# loop set to continue (the halt path: runner-cycle-on-max-halt-test).
+install_simple_loop_continue "$_ZB_REPO" || { echo "overlay install failed" >&2; exit 1; }
 ( cd "$_ZB_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
     --goal "$_ZB_GOAL" \
-    --template simple-design-continue \
+    --template simple-loop-continue \
     --no-resume \
     >"$TEST_TEMP_DIR/runner.stdout" \
     2>"$RUNNER_STDERR" )
@@ -286,20 +281,20 @@ install_simple_design_continue "$_ZB_REPO" || { echo "overlay install failed" >&
 runner_rc=$?
 set -e
 
-print_test_section "T1: events.jsonl chain around design_verify_cycle exhaustion"
+print_test_section "T1: events.jsonl chain around build_test_cycle exhaustion"
 
 # T1.1: cycle.complete fired with a non-convergence terminal reason for
-# design_verify_cycle. Accept any of {max_iterations, plateau, divergence} —
+# build_test_cycle. Accept any of {max_iterations, plateau, divergence} —
 # the test's intent (per #766) is to verify the runner continues past
 # cycle exit, NOT to pin a specific reason.
-mi_count="$(jq -c 'select(.type=="cycle.complete" and (.data.reason=="max_iterations" or .data.reason=="plateau" or .data.reason=="divergence") and .data.cycle_id=="design_verify_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+mi_count="$(jq -c 'select(.type=="cycle.complete" and (.data.reason=="max_iterations" or .data.reason=="plateau" or .data.reason=="divergence") and .data.cycle_id=="build_test_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$mi_count" -ge 1 ]] \
-    && assert_pass "T1.1: cycle.complete fired with non-convergence reason for design_verify_cycle (count=$mi_count)" \
+    && assert_pass "T1.1: cycle.complete fired with non-convergence reason for build_test_cycle (count=$mi_count)" \
     || assert_fail "T1.1: cycle.complete MUST fire with non-convergence reason" "count=$mi_count"
 
 # T1.2: cycle.unconverged event MUST be emitted (proves runner.sh:1292 reached).
 # #2271: the runner continues past the TOP-LEVEL unit, which is delivery_loop
-# (the design loop is nested in it).
+# (the build loop is nested in it).
 unconv_count="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="delivery_loop")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T1.2: cycle.unconverged event emitted (proves runner continues past cycle exit)" "1" "$unconv_count"
 
@@ -328,13 +323,12 @@ assert_eq "T1.4: pipeline.end emitted exactly once" "1" "$end_count"
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 assert_eq "T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)" "failed" "$end_status"
 
-print_test_section "T2: build_test_cycle + pr dispatched after design_verify_cycle exhausted"
+print_test_section "T2: build ran, and pr was dispatched after the loops ran out"
 
-# T2.1: build_test_cycle entered (build runs at least once because the inner
-# build_test_cycle dispatches after the exhausted design_verify_cycle).
+# T2.1: build_test_cycle entered (build runs at least once).
 build_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="build")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$build_run_count" -ge 1 ]] \
-    && assert_pass "T2.1: build plugin ran (proves build_test_cycle was dispatched after design_verify_cycle exhausted)" \
+    && assert_pass "T2.1: build plugin ran (build_test_cycle was dispatched)" \
     || assert_fail "T2.1: build plugin did NOT run (runner stopped before build_test_cycle)" "build_run_count=$build_run_count"
 
 # T2.2 (#979): the retired standard.yaml had a merge-blocking `review` member; simple.yaml

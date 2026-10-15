@@ -73,7 +73,7 @@ _make_design_body_with_acceptance() {
     local tf1="${1:-tests/unit/stub-a-test.sh}"
     local tf2="${2:-tests/unit/stub-b-test.sh}"
     local _bt='```'
-    printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: foo works correctly\nSPEC: bar does its thing\nTESTFILES:\n%s\n%s\n%s\n' \
+    printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: foo works correctly\nSPEC-2[no-code]: bar does its thing\nWIRING: none\nTESTFILES:\n%s\n%s\n%s\n' \
         "$_bt" "$_bt" "$_bt" "$tf1" "$tf2" "$_bt"
 }
 
@@ -103,7 +103,7 @@ else
 fi
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 
-# ─── T2: design.md with scope but NO acceptance block → rc=1 ─────────────────
+# ─── T2: design.md with scope but NO acceptance block → checks fail (#2369) ──
 _setup_fixture t2
 MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 local_bt='```'
@@ -112,14 +112,11 @@ set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
 rc=$?
 set +e
-assert_eq "T2: missing acceptance block returns rc=1" "1" "$rc"
-if grep -q '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null && \
-   grep -q '"reason":"missing_acceptance_block"' <<< "$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL")"; then
-    assert_pass "T2: plugin.result reason=missing_acceptance_block emitted"
-else
-    assert_fail "T2: missing_acceptance_block error not emitted" \
-        "events: $(cat "$ZBUILD_EVENTS_JSONL")"
-fi
+assert_eq "T2: missing acceptance block: the stage returns rc=0" "0" "$rc"
+assert_eq "T2: ...with outcome fail" "fail" \
+    "$(jq -r '.outcome // "MISSING"' "$ARTIFACT_DIR/design-verdict.json" 2>/dev/null || echo MISSING)"
+assert_contains "T2: ...and the finding names the acceptance block" \
+    "$(jq -r '.data.findings[]?.text' "$ARTIFACT_DIR/design-verdict.json" 2>/dev/null)" "acceptance block"
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 
 # ─── T3: existing test file is NOT overwritten (trivially true, no stub-writer)
@@ -149,7 +146,7 @@ unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 # ─── T4: extract_acceptance_block returns 0 on a well-formed design.md ───────
 work_file="$TEST_TEMP_DIR/tc4_design.md"
 _bt='```'
-printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: it works\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
+printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: it works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
     "$_bt" "$_bt" "$_bt" "$_bt" > "$work_file"
 set +e
 extract_acceptance_block "$work_file" >/dev/null 2>&1

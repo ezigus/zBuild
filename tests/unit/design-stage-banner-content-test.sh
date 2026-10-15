@@ -54,7 +54,7 @@ route_to_model_loop() {
         _body="$MOCK_DESIGN_BODY"
     else
         local _bt='```'
-        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: it works\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
+        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: it works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
     fi
     if [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]]; then
         mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
@@ -99,7 +99,7 @@ EOF
 _setup_test_fixture t1
 MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 _bt='```'
-MOCK_DESIGN_BODY="$(printf '# Design Doc T1\n\n## Decision\nUse pattern X for the migration.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%sacceptance\nSPEC: migration works\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
+MOCK_DESIGN_BODY="$(printf '# Design Doc T1\n\n## Decision\nUse pattern X for the migration.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: migration works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
 unset _bt
 MOCK_LLM_STDOUT_SUMMARY="Design document written to $OUTPUT_MD. It covers Decision/Scope."
 set +e
@@ -128,7 +128,7 @@ unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY MOCK_LLM_STDOUT_SUMMARY
 _setup_test_fixture t2
 MOCK_DESIGN_WRITE_PATH="$FIXTURE_DIR/design.md"   # LLM writes to repo root
 _bt='```'
-MOCK_DESIGN_BODY="$(printf '# Design Doc T2 (recovered)\n\n## Decision\nrecovered\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: recovery works\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
+MOCK_DESIGN_BODY="$(printf '# Design Doc T2 (recovered)\n\n## Decision\nrecovered\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: recovery works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
 unset _bt
 MOCK_LLM_STDOUT_SUMMARY="Design document written. LOOP_COMPLETE"
 set +e
@@ -143,7 +143,10 @@ else
 fi
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY MOCK_LLM_STDOUT_SUMMARY
 
-# ─── T3: failure path — missing scope block; banner falls back to stdout ───
+# ─── T3: a design missing its scope block is shown, then checked (#2369) ────
+# A missing scope block is no longer the end of the stage: it is a finding the
+# model fixes in its next round. Each round's banner shows the design.md that
+# round wrote; when the rounds run out the outcome is fail.
 _setup_test_fixture t3
 MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 MOCK_DESIGN_BODY="$(printf '# No scope block here\n\nJust prose, no fence.\n')"
@@ -152,21 +155,14 @@ set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
 set +e
-assert_eq "T3: missing scope block returns rc=1" "1" "$rc"
-# On failure, the banner SHOULD show the LLM's stdout summary (the
-# diagnostic) — NOT the file content. The override skip in the failure
-# branch is what produces this.
-if grep -q 'I failed to include the scope block' "$_CAPTURED_BANNER_OUTPUT" 2>/dev/null; then
-    assert_pass "T3: failure path banner shows LLM stdout summary (diagnostic)"
-else
-    assert_fail "T3: failure path should expose LLM's stdout (not overridden)" \
-        "got: $(head -c 120 "$_CAPTURED_BANNER_OUTPUT")"
-fi
+assert_eq "T3: a design that fails its checks still returns rc=0" "0" "$rc"
+assert_eq "T3: ...with outcome fail" "fail" \
+    "$(jq -r '.outcome // "MISSING"' "$ARTIFACT_DIR/design-verdict.json" 2>/dev/null || echo MISSING)"
 if grep -q '# No scope block here' "$_CAPTURED_BANNER_OUTPUT" 2>/dev/null; then
-    assert_fail "T3: failure path leaked file content into banner (override should be skipped)" \
-        "got: $(head -c 120 "$_CAPTURED_BANNER_OUTPUT")"
+    assert_pass "T3: the banner shows the design.md the round wrote"
 else
-    assert_pass "T3: failure path did NOT splice file content"
+    assert_fail "T3: the banner shows the design.md the round wrote" \
+        "got: $(head -c 120 "$_CAPTURED_BANNER_OUTPUT")"
 fi
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY MOCK_LLM_STDOUT_SUMMARY
 
@@ -181,7 +177,7 @@ _T4_TMP="$TEST_TEMP_DIR/t4-body.md"
         printf 'L%.0s' $(seq 1 60)
         printf '\n'
     done
-    printf '\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC: large file works\nTESTFILES:\ntests/unit/foo-test.sh\n```\n'
+    printf '\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[no-code]: large file works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n```\n'
 } > "$_T4_TMP"
 MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 MOCK_DESIGN_BODY="$(cat "$_T4_TMP")"
