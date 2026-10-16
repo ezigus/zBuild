@@ -311,7 +311,7 @@ Summary:
 - open questions: 3
 - artifact: plan.json
 
-### design (verdict: timed_out) — your own
+### design (verdict: error) — your own
 Outputs:
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
@@ -596,7 +596,7 @@ Summary:
   Write to it as you work, not at the end: what you read, what you
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
-- Your budget: each model call has 600 seconds, with no limit on turns. A call that runs out of time
+- Your budget: each model call has 600 seconds and 37 turns. A call that runs out of time
   returns nothing: finish and write your answer well before the limit. The whole stage has 2700 seconds.
 
 ### How every stage works
