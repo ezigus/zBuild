@@ -62,9 +62,10 @@ earlier_work_plan() { earlier_output_with_json '(.steps | type) == "array"' "$@"
 earlier_requirements() { earlier_output_with_json '(.requirements | type) == "array"' "$@"; }
 # The scope manifest: lines of "+ <dir>/".
 earlier_scope_manifest() { earlier_output_with_text '^\+ .*/$' "$@"; }
-# The issue text, as written: the result that carries it (data.issue_text).
+# The issue text, as written: the result that carries it (data.issue_text). An
+# empty one is no issue text.
 earlier_issue_text() {
-    local f; f="$(earlier_output_with_json '(.data.issue_text | type) == "string"' "$@")" || return 1
+    local f; f="$(earlier_output_with_json '(.data.issue_text | type) == "string" and (.data.issue_text | length) > 0' "$@")" || return 1
     jq -r '.data.issue_text' "$f" 2>/dev/null
 }
 # A test run's per-file timing: lines of "file <ms> <path>".

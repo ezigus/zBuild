@@ -547,7 +547,7 @@ says whether anything was deployed (`data.deployed`, false unless a release was 
 later stage knows it for a deploy result. test needs nothing from the stage that made the change: it
 runs the suite with no patch (its old guard on `diff.patch` is gone).
 
-Enforced by: `tests/unit/earlier-output-by-content-test.sh` C1–C7 (C6 runs
+Enforced by: `tests/unit/earlier-output-by-content-test.sh` C1–C8 (C6 runs
 `scripts/lib/lint-stage-output-names.sh`, which is in `npm run lint`); `plugins/agent/deploy/tests/deploy-test.sh`
 [#2364] (every deploy result states `deployed`); `plugins/tool/test/tests/test-test.sh` test 2 (no patch,
 the suite runs); `tests/unit/merge-v2-result-test.sh` [#2364] (merge names its result; no review word, no

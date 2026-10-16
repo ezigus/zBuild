@@ -12,9 +12,11 @@
 # C2 [change] earlier_output_with_json finds the JSON output a jq test is true of
 # C3 [guard]  nothing matches: empty, rc 1
 # C4 [change] with no index, the artifacts and state directories are searched
-# C5 [change] intake's result carries the issue text (data.issue_text)
+# C5 [change] intake's result carries the issue text (data.issue_text) — the real
+#             intake stage run on a mocked issue
 # C6 [change] no plugin's code names another stage's output (the lint passes)
 # C7 [change] a deploy result is found by whether it says anything was deployed
+# C8 [change] an empty issue text is not an issue text (rc 1)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,8 +71,21 @@ assert_eq "[C7] a result that does not say whether anything was deployed is not 
     "$(ZBUILD_STAGE_INPUTS="" ZBUILD_STATE_DIR="" ZBUILD_ARTIFACT_DIR="" earlier_deploy_result "$R")"
 
 # ── C5 ───────────────────────────────────────────────────────────────────────
-assert_contains "[C5] intake's result carries the issue text" \
-    "$(grep -n 'issue_text' "$REPO_ROOT/plugins/agent/intake/plugin.sh" || true)" "issue_text"
+# Run the real intake stage on a (mocked) issue and read its result.
+_c5="$( unset ZBUILD_STAGE_INPUTS ZBUILD_STATE_DIR
+    # shellcheck source=../../plugins/agent/intake/tests/intake-test-lib.sh
+    source "$REPO_ROOT/plugins/agent/intake/tests/intake-test-lib.sh" >/dev/null 2>&1
+    _set_gh_mock "C5 title" "C5-ISSUE-BODY-MARKER the body as written" 0
+    unset ZBUILD_GOAL; export ZBUILD_ISSUE="$_ZB_ID"
+    intake_run intake "$STATE_FILE" >/dev/null 2>&1
+    earlier_issue_text "$ARTIFACT_DIR" 2>/dev/null )"
+assert_contains "[C5] intake's result carries the issue text, found by what it is" "$_c5" "C5-ISSUE-BODY-MARKER"
+
+# C8: an issue text that is empty is no issue text (rc 1, nothing printed).
+E="$TEST_TEMP_DIR/empty-issue"; mkdir -p "$E"
+printf '{"result_contract":3,"outcome":"pass","reason":"x","data":{"issue_text":""}}\n' > "$E/r.json"
+ZBUILD_STAGE_INPUTS="" ZBUILD_STATE_DIR="" ZBUILD_ARTIFACT_DIR="" earlier_issue_text "$E" >/dev/null; _rc8=$?
+assert_eq "[C8] an empty issue text is not found: rc 1" "1" "$_rc8"
 
 # ── C6 ───────────────────────────────────────────────────────────────────────
 _out="$(bash "$REPO_ROOT/scripts/lib/lint-stage-output-names.sh" 2>&1)"; _rc=$?
