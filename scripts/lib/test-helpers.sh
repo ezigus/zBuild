@@ -1375,7 +1375,8 @@ zb_test_deploy_output() {
     (
         source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/plugins/agent/deploy/plugin.sh" >/dev/null 2>&1
         _deploy_write_result "$dir" "$2" "$3" "${4:-}" "${5:-}" "" "${6:-}"
-    ) >/dev/null 2>&1
+    ) >/dev/null 2>&1 && [[ -s "$dir/deploy-result.json" ]] \
+        || { printf 'zb_test_deploy_output: deploy wrote no result in %s\n' "$dir" >&2; return 1; }
     printf '%s\n' "$dir/deploy-result.json"
 }
 
@@ -1390,6 +1391,7 @@ zb_test_test_run_output() {
         source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/plugins/tool/test/plugin.sh" >/dev/null 2>&1
         _test_write_result "$dir/test-results.json" "$v" "$d" "$ec" "$p" "$f" \
             "unit: $p/$((p + f)) passed" "false" "npm test" "" "full"
-    ) >/dev/null 2>&1
+    ) >/dev/null 2>&1 && [[ -s "$dir/test-results.json" ]] \
+        || { printf 'zb_test_test_run_output: test wrote no result in %s\n' "$dir" >&2; return 1; }
     printf '%s\n' "$dir/test-results.json"
 }
