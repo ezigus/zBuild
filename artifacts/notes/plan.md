@@ -107,3 +107,20 @@ accepted as sufficient but needs explicit confirmation.
 | Golden files not updated | step-8 |
 | ADR-054 §11 Enforced by entries | step-9 |
 | R-9/§9 vs §11 | open question |
+
+## Acceptance criteria coverage (final check — second plan cycle)
+
+All 10 issue AC items are covered:
+- AC-1 timed_out with in-flight stage name + limit → step-3 (run-timed-out-test.sh, P1)
+- AC-2 watchdog fires during inter-dispatch idle → step-3 (P2 falsifiability fix)
+- AC-3 whole process group dies (TERM → KILL after 10 s) → step-3 (P3)
+- AC-4 release and persist run after timed_out → step-3 (assert persist) + step-5 (fixture)
+- AC-5 precedence layers + validation → step-1 (SPEC-2 + syntax fix) + step-6 (template end-to-end)
+- AC-6 run inside limit untouched, watchdog gone → step-2 (SPEC-3 kill -0 check)
+- AC-7 resumed run gets fresh limit → step-4 (resume-after-run-timeout-test.sh timing fix)
+- AC-8 same locally and CI, no platform branch → covered by SPEC-5 (open question on adequacy)
+- AC-9 ADR-054 §9/§11 + ADR-025 Enforced by entries → step-9
+- AC-10 npm test + npm run lint green → all steps collectively
+
+No step defers testing, treats behavior as optional, or adds inert files.
+plan.json on disk is correct — no changes needed this cycle.
