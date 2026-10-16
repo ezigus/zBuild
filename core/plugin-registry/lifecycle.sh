@@ -538,7 +538,17 @@ plugin_hook_call() {
             trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; exit 143' TERM
         else
             # shellcheck disable=SC2064
-            trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; declare -F _runner_signal_trap >/dev/null 2>&1 && _runner_signal_trap TERM || exit 143' TERM
+            # `trap "" TERM` before exit: a process-group kill (e.g. SPEC-5's
+            # `kill -TERM -PGID`) delivers TERM to the runner AND to any process
+            # in the same group (e.g. `timeout 120`).  `timeout` forwards TERM
+            # to its child (the runner) before it exits, so the runner receives
+            # two TERMs.  The first fires this trap; the second arrives while the
+            # EXIT trap is running teardown.  Without the ignore, the second TERM
+            # re-enters this trap inside the EXIT trap and calls `exit 1` there,
+            # which aborts teardown immediately (exit inside EXIT trap = immediate
+            # termination, no re-entry).  Ignoring TERM here ensures teardown
+            # runs to completion on the clean-signal path (#1801 SPEC-5).
+            trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; trap "" TERM; declare -F _runner_signal_trap >/dev/null 2>&1 && _runner_signal_trap TERM || exit 143' TERM
         fi
         wait "$_lc_hook_pid" 2>/dev/null; rc=$?
         # Only clear the trap we installed; in the main-shell call path the
