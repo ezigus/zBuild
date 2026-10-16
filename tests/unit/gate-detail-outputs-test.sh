@@ -36,7 +36,7 @@ source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
 print_test_header "gates publish their own detail; the aggregator stops rendering (#1988)"
 setup_test_env "gate-detail-outputs"
 
-_GATES="shape-floor secret-scan lint-gate coverage-gate mutation-gate"
+_GATES="shape-floor lint-gate coverage-gate mutation-gate"
 
 # ─── SPEC-1: every gate declares a summary ───────────────────────────────────
 print_test_section "1. each gate declares a summary output"

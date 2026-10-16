@@ -111,11 +111,11 @@ assert_eq "[SPEC-3c] iterations 2–3 reuse the test member's verdict (2 reuse e
     "2" "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | grep -c '"member":"test"' || true)"
 assert_contains "[SPEC-3c] a reuse event names the iteration it reuses" \
     "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | head -1)" '"from_iter":"1"'
-_n_ga="$(grep -c '"cycle.member.dispatch.complete".*"member":"secret-scan"' "$ZBUILD_EVENTS_JSONL" || true)"
+_n_ga="$(grep -c '"cycle.member.dispatch.complete".*"member":"issue-acceptance"' "$ZBUILD_EVENTS_JSONL" || true)"
 # #2170: a failing member on an unchanged tree is reused like a passing one
 # (was: re-dispatched every iteration — the 25-minute suite ran five times to
 # fail identically on #1841).
-assert_eq "[SPEC-3d] the FAILING gate (secret-scan) is dispatched once and reused on an unchanged tree" "1" "$_n_ga"
+assert_eq "[SPEC-3d] the FAILING gate (issue-acceptance) is dispatched once and reused on an unchanged tree" "1" "$_n_ga"
 
 print_test_section "SPEC-3f: a tree that CHANGED between iterations is fully re-verified"
 _GATE_VERDICT="fail"

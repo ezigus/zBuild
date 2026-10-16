@@ -519,3 +519,17 @@ checked by test (#2372).
 
 Enforced by: `tests/unit/test-author-checks-own-output-test.sh` A1–A5;
 `tests/unit/test-author-correspondence-test.sh`.
+
+### Amendment (2026-10-15, #2371) — build checks its own change for secrets
+
+secret-scan is retired as a stage, and build does the scan itself (`plugins/agent/build/lib/secrets.sh`,
+unchanged rules): after a pass that finished, build scans the merge-base..HEAD change for hardcoded
+secrets and `.env` files. A secret goes back to build's model — where it is (file, line, rule), never the
+value — for another pass, until the change is clean or build's rounds (`config.check_rounds: 3` in its
+manifest) run out; then build's one outcome is `fail` and its result lists the findings. A scan that
+cannot run (merge-base.sh did not load) is `broken`, never clean. build_test_cycle's `exit_when` now
+requires build to pass (in place of secret-scan): a build that left a secret, broke scope, or did not finish
+never converges, even when the tests pass.
+
+Enforced by: `tests/unit/build-checks-own-output-test.sh` K1–K5; `tests/unit/build-secret-scan-test.sh`;
+`tests/integration/acceptance-gate-fails-closed-test.sh` F6.

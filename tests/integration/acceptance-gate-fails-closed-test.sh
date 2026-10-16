@@ -13,7 +13,7 @@
 #       negative control reports on no requirement → fail, not pass
 #   F4: a whole-run skip still names each SPEC → still a pass (guard)
 #   F5: shape-floor: its library's own dependency is missing → fail
-#   F6: secret-scan: merge-base.sh is missing → fail, not skip
+#   F6: build's secret scan: merge-base.sh is missing → broken, not clean (#2371)
 #   F7: the reason names every file that did not load
 set -euo pipefail
 
@@ -178,22 +178,18 @@ _J5="$(cat "$W5/artifacts/shape-floor-result.json" 2>/dev/null || echo '{}')"
 assert_eq "[F5] shape-floor outcome broken" "broken" "$(jq -r .outcome <<<"$_J5")"
 assert_eq "[F5] shape-floor reason library_load_failure" "library_load_failure" "$(jq -r .reason <<<"$_J5")"
 
-# ── F6: secret-scan — merge-base.sh is missing ───────────────────────────────
-print_test_section "F6: secret-scan fails when merge-base.sh does not load"
-W6="$TEST_TEMP_DIR/w6"; mkdir -p "$W6/artifacts"
+# ── F6: build's secret scan — merge-base.sh is missing (#2371) ───────────────
+print_test_section "F6: build's secret scan is broken when merge-base.sh does not load"
 L6="$(_lib_without f6 merge-base.sh)"
-set +e
-(
+_O6="$(
     export ZBUILD_CONTRACT_LIB_DIR="$L6" ZBUILD_REPO_ROOT="$R0"
-    unset _ZBUILD_SECRET_SCAN_LOADED _ZBUILD_MERGE_BASE_LOADED
+    unset _ZBUILD_BUILD_LOADED _ZBUILD_BUILD_SECRETS_LOADED _ZBUILD_MERGE_BASE_LOADED
     # shellcheck disable=SC1090
-    source "$REPO_ROOT/plugins/tool/secret-scan/plugin.sh"
-    secret_scan_run "secret-scan" "$W6/state.json"
-) >/dev/null 2>&1
-set -e
-_J6="$(cat "$W6/artifacts/secret-scan-result.json" 2>/dev/null || echo '{}')"
-assert_eq "[F6] secret-scan outcome broken, not pass" "broken" "$(jq -r .outcome <<<"$_J6")"
-assert_eq "[F6] secret-scan reason library_load_failure" "library_load_failure" "$(jq -r .reason <<<"$_J6")"
+    source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
+    _build_secret_check "$R0" >/dev/null 2>&1
+    printf '%s' "$_BUILD_SECRET_OUTCOME"
+)"
+assert_eq "[F6] the scan is broken, not clean" "broken" "$_O6"
 
 cleanup_test_env
 print_test_results

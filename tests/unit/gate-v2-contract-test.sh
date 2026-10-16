@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Tests: gate result contract — result_contract:3, outcome, reason across all
-# five gate plugins (ADR-054, ADR-055 §9, issue #1848; contract 3 since #2366).
+# four gate plugins (ADR-054, ADR-055 §9, issue #1848; contract 3 since #2366).
 #
-# SPEC-1: all five gates declare result_contract: 3 (#2366)
+# SPEC-1: all four gates declare result_contract: 3 (#2366)
 # SPEC-2: every gate result JSON carries its contract, its outcome (no disposition on contract 3) and a reason
 # SPEC-3: shape-floor emits disposition:broken when _sf_shape_floor is undefined
 # SPEC-4: retired with design-gate (#2369; design checks its own design.md — design-checks-own-output-test.sh)
 # SPEC-5: coverage/lint/mutation resolve test_results path via ZBUILD_STAGE_INPUTS
 # SPEC-6: retired with design-gate (#2369)
 # SPEC-7: retired with gate-aggregator (#2368; the engine combines a loop — engine-combines-loop-test.sh)
-# SPEC-8: all five gates return rc=0 on every exit path
+# SPEC-8: all four gates return rc=0 on every exit path
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,15 +28,13 @@ _test_cleanup_hook() { cleanup_test_env; }
 
 export ZBUILD_EVENTS_DB="/dev/null"
 
-# Source all five gate plugins.
+# Source all four gate plugins.
 # shellcheck source=../../plugins/tool/coverage-gate/plugin.sh
 source "$REPO_ROOT/plugins/tool/coverage-gate/plugin.sh"
 # shellcheck source=../../plugins/tool/lint-gate/plugin.sh
 source "$REPO_ROOT/plugins/tool/lint-gate/plugin.sh"
 # shellcheck source=../../plugins/tool/mutation-gate/plugin.sh
 source "$REPO_ROOT/plugins/tool/mutation-gate/plugin.sh"
-# shellcheck source=../../plugins/tool/secret-scan/plugin.sh
-source "$REPO_ROOT/plugins/tool/secret-scan/plugin.sh"
 # shellcheck source=../../plugins/tool/shape-floor/plugin.sh
 source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
 
@@ -53,8 +51,8 @@ _seed_results() {
     jq -n "$block" > "$work/artifacts/test-results.json"
 }
 
-# ── SPEC-1: all five manifests declare result_contract: 3 under provides: (#2366) ─
-for _plugin in coverage-gate lint-gate mutation-gate secret-scan shape-floor; do
+# ── SPEC-1: all four manifests declare result_contract: 3 under provides: (#2366) ─
+for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_contains "[SPEC-1] $_plugin manifest declares result_contract: 3" \
         "$(cat "$_mf")" "result_contract: 3"
@@ -170,19 +168,6 @@ assert_eq "[SPEC-8] mutation-gate skip → rc=0" "0" "$_rc"
 assert_json_key "[SPEC-2] mutation-gate skip → result_contract:3" \
     "$(cat "$W/artifacts/mutation-result.json")" '.result_contract' "3"
 
-# secret-scan: skip (no baseline in temp dir with no git history)
-W="$(_mkwork ss-v2)"
-_SS_TMPROOT="$TEST_TEMP_DIR/ss-no-repo"
-mkdir -p "$_SS_TMPROOT"
-export ZBUILD_REPO_ROOT="$_SS_TMPROOT"
-set +e; secret_scan_run "secret-scan" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
-unset ZBUILD_REPO_ROOT
-assert_eq "[SPEC-8] secret-scan skip → rc=0" "0" "$_rc"
-_J="$(cat "$W/artifacts/secret-scan-result.json")"
-assert_json_key "[SPEC-2] secret-scan skip → result_contract:3" "$_J" '.result_contract' "3"
-assert_json_key "[SPEC-2] secret-scan skip → no disposition (contract 3)" "$_J" 'has("disposition")' "false"
-assert_contains "[SPEC-2] secret-scan skip → reason present" "$_J" '"reason"'
-
 # shape-floor: normal path (stub _sf_shape_floor to return skip)
 _sf_shape_floor() { echo "SHAPE_FLOOR SKIP no shape-change files (test stub)"; }
 W="$(_mkwork sf-v2-skip)"
@@ -216,22 +201,22 @@ assert_json_key "[SPEC-3] shape-floor library not loaded → reason:library_load
 assert_eq "[SPEC-14] shape-floor broken path → shape-floor-detail.md written and non-empty" "present" \
     "$([[ -s "$W/artifacts/shape-floor-detail.md" ]] && echo present || echo absent)"
 
-# ── SPEC-9: all five manifests declare valid_verdicts in config ──────────────
-for _plugin in coverage-gate lint-gate mutation-gate secret-scan shape-floor; do
+# ── SPEC-9: all four manifests declare valid_verdicts in config ──────────────
+for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_eq "[SPEC-9] $_plugin manifest declares no valid_verdicts (contract 3)" \
         "0" "$(grep -c 'valid_verdicts' "$_mf" || true)"
 done
 
-# ── SPEC-10: all five manifests declare tier_default: T0 ─────────────────────
-for _plugin in coverage-gate lint-gate mutation-gate secret-scan shape-floor; do
+# ── SPEC-10: all four manifests declare tier_default: T0 ─────────────────────
+for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_contains "[SPEC-10] $_plugin manifest declares tier_default: T0" \
         "$(cat "$_mf")" "tier_default: T0"
 done
 
 # ── SPEC-11: each manifest declares exactly one output with primary: true ──────
-for _plugin in coverage-gate lint-gate mutation-gate secret-scan shape-floor; do
+for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_eq "[SPEC-11] $_plugin manifest has exactly one primary: true output" \
         "1" "$(grep -c 'primary: true' "$_mf")"
@@ -240,7 +225,7 @@ done
 # ── SPEC-12: no plugin.sh constructs a hardcoded cross-stage artifact path ─────
 # A cross-stage path literal looks like /stage-name/artifacts/ in source code.
 # Variable-based references ($artifacts_dir/file) are fine; literal stage paths are not.
-for _plugin in coverage-gate lint-gate mutation-gate secret-scan shape-floor; do
+for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
     _ps="$REPO_ROOT/plugins/tool/$_plugin/plugin.sh"
     assert_eq "[SPEC-12] $_plugin/plugin.sh has no hardcoded cross-stage artifact path" \
         "" "$(grep -E '/[a-z][a-z0-9_-]+/artifacts/' "$_ps" || true)"
@@ -248,7 +233,7 @@ done
 
 # ── SPEC-13: gate manifests declare tier_default:T0; no config.router knobs ────
 # T0 plugins make no model calls, so no timeout_s/max_turns/retries are needed.
-for _plugin in coverage-gate lint-gate mutation-gate secret-scan shape-floor; do
+for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_eq "[SPEC-13] $_plugin manifest has no config.router budget knobs (T0: no model calls)" \
         "" "$(grep -E '^\s+(timeout_s|max_turns|retries):' "$_mf" || true)"
@@ -257,7 +242,7 @@ done
 # ── SPEC-14(a): each manifest has exactly one output with required:true AND summary:true ─
 # SPEC-9..13 check required/primary/summary fields in isolation; SPEC-14 asserts
 # the ADR-055 §9 mandatory pairing: both must coexist on the SAME output block.
-for _plugin in coverage-gate lint-gate mutation-gate secret-scan shape-floor; do
+for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     # A comment may quote `summary: true` (coverage-gate does, citing #1976) —
     # skip comment lines or the count reads prose as config (#1848 dogfood).
@@ -291,46 +276,10 @@ for _wd in mg-v2-pass mg-v2-fail mg-v2-skip; do
     assert_eq "[SPEC-14] mutation-gate $_wd → mutation-detail.md written and non-empty" "present" \
         "$([[ -s "$TEST_TEMP_DIR/$_wd/artifacts/mutation-detail.md" ]] && echo present || echo absent)"
 done
-assert_eq "[SPEC-14] secret-scan skip (no_baseline) → secret-scan-detail.md written and non-empty" "present" \
-    "$([[ -s "$TEST_TEMP_DIR/ss-v2/artifacts/secret-scan-detail.md" ]] && echo present || echo absent)"
 for _wd in sf-v2-skip sf-v2-pass; do
     assert_eq "[SPEC-14] shape-floor $_wd → shape-floor-detail.md written and non-empty" "present" \
         "$([[ -s "$TEST_TEMP_DIR/$_wd/artifacts/shape-floor-detail.md" ]] && echo present || echo absent)"
 done
-# ── SPEC-14(c): secret-scan pass-path summary names its conclusion ─────────────
-# ADR-055 §9: "a summary states what the stage DID". A bare-absence phrase
-# ("no findings") does not name a conclusion; "clean diff — no secrets found" does.
-# Requires a real git repo so secret_scan_run reaches the pass verdict path.
-_SS_PASS_REPO="$TEST_TEMP_DIR/ss-pass-repo"
-git init -q "$_SS_PASS_REPO"
-git -C "$_SS_PASS_REPO" config user.email "test@zbuild"
-git -C "$_SS_PASS_REPO" config user.name "zbuild-test"
-printf 'initial\n' > "$_SS_PASS_REPO/file.txt"
-git -C "$_SS_PASS_REPO" add file.txt
-git -C "$_SS_PASS_REPO" commit -q -m "initial"
-git -C "$_SS_PASS_REPO" checkout -q -b feature
-printf 'clean change\n' >> "$_SS_PASS_REPO/file.txt"
-git -C "$_SS_PASS_REPO" add file.txt
-git -C "$_SS_PASS_REPO" commit -q -m "clean"
-W="$(_mkwork ss-v2-pass14)"
-export ZBUILD_REPO_ROOT="$_SS_PASS_REPO"
-set +e; secret_scan_run "secret-scan" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
-unset ZBUILD_REPO_ROOT
-assert_eq "[SPEC-14] secret-scan pass (clean diff) → rc=0" "0" "$_rc"
-assert_json_key "[SPEC-14] secret-scan pass → outcome=pass" \
-    "$(cat "$W/artifacts/secret-scan-result.json")" '.outcome' "pass"
-assert_eq "[SPEC-14] secret-scan pass → secret-scan-detail.md written and non-empty" "present" \
-    "$([[ -s "$W/artifacts/secret-scan-detail.md" ]] && echo present || echo absent)"
-# ADR-055 §9: "a summary states what the stage DID". The requirement is that the
-# pass path does not degrade to the library's bare "- no findings" placeholder;
-# the exact wording is the plugin's to choose.
-if grep -qE '^- no findings$' "$W/artifacts/secret-scan-detail.md" 2>/dev/null; then
-    assert_fail "[SPEC-14] secret-scan pass-path summary names its conclusion (not bare absence)" \
-        "summary is the bare '- no findings' placeholder"
-else
-    assert_pass "[SPEC-14] secret-scan pass-path summary names its conclusion (not bare absence)"
-fi
-
 # ── SPEC-15 (#2161): the ENGINE's reader accepts every gate's pass result ─────
 # #1840 run 6: the acceptance gate passed all 19 SPECs and the run ended
 # blocked — its result had no `reason` and `disposition: none`. Field-level

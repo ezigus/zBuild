@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests: ADR-040 (#1136) — secret-scan gate plugin.
+# Tests: ADR-040 (#1136) — the secret scan; #2371 moved it from the secret-scan
+# stage into build (plugins/agent/build/lib/secrets.sh), which scans its own change.
 # Verifies the merge-base..HEAD diff scan: a planted fixture secret → fail (with
 # the offending path), a clean diff → pass, an empty diff → skip, and an
 # allowlisted fixture → pass. Every secret fixture is ASSEMBLED FROM FRAGMENTS at
@@ -14,10 +15,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-# shellcheck source=../../plugins/tool/secret-scan/plugin.sh
-source "$REPO_ROOT/plugins/tool/secret-scan/plugin.sh"
+# shellcheck source=../../plugins/agent/build/plugin.sh
+source "$REPO_ROOT/plugins/agent/build/plugin.sh"
 
-print_test_header "secret-scan gate — diff secret detection (#1136, ADR-040)"
+print_test_header "build's secret scan — diff secret detection (#1136, #2371)"
 setup_test_env "secret-scan"
 
 GIT="$(command -v git)"
@@ -27,15 +28,14 @@ AWS_KEY="AKIA""IOSFODNN7EXAMPLE"                       # AKIA + 16 = AWS doc exa
 CRED_VAL="aabbccddeeff112233"                          # 18-char quoted value
 PEM_HDR="$(printf -- '-----%s RSA %s-----' 'BEGIN' 'PRIVATE KEY')"
 
-# run_scan <repo> [allowlist_file] → echoes the result JSON; sets RESULT_PATH.
+# run_scan <repo> [allowlist_file] → echoes the scan as JSON: the outcome (fail
+# when a secret was found) and the locations, as build's check reports them.
 run_scan() {
-    local repo="$1" allow="${2:-}"
-    local work="$repo/.work"; mkdir -p "$work/artifacts"
-    RESULT_PATH="$work/artifacts/secret-scan-result.json"
-    rm -f "$RESULT_PATH"
-    ZBUILD_REPO_ROOT="$repo" ZBUILD_SECRET_SCAN_ALLOWLIST_FILE="$allow" \
-        secret_scan_run "secret-scan" "$work/state.json" >/dev/null 2>&1 || true
-    cat "$RESULT_PATH"
+    local repo="$1" allow="${2:-}" loc
+    ZBUILD_SECRET_SCAN_ALLOWLIST_FILE="$allow" _build_secret_check "$repo" >/dev/null 2>&1 || true
+    { for loc in "${_BUILD_SECRET_LOCATIONS[@]}"; do printf '%s\n' "$loc"; done; } \
+        | jq -R 'select(length>0) | split("\t") | {file:.[0], line:(.[1]|tonumber), rule:.[2]}' \
+        | jq -sc '{outcome: (if length > 0 then "fail" else "pass" end), data: {finding_count: length, locations: .}}'
 }
 
 # ── Case 1: planted AWS key on a feature branch → fail (with path) ────────────
