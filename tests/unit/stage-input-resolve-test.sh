@@ -311,11 +311,10 @@ if load_template "$REPO_ROOT/config/templates/simple.yaml" >/dev/null 2>&1; then
 
     # The gap: contract-validator.sh:213's id-only collect skips these two
     # entirely and lands `pr` on pr-open, documented as unreachable at dispatch.
-    assert_eq "[SPEC-7-baseline] id-only finds no manifest for acceptance-gate" "<none>" "$(_c acceptance-gate)"
     assert_eq "[SPEC-7-baseline] id-only finds no manifest for review_lenses"   "<none>" "$(_c review_lenses)"
     assert_eq "[SPEC-7-baseline] id-only resolves pr to the unreachable pr-open" "pr-open" "$(_c pr)"
 
-    assert_eq "[SPEC-7] acceptance-gate resolves to spec-acceptance" "spec-acceptance" "$(_m acceptance-gate)"
+    # #2372: acceptance-gate is no longer a stage (test runs the check).
     assert_eq "[SPEC-7] review_lenses resolves to review-lens"       "review-lens"     "$(_m review_lenses)"
     assert_eq "[SPEC-7] pr resolves to pr-delivery, not pr-open"     "pr-delivery"     "$(_m pr)"
     # [guard] the id-matching majority is unchanged.

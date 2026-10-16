@@ -65,7 +65,7 @@ _idmatch() { _find_plugin_for_stage "$1" "$PLUGINS_ROOT" 2>/dev/null || true; }
 # #1295: lens-* stages converted to map group "review_lenses" (role review_lens,
 # no plugin named review_lenses) — the surviving role-bound examples are
 # acceptance-gate (→spec-acceptance) and review_lenses (→review-lens).
-assert_eq "[SPEC-1] id-only (_find_plugin_for_stage) returns EMPTY for acceptance-gate" "" "$(_idmatch acceptance-gate)"
+assert_eq "[SPEC-1] id-only (_find_plugin_for_stage) returns EMPTY for review_lenses" "" "$(_idmatch review_lenses)"
 assert_eq "[SPEC-1] id-only returns EMPTY for review_lenses (no id-match plugin, only role-match)" "" "$(_idmatch review_lenses)"
 
 # ─── SPEC-2: the fix — resolve_stage_plugin (role-then-id) resolves the ──────
@@ -81,10 +81,6 @@ assert_file_exists "[SPEC-2] resolved review-lens plugin dir has a manifest" "$(
 # plugin as before (id-match and role-match are identical for them). build now
 # provides role: builder — role-match wins (same result: plugin id == stage name).
 assert_eq "[SPEC-3] test → test (role tester)"               "test"            "$(_resolve test)"
-assert_eq "[SPEC-3] shape-floor → shape-floor"               "shape-floor"     "$(_resolve shape-floor)"
-# acceptance-gate stage binds role acceptance_gate → served by the method-named
-# spec-acceptance plugin (id ≠ stage name); role-then-id resolves it correctly.
-assert_eq "[SPEC-3] acceptance-gate → spec-acceptance (role acceptance_gate)" "spec-acceptance" "$(_resolve acceptance-gate)"
 assert_eq "[SPEC-3] issue-acceptance → issue-acceptance"     "issue-acceptance" "$(_resolve issue-acceptance)"
 assert_eq "[SPEC-3] build → build (role: builder)"           "build"           "$(_resolve build)"
 

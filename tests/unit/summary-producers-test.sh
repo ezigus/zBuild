@@ -38,20 +38,20 @@ source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
 print_test_header "summary producers — the declarations that make #1976 live (#1977)"
 setup_test_env "summary-producers"
 
-ACC_M="$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml"
+ACC_M="$REPO_ROOT/plugins/tool/test/manifest.yaml"
 AGG_M="$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml"
 TEST_M="$REPO_ROOT/plugins/tool/test/manifest.yaml"
 
 # ─── SPEC-1: the undeclared output is declared ───────────────────────────────
-print_test_section "1. spec-acceptance declares the summary it always wrote"
+print_test_section "1. the acceptance check's detail is declared (#2372: by test, which runs it)"
 
 _acc_ids="$(manifest_graph_get_outputs "$ACC_M" | cut -d'|' -f1)"
-assert_contains "[SPEC-1] an output id now covers acceptance-summary.txt" \
+assert_contains "[SPEC-1] an output id covers acceptance-summary.txt" \
     "$_acc_ids" "acceptance_detail"
-assert_eq "[SPEC-1] and it is the stage's summary" "true" \
+# One summary per stage: test's is its own failures summary; the check's
+# findings reach later stages through test's result.
+assert_eq "[SPEC-1] it is not test's summary (test has one)" "" \
     "$(manifest_graph_output_summary "$ACC_M" acceptance_detail)"
-assert_eq "[SPEC-1] declared required — every terminal path writes a summary" "true" \
-    "$(manifest_graph_get_outputs "$ACC_M" | grep '^acceptance_detail|' | cut -d'|' -f4)"
 
 # ─── SPEC-2 / SPEC-3: the two already-declared summaries are marked ──────────
 print_test_section "2. the aggregator publishes no summary of its own"
@@ -94,8 +94,8 @@ print_test_section "5. the declared path is the one the plugin writes"
 _acc_path="$(manifest_graph_get_outputs "$ACC_M" | grep '^acceptance_detail|' | sed 's/.*|//')"
 assert_contains "[SPEC-5] the declared path names acceptance-summary.txt" \
     "$_acc_path" "acceptance-summary.txt"
-assert_contains "[SPEC-5] and spec-acceptance actually writes that basename" \
-    "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh")" "acceptance-summary.txt"
+assert_contains "[SPEC-5] and the acceptance check actually writes that basename" \
+    "$(cat "$REPO_ROOT"/plugins/tool/test/lib/acceptance-*.sh)" "acceptance-summary.txt"
 
 # The write must land where the declaration says: ${artifact_dir} resolves to
 # ${state_dir}/artifacts, which is what plugin.sh:533 builds by hand.

@@ -57,7 +57,7 @@ _run_gate() {
           _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
           _ACCEPTANCE_COVERAGE_LOADED
     # shellcheck disable=SC1090
-    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+    ( cd "$repo" && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
         && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" )
     RC=$?
     RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
@@ -169,7 +169,7 @@ assert_eq "[SPEC-5] fail path: verdict=fail (dedicated fail test case)" \
 
 # ── C7: SPEC-3 — zero grep hits for the literal '$artifact_dir/design.md' ───────
 _hits="$(grep -cF '$artifact_dir/design.md' \
-    "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" 2>/dev/null || true)"
+    "$REPO_ROOT/plugins/tool/test/plugin.sh" 2>/dev/null || true)"
 assert_eq "[SPEC-3] plugin.sh: zero grep hits for literal '\$artifact_dir/design.md'" "0" "$_hits"
 
 # ── C8: SPEC-3 behavioral — gate resolves design from ZBUILD_STAGE_INPUTS ────────
@@ -202,7 +202,7 @@ unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
       _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
       _ACCEPTANCE_COVERAGE_LOADED
 set +e
-(cd "$REPO_C8" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+(cd "$REPO_C8" && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
     && acceptance_gate_run "acceptance-gate" "$_state_c8/pipeline-state.json")
 _rc_c8=$?
 set -e
@@ -218,35 +218,18 @@ else
 fi
 
 # ── C9: SPEC-5 — contract 3 (#2366): the manifest declares no verdict words ──
-MANIFEST_PATH="$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml"
+MANIFEST_PATH="$REPO_ROOT/plugins/tool/test/manifest.yaml"
 assert_eq "[SPEC-5] manifest declares no valid_verdicts (one outcome, #2366)" \
     "0" "$(grep -c 'valid_verdicts' "$MANIFEST_PATH" || true)"
 
-# ── C10: SPEC-6 — manifest declares tier_default: T1; plugin.sh has no model.route call ──
+# ── C10–C12 (#2372): the acceptance check runs inside test. What its manifest
+# said now holds of test's: no model call in the check, contract 3, and its
+# result declared as one of test's outputs (test's primary is its own run).
 _manifest_text="$(cat "$MANIFEST_PATH")"
-assert_contains "[SPEC-6] manifest declares tier_default: T1" "$_manifest_text" "tier_default: T1"
-_route_hits="$(grep -c 'model\.route' \
-    "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" 2>/dev/null || true)"
-assert_eq "[SPEC-6] plugin.sh: zero model.route calls (non-routing mechanical gate)" "0" "$_route_hits"
-assert_contains "[SPEC-6] manifest provides section declares result_contract: 3 (#2366)" \
-    "$_manifest_text" "result_contract: 3"
-
-# ── C11: SPEC-7 — manifest declares exactly one primary: true output (gate_result) ──
-_primary_count="$(grep -c '^\s*primary: true' "$MANIFEST_PATH" 2>/dev/null || true)"
-assert_eq "[SPEC-7] manifest has exactly one primary: true output" "1" "$_primary_count"
-_primary_id="$(awk '/^  - id: /{current_id=$NF} /^    primary: true/{print current_id}' \
-    "$MANIFEST_PATH")"
-assert_eq "[SPEC-7] primary output id is gate_result" "gate_result" "$_primary_id"
-_detail_req="$(awk '/^  - id: acceptance_detail/{f=1} f && /^    required:/{print $2; exit}' \
-    "$MANIFEST_PATH")"
-assert_eq "[SPEC-7] acceptance_detail output required: true (summary on every terminal path)" \
-    "true" "$_detail_req"
-
-# ── C12: SPEC-8 — manifest declares provides.role: acceptance_gate ────────────
-# Templates resolve this gate by role, not by id (ADR-042/047); the field must
-# be present or the resolver cannot bind the plugin to the acceptance_gate slot.
-assert_contains "[SPEC-8] manifest declares provides.role: acceptance_gate" \
-    "$_manifest_text" "role: acceptance_gate"
+_route_hits="$(grep -c 'model\.route' "$REPO_ROOT/plugins/tool/test/lib/acceptance-check.sh" 2>/dev/null || true)"
+assert_eq "[SPEC-6] the acceptance check makes no model call" "0" "$_route_hits"
+assert_contains "[SPEC-6] test declares result_contract: 3 (#2366)" "$_manifest_text" "result_contract: 3"
+assert_contains "[SPEC-7] test declares the acceptance check's result" "$_manifest_text" "acceptance-gate-result.json"
 
 # ── C13: SPEC-9 — manifest provides.events lists every acceptance.gate.* event ─
 # For each acceptance.gate.* event emitted via eb_emit_event in plugin.sh, assert
@@ -263,7 +246,7 @@ while IFS= read -r _evt; do
     assert_contains "[SPEC-9] emitted event '$_evt' is declared in manifest provides.events" \
         "$_declared_events_list" "$_evt"
 done < <(grep -oE '"acceptance\.gate\.[^"]*"' \
-    "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" 2>/dev/null \
+    "$REPO_ROOT/plugins/tool/test/plugin.sh" 2>/dev/null \
     | tr -d '"' | sort -u)
 
 # ── C14: SPEC-10 — manifest has no hooks.cleanup entry ───────────────────────
@@ -271,9 +254,7 @@ done < <(grep -oE '"acceptance\.gate\.[^"]*"' \
 # hook, plugin_hook_call emits plugin.cleanup.absent and returns 0 (ADR-056,
 # #1829). The absence of hooks.cleanup is intentional — asserting it prevents
 # an accidental addition from silently breaking the teardown contract.
-_hooks_section="$(awk '/^hooks:/{f=1; next} f && /^[^ ]/{f=0} f{print}' "$MANIFEST_PATH")"
-_cleanup_in_hooks="$(grep 'cleanup' <<< "$_hooks_section" 2>/dev/null || true)"
-assert_eq "[SPEC-10] manifest has no hooks.cleanup entry" "" "$_cleanup_in_hooks"
+# #2372: the check runs inside test; test's own hooks are its own business.
 
 cleanup_test_env
 print_test_results

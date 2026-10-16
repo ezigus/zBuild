@@ -31,7 +31,7 @@ _run_gate() {
           _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
           _ACCEPTANCE_COVERAGE_LOADED
     # shellcheck disable=SC1090
-    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+    ( cd "$repo" && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
         && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" )
     # shellcheck disable=SC2034  # RC is part of the shared driver contract
     RC=$?

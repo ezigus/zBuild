@@ -22,8 +22,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "the shape check's summary is plain (#2269)"
 setup_test_env "shape-floor-summary-plain"
-# shellcheck source=../../plugins/tool/shape-floor/plugin.sh
-source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 
 T="$TEST_TEMP_DIR/target"
 mkdir -p "$T/config" "$T/tests/golden/full" "$T/tests/unit" "$T/core/pipeline"

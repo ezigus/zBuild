@@ -33,8 +33,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "shape-floor: a still-correct floor needs no edit (#1874)"
 setup_test_env "shape-floor-content-stable"
-# shellcheck source=../../plugins/tool/shape-floor/plugin.sh
-source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 # #2366: the test stage's result is made with the engine's writer.
 # shellcheck source=../../scripts/lib/stage-result.sh
 source "$REPO_ROOT/scripts/lib/stage-result.sh"

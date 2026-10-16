@@ -70,17 +70,17 @@ if grep -qF 'SPEC-7 is tautological' "$PROMPT1"; then
 else
     assert_pass "T1: design does not re-splice the gate's detail"
 fi
-# Driven as its own fixture: the instruction is keyed on the gate's recorded
-# verdict, so the state must exist before the stage runs.
+# Driven as its own fixture. #2372: the instruction is given whenever design
+# refines an earlier design — its condition is in its words ("If Previous work
+# says"), never in another stage's verdict.
 AD1B="$(_setup_fixture)"
-printf '{"schema_version":1,"stage_verdicts":{"acceptance-gate":"fail"}}\n' \
-    > "$(dirname "$AD1B")/pipeline-state.json"
+printf '# Design (earlier)\n\n```scope\nfoo.sh\n```\n' > "$AD1B/design.md"
 export MOCK_DESIGN_WRITE_PATH="$AD1B/design.md"
 _design_stage_run_inner "$(dirname "$AD1B")/scope-manifest.md" "$AD1B/plan.json" \
     "$AD1B/design.md" "$AD1B" >/dev/null 2>&1 || true
 # #2269: the same instructions, in plain words.
 _t1b="$(cat "$AD1B/design-prompt.txt" 2>/dev/null)"
-assert_contains "T1: a failing acceptance gate yields the rewrite instruction" \
+assert_contains "T1: refining an earlier design yields the rewrite instruction" \
     "$_t1b" "rewrite that requirement so its test fails on the old code and passes after"
 # #2304 (ADR-069): the relabel offer is gone. A requirement the code already
 # meets is marked [done] with evidence the design-gate checks — an honest

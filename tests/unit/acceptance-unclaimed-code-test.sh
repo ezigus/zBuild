@@ -101,7 +101,7 @@ _gate() {
       export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
       export ZBUILD_STAGE_INPUTS="$st/stage-inputs.json" ZBUILD_NEGCTL_TIMEOUT=60
       unset _ZBUILD_ACCEPTANCE_GATE_LOADED
-      source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+      source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
           && acceptance_gate_run "acceptance-gate" "$st/pipeline-state.json" ) >/dev/null 2>&1 || true
     printf '%s' "$st"
 }
@@ -121,14 +121,14 @@ assert_eq "[U4] the severity is recoverable (design can add the requirement)" "r
 assert_contains "[U4] the event acceptance.gate.unclaimed_code is emitted" \
     "$(cat "$ST4/events/events.jsonl" 2>/dev/null)" '"acceptance.gate.unclaimed_code"'
 assert_contains "[U4] ...and declared in the manifest's provides.events" \
-    "$(eb_manifest_events "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml" 2>/dev/null)" \
+    "$(eb_manifest_events "$REPO_ROOT/plugins/tool/test/manifest.yaml" 2>/dev/null)" \
     "acceptance.gate.unclaimed_code"
 # shellcheck source=../../scripts/lib/acceptance-disposition.sh
 source "$REPO_ROOT/scripts/lib/acceptance-disposition.sh"
 assert_eq "[U4] the class unclaimed_code is recoverable in the disposition table" "recoverable" \
     "$(_ag_failure_class_disposition unclaimed_code)"
 assert_contains "[U4] ...and listed in the manifest's valid_failure_classes" \
-    "$(sed -n '/valid_failure_classes:/,/tier_default/p' "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" \
+    "$(sed -n '/valid_failure_classes:/,/tier_default/p' "$REPO_ROOT/plugins/tool/test/manifest.yaml")" \
     "- unclaimed_code"
 
 R5="$(_repo unclaimed-u4b scripts/x.sh tests/a-test.sh)"

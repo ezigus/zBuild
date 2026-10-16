@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests: gate result contract — result_contract:3, outcome, reason across all
-# four gate plugins (ADR-054, ADR-055 §9, issue #1848; contract 3 since #2366).
+# three gate plugins and the shape floor check (ADR-054, ADR-055 §9, issue #1848; contract 3 since #2366).
 #
 # SPEC-1: all four gates declare result_contract: 3 (#2366)
 # SPEC-2: every gate result JSON carries its contract, its outcome (no disposition on contract 3) and a reason
@@ -28,15 +28,15 @@ _test_cleanup_hook() { cleanup_test_env; }
 
 export ZBUILD_EVENTS_DB="/dev/null"
 
-# Source all four gate plugins.
+# Source all three gate plugins and the shape floor check.
 # shellcheck source=../../plugins/tool/coverage-gate/plugin.sh
 source "$REPO_ROOT/plugins/tool/coverage-gate/plugin.sh"
 # shellcheck source=../../plugins/tool/lint-gate/plugin.sh
 source "$REPO_ROOT/plugins/tool/lint-gate/plugin.sh"
 # shellcheck source=../../plugins/tool/mutation-gate/plugin.sh
 source "$REPO_ROOT/plugins/tool/mutation-gate/plugin.sh"
-# shellcheck source=../../plugins/tool/shape-floor/plugin.sh
-source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 
 _mkwork() {
     local name="$1"
@@ -51,8 +51,8 @@ _seed_results() {
     jq -n "$block" > "$work/artifacts/test-results.json"
 }
 
-# ── SPEC-1: all four manifests declare result_contract: 3 under provides: (#2366) ─
-for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
+# ── SPEC-1: all three manifests declare result_contract: 3 under provides: (#2366) ─
+for _plugin in coverage-gate lint-gate mutation-gate; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_contains "[SPEC-1] $_plugin manifest declares result_contract: 3" \
         "$(cat "$_mf")" "result_contract: 3"
@@ -201,22 +201,22 @@ assert_json_key "[SPEC-3] shape-floor library not loaded → reason:library_load
 assert_eq "[SPEC-14] shape-floor broken path → shape-floor-detail.md written and non-empty" "present" \
     "$([[ -s "$W/artifacts/shape-floor-detail.md" ]] && echo present || echo absent)"
 
-# ── SPEC-9: all four manifests declare valid_verdicts in config ──────────────
-for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
+# ── SPEC-9: all three manifests declare valid_verdicts in config ──────────────
+for _plugin in coverage-gate lint-gate mutation-gate; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_eq "[SPEC-9] $_plugin manifest declares no valid_verdicts (contract 3)" \
         "0" "$(grep -c 'valid_verdicts' "$_mf" || true)"
 done
 
-# ── SPEC-10: all four manifests declare tier_default: T0 ─────────────────────
-for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
+# ── SPEC-10: all three manifests declare tier_default: T0 ─────────────────────
+for _plugin in coverage-gate lint-gate mutation-gate; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_contains "[SPEC-10] $_plugin manifest declares tier_default: T0" \
         "$(cat "$_mf")" "tier_default: T0"
 done
 
 # ── SPEC-11: each manifest declares exactly one output with primary: true ──────
-for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
+for _plugin in coverage-gate lint-gate mutation-gate; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_eq "[SPEC-11] $_plugin manifest has exactly one primary: true output" \
         "1" "$(grep -c 'primary: true' "$_mf")"
@@ -225,7 +225,7 @@ done
 # ── SPEC-12: no plugin.sh constructs a hardcoded cross-stage artifact path ─────
 # A cross-stage path literal looks like /stage-name/artifacts/ in source code.
 # Variable-based references ($artifacts_dir/file) are fine; literal stage paths are not.
-for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
+for _plugin in coverage-gate lint-gate mutation-gate; do
     _ps="$REPO_ROOT/plugins/tool/$_plugin/plugin.sh"
     assert_eq "[SPEC-12] $_plugin/plugin.sh has no hardcoded cross-stage artifact path" \
         "" "$(grep -E '/[a-z][a-z0-9_-]+/artifacts/' "$_ps" || true)"
@@ -233,7 +233,7 @@ done
 
 # ── SPEC-13: gate manifests declare tier_default:T0; no config.router knobs ────
 # T0 plugins make no model calls, so no timeout_s/max_turns/retries are needed.
-for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
+for _plugin in coverage-gate lint-gate mutation-gate; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     assert_eq "[SPEC-13] $_plugin manifest has no config.router budget knobs (T0: no model calls)" \
         "" "$(grep -E '^\s+(timeout_s|max_turns|retries):' "$_mf" || true)"
@@ -242,7 +242,7 @@ done
 # ── SPEC-14(a): each manifest has exactly one output with required:true AND summary:true ─
 # SPEC-9..13 check required/primary/summary fields in isolation; SPEC-14 asserts
 # the ADR-055 §9 mandatory pairing: both must coexist on the SAME output block.
-for _plugin in coverage-gate lint-gate mutation-gate shape-floor; do
+for _plugin in coverage-gate lint-gate mutation-gate; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
     # A comment may quote `summary: true` (coverage-gate does, citing #1976) —
     # skip comment lines or the count reads prose as config (#1848 dogfood).
@@ -309,10 +309,6 @@ _reader_ok "lint-gate" "$W" lint-gate lint-gate
 W="$(_mkwork r15-mut)"; _seed_results "$W" '{mutation:{status:"measured",score:90,floor:50}}'
 mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1 || true
 _reader_ok "mutation-gate" "$W" mutation-gate mutation-gate
-W="$(_mkwork r15-sf)"
-# SPEC-3 above unset the library function; the skip path needs it back.
-_sf_shape_floor() { echo "SHAPE_FLOOR SKIP no shape-change files (test stub)"; }
-shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1 || true
-_reader_ok "shape-floor (skip path)" "$W" shape-floor shape-floor
+# #2372: the shape floor runs inside test; its result is one of test's outputs, not a stage's.
 
 print_test_results

@@ -50,8 +50,8 @@ _test_cleanup_hook() { cleanup_test_env; }
 # same resolver the gate uses, not a reimplementation of it.
 # shellcheck source=../../scripts/lib/shape-floor.sh
 source "$REPO_ROOT/scripts/lib/shape-floor.sh"
-# shellcheck source=../../plugins/tool/shape-floor/plugin.sh
-source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 
 
 _sf_git_id() {

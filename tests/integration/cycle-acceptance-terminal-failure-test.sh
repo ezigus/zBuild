@@ -130,41 +130,41 @@ plan_run() {
 PLUG
 }
 
-# acceptance-gate stub: writes the gate_result with a configurable failure entry
-# (via ZBUILD_TEST_GATE_FAILURE) and returns rc=1 (the real gate does this for
-# EVERY fail class). An empty failure → verdict=pass, rc=0.
-_make_acceptance_gate_plugin() {
-    local dir="$PLUGINS_ROOT/agent/acceptance-gate"
+# #2372: the acceptance check runs inside test, which carries its severity into
+# test's own result. This stub plays test: a configurable acceptance failure
+# (ZBUILD_TEST_GATE_FAILURE) → outcome fail with that severity. Empty → pass.
+_make_test_plugin_with_acceptance() {
+    local dir="$PLUGINS_ROOT/agent/test"
     mkdir -p "$dir"
     cat > "$dir/manifest.yaml" <<'EOF'
-id: acceptance-gate
-name: Test acceptance-gate
+id: test
+name: Test test (with the acceptance check)
 kind: agent
 version: 0.0.1
 hooks:
-  run: acceptance_gate_run
+  run: test_stage_run
 requires:
   core:
     - redaction
 provides:
-  role: acceptance_gate
+  role: tester
   result_contract: 3
 outputs:
-  - id: gate_result
-    path: ${artifact_dir}/acceptance-gate-result.json
+  - id: test_results
+    path: ${artifact_dir}/test-results.json
     type: json
     required: true
     primary: true
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
-acceptance_gate_run() {
+test_stage_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     local f="${ZBUILD_TEST_GATE_FAILURE:-}"
     source "$STAGE_RESULT_LIB"
     if [[ -z "$f" ]]; then
-        printf '{"severity":"none","failures":[]}' > "$state_dir/artifacts/acceptance-gate-result.json"
-        stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" pass "no failures"
+        printf '{"severity":"none","failures":[]}' > "$state_dir/artifacts/test-results.json"
+        stage_result_add "$state_dir/artifacts/test-results.json" pass "no failures"
         return 0
     fi
     # Mirror the real gate's class→severity mapping (ADR-021 / ADR-036): the
@@ -176,14 +176,14 @@ acceptance_gate_run() {
         *)                                      disp="terminal" ;;
     esac
     printf '{"severity":"%s","failures":["%s"]}' "$disp" "$f" \
-        > "$state_dir/artifacts/acceptance-gate-result.json"
+        > "$state_dir/artifacts/test-results.json"
     # #2368: like the real gate, a check it could only not measure is a pass.
     if [[ "$disp" == advisory ]]; then
-        stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" pass "$f"
+        stage_result_add "$state_dir/artifacts/test-results.json" pass "$f"
         return 0
     fi
-    stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" fail "$f"
-    return 1
+    stage_result_add "$state_dir/artifacts/test-results.json" fail "$f"
+    return 0
 }
 PLUG
 }
@@ -248,9 +248,8 @@ _make_plugin "test-author"         "test_author"
 _make_plugin "assertion-integrity" "assertion_integrity"
 _make_plugin "issue-acceptance"    "issue_acceptance"   # #1849
 _make_plugin "build"           "builder"
-_make_plugin "test"            "tester"
 _make_plugin "shape-floor"     "shape_floor"
-_make_acceptance_gate_plugin
+_make_test_plugin_with_acceptance
 _make_plugin "secret-scan"     "secret_scan"
 # review_lenses is now a map group (#1295): one plugin for role review_lens
 # handles all elements (security, performance, red-team, correctness, scope).
@@ -311,7 +310,7 @@ term_evt="$(jq -c 'select(.type=="cycle.member.terminal_failure")' \
 # member id is carried in data).
 term_member="$(jq -r 'select(.type=="cycle.member.terminal_failure") | .data.member' \
     "$EVENTS_JSONL" 2>/dev/null | head -1)"
-assert_eq "T1 [SPEC-4]: terminal_failure event names the failing member" "acceptance-gate" "$term_member"
+assert_eq "T1 [SPEC-4]: terminal_failure event names the failing member (test, #2372)" "test" "$term_member"
 
 # The cycle status written to durable state must NOT be complete.
 cyc_complete="$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="build_test_cycle" and .data.reason=="converged")' \

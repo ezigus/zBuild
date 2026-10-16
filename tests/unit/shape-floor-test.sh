@@ -164,8 +164,8 @@ printf 'golden-event-content\n' > "$_sr_oos/tests/golden/oosspec/event-sequence.
 _sf_art_oos="$TEST_TEMP_DIR/sf-oos-artifacts"
 mkdir -p "$_sf_art_oos"
 
-# shellcheck source=../../plugins/tool/shape-floor/plugin.sh
-source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 
 set +e
 ZBUILD_DIFF_CMD="printf 'config/templates/simple.yaml\n'" \

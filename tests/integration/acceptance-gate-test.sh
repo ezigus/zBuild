@@ -54,7 +54,7 @@ _run_gate_with_summary() {
     local _sf; _sf="$(mktemp)"
     # Define stub AFTER source so it overrides the template.sh lookup-based version
     # that stage-io.sh transitively loads when the plugin is sourced.
-    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+    ( cd "$repo" && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
           && template_stage_io_dests() { printf 'stdout\n'; } \
           && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" ) 2>"$_sf"
     RC=$?
@@ -77,7 +77,7 @@ _run_gate() {  # _run_gate <repo> → sets RC, RESULT, EVENTS
     # fresh plugin load per call (guard var would block re-source)
     unset _ZBUILD_ACCEPTANCE_GATE_LOADED
     # shellcheck disable=SC1090
-    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+    ( cd "$repo" && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
         && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" )
     RC=$?
     RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"

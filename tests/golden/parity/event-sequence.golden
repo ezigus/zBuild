@@ -47,6 +47,12 @@ stage.start
 stage.previous_work.written
 plugin.run.start
 plugin.result
+shape_floor.skip
+plugin.result
+acceptance.gate.start
+acceptance.gate.skipped
+acceptance.gate.complete
+test.assertions.unchecked
 plugin.run.complete
 stage.complete
 artifact.snapshot.saved

@@ -110,8 +110,7 @@ assert_contains "[N3] finding 2 is listed on its own line" "$_blk" \
 print_test_section "N5: every check writes numbered findings"
 _missing=""
 for _p in plugins/agent/design plugins/agent/test-author \
-          plugins/tool/test plugins/tool/shape-floor plugins/agent/spec-acceptance \
-          plugins/tool/assertion-integrity plugins/agent/issue-acceptance; do
+          plugins/tool/test plugins/agent/issue-acceptance; do
     _hit=0
     for _f in "$REPO_ROOT/$_p"/*.sh "$REPO_ROOT/$_p"/lib/*.sh; do
         [[ -f "$_f" ]] && grep -q 'stage_findings_json' "$_f" && { _hit=1; break; }

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# #2372: test runs this check over its own run (was the acceptance-gate stage,
+# plugin spec-acceptance); sourced by plugins/tool/test/plugin.sh after its bootstrap.
 # plugins/agent/spec-acceptance — SPEC acceptance-contract gate (ADR-036, #922/#956)
 #
 # Method-named plugin (id: spec-acceptance) bound to the GENERIC `acceptance_gate`
@@ -29,45 +31,43 @@
 [[ -n "${_ZBUILD_ACCEPTANCE_GATE_LOADED:-}" ]] && return 0
 _ZBUILD_ACCEPTANCE_GATE_LOADED=1
 
-# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
-zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../../scripts/lib/plugin-bootstrap.sh
 _AG_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../scripts/lib/acceptance-disposition.sh
+# shellcheck source=../../../../scripts/lib/acceptance-disposition.sh
 source "$_AG_ROOT/scripts/lib/acceptance-disposition.sh"
-# shellcheck source=../../../core/event-bus/event-bus.sh
+# shellcheck source=../../../../core/event-bus/event-bus.sh
 source "$_AG_ROOT/core/event-bus/event-bus.sh"
-# shellcheck source=../../../scripts/lib/stage-summary.sh
+# shellcheck source=../../../../scripts/lib/stage-summary.sh
 source "$_AG_ROOT/scripts/lib/stage-summary.sh"
 # #2366: the one writer of a stage's result (contract 3).
-# shellcheck source=../../../scripts/lib/stage-result.sh
+# shellcheck source=../../../../scripts/lib/stage-result.sh
 source "$_AG_ROOT/scripts/lib/stage-result.sh"
 # #1241: mechanical gates open no router/command span, so this plugin sources the
 # stage-io chokepoint directly (router plugins get it via route.sh) to frame its
 # operator summary. Load-once sentinel makes this a no-op when the runner already
 # sourced it; a standalone/subprocess dispatch still gets stage_io_begin/end.
-# shellcheck source=../../../core/output/stage-io.sh
+# shellcheck source=../../../../core/output/stage-io.sh
 source "$_AG_ROOT/core/output/stage-io.sh"
 # #963: source the read-only grammar libs from _ZBUILD_CONTRACT_LIB_DIR (set by
 # zbuild_plugin_bootstrap above) so a self-host run reads the working-tree grammar.
 # A lib that fails to load is recorded, never swallowed: the gate fails on it
 # (ADR-036 amendment 2026-10-09, #1752). The libs record their own dependencies
 # in the same list.
-# shellcheck source=../../../scripts/lib/acceptance-block.sh
+# shellcheck source=../../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
-# shellcheck source=../../../scripts/lib/acceptance-coverage.sh
+# shellcheck source=../../../../scripts/lib/acceptance-coverage.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-coverage.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-coverage.sh"
-# shellcheck source=../../../scripts/lib/acceptance-negctl.sh
+# shellcheck source=../../../../scripts/lib/acceptance-negctl.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-negctl.sh"
-# shellcheck source=../../../scripts/lib/acceptance-reachability.sh
+# shellcheck source=../../../../scripts/lib/acceptance-reachability.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-reachability.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-reachability.sh"
 # merge-base.sh (zbuild_resolve_merge_base) — needed by the precondition check;
 # also sourced transitively by negctl/reachability. Load-once sentinel = no-op.
-# shellcheck source=../../../scripts/lib/merge-base.sh
+# shellcheck source=../../../../scripts/lib/merge-base.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
 # The gate's reason, operator summary and small helpers (#2304: keeps this file under 500 lines).
-# shellcheck source=lib/reason.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/reason.sh"
+# shellcheck source=./acceptance-reason.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/acceptance-reason.sh"
 
 acceptance_gate_run() {
     local _stage_id="$1"

@@ -5,7 +5,7 @@
 #
 # SPEC-1: simple.yaml's build_test_cycle exit_when names every must-pass gate
 # SPEC-2: the cycle roster is the decomposed gate set
-# SPEC-3: cycle converges at iter 2 (shape-floor: fail iter 1, pass iter 2)
+# SPEC-3: cycle converges at iter 2 (issue-acceptance: fail iter 1, pass iter 2)
 # SPEC-4: convergence is artifact-driven only — no model.route (LLM) events
 set -uo pipefail
 
@@ -47,18 +47,18 @@ ARTIFACTS_DIR="$ZBUILD_STATE_DIR/artifacts"
 # ─── SPEC-1: exit_when names every must-pass gate ────────────────────────────
 print_test_section "SPEC-1: build_test_cycle exit_when names its must-pass gates"
 assert_eq "[SPEC-1] exit_when combines with all" "all" "${_TPL_CYCLE_EXIT_COMBINATOR_build_test_cycle:-}"
-assert_eq "[SPEC-1] ...over seven must-pass members (#2370: test-author)" "7" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
+assert_eq "[SPEC-1] ...over four must-pass members (#2372)" "4" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
 
 # ─── SPEC-2: decomposed gate roster ──────────────────────────────────────────
 print_test_section "SPEC-2: cycle roster is the decomposed mechanical gate set"
 
 # #1129 Change C (ADR-012): lint/coverage/mutation dropped as cycle members.
 assert_eq "[SPEC-2] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "test-author,build,test,shape-floor,acceptance-gate,assertion-integrity,issue-acceptance" \
+    "test-author,build,test,issue-acceptance" \
     "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
 
 # ─── SPEC-3: fail→pass convergence at iter 2 ─────────────────────────────────
-# Stub cycle_dispatch_stage: shape-floor returns fail on iter 1, pass on
+# Stub cycle_dispatch_stage: issue-acceptance returns fail on iter 1, pass on
 # iter 2. Build/test and every other gate always pass. The cycle must converge
 # at iter 2 via the exit_when predicate (not by hitting max_iterations=5).
 print_test_section "SPEC-3: fail→pass convergence at iter 2 (exit_when predicate)"
@@ -83,7 +83,7 @@ cycle_dispatch_stage() {
             printf '{"schema_version":1,"verdict":"pass","exit_code":0}' \
                 > "$_st_art/test-results.json"
             ;;
-        shape-floor)
+        issue-acceptance)
             if [[ "$_st_iter" -le 1 ]]; then
                 _CYCLE_DISPATCH_VERDICT_RAW="fail"
                 _CYCLE_DISPATCH_VERDICT="fail"

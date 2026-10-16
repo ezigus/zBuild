@@ -379,12 +379,13 @@ DESIGN_PROMPT
             >> "$prompt_input_file"
     fi
 
-    # When the acceptance check failed, say what design can do about a [code]
-    # requirement whose test already passes (build may not touch acceptance
+    # When a later check found a [code] requirement whose test already passes,
+    # say what design can do about it (build may not touch acceptance
     # assertions, ADR-036). #2304 (ADR-069): no relabel offer — [done] needs
-    # evidence design's own checks look at.
-    if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
-            "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
+    # evidence design's own checks look at. #2372: said whenever design refines
+    # an earlier design — the condition is in the words ("If Previous work
+    # says"), never in another stage's verdict.
+    if [[ -n "$_prior_design_body" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.
         printf '\nIf Previous work says a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
             >> "$prompt_input_file"

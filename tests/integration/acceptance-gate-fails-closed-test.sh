@@ -88,7 +88,7 @@ _run_gate() {
         if [[ -n "$lib" ]]; then export ZBUILD_CONTRACT_LIB_DIR="$lib"; else unset ZBUILD_CONTRACT_LIB_DIR; fi
         cd "$repo" || exit 99
         # shellcheck disable=SC1090
-        source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh"
+        source "$REPO_ROOT/plugins/tool/test/plugin.sh"
         acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json"
     ) >/dev/null 2>&1
     RC=$?
@@ -138,7 +138,7 @@ assert_eq "[F3] rc 1" "1" "$RC"
 print_test_section "F7: the reason keeps every gate_load_failed entry"
 _r7="$(
     # shellcheck disable=SC1090
-    source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" >/dev/null 2>&1
+    source "$REPO_ROOT/plugins/tool/test/plugin.sh" >/dev/null 2>&1
     _ag_build_reason "gate_load_failed:a-lib.sh" "gate_load_failed:b-lib.sh"
 )"
 assert_contains "[F7] the first file is named" "$_r7" "a-lib.sh"
@@ -169,7 +169,7 @@ set +e
     export ZBUILD_CONTRACT_LIB_DIR="$L5" ZBUILD_REPO_ROOT="$R0"
     unset _ZBUILD_SHAPE_FLOOR_PLUGIN_LOADED _SF_LOADED _ZBUILD_MERGE_BASE_LOADED
     # shellcheck disable=SC1090
-    source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+    source "$REPO_ROOT/plugins/tool/test/plugin.sh"
     shape_floor_run "shape-floor" "$W5/state.json"
 ) >/dev/null 2>&1
 set -e

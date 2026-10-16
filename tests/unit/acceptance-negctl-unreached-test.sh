@@ -146,7 +146,7 @@ _gate_run() {
       export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
       export ZBUILD_STAGE_INPUTS="$st/stage-inputs.json" ZBUILD_NEGCTL_TIMEOUT=60 ZBUILD_CYCLE_ITER="$iter"
       unset _ZBUILD_ACCEPTANCE_GATE_LOADED
-      source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+      source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
           && acceptance_gate_run "acceptance-gate" "$st/pipeline-state.json" ) >/dev/null 2>&1 || true
     printf '%s' "$st/artifacts/acceptance-gate-result.json"
 }

@@ -115,12 +115,6 @@ test-author:
     max_turns: 0
     max_iterations: 4
 
-# ─── assertion-integrity (leaf, gate) ────────────────────────────────────────
-# Mechanical, no model.route — so it MAY gate (ADR-040 §5).
-assertion-integrity:
-  gate: auto
-  roles: [assertion_integrity]
-
 # ─── issue-acceptance (leaf, gate) ───────────────────────────────────────────
 # #1849: the finished change against the ISSUE. A model call on the convergence
 # path is allowed for the same reason as design's coverage check (ADR-040 §5 as amended by
@@ -166,14 +160,6 @@ build_test_cycle:
     # #2371: build scans its own change for secrets (was a stage of its own).
     - build
     - test
-    - shape-floor
-    - acceptance-gate
-    # #2022: mechanical backstop. The spawn denies build Edit() on the declared
-    # TESTFILES, but #1919 P5 measured that a Write(...) deny rule matches
-    # nothing — prevention is incomplete by construction. A fail here makes the
-    # aggregate non-pass, so the cycle iterates rather than converging on a
-    # rewritten assertion.
-    - assertion-integrity
     # #1849: the finished change judged against the ISSUE, not the SPECs — the
     # only check after design's own coverage check that reads the issue; each unmet
     # requirement is a numbered finding.
@@ -185,9 +171,6 @@ build_test_cycle:
       # build that broke scope or did not finish is not done either.
       - { stage: build, field: verdict, op: eq, value: pass }
       - { stage: test, field: verdict, op: eq, value: pass }
-      - { stage: shape-floor, field: verdict, op: eq, value: pass }
-      - { stage: acceptance-gate, field: verdict, op: eq, value: pass }
-      - { stage: assertion-integrity, field: verdict, op: eq, value: pass }
       - { stage: issue-acceptance, field: verdict, op: eq, value: pass }
   max_iterations: 3
   on_max: continue
@@ -251,43 +234,17 @@ build:
 test:
   gate: auto
   roles: [tester]
+  # #2372: test runs the shape floor and the acceptance check over its own run,
+  # and checks the assertion files against their fingerprints. ADR-036 #1188:
+  # negctl_timeout_s bounds each requirement's negative-control / reachability
+  # run (seconds).
+  negctl_timeout_s: 60
   # The whole stage, every call and check inside it (the full test suite); the engine
   # stops it here. The default for a stage is 900 (15 minutes).
   timeout_s: 2700
   io:
     destinations: [file, stdout]
     tail_lines: 200
-
-# ─── shape-floor (leaf, cycle member) ────────────────────────────────────────
-# T0 tool gate (ADR-040, #1134): un-gameable shape-floor check. verdict-in-artifact.
-shape-floor:
-  gate: auto
-  roles: [shape_floor]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-
-# ─── acceptance-gate (leaf, cycle member) ────────────────────────────────────
-# Mechanical (non-LLM) acceptance-contract gate (ADR-036, #922). No-op pass when
-# the design acceptance block is absent (its design input is required:false in the
-# manifest — design already emits the SPEC/WIRING block). Its gate_result feeds
-# the acceptance→build feedback edge above.
-# ADR-036 #1188: negctl_timeout_s bounds each SPEC negative-control / reachability
-# test run (seconds). A timeout is classified INFRA (non-terminal), never a
-# violation. Override per-run with ZBUILD_NEGCTL_TIMEOUT (env wins).
-acceptance-gate:
-  gate: auto
-  roles: [acceptance_gate]
-  # The whole stage, every call and check inside it (a test run per requirement); the engine
-  # stops it here. The default for a stage is 900 (15 minutes).
-  timeout_s: 2700
-  negctl_timeout_s: 60
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    timeout_s: 600
-    max_turns: 10
 
 # ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
 # issue #1295 (ADR-047 §2): converted from `type: parallel` to `type: map`.

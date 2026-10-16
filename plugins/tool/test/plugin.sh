@@ -51,10 +51,19 @@ source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/framework-result.sh"
 # Shared setsid capability probe + process-group kill (extracted from route.sh).
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/proc-group.sh"
 # #2121: the design's TESTFILES are part of the targeted set.
-if ! declare -F acceptance_list_testfiles >/dev/null 2>&1; then
-    # shellcheck source=../../../scripts/lib/acceptance-block.sh
-    source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
-fi
+# #2372: the acceptance grammar comes through the contract-reader seam (#963),
+# like every contract lib the acceptance check reads — a run that edits the
+# grammar is checked by its own copy. A lib that fails to load is recorded.
+# shellcheck source=../../../scripts/lib/acceptance-block.sh
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
+# #2372: test checks its own run — the shape floor, the acceptance contract, and
+# that the assertion files are the ones their author wrote.
+# shellcheck source=lib/shape-floor-check.sh
+source "$_ZBUILD_TEST_STAGE_DIR/lib/shape-floor-check.sh"
+# shellcheck source=lib/acceptance-check.sh
+source "$_ZBUILD_TEST_STAGE_DIR/lib/acceptance-check.sh"
+# shellcheck source=lib/own-checks.sh
+source "$_ZBUILD_TEST_STAGE_DIR/lib/own-checks.sh"
 
 # ─── _test_compute_target_files (ADR-034 / #846, #2121) ──────────────────────
 # Unions: the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
@@ -196,7 +205,7 @@ _test_build_targeted_cmd() {
 # Entry point called by the pipeline engine.
 # Usage: test_run <stage> <state_file>
 test_run() {
-    local _stage="$1"  # stage name passed by engine; unused by this tool plugin
+    local _stage="$1"  # stage name passed by engine; the checks run under it
     local state_file="$2"
 
     # Derive paths from state_file location (state_file lives in state dir)
@@ -211,6 +220,7 @@ test_run() {
     mkdir -p "$artifact_dir"
 
     _test_run_inner "$diff_patch" "$repo_root" "$output_json" "$test_cmd"
+    _test_own_checks "$_stage" "$state_file" "$output_json" "$repo_root"
     return 0
 }
 
