@@ -1,5 +1,5 @@
 ## design — error
 
-- the model call was rate-limited (LLM rate-limited — resets 7pm (UTC))
+- Design ran out of time before writing design.md.
 
-No design.md was authored. The run ends here and resumes when the limit resets.
+No design.md was written.

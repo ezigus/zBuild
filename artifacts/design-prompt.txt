@@ -241,7 +241,7 @@ Correct all test failures, lint violations, and wiring gaps found after the firs
 - tests/unit/run-open-items-test.sh
 - tests/unit/run-watchdog-clean-exit-test.sh
 
-### Tools (read-only — this stage may NOT modify the working tree)
+### Tools
 - You MAY use the Read tool to inspect any file in the repository.
 - You MAY use the Grep tool to search the whole repository for symbols,
   constants, references, and hardcoded values.
@@ -261,125 +261,13 @@ Correct all test failures, lint violations, and wiring gaps found after the firs
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
-### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)
-Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.
-
-# Design — Issue #1944: run-level wall-clock limit
-
-## Architectural decision
-
-**Goal.** Enforce a per-run wall-clock ceiling so no pipeline run is unbounded.
-
-**Context.** Only per-stage `router.timeout_s` knobs existed. A deadlock
-between stages or a slow stage without a per-stage limit can run indefinitely.
-CI platforms carry their own job ceilings; the engine must enforce its own
-without reading platform variables (R-8).
-
-**Decision.**
-
-1. **Limit resolution** (`_runner_resolve_run_limit_s` in
-   `scripts/lib/stage-limits.sh`): template top-level `max_run_s:` key
-   (via `template_max_run_s()` in `core/pipeline/template.sh`) >
-   `ZBUILD_MAX_RUN_S` env > 20700 s default. A non-integer or non-positive
-   value in either source is misconfigured; the runner exits 1 before any
-   stage runs.
-
-2. **Watchdog.** A background subshell is armed in `main()` after the traps
-   are installed. It sleeps for the resolved limit, writes `timed_out` to the
-   abort sentinel (first-wins semantics), then sends SIGTERM to the runner's
-   process group. After a 10-second grace it sends SIGKILL to the runner's
-   child processes (not the runner itself, so the runner's deferred SIGTERM
-   trap can fire and exit with rc=1, which lets the EXIT trap dispatch
-   `always_run` stages). The watchdog ignores SIGTERM so it survives its own
-   PG-wide TERM and can escalate to KILL. Raw kill (not `zbuild_pg_kill`)
-   because the watchdog is in the runner's own process group, which
-   `zbuild_pg_kill` refuses.
-
-3. **EXIT trap kills watchdog on clean exit.** The runner's EXIT trap must
-   send SIGKILL to `_RUNNER_WATCHDOG_PID` before the runner process exits.
-   **This is the root cause of the three integration-test timeouts** in the
-   previous build pass: the abort trap kills the watchdog, but without an
-   EXIT-trap kill, a cleanly-exiting runner leaves the watchdog sleeping for
-   up to 20700 s as an orphan in the test harness's session; test phases that
-   invoke the runner wait for it and hang past 480 s.
-
-4. **New abort word and pipeline status.** `timed_out` is the seventh abort
-   word (ADR-025) and a new pipeline status (ADR-006, ADR-015). A
-   `timed_out` state is `manual_resume_only` (resume.sh). A resumed run
-   receives a fresh watchdog armed from its own wall-clock start.
-
-5. **Always-run stages (release, persist) still execute** via
-   `_runner_dispatch_always_run` in the abort trap, which fires before the
-   timed_out path writes the final state.
-
-## Bugs from the previous build pass that the implementation must fix
-
-| Bug | Effect | Fix |
-|-----|--------|-----|
-| EXIT trap does not kill watchdog | integration tests time out (core-pipeline-runner, core-pipeline-strategy, vision-admission-gate) | add `kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null \|\| true` to runner EXIT trap |
-| `VAR=val \( subshell \)` syntax | run-limit-precedence-test.sh line 173 crashes | use `( VAR=val bash "$RUNNER" ... )` — assign inside the subshell |
-| `set +e; ...; set -e` mid-file | lint-test-errexit rejects 8 occurrences in 4 files | files have `set -uo pipefail` (no `-e`) — drop both `set` calls; `rc=$?` captures non-zero without exiting |
-| P4 tests release only | R-4 "persist" requirement unmet | add a `persist` role stage to the `timeout-with-release` template's `always_run` list and assert its marker |
-| P2 assert_pass in both branches | R-2 sub-requirement unfalsifiable | remove the if/else with two assert_pass branches; the `assert_eq ... status=timed_out` already covers R-2 |
-| run-open-items.sh change untested at unit level | reachability check fails | add a unit assertion in run-open-items-test.sh for `run_end_words "timed_out" 0` output |
-| WIRING declared as template.sh | acceptance-gate finds it inert | WIRING is `core/pipeline/runner.sh`; template.sh's new function is reachable via runner.sh → stage-limits.sh → template.sh |
-
-```scope
-config/adr-enforcement-baseline.txt
-core/pipeline/runner.sh
-core/pipeline/template.sh
-core/state/resume.sh
-docs/adr/ADR-006-resume-contract.md
-docs/adr/ADR-015-stage-io-capture.md
-docs/adr/ADR-025-abort-propagation.md
-docs/adr/ADR-054-stage-contract.md
-scripts/lib/abort-propagation.sh
-scripts/lib/run-open-items.sh
-scripts/lib/stage-limits.sh
-tests/golden/full-pipeline/event-sequence.golden
-tests/golden/parity/event-sequence.golden
-tests/golden/pipeline-end/timed_out-w80.colored.txt
-tests/golden/pipeline-end/timed_out-w80.layout.txt
-tests/integration/resume-after-run-timeout-test.sh
-tests/integration/run-timed-out-test.sh
-tests/unit/abort-propagation-test.sh
-tests/unit/run-limit-precedence-test.sh
-tests/unit/run-open-items-test.sh
-tests/unit/run-watchdog-clean-exit-test.sh
-tests/unit/runner-pipeline-end-test.sh
-```
-
-```acceptance
-SPEC-1[code]: a run whose wall-clock time exceeds max_run_s ends with pipeline status timed_out in pipeline-state.json; pipeline.end carries status=timed_out, the in-flight stage name, and limit_s; the watchdog fires even when the engine is idle between dispatches (not only inside a stage); a stage that ignores SIGTERM is dead within TERM+10 s; release and persist always_run stages both execute on the timed-out exit path covers: R-1 R-2 R-3 R-4
-SPEC-2[code]: _runner_resolve_run_limit_s resolves template max_run_s > ZBUILD_MAX_RUN_S > 20700; a non-integer or non-positive value in either source causes the runner to exit 1 with a message naming the misconfigured source before any stage dispatch covers: R-5
-SPEC-3[code]: a run that finishes within max_run_s exits with its own pipeline status unchanged (not timed_out) and no timed_out event in events.jsonl; after waiting past max_run_s the status is still the stage-driven result, proving the watchdog was reaped covers: R-6
-SPEC-4[code]: get_resume_recommendation returns manual_resume_only for a timed_out pipeline state (not fresh_start, not auto_resume); a run resumed with a generous max_run_s after a timed_out state completes normally — it is not stopped immediately covers: R-7
-SPEC-5[no-code]: scripts/lib/stage-limits.sh and core/pipeline/runner.sh contain no reference to GITHUB_ACTIONS, bare CI, TRAVIS, CIRCLECI, RUNNER_OS, or BUILD_BUILDID in limit-resolution code covers: R-8
-SPEC-6[no-code]: ADR-025 lists timed_out in its abort-word vocabulary and has ## Enforced by entries citing the new test files; ADR-054 has a §11 for the per-run limit with ## Enforced by entries; config/adr-enforcement-baseline.txt no longer lists ADR-054-stage-contract.md covers: R-9
-WIRING:
-core/pipeline/runner.sh
-TESTFILES:
-SPEC-1: tests/integration/run-timed-out-test.sh
-SPEC-2: tests/unit/run-limit-precedence-test.sh
-SPEC-3: tests/unit/run-watchdog-clean-exit-test.sh
-SPEC-4: tests/integration/resume-after-run-timeout-test.sh
-SPEC-5: tests/unit/run-limit-precedence-test.sh
-SPEC-6: tests/unit/run-limit-precedence-test.sh
-```
-
-```supersedes
-tests/unit/run-open-items-test.sh [O9]: asserts the runner has exactly 5 loop-ending lines; the timed_out arm added to _runner_end_on_abort is a sixth matching line, so the correct count is 6
-```
-
-Expand YOUR LATEST DESIGN's scope block to cover the gaps the design check reported under Previous work. Preserve all existing scope entries; only ADD the missing ones.
-
 
 ## Previous work
 
 The latest output of every stage that has run, with where to find it. Use
 what your job needs.
 
-Files this issue's work has changed so far: none.
+Files this issue's work has changed so far: config/adr-enforcement-baseline.txt, core/pipeline/runner.sh, core/pipeline/template.sh, core/state/resume.sh, docs/adr/ADR-006-resume-contract.md, docs/adr/ADR-015-stage-io-capture.md, docs/adr/ADR-025-abort-propagation.md, docs/adr/ADR-054-stage-contract.md, scripts/lib/abort-propagation.sh, scripts/lib/run-open-items.sh, scripts/lib/stage-limits.sh, tests/golden/pipeline-end/timed_out-w80.colored.txt, tests/golden/pipeline-end/timed_out-w80.layout.txt, tests/integration/resume-after-run-timeout-test.sh, tests/integration/run-timed-out-test.sh, tests/unit/run-limit-precedence-test.sh, tests/unit/run-open-items-test.sh, tests/unit/run-watchdog-clean-exit-test.sh, tests/unit/runner-pipeline-end-test.sh
 
 ### hydrate (verdict: pass)
 Outputs:
@@ -389,15 +277,13 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 288 artifact(s) from prior runs (restored)
+- restored 332 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 288 artifact(s) from zbuild/state/issue-1944
+- detail: restored 332 artifact(s) from zbuild/state/issue-1944
 
 ### intake (verdict: pass)
 Outputs:
-- intake_baseline_ref: /home/runner/work/_temp/zbuild-state/intake-baseline-ref.txt
-- intake_branch: /home/runner/work/_temp/zbuild-state/intake-branch.txt
 - intake_goal: /home/runner/work/_temp/zbuild-state/intake.md
 - intake_result: /home/runner/work/_temp/zbuild-state/artifacts/intake-result.json
 - intake_summary: /home/runner/work/_temp/zbuild-state/artifacts/intake-summary.md
@@ -425,13 +311,24 @@ Summary:
 - open questions: 3
 - artifact: plan.json
 
-### design (verdict: pass) — your own
+### design (verdict: timed_out) — your own
 Outputs:
-- design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 
 Summary:
+## design — error
+
+- Design ran out of time before writing design.md.
+
+No design.md was written.
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-7/design-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-7/design-verdict.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-7/design.md
+
+Summary of that output:
 ## design — pass
 
 - authored design.md — 22 file(s) in scope, 6 acceptance SPEC(s)
@@ -514,36 +411,6 @@ Your notes so far:
 Primary: core/pipeline/runner.sh — calls _runner_resolve_run_limit_s(), arms watchdog, modifies _runner_abort_trap and _runner_end_on_abort for timed_out
 Secondary: core/pipeline/template.sh — provides template_max_run_s() which _runner_resolve_run_limit_s() calls
 
-### spec-coverage (verdict: fail)
-Outputs:
-- spec_coverage_result: /home/runner/work/_temp/zbuild-state/artifacts/spec-coverage-result.json
-- spec_coverage_summary: /home/runner/work/_temp/zbuild-state/artifacts/spec-coverage-summary.md
-
-Findings:
-- spec-coverage finding 1 (opened by spec-coverage): The issue asks for this and no SPEC covers it: R-5: SPEC-2 requires "exit 1 with a message naming the misconfigured source before any stage dispatch" for a non-integer or non-positive limit value, but does not require that the run state (pipeline-state.json) records disposition=misconfigured for either the invalid-template or invalid-env-var path — an implementation that prints an error and exits 1 without writing the misconfigured disposition satisfies SPEC-2 but not the "refused as `misconfigured`" condition R-5 states.
-
-Summary:
-## spec-coverage — fail
-
-- SPEC-2 demands "exit 1 with a message naming the misconfigured source before any stage dispatch" but never requires that pipeline-state.json carries disposition=misconfigured, which is what R-5's "refused as `misconfigured`" explicitly demands under ADR-054.
-
-- NOT COVERED: R-5: SPEC-2 requires "exit 1 with a message naming the misconfigured source before any stage dispatch" for a non-integer or non-positive limit value, but does not require that the run state (pipeline-state.json) records disposition=misconfigured for either the invalid-template or invalid-env-var path — an implementation that prints an error and exits 1 without writing the misconfigured disposition satisfies SPEC-2 but not the "refused as `misconfigured`" condition R-5 states.
-
-### design-gate (verdict: fail)
-Outputs:
-- design_gate_feedback: /home/runner/work/_temp/zbuild-state/artifacts/design-gate-feedback.md
-- design_gate_result: /home/runner/work/_temp/zbuild-state/artifacts/design-gate-result.json
-
-Findings:
-- design-gate finding 1 (opened by design-gate): requirement R-10 from the issue is not covered by any SPEC: `npm test` + `npm run lint` green.. End the line of the SPEC that delivers it with " covers: R-10" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it
-
-Summary:
-# Design-gate: structural violations
-
-The design is not ready to build. Fix these and write design.md again:
-
-- requirement R-10 from the issue is not covered by any SPEC: `npm test` + `npm run lint` green.. End the line of the SPEC that delivers it with " covers: R-10" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it
-
 ### test-author (verdict: complete)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
@@ -556,31 +423,6 @@ Summary:
 
 - SPECs in the contract: 6
 - assertions are authored from the SPEC text, never from the implementation
-
-### spec-correspondence (verdict: partial)
-Outputs:
-- spec_correspondence_result: /home/runner/work/_temp/zbuild-state/artifacts/spec-correspondence-result.json
-- spec_correspondence_summary: /home/runner/work/_temp/zbuild-state/artifacts/spec-correspondence-summary.md
-
-Findings:
-- spec-correspondence finding 1 (opened by spec-correspondence): SPEC-1 partial: P2 shows fast-one completed before the watchdog fired but does not establish the watchdog fired specifically during an idle inter-dispatch period (a concurrent slow second stage would also satisfy the assertion), and the "release and persist on every timed-out exit path" clause is checked only on P4's path — the other three timed-out paths carry no release/persist marker assertions.
-- spec-correspondence finding 2 (opened by spec-correspondence): SPEC-2 partial: The end-to-end runner test for an invalid template value verifies rc=1 and that the dispatch loop was not reached, but does not check that pipeline-state.json carries disposition=misconfigured for that path, which the requirement equally requires for both invalid-env and invalid-template inputs.
-- spec-correspondence finding 3 (opened by spec-correspondence): SPEC-3 partial: The absence of an abort sentinel proves the watchdog did not fire after the runner exited, but not that the watchdog process itself is dead — a still-running watchdog that has not yet fired also leaves the sentinel absent, so the requirement's explicit second clause ("the watchdog process does not exist") is not established.
-- spec-correspondence finding 4 (opened by spec-correspondence): SPEC-4 partial: P4 establishes the watchdog is armed on resume (a disarmed watchdog would cause it to fail), and P3 establishes the run does not immediately time out, but the specific claim "armed from the resumed run's wall-clock start, not the original run's" is inferred from the combination and depends on test-scenario timing parameters that are not visible in the assertion code itself.
-- spec-correspondence finding 5 (opened by spec-correspondence): SPEC-5 partial: The assertion checks a finite enumerated set of CI/CD platform variables (GITHUB_ACTIONS, CI, TRAVIS, CIRCLECI, RUNNER_OS, BUILD_BUILDID), but the requirement prohibits any platform-specific variable, a category with no fixed boundary, leaving unchecked the many other well-known CI environment variables that exist.
-- spec-correspondence finding 6 (opened by spec-correspondence): SPEC-6 partial: The assertion verifies ADR document content, the baseline file, and two individual lint sub-scripts, but never executes the full `npm test` or `npm run lint` commands, which are explicitly named conditions in the requirement.
-
-Summary:
-## spec-correspondence — partial
-
-- judged 6 SPEC(s): 0 correspond, 6 partial, 0 mismatch, 0 uncheckable, 0 unjudged
-
-- SPEC-1 partial: P2 shows fast-one completed before the watchdog fired but does not establish the watchdog fired specifically during an idle inter-dispatch period (a concurrent slow second stage would also satisfy the assertion), and the "release and persist on every timed-out exit path" clause is checked only on P4's path — the other three timed-out paths carry no release/persist marker assertions.
-- SPEC-2 partial: The end-to-end runner test for an invalid template value verifies rc=1 and that the dispatch loop was not reached, but does not check that pipeline-state.json carries disposition=misconfigured for that path, which the requirement equally requires for both invalid-env and invalid-template inputs.
-- SPEC-3 partial: The absence of an abort sentinel proves the watchdog did not fire after the runner exited, but not that the watchdog process itself is dead — a still-running watchdog that has not yet fired also leaves the sentinel absent, so the requirement's explicit second clause ("the watchdog process does not exist") is not established.
-- SPEC-4 partial: P4 establishes the watchdog is armed on resume (a disarmed watchdog would cause it to fail), and P3 establishes the run does not immediately time out, but the specific claim "armed from the resumed run's wall-clock start, not the original run's" is inferred from the combination and depends on test-scenario timing parameters that are not visible in the assertion code itself.
-- SPEC-5 partial: The assertion checks a finite enumerated set of CI/CD platform variables (GITHUB_ACTIONS, CI, TRAVIS, CIRCLECI, RUNNER_OS, BUILD_BUILDID), but the requirement prohibits any platform-specific variable, a category with no fixed boundary, leaving unchecked the many other well-known CI environment variables that exist.
-- SPEC-6 partial: The assertion verifies ADR document content, the baseline file, and two individual lint sub-scripts, but never executes the full `npm test` or `npm run lint` commands, which are explicitly named conditions in the requirement.
 
 ### build (verdict: pass)
 Outputs:
@@ -599,6 +441,10 @@ Summary:
 
 ### test (verdict: fail)
 Outputs:
+- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
+- shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
+- shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
 - test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
@@ -706,87 +552,6 @@ lint-test-errexit: tests/unit/run-watchdog-clean-exit-test.sh:80 turns stop-on-e
 lint-test-errexit: tests/unit/run-watchdog-clean-exit-test.sh:131 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
 lint-test-errexit: 8 file(s) switch stop-on-error on mid-file
 
-### shape-floor (verdict: fail)
-Outputs:
-- shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
-- shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-
-Findings:
-- shape-floor finding 1 (opened by shape-floor): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 2 (opened by shape-floor): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-
-Summary:
-## shape-floor — fail
-
-- files that spell out a count, order or list this change alters were not updated
-
-This change alters a count, order or list that these files also spell out, and they were not updated.
-Update any that are now wrong. A file that is still correct can stay as it is: the full test run on this change shows that.
-- tests/golden/full-pipeline/event-sequence.golden
-- tests/golden/parity/event-sequence.golden
-
-### acceptance-gate (verdict: fail)
-Outputs:
-- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
-- gate_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
-
-Findings:
-- acceptance-gate finding 1 (opened by acceptance-gate): core/pipeline/template.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
-- acceptance-gate finding 2 (opened by acceptance-gate): config/adr-enforcement-baseline.txt/scripts/lib/run-open-items.sh was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
-- acceptance-gate finding 3 (opened by acceptance-gate): the run of timeout:SPEC-1's test on the code from before this change could not be done (a problem in the pipeline, not in your change)
-- acceptance-gate finding 4 (opened by acceptance-gate): putting timeout:core/pipeline/runner.sh back to its old version could not be done (a problem in the pipeline, not in your change)
-
-Summary:
-the acceptance check failed — core/pipeline/template.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none; config/adr-enforcement-baseline.txt/scripts/lib/run-open-items.sh was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it; the run of timeout:SPEC-1's test on the code from before this change could not be done (a problem in the pipeline, not in your change); putting timeout:core/pipeline/runner.sh back to its old version could not be done (a problem in the pipeline, not in your change)
-NEGCTL ERROR timeout:SPEC-1
-      design : a run whose wall-clock time exceeds max_run_s ends with pipeline status timed_out in pipeline-state.…
-      asserts: assert_eq "[#1944/SPEC-1] P1: runner exits non-zero" "1" "$p1_rc"
-NEGCTL PASS SPEC-2
-      design : _runner_resolve_run_limit_s resolves template max_run_s > ZBUILD_MAX_RUN_S > 20700; a non-integer or…
-      asserts: assert_pass "[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh"
-NEGCTL PASS SPEC-3
-      design : a run that finishes within max_run_s exits with its own pipeline status unchanged; the watchdog proc…
-      asserts: assert_pass "[#1944/SPEC-3] _runner_resolve_run_limit_s is defined"
-NEGCTL PASS SPEC-4
-      design : a run resumed after a timed_out end is not stopped immediately — its watchdog is armed from the resu…
-      asserts: assert_eq "[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only" \
-NEGCTL SKIP SPEC-5 no_code
-      design : the limit is resolved from template, env, or constant only; scripts/lib/stage-limits.sh and core/pip…
-      asserts: assert_eq "[#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference" "0" "$_ga_count_sl"
-NEGCTL SKIP SPEC-6 no_code
-      design : ADR-025 names timed_out in its word vocabulary with ## Enforced by entries citing the new tests; ADR…
-      asserts: assert_fail "[#1944/SPEC-6] ADR-025 file exists" "not found: $ADR025"
-REACHABILITY ERROR timeout:core/pipeline/runner.sh
-REACHABILITY FAIL inert_wiring core/pipeline/template.sh
-REACHABILITY FAIL untested_change config/adr-enforcement-baseline.txt
-REACHABILITY PASS change core/state/resume.sh
-REACHABILITY SKIP no_code scripts/lib/abort-propagation.sh
-REACHABILITY FAIL untested_change scripts/lib/run-open-items.sh
-REACHABILITY PASS change scripts/lib/stage-limits.sh
-
-### secret-scan (verdict: pass)
-Outputs:
-- secret_scan_detail: /home/runner/work/_temp/zbuild-state/artifacts/secret-scan-detail.md
-- secret_scan_result: /home/runner/work/_temp/zbuild-state/artifacts/secret-scan-result.json
-
-Summary:
-## secret-scan — pass
-
-- clean diff — no secrets found
-
-### assertion-integrity (verdict: pass)
-Outputs:
-- assertion_integrity_result: /home/runner/work/_temp/zbuild-state/artifacts/assertion-integrity-result.json
-- assertion_integrity_summary: /home/runner/work/_temp/zbuild-state/artifacts/assertion-integrity-summary.md
-
-Summary:
-## assertion-integrity — pass
-
-- declared acceptance testfiles are unchanged since authoring
-
-- files checked against the authored digests
-- violations: none
-
 ### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
@@ -814,18 +579,6 @@ Summary:
 - NOT SURE: R-9: the issue acceptance criterion says "ADR-054 §9 amended" but §9 already exists as "Per-stage router configuration surface" (untouched) — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 - NOT SURE: the diff adds §11 with the correct run-limit content — whether the issue intended to amend the existing §9 or used §9 as a draft placeholder for the new (now §11) section cannot be determined without issue history — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
-### gate-aggregator (verdict: fail)
-Outputs:
-- gate_aggregator_result: /home/runner/work/_temp/zbuild-state/artifacts/gate-aggregator-result.json
-- gate_aggregator_summary: /home/runner/work/_temp/zbuild-state/artifacts/gate-aggregator-summary.md
-
-Summary:
-## gate-aggregator — fail
-
-- rolled up 6 gate(s) into verdict fail
-
-- failed: test, shape-floor, acceptance-gate, issue-acceptance
-
 ## What you must not do
 
 - Do not write any file other than the design.md above and your notes file.
@@ -844,7 +597,7 @@ Summary:
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
 - Your budget: each model call has 600 seconds, with no limit on turns. A call that runs out of time
-  returns nothing: finish and write your answer well before the limit.
+  returns nothing: finish and write your answer well before the limit. The whole stage has 2700 seconds.
 
 ### How every stage works
 
