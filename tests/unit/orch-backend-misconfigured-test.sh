@@ -140,6 +140,63 @@ else
     assert_pass "[#1801/SPEC-9] unreadable backend config fails as misconfigured (non-zero rc)"
 fi
 
+# The requirement says: "the output names the backend in both cases."
+# For the unreadable-config case the backend alias is "bad-backend"; verify it appears.
+if grep -q 'bad-backend' <<< "$_out4"; then
+    assert_pass "[#1801/SPEC-9] unreadable backend config output names the backend ('bad-backend')"
+else
+    assert_fail "[#1801/SPEC-9] unreadable backend config output names the backend ('bad-backend')" \
+        "output does not contain 'bad-backend': $(printf '%s' "$_out4" | head -5 | tr '\n' '|')"
+fi
+
+# ─── [#1801/SPEC-19] installed-layout variant ────────────────────────────────
+# SPEC-19: source contract.sh from a temp install directory produced by rsync
+# (mirroring install.sh lines 74-80: scripts/ core/ plugins/ config/).
+# The behavior must be identical from the installed layout.
+print_test_section "[#1801/SPEC-19] installed layout: sources contract.sh from tmp ZBUILD_HOME"
+
+_zbuild_home="$TEST_TEMP_DIR/zbuild-home-install"
+mkdir -p "$_zbuild_home"
+
+if command -v rsync >/dev/null 2>&1; then
+    for _d in scripts core plugins config; do
+        rsync -a "$REPO_ROOT/$_d/" "$_zbuild_home/$_d/" 2>/dev/null || true
+    done
+
+    # Unknown-alias case from the installed layout.
+    _out_inst=""
+    _out_inst="$(
+        ZBUILD_PLUGINS_ROOT="$_zbuild_home/plugins" \
+        bash -c '
+            source "'"$_zbuild_home"'/scripts/lib/helpers.sh" 2>/dev/null || true
+            source "'"$_zbuild_home"'/core/orch/contract.sh" 2>/dev/null || true
+            orch_load_backend "no-such-backend-installed" 2>&1
+            echo "exit:$?"
+        ' 2>&1)" || true
+
+    # After the change: misconfigured output with the backend name.
+    if grep -qiE 'misconfigured|not found|cannot' <<< "$_out_inst" \
+            && grep -q 'no-such-backend-installed' <<< "$_out_inst"; then
+        assert_pass "[#1801/SPEC-19] installed layout: unknown backend → misconfigured naming the backend"
+    else
+        assert_fail "[#1801/SPEC-19] installed layout: unknown backend → misconfigured naming the backend" \
+            "output: $(printf '%s' "$_out_inst" | head -5 | tr '\n' '|')"
+    fi
+
+    # The installed contract.sh must not return 0 for a missing backend.
+    _inst_exit=""
+    _inst_exit="$(grep '^exit:' <<< "$_out_inst" | tail -1 | cut -d: -f2 || true)"
+    if [[ "$_inst_exit" == "0" ]]; then
+        assert_fail "[#1801/SPEC-19] installed layout: orch_load_backend returns non-zero on missing backend" \
+            "returned 0 — installed contract.sh still has pre-change fallback behavior"
+    else
+        assert_pass "[#1801/SPEC-19] installed layout: orch_load_backend returns non-zero on missing backend"
+    fi
+else
+    SKIP=$((SKIP + 1))
+    echo -e "  ${YELLOW}SKIP${RESET}: [#1801/SPEC-19] installed-layout variant (rsync not available)" >&2
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
