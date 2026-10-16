@@ -1,6 +1,6 @@
-## test-author — rate_limited
+## test-author — fail
 
-- the author did not finish (router_rate_limited) — what it wrote is kept for the next attempt
+- 1 assertion(s) still do not test what their SPEC says after 2 rounds
 
 - SPECs in the contract: 16
 - assertions are authored from the SPEC text, never from the implementation

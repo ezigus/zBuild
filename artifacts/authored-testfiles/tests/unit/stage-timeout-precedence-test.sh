@@ -150,6 +150,76 @@ load_template "$_tpl_t3" >/dev/null 2>&1
 assert_eq "[#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s" \
     "3600" "${_TPL_STAGE_TIMEOUT_S_gamma:-<unset>}"
 
+# ─── Tier 3 isolation: actually RUNS dispatch with no template and no env var ──
+# The requirement calls for "an isolation test that runs with neither a template
+# value nor ZBUILD_STAGE_TIMEOUT_S set and confirms 5400 s is the timeout
+# actually used." This section runs plugin_hook_call in a clean subprocess
+# with a fake `sleep` binary that logs its first argument, then checks the
+# log for exactly "5400". On pre-change code (no watchdog in plugin_hook_call)
+# no sleep is spawned and the log is empty → FAIL. On post-change code the
+# watchdog fires `sleep 5400` → the log contains "5400" → PASS.
+print_test_section "[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call"
+
+# Create a fake sleep that logs its first arg and exits immediately.
+# The lifecycle watchdog runs `sleep "$_lc_hook_to"` in a subshell; the fake
+# sleep captures what value was actually resolved.
+_spec3_bin="$TEST_TEMP_DIR/spec3-fakebin"
+_spec3_log="$TEST_TEMP_DIR/spec3-sleep-log.txt"
+rm -f "$_spec3_log" 2>/dev/null || true
+mkdir -p "$_spec3_bin"
+cat > "$_spec3_bin/sleep" <<FAKESLEEP
+#!/bin/bash
+printf '%s\n' "\$1" >> "$_spec3_log"
+exit 0
+FAKESLEEP
+chmod +x "$_spec3_bin/sleep"
+
+# Create a minimal mock plugin whose run hook exits immediately.
+_spec3_plugin="$TEST_TEMP_DIR/spec3-plugin"
+mkdir -p "$_spec3_plugin"
+cat > "$_spec3_plugin/plugin.sh" <<'PLUGIN'
+zbuild_run() { :; }
+PLUGIN
+cat > "$_spec3_plugin/manifest.yaml" <<'MANIFEST'
+id: spec3-isolation
+name: Spec3 Isolation Mock
+kind: agent
+version: 0.0.1
+MANIFEST
+_spec3_state="$TEST_TEMP_DIR/spec3-state.json"
+printf '{"pipeline_status":"running"}' > "$_spec3_state"
+
+# Run plugin_hook_call in a clean subshell:
+# - PATH prepended with our fake sleep
+# - ZBUILD_STAGE_TIMEOUT_S unset (no tier-2 value)
+# - No _TPL_STAGE_TIMEOUT_S_spec3isolation (no tier-1 value)
+# The watchdog should resolve to the 5400 s tier-3 default.
+(
+    export PATH="$_spec3_bin:$PATH"
+    unset ZBUILD_STAGE_TIMEOUT_S
+    unset _TPL_STAGE_TIMEOUT_S_spec3isolation
+    export ZBUILD_CURRENT_STAGE=spec3isolation
+    # shellcheck disable=SC1090
+    source "$REPO_ROOT/scripts/lib/helpers.sh" 2>/dev/null || true
+    # shellcheck disable=SC1090
+    source "$REPO_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
+    # shellcheck disable=SC1090
+    source "$REPO_ROOT/core/plugin-registry/lifecycle.sh" 2>/dev/null || true
+    plugin_hook_call "$_spec3_plugin" run spec3isolation "$_spec3_state" 2>/dev/null || true
+) 2>/dev/null || true
+
+_spec3_found_5400=0
+if [[ -f "$_spec3_log" ]] && grep -qE '^5400$' "$_spec3_log"; then
+    _spec3_found_5400=1
+fi
+
+if [[ "$_spec3_found_5400" -eq 1 ]]; then
+    assert_pass "[#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S"
+else
+    assert_fail "[#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S" \
+        "no 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

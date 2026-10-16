@@ -91,7 +91,8 @@ else
 fi
 
 # ─── [#1801/SPEC-11] ADR-054 has ## Enforced by section ──────────────────────
-print_test_section "[#1801/SPEC-11] ADR-054 has ## Enforced by section"
+# The section must name the tests that enforce the stage-timeout statements (§9).
+print_test_section "[#1801/SPEC-11] ADR-054 has ## Enforced by section naming stage-timeout tests"
 
 _adr054="$REPO_ROOT/docs/adr/ADR-054-stage-contract.md"
 if [[ ! -f "$_adr054" ]]; then
@@ -103,10 +104,31 @@ else
         assert_fail "[#1801/SPEC-11] ADR-054 has ## Enforced by section" \
             "section absent — ADR-054 §9 requires it"
     fi
+
+    # Extract the Enforced by section body
+    _adr054_eb=""
+    _adr054_eb="$(awk '/^## Enforced by/{p=1;next} p && /^## /{exit} p{print}' "$_adr054" 2>/dev/null || true)"
+
+    # The section must name the test enforcing §9 (stage_timeout_s watchdog)
+    if grep -q 'stage-timeout-dispatch-test\.sh' <<< "$_adr054_eb"; then
+        assert_pass "[#1801/SPEC-11] ADR-054 §9 Enforced by names stage-timeout-dispatch-test.sh"
+    else
+        assert_fail "[#1801/SPEC-11] ADR-054 §9 Enforced by names stage-timeout-dispatch-test.sh" \
+            "stage-timeout-dispatch-test.sh not listed — the watchdog enforcement test is not cited"
+    fi
+
+    # The section must also name the no-flat-limit test (§9 no-flat-limit / orch timeout removal)
+    if grep -q 'stage-timeout-no-flat-limit-test\.sh' <<< "$_adr054_eb"; then
+        assert_pass "[#1801/SPEC-11] ADR-054 §9 Enforced by names stage-timeout-no-flat-limit-test.sh"
+    else
+        assert_fail "[#1801/SPEC-11] ADR-054 §9 Enforced by names stage-timeout-no-flat-limit-test.sh" \
+            "stage-timeout-no-flat-limit-test.sh not listed — the no-flat-limit enforcement is not cited"
+    fi
 fi
 
 # ─── [#1801/SPEC-11] ADR-017 has ## Enforced by section ──────────────────────
-print_test_section "[#1801/SPEC-11] ADR-017 has ## Enforced by section"
+# The section must name the tests enforcing the stage_timeout_s statements.
+print_test_section "[#1801/SPEC-11] ADR-017 has ## Enforced by section naming stage-timeout and always_run tests"
 
 _adr017="$REPO_ROOT/docs/adr/ADR-017-per-stage-router-config.md"
 if [[ ! -f "$_adr017" ]]; then
@@ -118,10 +140,30 @@ else
         assert_fail "[#1801/SPEC-11] ADR-017 has ## Enforced by section" \
             "section absent"
     fi
+
+    _adr017_eb=""
+    _adr017_eb="$(awk '/^## Enforced by/{p=1;next} p && /^## /{exit} p{print}' "$_adr017" 2>/dev/null || true)"
+
+    # Must name always_run stage_timeout_s enforcement
+    if grep -q 'stage-timeout-always-run-test\.sh' <<< "$_adr017_eb"; then
+        assert_pass "[#1801/SPEC-11] ADR-017 Enforced by names stage-timeout-always-run-test.sh"
+    else
+        assert_fail "[#1801/SPEC-11] ADR-017 Enforced by names stage-timeout-always-run-test.sh" \
+            "stage-timeout-always-run-test.sh not listed — always_run stage_timeout_s enforcement not cited"
+    fi
+
+    # Must name loader validation enforcement
+    if grep -q 'stage-timeout-loader-validation-test\.sh' <<< "$_adr017_eb"; then
+        assert_pass "[#1801/SPEC-11] ADR-017 Enforced by names stage-timeout-loader-validation-test.sh"
+    else
+        assert_fail "[#1801/SPEC-11] ADR-017 Enforced by names stage-timeout-loader-validation-test.sh" \
+            "stage-timeout-loader-validation-test.sh not listed — loader validation enforcement not cited"
+    fi
 fi
 
 # ─── [#1801/SPEC-11] ADR-011 has ## Enforced by section ──────────────────────
-print_test_section "[#1801/SPEC-11] ADR-011 has ## Enforced by section"
+# The section must name the tests enforcing the backend-retirement statements.
+print_test_section "[#1801/SPEC-11] ADR-011 has ## Enforced by section naming backend-retirement tests"
 
 _adr011="$REPO_ROOT/docs/adr/ADR-011-pluggable-backends.md"
 if [[ ! -f "$_adr011" ]]; then
@@ -132,6 +174,25 @@ else
     else
         assert_fail "[#1801/SPEC-11] ADR-011 has ## Enforced by section" \
             "section absent"
+    fi
+
+    _adr011_eb=""
+    _adr011_eb="$(awk '/^## Enforced by/{p=1;next} p && /^## /{exit} p{print}' "$_adr011" 2>/dev/null || true)"
+
+    # Must name the backend-misconfigured test
+    if grep -q 'orch-backend-misconfigured-test\.sh' <<< "$_adr011_eb"; then
+        assert_pass "[#1801/SPEC-11] ADR-011 Enforced by names orch-backend-misconfigured-test.sh"
+    else
+        assert_fail "[#1801/SPEC-11] ADR-011 Enforced by names orch-backend-misconfigured-test.sh" \
+            "orch-backend-misconfigured-test.sh not listed — backend-misconfigured enforcement not cited"
+    fi
+
+    # Must name the sequential-retired guard test
+    if grep -q 'orch-sequential-retired-guard-test\.sh' <<< "$_adr011_eb"; then
+        assert_pass "[#1801/SPEC-11] ADR-011 Enforced by names orch-sequential-retired-guard-test.sh"
+    else
+        assert_fail "[#1801/SPEC-11] ADR-011 Enforced by names orch-sequential-retired-guard-test.sh" \
+            "orch-sequential-retired-guard-test.sh not listed — sequential-retired enforcement not cited"
     fi
 fi
 

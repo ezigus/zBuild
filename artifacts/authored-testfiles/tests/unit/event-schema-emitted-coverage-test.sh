@@ -158,9 +158,12 @@ else
 fi
 
 # ─── 5. [#1801/SPEC-18] orch.backend.misconfigured and plugin.run.timed_out ────
-# These two types must be registered in config/event-schema.json known_types.
-# The test FAILs on pre-change code (where neither is registered) and passes
-# after the change adds them.
+# Both types must be:
+#   a) registered in config/event-schema.json known_types (so they are "known"), AND
+#   b) emitted as string literals in core/ (so the coverage scan in check #1 above
+#      finds them and verifies they are registered — confirming this test passes).
+# The test FAILs on pre-change code (where neither is registered nor emitted) and
+# passes after the change adds both.
 if grep -qxF "orch.backend.misconfigured" <<< "$_engine_types"; then
     assert_pass "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json"
 else
@@ -174,6 +177,25 @@ else
     assert_fail "[#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json" \
         "not in config/event-schema.json known_types — add it under the plugin. namespace"
 fi
+
+# 5b. Verify the coverage scan (check #1 above) passes for these types:
+# they appear as emitted literals in core/ AND are in the known set.
+# This proves event-schema-emitted-coverage-test passes (no emitted type unregistered).
+for _spec18_type in "orch.backend.misconfigured" "plugin.run.timed_out"; do
+    _spec18_emitted=0
+    _spec18_known=0
+    grep -qxF "$_spec18_type" <<< "$_emitted_types" && _spec18_emitted=1
+    grep -qxF "$_spec18_type" <<< "$_known_types"   && _spec18_known=1
+    if [[ "$_spec18_emitted" -eq 1 && "$_spec18_known" -eq 1 ]]; then
+        assert_pass "[#1801/SPEC-18] event-schema-emitted-coverage-test passes for '$_spec18_type' (emitted + registered)"
+    elif [[ "$_spec18_emitted" -eq 0 ]]; then
+        assert_fail "[#1801/SPEC-18] event-schema-emitted-coverage-test passes for '$_spec18_type' (emitted + registered)" \
+            "'$_spec18_type' not found as emitted literal in core/ — add emit_event call in the implementation"
+    else
+        assert_fail "[#1801/SPEC-18] event-schema-emitted-coverage-test passes for '$_spec18_type' (emitted + registered)" \
+            "'$_spec18_type' is emitted but not in composed known set — register it in config/event-schema.json"
+    fi
+done
 
 print_test_results
 exit $((FAIL > 0))

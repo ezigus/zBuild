@@ -109,6 +109,64 @@ for _sf in \
     fi
 done
 
+# ─── [#1801/SPEC-1] specific named routes: cycle member, parallel-group member, roleless leaf ──
+# runner.sh hosts three explicit dispatch routes that all must reach plugin_hook_call:
+#   cycle_dispatch_stage      — cycle member (calls plugin_hook_call for each member/iteration)
+#   parallel_dispatch_stage   — parallel-group member (concurrent per-member dispatch)
+#   roleless leaf             — direct dispatch when the template has no roles (backward compat)
+# Each is explicitly verified below so a refactor that moves one of them out of lifecycle.sh
+# without updating the watchdog would cause these assertions to fail.
+
+_runner="$REPO_ROOT/core/pipeline/runner.sh"
+
+# cycle member — extract function body (4-space indented in runner.sh)
+_cycle_fn_body=""
+if [[ -f "$_runner" ]]; then
+    _cycle_fn_body="$(awk '/^    cycle_dispatch_stage\(\) \{/{p=1} p{print} p && /^    \}$/{p=0;exit}' "$_runner" 2>/dev/null || true)"
+fi
+if grep -q 'plugin_hook_call' <<< "$_cycle_fn_body"; then
+    assert_pass "[#1801/SPEC-1] cycle member: cycle_dispatch_stage in runner.sh calls plugin_hook_call"
+else
+    assert_fail "[#1801/SPEC-1] cycle member: cycle_dispatch_stage in runner.sh calls plugin_hook_call" \
+        "plugin_hook_call not found inside cycle_dispatch_stage — cycle members bypass the per-dispatch watchdog"
+fi
+
+# parallel-group member — extract function body
+_parallel_fn_body=""
+if [[ -f "$_runner" ]]; then
+    _parallel_fn_body="$(awk '/^    parallel_dispatch_stage\(\) \{/{p=1} p{print} p && /^    \}$/{p=0;exit}' "$_runner" 2>/dev/null || true)"
+fi
+if grep -q 'plugin_hook_call' <<< "$_parallel_fn_body"; then
+    assert_pass "[#1801/SPEC-1] parallel-group member: parallel_dispatch_stage in runner.sh calls plugin_hook_call"
+else
+    assert_fail "[#1801/SPEC-1] parallel-group member: parallel_dispatch_stage in runner.sh calls plugin_hook_call" \
+        "plugin_hook_call not found inside parallel_dispatch_stage — parallel members bypass the per-dispatch watchdog"
+fi
+
+# roleless leaf — the path taken when the stage has no template roles (backward-compat direct dispatch)
+# In runner.sh: if [[ -z "$roles_out" ]] … plugin_hook_call … else (strategy dispatch)
+# runner.sh has MULTIPLE occurrences of `[[ -z "$roles_out" ]]`: the first is a dry-run
+# display block that does NOT call plugin_hook_call. The dispatch-path occurrence does.
+# We scan ALL occurrences, capturing up to 40 lines after each, and check whether ANY
+# captured window contains plugin_hook_call — so the dry-run block cannot mask the real hit.
+_roleless_found=0
+if [[ -f "$_runner" ]]; then
+    _roleless_found="$(awk '
+        /\[\[ -z "\$roles_out" \]\]/ { block=40 }
+        block > 0 {
+            if (/plugin_hook_call/) { found=1; exit }
+            block--
+        }
+        END { print found+0 }
+    ' "$_runner" 2>/dev/null || echo 0)"
+fi
+if [[ "$_roleless_found" -eq 1 ]]; then
+    assert_pass "[#1801/SPEC-1] roleless leaf: direct plugin_hook_call when template has no roles"
+else
+    assert_fail "[#1801/SPEC-1] roleless leaf: direct plugin_hook_call when template has no roles" \
+        "plugin_hook_call not found within 40 lines of any '[[ -z \"\$roles_out\" ]]' check — roleless stages bypass the watchdog"
+fi
+
 # ─── [#1801/SPEC-10] no hand-rolled TERM/KILL in lifecycle.sh for dispatch ────
 print_test_section "[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch"
 
