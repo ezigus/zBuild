@@ -73,7 +73,7 @@ source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
 # #1988: the aggregator no longer renders gate detail — each gate publishes its
 # own. The invariant is that the GATES declare summaries, which is what makes
 # the engine deliver their findings.
-for _g in shape-floor secret-scan lint-gate coverage-gate mutation-gate; do
+for _g in shape-floor lint-gate coverage-gate mutation-gate; do
     _gm="$REPO_ROOT/plugins/tool/$_g/manifest.yaml"
     _has=0
     while IFS= read -r _r; do
@@ -211,7 +211,7 @@ mkdir -p "$T6_ART_DIR"
 # shellcheck source=../../scripts/lib/stage-result.sh
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
 for _g in test-results shape-floor-result acceptance-gate-result lint-result \
-          coverage-result mutation-result secret-scan-result; do
+          coverage-result mutation-result; do
     stage_result_write "$T6_ART_DIR/$_g.json" pass "ok"
 done
 # Three failing gates; one still writes a fault (an older plugin) — #2271: the

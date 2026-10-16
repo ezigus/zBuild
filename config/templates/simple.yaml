@@ -163,11 +163,11 @@ build_test_cycle:
     # assertion tests what its SPEC says (was spec-correspondence), and the loop
     # requires it to pass — the SPEC is design's, which it cannot re-author.
     - test-author
+    # #2371: build scans its own change for secrets (was a stage of its own).
     - build
     - test
     - shape-floor
     - acceptance-gate
-    - secret-scan
     # #2022: mechanical backstop. The spawn denies build Edit() on the declared
     # TESTFILES, but #1919 P5 measured that a Write(...) deny rule matches
     # nothing — prevention is incomplete by construction. A fail here makes the
@@ -181,10 +181,12 @@ build_test_cycle:
   exit_when:
     all:
       - { stage: test-author, field: verdict, op: eq, value: pass }
+      # #2371: build must pass — it scans its own change for secrets, and a
+      # build that broke scope or did not finish is not done either.
+      - { stage: build, field: verdict, op: eq, value: pass }
       - { stage: test, field: verdict, op: eq, value: pass }
       - { stage: shape-floor, field: verdict, op: eq, value: pass }
       - { stage: acceptance-gate, field: verdict, op: eq, value: pass }
-      - { stage: secret-scan, field: verdict, op: eq, value: pass }
       - { stage: assertion-integrity, field: verdict, op: eq, value: pass }
       - { stage: issue-acceptance, field: verdict, op: eq, value: pass }
   max_iterations: 3
@@ -286,16 +288,6 @@ acceptance-gate:
   router:
     timeout_s: 600
     max_turns: 10
-
-# ─── secret-scan (leaf, cycle member) ────────────────────────────────────────
-# T0 tool gate (ADR-040, #1136): blocks hardcoded secrets/.env in the diff.
-# verdict-in-artifact (skip on empty diff).
-secret-scan:
-  gate: auto
-  roles: [secret_scan]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
 
 # ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
 # issue #1295 (ADR-047 §2): converted from `type: parallel` to `type: map`.

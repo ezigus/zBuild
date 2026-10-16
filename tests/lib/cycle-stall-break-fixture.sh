@@ -37,7 +37,7 @@ source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # ─── SPEC-3 / SPEC-4 (stall-break vs converge) ───────────────────────────────
 # Drive the REAL cycle_orchestrator_run with a stubbed dispatch hook. build always
-# emits empty_diff; every mechanical gate passes but secret-scan, whose verdict
+# emits empty_diff; every member passes but issue-acceptance, whose verdict
 # is parameterized (#2368: the loop's exit_when names every must-pass member).
 _GATE_VERDICT="fail"
 # shellcheck disable=SC2317
@@ -85,8 +85,8 @@ cycle_dispatch_stage() {
             _CYCLE_DISPATCH_VERDICT="${_AG_VERDICT:-pass}"
             _CYCLE_DISPATCH_VERDICT_RAW="${_AG_VERDICT:-pass}"
             ;;
-        secret-scan)
-            stage_result_write "$_art/secret-scan-result.json" "$_GATE_VERDICT" x
+        issue-acceptance)
+            stage_result_write "$_art/issue-acceptance-result.json" "$_GATE_VERDICT" x
             _CYCLE_DISPATCH_VERDICT="$_GATE_VERDICT"
             _CYCLE_DISPATCH_VERDICT_RAW="$_GATE_VERDICT"
             ;;
@@ -117,6 +117,6 @@ _run_cycle() {
 # #1208: the #1117 empty-diff STALL-BREAK was REMOVED. "Run all tries": an
 # empty_diff that never converges no longer terminates early — the cycle uses ALL
 # its iterations (each cheap: build self-yields on an empty diff) and then
-# terminates by-severity. Here the mock's `test` stage passes (secret-scan
+# terminates by-severity. Here the mock's `test` stage passes (issue-acceptance
 # fails), so exhaustion routes to rc=1, outcome unconverged (→review, reason
 # max_iterations), NOT the old reason=stalled / ≤2-iter early break.

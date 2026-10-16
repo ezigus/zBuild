@@ -70,6 +70,13 @@ source "$_BUILD_DIR/lib/commit.sh"
 source "$_BUILD_DIR/lib/summary.sh"
 # shellcheck source=lib/round.sh
 source "$_BUILD_DIR/lib/round.sh"
+# #2371: build scans its own change for secrets (was the secret-scan stage).
+# shellcheck source=../../../scripts/lib/secret-patterns.sh
+source "$_BUILD_ROOT/scripts/lib/secret-patterns.sh"
+# shellcheck source=../../../scripts/lib/merge-base.sh
+source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
+# shellcheck source=lib/secrets.sh
+source "$_BUILD_DIR/lib/secrets.sh"
 
 # ─── run ────────────────────────────────────────────────────────────────────
 build_stage_run() {
@@ -110,7 +117,7 @@ build_stage_run() {
         [[ -n "$_pl_path" ]] && plan_json_path="$_pl_path"
     fi
 
-    _build_stage_run_inner \
+    _build_stage_run_checked \
         "$scope_manifest" \
         "$plan_json_path" \
         "$artifacts_dir/diff.patch" \
@@ -209,6 +216,12 @@ _build_stage_run_inner() {
     # prompt order. Build's own latest summary — and every earlier stage's
     # output — reaches it under Previous work; the repository's guidance for
     # build under From the repo.
+    # #2371: what build's own check found in the last round, before the limits.
+    if [[ -n "${_BUILD_CHECK_FOUND:-}" ]]; then
+        local _bp_text; _bp_text="$(cat "$prompt_input_file")"
+        printf '%s\n' "${_bp_text%%$'\n'## What you must not do*}${_BUILD_CHECK_FOUND}
+## What you must not do${_bp_text#*$'\n'## What you must not do}" > "$prompt_input_file"
+    fi
     local _bp_composed
     if ! _bp_composed="$(stage_prompt_compose_parts "$(cat "$prompt_input_file")")"; then
         error "_build_stage_run_inner: the prompt could not be composed — the engine's blocks are missing"

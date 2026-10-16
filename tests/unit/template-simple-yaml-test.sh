@@ -84,9 +84,10 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # design-gate are retired.
 # 15 -> 14: #2370 — test-author checks its own assertions; spec-correspondence
 # is retired.
-assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 14" "14" "${#_TPL_STAGES[@]}"
+# 14 -> 13: #2371 — build scans its own change for secrets; secret-scan is retired.
+assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 13" "13" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design test-author build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance review_lenses pr)
+_expected_stages=(hydrate intake plan design test-author build test shape-floor acceptance-gate assertion-integrity issue-acceptance review_lenses pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -130,7 +131,7 @@ assert_eq "[SPEC-3] acceptance-gate roles"  "acceptance_gate" "$_TPL_STAGE_ROLES
 assert_eq "[SPEC-3] lint stage removed (role var unset)"     "" "${_TPL_STAGE_ROLES_lint:-}"
 assert_eq "[SPEC-3] coverage stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_coverage:-}"
 assert_eq "[SPEC-3] mutation stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_mutation:-}"
-assert_eq "[SPEC-3] secret-scan roles"      "secret_scan"     "$_TPL_STAGE_ROLES_secret_scan"
+assert_eq "[SPEC-3] secret-scan stage removed (#2371)" "" "${_TPL_STAGE_ROLES_secret_scan:-}"
 assert_eq "[SPEC-3] gate-aggregator stage removed (#2368)" "" "${_TPL_STAGE_ROLES_gate_aggregator:-}"
 
 # design
@@ -240,7 +241,7 @@ _btc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
 assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles"
 assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "test-author,build,test,shape-floor,acceptance-gate,secret-scan,assertion-integrity,issue-acceptance" \
+    "test-author,build,test,shape-floor,acceptance-gate,assertion-integrity,issue-acceptance" \
     "$_TPL_CYCLE_STAGES_build_test_cycle"
 assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)" \
     "3" "$_TPL_CYCLE_MAX_build_test_cycle"
@@ -252,7 +253,7 @@ assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)" \
 # #2368: exit_when names every must-pass gate (all:), not one aggregator.
 assert_eq "[SPEC-15] build_test_cycle exit_when combines with all" \
     "all" "${_TPL_CYCLE_EXIT_COMBINATOR_build_test_cycle:-}"
-assert_eq "[SPEC-15] ...over its seven must-pass members (#2370: test-author)" "7" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
+assert_eq "[SPEC-15] ...over its seven must-pass members (#2370 test-author in; #2371 secret-scan out, build in)" "7" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
 
 # ─── SPEC-12: shape-floor is at index 7 in _TPL_STAGES (after build/test) ─────
 # CHANGE (#1218, ADR-046): design-gate + impact inserted at indices 3,4 shift the
@@ -261,8 +262,8 @@ assert_eq "[SPEC-15] ...over its seven must-pass members (#2370: test-author)" "
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
 assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[7] == shape-floor (#2370)" "shape-floor" "${_TPL_STAGES[7]}"
-assert_eq "[SPEC-12] _TPL_STAGES[11] == issue-acceptance (the loop's last gate, #2368)" \
-    "issue-acceptance" "${_TPL_STAGES[11]}"
+assert_eq "[SPEC-12] _TPL_STAGES[10] == issue-acceptance (the loop's last gate, #2368)" \
+    "issue-acceptance" "${_TPL_STAGES[10]}"
 
 # ─── SPEC-13: design is at index 3; test-author follows at 4 (#2369) ─────────
 assert_eq "[SPEC-13] _TPL_STAGES[3] == design" "design" "${_TPL_STAGES[3]}"

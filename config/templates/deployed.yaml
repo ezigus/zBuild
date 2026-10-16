@@ -74,17 +74,19 @@ build_test_cycle:
   type: cycle
   description: Build, test, and run the mechanical gates until every one passes
   flow:
+    # #2371: build scans its own change for secrets (was a stage of its own).
     - build
     - test
     - shape-floor
     - acceptance-gate
-    - secret-scan
   exit_when:
     all:
+      # #2371: build must pass — it scans its own change for secrets, and a
+      # build that broke scope or did not finish is not done either.
+      - { stage: build, field: verdict, op: eq, value: pass }
       - { stage: test, field: verdict, op: eq, value: pass }
       - { stage: shape-floor, field: verdict, op: eq, value: pass }
       - { stage: acceptance-gate, field: verdict, op: eq, value: pass }
-      - { stage: secret-scan, field: verdict, op: eq, value: pass }
   max_iterations: 3
   on_max: continue
 
@@ -176,14 +178,6 @@ acceptance-gate:
   router:
     timeout_s: 600
     max_turns: 10
-
-# ─── secret-scan (leaf, cycle member) ────────────────────────────────────────
-secret-scan:
-  gate: auto
-  roles: [secret_scan]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
 
 # ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
 review_lenses:

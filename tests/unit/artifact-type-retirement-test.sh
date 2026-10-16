@@ -90,7 +90,6 @@ declare -A _expect=(
     [plugins/agent/design/manifest.yaml]=design-verdict.json
     [plugins/tool/shape-floor/manifest.yaml]=shape-floor-result.json
     [plugins/tool/test/manifest.yaml]=test-results.json
-    [plugins/tool/secret-scan/manifest.yaml]=secret-scan-result.json
     [plugins/agent/spec-acceptance/manifest.yaml]=acceptance-gate-result.json
 )
 _s5_bad=""

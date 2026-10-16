@@ -72,7 +72,7 @@ for _t in "$REPO_ROOT"/config/templates/*.yaml; do
     fi
 done
 _ew="$(awk '/^build_test_cycle:/{f=1} f&&/exit_when:/{e=1} e&&/max_iterations:/{exit} e' "$REPO_ROOT/config/templates/simple.yaml")"
-for _m in test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance; do
+for _m in test-author build test shape-floor acceptance-gate assertion-integrity issue-acceptance; do
     assert_contains "[L3] simple: build_test_cycle must pass $_m" "$_ew" "stage: $_m,"
 done
 

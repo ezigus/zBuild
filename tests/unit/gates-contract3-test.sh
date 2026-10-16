@@ -8,7 +8,8 @@
 #   G3 retired with design-gate (#2369: design checks its own design.md and
 #      writes one outcome — design-checks-own-output-test.sh C1, C2)
 #   G4 [change] assertion-integrity: nothing recorded yet → pass
-#   G5 [change] secret-scan: no baseline → pass
+#   G5 retired with secret-scan (#2371: build scans its own change —
+#      build-checks-own-output-test.sh)
 #   G6 [change] teardown: hooks all clean → pass
 set -uo pipefail
 
@@ -22,7 +23,7 @@ print_test_header "gate and housekeeping stages write contract 3 (#2366)"
 setup_test_env "gates-contract3"
 export ZBUILD_EVENTS_DB="/dev/null"
 
-for _p in lint-gate coverage-gate mutation-gate secret-scan shape-floor assertion-integrity hydrate persist teardown; do
+for _p in lint-gate coverage-gate mutation-gate shape-floor assertion-integrity hydrate persist teardown; do
     # shellcheck source=/dev/null
     source "$REPO_ROOT/plugins/tool/$_p/plugin.sh" >/dev/null 2>&1
 done
@@ -36,7 +37,7 @@ _v3() {  # _v3 <label> <file> <outcome>
 _mkwork() { local w="$TEST_TEMP_DIR/$1"; mkdir -p "$w/artifacts"; printf '{}\n' > "$w/state.json"; printf '%s' "$w"; }
 
 print_test_section "G1: manifests"
-for _p in lint-gate coverage-gate mutation-gate secret-scan shape-floor assertion-integrity hydrate persist teardown; do
+for _p in lint-gate coverage-gate mutation-gate shape-floor assertion-integrity hydrate persist teardown; do
     _mf="$REPO_ROOT/plugins/tool/$_p/manifest.yaml"
     assert_eq "[G1] $_p declares result_contract 3" "3" \
         "$(awk '/^provides:/{f=1;next} f&&/^[a-zA-Z]/{exit} f&&/result_contract:/{sub(/.*result_contract:[[:space:]]*/,""); print; exit}' "$_mf")"
@@ -73,11 +74,6 @@ print_test_section "G4: assertion-integrity"
 W="$(_mkwork ai)"
 ZBUILD_REPO_ROOT="$TEST_TEMP_DIR" assertion_integrity_run assertion-integrity "$W/state.json" >/dev/null 2>&1
 _v3 "[G4] nothing recorded yet" "$W/artifacts/assertion-integrity-result.json" pass
-
-print_test_section "G5: secret-scan"
-W="$(_mkwork ss)"
-ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/not-a-repo" secret_scan_run secret-scan "$W/state.json" >/dev/null 2>&1
-_v3 "[G5] no baseline" "$W/artifacts/secret-scan-result.json" pass
 
 print_test_section "G6: teardown"
 W="$(_mkwork td)"
