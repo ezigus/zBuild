@@ -518,11 +518,44 @@ plugin_hook_call() {
         # Restore runner's monitor mode: set +m above always clears it, even when
         # ZBUILD_RUNNER_JOB_CONTROL=1 had it enabled before this call.
         (( _lc_m_before == 1 )) && set -m
+        # Install a TERM trap to kill the hook's process group and watchdog
+        # when plugin_hook_call is externally TERMed.  Two cases:
+        #
+        #  a) Subshell (BASHPID ≠ $$): plugin_hook_call was backgrounded by
+        #     _runner_dispatch_always_run.  exit 143 exits the subshell so
+        #     the outer _runner_dispatch_always_run wait "$_ar_pid" unblocks
+        #     (SPEC-6b: a hook child that ignores TERM must not outlive run).
+        #
+        #  b) Main-shell (BASHPID == $$): plugin_hook_call runs directly in
+        #     the runner process (sequential / roleless dispatch).  We kill the
+        #     hook group, then delegate to the runner's own signal handler
+        #     (_runner_signal_trap TERM) so the pipeline abort path runs
+        #     normally (emits pipeline.aborted, exits 1).  Fall back to
+        #     exit 143 when called outside the runner (e.g. standalone tests).
+        local _lc_in_subshell=0
+        [[ "$BASHPID" != "$$" ]] && _lc_in_subshell=1
+        if (( _lc_in_subshell )); then
+            trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; exit 143' TERM
+        else
+            # shellcheck disable=SC2064
+            trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; declare -F _runner_signal_trap >/dev/null 2>&1 && _runner_signal_trap TERM || exit 143' TERM
+        fi
         wait "$_lc_hook_pid" 2>/dev/null; rc=$?
+        # Only clear the trap we installed; in the main-shell call path the
+        # caller's trap must remain in place after a normal return.
+        (( _lc_in_subshell )) && trap - TERM
+        # In the main-shell path restore the runner's trap if we return normally
+        # (not TERMed). _runner_signal_trap is a local function inside runner.sh;
+        # if present, re-arm its trap so later dispatch calls are covered.
+        if ! (( _lc_in_subshell )) && declare -F _runner_signal_trap >/dev/null 2>&1; then
+            trap '_runner_signal_trap TERM' TERM
+        elif ! (( _lc_in_subshell )); then
+            trap - TERM
+        fi
         # #2333: the group leader exiting does not mean its group members did.
         # A child that ignored TERM would survive if the watchdog is cancelled before
-        # it delivers KILL, so KILL the whole group now.
-        kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true
+        # it delivers KILL, so use zbuild_pg_kill to reach the whole group now.
+        zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true
         declare -F zbuild_pg_kill >/dev/null 2>&1 && zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true
         wait "$_lc_wd_pid" 2>/dev/null || true
         if (( rc == 143 || rc == 137 )); then

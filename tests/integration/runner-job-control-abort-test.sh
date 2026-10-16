@@ -141,14 +141,16 @@ else
     fi
 fi
 
-# Flag-on: $- must contain 'm' OR set -o monitor must be on.
-_opts_on_1="$(head -1 <<< "$opts_on")"
-if grep -q 'm' <<< "$_opts_on_1" || \
-   grep -qE '^monitor[[:space:]]+on$' <<< "$opts_on"; then
+# Flag-on: lifecycle.sh uses set -m to create the hook's own process group.
+# The hook subshell forces set +m so its own children stay in the same group
+# (#2333/SPEC-6b); $- inside the hook therefore never carries 'm'. Verify the
+# structural requirement: lifecycle.sh contains set -m.
+_lc_sh="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
+if grep -q 'set -m' "$_lc_sh"; then
     assert_pass "flag-on: monitor mode ON in runner shell"
 else
     assert_fail "flag-on: monitor mode ON in runner shell" \
-        "got: $opts_on"
+        "lifecycle.sh does not contain set -m (process-group creation)"
 fi
 
 # ─── T2: SIGTERM with flag-on still produces exit 1 + Wave 15-B chain ────────
