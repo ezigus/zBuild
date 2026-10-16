@@ -296,20 +296,28 @@ else
     assert_fail "[#1847/SPEC-8] the prompt carries the engine's rules, where the turn budget is stated" "absent"
 fi
 
+# #2364: monitor finds deploy's result by what it is; it is made with deploy's
+# own writer (zb_test_deploy_output).
+_release_result() {
+    zb_test_deploy_output "$(dirname "$1")" pass "deployed" "https://github.com/o/r/pull/1" "$2" true >/dev/null
+}
+
 # ─── SPEC-14: ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url win over hardcoded paths ─
 print_test_section "ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url content reaches the prompt instead of the artifacts_dir copies"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
 _s14_custom_dir="$TEST_TEMP_DIR/spec14-custom"
 mkdir -p "$_s14_custom_dir"
-printf '{"decoy":false,"marker":"SPEC14_DEPLOY_MARKER"}\n' > "$_s14_custom_dir/deploy-result.json"
-printf 'https://example.com/SPEC14_PR_MARKER\n' > "$_s14_custom_dir/pr-url.txt"
+_release_result "$_s14_custom_dir/deploy-result.json" "SPEC14_DEPLOY_MARKER"
+printf 'https://github.com/SPEC14_PR_MARKER/r/pull/14\n' > "$_s14_custom_dir/pr-url.txt"
 
 # Decoy content at the hardcoded artifacts_dir path: if the plugin ignores the
 # index and falls back to the hardcoded path, the prompt shows THIS instead —
 # so the assertion below correctly fails when ZBUILD_STAGE_INPUTS is not honored.
-printf '{"decoy":true,"marker":"ARTIFACTS_DIR_DECOY"}\n' > "$ARTIFACTS_DIR/deploy-result.json"
-printf 'https://example.com/ARTIFACTS_DIR_DECOY\n' > "$ARTIFACTS_DIR/pr-url.txt"
+# The decoys are real deploy results / PR addresses too, so only the index
+# tells them apart: with an index, only what it lists is read.
+_release_result "$ARTIFACTS_DIR/deploy-result.json" "ARTIFACTS_DIR_DECOY"
+printf 'https://github.com/ARTIFACTS_DIR_DECOY/r/pull/1\n' > "$ARTIFACTS_DIR/pr-url.txt"
 
 _s14_si="$TEST_TEMP_DIR/spec14-stage-inputs.json"
 printf '{"inputs":{"deploy_result":"%s","pr_url":"%s"}}\n' \
@@ -347,16 +355,16 @@ _s18_grep="$(grep -n 'artifacts_dir.*deploy-result\|artifacts_dir.*pr-url' "$PLU
 assert_eq "plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction" \
     "" "$_s18_grep"
 
-print_test_section "ZBUILD_STAGE_INPUTS unset with no entry: treated as not provided, no fallback path is constructed"
+print_test_section "no index (a stage run by hand): the run's own deploy result and PR address are read; other outputs are not"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
 unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
-# Decoy content at the now-removed hardcoded fallback path: if the plugin still
-# constructed $artifacts_dir/deploy-result.json / pr-url.txt as a fallback, the
-# prompt would show this content instead — so this assertion correctly fails
-# were a fallback path still being built.
-printf '{"decoy":true,"marker":"SPEC18_NO_FALLBACK_MARKER"}\n' > "$ARTIFACTS_DIR/deploy-result.json"
-printf 'https://example.com/SPEC18_NO_FALLBACK_MARKER\n' > "$ARTIFACTS_DIR/pr-url.txt"
+# #2364 (ADR-055 §1): with no index the run's own directories are searched, and
+# an output is taken for what it contains. The deploy result here is real; the
+# other JSON is not a deploy result and must not reach the prompt as one.
+_release_result "$ARTIFACTS_DIR/deploy-result.json" "SPEC18_OWN_RELEASE_MARKER"
+printf '{"decoy":true,"marker":"SPEC18_NOT_A_RELEASE_MARKER"}\n' > "$ARTIFACTS_DIR/a-other.json"
+printf 'https://github.com/SPEC18_OWN_PR_MARKER/r/pull/18\n' > "$ARTIFACTS_DIR/pr-url.txt"
 : > "$_CAPTURED_PROMPT_FILE"
 MOCK_ROUTE_RC=0
 MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
@@ -364,12 +372,14 @@ set +e
 monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
 set -e
 _s18_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
-if grep -q "SPEC18_NO_FALLBACK_MARKER" <<< "$_s18_prompt"; then
-    assert_fail "prompt must NOT reflect artifacts_dir/deploy-result.json or pr-url.txt content when ZBUILD_STAGE_INPUTS has no entry (no fallback path construction)" \
-        "marker leaked into prompt"
+assert_contains "no index: the run's own deploy result reaches the prompt" "$_s18_prompt" "SPEC18_OWN_RELEASE_MARKER"
+assert_contains "no index: the run's own PR address reaches the prompt" "$_s18_prompt" "SPEC18_OWN_PR_MARKER"
+if grep -q "SPEC18_NOT_A_RELEASE_MARKER" <<< "$_s18_prompt"; then
+    assert_fail "no index: JSON that is not a deploy result does not reach the prompt" "it did"
 else
-    assert_pass "with no ZBUILD_STAGE_INPUTS entry, artifacts_dir/deploy-result.json and pr-url.txt content does not reach the prompt"
+    assert_pass "no index: JSON that is not a deploy result does not reach the prompt"
 fi
+rm -f "$ARTIFACTS_DIR/a-other.json"
 rm -f "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt"
 
 # ─── SPEC-24 (corrected after review #2221): a turn-budget hit is classified ──

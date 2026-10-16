@@ -160,7 +160,7 @@ _setup_fixture t5
 # the run fails because $_F_SCOPE and $_F_PLAN are deleted.
 _CUSTOM_SCOPE="$TEST_TEMP_DIR/t5-custom-scope.md"
 _CUSTOM_PLAN="$TEST_TEMP_DIR/t5-custom-plan.json"
-printf 'scope: custom\n' > "$_CUSTOM_SCOPE"
+printf '+ custom/\n' > "$_CUSTOM_SCOPE"
 cat > "$_CUSTOM_PLAN" <<'EOF'
 {"schema_version":1,"title":"custom","goal":"g","steps":[{"id":"step-1","description":"d","files":["bar.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
 EOF

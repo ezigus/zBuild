@@ -48,14 +48,6 @@ _plan_on_signal() {
     exit 1
 }
 
-# _plan_input <id> — the path the engine resolved for input <id>, from its
-# index (ZBUILD_STAGE_INPUTS). Empty when the engine named none. Nothing is
-# guessed: no environment variable, no path derived from the state file (#1835).
-_plan_input() {
-    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
-    jq -r --arg id "$1" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true
-}
-
 _plan_run_entry() {
     _PLAN_RESULT_WRITTEN=""
     # The engine names the artifact dir (core/plugin-registry/lifecycle.sh); plan
@@ -67,27 +59,14 @@ _plan_run_entry() {
     fi
     mkdir -p "$artifacts_dir"
 
-    # Both inputs come from the engine's index, or the stage cannot run: a
-    # missing one is the engine's contract broken, not a goal to go looking for.
-    local scope_manifest goal_path goal_text=""
-    scope_manifest="$(_plan_input scope_manifest)"
-    goal_path="$(_plan_input intake_goal)"
-    if [[ -z "$scope_manifest" || -z "$goal_path" ]]; then
-        local _missing=""
-        [[ -z "$scope_manifest" ]] && _missing="scope_manifest"
-        [[ -z "$goal_path" ]] && _missing="${_missing:+$_missing, }intake_goal"
-        error "plan_run: the engine's input index (ZBUILD_STAGE_INPUTS) names no $_missing"
-        _plan_write_outcome "${artifacts_dir}/plan.json" "broken" "input_missing"
-        return 1
-    fi
-    if [[ ! -f "$goal_path" ]]; then
-        error "plan_run: intake_goal path unreadable: $goal_path"
-        _plan_write_outcome "${artifacts_dir}/plan.json" "broken" "intake_goal_path_unreadable"
-        return 1
-    fi
-    goal_text="$(cat "$goal_path")"
+    # #2364: the scope manifest and the issue text, found by what they are among
+    # every earlier output. The issue text is required; the scope manifest is
+    # the router's to enforce (ADR-043).
+    local scope_manifest goal_text=""
+    scope_manifest="$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    goal_text="$(earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     if [[ -z "$goal_text" ]]; then
-        error "plan_run: intake_goal is empty: $goal_path"
+        error "plan_run: no earlier output carries the issue text"
         _plan_write_outcome "${artifacts_dir}/plan.json" "broken" "intake_goal_missing"
         return 1
     fi

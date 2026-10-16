@@ -1352,3 +1352,44 @@ zb_expected_run_state_dir() {
         zbuild_layout_run_state_dir "$key" "$rid"
     )
 }
+
+# zb_test_issue_output <dir> <issue text> — the issue as intake hands it on: a
+# result carrying data.issue_text (#2364), written with the engine's result
+# writer, so a stage finds it by what it is. Prints the file's path.
+zb_test_issue_output() {
+    local dir="$1" text="$2"
+    mkdir -p "$dir"
+    declare -F stage_result_write >/dev/null 2>&1 \
+        || source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-result.sh"
+    stage_result_write "$dir/intake-result.json" pass "took in the goal" \
+        "$(jq -nc --arg t "$text" '{goal_len: ($t | length), platform_count: 1, issue_text: $t}')" >/dev/null
+    printf '%s\n' "$dir/intake-result.json"
+}
+
+# zb_test_deploy_output <dir> <outcome> <reason> [pr_url] [tag] [deployed] — a
+# deploy result written by deploy's own writer (_deploy_write_result), in a
+# subshell so the plugin's definitions stay out of the caller. Prints its path.
+zb_test_deploy_output() {
+    local dir="$1"
+    mkdir -p "$dir"
+    (
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/plugins/agent/deploy/plugin.sh" >/dev/null 2>&1
+        _deploy_write_result "$dir" "$2" "$3" "${4:-}" "${5:-}" "" "${6:-}"
+    ) >/dev/null 2>&1
+    printf '%s\n' "$dir/deploy-result.json"
+}
+
+# zb_test_test_run_output <dir> <pass|fail> [passed] [failed] — a test run's
+# result written by the test stage's own writer (_test_write_result), in a
+# subshell. Prints its path.
+zb_test_test_run_output() {
+    local dir="$1" v="$2" p="${3:-1}" f="${4:-0}" ec=0 d=complete
+    [[ "$v" == pass ]] || { ec=1; }
+    mkdir -p "$dir"
+    (
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/plugins/tool/test/plugin.sh" >/dev/null 2>&1
+        _test_write_result "$dir/test-results.json" "$v" "$d" "$ec" "$p" "$f" \
+            "unit: $p/$((p + f)) passed" "false" "npm test" "" "full"
+    ) >/dev/null 2>&1
+    printf '%s\n' "$dir/test-results.json"
+}

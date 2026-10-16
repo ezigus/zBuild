@@ -2,13 +2,13 @@
 # plugins/tool/mutation-gate/plugin.sh — Mutation Read-out Gate (ADR-040, ADR-037 §1, #1135)
 #
 # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
-# Thin read-out gate: consumes the SHARED test-framework result (test-results.json
+# Thin read-out gate: consumes the SHARED test-framework result (the test run
 # from the test stage, #1133) and NEVER re-runs the mutation harness. Reads the
 # `mutation` block and maps it to a verdict:
 #   - status skipped              → skip
 #   - score "N/M", N < floor      → fail
 #   - otherwise                   → pass
-# Floor preference: the `floor` recorded in test-results.json wins; otherwise
+# Floor preference: the `floor` recorded in the test run wins; otherwise
 # ZBUILD_MUTATION_FLOOR (default 0). Absent file / missing block → skip. Writes
 # verdict to mutation-result.json and always returns rc=0 (verdict-in-artifact).
 #
@@ -30,6 +30,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage
 # shellcheck source=../../../scripts/lib/stage-result.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _MG_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_MG_ROOT/scripts/lib/earlier-output.sh"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_MG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
@@ -39,7 +42,7 @@ _mg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || t
 
 # ─── mutation_gate_run ────────────────────────────────────────────────────────
 # Resolves test_results from ZBUILD_STAGE_INPUTS when set, otherwise reads
-# $artifacts_dir/test-results.json. Parses the .mutation block ("N/M" score +
+# the test run (found by content, #2364). Parses the .mutation block ("N/M" score +
 # floor) → verdict, emits mutation_gate.{pass,fail,skip}, writes
 # mutation-result.json. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
@@ -56,11 +59,9 @@ mutation_gate_run() {
     mkdir -p "$artifacts_dir"
 
     local result_path="$artifacts_dir/mutation-result.json"
-    local results_json=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
-    [[ -n "$results_json" ]] || results_json="$artifacts_dir/test-results.json"
+    # #2364: the test run that carries a mutation block, found by what it carries.
+    local results_json
+    results_json="$(earlier_output_with_json '(.data.mutation // .mutation) != null' "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     # Read status, score, floor in one jq pass. Absent file / block → all empty.
     # Try v2 path (.data.mutation) first; fall back to v1 top-level (.mutation)
@@ -103,7 +104,7 @@ mutation_gate_run() {
             ;;
         *)
             outcome="pass"
-            detail="no mutation block in test-results.json"
+            detail="no mutation block in any test run"
             _mg_emit "mutation_gate.skip"
             ;;
     esac

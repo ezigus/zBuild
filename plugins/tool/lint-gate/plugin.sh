@@ -2,7 +2,7 @@
 # plugins/tool/lint-gate/plugin.sh — Lint Read-out Gate (ADR-040, ADR-037 §1, #1135)
 #
 # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
-# Thin read-out gate: consumes the SHARED test-framework result (test-results.json
+# Thin read-out gate: consumes the SHARED test-framework result (the test run
 # from the test stage, #1133) and NEVER re-runs the linter. Reads the `lint`
 # block and maps lint.status → verdict (skipped→skip, fail→fail, pass→pass).
 # Absent file or missing block → skip. Writes verdict to lint-result.json and
@@ -26,6 +26,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage
 # shellcheck source=../../../scripts/lib/stage-result.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _LG_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_LG_ROOT/scripts/lib/earlier-output.sh"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_LG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
@@ -34,7 +37,7 @@ source "$_LG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 _lg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
 # ─── lint_gate_run ────────────────────────────────────────────────────────────
-# Reads $artifacts_dir/test-results.json, maps .lint.status → verdict, emits
+# Reads the test run (found by content, #2364), maps .lint.status → verdict, emits
 # lint_gate.{pass,fail,skip}, writes lint-result.json. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
 lint_gate_run() {
@@ -50,11 +53,9 @@ lint_gate_run() {
     mkdir -p "$artifacts_dir"
 
     local result_path="$artifacts_dir/lint-result.json"
-    local results_json=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
-    [[ -n "$results_json" ]] || results_json="$artifacts_dir/test-results.json"
+    # #2364: the test run that carries a lint block, found by what it carries.
+    local results_json
+    results_json="$(earlier_output_with_json '(.data.lint // .lint) != null' "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     # Read the lint.status field. Absent file / missing block → "" → skip.
     # Try v2 path (.data.lint) first; fall back to v1 top-level (.lint) for
@@ -84,7 +85,7 @@ lint_gate_run() {
             ;;
         *)
             outcome="pass"
-            detail="no lint block in test-results.json"
+            detail="no lint block in any test run"
             _lg_emit "lint_gate.skip"
             ;;
     esac

@@ -319,7 +319,7 @@ _s18a_sf="$(_make_dr_state "$_s18a_dir")"   # intentionally: no pr-url.txt in ar
 _s18a_art="$_s18a_dir/artifacts"
 
 _s18a_custom="$TEST_TEMP_DIR/custom-pr-url.txt"
-printf 'https://github.com/mock/repo/pull/18a\n' > "$_s18a_custom"
+printf 'https://github.com/mock/repo/pull/181\n' > "$_s18a_custom"
 
 _s18a_si="$TEST_TEMP_DIR/spec18a-si.json"
 printf '{"inputs":{"pr_url":"%s"}}\n' "$_s18a_custom" > "$_s18a_si"
@@ -336,7 +336,7 @@ set +e
 assert_file_exists "[SPEC-18] ZBUILD_STAGE_INPUTS: deploy-result.json written" "$_s18a_art/deploy-result.json"
 if [[ -f "$_s18a_art/deploy-result.json" ]]; then
     _s18a_pr_url="$(jq -r '.data.pr_url // empty' "$_s18a_art/deploy-result.json" 2>/dev/null || true)"
-    if [[ "$_s18a_pr_url" == "https://github.com/mock/repo/pull/18a" ]]; then
+    if [[ "$_s18a_pr_url" == "https://github.com/mock/repo/pull/181" ]]; then
         assert_pass "[SPEC-18] ZBUILD_STAGE_INPUTS: pr_url from custom path in deploy-result.json"
     else
         assert_fail "[SPEC-18] ZBUILD_STAGE_INPUTS: pr_url from custom path in deploy-result.json" \
@@ -348,7 +348,7 @@ fi
 # The engine exports ZBUILD_STAGE_INPUTS for every dispatched stage (lifecycle.sh),
 # including the deploy agent that calls this plugin.
 _s18b_dir="$TEST_TEMP_DIR/spec18b"
-_s18b_sf="$(_make_dr_state "$_s18b_dir" "https://github.com/mock/repo/pull/18b")"
+_s18b_sf="$(_make_dr_state "$_s18b_dir" "https://github.com/mock/repo/pull/182")"
 _s18b_art="$_s18b_dir/artifacts"
 printf '{"inputs":{}}\n' > "$_s18b_dir/stage-inputs.json"
 

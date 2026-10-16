@@ -528,3 +528,27 @@ inputs, no template wires feedback, no check reads inputs, a manifest declaring 
 `tests/unit/preflight-lint-parity-test.sh` (the lint and the validator refuse it alike);
 `tests/unit/lint-contract-scope-derivation-test.sh` (lint scope is every stage);
 `tests/unit/summary-retire-wiring-test.sh` SPEC-5 (no template wires `feedback:`).
+
+### Amendment (2026-10-15, #2364) — no stage's code names another stage or its output
+
+Every later stage is handed every earlier stage's latest output (§1, amended 2026-10-12). A stage finds
+what it needs among them **by what it contains**, never by which stage made it: no lookup by another
+stage's output name (`.inputs.design`), no path to another stage's file (`$artifacts_dir/plan.json`), and
+no refusal because a named output is missing. `scripts/lib/earlier-output.sh` does the finding —
+`earlier_output_with_text <ERE>` and `earlier_output_with_json <jq-test>`, and finders named for the kind
+of content (the acceptance contract, the work plan, the requirements, the issue text, a test run, the
+change as a patch, a deploy result, a PR address). With no index (a stage run by hand) it searches the
+run's artifacts and state directories. intake's result now carries the issue text (`data.issue_text`), so
+it can be found by content. A stage that calls another stage's code within its own dispatch (pr-delivery →
+merge → pr-open) is handed that stage's result path in a variable (`MERGE_RESULT_FILE`,
+`PR_OPEN_RESULT_FILE`), never by its file name. pr-open and merge no longer read the retired review
+stage's file; "a review ran" is the engine's word (`ZBUILD_RUN_FLAGGED`, yes|no). Every deploy result
+says whether anything was deployed (`data.deployed`, false unless a release was cut) — that is how a
+later stage knows it for a deploy result. test needs nothing from the stage that made the change: it
+runs the suite with no patch (its old guard on `diff.patch` is gone).
+
+Enforced by: `tests/unit/earlier-output-by-content-test.sh` C1–C7 (C6 runs
+`scripts/lib/lint-stage-output-names.sh`, which is in `npm run lint`); `plugins/agent/deploy/tests/deploy-test.sh`
+[#2364] (every deploy result states `deployed`); `plugins/tool/test/tests/test-test.sh` test 2 (no patch,
+the suite runs); `tests/unit/merge-v2-result-test.sh` [#2364] (merge names its result; no review word, no
+auto-merge); `tests/unit/pr-open-v2-result-test.sh` SPEC-11 (no review word, no PR, whatever is on disk).

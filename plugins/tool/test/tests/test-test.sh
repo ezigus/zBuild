@@ -53,26 +53,33 @@ _json_key() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Test 2: missing diff.patch → error artifact, plugin exits 0
+# Test 2: no patch at all → test still runs the suite (#2364)
+# test runs the suite on the repo; it needs nothing from the stage that made
+# the change, so with no patch it runs and reports what the suite said.
 # ═══════════════════════════════════════════════════════════════════════════════
-print_test_section "2. missing diff.patch → error artifact"
+print_test_section "2. no patch → the suite still runs"
 
 NONEXISTENT_PATCH="$ARTIFACT_DIR/nonexistent.patch"
 OUT_JSON_2="$ARTIFACT_DIR/test-results-2.json"
 
 set +e
-_test_run_inner "$NONEXISTENT_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_2" "true"
+_test_run_inner "$NONEXISTENT_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_2" "printf 'NO-PATCH-SUITE-RAN\\nunit: 1/1 passed\\n'"
 rc2=$?
 set -e
 
-assert_exit_code "plugin exits 0 even when diff.patch missing" "0" "$rc2"
-assert_file_exists "test-results.json written on missing patch" "$OUT_JSON_2"
+assert_exit_code "plugin exits 0 with no patch" "0" "$rc2"
+assert_eq "[#2364] no patch: the suite ran and passed" "pass" "$(_json_key "$OUT_JSON_2" '.outcome')"
+assert_contains "[#2364] no patch: the result carries the suite's own output" \
+    "$(_json_key "$OUT_JSON_2" '.data.test_output')" "NO-PATCH-SUITE-RAN"
+assert_eq "[#2364] no patch: no missing_diff_patch reason" "false" \
+    "$(jq -r '(.reason // "") | test("missing_diff_patch")' "$OUT_JSON_2" 2>/dev/null)"
 
-verdict2="$(_json_key "$OUT_JSON_2" '.outcome')"
-diff_applied2="$(_json_key "$OUT_JSON_2" '.data.diff_applied')"
-
-assert_eq "outcome is 'broken' for missing patch (#2366)" "broken" "$verdict2"
-assert_eq "diff_applied is false for missing patch" "false" "$diff_applied2"
+# An error path for SPEC-5/6/12 below: a command that prints nothing the
+# parser recognises is an error (#584 summary_unavailable).
+OUT_JSON_2B="$ARTIFACT_DIR/test-results-2b.json"
+set +e
+_test_run_inner "" "$TEST_TEMP_DIR/repo" "$OUT_JSON_2B" "true" >/dev/null 2>&1
+set -e
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Test 3: good diff.patch + passing mock test_cmd → verdict=pass
@@ -706,16 +713,16 @@ assert_eq "[SPEC-4] exit_code=1 at top level on fail path" "1" "$_spec4_ec"
 assert_eq "[SPEC-4] outcome=fail on the fail path (#2366)" "fail" "$_spec4_disp"
 
 # [SPEC-5] test_output at top level in v2 result on error path AND disposition=broken
-_spec5_has_to="$(jq '(.result_contract == 3) and (.data.test_output != null) and (.test_output == .data.test_output)' "$OUT_JSON_2" 2>/dev/null || echo false)"
-_spec5_disp="$(_json_key "$OUT_JSON_2" '.outcome')"
-assert_eq "[SPEC-5] test_output mirrored at top level on error (missing diff)" "true" "$_spec5_has_to"
-assert_eq "[SPEC-5] outcome=broken on error (missing diff)" "broken" "$_spec5_disp"
+_spec5_has_to="$(jq '(.result_contract == 3) and (.data.test_output != null) and (.test_output == .data.test_output)' "$OUT_JSON_2B" 2>/dev/null || echo false)"
+_spec5_disp="$(_json_key "$OUT_JSON_2B" '.outcome')"
+assert_eq "[SPEC-5] test_output mirrored at top level on error (unreadable suite output)" "true" "$_spec5_has_to"
+assert_eq "[SPEC-5] outcome=broken on error (unreadable suite output)" "broken" "$_spec5_disp"
 
-# [SPEC-6] run_mode at top level in v2 result on missing-diff error AND reason=missing_diff_patch
-_spec6_has_rm="$(jq '(.result_contract == 3) and (.data.run_mode != null) and (.run_mode == .data.run_mode)' "$OUT_JSON_2" 2>/dev/null || echo false)"
-_spec6_reason="$(_json_key "$OUT_JSON_2" '.reason')"
-assert_eq "[SPEC-6] run_mode mirrored at top level on missing-diff error path" "true" "$_spec6_has_rm"
-assert_eq "[SPEC-6] reason=missing_diff_patch emitted on missing diff" "missing_diff_patch" "$_spec6_reason"
+# [SPEC-6] run_mode at top level in v2 result on the error path, and its reason
+_spec6_has_rm="$(jq '(.result_contract == 3) and (.data.run_mode != null) and (.run_mode == .data.run_mode)' "$OUT_JSON_2B" 2>/dev/null || echo false)"
+_spec6_reason="$(_json_key "$OUT_JSON_2B" '.reason')"
+assert_eq "[SPEC-6] run_mode mirrored at top level on the error path" "true" "$_spec6_has_rm"
+assert_eq "[SPEC-6] reason names the unreadable suite output" "summary_unavailable" "$_spec6_reason"
 
 # [SPEC-7] exit_code is carried in BOTH places and the two never diverge. SPEC-3
 # already pins the top-level value, so a bare has() here would add no signal;
@@ -766,22 +773,17 @@ _spec9_unrooted="$(grep -E '(^|[^_[:alnum:]])artifact_dir=' "$PLUGIN_DIR/plugin.
 assert_eq "[SPEC-9] every artifact_dir derivation is rooted in engine-provided ZBUILD_ARTIFACT_DIR" "0" "$_spec9_unrooted"
 
 # [SPEC-12] ADR-055 §9: the summary is published on EVERY terminal verdict,
-# including the earliest bail-out. The missing-diff guard returns before the
-# main summary write, so it is the one exit path that could still publish
-# nothing — and with `required: true` on the output, publishing nothing is now
-# a fail-closed contract violation rather than a silent nicety.
-# A FRESH artifact dir: $ARTIFACT_DIR already holds a summary from an earlier
-# test, and asserting presence there passes on that stale file no matter what
-# the guard path does. Isolation is what makes this assertion mean anything.
+# an error included. A FRESH artifact dir: $ARTIFACT_DIR already holds a
+# summary from an earlier test, and asserting presence there passes on that
+# stale file no matter what the error path does.
 _spec12_dir="$TEST_TEMP_DIR/spec12-artifacts"; mkdir -p "$_spec12_dir"
 _spec12_sum="$_spec12_dir/test-failures-summary.md"
 set +e
-_test_run_inner "$_spec12_dir/nonexistent.patch" "$TEST_TEMP_DIR/repo" \
+_test_run_inner "" "$TEST_TEMP_DIR/repo" \
     "$_spec12_dir/test-results.json" "true" >/dev/null 2>&1
 set -e
-assert_file_exists "[SPEC-12] summary published on the missing-diff guard path" "$_spec12_sum"
-assert_contains "[SPEC-12] guard summary records the verdict" "$(cat "$_spec12_sum" 2>/dev/null)" "verdict: error"
-assert_contains "[SPEC-12] guard summary names the missing patch" "$(cat "$_spec12_sum" 2>/dev/null)" "missing_diff_patch"
+assert_file_exists "[SPEC-12] summary published on the error path" "$_spec12_sum"
+assert_contains "[SPEC-12] the summary records the verdict" "$(cat "$_spec12_sum" 2>/dev/null)" "verdict: error"
 
 # [SPEC-10] manifest valid_verdicts covers every verdict the plugin emits (GUARD)
 if grep -q 'valid_verdicts' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null; then

@@ -98,7 +98,11 @@ assert_contains "[M9] no interrupt bookkeeping leaks into the caller" "$_m3_out"
 
 print_test_section "M4: an input outside the run is refused"
 _out4="$TEST_TEMP_DIR/elsewhere"; mkdir -p "$_out4"
-printf '{"secret":"OUTSIDE-CONTENT"}\n' > "$_out4/deploy-result.json"
+# A real deploy result (deploy's own writer), so it is one monitor would read —
+# it is refused for where it is, not for what it is.
+zb_test_deploy_output "$_out4" pass "deployed" "" "OUTSIDE-CONTENT" true >/dev/null
+assert_contains "[M4] fixture: a deploy result, written by deploy's writer" \
+    "$(cat "$_out4/deploy-result.json" 2>/dev/null)" '"deployed":true'
 jq -n --arg d "$_out4/deploy-result.json" '{inputs:{deploy_result:$d}}' > "$STATE_DIR/stage-inputs/monitor.json"
 : > "$ZBUILD_EVENTS_JSONL"; rm -f "$ART/monitor-report.json"; : > "$PROMPT_FILE"
 MOCK_MODE=pass

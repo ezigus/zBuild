@@ -2,14 +2,14 @@
 # plugins/tool/coverage-gate/plugin.sh — Coverage Read-out Gate (ADR-040, ADR-037 §1, #1135)
 #
 # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
-# Thin read-out gate: consumes the SHARED test-framework result (test-results.json
+# Thin read-out gate: consumes the SHARED test-framework result (the test run
 # from the test stage, #1133) and NEVER re-runs the coverage tool. Reads the
 # `coverage` block and maps it to a verdict:
 #   - status skipped | error          → skip
 #   - status below_floor              → fail
 #   - status measured & pct < floor   → fail
 #   - otherwise                       → pass
-# Floor preference: the `floor` recorded in test-results.json wins; otherwise
+# Floor preference: the `floor` recorded in the test run wins; otherwise
 # ZBUILD_COVERAGE_FLOOR (default 29). Absent file / missing block → skip. Writes
 # verdict to coverage-result.json and always returns rc=0 (verdict-in-artifact).
 #
@@ -31,6 +31,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage
 # shellcheck source=../../../scripts/lib/stage-result.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _CG_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_CG_ROOT/scripts/lib/earlier-output.sh"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_CG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
@@ -50,7 +53,7 @@ _cg_lt() {
 
 # ─── coverage_gate_run ────────────────────────────────────────────────────────
 # Resolves test_results from ZBUILD_STAGE_INPUTS when set, otherwise reads
-# $artifacts_dir/test-results.json. Maps the .coverage block → verdict, emits
+# the test run (found by content, #2364). Maps the .coverage block → verdict, emits
 # coverage_gate.{pass,fail,skip}, writes coverage-result.json. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
 coverage_gate_run() {
@@ -66,11 +69,9 @@ coverage_gate_run() {
     mkdir -p "$artifacts_dir"
 
     local result_path="$artifacts_dir/coverage-result.json"
-    local results_json=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
-    [[ -n "$results_json" ]] || results_json="$artifacts_dir/test-results.json"
+    # #2364: the test run that carries a coverage block, found by what it carries.
+    local results_json
+    results_json="$(earlier_output_with_json '(.data.coverage // .coverage) != null' "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     # Read status, pct, floor in one jq pass. Absent file / block → all empty.
     # Try v2 path (.data.coverage) first; fall back to v1 top-level (.coverage)
@@ -113,7 +114,7 @@ coverage_gate_run() {
             ;;
         *)
             outcome="pass"
-            detail="no coverage block in test-results.json"
+            detail="no coverage block in any test run"
             _cg_emit "coverage_gate.skip"
             ;;
     esac

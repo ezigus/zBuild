@@ -29,6 +29,9 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _VALIDATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_VALIDATE_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_VALIDATE_ROOT/core/event-bus/event-bus.sh"
 # #2366 (ADR-054 §6): the one writer of a contract-3 result.
@@ -73,20 +76,18 @@ _validate_agent_run_inner() {
     fi
     mkdir -p "$artifacts_dir"
 
-    local _si_path="${ZBUILD_STAGE_INPUTS:-}"
-    local deploy_result_in=""
-    if [[ -n "$_si_path" && -f "$_si_path" ]]; then
-        deploy_result_in="$(jq -r '.inputs.deploy_result // empty' "$_si_path")"
-    fi
+    # #2364: the deploy result, found by what it is.
+    local deploy_result_in
+    deploy_result_in="$(earlier_deploy_result "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
-    # Guard: deploy-result.json must exist (required input from deploy stage)
+    # Guard: the deploy result must exist.
     if [[ -z "$deploy_result_in" || ! -f "$deploy_result_in" ]]; then
-        error "validate: missing required input deploy-result.json"
-        emit_event "validate.input.missing" "plugin=validate" "input=deploy-result.json"
+        error "validate: no earlier output carries a deploy result"
+        emit_event "validate.input.missing" "plugin=validate" "input=release_result"
         _validate_write_result "$artifacts_dir" broken \
-            "missing required input: deploy-result.json was not provided or does not exist"
+            "no deploy result was found among the earlier outputs"
         stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
-            "no deploy-result.json, so nothing could be validated" \
+            "no deploy result, so nothing could be validated" \
             "The deploy stage produced no result; the health probe never ran."
         return 1
     fi

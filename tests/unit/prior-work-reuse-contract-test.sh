@@ -127,8 +127,8 @@ print_test_section "C5: pr-open updates an existing PR instead of opening a seco
 _GH_LOG="$TEST_TEMP_DIR/gh-calls"; : > "$_GH_LOG"; export _GH_LOG
 _C5="$TEST_TEMP_DIR/c5"; mkdir -p "$_C5/artifacts"
 printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$_C5/pipeline-state.json"
-printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$_C5/artifacts/review.json"
 (
+    export ZBUILD_RUN_FLAGGED=no   # a review ran and flagged nothing (#2368, #2364)
     export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
     mkdir -p "$ZBUILD_EVENTS_DIR"
     # shellcheck source=../../plugins/tool/pr-open/plugin.sh
@@ -144,7 +144,7 @@ printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$_C5/artif
         esac
     }
     export -f git gh
-    _pr_open_run_inner "$_C5/artifacts/review.json" "$_C5/pipeline-state.json" "$_C5/artifacts/pr-result.json" 1849
+    _pr_open_run_inner "" "$_C5/pipeline-state.json" "$_C5/artifacts/pr-result.json" 1849
 ) >/dev/null 2>&1 || true
 assert_eq "[C5] the result says the PR was updated" "updated 1849" \
     "$(jq -r '"\(.data.status) \(.data.pr_number)"' "$_C5/artifacts/pr-result.json" 2>/dev/null)"

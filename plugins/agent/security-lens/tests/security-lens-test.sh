@@ -297,10 +297,11 @@ STATE_DIR="$TEST_TEMP_DIR/state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 mkdir -p "$STATE_DIR/artifacts"
 echo '{"schema_version":1,"run_id":"test-hook-001","issue":"0","stage_statuses":{}}' > "$STATE_FILE"
-echo "auth bypass credential leak" > "$STATE_DIR/intake.md"
+# #2364: the issue text as intake writes it — a result carrying data.issue_text.
+zb_test_issue_output "$STATE_DIR/artifacts" "auth bypass credential leak HOOK-ISSUE-MARKER" >/dev/null
 printf '+ src/\n+ tests/\n' > "$STATE_DIR/scope-manifest.md"
 
-install_envelope_mock_claude '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+install_envelope_mock_claude --record-prompt "$TEST_TEMP_DIR/hook_prompt" '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
 
 set +e
 security_lens_run "security-lens" "$STATE_FILE" >/dev/null 2>&1
@@ -309,6 +310,13 @@ set -e
 assert_eq "hook contract: security_lens_run(stage, state_file) returns rc=0" "0" "$rc"
 assert_file_exists "hook contract: artifact written to state_dir/artifacts/" \
     "$STATE_DIR/artifacts/security-findings.json"
+assert_contains "hook contract: the issue text, found by what it is, reaches the prompt" \
+    "$(cat "$TEST_TEMP_DIR/hook_prompt" 2>/dev/null)" "HOOK-ISSUE-MARKER"
+# The issue text is handed over in a scratch file; the stage removes it.
+_hook_tmp="$TEST_TEMP_DIR/hook-tmp"; mkdir -p "$_hook_tmp"
+( export TMPDIR="$_hook_tmp"; security_lens_run "security-lens" "$STATE_FILE" ) >/dev/null 2>&1 || true
+_hook_left=""; for _f in "$_hook_tmp"/zb-sl-issue.*; do [[ -e "$_f" ]] && _hook_left="$_f"; done
+assert_eq "hook contract: the stage leaves no scratch copy of the issue text behind" "" "$_hook_left"
 
 # Platform partitioning: ZBUILD_TARGET_PLATFORM suffix is injected into filename
 ZBUILD_TARGET_PLATFORM="ios" security_lens_run "security-lens" "$STATE_FILE" >/dev/null 2>&1
@@ -672,19 +680,16 @@ _spec14_plugin="$PLUGIN_DIR/plugin.sh"
 # The previous pattern `"[^"$]*\.(json|md)"` could not match a string containing
 # a `$` — which is the only form these literals take — so it reported a clean
 # file while `$state_dir/intake.md` and `$state_dir/scope-manifest.md` sat in it.
-# Two parts, because "no hardcoded paths" has two halves that must BOTH hold:
-#   (a) the engine's resolved index is what production reads;
-#   (b) the only remaining literals are the direct-call fallbacks for exactly
-#       those resolved variables — anything else is a producer's filename
-#       pinned in this plugin.
+# #2364 (ADR-055 §1 as amended): the plugin finds earlier work by what it
+# contains — never by a producer's filename, and never by the id a stage gave
+# it. That the issue text really arrives that way is proved behaviourally by
+# the hook-contract assertion above; these two keep the old reads from coming back.
 _spec14_own='security-lens-summary\.md|security(-[A-Za-z0-9_]+)?-findings\.json'
 _spec14_bad=$( { grep -nE '\$[A-Za-z_][A-Za-z0-9_]*/[A-Za-z0-9_-]+\.(json|md)' "$_spec14_plugin" \
                  || true; } \
-             | { grep -vE "$_spec14_own" || true; } \
-             | { grep -vE '\|\| _si_(intake|scope)=' || true; } | grep -c . || true)
-_spec14_resolves=$( { grep -cE 'ZBUILD_STAGE_INPUTS' "$_spec14_plugin" || true; } )
-assert_eq "[SPEC-14] the plugin reads the engine's resolved-input index" "1" \
-    "$([[ "${_spec14_resolves:-0}" -ge 1 ]] && echo 1 || echo 0)"
+             | { grep -vE "$_spec14_own" || true; } | grep -c . || true)
+_spec14_byid=$( { grep -cE '\.inputs\.[a-z_]+' "$_spec14_plugin" || true; } )
+assert_eq "[SPEC-14] the plugin reads no earlier output by a stage's id for it" "0" "${_spec14_byid:-0}"
 assert_eq "[SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames" \
     "0" "$_spec14_bad"
 

@@ -162,13 +162,12 @@ assert_eq "[SPEC-7] an empty-string reason is classified error too" \
     "error" "$(_classify)"
 
 # ─── [SPEC-4 guard] explicit reasons are untouched ───────────────────────────
-# #485 silent_failure, #584 summary_unavailable and missing_diff_patch are the
-# three reasons callers pass today. A default must not overwrite them.
+# #485 silent_failure and #584 summary_unavailable are the two reasons callers
+# pass today (#2364 retired missing_diff_patch with the guard that wrote it). A default must not overwrite them.
 print_test_section "SPEC-4 (guard) — an explicit reason still wins"
 
 for _case in "silent_failure:error:broken:0:0:0" \
-             "summary_unavailable:error:broken:1:null:null" \
-             "missing_diff_patch:error:broken:2:0:0"; do
+             "summary_unavailable:error:broken:1:null:null"; do
     IFS=':' read -r _want _v _d _rc _p _f <<< "$_case"
     rm -f "$RESULT"
     _test_write_result "$RESULT" "$_v" "$_d" "$_rc" "$_p" "$_f" \

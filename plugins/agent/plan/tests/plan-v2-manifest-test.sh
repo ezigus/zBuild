@@ -65,11 +65,10 @@ _S5SCOPE_OLD
 _S5_CUSTOM_MANIFEST="$TEST_TEMP_DIR/custom-scope-1835.md"
 printf '+ CUSTOM_SCOPE_1835/\n+ plugins/\n' > "$_S5_CUSTOM_MANIFEST"
 # Goal file — the index must name intake_goal too: plan reads its goal from the index only (#1835)
-_S5_GOAL_FILE="$TEST_TEMP_DIR/goal-spec5-1835.md"
-printf '%s\n' "test goal" > "$_S5_GOAL_FILE"
+_S5_GOAL_FILE="$(zb_test_issue_output "$TEST_TEMP_DIR/goal-spec5-1835" "test goal")"
 _S5_SI="$TEST_TEMP_DIR/stage-inputs-spec5-1835.json"
 jq -n --arg sm "$_S5_CUSTOM_MANIFEST" --arg ig "$_S5_GOAL_FILE" \
-    '{"inputs":{"scope_manifest":$sm,"intake_goal":$ig}}' > "$_S5_SI"
+    '{"inputs":{"scope_manifest":$sm,"intake_result":$ig}}' > "$_S5_SI"
 
 : > "$_CAPTURED_PROMPT_FILE"
 export ZBUILD_STAGE_INPUTS="$_S5_SI"
@@ -173,11 +172,11 @@ _S11SCOPE
 # Fallback file with distinguishably different content — must NOT be used.
 printf '%s\n' "OLD_FALLBACK_INTAKE_CONTENT_1835" > "$_S11_STATE/intake.md"
 # Preferred source via ZBUILD_STAGE_INPUTS intake_goal.
-_S11_GOAL_FILE="$TEST_TEMP_DIR/intake-goal-spec11-1835.md"
-printf '%s\n' "SI_INTAKE_GOAL_SENTINEL_1835" > "$_S11_GOAL_FILE"
+# #2364: the issue as intake hands it on (a result carrying the text).
+_S11_GOAL_FILE="$(zb_test_issue_output "$TEST_TEMP_DIR/intake-spec11-1835" "SI_INTAKE_GOAL_SENTINEL_1835")"
 _S11_SI="$TEST_TEMP_DIR/stage-inputs-spec11-1835.json"
 jq -n --arg ig "$_S11_GOAL_FILE" --arg sm "$_S11_STATE/scope-manifest.md" \
-    '{"inputs":{"intake_goal":$ig,"scope_manifest":$sm}}' > "$_S11_SI"
+    '{"inputs":{"intake_result":$ig,"scope_manifest":$sm}}' > "$_S11_SI"
 
 : > "$_CAPTURED_PROMPT_FILE"
 CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"SI_INTAKE_GOAL_SENTINEL_1835","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'

@@ -17,6 +17,9 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _PR_OPEN_DIR="$_ZBUILD_PLUGIN_DIR"
 _PR_OPEN_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_PR_OPEN_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_PR_OPEN_ROOT/core/event-bus/event-bus.sh"
 # #2366 (ADR-054 §6): the one writer of a contract-3 result.
@@ -97,8 +100,11 @@ pr_open_run() {
 
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifacts_dir="$state_dir/artifacts"
-    local review_json_path="$artifacts_dir/review.json"
+    local review_json_path=""   # #2364: retired; kept as the inner call's first argument
     local output_pr_result_json="$artifacts_dir/pr-result.json"
+    # #2364: a caller reads this stage's result from here, never by its name.
+    # shellcheck disable=SC2034  # read by the stage that called this one
+    PR_OPEN_RESULT_FILE="$output_pr_result_json"
 
     # Read issue number from state file
     local issue_num
@@ -139,11 +145,10 @@ _pr_open_run_inner() {
     # and nowhere else. lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
     # dispatched stage — pr-delivery, which sources this plugin, included — so
     # the index names the caller's inputs (plan, test_results).
-    local plan_json="" test_results_json=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        plan_json="$(jq -r '.inputs.plan // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        test_results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
+    # #2364: the work plan and the test run, found by what they are.
+    local plan_json test_results_json
+    plan_json="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    test_results_json="$(earlier_test_run "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     # #1799 (ADR-019 fall-through): a run whose work did not settle still opens
     # its PR, as a draft, saying why at the top (lib/unsettled.sh). Line 1 of the
@@ -174,16 +179,16 @@ _pr_open_run_inner() {
     # ── Safety check 2/3: a review must have run (#1142, ADR-040) ─────────────
     # Advisory lenses never refuse a PR (ADR-040 §4); the run's convergence was
     # already gated. Fail-closed (ADR-001/#358) only when NO review ran — the
-    # engine sets ZBUILD_RUN_FLAGGED once a review group has run (#2368), and the
-    # retired review stage wrote review.json. The refusal is this stage's
-    # judgement: outcome fail, rc 0.
-    if [[ ! -f "$review_json_path" && -z "${ZBUILD_RUN_FLAGGED:-}" ]]; then
+    # engine sets ZBUILD_RUN_FLAGGED once a review group has run (#2368). #2364:
+    # the retired review stage's file is no longer read. The refusal is this
+    # stage's judgement: outcome fail, rc 0.
+    if [[ -z "${ZBUILD_RUN_FLAGGED:-}" ]]; then
         error "pr_open: refusing to open PR — no review ran (fail-closed per ADR-001)"
         stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "fail" \
             "no review signal was available to authorise a PR" \
             "No PR was opened. Fail-closed: absence of a review is not approval."
         emit_event "plugin.result" "verdict=fail" "plugin=pr-open" \
-            "reason=review_signal_missing" "path=${review_json_path}"
+            "reason=review_signal_missing"
         stage_result_write "$output_pr_result_json" fail "no review signal — fail-closed per ADR-001"
         return 0
     fi

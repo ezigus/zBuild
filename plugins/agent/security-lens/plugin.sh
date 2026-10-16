@@ -26,6 +26,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _SEC_LENS_DIR="$_ZBUILD_PLUGIN_DIR"
 _SEC_LENS_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_SEC_LENS_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_SEC_LENS_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -106,26 +109,24 @@ security_lens_run() {
     # don't overwrite each other. Filename still matches the *-findings.json
     # glob that the output plugin uses to collect results.
     local platform_infix="${ZBUILD_TARGET_PLATFORM:+-${ZBUILD_TARGET_PLATFORM}}"
-    # ADR-055 §1 (#1825/#1826): the ENGINE says where another stage's artifact
-    # is. Hardcoding a producer's filename pins it forever and bypasses the
-    # resolved-input index.
-    local _si_intake="" _si_scope=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        _si_intake="$(jq -r '.inputs.intake_goal // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        _si_scope="$(jq -r '.inputs.scope_manifest // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    # #2364: the issue text and the scope manifest, found by what they are among
+    # every earlier output. The issue text goes to the inner call as a file in
+    # this stage's own scratch area.
+    local _si_intake _si_scope
+    _si_scope="$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    _si_intake="$(mktemp "${TMPDIR:-/tmp}/zb-sl-issue.XXXXXX" 2>/dev/null || true)"
+    if [[ -n "$_si_intake" ]]; then
+        earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" > "$_si_intake" 2>/dev/null || true
     fi
-    # The fallbacks stand only for a DIRECT hook call (the contract tests drive
-    # security_lens_run with no index). In the pipeline the engine always
-    # provides one, so the resolved path is what production uses and a producer
-    # is free to move its artifact.
-    [[ -n "$_si_intake" ]] || _si_intake="$state_dir/intake.md"
-    [[ -n "$_si_scope"  ]] || _si_scope="$state_dir/scope-manifest.md"
 
+    local _sl_rc=0
     _security_lens_run_inner \
         "$_si_intake" \
         "$_si_scope" \
         "$artifacts_dir/security${platform_infix}-findings.json" \
-        "$artifacts_dir"
+        "$artifacts_dir" || _sl_rc=$?
+    [[ -n "$_si_intake" ]] && rm -f "$_si_intake"
+    return "$_sl_rc"
 }
 
 # Inner implementation — unit-testable with explicit paths.

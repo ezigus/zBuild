@@ -71,7 +71,7 @@ _count_leaked() {
 }
 
 # ───────────────────────────────────────────────────────────────────────────
-print_test_section "1. missing diff.patch (early-return guard)"
+print_test_section "1. an error result (suite output unreadable; #2364 retired the no-patch early return)"
 # ───────────────────────────────────────────────────────────────────────────
 
 MISSING_PATCH="$ARTIFACT_DIR/does-not-exist.patch"
@@ -82,9 +82,9 @@ _test_run_inner "$MISSING_PATCH" "$REPO_FIXTURE" "$JSON1" "true" \
 # longer rm -rf's; purge is the cleanup hook's responsibility).
 test_cleanup "test" "$_STATE_FILE" "purge" >/dev/null 2>&1 || true
 
-assert_eq "missing-diff: artifact still written (outcome broken, #2366)" \
+assert_eq "error path: artifact still written (outcome broken, #2366)" \
     "broken" "$(jq -r '.outcome' "$JSON1" 2>/dev/null || echo MISSING)"
-assert_eq "missing-diff: no zbuild-test-stage.* leaked in TMPDIR" \
+assert_eq "error path: no zbuild-test-stage.* leaked in TMPDIR" \
     "0" "$(_count_leaked)"
 
 # ───────────────────────────────────────────────────────────────────────────

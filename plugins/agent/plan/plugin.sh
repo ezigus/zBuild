@@ -40,6 +40,9 @@ source "$_PLAN_ROOT/core/plugin-registry/registry.sh"
 # #2366: one outcome from the engine's list, through the one writer.
 # shellcheck source=../../../scripts/lib/stage-result.sh
 source "$_PLAN_ROOT/scripts/lib/stage-result.sh"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_PLAN_ROOT/scripts/lib/earlier-output.sh"
 
 # The stage's entry point, its inputs and its result writer (#1835) live in
 # lib/entry.sh — plan_run is defined there.

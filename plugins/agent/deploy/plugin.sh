@@ -39,9 +39,11 @@ source "$_DEPLOY_ROOT/scripts/lib/stage-result.sh"
 # Args: out_dir outcome reason [pr_url] [tag] [mode] [deployed]
 # `deployed` (true|false) says whether a release was cut: a deploy the gate did
 # not authorise still finished its job (outcome pass) and deployed nothing.
+# Every result says it — false unless a release was cut — because that is how
+# later stages know this output for a deploy result (#2364).
 _deploy_write_result() {
     local out_dir="$1" outcome="$2" reason="$3"
-    local pr_url="${4:-}" tag="${5:-}" mode="${6:-}" deployed="${7:-}"
+    local pr_url="${4:-}" tag="${5:-}" mode="${6:-}" deployed="${7:-false}"
     mkdir -p "$out_dir"
     stage_result_write "$out_dir/deploy-result.json" "$outcome" "$reason" \
         "$(jq -nc --arg pr "$pr_url" --arg tag "$tag" --arg mode "$mode" --arg dep "$deployed" \
@@ -229,7 +231,7 @@ _deploy_agent_run_inner() {
         fi
         stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "fail" \
             "the release step failed: ${_r:-rc=$_rc}" \
-            "The gate authorised a deploy but the release did not complete (disposition: $_d). See deploy-release-summary.md."
+            "The gate authorised a deploy but the release did not complete (disposition: $_d). See the release step's summary."
         return 1
     fi
 

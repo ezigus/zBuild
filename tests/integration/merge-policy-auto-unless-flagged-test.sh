@@ -8,7 +8,7 @@
 #            → PR open: pr-url.txt written, gh pr merge NOT called (GUARD)
 #   [SPEC-3] auto_unless_flagged + gate artifact absent + merge_readiness=ready
 #            → PR open: pr-url.txt written, gh pr merge NOT called (GUARD)
-#   [SPEC-4] auto_unless_flagged + gate pass + review-report absent (fail-closed)
+#   [SPEC-4] auto_unless_flagged + gate pass + no review ran → no PR, no merge (fail-closed)
 #            → PR open: pr-url.txt written, gh pr merge NOT called (GUARD)
 #   [SPEC-5] auto_unless_flagged + gate pass + merge_readiness=advisory
 #            → auto-merge: merge-result.json status=merged, gh pr merge called (CHANGE)
@@ -53,9 +53,6 @@ _setup_run() {
     local tag="$1" gate_verdict="${2:-}" report_readiness="${3:-}"
     local d="$TEST_TEMP_DIR/run-${tag}"
     mkdir -p "$d/artifacts"
-    # review.json required by pr_open_run and merge_run fail-closed guards (ADR-001/#358)
-    printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' \
-        > "$d/artifacts/review.json"
     printf '{"issue":1051,"branch":"zbuild/issue-1051-test"}\n' \
         > "$d/pipeline-state.json"
     if [[ -n "$gate_verdict" ]]; then
@@ -173,25 +170,29 @@ _gh_merge3=0
 [[ "$_merge_calls3" == *"merged"* ]] && _gh_merge3=1
 assert_eq "[SPEC-3] gh pr merge NOT called when gate absent" "0" "$_gh_merge3"
 
-# ─── SPEC-4: review-report absent → PR open (fail-closed) ────────────────────
-print_test_section "SPEC-4: auto_unless_flagged + review-report absent → PR open (fail-closed)"
+# ─── SPEC-4: no review ran → no PR, no merge (fail-closed) ───────────────────
+# #2364: the review report is retired. With no word from the engine that a
+# review ran (ZBUILD_RUN_FLAGGED unset), pr-open refuses (ADR-001) and nothing
+# is merged.
+print_test_section "SPEC-4: auto_unless_flagged + no review ran → no PR, no merge (fail-closed)"
 
-_sf4="$(_setup_run s4 pass "")"  # gate=pass, no review-report.json
+_sf4="$(_setup_run s4 pass "")"  # gate=pass, no word that a review ran
 _art4="$(dirname "$_sf4")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf4")" ZBUILD_RUN_FLAGGED="$(_flag "$_sf4")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+_rc4=0
+( unset ZBUILD_RUN_FLAGGED; ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf4")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1 || _rc4=$?
 
-assert_eq "[SPEC-4] pr_stage_run exits 0 when review-report absent (fail-closed)" "0" "$_rc4"
-assert_file_exists "[SPEC-4] pr-url.txt written (fail-closed, review-report absent)" \
-    "$_art4/pr-url.txt"
-assert_file_not_exists "[SPEC-4] no merge-result.json when review-report absent (fail-closed)" \
+assert_file_not_exists "[SPEC-4] no PR opened when no review ran" "$_art4/pr-url.txt"
+assert_eq "[SPEC-4] the PR result says it was refused" "fail" \
+    "$(jq -r '.outcome // empty' "$_art4/pr-result.json" 2>/dev/null || true)"
+assert_file_not_exists "[SPEC-4] no merge-result.json when no review ran" \
     "$_art4/merge-result.json"
 _merge_calls4="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge4=0
 [[ "$_merge_calls4" == *"merged"* ]] && _gh_merge4=1
-assert_eq "[SPEC-4] gh pr merge NOT called when review-report absent" "0" "$_gh_merge4"
+assert_eq "[SPEC-4] gh pr merge NOT called when no review ran" "0" "$_gh_merge4"
 
 # ─── SPEC-5: gate pass + advisory → auto-merge ───────────────────────────────
 print_test_section "SPEC-5: auto_unless_flagged + gate pass + merge_readiness=advisory → merged"

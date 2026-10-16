@@ -10,8 +10,8 @@ description: |
   route_to_model (T0 tool — no LLM dependency).
 
   Wave 12-C (#662) removed the historic `git apply diff.patch` step — see
-  ADR-020 amendment §A. diff.patch is now consumed only by the review stage
-  (LLM context) and operators (audit).
+  ADR-020 amendment §A; #2364 removed the guard that refused to run without
+  one. The suite runs on the repo as it stands and needs no patch.
 
 hooks:
   run: test_run

@@ -45,6 +45,13 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - The lint reads heredoc bodies, `stage_summary_write` calls, the acceptance check's `clauses+=(` lines, `printf` lines for files listed with `printf`, and whole prompt `.md` files. It ignores variable names (a model sees values, not names) and heredocs opened with `# not-model-facing`.
 - Rewritten: design's acceptance section, the acceptance check's feedback, the design check's feedback (codes stay in its result JSON), shape-floor's summary, test-author's tag lines, build's acceptance lines, the summaries framing later stages read, review-lens's requirements, impact, plan, the security lens prompt, the product-owner persona and the repo-rules wording.
 
+### Amendment (2026-10-15, #2364) — a stage's code names no other stage
+
+§8's contract holds in code too: a stage's own code never names another stage's output to read it
+(ADR-055 §1, amended the same day). What another stage wrote reaches a stage's model under Previous work;
+when a stage's own code needs it (to paste into its prompt, or for a scripted check), it finds it by what
+it contains. The repository's rules (`.zbuild/prompts/rules.md`) say so.
+
 ## Enforced by
 
 - §1, §5 → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P1–P7
@@ -77,3 +84,4 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §8 (spec-coverage's reworded exemption) → `tests/unit/design-coverage-test.sh` SPEC-7, SPEC-9
 - §8 (design's What you own opens with its job — decisions, contract, scope — written as it goes; a finding is answered in the design; design does not debug code; the scope is found by searching, not an exhaustive read; design may write its notes; nothing in its prompt calls it read-only) → `tests/unit/design-writes-as-it-goes-test.sh` D1–D3; `tests/unit/design-prompt-scope-charter-test.sh` T7
 - §9 → `plugins/agent/plan/tests/plan-test.sh` (Test 3c2, plan); `plugins/agent/plan/tests/plan-work-items-test.sh` W1 (plan does not read code); `tests/unit/resume-default-test.sh` (the ADR-067 §9 assertions on design's prompt)
+- §8 (#2364: a stage's code finds earlier work by content, never by another stage's output name or file) → `tests/unit/earlier-output-by-content-test.sh` C1–C6

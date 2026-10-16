@@ -406,7 +406,7 @@ _build_guard_false_completion() {
     # and nothing after this function does.
     local ZBUILD_NEGCTL_TIMING_LOG="${ZBUILD_NEGCTL_TIMING_LOG:-}"
     if [[ -z "$ZBUILD_NEGCTL_TIMING_LOG" && -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
-        local _tl; _tl="$(jq -r '.inputs.test_timing // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        local _tl; _tl="$(earlier_test_timing "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
         [[ -n "$_tl" && -s "$_tl" ]] && ZBUILD_NEGCTL_TIMING_LOG="$_tl"
     fi
     # #2142: with no measurement for a file (iteration 1 of a fresh run) the

@@ -70,6 +70,9 @@ source "$_BUILD_DIR/lib/commit.sh"
 source "$_BUILD_DIR/lib/summary.sh"
 # shellcheck source=lib/round.sh
 source "$_BUILD_DIR/lib/round.sh"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_BUILD_ROOT/scripts/lib/earlier-output.sh"
 # #2371: build scans its own change for secrets (was the secret-scan stage).
 # shellcheck source=../../../scripts/lib/secret-patterns.sh
 source "$_BUILD_ROOT/scripts/lib/secret-patterns.sh"
@@ -109,13 +112,9 @@ build_stage_run() {
     if [[ -z "${ZBUILD_STAGE_INPUTS:-}" || ! -s "${ZBUILD_STAGE_INPUTS}" ]]; then
         error "build_stage_run: ZBUILD_STAGE_INPUTS is unset or empty — the engine must resolve and export the input index (ADR-055 §1)"
     fi
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
-        local _sm_path _pl_path
-        _sm_path="$(jq -r '.inputs.scope_manifest // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
-        _pl_path="$(jq -r '.inputs.plan // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
-        [[ -n "$_sm_path" ]] && scope_manifest="$_sm_path"
-        [[ -n "$_pl_path" ]] && plan_json_path="$_pl_path"
-    fi
+    # #2364: the scope manifest and the work plan, found by what they contain.
+    scope_manifest="$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    plan_json_path="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     _build_stage_run_checked \
         "$scope_manifest" \
@@ -156,9 +155,9 @@ _build_stage_run_inner() {
     mkdir -p "$artifact_dir"
 
     if [[ ! -f "$plan_json_path" ]]; then
-        error "_build_stage_run_inner: plan.json not found at $plan_json_path"
+        error "_build_stage_run_inner: no work plan found (looked for: ${plan_json_path:-nothing given})"
         stage_summary_write "$artifact_dir/build-summary.md" "build" "error" \
-            "no plan.json to build from" \
+            "no work plan to build from" \
             "The plan stage produced nothing to implement; no code was written."
         emit_event "plugin.result" "outcome=broken" "plugin=build" "reason=missing_plan_json"
         # ADR-054 §4b: rc∈{0,1}; a result on this exit path too.

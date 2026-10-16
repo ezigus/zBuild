@@ -73,7 +73,7 @@ _fixture() {
         git push -q --force origin "HEAD:refs/heads/$B"
     ) >/dev/null 2>&1
     STATE_DIR="$TEST_TEMP_DIR/state-$1"; mkdir -p "$STATE_DIR/artifacts"
-    printf '{"schema_version":1,"verdict":"approve","issues":[],"summary":"t"}\n' > "$STATE_DIR/artifacts/review.json"
+    export ZBUILD_RUN_FLAGGED=no   # a review ran and flagged nothing (#2368, #2364)
     STATE_FILE="$STATE_DIR/pipeline-state.json"
     printf '{"issue":2264,"branch":"%s"}\n' "$B" > "$STATE_FILE"
     : > "$GH_LOG"

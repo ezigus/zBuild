@@ -281,9 +281,12 @@ _intake_run_inner() {
         warn "intake_run: could not write $_art/requirements.json — later stages judge the issue text alone"
     fi
 
+    # #2364: the result carries the issue text, so a later stage finds it by
+    # what it is (data.issue_text), never by intake's file name.
     _intake_write_result "$_art" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
-        "{\"goal_len\": ${#sanitized}, \"platform_count\": ${#platforms[@]}}" || return 1
+        "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" \
+            '{goal_len: ($t | length), platform_count: $n, issue_text: $t}')" || return 1
     stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
         "$(printf -- '- goal length: %s chars\n- platforms: %s' "${#sanitized}" "${#platforms[@]}")"

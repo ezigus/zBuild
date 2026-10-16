@@ -13,8 +13,8 @@
 #           R-1, R-2, … in order by the engine; the text is kept as written. With
 #           no checkboxes, R-1 is the title and first paragraph. A goal run writes
 #           none (and leaves no stale list). Intake's manifest declares the list
-#           as an output; design and issue-acceptance
-#           declare no inputs and read it by id from the index of every output.
+#           as an output; design and issue-acceptance declare no inputs and
+#           find it among the earlier outputs by what it is (#2364).
 # Q2 [code] the parser splits ` covers: R-1 R-3` from a requirement's text,
 #           before or after the evidence, and acceptance_spec_covers lists the ids.
 # Q3 [code] design's checks fail a design that leaves an R uncovered, naming it and
@@ -102,14 +102,15 @@ _out="$(awk '/^outputs:/{o=1;next} o&&/^[a-z_]+:/{exit} o' "$PLUGIN_DIR/manifest
 assert_contains "[Q1] intake declares the requirements output" "$_out" '- id: requirements'
 assert_contains "[Q1] at artifacts/requirements.json" "$_out" 'path: "${artifact_dir}/requirements.json"'
 # Declared inputs are retired (ADR-055 §1, amended 2026-10-12): each consumer
-# reads the list by its output id from the index of every stage's latest output.
+# finds the list among every stage's latest output by what it is (#2364) — the
+# behaviour is Q3/Q5/Q6 below, which hand it over under no particular name.
 for _m in agent/design agent/issue-acceptance; do
     assert_eq "[Q1] $_m declares no inputs:" "" \
         "$(grep -E '^inputs:' "$REPO_ROOT/plugins/$_m/manifest.yaml" 2>/dev/null || true)"
     if grep -rqE 'inputs\.requirements|_input requirements' "$REPO_ROOT/plugins/$_m" --include='*.sh' --exclude-dir=tests; then
-        assert_pass "[Q1] $_m reads the requirements list from the index by id"
+        assert_fail "[Q1] $_m reads no requirements list by a stage's id for it" "a by-id read is back"
     else
-        assert_fail "[Q1] $_m reads the requirements list from the index by id" "no read of the requirements id"
+        assert_pass "[Q1] $_m reads no requirements list by a stage's id for it"
     fi
 done
 unset ZBUILD_ISSUE ZBUILD_STAGE_INPUTS
@@ -227,11 +228,11 @@ source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh"
 route_to_model() { printf '%s' "$2" > "$_PROMPT"; printf 'VERDICT: pass\nREASON: ok\n'; return 0; }
 resolve_tier() { printf 'T2'; }
 _S6="$TEST_TEMP_DIR/q6"; mkdir -p "$_S6/artifacts" "$_S6/in"; printf '{}' > "$_S6/pipeline-state.json"
-printf 'Make the gate fail.\n' > "$_S6/in/issue.md"
+zb_test_issue_output "$_S6/in" "Make the gate fail." >/dev/null
 cp "$_S5/artifacts/design.md" "$_S6/in/design.md"
 cp "$_S5/artifacts/requirements.json" "$_S6/in/requirements.json"
-jq -n --arg i "$_S6/in/issue.md" --arg d "$_S6/in/design.md" --arg r "$_S6/in/requirements.json" \
-    '{inputs: {intake_goal: $i, design: $d, requirements: $r}}' > "$_S6/stage-inputs.json"
+jq -n --arg i "$_S6/in/intake-result.json" --arg d "$_S6/in/design.md" --arg r "$_S6/in/requirements.json" \
+    '{inputs: {a: $i, b: $d, c: $r}}' > "$_S6/stage-inputs.json"
 : > "$_PROMPT"
 ZBUILD_STAGE_INPUTS="$_S6/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_S6/artifacts" ZBUILD_REPO_ROOT="$_Q4" \
     issue_acceptance_run issue-acceptance "$_S6/pipeline-state.json" >/dev/null 2>&1

@@ -65,16 +65,17 @@ _setup() {
     _S="$TEST_TEMP_DIR/$1"; _A="$_S/artifacts"; local _in="$_S/inputs"
     mkdir -p "$_A" "$_in"
     printf '{}' > "$_S/pipeline-state.json"
-    printf 'Add the flag. Document it. Keep the parser.\n' > "$_in/issue.md"
+    # #2364: each input as its writer makes it, found by what it is.
+    zb_test_issue_output "$_in" "Add the flag. Document it. Keep the parser." >/dev/null
     printf '%s\n' '# Design' '```acceptance' \
         'SPEC-1[code]: the flag is accepted' \
         'SPEC-2[no-code]: the flag is documented' \
         'SPEC-3[done]: the parser already reads flags evidence: scripts/x.sh:50' \
         'TESTFILES:' 'SPEC-1: tests/t.sh' 'WIRING: none' '```' > "$_in/design.md"
     printf 'diff --git a/p.sh b/p.sh\n+flag=1\n' > "$_in/diff.patch"
-    stage_result_write "$_in/test-results.json" pass "the suite passed" >/dev/null
-    jq -n --arg i "$_in/issue.md" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
-        '{inputs: {intake_goal: $i, design: $d, diff_patch: $p, test_results: $t}}' > "$_S/stage-inputs.json"
+    zb_test_test_run_output "$_in" pass 1 0 >/dev/null
+    jq -n --arg i "$_in/intake-result.json" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
+        '{inputs: {a: $i, b: $d, c: $p, d: $t}}' > "$_S/stage-inputs.json"
     export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A"
 }
 _res() { jq -r "$1" "$_A/issue-acceptance-result.json" 2>/dev/null || echo MISSING; }

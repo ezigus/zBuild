@@ -135,7 +135,7 @@ _pr_stage_run_inner() {
                 merge_run "pr" "$state_file" || _rc=$?
                 if [[ $_rc -ne 0 ]]; then
                     local _m_disp
-                    _m_disp="$(_pr_delivery_delegate_ending "$artifacts_dir/merge-result.json")"
+                    _m_disp="$(_pr_delivery_delegate_ending "${MERGE_RESULT_FILE:-}")"
                     stage_signal_end
                     _pr_delivery_write_result "$artifacts_dir" "$_m_disp" "the merge stage did not complete"
                     stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
@@ -145,7 +145,7 @@ _pr_stage_run_inner() {
                 fi
                 stage_signal_end
                 _pr_delivery_write_result "$artifacts_dir" pass "merged by the merge stage" \
-                    "$(jq -r '.data.pr_url // empty' "$artifacts_dir/merge-result.json" 2>/dev/null || true)"
+                    "$(jq -r '.data.pr_url // empty' "${MERGE_RESULT_FILE:-}" 2>/dev/null || true)"
                 emit_event "pr.delivery.opened" "plugin=pr-delivery" "via=merge"
                 stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                     "delivered the change by delegating to the merge stage (policy: auto)" \
@@ -168,7 +168,7 @@ _pr_stage_run_inner() {
                     merge_run "pr" "$state_file" || _rc=$?
                     if [[ $_rc -ne 0 ]]; then
                         local _m_disp
-                        _m_disp="$(_pr_delivery_delegate_ending "$artifacts_dir/merge-result.json")"
+                        _m_disp="$(_pr_delivery_delegate_ending "${MERGE_RESULT_FILE:-}")"
                         stage_signal_end
                         _pr_delivery_write_result "$artifacts_dir" "$_m_disp" "the merge stage did not complete"
                         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
@@ -178,7 +178,7 @@ _pr_stage_run_inner() {
                     fi
                     stage_signal_end
                     _pr_delivery_write_result "$artifacts_dir" pass "merged by the merge stage" \
-                        "$(jq -r '.data.pr_url // empty' "$artifacts_dir/merge-result.json" 2>/dev/null || true)"
+                        "$(jq -r '.data.pr_url // empty' "${MERGE_RESULT_FILE:-}" 2>/dev/null || true)"
                     emit_event "pr.delivery.opened" "plugin=pr-delivery" "via=merge"
                     stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                         "delivered the change by delegating to the merge stage (policy: auto_unless_flagged)" \

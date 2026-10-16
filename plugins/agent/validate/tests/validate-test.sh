@@ -241,7 +241,7 @@ _v2_run() {
     local dir="$TEST_TEMP_DIR/$name"
     mkdir -p "$dir/artifacts" "$dir/stage-inputs"
     local dr="$dir/deploy-result.json"
-    [[ "$make_dr" == "1" ]] && stage_result_write "$dr" pass "deployed" '{"deployed":true}'
+    [[ "$make_dr" == "1" ]] && zb_test_deploy_output "$dir" pass "deployed" "" "" true >/dev/null
     jq -n --arg p "$dr" '{"inputs":{"deploy_result":$p}}' > "$dir/stage-inputs/validate.json"
     export ZBUILD_STAGE_INPUTS="$dir/stage-inputs/validate.json"
     export ZBUILD_ARTIFACT_DIR="$dir/artifacts"
@@ -272,18 +272,24 @@ else
     assert_pass "[SPEC-16] plugin.sh has no hardcoded \$artifacts_dir/deploy-result.json"
 fi
 
-if grep -q 'ZBUILD_STAGE_INPUTS' "$PLUGIN_FILE"; then
-    assert_pass "[SPEC-16] plugin.sh references ZBUILD_STAGE_INPUTS"
-else
-    assert_fail "[SPEC-16] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution" \
-        "ZBUILD_STAGE_INPUTS not found in plugin.sh"
-fi
-if grep -q '\.inputs\.deploy_result' "$PLUGIN_FILE"; then
-    assert_pass "[SPEC-16] plugin.sh uses jq .inputs.deploy_result for input resolution"
-else
-    assert_fail "[SPEC-16] plugin.sh must resolve deploy_result via jq .inputs.deploy_result" \
-        ".inputs.deploy_result not found in plugin.sh"
-fi
+# #2364: the deploy result is found by what it says (whether anything was
+# deployed), whatever the index calls it and wherever it sits.
+_v2_run run16 0; _run16="$_V2_DIR"
+mkdir -p "$_run16/elsewhere"
+printf '{"result_contract":3,"outcome":"pass","reason":"other","data":{"pr_url":"x"}}\n' > "$_run16/elsewhere/a.json"
+zb_test_deploy_output "$_run16/elsewhere/b" pass "deployed" "" "" true >/dev/null
+jq -n --arg a "$_run16/elsewhere/a.json" --arg b "$_run16/elsewhere/b/deploy-result.json" \
+    '{inputs:{first:$a, second:$b}}' > "$_run16/stage-inputs/validate.json"
+_MOCK_HC_RC=0
+ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run16/state.json" >/dev/null 2>&1 || true
+assert_eq "[SPEC-16] the deploy result is found by what it says, under any name" "pass" \
+    "$(jq -r '.outcome // empty' "$_run16/artifacts/validate-result.json" 2>/dev/null)"
+jq -n --arg a "$_run16/elsewhere/a.json" '{inputs:{first:$a}}' > "$_run16/stage-inputs/validate.json"
+ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run16/state.json" >/dev/null 2>&1 || true
+assert_eq "[SPEC-16] an output that is not a deploy result is not taken for one" "broken" \
+    "$(jq -r '.outcome // empty' "$_run16/artifacts/validate-result.json" 2>/dev/null)"
+assert_eq "[SPEC-16] plugin.sh reads no input by a stage's id for it" "0" \
+    "$(grep -cE '\.inputs\.[a-z_]+' "$PLUGIN_FILE" || true)"
 
 # ---------------------------------------------------------------------------
 # SPEC-19: manifest valid_verdicts declares exactly [healthy, error];
