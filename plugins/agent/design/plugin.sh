@@ -56,6 +56,9 @@ source "$_DESIGN_ROOT/scripts/lib/stage-result.sh"
 source "$_DESIGN_DIR/lib/checks.sh"
 # shellcheck source=./lib/coverage.sh
 source "$_DESIGN_DIR/lib/coverage.sh"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_DESIGN_ROOT/scripts/lib/earlier-output.sh"
 
 # _design_write_outcome <artifact_dir> <outcome> <reason> [findings_json]
 # Writes design-verdict.json (#2366: one outcome from the engine's list).
@@ -122,20 +125,11 @@ design_stage_run() {
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    local scope_manifest="$state_dir/scope-manifest.md"
-    local plan_json_path="$artifacts_dir/plan.json"
-
-    # ADR-017 §11 / #1826: when the engine resolved inputs via input-resolve.sh it
-    # exports ZBUILD_STAGE_INPUTS pointing to a JSON index of name→path pairs.
-    # Read scope_manifest and plan from it when present, falling back to the
-    # hardcoded path construction so existing test fixtures keep working.
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        local _si_scope _si_plan
-        _si_scope="$(jq -r '.inputs.scope_manifest // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        _si_plan="$(jq -r '.inputs.plan // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        [[ -n "$_si_scope" ]] && scope_manifest="$_si_scope"
-        [[ -n "$_si_plan" ]] && plan_json_path="$_si_plan"
-    fi
+    # #2364: the scope manifest and the work plan, found by what they contain
+    # among every earlier output (ADR-055 §1).
+    local scope_manifest plan_json_path
+    scope_manifest="$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    plan_json_path="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     _design_stage_run_inner \
         "$scope_manifest" \
@@ -193,10 +187,10 @@ _design_stage_run_inner() {
     # #2035 run 37289704344 kept an untested design in 1 second.
 
     if [[ ! -f "$plan_json_path" ]]; then
-        error "_design_stage_run_inner: plan.json not found at $plan_json_path"
+        error "_design_stage_run_inner: no work plan found (looked for: ${plan_json_path:-nothing given})"
         _design_write_outcome "$artifact_dir" "broken" "missing_plan_json"
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
-            "no plan.json to design against" \
+            "no work plan to design against" \
             "The plan stage produced nothing this stage could read; no design was authored."
         emit_event "plugin.result" "outcome=broken" "plugin=design" "reason=missing_plan_json"
         return 1
@@ -349,8 +343,9 @@ ${scope_list}
 DESIGN_PROMPT
     # #2306 (ADR-070 §3): the issue's requirements, numbered by the engine; every
     # one is covered by a SPEC, and design's own checks see to that by script.
-    local _req_f="" _reqs; [[ -s "${ZBUILD_STAGE_INPUTS:-}" ]] && _req_f="$(jq -r '.inputs.requirements // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null)"
-    _reqs="$(acceptance_requirements_list "${_req_f:-$artifact_dir/requirements.json}")"
+    # #2364: found by what it contains.
+    local _req_f _reqs; _req_f="$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    _reqs="$(acceptance_requirements_list "$_req_f")"
     [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (numbered by the engine)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
 
     # On a later round design REFINES its prior design.md rather than
@@ -573,7 +568,7 @@ ${_dp_limits}")"; then
     local -a _fnd=()
     local _v _u
     _ours=1
-    _design_checks "$output_design_md" "$repo_root" "${_req_f:-$artifact_dir/requirements.json}"
+    _design_checks "$output_design_md" "$repo_root" "$_req_f"
     for _v in "${_DESIGN_VIOLATIONS[@]}"; do _fnd+=("$(_dck_plain "$_v")"); done
     if [[ -n "$_reqs" ]] && extract_acceptance_block "$output_design_md" >/dev/null 2>&1; then
         _design_coverage "$output_design_md" "$_reqs" "$tier"

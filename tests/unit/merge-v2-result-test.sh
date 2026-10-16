@@ -93,8 +93,12 @@ source "$REPO_ROOT/plugins/tool/merge/plugin.sh"
 # shellcheck source=../../scripts/lib/stage-result.sh
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
+# Every case here is a run whose review ran and flagged nothing: the engine says
+# so (#2368); pr-open, on the fallback path, reads only that (#2364).
+export ZBUILD_RUN_FLAGGED=no
+
 # _make_state <dir> [gate_verdict]
-# Sets up a state dir with pipeline-state.json, review.json, and optional
+# Sets up a state dir with pipeline-state.json and optional
 # gate-aggregator-result.json. Prints path to pipeline-state.json.
 # #2368: the engine says whether every loop passed (ZBUILD_RUN_LOOPS_PASSED);
 # a helper records the word for its gate outcome beside the state file.
@@ -103,7 +107,6 @@ _make_state() {
     local d="$1" gate="${2:-}"
     mkdir -p "$d/artifacts"
     printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
-    printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$d/artifacts/review.json"
     # gate-aggregator's result, by the engine's writer (#2366).
     [[ -n "$gate" ]] && \
         stage_result_write "$d/artifacts/gate-aggregator-result.json" "$gate" "gate roll-up" >/dev/null
@@ -321,6 +324,27 @@ assert_eq "[SPEC-7] word not set → PR fallback" \
     "pr_fallback" "$(jq -r '.data.mode // empty' "$_s7b_art/merge-result.json" 2>/dev/null || true)"
 assert_eq "[SPEC-7] plugin.sh constructs no gate-aggregator-result.json path" "0" \
     "$(grep -v '^[[:space:]]*#' "$REPO_ROOT/plugins/tool/merge/plugin.sh" | grep -cF 'gate-aggregator-result.json' || true)"
+
+# ─── #2364: merge says where its result is, for the stage that called it ────
+print_test_section "#2364: merge names its result file to its caller"
+_r0_dir="$TEST_TEMP_DIR/rev-file"
+_r0_sf="$(_make_state "$_r0_dir")"
+_mk_mocks "$TEST_TEMP_DIR/binr0" "zbuild/issue-1849-test"
+_r0_named="$( PATH="$TEST_TEMP_DIR/binr0:$PATH" ZBUILD_RUN_LOOPS_PASSED=yes
+    merge_run "pr" "$_r0_sf" >/dev/null 2>&1; printf '%s' "${MERGE_RESULT_FILE:-}" )"
+assert_eq "[#2364] MERGE_RESULT_FILE names the result merge wrote" "$_r0_dir/artifacts/merge-result.json" "$_r0_named"
+assert_file_exists "[#2364] ...and that file is there" "$_r0_named"
+
+# ─── #2364: the review signal is the engine's word, never a file ────────────
+print_test_section "#2364: merge auto-merges only when the engine says a review ran"
+_r1_dir="$TEST_TEMP_DIR/rev-noword"
+_r1_sf="$(_make_state "$_r1_dir")"
+printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$_r1_dir/artifacts/review.json"
+_mk_mocks "$TEST_TEMP_DIR/binr1" "zbuild/issue-1849-test"
+( unset ZBUILD_RUN_FLAGGED; PATH="$TEST_TEMP_DIR/binr1:$PATH" ZBUILD_RUN_LOOPS_PASSED=yes \
+  merge_run "pr" "$_r1_sf" ) >/dev/null 2>&1
+assert_eq "[#2364] no word that a review ran → PR fallback, whatever review.json says" "pr_fallback" \
+    "$(jq -r '.data.mode // empty' "$_r1_dir/artifacts/merge-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-29: PR fallback whose pr_open_run fails ─────────────────────────────
 print_test_section "SPEC-29: a PR fallback that fails is reported as a failure"

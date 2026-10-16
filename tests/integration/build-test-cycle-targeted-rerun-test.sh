@@ -94,7 +94,6 @@ cycle_dispatch_stage() {
                 git -C "$FIXTURE" commit -q -am "fix b" 2>/dev/null || true
             fi
             printf '{"schema_version":1,"verdict":"pass","files_changed":["tests/unit/b.sh"]}' > "$ad/build-summary.json"
-            : > "$ad/diff.patch"   # test stage guards on diff.patch existence
             v="pass" ;;
         test)
             test_run "test" "$state_file" >/dev/null 2>&1 || true

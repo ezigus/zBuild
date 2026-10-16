@@ -383,6 +383,13 @@ assert_eq "[#1846/SPEC-21] deploy-release absent → outcome=broken" \
 _v2_keys_ok "[#1846/SPEC-10] deploy-release-absent exit path:" \
     "$_run_drabsent/artifacts/deploy-result.json"
 
+# #2364: later stages find deploy's result by what it says — whether anything
+# was deployed — so every result states it, a failed one included.
+for _dr in "$_run_nopr" "$_run_nogate" "$_run_drabsent"; do
+    assert_eq "[#2364] a deploy that did not finish says nothing was deployed ($(basename "$_dr"))" "false" \
+        "$(jq -r '.data.deployed' "$_dr/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+done
+
 assert_eq "[#1846/SPEC-13] deploy-release absent → rc=1" "1" "$_rc21"
 
 # ---------------------------------------------------------------------------

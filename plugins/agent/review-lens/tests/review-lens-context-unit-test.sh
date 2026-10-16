@@ -82,8 +82,10 @@ EOF
 # The engine's scope_manifest is the redaction allow-list (#2302), as on #2035.
 printf '+ ./\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 printf 'diff --git a/plugins/agent/validate/plugin.sh b/plugins/agent/validate/plugin.sh\n+ changed\n' > "$ART/diff.patch"
-jq -n --arg i "$TEST_TEMP_DIR/intake.md" --arg d "$ART/design.md" --arg s "$TEST_TEMP_DIR/scope-manifest.md" --arg p "$ART/diff.patch" \
-    '{inputs:{intake_goal:$i, design:$d, scope_manifest:$s, diff_patch:$p}}' > "$TEST_TEMP_DIR/stage-inputs/review-lens.json"
+# #2364: the issue as intake hands it on — found by what it is, not its name.
+_ISSUE_RESULT="$(zb_test_issue_output "$TEST_TEMP_DIR/intake" "$(cat "$TEST_TEMP_DIR/intake.md")")"
+jq -n --arg i "$_ISSUE_RESULT" --arg d "$ART/design.md" --arg s "$TEST_TEMP_DIR/scope-manifest.md" --arg p "$ART/diff.patch" \
+    '{inputs:{intake_result:$i, design:$d, scope_manifest:$s, diff_patch:$p}}' > "$TEST_TEMP_DIR/stage-inputs/review-lens.json"
 export ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/stage-inputs/review-lens.json"
 
 # A restored previous review of this lens, which must NOT be shown to it (C6).
@@ -137,6 +139,12 @@ _rl_planned_section() {
 cat > "$ART/design.md" <<'EOF'
 # Design
 
+```acceptance
+SPEC-1[change]: alpha is planned
+TESTFILES:
+tests/unit/beta-planned-test.sh
+```
+
 ```scope
 scripts/lib/alpha-planned.sh
 tests/unit/beta-planned-test.sh
@@ -151,7 +159,8 @@ if grep -qF -- '+ ./' <<< "$_sec"; then
 else
     assert_pass "[C12] the section does not carry the redaction allow-list"
 fi
-printf '# Design\n\nno scope block here\n' > "$ART/design.md"
+# A design (it has its acceptance block, so it is found) with no scope block.
+printf '# Design\n\nno scope block here\n\n```acceptance\nSPEC-1[change]: x\nTESTFILES:\ntests/x-test.sh\n```\n' > "$ART/design.md"
 : > "$PROMPT_F"
 _review_lens_run_inner scope "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-scope.json" "$ART" >/dev/null 2>&1 || true
 _P12="$(cat "$PROMPT_F" 2>/dev/null || true)"

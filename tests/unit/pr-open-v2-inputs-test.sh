@@ -34,14 +34,15 @@ source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # _make_pr_state <dir> [review_verdict]
-# Sets up a state dir. review_verdict is written to review.json when given.
+# Sets up a state dir. With a review_verdict, a review ran (#2364: the engine
+# says so with ZBUILD_RUN_FLAGGED, yes|no; nothing reads review.json); without
+# one, none did.
 _make_pr_state() {
     local d="$1" review_verdict="${2:-}"
     mkdir -p "$d/artifacts"
     printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
-    [[ -n "$review_verdict" ]] && \
-        printf '{"schema_version":1,"verdict":"%s","summary":"ok"}\n' "$review_verdict" \
-            > "$d/artifacts/review.json"
+    if [[ -n "$review_verdict" ]]; then export ZBUILD_RUN_FLAGGED=no
+    else unset ZBUILD_RUN_FLAGGED; fi
     printf '%s/pipeline-state.json' "$d"
 }
 
@@ -62,7 +63,8 @@ cat > "$_s14b_art/review-report.json" <<'JSON'
    {"severity":"low","file":"baz.sh","line":5,"lenses":["perf"],"messages":["finding C"]}
  ]}
 JSON
-printf '{"schema_version":1,"goal":"ON-DISK GOAL"}\n' > "$_s14b_art/plan.json"
+# A real work plan (it has its steps), so only the index keeps it out.
+printf '{"schema_version":1,"goal":"ON-DISK GOAL","steps":[]}\n' > "$_s14b_art/plan.json"
 printf '{"inputs":{}}\n' > "$_s14b_dir/stage-inputs.json"
 
 _s14b_body="$TEST_TEMP_DIR/spec14b-body.txt"
@@ -105,9 +107,10 @@ print_test_section "SPEC-31: the PR body's plan goal and test verdict are read f
 _s31_dir="$TEST_TEMP_DIR/spec31"
 _make_pr_state "$_s31_dir" "approve" >/dev/null
 mkdir -p "$TEST_TEMP_DIR/elsewhere31"
-printf '{"schema_version":1,"goal":"INDEXED GOAL"}\n' > "$TEST_TEMP_DIR/elsewhere31/plan.json"
-stage_result_write "$TEST_TEMP_DIR/elsewhere31/test-results.json" pass ok >/dev/null
-printf '{"inputs":{"plan":"%s","test_results":"%s"}}\n' \
+# #2364: a work plan (steps) and a test run (test's own writer), under any name.
+printf '{"schema_version":1,"goal":"INDEXED GOAL","steps":[]}\n' > "$TEST_TEMP_DIR/elsewhere31/plan.json"
+zb_test_test_run_output "$TEST_TEMP_DIR/elsewhere31" pass 1 0 >/dev/null
+printf '{"inputs":{"a":"%s","b":"%s"}}\n' \
     "$TEST_TEMP_DIR/elsewhere31/plan.json" "$TEST_TEMP_DIR/elsewhere31/test-results.json" > "$_s31_dir/stage-inputs.json"
 _s14b_body="$TEST_TEMP_DIR/spec31-body.txt"
 sed -i.bak "s|spec14b-body.txt|spec31-body.txt|" "$TEST_TEMP_DIR/bin14b/gh"
@@ -116,8 +119,8 @@ sed -i.bak "s|spec14b-body.txt|spec31-body.txt|" "$TEST_TEMP_DIR/bin14b/gh"
   ZBUILD_STAGE_INPUTS="$_s31_dir/stage-inputs.json" \
   pr_open_run "pr" "$_s31_dir/pipeline-state.json" ) >/dev/null 2>&1
 _s31_body_text="$(cat "$TEST_TEMP_DIR/spec31-body.txt" 2>/dev/null || true)"
-assert_contains "[SPEC-31] plan goal comes from the index's plan" "$_s31_body_text" "INDEXED GOAL"
-assert_contains "[SPEC-31] test verdict comes from the index's test_results" "$_s31_body_text" "**Tests:** pass"
+assert_contains "[SPEC-31] plan goal comes from the work plan among the earlier outputs" "$_s31_body_text" "INDEXED GOAL"
+assert_contains "[SPEC-31] test verdict comes from the test run among the earlier outputs" "$_s31_body_text" "**Tests:** pass"
 
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────

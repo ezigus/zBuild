@@ -48,10 +48,10 @@ _stage() {
     local d="$TEST_TEMP_DIR/$1"
     mkdir -p "$d/state" "$d/art"
     printf '{"schema_version":1,"run_id":"t","issue":"%s","stage_statuses":{}}\n' "$_ZB_ID" > "$d/state/pipeline-state.json"
-    printf 'goal from intake\n' > "$d/state/intake.md"
+    local _ir; _ir="$(zb_test_issue_output "$d/state" "goal from intake")"
     printf '+ core/\n' > "$d/state/scope-manifest.md"
-    jq -n --arg g "$d/state/intake.md" --arg s "$d/state/scope-manifest.md" \
-        '{inputs:{intake_goal:$g, scope_manifest:$s}}' > "$d/state/stage-inputs.json"
+    jq -n --arg g "$_ir" --arg s "$d/state/scope-manifest.md" \
+        '{inputs:{intake_result:$g, scope_manifest:$s}}' > "$d/state/stage-inputs.json"
     printf '%s' "$d/state/pipeline-state.json"
 }
 
@@ -97,13 +97,13 @@ assert_eq "[P4] with no index, plan does not run the model on ZBUILD_GOAL / fall
 assert_eq "[P4] ...and says the engine gave it no input (broken)" "broken" \
     "$(jq -r '.outcome // empty' "$TEST_TEMP_DIR/noindex/art/plan.json" 2>/dev/null)"
 SF4b="$(_stage nogoal)"; D4b="$(dirname "$SF4b")"
-jq '.inputs |= del(.intake_goal)' "$D4b/stage-inputs.json" > "$D4b/si.tmp" && mv "$D4b/si.tmp" "$D4b/stage-inputs.json"
+jq '.inputs |= del(.intake_result)' "$D4b/stage-inputs.json" > "$D4b/si.tmp" && mv "$D4b/si.tmp" "$D4b/stage-inputs.json"
 : > "$MODEL_CALLS"
 ( export ZBUILD_GOAL="a goal from the environment" ZBUILD_STAGE_INPUTS="$D4b/stage-inputs.json"
   export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/nogoal/art"
   plan_run plan "$SF4b" ) >/dev/null 2>&1
-assert_eq "[P4] an index without intake_goal is not rescued by ZBUILD_GOAL" "0" "$(wc -l < "$MODEL_CALLS" | tr -d ' ')"
-assert_eq "[P4] ...and says the engine gave it no intake_goal (broken)" "broken" \
+assert_eq "[P4] an index without the issue text is not rescued by ZBUILD_GOAL" "0" "$(wc -l < "$MODEL_CALLS" | tr -d ' ')"
+assert_eq "[P4] ...and says no earlier output carries the issue (broken)" "broken" \
     "$(jq -r '.outcome // empty' "$TEST_TEMP_DIR/nogoal/art/plan.json" 2>/dev/null)"
 
 print_test_section "P7: a router failure the shared mapping cannot name"

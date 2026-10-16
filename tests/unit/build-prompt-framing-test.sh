@@ -174,13 +174,16 @@ done
 # detection (scope expansion) — but reads the DECLARED input, not a feedback
 # dir no template writes.
 _si="$TEST_TEMP_DIR/si-2124.json"; _tfs="$TEST_TEMP_DIR/tfs-2124.md"
-printf 'test failed: plugins/tool/x/plugin.sh pins 8 stages\n' > "$_tfs"
-printf '{"inputs":{"test_failures_summary":"%s"}}\n' "$_tfs" > "$_si"
+# #2364: the report as the test stage writes it (its own writer), found by what it is.
+( source "$REPO_ROOT/plugins/tool/test/plugin.sh" >/dev/null 2>&1
+  _test_emit_failures_summary "$_tfs" fail 1 1 \
+      $'unit: FAIL tests/unit/x-test.sh\n  \xe2\x9c\x97 plugins/tool/x/plugin.sh pins 8 stages\n' ) >/dev/null 2>&1
+printf '{"inputs":{"any_name":"%s"}}\n' "$_tfs" > "$_si"
 # #2132: only a PRIOR ITERATION of this run may feed it. On iteration 1 the
 # declared input resolves to whatever hydrate restored from a previous run —
 # run 35337145412 read a stale TIMEOUT line, named an out-of-scope file, and
 # halted the cycle blocked_on_scope before iteration 2 could happen.
-assert_contains "[#2124] _build_read_prior_assessment reads the declared test_failures_summary input (iter 2)" \
+assert_contains "[#2124] _build_read_prior_assessment reads the test report among the earlier outputs (iter 2)" \
     "$(ZBUILD_STAGE_INPUTS="$_si" ZBUILD_CYCLE_ITER=2 _build_read_prior_assessment 2>/dev/null)" "pins 8 stages"
 assert_eq "[#2132] …but not on iteration 1 (a restored previous-run artifact)" "" \
     "$(ZBUILD_STAGE_INPUTS="$_si" ZBUILD_CYCLE_ITER=1 _build_read_prior_assessment 2>/dev/null)"

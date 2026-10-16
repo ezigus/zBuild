@@ -45,6 +45,9 @@ source "$_RL_ROOT/scripts/lib/test-output-sanitize.sh"
 # ADR-050 (#1581): unified prior-work seam — seed from this lens's prior finding.
 # shellcheck source=../../../scripts/lib/prior-output-reader.sh
 source "$_RL_ROOT/scripts/lib/prior-output-reader.sh"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_RL_ROOT/scripts/lib/earlier-output.sh"
 # extract_acceptance_block: the SPECs a lens judges the change against.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_RL_ROOT/scripts/lib/acceptance-block.sh"
@@ -127,12 +130,6 @@ _review_lens_id() {
     printf '%s' "$lens"
 }
 
-# _rl_input <id> — the path the engine's input index names, or empty.
-_rl_input() {
-    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
-    jq -r --arg id "$1" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true
-}
-
 # _rl_context — what the change was for: the issue, its SPECs, the design's
 # decisions and planned scope, each bounded and sanitised like the evidence.
 # Every piece is optional; an absent one is simply left out.
@@ -164,12 +161,13 @@ _rl_requirements_readable() {
 
 _rl_context() {
     local f out="" _txt
-    f="$(_rl_input intake_goal)"
-    if [[ -n "$f" && -s "$f" ]]; then
-        _txt="$(head -c 6000 "$f" | _zbuild_sanitize_for_llm)"
+    # #2364: the issue text and the acceptance contract, found by what they are.
+    _txt="$(earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    if [[ -n "$_txt" ]]; then
+        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
         out+=$'## THE ISSUE (what was asked for)\n'"$_txt"$'\n\n'
     fi
-    f="$(_rl_input design)"
+    f="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     if [[ -n "$f" && -s "$f" ]] && declare -F acceptance_list_spec_ids >/dev/null 2>&1; then
         # #2269: the requirements as sentences, not the raw block's keys and tags.
         _txt="$(_rl_requirements_readable "$f")"
@@ -221,7 +219,7 @@ review_lens_run() {
     local evidence; evidence="$(zbuild_change_bundle "$artifact_dir")"
     _review_lens_run_inner \
         "$lens" \
-        "$state_dir/scope-manifest.md" \
+        "$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)" \
         "$evidence" \
         "$artifact_dir/lens-$lens.json" \
         "$artifact_dir"

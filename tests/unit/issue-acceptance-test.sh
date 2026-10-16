@@ -62,12 +62,13 @@ _setup() {
     _S="$TEST_TEMP_DIR/$1"; _A="$_S/artifacts"; local _in="$_S/inputs"
     mkdir -p "$_A" "$_in"
     printf '{}' > "$_S/pipeline-state.json"
-    printf '%s\n' "${2:-Migrate the plugin. Acceptance: - [ ] no artifact paths in code - [ ] an interrupted push reports unavailable}" > "$_in/issue.md"
+    # #2364: each input as its writer makes it, found by what it is.
+    zb_test_issue_output "$_in" "${2:-Migrate the plugin. Acceptance: - [ ] no artifact paths in code - [ ] an interrupted push reports unavailable}" >/dev/null
     printf '%s\n' '# Design' '```acceptance' 'SPEC-1[change]: the plugin reads its inputs from the index' 'TESTFILES:' 'SPEC-1: tests/t.sh' 'WIRING: none' '```' > "$_in/design.md"
     printf '%s\n' 'diff --git a/p.sh b/p.sh' '+gate="$(jq -r .inputs.gate "$ZBUILD_STAGE_INPUTS")"' > "$_in/diff.patch"
-    stage_result_write "$_in/test-results.json" pass ok
-    jq -n --arg i "$_in/issue.md" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
-        '{inputs: {intake_goal: $i, design: $d, diff_patch: $p, test_results: $t}}' > "$_S/stage-inputs.json"
+    zb_test_test_run_output "$_in" pass 1 0 >/dev/null
+    jq -n --arg i "$_in/intake-result.json" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
+        '{inputs: {a: $i, b: $d, c: $p, d: $t}}' > "$_S/stage-inputs.json"
     export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A"
 }
 _res() { jq -r "$1" "$_A/issue-acceptance-result.json" 2>/dev/null || echo MISSING; }
@@ -128,7 +129,9 @@ assert_eq "[SPEC-6] outcome=unusable (the engine retries it)" "unusable" "$(_res
 print_test_section "SPEC-7: inputs from the index only"
 _setup s7
 printf '{"inputs":{}}\n' > "$_S/stage-inputs.json"
-printf 'on-disk issue\n' > "$_S/intake.md"; printf 'x\n' > "$_A/design.md"
+# Real-looking outputs on disk, but not in the index: they are not read.
+zb_test_issue_output "$_S" "on-disk issue" >/dev/null
+printf '%s\n' '```acceptance' 'SPEC-1[change]: on disk' '```' > "$_A/design.md"
 _IA_ANSWER=$'VERDICT: pass\nREASON: ok'
 _run
 assert_eq "[SPEC-7] no index entry → nothing to judge against (unreadable), whatever is on disk" "unreadable" "$(_res .data.judgement)"

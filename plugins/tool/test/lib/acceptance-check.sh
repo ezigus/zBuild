@@ -79,13 +79,8 @@ acceptance_gate_run() {
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifact_dir="$state_dir/artifacts"
     local result_file="$artifact_dir/acceptance-gate-result.json"
-    local design_md=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        design_md="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
-    if [[ -z "$design_md" ]]; then
-        design_md="${artifact_dir}/design.md"
-    fi
+    # #2364: the acceptance contract, found by what it contains.
+    local design_md; design_md="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     # ADR-036 #1188: plumb the per-test timeout knob and a diagnostic-log dir to
     # the negctl/reachability libs (they read these two env vars).

@@ -62,6 +62,9 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_
 source "$_ZBUILD_TEST_STAGE_DIR/lib/shape-floor-check.sh"
 # shellcheck source=lib/acceptance-check.sh
 source "$_ZBUILD_TEST_STAGE_DIR/lib/acceptance-check.sh"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=lib/own-checks.sh
 source "$_ZBUILD_TEST_STAGE_DIR/lib/own-checks.sh"
 
@@ -153,9 +156,10 @@ _test_compute_target_files() {
 
     # #2121: the design's declared TESTFILES are always in the set — they are
     # the assertions the acceptance gate will judge, delivered the #2098 way.
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+    if true; then
         local _design_md
-        _design_md="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        # #2364: the acceptance contract, found by what it contains.
+        _design_md="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
         if [[ -n "$_design_md" && -f "$_design_md" ]] && declare -F acceptance_list_testfiles >/dev/null 2>&1; then
             local _dtf
             while IFS= read -r _dtf; do
@@ -213,13 +217,12 @@ test_run() {
     state_dir="$(dirname "$state_file")"
     local artifact_dir="${ZBUILD_ARTIFACT_DIR:-${state_dir}/artifacts}"
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo "$state_dir")}"
-    local diff_patch="${artifact_dir}/diff.patch"
     local output_json="${artifact_dir}/test-results.json"
     local test_cmd="${ZBUILD_TEST_CMD:-npm test}"
 
     mkdir -p "$artifact_dir"
 
-    _test_run_inner "$diff_patch" "$repo_root" "$output_json" "$test_cmd"
+    _test_run_inner "" "$repo_root" "$output_json" "$test_cmd"
     _test_own_checks "$_stage" "$state_file" "$output_json" "$repo_root"
     return 0
 }
@@ -227,13 +230,12 @@ test_run() {
 # ─── _test_run_inner ──────────────────────────────────────────────────────────
 # Core logic: rsync repo HEAD to a temp dir, run tests, write artifact.
 # Always returns 0 — verdict is in the JSON.
-# Wave 12-C (#662): no longer applies diff.patch (path retained as positional
-# arg for back-compat with existing callers; the missing-diff guard below is
-# kept as defense-in-depth so a broken pipeline state still produces a valid
-# artifact).
-# Usage: _test_run_inner <diff_patch_path> <repo_root> <output_json> <test_cmd>
+# The suite runs on the repo as it stands; it needs nothing from the stage that
+# made the change. $1 is kept in the call shape and not read (#2364: the guard
+# that refused to run without a diff.patch is gone — Wave 12-C (#662) had
+# already stopped applying it).
+# Usage: _test_run_inner <unused> <repo_root> <output_json> <test_cmd>
 _test_run_inner() {
-    local diff_patch_path="$1"
     local repo_root="$2"
     local output_json="$3"
     local test_cmd="$4"
@@ -287,22 +289,6 @@ _test_run_inner() {
     local exit_code=2
     local diff_applied=false
     local test_output=""
-
-    # ── Guard: diff.patch must exist ──────────────────────────────────────────
-    if [[ ! -f "$diff_patch_path" ]]; then
-        _test_write_result "$output_json" \
-            "error" "broken" 2 0 0 "" "false" "$test_cmd" "missing_diff_patch"
-        # ADR-055 §9: this is the earliest exit, and it still has to publish a
-        # summary — the stage ran and reached a conclusion. The output is
-        # `required: true`, so returning without one is a fail-closed contract
-        # violation, not a nicety skipped on a short path.
-        _test_emit_failures_summary \
-            "$(dirname "$output_json")/test-failures-summary.md" \
-            "error" 0 2 "missing_diff_patch: no diff.patch at $diff_patch_path"
-        # #628: $tmp cleanup handled by RETURN trap above.
-        emit_event "plugin.result" "plugin=test" "verdict=error" "reason=missing_diff_patch"
-        return 0
-    fi
 
     # ── #497: open stage-io banner (input phase) ──────────────────────────────
     # Wraps git-apply + eval + verdict derivation; ADR-015 §v4 requires input
@@ -1072,7 +1058,7 @@ _test_default_reason() {
 # parser did not recognize this runner's output (honest fail-safe — never
 # fabricate counts). `reason` and `disposition` are always emitted (mandatory v2
 # top-level fields). A caller may name the reason — `summary_unavailable` (#584
-# fail-safe), `silent_failure` (#485 no-op guard), `missing_diff_patch` — and
+# fail-safe), `silent_failure` (#485 no-op guard) — and
 # otherwise _test_default_reason derives one from the counts (#2050). Wave 12-C
 # (#662) removed `diff_apply_failed` — no caller writes it anymore.
 # #626: numeric and boolean slots pass through the sanitizers above, so jq
@@ -1139,7 +1125,7 @@ _test_write_result() {
     diff_applied_json="$(_test_sanitize_bool "$diff_applied")"
 
     # #2050: derive only when the caller supplied nothing — silent_failure,
-    # summary_unavailable and missing_diff_patch stay verbatim.
+    # summary_unavailable stay verbatim.
     if [[ -z "$reason" ]]; then
         reason="$(_test_default_reason "$verdict" "$passed_json" "$failed_json" \
                                        "$exit_code_json")"

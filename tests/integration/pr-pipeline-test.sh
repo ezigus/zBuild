@@ -61,13 +61,14 @@ assert_eq "[SPEC-2] manifest id is pr-delivery (no collision with tool/pr-open i
 # shellcheck source=../../plugins/agent/pr-delivery/plugin.sh
 source "$REPO_ROOT/plugins/agent/pr-delivery/plugin.sh"
 
-# Helper: fresh state dir + a review.json with the given verdict.
+# Every run here had a review that flagged nothing: the engine's word (#2368);
+# nothing reads the retired review.json (#2364). SPEC-4 says "flagged".
+export ZBUILD_RUN_FLAGGED=no
+
+# Helper: fresh state dir. ($1, the old review verdict, is kept in the call shape.)
 _setup_run() {
-    local verdict="$1"
     local d="$TEST_TEMP_DIR/run-$2"
     mkdir -p "$d/artifacts"
-    printf '{"schema_version":1,"verdict":"%s","issues":[],"summary":"t"}\n' "$verdict" \
-        > "$d/artifacts/review.json"
     printf '{"issue":756}\n' > "$d/pipeline-state.json"
     printf '%s' "$d/pipeline-state.json"
 }
@@ -169,8 +170,6 @@ print_test_section "SPEC-6: pr-open surfaces push stderr in pr-result.json"
 source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
 _sf6="$TEST_TEMP_DIR/run-s6/pipeline-state.json"
 mkdir -p "$TEST_TEMP_DIR/run-s6/artifacts"
-printf '{"schema_version":1,"verdict":"approve","issues":[],"summary":"t"}\n' \
-    > "$TEST_TEMP_DIR/run-s6/artifacts/review.json"
 printf '{"issue":756,"branch":"zbuild/issue-756"}\n' > "$_sf6"
 _art6="$TEST_TEMP_DIR/run-s6/artifacts"
 _mockbin6="$TEST_TEMP_DIR/bin-s6"; mkdir -p "$_mockbin6"

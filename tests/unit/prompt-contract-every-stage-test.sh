@@ -137,10 +137,10 @@ _c_design_coverage() { ( ad="$(_fixture design-coverage)"
     route_to_model() { printf '%s' "$2" > "$RAW/design-coverage.txt"; printf 'VERDICT: covered\nREASON: r\n'; }
     _design_coverage "$ad/design.md" "- R-1: make the stage write its result" T2 ) >/dev/null 2>&1; }
 _c_issue_acceptance() { ( ad="$(_fixture issue-acceptance)"; sd="${ad%/artifacts}"
-    printf 'ISSUE-TEXT: make the stage write its result\n' > "$sd/intake.md"
+    zb_test_issue_output "$sd" "ISSUE-TEXT: make the stage write its result" >/dev/null
     printf 'diff --git a/foo.sh b/foo.sh\n' > "$ad/d.patch"
-    jq -n --arg g "$sd/intake.md" --arg d "$ad/design.md" --arg p "$ad/d.patch" \
-        '{schema_version:2, stage:"issue-acceptance", inputs:{intake_goal:$g, design:$d, diff_patch:$p}}' > "$sd/idx.json"
+    jq -n --arg g "$sd/intake-result.json" --arg d "$ad/design.md" --arg p "$ad/d.patch" \
+        '{schema_version:2, stage:"issue-acceptance", inputs:{a:$g, b:$d, c:$p}}' > "$sd/idx.json"
     source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" >/dev/null 2>&1
     route_to_model() { printf '%s' "$2" > "$RAW/issue-acceptance.txt"; return 1; }
     ZBUILD_STAGE_INPUTS="$sd/idx.json" ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_REPO_ROOT="${sd%/state}" \

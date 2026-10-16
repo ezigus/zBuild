@@ -13,6 +13,9 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _DR_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_DR_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DR_ROOT/core/event-bus/event-bus.sh"
 # #2366 (ADR-054 §6): the one writer of a contract-3 result.
@@ -51,10 +54,8 @@ deploy_release_run() {
 
     # ADR-055 §1: the declared input reaches this plugin through the engine's
     # index and nowhere else (lifecycle.sh exports it for the calling stage).
-    local _pr_url_path=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        _pr_url_path="$(jq -r '.inputs.pr_url // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
+    # #2364: the PR address, found by what it is.
+    local _pr_url_path; _pr_url_path="$(earlier_pr_url_file "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     local pr_url=""
     [[ -n "$_pr_url_path" && -f "$_pr_url_path" ]] && pr_url="$(tr -d '[:space:]' < "$_pr_url_path")"
 

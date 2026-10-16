@@ -11,6 +11,6 @@
 
 ## Facts about this repo
 - `ZBUILD_*` environment variables are set by the engine at dispatch (the artifact dir, the stage's input index `ZBUILD_STAGE_INPUTS`, the issue, the run). They are trusted engine inputs, not user or attacker input.
-- A stage never builds a path to another stage's output: the engine resolves every input and hands the stage an index (ADR-055 §1). A plugin that derives a path from its state file is a defect.
+- A stage never names another stage's output — not its output name, not its file. The engine hands every stage every earlier stage's latest output, and a stage finds what it needs by what it contains (scripts/lib/earlier-output.sh; ADR-055 §1). A plugin that names another stage's output is a defect.
 - Every stage writes a v2 result (`result_contract`, `verdict`, `disposition`, `reason`, detail under `data`) on every exit path, and exits 0 or 1 (ADR-054).
 - `[SPEC-n]` / `[#<issue>/SPEC-n]` tags in a test tie an assertion to one issue's acceptance contract. A tag that belongs to another issue must never be changed or removed.

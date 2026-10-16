@@ -24,6 +24,9 @@ source "$_IA_ROOT/core/event-bus/event-bus.sh"
 source "$_IA_ROOT/core/router/route.sh"
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_IA_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_IA_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_IA_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/llm-agent.sh
@@ -36,13 +39,6 @@ source "$_IA_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
 source "$_IA_ROOT/core/plugin-registry/persona.sh" 2>/dev/null || true
 
 _ia_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
-
-# _ia_input <id> — the path the engine's index names for a declared input, or
-# empty. ADR-055 §1: the index is the only way an input reaches this stage.
-_ia_input() {
-    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
-    jq -r --arg id "$1" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true
-}
 
 # intake writes the literal "GitHub issue #<N>" when the fetch fails (#1804);
 # judging a change against that must not read as satisfied (spec-coverage's rule).
@@ -158,10 +154,12 @@ issue_acceptance_run() {
     [[ -n "$art" ]] || return 1
     mkdir -p "$art" 2>/dev/null || true
 
-    local issue_f design_f diff_f tests_f issue="" acc="" diff="" test_verdict=""
-    issue_f="$(_ia_input intake_goal)"; design_f="$(_ia_input design)"
-    diff_f="$(_ia_input diff_patch)"; tests_f="$(_ia_input test_results)"
-    [[ -n "$issue_f" && -f "$issue_f" ]] && issue="$(cat "$issue_f" 2>/dev/null || true)"
+    # #2364: each piece of earlier work found by what it contains.
+    local design_f diff_f tests_f issue="" acc="" diff="" test_verdict=""
+    issue="$(earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    design_f="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    diff_f="$(earlier_change_patch "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    tests_f="$(earlier_test_run "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     if _ia_issue_is_placeholder "$issue"; then
         _ia_emit "issue_acceptance.unreadable_issue" "stage=$stage_id"
@@ -188,7 +186,7 @@ issue_acceptance_run() {
     local _task _framed
     # #2306 (ADR-070 §4): the issue's requirements as intake numbered them.
     local _reqs=""; declare -F acceptance_requirements_list >/dev/null 2>&1 \
-        && _reqs="$(acceptance_requirements_list "$(_ia_input requirements)")"
+        && _reqs="$(acceptance_requirements_list "$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)")"
     _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${diff:-<no diff>}" "${test_verdict:-unknown}" "$_reqs")"
     _framed="$_task"
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one

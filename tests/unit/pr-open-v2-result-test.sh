@@ -121,14 +121,15 @@ _has_run="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*run:[[:space:]]*
 source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
 
 # _make_pr_state <dir> [review_verdict]
-# Sets up a state dir. review_verdict is written to review.json when given.
+# Sets up a state dir. With a review_verdict, a review ran (#2364: the engine
+# says so with ZBUILD_RUN_FLAGGED, yes|no; nothing reads review.json); without
+# one, none did.
 _make_pr_state() {
     local d="$1" review_verdict="${2:-}"
     mkdir -p "$d/artifacts"
     printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
-    [[ -n "$review_verdict" ]] && \
-        printf '{"schema_version":1,"verdict":"%s","summary":"ok"}\n' "$review_verdict" \
-            > "$d/artifacts/review.json"
+    if [[ -n "$review_verdict" ]]; then export ZBUILD_RUN_FLAGGED=no
+    else unset ZBUILD_RUN_FLAGGED; fi
     printf '%s/pipeline-state.json' "$d"
 }
 
@@ -284,8 +285,10 @@ print_test_section "SPEC-11: no review signal — fail-closed refusal, outcome f
 
 # no review signal — fail-closed: neither review.json nor review-report.json
 _s11b_dir="$TEST_TEMP_DIR/spec11b"
-_make_pr_state "$_s11b_dir" >/dev/null   # no review_verdict arg → no review.json
+_make_pr_state "$_s11b_dir" >/dev/null   # no review_verdict arg → no review ran
 _s11b_art="$_s11b_dir/artifacts"
+# The retired review stage's file on disk authorises nothing (#2364).
+printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$_s11b_art/review.json"
 _s11b_pr="$_s11b_art/pr-result.json"
 
 _stub_git_pass

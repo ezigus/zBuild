@@ -30,6 +30,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage
 # shellcheck source=../../../scripts/lib/stage-result.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
 _MONITOR_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_MONITOR_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_MONITOR_ROOT/scripts/lib/llm-agent.sh"   # ADR-028 shared framework (also loads helpers.sh)
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -82,19 +85,18 @@ _monitor_interrupt_handler() {
     _mon_interrupted=1
 }
 
-# _monitor_input_path <id> <root> — the engine-resolved path of input <id>, or
-# "". rc 1 when it lies outside <root>, the run's state directory: the engine's
-# index only points inside the run, so any other path is refused, never read
-# into the prompt (review #2221; the same rule the deploy stage applies).
-_monitor_input_path() {
-    local id="$1" root="$2" p dir
-    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
-    p="$(jq -r --arg id "$id" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    [[ -n "$p" ]] || return 0
+# _monitor_inside_run <path> <root> — rc 1 when <path> lies outside <root>, the
+# run's state directory: the engine's index only points inside the run, so any
+# other path is refused, never read into the prompt (review #2221; the same rule
+# the deploy stage applies). With no index there is no <root>, and the finders
+# only search the run's own directories.
+_monitor_inside_run() {
+    local p="$1" root="$2" dir
+    [[ -n "$p" && -n "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
     [[ -n "$root" ]] || return 1
     dir="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || dir="$(dirname "$p")"
     case "$dir/" in
-        "$root"/*) printf '%s' "$p" ;;
+        "$root"/*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -136,19 +138,22 @@ _monitor_stage_run_inner() {
     local root=""
     [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
         && root="$(cd "$(dirname "$ZBUILD_STAGE_INPUTS")/.." 2>/dev/null && pwd -P || true)"
-    local deploy_result_json="" pr_url_txt="" _id _p
-    for _id in deploy_result pr_url; do
-        if ! _p="$(_monitor_input_path "$_id" "$root")"; then
-            error "monitor: input $_id resolves outside the run's state directory — refusing it"
-            emit_event "monitor.input.refused" "plugin=monitor" "input=$_id"
-            _monitor_write_result "$report_out" broken \
-                "input $_id resolves outside the run's state directory" "" "[]"
-            stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
-                "refused input $_id: it points outside this run" \
-                "The engine's input index only points inside the run; this is a defect, not a deployment problem."
-            return 1
-        fi
-        case "$_id" in deploy_result) deploy_result_json="$_p" ;; *) pr_url_txt="$_p" ;; esac
+    # #2364: the deploy result and the PR address, found by what they are.
+    local deploy_result_json pr_url_txt
+    deploy_result_json="$(earlier_deploy_result "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    pr_url_txt="$(earlier_pr_url_file "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    local _id _p
+    for _id in release_result pr_url; do
+        case "$_id" in release_result) _p="$deploy_result_json" ;; *) _p="$pr_url_txt" ;; esac
+        _monitor_inside_run "$_p" "$root" && continue
+        error "monitor: the $_id input resolves outside the run's state directory — refusing it"
+        emit_event "monitor.input.refused" "plugin=monitor" "input=$_id"
+        _monitor_write_result "$report_out" broken \
+            "input $_id resolves outside the run's state directory" "" "[]"
+        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+            "refused input $_id: it points outside this run" \
+            "The engine's input index only points inside the run; this is a defect, not a deployment problem."
+        return 1
     done
 
     # Dry-run: sentinel primary artifact, no model call.
@@ -169,7 +174,7 @@ _monitor_stage_run_inner() {
     # route_to_model owns redaction (ADR-043); the plugin does not pre-redact.
     local deploy_block="(not available)"
     if [[ -n "$deploy_result_json" && -f "$deploy_result_json" ]]; then
-        deploy_block="$(jq -c . "$deploy_result_json" 2>/dev/null || printf '(unparseable deploy-result.json)')"
+        deploy_block="$(jq -c . "$deploy_result_json" 2>/dev/null || printf '(unparseable deploy result)')"
     fi
     local pr_block="(not available)"
     if [[ -n "$pr_url_txt" && -f "$pr_url_txt" ]]; then

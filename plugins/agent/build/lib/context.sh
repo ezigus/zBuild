@@ -44,10 +44,9 @@ _build_read_design_decisions() {
 }
 
 
-# _build_read_prior_assessment — the test stage's summary, read through the
-# DECLARED optional input `test_failures_summary` (ADR-055 §1; a backwards edge
-# inside build_test_cycle is legal per §1.3). Empty on iteration 1, when the
-# producer has not run. It is NOT rendered into the prompt — the router's
+# _build_read_prior_assessment — a test run's report, found among the earlier
+# outputs by what it is (#2364, ADR-055 §1). Empty on iteration 1, when no test
+# has run in this cycle yet. It is NOT rendered into the prompt — the router's
 # STAGE SUMMARIES block already carries it (§9) — it feeds the mechanical
 # out-of-scope detection (_build_detect_out_of_scope_files → scope expansion).
 # #2124: until now this read a per-iteration feedback copy (prior_test_assessment.txt),
@@ -63,7 +62,8 @@ _build_read_prior_assessment() {
     [[ "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]] || return 0
     [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]] || return 0
     local f
-    f="$(jq -r '.inputs.test_failures_summary // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
+    # #2364: a test run's report, found by what it is.
+    f="$(earlier_test_report "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     [[ -n "$f" && -s "$f" ]] || return 0
     cat "$f" 2>/dev/null || true
 }
@@ -109,13 +109,8 @@ _build_gather_acceptance_specs() {
 # back into caller's scope (no `local` on those names here — bash dynamic scope).
 _build_load_context() {
     # shellcheck disable=SC2154  # artifact_dir and plan_json injected via dynamic scope from caller
-    local _ctx_design_md_path="$artifact_dir/design.md"
-    # ADR-055 §1: read design.md path from engine-resolved index when available.
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
-        local _ctx_design_input
-        _ctx_design_input="$(jq -r '.inputs.design // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
-        [[ -n "$_ctx_design_input" ]] && _ctx_design_md_path="$_ctx_design_input"
-    fi
+    # #2364: the acceptance contract, found by what it contains.
+    local _ctx_design_md_path; _ctx_design_md_path="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     local _ctx_scope_source="plan"
     local _ctx_design_csv="" _ctx_scope_file_count=0 _ctx_granted="" _ctx_candidate=""
     local _ctx_state_dir_for_design
@@ -127,12 +122,6 @@ _build_load_context() {
         jq -r '[(.files // []), ([.steps[]?.files[]?] // []), ([.steps[]?.areas[]?] // [])] | flatten | unique | join(",")' \
         2>/dev/null || echo "")"
 
-    # Resolve design.md path.
-    if [[ ! -f "$_ctx_design_md_path" ]]; then
-        _ctx_state_dir_for_design="$(dirname "$artifact_dir")"
-        _ctx_candidate="$_ctx_state_dir_for_design/artifacts/design.md"
-        [[ -f "$_ctx_candidate" ]] && _ctx_design_md_path="$_ctx_candidate"
-    fi
 
     # ADR-031 (#866): acceptance test file paths for charter injection.
     _acceptance_testfiles=""

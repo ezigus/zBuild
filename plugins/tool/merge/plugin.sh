@@ -48,6 +48,9 @@ merge_run() {
     mkdir -p "$artifacts_dir"
 
     local merge_result_out="$artifacts_dir/merge-result.json"
+    # #2364: a caller reads this stage's result from here, never by its name.
+    # shellcheck disable=SC2034  # read by the stage that called this one
+    MERGE_RESULT_FILE="$merge_result_out"
 
     # #2368: the engine says whether every loop that ran passed. Anything but
     # "yes" (unset included) is not a pass.
@@ -61,12 +64,13 @@ merge_run() {
         return $?
     fi
 
-    # ADR-001/#358 fail-closed: pr-open refuses to publish without a review
-    # verdict on disk. Mirror that on the auto-merge path — NEVER auto-merge
-    # without review.json. Missing → route to the PR path (which itself
-    # fail-closes), so a clean objective gate can't merge an unreviewed branch.
-    if [[ ! -f "$artifacts_dir/review.json" ]]; then
-        warn "merge_run: review.json absent — fail-closed, routing to PR path (ADR-001/#358)"
+    # ADR-001/#358 fail-closed: pr-open refuses to publish unless a review ran.
+    # Mirror that on the auto-merge path — NEVER auto-merge an unreviewed branch.
+    # The engine says a review ran (ZBUILD_RUN_FLAGGED, yes|no, #2368); no word
+    # → route to the PR path (which itself fail-closes). #2364: the retired
+    # review stage's review.json is no longer read.
+    if [[ -z "${ZBUILD_RUN_FLAGGED:-}" ]]; then
+        warn "merge_run: no review ran — fail-closed, routing to PR path (ADR-001/#358)"
         _merge_pr_fallback "$stage_id" "$state_file" "$merge_result_out" "review_absent"
         return $?
     fi
@@ -91,7 +95,7 @@ _merge_pr_fallback() {
         # pr-open already said how it stopped; carry its word, not a guess.
         local _pr_disp
         # pr-open's own ending: its outcome.
-        _pr_disp="$(jq -r '.outcome // empty' "$(dirname "$merge_result_out")/pr-result.json" 2>/dev/null || true)"
+        _pr_disp="$(jq -r '.outcome // empty' "${PR_OPEN_RESULT_FILE:-}" 2>/dev/null || true)"
         # Keep pr-open's own ending only when it is one: a valid outcome other
         # than pass or fail. Anything else is a broken result.
         if ! outcome_is_valid "${_pr_disp:-}" || [[ "$_pr_disp" == pass || "$_pr_disp" == fail ]]; then
@@ -228,16 +232,6 @@ _merge_run_inner() {
         "$(jq -nc --arg pr_url "$pr_url" --argjson pr_number "${pr_number:-0}" \
             --arg branch "$target_branch" --argjson issue "${issue_num:-0}" \
             '{pr_url:$pr_url, pr_number:$pr_number, branch:$branch, issue:$issue}')"
-
-    # Manifest contract: pr-delivery declares pr-result.json as a REQUIRED output
-    # (plugins/agent/pr-delivery/manifest.yaml). The auto-merge path must write it
-    # too (mirror pr-open's schema, status=merged, draft=false) so the pr stage's
-    # scan_plugin_outputs check is satisfied — the PR was created then squash-merged.
-    local pr_result_out="$artifacts_dir/pr-result.json"
-    stage_result_write "$pr_result_out" pass "squash-merged via gh pr merge" \
-        "$(jq -nc --arg pr_url "$pr_url" --argjson pr_number "${pr_number:-0}" \
-            --arg branch "$target_branch" --argjson issue "${issue_num:-0}" \
-            '{status:"merged", pr_url:$pr_url, pr_number:$pr_number, draft:false, branch:$branch, issue:$issue}')"
 
     stage_summary_write "$artifacts_dir/merge-summary.md" "merge" "pass" \
         "merged PR ${pr_number}" \

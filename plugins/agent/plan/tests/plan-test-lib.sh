@@ -47,7 +47,7 @@ source "$PLUGIN_DIR/plugin.sh"
 # #1835: plan reads its inputs ONLY from the engine's index and writes to the
 # engine's artifact dir. _run_plan dispatches it the way the engine does
 # (core/plugin-registry/lifecycle.sh): PLAN_GOAL is the goal intake would have
-# written to intake.md; an index the test set itself is used as-is.
+# handed on (its result's issue_text, #2364); an index the test set itself is used as-is.
 _run_plan() {
     local sf="${1:-}" sd si
     if [[ -z "$sf" ]]; then plan_run "plan"; return; fi
@@ -55,10 +55,11 @@ _run_plan() {
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         ZBUILD_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-$sd/artifacts}" plan_run "plan" "$sf"; return
     fi
-    printf '%s\n' "${PLAN_GOAL-}" > "$sd/intake.md"
+    # #2364: the issue as intake hands it on — a result carrying the text.
+    local _ir; _ir="$(zb_test_issue_output "$sd/artifacts" "${PLAN_GOAL-}")"
     si="$sd/stage-inputs.json"
-    jq -n --arg g "$sd/intake.md" --arg s "$sd/scope-manifest.md" \
-        '{inputs:{intake_goal:$g, scope_manifest:$s}}' > "$si"
+    jq -n --arg g "$_ir" --arg s "$sd/scope-manifest.md" \
+        '{inputs:{intake_result:$g, scope_manifest:$s}}' > "$si"
     ZBUILD_STAGE_INPUTS="$si" ZBUILD_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-$sd/artifacts}" plan_run "plan" "$sf"
 }
 

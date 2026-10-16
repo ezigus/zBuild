@@ -46,9 +46,13 @@ _ZBUILD_HEALTH_CHECK_LOADED=1
 _PROBES="$TEST_TEMP_DIR/probes"
 health_check_run() { printf '%s\n' "${ZBUILD_HEALTH_CHECK_URL:-<none>}" >> "$_PROBES"; printf 'HTTP/1.1 200 OK\n'; return 0; }
 
-_run_dir() {  # <name> <deploy outcome> <reason> [data-json]
+# <name> <deploy outcome> <reason> [deployed true|false | data-json]. A deploy
+# result is written by deploy's own writer; a data-json one only where deploy
+# writes no such field (health_url, D2).
+_run_dir() {
     RUN="$TEST_TEMP_DIR/$1"; mkdir -p "$RUN/artifacts" "$RUN/stage-inputs"
-    stage_result_write "$RUN/deploy-result.json" "$2" "$3" "${4:-}"
+    if [[ "${4:-}" == "{"* ]]; then stage_result_write "$RUN/deploy-result.json" "$2" "$3" "$4"
+    else zb_test_deploy_output "$RUN" "$2" "$3" "" "${5:-}" "${4:-}" >/dev/null; fi
     jq -n --arg p "$RUN/deploy-result.json" '{inputs:{deploy_result:$p}}' > "$RUN/stage-inputs/validate.json"
     printf '{"run_id":"dt"}\n' > "$RUN/state.json"
     export ZBUILD_STAGE_INPUTS="$RUN/stage-inputs/validate.json" ZBUILD_ARTIFACT_DIR="$RUN/artifacts"
@@ -60,7 +64,7 @@ _probed() { cat "$_PROBES" 2>/dev/null || true; }
 
 print_test_section "D1: nothing was deployed"
 for _dv in nothing unavailable; do
-    if [[ "$_dv" == nothing ]]; then _run_dir "d1-$_dv" pass "gate not pass" '{"deployed":false}'
+    if [[ "$_dv" == nothing ]]; then _run_dir "d1-$_dv" pass "nothing deployed: the run's loops did not all pass" false
     else _run_dir "d1-$_dv" unavailable "push failed"; fi
     _rc=0; ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$RUN/state.json" >/dev/null 2>&1 || _rc=$?
     assert_eq "[D1] deploy $_dv → validate passes with nothing to check" "pass" "$(_res .outcome)"
@@ -75,7 +79,7 @@ ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$RUN/state.json" >/dev/null 2>&1 || 
 assert_eq "[D2] the address deploy reported is probed" "https://preview-42.example/health" "$(_probed)"
 assert_eq "[D2] healthy" "pass" "$(_res .outcome)"
 
-_run_dir d3 pass "deployed" '{"deployed":true,"tag":"v1.2.3"}'
+_run_dir d3 pass "deployed" true v1.2.3
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$RUN/state.json" >/dev/null 2>&1 || true
 assert_eq "[D3] no reported address → the configured target is probed" "http://configured.example/health" "$(_probed)"
 

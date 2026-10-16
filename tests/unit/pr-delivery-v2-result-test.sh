@@ -199,6 +199,7 @@ merge_run() {
     local d; d="$(dirname "$2")/artifacts"
     mkdir -p "$d"
     stage_result_write "$d/merge-result.json" pass "squash-merged"
+    MERGE_RESULT_FILE="$d/merge-result.json"   # where merge says its result is (#2364)
     return 0
 }
 MERGEMOCK
@@ -532,6 +533,7 @@ cat > "$_d4_fake/plugins/tool/merge/plugin.sh" <<'MERGEMOCK'
 merge_run() {
     local d; d="$(dirname "$2")/artifacts"; mkdir -p "$d"
     stage_result_write "$d/merge-result.json" pass "squash-merged" '{"pr_url":"https://github.com/owner/repo/pull/44"}'
+    MERGE_RESULT_FILE="$d/merge-result.json"   # where merge says its result is (#2364)
     return 0
 }
 MERGEMOCK

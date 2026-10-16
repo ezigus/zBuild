@@ -982,6 +982,11 @@ SPEC-16-UNIQUE-DESIGN-ACCEPTANCE-TEXT-MARKER
 
 ## Decision
 This is a custom design.md injected via ZBUILD_STAGE_INPUTS.
+
+```acceptance
+SPEC-1: the s16 fixture exists
+TESTFILES: tests/fixtures/s16-test.sh
+```
 EOF
 
 # ZBUILD_STAGE_INPUTS index with .inputs.design pointing to the custom path.

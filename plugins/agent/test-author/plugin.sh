@@ -33,6 +33,9 @@ source "$_TA_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
 source "$_TA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/stage-result.sh
 source "$_TA_ROOT/scripts/lib/stage-result.sh"
+# #2364: earlier work is found by what it contains, never by which stage made it.
+# shellcheck source=../../../scripts/lib/earlier-output.sh
+source "$_TA_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=./lib/record.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/record.sh"
 # #2370: test-author checks its own assertions against their SPECs; the
@@ -95,9 +98,10 @@ _ta_write_result() {
     mkdir -p "$dir" 2>/dev/null || true
     # #2189: the author REPORTS the testfiles it owns; the engine denies every
     # other stage edits to them from this report (never from design.md by path).
-    local _owned="[]"
-    if [[ -s "$dir/design.md" ]] && declare -F acceptance_list_testfiles >/dev/null 2>&1; then
-        local _ol; _ol="$(acceptance_list_testfiles "$dir/design.md" 2>/dev/null || true)"
+    local _owned="[]" _design
+    _design="$(earlier_acceptance_contract "$dir" 2>/dev/null || true)"
+    if [[ -s "$_design" ]] && declare -F acceptance_list_testfiles >/dev/null 2>&1; then
+        local _ol; _ol="$(acceptance_list_testfiles "$_design" 2>/dev/null || true)"
         _owned="$(jq -Rnc '[inputs | select(length > 0)] | unique' <<< "$_ol" 2>/dev/null || true)"
         [[ -n "$_owned" ]] || _owned="[]"
     fi
@@ -165,12 +169,13 @@ test_author_run() {
     mkdir -p "$art" 2>/dev/null || true
 
     local repo="${ZBUILD_REPO_ROOT:-$_TA_ROOT}"
-    local design="$art/design.md"
+    # #2364: the acceptance contract, found by what it contains.
+    local design; design="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     if [[ ! -f "$design" ]] || ! declare -f acceptance_list_spec_ids >/dev/null 2>&1; then
         _ta_emit "test_author.no_contract" "reason=no_design"
         _ta_write_result "$art" "pass" \
-            "no design.md acceptance block — there is no contract to author against" 0
+            "no acceptance contract — there is no contract to author against" 0
         return 0
     fi
 

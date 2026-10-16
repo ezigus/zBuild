@@ -24,7 +24,6 @@ export ZBUILD_RUN_ID="monitor-test-$$"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/monitor"
-FIXTURE_DIR="$SCRIPT_DIR/fixtures"
 
 # ─── State dir fixture ────────────────────────────────────────────────────────
 STATE_DIR="$TEST_TEMP_DIR/state"
@@ -87,10 +86,16 @@ assert_eq "[SPEC-2] dry-run does NOT call route_to_model" \
 # Reset artifacts for live-run tests
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
 
+# #2364: monitor finds deploy's result by what it is; it is made with deploy's
+# own writer (zb_test_deploy_output).
+_release_result() {
+    zb_test_deploy_output "$(dirname "$1")" pass "deployed" "https://github.com/mock/repo/pull/1" "$2" true >/dev/null
+}
+
 # ─── [SPEC-3] live run (mocked rc=0) produces monitor-report.json + verdict ───
 print_test_section "[SPEC-3] live run: mocked route_to_model rc=0 → monitor-report.json with .verdict=pass"
 
-cp "$FIXTURE_DIR/deploy-result.json" "$ARTIFACTS_DIR/deploy-result.json"
+_release_result "$ARTIFACTS_DIR/deploy-result.json" "zbuild-test-branch"
 MOCK_ROUTE_RC=0
 MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
 _ROUTE_TO_MODEL_CALLED=0
@@ -266,7 +271,7 @@ print_test_section "[#1847/SPEC-18] deploy_result/pr_url are read via ZBUILD_STA
 
 unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
-cp "$FIXTURE_DIR/deploy-result.json" "$ARTIFACTS_DIR/deploy-result.json"
+_release_result "$ARTIFACTS_DIR/deploy-result.json" "zbuild-test-branch"
 printf 'https://github.com/mock/repo/pull/1847\n' > "$ARTIFACTS_DIR/pr-url.txt"
 _s1847_18_si="$TEST_TEMP_DIR/stage-inputs.json"
 printf '{"inputs":{"deploy_result":"%s","pr_url":"%s"}}\n' \
@@ -302,9 +307,9 @@ _s1847_18_hardcoded="$(grep -n 'artifacts_dir.*deploy-result\|artifacts_dir.*pr-
 assert_eq "[#1847/SPEC-18] plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction" \
     "" "$_s1847_18_hardcoded"
 
-# With ZBUILD_STAGE_INPUTS unset and no entry for either optional input, the
-# plugin must treat them as not provided rather than falling back to the
-# artifacts_dir copies (which are decoyed here to prove the fallback is gone).
+# #2364: monitor takes an output for what it is, not where it sits — a file
+# named deploy-result.json / pr-url.txt that is not a deploy result or a pull
+# request address never reaches the prompt.
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
 unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
 printf '{"decoy":true,"marker":"MONITOR_TEST_NO_FALLBACK_MARKER"}\n' > "$ARTIFACTS_DIR/deploy-result.json"
@@ -315,10 +320,10 @@ monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
 set -e
 _s1847_18_nofallback_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 if grep -q "MONITOR_TEST_NO_FALLBACK_MARKER" <<< "$_s1847_18_nofallback_prompt"; then
-    assert_fail "[#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, the artifacts_dir copies must NOT reach the prompt (no fallback path)" \
+    assert_fail "[#2364] an output that is not a deploy result or a PR address does not reach the prompt" \
         "marker leaked into prompt"
 else
-    assert_pass "[#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, deploy_result/pr_url are treated as not provided"
+    assert_pass "[#2364] an output that is not a deploy result or a PR address does not reach the prompt"
 fi
 rm -f "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt"
 
