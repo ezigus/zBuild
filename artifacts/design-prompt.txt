@@ -267,7 +267,7 @@ Kill every hung run hook at its per-stage limit on every dispatch route, end it 
 - tests/unit/template-resolvability-preflight-test.sh
 - tests/unit/template-simple-yaml-test.sh
 
-### Tools (read-only — this stage may NOT modify the working tree)
+### Tools
 - You MAY use the Read tool to inspect any file in the repository.
 - You MAY use the Grep tool to search the whole repository for symbols,
   constants, references, and hardcoded values.
@@ -313,13 +313,15 @@ dispatch.
    "run" hook only. Precedence: `_TPL_STAGE_TIMEOUT_S_<stage>` (template) >
    `ZBUILD_STAGE_TIMEOUT_S` (env) > 5400 s default.  The hook subshell runs
    under `set -m` so it forms its own process group; `set +m` inside the hook
-   keeps the hook's own children in that same group.  A TERM trap inside
-   `plugin_hook_call`'s run-hook branch kills the inner hook group immediately
-   if `plugin_hook_call` itself receives TERM from an outer watchdog — without
-   this trap the inner group is orphaned and survives (root cause of SPEC-6b).
+   keeps the hook's own children in that same group.  A TERM trap installed
+   *before* `wait "$_lc_hook_pid"` inside `plugin_hook_call`'s run-hook branch
+   kills the inner hook group immediately if `plugin_hook_call` itself receives
+   TERM from an outer watchdog — without this trap the inner group is orphaned
+   and survives (root cause of SPEC-6b / runner-release-exit-paths test).
 2. All hand-rolled `kill -KILL/-TERM` sequences for stage dispatch are replaced
-   by `zbuild_pg_kill`, including lifecycle.sh line 525
-   (`kill -KILL -- -"$_lc_hook_pid"`) and runner.sh lines 2486–2487.
+   by `zbuild_pg_kill`, specifically:
+   - lifecycle.sh line 525: `kill -KILL -- -"$_lc_hook_pid"` → `zbuild_pg_kill "$_lc_hook_pid" 1`
+   - runner.sh lines 2486–2487: `kill -KILL/-TERM -- -"$_ar_pid"/"$_wd_pid"` → `zbuild_pg_kill`
 3. `ZBUILD_ORCH_TIMEOUT` is removed from all three strategy files; the per-
    dispatch watchdog in lifecycle.sh is the only ceiling.
 4. `plugins/tool/orch-sequential/` is deleted; a `sequential` backend config
@@ -331,11 +333,22 @@ dispatch.
    removed from `config/adr-enforcement-baseline.txt`.
 
 **Why the flag-on assertion in runner-job-control-abort-test.sh is superseded**:
-The test probed `$-` *inside* the plugin subshell for `m` (monitor mode). The
-new lifecycle.sh intentionally forces `set +m` inside the hook subshell so that
-grandchildren stay in the hook's process group and cannot escape a KILL. The
-assertion must be rewritten to verify structurally that runner.sh uses `set -m`
-rather than probing the subshell's flag set at runtime.
+The T1 probe records `$-` *inside* the hook subshell. The new lifecycle.sh forces
+`set +m` inside every hook subshell (so hook children stay in the hook's own
+process group and cannot escape KILL). After the change `$-` inside the hook
+never has `m` even when `ZBUILD_RUNNER_JOB_CONTROL=1`. The flag-on assertion must
+be updated to a structural check — verify that lifecycle.sh (or runner.sh) contains
+`set -m` before spawning the hook — rather than probing the subshell's flag set
+at runtime.
+
+**Dispatch routes and backends**: The watchdog is installed inside `plugin_hook_call`
+in lifecycle.sh, which is above the orchestrator-backend layer. Every dispatch route
+— map (strategies/map.sh:plugin_hook_call), fanout (strategies/fanout.sh), sequential
+strategy (strategies/sequential.sh), cycle member (runner.sh:2935/3106 via
+cycle/parallel orchestrators), parallel-group member (runner.sh:3106), roleless leaf
+(runner.sh:3781/3845), and always_run (runner.sh:2477 background dispatch) — reaches
+`plugin_hook_call`. All three backends (bash-parallel, ruflo-hive, mock) dispatch
+through the same call; the watchdog therefore covers every backend by construction.
 
 ```scope
 core/plugin-registry/lifecycle.sh
@@ -392,23 +405,25 @@ tests/unit/orch-backend-misconfigured-test.sh
 ```
 
 ```acceptance
-SPEC-1[code]: plugin_hook_call arms a per-dispatch watchdog for the run hook that writes disposition timed_out and names the stage and limit; every dispatch route (map, fanout, sequential strategy, cycle member, roleless leaf, always_run) reaches plugin_hook_call covers: R-1
+SPEC-1[code]: plugin_hook_call arms a per-dispatch watchdog for the run hook that writes disposition timed_out and names the stage and limit; every dispatch route (map, fanout, sequential strategy, cycle member, parallel-group member, roleless leaf, always_run) reaches plugin_hook_call; the watchdog is above the backend layer and therefore covers bash-parallel, ruflo-hive, and mock backends by construction covers: R-1
 SPEC-2[code]: killing a hung run hook stops the whole process group — hook runs under set -m creating its own pgid; plugin_hook_call's run-hook branch has a TERM trap that kills the inner hook group immediately when plugin_hook_call is externally TERMed covers: R-2
-SPEC-3[code]: timeout precedence: template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default covers: R-3
+SPEC-3[code]: timeout precedence: template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default; the 5400 s tier is verified by an isolation test that runs with neither a template value nor ZBUILD_STAGE_TIMEOUT_S set and confirms 5400 s is the timeout actually used covers: R-3
 SPEC-4[code]: the template loader rejects a stage_timeout_s below router.timeout_s and a non-integer value covers: R-4
 SPEC-5[code]: watchdog is instantiated inside plugin_hook_call so a retried stage and each map member each receive a fresh independent timer covers: R-5
 SPEC-6[code]: _runner_dispatch_always_run reads _TPL_STAGE_TIMEOUT_S_<stage> (not router.timeout_s); simple.yaml carries stage_timeout_s for every stage (release=30, persist=120) covers: R-6
-SPEC-7[code]: ZBUILD_ORCH_TIMEOUT is absent from all three strategy files; a plan dispatch running longer than 300 s and inside its stage_timeout_s completes covers: R-7
+SPEC-7[code]: ZBUILD_ORCH_TIMEOUT is absent from all three strategy files; a plan dispatch whose hook sleeps 310 s (inside its stage_timeout_s) completes with exit 0, proving no earlier ceiling fires covers: R-7
 SPEC-8[code]: plugins/tool/orch-sequential/ directory is absent; no file outside docs/adr/ names orch-sequential; a config naming sequential as backend ends the run as misconfigured covers: R-8
-SPEC-9[code]: a configured orchestrator backend that cannot be found, or an unreadable config, fails the run as misconfigured and names the backend in the output covers: R-9
-SPEC-10[code]: plugin_hook_call (lifecycle.sh) has no hand-rolled TERM/KILL sequence — kill -KILL/-TERM for stage dispatch is replaced by zbuild_pg_kill; _runner_dispatch_always_run and _orch_local_collect_results in runner.sh and local_engine.sh use zbuild_pg_kill covers: R-10
+SPEC-9[code]: a configured orchestrator backend that cannot be found, or an unreadable config, fails the run as misconfigured and the output names the backend in both cases (unknown-alias case and unreadable-config case) covers: R-9
+SPEC-10[code]: plugin_hook_call (lifecycle.sh line 525) has no hand-rolled kill -KILL/-TERM for stage dispatch — replaced by zbuild_pg_kill; _runner_dispatch_always_run (runner.sh lines 2486-2487) uses zbuild_pg_kill; _orch_local_collect_results in local_engine.sh uses zbuild_pg_kill covers: R-10
 SPEC-11[no-code]: ADR-054 §9, ADR-017, and ADR-011 have ## Enforced by sections naming the tests that enforce their stage-timeout and backend-retirement statements; both ADRs are removed from config/adr-enforcement-baseline.txt covers: R-12
 SPEC-12[done]: timed_out is already a valid disposition word in the engine evidence: docs/adr/ADR-054-stage-contract.md:248 covers: R-1
 SPEC-13[done]: zbuild_pg_kill already exists in scripts/lib/proc-group.sh evidence: scripts/lib/proc-group.sh covers: R-2
 SPEC-14[done]: core/orch/contract.sh defaults the backend to bash-parallel with no fallback to orch-sequential evidence: core/orch/contract.sh covers: R-8
 SPEC-15[no-code]: before writing tests, grep -rl for orch-sequential, ZBUILD_ORCH_TIMEOUT, router.timeout_s in tests/ and include every file pinning them in scope covers: R-11
 SPEC-16[no-code]: npm test and npm run lint pass after all code changes are applied covers: R-13
-SPEC-18[code]: orch.backend.misconfigured and plugin.run.timed_out are registered as known types in config/event-schema.json and pass the event-schema-emitted-coverage-test covers: R-1 R-9
+SPEC-17[no-code]: every test that previously used orch-sequential as a fixture is updated to use orch-mock or bash-parallel; the orch-sequential-retired-guard-test assertion that no file outside docs/adr/ names orch-sequential enforces this mechanically covers: R-8
+SPEC-18[code]: orch.backend.misconfigured and plugin.run.timed_out are registered as known types in config/event-schema.json; event-schema-emitted-coverage-test passes (no emitted event type is unregistered) after adding the new types covers: R-1 R-9
+SPEC-19[no-code]: the orch-backend-misconfigured test includes a variant that sources contract.sh from a temp install directory produced by install.sh (i.e. rsync of the repo tree into a tmp ZBUILD_HOME, then source from $ZBUILD_HOME/core/orch/contract.sh), verifying behavior is identical from the installed layout covers: R-9
 WIRING:
 core/plugin-registry/lifecycle.sh
 core/pipeline/runner.sh
@@ -424,15 +439,19 @@ SPEC-8: tests/unit/orch-sequential-retired-guard-test.sh
 SPEC-9: tests/unit/orch-backend-misconfigured-test.sh
 SPEC-10: tests/unit/stage-timeout-dispatch-test.sh tests/unit/stage-timeout-always-run-test.sh
 SPEC-11: tests/unit/orch-sequential-retired-guard-test.sh
+SPEC-17: tests/unit/orch-sequential-retired-guard-test.sh
 SPEC-18: tests/unit/event-schema-emitted-coverage-test.sh
+SPEC-19: tests/unit/orch-backend-misconfigured-test.sh
 ```
 
 ```supersedes
-tests/integration/runner-job-control-abort-test.sh flag-on: plugin_hook_call now forces set +m inside the hook subshell so grandchildren stay in the hook's process group; $- inside the hook no longer has 'm' — the flag-on assertion must check structurally that runner.sh uses set -m rather than probing the subshell's flag set at runtime
-tests/integration/runner-release-exit-paths-test.sh [SPEC-6b]: the SPEC-6b scenario (TERM-ignoring grandchild survives) is now fixed by a TERM trap in plugin_hook_call's run-hook branch that kills the inner hook group immediately; after the fix the assertion passes (child is dead within 5 s of runner returning)
+tests/integration/runner-job-control-abort-test.sh flag-on: plugin_hook_call now forces set +m inside the hook subshell so grandchildren stay in the hook's process group; $- inside the hook no longer has 'm' even when ZBUILD_RUNNER_JOB_CONTROL=1 — the flag-on assertion must be updated to a structural check: verify lifecycle.sh or runner.sh contains set -m before the hook spawn, rather than probing $- at runtime
+tests/integration/runner-release-exit-paths-test.sh [SPEC-6b]: the SPEC-6b scenario (TERM-ignoring grandchild survives) is fixed by the TERM trap in plugin_hook_call's run-hook branch that kills the inner hook group immediately when plugin_hook_call receives TERM from the outer watchdog; after the fix the assertion passes (child is dead within 5 s of runner returning)
 ```
 
 Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.
+
+If Previous work says a [code] requirement's test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.
 
 
 ## Previous work
@@ -440,7 +459,7 @@ Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is cle
 The latest output of every stage that has run, with where to find it. Use
 what your job needs.
 
-Files this issue's work has changed so far: none.
+Files this issue's work has changed so far: .github/issues/keepers-manifest.yaml, config/adr-enforcement-baseline.txt, config/event-schema.json, config/templates/simple.yaml, core/orch/contract.sh, core/orch/local_engine.sh, core/pipeline/runner.sh, core/pipeline/strategies/fanout.sh, core/pipeline/strategies/map.sh, core/pipeline/strategies/sequential.sh, core/pipeline/template.sh, core/plugin-registry/lifecycle.sh, docs/adr/ADR-011-pluggable-backends.md, docs/adr/ADR-017-per-stage-router-config.md, docs/adr/ADR-054-stage-contract.md, docs/audits/adr-2026-10-03/batch-1.md, docs/wiki/Plugins.md, docs/wiki/plugins/orch-sequential.md, plugins/tool/orch-mock/plugin.sh, plugins/tool/orch-mock/tests/orch-mock-test.sh, … (46 in all)
 
 ### hydrate (verdict: pass)
 Outputs:
@@ -450,15 +469,13 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 442 artifact(s) from prior runs (restored)
+- restored 498 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 442 artifact(s) from zbuild/state/issue-1801
+- detail: restored 498 artifact(s) from zbuild/state/issue-1801
 
 ### intake (verdict: pass)
 Outputs:
-- intake_baseline_ref: /home/runner/work/_temp/zbuild-state/intake-baseline-ref.txt
-- intake_branch: /home/runner/work/_temp/zbuild-state/intake-branch.txt
 - intake_goal: /home/runner/work/_temp/zbuild-state/intake.md
 - intake_result: /home/runner/work/_temp/zbuild-state/artifacts/intake-result.json
 - intake_summary: /home/runner/work/_temp/zbuild-state/artifacts/intake-summary.md
@@ -495,122 +512,117 @@ Outputs:
 Summary:
 ## design — pass
 
-- authored design.md — 51 file(s) in scope, 17 acceptance SPEC(s)
+- authored design.md — 51 file(s) in scope, 19 acceptance SPEC(s)
 
 - scope: core/plugin-registry/lifecycle.sh,core/pipeline/runner.sh,core/pipeline/template.sh,core/pipeline/strategies/fanout.sh,core/pipeline/strategies/map.sh,core/pipeline/strategies/sequential.sh,core/orch/contract.sh,core/orch/local_engine.sh,scripts/lib/proc-group.sh,config/templates/simple.yaml,config/event-schema.json,config/adr-enforcement-baseline.txt,plugins/tool/orch-sequential/,plugins/tool/orch-mock/plugin.sh,plugins/tool/orch-ruflo-hive/plugin.sh,docs/adr/ADR-054-stage-contract.md,docs/adr/ADR-017-per-stage-router-config.md,docs/adr/ADR-011-pluggable-backends.md,docs/wiki/plugins/orch-sequential.md,docs/wiki/Plugins.md,.github/issues/keepers-manifest.yaml,tests/unit/stage-timeout-dispatch-test.sh,tests/unit/stage-timeout-process-group-test.sh,tests/unit/stage-timeout-precedence-test.sh,tests/unit/stage-timeout-loader-validation-test.sh,tests/unit/stage-timeout-retry-test.sh,tests/unit/stage-timeout-always-run-test.sh,tests/unit/stage-timeout-no-flat-limit-test.sh,tests/unit/orch-sequential-retired-guard-test.sh,tests/unit/orch-backend-misconfigured-test.sh,tests/unit/event-schema-emitted-coverage-test.sh,tests/integration/runner-release-exit-paths-test.sh,tests/integration/runner-job-control-abort-test.sh,tests/golden/full-pipeline/event-sequence.golden,tests/golden/parity/event-sequence.golden,tests/golden/orch-sequential-capabilities.golden,tests/unit/core-pipeline-template-test.sh,tests/unit/template-simple-yaml-test.sh,tests/unit/build-oos-pass-request-test.sh,tests/unit/change-scope-floor-test.sh,tests/unit/template-resolvability-preflight-test.sh,tests/unit/impact-prefilter-order-detector-test.sh,tests/unit/shape-floor-summary-plain-test.sh,tests/unit/shape-floor-content-stable-test.sh,tests/unit/adr059-no-tmpdir-defaults-test.sh,tests/unit/core-orch-run-id-isolation-test.sh,tests/unit/dispatch-rc-guard-test.sh,tests/unit/stdin-spawn-guard-test.sh,tests/unit/summary-mandatory-test.sh,tests/unit/plugin-artifact-goldens-test.sh,tests/unit/orch-backend-misconfigured-test.sh
 - artifact: design.md
 
 Your notes so far:
-# Design notes — issue #1801 (retry)
+# Design notes — issue #1801 (final refinement)
 
-## Previous notes summary
-Previous build ran (39 files changed). Three tests still fail.
+## Previous state summary
+Build ran 39 file changes. Three tests still fail (same root causes as before).
 
-## Root causes confirmed
+## Root causes confirmed (unchanged from previous notes)
 
-### 1. stage-timeout-dispatch-test.sh SPEC-10
+### 1. stage-timeout-dispatch-test.sh [#1801/SPEC-10]
 lifecycle.sh line 525: `kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true`
-Test greps for kill -KILL / kill -TERM in plugin_hook_call body.
-Fix: replace with `zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true`
+Design says to replace with `zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true`.
+Build missed this change. SPEC-10 / Decision point 2 already covers it.
 
-### 2. runner-release-exit-paths-test.sh SPEC-6b
-Outer watchdog in _runner_dispatch_always_run kills `plugin_hook_call` (the _ar_pid
-process) via TERM. Bash exits on TERM (no trap). The inner hook group (_lc_hook_pid)
-is orphaned. The inner watchdog fires late. Fix: TERM trap inside the run-hook branch
-of plugin_hook_call that kills _lc_hook_pid group before exiting.
+### 2. runner-release-exit-paths-test.sh [SPEC-6b]
+TERM trap in plugin_hook_call's run-hook branch not implemented.
+When `_runner_dispatch_always_run` outer watchdog TERMs plugin_hook_call, bash exits
+(no trap), inner hook group (_lc_hook_pid) is orphaned. Fix: add TERM trap at the
+start of the run-hook branch that kills _lc_hook_pid's group immediately.
+Design already covers this in Decision point 1 and supersedes SPEC-6b.
 
 ### 3. runner-job-control-abort-test.sh T1 flag-on
-Plugin subshell always has `set +m` now. The T1 probe records $- inside the plugin.
-$- never has m. Fix: update T1 assertion to structural check (grep runner.sh/lifecycle.sh).
+Probe runs inside hook subshell which has `set +m` (lifecycle.sh:504). `$-` inside
+the hook never has 'm'. Supersedes block covers this: assertion must be a structural
+check (grep lifecycle.sh/runner.sh for `set -m`), not a runtime probe.
 
-## SPEC-6b deeper analysis
-_runner_dispatch_always_run outer watchdog: zbuild_pg_kill "$_ar_pid" 10
-  → TERM to _ar_pid's group (only plugin_hook_call process, since _lc_hook_pid is
-    a separate group created by set -m inside plugin_hook_call)
-  → plugin_hook_call receives TERM, bash exits (default TERM action)
-  → _lc_hook_pid's group orphaned
+## Spec-coverage findings addressed
 
-Inner watchdog: (set +m; sleep 30; zbuild_pg_kill "$_lc_hook_pid" 10 ...) &
-  → still alive (in its own group), fires 30s after dispatch
-  → TERM to _lc_hook_pid group, wait 10s, KILL
-  → child dies at ~40s after dispatch start
+### R-1 parallel-group member
+The parallel-group member dispatch is at runner.sh:3106:
+  `set +e; plugin_hook_call "$_pd_plugin_dir" run ...`
+Adding "parallel-group member" to SPEC-1's route list.
+Per-backend verification: watchdog is in plugin_hook_call (above backend layer);
+SPEC-1 clarifies this means all backends are covered by the same watchdog.
 
-Runner returns at ~30s (after _ar_pid dies). Test polls for 5s (30-35s).
-Child alive at 35s → SPEC-6b fails.
+### R-8 fixture migration
+No test currently configures orch-sequential as a live backend fixture.
+The guard test (SPEC-8) already covers this: "no file outside docs/adr names
+orch-sequential" catches any fixture still using it. Adding SPEC-17[no-code] to
+make this explicit in the contract.
 
-Fix: trap TERM in plugin_hook_call run-hook branch:
-trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; ...' TERM
-This kills the inner group immediately when plugin_hook_call receives TERM from the outer watchdog.
+### R-9 installed tree
+The orch-backend-misconfigured test says "tested from the installed tree" but
+sources from $REPO_ROOT. Adding SPEC-19[no-code]: test must include a variant
+that sources contract.sh from an install.sh-produced path (temp install in
+the test's tmp dir, sourcing from $ZBUILD_HOME/core/orch/contract.sh after
+rsync), verifying behavior is identical post-install.
 
-## Design document structure
-design.md written to /home/runner/work/_temp/zbuild-state/artifacts/design.md.
-Complete scope and acceptance blocks covering R-1..R-13 with 18 SPECs.
-Supersedes block covers runner-job-control-abort-test.sh flag-on and SPEC-6b.
+## Spec-correspondence findings addressed
 
-### spec-coverage (verdict: fail)
-Outputs:
-- spec_coverage_result: /home/runner/work/_temp/zbuild-state/artifacts/spec-coverage-result.json
-- spec_coverage_summary: /home/runner/work/_temp/zbuild-state/artifacts/spec-coverage-summary.md
+### SPEC-1: always_run and parallel-group member routes
+always_run calls plugin_hook_call at runner.sh:2477.
+parallel-group calls plugin_hook_call at runner.sh:3106.
+Both are now listed in SPEC-1's route enumeration.
 
-Findings:
-- spec-coverage finding 1 (opened by spec-coverage): The issue asks for this and no SPEC covers it: R-1: "parallel-group member" is absent from SPEC-1's enumerated route list (map, fanout, sequential strategy, cycle member, roleless leaf, always_run), and no SPEC requires that the timeout behaviour is verified under each of the three named backends (bash-parallel, ruflo-hive, mock) — SPEC-1 establishes only that plugin_hook_call is above the backend layer, not that tests exercise each backend
-- spec-coverage finding 2 (opened by spec-coverage): The issue asks for this and no SPEC covers it: R-8: no SPEC requires that every test which previously used orch-sequential as a fixture now passes on orch-mock or bash-parallel — SPEC-8 covers deletion, the guard, and the misconfigured-config case but is silent on fixture migration
-- spec-coverage finding 3 (opened by spec-coverage): The issue asks for this and no SPEC covers it: R-9: no SPEC requires the misconfigured-backend test to be run from the installed tree (install.sh layout) — SPEC-9 describes only the runtime behaviour, not the test-execution environment the requirement mandates
+### SPEC-3: tier-3 default
+Strengthened: tier-3 test runs a subshell with neither _TPL_STAGE_TIMEOUT_S_*
+nor ZBUILD_STAGE_TIMEOUT_S set and confirms the watchdog uses 5400 s.
 
-Summary:
-## spec-coverage — fail
+### SPEC-7: runtime completion
+Strengthened: test spawns a hook that sleeps 310 s (inside stage_timeout_s=3600)
+and verifies it completes (exit 0), not just checks ZBUILD_ORCH_TIMEOUT absence.
 
-- Three requirements have portions that no SPEC fully covers: R-1 omits the parallel-group-member route and per-backend verification; R-8 omits the fixture-migration check; R-9 omits the installed-tree test constraint.
+### SPEC-9: unreadable-config names backend
+The unreadable-config case falls through to "not found" logic in contract.sh
+which includes backend name in warn() and emit_event(). Test must also check
+`grep -q 'bad-backend' <<< "$_out4"` to match the requirement.
 
-- NOT COVERED: R-1: "parallel-group member" is absent from SPEC-1's enumerated route list (map, fanout, sequential strategy, cycle member, roleless leaf, always_run), and no SPEC requires that the timeout behaviour is verified under each of the three named backends (bash-parallel, ruflo-hive, mock) — SPEC-1 establishes only that plugin_hook_call is above the backend layer, not that tests exercise each backend
-- NOT COVERED: R-8: no SPEC requires that every test which previously used orch-sequential as a fixture now passes on orch-mock or bash-parallel — SPEC-8 covers deletion, the guard, and the misconfigured-config case but is silent on fixture migration
-- NOT COVERED: R-9: no SPEC requires the misconfigured-backend test to be run from the installed tree (install.sh layout) — SPEC-9 describes only the runtime behaviour, not the test-execution environment the requirement mandates
+### SPEC-18: coverage test must pass
+Strengthened: event-schema-emitted-coverage-test must pass (existing events
+remain registered), not just that the two new types are listed.
 
-### design-gate (verdict: pass)
-Outputs:
-- design_gate_feedback: /home/runner/work/_temp/zbuild-state/artifacts/design-gate-feedback.md
-- design_gate_result: /home/runner/work/_temp/zbuild-state/artifacts/design-gate-result.json
+## Files verified in worktree
+- lifecycle.sh: TERM trap absent (build gap) — SPEC-2/supersedes-SPEC-6b
+- lifecycle.sh line 525: kill -KILL still present (build gap) — SPEC-10
+- runner.sh lines 2486-2487: kill -KILL/-TERM still present — SPEC-10
+- orch-backend-misconfigured-test.sh: unreadable case checks only exit code
+- runner-job-control-abort-test.sh: T1 still probes $- (runtime probe)
+- parallel-group dispatch confirmed at runner.sh:3106 via plugin_hook_call
+- orch-sequential: no live fixture uses; guard catches any survivors
+- contract.sh orch_load_backend: names backend in warn() for all failure paths
 
-Summary:
-# Design-gate: all structural checks cleared
-
-The design is build-ready.
-
-### test-author (verdict: complete)
+### test-author (verdict: rate_limited)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
 
 Summary:
+## test-author — rate_limited
+
+- the author did not finish (router_rate_limited) — what it wrote is kept for the next attempt
+
+- SPECs in the contract: 16
+- assertions are authored from the SPEC text, never from the implementation
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-2-attempt-1/test-author-checkpoint.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-2-attempt-1/test-author-result.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-2-attempt-1/test-author-summary.md
+
+Summary of that output:
 ## test-author — complete
 
 - authored acceptance assertions for 14 SPEC(s) from the design contract
 
 - SPECs in the contract: 14
 - assertions are authored from the SPEC text, never from the implementation
-
-### spec-correspondence (verdict: partial)
-Outputs:
-- spec_correspondence_result: /home/runner/work/_temp/zbuild-state/artifacts/spec-correspondence-result.json
-- spec_correspondence_summary: /home/runner/work/_temp/zbuild-state/artifacts/spec-correspondence-summary.md
-
-Findings:
-- spec-correspondence finding 1 (opened by spec-correspondence): SPEC-1 partial: The assertion checks fanout.sh, sequential.sh, map.sh, and runner.sh for calls to `plugin_hook_call`, but the `always_run` route (dispatched through `_runner_dispatch_always_run`, not `plugin_hook_call`) and the parallel-group member route are not covered, so not every named route is established.
-- spec-correspondence finding 2 (opened by spec-correspondence): SPEC-3 partial: Tier 1 (template beats env) and tier 2 (env consulted when template absent) are verified, but tier 3 (5400 s default) is established only by grep-for-literal rather than an isolation test that runs with neither a template value nor ZBUILD_STAGE_TIMEOUT_S set and confirms 5400 is actually used.
-- spec-correspondence finding 3 (opened by spec-correspondence): SPEC-7 partial: The assertion establishes that the flat ZBUILD_ORCH_TIMEOUT ceiling and any `--timeout` flag are absent from the three strategy files, but it does not demonstrate that a dispatch running longer than 300 s actually completes — other kill mechanisms could still fire within stage_timeout_s.
-- spec-correspondence finding 4 (opened by spec-correspondence): SPEC-9 partial: The unknown-backend case is fully verified (output contains both "misconfigured" and the backend name), but for the unreadable-config case the assertion only checks that the exit code is non-zero — it does not verify that the output names the backend as the requirement specifies.
-- spec-correspondence finding 5 (opened by spec-correspondence): SPEC-18 partial: The assertion confirms both event types are registered in `config/event-schema.json`, but the requirement also states the event-schema-emitted-coverage-test must pass — the assertion does not check this, and registration alone does not rule out other unregistered emitted events that could still fail that test.
-
-Summary:
-## spec-correspondence — partial
-
-- judged 12 SPEC(s): 7 correspond, 5 partial, 0 mismatch, 0 uncheckable, 0 unjudged
-
-- SPEC-1 partial: The assertion checks fanout.sh, sequential.sh, map.sh, and runner.sh for calls to `plugin_hook_call`, but the `always_run` route (dispatched through `_runner_dispatch_always_run`, not `plugin_hook_call`) and the parallel-group member route are not covered, so not every named route is established.
-- SPEC-3 partial: Tier 1 (template beats env) and tier 2 (env consulted when template absent) are verified, but tier 3 (5400 s default) is established only by grep-for-literal rather than an isolation test that runs with neither a template value nor ZBUILD_STAGE_TIMEOUT_S set and confirms 5400 is actually used.
-- SPEC-7 partial: The assertion establishes that the flat ZBUILD_ORCH_TIMEOUT ceiling and any `--timeout` flag are absent from the three strategy files, but it does not demonstrate that a dispatch running longer than 300 s actually completes — other kill mechanisms could still fire within stage_timeout_s.
-- SPEC-9 partial: The unknown-backend case is fully verified (output contains both "misconfigured" and the backend name), but for the unreadable-config case the assertion only checks that the exit code is non-zero — it does not verify that the output names the backend as the requirement specifies.
-- SPEC-18 partial: The assertion confirms both event types are registered in `config/event-schema.json`, but the requirement also states the event-schema-emitted-coverage-test must pass — the assertion does not check this, and registration alone does not rule out other unregistered emitted events that could still fail that test.
 
 ### build (verdict: incomplete)
 Outputs:
@@ -629,6 +641,10 @@ Summary:
 
 ### test (verdict: fail)
 Outputs:
+- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
+- shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
+- shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
 - test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
@@ -738,140 +754,6 @@ unit: FAIL tests/unit/stage-timeout-dispatch-test.sh
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
 
-### shape-floor (verdict: fail)
-Outputs:
-- shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
-- shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-
-Findings:
-- shape-floor finding 1 (opened by shape-floor): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 2 (opened by shape-floor): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 3 (opened by shape-floor): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 4 (opened by shape-floor): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 5 (opened by shape-floor): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 6 (opened by shape-floor): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 7 (opened by shape-floor): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 8 (opened by shape-floor): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 9 (opened by shape-floor): tests/unit/impact-prefilter-order-detector-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 10 (opened by shape-floor): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-
-Summary:
-## shape-floor — fail
-
-- files that spell out a count, order or list this change alters were not updated
-
-This change alters a count, order or list that these files also spell out, and they were not updated.
-Update any that are now wrong. A file that is still correct can stay as it is: the full test run on this change shows that.
-- tests/golden/full-pipeline/event-sequence.golden
-- tests/golden/parity/event-sequence.golden
-- tests/unit/shape-floor-content-stable-test.sh
-- tests/unit/template-simple-yaml-test.sh
-- tests/unit/build-oos-pass-request-test.sh
-- tests/unit/change-scope-floor-test.sh
-- tests/unit/core-pipeline-template-test.sh
-- tests/unit/template-resolvability-preflight-test.sh
-- tests/unit/impact-prefilter-order-detector-test.sh
-- tests/unit/shape-floor-summary-plain-test.sh
-
-### acceptance-gate (verdict: fail)
-Outputs:
-- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
-- gate_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
-
-Findings:
-- acceptance-gate finding 1 (opened by acceptance-gate): SPEC-10: its test does not pass on the new code — the code or the test is wrong
-
-Summary:
-the acceptance check failed — SPEC-10: its test does not pass on the new code — the code or the test is wrong
-NEGCTL PASS SPEC-1
-      design : a `run` hook that hangs is killed at the per-stage timeout on every dispatch route — map, fanout, se…
-      asserts: assert_fail "[#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh" "not found"
-NEGCTL PASS SPEC-2
-      design : killing a hung `run` hook stops the entire process group — a child ignoring TERM leaves no process a…
-      asserts: assert_fail "[#1801/SPEC-2] plugin_hook_call is defined in lifecycle.sh" "not found"
-NEGCTL PASS SPEC-3
-      design : stage_timeout_s precedence: template value beats ZBUILD_STAGE_TIMEOUT_S beats the 5400 s engine defa…
-      asserts: assert_eq "[#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99" \
-NEGCTL PASS SPEC-4
-      design : the template loader rejects a `stage_timeout_s` value below the stage's `router.timeout_s`, and reje…
-      asserts: assert_exit_code "[#1801/SPEC-4] stage_timeout_s=30 below router.timeout_s=600 is rejected (rc=1)" \
-NEGCTL PASS SPEC-5
-      design : a retried stage and each map member each receive a fresh independent timer
-      asserts: assert_fail "[#1801/SPEC-5] lifecycle.sh exists" "not found: $_lc"
-NEGCTL PASS SPEC-6
-      design : `_runner_dispatch_always_run` reads `stage_timeout_s` (not `router.timeout_s`) for its time limit; `…
-      asserts: assert_fail "[#1801/SPEC-6] _runner_dispatch_always_run is defined in runner.sh" \
-NEGCTL PASS SPEC-7
-      design : removing ZBUILD_ORCH_TIMEOUT from all three strategy files means a plan dispatch running longer than…
-      asserts: assert_fail "[#1801/SPEC-7] $_sf exists" "file not found: $_file"
-NEGCTL PASS SPEC-8
-      design : `plugins/tool/orch-sequential/` directory is absent; a guard fails if it exists or if any file outsi…
-      asserts: assert_fail "[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent" \
-NEGCTL PASS SPEC-9
-      design : a configured orchestrator backend that cannot be found, or whose config is unreadable, fails the run…
-      asserts: assert_pass "[#1801/SPEC-9] unknown backend alias produces misconfigured + names the backend"
-NEGCTL FAIL SPEC-10 not_passing_at_head
-      design : `_runner_dispatch_always_run` and `_orch_local_collect_results` kill through `zbuild_pg_kill`; no ha…
-      asserts: assert_fail "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch" \
-NEGCTL SKIP SPEC-11 no_code
-      design : ADR-054 §9, ADR-017, and ADR-011 amended with `## Enforced by` sections and removed from config/adr-…
-      asserts: assert_fail "[#1801/SPEC-11] ADR-054 exists" "file not found: $_adr054"
-NEGCTL SKIP SPEC-12 already_done
-      design : `timed_out` is a valid disposition word in the closed set and `disposition_unfinished` returns true …
-      asserts: <none found>
-NEGCTL SKIP SPEC-13 already_done
-      design : `zbuild_pg_kill` (TERM + configurable grace + KILL, process-group scope) already exists in `scripts/…
-      asserts: <none found>
-NEGCTL SKIP SPEC-14 already_done
-      design : `core/config/config.sh` already defaults the orchestrator backend to `bash-parallel`; ADR-011 amendm…
-      asserts: <none found>
-NEGCTL SKIP SPEC-15 no_code
-      design : before writing tests, grep -rl for `orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `router.timeout_s`, and…
-      asserts: <none found>
-NEGCTL SKIP SPEC-16 no_code
-      design : `npm test` and `npm run lint` pass after all code changes are applied
-      asserts: <none found>
-NEGCTL PASS SPEC-18
-      design : `orch.backend.misconfigured` and `plugin.run.timed_out` are registered as known types in `config/eve…
-      asserts: assert_pass "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json"
-REACHABILITY PASS core/pipeline/runner.sh
-REACHABILITY PASS core/orch/contract.sh
-REACHABILITY PASS change .github/issues/keepers-manifest.yaml
-REACHABILITY PASS change config/adr-enforcement-baseline.txt
-REACHABILITY PASS change config/event-schema.json
-REACHABILITY PASS change config/templates/simple.yaml
-REACHABILITY PASS change core/orch/local_engine.sh
-REACHABILITY PASS change core/pipeline/strategies/fanout.sh
-REACHABILITY PASS change core/pipeline/strategies/map.sh
-REACHABILITY PASS change core/pipeline/strategies/sequential.sh
-REACHABILITY PASS change core/pipeline/template.sh
-REACHABILITY PASS change core/plugin-registry/lifecycle.sh
-REACHABILITY PASS change plugins/tool/orch-mock/plugin.sh
-REACHABILITY SKIP no_code plugins/tool/orch-ruflo-hive/plugin.sh
-
-### secret-scan (verdict: pass)
-Outputs:
-- secret_scan_detail: /home/runner/work/_temp/zbuild-state/artifacts/secret-scan-detail.md
-- secret_scan_result: /home/runner/work/_temp/zbuild-state/artifacts/secret-scan-result.json
-
-Summary:
-## secret-scan — pass
-
-- clean diff — no secrets found
-
-### assertion-integrity (verdict: pass)
-Outputs:
-- assertion_integrity_result: /home/runner/work/_temp/zbuild-state/artifacts/assertion-integrity-result.json
-- assertion_integrity_summary: /home/runner/work/_temp/zbuild-state/artifacts/assertion-integrity-summary.md
-
-Summary:
-## assertion-integrity — pass
-
-- declared acceptance testfiles are unchanged since authoring
-
-- files checked against the authored digests
-- violations: none
-
 ### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
@@ -891,18 +773,6 @@ Summary:
 - NOT MET: R-10: no hand-rolled TERM/KILL sequence remains — `stage-timeout-dispatch-test.sh` SPEC-10 fails because `kill -KILL -- -"$_lc_hook_pid"` is present in `plugin_hook_call` after `wait`
 - NOT MET: R-13: `npm test` green — 3 of 29 targeted tests fail (runner-job-control-abort-test.sh, runner-release-exit-paths-test.sh, stage-timeout-dispatch-test.sh)
 
-### gate-aggregator (verdict: fail)
-Outputs:
-- gate_aggregator_result: /home/runner/work/_temp/zbuild-state/artifacts/gate-aggregator-result.json
-- gate_aggregator_summary: /home/runner/work/_temp/zbuild-state/artifacts/gate-aggregator-summary.md
-
-Summary:
-## gate-aggregator — fail
-
-- rolled up 6 gate(s) into verdict fail
-
-- failed: test, shape-floor, acceptance-gate, issue-acceptance
-
 ## What you must not do
 
 - Do not write any file other than the design.md above and your notes file.
@@ -921,7 +791,7 @@ Summary:
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
 - Your budget: each model call has 600 seconds, with no limit on turns. A call that runs out of time
-  returns nothing: finish and write your answer well before the limit.
+  returns nothing: finish and write your answer well before the limit. The whole stage has 2700 seconds.
 
 ### How every stage works
 
