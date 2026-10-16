@@ -55,13 +55,16 @@ checked=0
 while IFS= read -r manifest; do
     _dir="$(dirname "$manifest")"
     [[ -f "$_dir/plugin.sh" ]] || continue
-    grep -q 'failures+=(' "$_dir/plugin.sh" 2>/dev/null || continue
+    # The plugin's code: plugin.sh and its lib/ (#2372: the acceptance check
+    # lives in plugins/tool/test/lib/).
+    _ldc_files=("$_dir/plugin.sh"); for _f in "$_dir"/lib/*.sh; do [[ -f "$_f" ]] && _ldc_files+=("$_f"); done
+    grep -q 'failures+=(' "${_ldc_files[@]}" 2>/dev/null || continue
     checked=$((checked + 1))
     plugin_rel="${manifest#"$_LDC_ROOT"/}"
     state="$(_ldc_classes "$manifest")"
     case "$state" in
         absent)
-            echo "✗ $plugin_rel: plugin.sh writes failures[] but the manifest declares no config.valid_failure_classes" >&2
+            echo "✗ $plugin_rel: its code writes failures[] but the manifest declares no config.valid_failure_classes" >&2
             violations=$((violations + 1))
             ;;
         empty)

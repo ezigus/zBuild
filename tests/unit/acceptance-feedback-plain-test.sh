@@ -23,8 +23,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "the acceptance check's feedback is plain (#2269)"
 setup_test_env "acceptance-feedback-plain"
-# shellcheck source=../../plugins/agent/spec-acceptance/plugin.sh
-source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" >/dev/null 2>&1
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh" >/dev/null 2>&1
 
 _all="$(_ag_build_reason tautology:SPEC-1 not_passing_at_head:SPEC-2 untagged_spec:SPEC-3 \
     no_testfile:SPEC-4 no_testfiles:lib/a.sh inert_wiring:config/x.json wiring_not_on_path:lib/b.sh \

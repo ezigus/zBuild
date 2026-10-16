@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# #2372: test runs this check over its own run (was the shape-floor stage);
+# sourced by plugins/tool/test/plugin.sh after its bootstrap.
 # plugins/tool/shape-floor/plugin.sh — Shape Floor Stage (ADR-040, ADR-037 §1, #1134)
 #
 # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
@@ -14,24 +16,24 @@
 [[ -n "${_ZBUILD_SHAPE_FLOOR_PLUGIN_LOADED:-}" ]] && return 0
 _ZBUILD_SHAPE_FLOOR_PLUGIN_LOADED=1
 
-# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
-zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
-# shellcheck source=../../../scripts/lib/stage-summary.sh
+# shellcheck source=../../../../scripts/lib/plugin-bootstrap.sh
+# shellcheck source=../../../../scripts/lib/stage-summary.sh
 # NOT `|| true`: this helper is how the gate's findings reach a prompt at
 # all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+# zbuild_engine_tmpdir comes from helpers.sh (a no-op when test's bootstrap loaded it).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/lib/helpers.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/lib/stage-summary.sh"
 # #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
-# shellcheck source=../../../scripts/lib/stage-result.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-result.sh"
+# shellcheck source=../../../../scripts/lib/stage-result.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/lib/stage-result.sh"
 _SF_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
-# shellcheck source=../../../core/event-bus/event-bus.sh
+# shellcheck source=../../../../core/event-bus/event-bus.sh
 source "$_SF_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # #1783: source via the contract-reader seam so a run that edits the floor's own
 # lib is measured by its copy rather than the installed engine's.
-# shellcheck source=../../../scripts/lib/shape-floor.sh
+# shellcheck source=../../../../scripts/lib/shape-floor.sh
 # A failed load is recorded, not swallowed (#1752): shape_floor_run fails on it.
 source "$_ZBUILD_CONTRACT_LIB_DIR/shape-floor.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" shape-floor.sh"
 

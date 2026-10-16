@@ -109,7 +109,7 @@ fi
 # ─── SPEC-4: the gate states the finding, not the remedy ─────────────────────
 print_test_section "SPEC-4: the tautology finding is a fact, not an instruction to someone"
 # shellcheck disable=SC1091
-source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" >/dev/null 2>&1 || true
+source "$REPO_ROOT/plugins/tool/test/plugin.sh" >/dev/null 2>&1 || true
 if declare -F _ag_build_reason >/dev/null 2>&1; then
     _r="$(_ag_build_reason "tautology:SPEC-21")"
     # #2269: the fact in plain words ("already passes on the code from before
@@ -123,7 +123,7 @@ fi
 # ─── SPEC-5: an integrity violation is restored, not just reported ───────────
 print_test_section "SPEC-5: the authored copy is kept, and the build restores a modified testfile from it"
 # shellcheck disable=SC1091
-source "$REPO_ROOT/plugins/tool/assertion-integrity/plugin.sh" >/dev/null 2>&1 || true
+source "$REPO_ROOT/plugins/agent/test-author/lib/record.sh" >/dev/null 2>&1 || true
 REPO5="$TEST_TEMP_DIR/repo5"; ART5="$TEST_TEMP_DIR/art5"; mkdir -p "$REPO5/tests" "$ART5"
 printf '```acceptance\nSPEC-1[change]: x\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n' > "$ART5/design.md"
 printf '#!/usr/bin/env bash\n# authored\nexit 0\n' > "$REPO5/tests/a-test.sh"
@@ -131,10 +131,15 @@ assertion_integrity_record "$ART5" "$REPO5" 2>/dev/null || true
 assert_file_exists "[SPEC-5] the record keeps a copy of the authored testfile" "$ART5/authored-testfiles/tests/a-test.sh"
 printf '#!/usr/bin/env bash\n# MODIFIED BY BUILD\nexit 0\n' > "$REPO5/tests/a-test.sh"
 export ZBUILD_REPO_ROOT="$REPO5"
-mkdir -p "$TEST_TEMP_DIR/st5"; printf '{}' > "$TEST_TEMP_DIR/st5/state.json"; ln -sfn "$ART5" "$TEST_TEMP_DIR/st5/artifacts"
-assertion_integrity_run "assertion-integrity" "$TEST_TEMP_DIR/st5/state.json" >/dev/null 2>&1 || true
-_ai="$(jq -r '.verdict+"|"+.reason' "$ART5/assertion-integrity-result.json" 2>/dev/null)"
-assert_contains "[SPEC-5] the finding says the file will be restored and is read-only for the build stage" "$_ai" "restored"
+# #2372: test compares the testfiles against the fingerprints an earlier
+# output carries (test-author's data.testfiles), and says what happens next.
+( cd "$REPO5" && git init -q . 2>/dev/null )
+jq -nc '{result_contract:3, outcome:"pass", reason:"x", data:{testfiles:{"tests/a-test.sh":"0000000000000000000000000000000000000000"}}}' > "$ART5/author-result.json"
+jq -n --arg p "$ART5/author-result.json" '{inputs:{author_result:$p}}' > "$ART5/idx.json"
+_ai="$( source "$REPO_ROOT/plugins/tool/test/plugin.sh" >/dev/null 2>&1
+       ZBUILD_STAGE_INPUTS="$ART5/idx.json" _test_assertion_fingerprints "$REPO5" >/dev/null 2>&1
+       printf '%s\n' "${_TEST_FP_FINDINGS[@]}" )"
+assert_contains "[SPEC-5] the finding says the file will be restored before the next build" "$_ai" "restored"
 # the build stage's pre-step restores from the copy
 # shellcheck disable=SC1091
 source "$REPO_ROOT/plugins/agent/build/lib/summary.sh" >/dev/null 2>&1 || true

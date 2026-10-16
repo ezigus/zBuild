@@ -73,7 +73,7 @@ source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
 # #1988: the aggregator no longer renders gate detail — each gate publishes its
 # own. The invariant is that the GATES declare summaries, which is what makes
 # the engine deliver their findings.
-for _g in shape-floor lint-gate coverage-gate mutation-gate; do
+for _g in lint-gate coverage-gate mutation-gate; do
     _gm="$REPO_ROOT/plugins/tool/$_g/manifest.yaml"
     _has=0
     while IFS= read -r _r; do
@@ -238,14 +238,14 @@ source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 
 stage_summary_write "$T6_ART_DIR/test-failures-summary.md" "suite" "fail" \
     "FAIL tests/unit/sigpipe-antipattern-guard-test.sh"
-stage_summary_write "$T6_ART_DIR/acceptance-summary.txt" "acceptance-gate" "fail" \
-    "tautology:SPEC-1"
-stage_summary_write "$T6_ART_DIR/shape-floor-detail.md" "shape-floor" "fail" \
-    "missing_floor_files"
+# #2372: the acceptance check and the shape floor run inside test; their
+# failures reach later stages as numbered findings in test's own result.
+_t6r="$(jq -c '.data = ((.data // {}) + {findings: [{n:1, text:"tautology:SPEC-1 — its test passes on the code from before the change"}, {n:2, text:"missing_floor_files"}]})' "$T6_ART_DIR/test-results.json")"
+printf '%s\n' "$_t6r" > "$T6_ART_DIR/test-results.json"
 
-printf '{"schema_version":1,"stage_statuses":{"test":"failed","acceptance-gate":"failed","shape-floor":"failed"},"stage_verdicts":{"test":"fail","acceptance-gate":"fail","shape-floor":"fail"}}\n' \
+printf '{"schema_version":1,"stage_statuses":{"test":"failed"},"stage_verdicts":{"test":"fail"}}\n' \
     > "$T6_STATE_DIR/pipeline-state.json"
-_TPL_STAGES=(test acceptance-gate shape-floor)
+_TPL_STAGES=(test)
 T6_BODY="$(zb_test_previous_work "$T6_STATE_DIR/pipeline-state.json" \
     "$REPO_ROOT/plugins" 2>/dev/null || true)"
 

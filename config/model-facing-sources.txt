@@ -13,9 +13,9 @@ plugins/agent/review-lens/plugin.sh
 plugins/agent/review-lens/lib/charters.sh
 plugins/agent/security-lens/plugin.sh
 plugins/agent/security-lens/prompts/security.md
-plugins/agent/spec-acceptance/plugin.sh
+plugins/tool/test/lib/acceptance-check.sh
 plugins/agent/design/lib/checks.sh printf
-plugins/tool/shape-floor/plugin.sh
+plugins/tool/test/lib/shape-floor-check.sh
 scripts/lib/acceptance-reachability.sh
 scripts/lib/acceptance-negctl.sh
 scripts/lib/stage-prompt.sh printf

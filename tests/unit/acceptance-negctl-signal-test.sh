@@ -151,7 +151,7 @@ printf '{"inputs":{"design":"%s"}}\n' "$_st8/artifacts/design.md" > "$_st8/stage
   export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
   export ZBUILD_STAGE_INPUTS="$_st8/stage-inputs.json" _ACCEPTANCE_TIMEOUT_KILL_OK=no ZBUILD_NEGCTL_TIMEOUT=60
   unset _ZBUILD_ACCEPTANCE_GATE_LOADED
-  source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+  source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
       && acceptance_gate_run "acceptance-gate" "$_st8/pipeline-state.json" ) >/dev/null 2>&1 || true
 assert_contains "[S8] the negctl_sigkill event is emitted" \
     "$(cat "$_st8/events/events.jsonl" 2>/dev/null)" "acceptance.gate.negctl_sigkill"
@@ -165,9 +165,9 @@ source "$REPO_ROOT/scripts/lib/acceptance-disposition.sh"
 assert_eq "[S5] killed_by_signal is recoverable (the test's author can fix it)" \
     "recoverable" "$(_ag_failure_class_disposition killed_by_signal)"
 assert_contains "[S5] the gate declares the class" \
-    "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "- killed_by_signal"
+    "$(cat "$REPO_ROOT/plugins/tool/test/manifest.yaml")" "- killed_by_signal"
 # The real plugin, sourced in a subshell — no extraction by line pattern (review #2220).
-_reason="$( source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" >/dev/null 2>&1
+_reason="$( source "$REPO_ROOT/plugins/tool/test/plugin.sh" >/dev/null 2>&1
             _ag_build_reason "killed_by_signal:SPEC-8" "killed_by_signal:SPEC-9" 2>/dev/null )"
 assert_contains "[S5] the reason names the SPECs" "$_reason" "SPEC-8/SPEC-9"
 assert_contains "[S5] ...says the file died on a signal, not a timeout" "$_reason" "died on a signal"

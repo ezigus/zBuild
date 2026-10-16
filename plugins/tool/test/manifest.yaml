@@ -41,8 +41,60 @@ provides:
     - test_assessment.downgrade
     - test_assessment.missing_baseline
     - test_assessment.missing_input
+    - test.assertions.unchecked
+    - acceptance.gate.baseline_resolve_failed
+    - acceptance.gate.complete
+    - acceptance.gate.file_timeout
+    - acceptance.gate.inert_wiring
+    - acceptance.gate.load_failed
+    - acceptance.gate.negctl_harness_error
+    - acceptance.gate.negctl_sigkill
+    - acceptance.gate.negctl_timeout
+    - acceptance.gate.no_testfiles
+    - acceptance.gate.not_passing_at_head
+    - acceptance.gate.nothing_checked
+    - acceptance.gate.reachability_harness_error
+    - acceptance.gate.reachability_timeout
+    - acceptance.gate.skipped
+    - acceptance.gate.start
+    - acceptance.gate.tautology
+    - acceptance.gate.unclaimed_code
+    - acceptance.gate.unknown_failure_class
+    - acceptance.gate.untagged_spec
+    - acceptance.gate.untested_change
+    - acceptance.gate.wiring_exempt
+    - acceptance.gate.wiring_not_on_path
+    - acceptance.gate.worktree_failed
+    - shape_floor.fail
+    - shape_floor.pass
+    - shape_floor.skip
 
 config:
+  # #2372: the acceptance check test runs over its own run.
+  # The outcome says pass/fail (#2366, contract 3). Who fixes a failure is
+  # never this gate's to say (#2271, ADR-068): every stage answers each finding.
+  # #1959: every class this stage can put on failures[] ("<class>:<detail>").
+  # scripts/lib/lint-disposition-classify.sh refuses a class the table in
+  # scripts/lib/acceptance-disposition.sh does not map; at runtime an unmapped
+  # class is recoverable and evented, never terminal.
+  valid_failure_classes:
+    - unclaimed_code
+    - untagged_spec
+    - tautology
+    - inert_wiring
+    - untested_change
+    - no_testfile
+    - no_testfiles
+    - not_passing_at_head
+    - killed_by_signal
+    - wiring_not_on_path
+    - unreached_at_base
+    - unreached_at_head
+    - negctl_error
+    - reachability_error
+    - malformed_acceptance_block
+    - gate_load_failed
+    - nothing_checked
   tier_default: T0
   test_cmd_default: "npm test"
   # #846/ADR-034: targeted re-run command template ({files} placeholder, set via
@@ -98,6 +150,34 @@ outputs:
   - id: test_timing
     path: "${artifact_dir}/test-timing.log"
     type: test-timing.log@1
+    format: text
+    required: false
+  # #2372: the checks test runs over its own run (were stages of their own).
+  # Their findings reach later stages through test-results.json; these files
+  # keep each check's detail.
+  - id: shape_floor_result
+    path: "${artifact_dir}/shape-floor-result.json"
+    type: shape-floor-result.json@1
+    format: json
+    required: false
+  - id: shape_floor_detail
+    path: "${artifact_dir}/shape-floor-detail.md"
+    type: shape-floor-detail.md@1
+    format: markdown
+    required: false
+  - id: acceptance_result
+    path: "${artifact_dir}/acceptance-gate-result.json"
+    type: acceptance-gate-result.json@1
+    format: json
+    required: false
+  - id: acceptance_detail
+    path: "${artifact_dir}/acceptance-summary.txt"
+    type: acceptance-summary.txt@1
+    format: text
+    required: false
+  - id: acceptance_errors
+    path: "${artifact_dir}/acceptance-gate-errors.log"
+    type: acceptance-gate-errors.log@1
     format: text
     required: false
 

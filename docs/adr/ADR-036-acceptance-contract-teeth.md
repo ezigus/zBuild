@@ -1036,7 +1036,7 @@ Level 3 put back only the file the design named under `WIRING:`, and `WIRING: no
 - Amendment (#1670), Amendment (#1777) → superseded by ADR-069 (the `[guard]` paths are gone): `tests/unit/no-guard-paths-test.sh` N1, N2
 - Amendment (#1715) → `tests/integration/acceptance-gate-test.sh` S17, S18, S19; `tests/unit/acceptance-negctl-test.sh` NC-K, NC-K2, NC-K3
 - Amendment (#1711), Amendment (#2157), and the iteration-2 escalation in Amendment (#2097) → superseded by ADR-068 (#2271), which removed escalation and fault routing: `tests/unit/no-fault-routing-test.sh` R2; `tests/integration/acceptance-gate-reachability-test.sh` R6a, R6b
-- Amendment (#2022) → `tests/unit/template-simple-yaml-test.sh` SPEC-14; `tests/unit/test-author-test.sh` SPEC-1–SPEC-3; `tests/unit/lifecycle-testfile-deny-role-test.sh` SPEC-1–SPEC-3; `tests/unit/assertion-integrity-test.sh` SPEC-1, SPEC-2
+- Amendment (#2022) → `tests/unit/template-simple-yaml-test.sh` SPEC-14; `tests/unit/test-author-test.sh` SPEC-1–SPEC-3; `tests/unit/lifecycle-testfile-deny-role-test.sh` SPEC-1–SPEC-3; `tests/integration/test-checks-own-run-test.sh` R1–R3 (was assertion-integrity-test.sh; #2372) SPEC-1, SPEC-2
 - Amendment (#2097) → `tests/unit/acceptance-disposition-classify-test.sh` (`not_passing_at_head` recoverable); `tests/integration/acceptance-gate-test.sh` S14
 - Amendment (#2161) → `tests/integration/acceptance-gate-v2-reader-test.sh` SPEC-1–SPEC-4; `tests/unit/gate-v2-contract-test.sh` SPEC-15; `tests/unit/core-pipeline-cycle-acceptance-terminal-test.sh`
 - Amendment (2026-09-28, a tag carries its issue) → `tests/unit/issue-scoped-spec-tags-test.sh` T1–T5

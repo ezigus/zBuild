@@ -88,9 +88,7 @@ declare -A _expect=(
     [plugins/agent/plan/manifest.yaml]=plan.json
     # #1844 (ADR-054 §5): design's primary is now its v2 result, not design.md.
     [plugins/agent/design/manifest.yaml]=design-verdict.json
-    [plugins/tool/shape-floor/manifest.yaml]=shape-floor-result.json
     [plugins/tool/test/manifest.yaml]=test-results.json
-    [plugins/agent/spec-acceptance/manifest.yaml]=acceptance-gate-result.json
 )
 _s5_bad=""
 for _rel in "${!_expect[@]}"; do

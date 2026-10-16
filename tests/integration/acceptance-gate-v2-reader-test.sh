@@ -34,7 +34,22 @@ setup_test_env "acceptance-gate-v2-reader"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 GIT="$(command -v git)"
-GATE_MANIFEST="$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml"
+# #2372: the acceptance check runs inside test; its result is one of test's
+# outputs. The engine's reader is pointed at it through a manifest that names it
+# primary — what is under test is the result's shape, which is unchanged.
+GATE_MANIFEST="$TEST_TEMP_DIR/acceptance-check-manifest.yaml"
+cat > "$GATE_MANIFEST" <<'MF'
+id: acceptance-check
+kind: tool
+provides:
+  result_contract: 3
+outputs:
+  - id: acceptance_result
+    path: ${artifact_dir}/acceptance-gate-result.json
+    format: json
+    required: true
+    primary: true
+MF
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh"
 
@@ -49,7 +64,7 @@ _run_gate() {   # <repo> → RC, RESULT, STATE (state dir), EVENTS
           _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
           _ACCEPTANCE_COVERAGE_LOADED
     # shellcheck disable=SC1090
-    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+    ( cd "$repo" && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
         && acceptance_gate_run "acceptance-gate" "$STATE/pipeline-state.json" )
     RC=$?
     RESULT="$(cat "$STATE/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"

@@ -1,3 +1,5 @@
+./artifacts/acceptance-gate-result.json
+./artifacts/acceptance-summary.txt
 ./artifacts/attempts/build/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/build/iter-0-attempt-1/build-summary.json
 ./artifacts/attempts/build/iter-0-attempt-1/build-summary.md
@@ -26,7 +28,11 @@
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness-summary.md
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness.json
+./artifacts/attempts/test/iter-0-attempt-1/acceptance-gate-result.json
+./artifacts/attempts/test/iter-0-attempt-1/acceptance-summary.txt
 ./artifacts/attempts/test/iter-0-attempt-1/attempt.json
+./artifacts/attempts/test/iter-0-attempt-1/shape-floor-detail.md
+./artifacts/attempts/test/iter-0-attempt-1/shape-floor-result.json
 ./artifacts/attempts/test/iter-0-attempt-1/test-failures-summary.md
 ./artifacts/attempts/test/iter-0-attempt-1/test-output.log
 ./artifacts/attempts/test/iter-0-attempt-1/test-results.json
@@ -49,6 +55,8 @@
 ./artifacts/pr-result.json
 ./artifacts/pr-url.txt
 ./artifacts/review_lenses-summary.md
+./artifacts/shape-floor-detail.md
+./artifacts/shape-floor-result.json
 ./artifacts/stage-io/review_lenses-1.json
 ./artifacts/teardown-result.json
 ./artifacts/teardown-summary.md

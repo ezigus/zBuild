@@ -46,10 +46,8 @@ _n_test_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUIL
 assert_eq "[SPEC-5] the FAILING test member is dispatched exactly ONCE across the 3 iterations" "1" "$_n_test_f"
 _n_reused="$(grep -c '"cycle.iteration.reused".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[SPEC-5] …and reused on each of the other two" "2" "$_n_reused"
-# #2271: the acceptance check no longer escalates by round number, so its
-# answer depends only on the tree — its failure is reused like any other.
-_n_ag_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"acceptance-gate"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-5b] the FAILING acceptance-gate is reused too (dispatched once)" "1" "$_n_ag_f"
+# #2372: the acceptance check runs inside test, so its failure is test's,
+# reused with it (SPEC-5 above).
 _AG_VERDICT="pass"
 # #2271: no jump back. Exhausted with the suite failing is a failed end (rc 1,
 # outcome failed — rc 8 before #1850, ADR-054 §4); nested in the outer loop,

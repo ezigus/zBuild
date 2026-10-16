@@ -33,8 +33,8 @@ source "$_TA_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
 source "$_TA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/stage-result.sh
 source "$_TA_ROOT/scripts/lib/stage-result.sh"
-# shellcheck source=../../../plugins/tool/assertion-integrity/plugin.sh
-source "$_TA_ROOT/plugins/tool/assertion-integrity/plugin.sh" 2>/dev/null || true
+# shellcheck source=./lib/record.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/record.sh"
 # #2370: test-author checks its own assertions against their SPECs; the
 # assertion finder lives in acceptance-coverage.sh.
 # shellcheck source=../../../scripts/lib/acceptance-coverage.sh

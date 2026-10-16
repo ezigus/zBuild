@@ -77,16 +77,12 @@ build_test_cycle:
     # #2371: build scans its own change for secrets (was a stage of its own).
     - build
     - test
-    - shape-floor
-    - acceptance-gate
   exit_when:
     all:
       # #2371: build must pass — it scans its own change for secrets, and a
       # build that broke scope or did not finish is not done either.
       - { stage: build, field: verdict, op: eq, value: pass }
       - { stage: test, field: verdict, op: eq, value: pass }
-      - { stage: shape-floor, field: verdict, op: eq, value: pass }
-      - { stage: acceptance-gate, field: verdict, op: eq, value: pass }
   max_iterations: 3
   on_max: continue
 
@@ -149,35 +145,17 @@ build:
 test:
   gate: auto
   roles: [tester]
+  # #2372: test runs the shape floor and the acceptance check over its own run,
+  # and checks the assertion files against their fingerprints. ADR-036 #1188:
+  # negctl_timeout_s bounds each requirement's negative-control / reachability
+  # run (seconds).
+  negctl_timeout_s: 60
   # The whole stage, every call and check inside it (the full test suite); the engine
   # stops it here. The default for a stage is 900 (15 minutes).
   timeout_s: 2700
   io:
     destinations: [file, stdout]
     tail_lines: 200
-
-# ─── shape-floor (leaf, cycle member) ────────────────────────────────────────
-shape-floor:
-  gate: auto
-  roles: [shape_floor]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-
-# ─── acceptance-gate (leaf, cycle member) ────────────────────────────────────
-acceptance-gate:
-  gate: auto
-  roles: [acceptance_gate]
-  # The whole stage, every call and check inside it (a test run per requirement); the engine
-  # stops it here. The default for a stage is 900 (15 minutes).
-  timeout_s: 2700
-  negctl_timeout_s: 60
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    timeout_s: 600
-    max_turns: 10
 
 # ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
 review_lenses:

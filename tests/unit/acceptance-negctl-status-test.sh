@@ -177,7 +177,7 @@ printf '{"inputs":{"design":"%s"}}\n' "$ST5/artifacts/design.md" > "$ST5/stage-i
   export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
   export ZBUILD_STAGE_INPUTS="$ST5/stage-inputs.json" ZBUILD_NEGCTL_TIMEOUT=60
   unset _ZBUILD_ACCEPTANCE_GATE_LOADED
-  source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+  source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
       && acceptance_gate_run "acceptance-gate" "$ST5/pipeline-state.json" ) >/dev/null 2>&1 || true
 RES5="$ST5/artifacts/acceptance-gate-result.json"
 REASON5="$(jq -r '.reason // empty' "$RES5" 2>/dev/null)"

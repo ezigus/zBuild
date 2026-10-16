@@ -18,7 +18,7 @@ setup_test_env "acceptance-disposition-classify"
 # integration test uses for a fresh load).
 unset _ZBUILD_ACCEPTANCE_GATE_LOADED
 # shellcheck disable=SC1090
-source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh"
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 
 if ! declare -F _ag_classify_disposition >/dev/null; then
     assert_fail "plugin exposes _ag_classify_disposition" "(function not found)"
@@ -117,10 +117,10 @@ else
     assert_fail "[#1959] _ag_failure_class_disposition exists" "function not defined"
 fi
 assert_contains "[#1959] the manifest declares config.valid_failure_classes" \
-    "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "valid_failure_classes:"
+    "$(cat "$REPO_ROOT/plugins/tool/test/manifest.yaml")" "valid_failure_classes:"
 assert_contains "[#1959] …covering not_passing_at_head" \
-    "$(grep -A20 'valid_failure_classes:' "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "not_passing_at_head"
+    "$(grep -A20 'valid_failure_classes:' "$REPO_ROOT/plugins/tool/test/manifest.yaml")" "not_passing_at_head"
 assert_contains "[#1959] the event is registered in the manifest's provides.events" \
-    "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "acceptance.gate.unknown_failure_class"
+    "$(cat "$REPO_ROOT/plugins/tool/test/manifest.yaml")" "acceptance.gate.unknown_failure_class"
 
 print_test_results

@@ -133,12 +133,12 @@ fi
 # `acceptance.gate.wiring_not_on_path` is the event the #1686 build un-registered
 # rather than edit an out-of-scope engine file — the incident that motivated
 # this issue. It must be known through spec-acceptance's OWN manifest.
-_sa_events="$(eb_manifest_events "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")"
+_sa_events="$(eb_manifest_events "$REPO_ROOT/plugins/tool/test/manifest.yaml")"
 if grep -qxF "acceptance.gate.wiring_not_on_path" <<< "$_sa_events"; then
     assert_pass "[SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself"
 else
     assert_fail "[SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself" \
-        "absent from plugins/agent/spec-acceptance/manifest.yaml provides.events"
+        "absent from plugins/tool/test/manifest.yaml provides.events"
 fi
 
 # [SPEC-5] redaction.marker_neutralized must remain known (engine namespace).

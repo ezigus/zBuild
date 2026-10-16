@@ -92,7 +92,7 @@ assert_eq "[C1] the persistence code names no stage" "" "$_c1_named"
 # ─── C3 §3: gates re-evaluate; they never reuse a prior verdict ─────────────
 print_test_section "C3 §3: a deterministic gate never reuses a prior verdict"
 _c3_readers=""
-for _g in tool/test tool/shape-floor agent/spec-acceptance agent/build/lib/secrets.sh \
+for _g in tool/test agent/build/lib/secrets.sh \
           agent/design/lib; do
     [[ -e "$REPO_ROOT/plugins/$_g" ]] || { _c3_readers+="$_g(missing) "; continue; }
     while IFS= read -r _f; do

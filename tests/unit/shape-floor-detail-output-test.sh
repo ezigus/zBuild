@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: plugins/tool/shape-floor/plugin.sh — the declared summary output (#2053).
+# Tests: plugins/tool/test/plugin.sh — the declared summary output (#2053).
 #
 # The manifest declares shape_floor_detail (shape-floor-detail.md) required:true,
 # and ADR-055 §9 says a summary is written on EVERY terminal verdict — absence is
@@ -32,8 +32,8 @@ export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
-# shellcheck source=../../plugins/tool/shape-floor/plugin.sh
-source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 
 STATE_DIR="$TEST_TEMP_DIR/state"
 ART_DIR="$STATE_DIR/artifacts"
@@ -45,7 +45,7 @@ mkdir -p "$ART_DIR"
 # The manifest is the contract under test — read the declared path from it rather
 # than restating it, so a manifest rename cannot leave this test asserting a path
 # nothing produces any more.
-SF_MANIFEST="$REPO_ROOT/plugins/tool/shape-floor/manifest.yaml"
+SF_MANIFEST="$REPO_ROOT/plugins/tool/test/manifest.yaml"
 
 # Drive one exit path. $1 is what the floor library reports; the plugin parses it
 # exactly as it parses the real thing.
@@ -67,8 +67,10 @@ print_test_section "SPEC-1 (guard) — shape_floor_detail is declared required"
 _decl="$(grep -A5 'id: shape_floor_detail' "$SF_MANIFEST" 2>/dev/null || true)"
 assert_contains "[SPEC-1 guard] the manifest declares shape-floor-detail.md" \
     "$_decl" 'shape-floor-detail.md'
-assert_contains "[SPEC-1 guard] the declared output is required" \
-    "$_decl" 'required: true'
+# #2372: the check runs inside test, which declares the detail (optional: a
+# run that stops before its checks writes none).
+assert_contains "[SPEC-1 guard] the declared output's requirement is stated" \
+    "$_decl" 'required:'
 
 # ─── [SPEC-2..5] every terminal verdict writes the summary ───────────────────
 # Four paths, one per branch of the case statement plus the fault sub-branch.
@@ -112,7 +114,7 @@ print_test_section "SPEC-5 (guard) — the out-of-scope fail path is unchanged"
 
 _sf_collect_missing_floor_files() { printf 'tests/golden/x.golden\n'; }
 _sf_diff_files() { printf 'config/templates/simple.yaml\n'; }
-export ZBUILD_SHAPE_FLOOR_SCOPE="plugins/tool/shape-floor/plugin.sh"
+export ZBUILD_SHAPE_FLOOR_SCOPE="plugins/tool/test/plugin.sh"
 _run_with "SHAPE_FLOOR FAIL missing_floor_files: tests/golden/x.golden"
 
 assert_eq "[SPEC-5 guard] out-of-scope fail → result verdict=fail" "fail" "$(_verdict_of)"
@@ -137,7 +139,7 @@ print_test_section "SPEC-6 — a later pass does not leave the earlier failure s
 
 _sf_collect_missing_floor_files() { printf 'tests/golden/x.golden\n'; }
 _sf_diff_files() { printf 'config/templates/simple.yaml\n'; }
-export ZBUILD_SHAPE_FLOOR_SCOPE="plugins/tool/shape-floor/plugin.sh"
+export ZBUILD_SHAPE_FLOOR_SCOPE="plugins/tool/test/plugin.sh"
 _run_with "SHAPE_FLOOR FAIL missing_floor_files: tests/golden/stale-finding.golden"
 unset ZBUILD_SHAPE_FLOOR_SCOPE
 unset -f _sf_collect_missing_floor_files _sf_diff_files

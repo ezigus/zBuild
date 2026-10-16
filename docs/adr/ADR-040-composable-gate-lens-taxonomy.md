@@ -533,3 +533,24 @@ never converges, even when the tests pass.
 
 Enforced by: `tests/unit/build-checks-own-output-test.sh` K1–K5; `tests/unit/build-secret-scan-test.sh`;
 `tests/integration/acceptance-gate-fails-closed-test.sh` F6.
+
+### Amendment (2026-10-15, #2372) — test checks its own run
+
+shape-floor, acceptance-gate (plugin spec-acceptance) and assertion-integrity are retired as stages, and
+test runs their checks over its own run, after the suite: the shape floor
+(`plugins/tool/test/lib/shape-floor-check.sh`) and the acceptance contract — negative control,
+reachability, untagged and unclaimed code (`plugins/tool/test/lib/acceptance-check.sh`), unchanged — and
+whether the assertion files are the ones their author wrote. test has no model to go back to: its one
+outcome is `fail` when the suite or any check fails, with every failure as a numbered finding in its
+result, and the build loop goes round. A check that could not run is never a pass: its own word becomes
+test's outcome.
+
+- **The assertion fingerprints are found by content, never by naming a stage.** Any earlier output whose
+  result carries `data.testfiles` (path → content hash, which test-author writes) is a fingerprint. A file
+  whose content no longer matches is a finding. When no earlier output carries fingerprints (test-author
+  did not run, or wrote none), test warns — `test.assertions.unchecked`, and a note in its summary — and
+  never fails for it. test-author keeps recording the authored bytes (`plugins/agent/test-author/lib/record.sh`)
+  so a changed file can be restored before the next build.
+- build_test_cycle's `exit_when` requires test-author, build, test and issue-acceptance.
+
+Enforced by: `tests/integration/test-checks-own-run-test.sh` R1–R5.

@@ -163,7 +163,7 @@ _run_gate_capture() {  # _run_gate_capture <repo> <fd3_capture_file>
         exec 3>"$cap"
         export ZBUILD_STAGE_IO_FD=3
         export ZBUILD_STATE_DIR="$state_dir"
-        source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh"
+        source "$REPO_ROOT/plugins/tool/test/plugin.sh"
         # #1241: plugin.sh now sources stage-io.sh → template.sh, which defines a
         # real (template-less → empty) template_stage_io_dests that clobbers the
         # exported stub. Re-assert the stub AFTER the source so the io-gate still
