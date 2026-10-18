@@ -1,44 +1,54 @@
-# Plan stage notes — issue #1801 (iter-3)
+# Plan stage notes — issue #1801 (iter-4)
 
 ## What I read
 
-- iter-2/plan.json — 10-step plan (verdict: pass from iter-2 plan stage)
-- Build stage: incomplete (router_timeout), 39 files changed over 4 passes/12 iterations
-- Test stage: fail — 3 failures:
-  1. `flag-on: monitor mode ON in runner shell` (set -m leaks from plugin_hook_call into runner shell)
-  2. `[SPEC-6b] a hook child that ignores TERM does not outlive the run` (process group kill incomplete)
+- iter-3/plan.json — 10-step plan (verdict: pass from iter-3 plan stage)
+- test-author: fail — 1 finding (SPEC-1 always_run route not individually asserted)
+- Build stage: timed_out (router_timeout), only 2 files changed in final run; iter-1-attempt-4 had 39 files
+- Test stage: fail — 3 failures (same as iter-3):
+  1. `flag-on: monitor mode ON in runner shell` (set -m leaks from plugin_hook_call)
+  2. `[SPEC-6b] a hook child that ignores TERM does not outlive the run`
   3. `[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch`
-     (kill -KILL -- -"$_lc_hook_pid" still present in lifecycle.sh)
-- Issue-acceptance: fail — R-2, R-10, R-13 (the same 3 test failures)
+- Issue-acceptance: fail — R-2, R-10, R-13 (same 3 test failures)
 
-## Findings vs. current plan
+## New finding vs. current plan
 
-The build was cut short by router_timeout, meaning Steps 4 and 5 were not fully applied yet.
-All three test failures trace to exactly those two steps:
+**test-author finding (new):** SPEC-1 in `stage-timeout-dispatch-test.sh` covers the
+always_run route via a file-level grep on `runner.sh` only. That grep passes whether or
+not `_runner_dispatch_always_run` specifically calls `plugin_hook_call`, so the route is
+not individually established.
 
-1. **monitor-mode leak** (`set -m` leaks into calling runner shell):
-   - Step-4: "scope process-group mode to the plugin subshell only"
-   - ✅ covered
+Current Step 1 says: "verify the always_run and parallel-group dispatch routes reach the
+watchdog (SPEC-1)". The finding confirms the always_run gap is real — the step already
+names it. The description needs to be sharpened to state that the assertion must
+individually target `_runner_dispatch_always_run` (not rely on a file-level grep that
+passes for any call in runner.sh).
 
-2. **SPEC-10 / hand-rolled kill** (`kill -KILL -- -"$_lc_hook_pid"` still in lifecycle.sh):
-   - Step-4: "remove the remaining hand-rolled kill -KILL line after wait and route all
-     stage killing through zbuild_pg_kill"
-   - ✅ covered
+test-author did NOT flag the parallel-group route as a gap, so the open question about
+that route can be closed.
 
-3. **SPEC-6b / process group kill incomplete** (child ignoring TERM still alive 5s):
-   - Step-5: "replace the hand-rolled TERM/KILL sequence with zbuild_pg_kill so a hook
-     child that ignores TERM is killed within the grace window"
-   - ✅ covered
+## Remaining test failures
 
-## Assessment
+All three failures are unchanged and map to Steps 4 and 5, which were not fully applied
+because the build was cut short at router_timeout:
 
-The 10-step plan is correct and complete. All three open test failures map to
-incomplete work within existing steps (4 and 5); no structural change is needed.
+1. monitor-mode leak → Step 4 (scope set -m to plugin subshell)
+2. SPEC-10 hand-rolled kill -KILL in lifecycle.sh → Step 4 (remove, route through zbuild_pg_kill)
+3. SPEC-6b child ignoring TERM survives → Step 5 (replace watchdog TERM/KILL with zbuild_pg_kill)
 
-Every acceptance criterion from the issue is covered:
+## Plan changes
+
+- **Step 1**: tighten the always_run assertion description — the test must individually
+  verify the dispatch function rather than rely on a file-level grep that does not distinguish
+  the always_run path from any other call in runner.sh.
+- **Open questions**: drop the parallel-group route question (test-author found no gap there);
+  keep the SPEC-7 live-completion question (build was cut short before it could be verified).
+
+## Acceptance coverage check (unchanged from iter-3)
+
 - Hung run hook killed at limit, every route → Steps 3, 4, 5, 7
 - Whole process group dies → Steps 4, 5, 6
-- Precedence: template > env > 90min, each tested → Step 3
+- Precedence: template > env > 90 min, each tested → Step 3
 - Loader rejects invalid stage_timeout_s → Step 3
 - Retry and each map member get fresh timer → Step 4
 - simple.yaml carries measured values; always_run uses stage_timeout_s → Step 9
@@ -49,6 +59,4 @@ Every acceptance criterion from the issue is covered:
 - ADR-054 §9, ADR-017, ADR-011 amended with Enforced-by entries → Step 2
 - npm test + lint green → all steps collectively
 
-No step is inert. No acceptance criterion is unaddressed. Two open questions stand.
-
-## Plan: 10 steps — no changes required from iter-2
+## Plan: 10 steps — Step 1 description updated; one open question resolved
