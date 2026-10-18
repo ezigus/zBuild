@@ -218,8 +218,8 @@ assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "$
 # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
 assert_eq "[SPEC-18] [#1668/SPEC-1] delivery_loop holds design and the build loop (#2369)" \
     "design,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
-assert_eq "[SPEC-18] a design that still fails ends the round (#2369)" \
-    "design" "${_TPL_CYCLE_STOP_ROUND_delivery_loop:-}"
+assert_eq "[SPEC-18] a design that still fails ends the run (#2369, ADR-068 §3)" \
+    "design" "${_TPL_CYCLE_STOP_RUN_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop runs at most 2 rounds" "2" "${_TPL_CYCLE_MAX_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop halts when its rounds are spent" "halt" "${_TPL_CYCLE_ON_MAX_delivery_loop:-}"
 # ADR-068 §8 (amended 2026-10-11): the template declares no `unowned:` — a
