@@ -58,7 +58,7 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 
 - §1 (impact retired from zBuild) → `tests/unit/retired-impact-review-report-inputs-test.sh` RT1
 - §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it); `tests/unit/template-simple-yaml-test.sh` SPEC-18 (delivery_loop flow is design,build_test_cycle); `tests/integration/deployed-template-e2e-test.sh` (delivery_loop flow in deployed.yaml is design,build_test_cycle)
-- §1, §2 (design checks its own design, #2369; no round inside the stage, 2026-10-18) → `tests/unit/design-checks-own-output-test.sh` C1–C4
+- §1, §2 (design checks its own design, #2369; no round inside the stage, 2026-10-18) → `tests/unit/design-checks-own-output-test.sh` C1–C5
 - §3 (`stop_run_on_fail:`, #2369, 2026-10-18) → `tests/integration/stop-run-on-fail-test.sh` R1–R4
 - §2, §3, §4 → `tests/integration/nested-loop-rounds-test.sh` L1, L2, L4, L5; `tests/integration/nested-loop-rounds-build-test.sh` L3, L6; `tests/integration/cycle-member-dispatch-events-test.sh` §3 (rc 8 still halts on the last outer round); `tests/integration/cycle-rate-limit-aborts-run-test.sh` (rc 9 from an inner loop ends the run)
 - §5 → `tests/unit/numbered-findings-test.sh` N1–N5

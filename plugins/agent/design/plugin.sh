@@ -466,10 +466,19 @@ ${_dp_limits}")"; then
             emit_event "design.stray.conflict" "plugin=design" "path=$_stray" "reason=tracked"
             return 1
         fi
-        if mv "$_stray" "$output_draft" 2>/dev/null; then
-            warn "_design_stage_run_inner: recovered design.md from repo root → $output_draft"
-            emit_event "design.stray.recovered" "plugin=design" "from=$_stray" "to=$output_draft"
+        if ! mv "$_stray" "$output_draft" 2>/dev/null; then
+            # Checking the unchanged working copy would pass the last good design
+            # off as this call's (review on PR #2399).
+            error "_design_stage_run_inner: could not move the stray design.md from the repo root into $output_draft"
+            _design_write_outcome "$artifact_dir" "unusable" "stray_not_moved"
+            stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+                "design.md was written to the repo root and could not be moved into place" \
+                "The model ignored the destination path in the prompt. The root design.md is left where it is; design.md is unchanged."
+            emit_event "plugin.result" "outcome=unusable" "plugin=design" "reason=stray_not_moved"
+            return 1
         fi
+        warn "_design_stage_run_inner: recovered design.md from repo root → $output_draft"
+        emit_event "design.stray.recovered" "plugin=design" "from=$_stray" "to=$output_draft"
     fi
 
     _draft_after="$(cksum 2>/dev/null < "$output_draft" || printf 'absent')"
@@ -489,13 +498,15 @@ ${_dp_limits}")"; then
     _design_show "$output_draft"
 
     # #2369: design checks the working copy — by script, then, when the issue
-    # has numbered requirements, by a second model call that asks whether the
-    # SPECs cover them.
+    # has numbered requirements and the scripted checks pass, by a second model
+    # call that asks whether the SPECs cover them. A design that already fails
+    # is not sent to it: a coverage call that could not run would hide the
+    # findings the next run needs (review on PR #2399).
     local -a _fnd=()
     local _v _u
     _design_checks "$output_draft" "$repo_root" "$_req_f"
     for _v in "${_DESIGN_VIOLATIONS[@]}"; do _fnd+=("$(_dck_plain "$_v")"); done
-    if [[ -n "$_reqs" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
+    if [[ ${#_fnd[@]} -eq 0 && -n "$_reqs" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
         _design_coverage "$output_draft" "$_reqs" "$tier"
         if [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
             error "_design_stage_run_inner: the coverage check could not be run ($_DESIGN_COV_OUTCOME)"

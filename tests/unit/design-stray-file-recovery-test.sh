@@ -11,6 +11,9 @@
 #   (c) be a no-op when the LLM correctly writes to the declared path
 #   (d) leave an untracked design.md at the repo root alone when the LLM also
 #       wrote its working copy: that copy is this call's design (ADR-068 §8)
+#   (e) say so when an untracked stray cannot be moved into place, instead of
+#       checking the unchanged working copy as this call's design (review on
+#       PR #2399)
 #
 # Companion ADR amendment lives in #816 (PR #820): ADR-018 §"Pattern 2
 # outputs — derived diff vs single-file artifact".
@@ -183,6 +186,26 @@ _design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_d
 set +e
 assert_contains "T6: design.md is the design the call wrote" "$(cat "$output_md" 2>/dev/null)" "SPEC-1[no-code]: foo works"
 assert_eq "T6: the root design.md is left alone" "someone else's notes" "$(cat "$fixture/design.md" 2>/dev/null)"
+unset MOCK_DESIGN_WRITE_PATH
+
+# ─── T7: the stray cannot be moved → unusable, not a pass on the old copy ──
+_setup_test_fixture t7
+fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"; output_md="$OUTPUT_MD"; artifact_dir="$ARTIFACT_DIR"
+printf '# Design\n\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[no-code]: the last good one\nWIRING: none\nTESTFILES:\n```\n' > "$output_md"
+MOCK_DESIGN_WRITE_PATH="$fixture/design.md"   # LLM writes to repo root
+# Only the stray's move fails; every other move works as normal.
+_T7_STRAY="$fixture/design.md"
+mv() { [[ "${1:-}" == "$_T7_STRAY" ]] && return 1; command mv "$@"; }
+set +e
+_design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir" >/dev/null 2>&1
+_t7_rc=$?
+set +e
+unset -f mv
+assert_eq "T7: a stray that cannot be moved → rc=1" "1" "$_t7_rc"
+assert_eq "T7: ...outcome unusable" "unusable" \
+    "$(jq -r '.outcome // "MISSING"' "$artifact_dir/design-verdict.json" 2>/dev/null || echo MISSING)"
+assert_eq "T7: ...reason stray_not_moved" "stray_not_moved" \
+    "$(jq -r '.reason // "MISSING"' "$artifact_dir/design-verdict.json" 2>/dev/null || echo MISSING)"
 unset MOCK_DESIGN_WRITE_PATH
 
 # ─── T4: prompt contains the absolute destination path ──────────────────────

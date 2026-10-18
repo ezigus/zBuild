@@ -500,7 +500,7 @@ cannot re-author. The issue reaches the call under Previous work, like every sta
 no other stage's output by name. `design_verify_cycle` is retired; `delivery_loop` holds design and the
 build loop and names design in `stop_run_on_fail:` (ADR-068 §3).
 
-Enforced by: `tests/unit/design-checks-own-output-test.sh` C1–C4; `tests/unit/design-checks-test.sh`;
+Enforced by: `tests/unit/design-checks-own-output-test.sh` C1–C5; `tests/unit/design-checks-test.sh`;
 `tests/unit/design-checks-plain-test.sh` D1–D3; `tests/unit/design-coverage-test.sh`.
 
 ### Amendment (2026-10-15, #2370) — test-author checks its own assertions
