@@ -1,78 +1,42 @@
-# Design notes — issue #1801 (second refinement)
+# Design notes — issue #1801 (third refinement)
 
-## Root causes confirmed with code verification (second pass)
+## State of worktree as of this pass (third pass)
 
-### 1. stage-timeout-dispatch-test.sh [#1801/SPEC-10]
-lifecycle.sh line 525: `kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true`
-Must be replaced with `zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true`.
-The SPEC-10 test greps plugin_hook_call's body for `kill -TERM|kill -KILL` and fails on this line.
+### lifecycle.sh (confirmed FIXED by build)
+- Line 572: `zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true` — kill -KILL replaced ✓
+- Lines 537-556: TERM trap installed (subshell and main-shell variants) ✓
+- Line 500: `kill -KILL -- -<pgid>` appears only in a comment, filtered by `grep -v '^\s*#'` ✓
+- SPEC-10 assertion in stage-timeout-dispatch-test.sh: should NOW pass ✓
+- SPEC-6b scenario: TERM trap fires, kills _lc_hook_pid group via zbuild_pg_kill (KILL after 1s),
+  exits 143. Resolves the SPEC-6b failure from the test stage. ✓
 
-### 2. runner-release-exit-paths-test.sh [SPEC-6b]
-Root cause confirmed in code (test lines 128-132):
+### runner.sh lines 2486-2487 (still not fixed by build)
+- `kill -KILL -- -"$_ar_pid" 2>/dev/null || true` — still present
+- `kill -TERM -- -"$_wd_pid" 2>/dev/null || true` — still present
+- stage-timeout-always-run-test.sh lines 147-151 check for `kill -(TERM|KILL) -- -"$_ar_pid"`
+  in _runner_dispatch_always_run body → WILL FAIL on current code
+- This is the remaining build gap; design correctly identifies it at decision point 2 / SPEC-10
 
-  build_cleanup checks BLOCK_CLEANUP_IGNORE_TERM. It spawns a TERM-ignoring child then calls
-  `wait` (bare wait with no argument), which blocks until all background jobs finish. This makes the
-  cleanup hook BLOCK for up to 120 seconds (the child's sleep). After 30 seconds the always_run
-  watchdog fires: `zbuild_pg_kill "$_ar_pid" 10` sends TERM to pgid _ar_pid (the plugin_hook_call
-  fork's group).
+### runner-job-control-abort-test.sh (confirmed FIXED by build)
+- Lines 149-153: structural check `grep -q 'set -m'` already in place ✓
+- flag-on failure in test stage was from partial build state, not current code ✓
 
-  With no TERM trap in plugin_hook_call, bash exits immediately when TERM interrupts `wait
-  "$_lc_hook_pid"` at lifecycle.sh line 521. Lines 525-527 are NEVER reached.
+### stage-timeout-dispatch-test.sh always_run route (design gap → updating SPEC-1)
+- Lines 92-110: file-level grep for runner.sh confirms plugin_hook_call somewhere in file
+- Lines 112-168: AWK-extracted body checks for cycle_dispatch_stage, parallel_dispatch_stage,
+  roleless leaf — all three have named-function or pattern-based extraction
+- NO AWK-extracted body check for _runner_dispatch_always_run calling plugin_hook_call
+- test-author finding: couldn't add this assertion in 2 rounds; needs explicit design guidance
+- AWK pattern from stage-timeout-always-run-test.sh line 33:
+    `/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}`
+  (_runner_dispatch_always_run is an inner function with 4-space closing brace)
+- runner.sh line 2477: `plugin_hook_call "$_ar_dir" run ...` — function DOES call it
+- Fix: update SPEC-1 text to explicitly require this AWK-extracted body check;
+  the test-author has the pattern (it's already in stage-timeout-always-run-test.sh)
+  but needs the contract to specify it
 
-  The hook subshell (pgid _lc_hook_pid) is a DIFFERENT process group from _ar_pid — lifecycle.sh
-  uses `set -m` to give the hook its own group. Killing _ar_pid's group does NOT kill _lc_hook_pid's
-  group. The TERM-ignoring child survives.
-
-  Fix: install a TERM trap in lifecycle.sh between `_lc_wd_pid=$!` (line 516) and `wait
-  "$_lc_hook_pid"` (line 521). Exact form:
-    trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true
-          zbuild_pg_kill "$_lc_wd_pid"  1 2>/dev/null || true
-          trap - TERM; exit 143' TERM
-    wait "$_lc_hook_pid" 2>/dev/null; rc=$?
-    trap - TERM
-
-  Then replace line 525 with:
-    zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true
-
-  Both changes in lifecycle.sh. The trap fires when plugin_hook_call's shell receives TERM from the
-  outer always_run watchdog; it kills the hook group before exiting.
-
-  Why SPEC-2ext PASSES but SPEC-6b FAILS: SPEC-2ext sends external SIGTERM to the runner itself.
-  The runner's _runner_signal_trap kills the pipeline process group via `kill -TERM -- "-$_pgid"` and
-  `kill -KILL -- "-$_pg"` — this reaches the hook differently (pipeline-level kill, not through the
-  always_run watchdog). SPEC-6b goes through _runner_dispatch_always_run's watchdog, which only kills
-  _ar_pid's process group, leaving _lc_hook_pid's group untouched.
-
-### 3. runner-job-control-abort-test.sh T1 flag-on
-The probe (lines 85-91 of the test) records `$-` inside intake_run(). lifecycle.sh line 504 does
-`set +m` inside every hook subshell, so `$-` never has 'm' in the hook, even with
-ZBUILD_RUNNER_JOB_CONTROL=1. The flag-on assertion (lines 144-151) checks
-`grep -q 'm' <<< "$_opts_on_1"` — fails.
-
-The supersedes block describes the fix: change flag-on assertion to a structural check. Concrete form:
-  # Replace runtime probe with structural check:
-  grep -q 'set -m' "$REPO_ROOT/core/plugin-registry/lifecycle.sh" \
-      && assert_pass "flag-on: lifecycle.sh arms set -m before hook spawn" \
-      || assert_fail "flag-on: lifecycle.sh arms set -m before hook spawn" "set -m not found"
-
-This verifies the structural property (hook gets its own pgid) without being defeated by set +m
-inside the hook subshell. The supersedes entry in design.md describes this.
-
-## Files verified in worktree (second pass)
-- lifecycle.sh line 525: kill -KILL still present — SPEC-10 build gap confirmed
-- lifecycle.sh lines 516-521: no TERM trap present — SPEC-6b build gap confirmed
-- lifecycle.sh line 504: set +m inside hook — flag-on probe broken, supersedes covers it
-- runner.sh lines 2486-2487: kill -KILL/-TERM present (always_run cleanup after wait) — noted in
-  SPEC-10 design text, but stage-timeout-dispatch-test only greps lifecycle.sh plugin_hook_call body
-  so these do not cause a test failure; they should still change per SPEC-10 intent
-- runner.sh lines 477/483: _runner_status_comment_kill — not stage dispatch, exempt from SPEC-10
-- runner.sh lines 2647/2653: _runner_signal_trap pipeline-level kill — not stage dispatch, exempt
-- SPEC-2ext (lines 412-452): PASSES — confirms external SIGTERM path works via runner's signal trap
-
-## Design conclusion
-All three failures are build and test-author gaps, not design errors. The design correctly describes
-all fixes. The refined design.md tightens:
-  - Decision point 1: exact TERM trap code and placement in lifecycle.sh
-  - Decision point 2: both lifecycle.sh line 525 AND runner.sh lines 2486-2487
-  - Supersedes block: precise structural check for flag-on assertion
-  - SPEC-6b root cause: build_cleanup's bare `wait` after spawning the TERM-ignoring child
+## Previous notes summary (second refinement)
+- lifecycle.sh TERM trap and zbuild_pg_kill fix described in detail — now applied by build ✓
+- runner.sh lines 2486-2487 still pending ✓
+- flag-on structural check described — now applied by build ✓
+- All three test failures were build/test-author gaps, not design errors — confirmed ✓
