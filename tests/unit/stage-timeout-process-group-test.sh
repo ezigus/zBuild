@@ -108,29 +108,46 @@ if [[ -n "$_phc_body" ]]; then
     fi
 fi
 
-# ─── [#1801/SPEC-2] plugin_hook_call has a TERM trap exiting 143 ──────────────
-# SPEC-2: "plugin_hook_call's run-hook branch has a TERM trap (inserted between
-# lifecycle.sh lines 516 and 521) that kills the inner hook group and watchdog and
-# exits with status 143 when plugin_hook_call is externally TERMed, so the hook's
-# children are not orphaned"
-print_test_section "[#1801/SPEC-2] plugin_hook_call run-hook branch has a TERM trap exiting 143"
+# ─── [#1801/SPEC-2] TERM trap is in the run-hook branch, not at function scope ─
+# SPEC-2: "plugin_hook_call's run-hook branch has a TERM trap ... that kills the
+# inner hook group and watchdog and exits with status 143 when plugin_hook_call is
+# externally TERMed, so the hook's children are not orphaned"
+# A trap at function scope would catch TERM for ALL hook types (cleanup, etc.)
+# which is wrong; the trap must be confined to the run-hook branch only.
+print_test_section "[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)"
 
 if [[ -n "$_phc_body" ]]; then
-    # The trap must exist and handle SIGTERM — old code had no trap at all.
-    if grep -q 'trap.*TERM' <<< "$_phc_body"; then
-        assert_pass "[#1801/SPEC-2] plugin_hook_call run-hook branch has a TERM trap"
-    else
-        assert_fail "[#1801/SPEC-2] plugin_hook_call run-hook branch has a TERM trap" \
-            "no 'trap ... TERM' found in plugin_hook_call — hook children not protected when externally TERMed"
-    fi
+    # Extract ONLY the run-hook branch: from `if [[ "$hook_name" == "run" ]]; then`
+    # to the matching `    else` at 4-space indent. The trap must be in THIS block,
+    # not at function scope where it would fire for cleanup hooks too.
+    _run_branch=""
+    _run_branch="$(awk '
+        /if \[\[ "\$hook_name" == "run" \]\]; then/{in_run=1}
+        in_run{print}
+        in_run && /^    else/{exit}
+    ' <<< "$_phc_body" 2>/dev/null || true)"
 
-    # The TERM trap must exit with status 143 (128 + SIGTERM=15) so the caller
-    # can distinguish "externally killed" from a normal non-zero hook exit.
-    if grep -q 'exit 143' <<< "$_phc_body"; then
-        assert_pass "[#1801/SPEC-2] TERM trap exits with status 143"
+    if [[ -z "$_run_branch" ]]; then
+        assert_fail "[#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call" \
+            "could not extract 'if hook_name == run' block — guard not found or awk pattern mismatch"
     else
-        assert_fail "[#1801/SPEC-2] TERM trap exits with status 143" \
-            "'exit 143' not found in plugin_hook_call — the TERM trap must exit 143 (128+SIGTERM)"
+        assert_pass "[#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call"
+
+        # The TERM trap must be inside the run-hook branch — old code had no trap at all.
+        if grep -q 'trap.*TERM' <<< "$_run_branch"; then
+            assert_pass "[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)"
+        else
+            assert_fail "[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)" \
+                "no 'trap ... TERM' found in run-hook branch — a function-scope trap would affect cleanup hooks"
+        fi
+
+        # The TERM trap must exit with status 143 (128 + SIGTERM=15).
+        if grep -q 'exit 143' <<< "$_run_branch"; then
+            assert_pass "[#1801/SPEC-2] TERM trap in run-hook branch exits with status 143"
+        else
+            assert_fail "[#1801/SPEC-2] TERM trap in run-hook branch exits with status 143" \
+                "'exit 143' not found in run-hook branch — the TERM trap must exit 143 (128+SIGTERM)"
+        fi
     fi
 fi
 

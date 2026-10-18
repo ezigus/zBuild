@@ -143,6 +143,20 @@ else
         "plugin_hook_call not found inside parallel_dispatch_stage — parallel members bypass the per-dispatch watchdog"
 fi
 
+# always_run route — AWK-extract _runner_dispatch_always_run body and confirm it calls plugin_hook_call.
+# SPEC-1 requires this to be established via body extraction, not a file-level grep on runner.sh,
+# so that a refactor moving the dispatch call out of the function cannot slip through.
+_always_run_fn_body=""
+if [[ -f "$_runner" ]]; then
+    _always_run_fn_body="$(awk '/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}' "$_runner" 2>/dev/null || true)"
+fi
+if grep -q 'plugin_hook_call' <<< "$_always_run_fn_body"; then
+    assert_pass "[#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call"
+else
+    assert_fail "[#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call" \
+        "plugin_hook_call not found inside _runner_dispatch_always_run body — always_run stages bypass the per-dispatch watchdog"
+fi
+
 # roleless leaf — the path taken when the stage has no template roles (backward-compat direct dispatch)
 # In runner.sh: if [[ -z "$roles_out" ]] … plugin_hook_call … else (strategy dispatch)
 # runner.sh has MULTIPLE occurrences of `[[ -z "$roles_out" ]]`: the first is a dry-run
