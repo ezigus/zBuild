@@ -522,16 +522,16 @@ plugin_hook_call() {
         # when plugin_hook_call is externally TERMed.  Two cases:
         #
         #  a) Subshell (BASHPID ≠ $$): plugin_hook_call was backgrounded by
-        #     _runner_dispatch_always_run.  exit 143 exits the subshell so
-        #     the outer _runner_dispatch_always_run wait "$_ar_pid" unblocks
+        #     _runner_dispatch_always_run.  The trap exits with status 143,
+        #     unblocking the outer _runner_dispatch_always_run wait "$_ar_pid"
         #     (SPEC-6b: a hook child that ignores TERM must not outlive run).
         #
         #  b) Main-shell (BASHPID == $$): plugin_hook_call runs directly in
         #     the runner process (sequential / roleless dispatch).  We kill the
         #     hook group, then delegate to the runner's own signal handler
         #     (_runner_signal_trap TERM) so the pipeline abort path runs
-        #     normally (emits pipeline.aborted, exits 1).  Fall back to
-        #     exit 143 when called outside the runner (e.g. standalone tests).
+        #     normally (emits pipeline.aborted, exits 1).  The status is 143
+        #     when called outside the runner (e.g. standalone tests).
         local _lc_in_subshell=0
         [[ "$BASHPID" != "$$" ]] && _lc_in_subshell=1
         if (( _lc_in_subshell )); then
