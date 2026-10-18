@@ -1,0 +1,160 @@
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 012a54e6..31992ba9 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -2473,6 +2473,13 @@ main() {
+             # it leaves no `sleep` behind.
+             (
+                 export ZBUILD_TEARDOWN_SCOPE=release
++                # Set ZBUILD_CURRENT_STAGE so plugin_hook_call resolves the
++                # correct _TPL_STAGE_TIMEOUT_S_<stage> for its inner watchdog
++                # (#1801: without this it inherits the interrupted stage's name
++                # and falls back to ZBUILD_STAGE_TIMEOUT_S, which SPEC-5 pins
++                # to 3 s — far too short for the teardown plugin to source its
++                # dependencies and dispatch cleanup hooks).
++                export ZBUILD_CURRENT_STAGE="$_ar_stage"
+                 set -m
+                 plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
+                 _ar_pid=$!
+@@ -2482,9 +2489,10 @@ main() {
+                 wait "$_ar_pid" 2>/dev/null || true
+                 # #2333: the leader exiting does not mean its group did. A member
+                 # that ignored TERM would lose its KILL when the watchdog is
+-                # cancelled below, so KILL the group now; a no-op when it is gone.
+-                kill -KILL -- -"$_ar_pid" 2>/dev/null || true
+-                kill -TERM -- -"$_wd_pid" 2>/dev/null || true
++                # cancelled below, so kill the whole group via zbuild_pg_kill
++                # (TERM + grace + KILL) — a no-op when the group is already gone.
++                zbuild_pg_kill "$_ar_pid" 1 2>/dev/null || true
++                zbuild_pg_kill "$_wd_pid" 1 2>/dev/null || true
+                 wait "$_wd_pid" 2>/dev/null || true
+             ) >/dev/null 2>&1 || true
+         done
+diff --git a/tests/unit/stage-timeout-always-run-test.sh b/tests/unit/stage-timeout-always-run-test.sh
+index 7928eb55..046bdde5 100644
+--- a/tests/unit/stage-timeout-always-run-test.sh
++++ b/tests/unit/stage-timeout-always-run-test.sh
+@@ -64,6 +64,27 @@ _simple="$REPO_ROOT/config/templates/simple.yaml"
+ if [[ ! -f "$_simple" ]]; then
+     assert_fail "[#1801/SPEC-6] config/templates/simple.yaml exists" "not found"
+ else
++    # ── [#1801/SPEC-6] REQUIRED VALUES: release=30, persist=120 ──────────────
++    # Direct assertions for the two values SPEC-6 explicitly mandates.
++    # Not inside a helper function so the requirement is unambiguously visible.
++    _spec6_r="$(awk '/^release:/{f=1; next} f && /^[a-zA-Z_-]/{exit} f && /stage_timeout_s:/{print; exit}' \
++        "$_simple" 2>/dev/null | grep -oE '[0-9]+' || true)"
++    if [[ "$_spec6_r" == "30" ]]; then
++        assert_pass "[#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30 (required)"
++    else
++        assert_fail "[#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30 (required)" \
++            "got '${_spec6_r:-<absent>}' — SPEC-6 mandates stage_timeout_s 30 for release"
++    fi
++
++    _spec6_p="$(awk '/^persist:/{f=1; next} f && /^[a-zA-Z_-]/{exit} f && /stage_timeout_s:/{print; exit}' \
++        "$_simple" 2>/dev/null | grep -oE '[0-9]+' || true)"
++    if [[ "$_spec6_p" == "120" ]]; then
++        assert_pass "[#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120 (required)"
++    else
++        assert_fail "[#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120 (required)" \
++            "got '${_spec6_p:-<absent>}' — SPEC-6 mandates stage_timeout_s 120 for persist"
++    fi
++
+     # Verify required stage_timeout_s values by parsing the template.
+     # Each check verifies that the section contains `stage_timeout_s: N`.
+     # Strategy: for each stage, confirm that stage_timeout_s appears in simple.yaml
+diff --git a/tests/unit/stage-timeout-dispatch-test.sh b/tests/unit/stage-timeout-dispatch-test.sh
+index 1cf6a350..147330a3 100644
+--- a/tests/unit/stage-timeout-dispatch-test.sh
++++ b/tests/unit/stage-timeout-dispatch-test.sh
+@@ -143,6 +143,20 @@ else
+         "plugin_hook_call not found inside parallel_dispatch_stage — parallel members bypass the per-dispatch watchdog"
+ fi
+ 
++# always_run route — AWK-extract _runner_dispatch_always_run body and confirm it calls plugin_hook_call.
++# SPEC-1 requires this to be established via body extraction, not a file-level grep on runner.sh,
++# so that a refactor moving the dispatch call out of the function cannot slip through.
++_always_run_fn_body=""
++if [[ -f "$_runner" ]]; then
++    _always_run_fn_body="$(awk '/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}' "$_runner" 2>/dev/null || true)"
++fi
++if grep -q 'plugin_hook_call' <<< "$_always_run_fn_body"; then
++    assert_pass "[#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call"
++else
++    assert_fail "[#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call" \
++        "plugin_hook_call not found inside _runner_dispatch_always_run body — always_run stages bypass the per-dispatch watchdog"
++fi
++
+ # roleless leaf — the path taken when the stage has no template roles (backward-compat direct dispatch)
+ # In runner.sh: if [[ -z "$roles_out" ]] … plugin_hook_call … else (strategy dispatch)
+ # runner.sh has MULTIPLE occurrences of `[[ -z "$roles_out" ]]`: the first is a dry-run
+diff --git a/tests/unit/stage-timeout-process-group-test.sh b/tests/unit/stage-timeout-process-group-test.sh
+index a16e1367..5a0ce7d8 100644
+--- a/tests/unit/stage-timeout-process-group-test.sh
++++ b/tests/unit/stage-timeout-process-group-test.sh
+@@ -108,29 +108,46 @@ if [[ -n "$_phc_body" ]]; then
+     fi
+ fi
+ 
+-# ─── [#1801/SPEC-2] plugin_hook_call has a TERM trap exiting 143 ──────────────
+-# SPEC-2: "plugin_hook_call's run-hook branch has a TERM trap (inserted between
+-# lifecycle.sh lines 516 and 521) that kills the inner hook group and watchdog and
+-# exits with status 143 when plugin_hook_call is externally TERMed, so the hook's
+-# children are not orphaned"
+-print_test_section "[#1801/SPEC-2] plugin_hook_call run-hook branch has a TERM trap exiting 143"
++# ─── [#1801/SPEC-2] TERM trap is in the run-hook branch, not at function scope ─
++# SPEC-2: "plugin_hook_call's run-hook branch has a TERM trap ... that kills the
++# inner hook group and watchdog and exits with status 143 when plugin_hook_call is
++# externally TERMed, so the hook's children are not orphaned"
++# A trap at function scope would catch TERM for ALL hook types (cleanup, etc.)
++# which is wrong; the trap must be confined to the run-hook branch only.
++print_test_section "[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)"
+ 
+ if [[ -n "$_phc_body" ]]; then
+-    # The trap must exist and handle SIGTERM — old code had no trap at all.
+-    if grep -q 'trap.*TERM' <<< "$_phc_body"; then
+-        assert_pass "[#1801/SPEC-2] plugin_hook_call run-hook branch has a TERM trap"
++    # Extract ONLY the run-hook branch: from `if [[ "$hook_name" == "run" ]]; then`
++    # to the matching `    else` at 4-space indent. The trap must be in THIS block,
++    # not at function scope where it would fire for cleanup hooks too.
++    _run_branch=""
++    _run_branch="$(awk '
++        /if \[\[ "\$hook_name" == "run" \]\]; then/{in_run=1}
++        in_run{print}
++        in_run && /^    else/{exit}
++    ' <<< "$_phc_body" 2>/dev/null || true)"
++
++    if [[ -z "$_run_branch" ]]; then
++        assert_fail "[#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call" \
++            "could not extract 'if hook_name == run' block — guard not found or awk pattern mismatch"
+     else
+-        assert_fail "[#1801/SPEC-2] plugin_hook_call run-hook branch has a TERM trap" \
+-            "no 'trap ... TERM' found in plugin_hook_call — hook children not protected when externally TERMed"
+-    fi
+-
+-    # The TERM trap must exit with status 143 (128 + SIGTERM=15) so the caller
+-    # can distinguish "externally killed" from a normal non-zero hook exit.
+-    if grep -q 'exit 143' <<< "$_phc_body"; then
+-        assert_pass "[#1801/SPEC-2] TERM trap exits with status 143"
+-    else
+-        assert_fail "[#1801/SPEC-2] TERM trap exits with status 143" \
+-            "'exit 143' not found in plugin_hook_call — the TERM trap must exit 143 (128+SIGTERM)"
++        assert_pass "[#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call"
++
++        # The TERM trap must be inside the run-hook branch — old code had no trap at all.
++        if grep -q 'trap.*TERM' <<< "$_run_branch"; then
++            assert_pass "[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)"
++        else
++            assert_fail "[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)" \
++                "no 'trap ... TERM' found in run-hook branch — a function-scope trap would affect cleanup hooks"
++        fi
++
++        # The TERM trap must exit with status 143 (128 + SIGTERM=15).
++        if grep -q 'exit 143' <<< "$_run_branch"; then
++            assert_pass "[#1801/SPEC-2] TERM trap in run-hook branch exits with status 143"
++        else
++            assert_fail "[#1801/SPEC-2] TERM trap in run-hook branch exits with status 143" \
++                "'exit 143' not found in run-hook branch — the TERM trap must exit 143 (128+SIGTERM)"
++        fi
+     fi
+ fi
+ 

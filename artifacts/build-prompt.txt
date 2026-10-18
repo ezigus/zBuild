@@ -103,7 +103,7 @@ omit this line the pipeline falls back to the plan title.
 **Goal:** Kill every hung run hook at its per-stage limit on every dispatch route, end it timed_out, and retire the orch-sequential backend that silently discards the limit it is given
 
 ## Steps
-1. Strengthen the five partial-SPEC assertions so each asserts what is required, not what the code happens to do: verify the always_run and parallel-group dispatch routes reach the watchdog (SPEC-1); add an isolation run that sets neither template value nor ZBUILD_STAGE_TIMEOUT_S and confirms 5400 s is actually used (SPEC-3); add a live dispatch that runs longer than 300 s inside its stage_timeout_s and completes (SPEC-7); assert the unreadable-config path produces output naming the backend, not only a non-zero exit (SPEC-9); assert event-schema-emitted-coverage-test passes after registration (SPEC-18).
+1. Strengthen the five partial-SPEC assertions so each asserts what is required, not what the code happens to do: for SPEC-1, individually verify that the always_run dispatch function calls plugin_hook_call (not via a file-level grep that passes for any call in runner.sh) and that the parallel-group member route is likewise individually established; add an isolation run that sets neither template value nor ZBUILD_STAGE_TIMEOUT_S and confirms 5400 s is actually used (SPEC-3); add a live dispatch that runs longer than 300 s inside its stage_timeout_s and completes (SPEC-7); assert the unreadable-config path produces output naming the backend, not only a non-zero exit (SPEC-9); assert event-schema-emitted-coverage-test passes after registration (SPEC-18).
    - Areas: `tests/unit/stage-timeout-dispatch-test.sh`, `tests/unit/stage-timeout-precedence-test.sh`, `tests/unit/orch-backend-misconfigured-test.sh`, `tests/unit/stage-timeout-no-flat-limit-test.sh`
 2. Amend ADR-054 §9, ADR-017, and ADR-011 with the new statements (stage_timeout_s surface, one-model-call meaning of router.timeout_s, orch-sequential retirement, misconfigured-on-missing-backend) and add an ## Enforced by entry naming the test for each new statement; remove those three ADRs from config/adr-enforcement-baseline.txt (the file only shrinks).
    - Areas: `docs/adr/ADR-054-stage-contract.md`, `docs/adr/ADR-017-per-stage-router-config.md`, `docs/adr/ADR-011-pluggable-backends.md`, `config/adr-enforcement-baseline.txt`
@@ -121,12 +121,11 @@ omit this line the pipeline falls back to the plan title.
    - Areas: `plugins/tool/orch-sequential/`, `core/orch/contract.sh`, `docs/wiki/Plugins.md`, `docs/wiki/plugins/orch-sequential.md`, `tests/golden/orch-sequential-capabilities.golden`, `tests/unit/summary-mandatory-test.sh`, `tests/unit/dispatch-rc-guard-test.sh`, `tests/unit/stdin-spawn-guard-test.sh`, `tests/unit/core-orch-run-id-isolation-test.sh`, `tests/unit/adr059-no-tmpdir-defaults-test.sh`, `tests/unit/plugin-artifact-goldens-test.sh`
 9. Add the measured stage_timeout_s values to simple.yaml for every named stage per the issue table; move the always_run release and persist stages from router.timeout_s to stage_timeout_s at their current values (30 s / 120 s) so Decision 4 is live in the running template.
    - Areas: `config/templates/simple.yaml`
-10. Update the 10 test files that shape-floor identified as still spelling out counts, orders, or lists altered by this change — the two golden event-sequence files and the eight unit test files that pin template field counts or stage lists — so that npm test passes on the new simple.yaml shape.
+10. Update the test files that pin counts, orders, or lists altered by this change — the two golden event-sequence files and the unit test files that pin template field counts or stage lists — so that npm test passes on the new simple.yaml shape.
    - Areas: `tests/golden/full-pipeline/event-sequence.golden`, `tests/golden/parity/event-sequence.golden`, `tests/unit/shape-floor-content-stable-test.sh`, `tests/unit/template-simple-yaml-test.sh`, `tests/unit/build-oos-pass-request-test.sh`, `tests/unit/change-scope-floor-test.sh`, `tests/unit/core-pipeline-template-test.sh`, `tests/unit/template-resolvability-preflight-test.sh`, `tests/unit/impact-prefilter-order-detector-test.sh`, `tests/unit/shape-floor-summary-plain-test.sh`
 
 ## Open questions
 - SPEC-7 live-completion test: which mechanism besides the retired ZBUILD_ORCH_TIMEOUT collect deadline could still fire within 300 s and kill the dispatch before stage_timeout_s expires?
-- SPEC-1 parallel-group route: does the parallel-group member dispatch path call plugin_hook_call directly through template.sh or via runner.sh, and is that route covered by the existing assertion?
 
 ### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
 # Design — issue #1801: per-dispatch stage timeout with orch-sequential retirement
@@ -187,10 +186,9 @@ dispatch.
    - **lifecycle.sh line 525**: `kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true`
      → `zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true`
      *(the test grep-scans lifecycle.sh for the literal pattern `kill -KILL -- -"$_lc_hook_pid"` — it fails until that exact string is absent)*
-   - runner.sh lines 2486–2487: `kill -KILL/-TERM -- -"$_ar_pid"/"$_wd_pid"` → `zbuild_pg_kill`
-     *(the always-run test's awk extraction stops at the first 4-space `}` inside
-     `_runner_dispatch_always_run` and does not reach these lines — they are not
-     caught by a currently-failing assertion, but the replacement is required by R-10)*
+   - **runner.sh lines 2486–2487**: `kill -KILL/-TERM -- -"$_ar_pid"/"$_wd_pid"` → `zbuild_pg_kill`
+     *(stage-timeout-always-run-test.sh lines 147-151 AWK-extract `_runner_dispatch_always_run`
+     body and check `grep -qE 'kill -(TERM|KILL) -- -"\$_ar_pid"'` — fails until replaced)*
 3. `ZBUILD_ORCH_TIMEOUT` is removed from all three strategy files; the per-
    dispatch watchdog in lifecycle.sh is the only ceiling.
 4. `plugins/tool/orch-sequential/` is deleted; a `sequential` backend config
@@ -218,6 +216,38 @@ cycle/parallel orchestrators), parallel-group member (runner.sh:3106), roleless 
 (runner.sh:3781/3845), and always_run (runner.sh:2477 background dispatch) — reaches
 `plugin_hook_call`. All three backends (bash-parallel, ruflo-hive, mock) dispatch
 through the same call; the watchdog therefore covers every backend by construction.
+
+**Why SPEC-1 requires an AWK-extracted body check for always_run**: The test for
+SPEC-1 (`stage-timeout-dispatch-test.sh`) uses AWK-extracted function bodies to prove
+cycle_dispatch_stage and parallel_dispatch_stage call `plugin_hook_call`. The always_run
+route (via `_runner_dispatch_always_run`) must be proven the same way. A file-level grep
+on runner.sh shows the file contains `plugin_hook_call` but does not prove
+`_runner_dispatch_always_run` specifically calls it — any other function in the file
+could be the match. The AWK pattern to extract `_runner_dispatch_always_run` is:
+`/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}` (it is an
+inner function with a 4-space closing brace; this same pattern is used in
+`stage-timeout-always-run-test.sh` line 33). The extracted body must contain
+`plugin_hook_call` — which it does at runner.sh line 2477.
+
+
+
+
+## Findings
+
+### test-author finding 1 → design changed (SPEC-1 updated)
+
+**Finding**: SPEC-1's assertion establishes the always_run route only via a file-level grep
+on runner.sh. That pass proves runner.sh contains `plugin_hook_call` somewhere, not that
+`_runner_dispatch_always_run` specifically calls it.
+
+**What changed**: SPEC-1 text now requires an AWK-extracted body check for
+`_runner_dispatch_always_run` specifically. The AWK pattern
+(`/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}`) is already
+established in `stage-timeout-always-run-test.sh` line 33 and works because
+`_runner_dispatch_always_run` is an inner function with a 4-space closing brace. The
+extracted body contains `plugin_hook_call` at runner.sh line 2477. This is the same
+approach used for cycle_dispatch_stage and parallel_dispatch_stage in the same test file,
+so the pattern is consistent with the existing codebase.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
@@ -238,7 +268,7 @@ These tests were written before your code. Make them pass by changing code only.
 - SPEC-19: tests/unit/orch-backend-misconfigured-test.sh
 
 What each SPEC requires:
-- [#1801/SPEC-1] plugin_hook_call arms a per-dispatch watchdog for the run hook that writes disposition timed_out and names the stage and limit; every dispatch route (map, fanout, sequential strategy, cycle member, parallel-group member, roleless leaf, always_run) reaches plugin_hook_call; the watchdog is above the backend layer and therefore covers bash-parallel, ruflo-hive, and mock backends by construction
+- [#1801/SPEC-1] plugin_hook_call arms a per-dispatch watchdog for the run hook that writes disposition timed_out and names the stage and limit; every dispatch route reaches plugin_hook_call; the always_run route is individually established by AWK-extracting `_runner_dispatch_always_run` body (pattern: `/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}`) from runner.sh and confirming the extracted body contains `plugin_hook_call` — not merely that runner.sh contains it somewhere; the watchdog is above the backend layer and covers bash-parallel, ruflo-hive, and mock backends by construction
 - [#1801/SPEC-2] killing a hung run hook stops the whole process group — hook runs under set -m creating its own pgid; plugin_hook_call's run-hook branch has a TERM trap (inserted between lifecycle.sh lines 516 and 521) that kills the inner hook group and watchdog and exits with status 143 when plugin_hook_call is externally TERMed, so the hook's children are not orphaned
 - [#1801/SPEC-3] timeout precedence: template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default; the 5400 s tier is verified by an isolation test that runs with neither a template value nor ZBUILD_STAGE_TIMEOUT_S set and confirms 5400 s is the timeout actually used
 - [#1801/SPEC-4] the template loader rejects a stage_timeout_s below router.timeout_s and a non-integer value
@@ -247,7 +277,7 @@ What each SPEC requires:
 - [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT is absent from all three strategy files; a plan dispatch whose hook sleeps 310 s (inside its stage_timeout_s) completes with exit 0, proving no earlier ceiling fires
 - [#1801/SPEC-8] plugins/tool/orch-sequential/ directory is absent; no file outside docs/adr/ names orch-sequential; a config naming sequential as backend ends the run as misconfigured
 - [#1801/SPEC-9] a configured orchestrator backend that cannot be found, or an unreadable config, fails the run as misconfigured and the output names the backend in both cases (unknown-alias case and unreadable-config case)
-- [#1801/SPEC-10] plugin_hook_call (lifecycle.sh line 525) has no hand-rolled kill -KILL/-TERM for stage dispatch — replaced by zbuild_pg_kill "$_lc_hook_pid" 1; _runner_dispatch_always_run (runner.sh lines 2486-2487) uses zbuild_pg_kill; _orch_local_collect_results in local_engine.sh uses zbuild_pg_kill
+- [#1801/SPEC-10] plugin_hook_call (lifecycle.sh) has no hand-rolled kill -KILL/-TERM for stage dispatch — replaced by zbuild_pg_kill "$_lc_hook_pid" 1; _runner_dispatch_always_run (runner.sh lines 2486-2487) has no hand-rolled kill -(TERM|KILL) -- -"$_ar_pid" — replaced by zbuild_pg_kill; _orch_local_collect_results in local_engine.sh uses zbuild_pg_kill
 - [#1801/SPEC-11] ADR-054 §9, ADR-017, and ADR-011 have ## Enforced by sections naming the tests that enforce their stage-timeout and backend-retirement statements; both ADRs are removed from config/adr-enforcement-baseline.txt
 - [#1801/SPEC-15] before writing tests, grep -rl for orch-sequential, ZBUILD_ORCH_TIMEOUT, router.timeout_s in tests/ and include every file pinning them in scope
 - [#1801/SPEC-16] npm test and npm run lint pass after all code changes are applied
@@ -257,7 +287,7 @@ What each SPEC requires:
 
 ### REQUIREMENTS YOUR CODE MUST MEET
 Your change is done when the test for every requirement below passes.
-- [#1801/SPEC-1] plugin_hook_call arms a per-dispatch watchdog for the run hook that writes disposition timed_out and names the stage and limit; every dispatch route (map, fanout, sequential strategy, cycle member, parallel-group member, roleless leaf, always_run) reaches plugin_hook_call; the watchdog is above the backend layer and therefore covers bash-parallel, ruflo-hive, and mock backends by construction
+- [#1801/SPEC-1] plugin_hook_call arms a per-dispatch watchdog for the run hook that writes disposition timed_out and names the stage and limit; every dispatch route reaches plugin_hook_call; the always_run route is individually established by AWK-extracting `_runner_dispatch_always_run` body (pattern: `/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}`) from runner.sh and confirming the extracted body contains `plugin_hook_call` — not merely that runner.sh contains it somewhere; the watchdog is above the backend layer and covers bash-parallel, ruflo-hive, and mock backends by construction
   → its test is already written; make it pass
 - [#1801/SPEC-2] killing a hung run hook stops the whole process group — hook runs under set -m creating its own pgid; plugin_hook_call's run-hook branch has a TERM trap (inserted between lifecycle.sh lines 516 and 521) that kills the inner hook group and watchdog and exits with status 143 when plugin_hook_call is externally TERMed, so the hook's children are not orphaned
   → its test is already written; make it pass
@@ -275,7 +305,7 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [#1801/SPEC-9] a configured orchestrator backend that cannot be found, or an unreadable config, fails the run as misconfigured and the output names the backend in both cases (unknown-alias case and unreadable-config case)
   → its test is already written; make it pass
-- [#1801/SPEC-10] plugin_hook_call (lifecycle.sh line 525) has no hand-rolled kill -KILL/-TERM for stage dispatch — replaced by zbuild_pg_kill "$_lc_hook_pid" 1; _runner_dispatch_always_run (runner.sh lines 2486-2487) uses zbuild_pg_kill; _orch_local_collect_results in local_engine.sh uses zbuild_pg_kill
+- [#1801/SPEC-10] plugin_hook_call (lifecycle.sh) has no hand-rolled kill -KILL/-TERM for stage dispatch — replaced by zbuild_pg_kill "$_lc_hook_pid" 1; _runner_dispatch_always_run (runner.sh lines 2486-2487) has no hand-rolled kill -(TERM|KILL) -- -"$_ar_pid" — replaced by zbuild_pg_kill; _orch_local_collect_results in local_engine.sh uses zbuild_pg_kill
   → its test is already written; make it pass
 - [#1801/SPEC-11] ADR-054 §9, ADR-017, and ADR-011 have ## Enforced by sections naming the tests that enforce their stage-timeout and backend-retirement statements; both ADRs are removed from config/adr-enforcement-baseline.txt
   → its test is already written; make it pass
@@ -306,10 +336,10 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 498 artifact(s) from prior runs (restored)
+- restored 500 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 498 artifact(s) from zbuild/state/issue-1801
+- detail: restored 500 artifact(s) from zbuild/state/issue-1801
 
 ### intake (verdict: pass)
 Outputs:
@@ -337,7 +367,7 @@ Summary:
 
 - split the issue into 10 work item(s)
 
-- open questions: 2
+- open questions: 1
 - artifact: plan.json
 
 ### design (verdict: pass)
@@ -354,18 +384,15 @@ Summary:
 - scope: core/plugin-registry/lifecycle.sh,core/pipeline/runner.sh,core/pipeline/template.sh,core/pipeline/strategies/fanout.sh,core/pipeline/strategies/map.sh,core/pipeline/strategies/sequential.sh,core/orch/contract.sh,core/orch/local_engine.sh,scripts/lib/proc-group.sh,config/templates/simple.yaml,config/event-schema.json,config/adr-enforcement-baseline.txt,plugins/tool/orch-sequential/,plugins/tool/orch-mock/plugin.sh,plugins/tool/orch-ruflo-hive/plugin.sh,docs/adr/ADR-054-stage-contract.md,docs/adr/ADR-017-per-stage-router-config.md,docs/adr/ADR-011-pluggable-backends.md,docs/wiki/plugins/orch-sequential.md,docs/wiki/Plugins.md,.github/issues/keepers-manifest.yaml,tests/unit/stage-timeout-dispatch-test.sh,tests/unit/stage-timeout-process-group-test.sh,tests/unit/stage-timeout-precedence-test.sh,tests/unit/stage-timeout-loader-validation-test.sh,tests/unit/stage-timeout-retry-test.sh,tests/unit/stage-timeout-always-run-test.sh,tests/unit/stage-timeout-no-flat-limit-test.sh,tests/unit/orch-sequential-retired-guard-test.sh,tests/unit/orch-backend-misconfigured-test.sh,tests/unit/event-schema-emitted-coverage-test.sh,tests/integration/runner-release-exit-paths-test.sh,tests/integration/runner-job-control-abort-test.sh,tests/golden/full-pipeline/event-sequence.golden,tests/golden/parity/event-sequence.golden,tests/golden/orch-sequential-capabilities.golden,tests/unit/core-pipeline-template-test.sh,tests/unit/template-simple-yaml-test.sh,tests/unit/build-oos-pass-request-test.sh,tests/unit/change-scope-floor-test.sh,tests/unit/template-resolvability-preflight-test.sh,tests/unit/impact-prefilter-order-detector-test.sh,tests/unit/shape-floor-summary-plain-test.sh,tests/unit/shape-floor-content-stable-test.sh,tests/unit/adr059-no-tmpdir-defaults-test.sh,tests/unit/core-orch-run-id-isolation-test.sh,tests/unit/dispatch-rc-guard-test.sh,tests/unit/stdin-spawn-guard-test.sh,tests/unit/summary-mandatory-test.sh,tests/unit/plugin-artifact-goldens-test.sh,tests/unit/orch-backend-misconfigured-test.sh
 - artifact: design.md
 
-### test-author (verdict: fail)
+### test-author (verdict: pass)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
 
-Findings:
-- test-author finding 1 (opened by test-author): SPEC-1's assertion establishes only part of the requirement: The assertion checks map, fanout, sequential, cycle member (AWK-extracted cycle_dispatch_stage), parallel-group member (AWK-extracted parallel_dispatch_stage), and roleless leaf, but the always_run route is covered only by the file-level grep on runner.sh — a pass there doesn't prove _runner_dispatch_always_run specifically reaches plugin_hook_call, so that route is not individually established.
-
 Summary:
-## test-author — fail
+## test-author — pass
 
-- 1 assertion(s) still do not test what their SPEC says after 2 rounds
+- authored acceptance assertions for 16 SPEC(s) from the design contract
 
 - SPECs in the contract: 16
 - assertions are authored from the SPEC text, never from the implementation
@@ -379,9 +406,9 @@ Outputs:
 Summary:
 ## build — timed_out
 
-- changed 2 file(s) over 3 pass(es), 9 iteration(s)
+- changed 1 file(s) over 1 pass(es), 3 iteration(s)
 
-- lines: +68 / -19
+- lines: +11 / -3
 - terminated: router_timeout
 - scope violation: false
 
