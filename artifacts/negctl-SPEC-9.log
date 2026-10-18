@@ -15,12 +15,24 @@
   [38;2;248;113;113m✗[0m [#1801/SPEC-9] orch_load_backend returns non-zero on missing backend
     [2mreturned 0 — a missing backend was silently accepted (pre-change fallback behaviour)[0m
 
+  [38;2;0;212;255m[#1801/SPEC-9] unreadable backend manifest → misconfigured[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-9] unreadable backend config fails as misconfigured (non-zero rc)
+    [2mreturned 0 — an unreadable backend config was silently accepted[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-9] unreadable backend config output names the backend ('bad-backend')
+
+  [38;2;0;212;255m[#1801/SPEC-19] installed layout: sources contract.sh from tmp ZBUILD_HOME[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-19] installed layout: unknown backend → misconfigured naming the backend
+  [38;2;248;113;113m✗[0m [#1801/SPEC-19] installed layout: orch_load_backend returns non-zero on missing backend
+    [2mreturned 0 — installed contract.sh still has pre-change fallback behavior[0m
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 3 tests failed[0m
+  [38;2;248;113;113m[1m4 of 7 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-9] contract.sh has no fallback to orch-sequential
   [38;2;248;113;113m✗[0m [#1801/SPEC-9] orch_load_backend returns non-zero on missing backend
+  [38;2;248;113;113m✗[0m [#1801/SPEC-9] unreadable backend config fails as misconfigured (non-zero rc)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-19] installed layout: orch_load_backend returns non-zero on missing backend
 
 ### SPEC-9 head tests/unit/orch-backend-misconfigured-test.sh
 
@@ -37,7 +49,15 @@
   [38;2;0;212;255m[#1801/SPEC-9] orch_load_backend fails (does not return 0) on missing backend[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-9] orch_load_backend returns non-zero on missing backend
 
+  [38;2;0;212;255m[#1801/SPEC-9] unreadable backend manifest → misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-9] unreadable backend config fails as misconfigured (non-zero rc)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-9] unreadable backend config output names the backend ('bad-backend')
+
+  [38;2;0;212;255m[#1801/SPEC-19] installed layout: sources contract.sh from tmp ZBUILD_HOME[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-19] installed layout: unknown backend → misconfigured naming the backend
+  [38;2;74;222;128m✓[0m [#1801/SPEC-19] installed layout: orch_load_backend returns non-zero on missing backend
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 3 tests passed[0m
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
 

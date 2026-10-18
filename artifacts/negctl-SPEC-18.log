@@ -13,13 +13,19 @@
     [2mnot in config/event-schema.json known_types — add it under the orch. namespace[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json
     [2mnot in config/event-schema.json known_types — add it under the plugin. namespace[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-18] event-schema-emitted-coverage-test passes for 'orch.backend.misconfigured' (emitted + registered)
+    [2m'orch.backend.misconfigured' not found as emitted literal in core/ — add emit_event call in the implementation[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-18] event-schema-emitted-coverage-test passes for 'plugin.run.timed_out' (emitted + registered)
+    [2m'plugin.run.timed_out' not found as emitted literal in core/ — add emit_event call in the implementation[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 8 tests failed[0m
+  [38;2;248;113;113m[1m4 of 10 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json
   [38;2;248;113;113m✗[0m [#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json
+  [38;2;248;113;113m✗[0m [#1801/SPEC-18] event-schema-emitted-coverage-test passes for 'orch.backend.misconfigured' (emitted + registered)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-18] event-schema-emitted-coverage-test passes for 'plugin.run.timed_out' (emitted + registered)
 
 ### SPEC-18 head tests/unit/event-schema-emitted-coverage-test.sh
 
@@ -34,8 +40,10 @@
   [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
   [38;2;74;222;128m✓[0m [#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json
   [38;2;74;222;128m✓[0m [#1801/SPEC-18] plugin.run.timed_out is registered in event-schema.json
+  [38;2;74;222;128m✓[0m [#1801/SPEC-18] event-schema-emitted-coverage-test passes for 'orch.backend.misconfigured' (emitted + registered)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-18] event-schema-emitted-coverage-test passes for 'plugin.run.timed_out' (emitted + registered)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 8 tests passed[0m
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
 

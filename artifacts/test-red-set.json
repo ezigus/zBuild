@@ -1,5 +1,4 @@
 [
-  "tests/integration/runner-job-control-abort-test.sh",
-  "tests/integration/runner-release-exit-paths-test.sh",
-  "tests/unit/stage-timeout-dispatch-test.sh"
+  "tests/unit/dispatch-rc-guard-test.sh",
+  "tests/unit/stage-timeout-precedence-test.sh"
 ]

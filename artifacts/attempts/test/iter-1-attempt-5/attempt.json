@@ -1,0 +1,21 @@
+{
+  "stage": "test",
+  "cycle_iter": 1,
+  "attempt": 5,
+  "rc": "143",
+  "generated_at": "2026-10-18T22:34:56Z",
+  "files": 9,
+  "outputs": {
+    "test-errors.log": "changed",
+    "test-results.json": "changed",
+    "test-failures-summary.md": "changed",
+    "test-output.log": "changed",
+    "test-timing.log": "changed",
+    "shape-floor-result.json": "unchanged",
+    "shape-floor-detail.md": "unchanged",
+    "acceptance-gate-result.json": "unchanged",
+    "acceptance-summary.txt": "unchanged",
+    "acceptance-gate-errors.log": "absent"
+  },
+  "progress": true
+}

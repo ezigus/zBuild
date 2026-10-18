@@ -1,0 +1,106 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xbpLKN/tests/unit/dispatch-rc-guard-test.sh
+
+  dispatch-rc guard — the legacy rc inventory is a ratchet (#1823)
+
+
+  1. The inventory matches the pin exactly
+  ✓ [SPEC-1] core/pipeline/runner.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/cycle-orchestrator.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/parallel-orchestrator.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/map.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/fanout.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/sequential.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/composite.sh holds 0 legacy rc returns
+  ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)
+    A new engine path returns an rc outside {0,1}. rc carries two facts (ADR-054 §4): result on disk (0), failed (1). Put what you were encoding on a declared channel — disposition (core/pipeline/disposition.sh) for recoverability, routing state (ADR-045) for the backward edge.
+  ✓ [SPEC-1] scripts/lib/abort-propagation.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/common.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/stage-scratch.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/disposition.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/contract-validator.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/orch/local_engine.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] plugins/tool/orch-mock/plugin.sh holds 0 legacy rc returns
+
+  2. The contract boundary itself is clean
+  ✗ [SPEC-2] plugin_hook_call returns nothing outside {0,1}
+    expected: 0, got: 2
+  ✓ [SPEC-2] the ZBUILD_HOOK_ABSENT sentinel is gone
+  ✓ [SPEC-2] an absent optional hook is still recorded on the event stream
+
+  3. The stage dispatch boundary narrows before reading
+  ✓ [SPEC-3] the cycle dispatch boundary both observes and narrows
+  ✓ [SPEC-3] it observes the RAW status before narrowing it away
+  ✓ [SPEC-3] the throttle marker is cleared before the dispatch
+  ✓ [SPEC-3] cycle_dispatch_stage narrows the rc
+  ✓ [SPEC-3] parallel_dispatch_stage applies it too
+  ✓ [SPEC-3] both dispatch boundaries clear the throttle marker
+
+  4. The version gate cannot be fed by a subshell global
+  ✓ [SPEC-4] no gate reads a contract global
+  ✓ [SPEC-4] both boundaries narrow unconditionally (#1850)
+  ✓ [SPEC-4] the contract probe is gone (#1850)
+
+  5. the cycle.complete fan-in reads the reason word, not an rc
+  ✓ [SPEC-5] no _cycle_handle_terminal_rc remains (orchestrator + runner)
+  ✓ [SPEC-5] _cycle_handle_terminal is defined in the orchestrator
+  ✓ [SPEC-5] _cycle_handle_terminal reads _CYCLE_LAST_TERMINATED_REASON
+  ✓ [SPEC-5] _cycle_handle_terminal keys on no signal rc
+
+  6. write-boundary wiring leaves lifecycle.sh rc-clean
+  ✗ [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
+    expected: 0, got: 2
+
+  [#1850/SPEC-16] the plain rule: no engine path returns or reads a legacy rc
+  ✓ [#1850/SPEC-16] every guarded engine file is pinned at 0
+  ✓ [#1850/SPEC-16] no guarded engine file reads an rc as a legacy number
+
+  [#1850/SPEC-17] every dispatch boundary checks for an abort before it dispatches
+  ✓ [SPEC-17] cycle_dispatch_stage checks for an abort before plugin_hook_call
+  ✓ [SPEC-17] parallel_dispatch_stage checks for an abort before plugin_hook_call
+
+
+  3 of 36 tests failed
+
+  ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)
+  ✗ [SPEC-2] plugin_hook_call returns nothing outside {0,1}
+  ✗ [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xbpLKN/tests/unit/stage-timeout-precedence-test.sh
+
+  [#1801/SPEC-3] stage_timeout_s precedence: template > env > 5400 s default
+
+
+  [#1801/SPEC-3] template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S
+  ✓ [#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99
+
+  [#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default
+  ✓ [#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)
+  ✓ [#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)
+
+  [#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s
+  ✓ [#1801/SPEC-3] 5400 s is the terminal fallback in plugin_hook_call (tier-3 default)
+
+  [#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>
+  ✓ [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s
+
+  [#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call
+  ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
+    no 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default
+
+
+  1 of 6 tests failed
+
+  ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
+
+unit: 517/519 passed (4 skipped)
+integration: 250/250 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 804/806 passed (4 skipped)

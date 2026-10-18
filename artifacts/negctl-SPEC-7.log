@@ -1,33 +1,61 @@
 ### SPEC-7 baseline tests/unit/stage-timeout-no-flat-limit-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files; no flat ceiling[0m
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
     [2mZBUILD_ORCH_TIMEOUT still present — a plan dispatch longer than the default 300 s[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh orch_collect/orch_wait carry no --timeout flag
+    [2m--timeout found in orch call — imposes a flat ceiling that overrides stage_timeout_s[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
     [2mZBUILD_ORCH_TIMEOUT still present — a plan dispatch longer than the default 300 s[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh orch_collect/orch_wait carry no --timeout flag
+    [2m--timeout found in orch call — imposes a flat ceiling that overrides stage_timeout_s[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
     [2mZBUILD_ORCH_TIMEOUT still present — a plan dispatch longer than the default 300 s[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh orch_collect/orch_wait carry no --timeout flag
+    [2m--timeout found in orch call — imposes a flat ceiling that overrides stage_timeout_s[0m
+
+  [38;2;0;212;255m[#1801/SPEC-7] behavioral: strategy dispatch does not pass --timeout to orch_collect[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] behavioral: _strategy_run_fanout calls orch_collect without --timeout
+    [2morch_collect received '--timeout': args='pool-spec7 --timeout 1' — ZBUILD_ORCH_TIMEOUT flat ceiling still in fanout.sh[0m
+
+  [38;2;0;212;255m[#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 exits 0[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 completes exit 0 (no flat ceiling)
+    [2mexit 1 — flat ceiling fired (fanout still passes --timeout 1 to orch_collect)[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m3 of 3 tests failed[0m
+  [38;2;248;113;113m[1m8 of 8 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh orch_collect/orch_wait carry no --timeout flag
   [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh orch_collect/orch_wait carry no --timeout flag
   [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh orch_collect/orch_wait carry no --timeout flag
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] behavioral: _strategy_run_fanout calls orch_collect without --timeout
+  [38;2;248;113;113m✗[0m [#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 completes exit 0 (no flat ceiling)
 
 ### SPEC-7 head tests/unit/stage-timeout-no-flat-limit-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files; no flat ceiling[0m
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh orch_collect/orch_wait carry no --timeout flag
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh orch_collect/orch_wait carry no --timeout flag
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh orch_collect/orch_wait carry no --timeout flag
+
+  [38;2;0;212;255m[#1801/SPEC-7] behavioral: strategy dispatch does not pass --timeout to orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] behavioral: _strategy_run_fanout calls orch_collect without --timeout (no flat ceiling)
+
+  [38;2;0;212;255m[#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 exits 0[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 completes exit 0 (no flat ceiling)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 3 tests passed[0m
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
 

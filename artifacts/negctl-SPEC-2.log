@@ -19,13 +19,22 @@
   [38;2;248;113;113m✗[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
     [2mno zbuild_pg_kill call with grace >= 10 found in plugin_hook_call[0m
 
+  [38;2;0;212;255m[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)
+    [2mno 'trap ... TERM' found in run-hook branch — a function-scope trap would affect cleanup hooks[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] TERM trap in run-hook branch exits with status 143
+    [2m'exit 143' not found in run-hook branch — the TERM trap must exit 143 (128+SIGTERM)[0m
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m3 of 4 tests failed[0m
+  [38;2;248;113;113m[1m5 of 7 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-2] plugin_hook_call uses set -m to give the hook its own process group
   [38;2;248;113;113m✗[0m [#1801/SPEC-2] plugin_hook_call uses zbuild_pg_kill (sends signal to whole group)
   [38;2;248;113;113m✗[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] TERM trap in run-hook branch exits with status 143
 
 ### SPEC-2 head tests/unit/stage-timeout-process-group-test.sh
 
@@ -45,7 +54,12 @@
   [38;2;0;212;255m[#1801/SPEC-2] the watchdog grace period is at least 10 s[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
 
+  [38;2;0;212;255m[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap in run-hook branch exits with status 143
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 4 tests passed[0m
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
 

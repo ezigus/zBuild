@@ -1,0 +1,66 @@
+the acceptance check failed — SPEC-10: its test does not pass on the new code — the code or the test is wrong
+NEGCTL PASS SPEC-1
+      design : a `run` hook that hangs is killed at the per-stage timeout on every dispatch route — map, fanout, se…
+      asserts: assert_fail "[#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh" "not found"
+NEGCTL PASS SPEC-2
+      design : killing a hung `run` hook stops the entire process group — a child ignoring TERM leaves no process a…
+      asserts: assert_fail "[#1801/SPEC-2] plugin_hook_call is defined in lifecycle.sh" "not found"
+NEGCTL PASS SPEC-3
+      design : stage_timeout_s precedence: template value beats ZBUILD_STAGE_TIMEOUT_S beats the 5400 s engine defa…
+      asserts: assert_eq "[#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99" \
+NEGCTL PASS SPEC-4
+      design : the template loader rejects a `stage_timeout_s` value below the stage's `router.timeout_s`, and reje…
+      asserts: assert_exit_code "[#1801/SPEC-4] stage_timeout_s=30 below router.timeout_s=600 is rejected (rc=1)" \
+NEGCTL PASS SPEC-5
+      design : a retried stage and each map member each receive a fresh independent timer
+      asserts: assert_fail "[#1801/SPEC-5] lifecycle.sh exists" "not found: $_lc"
+NEGCTL PASS SPEC-6
+      design : `_runner_dispatch_always_run` reads `stage_timeout_s` (not `router.timeout_s`) for its time limit; `…
+      asserts: assert_fail "[#1801/SPEC-6] _runner_dispatch_always_run is defined in runner.sh" \
+NEGCTL PASS SPEC-7
+      design : removing ZBUILD_ORCH_TIMEOUT from all three strategy files means a plan dispatch running longer than…
+      asserts: assert_fail "[#1801/SPEC-7] $_sf exists" "file not found: $_file"
+NEGCTL PASS SPEC-8
+      design : `plugins/tool/orch-sequential/` directory is absent; a guard fails if it exists or if any file outsi…
+      asserts: assert_fail "[#1801/SPEC-8] plugins/tool/orch-sequential/ is absent" \
+NEGCTL PASS SPEC-9
+      design : a configured orchestrator backend that cannot be found, or whose config is unreadable, fails the run…
+      asserts: assert_pass "[#1801/SPEC-9] unknown backend alias produces misconfigured + names the backend"
+NEGCTL FAIL SPEC-10 not_passing_at_head
+      design : `_runner_dispatch_always_run` and `_orch_local_collect_results` kill through `zbuild_pg_kill`; no ha…
+      asserts: assert_fail "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch" \
+NEGCTL SKIP SPEC-11 no_code
+      design : ADR-054 §9, ADR-017, and ADR-011 amended with `## Enforced by` sections and removed from config/adr-…
+      asserts: assert_fail "[#1801/SPEC-11] ADR-054 exists" "file not found: $_adr054"
+NEGCTL SKIP SPEC-12 already_done
+      design : `timed_out` is a valid disposition word in the closed set and `disposition_unfinished` returns true …
+      asserts: <none found>
+NEGCTL SKIP SPEC-13 already_done
+      design : `zbuild_pg_kill` (TERM + configurable grace + KILL, process-group scope) already exists in `scripts/…
+      asserts: <none found>
+NEGCTL SKIP SPEC-14 already_done
+      design : `core/config/config.sh` already defaults the orchestrator backend to `bash-parallel`; ADR-011 amendm…
+      asserts: <none found>
+NEGCTL SKIP SPEC-15 no_code
+      design : before writing tests, grep -rl for `orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `router.timeout_s`, and…
+      asserts: <none found>
+NEGCTL SKIP SPEC-16 no_code
+      design : `npm test` and `npm run lint` pass after all code changes are applied
+      asserts: <none found>
+NEGCTL PASS SPEC-18
+      design : `orch.backend.misconfigured` and `plugin.run.timed_out` are registered as known types in `config/eve…
+      asserts: assert_pass "[#1801/SPEC-18] orch.backend.misconfigured is registered in event-schema.json"
+REACHABILITY PASS core/pipeline/runner.sh
+REACHABILITY PASS core/orch/contract.sh
+REACHABILITY PASS change .github/issues/keepers-manifest.yaml
+REACHABILITY PASS change config/adr-enforcement-baseline.txt
+REACHABILITY PASS change config/event-schema.json
+REACHABILITY PASS change config/templates/simple.yaml
+REACHABILITY PASS change core/orch/local_engine.sh
+REACHABILITY PASS change core/pipeline/strategies/fanout.sh
+REACHABILITY PASS change core/pipeline/strategies/map.sh
+REACHABILITY PASS change core/pipeline/strategies/sequential.sh
+REACHABILITY PASS change core/pipeline/template.sh
+REACHABILITY PASS change core/plugin-registry/lifecycle.sh
+REACHABILITY PASS change plugins/tool/orch-mock/plugin.sh
+REACHABILITY SKIP no_code plugins/tool/orch-ruflo-hive/plugin.sh

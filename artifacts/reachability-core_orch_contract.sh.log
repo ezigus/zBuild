@@ -10,16 +10,20 @@
 
   [38;2;0;212;255m[#1801/SPEC-1] watchdog writes disposition timed_out[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out disposition is used in the dispatch path
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out event names the stage (stage=) and the limit (timeout_s=)
 
   [38;2;0;212;255m[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] cycle member: cycle_dispatch_stage in runner.sh calls plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] parallel-group member: parallel_dispatch_stage in runner.sh calls plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] roleless leaf: direct plugin_hook_call when template has no roles
 
   [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
-    [2mfound:         kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true — replace with zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
@@ -33,9 +37,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 12 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+  [38;2;74;222;128m[1mAll 17 tests passed[0m
 
 ### core/orch/contract.sh head tests/unit/stage-timeout-dispatch-test.sh
 
@@ -49,16 +51,20 @@
 
   [38;2;0;212;255m[#1801/SPEC-1] watchdog writes disposition timed_out[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out disposition is used in the dispatch path
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out event names the stage (stage=) and the limit (timeout_s=)
 
   [38;2;0;212;255m[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] cycle member: cycle_dispatch_stage in runner.sh calls plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] parallel-group member: parallel_dispatch_stage in runner.sh calls plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] roleless leaf: direct plugin_hook_call when template has no roles
 
   [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
-    [2mfound:         kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true — replace with zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
@@ -72,9 +78,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 12 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+  [38;2;74;222;128m[1mAll 17 tests passed[0m
 
 ### core/orch/contract.sh reverted tests/unit/stage-timeout-process-group-test.sh
 
@@ -94,9 +98,14 @@
   [38;2;0;212;255m[#1801/SPEC-2] the watchdog grace period is at least 10 s[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
 
+  [38;2;0;212;255m[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap in run-hook branch exits with status 143
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 4 tests passed[0m
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
 
 ### core/orch/contract.sh head tests/unit/stage-timeout-process-group-test.sh
 
@@ -116,9 +125,14 @@
   [38;2;0;212;255m[#1801/SPEC-2] the watchdog grace period is at least 10 s[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-2] watchdog grace period is >= 10 s (or variable-derived)
 
+  [38;2;0;212;255m[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap in run-hook branch exits with status 143
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 4 tests passed[0m
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
 
 ### core/orch/contract.sh reverted tests/integration/runner-release-exit-paths-test.sh
 
@@ -147,24 +161,22 @@
   [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
   [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 33s)
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 34s)
   [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
 
   [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-    [2mpid 3369790 still alive 5s after the runner returned[0m
+  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+  [38;2;0;212;255mSPEC-2ext: external SIGTERM kills the run hook's process group [#1801/SPEC-2][0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] external SIGTERM: run hook process group is killed (TERM-ignoring child gone)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 17 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+  [38;2;74;222;128m[1mAll 18 tests passed[0m
 
 ### core/orch/contract.sh head tests/integration/runner-release-exit-paths-test.sh
 
@@ -193,24 +205,22 @@
   [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
   [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 33s)
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
   [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
 
   [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-    [2mpid 3353690 still alive 5s after the runner returned[0m
+  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+  [38;2;0;212;255mSPEC-2ext: external SIGTERM kills the run hook's process group [#1801/SPEC-2][0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] external SIGTERM: run hook process group is killed (TERM-ignoring child gone)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 17 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+  [38;2;74;222;128m[1mAll 18 tests passed[0m
 
 ### core/orch/contract.sh reverted tests/unit/stage-timeout-precedence-test.sh
 
@@ -223,16 +233,23 @@
 
   [38;2;0;212;255m[#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)
 
   [38;2;0;212;255m[#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] 5400 s is the terminal fallback in plugin_hook_call (tier-3 default)
 
   [38;2;0;212;255m[#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s
 
+  [38;2;0;212;255m[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
+    [2mno 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default[0m
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 4 tests passed[0m
+  [38;2;248;113;113m[1m1 of 6 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
 
 ### core/orch/contract.sh head tests/unit/stage-timeout-precedence-test.sh
 
@@ -245,16 +262,23 @@
 
   [38;2;0;212;255m[#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)
 
   [38;2;0;212;255m[#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] 5400 s is the terminal fallback in plugin_hook_call (tier-3 default)
 
   [38;2;0;212;255m[#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s
 
+  [38;2;0;212;255m[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
+    [2mno 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default[0m
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 4 tests passed[0m
+  [38;2;248;113;113m[1m1 of 6 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
 
 ### core/orch/contract.sh reverted tests/unit/stage-timeout-loader-validation-test.sh
 
@@ -364,6 +388,8 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run no longer uses _TPL_STAGE_ROUTER_TIMEOUT_* as its time limit
 
   [38;2;0;212;255m[#1801/SPEC-6] simple.yaml stage_timeout_s values[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30 (required)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120 (required)
   [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30s
   [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120s
   [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml test: stage_timeout_s == 5400s
@@ -397,7 +423,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 29 tests passed[0m
+  [38;2;74;222;128m[1mAll 31 tests passed[0m
 
 ### core/orch/contract.sh head tests/unit/stage-timeout-always-run-test.sh
 
@@ -411,6 +437,8 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-6] _runner_dispatch_always_run no longer uses _TPL_STAGE_ROUTER_TIMEOUT_* as its time limit
 
   [38;2;0;212;255m[#1801/SPEC-6] simple.yaml stage_timeout_s values[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30 (required)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120 (required)
   [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30s
   [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120s
   [38;2;74;222;128m✓[0m [#1801/SPEC-6] simple.yaml test: stage_timeout_s == 5400s
@@ -444,33 +472,51 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 29 tests passed[0m
+  [38;2;74;222;128m[1mAll 31 tests passed[0m
 
 ### core/orch/contract.sh reverted tests/unit/stage-timeout-no-flat-limit-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files; no flat ceiling[0m
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh orch_collect/orch_wait carry no --timeout flag
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh orch_collect/orch_wait carry no --timeout flag
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh orch_collect/orch_wait carry no --timeout flag
+
+  [38;2;0;212;255m[#1801/SPEC-7] behavioral: strategy dispatch does not pass --timeout to orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] behavioral: _strategy_run_fanout calls orch_collect without --timeout (no flat ceiling)
+
+  [38;2;0;212;255m[#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 exits 0[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 completes exit 0 (no flat ceiling)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 3 tests passed[0m
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
 
 ### core/orch/contract.sh head tests/unit/stage-timeout-no-flat-limit-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-7] ZBUILD_ORCH_TIMEOUT absent from strategy files; no flat ceiling[0m
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/fanout.sh orch_collect/orch_wait carry no --timeout flag
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/sequential.sh orch_collect/orch_wait carry no --timeout flag
   [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh carries no ZBUILD_ORCH_TIMEOUT flat ceiling
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] core/pipeline/strategies/map.sh orch_collect/orch_wait carry no --timeout flag
+
+  [38;2;0;212;255m[#1801/SPEC-7] behavioral: strategy dispatch does not pass --timeout to orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] behavioral: _strategy_run_fanout calls orch_collect without --timeout (no flat ceiling)
+
+  [38;2;0;212;255m[#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 exits 0[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] behavioral: dispatch running 2s with ZBUILD_ORCH_TIMEOUT=1 completes exit 0 (no flat ceiling)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 3 tests passed[0m
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
 
 ### core/orch/contract.sh reverted tests/unit/orch-sequential-retired-guard-test.sh
 
@@ -491,14 +537,20 @@
   [38;2;0;212;255m[#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-8] configuring sequential as backend signals misconfigured
 
-  [38;2;0;212;255m[#1801/SPEC-11] ADR-054 has ## Enforced by section[0m
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054 has ## Enforced by section naming stage-timeout tests[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 has ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 §9 Enforced by names stage-timeout-dispatch-test.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 §9 Enforced by names stage-timeout-no-flat-limit-test.sh
 
-  [38;2;0;212;255m[#1801/SPEC-11] ADR-017 has ## Enforced by section[0m
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-017 has ## Enforced by section naming stage-timeout and always_run tests[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 has ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 Enforced by names stage-timeout-always-run-test.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 Enforced by names stage-timeout-loader-validation-test.sh
 
-  [38;2;0;212;255m[#1801/SPEC-11] ADR-011 has ## Enforced by section[0m
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-011 has ## Enforced by section naming backend-retirement tests[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 has ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 Enforced by names orch-backend-misconfigured-test.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 Enforced by names orch-sequential-retired-guard-test.sh
 
   [38;2;0;212;255m[#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
@@ -507,7 +559,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 9 tests failed[0m
+  [38;2;248;113;113m[1m2 of 15 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-8] plugins/tool/orch-sequential/ is absent
   [38;2;248;113;113m✗[0m [#1801/SPEC-8] no file outside docs/adr/ names orch-sequential
@@ -527,14 +579,20 @@
   [38;2;0;212;255m[#1801/SPEC-8] configuring sequential as a backend ends the run as misconfigured[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-8] configuring sequential as backend signals misconfigured
 
-  [38;2;0;212;255m[#1801/SPEC-11] ADR-054 has ## Enforced by section[0m
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-054 has ## Enforced by section naming stage-timeout tests[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 has ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 §9 Enforced by names stage-timeout-dispatch-test.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 §9 Enforced by names stage-timeout-no-flat-limit-test.sh
 
-  [38;2;0;212;255m[#1801/SPEC-11] ADR-017 has ## Enforced by section[0m
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-017 has ## Enforced by section naming stage-timeout and always_run tests[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 has ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 Enforced by names stage-timeout-always-run-test.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-017 Enforced by names stage-timeout-loader-validation-test.sh
 
-  [38;2;0;212;255m[#1801/SPEC-11] ADR-011 has ## Enforced by section[0m
+  [38;2;0;212;255m[#1801/SPEC-11] ADR-011 has ## Enforced by section naming backend-retirement tests[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 has ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 Enforced by names orch-backend-misconfigured-test.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-011 Enforced by names orch-sequential-retired-guard-test.sh
 
   [38;2;0;212;255m[#1801/SPEC-11] ADR-054, ADR-017, ADR-011 removed from adr-enforcement-baseline.txt[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-11] ADR-054 is not in adr-enforcement-baseline.txt
@@ -543,5 +601,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 9 tests passed[0m
+  [38;2;74;222;128m[1mAll 15 tests passed[0m
 
