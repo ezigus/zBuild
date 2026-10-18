@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Tests: design stage banner OUTPUT shows on-disk design.md content, not
-# claude's stdout summary (#825). ADR-018 Pattern 2 single-file-artifact
-# contract amended in #820: the canonical artifact IS the file; the banner
-# should reflect that. Mirrors build's --defer-final-banner-close pattern
-# but overrides _ROUTE_LOOP_FINAL_OUTPUT with file content instead of the
-# LLM's result text.
+# Tests: the run log shows the design design's call wrote, not claude's stdout
+# summary (#825). ADR-018 Pattern 2 single-file-artifact contract amended in
+# #820: the canonical artifact IS the file; the log should reflect that. The
+# model call's own block shows its reply; design then shows the design itself,
+# in a block of its own (ADR-068 §8: one call, so no loop banner to override).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,44 +28,38 @@ _init_git_fixture() {
 # shellcheck disable=SC1091
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
-# Tracks whether _route_loop_close_final_banner was called and captures
-# the value of _ROUTE_LOOP_FINAL_OUTPUT at that moment — that's what the
-# banner would show.
+# Captures the blocks design shows in the run log (kind computed): the output
+# of the last one, and how many there were.
 _CAPTURED_BANNER_OUTPUT="$TEST_TEMP_DIR/captured-banner.txt"
 _CLOSE_CALL_COUNT_FILE="$TEST_TEMP_DIR/close-call-count"
-: > "$_CAPTURED_BANNER_OUTPUT"
 echo 0 > "$_CLOSE_CALL_COUNT_FILE"
-
-_route_loop_close_final_banner() {
-    printf '%s' "${_ROUTE_LOOP_FINAL_OUTPUT:-<empty>}" > "$_CAPTURED_BANNER_OUTPUT"
-    local n; n=$(($(cat "$_CLOSE_CALL_COUNT_FILE")+1))
-    echo "$n" > "$_CLOSE_CALL_COUNT_FILE"
+stage_io_begin() { _STAGE_IO_LAST_SEQ=7; return 0; }
+stage_io_end() {
+    local kind="" output=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in --kind) kind="$2"; shift 2 ;; --output) output="$2"; shift 2 ;; *) shift 2 ;; esac
+    done
+    [[ "$kind" == computed ]] || return 0
+    printf '%s' "$output" > "$_CAPTURED_BANNER_OUTPUT"
+    echo "$(( $(cat "$_CLOSE_CALL_COUNT_FILE") + 1 ))" > "$_CLOSE_CALL_COUNT_FILE"
     return 0
 }
 
-# Mock route_to_model_loop: simulate the LLM writing design.md to the
-# declared path AND returning a stdout summary (this is the actual dogfood
-# behavior). Caller sets MOCK_DESIGN_BODY + MOCK_DESIGN_WRITE_PATH +
-# MOCK_LLM_STDOUT_SUMMARY.
-route_to_model_loop() {
-    local _body
+# The model call: it writes MOCK_DESIGN_BODY where its prompt says (or, set to
+# a path, to that path — a stray write) and replies with a stdout summary, as
+# claude does.
+route_to_model() {
+    local _body _to="${MOCK_DESIGN_WRITE_PATH:-PROMPT}"
     if [[ -n "${MOCK_DESIGN_BODY:-}" ]]; then
         _body="$MOCK_DESIGN_BODY"
     else
         local _bt='```'
         _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: it works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
     fi
-    if [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]]; then
-        mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
-        printf '%s' "$_body" > "$MOCK_DESIGN_WRITE_PATH"
-    fi
-    # Simulate claude's stdout — the LLM's narration. By default this is
-    # the buggy "Design document written to ..." summary the dogfood showed.
-    _ROUTE_LOOP_FINAL_OUTPUT="${MOCK_LLM_STDOUT_SUMMARY:-Design document written to $output_design_md. It covers Decision/Scope/Contracts.}"
-    _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0
-    _ROUTE_LOOP_OUTPUT_TOKENS=0
+    [[ "$_to" == PROMPT ]] && _to="$(zb_test_prompt_write_path "$2")"
+    mkdir -p "$(dirname "$_to")"
+    printf '%s' "$_body" > "$_to"
+    printf '%s\n' "${MOCK_LLM_STDOUT_SUMMARY:-Design document written. It covers Decision/Scope/Contracts.}"
     return 0
 }
 
@@ -97,7 +90,7 @@ EOF
 
 # ─── T1: happy path — banner shows design.md content, NOT stdout summary ────
 _setup_test_fixture t1
-MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
+MOCK_DESIGN_WRITE_PATH=PROMPT
 _bt='```'
 MOCK_DESIGN_BODY="$(printf '# Design Doc T1\n\n## Decision\nUse pattern X for the migration.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: migration works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
 unset _bt
@@ -121,7 +114,7 @@ else
     assert_pass "T1: banner OUTPUT does NOT contain stdout summary"
 fi
 calls=$(cat "$_CLOSE_CALL_COUNT_FILE")
-assert_eq "T1: _route_loop_close_final_banner called exactly once" "1" "$calls"
+assert_eq "T1: design shows its design exactly once" "1" "$calls"
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY MOCK_LLM_STDOUT_SUMMARY
 
 # ─── T2: post-recovery path — stray mv'd into place; banner shows it ─────────
@@ -144,24 +137,23 @@ fi
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY MOCK_LLM_STDOUT_SUMMARY
 
 # ─── T3: a design missing its scope block is shown, then checked (#2369) ────
-# A missing scope block is no longer the end of the stage: it is a finding the
-# model fixes in its next round. Each round's banner shows the design.md that
-# round wrote; when the rounds run out the outcome is fail.
+# A missing scope block is a finding: the design cannot be used, and the engine
+# runs design again (ADR-068 §8). The log still shows the design the call wrote.
 _setup_test_fixture t3
-MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
+MOCK_DESIGN_WRITE_PATH=PROMPT
 MOCK_DESIGN_BODY="$(printf '# No scope block here\n\nJust prose, no fence.\n')"
 MOCK_LLM_STDOUT_SUMMARY="I failed to include the scope block — sorry."
 set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
 set +e
-assert_eq "T3: a design that fails its checks still returns rc=0" "0" "$rc"
-assert_eq "T3: ...with outcome fail" "fail" \
+assert_eq "T3: a design that fails its checks returns rc=1" "1" "$rc"
+assert_eq "T3: ...with outcome unusable" "unusable" \
     "$(jq -r '.outcome // "MISSING"' "$ARTIFACT_DIR/design-verdict.json" 2>/dev/null || echo MISSING)"
 if grep -q '# No scope block here' "$_CAPTURED_BANNER_OUTPUT" 2>/dev/null; then
-    assert_pass "T3: the banner shows the design.md the round wrote"
+    assert_pass "T3: the log shows the design the call wrote"
 else
-    assert_fail "T3: the banner shows the design.md the round wrote" \
+    assert_fail "T3: the log shows the design the call wrote" \
         "got: $(head -c 120 "$_CAPTURED_BANNER_OUTPUT")"
 fi
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY MOCK_LLM_STDOUT_SUMMARY
@@ -179,7 +171,7 @@ _T4_TMP="$TEST_TEMP_DIR/t4-body.md"
     done
     printf '\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[no-code]: large file works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n```\n'
 } > "$_T4_TMP"
-MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
+MOCK_DESIGN_WRITE_PATH=PROMPT
 MOCK_DESIGN_BODY="$(cat "$_T4_TMP")"
 MOCK_LLM_STDOUT_SUMMARY="ignore me"
 set +e

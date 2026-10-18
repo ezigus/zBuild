@@ -28,15 +28,10 @@ provides:
   events:
     - design.stray.conflict
     - design.stray.recovered
-    - design.timeout.design_kept
-    - design.timeout.no_design
     - design.checks.failed
 
 config:
   tier_default: T2
-  # #2369: rounds design spends checking its own design.md and going back to
-  # its model with what failed; still failing after the last is outcome fail.
-  check_rounds: 2
   router:
     timeout_s: 600
     max_turns: 45
@@ -47,10 +42,18 @@ outputs:
     type: design.md@1
     format: markdown
     required: true
+  # ADR-068 §8: the working copy the model writes. It becomes design.md when it
+  # passes design's checks; one still on disk is a try that did not pass, and
+  # the next run starts from it.
+  - id: design_draft
+    path: "${artifact_dir}/design-draft.md"
+    type: design.md@1
+    format: markdown
+    required: false
   # ADR-054 §5 (#1844): the v2 result file is the primary output, so the engine
   # reads design's verdict, disposition and reason (a timed-out design is seen
-  # as timed_out, not as "design.md present"). Written on every exit and cleared
-  # at the start of every run (plugin.sh), so it is never stale.
+  # as timed_out, not as "design.md present"). Written on every exit after
+  # the model call (plugin.sh), so it is never stale.
   - id: design_result
     path: "${artifact_dir}/design-verdict.json"
     type: design-verdict.json@1

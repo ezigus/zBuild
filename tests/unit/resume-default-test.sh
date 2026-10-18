@@ -99,18 +99,15 @@ print_test_section "R5–R11: design always runs"
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 MODEL_CALLS="$TEST_TEMP_DIR/design-model-calls"; : > "$MODEL_CALLS"
 DESIGN_EVENTS="$TEST_TEMP_DIR/design-events"; : > "$DESIGN_EVENTS"
-route_to_model_loop() {
+route_to_model() {
     echo call >> "$MODEL_CALLS"
-    cp "$2" "$MOCK_PROMPT_COPY" 2>/dev/null || true
-    # A complete design (scope + acceptance), so the stage reaches its success path.
-    printf '# Design (fresh)\n\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[change]: an empty input returns rc 1\nWIRING: none\nTESTFILES:\nSPEC-1: tests/unit/resume-default-test.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
-    _ROUTE_LOOP_FINAL_OUTPUT="ok"; _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
+    printf '%s\n' "$2" > "$MOCK_PROMPT_COPY" 2>/dev/null || true
+    # A complete design (scope + acceptance), so the stage reaches its success
+    # path; written where the prompt says, as the real model does.
+    printf '# Design (fresh)\n\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[change]: an empty input returns rc 1\nWIRING: none\nTESTFILES:\nSPEC-1: tests/unit/resume-default-test.sh\n```\n' > "$(zb_test_prompt_write_path "$2")"
     return 0
 }
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
-_route_loop_close_final_banner() { return 0; }
 emit_event() { printf '%s\n' "$1" >> "$DESIGN_EVENTS"; return 0; }
 
 FIX="$TEST_TEMP_DIR/fix"; mkdir -p "$FIX"

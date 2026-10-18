@@ -25,21 +25,23 @@ setup_test_env "design-v2-result-contract"
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
+# _MOCK_ROUTER_RC: what the one design call returns (124: out of time).
+# _MOCK_DESIGN_WRITE_PATH: set → the model writes a complete design where its
+# prompt says; empty → it writes nothing.
 _MOCK_ROUTER_RC=0
-_MOCK_TERMINATED_REASON="done_sentinel"
 _MOCK_DESIGN_WRITE_PATH=""
-
-route_to_model_loop() {
-    local _bt='```'
-    if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" ]]; then
-        mkdir -p "$(dirname "$_MOCK_DESIGN_WRITE_PATH")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
-            "$_bt" "$_bt" "$_bt" "$_bt" > "$_MOCK_DESIGN_WRITE_PATH"
+_MOCK_DESIGN_TEXT=""
+route_to_model() {
+    local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
+    if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" && -n "$_t" ]]; then
+        mkdir -p "$(dirname "$_t")"
+        if [[ -n "$_MOCK_DESIGN_TEXT" ]]; then
+            printf '%s' "$_MOCK_DESIGN_TEXT" > "$_t"
+        else
+            printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+                "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
+        fi
     fi
-    _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="$_MOCK_TERMINATED_REASON"
-    _ROUTE_LOOP_INPUT_TOKENS=0
-    _ROUTE_LOOP_OUTPUT_TOKENS=0
     return "$_MOCK_ROUTER_RC"
 }
 
@@ -89,7 +91,6 @@ EOF
 # ─── SPEC-1: success path writes sidecar with result_contract:3 before atomic_write
 _setup_fixture t1
 _MOCK_ROUTER_RC=0
-_MOCK_TERMINATED_REASON="done_sentinel"
 _MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
@@ -110,7 +111,6 @@ assert_eq "[SPEC-1] sidecar written before atomic_write of design.md" "PRESENT" 
 _setup_fixture t2
 rm -f "$_F_PLAN"
 _MOCK_ROUTER_RC=0
-_MOCK_TERMINATED_REASON="done_sentinel"
 _MOCK_DESIGN_WRITE_PATH=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
@@ -128,8 +128,7 @@ assert_eq "[SPEC-2] missing plan → design-verdict.json outcome=broken" "broken
 
 # ─── SPEC-3 [guard]: timeout path writes verdict=incomplete, disposition=interrupted
 _setup_fixture t3
-_MOCK_ROUTER_RC=0
-_MOCK_TERMINATED_REASON="router_timeout"
+_MOCK_ROUTER_RC=124
 _MOCK_DESIGN_WRITE_PATH=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
@@ -174,7 +173,6 @@ export ZBUILD_STAGE_INPUTS="$_INPUTS_INDEX"
 rm -f "$_F_SCOPE" "$_F_PLAN"
 
 _MOCK_ROUTER_RC=0
-_MOCK_TERMINATED_REASON="done_sentinel"
 _MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"
 
 _F_STATE_FILE="$_F_STATE/pipeline-state.json"
@@ -224,15 +222,14 @@ _assert_error_path() {
     fi
 }
 
-# _assert_checks_fail <spec> <label> <finding words>  (#2369)
-# A design.md that fails design's own checks is a finding the model fixes in its
-# next round; when the rounds run out the outcome is fail, rc stays 0, and the
-# result lists the finding.
+# _assert_checks_fail <spec> <label> <finding words>  (#2369, ADR-068 §8)
+# A design that fails design's own checks cannot be used: outcome unusable, so
+# the engine runs design again, handed the finding the result lists; rc 1.
 _assert_checks_fail() {
     local spec="$1" label="$2" words="$3"
-    assert_eq "[$spec] $label → rc=0" "0" "$_rc"
-    assert_eq "[$spec] $label → outcome=fail" \
-        "fail" "$(jq -r '.outcome // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_eq "[$spec] $label → rc=1" "1" "$_rc"
+    assert_eq "[$spec] $label → outcome=unusable" \
+        "unusable" "$(jq -r '.outcome // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
     assert_contains "[$spec] $label → the result lists the finding" \
         "$(jq -r '.data.findings[]?.text' "$_F_SIDECAR" 2>/dev/null)" "$words"
     if [[ -s "$_F_ARTIFACTS/design-summary.md" ]]; then
@@ -246,7 +243,6 @@ _assert_checks_fail() {
 # SPEC-6 — router returns cleanly but writes no design.md, and no stray at root.
 _setup_fixture t6
 _MOCK_ROUTER_RC=0
-_MOCK_TERMINATED_REASON="done_sentinel"
 _MOCK_DESIGN_WRITE_PATH=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
@@ -257,16 +253,9 @@ _assert_error_path "SPEC-6" "no design.md produced" "missing_design_md"
 # SPEC-7 — a design.md with no ```scope block.
 _setup_fixture t7
 _MOCK_ROUTER_RC=0
-_MOCK_TERMINATED_REASON="done_sentinel"
 _MOCK_DESIGN_WRITE_PATH=""
-route_to_model_loop() {
-    mkdir -p "$(dirname "$_F_DESIGN")"
-    printf '# Design\n\n## Decision\nNo scope block here.\n' > "$_F_DESIGN"
-    _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
-    return 0
-}
+_MOCK_DESIGN_WRITE_PATH=1
+_MOCK_DESIGN_TEXT="$(printf '# Design\n\n## Decision\nNo scope block here.\n')"
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
@@ -275,15 +264,8 @@ _assert_checks_fail "SPEC-7" "design.md without a scope block" "has no scope blo
 
 # SPEC-8 — a design.md with a scope block but no ```acceptance block.
 _setup_fixture t8
-route_to_model_loop() {
-    local _bt='```'
-    mkdir -p "$(dirname "$_F_DESIGN")"
-    printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n' "$_bt" "$_bt" > "$_F_DESIGN"
-    _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
-    return 0
-}
+_MOCK_DESIGN_WRITE_PATH=1
+_MOCK_DESIGN_TEXT="$(printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n' '```' '```')"
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
@@ -298,12 +280,9 @@ _setup_fixture t9
 printf '# operator-owned design\n' > "$_F_DIR/design.md"
 git -C "$_F_DIR" add design.md >/dev/null 2>&1
 git -C "$_F_DIR" commit -m "operator design" --quiet >/dev/null 2>&1
-route_to_model_loop() {
-    _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
-    return 0
-}
+# The model writes nothing where its prompt says (the tracked root file stands
+# for its stray write).
+_MOCK_DESIGN_WRITE_PATH=""; _MOCK_DESIGN_TEXT=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?

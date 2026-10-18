@@ -47,7 +47,7 @@ source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
 ROOT="$TEST_TEMP_DIR/repo"; mkdir -p "$ROOT/tests" "$ROOT/lib"; : > "$ROOT/lib/a.sh"; export ZBUILD_REPO_ROOT="$ROOT"
 _DESIGN_BODY=""
-route_to_model_loop() { printf '%s' "$_DESIGN_BODY" > "$_DG_OUT"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 0; }
+route_to_model() { printf '%s' "$_DESIGN_BODY" > "$(zb_test_prompt_write_path "$2")"; return 0; }
 _dg() {   # _dg <dir> <design.md>
     mkdir -p "$1/artifacts"; _DG_OUT="$1/artifacts/design.md"; _DESIGN_BODY="$2"
     printf '{"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["lib/a.sh"]}]}\n' > "$1/artifacts/plan.json"

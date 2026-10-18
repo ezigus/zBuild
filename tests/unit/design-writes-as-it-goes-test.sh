@@ -9,12 +9,14 @@
 # and told it the ONLY file it may write is design.md — so not even its notes.
 #
 #   D1 [change] What you own opens with design's job: the decisions, the
-#               acceptance contract and the scope, written as it goes; a finding
-#               is answered in the design; design does not debug code
+#               acceptance contract and the scope, saved as it goes; a finding
+#               that a design change would fix is answered in the design;
+#               design does not debug code
 #   D2 [change] the scope is found by searching for what the change alters,
 #               not by an exhaustive read
-#   D3 [change] design may write its notes file as well as design.md
-#   D4 [guard]  a design.md the call wrote before it timed out is kept
+#   D3 [change] design may write its notes file as well as its design (the
+#               working copy, ADR-068 §8)
+#   D4 [guard]  a design the call wrote before it timed out is kept
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,17 +30,16 @@ setup_test_env "design-writes-as-it-goes"
 
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
-MOCK_REASON="done_sentinel"
-route_to_model_loop() {
-    mkdir -p "$(dirname "$OUTPUT_MD")"
-    printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$OUTPUT_MD"
-    _ROUTE_LOOP_FINAL_OUTPUT="ok"; _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="$MOCK_REASON"
-    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
-    return 0
+# The model writes a design where its prompt says, then returns MOCK_RC
+# (124: its time ran out).
+MOCK_RC=0
+route_to_model() {
+    local _t; _t="$(zb_test_prompt_write_path "$2")"
+    mkdir -p "$(dirname "$_t")"
+    printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$_t"
+    return "$MOCK_RC"
 }
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
-_route_loop_close_final_banner() { return 0; }
 
 FIX="$TEST_TEMP_DIR/fix"; mkdir -p "$FIX"
 git -C "$FIX" init -q && git -C "$FIX" config user.email t@t && git -C "$FIX" config user.name t
@@ -55,10 +56,10 @@ FLAT="$(tr '\n' ' ' <<< "$P" | tr -s ' ')"
 
 print_test_section "D1: the job, first"
 _own="$(awk '/^## What you own/{f=1;next} f&&/^## /{exit} f' <<< "$P" | sed '/^[[:space:]]*$/d' | head -n1)"
-assert_contains "[D1] What you own opens with the job" "$_own" "Your job: write design.md"
-assert_contains "[D1] ...written as it goes" "$FLAT" "Write a first version early and update it as you go"
+assert_contains "[D1] What you own opens with the job" "$_own" "Your job: write the design"
+assert_contains "[D1] ...saved as it goes" "$FLAT" "Save it as you go"
 assert_contains "[D1] ...a design on disk counts" "$FLAT" "a design on disk when your time runs out still counts"
-assert_contains "[D1] a finding is answered in the design" "$FLAT" "A finding is answered in the design"
+assert_contains "[D1] a finding a design change would fix is answered in the design" "$FLAT" "Answer each of those in the design"
 assert_contains "[D1] design does not debug code" "$FLAT" "You do not debug code or work out why a test fails"
 
 print_test_section "D2: the scope is searched for, not read exhaustively"
@@ -75,12 +76,15 @@ if grep -qF "The ONLY file you write is the design.md" <<< "$FLAT"; then
 else
     assert_pass "[D3] no ban on the notes file"
 fi
-assert_contains "[D3] the only files are design.md and the notes file" "$FLAT" "Do not write any file other than the design.md above and your notes file"
+assert_contains "[D3] the only files are its design and the notes file" "$FLAT" "Do not write any file other than the working copy above and your notes file"
 
 print_test_section "D4: a design written before a timeout is kept"
-rm -f "$OUTPUT_MD"; MOCK_REASON="router_timeout"
+rm -f "$OUTPUT_MD" "$ARTIFACT_DIR/design-draft.md"; MOCK_RC=124
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
-assert_file_exists "[D4] the design written before the timeout is kept" "$OUTPUT_MD"
+# It has no acceptance block, so it fails its checks: it stays as the working
+# copy for the next run rather than being thrown away.
+assert_contains "[D4] the design written before the timeout is kept" \
+    "$(cat "$ARTIFACT_DIR/design-draft.md" 2>/dev/null)" '```scope'
 
 cleanup_test_env
 print_test_results

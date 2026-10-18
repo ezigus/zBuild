@@ -9,9 +9,10 @@
 # The template now says `on_max: halt` — the runner already ends the run as
 # failed for that value (cycle-on-max-continue-pipeline-status-test T2).
 #
-# SPEC-1[change]: simple.yaml's delivery_loop names design in stop_round_on_fail
+# SPEC-1[change]: simple.yaml's delivery_loop names design in stop_run_on_fail
 #                 (#2369: design checks its own design.md; design_verify_cycle
-#                 is retired, ADR-068 §3)
+#                 is retired. ADR-068 §3 amended: a design that still fails
+#                 ends the run)
 # SPEC-2[guard]:  build_test_cycle keeps on_max: continue (its fall-through goes to review)
 # SPEC-3[change]: ADR-019 records the reversal for design_verify_cycle
 set -uo pipefail
@@ -25,9 +26,9 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "design cycle: no build from a design its gate rejected (#2176)"
 setup_test_env "design-cycle-on-max-abort"
 _on_max() { awk -v id="$1" '$0 ~ "^"id":" {f=1; next} /^[a-z_-]+:/ {f=0} f && /^[[:space:]]+on_max:/ {print $2}' "$REPO_ROOT/config/templates/simple.yaml"; }
-assert_contains "[SPEC-1] delivery_loop ends the round when design fails" \
+assert_contains "[SPEC-1] delivery_loop ends the run when design fails" \
     "$(awk '/^delivery_loop:/ {f=1; next} /^[a-z_-]+:/ {f=0} f' "$REPO_ROOT/config/templates/simple.yaml")" \
-    "stop_round_on_fail: [design]"
+    "stop_run_on_fail: [design]"
 assert_eq "[SPEC-2] build_test_cycle on_max stays continue" "continue" "$(_on_max build_test_cycle)"
 assert_contains "[SPEC-3] ADR-019 records the design-cycle reversal" \
     "$(cat "$REPO_ROOT"/docs/adr/ADR-019*.md)" "design_verify_cycle\` is \`max_iterations: 3, on_max: halt"

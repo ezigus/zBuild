@@ -127,10 +127,10 @@ load_template() {
     # the prior _TPL_STAGES was a no-op on the first load; prefix expansion over
     # the live environment closes that cold-start gap.
     local _stale_bl
-    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}" "${!_TPL_STAGE_FAIL_ON_@}" "${!_TPL_CYCLE_STOP_ROUND_@}"; do
+    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}" "${!_TPL_STAGE_FAIL_ON_@}" "${!_TPL_CYCLE_STOP_RUN_@}"; do
         # Defensive: only unset well-formed identifier names ([A-Za-z0-9_]+),
         # never a name assembled from unvalidated input.
-        [[ "$_stale_bl" =~ ^_TPL_(STAGE_BLOCKING|STAGE_FAIL_ON|CYCLE_STOP_ROUND)_[A-Za-z0-9_]+$ ]] || continue
+        [[ "$_stale_bl" =~ ^_TPL_(STAGE_BLOCKING|STAGE_FAIL_ON|CYCLE_STOP_RUN)_[A-Za-z0-9_]+$ ]] || continue
         unset "$_stale_bl"
     done
 
@@ -588,12 +588,12 @@ load_template() {
                 done
                 ;;
             SR)
-                # #2369: the loop members whose failure ends the round.
+                # ADR-068 §3: the loop members whose failure ends the run.
                 local sr_id sr_val
                 IFS='|' read -r sr_id sr_val <<< "$payload"
                 [[ "$sr_val" =~ ^[A-Za-z0-9_\ -]+$ ]] || continue
-                printf -v "_TPL_CYCLE_STOP_ROUND_${sr_id//-/_}" '%s' "$sr_val"
-                export "_TPL_CYCLE_STOP_ROUND_${sr_id//-/_}"
+                printf -v "_TPL_CYCLE_STOP_RUN_${sr_id//-/_}" '%s' "$sr_val"
+                export "_TPL_CYCLE_STOP_RUN_${sr_id//-/_}"
                 ;;
             FO)
                 # #2368: a stage's fail rule, space-separated severities.
@@ -1076,12 +1076,12 @@ _tpl_validate_cycles() {
         local -a cs=($stages_csv)
         IFS="$IFS_save"
 
-        # #2369: every name in stop_round_on_fail is a member of this loop — a
-        # typo would otherwise silently end no round (review on PR #2393).
-        local _sr_v="_TPL_CYCLE_STOP_ROUND_${safe}" _sr_n
+        # #2369: every name in stop_run_on_fail is a member of this loop — a
+        # typo would otherwise silently stop nothing (review on PR #2393).
+        local _sr_v="_TPL_CYCLE_STOP_RUN_${safe}" _sr_n
         for _sr_n in ${!_sr_v:-}; do
             if [[ ",${stages_csv}," != *",${_sr_n},"* ]]; then
-                error "cycle '$cid': stop_round_on_fail names '$_sr_n', which is not a member of the loop"
+                error "cycle '$cid': stop_run_on_fail names '$_sr_n', which is not a member of the loop"
                 return 1
             fi
         done
@@ -1974,9 +1974,9 @@ _tpl_translate_new_shape() {
             if ($0 ~ /^[[:space:]]+on_max:/) {
                 v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); cyc_on_max = trim(v); next
             }
-            # #2369: the members whose failure ends the round, a flow list.
-            if ($0 ~ /^[[:space:]]+stop_round_on_fail:/) {
-                v = $0; sub(/^[[:space:]]+stop_round_on_fail:[[:space:]]*/, "", v)
+            # ADR-068 §3: the members whose failure ends the run, a flow list.
+            if ($0 ~ /^[[:space:]]+stop_run_on_fail:/) {
+                v = $0; sub(/^[[:space:]]+stop_run_on_fail:[[:space:]]*/, "", v)
                 gsub(/[\[\],]/, " ", v); gsub(/[[:space:]]+/, " ", v); cyc_stop = trim(v); next
             }
             # ADR-068 §8 (amended 2026-10-11): read only so the loader can

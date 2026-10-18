@@ -1300,6 +1300,7 @@ _cycle_iter_dispatch() {
     _CYCLE_LAST_VERDICTS_BLOB="{}"
     _CYCLE_LAST_FAILURE_COUNT=0
     _CYCLE_ITER_OUTCOME="error"
+    _CYCLE_STOP_RUN_MEMBER=""
 
     if ! declare -F cycle_dispatch_stage >/dev/null 2>&1; then
         error "cycle_orchestrator: no cycle_dispatch_stage hook registered (F2 wires this)"
@@ -1889,12 +1890,13 @@ _cycle_iter_dispatch() {
             unset "_CYCLE_TURNS_BASE[$s]"
             unset "_CYCLE_TURNS_BASE_PERSIST[${_CYCLE_TRAP_CYCLE_ID}:$s]"
         fi
-        # #2369: the template names the members whose failure ends the round —
-        # the later members do not run on what it failed to produce.
-        local _sr_var="_TPL_CYCLE_STOP_ROUND_${_CYCLE_TRAP_CYCLE_ID//-/_}"
+        # ADR-068 §3: the template names the members whose failure ends the run.
+        # The later members do not run on what it failed to produce, and the
+        # loop does not go round: the engine has already re-run the member as
+        # often as the template allows (ADR-068 §8).
+        local _sr_var="_TPL_CYCLE_STOP_RUN_${_CYCLE_TRAP_CYCLE_ID//-/_}"
         if [[ " ${!_sr_var:-} " == *" $s "* && "${_CYCLE_DISPATCH_VERDICT:-}" != "pass" ]]; then
-            _cycle_emit "cycle.round.ended_early" "iter=$iter" "stage=$s" \
-                "reason=member_failed" 2>/dev/null || true
+            _CYCLE_STOP_RUN_MEMBER="$s"
             break
         fi
     done
@@ -2491,6 +2493,11 @@ _cycle_orchestrator_run_body() {
                 "reason=member_terminal_failure" \
                 "detail=${_term_reason}" \
                 2>/dev/null || true
+        elif [[ -n "${_CYCLE_STOP_RUN_MEMBER:-}" ]]; then
+            _CYCLE_LAST_TERMINATED_REASON="out_of_tries:$_CYCLE_STOP_RUN_MEMBER"
+            overall_status="stopped_on_fail"; term_outcome="failed"
+            _cycle_emit "cycle.run.stopped_on_fail" "iter=$iter" \
+                "stage=$_CYCLE_STOP_RUN_MEMBER" "reason=member_failed" 2>/dev/null || true
         elif [[ "$converged" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="converged"
             overall_status="complete"; term_outcome="converged"

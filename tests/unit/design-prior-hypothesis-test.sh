@@ -31,14 +31,14 @@ setup_test_env "design-prior-hypothesis"
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
-route_to_model_loop() {
-    [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]] && {
-        mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
-        printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
+# The design call: it writes a design where the prompt says, when the test
+# asks for one (MOCK_DESIGN_WRITE_PATH set).
+route_to_model() {
+    local _t; _t="$(zb_test_prompt_write_path "$2")"
+    [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" && -n "$_t" ]] && {
+        mkdir -p "$(dirname "$_t")"
+        printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$_t"
     }
-    _ROUTE_LOOP_FINAL_OUTPUT="ok"; _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
     return 0
 }
 apply_scope_redaction() { cp "$1" "$2"; return 0; }

@@ -66,7 +66,7 @@ A template is a composition of stages over the closed operator set in [[Mechanic
 
 ### Cycles and convergence
 
-Cycles are bounded and converge via [[mechanics/convergence]] (`exit_when`, `on_max`). `delivery_loop` holds `design_verify_cycle` and `build_test_cycle`; when the build loop runs out of rounds, the outer loop goes round from design ([[mechanics/finding-answers]]). The [[mechanics/gates]] reference has the full verdict semantics.
+Cycles are bounded and converge via [[mechanics/convergence]] (`exit_when`, `on_max`). `delivery_loop` holds `design` and `build_test_cycle`; a design that still fails after its tries ends the run, and when the build loop runs out of rounds, the outer loop goes round from design ([[mechanics/finding-answers]]). The [[mechanics/gates]] reference has the full verdict semantics.
 
 ### State internals
 

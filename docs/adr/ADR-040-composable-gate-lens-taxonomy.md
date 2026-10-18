@@ -491,14 +491,14 @@ Enforced by: `tests/unit/lens-fail-rule-test.sh` F1–F3.
 A check that reads one stage's output belongs to that stage. design-gate (the scripted checks of
 design.md) and spec-coverage (the model-judged check that the SPECs cover the issue) are retired as
 stages, and design does both itself: after its model writes design.md it runs the scripted checks, then,
-when the issue has numbered requirements, a second model call asks whether the SPECs cover them. What
-fails goes back to design's model, with each finding, until the checks pass or design's rounds
-(`config.check_rounds: 2` in its manifest) run out; then design's one outcome is `fail` and its result
-lists the findings. A failed coverage call is design's outcome (`rate_limited`, `unavailable`,
+when the issue has numbered requirements, a second model call asks whether the SPECs cover them. A
+design that fails is `unusable` and its result lists the findings; the engine runs design again, handed
+them (amended 2026-10-18, ADR-068 §10: it went back to design's model inside the stage, for
+`config.check_rounds: 2` rounds, each starting from the same prompt). A failed coverage call is design's outcome (`rate_limited`, `unavailable`,
 `timed_out`, `unusable`). §5 still holds for the coverage call: its standard is the issue, which design
 cannot re-author. The issue reaches the call under Previous work, like every stage's input; design reads
 no other stage's output by name. `design_verify_cycle` is retired; `delivery_loop` holds design and the
-build loop and names design in `stop_round_on_fail:` (ADR-068 §3).
+build loop and names design in `stop_run_on_fail:` (ADR-068 §3).
 
 Enforced by: `tests/unit/design-checks-own-output-test.sh` C1–C5; `tests/unit/design-checks-test.sh`;
 `tests/unit/design-checks-plain-test.sh` D1–D3; `tests/unit/design-coverage-test.sh`.
