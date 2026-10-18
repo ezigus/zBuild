@@ -112,10 +112,14 @@ orphan failures if present.
 
 ## What you own
 
-Your job: write design.md — the change's decisions, its acceptance contract and its scope — at the path below. Write a first version early and update it as you go: a design on disk when your time runs out still counts. A finding is answered in the design: what changes in the contract or the scope. You do not debug code or work out why a test fails.
+Your job: write the design — the change's decisions, its acceptance contract and its scope — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts.
+
+There is no design yet. Write a first version in your first few turns, then improve it.
+
+Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract or its scope. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails.
 
 Write the design document to this EXACT absolute path:
-  /home/runner/work/_temp/zbuild-state/artifacts/design.md
+  /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 
 The design document MUST include:
 1. A brief architectural decision summary (goal, context, decision).
@@ -210,7 +214,7 @@ Updating those checks to the new behaviour is part of writing the tests. Omit
 the block when no existing check changes meaning.
 
 Keep the prose focused and under 200 lines (the scope block and acceptance
-block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
+block may be as long as completeness requires).
 
 
 ## What you judge against
@@ -277,10 +281,10 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 332 artifact(s) from prior runs (restored)
+- restored 316 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 332 artifact(s) from zbuild/state/issue-1944
+- detail: restored 316 artifact(s) from zbuild/state/issue-1944
 
 ### intake (verdict: pass)
 Outputs:
@@ -311,7 +315,7 @@ Summary:
 - open questions: 3
 - artifact: plan.json
 
-### design (verdict: error) — your own
+### design (verdict: timed_out) — your own
 Outputs:
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
@@ -319,9 +323,9 @@ Outputs:
 Summary:
 ## design — error
 
-- Design ran out of time before writing design.md.
+- Design ran out of time before writing a design.
 
-No design.md was written.
+There is no design yet.
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-7/design-summary.md
@@ -581,10 +585,10 @@ Summary:
 
 ## What you must not do
 
-- Do not write any file other than the design.md above and your notes file.
+- Do not write any file other than the working copy above and your notes file.
   Do not change the code: the design says what changes, it does not make the
   change.
-- Do not write design.md anywhere else (./design.md, design.md): it is read
+- Do not write the design anywhere else (./design.md, design.md): it is read
   from the absolute path above only.
 
 ## Rules for this stage
@@ -596,8 +600,8 @@ Summary:
   Write to it as you work, not at the end: what you read, what you
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
-- Your budget: each model call has 600 seconds and 37 turns. A call that runs out of time
-  returns nothing: finish and write your answer well before the limit. The whole stage has 2700 seconds.
+- Your budget: each model call has 600 seconds, with no limit on turns. A call that runs out of time
+  returns nothing: finish and write your answer well before the limit. The whole stage has 1500 seconds.
 
 ### How every stage works
 

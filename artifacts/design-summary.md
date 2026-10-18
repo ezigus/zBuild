@@ -1,5 +1,5 @@
 ## design — error
 
-- Design ran out of time before writing design.md.
+- Design ran out of time before writing a design.
 
-No design.md was written.
+There is no design yet.
