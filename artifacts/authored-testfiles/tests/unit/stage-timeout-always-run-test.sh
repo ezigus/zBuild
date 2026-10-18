@@ -64,6 +64,27 @@ _simple="$REPO_ROOT/config/templates/simple.yaml"
 if [[ ! -f "$_simple" ]]; then
     assert_fail "[#1801/SPEC-6] config/templates/simple.yaml exists" "not found"
 else
+    # ── [#1801/SPEC-6] REQUIRED VALUES: release=30, persist=120 ──────────────
+    # Direct assertions for the two values SPEC-6 explicitly mandates.
+    # Not inside a helper function so the requirement is unambiguously visible.
+    _spec6_r="$(awk '/^release:/{f=1; next} f && /^[a-zA-Z_-]/{exit} f && /stage_timeout_s:/{print; exit}' \
+        "$_simple" 2>/dev/null | grep -oE '[0-9]+' || true)"
+    if [[ "$_spec6_r" == "30" ]]; then
+        assert_pass "[#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30 (required)"
+    else
+        assert_fail "[#1801/SPEC-6] simple.yaml release: stage_timeout_s == 30 (required)" \
+            "got '${_spec6_r:-<absent>}' — SPEC-6 mandates stage_timeout_s 30 for release"
+    fi
+
+    _spec6_p="$(awk '/^persist:/{f=1; next} f && /^[a-zA-Z_-]/{exit} f && /stage_timeout_s:/{print; exit}' \
+        "$_simple" 2>/dev/null | grep -oE '[0-9]+' || true)"
+    if [[ "$_spec6_p" == "120" ]]; then
+        assert_pass "[#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120 (required)"
+    else
+        assert_fail "[#1801/SPEC-6] simple.yaml persist: stage_timeout_s == 120 (required)" \
+            "got '${_spec6_p:-<absent>}' — SPEC-6 mandates stage_timeout_s 120 for persist"
+    fi
+
     # Verify required stage_timeout_s values by parsing the template.
     # Each check verifies that the section contains `stage_timeout_s: N`.
     # Strategy: for each stage, confirm that stage_timeout_s appears in simple.yaml

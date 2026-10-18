@@ -1,74 +1,69 @@
 # Test Author Notes — Issue #1801
 
-## Status: COMPLETE (round 2 fix pass)
+## Status: COMPLETE (round 4)
 
-## Round-2 fixes applied
+## Round-4 fixes applied
 
-### 1. stage-timeout-dispatch-test.sh — SPEC-1 roleless leaf awk bug
+### 1. stage-timeout-process-group-test.sh — SPEC-2 run-hook branch specificity
 
-**Problem**: The awk pattern `/\[\[ -z "\$roles_out" \]\]/` matched the FIRST
-occurrence in runner.sh (line 1956, a dry-run display block with no plugin_hook_call).
-The assertion would ALWAYS fail, even after the change.
+**Checker finding**: "cannot distinguish a trap placed at function scope from one
+confined to the run-hook branch as the requirement specifies"
 
-**Fix**: Replaced single-occurrence awk with multi-occurrence scan that looks for
-plugin_hook_call within 40 lines of ANY `[[ -z "$roles_out" ]]` occurrence. The
-dispatch-path occurrence (line 3760) has plugin_hook_call 21 lines later (line 3781).
+**Fix**: Replaced whole-body `grep -q 'trap.*TERM'` / `grep -q 'exit 143'` checks
+(lines 118-135) with a check that:
+1. Extracts only the run-hook branch via awk:
+   `if [[ "$hook_name" == "run" ]]; then` → `    else`
+2. Verifies `trap.*TERM` and `exit 143` are WITHIN that extracted block
 
-Implementation facts:
-- runner.sh line 1956: first `[[ -z "$roles_out" ]]` — dry-run block, NO plugin_hook_call
-- runner.sh line 3760: second occurrence — DISPATCH path, plugin_hook_call at line 3781
+Verification: awk extraction produces 184 lines, trap.*TERM found 8 times,
+exit 143 found 4 times. The `else` branch has 0 of both — confirming confinement.
+Test now passes 7/7.
 
-### 2. stage-timeout-no-flat-limit-test.sh — SPEC-7 behavioral test with sleeping orch_collect
+### 2. stage-timeout-always-run-test.sh — SPEC-6 visible direct assertions
 
-**Problem**: The behavioral test (lines 63-136) mocked orch_collect to return 0
-immediately. It only checked that --timeout was absent from args. Round-2 checker
-requires a test where orch_collect actually runs longer than ZBUILD_ORCH_TIMEOUT.
+**Checker finding**: "`_check_stage_timeout` defined without visible calls that
+assert the specific required values (release=30, persist=120)"
 
-**Fix**: Added new behavioral section (after line 136) that:
-1. Redefines orch_collect to: sleep 2s and return 0 when no --timeout (post-change),
-   OR return 1 immediately when --timeout ≤ 1 is passed (simulates old flat ceiling)
-2. Re-sources fanout.sh (with guard reset)
-3. Overrides _strategy_make_work_unit AFTER sourcing to ensure dispatch_count > 0
-4. Runs _strategy_run_fanout with ZBUILD_ORCH_TIMEOUT=1
-5. Asserts exit 0 (proves no ceiling fires with 2s dispatch)
+**Fix**: Added two direct, standalone assertions at the TOP of the `else` block,
+before the `_check_stage_timeout` helper definition:
+- `_spec6_r` awk check for release=30
+- `_spec6_p` awk check for persist=120
+These are not inside any helper function, making the requirement unambiguously
+visible to both static analysis and code review.
 
-FAILS before change: fanout passes --timeout 1 → ceiling fires → rc=1 → assertion fails
-PASSES after change: no --timeout → sleeps 2s → returns 0 → rc=0 → assertion passes
+Test now shows release=30 and persist=120 assertions clearly as `✓`.
 
 ## SPEC coverage (final)
 
-SPEC-1:  stage-timeout-dispatch-test.sh ✓ (roleless leaf bug fixed)
-SPEC-2:  stage-timeout-process-group-test.sh ✓ + runner-release-exit-paths-test.sh ✓
-SPEC-3:  stage-timeout-precedence-test.sh ✓ (isolation test present at lines 153-221)
+SPEC-1:  stage-timeout-dispatch-test.sh ✓ (17/17 pass)
+SPEC-2:  stage-timeout-process-group-test.sh ✓ (7/7 pass)
+SPEC-3:  stage-timeout-precedence-test.sh ✓
 SPEC-4:  stage-timeout-loader-validation-test.sh ✓
 SPEC-5:  stage-timeout-retry-test.sh ✓
-SPEC-6:  stage-timeout-always-run-test.sh ✓
-SPEC-7:  stage-timeout-no-flat-limit-test.sh ✓ (sleeping behavioral test added)
-SPEC-8:  orch-sequential-retired-guard-test.sh ✓
-SPEC-9:  orch-backend-misconfigured-test.sh ✓ (unreadable-config names backend at lines 143-150)
-SPEC-10: stage-timeout-dispatch-test.sh + stage-timeout-always-run-test.sh ✓
-SPEC-11: orch-sequential-retired-guard-test.sh ✓ (specific test names checked at lines 113-196)
+SPEC-6:  stage-timeout-always-run-test.sh ✓ (direct assertions added)
+SPEC-7:  stage-timeout-no-flat-limit-test.sh ✓
+SPEC-8:  orch-sequential-retired-guard-test.sh ✓ (15/15 pass)
+SPEC-9:  orch-backend-misconfigured-test.sh ✓ (7/7 pass)
+SPEC-10: stage-timeout-dispatch-test.sh (17/17 pass) +
+         stage-timeout-always-run-test.sh (1 fail: impl bug in runner.sh)
+SPEC-11: orch-sequential-retired-guard-test.sh ✓
 SPEC-15: no testfile (grep search, no assertions to write)
 SPEC-16: no testfile (npm test/lint pass)
 SPEC-17: covered mechanically by SPEC-8 no-orch-sequential grep ✓
-SPEC-18: event-schema-emitted-coverage-test.sh ✓ (emitted+registered check at lines 181-198)
+SPEC-18: event-schema-emitted-coverage-test.sh ✓
 SPEC-19: orch-backend-misconfigured-test.sh ✓
 
-## Current test failures (implementation bugs, not test bugs)
+## Existing check updates
 
-1. stage-timeout-dispatch-test.sh SPEC-10: correctly fails because
-   lifecycle.sh still has `kill -KILL -- -"$_lc_hook_pid"`.
+- runner-release-exit-paths-test.sh SPEC-6b: passes 18/18 including SPEC-6b.
+  The implementation zbuild_pg_kill is now in place; TERM-ignoring child dies.
+
+## Remaining test failures (implementation bugs, not test bugs)
+
+1. stage-timeout-always-run-test.sh SPEC-10: correctly fails because runner.sh
+   line 2486 still has `kill -KILL -- -"$_ar_pid"` in _runner_dispatch_always_run.
    Will pass when implementation replaces it with zbuild_pg_kill.
+   Test detection is CORRECT.
 
-2. runner-release-exit-paths-test.sh SPEC-6b: correctly fails because
-   TERM-ignoring grandchild survives.
-   Will pass when implementation adds proper group kill.
-
-3. runner-job-control-abort-test.sh: pre-existing failure about `flag-on: monitor mode ON`.
-   NOT in my testfile list — cannot touch.
-
-## Files modified in this round
-
-1. tests/unit/stage-timeout-dispatch-test.sh (roleless leaf awk fix)
-2. tests/unit/stage-timeout-no-flat-limit-test.sh (behavioral sleeping test)
-
+2. runner-job-control-abort-test.sh: pre-existing failure about
+   `flag-on: monitor mode ON in runner shell`. NOT in my testfile list.
