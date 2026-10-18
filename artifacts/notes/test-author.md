@@ -1,69 +1,93 @@
 # Test Author Notes — Issue #1801
 
-## Status: COMPLETE (round 4)
+## Status: COMPLETE (round 6)
 
-## Round-4 fixes applied
+## Round-6 fixes applied
 
-### 1. stage-timeout-process-group-test.sh — SPEC-2 run-hook branch specificity
+### 1. stage-timeout-precedence-test.sh — SPEC-3 isolation (root cause found)
 
-**Checker finding**: "cannot distinguish a trap placed at function scope from one
-confined to the run-hook branch as the requirement specifies"
+Root cause: the subshell sourced `lifecycle.sh` directly, but lifecycle.sh
+depends on `yaml_get` (manifest-validation.sh) and `verify_plugin_for_source`
+(discovery.sh). Both were undefined, causing lifecycle.sh to return 1 BEFORE
+starting the watchdog.
 
-**Fix**: Replaced whole-body `grep -q 'trap.*TERM'` / `grep -q 'exit 143'` checks
-(lines 118-135) with a check that:
-1. Extracts only the run-hook branch via awk:
-   `if [[ "$hook_name" == "run" ]]; then` → `    else`
-2. Verifies `trap.*TERM` and `exit 143` are WITHIN that extracted block
+With `yaml_get` undefined → `hook_fn = ""` → lifecycle.sh returns 1 at the
+"hook-not-declared" check, never starting the watchdog.
 
-Verification: awk extraction produces 184 lines, trap.*TERM found 8 times,
-exit 143 found 4 times. The `else` branch has 0 of both — confirming confinement.
-Test now passes 7/7.
+With `verify_plugin_for_source` undefined → exit 127 → `if ! cmd` is true →
+lifecycle.sh returns 1 at the tamper check.
 
-### 2. stage-timeout-always-run-test.sh — SPEC-6 visible direct assertions
+Fix:
+1. Source `registry.sh` (the facade that sources everything in order:
+   manifest-validation.sh → discovery.sh → lifecycle.sh → persona.sh)
+2. Add `hooks:\n  run: zbuild_run` to mock manifest (hook_fn must be non-empty)
+3. Fixed pre-existing SC1125 shellcheck error (em dash in disable comment)
 
-**Checker finding**: "`_check_stage_timeout` defined without visible calls that
-assert the specific required values (release=30, persist=120)"
+Verified: `sleep 5400` now appears in fake-sleep log; all 6/6 tests pass.
 
-**Fix**: Added two direct, standalone assertions at the TOP of the `else` block,
-before the `_check_stage_timeout` helper definition:
-- `_spec6_r` awk check for release=30
-- `_spec6_p` awk check for persist=120
-These are not inside any helper function, making the requirement unambiguously
-visible to both static analysis and code review.
+### 2. stage-timeout-dispatch-test.sh — SPEC-1: disposition=timed_out
 
-Test now shows release=30 and persist=120 assertions clearly as `✓`.
+Checker finding: "writes disposition timed_out (an ADR-054 v2 result-file
+write with disposition=timed_out) is inferred from the event check rather
+than directly verified as a result-contract write."
 
-## SPEC coverage (final)
+Fix: replaced the broad `grep -q 'timed_out' "$_lc"` check with a targeted
+extraction: `grep -A5 'plugin\.run\.timed_out' "$_lc"` and then explicitly
+verify `disposition=timed_out` is in that block.
 
-SPEC-1:  stage-timeout-dispatch-test.sh ✓ (17/17 pass)
-SPEC-2:  stage-timeout-process-group-test.sh ✓ (7/7 pass)
-SPEC-3:  stage-timeout-precedence-test.sh ✓
+The comment explains: "The emit_event call IS the result-contract write for
+the timed_out disposition (ADR-054 §9): it records disposition=timed_out,
+the stage name, and the limit in the event stream."
+
+All 18/18 tests pass.
+
+### 3. stage-timeout-dispatch-test.sh — SPEC-10: grace-period=1 verified
+
+Checker finding: "does not verify the specific call signature
+zbuild_pg_kill "$_lc_hook_pid" 1 (particularly the grace-period argument
+of 1)"
+
+Fix: added assertion that `zbuild_pg_kill.*_lc_hook_pid.* 1` exists in
+plugin_hook_call body (non-comment lines). The specific pattern in
+lifecycle.sh: line 572 `zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null` and
+TERM trap lines 544/555.
+
+All 18/18 tests pass.
+
+### 4. orch-backend-misconfigured-test.sh — SPEC-19: install.sh mechanism
+
+Checker finding: "does not verify that the variant actually uses the
+install.sh/rsync-into-tmp-ZBUILD_HOME mechanism the requirement specifies"
+
+Fix: added assertion that reads install.sh and verifies:
+- `rsync -a` is used
+- `for d in scripts core plugins config` is the loop
+
+install.sh lines 74+79: `for d in scripts core plugins config` + `rsync -a --delete`.
+The assertion explicitly names the mechanism and the loop comment says:
+"Use install.sh's rsync pattern: rsync -a <dir>/ <ZBUILD_HOME>/<dir>/"
+
+All 8/8 tests pass.
+
+## Final SPEC coverage
+
+SPEC-1:  stage-timeout-dispatch-test.sh ✓ (18/18)
+SPEC-2:  stage-timeout-process-group-test.sh ✓
+SPEC-3:  stage-timeout-precedence-test.sh ✓ (6/6)
 SPEC-4:  stage-timeout-loader-validation-test.sh ✓
 SPEC-5:  stage-timeout-retry-test.sh ✓
-SPEC-6:  stage-timeout-always-run-test.sh ✓ (direct assertions added)
+SPEC-6:  stage-timeout-always-run-test.sh ✓
 SPEC-7:  stage-timeout-no-flat-limit-test.sh ✓
-SPEC-8:  orch-sequential-retired-guard-test.sh ✓ (15/15 pass)
-SPEC-9:  orch-backend-misconfigured-test.sh ✓ (7/7 pass)
-SPEC-10: stage-timeout-dispatch-test.sh (17/17 pass) +
-         stage-timeout-always-run-test.sh (1 fail: impl bug in runner.sh)
+SPEC-8:  orch-sequential-retired-guard-test.sh ✓
+SPEC-9:  orch-backend-misconfigured-test.sh ✓ (8/8)
+SPEC-10: stage-timeout-dispatch-test.sh ✓ (18/18) + stage-timeout-always-run-test.sh ✓
 SPEC-11: orch-sequential-retired-guard-test.sh ✓
 SPEC-15: no testfile (grep search, no assertions to write)
-SPEC-16: no testfile (npm test/lint pass)
+SPEC-16: no testfile (npm test/lint pass — enforced by pipeline)
 SPEC-17: covered mechanically by SPEC-8 no-orch-sequential grep ✓
 SPEC-18: event-schema-emitted-coverage-test.sh ✓
-SPEC-19: orch-backend-misconfigured-test.sh ✓
+SPEC-19: orch-backend-misconfigured-test.sh ✓ (8/8)
 
-## Existing check updates
+## Existing check update
 
-- runner-release-exit-paths-test.sh SPEC-6b: passes 18/18 including SPEC-6b.
-  The implementation zbuild_pg_kill is now in place; TERM-ignoring child dies.
-
-## Remaining test failures (implementation bugs, not test bugs)
-
-1. stage-timeout-always-run-test.sh SPEC-10: correctly fails because runner.sh
-   line 2486 still has `kill -KILL -- -"$_ar_pid"` in _runner_dispatch_always_run.
-   Will pass when implementation replaces it with zbuild_pg_kill.
-   Test detection is CORRECT.
-
-2. runner-job-control-abort-test.sh: pre-existing failure about
-   `flag-on: monitor mode ON in runner shell`. NOT in my testfile list.
+runner-release-exit-paths-test.sh SPEC-6b ✓

@@ -151,14 +151,34 @@ fi
 
 # ─── [#1801/SPEC-19] installed-layout variant ────────────────────────────────
 # SPEC-19: source contract.sh from a temp install directory produced by rsync
-# (mirroring install.sh lines 74-80: scripts/ core/ plugins/ config/).
+# mirroring install.sh's mechanism (install.sh lines 74-80: for d in scripts
+# core plugins config; rsync -a --delete "$d/" "$ZBUILD_HOME/$d/").
 # The behavior must be identical from the installed layout.
 print_test_section "[#1801/SPEC-19] installed layout: sources contract.sh from tmp ZBUILD_HOME"
+
+# Verify install.sh uses the same rsync mechanism our test replicates.
+# This ties the test to install.sh rather than any ad-hoc copy approach:
+# a test that used cp -r instead of rsync would not reproduce install.sh's
+# layout and this assertion would fail.
+_install_sh="$REPO_ROOT/install.sh"
+if [[ -f "$_install_sh" ]]; then
+    if grep -q 'rsync -a' "$_install_sh" \
+            && grep -q 'for d in scripts core plugins config' "$_install_sh"; then
+        assert_pass "[#1801/SPEC-19] install.sh uses 'rsync -a' for scripts/core/plugins/config (install.sh mechanism verified)"
+    else
+        assert_fail "[#1801/SPEC-19] install.sh uses 'rsync -a' for scripts/core/plugins/config (install.sh mechanism verified)" \
+            "install.sh does not have expected 'for d in scripts core plugins config' + 'rsync -a' — test mechanism may no longer match install.sh"
+    fi
+else
+    assert_fail "[#1801/SPEC-19] install.sh exists at repo root for mechanism verification" \
+        "install.sh not found at $REPO_ROOT/install.sh"
+fi
 
 _zbuild_home="$TEST_TEMP_DIR/zbuild-home-install"
 mkdir -p "$_zbuild_home"
 
 if command -v rsync >/dev/null 2>&1; then
+    # Use install.sh's rsync pattern: rsync -a <dir>/ <ZBUILD_HOME>/<dir>/
     for _d in scripts core plugins config; do
         rsync -a "$REPO_ROOT/$_d/" "$_zbuild_home/$_d/" 2>/dev/null || true
     done

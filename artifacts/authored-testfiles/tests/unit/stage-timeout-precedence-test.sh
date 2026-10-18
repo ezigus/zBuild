@@ -158,33 +158,54 @@ assert_eq "[#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from sta
 # log for exactly "5400". On pre-change code (no watchdog in plugin_hook_call)
 # no sleep is spawned and the log is empty → FAIL. On post-change code the
 # watchdog fires `sleep 5400` → the log contains "5400" → PASS.
+#
+# Timing: the watchdog and hook both start concurrently.  If zbuild_run()
+# exits immediately, wait() returns before the watchdog gets to run sleep 5400,
+# and the watchdog is killed before it can log its argument.  To avoid this
+# race a FIFO rendezvous is used: the fake sleep logs "5400" and then writes
+# one byte to the FIFO; zbuild_run() blocks reading the FIFO.  This guarantees
+# "5400" is in the log before the hook exits and before the watchdog is killed.
 print_test_section "[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call"
 
-# Create a fake sleep that logs its first arg and exits immediately.
-# The lifecycle watchdog runs `sleep "$_lc_hook_to"` in a subshell; the fake
-# sleep captures what value was actually resolved.
 _spec3_bin="$TEST_TEMP_DIR/spec3-fakebin"
 _spec3_log="$TEST_TEMP_DIR/spec3-sleep-log.txt"
-rm -f "$_spec3_log" 2>/dev/null || true
+_spec3_fifo="$TEST_TEMP_DIR/spec3-rendezvous"
+rm -f "$_spec3_log" "$_spec3_fifo" 2>/dev/null || true
 mkdir -p "$_spec3_bin"
+mkfifo "$_spec3_fifo" 2>/dev/null || true
+
+# Fake sleep: logs its first arg; when arg is 5400 (watchdog timer) also
+# signals the hook via the FIFO so the hook can exit.  The log write is
+# unconditional and happens BEFORE the FIFO write — "5400" is therefore
+# always in the log even if the FIFO signal races with watchdog cleanup.
 cat > "$_spec3_bin/sleep" <<FAKESLEEP
 #!/bin/bash
 printf '%s\n' "\$1" >> "$_spec3_log"
+[[ "\$1" == "5400" ]] && printf 'go' > "$_spec3_fifo" 2>/dev/null || true
 exit 0
 FAKESLEEP
 chmod +x "$_spec3_bin/sleep"
 
-# Create a minimal mock plugin whose run hook exits immediately.
+# Mock plugin: zbuild_run blocks on the FIFO rendezvous (3 s safety timeout).
+# Without this wait the hook exits before the watchdog starts sleep 5400 and
+# the watchdog is killed before it can log its argument — the race this FIFO
+# eliminates.
 _spec3_plugin="$TEST_TEMP_DIR/spec3-plugin"
 mkdir -p "$_spec3_plugin"
-cat > "$_spec3_plugin/plugin.sh" <<'PLUGIN'
-zbuild_run() { :; }
+# shellcheck disable=SC2154 # $TEST_TEMP_DIR expands here, not inside the heredoc
+cat > "$_spec3_plugin/plugin.sh" <<PLUGIN
+zbuild_run() {
+    # Wait for the watchdog to signal via FIFO (or give up after 3 s).
+    read -r -t 3 _sig < "$_spec3_fifo" 2>/dev/null || true
+}
 PLUGIN
 cat > "$_spec3_plugin/manifest.yaml" <<'MANIFEST'
 id: spec3-isolation
 name: Spec3 Isolation Mock
 kind: agent
 version: 0.0.1
+hooks:
+  run: zbuild_run
 MANIFEST
 _spec3_state="$TEST_TEMP_DIR/spec3-state.json"
 printf '{"pipeline_status":"running"}' > "$_spec3_state"
@@ -199,12 +220,15 @@ printf '{"pipeline_status":"running"}' > "$_spec3_state"
     unset ZBUILD_STAGE_TIMEOUT_S
     unset _TPL_STAGE_TIMEOUT_S_spec3isolation
     export ZBUILD_CURRENT_STAGE=spec3isolation
+    # Source the full registry facade so yaml_get (manifest-validation.sh) and
+    # verify_plugin_for_source (discovery.sh) are defined before lifecycle.sh
+    # calls them — lifecycle.sh declares it "depends on yaml_get /
+    # verify_plugin_for_source from the other two split modules — sourced together
+    # via the registry.sh facade" and must not be sourced in isolation.
     # shellcheck disable=SC1090
-    source "$REPO_ROOT/scripts/lib/helpers.sh" 2>/dev/null || true
+    source "$REPO_ROOT/core/plugin-registry/registry.sh" 2>/dev/null || true
     # shellcheck disable=SC1090
     source "$REPO_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
-    # shellcheck disable=SC1090
-    source "$REPO_ROOT/core/plugin-registry/lifecycle.sh" 2>/dev/null || true
     plugin_hook_call "$_spec3_plugin" run spec3isolation "$_spec3_state" 2>/dev/null || true
 ) 2>/dev/null || true
 
