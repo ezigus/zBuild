@@ -397,34 +397,19 @@ Summary:
 - SPECs in the contract: 16
 - assertions are authored from the SPEC text, never from the implementation
 
-### build (verdict: timed_out) — your own
+### build (verdict: pass) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
-## build — timed_out
+## build — pass
 
-- changed 1 file(s) over 1 pass(es), 3 iteration(s)
+- changed 1 file(s) over 2 pass(es), 4 iteration(s)
 
 - lines: +11 / -3
-- terminated: router_timeout
-- scope violation: false
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-4/build-checkpoint.md
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-4/build-summary.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-4/build-summary.md
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-4/diff.patch
-
-Summary of that output:
-## build — incomplete
-
-- changed 39 file(s) over 4 pass(es), 12 iteration(s)
-
-- lines: +317 / -540
-- terminated: router_timeout
+- terminated: done_sentinel
 - scope violation: false
 
 Your notes so far:
@@ -437,66 +422,31 @@ Previous test stage found 3 failures:
 2. runner-release-exit-paths-test.sh — SPEC-6b (pid still alive 5s after runner returned)
 3. stage-timeout-dispatch-test.sh — SPEC-10 (kill -KILL still present)
 
-## What I found
+## What I found at start of previous build iteration
 
-Running tests on current tree at start of this iteration:
+Running tests on tree at start of that iteration:
 - stage-timeout-dispatch-test.sh: ALL PASS (SPEC-10 already fixed in prior iteration)
 - runner-job-control-abort-test.sh: ALL PASS (flag-on check already fixed in prior iteration)
 - runner-release-exit-paths-test.sh: SPEC-5 FAILS with empty marker, SPEC-6b PASSES
 
-## Root cause of SPEC-5 failure (refined analysis)
+## Root cause of SPEC-5 failure (resolved in prior iteration)
 
-The initial fix (adding `trap "" TERM` before `_runner_signal_trap TERM`) was WRONG because
-`trap "" TERM` was placed AFTER the zbuild_pg_kill calls, which contain `sleep 0.1` loops.
+The actual bug was BASH TRAP RE-ENTRY in lifecycle.sh. When a second TERM signal
+arrives while `sleep 0.1` loops inside zbuild_pg_kill run inside the TERM trap body,
+bash delivers the second TERM when `sleep 0.1` exits — re-entering the trap body.
 
-The actual bug is BASH TRAP RE-ENTRY. In bash, when a foreground command (like `sleep 0.1`)
-is running inside a trap body, and a second TERM signal arrives, bash delivers the second TERM
-when `sleep 0.1` exits - EVEN THOUGH we're already in a TERM trap handler. This re-enters
-the trap body.
+Fix: Move `trap "" TERM` to the VERY BEGINNING of both trap bodies (subshell and 
+main-shell). This prevents re-entry: the first thing the trap does is ignore further TERMs.
 
-With SPEC-5's process-group kill:
-1. TERM sent to process group: both runner and `timeout 120` receive TERM simultaneously
-2. Runner's lifecycle TERM trap fires (first instance)
-3. `zbuild_pg_kill "$_lc_hook_pid" 1` runs: internally loops `sleep 0.1` up to 10 times
-4. During one of these sleeps, `timeout 120` (which also received TERM) sends TERM to runner
-5. When `sleep 0.1` exits, bash delivers the second TERM: TRAP RE-ENTRY!
-6. Second trap instance runs: kills hook/wd, `_runner_signal_trap TERM` → `exit 1` → EXIT trap starts
-7. EXIT trap: `_runner_dispatch_always_run` starts cleanup
-8. First trap instance resumes: `_runner_signal_trap TERM` → `exit 1` INSIDE the EXIT trap
-9. `exit 1` inside EXIT trap = immediate termination, aborting cleanup
-10. RELEASE_MARKER is never written
+## Current state (this call)
 
-Confirmed by experiment: bash DOES re-enter TERM traps when a second TERM arrives during
-a foreground command (`sleep`) inside the first trap body.
+All three previously failing tests now PASS on current HEAD:
+1. stage-timeout-dispatch-test.sh: All 17 PASS ✓
+2. runner-job-control-abort-test.sh: All 11 PASS ✓
+3. runner-release-exit-paths-test.sh: All 18 PASS ✓
 
-## Fix applied (revised)
-
-Move `trap "" TERM` to the VERY BEGINNING of both trap bodies (subshell and main-shell).
-This prevents any re-entry: the first thing the trap does is ignore further TERMs.
-
-Change: lifecycle.sh TERM trap for both subshell and main-shell cases:
-- Before (subshell): `trap 'zbuild_pg_kill ...; exit 143' TERM`
-- After  (subshell): `trap 'trap "" TERM; zbuild_pg_kill ...; exit 143' TERM`
-- Before (main):     `trap 'zbuild_pg_kill ...; zbuild_pg_kill ...; trap "" TERM; ...' TERM`
-- After  (main):     `trap 'trap "" TERM; zbuild_pg_kill ...; zbuild_pg_kill ...; ...' TERM`
-
-## Why this doesn't break SPEC-6b
-
-SPEC-6b: cleanup hook spawns TERM-ignoring child, calls `wait`. Always_run watchdog sends
-TERM to plugin_hook_call's subshell group. With `trap "" TERM` at the start of the subshell
-trap:
-1. TERM arrives, `trap "" TERM` fires immediately (prevents re-entry)
-2. `zbuild_pg_kill "$_lc_hook_pid" 1` - sends TERM to hook group, then KILL after 1s
-3. The TERM-ignoring child is in the same group (set +m in hook subshell), gets KILLed
-4. `exit 143`
-
-SPEC-6b should still pass because zbuild_pg_kill sends KILL (which can't be ignored).
-
-## Tests verified this iteration
-
-1. stage-timeout-dispatch-test.sh: ALL PASS (confirmed after fix)
-2. runner-job-control-abort-test.sh: ALL PASS (confirmed after fix)
-3. runner-release-exit-paths-test.sh: RUNNING IN BACKGROUND (waiting for result)
+Working tree is clean (git diff HEAD produces no output, git status is clean).
+All fixes were committed in the prior build iteration. No further changes needed.
 
 ### test (verdict: fail)
 Outputs:
@@ -510,108 +460,106 @@ Outputs:
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
+Findings:
+- test finding 1 (opened by test): tests/unit/dispatch-rc-guard-test.sh fails: ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)
+- test finding 2 (opened by test): tests/unit/stage-timeout-precedence-test.sh fails: ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
+
 Summary:
 # Test stage summary
 
 - verdict: fail
-- passed: 26
-- failed: 3
+- passed: 804
+- failed: 2
 - exit_code: 1
+
+## Failing files
+
+- tests/unit/dispatch-rc-guard-test.sh — ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)
+- tests/unit/stage-timeout-precedence-test.sh — ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
 
 ## Failing lines (extracted)
 
 ```
-  ✗ flag-on: monitor mode ON in runner shell
-    got: dash=huB
-  ✗ [SPEC-6b] a hook child that ignores TERM does not outlive the run
-    pid 3300836 still alive 5s after the runner returned
-  ✗ [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
-    found:         kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true — replace with zbuild_pg_kill
-unit: FAIL tests/integration/runner-job-control-abort-test.sh
-unit: FAIL tests/integration/runner-release-exit-paths-test.sh
-unit: FAIL tests/unit/stage-timeout-dispatch-test.sh
-  ✓ status=interrupted
-  ✓ pipeline.aborted reason=sigterm emitted
-  ✓ no job-control errors in stderr
-  1 of 11 tests failed
-  SPEC-6b: a hook child that ignores TERM does not outlive the run
-  1 of 17 tests failed
-  ✓ orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
-  orch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch
-  ✓ orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
-  1 of 12 tests failed
+  ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)
+    A new engine path returns an rc outside {0,1}. rc carries two facts (ADR-054 §4): result on disk (0), failed (1). Put what you were encoding on a declared channel — disposition (core/pipeline/disposition.sh) for recoverability, routing state (ADR-045) for the backward edge.
+  ✗ [SPEC-2] plugin_hook_call returns nothing outside {0,1}
+    expected: 0, got: 2
+  ✗ [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
+  ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
+    no 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/dispatch-rc-guard-test.sh
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/stage-timeout-precedence-test.sh
+  ✓ [SPEC-17] parallel_dispatch_stage checks for an abort before plugin_hook_call
+  3 of 36 tests failed
+  [#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call
+  1 of 6 tests failed
 ```
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-ispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
+cleared before the dispatch
+  [38;2;74;222;128m✓[0m [SPEC-3] cycle_dispatch_stage narrows the rc
+  [38;2;74;222;128m✓[0m [SPEC-3] parallel_dispatch_stage applies it too
+  [38;2;74;222;128m✓[0m [SPEC-3] both dispatch boundaries clear the throttle marker
 
-  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
-  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
-  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
+  [38;2;0;212;255m4. The version gate cannot be fed by a subshell global[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] no gate reads a contract global
+  [38;2;74;222;128m✓[0m [SPEC-4] both boundaries narrow unconditionally (#1850)
+  [38;2;74;222;128m✓[0m [SPEC-4] the contract probe is gone (#1850)
 
-  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
+  [38;2;0;212;255m5. the cycle.complete fan-in reads the reason word, not an rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] no _cycle_handle_terminal_rc remains (orchestrator + runner)
+  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal is defined in the orchestrator
+  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal reads _CYCLE_LAST_TERMINATED_REASON
+  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal keys on no signal rc
 
-  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-  [38;2;74;222;128m✓[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
+  [38;2;0;212;255m6. write-boundary wiring leaves lifecycle.sh rc-clean[0m
+  [38;2;248;113;113m✗[0m [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
+    [2mexpected: 0, got: 2[0m
 
-  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
-  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
+  [38;2;0;212;255m[#1850/SPEC-16] the plain rule: no engine path returns or reads a legacy rc[0m
+  [38;2;74;222;128m✓[0m [#1850/SPEC-16] every guarded engine file is pinned at 0
+  [38;2;74;222;128m✓[0m [#1850/SPEC-16] no guarded engine file reads an rc as a legacy number
 
-  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-    [2mpid 3300836 still alive 5s after the runner returned[0m
+  [38;2;0;212;255m[#1850/SPEC-17] every dispatch boundary checks for an abort before it dispatches[0m
+  [38;2;74;222;128m✓[0m [SPEC-17] cycle_dispatch_stage checks for an abort before plugin_hook_call
+  [38;2;74;222;128m✓[0m [SPEC-17] parallel_dispatch_stage checks for an abort before plugin_hook_call
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 17 tests failed[0m
+  [38;2;248;113;113m[1m3 of 36 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+  [38;2;248;113;113m✗[0m [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)
+  [38;2;248;113;113m✗[0m [SPEC-2] plugin_hook_call returns nothing outside {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
 
-unit: FAIL tests/unit/stage-timeout-dispatch-test.sh
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/stage-timeout-precedence-test.sh
 
-[38;2;0;212;255m[1m  [#1801/SPEC-1/SPEC-10] per-dispatch stage timeout watchdog[0m
+[38;2;0;212;255m[1m  [#1801/SPEC-3] stage_timeout_s precedence: template > env > 5400 s default[0m
 [2m  ══════════════════════════════════════════[0m
 
 
-  [38;2;0;212;255m[#1801/SPEC-1] plugin_hook_call has a timeout watchdog for the run hook[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] plugin_hook_call is defined in lifecycle.sh
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only
+  [38;2;0;212;255m[#1801/SPEC-3] template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99
 
-  [38;2;0;212;255m[#1801/SPEC-1] watchdog writes disposition timed_out[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] timed_out disposition is used in the dispatch path
+  [38;2;0;212;255m[#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)
 
-  [38;2;0;212;255m[#1801/SPEC-1] all dispatch routes lead through plugin_hook_call[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/fanout.sh reaches plugin_hook_call (route covered by watchdog)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/sequential.sh reaches plugin_hook_call (route covered by watchdog)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/strategies/map.sh reaches plugin_hook_call (route covered by watchdog)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] core/pipeline/runner.sh reaches plugin_hook_call (route covered by watchdog)
+  [38;2;0;212;255m[#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] 5400 s is the terminal fallback in plugin_hook_call (tier-3 default)
 
-  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
-    [2mfound:         kill -KILL -- -"$_lc_hook_pid" 2>/dev/null || true — replace with zbuild_pg_kill[0m
+  [38;2;0;212;255m[#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s
 
-  [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
-
-  [38;2;0;212;255mwatchdog in lifecycle.sh is backend-agnostic (above the backend layer)[0m
-  [38;2;74;222;128m✓[0m orch-mock plugin exists (backend-agnostic watchdog can be tested with it)
-
-  [38;2;0;212;255morch-ruflo-hive/plugin.sh has no TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m orch-ruflo-hive/plugin.sh carries no TERM/KILL for stage dispatch
+  [38;2;0;212;255m[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
+    [2mno 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 12 tests failed[0m
+  [38;2;248;113;113m[1m1 of 6 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -619,18 +567,22 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-2: whole process group dies — `runner-release-exit-paths-test.sh` SPEC-6b fails (pid still alive 5 s after runner returned, proving the process-group kill is incomplete). What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-10: no hand-rolled TERM/KILL sequence remains — `stage-timeout-dispatch-test.sh` SPEC-10 fails because `kill -KILL -- -"$_lc_hook_pid"` is present in `plugin_hook_call` after `wait`. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 3 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-13: `npm test` green — 3 of 29 targeted tests fail (runner-job-control-abort-test.sh, runner-release-exit-paths-test.sh, stage-timeout-dispatch-test.sh). What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-3: precedence — isolation variant fails, no `sleep 5400` captured in fake-sleep log. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-13: npm test red — `dispatch-rc-guard-test` (lifecycle.sh rc outside {0,1}) and `stage-timeout-precedence-test` (5400 s default not observed) both fail. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: R-1: lifecycle.sh's `exit 143` in the TERM trap makes plugin_hook_call return a code outside {0,1}. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 4 (opened by issue-acceptance): Not sure this requirement is met: whether the per-dispatch watchdog fires correctly on every route cannot be confirmed while that constraint is broken. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 5 (opened by issue-acceptance): Not sure this requirement is met: R-10: the `always_run` hand-rolled kill is replaced in this diff, but lifecycle.sh's SPEC-10 check (no `kill -KILL` after `wait` in plugin_hook_call) is not visible in the diff and its prior finding was open — the current test run does not list `stage-timeout-dispatch-test` as failing, but the dispatch-rc-guard failure means lifecycle.sh is in a broken state that could mask other assertions. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
 
 Summary:
 ## issue-acceptance — fail
 
-- Three tests fail: the process-group kill integration test (SPEC-6b, R-2) shows a hook child that ignores TERM still alive 5 s after the runner returned; the dispatch test (SPEC-10, R-10) finds a hand-rolled `kill -KILL` in `plugin_hook_call`; and `set -m` inside `plugin_hook_call` breaks the pre-existing job-control test, leaving npm test red (R-13).
+- `npm test` is red — `dispatch-rc-guard-test` reports lifecycle.sh grew two new rc=2 return paths (the TERM-trap `exit 143` violates the ADR-054 §4 `{0,1}` constraint), and `stage-timeout-precedence-test` finds no `sleep 5400` watchdog spawned when neither template nor env sets the timeout, so the 5400 s default tier is not wired.
 
-- NOT MET: R-2: whole process group dies — `runner-release-exit-paths-test.sh` SPEC-6b fails (pid still alive 5 s after runner returned, proving the process-group kill is incomplete)
-- NOT MET: R-10: no hand-rolled TERM/KILL sequence remains — `stage-timeout-dispatch-test.sh` SPEC-10 fails because `kill -KILL -- -"$_lc_hook_pid"` is present in `plugin_hook_call` after `wait`
-- NOT MET: R-13: `npm test` green — 3 of 29 targeted tests fail (runner-job-control-abort-test.sh, runner-release-exit-paths-test.sh, stage-timeout-dispatch-test.sh)
+- NOT MET: R-3: precedence — isolation variant fails, no `sleep 5400` captured in fake-sleep log
+- NOT MET: R-13: npm test red — `dispatch-rc-guard-test` (lifecycle.sh rc outside {0,1}) and `stage-timeout-precedence-test` (5400 s default not observed) both fail
+- NOT SURE: R-1: lifecycle.sh's `exit 143` in the TERM trap makes plugin_hook_call return a code outside {0,1} — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: whether the per-dispatch watchdog fires correctly on every route cannot be confirmed while that constraint is broken — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: R-10: the `always_run` hand-rolled kill is replaced in this diff, but lifecycle.sh's SPEC-10 check (no `kill -KILL` after `wait` in plugin_hook_call) is not visible in the diff and its prior finding was open — the current test run does not list `stage-timeout-dispatch-test` as failing, but the dispatch-rc-guard failure means lifecycle.sh is in a broken state that could mask other assertions — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ## What you must not do
 

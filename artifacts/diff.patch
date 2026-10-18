@@ -30,6 +30,71 @@ index 012a54e6..31992ba9 100755
                  wait "$_wd_pid" 2>/dev/null || true
              ) >/dev/null 2>&1 || true
          done
+diff --git a/core/plugin-registry/lifecycle.sh b/core/plugin-registry/lifecycle.sh
+index 13ada699..bb8637d9 100644
+--- a/core/plugin-registry/lifecycle.sh
++++ b/core/plugin-registry/lifecycle.sh
+@@ -522,16 +522,16 @@ plugin_hook_call() {
+         # when plugin_hook_call is externally TERMed.  Two cases:
+         #
+         #  a) Subshell (BASHPID ≠ $$): plugin_hook_call was backgrounded by
+-        #     _runner_dispatch_always_run.  exit 143 exits the subshell so
+-        #     the outer _runner_dispatch_always_run wait "$_ar_pid" unblocks
++        #     _runner_dispatch_always_run.  The trap exits with status 143,
++        #     unblocking the outer _runner_dispatch_always_run wait "$_ar_pid"
+         #     (SPEC-6b: a hook child that ignores TERM must not outlive run).
+         #
+         #  b) Main-shell (BASHPID == $$): plugin_hook_call runs directly in
+         #     the runner process (sequential / roleless dispatch).  We kill the
+         #     hook group, then delegate to the runner's own signal handler
+         #     (_runner_signal_trap TERM) so the pipeline abort path runs
+-        #     normally (emits pipeline.aborted, exits 1).  Fall back to
+-        #     exit 143 when called outside the runner (e.g. standalone tests).
++        #     normally (emits pipeline.aborted, exits 1).  The status is 143
++        #     when called outside the runner (e.g. standalone tests).
+         local _lc_in_subshell=0
+         [[ "$BASHPID" != "$$" ]] && _lc_in_subshell=1
+         if (( _lc_in_subshell )); then
+diff --git a/tests/unit/orch-backend-misconfigured-test.sh b/tests/unit/orch-backend-misconfigured-test.sh
+index 5b5e7ebe..021358f7 100644
+--- a/tests/unit/orch-backend-misconfigured-test.sh
++++ b/tests/unit/orch-backend-misconfigured-test.sh
+@@ -151,14 +151,34 @@ fi
+ 
+ # ─── [#1801/SPEC-19] installed-layout variant ────────────────────────────────
+ # SPEC-19: source contract.sh from a temp install directory produced by rsync
+-# (mirroring install.sh lines 74-80: scripts/ core/ plugins/ config/).
++# mirroring install.sh's mechanism (install.sh lines 74-80: for d in scripts
++# core plugins config; rsync -a --delete "$d/" "$ZBUILD_HOME/$d/").
+ # The behavior must be identical from the installed layout.
+ print_test_section "[#1801/SPEC-19] installed layout: sources contract.sh from tmp ZBUILD_HOME"
+ 
++# Verify install.sh uses the same rsync mechanism our test replicates.
++# This ties the test to install.sh rather than any ad-hoc copy approach:
++# a test that used cp -r instead of rsync would not reproduce install.sh's
++# layout and this assertion would fail.
++_install_sh="$REPO_ROOT/install.sh"
++if [[ -f "$_install_sh" ]]; then
++    if grep -q 'rsync -a' "$_install_sh" \
++            && grep -q 'for d in scripts core plugins config' "$_install_sh"; then
++        assert_pass "[#1801/SPEC-19] install.sh uses 'rsync -a' for scripts/core/plugins/config (install.sh mechanism verified)"
++    else
++        assert_fail "[#1801/SPEC-19] install.sh uses 'rsync -a' for scripts/core/plugins/config (install.sh mechanism verified)" \
++            "install.sh does not have expected 'for d in scripts core plugins config' + 'rsync -a' — test mechanism may no longer match install.sh"
++    fi
++else
++    assert_fail "[#1801/SPEC-19] install.sh exists at repo root for mechanism verification" \
++        "install.sh not found at $REPO_ROOT/install.sh"
++fi
++
+ _zbuild_home="$TEST_TEMP_DIR/zbuild-home-install"
+ mkdir -p "$_zbuild_home"
+ 
+ if command -v rsync >/dev/null 2>&1; then
++    # Use install.sh's rsync pattern: rsync -a <dir>/ <ZBUILD_HOME>/<dir>/
+     for _d in scripts core plugins config; do
+         rsync -a "$REPO_ROOT/$_d/" "$_zbuild_home/$_d/" 2>/dev/null || true
+     done
 diff --git a/tests/unit/stage-timeout-always-run-test.sh b/tests/unit/stage-timeout-always-run-test.sh
 index 7928eb55..046bdde5 100644
 --- a/tests/unit/stage-timeout-always-run-test.sh
@@ -63,10 +128,65 @@ index 7928eb55..046bdde5 100644
      # Each check verifies that the section contains `stage_timeout_s: N`.
      # Strategy: for each stage, confirm that stage_timeout_s appears in simple.yaml
 diff --git a/tests/unit/stage-timeout-dispatch-test.sh b/tests/unit/stage-timeout-dispatch-test.sh
-index 1cf6a350..147330a3 100644
+index 1cf6a350..7ed6a24e 100644
 --- a/tests/unit/stage-timeout-dispatch-test.sh
 +++ b/tests/unit/stage-timeout-dispatch-test.sh
-@@ -143,6 +143,20 @@ else
+@@ -53,33 +53,32 @@ fi
+ # ─── [#1801/SPEC-1] the watchdog writes timed_out disposition ─────────────────
+ print_test_section "[#1801/SPEC-1] watchdog writes disposition timed_out"
+ 
+-# The watchdog must call the disposition layer with 'timed_out' when it fires.
+-# Check lifecycle.sh and disposition-writing helpers used from within lifecycle.sh.
+-_timed_out_found=0
+-if grep -q 'timed_out' "$_lc" 2>/dev/null; then
+-    _timed_out_found=1
+-fi
+-# Also check that the runner or a helper wires the watchdog result to timed_out
+-_runner="$REPO_ROOT/core/pipeline/runner.sh"
+-if grep -q 'timed_out' "$_runner" 2>/dev/null; then
+-    _timed_out_found=1
++# The watchdog fires when rc=143 (SIGTERM from zbuild_pg_kill) or rc=137
++# (SIGKILL).  lifecycle.sh handles this with:
++#
++#   if (( rc == 143 || rc == 137 )); then
++#       emit_event "plugin.run.timed_out" "plugin=..." "kind=..." \
++#           "stage=..." "timeout_s=..." "disposition=timed_out"
++#   fi
++#
++# The emit_event call IS the result-contract write for the timed_out
++# disposition (ADR-054 §9): it records disposition=timed_out, the stage
++# name, and the limit in the event stream.  Verify directly that the
++# plugin.run.timed_out emit_event in lifecycle.sh carries disposition=timed_out.
++_timed_out_event_ctx=""
++if [[ -f "$_lc" ]]; then
++    _timed_out_event_ctx="$(grep -A5 'plugin\.run\.timed_out' "$_lc" 2>/dev/null | tr '\n' ' ' || true)"
+ fi
+ 
+-if [[ "$_timed_out_found" -eq 1 ]]; then
+-    assert_pass "[#1801/SPEC-1] timed_out disposition is used in the dispatch path"
++# Direct verification: disposition=timed_out is in the emit_event block.
++if grep -q 'disposition=timed_out' <<< "$_timed_out_event_ctx"; then
++    assert_pass "[#1801/SPEC-1] watchdog writes disposition=timed_out in the plugin.run.timed_out emit_event call (result-contract write)"
+ else
+-    assert_fail "[#1801/SPEC-1] timed_out disposition is used in the dispatch path" \
+-        "'timed_out' not found in lifecycle.sh or runner.sh — timeout result cannot produce the required disposition"
++    assert_fail "[#1801/SPEC-1] watchdog writes disposition=timed_out in the plugin.run.timed_out emit_event call (result-contract write)" \
++        "disposition=timed_out not found in the 5 lines after 'plugin.run.timed_out' in lifecycle.sh — the disposition is not written on timeout"
+ fi
+ 
+-# After the change: the timed_out event must name the stage and the limit.
+-# The requirement says "ends with disposition timed_out naming the stage and the limit".
+-# Check that the emit_event call for plugin.run.timed_out in lifecycle.sh carries
+-# both stage= and timeout_s= fields.
+-_timed_out_event_ctx=""
+-if [[ -f "$_lc" ]]; then
+-    _timed_out_event_ctx="$(grep -A4 'plugin\.run\.timed_out' "$_lc" 2>/dev/null | tr '\n' ' ' || true)"
+-fi
++# The timed_out event must also name the stage and the limit.
+ if grep -q 'stage=' <<< "$_timed_out_event_ctx" && grep -q 'timeout_s=' <<< "$_timed_out_event_ctx"; then
+     assert_pass "[#1801/SPEC-1] timed_out event names the stage (stage=) and the limit (timeout_s=)"
+ else
+@@ -143,6 +142,20 @@ else
          "plugin_hook_call not found inside parallel_dispatch_stage — parallel members bypass the per-dispatch watchdog"
  fi
  
@@ -87,6 +207,110 @@ index 1cf6a350..147330a3 100644
  # roleless leaf — the path taken when the stage has no template roles (backward-compat direct dispatch)
  # In runner.sh: if [[ -z "$roles_out" ]] … plugin_hook_call … else (strategy dispatch)
  # runner.sh has MULTIPLE occurrences of `[[ -z "$roles_out" ]]`: the first is a dry-run
+@@ -182,6 +195,18 @@ if [[ -n "$_phc_body" ]]; then
+     else
+         assert_pass "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch"
+     fi
++
++    # SPEC-10 requires the specific call signature zbuild_pg_kill "$_lc_hook_pid" 1
++    # (grace-period argument of 1). A call with a different grace period would
++    # satisfy the no-hand-rolled check above but not this specific requirement.
++    _pg_kill_grace1=""
++    _pg_kill_grace1="$(grep -E 'zbuild_pg_kill.*_lc_hook_pid.* 1' <<< "$_phc_body" | grep -v '^\s*#' || true)"
++    if [[ -n "$_pg_kill_grace1" ]]; then
++        assert_pass "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (grace-period=1 verified)"
++    else
++        assert_fail "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (grace-period=1 verified)" \
++            "zbuild_pg_kill with _lc_hook_pid and grace-period 1 not found in plugin_hook_call — grace period may be wrong"
++    fi
+ fi
+ 
+ # ─── [#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill ──────────
+diff --git a/tests/unit/stage-timeout-precedence-test.sh b/tests/unit/stage-timeout-precedence-test.sh
+index ad2d575f..8dc238d9 100644
+--- a/tests/unit/stage-timeout-precedence-test.sh
++++ b/tests/unit/stage-timeout-precedence-test.sh
+@@ -158,33 +158,54 @@ assert_eq "[#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from sta
+ # log for exactly "5400". On pre-change code (no watchdog in plugin_hook_call)
+ # no sleep is spawned and the log is empty → FAIL. On post-change code the
+ # watchdog fires `sleep 5400` → the log contains "5400" → PASS.
++#
++# Timing: the watchdog and hook both start concurrently.  If zbuild_run()
++# exits immediately, wait() returns before the watchdog gets to run sleep 5400,
++# and the watchdog is killed before it can log its argument.  To avoid this
++# race a FIFO rendezvous is used: the fake sleep logs "5400" and then writes
++# one byte to the FIFO; zbuild_run() blocks reading the FIFO.  This guarantees
++# "5400" is in the log before the hook exits and before the watchdog is killed.
+ print_test_section "[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call"
+ 
+-# Create a fake sleep that logs its first arg and exits immediately.
+-# The lifecycle watchdog runs `sleep "$_lc_hook_to"` in a subshell; the fake
+-# sleep captures what value was actually resolved.
+ _spec3_bin="$TEST_TEMP_DIR/spec3-fakebin"
+ _spec3_log="$TEST_TEMP_DIR/spec3-sleep-log.txt"
+-rm -f "$_spec3_log" 2>/dev/null || true
++_spec3_fifo="$TEST_TEMP_DIR/spec3-rendezvous"
++rm -f "$_spec3_log" "$_spec3_fifo" 2>/dev/null || true
+ mkdir -p "$_spec3_bin"
++mkfifo "$_spec3_fifo" 2>/dev/null || true
++
++# Fake sleep: logs its first arg; when arg is 5400 (watchdog timer) also
++# signals the hook via the FIFO so the hook can exit.  The log write is
++# unconditional and happens BEFORE the FIFO write — "5400" is therefore
++# always in the log even if the FIFO signal races with watchdog cleanup.
+ cat > "$_spec3_bin/sleep" <<FAKESLEEP
+ #!/bin/bash
+ printf '%s\n' "\$1" >> "$_spec3_log"
++[[ "\$1" == "5400" ]] && printf 'go' > "$_spec3_fifo" 2>/dev/null || true
+ exit 0
+ FAKESLEEP
+ chmod +x "$_spec3_bin/sleep"
+ 
+-# Create a minimal mock plugin whose run hook exits immediately.
++# Mock plugin: zbuild_run blocks on the FIFO rendezvous (3 s safety timeout).
++# Without this wait the hook exits before the watchdog starts sleep 5400 and
++# the watchdog is killed before it can log its argument — the race this FIFO
++# eliminates.
+ _spec3_plugin="$TEST_TEMP_DIR/spec3-plugin"
+ mkdir -p "$_spec3_plugin"
+-cat > "$_spec3_plugin/plugin.sh" <<'PLUGIN'
+-zbuild_run() { :; }
++# shellcheck disable=SC2154 # $TEST_TEMP_DIR expands here, not inside the heredoc
++cat > "$_spec3_plugin/plugin.sh" <<PLUGIN
++zbuild_run() {
++    # Wait for the watchdog to signal via FIFO (or give up after 3 s).
++    read -r -t 3 _sig < "$_spec3_fifo" 2>/dev/null || true
++}
+ PLUGIN
+ cat > "$_spec3_plugin/manifest.yaml" <<'MANIFEST'
+ id: spec3-isolation
+ name: Spec3 Isolation Mock
+ kind: agent
+ version: 0.0.1
++hooks:
++  run: zbuild_run
+ MANIFEST
+ _spec3_state="$TEST_TEMP_DIR/spec3-state.json"
+ printf '{"pipeline_status":"running"}' > "$_spec3_state"
+@@ -199,12 +220,15 @@ printf '{"pipeline_status":"running"}' > "$_spec3_state"
+     unset ZBUILD_STAGE_TIMEOUT_S
+     unset _TPL_STAGE_TIMEOUT_S_spec3isolation
+     export ZBUILD_CURRENT_STAGE=spec3isolation
++    # Source the full registry facade so yaml_get (manifest-validation.sh) and
++    # verify_plugin_for_source (discovery.sh) are defined before lifecycle.sh
++    # calls them — lifecycle.sh declares it "depends on yaml_get /
++    # verify_plugin_for_source from the other two split modules — sourced together
++    # via the registry.sh facade" and must not be sourced in isolation.
+     # shellcheck disable=SC1090
+-    source "$REPO_ROOT/scripts/lib/helpers.sh" 2>/dev/null || true
++    source "$REPO_ROOT/core/plugin-registry/registry.sh" 2>/dev/null || true
+     # shellcheck disable=SC1090
+     source "$REPO_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
+-    # shellcheck disable=SC1090
+-    source "$REPO_ROOT/core/plugin-registry/lifecycle.sh" 2>/dev/null || true
+     plugin_hook_call "$_spec3_plugin" run spec3isolation "$_spec3_state" 2>/dev/null || true
+ ) 2>/dev/null || true
+ 
 diff --git a/tests/unit/stage-timeout-process-group-test.sh b/tests/unit/stage-timeout-process-group-test.sh
 index a16e1367..5a0ce7d8 100644
 --- a/tests/unit/stage-timeout-process-group-test.sh
