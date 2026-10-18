@@ -116,6 +116,8 @@ run_end_words() {
             printf 'stopped: the model could not be reached%s' "$with" ;;
         scope_too_large)
             printf 'stopped: the issue is too large to plan in one run — split it%s' "$with" ;;
+        out_of_tries:*)
+            printf 'stopped: %s found no way forward in its tries%s' "${reason#out_of_tries:}" "$with" ;;
         stage_failed:*)
             printf 'stopped: a stage reported that it failed (%s)%s' "${reason#stage_failed:}" "$with" ;;
         converged|complete|success)

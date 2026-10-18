@@ -100,8 +100,7 @@ _c_plan() { ( ad="$(_fixture plan)"; export ZBUILD_REPO_ROOT="${ad%/state/artifa
     _plan_run_inner "${ad%/artifacts}/scope-manifest.md" "Fix a typo in README.md" "$ad/plan.json" "$ad" ) >/dev/null 2>&1; }
 _c_design() { ( ad="$(_fixture design)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
-    route_to_model_loop() { cp "$2" "$RAW/design.txt"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 1; }
-    _route_loop_close_final_banner() { :; }
+    route_to_model() { printf '%s' "$2" > "$RAW/design.txt"; return 1; }
     _design_stage_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/plan.json" "$ad/design-out.md" "$ad" ) >/dev/null 2>&1; }
 _c_build() { ( ad="$(_fixture build)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1

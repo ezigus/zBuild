@@ -39,17 +39,13 @@ _route_resolve_max_turns() { printf '99'; }
 _route_resolve_timeout()   { printf '777'; }
 
 _MOCK_DESIGN_WRITE_PATH=""
-route_to_model_loop() {
-    local _bt='```'
-    if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" ]]; then
-        mkdir -p "$(dirname "$_MOCK_DESIGN_WRITE_PATH")"
+route_to_model() {
+    local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
+    if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" && -n "$_t" ]]; then
+        mkdir -p "$(dirname "$_t")"
         printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
-            "$_bt" "$_bt" "$_bt" "$_bt" > "$_MOCK_DESIGN_WRITE_PATH"
+            "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
     fi
-    _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0
-    _ROUTE_LOOP_OUTPUT_TOKENS=0
     return 0
 }
 

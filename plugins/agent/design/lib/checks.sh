@@ -3,8 +3,8 @@
 # design.md (#2369, ADR-040, ADR-046; was the design-gate stage, #1218).
 #
 # No model, nothing executed: every check reads design.md and the files it
-# names. _design_checks reports ALL violations in one pass; design goes back to
-# its model with them until they clear or its rounds run out.
+# names. _design_checks reports ALL violations in one pass; a design with any
+# cannot be used, and the engine runs design again, handed them (ADR-068 §10).
 #
 # Sourced library: no set -euo pipefail.
 

@@ -9,6 +9,8 @@
 #   (b) REFUSE a TRACKED stray (operator-owned doc) by emitting
 #       design.stray.conflict reason=tracked and returning rc=1
 #   (c) be a no-op when the LLM correctly writes to the declared path
+#   (d) leave an untracked design.md at the repo root alone when the LLM also
+#       wrote its working copy: that copy is this call's design (ADR-068 §8)
 #
 # Companion ADR amendment lives in #816 (PR #820): ADR-018 §"Pattern 2
 # outputs — derived diff vs single-file artifact".
@@ -34,7 +36,8 @@ _init_git_fixture() {
 
 # Capture the prompt route_to_model_loop sees + mock its file-write behavior.
 # Behavior is driven by env vars set per test:
-#   MOCK_DESIGN_WRITE_PATH   — where the mock "LLM" writes design.md (or empty for no write)
+#   MOCK_DESIGN_WRITE_PATH   — where the mock "LLM" writes its design: a path (a stray
+#                              write), "PROMPT" (where the prompt says), or empty (no write)
 #   MOCK_DESIGN_BODY         — the contents to write (default: minimal valid scope block)
 _MOCK_ROUTE_PROMPT_CAPTURE="$TEST_TEMP_DIR/captured-prompt.txt"
 
@@ -45,9 +48,8 @@ _MOCK_ROUTE_PROMPT_CAPTURE="$TEST_TEMP_DIR/captured-prompt.txt"
 # shellcheck disable=SC1091
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
-route_to_model_loop() {
-    local _prompt_file="$2"
-    [[ -f "$_prompt_file" ]] && cp "$_prompt_file" "$_MOCK_ROUTE_PROMPT_CAPTURE"
+route_to_model() {
+    printf '%s\n' "$2" > "$_MOCK_ROUTE_PROMPT_CAPTURE"
     # Default body: a minimal valid design.md with scope + acceptance blocks.
     # printf-built (backticks passed as %s args) to avoid heredoc backtick/quote
     # quirks — not a portability shim; zBuild enforces a Bash 5+ floor.
@@ -58,14 +60,12 @@ route_to_model_loop() {
         local _bt='```'
         _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: foo works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
     fi
-    if [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]]; then
-        mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
-        printf '%s' "$_body" > "$MOCK_DESIGN_WRITE_PATH"
+    local _to="${MOCK_DESIGN_WRITE_PATH:-}"
+    [[ "$_to" == PROMPT ]] && _to="$(zb_test_prompt_write_path "$2")"
+    if [[ -n "$_to" ]]; then
+        mkdir -p "$(dirname "$_to")"
+        printf '%s' "$_body" > "$_to"
     fi
-    _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0
-    _ROUTE_LOOP_OUTPUT_TOKENS=0
     return 0
 }
 
@@ -156,7 +156,7 @@ unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 # ─── T3: no-op when LLM writes correctly to declared path ────────────────────
 _setup_test_fixture t3
 fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"; output_md="$OUTPUT_MD"; artifact_dir="$ARTIFACT_DIR"
-MOCK_DESIGN_WRITE_PATH="$output_md"   # LLM does the right thing
+MOCK_DESIGN_WRITE_PATH=PROMPT   # LLM does the right thing
 set +e
 _design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir"
 rc=$?
@@ -173,20 +173,33 @@ else
 fi
 unset MOCK_DESIGN_WRITE_PATH
 
-# ─── T4: prompt contains the absolute destination path ──────────────────────
-_setup_test_fixture t4
+# ─── T6: the working copy was written; a root design.md is not this call's ──
+_setup_test_fixture t6
 fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"; output_md="$OUTPUT_MD"; artifact_dir="$ARTIFACT_DIR"
-MOCK_DESIGN_WRITE_PATH="$output_md"
+printf 'someone else'"'"'s notes\n' > "$fixture/design.md"
+MOCK_DESIGN_WRITE_PATH=PROMPT
 set +e
 _design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir" >/dev/null 2>&1
 set +e
-if grep -qF "$output_md" "$_MOCK_ROUTE_PROMPT_CAPTURE" 2>/dev/null; then
-    assert_pass "T4: prompt contains absolute destination path ($output_md)"
+assert_contains "T6: design.md is the design the call wrote" "$(cat "$output_md" 2>/dev/null)" "SPEC-1[no-code]: foo works"
+assert_eq "T6: the root design.md is left alone" "someone else's notes" "$(cat "$fixture/design.md" 2>/dev/null)"
+unset MOCK_DESIGN_WRITE_PATH
+
+# ─── T4: prompt contains the absolute destination path ──────────────────────
+_setup_test_fixture t4
+fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"; output_md="$OUTPUT_MD"; artifact_dir="$ARTIFACT_DIR"
+MOCK_DESIGN_WRITE_PATH=PROMPT
+set +e
+_design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir" >/dev/null 2>&1
+set +e
+# ADR-068 §8: the model writes the working copy beside design.md.
+if grep -qF "$artifact_dir/design-draft.md" "$_MOCK_ROUTE_PROMPT_CAPTURE" 2>/dev/null; then
+    assert_pass "T4: prompt contains absolute destination path ($artifact_dir/design-draft.md)"
 else
     assert_fail "T4: prompt missing absolute destination path" \
         "first 200 chars of prompt: $(head -c 200 "$_MOCK_ROUTE_PROMPT_CAPTURE")"
 fi
-if grep -qF 'Do not write design.md anywhere else (./design.md, design.md)' "$_MOCK_ROUTE_PROMPT_CAPTURE" 2>/dev/null; then
+if grep -qF 'Do not write the design anywhere else (./design.md, design.md)' "$_MOCK_ROUTE_PROMPT_CAPTURE" 2>/dev/null; then
     assert_pass "T4: prompt forbids the historical default path"
 else
     assert_fail "T4: prompt missing the ./design.md forbiddance"

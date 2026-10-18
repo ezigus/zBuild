@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# tests/integration/stop-round-on-fail-test.sh — a loop's template names the
-# members whose failure ends the round (#2369, ADR-068).
+# tests/integration/stop-run-on-fail-test.sh — a loop's template names the
+# members whose failure ends the run (#2369, ADR-068 §3 amended).
 #
-# Why: design checks its own design.md and loops back to its model; when its
-# rounds run out its outcome is fail. Build must not run on a design that failed
-# its checks. Only an inner LOOP that ran out of rounds ended the outer round, so
-# the template names a plain member whose failure does the same.
+# Why: build must not run on a design that failed its checks. And by the time a
+# member fails here the engine has already re-run it as often as the template
+# allows, each run handed the last one's failure (ADR-068 §8): another outer
+# round would only repeat those tries. #1944 run 38883031887 spent 12 design
+# calls over two rounds that way.
 #
-# R1 [change] a named member fails: the later members do not run, and the loop
-#             goes round
+# R1 [change] a named member fails: the later members do not run, the loop
+#             does not go round, and the run ends failed, naming the member
 # R2 [guard]  the same member fails but is not named: the later members run
 # R3 [guard]  the named member passes: the later members run
 # R4 [change] a name that is not a member of the loop is refused at load
@@ -21,8 +22,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-print_test_header "a loop's template names the members whose failure ends the round (#2369)"
-setup_test_env "stop-round-on-fail"
+print_test_header "a loop's template names the members whose failure ends the run (ADR-068 §3)"
+setup_test_env "stop-run-on-fail"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
@@ -32,8 +33,10 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 # shellcheck source=../../core/pipeline/template.sh
 source "$REPO_ROOT/core/pipeline/template.sh"
+# shellcheck source=../../scripts/lib/run-open-items.sh
+source "$REPO_ROOT/scripts/lib/run-open-items.sh"
 
-_write_tpl() {   # _write_tpl <file> <stop_round_on_fail line or empty>
+_write_tpl() {   # _write_tpl <file> <stop_run_on_fail line or empty>
     cat > "$1" <<EOF
 id: stop-round
 name: Stop round on fail
@@ -77,7 +80,7 @@ test:
   roles: [tester]
 EOF
 }
-TPL_NAMED="$TEST_TEMP_DIR/named.yaml";   _write_tpl "$TPL_NAMED" "  stop_round_on_fail: [design]"
+TPL_NAMED="$TEST_TEMP_DIR/named.yaml";   _write_tpl "$TPL_NAMED" "  stop_run_on_fail: [design]"
 TPL_PLAIN="$TEST_TEMP_DIR/plain.yaml";   _write_tpl "$TPL_PLAIN" ""
 
 LOG="$TEST_TEMP_DIR/dispatch.log"
@@ -98,15 +101,20 @@ _run() {   # _run <template>
     _TPL_STAGES=(); _TPL_CYCLES=()
     load_template "$1" >/dev/null 2>&1 || { echo "load_template failed" >&2; return 99; }
     cycle_orchestrator_run outer_loop "$ZBUILD_STATE_DIR" "$sf" >/dev/null 2>&1
+    RUN_RC=$?
 }
 _count() { grep -c "^$1|" "$LOG" || true; }
 
 # ── R1 ───────────────────────────────────────────────────────────────────────
 DESIGN=fail _run "$TPL_NAMED"
-assert_eq "[R1] design runs in both outer rounds" "2" "$(_count design)"
+assert_eq "[R1] the loop does not go round: design runs once" "1" "$(_count design)"
 assert_eq "[R1] build does not run on a design that failed" "0" "$(_count build)"
-assert_contains "[R1] the round is said to end early, naming the member" \
-    "$(grep 'cycle.round.ended_early' "$ZBUILD_EVENTS_JSONL" || true)" '"stage":"design"'
+assert_eq "[R1] the run ends failed" "1" "$RUN_RC"
+assert_eq "[R1] the reason names the member" "out_of_tries:design" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+assert_contains "[R1] the stop is said, naming the member" \
+    "$(grep 'cycle.run.stopped_on_fail' "$ZBUILD_EVENTS_JSONL" || true)" '"stage":"design"'
+assert_contains "[R1] the run's ending says so in words" \
+    "$(run_end_words "out_of_tries:design" 0)" "design"
 
 # ── R2 ───────────────────────────────────────────────────────────────────────
 DESIGN=fail _run "$TPL_PLAIN"
@@ -117,7 +125,7 @@ DESIGN=pass _run "$TPL_NAMED"
 assert_eq "[R3] design passes: build runs" "1" "$(_count build)"
 
 # ── R4 ───────────────────────────────────────────────────────────────────────
-TPL_TYPO="$TEST_TEMP_DIR/typo.yaml"; _write_tpl "$TPL_TYPO" "  stop_round_on_fail: [desgin]"
+TPL_TYPO="$TEST_TEMP_DIR/typo.yaml"; _write_tpl "$TPL_TYPO" "  stop_run_on_fail: [desgin]"
 _TPL_STAGES=(); _TPL_CYCLES=()
 if load_template "$TPL_TYPO" >/dev/null 2>"$TEST_TEMP_DIR/typo.err"; then
     assert_fail "[R4] a name that is not a member is refused" "the template loaded"

@@ -65,7 +65,7 @@ delivery_loop:
     all:
       - { stage: design, field: verdict, op: eq, value: pass }
       - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
-  stop_round_on_fail: [design]
+  stop_run_on_fail: [design]
   max_iterations: 2
   on_max: halt
 
@@ -113,9 +113,13 @@ plan:
 design:
   gate: auto
   roles: [designer]
-  # The whole stage, every call and check inside it (2 rounds of a 10-minute design call and a 10-minute coverage call, plus a few minutes); the engine
-  # stops it here. The default for a stage is 900 (15 minutes).
-  timeout_s: 2700
+  # The whole stage, every call and check inside it (one 10-minute design call
+  # and a 10-minute coverage call, plus a few minutes); the engine stops it
+  # here. Each run is a new stage, with its own limit. The default is 900.
+  timeout_s: 1500
+  # ADR-068 §8: a run whose design cannot be used is run again, handed its
+  # failures and the last good design — 3 runs in all.
+  retry: 2
   # ADR-051: the provider runs the stage as this persona (--agent).
   persona: architect
   io:

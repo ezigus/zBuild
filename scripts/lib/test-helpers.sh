@@ -1395,3 +1395,11 @@ zb_test_test_run_output() {
         || { printf 'zb_test_test_run_output: test wrote no result in %s\n' "$dir" >&2; return 1; }
     printf '%s\n' "$dir/test-results.json"
 }
+
+# zb_test_prompt_write_path <prompt text> — the file a stage's prompt tells its
+# model to write: the path on the line after "EXACT absolute path:". A fake
+# model writes there, as the real one does, so a test never assumes which file
+# the stage hands its model (ADR-068 §8: design's is its working copy).
+zb_test_prompt_write_path() {
+    awk '/EXACT absolute path:/ { getline; sub(/^[[:space:]]+/, ""); print; exit }' <<< "${1-}"
+}

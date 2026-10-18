@@ -22,22 +22,19 @@ setup_test_env "design-acceptance-block"
 # shellcheck disable=SC1091
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
-# MOCK_DESIGN_BODY drives what route_to_model_loop writes at MOCK_DESIGN_WRITE_PATH.
-route_to_model_loop() {
-    local _prompt_file="$2"
+# MOCK_DESIGN_BODY drives what the design call writes, where its prompt says,
+# when MOCK_DESIGN_WRITE_PATH is set.
+route_to_model() {
+    local _t; _t="$(zb_test_prompt_write_path "$2")"
     local _body="${MOCK_DESIGN_BODY:-}"
     if [[ -z "$_body" ]]; then
         local _bt='```'
         _body="$(printf '# Design\n\n%sscope\nfoo.sh\n%s\n' "$_bt" "$_bt")"
     fi
-    if [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]]; then
-        mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
-        printf '%s' "$_body" > "$MOCK_DESIGN_WRITE_PATH"
+    if [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" && -n "$_t" ]]; then
+        mkdir -p "$(dirname "$_t")"
+        printf '%s' "$_body" > "$_t"
     fi
-    _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0
-    _ROUTE_LOOP_OUTPUT_TOKENS=0
     return 0
 }
 
@@ -112,8 +109,8 @@ set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
 rc=$?
 set +e
-assert_eq "T2: missing acceptance block: the stage returns rc=0" "0" "$rc"
-assert_eq "T2: ...with outcome fail" "fail" \
+assert_eq "T2: missing acceptance block: the stage returns rc=1" "1" "$rc"
+assert_eq "T2: ...with outcome unusable (the engine runs design again)" "unusable" \
     "$(jq -r '.outcome // "MISSING"' "$ARTIFACT_DIR/design-verdict.json" 2>/dev/null || echo MISSING)"
 assert_contains "T2: ...and the finding names the acceptance block" \
     "$(jq -r '.data.findings[]?.text' "$ARTIFACT_DIR/design-verdict.json" 2>/dev/null)" "acceptance block"

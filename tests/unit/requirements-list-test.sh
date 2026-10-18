@@ -182,15 +182,16 @@ assert_eq "[Q3] with no requirements.json (a goal run) the check is skipped" "pa
 print_test_section "Q4: the design prompt shows the list"
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
-# #2369: design's coverage call is a model call too — stubbed here.
-route_to_model() { printf 'VERDICT: covered\nREASON: ok\n'; return 0; }
-route_to_model_loop() {
-    local _bt='```'
-    printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[code]: x covers: R-1 R-2\nTESTFILES:\nSPEC-1: tests/t.sh\nWIRING: none\n%s\n' \
-        "$_bt" "$_bt" "$_bt" "$_bt" > "$_Q4_OUT"
-    _ROUTE_LOOP_ITERATIONS=1; _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
-    return 0
+# The design call writes a design where its prompt says; #2369: design's
+# coverage call is a model call too — stubbed here.
+route_to_model() {
+    local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
+    if [[ -n "$_t" ]]; then
+        printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[code]: x covers: R-1 R-2\nTESTFILES:\nSPEC-1: tests/t.sh\nWIRING: none\n%s\n' \
+            "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
+        return 0
+    fi
+    printf 'VERDICT: covered\nREASON: ok\n'; return 0
 }
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
 _Q4="$TEST_TEMP_DIR/q4"; _Q4A="$_Q4/state/artifacts"; mkdir -p "$_Q4A"

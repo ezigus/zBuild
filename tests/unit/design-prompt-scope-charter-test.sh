@@ -20,14 +20,14 @@ source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
 # Mock the router loop to a no-op success — we only inspect the prompt the
 # inner function writes to <artifact_dir>/design-prompt.txt before routing.
-route_to_model_loop() {
-    [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]] && {
-        mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
-        printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
+# The design call: it writes a design where the prompt says, when the test
+# asks for one (MOCK_DESIGN_WRITE_PATH set).
+route_to_model() {
+    local _t; _t="$(zb_test_prompt_write_path "$2")"
+    [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" && -n "$_t" ]] && {
+        mkdir -p "$(dirname "$_t")"
+        printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$_t"
     }
-    _ROUTE_LOOP_FINAL_OUTPUT="ok"; _ROUTE_LOOP_ITERATIONS=1
-    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
     return 0
 }
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
@@ -83,12 +83,13 @@ else
     assert_pass "T4: 'superset' framing removed"
 fi
 
-# T5 (#2376): design writes only design.md and its notes file, and changes no code.
-if grep -qF 'Do not write any file other than the design.md above and your notes file' "$PROMPT" \
+# T5 (#2376): design writes only its design (the working copy, ADR-068 §8) and
+# its notes file, and changes no code.
+if grep -qF 'Do not write any file other than the working copy above and your notes file' "$PROMPT" \
         && grep -qF 'Do not change the code' "$PROMPT"; then
-    assert_pass "T5: design writes only design.md and its notes, and changes no code"
+    assert_pass "T5: design writes only its working copy and its notes, and changes no code"
 else
-    assert_fail "T5: design writes only design.md and its notes, and changes no code"
+    assert_fail "T5: design writes only its working copy and its notes, and changes no code"
 fi
 
 # T7 (#1801 run): design writes design.md as it goes, so nothing in its prompt
