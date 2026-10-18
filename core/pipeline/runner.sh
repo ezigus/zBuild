@@ -2473,6 +2473,13 @@ main() {
             # it leaves no `sleep` behind.
             (
                 export ZBUILD_TEARDOWN_SCOPE=release
+                # Set ZBUILD_CURRENT_STAGE so plugin_hook_call resolves the
+                # correct _TPL_STAGE_TIMEOUT_S_<stage> for its inner watchdog
+                # (#1801: without this it inherits the interrupted stage's name
+                # and falls back to ZBUILD_STAGE_TIMEOUT_S, which SPEC-5 pins
+                # to 3 s — far too short for the teardown plugin to source its
+                # dependencies and dispatch cleanup hooks).
+                export ZBUILD_CURRENT_STAGE="$_ar_stage"
                 set -m
                 plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
                 _ar_pid=$!
@@ -2482,9 +2489,10 @@ main() {
                 wait "$_ar_pid" 2>/dev/null || true
                 # #2333: the leader exiting does not mean its group did. A member
                 # that ignored TERM would lose its KILL when the watchdog is
-                # cancelled below, so KILL the group now; a no-op when it is gone.
-                kill -KILL -- -"$_ar_pid" 2>/dev/null || true
-                kill -TERM -- -"$_wd_pid" 2>/dev/null || true
+                # cancelled below, so kill the whole group via zbuild_pg_kill
+                # (TERM + grace + KILL) — a no-op when the group is already gone.
+                zbuild_pg_kill "$_ar_pid" 1 2>/dev/null || true
+                zbuild_pg_kill "$_wd_pid" 1 2>/dev/null || true
                 wait "$_wd_pid" 2>/dev/null || true
             ) >/dev/null 2>&1 || true
         done
