@@ -53,33 +53,32 @@ fi
 # ─── [#1801/SPEC-1] the watchdog writes timed_out disposition ─────────────────
 print_test_section "[#1801/SPEC-1] watchdog writes disposition timed_out"
 
-# The watchdog must call the disposition layer with 'timed_out' when it fires.
-# Check lifecycle.sh and disposition-writing helpers used from within lifecycle.sh.
-_timed_out_found=0
-if grep -q 'timed_out' "$_lc" 2>/dev/null; then
-    _timed_out_found=1
-fi
-# Also check that the runner or a helper wires the watchdog result to timed_out
-_runner="$REPO_ROOT/core/pipeline/runner.sh"
-if grep -q 'timed_out' "$_runner" 2>/dev/null; then
-    _timed_out_found=1
-fi
-
-if [[ "$_timed_out_found" -eq 1 ]]; then
-    assert_pass "[#1801/SPEC-1] timed_out disposition is used in the dispatch path"
-else
-    assert_fail "[#1801/SPEC-1] timed_out disposition is used in the dispatch path" \
-        "'timed_out' not found in lifecycle.sh or runner.sh — timeout result cannot produce the required disposition"
-fi
-
-# After the change: the timed_out event must name the stage and the limit.
-# The requirement says "ends with disposition timed_out naming the stage and the limit".
-# Check that the emit_event call for plugin.run.timed_out in lifecycle.sh carries
-# both stage= and timeout_s= fields.
+# The watchdog fires when rc=143 (SIGTERM from zbuild_pg_kill) or rc=137
+# (SIGKILL).  lifecycle.sh handles this with:
+#
+#   if (( rc == 143 || rc == 137 )); then
+#       emit_event "plugin.run.timed_out" "plugin=..." "kind=..." \
+#           "stage=..." "timeout_s=..." "disposition=timed_out"
+#   fi
+#
+# The emit_event call IS the result-contract write for the timed_out
+# disposition (ADR-054 §9): it records disposition=timed_out, the stage
+# name, and the limit in the event stream.  Verify directly that the
+# plugin.run.timed_out emit_event in lifecycle.sh carries disposition=timed_out.
 _timed_out_event_ctx=""
 if [[ -f "$_lc" ]]; then
-    _timed_out_event_ctx="$(grep -A4 'plugin\.run\.timed_out' "$_lc" 2>/dev/null | tr '\n' ' ' || true)"
+    _timed_out_event_ctx="$(grep -A5 'plugin\.run\.timed_out' "$_lc" 2>/dev/null | tr '\n' ' ' || true)"
 fi
+
+# Direct verification: disposition=timed_out is in the emit_event block.
+if grep -q 'disposition=timed_out' <<< "$_timed_out_event_ctx"; then
+    assert_pass "[#1801/SPEC-1] watchdog writes disposition=timed_out in the plugin.run.timed_out emit_event call (result-contract write)"
+else
+    assert_fail "[#1801/SPEC-1] watchdog writes disposition=timed_out in the plugin.run.timed_out emit_event call (result-contract write)" \
+        "disposition=timed_out not found in the 5 lines after 'plugin.run.timed_out' in lifecycle.sh — the disposition is not written on timeout"
+fi
+
+# The timed_out event must also name the stage and the limit.
 if grep -q 'stage=' <<< "$_timed_out_event_ctx" && grep -q 'timeout_s=' <<< "$_timed_out_event_ctx"; then
     assert_pass "[#1801/SPEC-1] timed_out event names the stage (stage=) and the limit (timeout_s=)"
 else
@@ -195,6 +194,18 @@ if [[ -n "$_phc_body" ]]; then
             "found: $(printf '%s' "$_hand_rolled" | head -3 | tr '\n' '|') — replace with zbuild_pg_kill"
     else
         assert_pass "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch"
+    fi
+
+    # SPEC-10 requires the specific call signature zbuild_pg_kill "$_lc_hook_pid" 1
+    # (grace-period argument of 1). A call with a different grace period would
+    # satisfy the no-hand-rolled check above but not this specific requirement.
+    _pg_kill_grace1=""
+    _pg_kill_grace1="$(grep -E 'zbuild_pg_kill.*_lc_hook_pid.* 1' <<< "$_phc_body" | grep -v '^\s*#' || true)"
+    if [[ -n "$_pg_kill_grace1" ]]; then
+        assert_pass "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (grace-period=1 verified)"
+    else
+        assert_fail "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (grace-period=1 verified)" \
+            "zbuild_pg_kill with _lc_hook_pid and grace-period 1 not found in plugin_hook_call — grace period may be wrong"
     fi
 fi
 
