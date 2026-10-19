@@ -22,19 +22,7 @@
     [2mexpected: 3600, got: <unset>[0m
 
   [38;2;0;212;255m[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
-    [2mno 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default[0m
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m5 of 6 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] 5400 s default appears as the engine's stage_timeout_s fallback
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
-
+Terminated
 ### SPEC-3 head tests/unit/stage-timeout-precedence-test.sh
 
 [38;2;0;212;255m[1m  [#1801/SPEC-3] stage_timeout_s precedence: template > env > 5400 s default[0m
@@ -55,12 +43,9 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s
 
   [38;2;0;212;255m[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
-    [2mno 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 6 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S
+  [38;2;74;222;128m[1mAll 6 tests passed[0m
 

@@ -1,4 +1,0 @@
-[
-  "tests/unit/dispatch-rc-guard-test.sh",
-  "tests/unit/stage-timeout-precedence-test.sh"
-]

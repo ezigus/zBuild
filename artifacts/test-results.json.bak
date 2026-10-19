@@ -1,88 +1,73 @@
 {
-  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/dispatch-rc-guard-test.sh\n\n  dispatch-rc guard — the legacy rc inventory is a ratchet (#1823)\n\n\n  1. The inventory matches the pin exactly\n  ✓ [SPEC-1] core/pipeline/runner.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/cycle-orchestrator.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/parallel-orchestrator.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/map.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/fanout.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/sequential.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/composite.sh holds 0 legacy rc returns\n  ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)\n    A new engine path returns an rc outside {0,1}. rc carries two facts (ADR-054 §4): result on disk (0), failed (1). Put what you were encoding on a declared channel — disposition (core/pipeline/disposition.sh) for recoverability, routing state (ADR-045) for the backward edge.\n  ✓ [SPEC-1] scripts/lib/abort-propagation.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/common.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/stage-scratch.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/disposition.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/contract-validator.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/orch/local_engine.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] plugins/tool/orch-mock/plugin.sh holds 0 legacy rc returns\n\n  2. The contract boundary itself is clean\n  ✗ [SPEC-2] plugin_hook_call returns nothing outside {0,1}\n    expected: 0, got: 2\n  ✓ [SPEC-2] the ZBUILD_HOOK_ABSENT sentinel is gone\n  ✓ [SPEC-2] an absent optional hook is still recorded on the event stream\n\n  3. The stage dispatch boundary narrows before reading\n  ✓ [SPEC-3] the cycle dispatch boundary both observes and narrows\n  ✓ [SPEC-3] it observes the RAW status before narrowing it away\n  ✓ [SPEC-3] the throttle marker is cleared before the dispatch\n  ✓ [SPEC-3] cycle_dispatch_stage narrows the rc\n  ✓ [SPEC-3] parallel_dispatch_stage applies it too\n  ✓ [SPEC-3] both dispatch boundaries clear the throttle marker\n\n  4. The version gate cannot be fed by a subshell global\n  ✓ [SPEC-4] no gate reads a contract global\n  ✓ [SPEC-4] both boundaries narrow unconditionally (#1850)\n  ✓ [SPEC-4] the contract probe is gone (#1850)\n\n  5. the cycle.complete fan-in reads the reason word, not an rc\n  ✓ [SPEC-5] no _cycle_handle_terminal_rc remains (orchestrator + runner)\n  ✓ [SPEC-5] _cycle_handle_terminal is defined in the orchestrator\n  ✓ [SPEC-5] _cycle_handle_terminal reads _CYCLE_LAST_TERMINATED_REASON\n  ✓ [SPEC-5] _cycle_handle_terminal keys on no signal rc\n\n  6. write-boundary wiring leaves lifecycle.sh rc-clean\n  ✗ [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)\n    expected: 0, got: 2\n\n  [#1850/SPEC-16] the plain rule: no engine path returns or reads a legacy rc\n  ✓ [#1850/SPEC-16] every guarded engine file is pinned at 0\n  ✓ [#1850/SPEC-16] no guarded engine file reads an rc as a legacy number\n\n  [#1850/SPEC-17] every dispatch boundary checks for an abort before it dispatches\n  ✓ [SPEC-17] cycle_dispatch_stage checks for an abort before plugin_hook_call\n  ✓ [SPEC-17] parallel_dispatch_stage checks for an abort before plugin_hook_call\n\n\n  3 of 36 tests failed\n\n  ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)\n  ✗ [SPEC-2] plugin_hook_call returns nothing outside {0,1}\n  ✗ [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/stage-timeout-precedence-test.sh\n\n  [#1801/SPEC-3] stage_timeout_s precedence: template > env > 5400 s default\n\n\n  [#1801/SPEC-3] template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S\n  ✓ [#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99\n\n  [#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default\n  ✓ [#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)\n  ✓ [#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)\n\n  [#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s\n  ✓ [#1801/SPEC-3] 5400 s is the terminal fallback in plugin_hook_call (tier-3 default)\n\n  [#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>\n  ✓ [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s\n\n  [#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call\n  ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S\n    no 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default\n\n\n  1 of 6 tests failed\n\n  ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S\n\nunit: 517/519 passed (4 skipped)\nintegration: 250/250 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 804/806 passed (4 skipped)",
-  "run_mode": "full",
-  "exit_code": 1,
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 519/519 passed (4 skipped)\nintegration: 250/250 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 806/806 passed (4 skipped)",
+  "run_mode": "targeted+full",
+  "exit_code": 0,
   "data": {
-    "exit_code": 1,
-    "passed": 804,
-    "failed": 2,
-    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/dispatch-rc-guard-test.sh\n\n  dispatch-rc guard — the legacy rc inventory is a ratchet (#1823)\n\n\n  1. The inventory matches the pin exactly\n  ✓ [SPEC-1] core/pipeline/runner.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/cycle-orchestrator.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/parallel-orchestrator.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/map.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/fanout.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/sequential.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/composite.sh holds 0 legacy rc returns\n  ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)\n    A new engine path returns an rc outside {0,1}. rc carries two facts (ADR-054 §4): result on disk (0), failed (1). Put what you were encoding on a declared channel — disposition (core/pipeline/disposition.sh) for recoverability, routing state (ADR-045) for the backward edge.\n  ✓ [SPEC-1] scripts/lib/abort-propagation.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/strategies/common.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/stage-scratch.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/disposition.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/pipeline/contract-validator.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] core/orch/local_engine.sh holds 0 legacy rc returns\n  ✓ [SPEC-1] plugins/tool/orch-mock/plugin.sh holds 0 legacy rc returns\n\n  2. The contract boundary itself is clean\n  ✗ [SPEC-2] plugin_hook_call returns nothing outside {0,1}\n    expected: 0, got: 2\n  ✓ [SPEC-2] the ZBUILD_HOOK_ABSENT sentinel is gone\n  ✓ [SPEC-2] an absent optional hook is still recorded on the event stream\n\n  3. The stage dispatch boundary narrows before reading\n  ✓ [SPEC-3] the cycle dispatch boundary both observes and narrows\n  ✓ [SPEC-3] it observes the RAW status before narrowing it away\n  ✓ [SPEC-3] the throttle marker is cleared before the dispatch\n  ✓ [SPEC-3] cycle_dispatch_stage narrows the rc\n  ✓ [SPEC-3] parallel_dispatch_stage applies it too\n  ✓ [SPEC-3] both dispatch boundaries clear the throttle marker\n\n  4. The version gate cannot be fed by a subshell global\n  ✓ [SPEC-4] no gate reads a contract global\n  ✓ [SPEC-4] both boundaries narrow unconditionally (#1850)\n  ✓ [SPEC-4] the contract probe is gone (#1850)\n\n  5. the cycle.complete fan-in reads the reason word, not an rc\n  ✓ [SPEC-5] no _cycle_handle_terminal_rc remains (orchestrator + runner)\n  ✓ [SPEC-5] _cycle_handle_terminal is defined in the orchestrator\n  ✓ [SPEC-5] _cycle_handle_terminal reads _CYCLE_LAST_TERMINATED_REASON\n  ✓ [SPEC-5] _cycle_handle_terminal keys on no signal rc\n\n  6. write-boundary wiring leaves lifecycle.sh rc-clean\n  ✗ [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)\n    expected: 0, got: 2\n\n  [#1850/SPEC-16] the plain rule: no engine path returns or reads a legacy rc\n  ✓ [#1850/SPEC-16] every guarded engine file is pinned at 0\n  ✓ [#1850/SPEC-16] no guarded engine file reads an rc as a legacy number\n\n  [#1850/SPEC-17] every dispatch boundary checks for an abort before it dispatches\n  ✓ [SPEC-17] cycle_dispatch_stage checks for an abort before plugin_hook_call\n  ✓ [SPEC-17] parallel_dispatch_stage checks for an abort before plugin_hook_call\n\n\n  3 of 36 tests failed\n\n  ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)\n  ✗ [SPEC-2] plugin_hook_call returns nothing outside {0,1}\n  ✗ [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/stage-timeout-precedence-test.sh\n\n  [#1801/SPEC-3] stage_timeout_s precedence: template > env > 5400 s default\n\n\n  [#1801/SPEC-3] template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S\n  ✓ [#1801/SPEC-3] template stage_timeout_s=7200 beats env ZBUILD_STAGE_TIMEOUT_S=99\n\n  [#1801/SPEC-3] ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default\n  ✓ [#1801/SPEC-3] template without stage_timeout_s does not hard-code 5400 (env tier respected)\n  ✓ [#1801/SPEC-3] dispatch consults ZBUILD_STAGE_TIMEOUT_S as tier-2 fallback (plugin_hook_call)\n\n  [#1801/SPEC-3] engine default is 5400 s when neither template nor env sets stage_timeout_s\n  ✓ [#1801/SPEC-3] 5400 s is the terminal fallback in plugin_hook_call (tier-3 default)\n\n  [#1801/SPEC-3] load_template exports _TPL_STAGE_TIMEOUT_S_<stage>\n  ✓ [#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from stage_timeout_s\n\n  [#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call\n  ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S\n    no 'sleep 5400' captured in fake-sleep log — pre-change: no watchdog; post-change: must spawn 'sleep 5400' as default\n\n\n  1 of 6 tests failed\n\n  ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S\n\nunit: 517/519 passed (4 skipped)\nintegration: 250/250 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 804/806 passed (4 skipped)",
+    "exit_code": 0,
+    "passed": 806,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 519/519 passed (4 skipped)\nintegration: 250/250 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 806/806 passed (4 skipped)",
     "diff_applied": false,
     "test_cmd": "npm test",
-    "run_mode": "full",
+    "run_mode": "targeted+full",
     "timing": {
       "tiers": {
-        "lint": 175919,
-        "e2e": 132236,
-        "golden": 4885,
-        "unit": 467311,
-        "integration": 516357
+        "lint": 170465,
+        "e2e": 131534,
+        "golden": 5058,
+        "unit": 465805,
+        "integration": 515793
       },
       "slowest_files": [
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/integration/cycle-acceptance-terminal-failure-test.sh",
-          "ms": 146889
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 153870
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/integration/runner-release-exit-paths-test.sh",
-          "ms": 117160
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 118509
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/run-status-comment-render-test.sh",
-          "ms": 112177
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/unit/run-status-comment-render-test.sh",
+          "ms": 109987
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/integration/cycle-on-max-pipeline-continues-test.sh",
-          "ms": 86497
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 88112
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/stage-resolution-parity-test.sh",
-          "ms": 84767
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/unit/stage-resolution-parity-test.sh",
+          "ms": 84520
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/integration/run-status-comment-runner-test.sh",
-          "ms": 78398
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 77148
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/runner-pipeline-end-test.sh",
-          "ms": 72909
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/unit/runner-pipeline-end-test.sh",
+          "ms": 72235
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/runner-cycle-rc-action-mapping-test.sh",
-          "ms": 69509
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/unit/runner-cycle-rc-action-mapping-test.sh",
+          "ms": 68018
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/unit/core-pipeline-cycle-reuse-and-route-back-test.sh",
-          "ms": 65217
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/unit/core-pipeline-cycle-reuse-and-route-back-test.sh",
+          "ms": 67413
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.02D8Xa/tests/integration/cycle-multi-exit-when-e2e-test.sh",
-          "ms": 62366
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Jrg4ox/tests/integration/cycle-multi-exit-when-e2e-test.sh",
+          "ms": 61764
         }
       ]
     },
-    "tree_sha": "a5066e1ca68bc235223b61b100f29de747698b29",
-    "failures": [
-      {
-        "file": "tests/unit/dispatch-rc-guard-test.sh",
-        "reason": "✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)",
-        "points_at": []
-      },
-      {
-        "file": "tests/unit/stage-timeout-precedence-test.sh",
-        "reason": "✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S",
-        "points_at": []
-      }
-    ],
-    "findings": [
-      {
-        "n": 1,
-        "text": "tests/unit/dispatch-rc-guard-test.sh fails: ✗ [SPEC-1] core/plugin-registry/lifecycle.sh GREW a private rc (0 → 2)"
-      },
-      {
-        "n": 2,
-        "text": "tests/unit/stage-timeout-precedence-test.sh fails: ✗ [#1801/SPEC-3] isolation: plugin_hook_call spawns 'sleep 5400' watchdog when no template value and no ZBUILD_STAGE_TIMEOUT_S"
-      }
-    ]
+    "tree_sha": "4f8e7bc40b530d522afa7fbe8f1f23ecb44f2912",
+    "targeted": {
+      "test_cmd": "bash scripts/run-tests.sh --files 'plugins/agent/plan/tests/plan-v2-manifest-test.sh' 'tests/e2e/fork-budget-test.sh' 'tests/e2e/zbuild-cli-verbs-test.sh' 'tests/golden/parity/run-fixture.sh' 'tests/integration/acceptance-every-change-tested-test.sh' 'tests/integration/always-run-exit-paths-test.sh' 'tests/integration/artifact-contract-test.sh' 'tests/integration/artifact-snapshot-runner-test.sh' 'tests/integration/build-test-cycle-fallthrough-to-review-test.sh' 'tests/integration/build-test-cycle-targeted-rerun-test.sh' 'tests/integration/cli-platform-scope-flags-test.sh' 'tests/integration/core-pipeline-cycle-build-test-wiring-test.sh' 'tests/integration/core-pipeline-cycle-orchestrator-test.sh' 'tests/integration/core-pipeline-runner-test.sh' 'tests/integration/core-pipeline-strategy-test.sh' 'tests/integration/core-pipeline-verdict-indicators-test.sh' 'tests/integration/core-state-resume-exec-test.sh' 'tests/integration/cycle-abort-when-no-match-converges-test.sh' 'tests/integration/cycle-acceptance-terminal-failure-test.sh' 'tests/integration/cycle-blocked-real-artifact-test.sh' 'tests/integration/cycle-exit-when-success-test.sh' 'tests/integration/cycle-gate-unavailable-aborts-run-test.sh' 'tests/integration/cycle-member-unfinished-no-convergence-test.sh' 'tests/integration/cycle-nested-outer-converges-test.sh' 'tests/integration/cycle-on-max-pipeline-continues-test.sh' 'tests/integration/cycle-orchestrator-abort-when-test.sh' 'tests/integration/cycle-rate-limit-aborts-run-test.sh' 'tests/integration/cycle-seq-deep-nesting-test.sh' 'tests/integration/deployed-template-e2e-test.sh' 'tests/integration/design-pipeline-test.sh' 'tests/integration/dispatch-rc-signal-boundary-test.sh' 'tests/integration/full-pipeline-cycle-seq-3level-test.sh' 'tests/integration/full-pipeline-enforce-mode-test.sh' 'tests/integration/full-pipeline-seq-cardinal-test.sh' 'tests/integration/full-pipeline-sigint-test.sh' 'tests/integration/hard-kill-sweep-e2e-test.sh' 'tests/integration/install-copy-flow-test.sh' 'tests/integration/intake-branch-creation-test.sh' 'tests/integration/leaf-contract-violation-halts-test.sh' 'tests/integration/leaf-dispatch-role-bound-verdict-test.sh' 'tests/integration/leaf-verdict-halts-test.sh' 'tests/integration/per-run-state-isolation-test.sh' 'tests/integration/pipeline-preflight-missing-stage-test.sh' 'tests/integration/pipeline-resume-test.sh' 'tests/integration/prior-work-reuse-integration-test.sh' 'tests/integration/resume-24h-boundary-test.sh' 'tests/integration/resume-after-sigint-test.sh' 'tests/integration/run-cap-runner-test.sh' 'tests/integration/run-status-comment-runner-test.sh' 'tests/integration/runner-cycle-on-max-halt-test.sh' 'tests/integration/runner-exports-state-dir-test.sh' 'tests/integration/runner-init-state-abort-test.sh' 'tests/integration/runner-job-control-abort-test.sh' 'tests/integration/runner-job-control-regression-test.sh' 'tests/integration/runner-release-exit-paths-test.sh' 'tests/integration/runner-state-file-issue-cross-check-test.sh' 'tests/integration/self-host-snapshot-tracks-tree-test.sh' 'tests/integration/sigint-aborts-pipeline-test.sh' 'tests/integration/sigterm-aborts-pipeline-test.sh' 'tests/integration/spec-coverage-router-reachable-test.sh' 'tests/integration/state-root-isolation-test.sh' 'tests/integration/test-author-router-dispatch-test.sh' 'tests/integration/worktree-ownership-test.sh' 'tests/integration/worktree-run-isolation-test.sh' 'tests/mutation/pipeline-contracts.md' 'tests/mutation/run-status-comment.md' 'tests/mutation/runner-fail-closed-mutations.md' 'tests/unit/artifact-persist-test.sh' 'tests/unit/attempt-archive-test.sh' 'tests/unit/attempt-progress-test.sh' 'tests/unit/change-scope-floor-test.sh' 'tests/unit/cli-mcp-flags-test.sh' 'tests/unit/cli-session-flags-test.sh' 'tests/unit/core-contract-version-test.sh' 'tests/unit/core-output-stage-io-blank-line-spacing-test.sh' 'tests/unit/core-pipeline-runner-stage-banner-goldens-test.sh' 'tests/unit/core-pipeline-runner-stage-timestamps-test.sh' 'tests/unit/core-pipeline-strategy-test.sh' 'tests/unit/cycle-on-max-continue-pipeline-status-test.sh' 'tests/unit/design-timeout-exhaustion-halt-1261-test.sh' 'tests/unit/discovery-cold-lookup-test.sh' 'tests/unit/dispatch-disposition-wiring-test.sh' 'tests/unit/dispatch-rc-guard-test.sh' 'tests/unit/disposition-vocabulary-test.sh' 'tests/unit/engine-stage-reports-test.sh' 'tests/unit/env-scrub-test.sh' 'tests/unit/event-schema-emitted-coverage-test.sh' 'tests/unit/exit-path-teardown-budget-guard-test.sh' 'tests/unit/head-on-run-branch-test.sh' 'tests/unit/layout-writer-test.sh' 'tests/unit/leaf-dispatch-verdict-resolution-parity-test.sh' 'tests/unit/leaf-resolvability-prewarm-test.sh' 'tests/unit/manifest-index-test.sh' 'tests/unit/map-element-persona-test.sh' 'tests/unit/mechanics-yaml-registry-test.sh' 'tests/unit/orch-backend-misconfigured-test.sh' 'tests/unit/orch-sequential-retired-guard-test.sh' 'tests/unit/prior-work-reuse-contract-test.sh' 'tests/unit/process-group-isolation-test.sh' 'tests/unit/requires-core-resolution-test.sh' 'tests/unit/resume-default-test.sh' 'tests/unit/retired-impact-review-report-inputs-test.sh' 'tests/unit/run-open-items-test.sh' 'tests/unit/runner-contract-lib-seam-test.sh' 'tests/unit/runner-cycle-entry-banner-description-test.sh' 'tests/unit/runner-cycle-iter-divider-hierarchical-test.sh' 'tests/unit/runner-cycle-rc-action-mapping-test.sh' 'tests/unit/runner-cycle-set-e-guard-test.sh' 'tests/unit/runner-engine-provenance-test.sh' 'tests/unit/runner-inter-stage-blank-line-test.sh' 'tests/unit/runner-map-parallel-stage-envelope-test.sh' 'tests/unit/runner-pipeline-end-test.sh' 'tests/unit/runner-post-stage-capability-test.sh' 'tests/unit/runner-render-cycle-divider-test.sh' 'tests/unit/runner-signal-rearm-test.sh' 'tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh' 'tests/unit/runner-startup-preflight-test.sh' 'tests/unit/runner-status-comment-hook-test.sh' 'tests/unit/runner-unconverged-rescue-verdict-channel-test.sh' 'tests/unit/scope-governance-test.sh' 'tests/unit/shape-floor-content-stable-test.sh' 'tests/unit/shape-floor-summary-plain-test.sh' 'tests/unit/shape-floor-test.sh' 'tests/unit/stage-timeout-always-run-test.sh' 'tests/unit/stage-timeout-dispatch-test.sh' 'tests/unit/stage-timeout-loader-validation-test.sh' 'tests/unit/stage-timeout-no-flat-limit-test.sh' 'tests/unit/stage-timeout-precedence-test.sh' 'tests/unit/stage-timeout-process-group-test.sh' 'tests/unit/stage-timeout-retry-test.sh' 'tests/unit/stage-work-saved-test.sh' 'tests/unit/template-resolvability-preflight-test.sh' 'tests/unit/test-output-sanitize-test.sh' 'tests/unit/timeout-cmd-test.sh' 'tests/unit/vision-admission-gate-test.sh' 'tests/unit/write-boundary-window-test.sh' 'tests/unit/yaml-get-cache-test.sh'",
+      "verdict": "pass",
+      "passed": 133,
+      "failed": 0
+    },
+    "findings": []
   }
 }
