@@ -124,3 +124,22 @@ All 10 issue AC items are covered:
 
 No step defers testing, treats behavior as optional, or adds inert files.
 plan.json on disk is correct — no changes needed this cycle.
+
+## Third cycle review (after test + issue-acceptance failures confirmed)
+
+All 5 test failures and all 7 issue-acceptance findings are already covered by the 9-step plan:
+
+| Stage finding | Step |
+|---|---|
+| core-pipeline-runner-test.sh timeout | step-5 (disown) |
+| core-pipeline-strategy-test.sh timeout | step-5 (disown) |
+| vision-admission-gate-test.sh timeout | step-5 (disown) |
+| lint-test-errexit-test.sh [L5] fails (meta-test) | steps 1–4 (fix the 8 violations) |
+| run-limit-precedence-test.sh L173 syntax error | step-1 |
+| R-4 persist missing from always_run test | step-3 + step-5 |
+| R-5 template.sh inert + syntax error | step-1 + step-6 |
+| R-2 P2 unfalsifiable | step-3 |
+| R-10 npm test + lint fail | all steps collectively |
+| R-9 §9 vs §11 ambiguity | open question |
+
+No new findings. plan.json has 9 steps and remains accurate.
