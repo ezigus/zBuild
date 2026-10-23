@@ -21,7 +21,7 @@ dispatch.
    keeps the hook's own children in that same group. **A TERM trap must be
    installed after `_lc_wd_pid` is assigned and before `wait "$_lc_hook_pid"`**
    (between lifecycle.sh lines 516 and 521 in the current build). The trap kills
-   both the hook group and the watchdog, then exits with status 143, so that
+   both the hook group and the watchdog, then exits with status 1, so that
    when `plugin_hook_call` is externally TERMed (e.g. by `_runner_dispatch_always_run`'s
    outer watchdog) the inner hook group is not orphaned:
 
@@ -29,14 +29,20 @@ dispatch.
    # After:  _lc_wd_pid=$!      (line 516)
    # After:  set +m              (line 517)
    # After:  (( _lc_m_before == 1 )) && set -m  (line 520)
-   trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; exit 143' TERM
+   trap 'zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; exit 1' TERM
    wait "$_lc_hook_pid" 2>/dev/null; rc=$?
    trap - TERM
    # Before: kill -KILL/zbuild_pg_kill on _lc_hook_pid  (line 525)
    ```
 
-   Without `exit 143` in the trap body, bash resumes execution after the trap
-   handler and the outer caller's `wait "$_ar_pid"` stalls indefinitely.
+   Any explicit `exit` in a trap body causes bash to terminate at that point —
+   bash does **not** resume execution after the trap handler returns when the
+   body ends with `exit`. Therefore `exit 1` unblocks the outer caller's
+   `wait "$_ar_pid"` identically to any other exit status, while complying
+   with ADR-054 §4 (plugin_hook_call must return {0,1}). `exit 143` would
+   violate that constraint: `dispatch-rc-guard-test` pins lifecycle.sh at 0
+   legacy-rc returns (regex `(return|exit)[[:space:]]+(2|…|143)`) and fails
+   with "GREW 0→2" whenever `exit 143` appears.
 
    **Why the SPEC-6b scenario requires this trap**: The test's `build_cleanup` function
    (runner-release-exit-paths-test.sh lines 128-132) spawns a TERM-ignoring child then
@@ -166,7 +172,7 @@ tests/unit/orch-backend-misconfigured-test.sh
 
 ```acceptance
 SPEC-1[code]: plugin_hook_call arms a per-dispatch watchdog for the run hook that writes disposition timed_out and names the stage and limit; every dispatch route reaches plugin_hook_call; the always_run route is individually established by AWK-extracting `_runner_dispatch_always_run` body (pattern: `/_runner_dispatch_always_run\(\) \{/{p=1} p{print} p && /^    \}$/{exit}`) from runner.sh and confirming the extracted body contains `plugin_hook_call` — not merely that runner.sh contains it somewhere; the watchdog is above the backend layer and covers bash-parallel, ruflo-hive, and mock backends by construction covers: R-1
-SPEC-2[code]: killing a hung run hook stops the whole process group — hook runs under set -m creating its own pgid; plugin_hook_call's run-hook branch has a TERM trap (inserted between lifecycle.sh lines 516 and 521) that kills the inner hook group and watchdog and exits with status 143 when plugin_hook_call is externally TERMed, so the hook's children are not orphaned covers: R-2
+SPEC-2[code]: killing a hung run hook stops the whole process group — hook runs under set -m creating its own pgid; plugin_hook_call's run-hook branch has a TERM trap (inserted between lifecycle.sh lines 516 and 521) that kills the inner hook group and watchdog and exits with status 1 when plugin_hook_call is externally TERMed, so the hook's children are not orphaned covers: R-2
 SPEC-3[code]: timeout precedence: template stage_timeout_s beats ZBUILD_STAGE_TIMEOUT_S beats 5400 s engine default; the 5400 s tier is verified by an isolation test that runs with neither a template value nor ZBUILD_STAGE_TIMEOUT_S set and confirms 5400 s is the timeout actually used covers: R-3
 SPEC-4[code]: the template loader rejects a stage_timeout_s below router.timeout_s and a non-integer value covers: R-4
 SPEC-5[code]: watchdog is instantiated inside plugin_hook_call so a retried stage and each map member each receive a fresh independent timer covers: R-5
@@ -179,7 +185,7 @@ SPEC-11[no-code]: ADR-054 §9, ADR-017, and ADR-011 have ## Enforced by sections
 SPEC-12[done]: timed_out is already a valid disposition word in the engine evidence: docs/adr/ADR-054-stage-contract.md:248 covers: R-1
 SPEC-13[done]: zbuild_pg_kill already exists in scripts/lib/proc-group.sh evidence: scripts/lib/proc-group.sh covers: R-2
 SPEC-14[done]: core/orch/contract.sh defaults the backend to bash-parallel with no fallback to orch-sequential evidence: core/orch/contract.sh covers: R-8
-SPEC-15[no-code]: before writing tests, grep -rl for orch-sequential, ZBUILD_ORCH_TIMEOUT, router.timeout_s in tests/ and include every file pinning them in scope covers: R-11
+SPEC-15[no-code]: before writing tests, grep -rl for orch-sequential, ZBUILD_ORCH_TIMEOUT, router.timeout_s, and kill.*_ar_pid (the hand-rolled always_run watchdog kill sequence) in tests/ — four patterns total — and include every file pinning any of them in scope covers: R-11
 SPEC-16[no-code]: npm test and npm run lint pass after all code changes are applied covers: R-13
 SPEC-17[no-code]: every test that previously used orch-sequential as a fixture is updated to use orch-mock or bash-parallel; the orch-sequential-retired-guard-test assertion that no file outside docs/adr/ names orch-sequential enforces this mechanically covers: R-8
 SPEC-18[code]: orch.backend.misconfigured and plugin.run.timed_out are registered as known types in config/event-schema.json; event-schema-emitted-coverage-test passes (no emitted event type is unregistered) after adding the new types covers: R-1 R-9
@@ -206,7 +212,7 @@ SPEC-19: tests/unit/orch-backend-misconfigured-test.sh
 
 ```supersedes
 tests/integration/runner-job-control-abort-test.sh flag-on: plugin_hook_call forces set +m inside the hook subshell so $- inside the hook never has 'm' — the runtime probe at test lines 141-147 must be replaced with a structural check: grep -q 'set -m' lifecycle.sh. Concrete replacement for lines 141-147: `if grep -q 'set -m' "$REPO_ROOT/core/plugin-registry/lifecycle.sh"; then assert_pass "flag-on: lifecycle.sh uses set -m before hook spawn [#1801]"; else assert_fail "flag-on: lifecycle.sh uses set -m before hook spawn" "grep 'set -m' core/plugin-registry/lifecycle.sh returned non-zero"; fi`
-tests/integration/runner-release-exit-paths-test.sh [SPEC-6b]: the SPEC-6b scenario (TERM-ignoring grandchild survives) is fixed by the TERM trap in plugin_hook_call's run-hook branch (inserted between lifecycle.sh lines 516 and 521) that calls zbuild_pg_kill on both _lc_hook_pid and _lc_wd_pid then exits 143 when plugin_hook_call is externally TERMed; after the fix the assertion passes (child is dead within 5 s of runner returning)
+tests/integration/runner-release-exit-paths-test.sh [SPEC-6b]: the SPEC-6b scenario (TERM-ignoring grandchild survives) is fixed by the TERM trap in plugin_hook_call's run-hook branch (inserted between lifecycle.sh lines 516 and 521) that calls zbuild_pg_kill on both _lc_hook_pid and _lc_wd_pid then exits 1 when plugin_hook_call is externally TERMed; after the fix the assertion passes (child is dead within 5 s of runner returning)
 ```
 
 ## Findings
@@ -226,32 +232,69 @@ extracted body contains `plugin_hook_call` at runner.sh line 2477. This is the s
 approach used for cycle_dispatch_stage and parallel_dispatch_stage in the same test file,
 so the pattern is consistent with the existing codebase.
 
-### issue-acceptance finding 1 (R-2/SPEC-6b) → design unchanged, build gap
+### ia-finding 1 (R-2, R-13): exit 143 violates ADR-054 §4 → design changed
 
-**Finding**: runner-release-exit-paths-test.sh SPEC-6b fails — pid still alive 5 s after
-runner returned.
+**Finding**: `dispatch-rc-guard-test` pins lifecycle.sh at 0 legacy-rc returns. The TERM
+trap used `exit 143`, which the regex `(return|exit)[[:space:]]+(2|…|143)` matches. Two
+`exit 143` occurrences (lifecycle.sh lines 544 and 555) raised the count from 0 to 2,
+failing the test with "GREW 0→2". Additionally, `stage-timeout-precedence-test`'s
+5400 s isolation section failed — most likely because the broken exit-143 state corrupted
+lifecycle.sh's behavior in the test environment.
 
-**Why left**: The test failure was from a partial build state. The current worktree (as of
-this design pass) has the TERM trap installed in lifecycle.sh (lines 537-556) and
-`zbuild_pg_kill "$_lc_hook_pid" 1` at line 572. The design correctly describes both fixes.
-This is a build stage gap, not a design error.
+**What changed**: All `exit 143` occurrences in decision point 1, SPEC-2, and the
+supersedes block are changed to `exit 1`. The rationale is updated: any explicit `exit`
+in a trap body terminates the function — bash does **not** resume after the trap handler
+— so `exit 1` unblocks the outer `wait "$_ar_pid"` identically to `exit 143`, while
+complying with ADR-054 §4. The build must fix lifecycle.sh lines 544 and 555 accordingly.
+The comments at lines 525-527 and 533-534 (which say "exits with status 143") must also
+be updated to "exits with status 1".
 
-### issue-acceptance finding 2 (R-10/SPEC-10) → design unchanged, build gap
+### ia-finding 2 (R-3): 5400 s isolation test fails → no design change, build gap
 
-**Finding**: stage-timeout-dispatch-test.sh SPEC-10 fails — `kill -KILL -- -"$_lc_hook_pid"`
-present in plugin_hook_call.
+**Finding**: The isolation section of `stage-timeout-precedence-test` (Tier 3) found no
+`sleep 5400` in the fake-sleep log.
 
-**Why left**: lifecycle.sh is already fixed in the current worktree (the kill -KILL has been
-replaced). The remaining build gap is runner.sh lines 2486-2487, which still have
-`kill -KILL -- -"$_ar_pid"` and `kill -TERM -- -"$_wd_pid"`. These are caught by
-`stage-timeout-always-run-test.sh` lines 147-151 (AWK-extracted body check). The design
-correctly identifies both sites under decision point 2. This is a build stage gap.
+**Why left**: The code at lifecycle.sh line 492 (`${ZBUILD_STAGE_TIMEOUT_S:-5400}`)
+correctly wires the default. The SPEC-3 specification is correct. The failure is
+attributable to the `exit 143` state in lifecycle.sh causing incorrect behavior during
+test execution. Once `exit 143` → `exit 1` is applied in the build, this test should
+pass without any design change.
 
-### issue-acceptance finding 3 (R-13) → design unchanged, build gap
+### ia-finding 3 (R-1): per-dispatch watchdog uncertainty due to exit 143 → no design change
 
-**Finding**: npm test is not green — 3 tests fail.
+**Finding**: R-1 coverage could not be confirmed while `exit 143` made `plugin_hook_call`
+return outside {0,1}.
 
-**Why left**: All three failures trace to the build stage not completing the changes described
-in the design (lifecycle.sh TERM trap, lifecycle.sh kill replacement, runner.sh 2486-2487
-replacement, runner-job-control-abort-test.sh structural check). The current worktree has
-all but runner.sh 2486-2487 applied. This is a build stage gap.
+**Why left**: The watchdog is structurally above the backend layer (decision point 1 is
+unchanged). Once `exit 143` → `exit 1` is fixed, the watchdog fires correctly and
+`plugin.run.timed_out` is emitted normally. No design change needed.
+
+### ia-finding 4 (R-1 route coverage): uncertain pending exit 143 fix → no design change
+
+**Why left**: Same root cause as ia-finding 3. The dispatch-route coverage proof
+(AWK-extracted body checks) is unchanged. Once the build applies the exit 1 fix the
+route tests will pass.
+
+### design finding 1+2 (R-11): SPEC-15 missing the always_run watchdog grep → design changed
+
+**Finding**: The design checker found that SPEC-15 demanded grep for `orch-sequential`,
+`ZBUILD_ORCH_TIMEOUT`, and `router.timeout_s` but omitted the fourth pattern required by
+R-11 — "the always_run watchdog". Without it, tests that pin the hand-rolled
+`kill -KILL/-TERM -- -"$_ar_pid"` sequence in `_runner_dispatch_always_run` would not be
+discovered before writing tests, risking scope-miss build-loop failures.
+
+**What changed**: SPEC-15 now requires grep for all four patterns:
+`orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `router.timeout_s`, and
+`kill.*_ar_pid` (the always_run watchdog kill sequence). The fourth pattern
+directly matches the hand-rolled kill sequence identified in decision point 2 and
+tested by `stage-timeout-always-run-test.sh` lines 147-151.
+
+### ia-finding 5 (R-10, runner.sh 2486-2487): confirmed fixed in worktree → no design change
+
+**Finding**: The issue-acceptance stage was uncertain whether runner.sh 2486-2487 was
+fixed because the dispatch-rc-guard failure masked other assertions.
+
+**Status**: The current worktree shows runner.sh 2486 as:
+`( set +m; sleep "$_ar_to"; zbuild_pg_kill "$_ar_pid" 10 2>/dev/null || true ) &`
+No hand-rolled kill -KILL/-TERM. The design correctly describes this at decision point 2.
+The remaining build task is only the `exit 143` → `exit 1` fix in lifecycle.sh.
