@@ -1,0 +1,260 @@
+diff --git a/core/plugin-registry/lifecycle.sh b/core/plugin-registry/lifecycle.sh
+index bb8637d9..0a992920 100644
+--- a/core/plugin-registry/lifecycle.sh
++++ b/core/plugin-registry/lifecycle.sh
+@@ -522,16 +522,17 @@ plugin_hook_call() {
+         # when plugin_hook_call is externally TERMed.  Two cases:
+         #
+         #  a) Subshell (BASHPID ≠ $$): plugin_hook_call was backgrounded by
+-        #     _runner_dispatch_always_run.  The trap exits with status 143,
++        #     _runner_dispatch_always_run.  The trap exits with status 1,
+         #     unblocking the outer _runner_dispatch_always_run wait "$_ar_pid"
+         #     (SPEC-6b: a hook child that ignores TERM must not outlive run).
++        #     ADR-054 §4: plugin_hook_call must return {0,1}; exit 1 complies.
+         #
+         #  b) Main-shell (BASHPID == $$): plugin_hook_call runs directly in
+         #     the runner process (sequential / roleless dispatch).  We kill the
+         #     hook group, then delegate to the runner's own signal handler
+         #     (_runner_signal_trap TERM) so the pipeline abort path runs
+-        #     normally (emits pipeline.aborted, exits 1).  The status is 143
+-        #     when called outside the runner (e.g. standalone tests).
++        #     normally (emits pipeline.aborted, exits 1).  When called outside
++        #     the runner (e.g. standalone tests), the fallback exits with 1.
+         local _lc_in_subshell=0
+         [[ "$BASHPID" != "$$" ]] && _lc_in_subshell=1
+         if (( _lc_in_subshell )); then
+@@ -541,7 +542,7 @@ plugin_hook_call() {
+             # (e.g. the sleep 0.1 loops inside zbuild_pg_kill).  Setting the
+             # disposition to "ignore" at entry prevents a concurrent TERM from
+             # starting a second instance of this body.
+-            trap 'trap "" TERM; zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; exit 143' TERM
++            trap 'trap "" TERM; zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; exit 1' TERM
+         else
+             # shellcheck disable=SC2064
+             # `trap "" TERM` FIRST: same re-entry guard as the subshell case.
+@@ -552,7 +553,7 @@ plugin_hook_call() {
+             # second TERM interrupts the zbuild_pg_kill sleep loops, re-enters
+             # this trap body, and calls `exit 1` inside the EXIT trap's teardown,
+             # aborting it before the release marker is written (SPEC-5 failure).
+-            trap 'trap "" TERM; zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; declare -F _runner_signal_trap >/dev/null 2>&1 && _runner_signal_trap TERM || exit 143' TERM
++            trap 'trap "" TERM; zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; declare -F _runner_signal_trap >/dev/null 2>&1 && _runner_signal_trap TERM || exit 1' TERM
+         fi
+         wait "$_lc_hook_pid" 2>/dev/null; rc=$?
+         # Only clear the trap we installed; in the main-shell call path the
+diff --git a/tests/unit/stage-timeout-dispatch-test.sh b/tests/unit/stage-timeout-dispatch-test.sh
+index 7ed6a24e..005bd817 100644
+--- a/tests/unit/stage-timeout-dispatch-test.sh
++++ b/tests/unit/stage-timeout-dispatch-test.sh
+@@ -180,32 +180,46 @@ else
+         "plugin_hook_call not found within 40 lines of any '[[ -z \"\$roles_out\" ]]' check — roleless stages bypass the watchdog"
+ fi
+ 
+-# ─── [#1801/SPEC-10] no hand-rolled TERM/KILL in lifecycle.sh for dispatch ────
+-print_test_section "[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch"
++# ─── [#1801/SPEC-10] zbuild_pg_kill replaces hand-rolled TERM/KILL in plugin_hook_call ──
++# SPEC-10: "plugin_hook_call (lifecycle.sh) has no hand-rolled kill -KILL/-TERM for
++# stage dispatch — replaced by zbuild_pg_kill "$_lc_hook_pid" 1".
++#
++# The PRIMARY assertion is POSITIVE: zbuild_pg_kill IS called on $lc_hook_pid after
++# wait in plugin_hook_call (line 572 in lifecycle.sh). This FAILS on pre-change code
++# (which had no watchdog at all, hence no zbuild_pg_kill on _lc_hook_pid in that
++# function) and PASSES on post-change code. A purely negative assertion ("no kill
++# -TERM/-KILL") would pass on BOTH old and new code — old plugin_hook_call never had
++# them — which would defeat the NEGCTL check.
++print_test_section "[#1801/SPEC-10] plugin_hook_call uses zbuild_pg_kill (not hand-rolled TERM/KILL)"
+ 
+ if [[ -n "$_phc_body" ]]; then
+-    # After the change: no `kill -TERM` or `kill -KILL` hand-rolled in
+-    # plugin_hook_call itself — these are replaced by zbuild_pg_kill.
+-    # Allow lines that are purely comments.
+-    _hand_rolled=""
+-    _hand_rolled="$(grep -E 'kill -TERM|kill -KILL' <<< "$_phc_body" | grep -v '^\s*#' || true)"
+-    if [[ -n "$_hand_rolled" ]]; then
+-        assert_fail "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch" \
+-            "found: $(printf '%s' "$_hand_rolled" | head -3 | tr '\n' '|') — replace with zbuild_pg_kill"
+-    else
+-        assert_pass "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch"
+-    fi
+-
+-    # SPEC-10 requires the specific call signature zbuild_pg_kill "$_lc_hook_pid" 1
+-    # (grace-period argument of 1). A call with a different grace period would
+-    # satisfy the no-hand-rolled check above but not this specific requirement.
++    # PRIMARY SPEC-10 assertion: zbuild_pg_kill "$_lc_hook_pid" 1 (grace-period=1)
++    # is present in plugin_hook_call. This is the replacement for any hand-rolled
++    # kill sequence. Old code had no such call → assert_fail → NEGCTL PASS.
++    # New code has it at the post-wait cleanup site → assert_pass.
+     _pg_kill_grace1=""
+     _pg_kill_grace1="$(grep -E 'zbuild_pg_kill.*_lc_hook_pid.* 1' <<< "$_phc_body" | grep -v '^\s*#' || true)"
+     if [[ -n "$_pg_kill_grace1" ]]; then
+-        assert_pass "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (grace-period=1 verified)"
++        assert_pass "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (replaces any hand-rolled TERM/KILL)"
++    else
++        assert_fail "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (replaces any hand-rolled TERM/KILL)" \
++            "zbuild_pg_kill \"\$_lc_hook_pid\" 1 not found in plugin_hook_call — the post-wait process-group cleanup is missing"
++    fi
++
++    # [#1801/SPEC-10] EXPLICIT NEGATIVE CHECK: no hand-rolled kill -TERM/-KILL
++    # remains in plugin_hook_call (non-comment lines). SPEC-10 requires the
++    # replacement to be complete — zbuild_pg_kill added AND old kill sequence
++    # removed. If both coexist (partial migration), the primary assertion above
++    # passes (zbuild_pg_kill found) but this one fails (old kill still present),
++    # catching the incomplete state. This is the explicit negative complement to
++    # the positive primary assertion above.
++    _hand_rolled=""
++    _hand_rolled="$(grep -E 'kill -TERM|kill -KILL' <<< "$_phc_body" | grep -v '^\s*#' || true)"
++    if [[ -n "$_hand_rolled" ]]; then
++        assert_fail "[#1801/SPEC-10] plugin_hook_call has no hand-rolled kill -TERM/-KILL for stage dispatch" \
++            "hand-rolled kill sequence still present — partial migration; replace with zbuild_pg_kill: $(printf '%s' "$_hand_rolled" | awk 'NR<=3' | tr '\n' '|')"
+     else
+-        assert_fail "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (grace-period=1 verified)" \
+-            "zbuild_pg_kill with _lc_hook_pid and grace-period 1 not found in plugin_hook_call — grace period may be wrong"
++        assert_pass "[#1801/SPEC-10] plugin_hook_call has no hand-rolled kill -TERM/-KILL for stage dispatch"
+     fi
+ fi
+ 
+diff --git a/tests/unit/stage-timeout-precedence-test.sh b/tests/unit/stage-timeout-precedence-test.sh
+index 8dc238d9..173f5b06 100644
+--- a/tests/unit/stage-timeout-precedence-test.sh
++++ b/tests/unit/stage-timeout-precedence-test.sh
+@@ -159,44 +159,53 @@ assert_eq "[#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from sta
+ # no sleep is spawned and the log is empty → FAIL. On post-change code the
+ # watchdog fires `sleep 5400` → the log contains "5400" → PASS.
+ #
+-# Timing: the watchdog and hook both start concurrently.  If zbuild_run()
+-# exits immediately, wait() returns before the watchdog gets to run sleep 5400,
+-# and the watchdog is killed before it can log its argument.  To avoid this
+-# race a FIFO rendezvous is used: the fake sleep logs "5400" and then writes
+-# one byte to the FIFO; zbuild_run() blocks reading the FIFO.  This guarantees
+-# "5400" is in the log before the hook exits and before the watchdog is killed.
++# Timing approach: the fake sleep binary delegates small-duration calls
++# (< 100 s) to the real /usr/bin/sleep or /bin/sleep and logs them; for
++# large values (≥ 100 s, i.e. the 5400 s watchdog timer) it logs and exits
++# immediately.  zbuild_run calls sleep 1 via the fake binary, which invokes
++# the real sleep for 1 second.  During that 1 second the watchdog's
++# "sleep 5400" call is intercepted and "5400" is logged immediately.  By
++# the time the hook exits (1 real second later), "5400" is already in the
++# log — there is no race between the watchdog logging and zbuild_pg_kill
++# firing.  Delegating the short sleep to the real binary also avoids the
++# original race where the hook finished before the watchdog got to exec.
+ print_test_section "[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call"
+ 
+ _spec3_bin="$TEST_TEMP_DIR/spec3-fakebin"
+ _spec3_log="$TEST_TEMP_DIR/spec3-sleep-log.txt"
+-_spec3_fifo="$TEST_TEMP_DIR/spec3-rendezvous"
+-rm -f "$_spec3_log" "$_spec3_fifo" 2>/dev/null || true
++rm -f "$_spec3_log" 2>/dev/null || true
+ mkdir -p "$_spec3_bin"
+-mkfifo "$_spec3_fifo" 2>/dev/null || true
+ 
+-# Fake sleep: logs its first arg; when arg is 5400 (watchdog timer) also
+-# signals the hook via the FIFO so the hook can exit.  The log write is
+-# unconditional and happens BEFORE the FIFO write — "5400" is therefore
+-# always in the log even if the FIFO signal races with watchdog cleanup.
++# Fake sleep: logs its first argument, then for short durations (< 100 s)
++# delegates to the real sleep binary so the hook stays alive long enough for
++# the watchdog's "sleep 5400" call to be intercepted and logged.
++# For large durations (the 5400 s watchdog timer), it exits immediately.
++# Using absolute paths (/usr/bin/sleep, /bin/sleep) avoids re-entering this
++# wrapper when calling the real binary.
+ cat > "$_spec3_bin/sleep" <<FAKESLEEP
+ #!/bin/bash
+ printf '%s\n' "\$1" >> "$_spec3_log"
+-[[ "\$1" == "5400" ]] && printf 'go' > "$_spec3_fifo" 2>/dev/null || true
++if [[ "\$1" =~ ^[0-9]+$ ]] && (( \$1 < 100 )); then
++    for _rsleep in /usr/bin/sleep /bin/sleep; do
++        [[ -x "\$_rsleep" ]] && exec "\$_rsleep" "\$@"
++    done
++fi
+ exit 0
+ FAKESLEEP
+ chmod +x "$_spec3_bin/sleep"
+ 
+-# Mock plugin: zbuild_run blocks on the FIFO rendezvous (3 s safety timeout).
+-# Without this wait the hook exits before the watchdog starts sleep 5400 and
+-# the watchdog is killed before it can log its argument — the race this FIFO
+-# eliminates.
++# Mock plugin: zbuild_run calls sleep 1 via the fake binary.  The fake
++# binary delegates small sleeps (< 100 s) to the real /usr/bin/sleep, so
++# the hook is genuinely held alive for 1 real second.  During that window
++# the watchdog's "sleep 5400" is intercepted and "5400" is written to the
++# log — no race between the log write and zbuild_pg_kill firing.
+ _spec3_plugin="$TEST_TEMP_DIR/spec3-plugin"
+ mkdir -p "$_spec3_plugin"
+-# shellcheck disable=SC2154 # $TEST_TEMP_DIR expands here, not inside the heredoc
+-cat > "$_spec3_plugin/plugin.sh" <<PLUGIN
++cat > "$_spec3_plugin/plugin.sh" <<'PLUGIN'
+ zbuild_run() {
+-    # Wait for the watchdog to signal via FIFO (or give up after 3 s).
+-    read -r -t 3 _sig < "$_spec3_fifo" 2>/dev/null || true
++    # Call sleep 1; the fake binary delegates to real sleep for durations
++    # < 100 s, holding the hook alive while the watchdog logs "5400".
++    sleep 1
+ }
+ PLUGIN
+ cat > "$_spec3_plugin/manifest.yaml" <<'MANIFEST'
+@@ -211,7 +220,7 @@ _spec3_state="$TEST_TEMP_DIR/spec3-state.json"
+ printf '{"pipeline_status":"running"}' > "$_spec3_state"
+ 
+ # Run plugin_hook_call in a clean subshell:
+-# - PATH prepended with our fake sleep
++# - PATH prepended with our fake sleep so the watchdog calls OUR binary
+ # - ZBUILD_STAGE_TIMEOUT_S unset (no tier-2 value)
+ # - No _TPL_STAGE_TIMEOUT_S_spec3isolation (no tier-1 value)
+ # The watchdog should resolve to the 5400 s tier-3 default.
+diff --git a/tests/unit/stage-timeout-process-group-test.sh b/tests/unit/stage-timeout-process-group-test.sh
+index 5a0ce7d8..505ac602 100644
+--- a/tests/unit/stage-timeout-process-group-test.sh
++++ b/tests/unit/stage-timeout-process-group-test.sh
+@@ -110,10 +110,11 @@ fi
+ 
+ # ─── [#1801/SPEC-2] TERM trap is in the run-hook branch, not at function scope ─
+ # SPEC-2: "plugin_hook_call's run-hook branch has a TERM trap ... that kills the
+-# inner hook group and watchdog and exits with status 143 when plugin_hook_call is
++# inner hook group and watchdog and exits with status 1 when plugin_hook_call is
+ # externally TERMed, so the hook's children are not orphaned"
+ # A trap at function scope would catch TERM for ALL hook types (cleanup, etc.)
+ # which is wrong; the trap must be confined to the run-hook branch only.
++# ADR-054 §4: plugin_hook_call may only return {0,1}; exit 143 violates this.
+ print_test_section "[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)"
+ 
+ if [[ -n "$_phc_body" ]]; then
+@@ -141,12 +142,34 @@ if [[ -n "$_phc_body" ]]; then
+                 "no 'trap ... TERM' found in run-hook branch — a function-scope trap would affect cleanup hooks"
+         fi
+ 
+-        # The TERM trap must exit with status 143 (128 + SIGTERM=15).
+-        if grep -q 'exit 143' <<< "$_run_branch"; then
+-            assert_pass "[#1801/SPEC-2] TERM trap in run-hook branch exits with status 143"
++        # ADR-054 §4: plugin_hook_call returns only {0,1}.  SPEC-2 requires
++        # "exits with status 1 when externally TERMed" — this demands a POSITIVE
++        # check that 'exit 1' IS in the TERM trap body, not merely that 143 is
++        # absent.  A trap with exit 2 or no exit passes the 143-absence check
++        # but fails this positive one.
++        #
++        # awk tracks entry into each trap block and records whether exit 1
++        # (followed by non-digit or end of line) appears before the ' TERM'
++        # terminator; it resets per trap so exit 1 in a different trap (e.g.
++        # EXIT) is not counted.
++        #
++        # Pre-change (no trap)     → 'trap.*TERM' check above fires assert_fail;
++        #                            awk also returns found=0 → assert_fail ✓
++        # Wrong: exit 143/exit 2   → exit 1([^0-9]|$) won't match → assert_fail ✓
++        # Correct: exit 1          → matches → found=1 → assert_pass ✓
++        _trap_has_exit1=0
++        _trap_has_exit1="$(awk '
++            /^[[:space:]]*trap[[:space:]]/ && !/^[[:space:]]*#/ { in_t=1; te1=0 }
++            in_t && (/exit 1[^0-9]/ || /exit 1$/) { te1=1 }
++            in_t && / TERM/ { if (te1) found=1; in_t=0 }
++            END { print found+0 }
++        ' <<< "$_run_branch" 2>/dev/null || echo 0)"
++
++        if [[ "$_trap_has_exit1" -eq 1 ]]; then
++            assert_pass "[#1801/SPEC-2] TERM trap exits with status 1 (positive: 'exit 1' in trap body, ADR-054 §4 {0,1})"
+         else
+-            assert_fail "[#1801/SPEC-2] TERM trap in run-hook branch exits with status 143" \
+-                "'exit 143' not found in run-hook branch — the TERM trap must exit 143 (128+SIGTERM)"
++            assert_fail "[#1801/SPEC-2] TERM trap exits with status 1 (positive: 'exit 1' in trap body, ADR-054 §4 {0,1})" \
++                "'exit 1' not found in the TERM trap body — wrong exit code (e.g. exit 143, exit 2) or missing exit violates SPEC-2 and ADR-054 §4 {0,1}"
+         fi
+     fi
+ fi
