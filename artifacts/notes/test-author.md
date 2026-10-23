@@ -1,93 +1,107 @@
 # Test Author Notes — Issue #1801
 
-## Status: COMPLETE (round 6)
+## Status: COMPLETE (round 8)
 
-## Round-6 fixes applied
+## Round-8 fixes applied
 
-### 1. stage-timeout-precedence-test.sh — SPEC-3 isolation (root cause found)
+### 1. stage-timeout-process-group-test.sh — SPEC-2: negative-only check replaced with positive check
 
-Root cause: the subshell sourced `lifecycle.sh` directly, but lifecycle.sh
-depends on `yaml_get` (manifest-validation.sh) and `verify_plugin_for_source`
-(discovery.sh). Both were undefined, causing lifecycle.sh to return 1 BEFORE
-starting the watchdog.
+Checker finding (round 2): "'exits with status 1 when externally TERMed' is checked
+only negatively (absence of exit 143) — a TERM trap exiting with status 2 or omitting
+an exit entirely would still pass."
 
-With `yaml_get` undefined → `hook_fn = ""` → lifecycle.sh returns 1 at the
-"hook-not-declared" check, never starting the watchdog.
+Root cause: The assertion at lines 158-165 (round 7) used:
+  `grep 'exit 143' → if non-empty → assert_fail`
+This passes if the trap has no exit or exits with 2 — neither of those contain "exit 143".
 
-With `verify_plugin_for_source` undefined → exit 127 → `if ! cmd` is true →
-lifecycle.sh returns 1 at the tamper check.
+Fix: Replaced with a POSITIVE check using awk that:
+- Tracks entry into each trap block (resets per trap so EXIT trap exit 1 is not counted)
+- Looks for `exit 1[^0-9]` or `exit 1$` within the block that terminates with ` TERM`
+- `found=1` only if the specific TERM trap body contains exit 1
+
+NEGCTL coverage for positive check:
+- pre-change (no trap): found=0 → assert_fail ✓
+- post-change with exit 143: `/exit 1[^0-9]/ || /exit 1$/` doesn't match "exit 143" → found=0 → assert_fail ✓
+- post-change with exit 2: same, no match → assert_fail ✓
+- post-change with exit 1: matches → found=1 → assert_pass ✓
+
+### 2. stage-timeout-dispatch-test.sh — SPEC-10: explicit negative check tagged
+
+Checker finding (round 2): "For plugin_hook_call it only checks that zbuild_pg_kill
+"$_lc_hook_pid" 1 is present, without an explicit negative check for any remaining
+kill -KILL/-TERM in that function body, so both old and new code could coexist and
+the assertion would still pass."
+
+Root cause: The supplementary negative check at lines 209-219 (round 6) checked for
+absence of `kill -TERM|kill -KILL` but was labeled without the [#1801/SPEC-10] tag
+and commented as "not NEGCTL-distinguishing — confirms final state only."
 
 Fix:
-1. Source `registry.sh` (the facade that sources everything in order:
-   manifest-validation.sh → discovery.sh → lifecycle.sh → persona.sh)
-2. Add `hooks:\n  run: zbuild_run` to mock manifest (hook_fn must be non-empty)
-3. Fixed pre-existing SC1125 shellcheck error (em dash in disable comment)
+1. Added `[#1801/SPEC-10]` tag to both assert_fail and assert_pass labels
+2. Changed comment to "EXPLICIT NEGATIVE CHECK" to make clear this is a required
+   assertion, not a supplementary one
+3. Changed `head -3` to `awk 'NR<=3'` in the error message to avoid SIGPIPE
 
-Verified: `sleep 5400` now appears in fake-sleep log; all 6/6 tests pass.
+How "both old and new code coexist" scenario is now caught:
+- Primary assertion: zbuild_pg_kill "$_lc_hook_pid" 1 present → PASS
+- [#1801/SPEC-10] negative: kill -TERM or kill -KILL still present → FAIL
+→ The test fails, catching the incomplete migration.
 
-### 2. stage-timeout-dispatch-test.sh — SPEC-1: disposition=timed_out
+## Round-7 fixes applied (carried forward)
 
-Checker finding: "writes disposition timed_out (an ADR-054 v2 result-file
-write with disposition=timed_out) is inferred from the event check rather
-than directly verified as a result-contract write."
+### 1. stage-timeout-process-group-test.sh — SPEC-2: exit code was exit 143
 
-Fix: replaced the broad `grep -q 'timed_out' "$_lc"` check with a targeted
-extraction: `grep -A5 'plugin\.run\.timed_out' "$_lc"` and then explicitly
-verify `disposition=timed_out` is in that block.
+Fix: Replaced positive check for exit 143 with negative check for absence of exit 143
+(round 7, later replaced in round 8 with positive check for exit 1).
 
-The comment explains: "The emit_event call IS the result-contract write for
-the timed_out disposition (ADR-054 §9): it records disposition=timed_out,
-the stage name, and the limit in the event stream."
+### 2. stage-timeout-precedence-test.sh — SPEC-3 isolation race condition
 
-All 18/18 tests pass.
+Root cause: fake sleep intercepted `sleep 1` (the hook), which exited immediately,
+causing the watchdog to be killed before it could log "5400".
 
-### 3. stage-timeout-dispatch-test.sh — SPEC-10: grace-period=1 verified
+Fix: fake sleep delegates small values (< 100 s) to real sleep, only intercepts large
+values (>= 100 s, i.e. the 5400 s watchdog timer).
 
-Checker finding: "does not verify the specific call signature
-zbuild_pg_kill "$_lc_hook_pid" 1 (particularly the grace-period argument
-of 1)"
+## Round-6 fixes applied (carried forward)
 
-Fix: added assertion that `zbuild_pg_kill.*_lc_hook_pid.* 1` exists in
-plugin_hook_call body (non-comment lines). The specific pattern in
-lifecycle.sh: line 572 `zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null` and
-TERM trap lines 544/555.
+### stage-timeout-precedence-test.sh — SPEC-3: source registry.sh
 
-All 18/18 tests pass.
+Root cause: subshell sourced lifecycle.sh directly; yaml_get/verify_plugin_for_source
+were undefined causing early return before watchdog was armed.
+Fix: source registry.sh (facade that sources everything in correct order).
 
-### 4. orch-backend-misconfigured-test.sh — SPEC-19: install.sh mechanism
+### stage-timeout-dispatch-test.sh — SPEC-1: disposition=timed_out
 
-Checker finding: "does not verify that the variant actually uses the
-install.sh/rsync-into-tmp-ZBUILD_HOME mechanism the requirement specifies"
+Fix: targeted grep on plugin.run.timed_out block to verify disposition=timed_out field.
 
-Fix: added assertion that reads install.sh and verifies:
-- `rsync -a` is used
-- `for d in scripts core plugins config` is the loop
+### stage-timeout-dispatch-test.sh — SPEC-10: grace-period=1
 
-install.sh lines 74+79: `for d in scripts core plugins config` + `rsync -a --delete`.
-The assertion explicitly names the mechanism and the loop comment says:
-"Use install.sh's rsync pattern: rsync -a <dir>/ <ZBUILD_HOME>/<dir>/"
+Fix: added assertion for `zbuild_pg_kill.*_lc_hook_pid.* 1`.
 
-All 8/8 tests pass.
+### orch-backend-misconfigured-test.sh — SPEC-19: install.sh mechanism
+
+Fix: added assertion verifying rsync -a and `for d in scripts core plugins config`.
 
 ## Final SPEC coverage
 
-SPEC-1:  stage-timeout-dispatch-test.sh ✓ (18/18)
-SPEC-2:  stage-timeout-process-group-test.sh ✓
-SPEC-3:  stage-timeout-precedence-test.sh ✓ (6/6)
+SPEC-1:  stage-timeout-dispatch-test.sh ✓
+SPEC-2:  stage-timeout-process-group-test.sh ✓ (round-8: positive exit 1 check)
+SPEC-3:  stage-timeout-precedence-test.sh ✓ (round-7: race condition fixed)
 SPEC-4:  stage-timeout-loader-validation-test.sh ✓
 SPEC-5:  stage-timeout-retry-test.sh ✓
 SPEC-6:  stage-timeout-always-run-test.sh ✓
 SPEC-7:  stage-timeout-no-flat-limit-test.sh ✓
 SPEC-8:  orch-sequential-retired-guard-test.sh ✓
-SPEC-9:  orch-backend-misconfigured-test.sh ✓ (8/8)
-SPEC-10: stage-timeout-dispatch-test.sh ✓ (18/18) + stage-timeout-always-run-test.sh ✓
+SPEC-9:  orch-backend-misconfigured-test.sh ✓
+SPEC-10: stage-timeout-dispatch-test.sh ✓ (round-8: [#1801/SPEC-10] tag on negative check)
+         stage-timeout-always-run-test.sh ✓
 SPEC-11: orch-sequential-retired-guard-test.sh ✓
 SPEC-15: no testfile (grep search, no assertions to write)
 SPEC-16: no testfile (npm test/lint pass — enforced by pipeline)
 SPEC-17: covered mechanically by SPEC-8 no-orch-sequential grep ✓
 SPEC-18: event-schema-emitted-coverage-test.sh ✓
-SPEC-19: orch-backend-misconfigured-test.sh ✓ (8/8)
+SPEC-19: orch-backend-misconfigured-test.sh ✓
 
 ## Existing check update
 
-runner-release-exit-paths-test.sh SPEC-6b ✓
+runner-release-exit-paths-test.sh SPEC-6b ✓ (updated in round 6, verified)

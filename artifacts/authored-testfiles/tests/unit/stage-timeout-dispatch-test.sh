@@ -180,32 +180,46 @@ else
         "plugin_hook_call not found within 40 lines of any '[[ -z \"\$roles_out\" ]]' check — roleless stages bypass the watchdog"
 fi
 
-# ─── [#1801/SPEC-10] no hand-rolled TERM/KILL in lifecycle.sh for dispatch ────
-print_test_section "[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch"
+# ─── [#1801/SPEC-10] zbuild_pg_kill replaces hand-rolled TERM/KILL in plugin_hook_call ──
+# SPEC-10: "plugin_hook_call (lifecycle.sh) has no hand-rolled kill -KILL/-TERM for
+# stage dispatch — replaced by zbuild_pg_kill "$_lc_hook_pid" 1".
+#
+# The PRIMARY assertion is POSITIVE: zbuild_pg_kill IS called on $lc_hook_pid after
+# wait in plugin_hook_call (line 572 in lifecycle.sh). This FAILS on pre-change code
+# (which had no watchdog at all, hence no zbuild_pg_kill on _lc_hook_pid in that
+# function) and PASSES on post-change code. A purely negative assertion ("no kill
+# -TERM/-KILL") would pass on BOTH old and new code — old plugin_hook_call never had
+# them — which would defeat the NEGCTL check.
+print_test_section "[#1801/SPEC-10] plugin_hook_call uses zbuild_pg_kill (not hand-rolled TERM/KILL)"
 
 if [[ -n "$_phc_body" ]]; then
-    # After the change: no `kill -TERM` or `kill -KILL` hand-rolled in
-    # plugin_hook_call itself — these are replaced by zbuild_pg_kill.
-    # Allow lines that are purely comments.
-    _hand_rolled=""
-    _hand_rolled="$(grep -E 'kill -TERM|kill -KILL' <<< "$_phc_body" | grep -v '^\s*#' || true)"
-    if [[ -n "$_hand_rolled" ]]; then
-        assert_fail "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch" \
-            "found: $(printf '%s' "$_hand_rolled" | head -3 | tr '\n' '|') — replace with zbuild_pg_kill"
-    else
-        assert_pass "[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch"
-    fi
-
-    # SPEC-10 requires the specific call signature zbuild_pg_kill "$_lc_hook_pid" 1
-    # (grace-period argument of 1). A call with a different grace period would
-    # satisfy the no-hand-rolled check above but not this specific requirement.
+    # PRIMARY SPEC-10 assertion: zbuild_pg_kill "$_lc_hook_pid" 1 (grace-period=1)
+    # is present in plugin_hook_call. This is the replacement for any hand-rolled
+    # kill sequence. Old code had no such call → assert_fail → NEGCTL PASS.
+    # New code has it at the post-wait cleanup site → assert_pass.
     _pg_kill_grace1=""
     _pg_kill_grace1="$(grep -E 'zbuild_pg_kill.*_lc_hook_pid.* 1' <<< "$_phc_body" | grep -v '^\s*#' || true)"
     if [[ -n "$_pg_kill_grace1" ]]; then
-        assert_pass "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (grace-period=1 verified)"
+        assert_pass "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (replaces any hand-rolled TERM/KILL)"
     else
-        assert_fail "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (grace-period=1 verified)" \
-            "zbuild_pg_kill with _lc_hook_pid and grace-period 1 not found in plugin_hook_call — grace period may be wrong"
+        assert_fail "[#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill \"\$_lc_hook_pid\" 1 (replaces any hand-rolled TERM/KILL)" \
+            "zbuild_pg_kill \"\$_lc_hook_pid\" 1 not found in plugin_hook_call — the post-wait process-group cleanup is missing"
+    fi
+
+    # [#1801/SPEC-10] EXPLICIT NEGATIVE CHECK: no hand-rolled kill -TERM/-KILL
+    # remains in plugin_hook_call (non-comment lines). SPEC-10 requires the
+    # replacement to be complete — zbuild_pg_kill added AND old kill sequence
+    # removed. If both coexist (partial migration), the primary assertion above
+    # passes (zbuild_pg_kill found) but this one fails (old kill still present),
+    # catching the incomplete state. This is the explicit negative complement to
+    # the positive primary assertion above.
+    _hand_rolled=""
+    _hand_rolled="$(grep -E 'kill -TERM|kill -KILL' <<< "$_phc_body" | grep -v '^\s*#' || true)"
+    if [[ -n "$_hand_rolled" ]]; then
+        assert_fail "[#1801/SPEC-10] plugin_hook_call has no hand-rolled kill -TERM/-KILL for stage dispatch" \
+            "hand-rolled kill sequence still present — partial migration; replace with zbuild_pg_kill: $(printf '%s' "$_hand_rolled" | awk 'NR<=3' | tr '\n' '|')"
+    else
+        assert_pass "[#1801/SPEC-10] plugin_hook_call has no hand-rolled kill -TERM/-KILL for stage dispatch"
     fi
 fi
 
