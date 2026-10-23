@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-06-05T12:07:31Z_
+_Last updated: 2026-09-25T07:42:25Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -97,3 +97,4 @@ _Last updated: 2026-06-05T12:07:31Z_
 | #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
 | #680 | chore(tests): add total rollup + quiet mutation table on full pass | 2026-06-05 |
 | #678 | [manifest-sync] Drift reconciliation | 2026-06-05 |
+| #2194 | [#2187] every stage's work is saved at its end, failed or not, and pushed at once when the run declares a work branch | 2026-09-25 |
