@@ -68,16 +68,18 @@ Two constraints shaped where it lives:
    they carry one, else the latest open row for that stage name (`stage.fail`
    and the cycle-unit `stage.complete` fire after the label is unset).
    `cycle.iteration.reused` collapses to one row per iteration. A row that
-   never closes keeps its start and its inputs — that is the row a killed
-   stage leaves behind.
+   never closes keeps its start — that is the row a killed stage leaves
+   behind.
 
    ```
    **6.1.4 test** · iter 1 · 12:20:14Z → 13:21:47Z (61m33s) · **fail** — 686/689: review-lens-test, lint, engine-isolation TIMEOUT
-   **6.1.3 build** · iter 2 · 13:35:01Z → running · inputs: plan, design · 16 stage summaries (4 RESOLVE)
+   **6.1.3 build** · iter 2 · 13:35:01Z → running · 16 stage summaries (4 RESOLVE)
    ```
 
-   "What is about to happen" = the input artifact names plus the
-   `prompt.summaries.injected` counts. "What just happened" = the first line
+   "What is about to happen" = the `prompt.summaries.injected` counts. A
+   running row names no inputs (amended 2026-10-23): every stage gets every
+   earlier stage's latest output (ADR-055), so the list was the same long
+   string on every row. "What just happened" = the first line
    of the stage's own summary, cut at 200 chars. Prompt bodies stay in
    `stage-io/`.
 
@@ -189,6 +191,7 @@ such events (stage-less, the largest share of the run's event volume) and 1,476 
 - §2 → `tests/unit/run-status-comment-render-test.sh` SPEC-8 (no emit call, no event-bus source); `tests/unit/run-status-comment-quiet-test.sh` Q1 (a render with the real redactor adds nothing to `events.jsonl`), Q3 (a live sidecar with nothing new sends no PATCH and its events file does not grow)
 - §3 → `tests/unit/run-status-comment-gh-test.sh` (POST once, PATCH after, the id persisted and rediscovered); `tests/unit/run-status-comment-quiet-test.sh` Q2 (an unchanged body is not sent)
 - §4 → `tests/unit/run-status-comment-render-test.sh`; `tests/unit/run-status-comment-loop-test.sh`
+- §4 amendment 2026-10-23 (a running row names no inputs) → `tests/unit/run-status-comment-render-test.sh` SPEC-3, SPEC-5
 - §5 → `tests/unit/event-bus-seq-envelope-test.sh`
 - §6 → `tests/unit/run-status-comment-render-test.sh` SPEC-6 (the bound), SPEC-7 (redaction); `tests/unit/run-status-comment-gh-test.sh` (every failure is advisory)
 - §7 → `tests/unit/run-status-comment-gh-test.sh`; `tests/unit/cli-status-comment-test.sh`

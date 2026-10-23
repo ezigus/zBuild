@@ -248,8 +248,6 @@ rsc_render_row() {
     if [[ -z "$verdict" ]]; then
         line="**$(_rsc_clock "$started") → running** · **${seq} ${stage}**"
         [[ -n "$iter" ]] && line+=" · iter ${iter}"
-        local inputs; inputs="$(rsc_row_inputs_line "$state_dir" "$stage")"
-        [[ -n "$inputs" ]] && line+=" · inputs: ${inputs}"
         [[ -n "$summaries" ]] && line+=" · previous work from ${summaries} stage(s) (${resolve} failing)"
     else
         [[ -z "$ended" ]] && ended="$started"
