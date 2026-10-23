@@ -111,12 +111,14 @@ assert_eq "[SPEC-3] linear row: no iter, <1s for equal timestamps" \
     '**8:00 AM ET → 8:00 AM ET (<1s)** · **1 intake** · **pass** — adopted branch zbuild/issue-42' \
     "$intake_row"
 test_row="$(row_of '**6.1.2 test**')"
-assert_eq "[SPEC-3] open row: start, running, inputs, injected summaries count" \
-    '**9:22 AM ET → running** · **6.1.2 test** · iter 1 · inputs: diff, plan · previous work from 3 stage(s) (0 failing)' \
+# A running row names no inputs: every stage gets every earlier stage's latest
+# output, so the list said the same thing on every row.
+assert_eq "[SPEC-3] open row: start, running, injected summaries count, no inputs" \
+    '**9:22 AM ET → running** · **6.1.2 test** · iter 1 · previous work from 3 stage(s) (0 failing)' \
     "$test_row"
 deploy_row="$(row_of '**9 deploy**')"
-assert_eq "[SPEC-3] open row without an injection: inputs only" \
-    '**10:11 AM ET → running** · **9 deploy** · inputs: plan, design' \
+assert_eq "[SPEC-3] open row without an injection: start and running only" \
+    '**10:11 AM ET → running** · **9 deploy**' \
     "$deploy_row"
 review_row="$(row_of '**7 review**')"
 assert_eq "[SPEC-3] a seq-less stage.fail closes the open row for that stage" \
@@ -146,8 +148,8 @@ assert_contains "[SPEC-5] header carries the abort reason in words, and the deta
     "stopped: the model's usage limit was reached — LLM rate-limited — resets 12pm (UTC)"
 assert_eq "[SPEC-5] ...not the reason code" "0" "$(grep -c 'llm_rate_limited' <<< "$body" || true)"
 assert_eq "[SPEC-5] no current stage once terminal" "0" "$(grep -c -F 'current: **' <<< "$body")"
-assert_contains "[SPEC-5] the row killed mid-way keeps its start and inputs" "$body" \
-    '**10:11 AM ET → running** · **9 deploy** · inputs: plan, design'
+assert_eq "[SPEC-5] the row killed mid-way keeps its start" '**10:11 AM ET → running** · **9 deploy**' \
+    "$(row_of '**9 deploy**')"
 
 # ─── SPEC-6: the 60 KB bound ────────────────────────────────────────────────
 BSTATE="$TEST_TEMP_DIR/bound"; BEV="$BSTATE/events.jsonl"
