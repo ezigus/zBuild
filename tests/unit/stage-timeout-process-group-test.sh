@@ -110,10 +110,11 @@ fi
 
 # ─── [#1801/SPEC-2] TERM trap is in the run-hook branch, not at function scope ─
 # SPEC-2: "plugin_hook_call's run-hook branch has a TERM trap ... that kills the
-# inner hook group and watchdog and exits with status 143 when plugin_hook_call is
+# inner hook group and watchdog and exits with status 1 when plugin_hook_call is
 # externally TERMed, so the hook's children are not orphaned"
 # A trap at function scope would catch TERM for ALL hook types (cleanup, etc.)
 # which is wrong; the trap must be confined to the run-hook branch only.
+# ADR-054 §4: plugin_hook_call may only return {0,1}; exit 143 violates this.
 print_test_section "[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)"
 
 if [[ -n "$_phc_body" ]]; then
@@ -141,12 +142,34 @@ if [[ -n "$_phc_body" ]]; then
                 "no 'trap ... TERM' found in run-hook branch — a function-scope trap would affect cleanup hooks"
         fi
 
-        # The TERM trap must exit with status 143 (128 + SIGTERM=15).
-        if grep -q 'exit 143' <<< "$_run_branch"; then
-            assert_pass "[#1801/SPEC-2] TERM trap in run-hook branch exits with status 143"
+        # ADR-054 §4: plugin_hook_call returns only {0,1}.  SPEC-2 requires
+        # "exits with status 1 when externally TERMed" — this demands a POSITIVE
+        # check that 'exit 1' IS in the TERM trap body, not merely that 143 is
+        # absent.  A trap with exit 2 or no exit passes the 143-absence check
+        # but fails this positive one.
+        #
+        # awk tracks entry into each trap block and records whether exit 1
+        # (followed by non-digit or end of line) appears before the ' TERM'
+        # terminator; it resets per trap so exit 1 in a different trap (e.g.
+        # EXIT) is not counted.
+        #
+        # Pre-change (no trap)     → 'trap.*TERM' check above fires assert_fail;
+        #                            awk also returns found=0 → assert_fail ✓
+        # Wrong: exit 143/exit 2   → exit 1([^0-9]|$) won't match → assert_fail ✓
+        # Correct: exit 1          → matches → found=1 → assert_pass ✓
+        _trap_has_exit1=0
+        _trap_has_exit1="$(awk '
+            /^[[:space:]]*trap[[:space:]]/ && !/^[[:space:]]*#/ { in_t=1; te1=0 }
+            in_t && (/exit 1[^0-9]/ || /exit 1$/) { te1=1 }
+            in_t && / TERM/ { if (te1) found=1; in_t=0 }
+            END { print found+0 }
+        ' <<< "$_run_branch" 2>/dev/null || echo 0)"
+
+        if [[ "$_trap_has_exit1" -eq 1 ]]; then
+            assert_pass "[#1801/SPEC-2] TERM trap exits with status 1 (positive: 'exit 1' in trap body, ADR-054 §4 {0,1})"
         else
-            assert_fail "[#1801/SPEC-2] TERM trap in run-hook branch exits with status 143" \
-                "'exit 143' not found in run-hook branch — the TERM trap must exit 143 (128+SIGTERM)"
+            assert_fail "[#1801/SPEC-2] TERM trap exits with status 1 (positive: 'exit 1' in trap body, ADR-054 §4 {0,1})" \
+                "'exit 1' not found in the TERM trap body — wrong exit code (e.g. exit 143, exit 2) or missing exit violates SPEC-2 and ADR-054 §4 {0,1}"
         fi
     fi
 fi

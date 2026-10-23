@@ -159,44 +159,53 @@ assert_eq "[#1801/SPEC-3] load_template sets _TPL_STAGE_TIMEOUT_S_gamma from sta
 # no sleep is spawned and the log is empty → FAIL. On post-change code the
 # watchdog fires `sleep 5400` → the log contains "5400" → PASS.
 #
-# Timing: the watchdog and hook both start concurrently.  If zbuild_run()
-# exits immediately, wait() returns before the watchdog gets to run sleep 5400,
-# and the watchdog is killed before it can log its argument.  To avoid this
-# race a FIFO rendezvous is used: the fake sleep logs "5400" and then writes
-# one byte to the FIFO; zbuild_run() blocks reading the FIFO.  This guarantees
-# "5400" is in the log before the hook exits and before the watchdog is killed.
+# Timing approach: the fake sleep binary delegates small-duration calls
+# (< 100 s) to the real /usr/bin/sleep or /bin/sleep and logs them; for
+# large values (≥ 100 s, i.e. the 5400 s watchdog timer) it logs and exits
+# immediately.  zbuild_run calls sleep 1 via the fake binary, which invokes
+# the real sleep for 1 second.  During that 1 second the watchdog's
+# "sleep 5400" call is intercepted and "5400" is logged immediately.  By
+# the time the hook exits (1 real second later), "5400" is already in the
+# log — there is no race between the watchdog logging and zbuild_pg_kill
+# firing.  Delegating the short sleep to the real binary also avoids the
+# original race where the hook finished before the watchdog got to exec.
 print_test_section "[#1801/SPEC-3] isolation: 5400 s default confirmed by running plugin_hook_call"
 
 _spec3_bin="$TEST_TEMP_DIR/spec3-fakebin"
 _spec3_log="$TEST_TEMP_DIR/spec3-sleep-log.txt"
-_spec3_fifo="$TEST_TEMP_DIR/spec3-rendezvous"
-rm -f "$_spec3_log" "$_spec3_fifo" 2>/dev/null || true
+rm -f "$_spec3_log" 2>/dev/null || true
 mkdir -p "$_spec3_bin"
-mkfifo "$_spec3_fifo" 2>/dev/null || true
 
-# Fake sleep: logs its first arg; when arg is 5400 (watchdog timer) also
-# signals the hook via the FIFO so the hook can exit.  The log write is
-# unconditional and happens BEFORE the FIFO write — "5400" is therefore
-# always in the log even if the FIFO signal races with watchdog cleanup.
+# Fake sleep: logs its first argument, then for short durations (< 100 s)
+# delegates to the real sleep binary so the hook stays alive long enough for
+# the watchdog's "sleep 5400" call to be intercepted and logged.
+# For large durations (the 5400 s watchdog timer), it exits immediately.
+# Using absolute paths (/usr/bin/sleep, /bin/sleep) avoids re-entering this
+# wrapper when calling the real binary.
 cat > "$_spec3_bin/sleep" <<FAKESLEEP
 #!/bin/bash
 printf '%s\n' "\$1" >> "$_spec3_log"
-[[ "\$1" == "5400" ]] && printf 'go' > "$_spec3_fifo" 2>/dev/null || true
+if [[ "\$1" =~ ^[0-9]+$ ]] && (( \$1 < 100 )); then
+    for _rsleep in /usr/bin/sleep /bin/sleep; do
+        [[ -x "\$_rsleep" ]] && exec "\$_rsleep" "\$@"
+    done
+fi
 exit 0
 FAKESLEEP
 chmod +x "$_spec3_bin/sleep"
 
-# Mock plugin: zbuild_run blocks on the FIFO rendezvous (3 s safety timeout).
-# Without this wait the hook exits before the watchdog starts sleep 5400 and
-# the watchdog is killed before it can log its argument — the race this FIFO
-# eliminates.
+# Mock plugin: zbuild_run calls sleep 1 via the fake binary.  The fake
+# binary delegates small sleeps (< 100 s) to the real /usr/bin/sleep, so
+# the hook is genuinely held alive for 1 real second.  During that window
+# the watchdog's "sleep 5400" is intercepted and "5400" is written to the
+# log — no race between the log write and zbuild_pg_kill firing.
 _spec3_plugin="$TEST_TEMP_DIR/spec3-plugin"
 mkdir -p "$_spec3_plugin"
-# shellcheck disable=SC2154 # $TEST_TEMP_DIR expands here, not inside the heredoc
-cat > "$_spec3_plugin/plugin.sh" <<PLUGIN
+cat > "$_spec3_plugin/plugin.sh" <<'PLUGIN'
 zbuild_run() {
-    # Wait for the watchdog to signal via FIFO (or give up after 3 s).
-    read -r -t 3 _sig < "$_spec3_fifo" 2>/dev/null || true
+    # Call sleep 1; the fake binary delegates to real sleep for durations
+    # < 100 s, holding the hook alive while the watchdog logs "5400".
+    sleep 1
 }
 PLUGIN
 cat > "$_spec3_plugin/manifest.yaml" <<'MANIFEST'
@@ -211,7 +220,7 @@ _spec3_state="$TEST_TEMP_DIR/spec3-state.json"
 printf '{"pipeline_status":"running"}' > "$_spec3_state"
 
 # Run plugin_hook_call in a clean subshell:
-# - PATH prepended with our fake sleep
+# - PATH prepended with our fake sleep so the watchdog calls OUR binary
 # - ZBUILD_STAGE_TIMEOUT_S unset (no tier-2 value)
 # - No _TPL_STAGE_TIMEOUT_S_spec3isolation (no tier-1 value)
 # The watchdog should resolve to the 5400 s tier-3 default.
