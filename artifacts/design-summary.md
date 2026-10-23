@@ -2,4 +2,4 @@
 
 - Design ran out of time before writing a design.
 
-There is no design yet.
+design.md is unchanged: it stays the last good design.
