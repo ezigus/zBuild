@@ -522,16 +522,17 @@ plugin_hook_call() {
         # when plugin_hook_call is externally TERMed.  Two cases:
         #
         #  a) Subshell (BASHPID ≠ $$): plugin_hook_call was backgrounded by
-        #     _runner_dispatch_always_run.  The trap exits with status 143,
+        #     _runner_dispatch_always_run.  The trap exits with status 1,
         #     unblocking the outer _runner_dispatch_always_run wait "$_ar_pid"
         #     (SPEC-6b: a hook child that ignores TERM must not outlive run).
+        #     ADR-054 §4: plugin_hook_call must return {0,1}; exit 1 complies.
         #
         #  b) Main-shell (BASHPID == $$): plugin_hook_call runs directly in
         #     the runner process (sequential / roleless dispatch).  We kill the
         #     hook group, then delegate to the runner's own signal handler
         #     (_runner_signal_trap TERM) so the pipeline abort path runs
-        #     normally (emits pipeline.aborted, exits 1).  The status is 143
-        #     when called outside the runner (e.g. standalone tests).
+        #     normally (emits pipeline.aborted, exits 1).  When called outside
+        #     the runner (e.g. standalone tests), the fallback exits with 1.
         local _lc_in_subshell=0
         [[ "$BASHPID" != "$$" ]] && _lc_in_subshell=1
         if (( _lc_in_subshell )); then
@@ -541,7 +542,7 @@ plugin_hook_call() {
             # (e.g. the sleep 0.1 loops inside zbuild_pg_kill).  Setting the
             # disposition to "ignore" at entry prevents a concurrent TERM from
             # starting a second instance of this body.
-            trap 'trap "" TERM; zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; exit 143' TERM
+            trap 'trap "" TERM; zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; exit 1' TERM
         else
             # shellcheck disable=SC2064
             # `trap "" TERM` FIRST: same re-entry guard as the subshell case.
@@ -552,7 +553,7 @@ plugin_hook_call() {
             # second TERM interrupts the zbuild_pg_kill sleep loops, re-enters
             # this trap body, and calls `exit 1` inside the EXIT trap's teardown,
             # aborting it before the release marker is written (SPEC-5 failure).
-            trap 'trap "" TERM; zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; declare -F _runner_signal_trap >/dev/null 2>&1 && _runner_signal_trap TERM || exit 143' TERM
+            trap 'trap "" TERM; zbuild_pg_kill "$_lc_hook_pid" 1 2>/dev/null || true; zbuild_pg_kill "$_lc_wd_pid" 1 2>/dev/null || true; declare -F _runner_signal_trap >/dev/null 2>&1 && _runner_signal_trap TERM || exit 1' TERM
         fi
         wait "$_lc_hook_pid" 2>/dev/null; rc=$?
         # Only clear the trap we installed; in the main-shell call path the
