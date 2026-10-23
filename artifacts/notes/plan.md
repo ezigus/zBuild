@@ -1,54 +1,54 @@
-# Plan stage notes — issue #1801 (iter-4)
+# Plan stage notes — issue #1801 (iter-5)
 
 ## What I read
 
-- iter-3/plan.json — 10-step plan (verdict: pass from iter-3 plan stage)
-- test-author: fail — 1 finding (SPEC-1 always_run route not individually asserted)
-- Build stage: timed_out (router_timeout), only 2 files changed in final run; iter-1-attempt-4 had 39 files
-- Test stage: fail — 3 failures (same as iter-3):
-  1. `flag-on: monitor mode ON in runner shell` (set -m leaks from plugin_hook_call)
-  2. `[SPEC-6b] a hook child that ignores TERM does not outlive the run`
-  3. `[#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch`
-- Issue-acceptance: fail — R-2, R-10, R-13 (same 3 test failures)
+- iter-4/plan.json — 10-step plan (verdict: pass from iter-4 plan stage)
+- issue-acceptance: fail — 5 findings, 2 NOT MET, 3 NOT SURE
 
-## New finding vs. current plan
+## New findings vs. current plan
 
-**test-author finding (new):** SPEC-1 in `stage-timeout-dispatch-test.sh` covers the
-always_run route via a file-level grep on `runner.sh` only. That grep passes whether or
-not `_runner_dispatch_always_run` specifically calls `plugin_hook_call`, so the route is
-not individually established.
+**Finding 1 — exit 143 in TERM trap (R-1/R-13 NOT MET):**
+The build stage introduced an `exit 143` in lifecycle.sh's TERM trap.
+This violates ADR-054 §4's {0,1} constraint and causes `dispatch-rc-guard-test` to fail.
+Step 4 names the kill path and removing the hand-rolled kill-KILL, but does not name this
+specific defect: the TERM trap must exit 1, not a SIGTERM-derived code.
+The fix belongs in Step 4: the watchdog writes the timed_out disposition and calls
+zbuild_pg_kill before returning; the TERM trap (if any remains) exits 1 and does not
+write a duplicate disposition. The watchdog is the owner of the exit path on timeout.
 
-Current Step 1 says: "verify the always_run and parallel-group dispatch routes reach the
-watchdog (SPEC-1)". The finding confirms the always_run gap is real — the step already
-names it. The description needs to be sharpened to state that the assertion must
-individually target `_runner_dispatch_always_run` (not rely on a file-level grep that
-passes for any call in runner.sh).
+**Finding 2 — 5400 s default not wired (R-3/R-13 NOT MET):**
+`stage-timeout-precedence-test`'s isolation variant (neither template nor env set) does
+not see `sleep 5400` in the fake-sleep log. This means `plugin_hook_call` is not reading
+the resolved stage_timeout_s from the getter that Step 3 introduces — the 5400 s default
+tier is parsed but never consumed.
+Step 4 says the watchdog "arms on the run hook only" but does not say it reads from the
+getter. The disconnection between Step 3 (parse/validate/expose) and Step 4 (read and arm)
+is the gap.
+Fix: Step 4 must explicitly state that the watchdog reads the resolved stage_timeout_s
+from the getter (including the fallback to 5400 s when neither template nor env is set).
 
-test-author did NOT flag the parallel-group route as a gap, so the open question about
-that route can be closed.
-
-## Remaining test failures
-
-All three failures are unchanged and map to Steps 4 and 5, which were not fully applied
-because the build was cut short at router_timeout:
-
-1. monitor-mode leak → Step 4 (scope set -m to plugin subshell)
-2. SPEC-10 hand-rolled kill -KILL in lifecycle.sh → Step 4 (remove, route through zbuild_pg_kill)
-3. SPEC-6b child ignoring TERM survives → Step 5 (replace watchdog TERM/KILL with zbuild_pg_kill)
+**R-10 uncertainty**: lifecycle.sh's broken state (exit 143) masks whether the
+hand-rolled kill-KILL is gone. Once the TERM trap is fixed, dispatch-rc-guard-test passes
+and SPEC-10 becomes verifiable. No new step needed — Step 4 already covers removing
+the hand-rolled kill.
 
 ## Plan changes
 
-- **Step 1**: tighten the always_run assertion description — the test must individually
-  verify the dispatch function rather than rely on a file-level grep that does not distinguish
-  the always_run path from any other call in runner.sh.
-- **Open questions**: drop the parallel-group route question (test-author found no gap there);
-  keep the SPEC-7 live-completion question (build was cut short before it could be verified).
+- **Step 4**: Add two explicit named items:
+  1. The TERM trap must not exit 143 (or any SIGTERM-derived code); the watchdog is the
+     sole owner of the timeout exit path and exits 1 after writing the timed_out disposition.
+  2. The watchdog reads the resolved stage_timeout_s from the getter (Step 3's output),
+     applying the 5400 s default when neither template value nor ZBUILD_STAGE_TIMEOUT_S is set.
 
-## Acceptance coverage check (unchanged from iter-3)
+No other steps need changing.
 
+## Acceptance coverage check (updated from iter-4)
+
+- exit 143 TERM trap → Step 4 (newly explicit)
+- 5400 s default not wired → Step 4 (newly explicit, connecting Step 3 getter to watchdog)
 - Hung run hook killed at limit, every route → Steps 3, 4, 5, 7
 - Whole process group dies → Steps 4, 5, 6
-- Precedence: template > env > 90 min, each tested → Step 3
+- Precedence: template > env > 5400 s, each tested → Step 3 (getter) + Step 4 (watchdog reads it)
 - Loader rejects invalid stage_timeout_s → Step 3
 - Retry and each map member get fresh timer → Step 4
 - simple.yaml carries measured values; always_run uses stage_timeout_s → Step 9
@@ -59,4 +59,10 @@ because the build was cut short at router_timeout:
 - ADR-054 §9, ADR-017, ADR-011 amended with Enforced-by entries → Step 2
 - npm test + lint green → all steps collectively
 
-## Plan: 10 steps — Step 1 description updated; one open question resolved
+## Open questions (unchanged)
+
+- SPEC-7 live-completion test: which mechanism besides the retired ZBUILD_ORCH_TIMEOUT
+  collect deadline could still fire within 300 s and kill the dispatch before
+  stage_timeout_s expires?
+
+## Plan: 10 steps — Step 4 description updated to name exit-143 and 5400 s default wiring
