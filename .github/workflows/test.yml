@@ -59,7 +59,7 @@ jobs:
         run: |
           sudo apt-get install -y shellcheck
           find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 \
-            | xargs -0 shellcheck -x --severity=warning
+            | xargs -0 -P 3 -n 90 shellcheck -x --severity=warning
         # -x matches `npm run lint` (#1682): follow `source` directives so a
         # sourced-only defect cannot pass CI and fail locally, or vice versa.
 

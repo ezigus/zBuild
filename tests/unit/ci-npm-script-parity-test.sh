@@ -14,6 +14,9 @@
 #                bug hid) is in the npm lint set
 # SPEC-3 GUARD   both sides pass shellcheck -x, so a sourced-only defect cannot
 #                pass one and fail the other
+# SPEC-4 CHANGE  npm's shellcheck runs in parallel batches (ADR-065: alone it
+#                took 102s on one core, 466s under the full suite's load), and a
+#                defect in any one batch still fails it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -116,8 +119,8 @@ fi
 
 # ─── SPEC-3: the -x flag, resolved deliberately rather than left divergent ────
 _npm_x=0; _ci_x=0
-grep -qE "xargs -0 shellcheck[^&|]*-x" "$PKG"      && _npm_x=1
-grep -qE "xargs -0 shellcheck[^&|]*-x" "$WORKFLOW" && _ci_x=1
+grep -qE "xargs -0( -[Pn] [0-9]+)* shellcheck[^&|]*-x" "$PKG"      && _npm_x=1
+grep -qE "xargs -0( -[Pn] [0-9]+)* shellcheck[^&|]*-x" "$WORKFLOW" && _ci_x=1
 if [[ "$_npm_x" -eq 1 && "$_ci_x" -eq 1 ]]; then
     assert_pass "[SPEC-3] both npm and CI shellcheck with -x (follow source directives)"
 else
@@ -125,5 +128,21 @@ else
         "npm_x=$_npm_x ci_x=$_ci_x"
 fi
 
+# ─── SPEC-4: parallel batches, and a failing batch fails the step ───────────
+_npm_xargs="$(grep -oE "xargs -0 [^&]*shellcheck [^&]*" "$PKG" | head -1 | sed 's/[[:space:]]*$//')"
+assert_contains "[SPEC-4] npm's shellcheck runs in parallel (xargs -P)" "$_npm_xargs" " -P "
+_sc_dir="$(mktemp -d "${TMPDIR:-/tmp}/sc-parity.XXXXXX")"
+for _i in 1 2 3 4 5 6; do printf '#!/usr/bin/env bash\necho ok\n' > "$_sc_dir/good$_i.sh"; done
+printf '#!/usr/bin/env bash\nx=$(( 1 + ))\nif [ "$x" = 1 ] then\n' > "$_sc_dir/zz-bad.sh"
+if [[ "$_npm_xargs" =~ ^xargs\ -0(\ -[Pn]\ [0-9]+)*\ shellcheck\ -x\ --severity=warning$ ]]; then
+    ( cd "$_sc_dir" && find . -name '*.sh' -print0 | sort -z | eval "$_npm_xargs" ) >/dev/null 2>&1; _sc_rc=$?
+    assert_eq "[SPEC-4] a defect in one batch fails the step" "1" "$(( _sc_rc != 0 ))"
+    ( cd "$_sc_dir" && rm -f zz-bad.sh && find . -name '*.sh' -print0 | eval "$_npm_xargs" ) >/dev/null 2>&1; _sc_rc=$?
+    assert_eq "[SPEC-4] …and clean files pass it" "0" "$_sc_rc"
+else
+    assert_fail "[SPEC-4] the shellcheck step has the expected shape" "$_npm_xargs"
+fi
+
+rm -rf "${_sc_dir:-/nonexistent}"
 print_test_results
 exit $((FAIL > 0))
