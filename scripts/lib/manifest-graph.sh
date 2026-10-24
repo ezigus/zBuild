@@ -323,19 +323,25 @@ manifest_graph_primary_output() {
 # present, still that id: one read, no walk); a miss is never memoised, because
 # test fixtures are created after the first lookup.
 declare -gA _MGRAPH_COLLECT_MEMO 2>/dev/null || true
-_mgraph_memo_file() {
+_mgraph_memo_file() { local _mmf; _mgraph_memo_file_v _mmf "$@" || return 1; printf '%s' "$_mmf"; }
+# The name is the root and stage made filename-safe by the shell (it was a
+# `printf | cksum` in a subshell on every lookup). A name cut to fit can only
+# make two roots share a file, and a hit is used only when it lies under the
+# root asked about and still carries the stage's id.
+_mgraph_memo_file_v() {   # <var> <root> <stage>
     [[ -n "${ZBUILD_STATE_DIR:-}" ]] || return 1
-    local k; k="$(printf '%s|%s' "$1" "$2" | cksum)"; k="${k%% *}"
-    printf '%s/runtime/mgraph-memo/%s-%s' "$ZBUILD_STATE_DIR" "$k" "$2"
+    local _mmfv_k="${2//[^A-Za-z0-9._-]/_}"
+    (( ${#_mmfv_k} > 150 )) && _mmfv_k="${_mmfv_k: -150}"
+    printf -v "$1" '%s/runtime/mgraph-memo/%s-%s' "$ZBUILD_STATE_DIR" "$_mmfv_k" "$3"
 }
 manifest_graph_collect() {
     local plugins_root="$1" stage_id="$2"
     local m key="${plugins_root}|${stage_id}" mf=""
-    mf="$(_mgraph_memo_file "$plugins_root" "$stage_id" 2>/dev/null)" || mf=""
+    _mgraph_memo_file_v mf "$plugins_root" "$stage_id" || mf=""
     m="${_MGRAPH_COLLECT_MEMO[$key]:-}"
     [[ -z "$m" && -n "$mf" && -f "$mf" ]] && m="$(cat "$mf" 2>/dev/null || true)"
     if [[ -n "$m" ]]; then
-        if [[ -f "$m" && "$(manifest_graph_get_stage_id "$m")" == "$stage_id" ]]; then
+        if [[ "$m" == "${plugins_root%/}"/* && -f "$m" && "$(manifest_graph_get_stage_id "$m")" == "$stage_id" ]]; then
             _MGRAPH_COLLECT_MEMO[$key]="$m"
             printf '%s\n' "$m"
             return 0

@@ -106,6 +106,22 @@ assert_eq "[SPEC-6] a role no manifest provides is a miss" "1|" "$_rcrn|$_prn"
 unset _TPL_STAGE_ROLES_bound_member
 unset -f awk
 
+# The memo file's name is built by the shell, not by `printf | cksum` in a
+# subshell on every lookup (ADR-065 §3).
+_CK="$TEST_TEMP_DIR/cksums"; : > "$_CK"
+cksum() { printf 'x\n' >> "$_CK"; command cksum "$@"; }
+_pm1="$(manifest_graph_collect "$PROOT" mg-n6)"; _pm2="$(manifest_graph_collect "$PROOT" mg-n6)"
+assert_eq "[SPEC-7] lookups name their memo file without cksum" "0|$PROOT/tool/mg-n6/manifest.yaml" "$(wc -l < "$_CK" | tr -d ' ')|$_pm2"
+unset -f cksum
+# Two roots whose names differ only by `/` vs `_` share a memo file name; a hit
+# from the other root is not served.
+mkdir -p "$TEST_TEMP_DIR/r_x/tool/mg-a" "$TEST_TEMP_DIR/r/x/tool/mg-a"
+printf 'id: mg-a\n' > "$TEST_TEMP_DIR/r_x/tool/mg-a/manifest.yaml"
+printf 'id: mg-a\n' > "$TEST_TEMP_DIR/r/x/tool/mg-a/manifest.yaml"
+_q1="$(manifest_graph_collect "$TEST_TEMP_DIR/r_x" mg-a)"; _q2="$(manifest_graph_collect "$TEST_TEMP_DIR/r/x" mg-a)"
+assert_eq "[SPEC-7] each root gets its own manifest even when the memo names collide" \
+    "$TEST_TEMP_DIR/r_x/tool/mg-a/manifest.yaml|$TEST_TEMP_DIR/r/x/tool/mg-a/manifest.yaml" "$_q1|$_q2"
+
 unset -f find
 cleanup_test_env
 print_test_results
