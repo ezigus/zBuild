@@ -1,0 +1,1 @@
+{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"recoverable","reason":"the acceptance check failed — SPEC-10: its test does not pass on the new code — the code or the test is wrong","failures":["not_passing_at_head:SPEC-10"],"data":{"findings":[{"n":1,"text":"SPEC-10: its test does not pass on the new code — the code or the test is wrong"}]}}

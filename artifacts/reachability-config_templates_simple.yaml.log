@@ -22,9 +22,9 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] roleless leaf: direct plugin_hook_call when template has no roles
 
-  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (grace-period=1 verified)
+  [38;2;0;212;255m[#1801/SPEC-10] plugin_hook_call uses zbuild_pg_kill (not hand-rolled TERM/KILL)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (replaces any hand-rolled TERM/KILL)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled kill -TERM/-KILL for stage dispatch
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
@@ -64,9 +64,9 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] roleless leaf: direct plugin_hook_call when template has no roles
 
-  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (grace-period=1 verified)
+  [38;2;0;212;255m[#1801/SPEC-10] plugin_hook_call uses zbuild_pg_kill (not hand-rolled TERM/KILL)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (replaces any hand-rolled TERM/KILL)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled kill -TERM/-KILL for stage dispatch
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
@@ -103,7 +103,7 @@
   [38;2;0;212;255m[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call
   [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap in run-hook branch exits with status 143
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap exits with status 1 (positive: 'exit 1' in trap body, ADR-054 §4 {0,1})
 
 [2m  ──────────────────────────────────────────[0m
 
@@ -130,7 +130,7 @@
   [38;2;0;212;255m[#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-2] run-hook branch is identifiable in plugin_hook_call
   [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap is inside the run-hook branch (not at function scope)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap in run-hook branch exits with status 143
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] TERM trap exits with status 1 (positive: 'exit 1' in trap body, ADR-054 §4 {0,1})
 
 [2m  ──────────────────────────────────────────[0m
 
@@ -167,7 +167,7 @@
   [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 36s)
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
   [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
 
   [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
@@ -211,7 +211,7 @@
   [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 34s)
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
   [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
 
   [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m

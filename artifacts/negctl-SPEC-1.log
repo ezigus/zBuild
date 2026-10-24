@@ -25,10 +25,10 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] roleless leaf: direct plugin_hook_call when template has no roles
 
-  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
-  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (grace-period=1 verified)
-    [2mzbuild_pg_kill with _lc_hook_pid and grace-period 1 not found in plugin_hook_call — grace period may be wrong[0m
+  [38;2;0;212;255m[#1801/SPEC-10] plugin_hook_call uses zbuild_pg_kill (not hand-rolled TERM/KILL)[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (replaces any hand-rolled TERM/KILL)
+    [2mzbuild_pg_kill "$_lc_hook_pid" 1 not found in plugin_hook_call — the post-wait process-group cleanup is missing[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled kill -TERM/-KILL for stage dispatch
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
@@ -49,7 +49,7 @@
   [38;2;248;113;113m✗[0m [#1801/SPEC-1] watchdog in plugin_hook_call is guarded to run hook only
   [38;2;248;113;113m✗[0m [#1801/SPEC-1] watchdog writes disposition=timed_out in the plugin.run.timed_out emit_event call (result-contract write)
   [38;2;248;113;113m✗[0m [#1801/SPEC-1] timed_out event names the stage (stage=) and the limit (timeout_s=)
-  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (grace-period=1 verified)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (replaces any hand-rolled TERM/KILL)
   [38;2;248;113;113m✗[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
   [38;2;248;113;113m✗[0m [#1801/SPEC-10] _orch_local_kill_slot is removed from local_engine.sh
 
@@ -77,9 +77,9 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] always_run route: _runner_dispatch_always_run in runner.sh calls plugin_hook_call
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] roleless leaf: direct plugin_hook_call when template has no roles
 
-  [38;2;0;212;255m[#1801/SPEC-10] lifecycle.sh has no hand-rolled TERM/KILL for stage dispatch[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled TERM/KILL for stage dispatch
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (grace-period=1 verified)
+  [38;2;0;212;255m[#1801/SPEC-10] plugin_hook_call uses zbuild_pg_kill (not hand-rolled TERM/KILL)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call calls zbuild_pg_kill "$_lc_hook_pid" 1 (replaces any hand-rolled TERM/KILL)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] plugin_hook_call has no hand-rolled kill -TERM/-KILL for stage dispatch
 
   [38;2;0;212;255m[#1801/SPEC-10] _orch_local_collect_results uses zbuild_pg_kill[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] local_engine.sh uses zbuild_pg_kill/zbuild_pid_kill
