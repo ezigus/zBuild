@@ -168,7 +168,7 @@
   [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 34s)
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
   [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
 
   [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
