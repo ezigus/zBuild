@@ -212,7 +212,7 @@ _discover_plugins_walk() {
 
     find "$plugins_root" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | while IFS= read -r manifest; do
         local plugin_dir; plugin_dir="$(dirname "$manifest")"
-        local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
+        local plugin_id; yaml_get_v plugin_id "$manifest" "id"
         # Check disabled list
         local is_disabled=0
         for d in "${disabled[@]}"; do
@@ -238,10 +238,10 @@ list_plugins_table() {
     for plugin_dir in ${_lpt_dirs[@]+"${_lpt_dirs[@]}"}; do
         local manifest="$plugin_dir/manifest.yaml"
         local id name kind version
-        id="$(yaml_get "$manifest" "id")"
-        name="$(yaml_get "$manifest" "name")"
-        kind="$(yaml_get "$manifest" "kind")"
-        version="$(yaml_get "$manifest" "version")"
+        yaml_get_v id "$manifest" "id"
+        yaml_get_v name "$manifest" "name"
+        yaml_get_v kind "$manifest" "kind"
+        yaml_get_v version "$manifest" "version"
         printf "  %-20s %-12s %-10s %s\n" "$id" "$kind" "$version" "$name"
     done
 }
@@ -286,7 +286,7 @@ lockfile_write() {
     local tmp; tmp="$(mktemp "${lockdir}/.lockfile.XXXXXX")"
     discover_plugins "$plugins_root" | sort | while IFS= read -r plugin_dir; do
         local manifest="$plugin_dir/manifest.yaml"
-        local id; id="$(yaml_get "$manifest" "id")"
+        local id; yaml_get_v id "$manifest" "id"
         local pair; pair="$(_hash_plugin_pair "$manifest")"
         echo "$id $pair $manifest"
     done > "$tmp"
@@ -344,7 +344,7 @@ verify_plugin_for_source() {
     local lockfile="${2:-$ZBUILD_LOCKFILE}"
     [[ ! -f "$lockfile" ]] && return 0
 
-    local id; id="$(yaml_get "$manifest" "id")"
+    local id; yaml_get_v id "$manifest" "id"
     [[ -z "$id" ]] && return 0
 
     local expected_pair manifest_in_lock
@@ -373,7 +373,7 @@ verify_plugin_for_source() {
         # matches contracts.sh — a manifest that fails to parse is exactly the
         # case this check fires on, and an empty kind would leave the envelope
         # blank for the one event most worth attributing.
-        local _kind; _kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
+        local _kind; yaml_get_v _kind "$manifest" "kind" 2>/dev/null || true
         emit_event "plugin.tamper.detected" "plugin=$id" \
             "kind=${_kind:-unknown}" \
             "manifest=$manifest_in_lock"
@@ -403,10 +403,10 @@ find_plugin_for_role() {
     for plugin_dir in ${_fpr_dirs[@]+"${_fpr_dirs[@]}"}; do
         manifest="$plugin_dir/manifest.yaml"
         [[ ! -f "$manifest" ]] && continue
-        declared_role="$(yaml_get "$manifest" "provides.role" 2>/dev/null || true)"
+        yaml_get_v declared_role "$manifest" "provides.role" 2>/dev/null || true
         [[ "$declared_role" != "$role" ]] && continue
-        plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
-        declared_alias="$(yaml_get "$manifest" "provides.alias" 2>/dev/null || true)"
+        yaml_get_v plugin_id "$manifest" "id" 2>/dev/null || true
+        yaml_get_v declared_alias "$manifest" "provides.alias" 2>/dev/null || true
         if [[ "$plugin_id" == "$alias" || "$declared_alias" == "$alias" ]]; then
             echo "$plugin_dir"
             return 0

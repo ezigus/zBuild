@@ -1282,7 +1282,7 @@ _cycle_member_iteration_aware() {
     # kill switch (ADR-065 §4).
     declare -F manifest_index_load >/dev/null 2>&1 && manifest_index_load "$plugins_root" 2>/dev/null || true
     v="$(manifest_index_get "$manifest" capabilities.iteration_aware 2>/dev/null)" \
-        || v="$(yaml_get "$manifest" "capabilities.iteration_aware" 2>/dev/null || true)"
+        || yaml_get_v v "$manifest" "capabilities.iteration_aware" 2>/dev/null || true
     [[ "${v%$'\n'}" == "true" ]]
 }
 # #2183: set when a member reported a finding that did not reproduce; consumed
@@ -2404,7 +2404,7 @@ _cycle_orchestrator_run_body() {
         _manifest_graph_ensure_yaml_get 2>/dev/null || true
         for _cm in "${_CYCLE_STAGES[@]}"; do
             _cm_manifest="$(manifest_graph_resolve_member "$_pcap_plugins_root" "$_cm" 2>/dev/null)" || continue
-            _pc_val="$(yaml_get "$_cm_manifest" "capabilities.produces_commits" 2>/dev/null || true)"
+            yaml_get_v _pc_val "$_cm_manifest" "capabilities.produces_commits" 2>/dev/null || true
             if [[ "$_pc_val" == "true" ]]; then
                 _has_build_member=1
                 break

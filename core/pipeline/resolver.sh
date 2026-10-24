@@ -70,12 +70,12 @@ resolve_plugin_for_role() {
     for plugin_dir in ${_rsv_dirs[@]+"${_rsv_dirs[@]}"}; do
         local manifest="$plugin_dir/manifest.yaml"
         local plugin_role plugin_platform plugin_version plugin_id
-        plugin_role="$(yaml_get "$manifest" "provides.role")"
+        yaml_get_v plugin_role "$manifest" "provides.role"
         [[ "$plugin_role" != "$role" ]] && continue
 
-        plugin_platform="$(yaml_get "$manifest" "platform")"
-        plugin_version="$(yaml_get "$manifest" "version")"
-        plugin_id="$(yaml_get "$manifest" "id")"
+        yaml_get_v plugin_platform "$manifest" "platform"
+        yaml_get_v plugin_version "$manifest" "version"
+        yaml_get_v plugin_id "$manifest" "id"
 
         if [[ -n "$platform" && "$plugin_platform" == "$platform" ]]; then
             candidates_platform+=("$plugin_version|$plugin_id|$plugin_dir")

@@ -63,13 +63,13 @@ scan_plugin_outputs() {
     # No manifest, no outputs to scan — silently succeed.
     [[ ! -f "$manifest" ]] && return 0
 
-    local plugin_id; plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
-    local kind; kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
+    local plugin_id; yaml_get_v plugin_id "$manifest" "id" 2>/dev/null || true
+    local kind; yaml_get_v kind "$manifest" "kind" 2>/dev/null || true
     # ADR-047 §4 capability flag: build legitimately writes a zero-byte diff.patch
     # when a turn changed no code. The exemption is deliberately narrow — it never
     # covers a `primary: true` output, so a stage cannot mask an empty verdict
     # artifact (e.g. build-summary.json) by declaring the flag in its own manifest.
-    local empty_diff_ok; empty_diff_ok="$(yaml_get "$manifest" "capabilities.empty_diff_legitimate" 2>/dev/null || true)"
+    local empty_diff_ok; yaml_get_v empty_diff_ok "$manifest" "capabilities.empty_diff_legitimate" 2>/dev/null || true
 
     # Compute substitution roots from state_file.
     local state_dir="" artifact_dir=""
@@ -211,8 +211,8 @@ plugin_hook_call() {
         return 1
     fi
 
-    local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
-    local kind; kind="$(yaml_get "$manifest" "kind")"
+    local plugin_id; yaml_get_v plugin_id "$manifest" "id"
+    local kind; yaml_get_v kind "$manifest" "kind"
 
     # ADR-054 §3 (#1862): the engine states, for exactly the span of one
     # dispatch, which stage this is and which plugin serves it.
@@ -339,7 +339,7 @@ plugin_hook_call() {
         _lc_artifacts_left_deny "$manifest" "$_ws_state_dir" "${1:-}"
         ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
         local _lc_wr; _lc_wr="$(manifest_index_get "$manifest" capabilities.writes_repository 2>/dev/null)" \
-            || _lc_wr="$(yaml_get "$manifest" "capabilities.writes_repository" 2>/dev/null || true)"
+            || yaml_get_v _lc_wr "$manifest" "capabilities.writes_repository" 2>/dev/null || true
         if [[ "${_lc_wr%$'\n'}" != "true" ]]; then
             _lc_repo_entries_deny "${ZBUILD_REPO_ROOT:-.}"
             ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
@@ -448,7 +448,7 @@ plugin_hook_call() {
         fi
     fi
 
-    local hook_fn; hook_fn="$(yaml_get "$manifest" "hooks.$hook_name")"
+    local hook_fn; yaml_get_v hook_fn "$manifest" "hooks.$hook_name"
     if [[ -z "$hook_fn" ]]; then
         if [[ "$hook_name" == "cleanup" ]]; then
             # #1823 (ADR-054 §4): an absent OPTIONAL hook had nothing to do and

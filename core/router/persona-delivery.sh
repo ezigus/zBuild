@@ -39,9 +39,9 @@ _route_persona_prepare() {
     dir="$(resolve_persona "$ZBUILD_CURRENT_STAGE" 2>/dev/null)" || return 0
     manifest="$dir/manifest.yaml"
     [[ -f "$manifest" ]] || return 0
-    _ROUTE_PERSONA_ID="$(yaml_get "$manifest" id 2>/dev/null || true)"
-    _ROUTE_PERSONA_TEXT="$(yaml_get "$manifest" persona.perspective 2>/dev/null || true)"
-    desc="$(yaml_get "$manifest" summary 2>/dev/null || true)"
+    yaml_get_v _ROUTE_PERSONA_ID "$manifest" id 2>/dev/null || true
+    yaml_get_v _ROUTE_PERSONA_TEXT "$manifest" persona.perspective 2>/dev/null || true
+    yaml_get_v desc "$manifest" summary 2>/dev/null || true
     [[ -n "$_ROUTE_PERSONA_ID" && -n "$_ROUTE_PERSONA_TEXT" ]] || { _ROUTE_PERSONA_ID=""; return 0; }
     export ZBUILD_STAGE_IO_PERSONA="$_ROUTE_PERSONA_ID"
     p="${_ROUTE_PROVIDER:-anthropic}"
