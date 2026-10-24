@@ -134,6 +134,23 @@ _h6="$(ZBUILD_STATUS_NOW=2026-09-19T05:56:00Z rsc_render_header "$_model" "$STAT
 assert_eq "[SPEC-6] the header renders the same" "$_h" "$_h6"
 assert_eq "[SPEC-6] …reading the model with one jq and no date" "1|0" "$(_calls jq)|$(_calls date)"
 unset -f jq date
+# Counted as processes, with the census: the script itself and its one jq.
+# Each `$(_rsc_clock …)` / `$(rsc_duration …)` in the row was a copy of the shell.
+cat > "$TEST_TEMP_DIR/row6.sh" <<EOF
+source '$REPO_ROOT/scripts/lib/helpers.sh' 2>/dev/null
+source '$REPO_ROOT/scripts/lib/run-status-render.sh'
+rsc_render_row '$STATE' '$_row_done' >/dev/null
+EOF
+_p6="$(
+    # shellcheck source=../../scripts/lib/fork-census.sh
+    source "$REPO_ROOT/scripts/lib/fork-census.sh"
+    fork_census_traced "$TEST_TEMP_DIR/row6.trace" bash "$TEST_TEMP_DIR/row6.sh"
+    _base="$(fork_census_processes "$TEST_TEMP_DIR/row6.trace")"
+    printf 'source %s/scripts/lib/helpers.sh 2>/dev/null\nsource %s/scripts/lib/run-status-render.sh\n' "$REPO_ROOT" "$REPO_ROOT" > "$TEST_TEMP_DIR/row0.sh"
+    fork_census_traced "$TEST_TEMP_DIR/row0.trace" bash "$TEST_TEMP_DIR/row0.sh"
+    printf '%s' $(( _base - $(fork_census_processes "$TEST_TEMP_DIR/row0.trace") ))
+)"
+assert_eq "[SPEC-6] rendering a finished row costs one process (its jq), no subshells" "1" "$_p6"
 
 cleanup_test_env
 print_test_results

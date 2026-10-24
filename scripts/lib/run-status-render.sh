@@ -96,14 +96,16 @@ rsc_rows_json() {
 }
 
 # ─── rsc_duration <start_ts> <end_ts> — `<1s`, `45s`, `61m33s` ──────────────
-rsc_duration() {
-    local a b s
-    _rsc_epoch_to a "$1"; _rsc_epoch_to b "$2"
-    s=0; (( a > 0 && b > 0 )) && s=$(( b - a ))
-    if [[ "$s" -le 0 ]]; then printf '<1s'
-    elif [[ "$s" -lt 60 ]]; then printf '%ds' "$s"
-    else printf '%dm%02ds' $(( s / 60 )) $(( s % 60 ))
+rsc_duration() { local _rd; rsc_duration_v _rd "$@"; printf '%s' "$_rd"; }
+rsc_duration_v() {   # <var> <start_ts> <end_ts>
+    local _rdv_a _rdv_b _rdv_s _rdv_o
+    _rsc_epoch_to _rdv_a "$2"; _rsc_epoch_to _rdv_b "$3"
+    _rdv_s=0; (( _rdv_a > 0 && _rdv_b > 0 )) && _rdv_s=$(( _rdv_b - _rdv_a ))
+    if [[ "$_rdv_s" -le 0 ]]; then _rdv_o='<1s'
+    elif [[ "$_rdv_s" -lt 60 ]]; then printf -v _rdv_o '%ds' "$_rdv_s"
+    else printf -v _rdv_o '%dm%02ds' $(( _rdv_s / 60 )) $(( _rdv_s % 60 ))
     fi
+    printf -v "$1" '%s' "$_rdv_o"
 }
 
 # ─── #2145: times in the reader's zone, Eastern by default ──────────────────
@@ -132,30 +134,37 @@ _rsc_epoch_to() {   # <var> <iso>
     _rsce_out=$(( (_rsce_era * 146097 + _rsce_doe - 719468) * 86400 + _rsce_hh * 3600 + _rsce_mi * 60 + _rsce_ss ))
 }
 _rsc_epoch() { local e; _rsc_epoch_to e "${1:-}"; printf '%s' "$e"; }
-_rsc_fmt_local() {   # <epoch> → "9:39 PM ET"
-    local epoch="$1" out label tz="${ZBUILD_STATUS_TZ:-$_RSC_DEFAULT_TZ}"
-    TZ="$tz" printf -v out '%(%l:%M %p %Z)T' "$epoch"
-    out="${out# }"
-    case "$tz" in
-        America/New_York) label="ET" ;;
-        America/Chicago)  label="CT" ;;
-        America/Denver)   label="MT" ;;
-        America/Los_Angeles) label="PT" ;;
-        *) label="${out##* }" ;;
+_rsc_fmt_local() { local _rf; _rsc_fmt_local_v _rf "$1"; printf '%s' "$_rf"; }
+_rsc_fmt_local_v() {   # <var> <epoch> → "9:39 PM ET"
+    local _rfl_out _rfl_label _rfl_tz="${ZBUILD_STATUS_TZ:-$_RSC_DEFAULT_TZ}"
+    TZ="$_rfl_tz" printf -v _rfl_out '%(%l:%M %p %Z)T' "$2"
+    _rfl_out="${_rfl_out# }"
+    case "$_rfl_tz" in
+        America/New_York) _rfl_label="ET" ;;
+        America/Chicago)  _rfl_label="CT" ;;
+        America/Denver)   _rfl_label="MT" ;;
+        America/Los_Angeles) _rfl_label="PT" ;;
+        *) _rfl_label="${_rfl_out##* }" ;;
     esac
-    printf '%s %s' "${out% *}" "$label"
+    printf -v "$1" '%s %s' "${_rfl_out% *}" "$_rfl_label"
 }
 # "9:39 PM ET" from an ISO timestamp.
-_rsc_clock() { local e; _rsc_epoch_to e "${1:-}"; if (( e > 0 )); then _rsc_fmt_local "$e"; else printf '%s' "${1:-}"; fi; }
+_rsc_clock() { local _rc; _rsc_clock_v _rc "${1:-}"; printf '%s' "$_rc"; }
+_rsc_clock_v() {   # <var> <iso>
+    local _rcv_e; _rsc_epoch_to _rcv_e "${2:-}"
+    if (( _rcv_e > 0 )); then _rsc_fmt_local_v "$1" "$_rcv_e"; else printf -v "$1" '%s' "${2:-}"; fi
+}
 # "1h 20m" from seconds.
 _rsc_hm() { local s="$1"; if (( s >= 3600 )); then printf '%dh %02dm' $(( s / 3600 )) $(( (s % 3600) / 60 )); else printf '%dm' $(( s / 60 )); fi; }
 
 # ─── rsc_row_inputs_line <state_dir> <stage> — what the stage was given ─────
-rsc_row_inputs_line() {
-    local idx="$1/stage-inputs/$2.json" s
-    [[ -s "$idx" ]] || return 0
-    s="$(jq -r '(.inputs // {}) | keys_unsorted | join(", ")' "$idx" 2>/dev/null || true)"
-    printf '%s' "${s:0:120}"
+rsc_row_inputs_line() { local _ri; rsc_row_inputs_line_v _ri "$@"; printf '%s' "$_ri"; }
+rsc_row_inputs_line_v() {   # <var> <state_dir> <stage>
+    local _riv_idx="$2/stage-inputs/$3.json" _riv_s=""
+    printf -v "$1" '%s' ""
+    [[ -s "$_riv_idx" ]] || return 0
+    _riv_s="$(jq -r '(.inputs // {}) | keys_unsorted | join(", ")' "$_riv_idx" 2>/dev/null || true)"
+    printf -v "$1" '%s' "${_riv_s:0:120}"
 }
 
 # ─── rsc_row_summary_line <state_dir> <stage> — what the stage reported ─────
@@ -163,19 +172,28 @@ rsc_row_inputs_line() {
 # when the engine libs are reachable, else `artifacts/<stage>-summary.md`.
 # First non-empty non-heading line, `- ` stripped, `|` escaped, cut to
 # ZBUILD_STATUS_COMMENT_SUMMARY_CHARS.
-rsc_row_summary_line() {
-    local state_dir="$1" stage="$2" path="" line=""
+rsc_row_summary_line() { local _rs; rsc_row_summary_line_v _rs "$@"; printf '%s' "$_rs"; }
+rsc_row_summary_line_v() {   # <var> <state_dir> <stage>
+    local _rsv_sd="$2" _rsv_st="$3" _rsv_p="" _rsv_l=""
+    printf -v "$1" '%s' ""
     if declare -F _summaries_stage_summary_path >/dev/null 2>&1; then
-        path="$(_summaries_stage_summary_path "$stage" "${ZBUILD_PLUGINS_ROOT:-$_RSC_ROOT/plugins}" "$state_dir" 2>/dev/null || true)"
+        _rsv_p="$(_summaries_stage_summary_path "$_rsv_st" "${ZBUILD_PLUGINS_ROOT:-$_RSC_ROOT/plugins}" "$_rsv_sd" 2>/dev/null || true)"
     fi
-    [[ -n "$path" && -s "$path" ]] || path="$state_dir/artifacts/${stage}-summary.md"
-    [[ -s "$path" ]] || return 0
-    line="$(awk 'NF && $0 !~ /^#/ { sub(/^- /, ""); print; exit }' "$path" 2>/dev/null || true)"
-    line="${line//|/\\|}"
-    if [[ "${#line}" -gt "$ZBUILD_STATUS_COMMENT_SUMMARY_CHARS" ]]; then
-        line="${line:0:$ZBUILD_STATUS_COMMENT_SUMMARY_CHARS}…"
+    [[ -n "$_rsv_p" && -s "$_rsv_p" ]] || _rsv_p="$_rsv_sd/artifacts/${_rsv_st}-summary.md"
+    [[ -s "$_rsv_p" ]] || return 0
+    # The first line with a non-blank character that is not a heading, read by
+    # the shell (it was an awk: `NF && $0 !~ /^#/`).
+    local _rsv_found=0
+    while IFS= read -r _rsv_l || [[ -n "$_rsv_l" ]]; do
+        [[ "$_rsv_l" =~ [^[:space:]] && "$_rsv_l" != \#* ]] && { _rsv_found=1; break; }
+    done < "$_rsv_p"
+    (( _rsv_found )) || return 0
+    _rsv_l="${_rsv_l#- }"
+    _rsv_l="${_rsv_l//|/\\|}"
+    if [[ "${#_rsv_l}" -gt "$ZBUILD_STATUS_COMMENT_SUMMARY_CHARS" ]]; then
+        _rsv_l="${_rsv_l:0:$ZBUILD_STATUS_COMMENT_SUMMARY_CHARS}…"
     fi
-    printf '%s' "$line"
+    printf -v "$1" '%s' "$_rsv_l"
 }
 
 # ─── #2154: a closed row's summary is a snapshot ─────────────────────────────
@@ -255,12 +273,14 @@ rsc_render_row() {
     # #2145: WHEN first — a reader scanning the feed wants the clock before
     # the name. seq + stage stay bold and second.
     if [[ -z "$verdict" ]]; then
-        line="**$(_rsc_clock "$started") → running** · **${seq} ${stage}**"
+        local _c1; _rsc_clock_v _c1 "$started"
+        line="**${_c1} → running** · **${seq} ${stage}**"
         [[ -n "$iter" ]] && line+=" · iter ${iter}"
         [[ -n "$summaries" ]] && line+=" · previous work from ${summaries} stage(s) (${resolve} failing)"
     else
         [[ -z "$ended" ]] && ended="$started"
-        line="**$(_rsc_clock "$started") → $(_rsc_clock "$ended") ($(rsc_duration "$started" "$ended"))** · **${seq} ${stage}**"
+        local _c1 _c2 _du; _rsc_clock_v _c1 "$started"; _rsc_clock_v _c2 "$ended"; rsc_duration_v _du "$started" "$ended"
+        line="**${_c1} → ${_c2} (${_du})** · **${seq} ${stage}**"
         [[ -n "$iter" ]] && line+=" · iter ${iter}"
         local v="$verdict"
         [[ "$v" != "pass" && -n "$rc" && "$rc" != "0" ]] && v+=" rc=${rc}"
@@ -271,7 +291,7 @@ rsc_render_row() {
         if [[ -n "${_RSC_SNAP[$seq]+x}" && ( -z "${_RSC_SNAP_END[$seq]+x}" || "${_RSC_SNAP_END[$seq]}" == "$ended" ) ]]; then
             summary="${_RSC_SNAP[$seq]}"
         else
-            summary="$(rsc_row_summary_line "$state_dir" "$stage")"
+            rsc_row_summary_line_v summary "$state_dir" "$stage"
             if [[ -n "$summary" && -n "$_RSC_SNAP_RUN" ]]; then
                 _RSC_SNAP["$seq"]="$summary"; _RSC_SNAP_END["$seq"]="$ended"; _RSC_SNAP_DIRTY=1
             fi
@@ -279,7 +299,7 @@ rsc_render_row() {
         if [[ -n "$summary" ]]; then
             line+=" — ${summary}"
         else
-            local inputs; inputs="$(rsc_row_inputs_line "$state_dir" "$stage")"
+            local inputs; rsc_row_inputs_line_v inputs "$state_dir" "$stage"
             [[ -n "$inputs" ]] && line+=" · inputs: ${inputs}"
         fi
     fi
