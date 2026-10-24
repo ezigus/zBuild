@@ -120,7 +120,7 @@ _discovery_memo_drop() {   # [root] — drop root's memos, or all of them
     for f in "$dir"/*; do
         [[ -f "$f" ]] || continue
         if [[ -n "${1:-}" ]]; then
-            k=""; IFS= read -r k < "$f" 2>/dev/null || true
+            k=""; IFS= read -r k 2>/dev/null < "$f" || true
             [[ "$k" == "$1"$'\034'* ]] || continue
         fi
         rm -f "$f" 2>/dev/null
