@@ -169,7 +169,9 @@ atomic_write() {
     local free_mb="" _df
     _df="$(df -m "$dir")" || true
     IFS=$' \t' read -r _ _ _ free_mb _ <<< "${_df##*$'\n'}"
-    if (( free_mb < 50 )); then
+    # A df that failed or printed no number says nothing about free space, so
+    # it does not refuse the write (review on #2401).
+    if [[ "$free_mb" =~ ^[0-9]+$ ]] && (( free_mb < 50 )); then
         # Drain stdin BEFORE reporting the refusal (#1773). Returning early left
         # stdin unread: a payload smaller than the pipe buffer let the producer
         # (`jq ... | atomic_write`) exit 0 while a larger one took SIGPIPE — so

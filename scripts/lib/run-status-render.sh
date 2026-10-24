@@ -116,19 +116,20 @@ _rsc_ceiling_min() { local m="${ZBUILD_STATUS_CEILING_MIN:-360}"; [[ "$m" =~ ^[0
 # ISO-8601 UTC (`…Z`, with or without fractional seconds) → epoch seconds in
 # <var>, 0 when it is not one. Arithmetic, not jq: every time on the comment
 # went through a jq and a date (ADR-065 §5). Days from the civil date are
-# Howard Hinnant's days_from_civil.
+# Howard Hinnant's days_from_civil. Every local is prefixed: a nameref to a
+# caller's `m` would otherwise resolve to this function's own `m`.
 _rsc_epoch_to() {   # <var> <iso>
-    local -n _out="$1"; _out=0
+    local -n _rsce_out="$1"; _rsce_out=0
     [[ "${2:-}" =~ ^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?Z$ ]] || return 0
-    local y=$((10#${BASH_REMATCH[1]})) m=$((10#${BASH_REMATCH[2]})) d=$((10#${BASH_REMATCH[3]}))
-    local hh=$((10#${BASH_REMATCH[4]})) mi=$((10#${BASH_REMATCH[5]})) ss=$((10#${BASH_REMATCH[6]}))
-    (( m >= 1 && m <= 12 && d >= 1 && d <= 31 && hh < 24 && mi < 60 && ss < 61 )) || return 0
-    (( m <= 2 )) && y=$(( y - 1 ))
-    local era=$(( y / 400 )) yoe doy doe
-    yoe=$(( y - era * 400 ))
-    doy=$(( (153 * ((m + 9) % 12) + 2) / 5 + d - 1 ))
-    doe=$(( yoe * 365 + yoe / 4 - yoe / 100 + doy ))
-    _out=$(( (era * 146097 + doe - 719468) * 86400 + hh * 3600 + mi * 60 + ss ))
+    local _rsce_y=$((10#${BASH_REMATCH[1]})) _rsce_m=$((10#${BASH_REMATCH[2]})) _rsce_d=$((10#${BASH_REMATCH[3]}))
+    local _rsce_hh=$((10#${BASH_REMATCH[4]})) _rsce_mi=$((10#${BASH_REMATCH[5]})) _rsce_ss=$((10#${BASH_REMATCH[6]}))
+    (( _rsce_m >= 1 && _rsce_m <= 12 && _rsce_d >= 1 && _rsce_d <= 31 && _rsce_hh < 24 && _rsce_mi < 60 && _rsce_ss < 61 )) || return 0
+    (( _rsce_m <= 2 )) && _rsce_y=$(( _rsce_y - 1 ))
+    local _rsce_era=$(( _rsce_y / 400 )) _rsce_yoe _rsce_doy _rsce_doe
+    _rsce_yoe=$(( _rsce_y - _rsce_era * 400 ))
+    _rsce_doy=$(( (153 * ((_rsce_m + 9) % 12) + 2) / 5 + _rsce_d - 1 ))
+    _rsce_doe=$(( _rsce_yoe * 365 + _rsce_yoe / 4 - _rsce_yoe / 100 + _rsce_doy ))
+    _rsce_out=$(( (_rsce_era * 146097 + _rsce_doe - 719468) * 86400 + _rsce_hh * 3600 + _rsce_mi * 60 + _rsce_ss ))
 }
 _rsc_epoch() { local e; _rsc_epoch_to e "${1:-}"; printf '%s' "$e"; }
 _rsc_fmt_local() {   # <epoch> → "9:39 PM ET"
