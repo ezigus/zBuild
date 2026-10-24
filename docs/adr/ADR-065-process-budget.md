@@ -138,6 +138,25 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 > The machine stays saturated either way, so the next rounds cut work: the `$( )` subshells that
 > copy a whole engine shell, not only the programs `FORK_BUDGET` counts.
 
+> **Amended 2026-10-24 (round 3): subshells are counted, and the hot ones are gone.** A `$( )`
+> around an engine function copies the whole engine shell. `FORK_BUDGET` cannot see that copy,
+> yet in the 60 slowest test files there were 410,581 processes against 292,889 programs.
+> `fork_census_processes` counts every process bash ran in, and the budget test now also holds the
+> mocked run to `PROCESS_BUDGET`, which ratchets down like `FORK_BUDGET`. The rule: a hot path reads
+> into a variable, through a `_v` function that takes the variable's name, not through `$( )`.
+> - `yaml_get_v <var> <file> <key>` gives what `var="$(yaml_get …)"` gives, value and rc. A miss
+>   fills the cache in the calling shell, where a miss inside `$( )` filled nothing. The registry,
+>   the resolver, lifecycle, persona and the cycle code read manifests with it. The cache's
+>   contract is unchanged: an in-place manifest edit needs `yaml_cache_flush`.
+> - The same goes for declared output paths (`_registry_resolve_output_path_v`), a status-comment
+>   row's times, summary and inputs, discovery's tree check (one `find`, read by the shell) and the
+>   `manifest_graph` memo's file name (no `cksum`).
+> - One discovery memo serves a whole test run: `scripts/run-tests.sh` sets
+>   `ZBUILD_DISCOVERY_MEMO_DIR`, so each file no longer pays its own first walk.
+>
+> The full local suite went from 493s to 401s. Ratcheted `FORK_BUDGET` 4,440 → 4,380 (4,312 measured)
+> and set `PROCESS_BUDGET` 6,220 (6,139 measured; main before this round measured 8,331).
+
 ## Consequences
 
 - A fork regression fails CI with its call site named, instead of surfacing months later as a
@@ -179,3 +198,5 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 - §4, §5 (amended 2026-10-24) → `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-5 (a walk is one `awk`), SPEC-6 (a role lookup is one more `awk`, hit or miss); `tests/unit/manifest-validation-doc-fields-test.sh` SPEC-7 (the structural checks are one `awk`); `tests/unit/file-mode-kept-on-replace-test.sh` P6 (`atomic_write` starts no `dirname`, `tail` or `awk`); `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row and the header are one `jq` each; a time starts no program)
 - §3 (amended 2026-10-24, round 2: discovery across processes) → `tests/unit/discover-plugins-memo-test.sh` SPEC-4 (a cold lookup in a new subshell does not walk again), SPEC-5 (nor in a new process), SPEC-6 (an edited manifest re-walks and drops out), SPEC-7 (a changed plugin source re-walks), SPEC-8 (`discovery_cache_flush` and `ZBUILD_PLUGIN_DISCOVERY_CACHE=0` walk)
 - §1 (amended 2026-10-24, round 2: the schedule) → `tests/unit/run-tests-schedule-test.sh` SPEC-1 (longest first, unrecorded first), SPEC-2/3 (pinned files in their own lane, one at a time), SPEC-4 (counts and FAIL lines in file order), SPEC-5 (file order without a durations file), SPEC-6 (the durations file is written from a timing log); `tests/unit/run-tests-tier-concurrency-test.sh` SPEC-4e (the default cap is 6); `tests/unit/ci-npm-script-parity-test.sh` SPEC-4 (shellcheck runs in parallel batches and a failing batch fails)
+- §1, §2 (amended 2026-10-24, round 3: processes) → `tests/unit/fork-census-test.sh` SPEC-4 (subshells are counted as processes); `tests/e2e/fork-budget-test.sh` SPEC-7 (the mocked run's processes are within `PROCESS_BUDGET`)
+- §3 (amended 2026-10-24, round 3) → `tests/unit/yaml-get-cache-test.sh` SPEC-12 (`yaml_get_v` matches `$(yaml_get)`), SPEC-13 (a miss fills the calling shell's cache); `tests/unit/output-paths-resolve-test.sh` SPEC-1/2; `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row costs one process); `tests/unit/discover-plugins-memo-test.sh` SPEC-9 (a shared memo directory), SPEC-10 (a warm lookup costs one process); `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-7 (no `cksum`, and a hit only under its own root); `tests/unit/run-tests-schedule-test.sh` SPEC-7 (one memo directory per run, removed after it)
