@@ -133,7 +133,7 @@ locked_state_update() {
             _zbuild_lsu_validate_and_copy "$state_file" "$current" || exit 2
             _zbuild_lsu_collision_guard "$current" || exit $?
             "$update_fn" < "$current" > "$next"
-            atomic_write "$state_file" < "$next"
+            atomic_write --bak "$state_file" < "$next"
         ) 9>"$lock_file"
     else
         # Fallback for systems without flock (macOS without brew flock).
@@ -141,7 +141,7 @@ locked_state_update() {
         _zbuild_lsu_validate_and_copy "$state_file" "$current" || return 2
         _zbuild_lsu_collision_guard "$current" || return $?
         "$update_fn" < "$current" > "$next"
-        atomic_write "$state_file" < "$next"
+        atomic_write --bak "$state_file" < "$next"
     fi
 }
 

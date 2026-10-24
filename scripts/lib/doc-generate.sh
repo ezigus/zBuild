@@ -56,16 +56,11 @@ _doc_generate_ensure_helpers() {
     fi
 }
 
-# _dgen_atomic_write <target> < content — atomic_write, then delete the .bak it
-# rotates in. atomic_write keeps a ${target}.bak for corruption-recovery of STATE
-# files (see helpers.sh + validate_json), but wiki pages/hash sidecars are
-# regenerable, so a leftover .bak is just untracked cruft in the working tree
-# (#1492). Removing it here (not in atomic_write) preserves the state-file .bak
-# recovery path for every other caller.
+# _dgen_atomic_write <target> < content — atomic_write. A plain atomic_write
+# keeps no .bak (only state writers ask for one, ADR-065 §5), so a regenerated
+# wiki page leaves no cruft behind (#1492) without deleting anything here.
 _dgen_atomic_write() {
-    local target="$1"
-    atomic_write "$target" || return 1
-    rm -f "${target}.bak"
+    atomic_write "$1"
 }
 
 # Known bundle keys (from doc-gather.sh). Used for EXACT string-compare parsing so

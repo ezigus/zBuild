@@ -73,12 +73,12 @@ assert_eq "SPEC-2: pipeline.init is not emitted when the write was refused" \
 eval "$_REAL_ATOMIC_WRITE_DEF"
 
 # ─── SPEC-3: atomic_write drains stdin before refusing ──────────────────────
-# Shadow df so the disk-space precheck refuses. Field 4 of the last line is
-# what atomic_write reads as free MB.
-df() { printf 'Filesystem 1M-blocks Used Avail Capacity Mounted\n/dev/fake 100 99 1 99%% /\n'; }
-
+# A write that cannot start: the target's directory is not writable, so the
+# temp file cannot be opened (the free-space precheck that used to be the way to
+# refuse is gone — ADR-065 §5, round 4).
 DRAIN_TARGET="$TEST_TEMP_DIR/drain/out.json"
 mkdir -p "$(dirname "$DRAIN_TARGET")"
+chmod 555 "$(dirname "$DRAIN_TARGET")"
 
 # A payload far larger than any pipe buffer (64KB on macOS, 64KB on Linux).
 BIG_PAYLOAD="$TEST_TEMP_DIR/big.txt"
@@ -111,7 +111,7 @@ assert_eq "SPEC-3: small-payload producer rc matches the large-payload case" \
 assert_eq "SPEC-3: small-payload writer rc matches the large-payload case" \
     "$drain_writer_rc" "$small_writer_rc"
 
-unset -f df
+chmod 755 "$(dirname "$DRAIN_TARGET")"
 
 cleanup_test_env
 print_test_results

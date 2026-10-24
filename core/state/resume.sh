@@ -77,7 +77,7 @@ init_state() {
             claim_lease_id: "",
             plugin_state: {},
             updated_at: $now
-        }' | atomic_write "$state_file"
+        }' | atomic_write --bak "$state_file"
     # ADR-006's resume contract starts here: an unchecked write leaves the run
     # with no persisted state and nothing to resume from, and `emit_event`
     # always returns 0 — so without this the caller sees success either way

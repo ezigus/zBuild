@@ -157,6 +157,11 @@ zbuild_engine_tmpdir() {
 }
 
 atomic_write() {
+    # --bak keeps the previous content in <target>.bak: only state recovery
+    # (core/state: read_state, locked_state_update; resume) reads one back, so
+    # only the state writers ask for it (ADR-065 §5, round 4).
+    local bak=0
+    if [[ "${1:-}" == "--bak" ]]; then bak=1; shift; fi
     local target="$1"
     # dirname by parameter expansion: this runs for every file the engine
     # writes (ADR-065 §5).
@@ -164,41 +169,38 @@ atomic_write() {
     if [[ "$target" == */* ]]; then dir="${target%/*}"; [[ -n "$dir" ]] || dir="/"; fi
     [[ -d "$dir" ]] || mkdir -p "$dir"
 
-    # Disk-space precheck — refuse to write if < 50MB free. One df; its last
-    # line's 4th column is read by the shell, not by tail and awk.
-    local free_mb="" _df
-    _df="$(df -m "$dir")" || true
-    IFS=$' \t' read -r _ _ _ free_mb _ <<< "${_df##*$'\n'}"
-    # A df that failed or printed no number says nothing about free space, so
-    # it does not refuse the write (review on #2401).
-    if [[ "$free_mb" =~ ^[0-9]+$ ]] && (( free_mb < 50 )); then
-        # Drain stdin BEFORE reporting the refusal (#1773). Returning early left
-        # stdin unread: a payload smaller than the pipe buffer let the producer
-        # (`jq ... | atomic_write`) exit 0 while a larger one took SIGPIPE — so
-        # `PIPESTATUS[0]` reported the refusal only by payload size. Draining
-        # makes the producer's status uniformly 0 and this function's rc the one
-        # authoritative signal for all `| atomic_write` call sites.
+    # No free-space precheck: a full disk fails the write below, which leaves
+    # the target untouched and says so (#1773). The temp file is opened by the
+    # shell with noclobber, so it is exclusive the way mktemp's was.
+    local tmp="" fd="" _n _nc=0
+    [[ $- == *C* ]] && _nc=1
+    for _n in 1 2 3; do
+        tmp="${target}.tmp.$$.${RANDOM}${RANDOM}"
+        { set -C; exec {fd}>"$tmp"; } 2>/dev/null && break
+        fd=""
+    done
+    (( _nc )) || set +C
+    if [[ -z "$fd" ]]; then
+        # Drain stdin BEFORE reporting the refusal (#1773): returning with it
+        # unread let a small payload's producer exit 0 and a large one take
+        # SIGPIPE, so `PIPESTATUS[0]` reported the refusal by payload size.
         cat > /dev/null
-        error "atomic_write refusing: only ${free_mb}MB free at $dir (need >= 50MB)"
+        error "atomic_write: cannot create temp file next to $target"
         return 1
     fi
-
-    local tmp; tmp="$(mktemp "${target}.tmp.XXXXXX")" || {
-        error "atomic_write: cannot create temp file next to $target"
-        cat > /dev/null
-        return 1
-    }
     # A short write here means the target was never updated — report it (#1773).
-    if ! cat > "$tmp"; then
+    if ! cat >&"$fd"; then
+        exec {fd}>&-
         error "atomic_write: failed writing payload to $tmp (target $target left unchanged)"
         rm -f "$tmp"
         return 1
     fi
+    exec {fd}>&-
     # Rotate previous to .bak before replacing — atomic so a concurrent reader
     # never sees a torn .bak (the corruption-recovery source). Best-effort: a
     # failed rotation must NOT abort the main write (the `|| warn` keeps it from
     # tripping `set -e` callers). (#909)
-    if [[ -f "$target" ]]; then
+    if (( bak )) && [[ -f "$target" ]]; then
         atomic_replace "$target" "${target}.bak" \
             || warn "atomic_write: .bak rotation failed for $target (best-effort, continuing)"
     fi
@@ -218,12 +220,20 @@ atomic_write() {
 replace_keep_mode() {
     local src="$1" target="$2" mode=""
     if [[ -e "$target" ]]; then
-        # GNU first: GNU reads `stat -f` as "file-system status" and prints a
-        # block to stdout before failing, which would poison the value; BSD
-        # rejects `-c` and prints nothing (review #2229).
-        mode="$(stat -c '%a' "$target" 2>/dev/null || stat -f '%Lp' "$target" 2>/dev/null || true)"
-        [[ "$mode" =~ ^[0-7]{3,4}$ ]] && chmod "$mode" "$src" 2>/dev/null
+        # One stat in this platform's flavour, the other only when the answer
+        # is not a mode. GNU reads `stat -f` as "file-system status" and prints
+        # a block to stdout, which the check rejects (review #2229).
+        if [[ "${ZBUILD_PLATFORM:-}" == "macos" ]]; then
+            mode="$(stat -f '%Lp' "$target" 2>/dev/null || true)"
+            [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode="$(stat -c '%a' "$target" 2>/dev/null || true)"
+        else
+            mode="$(stat -c '%a' "$target" 2>/dev/null || true)"
+            [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode="$(stat -f '%Lp' "$target" 2>/dev/null || true)"
+        fi
     fi
+    # A new target gets 0600, what mktemp gave the temp file before.
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode=600
+    chmod "$mode" "$src" 2>/dev/null
     mv -f "$src" "$target"
 }
 
