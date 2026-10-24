@@ -43,7 +43,7 @@ zBuild's resume contract is explicit. Two tiers: **persisted** (engine guarantee
 | `cost_ledger_pointer` | core/cost | offset into ledger | enables resume to continue cost tracking |
 | `plugin_state[plugin_id]` | per-plugin | opaque blob | plugin-declared state (see below) |
 | `claim_lease_id` | core/locks | string | required for claim-coordinator's `heartbeat` after resume |
-| `events_db` | core/event-bus | SQLite file | full event history; durable mirror of JSONL |
+| ~~`events_db`~~ | core/event-bus | — | retired (amended 2026-10-24, ADR-065 §5): the SQLite mirror had no reader and was removed; the event history is `events.jsonl` |
 
 All persisted state is written via `core/state/atomic_write`, which:
 1. Disk-space precheck.

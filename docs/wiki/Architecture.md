@@ -10,7 +10,7 @@ The authoritative deep-dive is [`docs/ARCHITECTURE.md`](https://github.com/ezigu
 CLI (scripts/zbuild)
       │
       ▼
-core engine ── event bus (SQLite + JSONL)
+core engine ── event bus (JSONL)
       │        redaction chokepoint
       │        router (models as data)
       │        state / resume
@@ -55,7 +55,7 @@ This section is for contributors and operators who need to understand or modify 
 
 ### Core services
 
-- **[[mechanics/event-bus]]** — all engine activity is recorded as events in a SQLite-backed JSONL file. Plugins emit events; the engine reacts to them. Every `pipeline.*`, `stage.*`, `plugin.*`, `model.*`, `cycle.*`, and `redaction.*` event is here.
+- **[[mechanics/event-bus]]** — all engine activity is recorded as events in a JSONL file. Plugins emit events; the engine reacts to them. Every `pipeline.*`, `stage.*`, `plugin.*`, `model.*`, `cycle.*`, and `redaction.*` event is here.
 - **[[mechanics/redaction-chokepoint]]** — all text sent to a model passes through a single chokepoint that applies scope redaction (ADR-004). A plugin that calls a model directly is a contract violation.
 - **[[mechanics/router-models-as-data|router]]** — model selection is data, not code. The router reads `config/models.json` and selects a model by tier (T0–T4). Code never references model names. (ADR-003.)
 - **[[mechanics/state-and-resume]]** — run state is written atomically per stage. A `latest` symlink always points at the newest run. Interrupted runs are resumable from the last completed stage. (ADR-006.)

@@ -17,7 +17,7 @@ System view, plugin contract, data flow, state model, glossary. Complements [KEE
 │                                                                      │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────┐  │
 │  │ plugin-        │  │   event-bus    │  │      redaction         │  │
-│  │ registry       │◀▶│ (SQLite+JSONL) │  │   (chokepoint helper)  │  │
+│  │ registry       │◀▶│ (JSONL)        │  │   (chokepoint helper)  │  │
 │  │ (manifest,     │  │                │  │                        │  │
 │  │  discovery,    │  └────────────────┘  └────────────────────────┘  │
 │  │  lifecycle)    │  ┌────────────────┐  ┌────────────────────────┐  │
@@ -211,7 +211,6 @@ Every box that emits LLM-bound text passes through `redaction.apply()`. There is
 ### Persisted (survives crash, kill -9, host restart)
 
 - `state/pipeline-state.json` — stage statuses, SELF_HEAL_COUNT, scope manifest hash, **CURRENT_ITERATION**, cost ledger pointer.
-- `state/events.db` (SQLite) — durable copy of all events.
 - `state/events.jsonl` — single-writer append-only log (truncated atomically during rotation).
 - `state/artifacts/` — per-stage output artifacts (findings, plans, reviews).
 - `state/scope-manifest.md` — fenced markdown contract (artifact-as-contract).
@@ -267,7 +266,7 @@ Polling is canonical; webhooks (when configured) only emit observability events.
 
 ## 6. Event bus schema
 
-Events are written atomically to **both** SQLite (durable) and JSONL (streamable). Schema:
+Events are appended, under `flock`, to one JSONL file (`events.jsonl`), which is also what every reader reads; the SQLite mirror was removed (ADR-065 §5). Schema:
 
 ```json
 {
@@ -346,7 +345,7 @@ zBuild has two distinct kinds of "memory." They share no storage and have indepe
 | `core/state/` | atomic writes, flock, resume contract |
 | `core/redaction/` | the single chokepoint for LLM-bound text |
 | `core/plugin-registry/` | manifest schema, discovery, lifecycle, lockfile |
-| `core/event-bus/` | SQLite + JSONL emit + schema validation |
+| `core/event-bus/` | JSONL emit + schema validation |
 | `core/locks/` | admission gate, in-process, per-host |
 | `core/github/` | label contract, live-updating comment, claim coordination glue |
 | `plugins/<kind>/<name>/` | one plugin per directory, manifest-driven |

@@ -317,7 +317,7 @@ When implementation begins, Phase 0 lands in this order:
 1. **Day-1 structural copy:** `package.json`, `install.sh`, `.github/workflows/`, `.claude/settings.json`, `scripts/lib/{helpers,compat,test-helpers}.sh`.
 2. **Core safety chokepoints:** `core/redaction/_apply_scope_redaction` wrapper; `CURRENT_ITERATION` persistence in `resume_state`; `check_disk_space` extended to all artifact writes; `validate_json` + `.bak` rotation on every state read.
 3. **Plugin registry skeleton:** manifest schema, filesystem-glob discovery, lock file, lifecycle hooks.
-4. **Telemetry event bus:** `emit_event` + dual SQLite/JSONL primitive; single-writer JSONL contract.
+4. **Telemetry event bus:** `emit_event` + single-writer JSONL contract. (The SQLite half of the legacy dual write was dropped: nothing read it — ADR-065 §5.)
 5. **First agent plugin POC:** migrate the `security` compound-audit lens. Verify 5-test trial. `git rm` the legacy block.
 6. **Issue generator + keepers manifest:** `scripts/generate-issues.sh` + `.github/issues/keepers-manifest.yaml` covering Phase 0–5. Run it.
 7. **Resume contract documentation:** explicit persisted vs. reconstructed lists; test coverage proves the boundary.

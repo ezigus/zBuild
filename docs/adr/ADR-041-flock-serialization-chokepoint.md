@@ -34,6 +34,10 @@ Corollaries:
   writer never blocks an authoritative one (e.g. the event-bus SQLite mirror
   uses `events.db.lock`, separate from `events.jsonl.lock`, so the mirror can
   never stall the source-of-truth jsonl append — #1153).
+> **Amended 2026-10-24 ([ADR-065](ADR-065-process-budget.md) §5).** The event-bus SQLite mirror, the example
+> in the two corollaries below, had no reader and was removed; `events.jsonl` and its lock are the
+> event bus's only writer. The rule and both corollaries stand for any other writer.
+
 - A **best-effort** writer (e.g. the unread event-bus SQLite mirror) acquires
   its lock NON-BLOCKING (`flock -n`) and SKIPS the write on contention rather
   than waiting — so a high-frequency emitter (parallel members, kill-timing
@@ -56,7 +60,7 @@ Corollaries:
 ## Implementation Notes (EPIC #1129, executed in #1153)
 
 - Call sites following this policy: ADR-005 label leases; `eb_emit_event` jsonl
-  append and SQLite mirror (`core/event-bus/event-bus.sh`, #1153); state writes
+  append (`core/event-bus/event-bus.sh`, #1153; its SQLite mirror is gone, ADR-065 §5); state writes
   (`core/state/atomic.sh`); the parallel orchestrator's parent-serial state
   writes (ADR-039 / #1131).
 - Anti-patterns to reject in review: synchronizing via `sleep`; concurrent

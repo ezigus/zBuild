@@ -99,6 +99,15 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 > options after `--args` and a value such as `-n` must stay a value.
 > Ratcheted 5,480 → 5,040 (measured 4,991 on macOS).
 
+> **Amended 2026-10-24 (round 4): the SQLite event mirror is removed.** Every event was written
+> twice: to `events.jsonl`, which everything reads (`eb_query_events`, the status comment, the stage
+> reports, the tests), and to `events.db`, which nothing read — the bus's own comments said so ("jsonl
+> is the only read path", "a dropped row is harmless"). The copy cost a lock and a `sqlite3` on every
+> event, about 9,600 processes in the 60 slowest test files alone. `eb_emit_event` now writes
+> `events.jsonl` only; `ZBUILD_EVENTS_DB` is no longer read. `sqlite3` stays an optional tool for the
+> memory-sqlite plugin, so `zbuild doctor` still checks for it. ADR-006, ADR-035 and ADR-041 are
+> amended to match.
+
 > **Amended 2026-10-24: more of the named sites are one pass.** The budget's run is one mocked
 > pipeline (4,808 programs), but a single test file started up to 22,701, because tests run the same
 > engine paths many times. `scripts/lib/fork-census.sh <cmd...>` now counts any command, with the
@@ -200,3 +209,4 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 - §1 (amended 2026-10-24, round 2: the schedule) → `tests/unit/run-tests-schedule-test.sh` SPEC-1 (longest first, unrecorded first), SPEC-2/3 (pinned files in their own lane, one at a time), SPEC-4 (counts and FAIL lines in file order), SPEC-5 (file order without a durations file), SPEC-6 (the durations file is written from a timing log); `tests/unit/run-tests-tier-concurrency-test.sh` SPEC-4e (the default cap is 6); `tests/unit/ci-npm-script-parity-test.sh` SPEC-4 (shellcheck runs in parallel batches and a failing batch fails)
 - §1, §2 (amended 2026-10-24, round 3: processes) → `tests/unit/fork-census-test.sh` SPEC-4 (subshells are counted as processes); `tests/e2e/fork-budget-test.sh` SPEC-7 (the mocked run's processes are within `PROCESS_BUDGET`)
 - §3 (amended 2026-10-24, round 3) → `tests/unit/yaml-get-cache-test.sh` SPEC-12 (`yaml_get_v` matches `$(yaml_get)`), SPEC-13 (a miss fills the calling shell's cache); `tests/unit/output-paths-resolve-test.sh` SPEC-1/2; `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row costs one process); `tests/unit/discover-plugins-memo-test.sh` SPEC-9 (a shared memo directory), SPEC-10 (a warm lookup costs one process); `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-7 (no `cksum`, and a hit only under its own root); `tests/unit/run-tests-schedule-test.sh` SPEC-7 (one memo directory per run, removed after it)
+- §5 (amended 2026-10-24, round 4: no SQLite mirror) → `tests/unit/event-bus-emit-cost-test.sh` E2 (an emit given a db path starts no `sqlite3`, takes one lock and writes no `events.db`); `tests/unit/core-event-bus-test.sh` (no `events.db` or its lock is written)
