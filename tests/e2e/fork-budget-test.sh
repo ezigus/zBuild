@@ -25,6 +25,7 @@
 #         apart instead); an unmarked line in the same loop still is (#2236).
 #         How often a wait loop sleeps measures elapsed time, not code — under
 #         load the same tree counted 4,528 and 4,610.
+# SPEC-7: total processes (programs + subshells) ≤ PROCESS_BUDGET.
 # SPEC-6: the worker pool's execs scale with its work units, not with how long
 #         they take: its poll sleep is exempt, and no counted pool line runs
 #         more than once per unit (#2236).
@@ -65,7 +66,17 @@ setup_test_env "fork-budget"
 # one awk each, validate_manifest's structural checks one awk, atomic_write has
 # no dirname/tail/awk, the run-status comment reads a row with one jq —
 # measured 4,378 macOS.
-FORK_BUDGET=4440
+# 4380 (round 3: discovery's tree check is one find; status rows and output
+# paths fill variables) — measured 4,312 macOS.
+FORK_BUDGET=4380
+# PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
+# the programs above plus each `$( )` subshell, a copy of the whole engine shell
+# that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
+# 7050 (round 3: manifest reads through yaml_get_v — measured 6,967 macOS;
+# main before it measured 8,331). 6220 (round 3: output paths, status-row
+# times, discovery's tree check and the manifest_graph memo name fill variables
+# instead of subshells — measured 6,139 macOS).
+PROCESS_BUDGET=6220
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh
@@ -137,6 +148,8 @@ assert_file_exists "[SPEC-2] …and produced events.jsonl" "$RUN_DIR/events/even
 print_test_section "SPEC-3/4: liveness floor and the budget"
 SITES="$TEST_TEMP_DIR/run.sites"
 _total="$(fork_census_count "$TRACE" "$SITES")"
+_procs="$(fork_census_processes "$TRACE")"
+echo "  processes: $_procs (budget $PROCESS_BUDGET)"
 _files="$(awk -F'\t' '{ split($2, p, ":"); f[p[1]] = 1 } END { print length(f) }' "$SITES")"
 echo "  external execs: $_total (budget $FORK_BUDGET) across $_files source files"
 echo "  top call sites:"
@@ -181,6 +194,11 @@ fi
 _pool_max="$(awk -F'\t' '$2 ~ /^local_engine\.sh:/ && $1 > m { m = $1 } END { print m + 0 }' "$SITES")"
 echo "  busiest counted pool line: ${_pool_max} execs (2 work units)"
 assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit (max ${_pool_max})" "1" "$(( _pool_max <= 2 ))"
+if (( _procs <= PROCESS_BUDGET )); then
+    assert_pass "[SPEC-7] ${_procs} processes ≤ PROCESS_BUDGET ${PROCESS_BUDGET}"
+else
+    assert_fail "[SPEC-7] processes ≤ PROCESS_BUDGET" "${_procs} > ${PROCESS_BUDGET} — a \$( ) around an engine function copies the whole shell; ADR-065 §2: the budget only ratchets down"
+fi
 if (( _total <= FORK_BUDGET )); then
     assert_pass "[SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
 else

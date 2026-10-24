@@ -102,6 +102,10 @@ import sys,re; p=sys.argv[1]; s=open(p).read()
 s=re.sub(r"\n  run: [^\n]*", "", s, count=1)
 open(p,'w').write(s)
 PY
+# An in-place manifest edit needs a flush: the manifest cache keeps what this
+# shell has read (#1614; ADR-065 §3 — manifests are read with yaml_get_v, so the
+# hook lookup above is now cached here rather than lost in a subshell).
+yaml_cache_flush "$NDIR/manifest.yaml"
 plugin_hook_call "$NDIR" run "needy" "$STATE/pipeline-state.json" >/dev/null 2>&1
 _verdict_read_result "$STATE" "$NDIR/manifest.yaml" "needy" 0 _n
 assert_eq "[L6] the refused run's result reads as absent" "absent" "$_n_state"

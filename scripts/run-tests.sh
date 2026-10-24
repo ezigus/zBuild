@@ -358,6 +358,23 @@ if [[ -n "$_rt_origin_url" ]]; then
   export GIT_CONFIG_COUNT=$((_rt_gc_n + 1))
 fi
 
+# One plugin-discovery memo for the whole run (ADR-065 §3): every test file
+# has its own data root, so each paid a full walk of the plugin tree before its
+# own memo existed. The memo is reused only while nothing it read is newer, so
+# sharing it is safe. A nested run (a test that runs this script) keeps its
+# parent's. Removed on exit by _rt_memo_cleanup, which each EXIT trap below calls.
+_RT_OWN_MEMO_DIR=""
+if [[ -z "${ZBUILD_DISCOVERY_MEMO_DIR:-}" ]]; then
+  if ZBUILD_DISCOVERY_MEMO_DIR="$(mktemp -d -t zbuild-discovery-memo.XXXXXX 2>/dev/null)"; then
+    export ZBUILD_DISCOVERY_MEMO_DIR
+    _RT_OWN_MEMO_DIR="$ZBUILD_DISCOVERY_MEMO_DIR"
+  else
+    unset ZBUILD_DISCOVERY_MEMO_DIR
+  fi
+fi
+_rt_memo_cleanup() { [[ -z "$_RT_OWN_MEMO_DIR" ]] || rm -rf "$_RT_OWN_MEMO_DIR"; }
+trap '_rt_memo_cleanup' EXIT
+
 if [[ "${1:-}" == "--files" ]]; then
   shift
   _tf_passed=0; _tf_failed=0; _tf_total=0; _tf_timedout=0
@@ -376,7 +393,7 @@ if [[ "${1:-}" == "--files" ]]; then
   [[ "$_tf_jobs" =~ ^[0-9]+$ ]] || _tf_jobs=0
   _tf_job_dir="$(mktemp -d -t zbuild-files-par.XXXXXX)"
   # shellcheck disable=SC2064  # expand now: the dir is fixed for this run
-  trap "rm -rf '$_tf_job_dir'" EXIT
+  trap "rm -rf '$_tf_job_dir'; _rt_memo_cleanup" EXIT
   # Slots are assigned in ARGUMENT order up front, so the aggregation loop
   # below reports in that order whatever order the files actually ran in.
   _tf_slot=0; _tf_inflight=0
@@ -506,7 +523,7 @@ if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
   _RT_BASH_ENV_FILE="$(mktemp -t zbuild-cov-bashenv.XXXXXX)"
   printf 'set -x\n' > "$_RT_BASH_ENV_FILE"
   # shellcheck disable=SC2064
-  trap "rm -f '$_RT_BASH_ENV_FILE'" EXIT
+  trap "rm -f '$_RT_BASH_ENV_FILE'; _rt_memo_cleanup" EXIT
   export PS4='TRACE:${BASH_SOURCE[0]-}:${LINENO}:'
   export BASH_XTRACEFD=8
   export BASH_ENV="$_RT_BASH_ENV_FILE"
@@ -893,6 +910,7 @@ case "$tier" in
     _rt_all_cleanup() {
       rm -f "$rc_file" "${_RT_BASH_ENV_FILE:-}"
       [[ -z "${buf_dir:-}" ]] || rm -rf "$buf_dir"
+      _rt_memo_cleanup
       local _ep
       for _ep in "${_tier_pids[@]+"${_tier_pids[@]}"}"; do
         kill -TERM "$_ep" 2>/dev/null || true

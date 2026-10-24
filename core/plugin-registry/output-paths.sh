@@ -75,16 +75,25 @@ _registry_output_path_rows() {
 # cannot inject a command. Bounded at 16 rounds; an unset var is left literal so
 # the caller's check fails loudly rather than resolving to something plausible.
 _registry_resolve_output_path() {
-    local resolved="$1" state_dir="${2:-}" artifact_dir="${3:-}"
-    local _var _expansions=0
-    resolved="${resolved//\$\{state_dir\}/$state_dir}"
-    resolved="${resolved//\$\{artifact_dir\}/$artifact_dir}"
-    resolved="${resolved//\$\{artifacts_dir\}/$artifact_dir}"
-    while [[ $_expansions -lt 16 ]] && [[ "$resolved" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
-        _var="${BASH_REMATCH[1]}"
-        [[ -z "${!_var+x}" ]] && break
-        resolved="${resolved//\$\{$_var\}/${!_var}}"
-        _expansions=$((_expansions + 1))
+    local _rrop_o
+    _registry_resolve_output_path_v _rrop_o "$@"
+    printf '%s' "$_rrop_o"
+}
+
+# _registry_resolve_output_path_v <var> <raw> [state_dir] [artifact_dir] — the
+# same into <var>, without the `$( )` every caller wrapped it in: one copy of
+# the engine shell per output of every other plugin on each dispatch (ADR-065 §3).
+_registry_resolve_output_path_v() {
+    local _rrop_res="$2" _rrop_sd="${3:-}" _rrop_ad="${4:-}"
+    local _rrop_var _rrop_n=0
+    _rrop_res="${_rrop_res//\$\{state_dir\}/$_rrop_sd}"
+    _rrop_res="${_rrop_res//\$\{artifact_dir\}/$_rrop_ad}"
+    _rrop_res="${_rrop_res//\$\{artifacts_dir\}/$_rrop_ad}"
+    while [[ $_rrop_n -lt 16 ]] && [[ "$_rrop_res" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
+        _rrop_var="${BASH_REMATCH[1]}"
+        [[ -z "${!_rrop_var+x}" ]] && break
+        _rrop_res="${_rrop_res//\$\{$_rrop_var\}/${!_rrop_var}}"
+        _rrop_n=$((_rrop_n + 1))
     done
-    printf '%s' "$resolved"
+    printf -v "$1" '%s' "$_rrop_res"
 }

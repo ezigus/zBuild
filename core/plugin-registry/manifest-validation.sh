@@ -181,6 +181,27 @@ yaml_get() {
     return "$rc"
 }
 
+# ─── yaml_get_v <var> <file> <key> — yaml_get into a variable, no subshell ──
+# What `var="$(yaml_get <file> <key>)"` gives — the value with its trailing
+# newlines stripped, and the same rc — without the `$( )`. That copy of the
+# whole shell happens even on a cache hit, and a miss inside it cannot fill the
+# cache for anyone (ADR-065 §3): here a miss fills it in the calling shell.
+yaml_get_v() {
+    local -n _ygv_out="$1"
+    local _ygv_f="$2" _ygv_k="$3" _ygv_rc=0 _ygv_v
+    if [[ "${ZBUILD_YAML_CACHE:-1}" != "1" ]]; then
+        _ygv_v="$(_yaml_get_uncached "$_ygv_f" "$_ygv_k")" || _ygv_rc=$?
+        _ygv_out="$_ygv_v"
+        return "$_ygv_rc"
+    fi
+    local _ygv_ck="${_ygv_f}"$'\034'"${_ygv_k}"
+    [[ -n "${_ZBUILD_YAML_RC[$_ygv_ck]+set}" ]] || yaml_get "$_ygv_f" "$_ygv_k" >/dev/null 2>&1 || true
+    _ygv_v="${_ZBUILD_YAML_OUT[$_ygv_ck]-}"
+    while [[ "$_ygv_v" == *$'\n' ]]; do _ygv_v="${_ygv_v%$'\n'}"; done
+    _ygv_out="$_ygv_v"
+    return "${_ZBUILD_YAML_RC[$_ygv_ck]:-0}"
+}
+
 _yaml_get_uncached() {
     local file="$1"
     local key="$2"
@@ -352,14 +373,14 @@ validate_manifest() {
     fi
 
     for field in id name kind version; do
-        local val; val="$(yaml_get "$manifest" "$field")"
+        local val; yaml_get_v val "$manifest" "$field"
         if [[ -z "$val" ]]; then
             error "validate_manifest($manifest): missing required field: $field"
             errors=$((errors + 1))
         fi
     done
 
-    local kind; kind="$(yaml_get "$manifest" "kind")"
+    local kind; yaml_get_v kind "$manifest" "kind"
     if [[ -n "$kind" ]]; then
         local valid=0
         for k in "${ZBUILD_PLUGIN_KINDS[@]}"; do
@@ -398,7 +419,7 @@ validate_manifest() {
     # (ADR-043), not by the plugin declaring requires.core.redaction.
     if [[ "$kind" == "persona" ]]; then
         local _block_scalar_re='^[>|][-+]?$'
-        local persona_role; persona_role="$(yaml_get "$manifest" "persona.role")"
+        local persona_role; yaml_get_v persona_role "$manifest" "persona.role"
         if [[ -z "$persona_role" ]]; then
             error "validate_manifest($manifest): kind: persona requires a non-empty 'persona.role' (the noun phrase for 'You are {role} for the target project.')"
             errors=$((errors + 1))
@@ -406,7 +427,7 @@ validate_manifest() {
             error "validate_manifest($manifest): 'persona.role' must be a single-line string, not a block scalar ('$persona_role'); use a plain value on the same line as the key"
             errors=$((errors + 1))
         fi
-        local persona_perspective; persona_perspective="$(yaml_get "$manifest" "persona.perspective")"
+        local persona_perspective; yaml_get_v persona_perspective "$manifest" "persona.perspective"
         if [[ -z "$persona_perspective" ]]; then
             error "validate_manifest($manifest): kind: persona requires a non-empty 'persona.perspective' (#1569 — the behavior injected into the stage prompt). A persona with a role but no perspective is indistinguishable from an absent persona at the seam, so it is rejected loudly here."
             errors=$((errors + 1))
@@ -440,8 +461,8 @@ validate_manifest() {
     # result contract to declare; dispatched-stage-plugins-v2-test.sh checks
     # that no template dispatches one as a stage. Plain bash, no fork (ADR-065).
     local _decl_contract
-    _decl_contract="$(yaml_get "$manifest" "provides.result_contract" 2>/dev/null || true)"
-    local _pid_c; _pid_c="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+    yaml_get_v _decl_contract "$manifest" "provides.result_contract" 2>/dev/null || true
+    local _pid_c; yaml_get_v _pid_c "$manifest" "id" 2>/dev/null || true
     local _msg _has_prim=0 _hp_line
     while IFS= read -r _hp_line || [[ -n "$_hp_line" ]]; do
         [[ "$_hp_line" =~ ^[[:space:]]+primary:[[:space:]]*true ]] && { _has_prim=1; break; }
@@ -488,14 +509,14 @@ validate_manifest() {
     # contract layers (cache_pull, memory_put, etc.) — not plugin_hook_call —
     # so they don't need lifecycle hooks. The check skips when role is set.
     if [[ -n "$kind" ]]; then
-        local provides_role; provides_role="$(yaml_get "$manifest" "provides.role" 2>/dev/null || true)"
+        local provides_role; yaml_get_v provides_role "$manifest" "provides.role" 2>/dev/null || true
         if [[ -z "$provides_role" ]]; then
             local required_hooks; required_hooks="$(_required_hooks_for_kind "$kind")"
             if [[ -n "$required_hooks" ]]; then
-                local plugin_id_for_err; plugin_id_for_err="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+                local plugin_id_for_err; yaml_get_v plugin_id_for_err "$manifest" "id" 2>/dev/null || true
                 local h
                 for h in $required_hooks; do
-                    local fn; fn="$(yaml_get "$manifest" "hooks.$h" 2>/dev/null || true)"
+                    local fn; yaml_get_v fn "$manifest" "hooks.$h" 2>/dev/null || true
                     if [[ -z "$fn" ]]; then
                         error "validate_manifest: plugin '${plugin_id_for_err:-unknown}' (kind: $kind) requires hook '$h' (declare under hooks: in the manifest)"
                         errors=$((errors + 1))

@@ -44,8 +44,16 @@ ZBUILD_DISABLED_FILE="${ZBUILD_DISABLED_FILE:-${_ZBUILD_ROOT}/config/plugins.dis
 # off-switch contract, the same one the yaml cache has (#1614).
 declare -gA _ZBUILD_DISCOVERY_CACHE=()
 declare -gA _ZBUILD_DISCOVERY_SHAPE=()
-_discovery_tree_shape() {
-    find "$1" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | LC_ALL=C sort | tr '\n' ' '
+_discovery_tree_shape() { local _dts; _discovery_tree_shape_v _dts "$1"; printf '%s' "$_dts"; }
+# The shape into <var>: one find, read by the shell (it was `$(find | sort | tr)`,
+# four processes on every lookup). find's own order, unsorted: an order that
+# changes can only cost a re-walk, never a wrong answer.
+_discovery_tree_shape_v() {   # <var> <root>
+    local -n _dtsv_o="$1"
+    local _dtsv_l
+    _dtsv_o=""
+    while IFS= read -r _dtsv_l; do _dtsv_o+="$_dtsv_l "; done \
+        < <(find "$2" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null)
 }
 # ─── The file memo (ADR-065 §3) ──────────────────────────────────────────────
 # The in-shell memo dies with a `$( )`, and callers resolve stages inside one,
@@ -57,8 +65,12 @@ _discovery_tree_shape() {
 # plugins tree, the disabled list or the validator code is newer than it: an
 # in-place edit re-walks, which the in-shell memo alone does not notice.
 # discovery_cache_flush and ZBUILD_PLUGIN_DISCOVERY_CACHE=0 skip it.
+# ZBUILD_DISCOVERY_MEMO_DIR, when set, wins: scripts/run-tests.sh points a whole
+# suite run at one directory, so each test file does not pay its own first walk.
 _discovery_memo_dir() {
-    if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
+    if [[ -n "${ZBUILD_DISCOVERY_MEMO_DIR:-}" ]]; then
+        printf '%s' "$ZBUILD_DISCOVERY_MEMO_DIR"
+    elif [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
         printf '%s/runtime/discovery-memo' "$ZBUILD_STATE_DIR"
     else
         printf '%s/cache/discovery-memo' "${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}"
@@ -66,6 +78,8 @@ _discovery_memo_dir() {
 }
 _discovery_memo_file() {   # <key>
     local n="${1//[^A-Za-z0-9._-]/_}"
+    # The validator code is part of the answer: two engines never share a memo.
+    n+="__${_ZBUILD_ROOT//[^A-Za-z0-9._-]/_}"
     (( ${#n} > 200 )) && n="${n: -200}"
     printf '%s/%s' "$(_discovery_memo_dir)" "$n"
 }
@@ -75,7 +89,7 @@ _discovery_memo_read() {   # <root> <key> <shape> → _ZBUILD_DISCOVERY_MEMO_OUT
     mf="$(_discovery_memo_file "$key")"
     [[ -s "$mf" ]] || return 1
     body="$(<"$mf")" || return 1
-    [[ "${body%%$'\n'*}" == "$key" ]] || return 1
+    [[ "${body%%$'\n'*}" == "$key"$'\034'"${_ZBUILD_ROOT:-}" ]] || return 1
     body="${body#*$'\n'}"
     [[ "${body%%$'\n'*}" == "$shape" ]] || return 1
     local -a watch=("$root")
@@ -93,21 +107,15 @@ _discovery_memo_write() {   # <key> <shape> <out>
     mf="$(_discovery_memo_file "$1")"; dir="${mf%/*}"
     [[ -d "$dir" ]] || mkdir -p "$dir" 2>/dev/null || return 0
     tmp="$mf.tmp.$$.$RANDOM"
-    { printf '%s\n%s\n%s' "$1" "$2" "$3" > "$tmp"; } 2>/dev/null && mv -f "$tmp" "$mf" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+    { printf '%s\n%s\n%s' "$1"$'\034'"${_ZBUILD_ROOT:-}" "$2" "$3" > "$tmp"; } 2>/dev/null && mv -f "$tmp" "$mf" 2>/dev/null || rm -f "$tmp" 2>/dev/null
     return 0
 }
-_discovery_memo_drop() {   # [root] — remove the file memo(s) for root, or all
+_discovery_memo_drop() {   # [root] — a flush drops every memo: a name can be
+    # cut to fit, so matching by root could miss one, and a needless re-walk is
+    # only a cost.
     local dir; dir="$(_discovery_memo_dir)"
     [[ -d "$dir" ]] || return 0
-    if [[ -n "${1:-}" ]]; then
-        # The file is named after <root>\034<disabled list>: drop every memo
-        # whose name starts with this root's.
-        local n="${1//[^A-Za-z0-9._-]/_}"
-        (( ${#n} > 150 )) && n="${n: -150}"
-        rm -f "$dir/"*"$n"* 2>/dev/null
-    else
-        rm -f "$dir/"* 2>/dev/null
-    fi
+    rm -f "$dir/"* 2>/dev/null
     return 0
 }
 
@@ -119,7 +127,7 @@ discover_plugins() {
     fi
     local _dck="${plugins_root}"$'\034'"${ZBUILD_DISABLED_FILE:-}"
     local _out _shape
-    _shape="$(_discovery_tree_shape "$plugins_root")"
+    _discovery_tree_shape_v _shape "$plugins_root"
     if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" \
         && "${_ZBUILD_DISCOVERY_SHAPE[$_dck]:-}" == "$_shape" ]]; then
         _out="${_ZBUILD_DISCOVERY_CACHE[$_dck]}"
@@ -212,7 +220,7 @@ _discover_plugins_walk() {
 
     find "$plugins_root" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | while IFS= read -r manifest; do
         local plugin_dir; plugin_dir="$(dirname "$manifest")"
-        local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
+        local plugin_id; yaml_get_v plugin_id "$manifest" "id"
         # Check disabled list
         local is_disabled=0
         for d in "${disabled[@]}"; do
@@ -238,10 +246,10 @@ list_plugins_table() {
     for plugin_dir in ${_lpt_dirs[@]+"${_lpt_dirs[@]}"}; do
         local manifest="$plugin_dir/manifest.yaml"
         local id name kind version
-        id="$(yaml_get "$manifest" "id")"
-        name="$(yaml_get "$manifest" "name")"
-        kind="$(yaml_get "$manifest" "kind")"
-        version="$(yaml_get "$manifest" "version")"
+        yaml_get_v id "$manifest" "id"
+        yaml_get_v name "$manifest" "name"
+        yaml_get_v kind "$manifest" "kind"
+        yaml_get_v version "$manifest" "version"
         printf "  %-20s %-12s %-10s %s\n" "$id" "$kind" "$version" "$name"
     done
 }
@@ -286,7 +294,7 @@ lockfile_write() {
     local tmp; tmp="$(mktemp "${lockdir}/.lockfile.XXXXXX")"
     discover_plugins "$plugins_root" | sort | while IFS= read -r plugin_dir; do
         local manifest="$plugin_dir/manifest.yaml"
-        local id; id="$(yaml_get "$manifest" "id")"
+        local id; yaml_get_v id "$manifest" "id"
         local pair; pair="$(_hash_plugin_pair "$manifest")"
         echo "$id $pair $manifest"
     done > "$tmp"
@@ -344,7 +352,7 @@ verify_plugin_for_source() {
     local lockfile="${2:-$ZBUILD_LOCKFILE}"
     [[ ! -f "$lockfile" ]] && return 0
 
-    local id; id="$(yaml_get "$manifest" "id")"
+    local id; yaml_get_v id "$manifest" "id"
     [[ -z "$id" ]] && return 0
 
     local expected_pair manifest_in_lock
@@ -373,7 +381,7 @@ verify_plugin_for_source() {
         # matches contracts.sh — a manifest that fails to parse is exactly the
         # case this check fires on, and an empty kind would leave the envelope
         # blank for the one event most worth attributing.
-        local _kind; _kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
+        local _kind; yaml_get_v _kind "$manifest" "kind" 2>/dev/null || true
         emit_event "plugin.tamper.detected" "plugin=$id" \
             "kind=${_kind:-unknown}" \
             "manifest=$manifest_in_lock"
@@ -403,10 +411,10 @@ find_plugin_for_role() {
     for plugin_dir in ${_fpr_dirs[@]+"${_fpr_dirs[@]}"}; do
         manifest="$plugin_dir/manifest.yaml"
         [[ ! -f "$manifest" ]] && continue
-        declared_role="$(yaml_get "$manifest" "provides.role" 2>/dev/null || true)"
+        yaml_get_v declared_role "$manifest" "provides.role" 2>/dev/null || true
         [[ "$declared_role" != "$role" ]] && continue
-        plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
-        declared_alias="$(yaml_get "$manifest" "provides.alias" 2>/dev/null || true)"
+        yaml_get_v plugin_id "$manifest" "id" 2>/dev/null || true
+        yaml_get_v declared_alias "$manifest" "provides.alias" 2>/dev/null || true
         if [[ "$plugin_id" == "$alias" || "$declared_alias" == "$alias" ]]; then
             echo "$plugin_dir"
             return 0

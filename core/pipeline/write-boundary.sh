@@ -314,7 +314,7 @@ write_boundary_classify() {
         local _rp _res
         while IFS=$'\t' read -r _rp _; do
             [[ -z "$_rp" ]] && continue
-            _res="$(_registry_resolve_output_path "$_rp" "$_sd" "$_art")"
+            _registry_resolve_output_path_v _res "$_rp" "$_sd" "$_art"
             local _cr; _cr="$(cd "$(dirname "$_res")" 2>/dev/null && pwd -P)/$(basename "$_res")" \
                 || _cr="$_res"
             local _dd; _dd="$(dirname "$_cr")"

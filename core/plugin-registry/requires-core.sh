@@ -244,7 +244,7 @@ requires_core_check() {
     local plugin_dir; plugin_dir="$(dirname "$manifest")"
     local found=0
 
-    local kind; kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
+    local kind; yaml_get_v kind "$manifest" "kind" 2>/dev/null || true
     if [[ "$kind" == "agent" ]]; then
         local declared; declared="$(_yaml_get_requires_core_list "$manifest")"
         if ! grep -Fxq "redaction" <<< "$declared"; then

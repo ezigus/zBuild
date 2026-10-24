@@ -144,7 +144,7 @@ _map_write_summary() {
             if [[ -n "$env_target" ]]; then
                 res="$(export "$env_target=${elems[$i]}"; _registry_resolve_output_path "$raw" "$state_dir" "$art")"
             else
-                res="$(_registry_resolve_output_path "$raw" "$state_dir" "$art")"
+                _registry_resolve_output_path_v res "$raw" "$state_dir" "$art"
             fi
         fi
         outcome="missing"; reason=""

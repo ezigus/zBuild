@@ -24,7 +24,7 @@ _find_plugin_for_stage() {
     local -a _fps_dirs=()
     discover_plugins_into _fps_dirs "$plugins_root"
     for plugin_dir in ${_fps_dirs[@]+"${_fps_dirs[@]}"}; do
-        id="$(yaml_get "$plugin_dir/manifest.yaml" "id")"
+        yaml_get_v id "$plugin_dir/manifest.yaml" "id"
         [[ "$id" == "$stage" ]] && { echo "$plugin_dir"; return 0; }
     done
     return 1

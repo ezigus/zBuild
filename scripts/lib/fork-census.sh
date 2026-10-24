@@ -20,7 +20,9 @@ fork_census_traced() {
     local be="${trace}.bashenv"
     printf 'set -x\n' > "$be"
     (
-        export PS4='+@${BASH_SOURCE[0]-}:${LINENO}@ '
+        # #<pid> after the line number names the process each line ran in
+        # (fork_census_processes); the counter strips it.
+        export PS4='+@${BASH_SOURCE[0]-}:${LINENO}#${BASHPID}@ '
         export BASH_XTRACEFD=7
         export BASH_ENV="$be"
         "$@" 7>"$trace"
@@ -46,13 +48,13 @@ fork_census_count() {
     while IFS= read -r src; do
         [[ -f "$src" ]] || continue
         grep -n 'fork-budget-exempt:' "$src" 2>/dev/null | awk -F: -v p="$src" '{ print p ":" $1 }' >> "$exempt" || true
-    done < <(awk '/^\++@[^@]*@ /{ s = $0; sub(/^\++@/, "", s); sub(/:[0-9]*@ .*$/, "", s); if (!(s in seen)) { seen[s] = 1; print s } }' "$trace")
+    done < <(awk '/^\++@[^@]*@ /{ s = $0; sub(/^\++@/, "", s); sub(/:[0-9]*(#[0-9]+)?@ .*$/, "", s); if (!(s in seen)) { seen[s] = 1; print s } }' "$trace")
     # pass 1: one `site<TAB>word` row per candidate command word (no forks per line);
     # an exempt site's row is tagged so pass 2 lists it apart.
     awk -v exf="$exempt" '
         BEGIN { while ((getline l < exf) > 0) ex[l] = 1 }
         /^\++@[^@]*@ / {
-            site = $0; sub(/^\++@/, "", site); sub(/@ .*$/, "", site)
+            site = $0; sub(/^\++@/, "", site); sub(/@ .*$/, "", site); sub(/#[0-9]+$/, "", site)
             tag = (site in ex) ? "\tX" : ""
             n = split(site, sp, "/"); site = sp[n]
             line = $0; sub(/^\++@[^@]*@ /, "", line)
@@ -108,6 +110,13 @@ fork_census_count() {
     rm -f "$pairs" "$unsorted" "$unsorted.x" "$exempt"
 }
 
+# Usage: fork_census_processes <trace_file> — the number of processes bash ran
+# in: the command, every `$( )` / `( )` subshell (a copy of the whole shell,
+# which fork_census_count does not see) and every subshell that execs a program.
+fork_census_processes() {
+    awk '/^\++@/ { p = $0; sub(/@ .*$/, "", p); sub(/^.*#/, "", p); if (!(p in seen)) { seen[p] = 1; n++ } } END { print n + 0 }' "$1"
+}
+
 # The census of one command, for a person: the count, the top call sites and
 # the per-file totals. The command's own output is discarded; its rc is kept.
 fork_census_report() {
@@ -117,6 +126,7 @@ fork_census_report() {
     fork_census_traced "$tmp/trace" "$@" >/dev/null 2>&1; rc=$?
     n="$(fork_census_count "$tmp/trace" "$sites")"
     printf 'external execs: %s (rc %s)\n' "$n" "$rc"
+    printf 'processes: %s\n' "$(fork_census_processes "$tmp/trace")"
     printf 'top call sites:\n'
     awk -F'\t' 'NR <= 20 { printf "  %6d  %-40s %s\n", $1, $2, $3 }' "$sites"
     printf 'by file:\n'

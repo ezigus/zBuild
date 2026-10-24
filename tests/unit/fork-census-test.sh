@@ -14,6 +14,10 @@
 # SPEC-2: a library function can be counted on its own: fork_census_traced and
 #         fork_census_count are callable after sourcing the file.
 # SPEC-3: the budget test counts with this file, so there is one counter.
+# SPEC-4: fork_census_processes counts every process the command ran bash in —
+#         the command itself, each `$( )` subshell (a copy of the whole shell,
+#         which fork_census_count cannot see) and each subshell that execs a
+#         program — and the program count is unchanged by it.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,6 +60,24 @@ if grep -q 'scripts/lib/fork-census.sh' "$_budget" && ! grep -qE '^_fb_count\(\)
 else
     assert_fail "[SPEC-3] the budget test sources the census and keeps no copy of the counter" "$_budget"
 fi
+
+print_test_section "SPEC-4: shell processes"
+SUBSH="$TEST_TEMP_DIR/subsh.sh"
+cat > "$SUBSH" <<'EOF'
+#!/usr/bin/env bash
+f() { printf 'x'; }
+a="$(f)"
+b="$(dirname /a/b)"
+c="${a}${b}"
+EOF
+_pr="$(
+    # shellcheck source=../../scripts/lib/fork-census.sh
+    source "$CENSUS"
+    fork_census_traced "$TEST_TEMP_DIR/s.trace" bash "$SUBSH"
+    printf '%s|%s' "$(fork_census_count "$TEST_TEMP_DIR/s.trace" "$TEST_TEMP_DIR/s.sites")" \
+        "$(fork_census_processes "$TEST_TEMP_DIR/s.trace" 2>/dev/null)"
+)"
+assert_eq "[SPEC-4] one program; three processes (the script, \$(f), \$(dirname))" "1|3" "$_pr"
 
 cleanup_test_env
 print_test_results
