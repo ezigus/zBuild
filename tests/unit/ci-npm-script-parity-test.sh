@@ -131,12 +131,15 @@ fi
 # ─── SPEC-4: parallel batches, and a failing batch fails the step ───────────
 _npm_xargs="$(grep -oE "xargs -0 [^&]*shellcheck [^&]*" "$PKG" | head -1 | sed 's/[[:space:]]*$//')"
 assert_contains "[SPEC-4] npm's shellcheck runs in parallel (xargs -P)" "$_npm_xargs" " -P "
+# The batches themselves need shellcheck; a runner without it (macOS CI) is an
+# honest SKIP here — rc 127 would pass the defect check for the wrong reason.
+skip_unless_capable "shellcheck unavailable" command -v shellcheck
 _sc_dir="$(mktemp -d "${TMPDIR:-/tmp}/sc-parity.XXXXXX")"
 for _i in 1 2 3 4 5 6; do printf '#!/usr/bin/env bash\necho ok\n' > "$_sc_dir/good$_i.sh"; done
 printf '#!/usr/bin/env bash\nx=$(( 1 + ))\nif [ "$x" = 1 ] then\n' > "$_sc_dir/zz-bad.sh"
 if [[ "$_npm_xargs" =~ ^xargs\ -0(\ -[Pn]\ [0-9]+)*\ shellcheck\ -x\ --severity=warning$ ]]; then
     ( cd "$_sc_dir" && find . -name '*.sh' -print0 | sort -z | eval "$_npm_xargs" ) >/dev/null 2>&1; _sc_rc=$?
-    assert_eq "[SPEC-4] a defect in one batch fails the step" "1" "$(( _sc_rc != 0 ))"
+    assert_eq "[SPEC-4] a defect in one batch fails the step (xargs: a batch exited 1)" "123" "$_sc_rc"
     ( cd "$_sc_dir" && rm -f zz-bad.sh && find . -name '*.sh' -print0 | eval "$_npm_xargs" ) >/dev/null 2>&1; _sc_rc=$?
     assert_eq "[SPEC-4] …and clean files pass it" "0" "$_sc_rc"
 else
