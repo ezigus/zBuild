@@ -181,6 +181,27 @@ yaml_get() {
     return "$rc"
 }
 
+# ─── yaml_get_v <var> <file> <key> — yaml_get into a variable, no subshell ──
+# What `var="$(yaml_get <file> <key>)"` gives — the value with its trailing
+# newlines stripped, and the same rc — without the `$( )`. That copy of the
+# whole shell happens even on a cache hit, and a miss inside it cannot fill the
+# cache for anyone (ADR-065 §3): here a miss fills it in the calling shell.
+yaml_get_v() {
+    local -n _ygv_out="$1"
+    local _ygv_f="$2" _ygv_k="$3" _ygv_rc=0 _ygv_v
+    if [[ "${ZBUILD_YAML_CACHE:-1}" != "1" ]]; then
+        _ygv_v="$(_yaml_get_uncached "$_ygv_f" "$_ygv_k")" || _ygv_rc=$?
+        _ygv_out="$_ygv_v"
+        return "$_ygv_rc"
+    fi
+    local _ygv_ck="${_ygv_f}"$'\034'"${_ygv_k}"
+    [[ -n "${_ZBUILD_YAML_RC[$_ygv_ck]+set}" ]] || yaml_get "$_ygv_f" "$_ygv_k" >/dev/null 2>&1 || true
+    _ygv_v="${_ZBUILD_YAML_OUT[$_ygv_ck]-}"
+    while [[ "$_ygv_v" == *$'\n' ]]; do _ygv_v="${_ygv_v%$'\n'}"; done
+    _ygv_out="$_ygv_v"
+    return "${_ZBUILD_YAML_RC[$_ygv_ck]:-0}"
+}
+
 _yaml_get_uncached() {
     local file="$1"
     local key="$2"

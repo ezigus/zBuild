@@ -13,6 +13,10 @@
 # SPEC-7: identical relative paths under two roots do not collide
 # SPEC-8: NEGATIVE CONTROL — the cache is actually used (fails if it is inert)
 # SPEC-9: yaml_cache_prewarm fills the CALLING shell and a subshell inherits it
+# SPEC-12 (ADR-065 §3): yaml_get_v <var> <file> <key> gives exactly what
+#         `var="$(yaml_get <file> <key>)"` gives — value and rc — cache on or off
+# SPEC-13: …without a subshell: a miss through yaml_get_v fills the cache in the
+#         calling shell, so the next caller anywhere below it hits
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -268,6 +272,39 @@ if [[ -n "$_s11_on" && "$_s11_on" == "$_s11_off" ]]; then
 else
     assert_fail "[SPEC-11] errexit behaviour must be identical with the cache on and off" \
         "cache-off=[${_s11_off}] cache-on=[${_s11_on}]"
+fi
+
+# ── SPEC-12/13: yaml_get_v ───────────────────────────────────────────────────
+# `x="$(yaml_get …)"` copies the whole shell even on a hit, and a miss inside it
+# cannot fill the cache: 16,869 + 17,900 processes in the 60 slowest files.
+if declare -F yaml_get_v >/dev/null 2>&1; then
+    _m12=0 _d12=""
+    for _cache in 1 0; do
+        for _c in "${_cases[@]}"; do
+            _lbl="${_c%%:*}"; _rest="${_c#*:}"; _f="${_rest%%:*}"; _k="${_rest#*:}"
+            yaml_cache_flush; ZBUILD_YAML_CACHE=$_cache
+            _rc_s=0; _vs="$(yaml_get "$_f" "$_k" 2>/dev/null)" || _rc_s=$?
+            yaml_cache_flush
+            for _pass in miss hit; do
+                _rc_v=0; _vv="__unset__"; yaml_get_v _vv "$_f" "$_k" 2>/dev/null || _rc_v=$?
+                if [[ "$_vv" != "$_vs" || "$_rc_v" != "$_rc_s" ]]; then
+                    _m12=$((_m12 + 1)); _d12+="cache=$_cache $_lbl $_pass: [$_vv] rc=$_rc_v vs [$_vs] rc=$_rc_s; "
+                fi
+            done
+        done
+    done
+    ZBUILD_YAML_CACHE=1
+    if [[ "$_m12" -eq 0 ]]; then
+        assert_pass "[SPEC-12] yaml_get_v matches \$(yaml_get) in value and rc for every case, miss and hit, cache on and off"
+    else
+        assert_fail "[SPEC-12] yaml_get_v must match \$(yaml_get)" "$_d12"
+    fi
+    yaml_cache_flush
+    yaml_get_v _v13 "$FIX" name
+    assert_eq "[SPEC-13] a miss through yaml_get_v fills the cache in this shell" \
+        "set" "${_ZBUILD_YAML_RC["$FIX"$'\034'name]+set}"
+else
+    assert_fail "[SPEC-12] yaml_get_v is defined" "missing"
 fi
 
 cleanup_test_env
