@@ -139,7 +139,10 @@ for _i in 1 2 3 4 5 6; do printf '#!/usr/bin/env bash\necho ok\n' > "$_sc_dir/go
 printf '#!/usr/bin/env bash\nx=$(( 1 + ))\nif [ "$x" = 1 ] then\n' > "$_sc_dir/zz-bad.sh"
 if [[ "$_npm_xargs" =~ ^xargs\ -0(\ -[Pn]\ [0-9]+)*\ shellcheck\ -x\ --severity=warning$ ]]; then
     ( cd "$_sc_dir" && find . -name '*.sh' -print0 | sort -z | eval "$_npm_xargs" ) >/dev/null 2>&1; _sc_rc=$?
-    assert_eq "[SPEC-4] a defect in one batch fails the step (xargs: a batch exited 1)" "123" "$_sc_rc"
+    # GNU xargs reports a failed batch as 123, BSD xargs as 1; 127 (no
+    # shellcheck) is neither.
+    case "$_sc_rc" in 1|123) _sc_failed=yes ;; *) _sc_failed="no (rc $_sc_rc)" ;; esac
+    assert_eq "[SPEC-4] a defect in one batch fails the step (xargs: a batch failed)" "yes" "$_sc_failed"
     ( cd "$_sc_dir" && rm -f zz-bad.sh && find . -name '*.sh' -print0 | eval "$_npm_xargs" ) >/dev/null 2>&1; _sc_rc=$?
     assert_eq "[SPEC-4] …and clean files pass it" "0" "$_sc_rc"
 else
