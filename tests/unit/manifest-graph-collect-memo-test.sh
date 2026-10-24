@@ -83,6 +83,27 @@ assert_eq "[SPEC-5] …found by reading all 8 manifests in one awk" "1" "$(wc -l
 _pn6="$(manifest_graph_collect "$PROOT" mg-n6)"
 assert_eq "[SPEC-5] a walk still returns the manifest whose id matches" "$PROOT/tool/mg-n6/manifest.yaml" "$_pn6"
 assert_eq "[SPEC-5] …with one awk" "1" "$(wc -l < "$AWKS" | tr -d ' ')"
+
+# A member bound by role is found in one more awk, not one per manifest: the
+# role walk read provides.role with a yaml_get per candidate.
+for _i in 1 2 3 4; do
+    mkdir -p "$PROOT/agent/mg-r$_i"
+    printf 'id: mg-r%s\nkind: agent\nprovides:\n  role: role-%s\n' "$_i" "$_i" > "$PROOT/agent/mg-r$_i/manifest.yaml"
+done
+printf 'id: mg-r5\nkind: agent\nprovides:\n  alias: x\nnotes:\n  role: role-3\n' > "$PROOT/agent/mg-r5/manifest.yaml" 2>/dev/null \
+    || { mkdir -p "$PROOT/agent/mg-r5"; printf 'id: mg-r5\nkind: agent\nprovides:\n  alias: x\nnotes:\n  role: role-3\n' > "$PROOT/agent/mg-r5/manifest.yaml"; }
+export _TPL_STAGE_ROLES_bound_member="role-3,other"
+: > "$AWKS"
+_pr="$(manifest_graph_resolve_member "$PROOT" bound-member)"
+assert_eq "[SPEC-6] a member bound by role resolves to the manifest whose provides.role matches" "$PROOT/agent/mg-r3/manifest.yaml" "$_pr"
+assert_eq "[SPEC-6] …in two awks (the id walk, then the role walk) for 13 manifests" "2" "$(wc -l < "$AWKS" | tr -d ' ')"
+export _TPL_STAGE_ROLES_bound_member="role-none"
+: > "$AWKS"
+set +e; manifest_graph_resolve_member "$PROOT" bound-member >/dev/null 2>&1; set -e
+assert_eq "[SPEC-6] a miss reads all 13 manifests in the same two awks" "2" "$(wc -l < "$AWKS" | tr -d ' ')"
+set +e; _prn="$(manifest_graph_resolve_member "$PROOT" bound-member)"; _rcrn=$?; set -e
+assert_eq "[SPEC-6] a role no manifest provides is a miss" "1|" "$_rcrn|$_prn"
+unset _TPL_STAGE_ROLES_bound_member
 unset -f awk
 
 unset -f find
