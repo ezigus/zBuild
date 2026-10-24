@@ -29,7 +29,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 _EV_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-1906-ev.XXXXXX")"
 export ZBUILD_EVENTS_DIR="$_EV_DIR"
 export ZBUILD_EVENTS_JSONL="$_EV_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$_EV_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 : > "$ZBUILD_EVENTS_JSONL"
 

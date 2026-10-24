@@ -69,7 +69,6 @@ export ZBUILD_SCOPE_OVERRIDE=1
 # Point event bus at temp dir so route_to_model side-effects stay isolated
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="/dev/null"
 mkdir -p "$TEST_TEMP_DIR/events"
 
 # shellcheck source=../../scripts/lib/vision-init.sh

@@ -36,7 +36,7 @@ done
 emit_in() {
     local dir="$1" db="$2" platform="$3" n="$4"; shift 4
     mkdir -p "$dir"
-    ZBUILD_EVENTS_DIR="$dir" ZBUILD_EVENTS_JSONL="$dir/events.jsonl" ZBUILD_EVENTS_DB="$db" \
+    ZBUILD_EVENTS_DIR="$dir" ZBUILD_EVENTS_JSONL="$dir/events.jsonl" \
     ZBUILD_PLATFORM="$platform" PATH="$SHIMS:$PATH" EXECS="$EXECS" N="$n" \
     bash -c '
         source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"
@@ -100,7 +100,7 @@ done
 # ─── E4: the envelope is unchanged ───────────────────────────────────────────
 print_test_section "E4: the envelope a reader sees is unchanged"
 _d="$TEST_TEMP_DIR/e4"; mkdir -p "$_d"
-ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" ZBUILD_EVENTS_DB=/dev/null \
+ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" \
 ZBUILD_RUN_ID="r-1806" ZBUILD_ISSUE=90000042 ZBUILD_CURRENT_STAGE=build \
 ZBUILD_STAGE_IO_SEQ_LABEL=6.1.2 ZBUILD_UNIT=build.web \
 bash -c '
@@ -121,7 +121,7 @@ assert_eq "[#1806/E4] data: last duplicate wins, values verbatim, ANSI stripped,
     '{"ansi":"red","empty":"","eq":"a=b","kind":"agent","nl":"a\nb","plugin":"build","quote":"say \"hi\"","verdict":"pass"}' \
     "$(jq -cS '.data' <<< "$_first")"
 # A value (or key) that looks like a jq option is still data.
-ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/opts.jsonl" ZBUILD_EVENTS_DB=/dev/null \
+ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/opts.jsonl" \
 bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"; eb_emit_event stage.complete "a=-n" "b=--args" "-x=1" "_n=5" "ts=x"'
 assert_eq "[#1806/E4] option-like keys and values are data" \
     '{"-x":"1","_n":"5","a":"-n","b":"--args","ts":"x"}' "$(jq -cS '.data' "$_d/opts.jsonl" 2>/dev/null)"
@@ -139,7 +139,7 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh"
 eb_emit_event stage.complete stage=x
 echo "carried-on rc=\$?"
 DRIVER
-_e5="$(ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" ZBUILD_EVENTS_DB=/dev/null \
+_e5="$(ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" \
     PATH="$TEST_TEMP_DIR/badjq:$PATH" bash "$_d/driver.sh" 2>/dev/null || true)"
 assert_eq "[#1806/E5] the caller under set -e carries on after a failed emit" "carried-on rc=0" "$_e5"
 assert_eq "[#1806/E5] nothing half-built is appended" "0" "$(if [[ -f "$_d/events.jsonl" ]]; then grep -c . "$_d/events.jsonl" || true; else echo 0; fi)"

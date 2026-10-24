@@ -31,7 +31,6 @@ setup_test_env "preflight-contract-templates"
 _ZB_ID="$(zb_test_issue)"
 _test_cleanup_hook() { cleanup_test_env; }
 
-export ZBUILD_EVENTS_DB="/dev/null"
 export ZBUILD_ISSUE="$_ZB_ID"
 
 # shellcheck source=../../core/event-bus/event-bus.sh

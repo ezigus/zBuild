@@ -57,7 +57,7 @@ run_pipeline() {
     local target="$1" run_id="$2"; shift 2
     : > "$SEEN"
     ( cd "$target" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_STATE_FILE \
-        -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB -u ZBUILD_REPO_ROOT \
+        -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL  -u ZBUILD_REPO_ROOT \
         -u ZBUILD_WORKSPACE_BRANCH -u ZBUILD_RUN_BRANCH -u ZBUILD_RUN_START_COMMIT \
         ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \

@@ -43,7 +43,6 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 print_test_section "Q1: intake numbers the issue's checkboxes"
 # shellcheck source=../../plugins/agent/intake/tests/intake-test-lib.sh
 source "$REPO_ROOT/plugins/agent/intake/tests/intake-test-lib.sh"
-export ZBUILD_EVENTS_DB="/dev/null"
 set +e
 _REQ="$ARTIFACT_DIR/requirements.json"
 _q1_body='Some context that is not a requirement.

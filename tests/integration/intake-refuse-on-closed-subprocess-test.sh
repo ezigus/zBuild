@@ -25,7 +25,6 @@ _ZB_ID="$(zb_test_issue)"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
@@ -71,7 +70,6 @@ set +e
 subprocess_err="$(
     ZBUILD_EVENTS_DIR="$ZBUILD_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_JSONL" \
-    ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DB" \
     ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA" \
     ZBUILD_ARTIFACT_DIR="$ARTIFACT_DIR" \
     ZBUILD_ISSUE="$_ZB_ID" \
@@ -140,7 +138,6 @@ bash -c "
     export ZBUILD_ARTIFACT_DIR='$_s16_art_dir'
     export ZBUILD_EVENTS_DIR='$ZBUILD_EVENTS_DIR'
     export ZBUILD_EVENTS_JSONL='$ZBUILD_EVENTS_JSONL'
-    export ZBUILD_EVENTS_DB='$ZBUILD_EVENTS_DB'
     export ZBUILD_EVENT_SCHEMA='$ZBUILD_EVENT_SCHEMA'
     intake_run 'intake' '$_s16_state_file' &
     _subpid=\$!

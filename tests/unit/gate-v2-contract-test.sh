@@ -26,7 +26,6 @@ print_test_header "gate result contract — result_contract:3 outcome reason (#1
 setup_test_env "gate-v2-contract"
 _test_cleanup_hook() { cleanup_test_env; }
 
-export ZBUILD_EVENTS_DB="/dev/null"
 
 # Source all three gate plugins and the shape floor check.
 # shellcheck source=../../plugins/tool/coverage-gate/plugin.sh

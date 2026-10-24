@@ -23,7 +23,6 @@ export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 export ZBUILD_STATE_DIR="$STATE_DIR"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$PLUGINS_ROOT" "$STATE_DIR" "$REPO_DIR" "$TEST_TEMP_DIR/events"
 

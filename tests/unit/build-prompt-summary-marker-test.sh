@@ -32,7 +32,6 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "build's stop rule points at the real summary heading (#2292)"
 setup_test_env "build-prompt-summary-marker"
-export ZBUILD_EVENTS_DB="/dev/null"
 
 # The heading the summary block emits for a failing stage — read, not assumed.
 # shellcheck source=../../core/pipeline/input-resolve.sh

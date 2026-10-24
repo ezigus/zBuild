@@ -27,7 +27,6 @@ setup_test_env "router-timeout-e2e"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$TEST_TEMP_DIR/events"
 
@@ -74,7 +73,6 @@ export ZBUILD_SCOPE_OVERRIDE='$ZBUILD_SCOPE_OVERRIDE'
 export ZBUILD_MODELS_FILE='$ZBUILD_MODELS_FILE'
 export ZBUILD_EVENTS_DIR='$ZBUILD_EVENTS_DIR'
 export ZBUILD_EVENTS_JSONL='$ZBUILD_EVENTS_JSONL'
-export ZBUILD_EVENTS_DB='$ZBUILD_EVENTS_DB'
 export ZBUILD_EVENT_SCHEMA='$ZBUILD_EVENT_SCHEMA'
 source '$REPO_ROOT/scripts/lib/helpers.sh'
 source '$REPO_ROOT/core/pipeline/template.sh'

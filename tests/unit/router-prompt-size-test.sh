@@ -28,7 +28,6 @@ _test_cleanup_hook() { cleanup_test_env; }
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"

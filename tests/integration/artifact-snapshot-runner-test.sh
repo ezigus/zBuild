@@ -99,7 +99,6 @@ _run_pipeline() {
         ZBUILD_STATE_DIR="$state_dir" \
         ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
         ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
-        ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_VISION_GATE=off \

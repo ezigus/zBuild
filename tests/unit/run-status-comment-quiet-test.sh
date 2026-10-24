@@ -50,7 +50,7 @@ new_state() {
     jq -cn '{ts:"2026-10-10T12:00:00.000Z", run_id:"r-quiet", issue:90000042, type:"pipeline.start", plugin:"", kind:"", data:{run_id:"r-quiet", issue:"90000042", engine_sha:"abc1234", engine_branch:"main"}, schema_version:1}' > "$s/events.jsonl"
 }
 sidecar_env() {
-    ZBUILD_EVENTS_DIR="$1" ZBUILD_EVENTS_JSONL="$1/events.jsonl" ZBUILD_EVENTS_DB=/dev/null \
+    ZBUILD_EVENTS_DIR="$1" ZBUILD_EVENTS_JSONL="$1/events.jsonl" \
     ZBUILD_RUN_ID=r-quiet ZBUILD_ISSUE=90000042 "${@:2}"
 }
 

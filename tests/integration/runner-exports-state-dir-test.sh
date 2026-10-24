@@ -41,7 +41,6 @@ export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 export ZBUILD_STATE_DIR="$STATE_DIR"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$EVENTS_JSONL"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 # Force-disable cycle dispatch — this test asserts linear-stage env propagation.
 export ZBUILD_CYCLES_ENABLED=0
@@ -101,7 +100,6 @@ set +e
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
     ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
-    ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 \
     ZBUILD_RUN_ID="$ZBUILD_RUN_ID" \

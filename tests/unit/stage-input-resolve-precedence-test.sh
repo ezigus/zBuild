@@ -107,7 +107,7 @@ CONSUMER_DIR="$PROOT/tool/pp-consumer"
 
 _dispatch() {
     rm -f "$TEST_TEMP_DIR/ppc-seen.txt" "$STATE/stage-inputs/pp-consumer.json"
-    ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl" ZBUILD_EVENTS_DB=/dev/null \
+    ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl" \
     ZBUILD_STATE_DIR="$STATE" \
         plugin_hook_call "$CONSUMER_DIR" run "pp-consumer" "$STATE/pipeline-state.json"
 }

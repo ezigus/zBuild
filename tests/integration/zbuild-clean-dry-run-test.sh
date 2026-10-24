@@ -67,7 +67,6 @@ print_test_section "SPEC-2: zbuild clean --dry-run exits rc=0"
 _spec2_rc=0
 ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state" \
 ZBUILD_EVENTS_JSONL="$_events_file" \
-ZBUILD_EVENTS_DB="$_state_dir/events.db" \
 ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
 ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR" \
 bash "$ZBUILD_CLI" clean \

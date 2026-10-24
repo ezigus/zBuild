@@ -30,7 +30,6 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "each check lists its findings as numbered items (#2271)"
 setup_test_env "numbered-findings"
-export ZBUILD_EVENTS_DB="/dev/null"
 # shellcheck source=../../scripts/lib/stage-summary.sh
 source "$REPO_ROOT/scripts/lib/stage-summary.sh"
 

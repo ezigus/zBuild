@@ -100,7 +100,7 @@ _seen() { grep "^$1=" "$TEST_TEMP_DIR/sbt-seen.txt" 2>/dev/null | head -1 | cut 
 
 EVENTS="$TEST_TEMP_DIR/events.jsonl"
 rc=0
-ZBUILD_EVENTS_JSONL="$EVENTS" ZBUILD_EVENTS_DB=/dev/null ZBUILD_STATE_DIR="$STATE" \
+ZBUILD_EVENTS_JSONL="$EVENTS" ZBUILD_STATE_DIR="$STATE" \
 ZBUILD_REPO_ROOT="$REPO" ZBUILD_CURRENT_STAGE=sb-tool \
     plugin_hook_call "$PROOT/tool/sb-tool" run sb-tool "$STATE/pipeline-state.json" \
     >/dev/null 2>"$TEST_TEMP_DIR/d1.err" || rc=$?
@@ -120,7 +120,7 @@ assert_file_not_exists "[D2] no per-stage record of what moved (#2363)" \
 
 # D4: a map element
 rm -f "$TEST_TEMP_DIR/sbt-seen.txt"
-ZBUILD_EVENTS_JSONL="$EVENTS" ZBUILD_EVENTS_DB=/dev/null ZBUILD_STATE_DIR="$STATE" \
+ZBUILD_EVENTS_JSONL="$EVENTS" ZBUILD_STATE_DIR="$STATE" \
 ZBUILD_REPO_ROOT="$REPO" ZBUILD_CURRENT_STAGE=sb-tool ZBUILD_MAP_ELEMENT=alpha \
     plugin_hook_call "$PROOT/tool/sb-tool" run sb-tool "$STATE/pipeline-state.json" \
     >/dev/null 2>&1 || true

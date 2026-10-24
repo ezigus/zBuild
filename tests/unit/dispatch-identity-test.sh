@@ -88,17 +88,16 @@ FIXTURE
 
 # ─── Dispatch once, with events captured ─────────────────────────────────────
 _EVENTS="$TEST_TEMP_DIR/identity-events.jsonl"
-_old_dir="${ZBUILD_EVENTS_DIR:-}"; _old_jsonl="${ZBUILD_EVENTS_JSONL:-}"; _old_db="${ZBUILD_EVENTS_DB:-}"
+_old_dir="${ZBUILD_EVENTS_DIR:-}"; _old_jsonl="${ZBUILD_EVENTS_JSONL:-}";
 ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"
 ZBUILD_EVENTS_JSONL="$_EVENTS"
-ZBUILD_EVENTS_DB="/dev/null"
 
 set +e
 plugin_hook_call "$_FIX_DIR" run "$_FIX_STAGE" "$TEST_TEMP_DIR/pipeline-state.json" >/dev/null 2>&1
 _dispatch_rc=$?
 set -e
 
-ZBUILD_EVENTS_DIR="$_old_dir"; ZBUILD_EVENTS_JSONL="$_old_jsonl"; ZBUILD_EVENTS_DB="$_old_db"
+ZBUILD_EVENTS_DIR="$_old_dir"; ZBUILD_EVENTS_JSONL="$_old_jsonl";
 
 _SEEN="$TEST_TEMP_DIR/idf-seen.txt"
 _seen() { grep "^$1=" "$_SEEN" 2>/dev/null | head -1 | cut -d= -f2-; }
@@ -183,12 +182,12 @@ idf2_run() {
 FIXTURE2
 } > "$_FIX2_DIR/plugin.sh"
 
-_old_jsonl2="${ZBUILD_EVENTS_JSONL:-}"; _old_db2="${ZBUILD_EVENTS_DB:-}"
-ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/identity-events-2.jsonl"; ZBUILD_EVENTS_DB="/dev/null"
+_old_jsonl2="${ZBUILD_EVENTS_JSONL:-}";
+ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/identity-events-2.jsonl";
 set +e
 plugin_hook_call "$_FIX2_DIR" run "second_stage" "$TEST_TEMP_DIR/pipeline-state.json" >/dev/null 2>&1
 set -e
-ZBUILD_EVENTS_JSONL="$_old_jsonl2"; ZBUILD_EVENTS_DB="$_old_db2"
+ZBUILD_EVENTS_JSONL="$_old_jsonl2";
 
 _SEEN2="$TEST_TEMP_DIR/idf2-seen.txt"
 _seen2() { grep "^$1=" "$_SEEN2" 2>/dev/null | head -1 | cut -d= -f2-; }
@@ -245,9 +244,9 @@ FIXTURE3
 } > "$_FIX_DIR/plugin.sh"
 
 _MAP_EVENTS="$TEST_TEMP_DIR/map-events.jsonl"
-_old_jsonl3="${ZBUILD_EVENTS_JSONL:-}"; _old_db3="${ZBUILD_EVENTS_DB:-}"
-ZBUILD_EVENTS_JSONL="$_MAP_EVENTS"; ZBUILD_EVENTS_DB="/dev/null"
-export ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
+_old_jsonl3="${ZBUILD_EVENTS_JSONL:-}"
+ZBUILD_EVENTS_JSONL="$_MAP_EVENTS";
+export ZBUILD_EVENTS_JSONL 
 
 set +e
 _wu="$(_strategy_make_work_unit "$_FIX_DIR" "$_MAP_STAGE" "$TEST_TEMP_DIR/pipeline-state.json" \
@@ -256,7 +255,7 @@ _wu_rc=$?
 if [[ $_wu_rc -eq 0 && -x "$_wu" ]]; then "$_wu" >/dev/null 2>&1; _wu_rc=$?; fi
 set -e
 
-ZBUILD_EVENTS_JSONL="$_old_jsonl3"; ZBUILD_EVENTS_DB="$_old_db3"
+ZBUILD_EVENTS_JSONL="$_old_jsonl3";
 
 _SEEN3="$TEST_TEMP_DIR/idf3-seen.txt"
 _seen3() { grep "^$1=" "$_SEEN3" 2>/dev/null | head -1 | cut -d= -f2-; }

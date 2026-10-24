@@ -38,7 +38,6 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_EVENTS_DB="/dev/null"
 export ZBUILD_RUN_ID="20260907-ta-router"
 # No scope manifest → _route_redact_prompt takes its documented passthrough arm;
 # the router still emits redaction.applied, so the ADR-004 chokepoint holds.

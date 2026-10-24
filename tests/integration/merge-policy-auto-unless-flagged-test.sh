@@ -31,7 +31,6 @@ _test_cleanup_hook() { cleanup_test_env; }
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="/dev/null"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_RUN_ID="merge-policy-auto-unless-flagged-test-$$"
 mkdir -p "$ZBUILD_EVENTS_DIR"

@@ -19,7 +19,6 @@ export ZBUILD_TEST_TMP="$TEST_TEMP_DIR"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 mkdir -p "$ZBUILD_STATE_DIR" "$TEST_TEMP_DIR/events"
 
 mock_claude

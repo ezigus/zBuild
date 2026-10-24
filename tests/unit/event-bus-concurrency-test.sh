@@ -2,13 +2,11 @@
 # Tests: core/event-bus/event-bus.sh — concurrent emitter contention (#1153)
 #
 # #1131 (parallel stage members) introduces concurrent eb_emit_event callers.
-# The mirror INSERT is flock-serialized on a DEDICATED lock (events.db.lock),
-# distinct from the jsonl lock, so the best-effort mirror can never block the
-# authoritative jsonl append. This test fires N emitters at once and asserts
-# (1) the mirror uses a dedicated lock distinct from the jsonl lock, (2) zero
-# event loss in the authoritative events.jsonl, (3) no JSON corruption, and
-# (4) the SQLite mirror (if sqlite3 is present) agrees with the jsonl. It also
-# measures wall time so a regression that re-serializes writes shows up.
+# The jsonl append is flock-serialized. This test fires N emitters at once and
+# asserts (2) zero event loss in events.jsonl and (3) no JSON corruption. It
+# also measures wall time so a regression that re-serializes writes shows up.
+# (1) and (4), the SQLite mirror's own lock and row count, went with the mirror
+# (ADR-065 §5, 2026-10-24).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,32 +23,18 @@ setup_test_env "core-events-concurrency"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
 # shellcheck source=../core/event-bus/event-bus.sh
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
 
 # Initialize once before forking so every concurrent emitter shares one
-# already-created mirror + lock file.
+# already-created lock file.
 _eb_init
 
 EMITTERS=12        # concurrent stage members (well above #1131's expected fan-out)
 PER_EMITTER=5      # events each emitter appends
 EXPECTED=$(( EMITTERS * PER_EMITTER ))
-
-# ─── (1) Dedicated db lock, distinct from the jsonl lock ────────────────────
-# The mirror MUST serialize on its own lock so a slow mirror write can never
-# block the authoritative jsonl append.
-jsonl_lock="${ZBUILD_EVENTS_JSONL}.lock"
-db_lock="${ZBUILD_EVENTS_DB}.lock"
-assert_file_exists "dedicated db lock file created by _eb_init" "$db_lock"
-if [[ "$jsonl_lock" != "$db_lock" ]]; then
-    assert_pass "jsonl lock and db lock are distinct files ($jsonl_lock != $db_lock)"
-else
-    assert_fail "jsonl lock and db lock must be distinct files" \
-        "both resolved to $db_lock — a slow mirror could block the jsonl append"
-fi
 
 # ─── Fire N concurrent emitters ─────────────────────────────────────────────
 # "plugin.run.start" is a known event type, so this exercises the hot path
@@ -89,27 +73,8 @@ assert_eq "every jsonl line parses as JSON with the expected type (no interleave
 distinct_pairs="$(jq -r '"\(.data.emitter):\(.data.seq)"' "$ZBUILD_EVENTS_JSONL" | sort -u | wc -l | tr -d ' ')"
 assert_eq "all (emitter,seq) pairs present exactly once" "$EXPECTED" "$distinct_pairs"
 
-# ─── (4) Mirror is a best-effort subset of the jsonl (never over-counts) ────
-# The mirror flock is NON-BLOCKING (-n): under concurrent contention an emitter
-# whose mirror lock is held SKIPS its (unread) mirror write rather than wait, so
-# the mirror count is 0 < N <= jsonl count — it must never EXCEED the jsonl
-# (that would mean corruption/double-write) and the jsonl (the source of truth,
-# asserted complete above) must never lose. Exact equality is NOT required.
-if command -v sqlite3 >/dev/null 2>&1; then
-    db_count="$(sqlite3 "$ZBUILD_EVENTS_DB" 'SELECT COUNT(*) FROM events;' 2>/dev/null | tr -d ' ')"
-    if (( db_count >= 1 && db_count <= EXPECTED )); then
-        assert_pass "SQLite mirror is a best-effort subset of the jsonl (mirror=$db_count <= jsonl=$EXPECTED)"
-    else
-        assert_fail "SQLite mirror count out of range (mirror=$db_count, jsonl=$EXPECTED)" \
-            "expected 1..$EXPECTED — over-count implies corruption, 0 implies total loss"
-    fi
-else
-    assert_pass "skipped SQLite mirror count (sqlite3 not installed)"
-fi
-
-# ─── Contention margin: non-blocking mirror never waits ─────────────────────
-# With non-blocking flock the 12 emitters never queue on the mirror lock; the
-# authoritative jsonl appends serialize on their own (separate) lock. A generous
+# ─── Contention margin ──────────────────────────────────────────────────────
+# The 12 emitters serialize on the jsonl lock only. A generous
 # 60s ceiling catches a regression that reintroduces unbounded blocking while
 # tolerating slow CI.
 MARGIN_SECONDS=60

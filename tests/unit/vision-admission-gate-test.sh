@@ -178,7 +178,6 @@ gate_out="$(
     ZBUILD_STATE_DIR="$TEST_TEMP_DIR/gate-state" \
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/gate-events" \
     ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/gate-events/events.jsonl" \
-    ZBUILD_EVENTS_DB="/dev/null" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=enforce \
     bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1
@@ -205,7 +204,6 @@ malformed_out="$(
     ZBUILD_STATE_DIR="$TEST_TEMP_DIR/malformed-state" \
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/malformed-events" \
     ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/malformed-events/events.jsonl" \
-    ZBUILD_EVENTS_DB="/dev/null" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=enforce \
     bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1
@@ -227,7 +225,6 @@ gate_off_out="$(
     ZBUILD_STATE_DIR="$TEST_TEMP_DIR/gate-off-state" \
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/gate-off-events" \
     ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/gate-off-events/events.jsonl" \
-    ZBUILD_EVENTS_DB="/dev/null" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
     bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1

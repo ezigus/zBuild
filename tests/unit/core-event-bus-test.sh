@@ -17,7 +17,6 @@ setup_test_env "core-events"
 # Point the event bus at the test temp dir
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
 # shellcheck source=../core/event-bus/event-bus.sh
@@ -69,14 +68,11 @@ count_all=$(eb_query_events "" 100 | wc -l | tr -d ' ')
 # We've emitted: pipeline.start, plugin.run.start, made.up.event.type, made.up.event.type.2 = 4
 assert_eq "query returns all events" "4" "$count_all"
 
-# ─── SQLite mirror exists if sqlite3 is available ───────────────────────────
-if command -v sqlite3 >/dev/null 2>&1; then
-    assert_file_exists "SQLite mirror created" "$ZBUILD_EVENTS_DB"
-    db_count=$(sqlite3 "$ZBUILD_EVENTS_DB" 'SELECT COUNT(*) FROM events;')
-    assert_eq "SQLite mirror has 4 events" "4" "$db_count"
-else
-    assert_pass "skipped SQLite mirror (sqlite3 not installed)"
-fi
+# ─── events.jsonl is the only record (ADR-065 §5, 2026-10-24) ────────────────
+# The SQLite mirror had no reader and was removed: nothing else is written.
+_db_files="$(cd "$ZBUILD_EVENTS_DIR" && ls -A | grep -c '^events\.db' || true)"
+assert_eq "no events.db or events.db.lock is written" "0" "$_db_files"
+assert_file_exists "events.jsonl is written" "$ZBUILD_EVENTS_JSONL"
 
 cleanup_test_env
 print_test_results

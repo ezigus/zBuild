@@ -94,7 +94,7 @@ run_nested() {
     set +e
     # #1270: CWD = overlay repo so the resolver finds the fixture.
     ( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL \
-        -u ZBUILD_STATE_FILE -u ZBUILD_EVENTS_DB \
+        -u ZBUILD_STATE_FILE  \
         ZBUILD_STATE_ROOT="$FENCE" \
         ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
@@ -186,7 +186,7 @@ install_template_overlay "$E_REPO" runner-state-dir-minimal
 set +e
 # #1270: CWD = overlay repo so the resolver finds the fixture.
 ( cd "$E_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL \
-    -u ZBUILD_STATE_FILE -u ZBUILD_EVENTS_DB -u ZBUILD_STATE_ROOT \
+    -u ZBUILD_STATE_FILE  -u ZBUILD_STATE_ROOT \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
@@ -234,7 +234,6 @@ source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 # Isolate the stage's own event bus / artifacts away from the parent tree.
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/stage-events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 STAGE_ARTIFACTS="$TEST_TEMP_DIR/stage-artifacts"; mkdir -p "$STAGE_ARTIFACTS"

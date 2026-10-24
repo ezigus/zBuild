@@ -29,7 +29,7 @@ DATA_ROOT="$TEST_TEMP_DIR/data-root"; mkdir -p "$DATA_ROOT"
 
 # ─── SPEC-1: the unpinned event-bus dir is under the data root ──────────────
 # Nothing pinned is the ad-hoc/test path; it produced ~2300 leaked dirs.
-_s1="$(env -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB \
+_s1="$(env -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL  \
         TMPDIR="$FAKE_TMP" ZBUILD_DATA_ROOT="$DATA_ROOT" \
         bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh" >/dev/null 2>&1; printf "%s" "$ZBUILD_EVENTS_DIR"')"
 case "$_s1" in
@@ -41,7 +41,7 @@ esac
 
 # ─── SPEC-2: an explicit pin still wins ────────────────────────────────────
 # The fix must not override an operator's or the runner's explicit choice.
-_s2="$(env -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB \
+_s2="$(env -u ZBUILD_EVENTS_JSONL  \
         TMPDIR="$FAKE_TMP" ZBUILD_DATA_ROOT="$DATA_ROOT" ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/pinned" \
         bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh" >/dev/null 2>&1; printf "%s" "$ZBUILD_EVENTS_DIR"')"
 assert_eq "[SPEC-2] an explicit ZBUILD_EVENTS_DIR pin still wins" "$TEST_TEMP_DIR/pinned" "$_s2"
