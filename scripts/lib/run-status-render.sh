@@ -97,10 +97,9 @@ rsc_rows_json() {
 
 # ─── rsc_duration <start_ts> <end_ts> — `<1s`, `45s`, `61m33s` ──────────────
 rsc_duration() {
-    local a="$1" b="$2" s
-    s="$(jq -rn --arg a "$a" --arg b "$b" '
-        def t: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
-        (($b|t) - ($a|t))' 2>/dev/null || echo 0)"
+    local a b s
+    _rsc_epoch_to a "$1"; _rsc_epoch_to b "$2"
+    s=0; (( a > 0 && b > 0 )) && s=$(( b - a ))
     if [[ "$s" -le 0 ]]; then printf '<1s'
     elif [[ "$s" -lt 60 ]]; then printf '%ds' "$s"
     else printf '%dm%02ds' $(( s / 60 )) $(( s % 60 ))
@@ -114,13 +113,28 @@ rsc_duration() {
 _RSC_DEFAULT_TZ="America/New_York"
 _rsc_tz() { printf '%s' "${ZBUILD_STATUS_TZ:-$_RSC_DEFAULT_TZ}"; }
 _rsc_ceiling_min() { local m="${ZBUILD_STATUS_CEILING_MIN:-360}"; [[ "$m" =~ ^[0-9]+$ ]] || m=360; printf '%s' "$m"; }   # GitHub's job ceiling
-_rsc_epoch() {   # ISO-8601 (with or without fractional seconds) → epoch seconds
-    jq -rn --arg t "${1:-}" '($t | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch 0)' 2>/dev/null || echo 0
+# ISO-8601 UTC (`…Z`, with or without fractional seconds) → epoch seconds in
+# <var>, 0 when it is not one. Arithmetic, not jq: every time on the comment
+# went through a jq and a date (ADR-065 §5). Days from the civil date are
+# Howard Hinnant's days_from_civil. Every local is prefixed: a nameref to a
+# caller's `m` would otherwise resolve to this function's own `m`.
+_rsc_epoch_to() {   # <var> <iso>
+    local -n _rsce_out="$1"; _rsce_out=0
+    [[ "${2:-}" =~ ^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?Z$ ]] || return 0
+    local _rsce_y=$((10#${BASH_REMATCH[1]})) _rsce_m=$((10#${BASH_REMATCH[2]})) _rsce_d=$((10#${BASH_REMATCH[3]}))
+    local _rsce_hh=$((10#${BASH_REMATCH[4]})) _rsce_mi=$((10#${BASH_REMATCH[5]})) _rsce_ss=$((10#${BASH_REMATCH[6]}))
+    (( _rsce_m >= 1 && _rsce_m <= 12 && _rsce_d >= 1 && _rsce_d <= 31 && _rsce_hh < 24 && _rsce_mi < 60 && _rsce_ss < 61 )) || return 0
+    (( _rsce_m <= 2 )) && _rsce_y=$(( _rsce_y - 1 ))
+    local _rsce_era=$(( _rsce_y / 400 )) _rsce_yoe _rsce_doy _rsce_doe
+    _rsce_yoe=$(( _rsce_y - _rsce_era * 400 ))
+    _rsce_doy=$(( (153 * ((_rsce_m + 9) % 12) + 2) / 5 + _rsce_d - 1 ))
+    _rsce_doe=$(( _rsce_yoe * 365 + _rsce_yoe / 4 - _rsce_yoe / 100 + _rsce_doy ))
+    _rsce_out=$(( (_rsce_era * 146097 + _rsce_doe - 719468) * 86400 + _rsce_hh * 3600 + _rsce_mi * 60 + _rsce_ss ))
 }
+_rsc_epoch() { local e; _rsc_epoch_to e "${1:-}"; printf '%s' "$e"; }
 _rsc_fmt_local() {   # <epoch> → "9:39 PM ET"
-    local epoch="$1" out label tz; tz="$(_rsc_tz)"
-    if out="$(TZ="$tz" date -r "$epoch" '+%l:%M %p %Z' 2>/dev/null)"; then :
-    else out="$(TZ="$tz" date -d "@$epoch" '+%l:%M %p %Z' 2>/dev/null || true)"; fi
+    local epoch="$1" out label tz="${ZBUILD_STATUS_TZ:-$_RSC_DEFAULT_TZ}"
+    TZ="$tz" printf -v out '%(%l:%M %p %Z)T' "$epoch"
     out="${out# }"
     case "$tz" in
         America/New_York) label="ET" ;;
@@ -132,7 +146,7 @@ _rsc_fmt_local() {   # <epoch> → "9:39 PM ET"
     printf '%s %s' "${out% *}" "$label"
 }
 # "9:39 PM ET" from an ISO timestamp.
-_rsc_clock() { local e; e="$(_rsc_epoch "$1")"; [[ "$e" -gt 0 ]] && _rsc_fmt_local "$e" || printf '%s' "${1:-}"; }
+_rsc_clock() { local e; _rsc_epoch_to e "${1:-}"; if (( e > 0 )); then _rsc_fmt_local "$e"; else printf '%s' "${1:-}"; fi; }
 # "1h 20m" from seconds.
 _rsc_hm() { local s="$1"; if (( s >= 3600 )); then printf '%dh %02dm' $(( s / 3600 )) $(( (s % 3600) / 60 )); else printf '%dm' $(( s / 60 )); fi; }
 
@@ -220,24 +234,19 @@ _rsc_snapshot_save() {   # <state_dir> — atomic; only when something new was f
 rsc_render_row() {
     local state_dir="$1" row="$2"
     local kind seq stage started ended verdict rc summaries resolve iter line
-    kind="$(jq -r '.kind // ""' <<< "$row")"
-    seq="$(jq -r '.seq // ""' <<< "$row")"
-    started="$(jq -r '.started_ts // ""' <<< "$row")"
+    # One jq for every field (ADR-065 §4), joined by the unit separator so an
+    # empty field stays a field; a value may carry a newline, so `read -d ''`.
+    local members from reason it _f
+    _f="$(jq -r '[.kind, .seq, .started_ts, .stage, .ended_ts, .verdict, .rc, .summaries,
+                  (.resolve // "0"), ((.members // []) | map(tostring) | join(", ")), .from_iter, .reason, .iter]
+                 | map(. // "" | tostring) | join("\u001f")' <<< "$row")"
+    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it <<< "$_f" || true
+    it="${it%$'\n'}"
     if [[ "$kind" == "reused" ]]; then
-        local members from reason it
-        members="$(jq -r '.members | join(", ")' <<< "$row")"
-        from="$(jq -r '.from_iter // ""' <<< "$row")"; reason="$(jq -r '.reason // ""' <<< "$row")"
-        it="$(jq -r '.iter // ""' <<< "$row")"
         printf '**%s** · **%s reused** · iter %s · %s from iter %s (%s)' \
             "$(_rsc_clock "$started")" "$seq" "$it" "$members" "$from" "$reason"
         return 0
     fi
-    stage="$(jq -r '.stage // ""' <<< "$row")"
-    ended="$(jq -r '.ended_ts // ""' <<< "$row")"
-    verdict="$(jq -r '.verdict // ""' <<< "$row")"
-    rc="$(jq -r '.rc // ""' <<< "$row")"
-    summaries="$(jq -r '.summaries // ""' <<< "$row")"
-    resolve="$(jq -r '.resolve // "0"' <<< "$row")"
     # iter = second-to-last segment: `6.1.3` → 1, `1.2` → 1, `6.1.3.2.1` → 2.
     iter=""
     if [[ "$seq" == *.* ]]; then
@@ -281,15 +290,18 @@ rsc_render_row() {
 rsc_render_header() {
     local model="$1" state_dir="$2" override="${3:-}"
     local run_id issue sha branch started status reason detail pr current updated end_reason
-    run_id="$(jq -r '.header.run_id // ""' <<< "$model")"
-    issue="$(jq -r '.header.issue // ""' <<< "$model")"
-    sha="$(jq -r '.header.engine_sha // ""' <<< "$model")"; sha="${sha:0:7}"
-    branch="$(jq -r '.header.engine_branch // ""' <<< "$model")"
-    started="$(jq -r '.header.started // ""' <<< "$model")"; started="${started%%.*}"; [[ -n "$started" ]] && started="${started%Z}Z"
-    status="$(jq -r '.terminal.status // ""' <<< "$model")"
-    reason="$(jq -r '.terminal.reason // ""' <<< "$model")"
-    detail="$(jq -r '.terminal.detail // ""' <<< "$model")"
-    end_reason="$(jq -r '.terminal.end_reason // ""' <<< "$model")"
+    # One jq for the whole header (ADR-065 §4); see rsc_render_row for the join.
+    local _f
+    _f="$(jq -r '. as $m | [.header.run_id, .header.issue, .header.engine_sha, .header.engine_branch,
+                  .header.started, .terminal.status, .terminal.reason, .terminal.detail,
+                  .terminal.end_reason, .pr.url,
+                  ([$m.order[]? | $m.rows[. | tostring] | select(. != null and .kind != "reused" and .verdict == null)]
+                   | last | if . == null then "" else "\(.seq) \(.stage)" end)]
+                 | map(. // "" | tostring) | join("\u001f")' <<< "$model")"
+    IFS=$'\x1f' read -r -d '' run_id issue sha branch started status reason detail end_reason pr current <<< "$_f" || true
+    current="${current%$'\n'}"
+    sha="${sha:0:7}"
+    started="${started%%.*}"; [[ -n "$started" ]] && started="${started%Z}Z"
     if [[ -z "$status" && -s "$state_dir/pipeline-state.json" ]]; then
         # Events silent on the end → the state file is the next best witness.
         local st; st="$(jq -r '.status // ""' "$state_dir/pipeline-state.json" 2>/dev/null || true)"
@@ -302,7 +314,6 @@ rsc_render_header() {
     fi
     [[ -n "$override" ]] && status="$override"
     [[ -z "$status" ]] && status="running"
-    pr="$(jq -r '.pr.url // ""' <<< "$model")"
     # ZBUILD_STATUS_NOW: tests pin "now"; production reads the clock.
     updated="${ZBUILD_STATUS_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
     # #2145: the ceiling — GitHub kills the job at ZBUILD_STATUS_CEILING_MIN
@@ -350,7 +361,6 @@ rsc_render_header() {
     esac
     # Current stage: the newest open row, only while the run is live.
     if [[ "$status" == "running" ]]; then
-        current="$(jq -r '. as $m | [$m.order[] | $m.rows[.] | select(.kind != "reused" and .verdict == null)] | last | if . == null then "" else "\(.seq) \(.stage)" end' <<< "$model")"
         [[ -n "$current" ]] && printf 'current: **%s**\n' "$current"
     fi
 }
@@ -381,18 +391,19 @@ rsc_bound_body() {
 # ─── rsc_render_body <events_jsonl> <state_dir> [status_override] ───────────
 rsc_render_body() {
     local events="$1" state_dir="$2" override="${3:-}"
-    local model header rows_file key
+    local model header rows_file
     model="$(rsc_rows_json "$events")"
     header="$(rsc_render_header "$model" "$state_dir" "$override")"
     # #2154: rows are rendered in THIS shell (`< <( )`, not a pipe) so the
     # snapshot they freeze survives the loop and is saved once at the end.
     _rsc_snapshot_load "$state_dir" "$(jq -r '.header.run_id // ""' <<< "$model")"
     rows_file="$(mktemp "${TMPDIR:-$state_dir}/rsc-rows.XXXXXX")" || return 1
-    while IFS= read -r key; do
-        [[ -n "$key" ]] || continue
-        rsc_render_row "$state_dir" "$(jq -c --arg k "$key" '.rows[$k]' <<< "$model")"
+    # Every row from one jq, one compact row per line (ADR-065 §4).
+    local row
+    while IFS= read -r row; do
+        rsc_render_row "$state_dir" "$row"
         printf '\n'
-    done < <(jq -r '.order | reverse | .[]' <<< "$model") > "$rows_file"
+    done < <(jq -c '. as $m | $m.order | reverse | .[] | select((. // "") != "") as $k | $m.rows[$k | tostring]' <<< "$model") > "$rows_file"
     _rsc_snapshot_save "$state_dir"
     rsc_bound_body "$header" "$rows_file"
     rm -f "$rows_file"

@@ -505,55 +505,49 @@ validate_manifest() {
         fi
     fi
 
-    # ─── #287/#294: requires.core must be a YAML-structured list ────────────
-    # Detect malformed `requires.core: redaction` (scalar instead of list).
-    # Scoped to the requires: block so an unrelated `core:` line elsewhere
-    # in the manifest doesn't falsely trigger.
-    local has_requires
-    has_requires="$(awk '/^requires:[[:space:]]*$/{print "y"; exit}' "$manifest")"
-    if [[ "$has_requires" == "y" ]]; then
-        local scalar_core
-        scalar_core="$(awk '
-            /^requires:[[:space:]]*$/ { in_req = 1; next }
-            in_req && /^[a-zA-Z_]/ { in_req = 0 }
-            in_req && /^[[:space:]]+core:[[:space:]]*[^[[:space:]]/ {
-                # core: has non-whitespace, non-[ content on the same line.
-                # Inline list is OK (handled by _yaml_get_requires_core_list)
-                # but a bare scalar (e.g. `core: redaction`) is rejected.
-                if ($0 !~ /^[[:space:]]+core:[[:space:]]*\[/) {
-                    print "bad"
-                    exit
+    # ─── #287/#294 requires.core is a list; #1414 summary/usage non-empty ────
+    # One awk for all three (ADR-065 §5: this runs for every manifest on every
+    # discovery walk). It prints `core=bad` and `summary=…` / `usage=…` lines.
+    #
+    # requires.core: a malformed `requires.core: redaction` (scalar instead of
+    # list) is rejected. Scoped to the requires: block so an unrelated `core:`
+    # line elsewhere in the manifest doesn't falsely trigger; an inline list is
+    # OK (handled by _yaml_get_requires_core_list).
+    #
+    # summary + usage: if declared, each must be a non-empty string. Absent =
+    # fine; present-but-empty = misconfiguration. The match is LITERAL and
+    # TOP-LEVEL: `index($0, key":")==1` is true only when the line begins with
+    # the exact key at column 0 — so it never matches an indented/nested key or
+    # a line inside a block scalar, and (being index(), not a regex) the field
+    # name is never interpreted as a pattern. The first declaration decides.
+    local _chk
+    _chk="$(awk '
+        /^requires:[[:space:]]*$/ { in_req = 1; next }
+        in_req && /^[a-zA-Z_]/ { in_req = 0 }
+        !bad && in_req && /^[[:space:]]+core:[[:space:]]*[^[[:space:]]/ && $0 !~ /^[[:space:]]+core:[[:space:]]*\[/ {
+            print "core=bad"; bad = 1
+        }
+        {
+            for (i = 1; i <= 2; i++) {
+                k = (i == 1) ? "summary" : "usage"
+                if (!(k in seen) && index($0, k":") == 1) {
+                    v = $0
+                    sub(/^[^:]*:[[:space:]]*/, "", v)   # strip "key:" + leading ws
+                    sub(/[[:space:]]*#.*/, "", v)        # strip trailing comment
+                    gsub(/^["'"'"']|["'"'"']$/, "", v)   # strip surrounding quotes
+                    seen[k] = 1
+                    print k "=" (v == "" ? "EMPTY" : "OK")
                 }
             }
-        ' "$manifest")"
-        if [[ "$scalar_core" == "bad" ]]; then
-            error "validate_manifest($manifest): requires.core must be a YAML list (use 'core: [redaction, ...]' or '  - redaction')"
-            errors=$((errors + 1))
-        fi
+        }
+    ' "$manifest" 2>/dev/null)" || true
+    if [[ $'\n'"$_chk"$'\n' == *$'\n'core=bad$'\n'* ]]; then
+        error "validate_manifest($manifest): requires.core must be a YAML list (use 'core: [redaction, ...]' or '  - redaction')"
+        errors=$((errors + 1))
     fi
-
-    # ─── Optional doc fields: summary + usage ────────────────────────────────
-    # If declared, each must be a non-empty string. Absent = fine; present-but-
-    # empty = misconfiguration (declared doc field with no content).
-    #
-    # Presence + value are resolved in ONE awk pass with a LITERAL, TOP-LEVEL
-    # match: `index($0, key":")==1` is true only when the line begins with the
-    # exact key at column 0 — so it never matches an indented/nested key or a
-    # line inside a block scalar, and (being index(), not a regex) the field
-    # name is never interpreted as a pattern. Emits OK / EMPTY / (nothing).
-    local doc_field doc_state
+    local doc_field
     for doc_field in summary usage; do
-        doc_state="$(awk -v k="$doc_field" '
-            index($0, k":") == 1 {
-                v = $0
-                sub(/^[^:]*:[[:space:]]*/, "", v)   # strip "key:" + leading ws
-                sub(/[[:space:]]*#.*/, "", v)        # strip trailing comment
-                gsub(/^["'"'"']|["'"'"']$/, "", v)   # strip surrounding quotes
-                print (v == "" ? "EMPTY" : "OK")
-                exit
-            }
-        ' "$manifest" 2>/dev/null)"
-        if [[ "$doc_state" == "EMPTY" ]]; then
+        if [[ $'\n'"$_chk"$'\n' == *$'\n'"$doc_field"=EMPTY$'\n'* ]]; then
             error "validate_manifest($manifest): '$doc_field' is declared but empty (must be a non-empty string)"
             errors=$((errors + 1))
         fi

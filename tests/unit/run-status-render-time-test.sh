@@ -109,6 +109,32 @@ if declare -F rsc_finalize_body >/dev/null 2>&1; then
     fi
 fi
 
+# ─── SPEC-6 (ADR-065 §4): a row costs one program, a clock none ─────────────
+# The render test started 22,701 programs: a jq per field of every row (8+)
+# and a jq + a date for every time shown, on every render.
+print_test_section "6. a row is read with one jq; times are the shell's"
+_CALLS="$TEST_TEMP_DIR/calls"; : > "$_CALLS"
+jq()   { printf 'jq\n'   >> "$_CALLS"; command jq "$@"; }
+date() { printf 'date\n' >> "$_CALLS"; command date "$@"; }
+_calls() { grep -c "^$1\$" "$_CALLS" || true; }
+_r6="$(rsc_render_row "$STATE" "$_row_done")"
+assert_eq "[SPEC-6] a finished row renders the same" "$_r2" "$_r6"
+assert_eq "[SPEC-6] …with one jq" "1" "$(_calls jq)"
+assert_eq "[SPEC-6] …and no date" "0" "$(_calls date)"
+: > "$_CALLS"
+_c6="$(_rsc_clock 2026-09-19T01:39:45.123Z)|$(rsc_duration 2026-09-19T01:39:45Z 2026-09-19T02:38:01.5Z)|$(_rsc_epoch 2026-02-28T23:59:59Z)|$(_rsc_epoch nonsense)"
+assert_eq "[SPEC-6] clock, duration and epoch read as before" "9:39 PM ET|58m16s|1772323199|0" "$_c6"
+assert_eq "[SPEC-6] …starting no program" "0|0" "$(_calls jq)|$(_calls date)"
+# The result variable is the caller's, whatever it is named (review on #2401:
+# a nameref to `m` resolved to the function's own `m`).
+_rsc_epoch_to m 2026-02-28T23:59:59Z; _rsc_epoch_to y 2026-02-28T23:59:59Z; _rsc_epoch_to doe 2026-02-28T23:59:59Z
+assert_eq "[SPEC-6] _rsc_epoch_to fills a caller's m, y or doe" "1772323199|1772323199|1772323199" "${m:-}|${y:-}|${doe:-}"
+: > "$_CALLS"
+_h6="$(ZBUILD_STATUS_NOW=2026-09-19T05:56:00Z rsc_render_header "$_model" "$STATE")"
+assert_eq "[SPEC-6] the header renders the same" "$_h" "$_h6"
+assert_eq "[SPEC-6] …reading the model with one jq and no date" "1|0" "$(_calls jq)|$(_calls date)"
+unset -f jq date
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

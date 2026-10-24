@@ -343,19 +343,30 @@ manifest_graph_collect() {
         unset '_MGRAPH_COLLECT_MEMO[$key]'
         [[ -n "$mf" ]] && rm -f "$mf" 2>/dev/null
     fi
-    while IFS= read -r -d '' m; do
-        local id
-        id="$(manifest_graph_get_stage_id "$m")"
-        if [[ "$id" == "$stage_id" ]]; then
-            _MGRAPH_COLLECT_MEMO[$key]="$m"
-            if [[ -n "$mf" ]]; then
-                mkdir -p "${mf%/*}" 2>/dev/null && printf '%s' "$m" > "$mf" 2>/dev/null || true
-            fi
-            printf '%s\n' "$m"
-            return 0
-        fi
-    done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
-    return 1
+    # One awk reads every manifest's first `id:` line, cleaned as
+    # manifest_graph_get_stage_id cleans it, and names the first file in find
+    # order whose id matches (ADR-065 §4: one pass, not one per manifest).
+    local -a files=()
+    while IFS= read -r -d '' m; do files+=("$m"); done \
+        < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    (( ${#files[@]} > 0 )) || return 1
+    m="$(awk -v want="$stage_id" '
+        /^id:[[:space:]]*/ {
+            v = $0
+            sub(/^id:[[:space:]]*/, "", v)
+            sub(/[[:space:]]*#.*/, "", v)
+            gsub(/^["'"'"']|["'"'"']$/, "", v)
+            if (v == want) { print FILENAME; exit }
+            nextfile
+        }
+    ' "${files[@]}" 2>/dev/null)"
+    [[ -n "$m" ]] || return 1
+    _MGRAPH_COLLECT_MEMO[$key]="$m"
+    if [[ -n "$mf" ]]; then
+        mkdir -p "${mf%/*}" 2>/dev/null && printf '%s' "$m" > "$mf" 2>/dev/null || true
+    fi
+    printf '%s\n' "$m"
+    return 0
 }
 
 # yaml_get lives in core/plugin-registry/manifest-validation.sh (a leaf lib that
@@ -384,17 +395,33 @@ manifest_graph_resolve_member() {
     local plugins_root="$1" member="$2" m
     m="$(manifest_graph_collect "$plugins_root" "$member" 2>/dev/null)"
     if [[ -n "$m" && -f "$m" ]]; then printf '%s\n' "$m"; return 0; fi
-    _manifest_graph_ensure_yaml_get || return 1
-    local safe="${member//-/_}" roles_var roles role cand r
+    local safe="${member//-/_}" roles_var roles role cand
     roles_var="_TPL_STAGE_ROLES_${safe}"
     roles="${!roles_var:-}"
     role="${roles%%,*}"            # first declared role
     [[ -z "$role" ]] && return 1
-    while IFS= read -r -d '' cand; do
-        r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
-        if [[ "$r" == "$role" ]]; then printf '%s\n' "$cand"; return 0; fi
-    done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
-    return 1
+    # One awk over every manifest (ADR-065 §4), reading provides.role by
+    # yaml_get's nested-key rules: a `provides:` line opens the block, any
+    # column-0 key closes it, the first indented `role:` in it is the value.
+    local -a files=()
+    while IFS= read -r -d '' cand; do files+=("$cand"); done \
+        < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    (( ${#files[@]} > 0 )) || return 1
+    m="$(awk -v want="$role" '
+        FNR == 1 { inb = 0 }
+        /^provides:/ { inb = 1; next }
+        inb && /^[a-zA-Z_]/ { inb = 0 }
+        inb && /^[[:space:]]+role:/ {
+            v = $0
+            sub(/^[[:space:]]+[^:]+:[[:space:]]*/, "", v)
+            sub(/[[:space:]]*#.*/, "", v)
+            gsub(/^["'"'"']|["'"'"']$/, "", v)
+            if (v == want) { print FILENAME; exit }
+            nextfile
+        }
+    ' "${files[@]}" 2>/dev/null)"
+    [[ -n "$m" ]] || return 1
+    printf '%s\n' "$m"
 }
 
 # ─── manifest_graph_result_filename <manifest> ─────────────────────────────────

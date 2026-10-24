@@ -116,6 +116,35 @@ rc=$?
 set -e
 assert_eq "[SPEC-6] manifest with non-empty usage and no summary passes validation" "0" "$rc"
 
+# ─── SPEC-7 (ADR-065 §5): the structural checks read the manifest once ──────
+# requires-present, requires.core-is-a-list, summary and usage were four awks
+# per manifest, and validate_manifest runs for every manifest on every plugin
+# discovery walk.
+MANIFEST="$FIXTURE_DIR/all-checks.yaml"
+_base_tool_manifest "$MANIFEST"
+cat >> "$MANIFEST" <<'EOF'
+requires:
+  core: redaction
+summary: ""
+usage: |
+  fine
+EOF
+_AWKS="$TEST_TEMP_DIR/awks"; : > "$_AWKS"
+awk() {
+    case "$*" in *'requires:'*|*'index($0, k":")'*) printf 'x\n' >> "$_AWKS" ;; esac
+    command awk "$@"
+}
+set +e
+_err7="$(validate_manifest "$MANIFEST" 2>&1 >/dev/null)"
+rc=$?
+set -e
+unset -f awk
+assert_eq "[SPEC-7] a scalar requires.core and an empty summary fail validation" "1" "$rc"
+assert_contains "[SPEC-7] …the scalar core is reported" "$_err7" "requires.core must be a YAML list"
+assert_contains "[SPEC-7] …and so is the empty summary" "$_err7" "'summary' is declared but empty"
+assert_eq "[SPEC-7] …and usage is not" "0" "$(grep -c "'usage' is declared but empty" <<< "$_err7" || true)"
+assert_eq "[SPEC-7] the four checks read the manifest in one awk" "1" "$(wc -l < "$_AWKS" | tr -d ' ')"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
