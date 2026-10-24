@@ -390,7 +390,7 @@ rsc_bound_body() {
 # ─── rsc_render_body <events_jsonl> <state_dir> [status_override] ───────────
 rsc_render_body() {
     local events="$1" state_dir="$2" override="${3:-}"
-    local model header rows_file key
+    local model header rows_file
     model="$(rsc_rows_json "$events")"
     header="$(rsc_render_header "$model" "$state_dir" "$override")"
     # #2154: rows are rendered in THIS shell (`< <( )`, not a pipe) so the

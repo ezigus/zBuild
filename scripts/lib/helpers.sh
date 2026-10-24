@@ -168,7 +168,7 @@ atomic_write() {
     # line's 4th column is read by the shell, not by tail and awk.
     local free_mb="" _df
     _df="$(df -m "$dir")" || true
-    read -r _ _ _ free_mb _ <<< "${_df##*$'\n'}"
+    IFS=$' \t' read -r _ _ _ free_mb _ <<< "${_df##*$'\n'}"
     if (( free_mb < 50 )); then
         # Drain stdin BEFORE reporting the refusal (#1773). Returning early left
         # stdin unread: a payload smaller than the pipe buffer let the producer

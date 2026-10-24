@@ -107,6 +107,10 @@ for _c in dirname tail awk; do
 done
 assert_eq "[P6] …and one df" "1" "$(grep -c '^df$' "$_CALLS" || true)"
 unset -f df dirname tail awk
+# The shell reads df's columns, so a caller's IFS must not change them (intake
+# writes its SIGTERM result with IFS set to a newline).
+( IFS=$'\n'; printf 'y\n' | atomic_write "$TEST_TEMP_DIR/deep/p6-ifs.json" ) 2>/dev/null
+assert_eq "[P6] a caller's IFS does not make the free-space check refuse the write" "y" "$(cat "$TEST_TEMP_DIR/deep/p6-ifs.json" 2>/dev/null)"
 printf 'x\n' | atomic_write "p6-relative.txt" && assert_eq "[P6] a bare file name is written in the current directory" "x" "$(cat p6-relative.txt)"
 rm -f p6-relative.txt p6-relative.txt.bak
 
