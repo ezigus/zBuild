@@ -110,12 +110,21 @@ _discovery_memo_write() {   # <key> <shape> <out>
     { printf '%s\n%s\n%s' "$1"$'\034'"${_ZBUILD_ROOT:-}" "$2" "$3" > "$tmp"; } 2>/dev/null && mv -f "$tmp" "$mf" 2>/dev/null || rm -f "$tmp" 2>/dev/null
     return 0
 }
-_discovery_memo_drop() {   # [root] — a flush drops every memo: a name can be
-    # cut to fit, so matching by root could miss one, and a needless re-walk is
-    # only a cost.
-    local dir; dir="$(_discovery_memo_dir)"
+_discovery_memo_drop() {   # [root] — drop root's memos, or all of them
+    # The directory can be shared by a whole test run, so a flush for one root
+    # must leave the others (review on #2403). A memo's first line is its key,
+    # `<root>\034<disabled list>\034<engine root>`, read by the shell; a file
+    # name may be cut to fit, so it is not what decides.
+    local dir f k; dir="$(_discovery_memo_dir)"
     [[ -d "$dir" ]] || return 0
-    rm -f "$dir/"* 2>/dev/null
+    for f in "$dir"/*; do
+        [[ -f "$f" ]] || continue
+        if [[ -n "${1:-}" ]]; then
+            k=""; IFS= read -r k < "$f" 2>/dev/null || true
+            [[ "$k" == "$1"$'\034'* ]] || continue
+        fi
+        rm -f "$f" 2>/dev/null
+    done
     return 0
 }
 
