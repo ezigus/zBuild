@@ -125,6 +125,30 @@ assert_eq "[SPEC-9] a process with another data root reuses the shared memo (no 
 assert_eq "[SPEC-9] …with the same answer" "$_s1" "$_s2"
 assert_eq "[SPEC-9] …and the first process did walk" "1" "$(( _sw1 > 0 ))"
 
+# ─── SPEC-10: a warm lookup costs one process, the tree check's find ─────────
+# The check was `find | sort | tr` inside a `$( )`: four processes on every
+# lookup, memo hit or not. A different find order only re-walks.
+_ft10="$TEST_TEMP_DIR/ftree10"; mkdir -p "$_ft10/tool"
+cp -R "$REPO_ROOT/plugins/tool/lint-gate" "$REPO_ROOT/plugins/tool/teardown" "$_ft10/tool/"
+cat > "$TEST_TEMP_DIR/warm.sh" <<EOF
+source '$REPO_ROOT/scripts/lib/helpers.sh'; _ZBUILD_ROOT='$REPO_ROOT'
+source '$REPO_ROOT/core/plugin-registry/manifest-validation.sh'
+source '$REPO_ROOT/core/plugin-registry/discovery.sh'
+ZBUILD_DISCOVERY_MEMO_DIR='$TEST_TEMP_DIR/warm-memo'
+discover_plugins '$_ft10' >/dev/null 2>&1
+discover_plugins '$_ft10' >/dev/null 2>&1
+EOF
+# The one-call script gets its own memo directory, so both scripts walk once.
+sed -e '$d' -e 's|warm-memo|warm-memo-1|' "$TEST_TEMP_DIR/warm.sh" > "$TEST_TEMP_DIR/warm1.sh"
+_w10="$(
+    # shellcheck source=../../scripts/lib/fork-census.sh
+    source "$REPO_ROOT/scripts/lib/fork-census.sh"
+    fork_census_traced "$TEST_TEMP_DIR/w2.trace" bash "$TEST_TEMP_DIR/warm.sh"
+    fork_census_traced "$TEST_TEMP_DIR/w1.trace" bash "$TEST_TEMP_DIR/warm1.sh"
+    printf '%s' $(( $(fork_census_processes "$TEST_TEMP_DIR/w2.trace") - $(fork_census_processes "$TEST_TEMP_DIR/w1.trace") ))
+)"
+assert_eq "[SPEC-10] a warm lookup costs one process (find)" "1" "$_w10"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -44,8 +44,16 @@ ZBUILD_DISABLED_FILE="${ZBUILD_DISABLED_FILE:-${_ZBUILD_ROOT}/config/plugins.dis
 # off-switch contract, the same one the yaml cache has (#1614).
 declare -gA _ZBUILD_DISCOVERY_CACHE=()
 declare -gA _ZBUILD_DISCOVERY_SHAPE=()
-_discovery_tree_shape() {
-    find "$1" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | LC_ALL=C sort | tr '\n' ' '
+_discovery_tree_shape() { local _dts; _discovery_tree_shape_v _dts "$1"; printf '%s' "$_dts"; }
+# The shape into <var>: one find, read by the shell (it was `$(find | sort | tr)`,
+# four processes on every lookup). find's own order, unsorted: an order that
+# changes can only cost a re-walk, never a wrong answer.
+_discovery_tree_shape_v() {   # <var> <root>
+    local -n _dtsv_o="$1"
+    local _dtsv_l
+    _dtsv_o=""
+    while IFS= read -r _dtsv_l; do _dtsv_o+="$_dtsv_l "; done \
+        < <(find "$2" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null)
 }
 # ─── The file memo (ADR-065 §3) ──────────────────────────────────────────────
 # The in-shell memo dies with a `$( )`, and callers resolve stages inside one,
@@ -119,7 +127,7 @@ discover_plugins() {
     fi
     local _dck="${plugins_root}"$'\034'"${ZBUILD_DISABLED_FILE:-}"
     local _out _shape
-    _shape="$(_discovery_tree_shape "$plugins_root")"
+    _discovery_tree_shape_v _shape "$plugins_root"
     if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" \
         && "${_ZBUILD_DISCOVERY_SHAPE[$_dck]:-}" == "$_shape" ]]; then
         _out="${_ZBUILD_DISCOVERY_CACHE[$_dck]}"
