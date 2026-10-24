@@ -1,0 +1,5 @@
+## issue-acceptance — pass
+
+- The diff resolves both failures flagged in the prior run — `exit 143` → `exit 1` in lifecycle.sh's TERM traps (fixing R-13's `dispatch-rc-guard-test` and unblocking R-1/R-10 confirmation), and the fake-sleep-delegates approach replaces the racy FIFO rendezvous (fixing R-3's 5400 s isolation variant) — and the test suite now reports 806 passing / 0 failing, satisfying R-13 and confirming all prior-work requirements (R-2 through R-12) remain intact.
+
+- every requirement the issue states is met by the change
