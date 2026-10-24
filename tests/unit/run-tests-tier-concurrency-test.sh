@@ -188,12 +188,12 @@ rm -f "$HOOK".*
 _all "$JOBS_FIX" ZBUILD_TIER_BUDGET=16 ZBUILD_TEST_MAX_JOBS=2
 assert_eq "[SPEC-4d] ZBUILD_TEST_MAX_JOBS caps the per-tier count (unit)" "2" "$(cat "$HOOK.unit" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-4d] …and integration" "2" "$(cat "$HOOK.integration" 2>/dev/null || echo MISSING)"
-# The default cap is 8: 16 CPUs → 8 per tier.
+# The default cap is 6 (ADR-065, 2026-10-24): the tiers run at once and are
+# fork-bound, so on a 10-CPU Mac 6 per tier finished the suite in 473s where 8
+# took 519–531s and 4 took 527s. 10 CPUs → 6 per tier (the old split gave 5).
 rm -f "$HOOK".*
-# 10, not 16: the old split gave ceil(16/2)=8 too, so 16 could not tell the cap
-# from the split (review on #2160); 10 → old 5, new min(10, 8) = 8.
 _all "$JOBS_FIX" ZBUILD_TIER_BUDGET=10
-assert_eq "[SPEC-4e] the default cap is 8 (10-CPU box capped; was ceil(10/2)=5)" "8" "$(cat "$HOOK.unit" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-4e] the default cap is 6 (10-CPU box capped; was ceil(10/2)=5)" "6" "$(cat "$HOOK.unit" 2>/dev/null || echo MISSING)"
 
 # ─── [SPEC-5] CHANGE: per-tier distinct TMPDIR + coverage concat ─────────────
 TMP_HOOK="$TEST_TEMP_DIR/tmp-hook"

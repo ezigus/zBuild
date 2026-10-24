@@ -254,10 +254,12 @@ _rt_run_inner() {
 }
 
 # _zb_max_jobs — the cap on any tier's worker count (#2158): ZBUILD_TEST_MAX_JOBS,
-# default 8, so a many-core host doesn't oversubscribe the bounded pool.
+# default 6, so a many-core host doesn't oversubscribe the bounded pool. The
+# tiers run at once and are fork-bound: on a 10-CPU Mac, 6 per tier finished
+# the suite in 473s where 8 took 519–531s (ADR-065, 2026-10-24).
 _zb_max_jobs() {
-  local m="${ZBUILD_TEST_MAX_JOBS:-8}"
-  [[ "$m" =~ ^[1-9][0-9]*$ ]] || m=8
+  local m="${ZBUILD_TEST_MAX_JOBS:-6}"
+  [[ "$m" =~ ^[1-9][0-9]*$ ]] || m=6
   printf '%s' "$m"
 }
 
