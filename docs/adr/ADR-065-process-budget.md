@@ -108,6 +108,18 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 > memory-sqlite plugin, so `zbuild doctor` still checks for it. ADR-006, ADR-035 and ADR-041 are
 > amended to match.
 
+> **Amended 2026-10-24 (round 4): a call stays only if something needs it.** Every program on a
+> path that runs for each file write, event or state update must have a reader or protect a
+> guarantee:
+> - `atomic_write` dropped its `df` free-space check (a full disk fails the write, which already
+>   refuses and leaves the target untouched, #1773) and `mktemp` (the shell opens the temp file with
+>   noclobber). It rotates a `.bak` only when asked (`--bak`), which only the state writers do,
+>   because only state recovery reads a `.bak`. It tries `stat` in the platform's flavour first.
+>   Replacing a file went from 10 programs to 4 on macOS.
+> - `locked_state_update` names its work files in the shell, copies the state with the shell, and
+>   reads the collision guard's run id, status and age with one `jq` against the shell's clock (no
+>   `dirname`, `mktemp`, `cp` or `date`).
+
 > **Amended 2026-10-24: more of the named sites are one pass.** The budget's run is one mocked
 > pipeline (4,808 programs), but a single test file started up to 22,701, because tests run the same
 > engine paths many times. `scripts/lib/fork-census.sh <cmd...>` now counts any command, with the
@@ -210,3 +222,4 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 - §1, §2 (amended 2026-10-24, round 3: processes) → `tests/unit/fork-census-test.sh` SPEC-4 (subshells are counted as processes); `tests/e2e/fork-budget-test.sh` SPEC-7 (the mocked run's processes are within `PROCESS_BUDGET`)
 - §3 (amended 2026-10-24, round 3) → `tests/unit/yaml-get-cache-test.sh` SPEC-12 (`yaml_get_v` matches `$(yaml_get)`), SPEC-13 (a miss fills the calling shell's cache); `tests/unit/output-paths-resolve-test.sh` SPEC-1/2; `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row costs one process); `tests/unit/discover-plugins-memo-test.sh` SPEC-9 (a shared memo directory), SPEC-10 (a warm lookup costs one process); `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-7 (no `cksum`, and a hit only under its own root); `tests/unit/run-tests-schedule-test.sh` SPEC-7 (one memo directory per run, removed after it)
 - §5 (amended 2026-10-24, round 4: no SQLite mirror) → `tests/unit/event-bus-emit-cost-test.sh` E2 (an emit given a db path starts no `sqlite3`, takes one lock and writes no `events.db`); `tests/unit/core-event-bus-test.sh` (no `events.db` or its lock is written)
+- §5 (amended 2026-10-24, round 4: only needed calls) → `tests/unit/atomic-write-cost-test.sh` W1 (replacing a file starts cat, one stat, chmod and mv), W2 (a `.bak` only with `--bak`), W3 (modes kept), W4 (a write that cannot start refuses and drains stdin); `tests/integration/state-collision-guard-test.sh` "cost" (one guarded update: no dirname or date, two jqs, and mktemp and cp only for the `.bak`)

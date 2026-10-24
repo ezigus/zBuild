@@ -52,6 +52,12 @@ All persisted state is written via `core/state/atomic_write`, which:
 4. `mv` (atomic on POSIX).
 5. Rotate previous to `.bak`.
 
+> **Amended 2026-10-24 ([ADR-065](ADR-065-process-budget.md) §5).** No disk-space precheck: a full
+> disk fails the write itself, which leaves the target untouched and says so. The temp file is
+> opened by the shell with noclobber (exclusive, as `mktemp`'s was). The `.bak` is rotated only by
+> the state writers (`atomic_write --bak`, used by `locked_state_update` and `init_state`), the
+> only files the `.bak` recovery reads; other files keep no `.bak`.
+
 Reads use `validate_json`; corruption triggers `.bak` recovery. (KEEPERS §C additions 1–2 lift these into the hot path.)
 
 ### Reconstructed (computed at the start of `run` after resume)
