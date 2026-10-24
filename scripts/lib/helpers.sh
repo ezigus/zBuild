@@ -158,16 +158,17 @@ zbuild_engine_tmpdir() {
 
 atomic_write() {
     local target="$1"
-    local dir; dir="$(dirname "$target")"
+    # dirname by parameter expansion: this runs for every file the engine
+    # writes (ADR-065 §5).
+    local dir="."
+    if [[ "$target" == */* ]]; then dir="${target%/*}"; [[ -n "$dir" ]] || dir="/"; fi
     [[ -d "$dir" ]] || mkdir -p "$dir"
 
-    # Disk-space precheck — refuse to write if < 50MB free
-    local free_mb
-    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
-        free_mb=$(df -m "$dir" | tail -1 | awk '{print $4}')
-    else
-        free_mb=$(df -m "$dir" | tail -1 | awk '{print $4}')
-    fi
+    # Disk-space precheck — refuse to write if < 50MB free. One df; its last
+    # line's 4th column is read by the shell, not by tail and awk.
+    local free_mb="" _df
+    _df="$(df -m "$dir")" || true
+    read -r _ _ _ free_mb _ <<< "${_df##*$'\n'}"
     if (( free_mb < 50 )); then
         # Drain stdin BEFORE reporting the refusal (#1773). Returning early left
         # stdin unread: a payload smaller than the pipe buffer let the producer
