@@ -2,5 +2,5 @@
 
 - test-author: pass — authored acceptance assertions for 16 SPEC(s) from the design contract
 - build: pass — build_complete
-- test: fail — 2 of 806 tests failed
-- issue-acceptance: fail — `npm test` is red — `dispatch-rc-guard-test` reports lifecycle.sh grew two new rc=2 return paths (the TERM-trap `exit 143` violates the ADR-054 §4 `{0,1}` constraint), and `stage-timeout-precedence-test` finds no `sleep 5400` watchdog spawned when neither template nor env sets the timeout, so the 5400 s default tier is not wired.
+- test: fail — 806 of 806 tests passed
+- issue-acceptance: pass — The diff resolves both failures flagged in the prior run — `exit 143` → `exit 1` in lifecycle.sh's TERM traps (fixing R-13's `dispatch-rc-guard-test` and unblocking R-1/R-10 confirmation), and the fake-sleep-delegates approach replaces the racy FIFO rendezvous (fixing R-3's 5400 s isolation variant) — and the test suite now reports 806 passing / 0 failing, satisfying R-13 and confirming all prior-work requirements (R-2 through R-12) remain intact.
