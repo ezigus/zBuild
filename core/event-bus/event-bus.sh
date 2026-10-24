@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  zBuild event-bus — emit_event with dual SQLite + JSONL writers           ║
+# ║  zBuild event-bus — emit_event, one flock-guarded JSONL writer            ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
-# Single-writer JSONL (flock-guarded) + optional SQLite mirror for durability.
+# Single-writer JSONL (flock-guarded). events.jsonl is the only record and the
+# only read path; the SQLite mirror it once fed had no reader and was removed
+# (ADR-065 §5, 2026-10-24).
 # Schema-as-warn: unknown event types log a warning but never block.
 # Events from ARCHITECTURE.md §6.
 # Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
@@ -35,11 +37,11 @@ source "$_ZBUILD_EVENT_BUS_DIR/known-types.sh"
 #      cleanup.sh needed a ZBUILD_TMPDIR_PATTERNS scanner to sweep ~2300 of
 #      these (#2004). ADR-023/ADR-059 §1 also reject ${TMPDIR} for durable
 #      state: on macOS its entries can vanish mid-run (#1571, #1609/#1611).
-#   2. Only JSONL pinned → derive the dir (hence the SQLite mirror + lock) from
-#      it, so a pinned jsonl never leaks a mirror/lock back to the global
-#      default (the test harness pins only ZBUILD_EVENTS_JSONL).
-# Explicit ZBUILD_EVENTS_DIR / _DB always win.
-if [[ -z "${ZBUILD_EVENTS_DIR:-}${ZBUILD_EVENTS_JSONL:-}${ZBUILD_EVENTS_DB:-}" ]]; then
+#   2. Only JSONL pinned → derive the dir (hence the lock) from it, so a
+#      pinned jsonl never leaks a lock back to the global default (the test
+#      harness pins only ZBUILD_EVENTS_JSONL).
+# An explicit ZBUILD_EVENTS_DIR always wins.
+if [[ -z "${ZBUILD_EVENTS_DIR:-}${ZBUILD_EVENTS_JSONL:-}" ]]; then
     # Same precedence as zbuild_layout_data_root (core/state/layout.sh); inlined
     # because the event bus deliberately sources almost nothing.
     ZBUILD_EVENTS_DIR="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/ephemeral-events/$$"
@@ -48,55 +50,12 @@ elif [[ -z "${ZBUILD_EVENTS_DIR:-}" && -n "${ZBUILD_EVENTS_JSONL:-}" ]]; then
 fi
 ZBUILD_EVENTS_DIR="${ZBUILD_EVENTS_DIR:-${ZBUILD_STATE_ROOT:-${HOME}/.zbuild/state}}"
 ZBUILD_EVENTS_JSONL="${ZBUILD_EVENTS_JSONL:-${ZBUILD_EVENTS_DIR}/events.jsonl}"
-ZBUILD_EVENTS_DB="${ZBUILD_EVENTS_DB:-${ZBUILD_EVENTS_DIR}/events.db}"
 ZBUILD_EVENT_SCHEMA="${ZBUILD_EVENT_SCHEMA:-${_ZBUILD_ROOT_FOR_EVENTS}/config/event-schema.json}"
 
-# ─── _eb_mirror_enabled — is the optional SQLite mirror active? ─────────────
-# True only when sqlite3 is installed AND a real DB path is configured.
-# ZBUILD_EVENTS_DB=/dev/null is the "JSONL only, no mirror" sentinel (parity
-# fixtures use it); its `.lock` path is unwritable, so the mirror — including
-# the dedicated lock — must be skipped entirely, not just fail-soft (#1153).
-_eb_mirror_enabled() {
-    [[ "$ZBUILD_EVENTS_DB" != "/dev/null" ]] && command -v sqlite3 >/dev/null 2>&1
-}
-
-# ─── _eb_init — idempotent setup (dir, lockfile, SQLite schema) ─────────────
+# ─── _eb_init — idempotent setup (dir, lockfile) ─────────────────────────────
 _eb_init() {
     [[ -d "$ZBUILD_EVENTS_DIR" ]] || mkdir -p "$ZBUILD_EVENTS_DIR"
     : > "${ZBUILD_EVENTS_JSONL}.lock" 2>/dev/null || true
-    # SQLite mirror (optional, best-effort) — set up the dedicated mirror lock
-    # (SEPARATE from the jsonl lock, so a slow mirror never blocks the
-    # authoritative append, #1153) and schema only when the mirror is enabled.
-    if _eb_mirror_enabled; then
-        : > "${ZBUILD_EVENTS_DB}.lock" 2>/dev/null || true
-      if [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
-        local _eb_init_err
-        # busy_timeout via -cmd (no stdout echo, unlike PRAGMA busy_timeout=N).
-        # Concurrent mirror writes are serialized by flock (ADR-005) in
-        # eb_emit_event — flock is the deterministic primitive zbuild requires,
-        # whereas sqlite3 is optional. The timeout is just a cheap safety net
-        # for a stale lock holder (#1059 chose 2000ms). The mirror stays in the
-        # default journal mode: no concurrent reader of events.db exists (jsonl
-        # is the only read path, via eb_query_events).
-        _eb_init_err="$(sqlite3 -cmd ".timeout 2000" "$ZBUILD_EVENTS_DB" <<'SQL' 2>&1
-CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts TEXT NOT NULL,
-    run_id TEXT,
-    issue INTEGER,
-    type TEXT NOT NULL,
-    plugin TEXT,
-    kind TEXT,
-    payload TEXT,
-    schema_version INTEGER DEFAULT 1
-);
-CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
-CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
-CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id);
-SQL
-        )" || { [[ -n "$_eb_init_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_init_err" >&2; }
-      fi
-    fi
 }
 
 # ─── _eb_known_type — schema-as-warn check ──────────────────────────────────
@@ -217,18 +176,15 @@ eb_emit_event() {
     [[ "$unit" =~ ^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){0,2}$ && "$unit" != "$stage" ]] || unit=""
 
     # Validate-or-cast $issue to a non-negative integer. Coming from env, an
-    # unsanitized string here would break the SQL INSERT below ($issue is
-    # interpolated unquoted because the column is INTEGER).
+    # non-number here would make jq's --argjson reject the whole event.
     if ! [[ "$issue" =~ ^[0-9]+$ ]]; then
         issue=0
     fi
 
-    # Two compact lines out: the event, then its .data (the SQLite mirror's
-    # payload column). Compact JSON never holds a raw newline, so each is one line.
-    # An event jq cannot build is dropped, never fatal: this runs bare under
-    # `set -e` everywhere (see the closing `return 0`).
-    local event_json payload _jq_out
-    _jq_out="$(jq -cn \
+    # One compact line out: the event. An event jq cannot build is dropped, never
+    # fatal: this runs bare under `set -e` everywhere (see the closing `return 0`).
+    local event_json
+    event_json="$(jq -cn \
         --arg ts "$ts" \
         --arg run_id "$run_id" \
         --argjson issue "$issue" \
@@ -245,9 +201,7 @@ eb_emit_event() {
          | ({ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}
             + (if $stage != "" then {stage: $stage} else {} end)
             + (if $seq != "" then {seq: $seq} else {} end)
-            + (if $unit != "" then {unit: $unit} else {} end)), $data')" || return 0
-    event_json="${_jq_out%%$'\n'*}"
-    payload="${_jq_out#*$'\n'}"
+            + (if $unit != "" then {unit: $unit} else {} end))')" || return 0
 
     # Single-writer JSONL via flock
     if zbuild_has_flock; then
@@ -260,58 +214,10 @@ eb_emit_event() {
         echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
     fi
 
-    # SQLite mirror (optional, fire-and-forget).
-    # Escape every string field — previously only $payload was escaped, so a
-    # plugin emitting e.g. ZBUILD_PLUGIN_KIND="x'); DROP TABLE events;--"
-    # could corrupt the event store. $issue is validated as integer above
-    # and interpolated unquoted (INTEGER column). Skipped (incl. the flock on
-    # the dedicated lock) when the mirror is disabled — e.g. ZBUILD_EVENTS_DB=
-    # /dev/null, whose .lock redirect would otherwise fail the emit (#1153).
-    if _eb_mirror_enabled; then
-        # Single quotes doubled for SQLite string literals, in the shell (#1806:
-        # a sed process per field before). The quote and its double are held in
-        # variables because inside "..." a \' in the pattern stays a backslash.
-        local _q="'" _qq="''"
-        local _ts_esc="${ts//$_q/$_qq}" _rid_esc="${run_id//$_q/$_qq}"
-        local _type_esc="${type//$_q/$_qq}" _plugin_esc="${plugin//$_q/$_qq}"
-        local _kind_esc="${kind//$_q/$_qq}" _payload_esc="${payload//$_q/$_qq}"
-        local _eb_insert_sql
-        _eb_insert_sql="INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version) VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);"
-        # Serialize the mirror INSERT with flock on the DEDICATED db lock (NOT
-        # the jsonl lock): flock is the deterministic primitive zbuild requires
-        # (ADR-005), so concurrent emitters (#1131) never collide on the mirror
-        # write. NON-BLOCKING (-n): if another emitter holds the lock, SKIP this
-        # best-effort mirror write rather than wait — the mirror is unread
-        # (events.jsonl is the only read path) so a dropped row is harmless,
-        # and never waiting means a high-emit-rate pipeline (parallel members,
-        # kill-mid-run tests) pays ZERO added latency for the mirror. Separate
-        # lock ⇒ the mirror can never block the authoritative jsonl append.
-        if zbuild_has_flock; then
-            (
-                flock -n 9 || exit 0
-                _eb_mirror_insert "$_eb_insert_sql"
-            ) 9>"${ZBUILD_EVENTS_DB}.lock"
-        else
-            _eb_mirror_insert "$_eb_insert_sql"
-        fi
-    fi
-
     # Fire-and-forget: emit MUST never fail its caller — eb_emit_event is called
-    # bare under `set -e` throughout the pipeline, so the best-effort mirror's
-    # rc (or a flock-block rc) must not become this function's rc. Without this
-    # the trailing mirror block's exit code propagated out and aborted stages
-    # (build:fail / test:error) when the INSERT returned non-zero (#1153 fix).
+    # bare under `set -e` throughout the pipeline, so a flock-block rc must not
+    # become this function's rc (#1153).
     return 0
-}
-
-# _eb_mirror_insert — run one best-effort mirror INSERT; warn (never fail) on
-# sqlite3 error. Caller serializes via flock. busy_timeout via -cmd (no stdout,
-# unlike PRAGMA busy_timeout=N which echoes the value) is a safety net for a
-# stale lock holder (#1059 chose the 2000ms window).
-_eb_mirror_insert() {
-    local _eb_emit_err
-    _eb_emit_err="$(sqlite3 -cmd ".timeout 2000" "$ZBUILD_EVENTS_DB" "$1" 2>&1)" \
-        || { [[ -n "$_eb_emit_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_emit_err" >&2; }
 }
 
 # ─── eb_query_events — minimal read API ─────────────────────────────────────

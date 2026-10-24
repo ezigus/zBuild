@@ -36,7 +36,7 @@ source "$_ZBUILD_ROOT/scripts/lib/identity.sh"
 # event-bus.sh defaults them to $HOME/.zbuild/state — so per-run isolation
 # overrides only the default, never an explicit operator/test override.
 _ZBUILD_EVENTS_PINNED=""
-[[ -n "${ZBUILD_EVENTS_DIR:-}${ZBUILD_EVENTS_JSONL:-}${ZBUILD_EVENTS_DB:-}" ]] && _ZBUILD_EVENTS_PINNED=1
+[[ -n "${ZBUILD_EVENTS_DIR:-}${ZBUILD_EVENTS_JSONL:-}" ]] && _ZBUILD_EVENTS_PINNED=1
 source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
 source "$_ZBUILD_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=../config/config.sh
@@ -1568,8 +1568,7 @@ _runner_refresh_contract_snapshot() {
 _runner_reset_event_artifacts() {
     local dir="$1"
     [[ -z "$dir" ]] && return 0
-    rm -f "$dir/events.jsonl" "$dir/events.jsonl.lock" \
-          "$dir/events.db" "$dir/events.db.lock" 2>/dev/null || true
+    rm -f "$dir/events.jsonl" "$dir/events.jsonl.lock" 2>/dev/null || true
 }
 
 # Clear the shared global-default event log + stale lock files. Only ad-hoc /
@@ -1582,8 +1581,7 @@ _runner_clear_stale_global_event_artifacts() {
     # #1127: honor the ZBUILD_STATE_ROOT indirection so a fenced nested run
     # (test stage) clears ITS root, never the parent's shared global default.
     local g="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
-    rm -f "$g/events.jsonl" "$g/events.jsonl.lock" \
-          "$g/events.db" "$g/events.db.lock" 2>/dev/null || true
+    rm -f "$g/events.jsonl" "$g/events.jsonl.lock" 2>/dev/null || true
 }
 
 # ─── _runner_worktree_record <state_dir> ─────────────────────────────────────
@@ -2246,10 +2244,9 @@ main() {
         # events stay in its per-run dir instead of leaking to the flat default.
         export ZBUILD_EVENTS_DIR="$state_dir"
         export ZBUILD_EVENTS_JSONL="$state_dir/events.jsonl"
-        export ZBUILD_EVENTS_DB="$state_dir/events.db"
     else
         # Operator pinned an events location → respect + export as-is.
-        export ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
+        export ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL
     fi
     # #2131: the run-status comment sidecar — after the events path is fixed,
     # before the issue lock (so it never inherits the lock fd), from the target
@@ -2526,8 +2523,7 @@ main() {
         # clear (the trap may be deferred behind a foreground `wait`, #run-hygiene).
         if [[ -n "${_runner_state_file:-}" ]]; then
             local _rd; _rd="$(dirname "$_runner_state_file")"
-            rm -f "$_runner_state_file.lock" "$_rd/events.jsonl.lock" \
-                  "$_rd/events.db.lock" 2>/dev/null || true
+            rm -f "$_runner_state_file.lock" "$_rd/events.jsonl.lock" 2>/dev/null || true
         fi
         # #2131: the normal path — pipeline.end and the always-run stages are
         # on disk; the sidecar renders them in its final PATCH, then goes.

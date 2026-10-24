@@ -49,7 +49,7 @@ count() { grep -cx "$1" "$EXECS" 2>/dev/null || true; }
 
 ARGS6=(stage.complete stage=build verdict=pass score=91 reason=ok note=fine extra=x)
 
-# ─── E1: one emit, mirror off ────────────────────────────────────────────────
+# ─── E1: one emit ────────────────────────────────────────────────────────────
 print_test_section "E1: one 6-field emit starts one jq and nothing per field"
 emit_in "$TEST_TEMP_DIR/e1" /dev/null linux 1 "${ARGS6[@]}"
 assert_eq "[#1806/E1] one jq per emit (the envelope), not one per field" "1" "$(count jq)"
@@ -59,17 +59,17 @@ assert_eq "[#1806/E1] no mkdir once the events dir exists" "0" "$(count mkdir)"
 _others="$(grep -vx -e jq -e flock "$EXECS" 2>/dev/null | sort | uniq -c | tr -s ' ' | tr '\n' ';' || true)"
 assert_eq "[#1806/E1] nothing else is started (only jq and the lock)" "" "$_others"
 
-# ─── E2: one emit, SQLite mirror on ─────────────────────────────────────────
-if command -v sqlite3 >/dev/null 2>&1; then
-    print_test_section "E2: the mirror escapes its fields without a process each"
-    emit_in "$TEST_TEMP_DIR/e2" "$TEST_TEMP_DIR/e2/events.db" linux 1 "${ARGS6[@]}" "quote=it's"
-    assert_eq "[#1806/E2] no sed per mirrored field" "0" "$(count sed)"
-    assert_eq "[#1806/E2] one sqlite3 insert" "1" "$(count sqlite3)"
-    assert_eq "[#1806/E2] the row's payload keeps the quote" "it's" \
-        "$(sqlite3 "$TEST_TEMP_DIR/e2/events.db" "SELECT json_extract(payload,'\$.quote') FROM events ORDER BY id DESC LIMIT 1;" 2>/dev/null)"
-else
-    assert_pass "[#1806/E2] skipped: no sqlite3 on this host"
-fi
+# ─── E2: there is no SQLite copy (ADR-065 §5, 2026-10-24) ───────────────────
+# events.jsonl is the only read path; the events.db mirror had no reader and
+# cost a lock and a sqlite3 on every event. A caller that still names a db path
+# gets the jsonl only.
+print_test_section "E2: an emit writes events.jsonl only, whatever ZBUILD_EVENTS_DB says"
+emit_in "$TEST_TEMP_DIR/e2" "$TEST_TEMP_DIR/e2/events.db" linux 1 "${ARGS6[@]}" "quote=it's"
+assert_eq "[E2] no sqlite3" "0" "$(count sqlite3)"
+assert_eq "[E2] one lock (the jsonl's)" "1" "$(count flock)"
+assert_eq "[E2] no events.db is created" "absent" "$([[ -e "$TEST_TEMP_DIR/e2/events.db" ]] && echo present || echo absent)"
+assert_eq "[E2] the event is in events.jsonl, its quote intact" "it's" \
+    "$(jq -r 'select(.data.stage == "build") | .data.quote' "$TEST_TEMP_DIR/e2/events.jsonl" 2>/dev/null | tail -1)"
 
 # ─── E3: timestamps ──────────────────────────────────────────────────────────
 # Both platform values on the same host: a map unit exports its target
