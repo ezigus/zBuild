@@ -66,6 +66,25 @@ rm -rf "$PROOT/tool/mg-b"
 set +e; p5="$(manifest_graph_collect "$PROOT" mg-b)"; rc5=$?; set -e
 assert_eq "[SPEC-4] a memoised path that was deleted is not returned" "" "$p5"
 
+# A walk reads every manifest in ONE awk, however many there are (ADR-065 §4).
+# A stage bound by role (review_lenses, acceptance-gate) has no manifest with
+# its id, so every lookup of it is a full walk: with one awk per manifest that
+# was 45 awks a call, 13,148 across the ten slowest test files.
+AWKS="$TEST_TEMP_DIR/awks"; : > "$AWKS"
+awk() { printf 'x\n' >> "$AWKS"; command awk "$@"; }
+for _i in 1 2 3 4 5 6; do
+    mkdir -p "$PROOT/tool/mg-n$_i"
+    printf 'id: mg-n%s\nname: N\nkind: tool\nversion: 0.0.1\n' "$_i" > "$PROOT/tool/mg-n$_i/manifest.yaml"
+done
+set +e; _pm="$(manifest_graph_collect "$PROOT" mg-none)"; _rcm=$?; set -e
+assert_eq "[SPEC-5] a stage no manifest names is a miss" "1" "$_rcm"
+assert_eq "[SPEC-5] …found by reading all 8 manifests in one awk" "1" "$(wc -l < "$AWKS" | tr -d ' ')"
+: > "$AWKS"
+_pn6="$(manifest_graph_collect "$PROOT" mg-n6)"
+assert_eq "[SPEC-5] a walk still returns the manifest whose id matches" "$PROOT/tool/mg-n6/manifest.yaml" "$_pn6"
+assert_eq "[SPEC-5] …with one awk" "1" "$(wc -l < "$AWKS" | tr -d ' ')"
+unset -f awk
+
 unset -f find
 cleanup_test_env
 print_test_results

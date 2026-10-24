@@ -343,19 +343,30 @@ manifest_graph_collect() {
         unset '_MGRAPH_COLLECT_MEMO[$key]'
         [[ -n "$mf" ]] && rm -f "$mf" 2>/dev/null
     fi
-    while IFS= read -r -d '' m; do
-        local id
-        id="$(manifest_graph_get_stage_id "$m")"
-        if [[ "$id" == "$stage_id" ]]; then
-            _MGRAPH_COLLECT_MEMO[$key]="$m"
-            if [[ -n "$mf" ]]; then
-                mkdir -p "${mf%/*}" 2>/dev/null && printf '%s' "$m" > "$mf" 2>/dev/null || true
-            fi
-            printf '%s\n' "$m"
-            return 0
-        fi
-    done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
-    return 1
+    # One awk reads every manifest's first `id:` line, cleaned as
+    # manifest_graph_get_stage_id cleans it, and names the first file in find
+    # order whose id matches (ADR-065 §4: one pass, not one per manifest).
+    local -a files=()
+    while IFS= read -r -d '' m; do files+=("$m"); done \
+        < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    (( ${#files[@]} > 0 )) || return 1
+    m="$(awk -v want="$stage_id" '
+        /^id:[[:space:]]*/ {
+            v = $0
+            sub(/^id:[[:space:]]*/, "", v)
+            sub(/[[:space:]]*#.*/, "", v)
+            gsub(/^["'"'"']|["'"'"']$/, "", v)
+            if (v == want) { print FILENAME; exit }
+            nextfile
+        }
+    ' "${files[@]}" 2>/dev/null)"
+    [[ -n "$m" ]] || return 1
+    _MGRAPH_COLLECT_MEMO[$key]="$m"
+    if [[ -n "$mf" ]]; then
+        mkdir -p "${mf%/*}" 2>/dev/null && printf '%s' "$m" > "$mf" 2>/dev/null || true
+    fi
+    printf '%s\n' "$m"
+    return 0
 }
 
 # yaml_get lives in core/plugin-registry/manifest-validation.sh (a leaf lib that
