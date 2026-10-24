@@ -99,20 +99,41 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 > options after `--args` and a value such as `-n` must stay a value.
 > Ratcheted 5,480 → 5,040 (measured 4,991 on macOS).
 
+> **Amended 2026-10-24: more of the named sites are one pass.** The budget's run is one mocked
+> pipeline (4,808 programs), but a single test file started up to 22,701, because tests run the same
+> engine paths many times. `scripts/lib/fork-census.sh <cmd...>` now counts any command, with the
+> same counter the budget uses. Measured on the ten slowest files, these were the largest sites, and
+> each now reads its input once:
+> - `manifest_graph_collect` read every manifest's `id:` with its own `awk` on a miss, and a stage
+>   bound by role (a review lens, the acceptance check) is always a miss. It is now one `awk` over all
+>   of them. `manifest_graph_resolve_member`'s role walk read `provides.role` the same way and is
+>   also one `awk`.
+> - `validate_manifest` checked requires-present, requires.core-is-a-list, `summary` and `usage`
+>   with four `awk`s per manifest, on every discovery walk. They are now one.
+> - `atomic_write`, which every engine file write goes through, ran `dirname`, `tail` and `awk`
+>   around its free-space `df`. The shell does that now.
+> - The run-status comment read each field of each row and of the header with its own `jq`, and
+>   each time shown cost a `jq` and a `date`. It now uses one `jq` per row and one for the header,
+>   and the clock is shell arithmetic and `printf '%(…)T'`. The render test went from 22,701 to 4,612.
+>
+> Ratcheted 5,040 → 4,440 (measured 4,378 on macOS).
+
 ## Consequences
 
 - A fork regression fails CI with its call site named, instead of surfacing months later as a
   slower daemon.
-- Test authors get the harness for free: `_fb_traced` + `_fb_count` in the budget test are the
-  census tool. Run them by hand on any script to see where its forks are.
+- Test authors get the harness for free: `bash scripts/lib/fork-census.sh <cmd...>` prints the
+  count, the top call sites and the per-file totals of any command; `fork_census_traced` and
+  `fork_census_count` are the same two functions the budget test uses.
 - The number is platform-sensitive at the margin (`gtimeout` vs `timeout`, `stat` flavours);
   the budget carries a small headroom and CI's e2e job is Linux-only, so the ratchet is set from
   the Linux number.
 
 ## Implementation Notes (#2151, #2152)
 
-- `tests/e2e/fork-budget-test.sh` — `_fb_traced` (the harness), `_fb_count` (the classifier and
-  tally), `FORK_BUDGET` with its ratchet history in the comment above it.
+- `scripts/lib/fork-census.sh` — `fork_census_traced` (the harness), `fork_census_count` (the
+  classifier and tally), and a command-line census; `tests/e2e/fork-budget-test.sh` sources it and
+  holds `FORK_BUDGET` with its ratchet history in the comment above it.
 - `core/plugin-registry/manifest-index.sh` (#2152) — the first §4 application: one find + one awk
   fill `yaml_cache_prewarm` and `_inputs_scan_manifests`; `core/pipeline/runner.sh` fills the
   input-resolve maps at file scope right after sourcing `input-resolve.sh` (§3).
@@ -134,3 +155,5 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 - §2 → `tests/e2e/fork-budget-test.sh` SPEC-4 (`FORK_BUDGET` carries its ratchet history in the comment above it)
 - §3, §4 → `tests/unit/manifest-index-test.sh` (fork counts, the parent fill); `tests/unit/yaml-get-cache-test.sh` SPEC-9 (one awk per prewarm)
 - §5 (amended #1806, the event bus) → `tests/unit/event-bus-emit-cost-test.sh` E1 (one emit starts one `jq` and the lock, nothing per field), E2 (no `sed` for the mirror), E3 (UTC with real milliseconds whatever `ZBUILD_PLATFORM` says), E4 (the envelope is unchanged, and option-like values stay data)
+- §1 (amended 2026-10-24, the census of any command) → `tests/unit/fork-census-test.sh` SPEC-1 (the census of a one-program script says 1 and names its line), SPEC-2 (the functions are callable after sourcing), SPEC-3 (the budget test uses this counter and keeps no copy)
+- §4, §5 (amended 2026-10-24) → `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-5 (a walk is one `awk`), SPEC-6 (a role lookup is one more `awk`, hit or miss); `tests/unit/manifest-validation-doc-fields-test.sh` SPEC-7 (the structural checks are one `awk`); `tests/unit/file-mode-kept-on-replace-test.sh` P6 (`atomic_write` starts no `dirname`, `tail` or `awk`); `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row and the header are one `jq` each; a time starts no program)

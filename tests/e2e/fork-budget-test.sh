@@ -61,7 +61,11 @@ setup_test_env "fork-budget"
 # answers — measured 5,426 macOS (Linux CI census 5,276).
 # 5040 (#1806): one emit starts one jq and the lock — no jq per field, no
 # date, no mkdir, no sed for the mirror — measured 4,991 macOS.
-FORK_BUDGET=5040
+# 4440 (ADR-065 §5 amendment, 2026-10-24): a manifest walk and a role lookup are
+# one awk each, validate_manifest's structural checks one awk, atomic_write has
+# no dirname/tail/awk, the run-status comment reads a row with one jq —
+# measured 4,378 macOS.
+FORK_BUDGET=4440
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh
