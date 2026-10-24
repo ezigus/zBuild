@@ -510,6 +510,47 @@ if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
   export BASH_ENV="$_RT_BASH_ENV_FILE"
 fi
 
+# _rt_slot_run <job_dir> <slot> [trace] — run one pool slot's file and leave
+# its rc in <job_dir>/<slot>.rc (its output in .out when it failed).
+_rt_slot_run() {
+    local _b="$1/$2" _f
+    _f="$(<"$_b.file")"
+    if _rt_run "$_f" "$_b.out" "${3:-}"; then
+        printf '0' > "$_b.rc"
+        rm -f "$_b.out"
+    else
+        printf '%s' "$?" > "$_b.rc"
+    fi
+}
+
+# _rt_duration_order <job_dir> <slot...> — the slots longest-first by
+# ZBUILD_TEST_DURATIONS_FILE (default tests/test-durations.tsv: `<seconds>TAB
+# <path>`, the path relative to the repo root). A file with no recorded time
+# goes first: it may be long, and a new file is where a long tail hides. Ties
+# and an absent file keep slot (file) order. Order only — every slot runs.
+_rt_duration_order() {
+    local job_dir="$1"; shift
+    local dfile="${ZBUILD_TEST_DURATIONS_FILE:-$REPO_ROOT/tests/test-durations.tsv}"
+    if [[ ! -s "$dfile" ]] || (( $# == 0 )); then
+        (( $# == 0 )) || printf '%s\n' "$@"
+        return 0
+    fi
+    local -A _dur=()
+    local _s _p _i _f _k
+    while IFS=$'\t' read -r _s _p; do
+        [[ -n "$_p" && "$_s" =~ ^[0-9]+([.][0-9]+)?$ ]] && _dur["$_p"]="${_s%%.*}"
+    done < "$dfile"
+    for _i in "$@"; do
+        _f="$(<"$job_dir/$_i.file")"
+        _k="${_f#"$REPO_ROOT"/}"
+        if [[ -n "${_dur[$_k]+x}" ]]; then
+            printf '%s\t%s\n' "${_dur[$_k]}" "$_i"
+        else
+            printf '%s\t%s\n' 999999999 "$_i"
+        fi
+    done | sort -t $'\t' -k1,1nr -k2,2n -s | cut -f2
+}
+
 # _rt_run_serial_file <tier> <file> <cov_dir> — run one test file serially,
 # updating the caller's passed/failed/total. Factored so both the serial path
 # and the parallel path's serial-pin bucket share one body (#991).
@@ -584,7 +625,7 @@ run_tier() {
   if [[ -d "$dir" ]]; then
     while IFS= read -r -d '' f; do
       files+=("$f")
-    done < <(find "$dir" -maxdepth 1 -name '*-test.sh' -print0 2>/dev/null)
+    done < <(find "$dir" -maxdepth 1 -name '*-test.sh' -print0 2>/dev/null | sort -z)
   fi
 
   # Collect co-located plugin tests from plugins/*/*/tests/
@@ -672,55 +713,48 @@ run_tier() {
     # runner is what flaked full-pipeline-sigint on #1047). The rest run through
     # the FIFO pool. With no pins (default) _serial_files is empty → all files run
     # parallel and output is byte-identical to the pre-#991 behaviour.
-    local -a _parallel_files=() _serial_files=()
-    for f in "${files[@]}"; do
-      if _rt_is_serial_pinned "$(basename "$f")"; then
-        _serial_files+=("$f")
-      else
-        _parallel_files+=("$f")
-      fi
-    done
-    # Serial-pin bucket FIRST (unloaded). Trace files use the `s<n>` prefix; the
-    # pool uses `p<n>` — distinct namespaces, so order never collides traces.
-    for f in "${_serial_files[@]+"${_serial_files[@]}"}"; do
-      # Test hook (#991): record serial-bucket routing so a test can prove a
-      # pinned file ran HERE, not in the pool. Mirrors _ZBUILD_PAR_ACTIVE_FILE.
-      [[ -n "${_ZBUILD_SERIAL_ACTIVE_FILE:-}" ]] && printf '%s\n' "$(basename "$f")" >> "${_ZBUILD_SERIAL_ACTIVE_FILE}"
-      _rt_run_serial_file "$name" "$f" "$_cov_dir"
-    done
+    # Every file gets a slot in file order, and results are reported in slot
+    # order, so what the tier prints does not depend on what ran first.
+    # Serial-pinned files (#991) run one at a time in their own lane WHILE the
+    # pool runs; they used to run first and alone, which put their whole time
+    # (141s for integration) in front of the pool. The pool starts its files
+    # longest-first by the recorded durations (_rt_duration_order), so a long
+    # file never starts last.
     local _job_dir
     _job_dir="$(mktemp -d -t "zbuild-par-$name.XXXXXX")"
-    local _slot=0
-    local _inflight=0
-    # #991: reap ANY finished slot via `wait -n` instead of draining the OLDEST.
-    # A long test in the oldest slot (e.g. core-pipeline-runner ~193s) otherwise
-    # head-of-line-blocks the whole pool — capping the integration tier's parallel
-    # speedup at ~1.85x instead of ~5.5x. Aggregation below reads results BY
-    # SUBMISSION SLOT, so completion order never changes the output (#1011 review).
-    for f in "${_parallel_files[@]+"${_parallel_files[@]}"}"; do
+    local _slot=0 _inflight=0 _i _done_pid=""
+    local -a _serial_slots=() _parallel_slots=()
+    for f in "${files[@]}"; do
       _slot=$((_slot + 1))
-      local _base="$_job_dir/$_slot"
-      printf '%s' "$f" > "${_base}.file"
-      (
-        if _rt_run "$f" "${_base}.out" "${_cov_dir:+$_cov_dir/p$_slot.trace}"; then
-          printf '0' > "${_base}.rc"
-          # Success: aggregation only reads .out for FAILED slots, so drop it now
-          # — parity with the serial path, keeps the job dir small (#1011 review).
-          rm -f "${_base}.out"
-        else
-          printf '%s' "$?" > "${_base}.rc"
-        fi
-      ) &
-      _inflight=$((_inflight + 1))
-      if [[ "$_inflight" -ge "$_par_jobs" ]]; then
-        wait -n 2>/dev/null || true
-        _inflight=$((_inflight - 1))
+      printf '%s' "$f" > "$_job_dir/$_slot.file"
+      if _rt_is_serial_pinned "$(basename "$f")"; then
+        _serial_slots+=("$_slot")
+      else
+        _parallel_slots+=("$_slot")
       fi
     done
-    # drain remaining background jobs
+    local _lane_pid=""
+    if (( ${#_serial_slots[@]} > 0 )); then
+      (
+        for _i in "${_serial_slots[@]}"; do
+          [[ -n "${_ZBUILD_SERIAL_ACTIVE_FILE:-}" ]] && printf '%s\n' "$(basename "$(<"$_job_dir/$_i.file")")" >> "${_ZBUILD_SERIAL_ACTIVE_FILE}"
+          _rt_slot_run "$_job_dir" "$_i" "${_cov_dir:+$_cov_dir/s$_i.trace}"
+        done
+      ) &
+      _lane_pid=$!
+    fi
+    for _i in $(_rt_duration_order "$_job_dir" "${_parallel_slots[@]+"${_parallel_slots[@]}"}"); do
+      _rt_slot_run "$_job_dir" "$_i" "${_cov_dir:+$_cov_dir/p$_i.trace}" &
+      _inflight=$((_inflight + 1))
+      while [[ "$_inflight" -ge "$_par_jobs" ]]; do
+        # The lane is not a pool slot: its exit must not free one.
+        _done_pid=""
+        wait -n -p _done_pid 2>/dev/null || true
+        [[ -n "$_done_pid" && "$_done_pid" == "$_lane_pid" ]] && { _lane_pid=""; continue; }
+        _inflight=$((_inflight - 1))
+      done
+    done
     wait 2>/dev/null || true
-    # serial aggregation in submission order
-    local _i
     for _i in $(seq 1 $_slot); do
       total=$((total + 1))
       local _rc _file
