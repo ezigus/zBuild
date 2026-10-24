@@ -104,17 +104,19 @@ _stage_started() {
 }
 
 # ─── SPEC-5[change]: a refused state write aborts before any stage ─────────
-# Reproduce the real defect shape, not a generic I/O error: atomic_write's
-# disk-space precheck refuses while the jq producer exits 0. `df` is shadowed
-# by an exported function so the refusal reaches the runner's own bash process.
+# Reproduce the real defect shape, not a generic I/O error: atomic_write
+# refuses while the jq producer exits 0. `mv` is shadowed by an exported
+# function that refuses only the final move onto pipeline-state.json, so the
+# refusal reaches the runner's own bash process and touches nothing else. (It
+# was a shadowed `df` for the free-space precheck, which is gone — ADR-065 §5.)
 # A read-only directory would NOT reproduce it — that fails loudly on its own,
 # both before and after the fix.
 BAD_STATE_DIR="$TEST_TEMP_DIR/refused-state"
 mkdir -p "$BAD_STATE_DIR"
 : > "$ZBUILD_EVENTS_JSONL"
 
-df() { printf 'Filesystem 1M-blocks Used Avail Capacity Mounted\n/dev/fake 100 99 1 99%% /\n'; }
-export -f df
+mv() { [[ "${*: -1}" == */refused-state/pipeline-state.json ]] && return 1; command mv "$@"; }
+export -f mv
 
 set +e
 ZBUILD_STATE_DIR="$BAD_STATE_DIR" \
@@ -122,8 +124,8 @@ ZBUILD_STATE_DIR="$BAD_STATE_DIR" \
     >"$TEST_TEMP_DIR/out-bad" 2>"$TEST_TEMP_DIR/err-bad"
 bad_rc=$?
 set -e
-export -n df
-unset -f df
+export -n mv
+unset -f mv
 
 assert_gt "SPEC-5: a refused state write aborts the run" "$bad_rc" "0"
 bad_msgs="$(cat "$TEST_TEMP_DIR/out-bad" "$TEST_TEMP_DIR/err-bad")"

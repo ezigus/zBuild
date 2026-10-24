@@ -33,7 +33,8 @@ locked_state_update() {
     fi
 
     local lock_file="${state_file}.lock"
-    local lock_dir; lock_dir="$(dirname "$lock_file")"
+    local lock_dir="."
+    [[ "$lock_file" == */* ]] && { lock_dir="${lock_file%/*}"; [[ -n "$lock_dir" ]] || lock_dir="/"; }
     [[ -d "$lock_dir" ]] || mkdir -p "$lock_dir"
     : > "$lock_file"
 
@@ -44,8 +45,11 @@ locked_state_update() {
     # whenever TMPDIR is unset (every Linux CI runner), which is outside every
     # ADR-058 area: the engine's own state bookkeeping showed up in another
     # concurrently-running run's write-boundary sweep as `/tmp/tmp.XXXXXXXXXX`.
-    local current; current="$(mktemp "${state_file}.lsu-cur.XXXXXX")"
-    local next; next="$(mktemp "${state_file}.lsu-new.XXXXXX")"
+    # Named by the shell, not mktemp (ADR-065 §5): a pid and a random number,
+    # inside the state's own directory, under the state's lock.
+    local current="${state_file}.lsu-cur.$$.${RANDOM}${RANDOM}"
+    local next="${state_file}.lsu-new.$$.${RANDOM}${RANDOM}"
+    : > "$current"
     # shellcheck disable=SC2064
     trap "rm -f '$current' '$next'" RETURN
 
@@ -84,8 +88,11 @@ locked_state_update() {
             return 2
         fi
         # validate_json may have restored .bak into sf; copy whatever is now in
-        # sf (guaranteed valid) into the temp working file.
-        cp "$sf" "$dest"
+        # sf (guaranteed valid) into the temp working file — by the shell, the
+        # whole file as it is (JSON holds no NUL).
+        local _lsu_body=""
+        IFS= read -r -d '' _lsu_body < "$sf" || true
+        printf '%s' "$_lsu_body" > "$dest"
     }
 
     # _zbuild_lsu_collision_guard <current_tmp>
@@ -98,10 +105,19 @@ locked_state_update() {
         [[ -s "$current_file" ]] || return 0
         # Ad-hoc / test callers without ZBUILD_RUN_ID are exempt.
         [[ -n "${ZBUILD_RUN_ID:-}" ]] || return 0
-        local existing_run_id existing_status existing_updated_at
-        existing_run_id="$(jq -r '.run_id // empty' "$current_file" 2>/dev/null || true)"
-        existing_status="$(jq -r '.status // empty' "$current_file" 2>/dev/null || true)"
-        existing_updated_at="$(jq -r '.updated_at // empty' "$current_file" 2>/dev/null || true)"
+        # One jq for the run id, the status and the age in seconds of
+        # updated_at, against the shell's clock (ADR-065 §5: three jqs and two
+        # or three dates before). An updated_at jq cannot read, as the BSD date
+        # path could not, reads as old: no proof of a live run.
+        local _g existing_run_id existing_status existing_updated_at age_seconds
+        _g="$(jq -r --argjson now "${EPOCHSECONDS}" '
+            [(.run_id // ""), (.status // ""), (.updated_at // ""),
+             ((.updated_at // "") as $u
+              | if $u == "" then ""
+                else (try (($now - ($u | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)) | floor | tostring)
+                      catch "999999999") end)]
+            | map(tostring) | join("\u001f")' "$current_file" 2>/dev/null || true)"
+        IFS=$'\x1f' read -r existing_run_id existing_status existing_updated_at age_seconds <<< "$_g"
         # No run_id in file (not a managed pipeline state) → skip.
         [[ -n "$existing_run_id" ]] || return 0
         # Same run_id → safe.
@@ -113,14 +129,7 @@ locked_state_update() {
         # liveness, so we do NOT block — blocking requires positive evidence
         # of a live run (mirrors the 24h staleness gate in resume.sh).
         [[ -n "$existing_updated_at" ]] || return 0
-        local updated_epoch now_epoch age_seconds
-        if date -u -d "$existing_updated_at" +%s >/dev/null 2>&1; then
-            updated_epoch="$(date -u -d "$existing_updated_at" +%s 2>/dev/null || echo 0)"
-        else
-            updated_epoch="$(TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%SZ' "$existing_updated_at" +%s 2>/dev/null || echo 0)"
-        fi
-        now_epoch="$(date -u +%s)"
-        age_seconds=$(( now_epoch - updated_epoch ))
+        [[ "$age_seconds" =~ ^-?[0-9]+$ ]] || age_seconds=999999999
         # Stale (>=24h) → safe; unparseable timestamp → age huge → also exempt.
         [[ $age_seconds -lt 86400 ]] || return 0
         error "SPEC-G: live-run collision — refusing to overwrite run '$existing_run_id' (in_progress) with '$ZBUILD_RUN_ID'"
