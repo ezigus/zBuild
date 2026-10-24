@@ -99,7 +99,7 @@ scan_plugin_outputs() {
     local raw_path raw_primary resolved _violation _event
     while IFS=$'\t' read -r raw_path raw_primary; do
         [[ -z "$raw_path" ]] && continue
-        resolved="$(_registry_resolve_output_path "$raw_path" "$state_dir" "$artifact_dir")"
+        _registry_resolve_output_path_v resolved "$raw_path" "$state_dir" "$artifact_dir"
 
         # An absent output always violates; a zero-byte one violates unless the
         # plugin declared the empty-diff capability AND this is not its primary.

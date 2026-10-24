@@ -34,7 +34,7 @@ _lc_other_outputs_deny() {
         [[ "${f%/manifest.yaml}" == "$own_n" ]] && continue
         while IFS= read -r raw; do
             [[ -n "$raw" ]] || continue
-            resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
+            _registry_resolve_output_path_v resolved "$raw" "$state_dir" "$artifact_dir"
             [[ -n "$resolved" ]] && _LC_DENY_OUT+="$resolved"$'\n'
         done <<< "$(manifest_index_get "$f" outputs.path 2>/dev/null || true)"
     done <<< "${_ZBUILD_MIDX_FILES[$idx_root]:-}"
@@ -74,7 +74,7 @@ _lc_artifacts_left_deny() {
     if declare -F _registry_resolve_output_path >/dev/null 2>&1; then
         while IFS= read -r raw; do
             [[ -n "$raw" ]] || continue
-            resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
+            _registry_resolve_output_path_v resolved "$raw" "$state_dir" "$artifact_dir"
             [[ -n "$resolved" ]] && keep+="$resolved"$'\n'
         done <<< "$(_lc_manifest_output_paths "$manifest")"
     fi

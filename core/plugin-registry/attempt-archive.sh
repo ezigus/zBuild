@@ -96,7 +96,7 @@ attempt_outputs_fingerprint() {
     facts="$(_attempt_manifest_facts "$manifest")"
     while IFS=$'\t' read -r _k raw; do
         [[ "$_k" == P && -n "$raw" ]] || continue
-        resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
+        _registry_resolve_output_path_v resolved "$raw" "$state_dir" "$artifact_dir"
         [[ -n "$resolved" ]] || continue
         sum="$(cksum 2>/dev/null < "$resolved" || printf 'absent')"
         printf '%s\t%s\n' "${resolved##*/}" "$sum"
@@ -166,7 +166,7 @@ attempt_archive_outputs() {
     local raw resolved copied=0
     while IFS= read -r raw; do
         [[ -n "$raw" ]] || continue
-        resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
+        _registry_resolve_output_path_v resolved "$raw" "$state_dir" "$artifact_dir"
         [[ -n "$resolved" && -e "$resolved" ]] || continue
         # Flattened to the basename: the archive answers "what did this attempt
         # produce", and a declared output's basename is unique within a plugin.
