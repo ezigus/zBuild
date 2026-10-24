@@ -57,8 +57,12 @@ _discovery_tree_shape() {
 # plugins tree, the disabled list or the validator code is newer than it: an
 # in-place edit re-walks, which the in-shell memo alone does not notice.
 # discovery_cache_flush and ZBUILD_PLUGIN_DISCOVERY_CACHE=0 skip it.
+# ZBUILD_DISCOVERY_MEMO_DIR, when set, wins: scripts/run-tests.sh points a whole
+# suite run at one directory, so each test file does not pay its own first walk.
 _discovery_memo_dir() {
-    if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
+    if [[ -n "${ZBUILD_DISCOVERY_MEMO_DIR:-}" ]]; then
+        printf '%s' "$ZBUILD_DISCOVERY_MEMO_DIR"
+    elif [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
         printf '%s/runtime/discovery-memo' "$ZBUILD_STATE_DIR"
     else
         printf '%s/cache/discovery-memo' "${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}"
@@ -66,6 +70,8 @@ _discovery_memo_dir() {
 }
 _discovery_memo_file() {   # <key>
     local n="${1//[^A-Za-z0-9._-]/_}"
+    # The validator code is part of the answer: two engines never share a memo.
+    n+="__${_ZBUILD_ROOT//[^A-Za-z0-9._-]/_}"
     (( ${#n} > 200 )) && n="${n: -200}"
     printf '%s/%s' "$(_discovery_memo_dir)" "$n"
 }
@@ -75,7 +81,7 @@ _discovery_memo_read() {   # <root> <key> <shape> → _ZBUILD_DISCOVERY_MEMO_OUT
     mf="$(_discovery_memo_file "$key")"
     [[ -s "$mf" ]] || return 1
     body="$(<"$mf")" || return 1
-    [[ "${body%%$'\n'*}" == "$key" ]] || return 1
+    [[ "${body%%$'\n'*}" == "$key"$'\034'"${_ZBUILD_ROOT:-}" ]] || return 1
     body="${body#*$'\n'}"
     [[ "${body%%$'\n'*}" == "$shape" ]] || return 1
     local -a watch=("$root")
@@ -93,21 +99,15 @@ _discovery_memo_write() {   # <key> <shape> <out>
     mf="$(_discovery_memo_file "$1")"; dir="${mf%/*}"
     [[ -d "$dir" ]] || mkdir -p "$dir" 2>/dev/null || return 0
     tmp="$mf.tmp.$$.$RANDOM"
-    { printf '%s\n%s\n%s' "$1" "$2" "$3" > "$tmp"; } 2>/dev/null && mv -f "$tmp" "$mf" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+    { printf '%s\n%s\n%s' "$1"$'\034'"${_ZBUILD_ROOT:-}" "$2" "$3" > "$tmp"; } 2>/dev/null && mv -f "$tmp" "$mf" 2>/dev/null || rm -f "$tmp" 2>/dev/null
     return 0
 }
-_discovery_memo_drop() {   # [root] — remove the file memo(s) for root, or all
+_discovery_memo_drop() {   # [root] — a flush drops every memo: a name can be
+    # cut to fit, so matching by root could miss one, and a needless re-walk is
+    # only a cost.
     local dir; dir="$(_discovery_memo_dir)"
     [[ -d "$dir" ]] || return 0
-    if [[ -n "${1:-}" ]]; then
-        # The file is named after <root>\034<disabled list>: drop every memo
-        # whose name starts with this root's.
-        local n="${1//[^A-Za-z0-9._-]/_}"
-        (( ${#n} > 150 )) && n="${n: -150}"
-        rm -f "$dir/"*"$n"* 2>/dev/null
-    else
-        rm -f "$dir/"* 2>/dev/null
-    fi
+    rm -f "$dir/"* 2>/dev/null
     return 0
 }
 

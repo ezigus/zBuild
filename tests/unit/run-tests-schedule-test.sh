@@ -17,6 +17,9 @@
 # SPEC-6 CHANGE  scripts/lib/test-durations.sh <timing-log> <out> writes the file
 #                from a ZBUILD_TEST_TIMING_FILE log: whole seconds, repo-relative,
 #                longest first, the slowest record kept when a file ran twice
+# SPEC-7 CHANGE  every file of a run sees one ZBUILD_DISCOVERY_MEMO_DIR, so a
+#                plugin-discovery walk is paid once per run, not once per file;
+#                the directory is gone after the run
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,7 +59,7 @@ printf '10\t%s\n30\t%s\n20\t%s\n5\t%s\n' \
 
 _run() {   # [env assignments...]
     : > "$LOG"
-    env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_SERIAL_TESTS -u ZBUILD_TEST_DURATIONS_FILE \
+    env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_SERIAL_TESTS -u ZBUILD_TEST_DURATIONS_FILE -u ZBUILD_DISCOVERY_MEMO_DIR \
         ZBUILD_TESTS_DIR="$FAKE" ZBUILD_PLUGINS_DIR="$EMPTY" ZBUILD_CORE_DIR="$EMPTY" \
         ZBUILD_TEST_PARALLEL_JOBS=1 ZBUILD_SERIAL_TESTS='p1-test.sh p2-test.sh' \
         "$@" bash "$RUN_TESTS" --tier unit > "$TEST_TEMP_DIR/out" 2> "$TEST_TEMP_DIR/err" || true
@@ -100,6 +103,19 @@ printf 'file 1500 %s/tests/unit/x-test.sh\ncpu 1 2 %s/tests/unit/x-test.sh\nfile
 bash "$REPO_ROOT/scripts/lib/test-durations.sh" "$_tl" "$TEST_TEMP_DIR/gen.tsv" 2>/dev/null
 assert_eq "[SPEC-6] seconds, repo-relative, longest first, slowest record per file, others dropped" \
     "$(printf '120\ttests/integration/y-test.sh\n2\ttests/unit/x-test.sh')" "$(cat "$TEST_TEMP_DIR/gen.tsv" 2>/dev/null)"
+
+print_test_section "SPEC-7: one discovery memo for the run"
+for _n in m1 m2; do
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${ZBUILD_DISCOVERY_MEMO_DIR:-unset}" >> "%s"\n' "$TEST_TEMP_DIR/memo.log" > "$FAKE/unit/$_n-test.sh"
+    chmod +x "$FAKE/unit/$_n-test.sh"
+done
+: > "$TEST_TEMP_DIR/memo.log"
+_run ZBUILD_TEST_DURATIONS_FILE="$DUR"
+_md="$(sort -u "$TEST_TEMP_DIR/memo.log")"
+assert_eq "[SPEC-7] both files saw the same, set memo directory" "1|set" \
+    "$(grep -c . <<< "$_md" || true)|$([[ -n "$_md" && "$_md" != unset ]] && echo set || echo "$_md")"
+assert_eq "[SPEC-7] …which is removed after the run" "gone" "$([[ -n "$_md" && "$_md" != unset && ! -e "$_md" ]] && echo gone || echo "present:$_md")"
+rm -f "$FAKE/unit/m1-test.sh" "$FAKE/unit/m2-test.sh"
 
 cleanup_test_env
 print_test_results

@@ -104,6 +104,27 @@ _w5="$(_nwalk)"
 ( ZBUILD_PLUGIN_DISCOVERY_CACHE=0 discover_plugins "$_ft" >/dev/null 2>&1 )
 assert_eq "[SPEC-8] ZBUILD_PLUGIN_DISCOVERY_CACHE=0 always walks" "1" "$(( $(_nwalk) > _w5 ))"
 
+# ─── SPEC-9: ZBUILD_DISCOVERY_MEMO_DIR shares the memo between processes ─────
+# Every test file has its own data root, so each paid one full walk (~1,300
+# processes) before its memo existed. scripts/run-tests.sh points the whole run
+# at one memo directory; freshness still decides every reuse.
+_shared="$TEST_TEMP_DIR/shared-memo"; : > "$_WALKS"
+_proc() {   # <data root> — a fresh process with its own data root
+    ZBUILD_DATA_ROOT="$1" ZBUILD_DISCOVERY_MEMO_DIR="$_shared" bash -c "
+        source '$REPO_ROOT/scripts/lib/helpers.sh'; _ZBUILD_ROOT='$REPO_ROOT'
+        source '$REPO_ROOT/core/plugin-registry/manifest-validation.sh'
+        source '$REPO_ROOT/core/plugin-registry/discovery.sh'
+        eval \"\$(declare -f validate_manifest | sed '1s/^validate_manifest/_o_vm/')\"
+        validate_manifest() { printf 'x\\n' >> '$_WALKS'; _o_vm \"\$@\"; }
+        unset ZBUILD_STATE_DIR
+        discover_plugins '$_ft' 2>/dev/null | sort"
+}
+_s1="$(_proc "$TEST_TEMP_DIR/dr1")"; _sw1="$(_nwalk)"
+_s2="$(_proc "$TEST_TEMP_DIR/dr2")"
+assert_eq "[SPEC-9] a process with another data root reuses the shared memo (no walk)" "$_sw1" "$(_nwalk)"
+assert_eq "[SPEC-9] …with the same answer" "$_s1" "$_s2"
+assert_eq "[SPEC-9] …and the first process did walk" "1" "$(( _sw1 > 0 ))"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
