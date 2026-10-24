@@ -66,13 +66,17 @@ setup_test_env "fork-budget"
 # one awk each, validate_manifest's structural checks one awk, atomic_write has
 # no dirname/tail/awk, the run-status comment reads a row with one jq —
 # measured 4,378 macOS.
-FORK_BUDGET=4440
+# 4380 (round 3: discovery's tree check is one find; status rows and output
+# paths fill variables) — measured 4,312 macOS.
+FORK_BUDGET=4380
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
 # 7050 (round 3: manifest reads through yaml_get_v — measured 6,967 macOS;
-# main before it measured 8,331).
-PROCESS_BUDGET=7050
+# main before it measured 8,331). 6220 (round 3: output paths, status-row
+# times, discovery's tree check and the manifest_graph memo name fill variables
+# instead of subshells — measured 6,139 macOS).
+PROCESS_BUDGET=6220
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh
