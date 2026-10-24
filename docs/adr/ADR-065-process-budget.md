@@ -118,6 +118,26 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 >
 > Ratcheted 5,040 → 4,440 (measured 4,378 on macOS).
 
+> **Amended 2026-10-24 (round 2): the suite's schedule, and discovery's memo across processes.**
+> The full local suite took 519s on a 10-CPU Mac. Integration finished last: its serial-pinned files
+> ran first, one after another (141s), before its pool started, and the pool took files
+> alphabetically, so a 180s file could start last.
+> - The pinned files now run one at a time in their own lane while the pool runs.
+> - The pool starts files longest-first by `tests/test-durations.tsv`, written from a timing log by
+>   `scripts/lib/test-durations.sh`. A file with no recorded time starts first. Results are still
+>   reported in file order.
+> - A tier runs at most 6 files at once by default, not 8. The tiers run together and starting
+>   programs is what saturates the machine: 6 per tier took 473s where 8 took 519–531s and 4 took 527s.
+> - `npm run lint` and CI's Lint job run `shellcheck` in three batches (102s → 47s alone).
+> - §3 applied to discovery: the walk's answer is also kept in a file under the run's state (or the
+>   data root). It is used only while nothing under the plugins tree, the disabled list or the
+>   validator code is newer than it, so an in-place edit re-walks. A shell that never warmed the
+>   in-shell memo, such as a test sourcing the registry or a plugin process, used to re-validate every
+>   manifest on every lookup: `stage-resolution-parity-test.sh` went from 11,391 programs to 1,515.
+>
+> The machine stays saturated either way, so the next rounds cut work: the `$( )` subshells that
+> copy a whole engine shell, not only the programs `FORK_BUDGET` counts.
+
 ## Consequences
 
 - A fork regression fails CI with its call site named, instead of surfacing months later as a
@@ -157,3 +177,5 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 - §5 (amended #1806, the event bus) → `tests/unit/event-bus-emit-cost-test.sh` E1 (one emit starts one `jq` and the lock, nothing per field), E2 (no `sed` for the mirror), E3 (UTC with real milliseconds whatever `ZBUILD_PLATFORM` says), E4 (the envelope is unchanged, and option-like values stay data)
 - §1 (amended 2026-10-24, the census of any command) → `tests/unit/fork-census-test.sh` SPEC-1 (the census of a one-program script says 1 and names its line), SPEC-2 (the functions are callable after sourcing), SPEC-3 (the budget test uses this counter and keeps no copy)
 - §4, §5 (amended 2026-10-24) → `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-5 (a walk is one `awk`), SPEC-6 (a role lookup is one more `awk`, hit or miss); `tests/unit/manifest-validation-doc-fields-test.sh` SPEC-7 (the structural checks are one `awk`); `tests/unit/file-mode-kept-on-replace-test.sh` P6 (`atomic_write` starts no `dirname`, `tail` or `awk`); `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row and the header are one `jq` each; a time starts no program)
+- §3 (amended 2026-10-24, round 2: discovery across processes) → `tests/unit/discover-plugins-memo-test.sh` SPEC-4 (a cold lookup in a new subshell does not walk again), SPEC-5 (nor in a new process), SPEC-6 (an edited manifest re-walks and drops out), SPEC-7 (a changed plugin source re-walks), SPEC-8 (`discovery_cache_flush` and `ZBUILD_PLUGIN_DISCOVERY_CACHE=0` walk)
+- §1 (amended 2026-10-24, round 2: the schedule) → `tests/unit/run-tests-schedule-test.sh` SPEC-1 (longest first, unrecorded first), SPEC-2/3 (pinned files in their own lane, one at a time), SPEC-4 (counts and FAIL lines in file order), SPEC-5 (file order without a durations file), SPEC-6 (the durations file is written from a timing log); `tests/unit/run-tests-tier-concurrency-test.sh` SPEC-4e (the default cap is 6); `tests/unit/ci-npm-script-parity-test.sh` SPEC-4 (shellcheck runs in parallel batches and a failing batch fails)

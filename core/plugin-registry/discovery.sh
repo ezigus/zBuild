@@ -47,6 +47,70 @@ declare -gA _ZBUILD_DISCOVERY_SHAPE=()
 _discovery_tree_shape() {
     find "$1" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | LC_ALL=C sort | tr '\n' ' '
 }
+# ─── The file memo (ADR-065 §3) ──────────────────────────────────────────────
+# The in-shell memo dies with a `$( )`, and callers resolve stages inside one,
+# so a shell that never warmed it — a test sourcing the registry, a plugin
+# process — walked and re-validated every manifest on every lookup (10,009
+# programs in one test file). The walk's answer is also kept in a file under the
+# run's state (or the data root), holding the key, the tree's shape and the
+# answer. It is used only when the key and shape match and nothing under the
+# plugins tree, the disabled list or the validator code is newer than it: an
+# in-place edit re-walks, which the in-shell memo alone does not notice.
+# discovery_cache_flush and ZBUILD_PLUGIN_DISCOVERY_CACHE=0 skip it.
+_discovery_memo_dir() {
+    if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
+        printf '%s/runtime/discovery-memo' "$ZBUILD_STATE_DIR"
+    else
+        printf '%s/cache/discovery-memo' "${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}"
+    fi
+}
+_discovery_memo_file() {   # <key>
+    local n="${1//[^A-Za-z0-9._-]/_}"
+    (( ${#n} > 200 )) && n="${n: -200}"
+    printf '%s/%s' "$(_discovery_memo_dir)" "$n"
+}
+_ZBUILD_DISCOVERY_MEMO_OUT=""
+_discovery_memo_read() {   # <root> <key> <shape> → _ZBUILD_DISCOVERY_MEMO_OUT
+    local root="$1" key="$2" shape="$3" mf body
+    mf="$(_discovery_memo_file "$key")"
+    [[ -s "$mf" ]] || return 1
+    body="$(<"$mf")" || return 1
+    [[ "${body%%$'\n'*}" == "$key" ]] || return 1
+    body="${body#*$'\n'}"
+    [[ "${body%%$'\n'*}" == "$shape" ]] || return 1
+    local -a watch=("$root")
+    local d
+    for d in "${_ZBUILD_ROOT:-}/core/plugin-registry" "${_ZBUILD_ROOT:-}/core/contract" \
+             "${_ZBUILD_ROOT:-}/core/event-bus" "${_ZBUILD_ROOT:-}/core/router" "${ZBUILD_DISABLED_FILE:-}"; do
+        [[ -n "$d" && -e "$d" ]] && watch+=("$d")
+    done
+    [[ -z "$(find "${watch[@]}" -newer "$mf" -print -quit 2>/dev/null)" ]] || return 1
+    if [[ "$body" == *$'\n'* ]]; then _ZBUILD_DISCOVERY_MEMO_OUT="${body#*$'\n'}"; else _ZBUILD_DISCOVERY_MEMO_OUT=""; fi
+    return 0
+}
+_discovery_memo_write() {   # <key> <shape> <out>
+    local mf dir tmp
+    mf="$(_discovery_memo_file "$1")"; dir="${mf%/*}"
+    [[ -d "$dir" ]] || mkdir -p "$dir" 2>/dev/null || return 0
+    tmp="$mf.tmp.$$.$RANDOM"
+    { printf '%s\n%s\n%s' "$1" "$2" "$3" > "$tmp"; } 2>/dev/null && mv -f "$tmp" "$mf" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+    return 0
+}
+_discovery_memo_drop() {   # [root] — remove the file memo(s) for root, or all
+    local dir; dir="$(_discovery_memo_dir)"
+    [[ -d "$dir" ]] || return 0
+    if [[ -n "${1:-}" ]]; then
+        # The file is named after <root>\034<disabled list>: drop every memo
+        # whose name starts with this root's.
+        local n="${1//[^A-Za-z0-9._-]/_}"
+        (( ${#n} > 150 )) && n="${n: -150}"
+        rm -f "$dir/"*"$n"* 2>/dev/null
+    else
+        rm -f "$dir/"* 2>/dev/null
+    fi
+    return 0
+}
+
 discover_plugins() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
     if [[ "${ZBUILD_PLUGIN_DISCOVERY_CACHE:-1}" != "1" ]]; then
@@ -59,6 +123,10 @@ discover_plugins() {
     if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" \
         && "${_ZBUILD_DISCOVERY_SHAPE[$_dck]:-}" == "$_shape" ]]; then
         _out="${_ZBUILD_DISCOVERY_CACHE[$_dck]}"
+    elif _discovery_memo_read "$plugins_root" "$_dck" "$_shape"; then
+        _out="$_ZBUILD_DISCOVERY_MEMO_OUT"
+        _ZBUILD_DISCOVERY_CACHE["$_dck"]="$_out"
+        _ZBUILD_DISCOVERY_SHAPE["$_dck"]="$_shape"
     else
         local _wrc=0
         _out="$(_discover_plugins_walk "$plugins_root")" || _wrc=$?
@@ -72,6 +140,7 @@ discover_plugins() {
         fi
         _ZBUILD_DISCOVERY_CACHE["$_dck"]="$_out"
         _ZBUILD_DISCOVERY_SHAPE["$_dck"]="$_shape"
+        _discovery_memo_write "$_dck" "$_shape" "$_out"
     fi
     # Only when non-empty: a cached empty result must print nothing, not a bare
     # newline, or the caller's `while read` sees one phantom plugin dir.
@@ -114,6 +183,7 @@ discover_plugins_into() {
 
 # discovery_cache_flush [root] — drop the memo, mirroring yaml_cache_flush.
 discovery_cache_flush() {
+    _discovery_memo_drop "${1:-}"
     if [[ -n "${1:-}" ]]; then
         local k
         for k in "${!_ZBUILD_DISCOVERY_CACHE[@]}"; do
