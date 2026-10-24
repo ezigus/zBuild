@@ -63,104 +63,9 @@ setup_test_env "fork-budget"
 # date, no mkdir, no sed for the mirror — measured 4,991 macOS.
 FORK_BUDGET=5040
 
-# ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
-# BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work
-# units); PS4 stamps source:line; BASH_XTRACEFD=7 routes it to one file. fd 3 is
-# stage-io, 8 is coverage, 9 is flock — 7 is free (run-tests.sh:101-118).
-_FB_BASH_ENV="$TEST_TEMP_DIR/bashenv"
-printf 'set -x\n' > "$_FB_BASH_ENV"
-# Usage: _fb_traced <trace_file> <cmd...> — runs cmd with tracing to trace_file.
-_fb_traced() {
-    local trace="$1"; shift
-    (
-        export PS4='+@${BASH_SOURCE[0]-}:${LINENO}@ '
-        export BASH_XTRACEFD=7
-        export BASH_ENV="$_FB_BASH_ENV"
-        "$@" 7>"$trace"
-    )
-}
-
-# ─── the counter ─────────────────────────────────────────────────────────────
-# Usage: _fb_count <trace_file> <sites_out>
-# Prints the number of external execs; writes `count<TAB>file:line<TAB>cmd`
-# rows (descending) to sites_out. A word is external when the TEST shell
-# resolves it to a file on PATH (engine functions are not sourced here, so a
-# function named like nothing on PATH is not counted), or it is one of the
-# fixture's mocks. Leading `VAR=val` words and wrappers (exec, command, env,
-# nice, timeout N) are stripped so the wrapped command is classified — and the
-# wrapper counted too when it is itself a binary.
-# A source line marked `# fork-budget-exempt: <why>` is a wait whose repeat count
-# is elapsed time, not code (#2236): its rows go to <sites_out>.exempt instead.
-_fb_count() {
-    local trace="$1" sites="$2"
-    local pairs="$TEST_TEMP_DIR/pairs.$$" exempt="$TEST_TEMP_DIR/exempt.$$"
-    # The marked lines of every traced source file, as `path:line`.
-    : > "$exempt"
-    local src
-    while IFS= read -r src; do
-        [[ -f "$src" ]] || continue
-        grep -n 'fork-budget-exempt:' "$src" 2>/dev/null | awk -F: -v p="$src" '{ print p ":" $1 }' >> "$exempt" || true
-    done < <(awk '/^\++@[^@]*@ /{ s = $0; sub(/^\++@/, "", s); sub(/:[0-9]*@ .*$/, "", s); if (!(s in seen)) { seen[s] = 1; print s } }' "$trace")
-    # pass 1: one `site<TAB>word` row per candidate command word (no forks per line);
-    # an exempt site's row is tagged so pass 2 lists it apart.
-    awk -v exf="$exempt" '
-        BEGIN { while ((getline l < exf) > 0) ex[l] = 1 }
-        /^\++@[^@]*@ / {
-            site = $0; sub(/^\++@/, "", site); sub(/@ .*$/, "", site)
-            tag = (site in ex) ? "\tX" : ""
-            n = split(site, sp, "/"); site = sp[n]
-            line = $0; sub(/^\++@[^@]*@ /, "", line)
-            m = split(line, w, " ")
-            for (i = 1; i <= m; i++) {
-                t = w[i]
-                if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {                  # VAR=val prefix
-                    # xtrace single-quotes a value with spaces (v=<q>a b c<q>,
-                    # q = 0x27). Its words are data: skip to the closing quote.
-                    v = t; sub(/^[A-Za-z_][A-Za-z0-9_]*=/, "", v)
-                    if (v ~ /^\$?\x27/ && !(length(v) > 1 && v ~ /\x27$/ && v !~ /^\$?\x27$/)) {
-                        while (i < m && w[i] !~ /\x27$/) i++
-                        if (w[i] !~ /\x27$/) i++
-                    }
-                    continue
-                }
-                if (t == "exec" || t == "command" || t == "env" || t == "nice") continue
-                # `timeout N cmd` is two processes — timeout forks cmd so it can
-                # kill it — so both are counted (one row each), and N is skipped.
-                if ((t == "timeout" || t == "gtimeout") && i < m) { print site "\t" t tag; i++; continue }
-                gsub(/^[\x27"]|[\x27"]$/, "", t)
-                print site "\t" t tag
-                break
-            }
-        }' "$trace" > "$pairs"
-    # classify each unique word once in this shell
-    local w kind; local -A ext=()
-    for w in claude gh git rsync; do ext["$w"]=1; done
-    while IFS= read -r w; do
-        [[ -n "$w" && -z "${ext[$w]+x}" ]] || continue
-        kind="$(type -t -- "$w" 2>/dev/null || true)"
-        [[ "$kind" == "file" ]] && ext["$w"]=1
-    done < <(cut -f2 "$pairs" | sort -u)
-    # pass 2: keep external rows, tally by site. The site table goes through a
-    # temp file and a synchronous sort — a `2> >(sort …)` process substitution
-    # would return before sort finished writing (review on #2153).
-    local extlist=""; for w in "${!ext[@]}"; do extlist+="$w "; done
-    local unsorted="$TEST_TEMP_DIR/sites-unsorted.$$"
-    awk -v extlist="$extlist" -v out="$unsorted" -v xout="$unsorted.x" '
-        BEGIN { n = split(extlist, a, " "); for (i = 1; i <= n; i++) ext[a[i]] = 1 }
-        BEGIN { FS = "\t" }
-        ($2 in ext) && $3 == "X" { xsite[$1 "\t" $2]++; next }
-        ($2 in ext) { total++; site[$1 "\t" $2]++ }
-        END {
-            printf "" > out; printf "" > xout
-            for (k in site) printf "%d\t%s\n", site[k], k > out
-            for (k in xsite) printf "%d\t%s\n", xsite[k], k > xout
-            close(out); close(xout)
-            print total + 0
-        }' "$pairs"
-    sort -rn "$unsorted" > "$sites" 2>/dev/null || : > "$sites"
-    sort -rn "$unsorted.x" > "$sites.exempt" 2>/dev/null || : > "$sites.exempt"
-    rm -f "$pairs" "$unsorted" "$unsorted.x" "$exempt"
-}
+# ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
+# shellcheck source=../../scripts/lib/fork-census.sh
+source "$REPO_ROOT/scripts/lib/fork-census.sh"
 
 # ─── SPEC-1: the canary ──────────────────────────────────────────────────────
 print_test_section "SPEC-1: a script with one external exec counts exactly 1"
@@ -171,8 +76,8 @@ x="$(dirname /a/b)"
 y="${x%/*}"
 printf '%s\n' "$y" >/dev/null
 EOF
-_fb_traced "$TEST_TEMP_DIR/canary.trace" bash "$CANARY"
-_canary_n="$(_fb_count "$TEST_TEMP_DIR/canary.trace" "$TEST_TEMP_DIR/canary.sites")"
+fork_census_traced "$TEST_TEMP_DIR/canary.trace" bash "$CANARY"
+_canary_n="$(fork_census_count "$TEST_TEMP_DIR/canary.trace" "$TEST_TEMP_DIR/canary.sites")"
 assert_eq "[SPEC-1] the canary's one dirname is counted, its builtins are not" "1" "$_canary_n"
 assert_contains "[SPEC-1] …and attributed to its call site" "$(cat "$TEST_TEMP_DIR/canary.sites")" "canary.sh:2"$'\t'"dirname"
 
@@ -187,9 +92,9 @@ v="first ls second"
 w='x cat y'
 z=$'a\tmkdir b'
 EOF
-_fb_traced "$TEST_TEMP_DIR/quoted.trace" bash "$QUOTED"
+fork_census_traced "$TEST_TEMP_DIR/quoted.trace" bash "$QUOTED"
 assert_eq "[SPEC-1b] words inside an assigned value are not counted" "0" \
-    "$(_fb_count "$TEST_TEMP_DIR/quoted.trace" "$TEST_TEMP_DIR/quoted.sites")"
+    "$(fork_census_count "$TEST_TEMP_DIR/quoted.trace" "$TEST_TEMP_DIR/quoted.sites")"
 
 # ─── SPEC-5: an exempt wait is listed, not counted ───────────────────────────
 print_test_section "SPEC-5: a marked wait is not counted"
@@ -201,8 +106,8 @@ for _ in 1 2 3; do
     sleep 0
 done
 EOF
-_fb_traced "$TEST_TEMP_DIR/waiter.trace" bash "$WAITER"
-_waiter_n="$(_fb_count "$TEST_TEMP_DIR/waiter.trace" "$TEST_TEMP_DIR/waiter.sites")"
+fork_census_traced "$TEST_TEMP_DIR/waiter.trace" bash "$WAITER"
+_waiter_n="$(fork_census_count "$TEST_TEMP_DIR/waiter.trace" "$TEST_TEMP_DIR/waiter.sites")"
 assert_eq "[SPEC-5] only the unmarked sleep is counted (3 of 6)" "3" "$_waiter_n"
 assert_contains "[SPEC-5] …the marked one is listed apart" \
     "$(cat "$TEST_TEMP_DIR/waiter.sites.exempt" 2>/dev/null)" "waiter.sh:3"$'\t'"sleep"
@@ -217,7 +122,7 @@ set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
     export FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR"
-    _fb_traced "$TRACE" bash "$FIXTURE" >/dev/null 2>&1
+    fork_census_traced "$TRACE" bash "$FIXTURE" >/dev/null 2>&1
 )
 _run_rc=$?
 set -e
@@ -227,7 +132,7 @@ assert_file_exists "[SPEC-2] …and produced events.jsonl" "$RUN_DIR/events/even
 # ─── SPEC-3/4: the count ─────────────────────────────────────────────────────
 print_test_section "SPEC-3/4: liveness floor and the budget"
 SITES="$TEST_TEMP_DIR/run.sites"
-_total="$(_fb_count "$TRACE" "$SITES")"
+_total="$(fork_census_count "$TRACE" "$SITES")"
 _files="$(awk -F'\t' '{ split($2, p, ":"); f[p[1]] = 1 } END { print length(f) }' "$SITES")"
 echo "  external execs: $_total (budget $FORK_BUDGET) across $_files source files"
 echo "  top call sites:"
