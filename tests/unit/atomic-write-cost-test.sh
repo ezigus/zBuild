@@ -7,11 +7,13 @@
 # own, mktemp for a name the shell can make, mktemp + cp + mv for a .bak that
 # only state recovery ever reads, and two stats (GNU tried first) for the mode.
 #
-# W1 [change] replacing a file starts cat, one stat, chmod and mv — nothing else
+# W1 [change] replacing a file starts cat, one stat and mv; a new file, cat and
+#             mv (round 5: the temp is opened with the mode, so no chmod)
 # W2 [change] no .bak unless asked: `atomic_write --bak` keeps the previous
 #             content in <target>.bak, as state recovery needs
 # W3 [guard]  modes: a new file is 0600 (as mktemp made it); an existing file
-#             keeps its own mode exactly, executable or not
+#             keeps its own mode exactly, executable or not; the caller's
+#             umask is unchanged
 # W4 [guard]  a write that cannot start (unwritable directory) refuses, leaves
 #             no target, and still drains its stdin (#1773)
 set -uo pipefail
@@ -27,6 +29,7 @@ print_test_header "atomic_write: what it starts, and what it keeps (ADR-065 §5)
 setup_test_env "atomic-write-cost"
 
 _mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null; }
+_UM_START="$(umask)"
 
 print_test_section "W1: replacing a file"
 F1="$TEST_TEMP_DIR/w1/state.json"; mkdir -p "${F1%/*}"; printf '{"a":0}\n' > "$F1"; chmod 644 "$F1"
@@ -37,8 +40,15 @@ done
 printf '{"a":1}\n' | atomic_write "$F1"; _rc1=$?
 unset -f df mktemp cp cat stat chmod mv dirname
 assert_eq "[W1] the file is replaced" "0|{\"a\":1}" "$_rc1|$(cat "$F1")"
-assert_eq "[W1] it starts cat, one stat, chmod and mv" "cat chmod mv stat" \
+assert_eq "[W1] it starts cat, one stat and mv — the temp is opened with the mode, no chmod" "cat mv stat" \
     "$(sort "$CALLS" | tr '\n' ' ' | sed 's/ $//')"
+F1b="$TEST_TEMP_DIR/w1/new.json"; : > "$CALLS"
+for _c in cat stat chmod mv; do
+    eval "$_c() { printf '%s\\n' $_c >> \"\$CALLS\"; command $_c \"\$@\"; }"
+done
+printf '{"b":1}\n' | atomic_write "$F1b"
+unset -f cat stat chmod mv
+assert_eq "[W1] a new file starts cat and mv only" "cat mv" "$(sort "$CALLS" | tr '\n' ' ' | sed 's/ $//')"
 
 print_test_section "W2: .bak only when asked"
 assert_file_not_exists "[W2] a plain write leaves no .bak" "$F1.bak"
@@ -55,6 +65,12 @@ for _m in 644 640 755 700; do
     printf 'new\n' | atomic_write "$F3.$_m"
     assert_eq "[W3] an existing $_m file keeps $_m" "$_m|new" "$(_mode "$F3.$_m")|$(cat "$F3.$_m")"
 done
+# The temp is opened under the target's umask; the caller's comes back after.
+# Written from this shell (a here-string, not a pipe), so a umask left behind
+# would be this shell's.
+atomic_write "$TEST_TEMP_DIR/w3/umask-new.json" <<< 'x'
+atomic_write "$F3.644" <<< 'again'
+assert_eq "[W3] the caller's umask is as it was before any write" "$_UM_START" "$(umask)"
 
 print_test_section "W4: a write that cannot start"
 RO="$TEST_TEMP_DIR/ro"; mkdir -p "$RO"; chmod 555 "$RO"
