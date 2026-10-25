@@ -913,6 +913,15 @@ _pipeline_status_color() {
 # success / error) under the same output redirection rules. Banner is emitted
 # AFTER the pipeline.end JSONL event so the durable event is fail-closed
 # against banner-write failures.
+# _runner_restore_stderr — point fd 2 back at the runner's own stderr, saved at
+# startup in _RUNNER_ERR_FD (ADR-054 §7). A trap that fires inside a call made
+# with 2>/dev/null runs under that redirect, so the abort banner went to
+# /dev/null when SIGTERM landed during one. A no-op when nothing was saved.
+_runner_restore_stderr() {
+    [[ -n "${_RUNNER_ERR_FD:-}" ]] && exec 2>&"$_RUNNER_ERR_FD"
+    return 0
+}
+
 _render_pipeline_end() {
     local status="${1:-unknown}"
     local stage_hint="${2:-}"
@@ -2501,6 +2510,7 @@ main() {
     }
 
     _runner_abort_trap() {
+        _runner_restore_stderr
         # ADR-054 §7: a signal ends the run while a stage is still running;
         # stop it, and all it started, before anything else.
         declare -F plugin_stop_running >/dev/null 2>&1 && plugin_stop_running
@@ -2671,6 +2681,8 @@ main() {
         # Not a clean 0: the parent sees the run failed; why is in the events.
         exit 1
     }
+    # The runner's own stderr, for the abort trap (_runner_restore_stderr).
+    exec {_RUNNER_ERR_FD}>&2
     trap '_runner_abort_trap' EXIT
     # Wave 15-F (#686): TERM is now trapped with the same semantics as INT
     # (additive parity — SIGINT path is unchanged). The pre-15-F default
