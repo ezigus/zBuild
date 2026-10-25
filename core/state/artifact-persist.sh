@@ -75,7 +75,8 @@ _artifact_persist_reset_status() {
 _artifact_persist_find_secret() {
     local art_dir="$1" f rel kind
     [[ -d "$art_dir" ]] || return 1
-    if ! declare -F zbuild_scan_secret_content >/dev/null 2>&1; then
+    if ! declare -F zbuild_scan_secret_content >/dev/null 2>&1 \
+        || ! declare -F zbuild_secret_candidate_files >/dev/null 2>&1; then
         # shellcheck source=../../scripts/lib/secret-patterns.sh
         source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" 2>/dev/null && pwd)/secret-patterns.sh" 2>/dev/null || {
             # No scanner, no proof the content is clean: refuse, never pass.
@@ -84,10 +85,16 @@ _artifact_persist_find_secret() {
         }
     fi
     local repo="${2:-$PWD}" base="" content
+    # Only a text file a pattern matches can be flagged: find those with two
+    # greps over the dir and read just them, so a clean dir costs no more.
+    # No trailing slash, so grep and find name each file the same way.
+    [[ "$art_dir" == "/" ]] || art_dir="${art_dir%/}"
+    local -A cand=()
+    while IFS= read -r -d '' f; do cand["$f"]=1; done < <(zbuild_secret_candidate_files "$art_dir")
+    [[ ${#cand[@]} -gt 0 ]] || return 1
+    # Walked in find order, as before, so the first flagged file is the same.
     while IFS= read -r -d '' f; do
-        # Skip anything that is not text. `grep -Iq .` returns non-zero for a
-        # binary file, which is the cheapest portable test available.
-        grep -Iq . "$f" 2>/dev/null || continue
+        [[ -n "${cand["$f"]:-}" ]] || continue
         content="$(cat "$f" 2>/dev/null)"
         kind="$(zbuild_scan_secret_content "$content")" || continue
         [[ -n "$base" ]] || base="$(_artifact_persist_scan_base "$repo")"
