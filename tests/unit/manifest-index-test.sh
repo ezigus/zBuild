@@ -12,7 +12,10 @@
 #         occurrence wins; re-sourcing input-resolve.sh keeps the fill.
 # SPEC-4: yaml_cache_flush clears the index and the input-resolve maps; the
 #         ZBUILD_YAML_CACHE=0 kill switch bypasses the index.
-# SPEC-5: <root> and <root>/ are one index.
+# SPEC-5: <root> and <root>/ are one index; so are <a>//<b> and <a>/<b> — the
+#         runner fills from the env's spelling ($TMPDIR ends in /), lifecycle.sh
+#         reads with `cd && pwd`'s, and a miss rebuilt the index 519 times in one
+#         test file. The memos (index, input-resolve maps, yaml_get) all hit.
 # SPEC-6: absent key → 0 bytes rc 0; `key:` → one newline; a path outside the
 #         root → rc 2 (the lazy path, unchanged).
 # SPEC-7: sourcing core/pipeline/runner.sh forks ≤ 400 awk (was 1,050).
@@ -43,7 +46,10 @@ find() { printf 'x\n' >> "$FINDS"; command find "$@"; }
 _n() { wc -l < "$1" | tr -d ' '; }
 
 # ─── adversarial corpus ──────────────────────────────────────────────────────
-CORPUS="$TEST_TEMP_DIR/corpus"
+# A clean spelling of the temp dir ($TMPDIR may end in /): SPEC-5 builds the
+# doubled one itself, and the expected paths below are the clean ones.
+_tt="$TEST_TEMP_DIR"; while [[ "$_tt" == *//* ]]; do _tt="${_tt//\/\//\/}"; done
+CORPUS="$_tt/corpus"
 _m() { mkdir -p "$CORPUS/$1"; printf '%b' "$2" > "$CORPUS/$1/manifest.yaml"; }
 _m agent/a1 'id: a1\nname: Demo Plugin   # trailing comment\nkind: agent\nversion: 1.0.0\nsummary:\nname_quoted: "has spaces"\npersona:\n  role: a|b\n  perspective: |\n    block\nhooks:\n  run: run_a1\n  cleanup: '"'"'quoted single'"'"'\nprovides:\n  role: builder\n  result_contract: 3\n  alias: b\n'
 _m agent/a2 'id: a2\nid: a2-dup\nkind: agent\nhooks:\n  run: first\nhooks:\n  run: second\nprovides:\n  deep:\n    deeper:\n      role: depth4\n'
@@ -133,6 +139,28 @@ print_test_section "SPEC-5: <root> and <root>/ are one index"
 yaml_cache_flush; : > "$AWKS"
 manifest_index_load "$CORPUS/"; manifest_index_load "$CORPUS"
 assert_eq "[SPEC-5] one build for both spellings" "1" "$(_n "$AWKS")"
+CORPUS_DS="${CORPUS%/corpus}//corpus"
+yaml_cache_flush; : > "$AWKS"
+manifest_index_load "$CORPUS_DS"; manifest_index_load "$CORPUS"
+assert_eq "[SPEC-5] <a>//<b> and <a>/<b> are one build" "1" "$(_n "$AWKS")"
+assert_eq "[SPEC-5] a doubled-slash manifest path is served from the index" "0|a1" \
+    "$(v="$(manifest_index_get "$CORPUS_DS/agent/a1/manifest.yaml" id)"; printf '%s|%s' "$?" "${v%$'\n'}")"
+yaml_cache_flush; _inputs_scan_manifests "$CORPUS_DS"; : > "$AWKS"; : > "$FINDS"
+_m5="$(_inputs_stage_manifest build "$CORPUS")"
+assert_eq "[SPEC-5] maps filled from <a>//<b> serve a \$( ) lookup of <a>/<b> with no rebuild" \
+    "0|0|$CORPUS/agent/a1/manifest.yaml" "$(_n "$AWKS")|$(_n "$FINDS")|$_m5"
+yaml_cache_flush; yaml_cache_prewarm "$CORPUS_DS"; : > "$AWKS"
+_y5="$(yaml_get "$CORPUS/agent/a1/manifest.yaml" id)"
+_y6="$(yaml_get "$CORPUS_DS/agent/a1/manifest.yaml" hooks.run)"
+assert_eq "[SPEC-5] yaml_get of either spelling is served by a prewarm of the other (no awk)" \
+    "0|a1|run_a1" "$(_n "$AWKS")|${_y5%$'\n'}|${_y6%$'\n'}"
+yaml_cache_flush; yaml_cache_prewarm "$CORPUS"; : > "$AWKS"
+_yv5=""; yaml_get_v _yv5 "$CORPUS_DS/agent/a1/manifest.yaml" kind; _yv5rc=$?
+assert_eq "[SPEC-5] yaml_get_v of a doubled-slash path reads the value (served by the prewarm, no awk)" \
+    "0|0|agent" "$(_n "$AWKS")|$_yv5rc|$_yv5"
+yaml_cache_flush "$CORPUS_DS/agent/a1/manifest.yaml"
+assert_eq "[SPEC-5] flushing one file by either spelling drops its cached keys" \
+    "|set" "${_ZBUILD_YAML_RC["$CORPUS/agent/a1/manifest.yaml"$'\034'id]+set}|${_ZBUILD_YAML_RC["$CORPUS/agent/a2/manifest.yaml"$'\034'id]+set}"
 
 # ─── SPEC-6: absent vs empty vs missing ──────────────────────────────────────
 print_test_section "SPEC-6: absent → 0 bytes rc 0; empty → one newline; outside the root → rc 2"

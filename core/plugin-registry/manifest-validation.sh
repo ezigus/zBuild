@@ -76,9 +76,10 @@ declare -gA _ZBUILD_YAML_RC=()
 # yaml_cache_flush [file] — drop cached entries for <file>, or the whole cache.
 yaml_cache_flush() {
     if [[ -n "${1:-}" ]]; then
-        local k
+        local k f
+        _manifest_path_key f "$1"   # the memo's key spelling (see yaml_get)
         for k in "${!_ZBUILD_YAML_RC[@]}"; do
-            if [[ "$k" == "$1"$'\034'* ]]; then
+            if [[ "$k" == "$f"$'\034'* ]]; then
                 unset "_ZBUILD_YAML_RC[$k]" "_ZBUILD_YAML_OUT[$k]"
             fi
         done
@@ -148,7 +149,11 @@ yaml_get() {
         _yaml_get_uncached "$file" "$key"
         return $?
     fi
-    local ck="${file}"$'\034'"${key}"
+    local ck
+    # One key per file however its path is spelled (`a//b` ≡ `a/b`, see
+    # _manifest_index_root); the read itself still uses the path as given.
+    if [[ "$file" == *//* ]]; then _manifest_path_key ck "$file"; else ck="$file"; fi
+    ck+=$'\034'"${key}"
     if [[ -n "${_ZBUILD_YAML_RC[$ck]+set}" ]]; then
         printf '%s' "${_ZBUILD_YAML_OUT[$ck]}"
         return "${_ZBUILD_YAML_RC[$ck]}"
@@ -196,7 +201,10 @@ yaml_get_v() {
         _ygv_out="$_ygv_v"
         return "$_ygv_rc"
     fi
-    local _ygv_ck="${_ygv_f}"$'\034'"${_ygv_k}"
+    local _ygv_ck
+    # yaml_get's key: `//` collapsed (see yaml_get).
+    if [[ "$_ygv_f" == *//* ]]; then _manifest_path_key _ygv_ck "$_ygv_f"; else _ygv_ck="$_ygv_f"; fi
+    _ygv_ck+=$'\034'"${_ygv_k}"
     [[ -n "${_ZBUILD_YAML_RC[$_ygv_ck]+set}" ]] || yaml_get "$_ygv_f" "$_ygv_k" >/dev/null 2>&1 || true
     _ygv_v="${_ZBUILD_YAML_OUT[$_ygv_ck]-}"
     while [[ "$_ygv_v" == *$'\n' ]]; do _ygv_v="${_ygv_v%$'\n'}"; done
