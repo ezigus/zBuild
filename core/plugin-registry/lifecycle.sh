@@ -204,8 +204,30 @@ _lc_tree() {
 _ZB_LC_STAGE_PID=""
 _ZB_LC_STAGE_RC=0
 _ZB_LC_WATCHDOG_PID=""
+# The window between forking the stage and recording its pid (ADR-054 §7): a
+# stop that lands there saw no stage and was lost, and the stage was waited
+# out. _lc_dispatch_starting opens it, noting $!; _lc_stage_started closes it.
+_ZB_LC_STARTING=0
+_ZB_LC_STOP_PENDING=0
+_ZB_LC_BANG0=""
+_lc_dispatch_starting() { _ZB_LC_STARTING=1; _ZB_LC_STOP_PENDING=0; _ZB_LC_BANG0="${!:-}"; }
+_lc_stage_started() {
+    _ZB_LC_STAGE_PID="${1:-}"; _ZB_LC_STARTING=0
+    if (( _ZB_LC_STOP_PENDING )); then _ZB_LC_STOP_PENDING=0; plugin_stop_running; fi
+    return 0
+}
 plugin_stop_running() {
     local p="${_ZB_LC_STAGE_PID:-}" tree w
+    # Inside the window: once the stage is forked, $! names it (a trap that
+    # exits after this has no later recording to wait for); before the fork,
+    # the stop is kept and acted on when the pid is recorded.
+    if [[ -z "$p" ]] && (( ${_ZB_LC_STARTING:-0} )); then
+        if [[ -n "${!:-}" && "${!:-}" != "$_ZB_LC_BANG0" ]]; then
+            p="$!"; _ZB_LC_STAGE_PID="$p"; _ZB_LC_STARTING=0
+        else
+            _ZB_LC_STOP_PENDING=1
+        fi
+    fi
     # The stage's time-limit watchdog goes with it: a trap that exits after
     # this never reaches the line in plugin_hook_call that stops it, and the
     # watchdog would sleep out the limit, then signal a pid that may be another
@@ -589,6 +611,7 @@ plugin_hook_call() {
     local _lc_wd_prev="${_ZB_LC_WATCHDOG_PID:-}"
     [[ -n "$_tl_wd" ]] && _ZB_LC_WATCHDOG_PID="$_tl_wd"
     local rc=0 _lc_pid _lc_prev="${_ZB_LC_STAGE_PID:-}"
+    _lc_dispatch_starting
     (
         [[ -n "$_tl_pidf" ]] && printf '%s' "$BASHPID" > "$_tl_pidf"
         # shellcheck disable=SC1090
@@ -601,7 +624,7 @@ plugin_hook_call() {
         fi
     ) 0<&0 &
     _lc_pid=$!
-    _ZB_LC_STAGE_PID="$_lc_pid"
+    _lc_stage_started "$_lc_pid"
     # A trap cuts `wait` short; whether that stops the stage is the trap's
     # call (plugin_stop_running). Until the stage has ended, keep waiting.
     while :; do

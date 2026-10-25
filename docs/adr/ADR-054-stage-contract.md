@@ -352,6 +352,13 @@ SPEC-4 ("the runner stops without waiting for the stage", "the stage does not ou
 SPEC-5, and `tests/unit/stage-stop-on-signal-test.sh` S1 (the cycle's trap), S2 (a caught
 signal stops nothing) and S4 (no watchdog outlives a stage stopped by a trap that exits).
 
+A stop that lands between forking the stage and recording its pid is not lost (amended
+2026-10-25): once the stage is forked, the stop takes it from `$!`; before the fork, it is kept
+and acted on when the pid is recorded. And the abort banner reaches the runner's own stderr,
+saved at startup, even when the signal lands inside a call made with `2>/dev/null`, whose
+redirect a trap would otherwise run under. Enforced by `tests/unit/stage-stop-on-signal-test.sh`
+S8–S10 and `tests/unit/runner-abort-banner-stderr-test.sh` B1–B4.
+
 ### 8. Fail-closed artifact scanner contract
 
 Per ADR-001 §"Fail-closed scanner contract": if a plugin declares `provides.artifact_type` but no artifact exists at `outputs[].path` after `run` completes with `rc=0`, the engine emits a synthetic blocking finding. Absent evidence IS blocking evidence.

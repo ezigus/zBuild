@@ -11,6 +11,13 @@
 # S2 [guard]  a shell that only catches a signal (a repeat TERM during
 #             teardown) keeps waiting: the stage finishes and its rc stands
 # S3 [guard]  plugin_stop_running with no stage running is a no-op
+# S8 [change] a stop that lands while a dispatch is starting — the stage is
+#             forked but its pid not yet recorded — stops the stage as soon as
+#             the pid is recorded (it was waited out: S1 failed so under load)
+# S9 [guard]  …and a stop outside a dispatch leaves the next dispatch alone
+# S10 [change] a stop in the same window by a trap that then exits (the
+#             runner's) stops the forked stage itself — there is no later
+#             recording for it to wait for
 # S4 [change] a trap that stops the stage and exits (the runner's) stops the
 #             stage's time-limit watchdog too: it was left sleeping out the
 #             limit (15 min by default), then signalled a pid that may belong
@@ -166,6 +173,40 @@ _left=""
 for _ in $(seq 1 20); do _left="$(pgrep -f 'sleep 984$' 2>/dev/null || true)"; [[ -z "$_left" ]] && break; sleep 0.1; done
 assert_eq "[S7] a stage that ended leaves no watchdog sleep, TERM-proof or not" "" "$_left"
 [[ -n "$_left" ]] && kill -KILL $_left 2>/dev/null
+
+print_test_section "S8/S9: a stop during a dispatch's start"
+# The window: plugin_hook_call has forked the stage but not yet run
+# _lc_stage_started. A stop then sees no pid; it must not be lost.
+_ZB_LC_STAGE_PID=""
+_lc_dispatch_starting
+plugin_stop_running
+sleep 30 & _s8=$!
+_lc_stage_started "$_s8"
+_alive=1; for _ in $(seq 1 30); do kill -0 "$_s8" 2>/dev/null || { _alive=0; break; }; sleep 0.1; done
+assert_eq "[S8] the stage is stopped once its pid is recorded" "0" "$_alive"
+[[ "$_alive" == 1 ]] && kill -KILL "$_s8" 2>/dev/null
+wait "$_s8" 2>/dev/null
+_ZB_LC_STAGE_PID=""
+# S9: a stop with no dispatch starting is a no-op, and nothing is carried over.
+plugin_stop_running
+_lc_dispatch_starting
+sleep 30 & _s9=$!
+_lc_stage_started "$_s9"
+sleep 0.3
+assert_eq "[S9] a stop outside a dispatch does not stop the next stage" "1" "$(kill -0 "$_s9" 2>/dev/null && echo 1 || echo 0)"
+kill -KILL "$_s9" 2>/dev/null; wait "$_s9" 2>/dev/null
+_ZB_LC_STAGE_PID=""
+
+print_test_section "S10: the stage forked, its pid not yet recorded, the trap exits"
+_ZB_LC_STAGE_PID=""
+_lc_dispatch_starting
+sleep 30 & _s10=$!
+plugin_stop_running
+_alive=1; for _ in $(seq 1 30); do kill -0 "$_s10" 2>/dev/null || { _alive=0; break; }; sleep 0.1; done
+assert_eq "[S10] the forked stage is stopped by the stop itself" "0" "$_alive"
+[[ "$_alive" == 1 ]] && kill -KILL "$_s10" 2>/dev/null
+wait "$_s10" 2>/dev/null
+_lc_stage_started ""; _ZB_LC_STAGE_PID=""
 
 print_test_section "S3: nothing running"
 _ZB_LC_STAGE_PID=""
