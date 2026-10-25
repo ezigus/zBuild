@@ -66,7 +66,7 @@ chmod +x "$FIX/unit/c-hang-test.sh"
 
 # _all_fix — run --tier all against the fixture with tier concurrency disabled
 # (serial path) so the hang in unit doesn't race the other tiers, and with a
-# short per-file timeout so the test finishes in ~2–3 s total.
+# 1 s per-file timeout so each run finishes in about a second.
 _all_fix() {
     local fix_dir="${1:-$FIX}"
     local out_f="$TEST_TEMP_DIR/o.txt" rc=0
@@ -80,7 +80,7 @@ _all_fix() {
         ZBUILD_PARALLEL_SAFE_TIERS="unit integration e2e golden" \
         ZBUILD_TIER_CONCURRENCY=0 \
         ZBUILD_TEST_PARALLEL_JOBS=0 \
-        ZBUILD_TEST_FILE_TIMEOUT=2 \
+        ZBUILD_TEST_FILE_TIMEOUT=1 \
         ZBUILD_TEST_KILL_GRACE=1 \
         bash "$RUN_TESTS" --tier all \
         >"$out_f" 2>/dev/null || rc=$?
@@ -171,7 +171,7 @@ _HANGDIR="$TEST_TEMP_DIR/filesfix"
 mkdir -p "$_HANGDIR"
 printf '#!/usr/bin/env bash\nsleep 30\n' > "$_HANGDIR/h-test.sh"
 chmod +x "$_HANGDIR/h-test.sh"
-_FILES_OUT="$(ZBUILD_TEST_FILE_TIMEOUT=2 ZBUILD_TEST_KILL_GRACE=1 \
+_FILES_OUT="$(ZBUILD_TEST_FILE_TIMEOUT=1 ZBUILD_TEST_KILL_GRACE=1 \
     bash "$RUN_TESTS" --files "$_HANGDIR/h-test.sh" 2>/dev/null || true)"
 
 assert_eq "[SPEC-8] --files summary carries the timed-out note (helper is in scope)" "1" \

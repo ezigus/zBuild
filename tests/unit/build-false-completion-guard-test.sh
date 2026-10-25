@@ -166,15 +166,16 @@ TESTFILES_D="$(printf 'SPEC-1: tests/unit/failing-test.sh\nSPEC-2: tests/unit/fa
 set +e; d_out="$(_build_guard_false_completion "$TESTFILES_D" "$REPO" 2>/dev/null)"; d_rc=$?; set -e
 assert_eq "[#2138] a SPEC-bound red testfile is reported" "tests/unit/failing-test.sh" "$d_out"
 assert_eq "[#2138] …and the guard exits 1" "1" "$d_rc"
+# Each slow file sleeps 1.5 s: past the 1 s stage bound, and no longer.
 # A green file slower than the stage bound is bounded by what the test stage
 # MEASURED (#2110), not killed at 60s and mistaken for red.
 cat > "$REPO/tests/unit/slow-green-test.sh" <<'EOF'
 #!/usr/bin/env bash
-sleep 2
+sleep 1.5
 exit 0
 EOF
 chmod +x "$REPO/tests/unit/slow-green-test.sh"
-printf 'file 2100 %s/tests/unit/slow-green-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/timing.log"
+printf 'file 1600 %s/tests/unit/slow-green-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/timing.log"
 set +e; e_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_TIMING_LOG="$TEST_TEMP_DIR/timing.log" _build_guard_false_completion "tests/unit/slow-green-test.sh" "$REPO" 2>/dev/null)"; e_rc=$?; set -e
 assert_eq "[#2138] a slow green testfile is not reported red" "" "$e_out"
 assert_eq "[#2138] …and the guard exits 0" "0" "$e_rc"
@@ -188,7 +189,7 @@ assert_eq "[#2138] …and the guard exits 0" "0" "$e_rc"
 print_test_section "#2142: unmeasured → the file-timeout ceiling; measured via the declared input"
 cat > "$REPO/tests/unit/slow-red-test.sh" <<'EOF'
 #!/usr/bin/env bash
-sleep 3
+sleep 1.5
 exit 1
 EOF
 chmod +x "$REPO/tests/unit/slow-red-test.sh"
@@ -197,7 +198,7 @@ assert_eq "[#2142] an unmeasured slow red file is reported red" "tests/unit/slow
 assert_eq "[#2142] …and the guard exits 1" "1" "$f_rc"
 # The measurement reaches the probe through the DECLARED test_timing input
 # (ZBUILD_STAGE_INPUTS), as it reaches the gate — not an ambient env var.
-printf 'file 3100 %s/tests/unit/slow-red-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/timing2.log"
+printf 'file 1600 %s/tests/unit/slow-red-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/timing2.log"
 printf '{"inputs":{"test_timing":"%s"}}\n' "$TEST_TEMP_DIR/timing2.log" > "$TEST_TEMP_DIR/si-2142.json"
 set +e; g_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_TEST_FILE_TIMEOUT=10 ZBUILD_NEGCTL_TIMING_LOG="" ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/si-2142.json" _build_guard_false_completion "tests/unit/slow-red-test.sh" "$REPO" 2>/dev/null)"; g_rc=$?; set -e
 assert_eq "[#2142] a measured slow red file (via test_timing input) is reported red" "tests/unit/slow-red-test.sh" "$g_out"

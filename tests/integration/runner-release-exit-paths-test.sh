@@ -196,6 +196,27 @@ _assert_released() {
     fi
 }
 
+# SPEC-6 and SPEC-6b each wait out the release bound on purpose: their hook
+# blocks, and the bound (the base template's release `router.timeout_s`, 30s)
+# is what ends it. Started here, each from its own repo, so that bound runs
+# while SPEC-1..5 do; their assertions are made below, in order.
+_start_blocking() {   # <case name> <hook switch>
+    local _repo; _repo="$(setup_git_temp_repo "release-exit-paths-$1")"
+    install_template_overlay "$_repo" resume-minimal
+    (
+        _prep "$1"
+        export BUILD_RC=0 "$2"=1
+        _t0=$(date +%s)
+        ( cd "$_repo" && bash "$RUNNER" --template resume-minimal --goal "release-$1" ) \
+            >"$CASE_DIR/out" 2>&1 || true
+        printf '%s\n' "$(( $(date +%s) - _t0 ))" > "$CASE_DIR/elapsed"
+    ) &
+}
+_start_blocking blocking BLOCK_CLEANUP;                   _SPEC6_PID=$!
+_start_blocking blocking-ignore-term BLOCK_CLEANUP_IGNORE_TERM; _SPEC6B_PID=$!
+_SPEC6_DIR="$TEST_TEMP_DIR/case-1-blocking"
+_SPEC6B_DIR="$TEST_TEMP_DIR/case-1-blocking-ignore-term"
+
 # ── SPEC-1: success ──────────────────────────────────────────────────────────
 print_test_section "SPEC-1: exit path = success (rc 0)"
 _prep success
@@ -205,6 +226,8 @@ set +e
     >"$CASE_DIR/out" 2>&1
 _rc=$?
 set -e
+# SPEC-6/6b run alongside this case; if it fails, say what the runner said.
+[[ $_rc -eq 0 ]] || tail -20 "$CASE_DIR/out" >&2
 assert_eq "[SPEC-1] runner exits 0 on the success path" "0" "$_rc"
 _assert_released "SPEC-1" intake build test
 
@@ -347,15 +370,9 @@ fi
 # normal exit into a hang — the same class of bug (a process that outlives the
 # run) that this mechanism exists to prevent.
 print_test_section "SPEC-6: a cleanup hook that blocks cannot hang the runner"
-_prep blocking
-export BUILD_RC=0 BLOCK_CLEANUP=1
-_t0=$(date +%s)
-set +e
-( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "release-blocking" ) \
-    >"$CASE_DIR/out" 2>&1
-set -e
-_elapsed=$(( $(date +%s) - _t0 ))
-unset BLOCK_CLEANUP
+wait "$_SPEC6_PID" 2>/dev/null || true
+CASE_DIR="$_SPEC6_DIR"
+_elapsed="$(cat "$CASE_DIR/elapsed" 2>/dev/null || echo 999)"
 # The blocking hook sleeps 120s. The bound is the release stage's own
 # `router.timeout_s` (30 in the template, which takes precedence over
 # ZBUILD_RELEASE_TIMEOUT), so the runner returns in about 30s. Allow generous
@@ -368,10 +385,11 @@ fi
 # #2287: the bound must stop the hook, not just stop waiting for it. Before,
 # the hook lived on after the run, finished its sleep ~2 min later, and wrote
 # into a state folder the run no longer owned. The kills are sent before the
-# runner returns; the 1s grace only covers the killed processes exiting on a
-# loaded host.
-sleep 1
+# runner returns; up to 1s covers the killed processes exiting on a loaded host.
 _hook_pid="$(head -n 1 "$CASE_DIR/hook.pid" 2>/dev/null || true)"
+if [[ -n "$_hook_pid" ]]; then
+    for _ in $(seq 1 10); do kill -0 "$_hook_pid" 2>/dev/null || break; sleep 0.1; done
+fi
 if [[ -z "$_hook_pid" ]]; then
     assert_fail "[SPEC-6] fixture: the blocking hook recorded its pid" "no $CASE_DIR/hook.pid"
 elif kill -0 "$_hook_pid" 2>/dev/null; then
@@ -392,13 +410,8 @@ fi
 print_test_section "SPEC-6b: a hook child that ignores TERM does not outlive the run"
 # The time bound itself is SPEC-6's check, on the same dispatch path; this
 # case is only about what survives it.
-_prep blocking-ignore-term
-export BUILD_RC=0 BLOCK_CLEANUP_IGNORE_TERM=1
-set +e
-( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "release-ignore-term" ) \
-    >"$CASE_DIR/out" 2>&1
-set -e
-unset BLOCK_CLEANUP_IGNORE_TERM
+wait "$_SPEC6B_PID" 2>/dev/null || true
+CASE_DIR="$_SPEC6B_DIR"
 _child_pid=""
 for _ in $(seq 1 50); do
     _child_pid="$(head -n 1 "$CASE_DIR/hook-child.pid" 2>/dev/null || true)"

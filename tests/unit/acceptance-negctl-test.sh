@@ -450,7 +450,7 @@ assert_eq "[SPEC-1] _negctl_is_timeout_rc 137 → true (SIGKILL = infra timeout)
 
 # ── NC-P: [SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE is escalated to SIGKILL
 # The loop traps SIGTERM (ignores it) and runs 30 sleep-1 iterations.
-# At HEAD  (-k 2, timeout 1): SIGTERM at 1s ignored; SIGKILL at 3s → rc=137.
+# At HEAD  (-k 1, timeout 1): SIGTERM at 1s ignored; SIGKILL at 2s → rc=137.
 # At baseline (no -k, timeout 1): SIGTERM ignored; bash loops to completion (≈30s)
 # and exits 0 — assertion "137" vs "0" fails at baseline, proves the wiring.
 # The guard must mirror what _acceptance_timeout_prefix actually resolves —
@@ -465,7 +465,7 @@ for _i in {1..30}; do sleep 1 || true; done
 TEOF
     chmod +x "$_trap_sh"
     _rc_spec2=0
-    ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_KILL_GRACE=2 \
+    ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_KILL_GRACE=1 \
         _negctl_run "$_trap_sh" "$TEST_TEMP_DIR" 2>/dev/null || _rc_spec2=$?
     assert_eq "[SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE escalated to SIGKILL (rc=137)" \
         "137" "$_rc_spec2"

@@ -56,11 +56,11 @@ _run_unit_tier() {
     set -e
 }
 
-_run_unit_tier 2
+_run_unit_tier 1
 
 # ─── SPEC-1: the bound-exceeded file is labelled TIMEOUT, naming the bound ───
 assert_eq "[SPEC-1] hung file reports TIMEOUT naming the bound, not FAIL" "1" \
-    "$(printf '%s\n' "$OUT" | grep -cE '^unit: TIMEOUT .*c-hang-test\.sh \(exceeded 2s, rc=[0-9]+\)$')"
+    "$(printf '%s\n' "$OUT" | grep -cE '^unit: TIMEOUT .*c-hang-test\.sh \(exceeded 1s, rc=[0-9]+\)$')"
 
 assert_eq "[SPEC-1] hung file does NOT report as an ordinary FAIL" "0" \
     "$(printf '%s\n' "$OUT" | grep -cE '^unit: FAIL .*c-hang-test\.sh$')"
@@ -109,7 +109,7 @@ cat > "$FIX/unit/d-skip-test.sh" <<'SKIPFIX'
 exit 0
 SKIPFIX
 chmod +x "$FIX/unit/c-hang-test.sh" "$FIX/unit/d-skip-test.sh"
-_run_unit_tier 2
+_run_unit_tier 1
 assert_eq "[SPEC-6] both notes render with a comma AND a space" "1" \
     "$(printf '%s\n' "$OUT" | grep -cE '^unit: [0-9]+/[0-9]+ passed \(1 skipped, 1 timed out\)$')"
 
@@ -128,10 +128,10 @@ assert_eq "RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation" "
 # Proves the -k wiring in _rt_tout is load-bearing. Without -k, `timeout` hangs
 # indefinitely after sending SIGTERM to a TERM-ignoring child; with -k the
 # SIGKILL follows the grace → rc=137 → run-tests reports TIMEOUT with rc=137.
-# The grace is pinned to 2s (not the 10s default) so the whole case lands in
-# ~4s inside the 30s outer bound — a wide margin under CI CPU contention.
+# The bound and grace are pinned to 1s (not the defaults) so the whole case lands in
+# ~2s inside the 30s outer bound — a wide margin under CI CPU contention.
 # At baseline (no -k): outer bound fires → no rc=137 TIMEOUT line → grep=0 → FAIL.
-# At HEAD   (-k 2): SIGKILL at ~4s → rc=137 TIMEOUT line → grep=1 → PASS.
+# At HEAD   (-k 1): SIGKILL at ~2s → rc=137 TIMEOUT line → grep=1 → PASS.
 if [[ -n "$_REAL_TIMEOUT" ]]; then
     FIX_TRAP="$TEST_TEMP_DIR/fix-trap"
     mkdir -p "$FIX_TRAP/unit"
@@ -148,14 +148,14 @@ TRAPFIX
         env ZBUILD_TESTS_DIR="$FIX_TRAP" \
             ZBUILD_PLUGINS_DIR="$EMPTY" \
             ZBUILD_CORE_DIR="$EMPTY" \
-            ZBUILD_TEST_FILE_TIMEOUT=2 \
-            ZBUILD_TEST_KILL_GRACE=2 \
+            ZBUILD_TEST_FILE_TIMEOUT=1 \
+            ZBUILD_TEST_KILL_GRACE=1 \
             ZBUILD_TEST_PARALLEL_JOBS=0 \
             bash "$RUN_TESTS" --tier unit 2>&1)"
     _trap_rc=$?
     set -e
     assert_eq "RT-K: SIGTERM-ignoring file escalated to SIGKILL via -k (rc=137 in TIMEOUT)" "1" \
-        "$(printf '%s\n' "$_trap_out" | grep -cE 'TIMEOUT .*trap-sigterm-test\.sh \(exceeded 2s, rc=137\)$')"
+        "$(printf '%s\n' "$_trap_out" | grep -cE 'TIMEOUT .*trap-sigterm-test\.sh \(exceeded 1s, rc=137\)$')"
 else
     assert_pass "RT-K: skipped — no real timeout binary on host"
 fi

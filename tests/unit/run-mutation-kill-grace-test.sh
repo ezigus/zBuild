@@ -73,7 +73,7 @@ print_test_section "SPEC-1: TERM is followed by KILL"
 t0=$(date +%s)
 rc=0
 ( cd "$SANDBOX" || exit 1
-  ZBUILD_MUTATION_TEST_TIMEOUT=2 ZBUILD_MUTATION_KILL_GRACE=2 ZBUILD_MUTATION_PARALLEL_JOBS=1 \
+  ZBUILD_MUTATION_TEST_TIMEOUT=1 ZBUILD_MUTATION_KILL_GRACE=1 ZBUILD_MUTATION_PARALLEL_JOBS=1 \
       "$TOUT" -k 5 60 bash scripts/run-mutation.sh ) >"$TEST_TEMP_DIR/out.txt" 2>&1 || rc=$?
 t1=$(date +%s)
 _out="$(cat "$TEST_TEMP_DIR/out.txt" 2>/dev/null)"
@@ -82,10 +82,10 @@ _out="$(cat "$TEST_TEMP_DIR/out.txt" 2>/dev/null)"
 assert_not_contains_s() { if grep -qF -- "$3" <<< "$2"; then assert_fail "$1" "found: $3"; else assert_pass "$1"; fi; }
 assert_not_contains_s "[setup] the mutant's spec was accepted and its test run" "$_out" "unparseable"
 assert_contains "[setup] ...and the tier scored that one mutant" "$_out" "mutation: 1/1"
-if [[ $(( t1 - t0 )) -ge 2 ]]; then
-    assert_pass "[setup] the run lasted at least the 2s timeout ($(( t1 - t0 ))s)"
+if [[ $(( t1 - t0 )) -ge 1 ]]; then
+    assert_pass "[setup] the run lasted at least the 1s timeout ($(( t1 - t0 ))s)"
 else
-    assert_fail "[setup] the run lasted at least the 2s timeout" "only $(( t1 - t0 ))s — the test never ran"
+    assert_fail "[setup] the run lasted at least the 1s timeout" "only $(( t1 - t0 ))s — the test never ran"
 fi
 if [[ "$rc" -ne 124 && "$rc" -ne 137 && $(( t1 - t0 )) -lt 40 ]]; then
     assert_pass "[SPEC-1] the tier ends within the bound ($(( t1 - t0 ))s)"
