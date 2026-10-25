@@ -34,13 +34,23 @@ _ZBUILD_MIDX_KEYS=(
 declare -gA _ZBUILD_MIDX=()        # "<path>\034<key>" → value + "\n" (present keys only)
 declare -gA _ZBUILD_MIDX_FILES=()  # "<root>" → newline-joined manifest paths
 
-# Trailing slashes stripped, nothing else: index rows are keyed by the paths
-# find prints under the root AS GIVEN, and yaml_get's memo keys are the exact
-# strings callers pass — resolving symlinks here would make the two disagree.
+# Trailing slashes stripped and `//` collapsed, nothing else: the runner fills
+# from the env's spelling ($TMPDIR ends in /) while lifecycle.sh reads with
+# `cd && pwd`'s, and the two must be one key. Symlinks are NOT resolved — index
+# rows are keyed by the paths find prints under the root, and yaml_get's memo
+# keys are the strings callers pass (with `//` collapsed, see _manifest_path_key).
 _manifest_index_root() {
     local root="$1"
+    while [[ "$root" == *//* ]]; do root="${root//\/\//\/}"; done
     while [[ "$root" == */ && "$root" != "/" ]]; do root="${root%/}"; done
     printf '%s' "$root"
+}
+
+# _manifest_path_key <var> <path> — <path> with `//` collapsed, into <var>; no fork.
+_manifest_path_key() {
+    local _mpk="$2"
+    while [[ "$_mpk" == *//* ]]; do _mpk="${_mpk//\/\//\/}"; done
+    printf -v "$1" '%s' "$_mpk"
 }
 
 # The one awk. Mirrors _yaml_get_uncached (manifest-validation.sh): strip
@@ -154,7 +164,8 @@ manifest_index_rows() {
 # yaml_get's exact shape from the loaded index: present → value + newline, rc 0;
 # absent key of a listed file → 0 bytes, rc 0; a file no loaded root lists → rc 2.
 manifest_index_get() {
-    local f="$1" k="$2" root listed=0
+    local f k="$2" root listed=0
+    _manifest_path_key f "$1"
     for root in "${!_ZBUILD_MIDX_FILES[@]}"; do
         [[ "$f" == "$root"/* ]] || continue
         while IFS= read -r p; do [[ "$p" == "$f" ]] && { listed=1; break; }; done <<< "${_ZBUILD_MIDX_FILES[$root]}"
