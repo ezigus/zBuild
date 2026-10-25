@@ -6,7 +6,7 @@
 # pipeline test), and every library found its own folder with a `dirname` each
 # time it was loaded (479).
 #
-# T1 [change] the state writers and the cycle's history row start no date
+# T1 [change] the state writers, the scope override and the cycle's history row start no date
 # T2 [guard]  …and stamp the time date -u gives, in the same form
 # T3 [change] stage-io's two records start no date
 # T4 [change] loading each library starts no dirname
@@ -57,6 +57,11 @@ for _f in _zbuild_runner_set_stage_status _zbuild_runner_set_pipeline_status _zb
     _u="$("$_f" < "$SF1" 2>/dev/null | command jq -r '.updated_at // ""')"
     near "$_u" || _bad+="$_f=[$_u] "
 done
+# The scope override's "Generated:" line (claude-review on #2415).
+WSO="$TEST_TEMP_DIR/wso"; mkdir -p "$WSO"
+ZBUILD_SCOPE_PATHS="core/x.sh" write_scope_override "$WSO" run-1
+_g="$(sed -n 's/^# Generated: //p' "$WSO/scope-override.md" 2>/dev/null)"
+near "$_g" || _bad+="scope_override=[$_g] "
 H="$TEST_TEMP_DIR/hist/c1.jsonl"
 _cycle_emit() { :; }
 _cycle_record_iter_outcome "$H" 1 pass complete 0

@@ -29,10 +29,11 @@ write_scope_override() {
     local state_dir="$1" run_id="${2:-}"
     [[ -z "$state_dir" ]] && return 1
     [[ -z "${ZBUILD_SCOPE_PATHS:-}" ]] && return 0
-    local scope_override="$state_dir/scope-override.md"
+    local scope_override="$state_dir/scope-override.md" _now
+    TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     {
         echo "# Scope Override"
-        echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "# Generated: $_now"
         echo "# run_id: $run_id"
         echo ""
         while IFS= read -r scope_path; do

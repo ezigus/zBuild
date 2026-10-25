@@ -215,7 +215,7 @@ for _ in $(seq 1 600); do
     sleep 0.1
 done
 if [[ ! -f "$E2E_BUILD_STARTED" ]]; then
-    kill -KILL "$RUNNER_PID" 2>/dev/null || true
+    zb_test_kill_tree "$RUNNER_PID"   # the runner and what it started (its stage, the watchdog)
     wait "$RUNNER_PID" 2>/dev/null || true
     assert_fail "build stage reached before signal (T2)" \
         "stderr tail: $(tail -c 600 "$TEST_TEMP_DIR/runner-e2e.stderr" 2>/dev/null)"

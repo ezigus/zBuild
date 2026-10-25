@@ -27,6 +27,9 @@ declare -F atomic_write >/dev/null 2>&1 || \
 # shellcheck source=./verdict.sh
 declare -F _verdict_resolve_path >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/pipeline/verdict.sh"
+# shellcheck source=../plugin-registry/output-paths.sh  # _inputs_manifest_formats
+declare -F _inputs_manifest_formats >/dev/null 2>&1 || \
+    source "$_ZBUILD_IR_ROOT/core/plugin-registry/output-paths.sh"
 # #2152: the manifest index _inputs_scan_manifests reads from.
 # shellcheck source=../plugin-registry/manifest-index.sh
 declare -F manifest_index_rows >/dev/null 2>&1 || \
@@ -172,37 +175,6 @@ _inputs_output_paths() {
         [[ -n "$as" ]] && p="${p//\$\{$as\}/$e}"
         _verdict_resolve_path "$p" "$state_dir"; printf '\n'
     done
-}
-
-# ─── _inputs_manifest_formats <manifest> ─────────────────────────────────────
-# "id<TAB>format" for every output the manifest declares, in one read.
-_inputs_manifest_formats() {
-    [[ -f "${1-}" && -r "$1" ]] || return 2
-    # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5).
-    local line l inb=0 id="" fmt="" re
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$line" =~ ^outputs:[[:space:]]*$ ]]; then inb=1; continue; fi
-        if (( inb )) && [[ "$line" =~ ^[a-zA-Z_] ]]; then
-            [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"; id=""; fmt=""; inb=0
-        fi
-        (( inb )) || continue
-        re='^[[:space:]]*-[[:space:]]+id:[[:space:]]*'
-        if [[ "$line" =~ $re ]]; then
-            [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"; id=""; fmt=""
-            l="${line:${#BASH_REMATCH[0]}}"
-            if [[ "$l" == *#* ]]; then l="${l%%#*}"; l="${l%"${l##*[![:space:]]}"}"; fi
-            l="${l#[\"\']}"; id="${l%[\"\']}"
-            continue
-        fi
-        re='^[[:space:]]+format:[[:space:]]*'
-        if [[ "$line" =~ $re ]]; then
-            l="${line:${#BASH_REMATCH[0]}}"
-            if [[ "$l" == *#* ]]; then l="${l%%#*}"; l="${l%"${l##*[![:space:]]}"}"; fi
-            l="${l#[\"\']}"; fmt="${l%[\"\']}"
-        fi
-    done < "$1"
-    [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"
-    return 0
 }
 
 # ─── _inputs_build_producer_index <plugins_root> <state_dir> ─────────────────
@@ -373,11 +345,9 @@ _inputs_format_for() {
 #   any format : zero bytes            -> damaged (empty or a failed write)
 #   json       : `jq empty` rejects it -> damaged (truncated / partial write)
 #
-# With <mark_dir>, a JSON file is parsed once per change (ADR-065 §5): a check
-# that passes leaves a mark made BEFORE it read the file, and a mark strictly
-# newer than the file means nothing has written it since. Any write after the
-# mark leaves the file no older than the mark, so it is parsed again. A failed
-# check removes its mark.
+# With <mark_dir>, JSON is parsed once per change (ADR-065 §5): a passing check
+# leaves a mark made BEFORE its read; while the mark is strictly newer than the
+# file, nothing has written it since. A failed check removes its mark.
 #
 # An ABSENT file is not damaged; absence is the caller's separate case, and
 # conflating them is what #1894 opened with.
@@ -392,8 +362,7 @@ _inputs_damaged() {
         if (( ${#key} <= 240 )); then
             mark="$marks/$key"
             [[ "$mark" -nt "$pth" ]] && return 1
-            [[ -d "$marks" ]] || mkdir -p "$marks" 2>/dev/null
-            : > "$mark" 2>/dev/null || mark=""
+            { [[ -d "$marks" ]] || mkdir -p "$marks"; : > "$mark"; } 2>/dev/null || mark=""
         fi
     fi
     jq empty "$pth" >/dev/null 2>&1 && return 1

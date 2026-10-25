@@ -1011,6 +1011,21 @@ mock_result_line() {
 # overlay (the #978/#1270 pattern).
 
 # ── wait_for_event ────────────────────────────────────────────────────────────
+# ─── zb_test_kill_tree <pid> ─────────────────────────────────────────────────
+# KILL <pid> and every process under it. KILL cannot be caught, so a runner
+# killed alone cleans up nothing: its forked stage and the stage's time-limit
+# watchdog (copies of its shell, so they show as runner.sh) ran on, the watchdog
+# for up to the stage's limit. The tree is stopped before it is killed, and read
+# again once stopped, so a child forked while it was being read is not missed.
+_zb_test_tree() { local c; printf '%s\n' "$1"; for c in $(pgrep -P "$1" 2>/dev/null); do _zb_test_tree "$c"; done; }
+zb_test_kill_tree() {
+    local t
+    t="$(_zb_test_tree "$1")"; kill -STOP $t 2>/dev/null
+    t="$(_zb_test_tree "$1")"; kill -STOP $t 2>/dev/null
+    kill -KILL $t 2>/dev/null
+    return 0
+}
+
 # Bounded poll for a grep pattern to appear in an events/state file (#619's
 # "wait-for-event-content" pattern; reused by #887/#1127/#1149). Replaces the
 # anti-pattern of a fixed `sleep N` followed by a single-shot read of an

@@ -237,7 +237,7 @@ if wait_for_event "$EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     wait_for_event "$EVENTS_JSONL" '"pipeline.abort"' 120 0.1 || true
     grep -q '"pipeline.abort"' "$EVENTS_JSONL" 2>/dev/null && t10_abort_ok=1
 fi
-kill -KILL "$runner_pid" 2>/dev/null || true
+zb_test_kill_tree "$runner_pid"   # the runner and what it started (its stage, the watchdog)
 wait "$runner_pid" 2>/dev/null || true
 _kill_assert "$t10_abort_ok" "kill mid-run emits pipeline.abort"
 
@@ -411,7 +411,7 @@ if wait_for_event "$A2_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     grep -q '"pipeline.abort"' "$A2_EVENTS_JSONL" 2>/dev/null && a2_abort_ok=1
     grep -q '"pipeline.state.error"' "$A2_EVENTS_JSONL" 2>/dev/null || a2_no_state_err=1
 fi
-kill -KILL "$a2_pid" 2>/dev/null || true
+zb_test_kill_tree "$a2_pid"   # the runner and what it started (its stage, the watchdog)
 wait "$a2_pid" 2>/dev/null || true
 _kill_assert "$a2_abort_ok" "A2 abort trap: pipeline.abort event emitted on kill"
 _kill_assert "$a2_no_state_err" "A2 abort trap: no state.error when state file writable"
@@ -687,7 +687,7 @@ if wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     wait_for_event "$I6_STDERR" "Pipeline aborted:" 80 0.1 || true
     grep -q "Pipeline aborted:" "$I6_STDERR" 2>/dev/null && i6_banner_ok=1
 fi
-kill -KILL "$i6_pid" 2>/dev/null || true
+zb_test_kill_tree "$i6_pid"   # the runner and what it started (its stage, the watchdog)
 wait "$i6_pid" 2>/dev/null || true
 
 i6_ev_detail="$( [[ -f "$I6_EVENTS_JSONL" ]] && tr '\n' '|' < "$I6_EVENTS_JSONL" | head -c 200 )"

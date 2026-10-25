@@ -57,6 +57,38 @@ _registry_output_path_rows() {
     return 0
 }
 
+# ─── _inputs_manifest_formats <manifest> ─────────────────────────────────────
+# "id<TAB>format" for every output the manifest declares, in one read (the
+# producer index in core/pipeline/input-resolve.sh asks it).
+_inputs_manifest_formats() {
+    [[ -f "${1-}" && -r "$1" ]] || return 2
+    # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5).
+    local line l inb=0 id="" fmt="" re
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^outputs:[[:space:]]*$ ]]; then inb=1; continue; fi
+        if (( inb )) && [[ "$line" =~ ^[a-zA-Z_] ]]; then
+            [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"; id=""; fmt=""; inb=0
+        fi
+        (( inb )) || continue
+        re='^[[:space:]]*-[[:space:]]+id:[[:space:]]*'
+        if [[ "$line" =~ $re ]]; then
+            [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"; id=""; fmt=""
+            l="${line:${#BASH_REMATCH[0]}}"
+            if [[ "$l" == *#* ]]; then l="${l%%#*}"; l="${l%"${l##*[![:space:]]}"}"; fi
+            l="${l#[\"\']}"; id="${l%[\"\']}"
+            continue
+        fi
+        re='^[[:space:]]+format:[[:space:]]*'
+        if [[ "$line" =~ $re ]]; then
+            l="${line:${#BASH_REMATCH[0]}}"
+            if [[ "$l" == *#* ]]; then l="${l%%#*}"; l="${l%"${l##*[![:space:]]}"}"; fi
+            l="${l#[\"\']}"; fmt="${l%[\"\']}"
+        fi
+    done < "$1"
+    [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"
+    return 0
+}
+
 # ─── _registry_resolve_output_path <raw_path> <state_dir> <artifact_dir> ─────
 # Expands the Phase 0.5 substitution tokens plus any remaining ${VAR} from the
 # work unit's exported env (the template's `as:` mapping, e.g.
