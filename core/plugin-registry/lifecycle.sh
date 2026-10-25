@@ -214,8 +214,9 @@ plugin_stop_running() {
     # watchdog has set its trap ends the shell and would orphan its sleep.
     if [[ -n "${_ZB_LC_WATCHDOG_PID:-}" ]]; then
         local _wdt; _wdt="$(_lc_tree "$_ZB_LC_WATCHDOG_PID")"
+        # KILL: it has nothing to tidy, and a TERM can be lost (see its trap).
         # shellcheck disable=SC2086  # a list of pids
-        kill -TERM $_wdt 2>/dev/null; wait "$_ZB_LC_WATCHDOG_PID" 2>/dev/null
+        kill -KILL $_wdt 2>/dev/null; wait "$_ZB_LC_WATCHDOG_PID" 2>/dev/null
         _ZB_LC_WATCHDOG_PID=""
     fi
     [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null || return 0
@@ -566,9 +567,11 @@ plugin_hook_call() {
             # The trap is set BEFORE the sleep starts, and names it by $!,
             # which bash sets as the sleep starts: a TERM that lands at once
             # (a stage that ends at once) cannot orphan the sleep. $! before
-            # that is the parent's last job, which is not the watchdog's.
+            # that is the parent's last job, which is not the watchdog's. KILL,
+            # not TERM: a TERM that reaches the sleep between its fork and its
+            # exec is caught by the copy of this shell's handler and lost.
             _tl_b0="${!:-}"
-            trap '[[ "${!:-}" != "$_tl_b0" ]] && kill "$!" 2>/dev/null; exit 0' TERM
+            trap '[[ "${!:-}" != "$_tl_b0" ]] && kill -KILL "$!" 2>/dev/null; exit 0' TERM
             sleep "$_tl_secs" &
             wait "$!" 2>/dev/null || exit 0
             _tl_p="$(cat "$_tl_pidf" 2>/dev/null)"

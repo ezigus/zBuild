@@ -19,6 +19,9 @@
 #             stop lands in its first lines): its sleep goes too, not only it
 # S6 [guard]  a stage that ends at once leaves no watchdog sleep behind either
 #             (plugin_hook_call's own stop had the same gap)
+# S7 [change] …even when the sleep does not act on TERM: a TERM that reaches it
+#             between its fork and its exec is lost (it left 1 in 16 runs under
+#             load); a sleep that ignores TERM stands in for that, every time
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -151,6 +154,18 @@ sleep 0.5
 _left="$(pgrep -f '^sleep 985$' 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "[S6] 40 instant stages leave no watchdog sleep" "0" "$_left"
 pkill -KILL -f '^sleep 985$' 2>/dev/null || true
+
+print_test_section "S7: the watchdog's sleep goes even if it does not act on TERM"
+BIN="$TEST_TEMP_DIR/bin"; mkdir -p "$BIN"
+printf '#!/bin/bash\ntrap "" TERM\nexec /bin/sleep "$@"\n' > "$BIN/sleep"; chmod +x "$BIN/sleep"
+printf 'stages:\n  - slow\nslow:\n  timeout_s: 984\n' > "$TPL"
+export _TPL_SOURCE_FILE="$TPL" SLOW_SECS=0 SLOW_RC=0
+PATH="$BIN:$PATH" ZBUILD_CURRENT_STAGE=slow plugin_hook_call "$PLUGIN_DIR" run slow "$STATE_FILE" >/dev/null 2>&1 || true
+unset _TPL_SOURCE_FILE
+_left=""
+for _ in $(seq 1 20); do _left="$(pgrep -f 'sleep 984$' 2>/dev/null || true)"; [[ -z "$_left" ]] && break; sleep 0.1; done
+assert_eq "[S7] a stage that ended leaves no watchdog sleep, TERM-proof or not" "" "$_left"
+[[ -n "$_left" ]] && kill -KILL $_left 2>/dev/null
 
 print_test_section "S3: nothing running"
 _ZB_LC_STAGE_PID=""
