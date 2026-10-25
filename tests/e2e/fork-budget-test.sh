@@ -73,7 +73,9 @@ setup_test_env "fork-budget"
 # secret scan greps the dir, not each file; the attempt record sums only what
 # can compare; a plain-ASCII event line is written by the shell; a router-knob
 # lookup and a requires.core check each read once) — measured 3,098 macOS.
-FORK_BUDGET=3160
+# 3070 (round 6: the write boundary's mark and check, the producer-index key and
+# a collect memo hit are done by the shell) — measured 3,008 macOS.
+FORK_BUDGET=3070
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -82,8 +84,8 @@ FORK_BUDGET=3160
 # times, discovery's tree check and the manifest_graph memo name fill variables
 # instead of subshells — measured 6,139 macOS). 6000 (round 4, the same
 # changes — measured 5,930 macOS). 5330 (round 5, the same changes — measured
-# 5,255 macOS).
-PROCESS_BUDGET=5330
+# 5,255 macOS). 5200 (round 6, the same changes — measured 5,129 macOS).
+PROCESS_BUDGET=5200
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh

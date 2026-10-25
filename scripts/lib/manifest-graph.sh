@@ -73,17 +73,32 @@ manifest_graph_probe_sentinel() {
 }
 
 # ─── manifest_graph_get_stage_id ───────────────────────────────────────────────
+# The first `id:` line, cleaned: leading spaces, a trailing `# comment` with
+# the spaces before it, then one leading and one trailing quote. Read by the
+# shell — it runs on every memo hit (ADR-065 §5); tests/unit/
+# stage-dispatch-cost-test.sh D6 holds it to the awk reader it replaced.
 manifest_graph_get_stage_id() {
-    local manifest="$1"
-    awk '
-        /^id:[[:space:]]*/ {
-            sub(/^id:[[:space:]]*/, "")
-            sub(/[[:space:]]*#.*/, "")
-            gsub(/^["'"'"']|["'"'"']$/, "")
-            print
-            exit
-        }
-    ' "$manifest" 2>/dev/null
+    local _mgid
+    _mgraph_stage_id_v _mgid "$1" || return 0
+    printf '%s\n' "$_mgid"
+}
+_mgraph_stage_id_v() {   # <var> <manifest> — rc 1 when there is no id: line
+    local -n _msi_out="$1"; _msi_out=""
+    local _l _v
+    [[ -f "$2" && -r "$2" ]] || return 1
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        [[ "$_l" == id:* ]] || continue
+        _v="${_l#id:}"
+        _v="${_v#"${_v%%[![:space:]]*}"}"
+        if [[ "$_v" == *#* ]]; then
+            _v="${_v%%#*}"
+            _v="${_v%"${_v##*[![:space:]]}"}"
+        fi
+        _v="${_v#[\"\']}"; _v="${_v%[\"\']}"
+        _msi_out="$_v"
+        return 0
+    done < "$2"
+    return 1
 }
 
 manifest_graph_outputs_block_present() {
@@ -339,9 +354,11 @@ manifest_graph_collect() {
     local m key="${plugins_root}|${stage_id}" mf=""
     _mgraph_memo_file_v mf "$plugins_root" "$stage_id" || mf=""
     m="${_MGRAPH_COLLECT_MEMO[$key]:-}"
-    [[ -z "$m" && -n "$mf" && -f "$mf" ]] && m="$(cat "$mf" 2>/dev/null || true)"
+    [[ -z "$m" && -n "$mf" && -f "$mf" ]] && { IFS= read -r m < "$mf" || true; } 2>/dev/null
     if [[ -n "$m" ]]; then
-        if [[ "$m" == "${plugins_root%/}"/* && -f "$m" && "$(manifest_graph_get_stage_id "$m")" == "$stage_id" ]]; then
+        local _mid=""
+        [[ -f "$m" ]] && _mgraph_stage_id_v _mid "$m"
+        if [[ "$m" == "${plugins_root%/}"/* && -f "$m" && "$_mid" == "$stage_id" ]]; then
             _MGRAPH_COLLECT_MEMO[$key]="$m"
             printf '%s\n' "$m"
             return 0

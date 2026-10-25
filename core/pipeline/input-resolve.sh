@@ -204,8 +204,14 @@ declare -gA _IR_FORMAT=()                   # output_id → the producer's decla
 _IR_INDEX_KEY=""
 _inputs_build_producer_index() {
     local plugins_root="$1" state_dir="$2"
-    local flow key
-    flow="$(_inputs_flow_stages | tr '\n' ' ')"
+    local flow="" key s
+    # _inputs_flow_stages' list, each stage then a space, joined by the shell:
+    # this runs before the memo check on every call (ADR-065 §5).
+    if declare -p _TPL_STAGES >/dev/null 2>&1 && [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
+        for s in "${_TPL_STAGES[@]}"; do flow+="$s "; done
+    else
+        for s in ${ZBUILD_INPUTS_FLOW:-}; do flow+="$s "; done
+    fi
     key="${plugins_root}|${state_dir}|${flow}"
     [[ "$key" == "$_IR_INDEX_KEY" ]] && return 0
     _IR_INDEX_KEY="$key"
