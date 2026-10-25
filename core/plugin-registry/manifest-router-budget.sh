@@ -53,19 +53,18 @@ manifest_router_knob() {
     local manifest="${1:-}" knob="${2:-}"
     [[ -n "$manifest" && -f "$manifest" && -n "$knob" ]] || return 0
     case " $_ZBUILD_MANIFEST_ROUTER_KNOBS " in *" $knob "*) ;; *) return 0 ;; esac
-    _manifest_router_block "$manifest" | awk -v knob="$knob" '
-        $1 == knob { print $2; exit }
-    '
+    _manifest_router_block "$manifest" "$knob"
 }
 
-# ─── _manifest_router_block <manifest> → "<key> <value>" per line ───────────
+# ─── _manifest_router_block <manifest> [knob] → "<key> <value>" per line ─────
 # The single parse of the `config:` → `router:` sub-block. Both readers go
 # through this, so "which keys are declared" and "what did key K resolve to"
-# can never disagree.
+# can never disagree. With <knob>, it prints only that key's first value and
+# stops: one awk per lookup, not a parse piped into a second (ADR-065).
 _manifest_router_block() {
     local manifest="${1:-}"
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
-    awk '
+    awk -v knob="${2:-}" '
         function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
         # A trailing comment on the block header is legal YAML and is exactly
         # where a manifest explains WHY the numbers below it are what they are —
@@ -91,6 +90,7 @@ _manifest_router_block() {
             sub(/[[:space:]]*#.*/, "", val)
             gsub(/^["'"'"']|["'"'"']$/, "", val)
             gsub(/[[:space:]]/, "", val)
+            if (knob != "") { if (key == knob) { print val; exit }; next }
             printf "%s %s\n", key, val
         }
     ' "$manifest" 2>/dev/null
