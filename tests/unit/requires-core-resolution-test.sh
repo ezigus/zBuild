@@ -504,11 +504,24 @@ for _c in sed dirname; do
     printf '#!/bin/sh\nprintf "%%s\\n" %s >> "%s"\nexec "%s" "$@"\n' "$_c" "$_LOG14" "$(command -v "$_c")" > "$_SHIM14/$_c"
     chmod +x "$_SHIM14/$_c"
 done
+# awk is logged only when it is the requires.core parser (its program names in_requires).
+printf '#!/bin/sh\ncase "$*" in *in_requires*) printf "awk-requires\\n" >> "%s";; esac\nexec "%s" "$@"\n' \
+    "$_LOG14" "$(command -v awk)" > "$_SHIM14/awk"
+chmod +x "$_SHIM14/awk"
 : > "$_LOG14"
 _out14="$(PATH="$_SHIM14:$PATH" requires_core_check "$_fx_cost/manifest.yaml")"; _rc14=$?
 assert_eq "[SPEC-14] the plugin resolves (router and redaction both sourced)" "0|" "$_rc14|$_out14"
 assert_eq "[SPEC-14] plugin.sh is stripped once" "1" "$(grep -cx sed "$_LOG14" || true)"
 assert_eq "[SPEC-14] no dirname" "0" "$(grep -cx dirname "$_LOG14" || true)"
+assert_eq "[SPEC-14] a kind: agent's requires.core list is parsed once" "1" "$(grep -cx awk-requires "$_LOG14" || true)"
+# The list handed down is the one the check reads: an agent missing redaction
+# is still refused, and an unresolved entry still named.
+_fx_cost2="$(_fixture cost-check2 agent 'requires:
+  core:
+    - router' "$_BODY_CALLS_NO_SOURCE")"
+_out14b="$(requires_core_check "$_fx_cost2/manifest.yaml")"
+assert_contains "[SPEC-14] …an agent without redaction is still refused" "$_out14b" "redaction"$'\t'"is MUST"
+assert_contains "[SPEC-14] …and the unsourced router still named" "$_out14b" "router"$'\t'"is declared but plugin.sh never sources"
 
 cleanup_test_env
 print_test_results

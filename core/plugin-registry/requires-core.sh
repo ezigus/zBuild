@@ -167,7 +167,7 @@ _requires_core_reaches_model() {
     [[ "$1" == *route_to_model* ]]
 }
 
-# ─── requires_core_unresolved <plugin_dir> ──────────────────────────────────
+# ─── requires_core_unresolved <plugin_dir> [entries] ────────────────────────
 # The resolver. Prints one `<entry><TAB><reason>` line per declared entry that
 # cannot be satisfied, and returns 1 if there were any.
 #
@@ -179,7 +179,9 @@ requires_core_unresolved() {
     local manifest="$plugin_dir/manifest.yaml"
     [[ -f "$manifest" ]] || return 0
 
-    local entries; entries="$(_yaml_get_requires_core_list "$manifest")"
+    # [entries]: the requires.core list, when the caller has already parsed it.
+    local entries
+    if [[ $# -ge 2 ]]; then entries="$2"; else entries="$(_yaml_get_requires_core_list "$manifest")"; fi
     [[ -n "$entries" ]] || return 0
 
     # Providers are stated repo-relative and matched against the TEXT of the
@@ -255,8 +257,9 @@ requires_core_check() {
     local found=0
 
     local kind; yaml_get_v kind "$manifest" "kind" 2>/dev/null || true
+    # Parsed once, here, and handed to the resolver (ADR-065).
+    local declared; declared="$(_yaml_get_requires_core_list "$manifest")"
     if [[ "$kind" == "agent" ]]; then
-        local declared; declared="$(_yaml_get_requires_core_list "$manifest")"
         # A whole line `redaction`, as `grep -Fx` matched it.
         if [[ $'\n'"$declared"$'\n' != *$'\n'redaction$'\n'* ]]; then
             printf 'redaction\tis MUST for kind: agent and is not declared inside requires.core (ADR-004; got: %s)\n' \
@@ -270,7 +273,7 @@ requires_core_check() {
         [[ -n "$line" ]] || continue
         printf '%s\n' "$line"
         found=1
-    done < <(requires_core_unresolved "$plugin_dir")
+    done < <(requires_core_unresolved "$plugin_dir" "$declared")
 
     return "$found"
 }
