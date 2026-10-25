@@ -301,8 +301,10 @@ if declare -F yaml_get_v >/dev/null 2>&1; then
     fi
     yaml_cache_flush
     yaml_get_v _v13 "$FIX" name
+    # The memo's key is the path with `//` collapsed ($TMPDIR may end in /).
+    _manifest_path_key _k13 "$FIX"
     assert_eq "[SPEC-13] a miss through yaml_get_v fills the cache in this shell" \
-        "set" "${_ZBUILD_YAML_RC["$FIX"$'\034'name]+set}"
+        "set" "${_ZBUILD_YAML_RC["$_k13"$'\034'name]+set}"
 else
     assert_fail "[SPEC-12] yaml_get_v is defined" "missing"
 fi

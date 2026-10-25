@@ -26,7 +26,9 @@ _lc_other_outputs_deny() {
     declare -F manifest_index_load >/dev/null 2>&1 || return 0
     declare -F _registry_resolve_output_path >/dev/null 2>&1 || return 0
     manifest_index_load "$root"
-    local artifact_dir="${state_dir}/artifacts" own_n="${own%/}" idx_root
+    local artifact_dir="${state_dir}/artifacts" own_n idx_root
+    # The index lists paths with `//` collapsed (_manifest_index_root); so must own.
+    _manifest_path_key own_n "${own%/}"
     idx_root="$(_manifest_index_root "$root")"
     while IFS= read -r f; do
         [[ -n "$f" ]] || continue
