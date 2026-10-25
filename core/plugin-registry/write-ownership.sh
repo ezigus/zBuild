@@ -21,7 +21,10 @@ _LC_DENY_OUT=""
 _lc_other_outputs_deny() {
     local own="$1" state_dir="$2" root="${ZBUILD_PLUGINS_ROOT:-}" f raw resolved
     _LC_DENY_OUT=""
-    [[ -n "$root" ]] || root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../plugins" 2>/dev/null && pwd)"
+    if [[ -z "$root" ]]; then
+        local _wo_d="${BASH_SOURCE[0]%/*}"; [[ "$_wo_d" == "${BASH_SOURCE[0]}" ]] && _wo_d="."
+        root="$(cd "$_wo_d/../../plugins" 2>/dev/null && pwd)"
+    fi
     [[ -d "$root" ]] || return 0
     declare -F manifest_index_load >/dev/null 2>&1 || return 0
     declare -F _registry_resolve_output_path >/dev/null 2>&1 || return 0

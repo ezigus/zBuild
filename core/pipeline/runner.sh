@@ -496,6 +496,8 @@ _runner_now_short() {
     fi
     local sec=$(( ms / 1000 ))
     local out
+    # The shell's clock, in UTC (ADR-065 §5); the date forms stay as the fallback.
+    TZ=UTC printf -v out '%(%H:%M:%S UTC)T' "$sec" 2>/dev/null && [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     out="$(date -u -r "$sec" +'%H:%M:%S UTC' 2>/dev/null \
         || date -u -d "@$sec" +'%H:%M:%S UTC' 2>/dev/null \
         || printf '??:??:?? UTC')"

@@ -12,10 +12,15 @@
 [[ -n "${_ZBUILD_STAGE_RESULT_LOADED:-}" ]] && return 0
 _ZBUILD_STAGE_RESULT_LOADED=1
 
+# Stage stubs source this on every dispatch: the shell finds the repo root
+# (ADR-065 §5), no dirname.
+_zb_sr_d="${BASH_SOURCE[0]%/*}"; [[ "$_zb_sr_d" == "${BASH_SOURCE[0]}" ]] && _zb_sr_d="."
+_zb_sr_root="$(cd "$_zb_sr_d/../.." && pwd)"
 # shellcheck source=../../core/pipeline/disposition.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/core/pipeline/disposition.sh"
+source "$_zb_sr_root/core/pipeline/disposition.sh"
 # shellcheck source=../../core/contract/version.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/core/contract/version.sh"
+source "$_zb_sr_root/core/contract/version.sh"
+unset _zb_sr_d _zb_sr_root
 
 # _stage_result_json <outcome> <reason> [data-json] — the result object, or rc 1
 # for an outcome off the list, an empty reason or data that is not an object.

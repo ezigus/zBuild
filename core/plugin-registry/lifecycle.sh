@@ -74,7 +74,7 @@ scan_plugin_outputs() {
     # Compute substitution roots from state_file.
     local state_dir="" artifact_dir=""
     if [[ -n "$state_file" ]]; then
-        state_dir="$(dirname "$state_file")"
+        zb_dirname_v state_dir "$state_file"
         artifact_dir="${state_dir}/artifacts"
     fi
 
@@ -159,7 +159,7 @@ scan_plugin_outputs() {
                     }' > "$_findings_file" 2>/dev/null || true
                 # #1809: file-backed marker so runner_read_stage_disposition (a separate
                 # process under map:) can detect the violation and return broken.
-                mkdir -p "${state_dir}/runtime"
+                [[ -d "${state_dir}/runtime" ]] || mkdir -p "${state_dir}/runtime"
                 touch "${state_dir}/runtime/artifact-contract-violated" 2>/dev/null || true
             fi
             missing=$((missing + 1))
@@ -356,7 +356,7 @@ plugin_hook_call() {
     # substitution below become the same directory BY CONSTRUCTION, instead of
     # two independent derivations that a caller can silently split.
     if [[ "${2:-}" == /* ]]; then
-        local _ws_state_dir; _ws_state_dir="$(dirname "$2")"
+        local _ws_state_dir; zb_dirname_v _ws_state_dir "$2"
         local -x ZBUILD_ARTIFACT_DIR="${_ws_state_dir}/artifacts"
         [[ "$hook_name" == "run" ]] && stage_errors_clear "${1:-}"
 
@@ -427,7 +427,7 @@ plugin_hook_call() {
         # pgid observable at dispatch cannot be signalled from inside the run.
         if [[ "$hook_name" == "run" && -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
             local _st_dir="${_ws_state_dir}/runtime/stages"
-            if mkdir -p "$_st_dir" 2>/dev/null; then
+            if [[ -d "$_st_dir" ]] || mkdir -p "$_st_dir" 2>/dev/null; then
                 # One path component, so no stage name can climb out of runtime/.
                 local _st_key="${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9_-]/_}"
                 # Fail-open: a stage is never refused dispatch over bookkeeping.
@@ -551,9 +551,10 @@ plugin_hook_call() {
         # (the abort banner) to the redirect. It prints nothing anyway.
         template_stage_time_limit_v _tl_secs "$ZBUILD_CURRENT_STAGE" || true
         [[ "$_tl_secs" =~ ^[1-9][0-9]*$ ]] || _tl_secs=900
-        _tl_marker="$(dirname "$2")/runtime/stage-time-limit.${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9._-]/_}"
-        mkdir -p "${_tl_marker%/*}" 2>/dev/null || true
-        rm -f "$_tl_marker" 2>/dev/null || true
+        zb_dirname_v _tl_marker "$2"
+        _tl_marker+="/runtime/stage-time-limit.${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9._-]/_}"
+        [[ -d "${_tl_marker%/*}" ]] || mkdir -p "${_tl_marker%/*}" 2>/dev/null || true
+        [[ -e "$_tl_marker" ]] && rm -f "$_tl_marker" 2>/dev/null
     fi
 
     # Run in a subshell to isolate plugin's variables/functions. It runs in the
@@ -565,7 +566,7 @@ plugin_hook_call() {
         # The watchdog: when the time is up it records the limit, says so, and
         # stops the stage and everything it started — TERM, then KILL. The
         # stage's subshell names itself in a file, as its first act.
-        _tl_pidf="${_tl_marker}.pid"; rm -f "$_tl_pidf" 2>/dev/null || true
+        _tl_pidf="${_tl_marker}.pid"; [[ -e "$_tl_pidf" ]] && rm -f "$_tl_pidf" 2>/dev/null
         (
             # The trap is set BEFORE the sleep starts, and names it by $!,
             # which bash sets as the sleep starts: a TERM that lands at once
@@ -639,7 +640,8 @@ plugin_hook_call() {
             if (( _lc_missing )) && declare -F _verdict_read_result >/dev/null 2>&1 \
                     && declare -F disposition_unfinished >/dev/null 2>&1 \
                     && [[ -n "$state_file_arg" ]]; then
-                _verdict_read_result "$(dirname "$state_file_arg")" "$manifest" "$stage_arg" 0 _lcr 2>/dev/null || true
+                local _lcr_sd; zb_dirname_v _lcr_sd "$state_file_arg"
+                _verdict_read_result "$_lcr_sd" "$manifest" "$stage_arg" 0 _lcr 2>/dev/null || true
                 disposition_unfinished "${_lcr_disp:-}" && _lc_unfinished="$_lcr_disp"
             fi
             if [[ -n "$_lc_unfinished" ]]; then

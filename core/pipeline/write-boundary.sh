@@ -389,7 +389,7 @@ write_boundary_classify() {
 # Mark the violation and emit the declared event.
 write_boundary_violation_recorded() {
     local _sd="$1" _stage="${2:-}" _path="${3:-}"
-    mkdir -p "${_sd}/runtime" 2>/dev/null || true
+    [[ -d "${_sd}/runtime" ]] || mkdir -p "${_sd}/runtime" 2>/dev/null || true
     # The marker carries the offending path as its content. Only its EXISTENCE
     # is load-bearing (verdict.sh tests -f), so the body is free to be evidence:
     # `broken` is terminal, and the state dir is what survives the run.

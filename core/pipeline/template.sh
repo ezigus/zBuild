@@ -2399,7 +2399,7 @@ template_stage_roles() {
     local var="_TPL_STAGE_ROLES_${safe_id}"
     local roles="${!var:-}"
     [[ -z "$roles" ]] && return 0
-    tr ',' '\n' <<< "$roles"
+    printf '%s\n' "${roles//,/$'\n'}"
 }
 
 template_stage_strategy() {
