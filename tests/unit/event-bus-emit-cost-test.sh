@@ -2,8 +2,9 @@
 # Tests: what one eb_emit_event costs, and what it writes (#1806, ADR-065 §5).
 #
 # Every stage pays for every event, so the external processes one emit starts
-# are counted here with recording shims on PATH: a 6-field event must start one
-# jq (the envelope) and the jsonl lock, and nothing else. The timestamp is read
+# are counted here with recording shims on PATH: a 6-field event must start the
+# jsonl lock and nothing else — the shell writes a plain-ASCII line itself, and
+# only a value with other bytes goes to jq (E6 pins the line against jq's). The timestamp is read
 # from the shell's own clock, so it has milliseconds on every host and does not
 # depend on ZBUILD_PLATFORM, which a map work unit sets to its TARGET platform
 # (ADR-009 §6). The envelope a reader sees is pinned field by field.
@@ -50,14 +51,14 @@ count() { grep -cx "$1" "$EXECS" 2>/dev/null || true; }
 ARGS6=(stage.complete stage=build verdict=pass score=91 reason=ok note=fine extra=x)
 
 # ─── E1: one emit ────────────────────────────────────────────────────────────
-print_test_section "E1: one 6-field emit starts one jq and nothing per field"
+print_test_section "E1: one 6-field emit starts the lock and nothing else"
 emit_in "$TEST_TEMP_DIR/e1" /dev/null linux 1 "${ARGS6[@]}"
-assert_eq "[#1806/E1] one jq per emit (the envelope), not one per field" "1" "$(count jq)"
+assert_eq "[ADR-065/E1] no jq for a plain-ASCII emit (the shell writes the line)" "0" "$(count jq)"
 assert_eq "[#1806/E1] no date process (the shell's clock)" "0" "$(count date)"
 assert_eq "[#1806/E1] no sed process" "0" "$(count sed)"
 assert_eq "[#1806/E1] no mkdir once the events dir exists" "0" "$(count mkdir)"
-_others="$(grep -vx -e jq -e flock "$EXECS" 2>/dev/null | sort | uniq -c | tr -s ' ' | tr '\n' ';' || true)"
-assert_eq "[#1806/E1] nothing else is started (only jq and the lock)" "" "$_others"
+_others="$(grep -vx -e flock "$EXECS" 2>/dev/null | sort | uniq -c | tr -s ' ' | tr '\n' ';' || true)"
+assert_eq "[ADR-065/E1] nothing else is started (only the lock)" "" "$_others"
 
 # ─── E2: there is no SQLite copy (ADR-065 §5, 2026-10-24) ───────────────────
 # events.jsonl is the only read path; the events.db mirror had no reader and
@@ -133,16 +134,61 @@ assert_eq "[#1806/E4] an event with no fields has data {}" "{}" "$(sed -n 2p "$_
 print_test_section "E5: an emit whose jq fails returns 0 and the caller carries on"
 _d="$TEST_TEMP_DIR/e5"; mkdir -p "$_d" "$TEST_TEMP_DIR/badjq"
 printf '#!/bin/sh\nexit 5\n' > "$TEST_TEMP_DIR/badjq/jq"; chmod +x "$TEST_TEMP_DIR/badjq/jq"
+# A non-ASCII value is what still goes to jq.
 cat > "$_d/driver.sh" <<DRIVER
 set -euo pipefail
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
-eb_emit_event stage.complete stage=x
+eb_emit_event stage.complete stage=café
 echo "carried-on rc=\$?"
 DRIVER
 _e5="$(ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" \
     PATH="$TEST_TEMP_DIR/badjq:$PATH" bash "$_d/driver.sh" 2>/dev/null || true)"
 assert_eq "[#1806/E5] the caller under set -e carries on after a failed emit" "carried-on rc=0" "$_e5"
 assert_eq "[#1806/E5] nothing half-built is appended" "0" "$(if [[ -f "$_d/events.jsonl" ]]; then grep -c . "$_d/events.jsonl" || true; else echo 0; fi)"
+
+# ─── E6: the line the shell writes is the line jq wrote ─────────────────────
+# Byte for byte, for the values that need escaping: quotes, backslashes, every
+# control character jq spells out, a duplicate key, option-like words, and the
+# optional envelope fields. A value with bytes above ASCII goes to jq itself,
+# and must come out the same.
+print_test_section "E6: the shell-built line is byte-identical to jq's"
+_d="$TEST_TEMP_DIR/e6"; mkdir -p "$_d"
+_ref() {   # the envelope program eb_emit_event used before (#1806), on the same input
+    local ts="$1" type="$2"; shift 2
+    local -a pairs=(); local -i n=0; local a
+    for a in "$@"; do pairs+=(--arg "_k$n" "${a%%=*}" --arg "_v$n" "${a#*=}"); n+=1; done
+    jq -cn --arg ts "$ts" --arg run_id 'r"6' --argjson issue 90000007 --arg type "$type" \
+        --arg plugin "p" --arg kind "k" --arg stage "build" --arg seq "6.1" --arg unit "" \
+        --argjson _n "$n" "${pairs[@]}" \
+        '$ARGS.named as $a
+         | ([range(0; $_n) | {($a["_k\(.)"]): $a["_v\(.)"]}] | add // {}) as $data
+         | ({ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}
+            + (if $stage != "" then {stage: $stage} else {} end)
+            + (if $seq != "" then {seq: $seq} else {} end)
+            + (if $unit != "" then {unit: $unit} else {} end))'
+}
+_E6_ARGS=('q=say "hi"' 'bs=a\b\\c' $'nl=a\nb\tc\rd' $'ctl=\x01\x02\x08\x0c\x1f\x7f' \
+    "dup=1" "x=-n" "dup=2" "noeq" "empty=" "slash=a/b" "plugin=p" "kind=k")
+for _case in ascii utf8; do
+    _a=("${_E6_ARGS[@]}"); [[ "$_case" == utf8 ]] && _a+=("u=café ✓" $'bad=a\xffb')
+    rm -f "$_d/events.jsonl"
+    ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" \
+    ZBUILD_RUN_ID='r"6' ZBUILD_ISSUE=90000007 ZBUILD_PLUGIN=p ZBUILD_PLUGIN_KIND=k \
+    ZBUILD_CURRENT_STAGE=build ZBUILD_STAGE_IO_SEQ_LABEL=6.1 \
+    bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"; eb_emit_event "$@"' _ stage.complete "${_a[@]}"
+    _got="$(cat "$_d/events.jsonl")"
+    _ts="$(jq -r .ts <<< "$_got" 2>/dev/null)"
+    assert_eq "[ADR-065/E6] $_case: the line is jq's, byte for byte" "$(_ref "$_ts" stage.complete "${_a[@]}")" "$_got"
+done
+rm -f "$_d/events.jsonl"
+# The leading zeros are the case under test; the lint reads them as octal.
+_ISSUE_0PAD=0090000007  # lint-test-identity:allow
+ZBUILD_EVENTS_DIR="$_d" ZBUILD_EVENTS_JSONL="$_d/events.jsonl" ZBUILD_ISSUE="$_ISSUE_0PAD" \
+bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"; eb_emit_event pipeline.start'
+# Read as text: jq itself would accept the invalid number 0090000007.
+_line="$(cat "$_d/events.jsonl" 2>/dev/null)"
+assert_eq "[ADR-065/E6] an issue written 0090000007 is the number 90000007, and no fields is data {}" '"issue":90000007,|"data":{},' \
+    "$( [[ "$_line" == *'"issue":90000007,'* ]] && printf '"issue":90000007,'; printf '|'; [[ "$_line" == *'"data":{},'* ]] && printf '"data":{},')"
 
 cleanup_test_env
 print_test_results

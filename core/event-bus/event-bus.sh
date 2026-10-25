@@ -101,6 +101,32 @@ _eb_now_iso_v() {
     printf -v "$1" '%s.%sZ' "$_iso" "${_f:0:3}"
 }
 
+# _eb_json_str_v <var> <value>: <value> as a JSON string, spelled as jq spells
+# it (ADR-065 §5). Plain ASCII only — the caller sends anything else to jq.
+_eb_json_str_v() {
+    local LC_ALL=C _s="$2" _c _e
+    local -i _i
+    _s="${_s//\\/\\\\}"; _s="${_s//\"/\\\"}"
+    if [[ "$_s" == *[$'\x01'-$'\x1f'$'\x7f']* ]]; then
+        _s="${_s//$'\n'/\\n}"; _s="${_s//$'\t'/\\t}"; _s="${_s//$'\r'/\\r}"
+        _s="${_s//$'\b'/\\b}"; _s="${_s//$'\f'/\\f}"
+        for _i in {1..31} 127; do
+            printf -v _c '%02x' "$_i"; printf -v _c "\\x$_c"
+            [[ "$_s" == *"$_c"* ]] || continue
+            printf -v _e '\\u%04x' "$_i"
+            _s="${_s//"$_c"/"$_e"}"
+        done
+    fi
+    printf -v "$1" '"%s"' "$_s"
+}
+
+# _eb_ascii <string>: true when every byte is below 0x80. A class, not a byte
+# range, so an xtrace of this line stays plain text (fork-census reads it).
+_eb_ascii() {
+    local LC_ALL=C
+    [[ "$1" != *[![:ascii:]]* ]]
+}
+
 # ─── eb_emit_event — single source of truth for events ──────────────────────
 # Usage:
 #   eb_emit_event <type> [key1=val1] [key2=val2] ...
@@ -128,7 +154,7 @@ eb_emit_event() {
     # like "-n" stays a value — a positional list after --args would not.
     local key val
     local _data_plugin="" _data_kind=""
-    local -a _pairs=()
+    local -a _pairs=() _keys=() _vals=()
     local -i _n=0
     for arg in "$@"; do
         key="${arg%%=*}"
@@ -138,6 +164,7 @@ eb_emit_event() {
             kind)   _data_kind="$val" ;;
         esac
         _pairs+=(--arg "_k$_n" "$key" --arg "_v$_n" "$val")
+        _keys+=("$key"); _vals+=("$val")
         _n+=1
     done
 
@@ -181,10 +208,35 @@ eb_emit_event() {
         issue=0
     fi
 
-    # One compact line out: the event. An event jq cannot build is dropped, never
-    # fatal: this runs bare under `set -e` everywhere (see the closing `return 0`).
-    local event_json
-    event_json="$(jq -cn \
+    # One compact line out: the event. Plain ASCII — nearly every event — is
+    # written by the shell, spelled exactly as jq would (ADR-065 §5); any other
+    # byte, or an issue too long for shell arithmetic, goes to jq. An event jq
+    # cannot build is dropped, never fatal: this runs bare under `set -e`
+    # everywhere (see the closing `return 0`).
+    local event_json="" _all
+    printf -v _all '%s\034' "$type" "$run_id" "$plugin" "$kind" "$stage" "$unit" "${_keys[@]}" "${_vals[@]}"
+    if [[ ${#issue} -le 15 ]] && _eb_ascii "$_all"; then
+        local _j _data="" _i _k
+        local -i _x
+        for (( _x = 0; _x < _n; _x++ )); do
+            # A later duplicate key keeps the first one's place, as jq's `add`.
+            for (( _k = 0; _k < _x; _k++ )); do [[ "${_keys[_k]}" == "${_keys[_x]}" ]] && break; done
+            [[ $_k -lt $_x ]] && continue
+            for (( _i = _n - 1; _i >= _x; _i-- )); do [[ "${_keys[_i]}" == "${_keys[_x]}" ]] && break; done
+            _eb_json_str_v _j "${_keys[_x]}"; _data+="${_data:+,}$_j:"
+            _eb_json_str_v _j "${_vals[_i]}"; _data+="$_j"
+        done
+        event_json="{\"ts\":\"$ts\""
+        _eb_json_str_v _j "$run_id"; event_json+=",\"run_id\":$_j,\"issue\":$(( 10#$issue ))"
+        _eb_json_str_v _j "$type";   event_json+=",\"type\":$_j"
+        _eb_json_str_v _j "$plugin"; event_json+=",\"plugin\":$_j"
+        _eb_json_str_v _j "$kind";   event_json+=",\"kind\":$_j,\"data\":{$_data},\"schema_version\":1"
+        if [[ -n "$stage" ]]; then _eb_json_str_v _j "$stage"; event_json+=",\"stage\":$_j"; fi
+        [[ -n "$seq" ]] && event_json+=",\"seq\":\"$seq\""
+        if [[ -n "$unit" ]]; then _eb_json_str_v _j "$unit"; event_json+=",\"unit\":$_j"; fi
+        event_json+="}"
+    fi
+    [[ -n "$event_json" ]] || event_json="$(jq -cn \
         --arg ts "$ts" \
         --arg run_id "$run_id" \
         --argjson issue "$issue" \
@@ -203,12 +255,12 @@ eb_emit_event() {
             + (if $seq != "" then {seq: $seq} else {} end)
             + (if $unit != "" then {unit: $unit} else {} end))')" || return 0
 
-    # Single-writer JSONL via flock
+    # Single-writer JSONL via flock. A brace group, not a subshell: the lock is
+    # on fd 9's open file, held until the group closes it, and no shell is copied.
     if zbuild_has_flock; then
-        (
-            flock -w 5 9 || exit 1
-            echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
-        ) 9>"${ZBUILD_EVENTS_JSONL}.lock"
+        {
+            flock -w 5 9 && echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
+        } 9>"${ZBUILD_EVENTS_JSONL}.lock"
     else
         # Best-effort fallback
         echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
