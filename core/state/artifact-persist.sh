@@ -184,15 +184,23 @@ _artifact_persist_branch() {
 # refs/heads/zbuild/state/issue-N` would land in that worktree's ref view rather
 # than the shared store, so the next run would not find the state branch.
 # --git-common-dir returns the shared dir for both a main tree and a worktree.
-_artifact_persist_git_dir() {
-    local repo_root="${1:-}"
-    local d
-    d="$(git -C "$repo_root" rev-parse --git-common-dir 2>/dev/null)" || { printf '%s/.git' "$repo_root"; return 0; }
+_artifact_persist_git_dir() { local _apgd; _artifact_persist_git_dir_v _apgd "${1:-}"; printf '%s' "$_apgd"; }
+# _artifact_persist_git_dir_v <var> <repo_root> — the same into <var>, asked of
+# git once per repo per shell: the shared git dir does not move (ADR-065 §5).
+declare -gA _AP_GIT_DIR_MEMO=()
+_artifact_persist_git_dir_v() {
+    local -n _apgv="$1"
+    local repo_root="${2:-}" d
+    if [[ -n "${_AP_GIT_DIR_MEMO[$repo_root]:-}" ]]; then _apgv="${_AP_GIT_DIR_MEMO[$repo_root]}"; return 0; fi
+    if ! d="$(git -C "$repo_root" rev-parse --git-common-dir 2>/dev/null)"; then
+        _apgv="$repo_root/.git"; return 0   # not remembered: a failure may pass
+    fi
     # --git-common-dir may be relative to repo_root (commonly ".git").
     case "$d" in
-        /*) printf '%s' "$d" ;;
-        *)  printf '%s/%s' "$repo_root" "$d" ;;
+        /*) _apgv="$d" ;;
+        *)  _apgv="$repo_root/$d" ;;
     esac
+    _AP_GIT_DIR_MEMO[$repo_root]="$_apgv"
 }
 
 # ─── _artifact_persist_stage_batch <git_dir> <index> (#2249) ─────────────────
@@ -242,7 +250,7 @@ _artifact_persist_snapshot() {
     # tested `-d "$repo_root/.git"`, which is FALSE in a linked worktree (.git is
     # a file there), so persistence would silently no-op inside a worktree.
     local _gd=""
-    [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
+    [[ -n "$repo_root" ]] && _artifact_persist_git_dir_v _gd "$repo_root"
     # #1878: this is NOT "nothing to do" — it means we could not resolve a repo to
     # persist INTO, which is a real failure the caller must be able to see. It
     # used to `return 0`, which the runner reported as a successful snapshot.
@@ -431,7 +439,7 @@ _artifact_persist_adopt_remote() {
     }
 
     local _gd=""
-    [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
+    [[ -n "$repo_root" ]] && _artifact_persist_git_dir_v _gd "$repo_root"
     if [[ -z "$repo_root" || ! -d "$_gd" ]]; then
         _ARTIFACT_PERSIST_LAST_STATUS="failed"
         _ARTIFACT_PERSIST_LAST_REASON="unresolvable repo: repo_root=[${repo_root:-<empty>}] git_dir=[${_gd:-<empty>}]"
@@ -499,7 +507,7 @@ _artifact_persist_push() {
         return 0
     }
     local _gd=""
-    [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
+    [[ -n "$repo_root" ]] && _artifact_persist_git_dir_v _gd "$repo_root"
     if [[ -z "$repo_root" || ! -d "$_gd" ]]; then
         _ARTIFACT_PERSIST_LAST_STATUS="failed"
         _ARTIFACT_PERSIST_LAST_REASON="unresolvable repo: repo_root=[${repo_root:-<empty>}] git_dir=[${_gd:-<empty>}]"
@@ -547,7 +555,7 @@ _artifact_persist_restore() {
     #      worktree because .git is a file there — restore would silently no-op and
     #      prior artifacts would never come back, with no error to notice.
     local _gd=""
-    [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
+    [[ -n "$repo_root" ]] && _artifact_persist_git_dir_v _gd "$repo_root"
     [[ -z "$restored_dir" ]] && { _ARTIFACT_PERSIST_LAST_STATUS="failed"
         _ARTIFACT_PERSIST_LAST_REASON="no restored_dir given"; return 2; }
     if [[ -z "$repo_root" || ! -d "$_gd" ]]; then

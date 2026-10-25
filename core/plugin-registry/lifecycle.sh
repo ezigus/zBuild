@@ -546,7 +546,7 @@ plugin_hook_call() {
     # flow stage's run — one with a stage name and a job folder — is bounded.
     local _tl_marker="" _tl_secs=""
     if [[ "$hook_name" == "run" && -n "${ZBUILD_CURRENT_STAGE:-}" && "${2:-}" == /* ]]; then
-        _tl_secs="$(template_stage_time_limit "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
+        template_stage_time_limit_v _tl_secs "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true
         [[ "$_tl_secs" =~ ^[1-9][0-9]*$ ]] || _tl_secs=900
         _tl_marker="$(dirname "$2")/runtime/stage-time-limit.${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9._-]/_}"
         mkdir -p "${_tl_marker%/*}" 2>/dev/null || true

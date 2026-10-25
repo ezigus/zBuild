@@ -204,7 +204,8 @@ zbuild_run_branch_setup() {
         ZBUILD_RUN_UNTRACKED_AT_START="$untracked"
     # How far the branch is ahead of the default branch (earlier runs' work).
     local trunk ahead="unknown"
-    trunk="$(zbuild_resolve_default_branch "${ZBUILD_REPO_ROOT:-$PWD}")"
+    # _v: the trunk is remembered in the runner's shell for every later stage.
+    zbuild_resolve_default_branch_v trunk "${ZBUILD_REPO_ROOT:-$PWD}"
     [[ -n "$trunk" ]] && ahead="$(_rb_git rev-list --count "$trunk..$branch" 2>/dev/null || echo unknown)"
     _rb_emit "pipeline.branch.ready" "branch=$branch" "outcome=$ZBUILD_RUN_BRANCH_OUTCOME" \
         "start=$start" "ahead_count=$ahead"

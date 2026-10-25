@@ -28,7 +28,25 @@ _ZBUILD_DEFAULT_BRANCH_LOADED=1
 # is pinned to refs/remotes/origin/HEAD, so the answer is always "origin/<name>",
 # and <name> may itself contain slashes (e.g. "release/v2"). Stripping to the
 # last slash would truncate those to "v2".
+# A found trunk is remembered per repo in this shell, and every `$( )` copy of
+# it inherits the memo (ADR-065 §5): fill it with the _v form in the runner's
+# own shell. An unresolved trunk is not remembered — it may appear later.
+declare -gA _ZB_DEFAULT_BRANCH_MEMO=()
+zbuild_resolve_default_branch_v() {   # <var> [<repo>]
+    local -n _zrdb="$1"; _zrdb=""
+    local _r="${2:-$PWD}"
+    if [[ -n "${_ZB_DEFAULT_BRANCH_MEMO[$_r]:-}" ]]; then _zrdb="${_ZB_DEFAULT_BRANCH_MEMO[$_r]}"; return 0; fi
+    _zrdb="$(_zbuild_resolve_default_branch_uncached "$_r")"
+    _zrdb="${_zrdb%$'\n'}"
+    [[ -n "$_zrdb" ]] && _ZB_DEFAULT_BRANCH_MEMO[$_r]="$_zrdb"
+    return 0
+}
 zbuild_resolve_default_branch() {
+    local _r="${1:-$PWD}"
+    if [[ -n "${_ZB_DEFAULT_BRANCH_MEMO[$_r]:-}" ]]; then printf '%s\n' "${_ZB_DEFAULT_BRANCH_MEMO[$_r]}"; return 0; fi
+    _zbuild_resolve_default_branch_uncached "$_r"
+}
+_zbuild_resolve_default_branch_uncached() {
     local repo="${1:-$PWD}"
     local ref
     ref="$(git -C "$repo" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)"
