@@ -241,6 +241,8 @@ _cycle_on_signal() {
     local sig="$1" word="sigint"
     [[ "$sig" == "SIGTERM" ]] && word="sigterm"
     _zbuild_arm_abort_sentinel "$word"
+    # ADR-054 §7: the member running now is stopped, not waited out.
+    declare -F plugin_stop_running >/dev/null 2>&1 && plugin_stop_running
     _CYCLE_LAST_TERMINATED_REASON="aborted"
     eb_emit_event "cycle.aborted" \
         "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \

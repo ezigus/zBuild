@@ -191,6 +191,39 @@ _lc_kill_tree() {
     kill "-$sig" "$p" 2>/dev/null || true
 }
 
+# _lc_tree <pid> — the pid and every process under it, parent first.
+_lc_tree() {
+    local c
+    printf '%s ' "$1"
+    for c in $(pgrep -P "$1" 2>/dev/null); do _lc_tree "$c"; done
+}
+
+# plugin_stop_running — stop the stage plugin_hook_call is waiting on, and all
+# it started (ADR-054 §7): TERM, then KILL after 2s for what ignores TERM. Its
+# rc is left in _ZB_LC_STAGE_RC. A no-op when no stage is running.
+_ZB_LC_STAGE_PID=""
+_ZB_LC_STAGE_RC=0
+plugin_stop_running() {
+    local p="${_ZB_LC_STAGE_PID:-}" tree w
+    [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null || return 0
+    _ZB_LC_STAGE_PID=""
+    tree="$(_lc_tree "$p")"
+    # shellcheck disable=SC2086  # a list of pids
+    kill -TERM $tree 2>/dev/null || true
+    # shellcheck disable=SC2086
+    ( sleep 2; kill -KILL $tree 2>/dev/null ) >/dev/null 2>&1 &
+    w=$!
+    # A repeat signal cuts `wait` short; the stage still gets its 2s.
+    while kill -0 "$p" 2>/dev/null; do
+        _ZB_LC_STAGE_RC=0; wait "$p" 2>/dev/null || _ZB_LC_STAGE_RC=$?
+    done
+    kill "$w" 2>/dev/null; wait "$w" 2>/dev/null || true
+    # What ignored TERM and outlived the stage's shell (#2333's lesson).
+    # shellcheck disable=SC2086
+    kill -KILL $tree 2>/dev/null || true
+    return 0
+}
+
 # ─── plugin_hook_call ───────────────────────────────────────────────────────
 # Source the plugin's plugin.sh and call a lifecycle hook by name.
 # Plugin functions are isolated by sub-shell to prevent namespace pollution.
@@ -507,7 +540,9 @@ plugin_hook_call() {
     fi
 
     # Run in a subshell to isolate plugin's variables/functions. It runs in the
-    # foreground, as it always has: signals reach the runner on the same terms.
+    # background and is waited on (ADR-054 §7): bash runs a trap only once the
+    # foreground command returns, so a stage in the foreground kept a SIGTERM to
+    # the runner waiting until the stage chose to end.
     local _tl_wd="" _tl_pidf=""
     if [[ -n "$_tl_marker" ]]; then
         # The watchdog: when the time is up it records the limit, says so, and
@@ -526,7 +561,7 @@ plugin_hook_call() {
         ) &
         _tl_wd=$!
     fi
-    local rc=0
+    local rc=0 _lc_pid _lc_prev="${_ZB_LC_STAGE_PID:-}"
     (
         [[ -n "$_tl_pidf" ]] && printf '%s' "$BASHPID" > "$_tl_pidf"
         # shellcheck disable=SC1090
@@ -537,7 +572,17 @@ plugin_hook_call() {
             echo "plugin_hook_call: function $hook_fn not defined in $plugin_sh" >&2
             exit 1
         fi
-    ) || rc=$?
+    ) 0<&0 &
+    _lc_pid=$!
+    _ZB_LC_STAGE_PID="$_lc_pid"
+    # A trap cuts `wait` short; whether that stops the stage is the trap's
+    # call (plugin_stop_running). Until the stage has ended, keep waiting.
+    while :; do
+        rc=0; wait "$_lc_pid" || rc=$?
+        [[ -z "$_ZB_LC_STAGE_PID" ]] && { rc=$_ZB_LC_STAGE_RC; break; }
+        kill -0 "$_lc_pid" 2>/dev/null || break
+    done
+    _ZB_LC_STAGE_PID="$_lc_prev"
     if [[ -n "$_tl_wd" ]]; then
         kill -TERM "$_tl_wd" 2>/dev/null; wait "$_tl_wd" 2>/dev/null || true
         rm -f "$_tl_pidf" 2>/dev/null || true

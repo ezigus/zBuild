@@ -2482,7 +2482,11 @@ main() {
                   sleep 2; kill -KILL -- -"$_ar_pid" 2>/dev/null || true ) &
                 _wd_pid=$!
                 set +m
-                wait "$_ar_pid" 2>/dev/null || true
+                # A signal to the run's group (`timeout` sends its TERM there a
+                # second time) must not end this wait, or the KILL below would
+                # stop the stage before its bound.
+                trap ':' INT TERM  # waits out a repeat signal (above)
+                while kill -0 "$_ar_pid" 2>/dev/null; do wait "$_ar_pid" 2>/dev/null || true; done
                 # #2333: the leader exiting does not mean its group did. A member
                 # that ignored TERM would lose its KILL when the watchdog is
                 # cancelled below, so KILL the group now; a no-op when it is gone.
@@ -2495,6 +2499,9 @@ main() {
     }
 
     _runner_abort_trap() {
+        # ADR-054 §7: a signal ends the run while a stage is still running;
+        # stop it, and all it started, before anything else.
+        declare -F plugin_stop_running >/dev/null 2>&1 && plugin_stop_running
         # #1829: free live resources first, while the state file and the
         # process tree are still intact.
         _runner_dispatch_always_run
@@ -2600,8 +2607,8 @@ main() {
         #   (a) the flag is OPT-IN (default OFF, byte-identical to today);
         #   (b) the router's Wave 15-G PG-kill already handles the slow
         #       claude-spawning path (the realistic blocker);
-        #   (c) future waves will background plugin dispatch, at which
-        #       point this trap loop becomes the primary kill path.
+        #   (c) plugin dispatch now runs in the background (ADR-054 §7), so
+        #       the trap runs at once and plugin_stop_running stops the stage.
         if [[ "${ZBUILD_RUNNER_JOB_CONTROL:-0}" == "1" ]]; then
             local _child_pid _pgid _pgids_snapshot="" _self_pgid=""
             # Resolve the runner's own PGID so we never signal it (would
