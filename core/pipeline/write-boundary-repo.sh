@@ -76,7 +76,7 @@ _wb_declares_repo_writes() {
             continue
         fi
         (( _in )) && [[ "$_l" =~ $_flag ]] && return 0
-    done < "$_mf" 2>/dev/null
+    done 2>/dev/null < "$_mf"
     return 1
 }
 
