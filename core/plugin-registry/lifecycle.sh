@@ -203,8 +203,17 @@ _lc_tree() {
 # rc is left in _ZB_LC_STAGE_RC. A no-op when no stage is running.
 _ZB_LC_STAGE_PID=""
 _ZB_LC_STAGE_RC=0
+_ZB_LC_WATCHDOG_PID=""
 plugin_stop_running() {
     local p="${_ZB_LC_STAGE_PID:-}" tree w
+    # The stage's time-limit watchdog goes with it: a trap that exits after
+    # this never reaches the line in plugin_hook_call that stops it, and the
+    # watchdog would sleep out the limit, then signal a pid that may be another
+    # process's by then.
+    if [[ -n "${_ZB_LC_WATCHDOG_PID:-}" ]]; then
+        kill -TERM "$_ZB_LC_WATCHDOG_PID" 2>/dev/null; wait "$_ZB_LC_WATCHDOG_PID" 2>/dev/null
+        _ZB_LC_WATCHDOG_PID=""
+    fi
     [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null || return 0
     _ZB_LC_STAGE_PID=""
     tree="$(_lc_tree "$p")"
@@ -561,6 +570,8 @@ plugin_hook_call() {
         ) &
         _tl_wd=$!
     fi
+    local _lc_wd_prev="${_ZB_LC_WATCHDOG_PID:-}"
+    [[ -n "$_tl_wd" ]] && _ZB_LC_WATCHDOG_PID="$_tl_wd"
     local rc=0 _lc_pid _lc_prev="${_ZB_LC_STAGE_PID:-}"
     (
         [[ -n "$_tl_pidf" ]] && printf '%s' "$BASHPID" > "$_tl_pidf"
@@ -583,6 +594,7 @@ plugin_hook_call() {
         kill -0 "$_lc_pid" 2>/dev/null || break
     done
     _ZB_LC_STAGE_PID="$_lc_prev"
+    _ZB_LC_WATCHDOG_PID="$_lc_wd_prev"
     if [[ -n "$_tl_wd" ]]; then
         kill -TERM "$_tl_wd" 2>/dev/null; wait "$_tl_wd" 2>/dev/null || true
         rm -f "$_tl_pidf" 2>/dev/null || true

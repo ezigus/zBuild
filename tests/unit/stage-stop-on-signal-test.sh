@@ -11,6 +11,10 @@
 # S2 [guard]  a shell that only catches a signal (a repeat TERM during
 #             teardown) keeps waiting: the stage finishes and its rc stands
 # S3 [guard]  plugin_stop_running with no stage running is a no-op
+# S4 [change] a trap that stops the stage and exits (the runner's) stops the
+#             stage's time-limit watchdog too: it was left sleeping out the
+#             limit (15 min by default), then signalled a pid that may belong
+#             to another process by then
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,6 +91,32 @@ export SLOW_SECS=1 SLOW_RC=7
 _drive "trap ':' INT TERM"
 assert_file_exists "[S2] the stage ran to its end" "$SLOW_DONE_FILE"
 assert_eq "[S2] …and its rc is what plugin_hook_call returns" "7" "$(cat "$TEST_TEMP_DIR/out" 2>/dev/null)"
+
+print_test_section "S4: the time-limit watchdog stops with the stage"
+# A distinctive limit, so the watchdog's sleep can be told from any other.
+TPL="$TEST_TEMP_DIR/tpl.yaml"
+printf 'stages:\n  - slow\nslow:\n  timeout_s: 987\n' > "$TPL"
+export _TPL_SOURCE_FILE="$TPL" SLOW_SECS=30 SLOW_RC=0
+rm -f "$SLOW_PID_FILE"
+(
+    trap 'plugin_stop_running; exit 143' TERM
+    ZBUILD_CURRENT_STAGE=slow plugin_hook_call "$PLUGIN_DIR" run slow "$STATE_FILE" >/dev/null 2>&1
+) &
+_s4=$!
+for _ in $(seq 1 100); do [[ -s "$SLOW_PID_FILE" ]] && break; sleep 0.05; done
+_wd_before="$(pgrep -f '^sleep 987$' 2>/dev/null || true)"
+assert_eq "[S4] the stage is bounded: its watchdog is running" "1" "$([[ -n "$_wd_before" ]] && echo 1 || echo 0)"
+kill -TERM "$_s4" 2>/dev/null || true
+wait "$_s4" 2>/dev/null || true
+_wd=""
+for _ in $(seq 1 20); do _wd="$(pgrep -f '^sleep 987$' 2>/dev/null || true)"; [[ -z "$_wd" ]] && break; sleep 0.1; done
+if [[ -n "$_wd" ]]; then
+    assert_fail "[S4] no watchdog outlives the stopped stage" "sleep 987 still running (pid $_wd)"
+    for _p in $_wd; do pkill -KILL -P "$(ps -o ppid= -p "$_p" | tr -d ' ')" 2>/dev/null; kill -KILL "$(ps -o ppid= -p "$_p" | tr -d ' ')" "$_p" 2>/dev/null; done
+else
+    assert_pass "[S4] no watchdog outlives the stopped stage"
+fi
+unset _TPL_SOURCE_FILE
 
 print_test_section "S3: nothing running"
 _ZB_LC_STAGE_PID=""
