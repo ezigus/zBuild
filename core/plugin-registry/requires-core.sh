@@ -257,8 +257,13 @@ requires_core_check() {
     local found=0
 
     local kind; yaml_get_v kind "$manifest" "kind" 2>/dev/null || true
-    # Parsed once, here, and handed to the resolver (ADR-065).
-    local declared; declared="$(_yaml_get_requires_core_list "$manifest")"
+    # Parsed once, here, and handed to the resolver (ADR-065) — and only when
+    # something reads it: the redaction rule (agents), or the resolver, which
+    # reads <dir>/manifest.yaml.
+    local declared=""
+    if [[ "$kind" == "agent" || -f "$plugin_dir/manifest.yaml" ]]; then
+        declared="$(_yaml_get_requires_core_list "$manifest")"
+    fi
     if [[ "$kind" == "agent" ]]; then
         # A whole line `redaction`, as `grep -Fx` matched it.
         if [[ $'\n'"$declared"$'\n' != *$'\n'redaction$'\n'* ]]; then
