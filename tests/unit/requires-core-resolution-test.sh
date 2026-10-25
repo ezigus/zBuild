@@ -493,6 +493,23 @@ _fx_persona_redaction="$(_fixture_nosh persona-redaction 'requires:
 assert_eq "[SPEC-13] a conditional entry is vacuous with no plugin.sh to reach a model" \
     "" "$(_unresolved_entries "$_fx_persona_redaction")"
 
+# ─── SPEC-14: what one check starts (ADR-065) ───────────────────────────────
+# Every manifest in a discovery walk goes through requires_core_check. Its
+# plugin.sh is read with comments stripped once, whatever the number of entries
+# and providers asked about, and the plugin dir is the manifest's own path.
+print_test_section "[SPEC-14] one check strips plugin.sh once and starts no dirname"
+_fx_cost="$(_fixture cost-check agent "$_REQ_ROUTER" "$_BODY_CALLS_AND_SOURCES")"
+_SHIM14="$TEST_TEMP_DIR/shim14"; mkdir -p "$_SHIM14"; _LOG14="$TEST_TEMP_DIR/execs14.log"
+for _c in sed dirname; do
+    printf '#!/bin/sh\nprintf "%%s\\n" %s >> "%s"\nexec "%s" "$@"\n' "$_c" "$_LOG14" "$(command -v "$_c")" > "$_SHIM14/$_c"
+    chmod +x "$_SHIM14/$_c"
+done
+: > "$_LOG14"
+_out14="$(PATH="$_SHIM14:$PATH" requires_core_check "$_fx_cost/manifest.yaml")"; _rc14=$?
+assert_eq "[SPEC-14] the plugin resolves (router and redaction both sourced)" "0|" "$_rc14|$_out14"
+assert_eq "[SPEC-14] plugin.sh is stripped once" "1" "$(grep -cx sed "$_LOG14" || true)"
+assert_eq "[SPEC-14] no dirname" "0" "$(grep -cx dirname "$_LOG14" || true)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
