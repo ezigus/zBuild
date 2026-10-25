@@ -120,6 +120,23 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 >   reads the collision guard's run id, status and age with one `jq` against the shell's clock (no
 >   `dirname`, `mktemp`, `cp` or `date`).
 
+> **Amended 2026-10-25 (round 5): per-stage chores read once.** Sourcing the engine starts no
+> process; a mocked run's programs came from chores repeated for every stage, file or event:
+> - Persist's secret scan ran five programs per artifact file. It now runs two `grep`s over the
+>   whole directory, and the per-file check only on the files they name, in the same order, so
+>   the reported file and kind are unchanged.
+> - The attempt record sums only outputs that can compare (one that exists now and had a sum
+>   before), reads the manifest once per dispatch, and is written by one `jq`.
+> - `atomic_write` opens its temp file with the mode it must end with, so a mode without an
+>   execute bit needs no `chmod`; `atomic_replace` makes its temp name in the shell.
+> - An event whose fields are plain ASCII is written by the shell, byte for byte as `jq` would
+>   write it; anything else still goes through `jq`. The lock stays: one append is not one atomic
+>   write for a long line.
+> - A router-knob lookup is one `awk`; a requires.core check strips `plugin.sh` once and parses
+>   the list once.
+>
+> A mocked run went from 3,955 programs to 3,098, and from 5,852 processes to 5,255.
+
 > **Amended 2026-10-24: more of the named sites are one pass.** The budget's run is one mocked
 > pipeline (4,808 programs), but a single test file started up to 22,701, because tests run the same
 > engine paths many times. `scripts/lib/fork-census.sh <cmd...>` now counts any command, with the
@@ -222,4 +239,5 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 - §1, §2 (amended 2026-10-24, round 3: processes) → `tests/unit/fork-census-test.sh` SPEC-4 (subshells are counted as processes); `tests/e2e/fork-budget-test.sh` SPEC-7 (the mocked run's processes are within `PROCESS_BUDGET`)
 - §3 (amended 2026-10-24, round 3) → `tests/unit/yaml-get-cache-test.sh` SPEC-12 (`yaml_get_v` matches `$(yaml_get)`), SPEC-13 (a miss fills the calling shell's cache); `tests/unit/output-paths-resolve-test.sh` SPEC-1/2; `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row costs one process); `tests/unit/discover-plugins-memo-test.sh` SPEC-9 (a shared memo directory), SPEC-10 (a warm lookup costs one process); `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-7 (no `cksum`, and a hit only under its own root); `tests/unit/run-tests-schedule-test.sh` SPEC-7 (one memo directory per run, removed after it)
 - §5 (amended 2026-10-24, round 4: no SQLite mirror) → `tests/unit/event-bus-emit-cost-test.sh` E2 (an emit given a db path starts no `sqlite3`, takes one lock and writes no `events.db`); `tests/unit/core-event-bus-test.sh` (no `events.db` or its lock is written)
+- §5 (amended 2026-10-25, round 5: per-stage chores read once) → `tests/unit/persist-secret-scan-cost-test.sh` C1 (a clean dir costs two greps), C2 (only a matching file is read on its own), C3 (the finding is unchanged); `tests/unit/attempt-archive-cost-test.sh` C1 (what one record starts), C2 (no `$( )` copies), C3 (changed/unchanged/new still right); `tests/unit/helpers-cost-test.sh` H1 (no repeat `mkdir`), H2 (`atomic_replace` starts `cp` and `mv` only), H3 (the copy keeps its mode); `tests/unit/event-bus-emit-cost-test.sh` E1 (no `jq` for a plain-ASCII emit), E6 (the line is byte for byte what `jq` writes); `tests/unit/router-manifest-budget-test.sh` SPEC-8b (one lookup, one `awk`); `tests/unit/requires-core-resolution-test.sh` SPEC-14 (one check strips and parses once)
 - §5 (amended 2026-10-24, round 4: only needed calls) → `tests/unit/atomic-write-cost-test.sh` W1 (replacing a file starts cat, one stat, chmod and mv), W2 (a `.bak` only with `--bak`), W3 (modes kept), W4 (a write that cannot start refuses and drains stdin); `tests/integration/state-collision-guard-test.sh` "cost" (one guarded update: no dirname or date, two jqs, and mktemp and cp only for the `.bak`)

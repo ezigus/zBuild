@@ -57,6 +57,12 @@ All persisted state is written via `core/state/atomic_write`, which:
 > opened by the shell with noclobber (exclusive, as `mktemp`'s was). The `.bak` is rotated only by
 > the state writers (`atomic_write --bak`, used by `locked_state_update` and `init_state`), the
 > only files the `.bak` recovery reads; other files keep no `.bak`.
+>
+> **Amended 2026-10-25 (ADR-065 §5, round 5).** The temp file is opened with the mode it must end
+> with (the target's, or 0600 for a new file), so no `chmod` follows unless the mode has an
+> execute bit. `atomic_replace` makes its unique temp name in the shell and claims it with
+> noclobber, and copies with `cp -p`, so a state file's `.bak` keeps the state's 0600. Guarded by
+> `tests/unit/atomic-write-cost-test.sh` W1/W3 and `tests/unit/helpers-cost-test.sh` H2/H3.
 
 Reads use `validate_json`; corruption triggers `.bak` recovery. (KEEPERS §C additions 1–2 lift these into the hot path.)
 

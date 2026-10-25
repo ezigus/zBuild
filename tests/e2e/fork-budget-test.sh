@@ -69,8 +69,11 @@ setup_test_env "fork-budget"
 # 4380 (round 3: discovery's tree check is one find; status rows and output
 # paths fill variables) — measured 4,312 macOS. 4020 (round 4: atomic_write
 # has no df or mktemp and keeps a .bak only for state; a state update has no
-# dirname, mktemp, cp or date) — measured 3,955 macOS.
-FORK_BUDGET=4020
+# dirname, mktemp, cp or date) — measured 3,955 macOS. 3160 (round 5: persist's
+# secret scan greps the dir, not each file; the attempt record sums only what
+# can compare; a plain-ASCII event line is written by the shell; a router-knob
+# lookup and a requires.core check each read once) — measured 3,098 macOS.
+FORK_BUDGET=3160
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -78,8 +81,9 @@ FORK_BUDGET=4020
 # main before it measured 8,331). 6220 (round 3: output paths, status-row
 # times, discovery's tree check and the manifest_graph memo name fill variables
 # instead of subshells — measured 6,139 macOS). 6000 (round 4, the same
-# changes — measured 5,930 macOS).
-PROCESS_BUDGET=6000
+# changes — measured 5,930 macOS). 5330 (round 5, the same changes — measured
+# 5,255 macOS).
+PROCESS_BUDGET=5330
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh
