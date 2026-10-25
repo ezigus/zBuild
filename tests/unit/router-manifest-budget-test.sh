@@ -301,6 +301,21 @@ assert_eq "does not read a top-level router: block" \
 assert_eq "tier_default is not a router knob" \
     "" "$(manifest_router_knob "$_FIX/declares/manifest.yaml" tier_default)"
 
+# ADR-065: a stage's model call looks up several knobs; each lookup is one
+# parse, not a parse piped into a second awk.
+print_test_section "[SPEC-8b] one lookup starts one awk; the first declaration wins"
+_SHIM="$TEST_TEMP_DIR/awk-shim"; mkdir -p "$_SHIM"
+_AWK_LOG="$TEST_TEMP_DIR/awk.log"; : > "$_AWK_LOG"
+printf '#!/bin/sh\nprintf "awk\\n" >> "%s"\nexec "%s" "$@"\n' "$_AWK_LOG" "$(command -v awk)" > "$_SHIM/awk"
+chmod +x "$_SHIM/awk"
+_v8b="$(PATH="$_SHIM:$PATH" manifest_router_knob "$_FIX/declares/manifest.yaml" max_turns)"
+assert_eq "[SPEC-8b] the value is read" "45" "$_v8b"
+assert_eq "[SPEC-8b] …by one awk" "1" "$(grep -c . "$_AWK_LOG" || true)"
+mkdir -p "$_FIX/twice"
+printf 'id: twice\nkind: agent\nconfig:\n  router:\n    retries: 2\n    retries: 3\n' > "$_FIX/twice/manifest.yaml"
+assert_eq "[SPEC-8b] a key declared twice reads its first value" \
+    "2" "$(manifest_router_knob "$_FIX/twice/manifest.yaml" retries)"
+
 # ─── SPEC-9 validate_manifest is the loud gate ───────────────────────────────
 print_test_section "[SPEC-9] validate_manifest accepts a well-formed block, rejects a malformed one"
 

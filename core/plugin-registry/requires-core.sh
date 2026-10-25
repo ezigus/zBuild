@@ -120,7 +120,9 @@ requires_core_marker() {
 # requires_core_providers <entry> — repo-relative paths, one per line.
 requires_core_providers() {
     local row; row="$(_requires_core_row "${1:-}")" || return 1
-    printf '%s\n' "${row##*|}" | tr ',' '\n'
+    local -a provs=()
+    IFS=, read -ra provs <<< "${row##*|}"
+    printf '%s\n' "${provs[@]}"
 }
 
 # ─── _requires_core_code <file> — the file with comments removed ────────────
@@ -133,8 +135,10 @@ _requires_core_code() {
     sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]#.*$//' "$1" 2>/dev/null
 }
 
-# _requires_core_sources <file> <provider> — rc 0 when <file> has a real source
-# line naming <provider>. Comment-stripped first, so a bare `# shellcheck
+# _requires_core_sources <code> <provider> — rc 0 when <code> (a plugin.sh as
+# _requires_core_code prints it) has a real source line naming <provider>. The
+# caller strips the file once for every entry and provider it asks about
+# (ADR-065). Comment-stripped first, so a bare `# shellcheck
 # source=` directive never counts as the real thing (the exact false accept the
 # #2063 guard's SPEC-6 fixture exists to rule out).
 #
@@ -152,19 +156,18 @@ _requires_core_code() {
 # future provider needs a metacharacter, that assertion fails loudly and the
 # escaping gets written then.
 _requires_core_sources() {
-    local code; code="$(_requires_core_code "$1")"
+    local code="$1"
     grep -qE "^[[:space:]]*(source|\.)[[:space:]]+.*${2//./\\.}([\"'[:space:]]|$)" <<<"$code"
 }
 
-# _requires_core_reaches_model <file> — rc 0 when route_to_model survives
+# _requires_core_reaches_model <code> — rc 0 when route_to_model survives
 # comment stripping. Substring, not whole word: route_to_model_loop is the same
 # function from the same file, and build/design reach the model only through it.
 _requires_core_reaches_model() {
-    local code; code="$(_requires_core_code "$1")"
-    grep -qF 'route_to_model' <<<"$code"
+    [[ "$1" == *route_to_model* ]]
 }
 
-# ─── requires_core_unresolved <plugin_dir> ──────────────────────────────────
+# ─── requires_core_unresolved <plugin_dir> [entries] ────────────────────────
 # The resolver. Prints one `<entry><TAB><reason>` line per declared entry that
 # cannot be satisfied, and returns 1 if there were any.
 #
@@ -176,7 +179,9 @@ requires_core_unresolved() {
     local manifest="$plugin_dir/manifest.yaml"
     [[ -f "$manifest" ]] || return 0
 
-    local entries; entries="$(_yaml_get_requires_core_list "$manifest")"
+    # [entries]: the requires.core list, when the caller has already parsed it.
+    local entries
+    if [[ $# -ge 2 ]]; then entries="$2"; else entries="$(_yaml_get_requires_core_list "$manifest")"; fi
     [[ -n "$entries" ]] || return 0
 
     # Providers are stated repo-relative and matched against the TEXT of the
@@ -186,6 +191,8 @@ requires_core_unresolved() {
     # re-asked here; the table's own paths are checked by this file's SPEC-9.
     local plugin_sh="$plugin_dir/plugin.sh"
 
+    # plugin.sh with comments stripped, read once on first need (ADR-065).
+    local code="" code_read=""
     local found=0 entry class prov satisfied prov_list
     while IFS= read -r entry; do
         [[ -n "$entry" ]] || continue
@@ -203,7 +210,8 @@ requires_core_unresolved() {
         # `redaction` binds only on a path that actually reaches a model.
         if [[ "$class" == "conditional" ]]; then
             [[ -f "$plugin_sh" ]] || continue
-            _requires_core_reaches_model "$plugin_sh" || continue
+            [[ -n "$code_read" ]] || { code="$(_requires_core_code "$plugin_sh")"; code_read=1; }
+            _requires_core_reaches_model "$code" || continue
         fi
 
         satisfied=0
@@ -211,7 +219,9 @@ requires_core_unresolved() {
         while IFS= read -r prov; do
             [[ -n "$prov" ]] || continue
             prov_list="${prov_list:+$prov_list or }$prov"
-            [[ -f "$plugin_sh" ]] && _requires_core_sources "$plugin_sh" "$prov" && satisfied=1
+            [[ -f "$plugin_sh" ]] || continue
+            [[ -n "$code_read" ]] || { code="$(_requires_core_code "$plugin_sh")"; code_read=1; }
+            _requires_core_sources "$code" "$prov" && satisfied=1
         done < <(requires_core_providers "$entry")
 
         if [[ "$satisfied" -eq 0 ]]; then
@@ -241,13 +251,22 @@ requires_core_unresolved() {
 requires_core_check() {
     local manifest="${1:-}"
     [[ -f "$manifest" ]] || return 0
-    local plugin_dir; plugin_dir="$(dirname "$manifest")"
+    # The manifest's own directory, without a dirname process (ADR-065).
+    local plugin_dir="."
+    [[ "$manifest" == */* ]] && plugin_dir="${manifest%/*}"
     local found=0
 
     local kind; yaml_get_v kind "$manifest" "kind" 2>/dev/null || true
+    # Parsed once, here, and handed to the resolver (ADR-065) — and only when
+    # something reads it: the redaction rule (agents), or the resolver, which
+    # reads <dir>/manifest.yaml.
+    local declared=""
+    if [[ "$kind" == "agent" || -f "$plugin_dir/manifest.yaml" ]]; then
+        declared="$(_yaml_get_requires_core_list "$manifest")"
+    fi
     if [[ "$kind" == "agent" ]]; then
-        local declared; declared="$(_yaml_get_requires_core_list "$manifest")"
-        if ! grep -Fxq "redaction" <<< "$declared"; then
+        # A whole line `redaction`, as `grep -Fx` matched it.
+        if [[ $'\n'"$declared"$'\n' != *$'\n'redaction$'\n'* ]]; then
             printf 'redaction\tis MUST for kind: agent and is not declared inside requires.core (ADR-004; got: %s)\n' \
                 "$(echo "$declared" | tr '\n' ',' | sed 's/,$//')"
             found=1
@@ -259,7 +278,7 @@ requires_core_check() {
         [[ -n "$line" ]] || continue
         printf '%s\n' "$line"
         found=1
-    done < <(requires_core_unresolved "$plugin_dir")
+    done < <(requires_core_unresolved "$plugin_dir" "$declared")
 
     return "$found"
 }

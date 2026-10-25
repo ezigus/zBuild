@@ -16,7 +16,7 @@ p = pathlib.Path("core/plugin-registry/requires-core.sh")
 src = p.read_text()
 # Neutralise the redaction check: replace the failing branch with a no-op return
 new = src.replace(
-    'if ! grep -Fxq "redaction" <<< "$declared"; then',
+    'if [[ $\'\\n\'"$declared"$\'\\n\' != *$\'\\n\'redaction$\'\\n\'* ]]; then',
     'if false; then  # mutation: ADR-004 redaction check disabled',
     1,
 )

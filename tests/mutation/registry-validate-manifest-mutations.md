@@ -16,7 +16,7 @@ import pathlib
 p = pathlib.Path("core/plugin-registry/requires-core.sh")
 src = p.read_text()
 new = src.replace(
-    'if ! grep -Fxq "redaction" <<< "$declared"; then',
+    'if [[ $\'\\n\'"$declared"$\'\\n\' != *$\'\\n\'redaction$\'\\n\'* ]]; then',
     'if false; then',
     1,
 )

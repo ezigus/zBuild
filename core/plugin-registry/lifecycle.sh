@@ -522,7 +522,7 @@ plugin_hook_call() {
     # record can say which ones the run actually changed. Fail-open.
     local _lc_outputs_before=""
     if [[ "$hook_name" == "run" ]] && declare -F attempt_outputs_fingerprint >/dev/null 2>&1; then
-        _lc_outputs_before="$(attempt_outputs_fingerprint "$plugin_dir" "${2:-}" 2>/dev/null || true)"
+        attempt_outputs_fingerprint_v _lc_outputs_before "$plugin_dir" "${2:-}" 2>/dev/null || true
     fi
 
     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"

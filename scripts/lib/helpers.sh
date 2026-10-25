@@ -44,15 +44,24 @@ error()   { echo -e "${RED}${BOLD}✗${RESET} $*" >&2; }
 # Copy src to a unique temp in dst's directory, then rename it into place. A
 # concurrent reader of dst never observes a torn intermediate (mv is an atomic
 # rename on a POSIX filesystem; the temp shares dst's dir → same filesystem).
-# Returns 1 (cleaning up the temp) on copy failure. Does NOT validate JSON,
-# check disk space, or preserve mode — callers own that. (#909 / ADR-006)
+# Returns 1 (cleaning up the temp) on copy failure. Does NOT validate JSON or
+# check disk space — callers own that. The copy keeps src's mode (`cp -p`), so a
+# state file's .bak stays 0600 as the state is. (#909 / ADR-006)
 atomic_replace() {
     local src="$1" dst="$2"
-    local tmp
+    local tmp="" _n _nc=0
     # Every failure path returns non-zero (never aborts a `set -e` caller) and
-    # leaves no stray temp.
-    tmp="$(mktemp "${dst}.tmp.XXXXXX")" || return 1
-    if ! cp -- "$src" "$tmp" 2>/dev/null; then
+    # leaves no stray temp. The temp's name is made by the shell and claimed with
+    # noclobber, so it is exclusive the way mktemp's was (ADR-065 §5).
+    [[ $- == *C* ]] && _nc=1
+    for _n in 1 2 3; do
+        tmp="${dst}.tmp.${BASHPID}.${RANDOM}${RANDOM}"
+        { set -C; : > "$tmp"; } 2>/dev/null && break
+        tmp=""
+    done
+    (( _nc )) || set +C
+    [[ -n "$tmp" ]] || return 1
+    if ! cp -p -- "$src" "$tmp" 2>/dev/null; then
         rm -f "$tmp"
         return 1
     fi
@@ -139,7 +148,7 @@ zbuild_engine_tmpdir() {
         printf '%s' "$ZBUILD_STAGE_SCRATCH"; return 0
     fi
     if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
-        if mkdir -p "${ZBUILD_STATE_DIR}/runtime" 2>/dev/null; then
+        if [[ -d "${ZBUILD_STATE_DIR}/runtime" ]] || mkdir -p "${ZBUILD_STATE_DIR}/runtime" 2>/dev/null; then
             printf '%s' "${ZBUILD_STATE_DIR}/runtime"; return 0
         fi
     fi
@@ -172,13 +181,26 @@ atomic_write() {
     # No free-space precheck: a full disk fails the write below, which leaves
     # the target untouched and says so (#1773). The temp file is opened by the
     # shell with noclobber, so it is exclusive the way mktemp's was.
+    #
+    # It is opened with the mode it must end with — the target's, or 600 for a
+    # new file — by setting the umask around the open, so no chmod follows
+    # (ADR-065 §5, round 5). A mode with an execute or special bit cannot come
+    # from a umask (a redirect creates 0666 at most), so that one still chmods.
+    local mode _um=""
+    _zb_target_mode_v mode "$target"
+    if [[ "$mode" =~ ^0?[0246]{3}$ ]]; then
+        # The process's own umask, read once: nothing in the engine changes it.
+        [[ -n "${_ZB_UMASK:-}" ]] || _ZB_UMASK="$(umask)"
+        printf -v _um '%03o' $(( 0777 & ~8#$mode ))
+    fi
     local tmp="" fd="" _n _nc=0
     [[ $- == *C* ]] && _nc=1
     for _n in 1 2 3; do
         tmp="${target}.tmp.$$.${RANDOM}${RANDOM}"
-        { set -C; exec {fd}>"$tmp"; } 2>/dev/null && break
+        { set -C; [[ -z "$_um" ]] || umask "$_um"; exec {fd}>"$tmp"; } 2>/dev/null && break
         fd=""
     done
+    [[ -z "$_um" ]] || umask "$_ZB_UMASK"
     (( _nc )) || set +C
     if [[ -z "$fd" ]]; then
         # Drain stdin BEFORE reporting the refusal (#1773): returning with it
@@ -204,7 +226,8 @@ atomic_write() {
         atomic_replace "$target" "${target}.bak" \
             || warn "atomic_write: .bak rotation failed for $target (best-effort, continuing)"
     fi
-    if ! replace_keep_mode "$tmp" "$target"; then
+    [[ -n "$_um" ]] || chmod "$mode" "$tmp" 2>/dev/null
+    if ! mv -f "$tmp" "$target"; then
         error "atomic_write: failed to move $tmp into place at $target"
         rm -f "$tmp"
         return 1
@@ -218,23 +241,31 @@ atomic_write() {
 # silently dropped its x bit — #2219, #2221 and #2223 each flipped test files to
 # 100644. A new target keeps <new_file>'s own mode.
 replace_keep_mode() {
-    local src="$1" target="$2" mode=""
-    if [[ -e "$target" ]]; then
+    local src="$1" target="$2" mode
+    _zb_target_mode_v mode "$target"
+    chmod "$mode" "$src" 2>/dev/null
+    mv -f "$src" "$target"
+}
+
+# _zb_target_mode_v <var> <target> — <target>'s permission bits, or 600 for a
+# file that is not there yet (what mktemp gave the temp file before).
+_zb_target_mode_v() {
+    local -n _tm_var="$1"
+    local _tm_t="$2" _tm=""
+    if [[ -e "$_tm_t" ]]; then
         # One stat in this platform's flavour, the other only when the answer
         # is not a mode. GNU reads `stat -f` as "file-system status" and prints
         # a block to stdout, which the check rejects (review #2229).
         if [[ "${ZBUILD_PLATFORM:-}" == "macos" ]]; then
-            mode="$(stat -f '%Lp' "$target" 2>/dev/null || true)"
-            [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode="$(stat -c '%a' "$target" 2>/dev/null || true)"
+            _tm="$(stat -f '%Lp' "$_tm_t" 2>/dev/null || true)"
+            [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm="$(stat -c '%a' "$_tm_t" 2>/dev/null || true)"
         else
-            mode="$(stat -c '%a' "$target" 2>/dev/null || true)"
-            [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode="$(stat -f '%Lp' "$target" 2>/dev/null || true)"
+            _tm="$(stat -c '%a' "$_tm_t" 2>/dev/null || true)"
+            [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm="$(stat -f '%Lp' "$_tm_t" 2>/dev/null || true)"
         fi
     fi
-    # A new target gets 0600, what mktemp gave the temp file before.
-    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode=600
-    chmod "$mode" "$src" 2>/dev/null
-    mv -f "$src" "$target"
+    [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm=600
+    _tm_var="$_tm"
 }
 
 # ─── JSON validation with .bak recovery ─────────────────────────────────────

@@ -2,7 +2,7 @@
 `core/event-bus/event-bus.sh` — `eb_emit_event` constructs an event envelope and writes it to the JSONL log. Omitting the `type` field from the envelope breaks the structured event contract: consumers that read `.type` see null/empty, causing any filter or assertion on event type to fail silently.
 
 ## Mutation
-Remove the `--arg type "$type"` binding and its usage from the `jq -cn` event-envelope constructor so the emitted JSONL object has no `type` field.
+Drop the `type` field from the envelope the shell writes for a plain-ASCII event (nearly every event since ADR-065 round 5; other bytes still go through `jq`), so the emitted JSONL object has no `type` field.
 
 ## Patch
 ```bash
@@ -11,15 +11,11 @@ import pathlib
 p = pathlib.Path("core/event-bus/event-bus.sh")
 src = p.read_text()
 new = src.replace(
-    '        --arg type "$type" \\\n',
+    '''        _eb_json_str_v _j "$type";   event_json+=",\\"type\\":$_j"\n''',
     "",
     1,
-).replace(
-    "'{ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}'",
-    "'{ts: $ts, run_id: $run_id, issue: $issue, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}'",
-    1,
 )
-assert new != src, "patch did not match the jq type-field binding"
+assert new != src, "patch did not match the shell-written type field"
 p.write_text(new)
 PY
 ```

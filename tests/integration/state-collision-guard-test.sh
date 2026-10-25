@@ -114,7 +114,8 @@ unset -f dirname mktemp cp date jq
 assert_eq "cost: a stale other run's file is updated" "0|7" "$_rc_c|$(jq -r .current_iteration "$STATE_FILE")"
 assert_eq "cost: no dirname or date" "0|0" "$(grep -c '^dirname$' "$_CALLS" || true)|$(grep -c '^date$' "$_CALLS" || true)"
 assert_eq "cost: one jq to validate and one for the guard (the update's own jq is not counted)" "2" "$(grep -c '^jq$' "$_CALLS" || true)"
-assert_eq "cost: mktemp and cp only for the .bak (one each)" "1|1" "$(grep -c '^mktemp$' "$_CALLS" || true)|$(grep -c '^cp$' "$_CALLS" || true)"
+# Round 5: the .bak's temp name is made by the shell, so no mktemp.
+assert_eq "cost: one cp and no mktemp for the .bak" "0|1" "$(grep -c '^mktemp$' "$_CALLS" || true)|$(grep -c '^cp$' "$_CALLS" || true)"
 
 cleanup_test_env
 print_test_results
