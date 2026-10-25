@@ -15,6 +15,10 @@
 #             stage's time-limit watchdog too: it was left sleeping out the
 #             limit (15 min by default), then signalled a pid that may belong
 #             to another process by then
+# S5 [change] …including a watchdog stopped before its own trap is set (the
+#             stop lands in its first lines): its sleep goes too, not only it
+# S6 [guard]  a stage that ends at once leaves no watchdog sleep behind either
+#             (plugin_hook_call's own stop had the same gap)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -117,6 +121,36 @@ else
     assert_pass "[S4] no watchdog outlives the stopped stage"
 fi
 unset _TPL_SOURCE_FILE
+
+print_test_section "S5: a watchdog with no trap yet loses its sleep too"
+# The watchdog's first lines start its sleep and set its trap; a stop landing
+# between them must not orphan the sleep. A stand-in with no trap at all:
+( sleep 986 & wait ) &
+_ZB_LC_WATCHDOG_PID=$!
+for _ in $(seq 1 50); do pgrep -f '^sleep 986$' >/dev/null 2>&1 && break; sleep 0.05; done
+_ZB_LC_STAGE_PID=""
+plugin_stop_running
+_left=""
+for _ in $(seq 1 20); do _left="$(pgrep -f '^sleep 986$' 2>/dev/null || true)"; [[ -z "$_left" ]] && break; sleep 0.1; done
+if [[ -n "$_left" ]]; then
+    assert_fail "[S5] the watchdog's sleep does not outlive it" "sleep 986 still running (pid $_left)"
+    kill -KILL $_left 2>/dev/null || true
+else
+    assert_pass "[S5] the watchdog's sleep does not outlive it"
+fi
+assert_eq "[S5] …and the watchdog pid is cleared" "" "${_ZB_LC_WATCHDOG_PID:-}"
+
+print_test_section "S6: instant stages leave no watchdog sleep"
+printf 'stages:\n  - slow\nslow:\n  timeout_s: 985\n' > "$TPL"
+export _TPL_SOURCE_FILE="$TPL" SLOW_SECS=0 SLOW_RC=0
+for _ in $(seq 1 40); do
+    ZBUILD_CURRENT_STAGE=slow plugin_hook_call "$PLUGIN_DIR" run slow "$STATE_FILE" >/dev/null 2>&1 || true
+done
+unset _TPL_SOURCE_FILE
+sleep 0.5
+_left="$(pgrep -f '^sleep 985$' 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[S6] 40 instant stages leave no watchdog sleep" "0" "$_left"
+pkill -KILL -f '^sleep 985$' 2>/dev/null || true
 
 print_test_section "S3: nothing running"
 _ZB_LC_STAGE_PID=""
