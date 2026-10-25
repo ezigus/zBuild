@@ -12,7 +12,7 @@
 # written by it; o2 exists and is rewritten with the same bytes; o3 exists and
 # is changed.
 #
-# C1 [change] the dispatch's record starts awk once (the manifest), cksum four
+# C1 [change] the dispatch's record starts no awk (the shell reads the manifest, round 7), cksum four
 #             times (o2 and o3, before and after), cp three times, mkdir and
 #             jq once each — nothing else
 # C2 [change] …and runs none of it in a `$( )` copy of the engine shell
@@ -92,8 +92,8 @@ fork_census_count "$TRACE" "$SITES" >/dev/null
 
 print_test_section "C1: the programs"
 _progs="$(awk -F'\t' 'index($2, "attempt-archive.sh:") == 1 { for (i = 0; i < $1; i++) print $3 }' "$SITES" | sort | tr '\n' ' ' | sed 's/ $//')"
-assert_eq "[C1] awk once, cksum ×4, cp ×3, jq and mkdir once" \
-    "awk cksum cksum cksum cksum cp cp cp jq mkdir" "$_progs"
+assert_eq "[C1] cksum ×4, cp ×3, jq and mkdir once (the manifest is read by the shell)" \
+    "cksum cksum cksum cksum cp cp cp jq mkdir" "$_progs"
 
 print_test_section "C2: no copy of the shell"
 # A `$( )` around a function copies the whole engine shell, and that copy runs

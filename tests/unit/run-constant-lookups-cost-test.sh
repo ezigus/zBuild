@@ -66,9 +66,13 @@ printf 'stages:\n  - build\nbuild:\n  timeout_s: 3600\nplan:\n  gate: auto\n' > 
 printf 'stage_definitions:\n  build:\n    timeout_s: 120\n' > "$T2"
 : > "$CALLS"
 _TPL_SOURCE_FILE="$T1"
+# The reader is the shell's now (round 7), so its reads are counted by wrapping
+# the reader itself.
+eval "$(declare -f _template_stage_time_limit_read | sed '1s/_template_stage_time_limit_read/_tl_read_real/')"
+_template_stage_time_limit_read() { printf 'read\n' >> "$CALLS"; _tl_read_real "$@"; }
 _t1=""; template_stage_time_limit_v _t1 build; _t1b=""; template_stage_time_limit_v _t1b build
 _t2=""; template_stage_time_limit_v _t2 plan
-assert_eq "[L4] one read per (template, stage)" "2" "$(_n awk)"
+assert_eq "[L4] one read per (template, stage)" "2" "$(_n read)"
 assert_eq "[L5] a set limit, read twice, and the default for an unset one" "3600|3600|900" "$_t1|$_t1b|$_t2"
 _TPL_SOURCE_FILE="$T2"
 _t3=""; template_stage_time_limit_v _t3 build

@@ -489,6 +489,12 @@ has run — its own included, whichever try or run wrote it (ADR-068 §8, ADR-05
   output id in the flow whose file is there, keyed by the producer's output id as before, so a stage reads
   the ones it needs by name. A map producer's id lists the members that are there. A file that is there but
   unusable (#1894) is left out and announced (`stage.input.degraded`).
+  > **Amended 2026-10-25 (ADR-065 §5, round 7).** The check is made once per change of a file, not
+  > before every stage: a check that passes leaves a mark made before it read the file, and while
+  > that mark is strictly newer than the file nothing has written it since, so it is not parsed
+  > again. Any write after the mark — in place, by a move, or emptying it — is checked again. A
+  > file put in place with an older timestamp (a move of an older file, `cp -p`, `touch -t`) is
+  > the one change this cannot see.
 - **Nothing is refused over a missing output.** The pre-dispatch `INPUT_MISSING` / `INPUT_DAMAGED` /
   `EXTERNAL_UNSUPPLIED` refusal is removed: a stage that finds something it needs missing says so in its
   own result (e.g. review-aggregator's "no review happened").
