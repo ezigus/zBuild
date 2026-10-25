@@ -30,6 +30,9 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "the timing record carries CPU time"
 setup_test_env "test-timing-cpu-record"
 
+# core/ and plugins/ hold test files too; an empty dir for each keeps the
+# tier to the probe alone.
+_EMPTY="$TEST_TEMP_DIR/empty"; mkdir -p "$_EMPTY"
 _TDIR="$TEST_TEMP_DIR/tests"; mkdir -p "$_TDIR/unit"
 # Deliberately fork-heavy: CPU time must be measurably non-zero, or the
 # assertion below passes on a rounding artifact.
@@ -39,8 +42,13 @@ for i in $(seq 1 120); do echo x | tr a-z A-Z >/dev/null; done
 exit 0
 PROBE
 _timing="$TEST_TEMP_DIR/timing.txt"
-( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_TEST_TIMING_FILE="$_timing" \
+( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_CORE_DIR="$_EMPTY" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing" \
     bash scripts/run-tests.sh --tier unit >/dev/null 2>&1 ) || true
+
+# The private tier runs its probe and nothing else: every figure below must be
+# the probe's, not a real core/ or plugins/ test the tier swept in.
+assert_eq "[setup] the private tier ran only its probe file" "probe-test.sh" \
+    "$(awk '/^file /{n=split($3,p,"/"); print p[n]}' "$_timing" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')"
 
 # ─── SPEC-1: a cpu record exists alongside the wall record ─────────────────
 assert_gt "[SPEC-1] the timing file records a cpu line" \

@@ -39,6 +39,9 @@ setup_test_env "coverage-trace-volume-report"
 # with no trace argument at all, so tracing is silently off there. Only the
 # tier loops pass a trace file. check-coverage.sh uses `--tier unit`, so the
 # tier path is also the one production actually exercises.
+# core/ and plugins/ hold test files too; an empty dir for each keeps the
+# tier to the probe alone.
+_EMPTY="$TEST_TEMP_DIR/empty"; mkdir -p "$_EMPTY"
 _TDIR="$TEST_TEMP_DIR/tests"
 mkdir -p "$_TDIR/unit"
 _probe="$_TDIR/unit/probe-test.sh"
@@ -46,9 +49,14 @@ printf '#!/usr/bin/env bash\nfor i in $(seq 1 200); do :; done\nexit 0\n' > "$_p
 _timing="$TEST_TEMP_DIR/timing.txt"
 _trace="$TEST_TEMP_DIR/trace.out"
 
-( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_TEST_TIMING_FILE="$_timing" \
+( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_CORE_DIR="$_EMPTY" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing" \
     bash scripts/run-tests.sh --tier unit --coverage-trace "$_trace" \
     >/dev/null 2>&1 ) || true
+
+# The private tier runs its probe and nothing else — not, under tracing, every
+# real core/ and plugins/ test the tier would otherwise sweep in.
+assert_eq "[setup] the private tier ran only its probe file" "probe-test.sh" \
+    "$(awk '/^file /{n=split($3,p,"/"); print p[n]}' "$_timing" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')"
 
 # ─── SPEC-1: the timing record carries trace bytes for a traced run ─────────
 _vol_line="$(grep -E '^trace ' "$_timing" 2>/dev/null || true)"
@@ -68,7 +76,7 @@ assert_gt "[SPEC-1] the recorded volume is a real byte count" "${_vol_bytes:-0}"
 # Instrumentation must not change the untraced path: the parallel tier's
 # byte-identical-output guarantee depends on it (#1058).
 _timing2="$TEST_TEMP_DIR/timing-plain.txt"
-( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_TEST_TIMING_FILE="$_timing2" \
+( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_CORE_DIR="$_EMPTY" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing2" \
     bash scripts/run-tests.sh --tier unit >/dev/null 2>&1 ) || true
 assert_eq "[SPEC-2] GUARD: an untraced run records no trace-volume line" \
     "0" "$(grep -cE '^trace ' "$_timing2" 2>/dev/null || true)"
