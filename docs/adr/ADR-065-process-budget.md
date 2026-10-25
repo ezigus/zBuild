@@ -120,6 +120,17 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 >   reads the collision guard's run id, status and age with one `jq` against the shell's clock (no
 >   `dirname`, `mktemp`, `cp` or `date`).
 
+> **Amended 2026-10-25 (round 6): one cache key per path; the per-dispatch checks run in the
+> shell.**
+> - A manifest cache keys a path with `//` collapsed. The runner filled the caches from the env's
+>   spelling of the plugins root (`$TMPDIR` ends in `/`) while stages read with `cd && pwd`'s,
+>   so every stage rebuilt the index.
+> - The write boundary's mark and check start only `git` (the root check once per shell, then
+>   `status`), the `find` sweeps and the clock probe's `rm`; the directory names, marker,
+>   writes-declaration read and changed-path comparison are done by the shell.
+> - The producer index joins the flow in the shell before its memo check, and a
+>   `manifest_graph_collect` memo hit reads its file and the manifest's id in the shell.
+
 > **Amended 2026-10-25 (round 5): per-stage chores read once.** Sourcing the engine starts no
 > process; a mocked run's programs came from chores repeated for every stage, file or event:
 > - Persist's secret scan ran five programs per artifact file. It now runs two `grep`s over the
@@ -240,4 +251,5 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 - §3 (amended 2026-10-24, round 3) → `tests/unit/yaml-get-cache-test.sh` SPEC-12 (`yaml_get_v` matches `$(yaml_get)`), SPEC-13 (a miss fills the calling shell's cache); `tests/unit/output-paths-resolve-test.sh` SPEC-1/2; `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row costs one process); `tests/unit/discover-plugins-memo-test.sh` SPEC-9 (a shared memo directory), SPEC-10 (a warm lookup costs one process); `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-7 (no `cksum`, and a hit only under its own root); `tests/unit/run-tests-schedule-test.sh` SPEC-7 (one memo directory per run, removed after it)
 - §5 (amended 2026-10-24, round 4: no SQLite mirror) → `tests/unit/event-bus-emit-cost-test.sh` E2 (an emit given a db path starts no `sqlite3`, takes one lock and writes no `events.db`); `tests/unit/core-event-bus-test.sh` (no `events.db` or its lock is written)
 - §5 (amended 2026-10-25, round 5: per-stage chores read once) → `tests/unit/persist-secret-scan-cost-test.sh` C1 (a clean dir costs two greps), C2 (only a matching file is read on its own), C3 (the finding is unchanged); `tests/unit/attempt-archive-cost-test.sh` C1 (what one record starts), C2 (no `$( )` copies), C3 (changed/unchanged/new still right); `tests/unit/helpers-cost-test.sh` H1 (no repeat `mkdir`), H2 (`atomic_replace` starts `cp` and `mv` only), H3 (the copy keeps its mode); `tests/unit/event-bus-emit-cost-test.sh` E1 (no `jq` for a plain-ASCII emit), E6 (the line is byte for byte what `jq` writes); `tests/unit/router-manifest-budget-test.sh` SPEC-8b (one lookup, one `awk`); `tests/unit/requires-core-resolution-test.sh` SPEC-14 (one check strips and parses once)
+- §3, §5 (amended 2026-10-25, round 6) → `tests/unit/manifest-index-test.sh` SPEC-5 (`a//b` and `a/b` are one key for the index, the input-resolve maps, `yaml_get`, `yaml_get_v` and a flush); `tests/unit/stage-dispatch-cost-test.sh` D1/D2 (what the write boundary starts), D3 (a non-writer's change is still refused), D4 (a repeat producer-index call starts nothing), D5 (a memo hit starts nothing), D6 (the id reader matches awk)
 - §5 (amended 2026-10-24, round 4: only needed calls) → `tests/unit/atomic-write-cost-test.sh` W1 (replacing a file starts cat, one stat, chmod and mv), W2 (a `.bak` only with `--bak`), W3 (modes kept), W4 (a write that cannot start refuses and drains stdin); `tests/integration/state-collision-guard-test.sh` "cost" (one guarded update: no dirname or date, two jqs, and mktemp and cp only for the `.bak`)

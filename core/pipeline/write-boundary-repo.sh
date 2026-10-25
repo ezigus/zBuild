@@ -15,12 +15,21 @@ _ZBUILD_WRITE_BOUNDARY_REPO_LOADED=1
 # _wb_repo_root — the run's own worktree, or nothing. In-place mode
 # (ZBUILD_NO_WORKTREE=1) works in the user's checkout, which the user shares,
 # so it is not the run's to judge.
-_wb_repo_root() {
+# The rev-parse is asked once per root per shell: mark and check both need it,
+# and a root that stops being a directory is still caught by the -d test.
+declare -gA _WB_REPO_OK=()
+_wb_repo_root() { local _wrr; _wb_repo_root_v _wrr || return 1; printf '%s' "$_wrr"; }
+# _wb_repo_root_v <var> — the same, into <var> in this shell (so the memo stays).
+_wb_repo_root_v() {
+    printf -v "$1" '%s' ""
     [[ "${ZBUILD_NO_WORKTREE:-}" == "1" ]] && return 1
     local _r="${ZBUILD_REPO_ROOT:-}"
     [[ -n "$_r" && -d "$_r" ]] || return 1
-    git -C "$_r" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
-    printf '%s' "$_r"
+    if [[ -z "${_WB_REPO_OK[$_r]+x}" ]]; then
+        git -C "$_r" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+        _WB_REPO_OK[$_r]=1
+    fi
+    printf -v "$1" '%s' "$_r"
 }
 
 # _wb_repo_snapshot <repo> — one line per path that differs from HEAD (tracked
@@ -54,13 +63,21 @@ _wb_repo_snapshot() {
 # capabilities.writes_repository: true (#2174's own fact about the stage). Same
 # rule as stage_declares_repo_writes (core/pipeline/input-resolve.sh) — keep the
 # two in step.
+# Read by the shell, not awk: it runs on every check (ADR-065 §5). A column-0
+# key opens or closes the block; the flag may sit at any indentation in it.
 _wb_declares_repo_writes() {
-    local _mf="${1:-}/manifest.yaml"
+    local _mf="${1:-}/manifest.yaml" _l _in=0
     [[ -f "$_mf" ]] || return 1
-    awk '
-        /^[^[:space:]#]/ { inblk = ($0 ~ /^capabilities:[[:space:]]*(#.*)?$/); next }
-        inblk && /^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$/ { found = 1 }
-        END { exit(found ? 0 : 1) }' "$_mf" 2>/dev/null
+    local _top='^[^[:space:]#]' _cap='^capabilities:[[:space:]]*(#.*)?$'
+    local _flag='^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$'
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        if [[ "$_l" =~ $_top ]]; then
+            [[ "$_l" =~ $_cap ]] && _in=1 || _in=0
+            continue
+        fi
+        (( _in )) && [[ "$_l" =~ $_flag ]] && return 0
+    done 2>/dev/null < "$_mf"
+    return 1
 }
 
 # _wb_repo_changed <snapshot_file> <repo> — the paths whose content differs
@@ -68,11 +85,26 @@ _wb_declares_repo_writes() {
 # `comm -3` count: a path new in `after` was written, and a path that dropped
 # out of it was changed too — including a non-writer REVERTING an earlier
 # stage's uncommitted work, which is touching the worktree all the same.
+# Compared by the shell; sort runs only when something changed (ADR-065 §5).
 _wb_repo_changed() {
-    local _snap="$1" _repo="$2" _after
+    local _snap="$1" _repo="$2" _after _l
+    local -A _before=() _now=() _hit=()
     _after="$(_wb_repo_snapshot "$_repo")"
-    LC_ALL=C comm -3 "$_snap" <(printf '%s\n' "$_after" | grep -v '^$' || true) 2>/dev/null \
-        | sed 's/^\t//' | cut -f1 | LC_ALL=C sort -u | grep -v '^$' || true
+    if [[ -f "$_snap" ]]; then
+        while IFS= read -r _l || [[ -n "$_l" ]]; do [[ -n "$_l" ]] && _before[$_l]=1; done < "$_snap"
+    fi
+    while IFS= read -r _l; do [[ -n "$_l" ]] && _now[$_l]=1; done <<< "$_after"
+    local _p
+    for _l in "${!_before[@]}"; do
+        [[ -n "${_now[$_l]+x}" ]] && continue
+        _p="${_l%%$'\t'*}"; [[ -n "$_p" ]] && _hit[$_p]=1
+    done
+    for _l in "${!_now[@]}"; do
+        [[ -n "${_before[$_l]+x}" ]] && continue
+        _p="${_l%%$'\t'*}"; [[ -n "$_p" ]] && _hit[$_p]=1
+    done
+    (( ${#_hit[@]} )) || return 0
+    printf '%s\n' "${!_hit[@]}" | LC_ALL=C sort
 }
 
 # _wb_repo_changed_list <repo> <paths> — absolute, comma-separated, capped at 20

@@ -60,14 +60,15 @@ _wb_expand_line() {
 # share one state file, so a shared filename lets a sibling's mark move this
 # dispatch's window past writes that already happened. Same hazard the throttle
 # marker was keyed for at runner.sh:2543-2552 (#1823).
-_wb_marker_path() {
-    local _sd="$1" _stage="${2:-}" _el="${3:-}"
+_wb_marker_path() { local _wmp; _wb_marker_path_v _wmp "$@"; printf '%s' "$_wmp"; }
+_wb_marker_path_v() {   # <var> <state_dir> [stage] [element]
+    local _sd="$2" _stage="${3:-}" _el="${4:-}"
     local _key="${_stage}${_el:+.$_el}"
     _key="${_key//[^A-Za-z0-9._-]/_}"
     if [[ -z "$_key" ]]; then
-        printf '%s/runtime/write-boundary.marker' "$_sd"
+        printf -v "$1" '%s/runtime/write-boundary.marker' "$_sd"
     else
-        printf '%s/runtime/write-boundary.%s.marker' "$_sd" "$_key"
+        printf -v "$1" '%s/runtime/write-boundary.%s.marker' "$_sd" "$_key"
     fi
 }
 
@@ -117,16 +118,20 @@ _wb_report_degraded() {
 write_boundary_mark() {
     local state_file="${1:-}" _stage="${2:-}" _el="${3:-}"
     [[ "$state_file" == /* ]] || return 0
-    local state_dir; state_dir="$(dirname "$state_file")"
-    local _marker; _marker="$(_wb_marker_path "$state_dir" "$_stage" "$_el")"
+    # Runs every dispatch: the shell does what dirname, mkdir, touch and rm
+    # did, and a program runs only to word a failure (ADR-065 §5).
+    local state_dir="${state_file%/*}"; [[ -n "$state_dir" ]] || state_dir="/"
+    local _marker; _wb_marker_path_v _marker "$state_dir" "$_stage" "$_el"
     local _err
-    if ! _err="$(mkdir -p "${state_dir}/runtime" 2>&1)"; then
+    if [[ ! -d "${state_dir}/runtime" ]] && ! _err="$(mkdir -p "${state_dir}/runtime" 2>&1)"; then
         _wb_report_degraded "mark_failed" "dir=${state_dir}/runtime" "${_err//$'\n'/ }"
         return 0
     fi
     # A snapshot that was never taken is not a clean dispatch: write_boundary_check
-    # returns 0 before sweeping anything when the marker is absent.
-    if ! _err="$(touch "$_marker" 2>&1)"; then
+    # returns 0 before sweeping anything when the marker is absent. `: >` sets
+    # the mtime as touch does (the marker is always empty).
+    if ! { : > "$_marker"; } 2>/dev/null; then
+        _err="$( { : > "$_marker"; } 2>&1)"
         _wb_report_degraded "mark_failed" "marker=$_marker" "${_err//$'\n'/ }"
         return 0
     fi
@@ -136,11 +141,12 @@ write_boundary_mark() {
     # Always taken (the stage's manifest is read at check time); absent when
     # there is no engine-owned worktree, which leaves the repository check off.
     local _repo
-    rm -f "${_marker}.repo" 2>/dev/null || true
+    [[ -e "${_marker}.repo" ]] && rm -f "${_marker}.repo" 2>/dev/null
     # A new dispatch of the stage is judged on its own: an earlier attempt's
     # undo does not follow it (the offence COUNT does — see write_boundary_check).
-    rm -f "${state_dir}/runtime/write-boundary-reverted.$(_wb_stage_key "$_stage")" 2>/dev/null || true
-    if _repo="$(_wb_repo_root)"; then
+    local _rev; _rev="${state_dir}/runtime/write-boundary-reverted.$(_wb_stage_key "$_stage")"
+    [[ -e "$_rev" ]] && rm -f "$_rev" 2>/dev/null
+    if _wb_repo_root_v _repo; then
         if ! _wb_repo_snapshot "$_repo" keep > "${_marker}.repo" 2>/dev/null; then
             rm -f "${_marker}.repo" 2>/dev/null || true
             _wb_report_degraded "mark_failed" "repo=$_repo" "worktree snapshot failed"
@@ -229,7 +235,9 @@ write_boundary_allow_list() {
         printf '%s\n' "$ZBUILD_EVENTS_DIR"
     fi
     if [[ -n "${ZBUILD_EVENTS_JSONL:-}" && "${ZBUILD_EVENTS_JSONL}" != "/dev/null" ]]; then
-        printf '%s\n' "$(dirname "$ZBUILD_EVENTS_JSONL")"
+        local _ejd="${ZBUILD_EVENTS_JSONL%/*}"
+        [[ "$ZBUILD_EVENTS_JSONL" == */* ]] || _ejd="."
+        printf '%s\n' "${_ejd:-/}"
     fi
 
     # Config additions (all tiers loaded — truly additive, not override).
@@ -453,8 +461,8 @@ write_boundary_check() {
     local _pd="$1" _sf="${2:-}" _stage="${3:-}" _el="${4:-}"
     [[ -z "$_sf" ]] && return 0
     [[ "$_sf" == /* ]] || return 0
-    local _sd; _sd="$(dirname "$_sf")"
-    local _marker; _marker="$(_wb_marker_path "$_sd" "$_stage" "$_el")"
+    local _sd="${_sf%/*}"; [[ -n "$_sd" ]] || _sd="/"
+    local _marker; _wb_marker_path_v _marker "$_sd" "$_stage" "$_el"
     # Fall back to the unkeyed name so a dispatch marked by an older engine
     # mid-upgrade still gets swept rather than silently skipped.
     [[ -f "$_marker" ]] || _marker="${_sd}/runtime/write-boundary.marker"
@@ -473,7 +481,7 @@ write_boundary_check() {
     local _snap="${_marker}.repo" _repo
     [[ -f "$_snap" ]] || return 0
     _wb_declares_repo_writes "$_pd" && return 0
-    _repo="$(_wb_repo_root)" || return 0
+    _wb_repo_root_v _repo || return 0
     local _changed
     _changed="$(_wb_repo_changed "$_snap" "$_repo")"
     [[ -n "$_changed" ]] || return 0
