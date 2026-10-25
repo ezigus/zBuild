@@ -12,6 +12,8 @@
 # K2 [change] a stage dispatch killed mid-stage leaves no stage, no plugin and
 #             no watchdog behind
 # K3 [guard]  a pid that is already gone is not an error
+# K4 [change] …nor under set -e, where the abort tests run: their runner has
+#             usually exited on its TERM by the time they reap it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,6 +80,10 @@ print_test_section "K3: already gone"
 bash -c 'exit 0' & _gone=$!; wait "$_gone"
 zb_test_kill_tree "$_gone"; _rc=$?
 assert_eq "[K3] returns 0" "0" "$_rc"
+_k4="$(REPO_ROOT="$REPO_ROOT" G="$_gone" bash -c 'set -euo pipefail
+    source "$REPO_ROOT/scripts/lib/helpers.sh"; source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+    zb_test_kill_tree "$G"; echo carried-on' 2>/dev/null || true)"
+assert_eq "[K4] under set -e the caller carries on" "carried-on" "$_k4"
 
 cleanup_test_env
 print_test_results

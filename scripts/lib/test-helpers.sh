@@ -1017,12 +1017,14 @@ mock_result_line() {
 # watchdog (copies of its shell, so they show as runner.sh) ran on, the watchdog
 # for up to the stage's limit. The tree is stopped before it is killed, and read
 # again once stopped, so a child forked while it was being read is not missed.
-_zb_test_tree() { local c; printf '%s\n' "$1"; for c in $(pgrep -P "$1" 2>/dev/null); do _zb_test_tree "$c"; done; }
+_zb_test_tree() { local c; printf '%s\n' "$1"; for c in $(pgrep -P "$1" 2>/dev/null || true); do _zb_test_tree "$c"; done; }
+# A process already gone is no error, under set -e too: an abort test's runner
+# has usually exited on its TERM by the time the test reaps it.
 zb_test_kill_tree() {
     local t
-    t="$(_zb_test_tree "$1")"; kill -STOP $t 2>/dev/null
-    t="$(_zb_test_tree "$1")"; kill -STOP $t 2>/dev/null
-    kill -KILL $t 2>/dev/null
+    t="$(_zb_test_tree "$1")"; kill -STOP $t 2>/dev/null || true
+    t="$(_zb_test_tree "$1")"; kill -STOP $t 2>/dev/null || true
+    kill -KILL $t 2>/dev/null || true
     return 0
 }
 
