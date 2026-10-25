@@ -216,15 +216,18 @@ eb_emit_event() {
     local event_json="" _all
     printf -v _all '%s\034' "$type" "$run_id" "$plugin" "$kind" "$stage" "$unit" "${_keys[@]}" "${_vals[@]}"
     if [[ ${#issue} -le 15 ]] && _eb_ascii "$_all"; then
-        local _j _data="" _i _k
+        local _j _data=""
         local -i _x
+        # A later duplicate key keeps the first one's place and gives its value,
+        # as jq's `add`. One pass to find each key's last value, one to write:
+        # comparing every pair grew with the square of the key count.
+        local -A _last=() _done=()
+        for (( _x = 0; _x < _n; _x++ )); do _last["${_keys[_x]}"]=$_x; done
         for (( _x = 0; _x < _n; _x++ )); do
-            # A later duplicate key keeps the first one's place, as jq's `add`.
-            for (( _k = 0; _k < _x; _k++ )); do [[ "${_keys[_k]}" == "${_keys[_x]}" ]] && break; done
-            [[ $_k -lt $_x ]] && continue
-            for (( _i = _n - 1; _i >= _x; _i-- )); do [[ "${_keys[_i]}" == "${_keys[_x]}" ]] && break; done
+            [[ -n "${_done["${_keys[_x]}"]:-}" ]] && continue
+            _done["${_keys[_x]}"]=1
             _eb_json_str_v _j "${_keys[_x]}"; _data+="${_data:+,}$_j:"
-            _eb_json_str_v _j "${_vals[_i]}"; _data+="$_j"
+            _eb_json_str_v _j "${_vals[_last["${_keys[_x]}"]]}"; _data+="$_j"
         done
         event_json="{\"ts\":\"$ts\""
         _eb_json_str_v _j "$run_id"; event_json+=",\"run_id\":$_j,\"issue\":$(( 10#$issue ))"

@@ -62,90 +62,8 @@ _inputs_flow_stages() {
     for s in ${ZBUILD_INPUTS_FLOW:-}; do printf '%s\n' "$s"; done
 }
 
-# ─── _inputs_scan_manifests <plugins_root> ───────────────────────────────────
-# ONE pass over the plugin tree, building the id→manifest and role→manifest maps
-# _inputs_stage_manifest resolves against.
-#
-# Why not just call resolve_stage_plugin per stage: it goes through
-# discover_plugins, which costs ~8s per call on this tree. The index needs a
-# manifest for EVERY stage in the flow, so a per-stage call would add ~2 minutes
-# to every dispatch. One find + one awk for the whole tree (#2152) is ~40ms.
-# #2152 (ADR-065 §3): every reader of these maps is a `$( )` — the fill has to
-# happen in the PARENT shell, at the runner's prewarm seam, or it happens on
-# every call. Bare `declare -gA` (no `=()`): route.sh re-sources this file
-# lazily inside a function, and an initialiser there would wipe the fill.
-declare -gA _IR_BY_ID
-declare -gA _IR_BY_ROLE
-[[ -n "${_IR_SCAN_KEY+x}" ]] || _IR_SCAN_KEY=""
-_inputs_scan_manifests() {
-    local plugins_root; plugins_root="$(_manifest_index_root "$1")"
-    [[ "$plugins_root" == "$_IR_SCAN_KEY" ]] && return 0
-    _IR_SCAN_KEY="$plugins_root"
-    _IR_BY_ID=(); _IR_BY_ROLE=()
-    # #2152: read from the manifest index — no awk per manifest. Rows arrive
-    # file by file; a file's `__file__` marker precedes its keys, so the
-    # previous file is complete when the next marker (or the end) arrives.
-    manifest_index_load "$plugins_root"
-    # Collect per file, commit in marker order at the end: the rows' order is
-    # not a contract (the memo streams them per file, a fresh build emits every
-    # `__file__` marker first — review on #2155), and first-occurrence-wins
-    # needs the files in the order they were enumerated.
-    local -a _files=()
-    local -A _id=() _role=() _plat=()
-    local m p k v
-    while IFS=$'\034' read -r p k v; do
-        if [[ "$k" == "__file__" ]]; then _files+=("$p"); continue; fi
-        # the old per-file awk also trimmed trailing whitespace
-        v="${v%"${v##*[![:space:]]}"}"
-        case "$k" in
-            id) _id["$p"]="$v" ;; platform) _plat["$p"]="$v" ;; provides.role) _role["$p"]="$v" ;;
-        esac
-    done < <(manifest_index_rows "$plugins_root")
-    for m in "${_files[@]+"${_files[@]}"}"; do
-        [[ "$m" != */tests/* ]] || continue
-        [[ -n "${_id[$m]:-}" && -z "${_IR_BY_ID[${_id[$m]}]:-}" ]] && _IR_BY_ID["${_id[$m]}"]="$m"
-        # Platform-specific plugins never win the generic slot; the engine's own
-        # resolver prefers a platform match and this module has no platform.
-        if [[ -n "${_role[$m]:-}" && ( -z "${_plat[$m]:-}" || "${_plat[$m]:-}" == "null" ) && -z "${_IR_BY_ROLE[${_role[$m]}]:-}" ]]; then
-            _IR_BY_ROLE["${_role[$m]}"]="$m"
-        fi
-    done
-}
-
-# ─── _inputs_stage_manifest <stage> <plugins_root> ───────────────────────────
-# The manifest DISPATCH would actually use — role-THEN-id, the resolve_stage_plugin
-# rule (dispatch.sh), applied to the single-scan maps above.
-#
-# NOT manifest_graph_collect: that is id-only, and against the live simple.yaml
-# stage list it resolves `acceptance-gate` and `review_lenses` to no manifest at
-# all — they are silently skipped by contract-validator.sh:213 today. NOT
-# manifest_graph_resolve_member either: it tries id-match FIRST, so `pr` lands on
-# plugins/tool/pr-open, the manifest whose own header documents it as deliberately
-# unreachable at dispatch (the real plugin is plugins/agent/pr-delivery, bound by
-# role). Role-first is the only rule that agrees with dispatch on all three.
-#
-# Fail-closed on a declared-but-unresolved role, matching resolve_stage_plugin:
-# no id-match fallback once roles are declared.
-_inputs_stage_manifest() {
-    local stage="$1" plugins_root="$2"
-    _inputs_scan_manifests "$plugins_root"
-    local safe="${stage//-/_}"
-    local roles_var="_TPL_STAGE_ROLES_${safe}"
-    local roles="${!roles_var:-}" role
-    if [[ -n "$roles" ]]; then
-        local -a rlist=()
-        IFS=',' read -r -a rlist <<< "$roles"
-        for role in "${rlist[@]}"; do
-            [[ -z "$role" ]] && continue
-            if [[ -n "${_IR_BY_ROLE[$role]:-}" ]]; then
-                printf '%s\n' "${_IR_BY_ROLE[$role]}"; return 0
-            fi
-        done
-        return 1
-    fi
-    [[ -n "${_IR_BY_ID[$stage]:-}" ]] || return 1
-    printf '%s\n' "${_IR_BY_ID[$stage]}"
-}
+# _inputs_scan_manifests, _inputs_stage_manifest(_v): the id/role → manifest
+# maps, built from the manifest index (core/plugin-registry/manifest-index.sh).
 
 # ─── _inputs_output_paths <stage> <raw_path> <state_dir> ─────────────────────
 # The resolved path(s) a stage's declared output resolves to, one per line. A
@@ -206,7 +124,7 @@ _inputs_build_producer_index() {
     local stage manifest rec out_id out_path paths safe type_var
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
-        manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+        _inputs_stage_manifest_v manifest "$stage" "$plugins_root" 2>/dev/null || true
         [[ -n "$manifest" ]] || continue
         safe="${stage//-/_}"; type_var="_TPL_STAGE_TYPE_${safe}"
         local -A _fmts=()
@@ -319,21 +237,22 @@ _inputs_render_violations() {
 # fields; until it lands the format is inferred from the extension, which is why
 # this is one function rather than an inline test: when `format:` becomes a
 # declared field there is exactly one site to change.
-_inputs_format_for() {
-    local pth="${1-}" in_id="${2-}"
+_inputs_format_for() { local _iff; _inputs_format_for_v _iff "${1-}" "${2-}"; printf '%s' "$_iff"; }
+_inputs_format_for_v() {
+    local _iffv="$1" pth="${2-}" in_id="${3-}"
     # #1895: the producer's DECLARED format wins. The extension fallback below is
     # what #1826 shipped as an interim and is kept only for an artifact whose
     # producer declares none — it guesses, and a name not ending in a recognised
     # extension would silently get no check at all, which is why the field exists.
     if [[ -n "$in_id" && -n "${_IR_FORMAT[$in_id]:-}" ]]; then
-        printf '%s' "${_IR_FORMAT[$in_id]}"
+        printf -v "$_iffv" '%s' "${_IR_FORMAT[$in_id]}"
         return 0
     fi
     case "${pth##*.}" in
-        json)      printf 'json' ;;
-        md)        printf 'markdown' ;;
-        patch|diff) printf 'patch' ;;
-        *)         printf 'text' ;;
+        json)      printf -v "$_iffv" json ;;
+        md)        printf -v "$_iffv" markdown ;;
+        patch|diff) printf -v "$_iffv" patch ;;
+        *)         printf -v "$_iffv" text ;;
     esac
 }
 
@@ -355,8 +274,8 @@ _inputs_damaged() {
     local pth="${1-}" in_id="${2-}" marks="${3-}"
     [[ -e "$pth" ]] || return 1
     [[ -s "$pth" ]] || return 0
-    [[ "$(_inputs_format_for "$pth" "$in_id")" == "json" ]] || return 1
-    local mark="" key
+    local mark="" key fmt
+    _inputs_format_for_v fmt "$pth" "$in_id"; [[ "$fmt" == json ]] || return 1
     if [[ -n "$marks" ]]; then
         key="${pth//%/%25}"; key="${key//\//%2F}"
         if (( ${#key} <= 240 )); then
@@ -375,7 +294,7 @@ _inputs_damaged() {
 _summaries_stage_summary_path() {
     local stage="$1" plugins_root="$2" state_dir="$3"
     local manifest rec out_id
-    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    _inputs_stage_manifest_v manifest "$stage" "$plugins_root" 2>/dev/null || true
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
@@ -410,11 +329,11 @@ _summaries_collect() {
 # primary (v2 result) file, resolved, when it exists; else "".
 _summaries_result_path() {
     local stage="$1" plugins_root="$2" state_dir="$3" manifest raw res
-    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    _inputs_stage_manifest_v manifest "$stage" "$plugins_root" 2>/dev/null || true
     [[ -n "$manifest" ]] || return 0
-    raw="$(_verdict_primary_output_path "$manifest" 2>/dev/null || true)"
+    _verdict_primary_output_path_v raw "$manifest" 2>/dev/null || true
     [[ -n "$raw" ]] || return 0
-    res="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
+    _verdict_resolve_path_v res "$raw" "$state_dir"
     [[ "$res" == *.json && -s "$res" ]] && printf '%s' "$res"
     return 0
 }
@@ -433,7 +352,7 @@ _summaries_result_path() {
 # rediscovering it.
 _summaries_stage_errors_path() {
     local stage="$1" plugins_root="$2" state_dir="$3" manifest raw resolved
-    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    _inputs_stage_manifest_v manifest "$stage" "$plugins_root" 2>/dev/null || true
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
     # Review #2184: the entry is flushed at its BOUNDARY, so `errors: true` may
     # sit before or after `path:` — both are valid YAML, and an order-dependent
@@ -459,7 +378,7 @@ _summaries_stage_errors_path() {
         END { flush() }
     ' "$manifest" 2>/dev/null || true)"
     [[ -n "$raw" ]] || return 0
-    resolved="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
+    _verdict_resolve_path_v resolved "$raw" "$state_dir"
     [[ -s "$resolved" ]] && printf '%s' "$resolved"
     return 0
 }

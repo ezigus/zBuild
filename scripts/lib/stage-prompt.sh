@@ -64,19 +64,26 @@ _sp_safe() {
 
 # _sp_unit <stage> — the stage, plus the map element when one is dispatched, so
 # parallel elements never share a file.
-_sp_unit() {
-    local u; u="$(_sp_safe "$1")"
-    [[ -n "${ZBUILD_MAP_ELEMENT:-}" ]] && u="${u}-$(_sp_safe "$ZBUILD_MAP_ELEMENT")"
-    printf '%s' "$u"
+_sp_unit() { local _spu; _sp_unit_v _spu "$1"; printf '%s' "$_spu"; }
+# _sp_unit_v <var> <stage> — the same, into <var>, with no subshell (ADR-065 §5).
+_sp_unit_v() {
+    local _spv_u="${2//[^A-Za-z0-9._-]/_}" _spv_e
+    _spv_u="${_spv_u//../__}"
+    if [[ -n "${ZBUILD_MAP_ELEMENT:-}" ]]; then
+        _spv_e="${ZBUILD_MAP_ELEMENT//[^A-Za-z0-9._-]/_}"; _spv_u+="-${_spv_e//../__}"
+    fi
+    printf -v "$1" '%s' "$_spv_u"
 }
 
 # stage_blocks_dir <state_dir> <stage>
-stage_blocks_dir() { printf '%s/runtime/blocks/%s' "$1" "$(_sp_unit "$2")"; }
+stage_blocks_dir() { local _sbd; stage_blocks_dir_v _sbd "$1" "$2"; printf '%s' "$_sbd"; }
+stage_blocks_dir_v() { local _sbv; _sp_unit_v _sbv "$3"; printf -v "$1" '%s/runtime/blocks/%s' "$2" "$_sbv"; }
 
 # stage_notes_path <state_dir> <stage> — every stage's notes file. Under
 # artifacts/ so it is saved with the stage's other outputs and comes back on a
 # rerun.
-stage_notes_path() { printf '%s/artifacts/notes/%s.md' "$1" "$(_sp_unit "$2")"; }
+stage_notes_path() { local _snp; stage_notes_path_v _snp "$1" "$2"; printf '%s' "$_snp"; }
+stage_notes_path_v() { local _snv; _sp_unit_v _snv "$3"; printf -v "$1" '%s/artifacts/notes/%s.md' "$2" "$_snv"; }
 
 # _sp_manifest_scalar <manifest> <block> <key> — a key under a top-level block.
 _sp_manifest_scalar() {
@@ -247,8 +254,8 @@ EOF
 stage_blocks_write() {
     local stage="$1" state_dir="$2" manifest="$3" plugins_root="$4" index="$5" repo_root="$6" dir
     [[ -n "$stage" && -n "$state_dir" ]] || return 1
-    dir="$(stage_blocks_dir "$state_dir" "$stage")"
-    local np; np="$(stage_notes_path "$state_dir" "$stage")"
+    stage_blocks_dir_v dir "$state_dir" "$stage"
+    local np; stage_notes_path_v np "$state_dir" "$stage"
     [[ -d "$dir" && -d "${np%/*}" ]] || mkdir -p "$dir" "${np%/*}" 2>/dev/null || return 1
     _stage_block_from_repo "$stage" "$repo_root" \
         "$state_dir/runtime/from-repo-${repo_root//[^A-Za-z0-9._-]/_}.md" > "$dir/from-repo.md" 2>/dev/null || return 1
