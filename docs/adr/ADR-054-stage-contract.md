@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
-**Amended:** 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
+**Amended:** 2026-10-24 — §7: a signal stops the running stage instead of waiting for it to end. Previously amended 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
 **Amended:** 2026-09-16 (#2111) — §6: a rate limit observed by the router resolves to `unavailable`, not `throttled`. The engine now enforces `halt_unavailable` on the cycle dispatch path (it was announced only): the run ends `aborted` with `reason=llm_rate_limited` and the reset text under `.rate_limit.message`, state persisted for ADR-050 resume. `throttled` stays in the closed set with no rate-limit emitter. Waiting and retrying re-entered the same limit for five iterations on #1840/#1841, re-verifying an unchanged tree each time.
 **Amended:** 2026-08-23 (#141) — §7: the three-actor table is run-keyed in every row; the **issue** is a second scope, and `release` gains the `always-run` attribute plus a `persist` sibling (ADR-059).
 **Amended:** 2026-08-23 (#1920) — §7: the `release` "deletes nothing" promise scoped to the run's own lifecycle; operator-invoked reclamation (`zbuild cleanup --state-dirs`) named as a third actor with its own clock and guards.
@@ -335,6 +335,20 @@ TERM is not spared when the bound's watchdog is cancelled (#2333). No process fr
 stage outlives the run. Enforced by `tests/integration/runner-release-exit-paths-test.sh` SPEC-6
 ("the blocked hook does not outlive the run") and SPEC-6b ("a hook child that ignores TERM does
 not outlive the run").
+
+**A signal stops the running stage; the engine does not wait it out — amended 2026-10-24.**
+Bash runs a trap only once the foreground command returns. The stage used to run in the
+foreground, so a SIGTERM sent to the runner alone (not its whole process group) waited until the
+stage chose to end — up to its time limit, 15 minutes by default — before any exit path ran. The
+engine now runs each stage in the background and waits on it, so the trap runs at once. The trap
+that owns the signal stops the running stage and everything it started (`plugin_stop_running`:
+TERM, then KILL after 2 s): the runner's, before its exit path, and the cycle's, for the member
+running now. A signal that a shell only catches — `timeout` sends its TERM to the run's group a
+second time, which reaches the teardown already under way — stops nothing: the stage is waited on
+until it ends, and its rc stands. Enforced by `tests/integration/runner-release-exit-paths-test.sh`
+SPEC-4 ("the runner stops without waiting for the stage", "the stage does not outlive the run") and
+SPEC-5, and `tests/unit/stage-stop-on-signal-test.sh` S1 (the cycle's trap) and S2 (a caught
+signal stops nothing).
 
 ### 8. Fail-closed artifact scanner contract
 

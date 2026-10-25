@@ -98,7 +98,7 @@ intake_cleanup() { printf 'intake:%s\n' "${3:-NOSCOPE}" >> "${RELEASE_MARKER}"; 
 PLUG
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<'PLUG'
 build_run() {
-    : > "${BUILD_STARTED:-/dev/null}"
+    printf '%s\n' "$BASHPID" > "${BUILD_STARTED:-/dev/null}"
     if [[ "${BUILD_SLEEP:-0}" == "1" ]]; then
         local _i; for _i in $(seq 1 300); do sleep 0.1; done
     fi
@@ -255,9 +255,25 @@ else
     RUNNER_PID=$!
     set +m
 fi
-for _ in $(seq 1 300); do [[ -f "$BUILD_STARTED" ]] && break; sleep 0.1; done
+for _ in $(seq 1 300); do [[ -s "$BUILD_STARTED" ]] && break; sleep 0.1; done
+_build_pid="$(head -n 1 "$BUILD_STARTED" 2>/dev/null || true)"
+_t0=$(date +%s)
 kill -TERM "$RUNNER_PID" 2>/dev/null || true
 wait "$RUNNER_PID" 2>/dev/null || true
+_elapsed=$(( $(date +%s) - _t0 ))
+# ADR-054 §7: the runner acts on the signal while the stage is still running.
+# Build holds for 30s; a runner that waits for it to return took 30s+ here.
+if [[ "$_elapsed" -lt 15 ]]; then
+    assert_pass "[SPEC-4] the runner stops without waiting for the stage (${_elapsed}s)"
+else
+    assert_fail "[SPEC-4] the runner stops without waiting for the stage" "took ${_elapsed}s; build holds 30s"
+fi
+if [[ -n "$_build_pid" ]] && kill -0 "$_build_pid" 2>/dev/null; then
+    assert_fail "[SPEC-4] the stage does not outlive the run" "build pid $_build_pid still alive"
+    kill -KILL "$_build_pid" 2>/dev/null || true
+else
+    assert_pass "[SPEC-4] the stage does not outlive the run"
+fi
 # The EXIT trap dispatches release asynchronously w.r.t. this shell's `wait`
 # on some platforms; give the marker a bounded moment to appear.
 for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
@@ -315,7 +331,7 @@ else
         _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
     RUNNER_PID=$!
     set +m
-    for _ in $(seq 1 300); do [[ -f "$BUILD_STARTED" ]] && break; sleep 0.1; done
+    for _ in $(seq 1 300); do [[ -s "$BUILD_STARTED" ]] && break; sleep 0.1; done
     kill -TERM -"$RUNNER_PID" 2>/dev/null || kill -TERM "$RUNNER_PID" 2>/dev/null || true
     ( sleep "$_SPEC5_KILL_GRACE"; kill -KILL -"$RUNNER_PID" 2>/dev/null || kill -KILL "$RUNNER_PID" 2>/dev/null || true ) &
     _spec5_killer=$!
