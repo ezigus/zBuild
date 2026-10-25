@@ -106,76 +106,55 @@ manifest_graph_outputs_block_present() {
     grep -qE '^outputs:[[:space:]]*(\[\]|$)' "$manifest" 2>/dev/null
 }
 
+# ─── shell readers for the outputs/inputs block (ADR-065 §5) ─────────────────
+# These replaced awk programs line for line; tests/unit/
+# manifest-output-readers-test.sh R2 holds them to those programs' output.
+# _mg_strip_lead_v / _mg_strip_trail_v <var> — remove leading / trailing spaces.
+_mg_strip_lead_v()  { local -n _sl="$1"; _sl="${_sl#"${_sl%%[![:space:]]*}"}"; }
+_mg_strip_trail_v() { local -n _st="$1"; _st="${_st%"${_st##*[![:space:]]}"}"; }
+# _mg_clean_v <var> — the value after its key: a trailing `# comment` and the
+# spaces before it, one leading and one trailing quote, then trailing spaces.
+_mg_clean_v() {
+    local -n _cv="$1"
+    if [[ "$_cv" == *#* ]]; then _cv="${_cv%%#*}"; _mg_strip_trail_v "$1"; fi
+    _cv="${_cv#[\"\']}"; _cv="${_cv%[\"\']}"
+    _mg_strip_trail_v "$1"
+}
+
 # ─── _mgraph_parse_block — shared awk for inputs: / outputs: ──────────────────
 # Emits newline-delimited records: "id|type|source|required|path".
 # Used by both manifest_graph_get_inputs and manifest_graph_get_outputs.
 _mgraph_parse_block() {
     local manifest="$1"
     local block="$2"   # "inputs" | "outputs"
-    awk -v block="$block" '
-        BEGIN {
-            cur_id = ""; cur_type = ""; cur_source = ""; cur_required = ""; cur_path = ""
-            in_block = 0
-            flush_pending = 0
-        }
-        function flush() {
-            if (cur_id != "") {
-                print cur_id "|" cur_type "|" cur_source "|" cur_required "|" cur_path
-            }
-            cur_id = ""; cur_type = ""; cur_source = ""; cur_required = ""; cur_path = ""
-        }
-        # Enter the block on top-level "inputs:" or "outputs:"
-        $0 ~ "^"block":[[:space:]]*$" { in_block = 1; next }
-        # Inline empty list "inputs: []" — no entries; nothing to emit
-        $0 ~ "^"block":[[:space:]]*\\[\\][[:space:]]*$" { exit }
-        # Any new top-level key ends the block
-        in_block && /^[a-zA-Z_]/ { flush(); exit }
-        # New list item: "  - id: foo"
-        in_block && /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ {
-            flush()
-            line = $0
-            sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            gsub(/[[:space:]]*$/, "", line)
-            cur_id = line
-            next
-        }
-        # Continuation properties (indented siblings of id:)
-        in_block && cur_id != "" && /^[[:space:]]+type:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+type:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            gsub(/[[:space:]]*$/, "", line)
-            cur_type = line; next
-        }
-        in_block && cur_id != "" && /^[[:space:]]+source:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+source:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            gsub(/[[:space:]]*$/, "", line)
-            cur_source = line; next
-        }
-        in_block && cur_id != "" && /^[[:space:]]+required:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+required:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            gsub(/[[:space:]]*$/, "", line)
-            cur_required = line; next
-        }
-        in_block && cur_id != "" && /^[[:space:]]+path:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            gsub(/[[:space:]]*$/, "", line)
-            cur_path = line; next
-        }
-        END { flush() }
-    ' "$manifest" 2>/dev/null
+    [[ -f "$manifest" && -r "$manifest" ]] || return 0
+    local l v in_block=0 cid="" ctype="" csrc="" creq="" cpath=""
+    local re_open="^${block}:[[:space:]]*\$" re_empty="^${block}:[[:space:]]*\\[\\][[:space:]]*\$"
+    local re_top='^[a-zA-Z_]' re_id='^[[:space:]]*-[[:space:]]*id:'
+    local re_prop='^[[:space:]]+(type|source|required|path):'
+    _mgpb_flush() {
+        [[ -n "$cid" ]] && printf '%s|%s|%s|%s|%s\n' "$cid" "$ctype" "$csrc" "$creq" "$cpath"
+        cid=""; ctype=""; csrc=""; creq=""; cpath=""
+    }
+    while IFS= read -r l || [[ -n "$l" ]]; do
+        [[ "$l" =~ $re_open ]] && { in_block=1; continue; }
+        [[ "$l" =~ $re_empty ]] && break
+        (( in_block )) || continue
+        [[ "$l" =~ $re_top ]] && break
+        if [[ "$l" =~ $re_id ]]; then
+            _mgpb_flush
+            v="${l#*id:}"; _mg_strip_lead_v v; _mg_clean_v v
+            cid="$v"; continue
+        fi
+        if [[ -n "$cid" && "$l" =~ $re_prop ]]; then
+            v="${l#*:}"; _mg_strip_lead_v v; _mg_clean_v v
+            case "${BASH_REMATCH[1]}" in
+                type) ctype="$v" ;; source) csrc="$v" ;; required) creq="$v" ;; path) cpath="$v" ;;
+            esac
+        fi
+    done 2>/dev/null < "$manifest"
+    _mgpb_flush
+    unset -f _mgpb_flush
 }
 
 manifest_graph_get_outputs() {
@@ -193,28 +172,7 @@ manifest_graph_get_outputs() {
 # cycle-orchestrator.sh and plugin-primary-output-atomic-test.sh unpack five
 # named vars and would mis-bind the same way. The record shape is load-bearing
 # in a way its arity does not advertise.
-manifest_graph_output_format() {
-    local manifest="${1-}" want="${2-}"
-    [[ -f "$manifest" && -n "$want" ]] || return 0
-    awk -v want="$want" '
-        /^outputs:[[:space:]]*$/ { inb = 1; next }
-        /^[a-zA-Z_]/             { inb = 0 }
-        inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
-            l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
-            sub(/[[:space:]]+$/, "", l)
-            gsub(/["\047]/, "", l); cur = l; next
-        }
-        inb && cur == want && /^[[:space:]]+format:[[:space:]]*/ {
-            l = $0; sub(/^[[:space:]]+format:[[:space:]]*/, "", l)
-            # A trailing `# comment` is part of the line, not part of the value.
-            # Without this the value parses as "json   # why" and fails the
-            # closed-set check — a spurious FORMAT_UNKNOWN on a valid manifest.
-            sub(/[[:space:]]*#.*$/, "", l)
-            sub(/[[:space:]]+$/, "", l)
-            gsub(/["\047]/, "", l); print l; exit
-        }
-    ' "$manifest" 2>/dev/null || true
-}
+manifest_graph_output_format() { _mgraph_output_field "${1-}" "${2-}" format; }
 
 # ─── _mgraph_output_bool <manifest> <output_id> <field> ─────────────────────
 # Shared reader for the boolean markers on an output entry. `terminal` and
@@ -222,24 +180,34 @@ manifest_graph_output_format() {
 # is the one that remains. A dedicated accessor per marker rather than extra fields on the
 # five-field pipe record: appending to that record would silently break callers
 # that unpack by position (see _mgraph_parse_block above).
-_mgraph_output_bool() {
+_mgraph_output_bool() { _mgraph_output_field "${1-}" "${2-}" "${3-}"; }
+
+# _mgraph_output_field <manifest> <output_id> <field> — one field of one output
+# entry, read by the shell. The entry's id keeps any `# comment` and loses every
+# quote; the field loses its comment, trailing spaces and every quote.
+_mgraph_output_field() {
     local manifest="${1-}" want="${2-}" field="${3-}"
-    [[ -f "$manifest" && -n "$want" && -n "$field" ]] || return 0
-    awk -v want="$want" -v field="$field" '
-        /^outputs:[[:space:]]*$/ { inb = 1; next }
-        /^[a-zA-Z_]/             { inb = 0 }
-        inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
-            l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
-            sub(/[[:space:]]+$/, "", l)
-            gsub(/["\047]/, "", l); cur = l; next
-        }
-        inb && cur == want && $0 ~ ("^[[:space:]]+" field ":[[:space:]]*") {
-            l = $0; sub("^[[:space:]]+" field ":[[:space:]]*", "", l)
-            sub(/[[:space:]]*#.*$/, "", l)
-            sub(/[[:space:]]+$/, "", l)
-            gsub(/["\047]/, "", l); print l; exit
-        }
-    ' "$manifest" 2>/dev/null || true
+    [[ -f "$manifest" && -r "$manifest" && -n "$want" && -n "$field" ]] || return 0
+    local l v cur="" inb=0
+    local re_open='^outputs:[[:space:]]*$' re_top='^[a-zA-Z_]'
+    local re_id='^[[:space:]]+-[[:space:]]+id:' re_f="^[[:space:]]+${field}:"
+    while IFS= read -r l || [[ -n "$l" ]]; do
+        [[ "$l" =~ $re_open ]] && { inb=1; continue; }
+        [[ "$l" =~ $re_top ]] && inb=0
+        (( inb )) || continue
+        if [[ "$l" =~ $re_id ]]; then
+            v="${l#*id:}"; _mg_strip_lead_v v; _mg_strip_trail_v v
+            v="${v//[\"\']/}"; cur="$v"; continue
+        fi
+        if [[ "$cur" == "$want" && "$l" =~ $re_f ]]; then
+            v="${l#*"${field}":}"; _mg_strip_lead_v v
+            if [[ "$v" == *#* ]]; then v="${v%%#*}"; fi
+            _mg_strip_trail_v v
+            printf '%s\n' "${v//[\"\']/}"
+            return 0
+        fi
+    done 2>/dev/null < "$manifest"
+    return 0
 }
 
 # ─── manifest_graph_output_summary <manifest> <output_id> ────────────────────

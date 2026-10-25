@@ -108,42 +108,37 @@ verdict_color() {
 # Empty string if none. Mirrors the awk in contracts.sh but scoped to the
 # primary-flagged row.
 _verdict_primary_output_path() {
-    local manifest="$1"
-    [[ -f "$manifest" ]] || return 0
-    awk '
-        BEGIN { in_out=0; cur_path=""; cur_primary=""; emitted=0 }
-        /^outputs:/ { in_out=1; next }
-        in_out && /^[a-zA-Z_]/ { in_out=0 }
-        in_out && /^[[:space:]]*-[[:space:]]*id:/ {
-            # New entry — if previous one was primary, emit and exit.
-            # #550: set emitted=1 BEFORE exit so the END block does not
-            # double-print (awk runs END even after exit).
-            if (cur_primary == "true" && cur_path != "") {
-                print cur_path; emitted=1; exit
-            }
-            cur_path=""; cur_primary=""
-            next
-        }
-        in_out && /^[[:space:]]+path:/ {
-            line=$0
-            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            gsub(/[[:space:]]*$/, "", line)
-            cur_path=line; next
-        }
-        in_out && /^[[:space:]]+primary:/ {
-            line=$0
-            sub(/^[[:space:]]+primary:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            gsub(/[[:space:]]*$/, "", line)
-            cur_primary=line; next
-        }
-        END {
-            if (!emitted && cur_primary == "true" && cur_path != "") print cur_path
-        }
-    ' "$manifest" 2>/dev/null
+    local _vpp
+    _verdict_primary_output_path_v _vpp "${1-}"
+    [[ -n "$_vpp" ]] && printf '%s\n' "$_vpp"
+    return 0
+}
+# _verdict_primary_output_path_v <var> <manifest> — the same, read by the shell
+# into <var> (ADR-065 §5: it runs on every result read). An entry's values carry
+# over when the outputs block closes and reopens, as they did in the awk.
+_verdict_primary_output_path_v() {
+    local -n _vpo="$1"; _vpo=""
+    local manifest="${2-}" l v in_out=0 cpath="" cprim=""
+    [[ -f "$manifest" && -r "$manifest" ]] || return 0
+    declare -F _mg_clean_v >/dev/null 2>&1 \
+        || source "$_ZBUILD_VERDICT_ROOT/scripts/lib/manifest-graph.sh"
+    local re_open='^outputs:' re_top='^[a-zA-Z_]' re_id='^[[:space:]]*-[[:space:]]*id:'
+    local re_kv='^[[:space:]]+(path|primary):'
+    while IFS= read -r l || [[ -n "$l" ]]; do
+        [[ "$l" =~ $re_open ]] && { in_out=1; continue; }
+        [[ "$l" =~ $re_top ]] && in_out=0
+        (( in_out )) || continue
+        if [[ "$l" =~ $re_id ]]; then
+            [[ "$cprim" == "true" && -n "$cpath" ]] && { _vpo="$cpath"; return 0; }
+            cpath=""; cprim=""; continue
+        fi
+        if [[ "$l" =~ $re_kv ]]; then
+            v="${l#*:}"; _mg_strip_lead_v v; _mg_clean_v v
+            if [[ "${BASH_REMATCH[1]}" == path ]]; then cpath="$v"; else cprim="$v"; fi
+        fi
+    done 2>/dev/null < "$manifest"
+    [[ "$cprim" == "true" && -n "$cpath" ]] && _vpo="$cpath"
+    return 0
 }
 
 # ─── _verdict_resolve_path <raw_path> <state_dir> ─────────────────────────────
