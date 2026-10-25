@@ -203,8 +203,22 @@ _lc_tree() {
 # rc is left in _ZB_LC_STAGE_RC. A no-op when no stage is running.
 _ZB_LC_STAGE_PID=""
 _ZB_LC_STAGE_RC=0
+_ZB_LC_WATCHDOG_PID=""
 plugin_stop_running() {
     local p="${_ZB_LC_STAGE_PID:-}" tree w
+    # The stage's time-limit watchdog goes with it: a trap that exits after
+    # this never reaches the line in plugin_hook_call that stops it, and the
+    # watchdog would sleep out the limit, then signal a pid that may be another
+    # process's by then.
+    # Its whole tree, not only its shell: a stop that lands before the
+    # watchdog has set its trap ends the shell and would orphan its sleep.
+    if [[ -n "${_ZB_LC_WATCHDOG_PID:-}" ]]; then
+        local _wdt; _wdt="$(_lc_tree "$_ZB_LC_WATCHDOG_PID")"
+        # KILL: it has nothing to tidy, and a TERM can be lost (see its trap).
+        # shellcheck disable=SC2086  # a list of pids
+        kill -KILL $_wdt 2>/dev/null; wait "$_ZB_LC_WATCHDOG_PID" 2>/dev/null
+        _ZB_LC_WATCHDOG_PID=""
+    fi
     [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null || return 0
     _ZB_LC_STAGE_PID=""
     tree="$(_lc_tree "$p")"
@@ -550,9 +564,16 @@ plugin_hook_call() {
         # stage's subshell names itself in a file, as its first act.
         _tl_pidf="${_tl_marker}.pid"; rm -f "$_tl_pidf" 2>/dev/null || true
         (
-            sleep "$_tl_secs" & _tl_s=$!
-            trap 'kill "$_tl_s" 2>/dev/null; exit 0' TERM
-            wait "$_tl_s" 2>/dev/null || exit 0
+            # The trap is set BEFORE the sleep starts, and names it by $!,
+            # which bash sets as the sleep starts: a TERM that lands at once
+            # (a stage that ends at once) cannot orphan the sleep. $! before
+            # that is the parent's last job, which is not the watchdog's. KILL,
+            # not TERM: a TERM that reaches the sleep between its fork and its
+            # exec is caught by the copy of this shell's handler and lost.
+            _tl_b0="${!:-}"
+            trap '[[ "${!:-}" != "$_tl_b0" ]] && kill -KILL "$!" 2>/dev/null; exit 0' TERM
+            sleep "$_tl_secs" &
+            wait "$!" 2>/dev/null || exit 0
             _tl_p="$(cat "$_tl_pidf" 2>/dev/null)"
             [[ -n "$_tl_p" ]] && kill -0 "$_tl_p" 2>/dev/null || exit 0
             : > "$_tl_marker" 2>/dev/null
@@ -561,6 +582,8 @@ plugin_hook_call() {
         ) &
         _tl_wd=$!
     fi
+    local _lc_wd_prev="${_ZB_LC_WATCHDOG_PID:-}"
+    [[ -n "$_tl_wd" ]] && _ZB_LC_WATCHDOG_PID="$_tl_wd"
     local rc=0 _lc_pid _lc_prev="${_ZB_LC_STAGE_PID:-}"
     (
         [[ -n "$_tl_pidf" ]] && printf '%s' "$BASHPID" > "$_tl_pidf"
@@ -583,6 +606,7 @@ plugin_hook_call() {
         kill -0 "$_lc_pid" 2>/dev/null || break
     done
     _ZB_LC_STAGE_PID="$_lc_prev"
+    _ZB_LC_WATCHDOG_PID="$_lc_wd_prev"
     if [[ -n "$_tl_wd" ]]; then
         kill -TERM "$_tl_wd" 2>/dev/null; wait "$_tl_wd" 2>/dev/null || true
         rm -f "$_tl_pidf" 2>/dev/null || true

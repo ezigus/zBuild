@@ -345,10 +345,12 @@ that owns the signal stops the running stage and everything it started (`plugin_
 TERM, then KILL after 2 s): the runner's, before its exit path, and the cycle's, for the member
 running now. A signal that a shell only catches — `timeout` sends its TERM to the run's group a
 second time, which reaches the teardown already under way — stops nothing: the stage is waited on
-until it ends, and its rc stands. Enforced by `tests/integration/runner-release-exit-paths-test.sh`
+until it ends, and its rc stands. Stopping the stage stops its time-limit watchdog too (amended
+2026-10-25): a trap that exits afterwards never returns to the code that stopped it, and it slept
+out the limit, then signalled a pid that may belong to another process by then. Enforced by `tests/integration/runner-release-exit-paths-test.sh`
 SPEC-4 ("the runner stops without waiting for the stage", "the stage does not outlive the run") and
-SPEC-5, and `tests/unit/stage-stop-on-signal-test.sh` S1 (the cycle's trap) and S2 (a caught
-signal stops nothing).
+SPEC-5, and `tests/unit/stage-stop-on-signal-test.sh` S1 (the cycle's trap), S2 (a caught
+signal stops nothing) and S4 (no watchdog outlives a stage stopped by a trap that exits).
 
 ### 8. Fail-closed artifact scanner contract
 
