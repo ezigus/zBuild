@@ -13,6 +13,9 @@
 # K8 [change] _stage_io_now_short and _runner_now_short start no date, and
 #             print date -u's answer
 # K9 [change] persona_find_dir starts no dirname
+# K10 [guard] zb_dirname_v gives dirname's answer for every shape of path
+# K11 [change] a stage dispatch (plugin_hook_call run) starts no dirname, and
+#             no mkdir or rm for its time-limit files once runtime/ exists
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -130,6 +133,37 @@ _pd="$(ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" persona_find_dir "$_pid" 2>/dev/
 _unwrap
 assert_eq "[K9] it starts no dirname" "" "$(grep -x dirname "$CALLS" | tr '\n' ' ')"
 assert_eq "[K9] …and names the persona's dir" "$REPO_ROOT/plugins/persona/$_pid" "$_pd"
+
+print_test_section "K10: zb_dirname_v == dirname"
+_dm=0; _dd=""
+for _p in /a/b/c /a/b/c/ /a//b //a / // a a/ a/b ./a ../a /a/b// "a b/c d" /.. . ..; do
+    _w="$(command dirname -- "$_p")"; _g=""; zb_dirname_v _g "$_p"
+    [[ "$_w" == "$_g" ]] || { _dm=$((_dm + 1)); _dd+="[$_p] dirname=[$_w] got=[$_g]; "; }
+done
+assert_eq "[K10] every path agrees" "0" "$_dm" "$_dd"
+
+print_test_section "K11: a stage dispatch"
+# shellcheck source=../../core/event-bus/event-bus.sh
+source "$REPO_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../core/plugin-registry/registry.sh
+source "$REPO_ROOT/core/plugin-registry/registry.sh"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+export ZBUILD_STATE_DIR="$SD"; mkdir -p "$SD/runtime"
+mock_plugin_factory "hk" tool 0 >/dev/null
+_HKD="$TEST_TEMP_DIR/plugins/tool/hk"
+ZBUILD_CURRENT_STAGE=hk plugin_hook_call "$_HKD" run hk "$SD/pipeline-state.json" >/dev/null 2>&1 || true
+# mkdir logs its arguments: the stub's own mkdir of artifacts/ is the stage's,
+# not the engine's.
+MKARGS="$TEST_TEMP_DIR/mkargs"; : > "$MKARGS"
+: > "$CALLS"; _wrap
+mkdir() { printf '%s\n' "$*" >> "$MKARGS"; command mkdir "$@"; }
+ZBUILD_CURRENT_STAGE=hk plugin_hook_call "$_HKD" run hk "$SD/pipeline-state.json" >/dev/null 2>&1 || true
+_unwrap
+assert_eq "[K11] it starts no dirname" "" "$(grep -x dirname "$CALLS" | tr '\n' ' ')"
+assert_eq "[K11] …and no mkdir of runtime/, which is there" "" "$(grep -F "$SD/runtime" "$MKARGS" | tr '\n' ' ')"
+unset ZBUILD_STATE_DIR
 
 cleanup_test_env
 print_test_results

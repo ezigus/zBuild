@@ -247,6 +247,21 @@ replace_keep_mode() {
     mv -f "$src" "$target"
 }
 
+# zb_dirname_v <var> <path> — dirname's answer into <var>, from the shell (no
+# program: it runs on every dispatch, ADR-065 §5). Trailing slashes go first, a
+# name with no slash is ".", and the root stays "/".
+zb_dirname_v() {
+    local -n _zdv="$1"
+    local _p="$2"
+    if [[ "$_p" =~ ^/+$ ]]; then _zdv="/"; return 0; fi
+    while [[ "$_p" == */ ]]; do _p="${_p%/}"; done
+    if [[ "$_p" != */* ]]; then _zdv="."; return 0; fi
+    _p="${_p%/*}"
+    while [[ "$_p" == */ ]]; do _p="${_p%/}"; done
+    [[ -n "$_p" ]] || _p="/"
+    _zdv="$_p"
+}
+
 # _zb_target_mode_v <var> <target> — <target>'s permission bits, or 600 for a
 # file that is not there yet (what mktemp gave the temp file before).
 _zb_target_mode_v() {

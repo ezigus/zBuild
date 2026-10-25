@@ -40,7 +40,7 @@ stage_findings_json() {
 stage_summary_write() {
     local path="${1:-}" stage="${2:-}" verdict="${3:-}" reason="${4:-}" body="${5:-}"
     [[ -n "$path" ]] || return 0
-    mkdir -p "$(dirname "$path")" 2>/dev/null || true
+    [[ "$path" != */* || -d "${path%/*}" ]] || mkdir -p "${path%/*}" 2>/dev/null || true
     {
         printf '## %s — %s\n\n' "${stage:-stage}" "${verdict:-unknown}"
         if [[ -n "$reason" ]]; then
@@ -68,7 +68,7 @@ stage_errors_append() {
     local stage="${1:-${ZBUILD_CURRENT_STAGE:-}}"; shift || true
     local log; log="$(_stage_errors_log "$stage")"
     [[ -n "$log" ]] || return 0
-    mkdir -p "${log%/*}" 2>/dev/null || true
+    [[ -d "${log%/*}" ]] || mkdir -p "${log%/*}" 2>/dev/null || true
     printf '%s\n' "$*" >> "$log" 2>/dev/null || true
     return 0
 }
