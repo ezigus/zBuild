@@ -73,7 +73,7 @@ _drive() {
         source "$REPO_ROOT/core/pipeline/template.sh"
         source "$REPO_ROOT/core/output/stage-io.sh"
         source "$REPO_ROOT/core/router/route.sh"
-        export ZBUILD_SCOPE_OVERRIDE=1 ZBUILD_ROUTER_TIMEOUT=3 ZBUILD_ROUTER_RETRIES=0
+        export ZBUILD_SCOPE_OVERRIDE=1 ZBUILD_ROUTER_TIMEOUT=2 ZBUILD_ROUTER_RETRIES=0
         load_template "$TEST_TEMP_DIR/template.yaml" >/dev/null 2>&1
         export ZBUILD_CURRENT_STAGE=build
         route_to_model_loop T2 "$TEST_TEMP_DIR/prompt.txt" "$REPO" 1
@@ -102,7 +102,7 @@ _stub hang; : > "$ZBUILD_EVENTS_JSONL"
     source "$REPO_ROOT/core/pipeline/template.sh"
     source "$REPO_ROOT/core/output/stage-io.sh"
     source "$REPO_ROOT/core/router/route.sh"
-    export ZBUILD_SCOPE_OVERRIDE=1 ZBUILD_ROUTER_TIMEOUT=3 ZBUILD_ROUTER_RETRIES=0
+    export ZBUILD_SCOPE_OVERRIDE=1 ZBUILD_ROUTER_TIMEOUT=2 ZBUILD_ROUTER_RETRIES=0
     load_template "$TEST_TEMP_DIR/template.yaml" >/dev/null 2>&1
     export ZBUILD_CURRENT_STAGE=build
     route_to_model T2 "judge this"

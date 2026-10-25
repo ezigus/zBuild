@@ -171,10 +171,11 @@ assert_contains "[SPEC-6] the running row keeps its start" "$(last_body)" '**10:
 # ─── SPEC-7: parent death → final render, exit 0 ────────────────────────────
 S4="$TEST_TEMP_DIR/s4"; mkdir -p "$S4"; : > "$S4/events.jsonl"; : > "$GH_LOG"; rm -f "$GH_BODIES"/*
 ev "$S4/events.jsonl" 15:00:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc1234 engine_branch=main
-sleep 2 & SHORT=$!
+sleep 3600 & SHORT=$!
 start_sidecar "$S4" "$SHORT"
 wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1
-wait "$SHORT" 2>/dev/null
+# The parent dies once the first render is out; reaped, so it is really gone.
+kill "$SHORT" 2>/dev/null; wait "$SHORT" 2>/dev/null
 if wait_gone "$pid"; then
     wait "$pid" 2>/dev/null; rc=$?
     assert_pass "[SPEC-7] parent death ends the sidecar"

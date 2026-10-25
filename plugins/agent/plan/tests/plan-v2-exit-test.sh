@@ -132,9 +132,10 @@ bash -c "
     plan_run plan '$SF1' &
     _p=\$!
     for _i in \$(seq 1 200); do [[ -s '$READY' ]] && break; sleep 0.05; done
-    kill -TERM \"\$_p\" 2>/dev/null || true
+    # The engine's stop reaches the whole process group: the stage's shell and
+    # its model call. Bash runs the stage's TERM trap once that call returns.
+    kill -TERM \"\$_p\" \"\$(cat '$READY' 2>/dev/null)\" 2>/dev/null || true
     wait \"\$_p\" 2>/dev/null || true
-    kill \"\$(cat '$READY' 2>/dev/null)\" 2>/dev/null || true
 " >/dev/null 2>&1
 assert_file_exists "[P1] fixture: the model call was reached before the signal" "$READY"
 _r1="$TEST_TEMP_DIR/sig/art/plan.json"

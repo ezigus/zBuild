@@ -5,10 +5,10 @@
 # banner BEFORE the action runs and its output banner AFTER the action returns.
 #
 # This test is table-driven (one row per stage that performs work). Each row
-# uses a real subprocess, a slow mock claude (sleep 1.5s per call), and asserts
+# uses a real subprocess, a slow mock claude (sleep 0.3s per call), and asserts
 # that on the captured banner stream, the input-banner line precedes the
-# output-banner line by at least 1 second of wall time. The 1-second floor is
-# the 1.5s sleep with 0.5s tolerance for scheduler jitter. Forces unbuffered
+# output-banner line, with the action between them taking at least 250 ms
+# (the 0.3s sleep less jitter). Forces unbuffered
 # output via `stdbuf -oL -eL` so the banner line timestamps reflect emit time,
 # not flush time.
 #
@@ -49,7 +49,7 @@ mkdir -p "$TEST_TEMP_DIR/bin"
 # Mock claude wraps the fixture so test env vars propagate.
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
-export SLOW_MOCK_CLAUDE_SLEEP=1.5
+export SLOW_MOCK_CLAUDE_SLEEP=0.3
 export SLOW_MOCK_CLAUDE_MARK="$SLOW_MARK"
 export SLOW_MOCK_CLAUDE_PAYLOAD='{"schema_version":1,"steps":[{"id":"step-1","files":["a"],"intent":"x","estimated_lines":1}]}'
 exec stdbuf -oL -eL "$SLOW_FIXTURE" "\$@"
@@ -102,14 +102,14 @@ template_stage_io_redact() { printf ""; }
 #   3. Invokes the under-test routine (route_to_model or run_captured_command)
 #   4. Records post-action wall-time ms
 # After driver returns, the test scans fd-3 content for the input/output banner
-# lines and asserts the wall-time delta is >= 1000ms (1.5s sleep - 0.5s jitter).
+# lines and asserts the wall-time delta is >= 250ms (0.3s sleep - jitter).
 
 # Make a real fake "gh" binary for the intake row.
 cat > "$TEST_TEMP_DIR/bin/gh" <<'GH'
 #!/usr/bin/env bash
 # Slow mock gh: only handles `issue view --json title,body --jq <expr>`.
-# Sleeps 1.5s, then prints a title.
-sleep 1.5
+# Sleeps 0.3s, then prints a title.
+sleep 0.3
 case "${1:-}" in
     issue)
         # Print just a title; the --jq filter selects field; we cheat and emit a
@@ -197,8 +197,8 @@ drv_run_captured_command() {
 
 # ── #497: drv_test_run — exercise plugins/tool/test against a real tmp repo ──
 # Builds a minimal repo with an empty diff.patch under the row's artifact dir,
-# installs a slow mock test_cmd that sleeps 1.5s + writes begin/end marks to
-# SLOW_MARK (so the duration-delta assertion can verify the action took ≥1s),
+# installs a slow mock test_cmd that sleeps 0.3s + writes begin/end marks to
+# SLOW_MARK (so the duration-delta assertion can verify the action took ≥250ms),
 # then drives test_run through the plugin's own source path.
 drv_test_run() {
     local stage_id="$1" driver_path="$2"
@@ -211,7 +211,7 @@ drv_test_run() {
     : > "$art_dir/diff.patch"
     # Slow mock test_cmd. Mirrors the slow-mock-claude wall-time marker so the
     # parent test's duration-delta assertion can prove the action bracketed the
-    # banner pair by ≥1s.
+    # banner pair by ≥250ms.
     local mock_cmd="$TEST_TEMP_DIR/bin/mock-test-cmd-${stage_id}.sh"
     cat > "$mock_cmd" <<MOCK
 #!/usr/bin/env bash
@@ -220,7 +220,7 @@ if [[ -n "\$_mark" ]]; then
     _us="\${EPOCHREALTIME/./}"
     printf '%s %s begin\n' "\$(( 10#\${_us} / 1000 ))" "\$0" >> "\$_mark"
 fi
-sleep 1.5
+sleep 0.3
 if [[ -n "\$_mark" ]]; then
     _us="\${EPOCHREALTIME/./}"
     printf '%s %s end\n' "\$(( 10#\${_us} / 1000 ))" "\$0" >> "\$_mark"
@@ -281,7 +281,7 @@ for row in "${STAGES[@]}"; do
     # file's timestamps and the ordering of lines in the banner stream:
     #   1. The input banner appears in the banner stream BEFORE the output banner.
     #   2. The mock-claude (or mock-gh) wrote its "begin"/"end" markers to
-    #      SLOW_MARK at a known wall time; we assert end-mark - begin-mark >= 1s
+    #      SLOW_MARK at a known wall time; we assert end-mark - begin-mark >= 250ms
     #      AND that both fall between the input and output banner positions.
     #
     # We assert ordering via grep-by-line-number on the banner stream.
@@ -295,7 +295,7 @@ for row in "${STAGES[@]}"; do
         overall_fail=1
     fi
 
-    # Slow-mock marker delta proves the action took >=1s, which is the time
+    # Slow-mock marker delta proves the action took >=250ms, which is the time
     # window between input banner emit (before action) and output banner emit
     # (after action). Combined with the line-order assertion above, this
     # closes the loop: input precedes output by at least the action's duration.
@@ -303,15 +303,15 @@ for row in "${STAGES[@]}"; do
     end_ts="$(grep ' end$'   "$SLOW_MARK" 2>/dev/null | tail -1 | awk '{print $1}' || true)"
     if [[ -n "$begin_ts" && -n "$end_ts" && "$begin_ts" =~ ^[0-9]+$ && "$end_ts" =~ ^[0-9]+$ ]]; then
         delta=$(( end_ts - begin_ts ))
-        if [[ "$delta" -ge 1000 ]]; then
-            assert_pass "[$stage_id] action duration >= 1s (proves bracketing window)"
+        if [[ "$delta" -ge 250 ]]; then
+            assert_pass "[$stage_id] action duration >= 250ms (proves bracketing window)"
         else
-            assert_fail "[$stage_id] action duration >= 1s" "delta=${delta}ms"
+            assert_fail "[$stage_id] action duration >= 250ms" "delta=${delta}ms"
             overall_fail=1
         fi
     else
         # gh-based intake row doesn't run the claude mock — the gh mock
-        # sleeps 1.5s instead and we don't write to SLOW_MARK from gh. Skip
+        # sleeps 0.3s instead and we don't write to SLOW_MARK from gh. Skip
         # the duration assertion and rely on the line-order assertion above
         # (which is sufficient since gh runs synchronously inside
         # run_captured_command — the input banner emits before run_captured_command

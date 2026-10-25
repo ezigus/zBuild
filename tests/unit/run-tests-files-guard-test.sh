@@ -75,10 +75,10 @@ esac
 # none exists, so there is nothing to assert on such a host. Gate accordingly.
 if [[ -n "$_REAL_TIMEOUT" ]]; then
     # Short per-file timeout so the loop is bounded; outer bound is the backstop.
-    out="$(ZBUILD_TEST_FILE_TIMEOUT=3 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$FX/infinite-loop-test.sh" 2>&1)"
+    out="$(ZBUILD_TEST_FILE_TIMEOUT=1 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$FX/infinite-loop-test.sh" 2>&1)"
     rc=$?
     # run-tests.sh exits 1 when a file fails; the OUTER bound (30s) must NOT be
-    # what stopped it — the per-file timeout (3s) should. rc=124 here would mean
+    # what stopped it — the per-file timeout (1s) should. rc=124 here would mean
     # the outer bound fired = the per-file timeout did NOT work = still wedged.
     assert_eq "G3: infinite-loop test failed via per-file timeout, not outer bound" "1" "$rc"
     # #1613: this file is killed at its bound, so the marker is TIMEOUT, not FAIL.
@@ -87,7 +87,7 @@ if [[ -n "$_REAL_TIMEOUT" ]]; then
     # #1613 exists to remove, since a reader could not tell this from an assertion
     # failure. The bound is named so the line is self-explaining.
     case "$out" in
-        *"unit: TIMEOUT $FX/infinite-loop-test.sh (exceeded 3s,"*)
+        *"unit: TIMEOUT $FX/infinite-loop-test.sh (exceeded 1s,"*)
             assert_pass "G3: hung test surfaced as TIMEOUT naming the bound (not a hang)" ;;
         *) assert_fail "G3: infinite-loop test must surface as TIMEOUT" "out: $out" ;;
     esac
@@ -118,30 +118,32 @@ esac
 
 # ─── #2123: --files runs through the same bounded pool as a tier ─────────────
 # A targeted rerun of 286 files ran them one after another (39 minutes on
-# #1841's iteration 2). Three 1-second files at JOBS=3 must finish in ~1s, and
+# #1841's iteration 2). Three 0.5-second files at JOBS=4 must finish faster
+# than one after another, and
 # the output grammar the verdict parser reads must be byte-identical to serial.
 print_test_section "#2123: --files is parallel"
 PFX="$TEST_TEMP_DIR/pfx"; mkdir -p "$PFX"
 for n in 1 2 3; do
-    printf '#!/usr/bin/env bash\nsleep 1\nexit 0\n' > "$PFX/p$n-test.sh"; chmod +x "$PFX/p$n-test.sh"
+    printf '#!/usr/bin/env bash\nsleep 0.5\nexit 0\n' > "$PFX/p$n-test.sh"; chmod +x "$PFX/p$n-test.sh"
 done
 printf '#!/usr/bin/env bash\nexit 1\n' > "$PFX/p4-fail-test.sh"; chmod +x "$PFX/p4-fail-test.sh"
-_t0=$(date +%s)
+_t0=${EPOCHREALTIME/./}
 _par_out="$(cd "$REPO_ROOT" && ZBUILD_TEST_PARALLEL_JOBS=4 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$PFX/p1-test.sh" "$PFX/p2-test.sh" "$PFX/p3-test.sh" "$PFX/p4-fail-test.sh" 2>"$TEST_TEMP_DIR/par.err")"; _par_rc=$?
-_par_secs=$(( $(date +%s) - _t0 ))
-_t1=$(date +%s)
+_par_ms=$(( (${EPOCHREALTIME/./} - _t0) / 1000 ))
+_t1=${EPOCHREALTIME/./}
 _ser_out="$(cd "$REPO_ROOT" && ZBUILD_TEST_PARALLEL_JOBS=0 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$PFX/p1-test.sh" "$PFX/p2-test.sh" "$PFX/p3-test.sh" "$PFX/p4-fail-test.sh" 2>"$TEST_TEMP_DIR/ser.err")"; _ser_rc=$?
-_ser_secs=$(( $(date +%s) - _t1 ))
-# Relative, not absolute: `date +%s` truncates and a loaded runner adds
-# startup overhead, so "parallel is faster than serial" is the claim.
-if [[ "$_par_secs" -lt "$_ser_secs" ]]; then
-    assert_pass "[#2123] three 1s files at JOBS=4 finish faster than serial (${_par_secs}s < ${_ser_secs}s)"
+_ser_ms=$(( (${EPOCHREALTIME/./} - _t1) / 1000 ))
+# Relative, not absolute: a loaded runner adds startup overhead, so
+# "parallel is faster than serial" is the claim. Running all three together
+# saves two sleeps (1s); a 300ms margin keeps a serial run from passing on noise.
+if (( _par_ms + 300 < _ser_ms )); then
+    assert_pass "[#2123] three 0.5s files at JOBS=4 finish faster than serial (${_par_ms}ms < ${_ser_ms}ms)"
 else
-    assert_fail "[#2123] --files must run files concurrently" "parallel ${_par_secs}s, serial ${_ser_secs}s"
+    assert_fail "[#2123] --files must run files concurrently" "parallel ${_par_ms}ms, serial ${_ser_ms}ms"
 fi
 # Serial-pinned files run first, alone, whatever their argument position.
-printf '#!/usr/bin/env bash\ndate +%%s > "%s/pin-start"\nsleep 1\nexit 0\n' "$PFX" > "$PFX/pin-test.sh"; chmod +x "$PFX/pin-test.sh"
-printf '#!/usr/bin/env bash\ndate +%%s > "%s/p1-start"\nsleep 1\nexit 0\n' "$PFX" > "$PFX/p1-test.sh"
+printf '#!/usr/bin/env bash\nprintf %%s "${EPOCHREALTIME/./}" > "%s/pin-start"\nsleep 0.3\nexit 0\n' "$PFX" > "$PFX/pin-test.sh"; chmod +x "$PFX/pin-test.sh"
+printf '#!/usr/bin/env bash\nprintf %%s "${EPOCHREALTIME/./}" > "%s/p1-start"\nsleep 0.3\nexit 0\n' "$PFX" > "$PFX/p1-test.sh"
 _pin_out="$(cd "$REPO_ROOT" && ZBUILD_TEST_PARALLEL_JOBS=4 ZBUILD_SERIAL_TESTS='pin-test.sh' "${_OUTER[@]}" bash "$RUN_TESTS" --files "$PFX/p1-test.sh" "$PFX/pin-test.sh" 2>/dev/null)"
 if [[ "$(cat "$PFX/pin-start")" -lt "$(cat "$PFX/p1-start")" ]]; then
     assert_pass "[#2123] a serial-pinned file listed second still runs before the pool starts"
