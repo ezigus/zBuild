@@ -30,7 +30,7 @@ _ZBUILD_LAYOUT_LOADED=1
 
 # zbuild_repo_slug (#1930). Guarded: this file is sourced from contexts that may
 # not have scripts/lib on hand, and the segment has a fallback for that.
-_ZBUILD_LAYOUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_LAYOUT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 if [[ -f "$_ZBUILD_LAYOUT_DIR/../../scripts/lib/identity.sh" ]]; then
     # shellcheck source=../../scripts/lib/identity.sh
     source "$_ZBUILD_LAYOUT_DIR/../../scripts/lib/identity.sh"

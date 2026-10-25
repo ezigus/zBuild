@@ -12,7 +12,7 @@ _ZBUILD_STAGE_LIMITS_LOADED=1
 
 if ! declare -F manifest_router_knob >/dev/null 2>&1; then
     # shellcheck source=../../core/plugin-registry/manifest-router-budget.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/core/plugin-registry/manifest-router-budget.sh" 2>/dev/null || true
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/core/plugin-registry/manifest-router-budget.sh" 2>/dev/null || true
 fi
 
 # ─── _route_manifest_knob <knob> — ADR-017 §11 (#1816) manifest layer ───────

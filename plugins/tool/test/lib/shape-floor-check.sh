@@ -22,11 +22,11 @@ _ZBUILD_SHAPE_FLOOR_PLUGIN_LOADED=1
 # all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
 # zbuild_engine_tmpdir comes from helpers.sh (a no-op when test's bootstrap loaded it).
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/lib/helpers.sh"
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/lib/stage-summary.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/helpers.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/stage-summary.sh"
 # #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
 # shellcheck source=../../../../scripts/lib/stage-result.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/lib/stage-result.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/stage-result.sh"
 _SF_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../../core/event-bus/event-bus.sh

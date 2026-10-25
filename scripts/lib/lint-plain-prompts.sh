@@ -36,7 +36,7 @@
 # Exit:  0 = clean; 1 = a forbidden word in model-facing text, or a listed file is missing.
 set -euo pipefail
 
-ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+ROOT="${1:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}"
 LIST="$ROOT/config/model-facing-sources.txt"
 [[ -f "$LIST" ]] || { echo "lint-plain-prompts: no $LIST" >&2; exit 1; }
 

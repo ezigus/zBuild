@@ -33,7 +33,7 @@
 [[ -n "${_ZBUILD_STAGE_PROMPT_LOADED:-}" ]] && return 0
 _ZBUILD_STAGE_PROMPT_LOADED=1
 
-_ZBUILD_SP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+_ZBUILD_SP_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 
 # shellcheck source=./prompt-overrides.sh
 declare -F load_repo_rules >/dev/null 2>&1 || source "$_ZBUILD_SP_ROOT/scripts/lib/prompt-overrides.sh"
@@ -82,11 +82,22 @@ stage_notes_path() { printf '%s/artifacts/notes/%s.md' "$1" "$(_sp_unit "$2")"; 
 _sp_manifest_scalar() {
     local manifest="$1" block="$2" key="$3"
     [[ -f "$manifest" ]] || return 0
-    awk -v b="$block" -v k="$key" '
-        /^[^[:space:]#]/ { inblk = ($0 ~ "^" b ":[[:space:]]*(#.*)?$"); next }
-        inblk && $0 ~ "^[[:space:]]+" k ":" {
-            v = $0; sub("^[[:space:]]+" k ":[[:space:]]*", "", v); sub(/[[:space:]]*#.*/, "", v)
-            gsub(/^["\047]|["\047]$/, "", v); print v; exit }' "$manifest" 2>/dev/null
+    [[ -r "$manifest" ]] || return 2
+    # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5).
+    local line v inblk=0 re_b="^${block}:[[:space:]]*(#.*)?$" re_k="^[[:space:]]+${key}:[[:space:]]*"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^[^[:space:]#] ]]; then
+            inblk=0; [[ "$line" =~ $re_b ]] && inblk=1
+            continue
+        fi
+        if (( inblk )) && [[ "$line" =~ $re_k ]]; then
+            v="${line:${#BASH_REMATCH[0]}}"
+            if [[ "$v" == *#* ]]; then v="${v%%#*}"; v="${v%"${v##*[![:space:]]}"}"; fi
+            v="${v#[\"\']}"; v="${v%[\"\']}"
+            printf '%s\n' "$v"; return 0
+        fi
+    done < "$manifest"
+    return 0
 }
 
 _sp_writes_repository() {

@@ -30,7 +30,7 @@
 [[ -n "${_ZBUILD_MANIFEST_GRAPH_LOADED:-}" ]] && return 0
 _ZBUILD_MANIFEST_GRAPH_LOADED=1
 
-_ZBUILD_MGRAPH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_MGRAPH_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_MGRAPH_ROOT="$(cd "$_ZBUILD_MGRAPH_DIR/.." && pwd)"
 # Climb one more level if we're under scripts/lib (the canonical install).
 if [[ -d "$_ZBUILD_MGRAPH_ROOT/scripts/lib" ]]; then

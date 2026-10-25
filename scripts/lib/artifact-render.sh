@@ -21,7 +21,7 @@
 [[ -n "${_ZBUILD_ARTIFACT_RENDER_LOADED:-}" ]] && return 0
 _ZBUILD_ARTIFACT_RENDER_LOADED=1
 
-_ZBUILD_ARTIFACT_RENDER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_ARTIFACT_RENDER_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./compat.sh
 source "$_ZBUILD_ARTIFACT_RENDER_DIR/compat.sh"
 

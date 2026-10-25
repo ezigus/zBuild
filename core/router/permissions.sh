@@ -121,7 +121,7 @@ _zbuild_build_permissions_settings() {
     # #2379: no stage reads or edits a private path (the engine's list plus the
     # template's and the repository's) — P10–P12 above.
     declare -F private_paths_deny_rules >/dev/null 2>&1 \
-        || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/private-paths.sh"
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/private-paths.sh"
     local _priv_json
     _priv_json="$(private_paths_deny_rules "$_repo_root" | jq -R 'select(length > 0)' | jq -sc .)" \
         || { error "router: permissions: jq failed to build private-path rules"; return 1; }

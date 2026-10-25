@@ -10,7 +10,7 @@
 #   ZBUILD_TEST_TIMING_FILE=/tmp/t.log npm test && bash scripts/lib/test-durations.sh /tmp/t.log
 set -euo pipefail
 
-_TD_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+_TD_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 log="${1:?usage: test-durations.sh <timing-log> [out]}"
 out="${2:-$_TD_ROOT/tests/test-durations.tsv}"
 

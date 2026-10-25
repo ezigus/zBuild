@@ -17,7 +17,7 @@
 [[ -n "${_ZBUILD_RUN_STATUS_COMMENT_LOADED:-}" ]] && return 0 2>/dev/null
 _ZBUILD_RUN_STATUS_COMMENT_LOADED=1
 
-_RSC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_RSC_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _RSC_ROOT="$(cd "$_RSC_DIR/../.." && pwd)"
 # shellcheck source=./helpers.sh
 [[ -n "${_ZBUILD_HELPERS_LOADED:-}" ]] || source "$_RSC_ROOT/scripts/lib/helpers.sh"

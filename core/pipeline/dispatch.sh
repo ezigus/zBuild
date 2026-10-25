@@ -6,7 +6,7 @@
 [[ -n "${_ZBUILD_DISPATCH_LOADED:-}" ]] && return 0
 _ZBUILD_DISPATCH_LOADED=1
 
-_ZBUILD_DISPATCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_DISPATCH_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_DISPATCH_ROOT="$(cd "$_ZBUILD_DISPATCH_DIR/../.." && pwd)"
 
 # Depends on yaml_get and discover_plugins — both in

@@ -14,7 +14,7 @@ _ZBUILD_STAGE_PREVIOUS_WORK_LOADED=1
 
 # ─── What this issue's work has changed ─────────────────────────────────────
 # shellcheck source=./merge-base.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/merge-base.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/merge-base.sh"
 
 # _sp_work_changed_line <repo_root> — one line naming the files this
 # issue's work has changed, against where its branch left the default branch,

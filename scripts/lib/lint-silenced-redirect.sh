@@ -13,7 +13,7 @@
 # Exit:  0 = clean; 1 = at least one offending line.
 set -euo pipefail
 
-_LSR_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+_LSR_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 if [[ $# -eq 0 ]]; then
     set -- "$_LSR_ROOT/core" "$_LSR_ROOT/scripts" "$_LSR_ROOT/plugins"
 fi

@@ -35,7 +35,7 @@
 [[ -n "${_ZBUILD_SHAPE_FLOOR_LOADED:-}" ]] && return 0
 _ZBUILD_SHAPE_FLOOR_LOADED=1
 
-_SF_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_SF_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./merge-base.sh
 source "$_SF_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
 

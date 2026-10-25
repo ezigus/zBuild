@@ -34,7 +34,7 @@
 [[ -n "${_ZBUILD_PERSONA_RESOLVE_LOADED:-}" ]] && return 0
 _ZBUILD_PERSONA_RESOLVE_LOADED=1
 
-_PERSONA_RESOLVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_PERSONA_RESOLVE_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _PERSONA_RESOLVE_ROOT="$(cd "$_PERSONA_RESOLVE_DIR/../.." && pwd)"
 
 # resolve_persona depends on yaml_get (manifest-validation.sh), error (helpers.sh),

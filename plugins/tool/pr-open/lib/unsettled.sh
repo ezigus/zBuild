@@ -22,7 +22,7 @@
 # this file loads it, rather than render without escaping (review #2343).
 if [[ -z "${_PR_OPEN_FINDING_JQ_DEFS:-}" ]]; then
     # shellcheck source=body.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/body.sh"
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/body.sh"
 fi
 
 # The hidden line zBuild puts in a description when IT made the PR a draft, so

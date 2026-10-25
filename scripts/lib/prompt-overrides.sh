@@ -18,7 +18,7 @@
 [[ -n "${_ZBUILD_PROMPT_OVERRIDES_LOADED:-}" ]] && return 0
 _ZBUILD_PROMPT_OVERRIDES_LOADED=1
 
-_PO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_PO_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # scope_floor_denied: cheap string gate (absolute/../, legacy-DoNotUse/, secrets).
 # shellcheck source=./scope-governance.sh
 source "$_PO_DIR/scope-governance.sh"

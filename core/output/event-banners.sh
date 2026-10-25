@@ -21,7 +21,7 @@
 [[ -n "${_ZBUILD_EVENT_BANNERS_LOADED:-}" ]] && return 0
 _ZBUILD_EVENT_BANNERS_LOADED=1
 
-_ZBUILD_EVENT_BANNERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_EVENT_BANNERS_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_EVENT_BANNERS_ROOT="$(cd "$_ZBUILD_EVENT_BANNERS_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh

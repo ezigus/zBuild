@@ -6,7 +6,7 @@
 [[ -n "${_ZBUILD_TEMPLATE_LOADED:-}" ]] && return 0
 _ZBUILD_TEMPLATE_LOADED=1
 
-_ZBUILD_TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_TEMPLATE_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT="$(cd "$_ZBUILD_TEMPLATE_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
@@ -2537,7 +2537,7 @@ template_stage_negctl_timeout() {
 # Per-stage `timeout_s:` (the whole-stage limit): template_stage_time_limit in
 # scripts/lib/stage-time-limit.sh, which plugin_hook_call loads too.
 # shellcheck source=../../scripts/lib/stage-time-limit.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-time-limit.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-time-limit.sh"
 
 # #2187: per-stage `retry:` — how many times the engine re-dispatches a stage
 # whose disposition says retry. Read LAZILY from the template source, like

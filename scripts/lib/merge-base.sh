@@ -11,7 +11,7 @@
 [[ -n "${_ZBUILD_MERGE_BASE_LOADED:-}" ]] && return 0
 _ZBUILD_MERGE_BASE_LOADED=1
 
-_ZBUILD_MERGE_BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_MERGE_BASE_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./default-branch.sh
 source "$_ZBUILD_MERGE_BASE_DIR/default-branch.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" default-branch.sh"
 

@@ -13,7 +13,7 @@
 # distinction is what #1969 had to undo for lint-grep-c.
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
 # Both assignment forms. The quoted one was missed on the first pass and hid 31

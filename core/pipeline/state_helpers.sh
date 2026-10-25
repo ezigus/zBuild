@@ -7,7 +7,7 @@
 [[ -n "${_ZBUILD_STATE_HELPERS_LOADED:-}" ]] && return 0
 _ZBUILD_STATE_HELPERS_LOADED=1
 
-_ZBUILD_STATE_HELPERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_STATE_HELPERS_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_STATE_HELPERS_ROOT="$(cd "$_ZBUILD_STATE_HELPERS_DIR/../.." && pwd)"
 
 # Depends on locked_state_update (core/state/atomic.sh) and atomic_write
@@ -45,8 +45,9 @@ write_scope_override() {
 # _update_stage_status <state_file> <stage_id> <status>
 # Atomically sets .stage_statuses[<stage_id>] = <status> and bumps .updated_at.
 _zbuild_runner_set_stage_status() {
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     jq --arg id "$_ZB_STAGE_ID" --arg st "$_ZB_STAGE_STATUS" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       --arg now "$_now" \
        '.stage_statuses[$id] = $st | .updated_at = $now'
 }
 
@@ -59,8 +60,9 @@ _update_stage_status() {
 # _set_pipeline_status <state_file> <status>
 # Sets the top-level .status field atomically and bumps .updated_at.
 _zbuild_runner_set_pipeline_status() {
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     jq --arg st "$_ZB_PIPELINE_STATUS" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       --arg now "$_now" \
        '.status = $st | .updated_at = $now'
 }
 
@@ -76,8 +78,9 @@ _set_pipeline_status() {
 # state so downstream stages (notably pr-open) can read it instead of
 # re-deriving the name from the issue number.
 _zbuild_runner_set_pipeline_branch() {
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     jq --arg br "$_ZB_PIPELINE_BRANCH" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       --arg now "$_now" \
        '.branch = $br | .updated_at = $now'
 }
 
@@ -92,8 +95,9 @@ _set_pipeline_branch() {
 # #507 for observability and resume (schema-additive — older state files
 # without the key are upgraded in-place on the next write).
 _zbuild_runner_set_stage_verdict() {
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     jq --arg id "$_ZB_STAGE_ID" --arg v "$_ZB_STAGE_VERDICT" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       --arg now "$_now" \
        '(.stage_verdicts //= {}) | .stage_verdicts[$id] = $v | .updated_at = $now'
 }
 
@@ -110,7 +114,8 @@ _zbuild_state_set_stage_verdict() {
 # say when to come back. Values ride exported env into the jq filter (the
 # locked_state_update contract), same shape as _zbuild_state_set_stage_verdict.
 _zbuild_runner_set_llm_abort_reason() {
-    jq --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
+    jq --arg now "$_now" \
        --arg reason "${_ZB_LLM_ABORT_REASON:-llm_unavailable}" \
        --arg detail "${_ZB_LLM_ABORT_DETAIL:-}" \
        '.reason = $reason | .updated_at = $now

@@ -5,7 +5,7 @@
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # Usage:
-#   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#   SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 #   source "$SCRIPT_DIR/lib/test-helpers.sh"
 #
 # Provides:
@@ -326,7 +326,7 @@ _zb_test_stage_blocks() {
     local dir="$1"
     (
         # shellcheck source=./stage-prompt.sh
-        source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-prompt.sh" || exit 1
+        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-prompt.sh" || exit 1
         mkdir -p "$dir" "$dir/repo" "$dir/state" || exit 1
         _stage_block_from_repo test-stage "$dir/repo" > "$dir/from-repo.md"
         _stage_block_previous_work test-stage "$dir/state" "$dir/plugins" "" "$dir/repo" \
@@ -343,9 +343,9 @@ zb_test_previous_work() {
     sd="$(dirname "$state_file")"
     (
         # shellcheck source=./stage-prompt.sh
-        source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-prompt.sh" || exit 1
+        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-prompt.sh" || exit 1
         declare -F _inputs_resolve_stage >/dev/null 2>&1 \
-            || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/core/pipeline/input-resolve.sh" || exit 1
+            || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/core/pipeline/input-resolve.sh" || exit 1
         _stage_block_previous_work "$consumer" "$sd" "$proot" \
             "$(_inputs_resolve_stage "$consumer" "$proot" "$sd")" "$sd"
     ) 2>/dev/null
@@ -903,7 +903,7 @@ MOCKEOF
 # whose template names a persona that exists nowhere (ADR-051 §2).
 fixture_link_personas() {
     local root="${1:-$TEST_TEMP_DIR/plugins}" src
-    src="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/plugins/persona"
+    src="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/plugins/persona"
     mkdir -p "$root"
     [[ -e "$root/persona" ]] || ln -s "$src" "$root/persona"
 }
@@ -949,7 +949,7 @@ outputs:
 EOF
     local _outcome=pass _srl
     [[ "$exit_code" -ne 0 ]] && _outcome=broken
-    _srl="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-result.sh"
+    _srl="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-result.sh"
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
     local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"
@@ -973,7 +973,7 @@ EOF
 # Usage: zb_engine_loop_state <state_file> <loop id> <rounds> <limit> <final status>
 zb_engine_loop_state() {
     local sf="$1" id="$2" rounds="$3" limit="$4" final="$5" root
-    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    root="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
     ( source "$root/core/pipeline/cycle-orchestrator.sh" >/dev/null 2>&1
       _cycle_state_init "$sf" "$id" "$(dirname "$sf")/$id-history.jsonl" "$limit" || exit 1
       local n
@@ -994,7 +994,7 @@ zb_engine_loop_state() {
 # Usage: mock_result_line <id> [outcome=pass]
 mock_result_line() {
     local id="$1" outcome="${2:-pass}" srl
-    srl="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-result.sh"
+    srl="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-result.sh"
     # shellcheck disable=SC2016  # the $-expressions are for the stub, not here
     printf '%s' 'local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"; '
     printf 'source "%s"; stage_result_write "$_art/%s-result.json" %s "mock %s"' "$srl" "$id" "$outcome" "$id"
@@ -1183,7 +1183,7 @@ setup_git_master_origin() {
 # never drifts from it. (#2369: the design loop it once also changed is retired.)
 install_simple_loop_continue() {
     local _repo="${1:?install_simple_loop_continue: <repo> required}" _src_root
-    _src_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    _src_root="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
     mkdir -p "$_repo/.zbuild/templates"
     awk '
         /^id: simple$/ { print "id: simple-loop-continue"; print "extends: simple"; next }
@@ -1217,7 +1217,7 @@ install_template_overlay() {
     # Repo root derived from THIS helper's location (…/scripts/lib → repo root),
     # not the caller's cwd, so it resolves regardless of where the test runs.
     local _hdir _src_root
-    _hdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _hdir="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
     _src_root="$(cd "$_hdir/../.." && pwd)"
     local _id _src
     for _id in "$@"; do
@@ -1339,7 +1339,7 @@ MOCKEOF
 # because the repo segment comes from that repo's git remote.
 zb_expected_run_state_dir() {
     local repo="${1:-}" issue="${2:-}" goal="${3:-}" rid="${4:-}"
-    local root; root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    local root; root="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
     (
         cd "$repo" 2>/dev/null || exit 1
         # shellcheck source=../../core/state/layout.sh
@@ -1359,7 +1359,7 @@ zb_test_issue_output() {
     local dir="$1" text="$2"
     mkdir -p "$dir"
     declare -F stage_result_write >/dev/null 2>&1 \
-        || source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/stage-result.sh"
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-result.sh"
     stage_result_write "$dir/intake-result.json" pass "took in the goal" \
         "$(jq -nc --arg t "$text" '{goal_len: ($t | length), platform_count: 1, issue_text: $t}')" >/dev/null
     printf '%s\n' "$dir/intake-result.json"
@@ -1372,7 +1372,7 @@ zb_test_deploy_output() {
     local dir="$1"
     mkdir -p "$dir"
     (
-        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/plugins/agent/deploy/plugin.sh" >/dev/null 2>&1
+        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/plugins/agent/deploy/plugin.sh" >/dev/null 2>&1
         _deploy_write_result "$dir" "$2" "$3" "${4:-}" "${5:-}" "" "${6:-}"
     ) >/dev/null 2>&1 && [[ -s "$dir/deploy-result.json" ]] \
         || { printf 'zb_test_deploy_output: deploy wrote no result in %s\n' "$dir" >&2; return 1; }
@@ -1387,7 +1387,7 @@ zb_test_test_run_output() {
     [[ "$v" == pass ]] || { ec=1; }
     mkdir -p "$dir"
     (
-        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/plugins/tool/test/plugin.sh" >/dev/null 2>&1
+        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/plugins/tool/test/plugin.sh" >/dev/null 2>&1
         _test_write_result "$dir/test-results.json" "$v" "$d" "$ec" "$p" "$f" \
             "unit: $p/$((p + f)) passed" "false" "npm test" "" "full"
     ) >/dev/null 2>&1 && [[ -s "$dir/test-results.json" ]] \

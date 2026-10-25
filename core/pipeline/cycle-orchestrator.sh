@@ -26,7 +26,7 @@
 [[ -n "${_ZBUILD_CYCLE_ORCH_LOADED:-}" ]] && return 0
 _ZBUILD_CYCLE_ORCH_LOADED=1
 
-_CYCLE_ORCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_CYCLE_ORCH_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _CYCLE_ORCH_ROOT="$(cd "$_CYCLE_ORCH_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
@@ -454,7 +454,7 @@ _cycle_load_template() {
 # Failure to write is HIGH severity — emit cycle.history.lost and propagate.
 _cycle_record_iter_outcome() {
     local history_file="$1" n="$2" verdict="$3" status="$4" failure_count="$5"
-    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")"
+    local ts; TZ=UTC0 printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     local line
     line="$(jq -nc \
         --argjson n "$n" \
@@ -467,7 +467,8 @@ _cycle_record_iter_outcome() {
         _cycle_emit "cycle.history.lost" "iter=$n" "reason=jq_render_failed"
         return 1
     }
-    mkdir -p "$(dirname "$history_file")" 2>/dev/null || true
+    local _hd; zb_dirname_v _hd "$history_file"
+    [[ -d "$_hd" ]] || mkdir -p "$_hd" 2>/dev/null || true
     if ! printf '%s\n' "$line" >> "$history_file" 2>/dev/null; then
         _cycle_emit "cycle.history.lost" "iter=$n" "reason=append_failed" \
             "history_file=$history_file"
@@ -589,7 +590,7 @@ _cycle_check_until() {
 # its one-line reason, in artifacts/<loop>-summary.md. Rewritten each round, so
 # it always says what the latest round did. Fail-open.
 _cycle_write_round_summary() {
-    local art; art="$(dirname "$1")/artifacts"
+    local art; zb_dirname_v art "$1"; art+="/artifacts"
     local cid="${_CYCLE_TRAP_CYCLE_ID:-}" m line body=""
     [[ -n "$cid" ]] || return 0
     for m in "${_CYCLE_STAGES[@]}"; do
@@ -1049,7 +1050,7 @@ _cycle_resolve_scope_expansion() {
     [[ -z "$req" || "$req" == "null" ]] && { echo "none"; return 0; }
 
     # Load the resolver core (idempotent source guard inside the lib).
-    local _gov="${_ZBUILD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/scripts/lib/scope-governance.sh"
+    local _gov="${_ZBUILD_ROOT:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}/scripts/lib/scope-governance.sh"
     # shellcheck source=/dev/null
     [[ -f "$_gov" ]] && source "$_gov"
     if ! declare -F scope_resolve_request >/dev/null 2>&1; then
@@ -1120,10 +1121,11 @@ _cycle_apply_feedback() {
 # guards against older state files crashing on `.cycle_iterations` access
 # (silent-failure finding #7).
 _cycle_state_jq_init() {
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     jq --arg id "$_ZB_CYCLE_ID" \
        --arg history "$_ZB_CYCLE_HISTORY" \
        --argjson max "$_ZB_CYCLE_MAX" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       --arg now "$_now" \
        '(.cycle_iterations //= {})
         | (.cycle_iterations[$id] //= {
             status: "in_progress",
@@ -1147,13 +1149,14 @@ _cycle_state_init() {
 # Single atomic write per iter boundary (silent-failure finding #12).
 # Updates: current_iter, iter[] append, status. NEVER split.
 _cycle_state_jq_write_iter() {
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     jq --arg id "$_ZB_CYCLE_ID" \
        --argjson n "$_ZB_CYCLE_N" \
        --arg verdict "$_ZB_CYCLE_VERDICT" \
        --arg status "$_ZB_CYCLE_ITER_STATUS" \
        --argjson fc "$_ZB_CYCLE_FC" \
        --arg overall "$_ZB_CYCLE_OVERALL" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       --arg now "$_now" \
        '(.cycle_iterations //= {})
         | (.cycle_iterations[$id] //= {iter:[]})
         | .cycle_iterations[$id].current_iter = $n
@@ -1185,10 +1188,11 @@ _cycle_state_write_iter_atomic() {
 # Uses locked_state_update (same pattern as _cycle_state_write_iter_atomic).
 # All call sites use || true — a lock failure must never abort a cycle iter.
 _cycle_state_jq_write_member() {
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     jq --arg s "$_ZB_CYCLE_MEMBER" \
        --arg st "$_ZB_CYCLE_MEMBER_STATUS" \
        --arg v "$_ZB_CYCLE_MEMBER_VERDICT" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       --arg now "$_now" \
        '(.stage_statuses //= {}) | .stage_statuses[$s] = $st
         | (.stage_verdicts //= {}) | .stage_verdicts[$s] = $v
         | .updated_at = $now'
@@ -1313,7 +1317,7 @@ _cycle_iter_dispatch() {
 
     # A member's output is never deleted before it runs again: a result its run
     # did not rewrite is read as absent (_verdict_read_result, ADR-068 §6).
-    local _state_dir; _state_dir="$(dirname "$state_file")"
+    local _state_dir; zb_dirname_v _state_dir "$state_file"
     local _reuse_rest=0
 
     local s rc verdict status

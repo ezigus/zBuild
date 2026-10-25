@@ -23,7 +23,7 @@
 
 set -euo pipefail
 
-_LINT_STAGE_IO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LINT_STAGE_IO_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _LINT_STAGE_IO_REPO="$(cd "$_LINT_STAGE_IO_DIR/../.." && pwd)"
 
 # Search scope defaults to production code (plugin.sh + core/router/route.sh).

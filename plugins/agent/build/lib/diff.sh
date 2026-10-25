@@ -9,7 +9,7 @@
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
 if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=../../../../scripts/lib/helpers.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
 fi
 
 [[ -n "${_ZBUILD_BUILD_DIFF_LOADED:-}" ]] && return 0

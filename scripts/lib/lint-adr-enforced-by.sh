@@ -19,7 +19,7 @@
 # Exit:  0 = every live ADR is enforced or baselined; 1 = violation.
 set -euo pipefail
 
-ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+ROOT="${1:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}"
 ADR_DIR="$ROOT/docs/adr"
 BASELINE="$ROOT/config/adr-enforcement-baseline.txt"
 [[ -d "$ADR_DIR" ]] || { echo "lint-adr-enforced-by: no $ADR_DIR" >&2; exit 1; }

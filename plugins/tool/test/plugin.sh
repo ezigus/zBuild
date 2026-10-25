@@ -15,7 +15,7 @@
 _ZBUILD_TEST_STAGE_LOADED=1
 
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _ZBUILD_TEST_STAGE_DIR="$_ZBUILD_PLUGIN_DIR"
 _ZBUILD_TEST_STAGE_ROOT="$_ZBUILD_PLUGIN_ROOT"

@@ -12,7 +12,7 @@
 [[ -n "${_ZBUILD_VERSION_SEAM_LOADED:-}" ]] && return 0
 _ZBUILD_VERSION_SEAM_LOADED=1
 
-_ZBUILD_VERSION_SEAM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_VERSION_SEAM_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 
 # Emit a fail-loud message to stderr (uses helpers' `error` when available).
 _rv_err() {

@@ -9,10 +9,10 @@
 _ZBUILD_TEST_AUTHOR_LOADED=1
 
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../scripts/lib/stage-summary.sh"
 _TA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # plugin-bootstrap.sh supplies helpers + artifact-render ONLY; a plugin that
@@ -37,13 +37,13 @@ source "$_TA_ROOT/scripts/lib/stage-result.sh"
 # shellcheck source=../../../scripts/lib/earlier-output.sh
 source "$_TA_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=./lib/record.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/record.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/record.sh"
 # #2370: test-author checks its own assertions against their SPECs; the
 # assertion finder lives in acceptance-coverage.sh.
 # shellcheck source=../../../scripts/lib/acceptance-coverage.sh
 source "$_TA_ROOT/scripts/lib/acceptance-coverage.sh"
 # shellcheck source=./lib/correspondence.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/correspondence.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/correspondence.sh"
 
 _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 

@@ -32,7 +32,7 @@
 [[ -n "${_ZBUILD_VERDICT_LOADED:-}" ]] && return 0
 _ZBUILD_VERDICT_LOADED=1
 
-_ZBUILD_VERDICT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_VERDICT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_VERDICT_ROOT="$(cd "$_ZBUILD_VERDICT_DIR/../.." && pwd)"
 
 # #1824: the engine's declared contract range. NOT `|| true` — the v2 branch
@@ -174,6 +174,51 @@ _verdict_resolve_path() {
     printf '%s' "$p"
 }
 
+# ─── _verdict_parse_result_v <var> <result.json> <state_dir> ─────────────────
+# The one parse of a result (ADR-065 §5). Lines: contract, outcome, the first
+# mandatory field that is missing or empty, data.build_kind, then the reason
+# (last, because free text may span lines) ending in a \001 marker.
+#
+# Every reader parses through here, and the runner reads each result once in
+# its own shell before it asks its readers, each in its own $( ): they inherit
+# the parse. It is used while the mark made just BEFORE it read the file is
+# strictly newer than the file; any write after the mark leaves the file no
+# older than it, and it is parsed again. Each shell keeps its own marks, under
+# the run's runtime/, so a subshell's parse never vouches for its parent's.
+declare -gA _VR_PARSE=() _VR_PARSE_MARK=()
+_VR_PARSE_N=0
+_verdict_parse_result_v() {
+    local -n _vp_out="$1"
+    local _vp_f="$2" _vp_dir="${3:-}/runtime/read-marks" _vp_mark="${_VR_PARSE_MARK[$2]:-}" _vp_r
+    if [[ -n "$_vp_mark" && "$_vp_mark" -nt "$_vp_f" ]]; then
+        _vp_out="${_VR_PARSE[$_vp_f]}"; return 0
+    fi
+    if [[ -n "${3:-}" && -d "$3" ]]; then
+        [[ "$_vp_mark" == "$_vp_dir/$BASHPID."* ]] || {
+            _VR_PARSE_N=$(( _VR_PARSE_N + 1 )); _vp_mark="$_vp_dir/$BASHPID.$_VR_PARSE_N"; }
+        [[ -d "$_vp_dir" ]] || mkdir -p "$_vp_dir" 2>/dev/null
+        : > "$_vp_mark" 2>/dev/null || _vp_mark=""
+    else
+        _vp_mark=""
+    fi
+    if ! _vp_r="$(jq -r '. as $o
+        | def ok($f): ($o|has($f)) and ($o[$f]|type == "string") and ($o[$f]|length > 0);
+        ["outcome", "reason"] as $need
+        | [ ($o.result_contract // 1 | tostring),
+          ($o.outcome // "" | tostring | gsub("\n"; " ")),
+          ([ $need[] | select(ok(.) | not) ] | first // ""),
+          ((try $o.data.build_kind catch null) // "" | if type == "string" then . else tojson end | gsub("\n"; " ")),
+          (($o.reason // "" | tostring) + "\u0001") ] | join("\n")' "$_vp_f" 2>/dev/null)"; then
+        unset '_VR_PARSE_MARK[$_vp_f]'
+        return 1
+    fi
+    _vp_out="$_vp_r"
+    if [[ -n "$_vp_mark" ]]; then
+        _VR_PARSE[$_vp_f]="$_vp_r"; _VR_PARSE_MARK[$_vp_f]="$_vp_mark"
+    fi
+    return 0
+}
+
 # ─── _verdict_read_result <state_dir> <manifest> <stage> <rc> <out_prefix> ───
 # ADR-054 (#1821): resolve a stage's result ONCE and publish it on named vars,
 # so the three public readers stop each re-resolving and re-parsing the same
@@ -218,6 +263,7 @@ _verdict_read_result() {
     printf -v "${p}_viol" '%s' ""
     printf -v "${p}_path" '%s' ""
     printf -v "${p}_present" '%s' "0"
+    printf -v "${p}_kind" '%s' ""
 
     if [[ -z "$manifest" || ! -f "$manifest" ]]; then
         printf -v "${p}_state" '%s' "no_manifest"; return 0
@@ -248,28 +294,20 @@ _verdict_read_result() {
     if ! stage_result_is_current "$state_dir" "$stage" "$resolved"; then
         printf -v "${p}_state" '%s' "absent"; return 0
     fi
-    # One jq for every field (ADR-065): this runs on every read of every stage's
-    # result. Lines: contract, outcome, the first mandatory field that is
-    # missing or empty, then the reason (last, because free text may span lines)
-    # ending in a \001 marker.
+    # One parse for every field (ADR-065), shared by every reader.
     local _rr_out _rr_rest
-    if ! _rr_out="$(jq -r '. as $o
-        | def ok($f): ($o|has($f)) and ($o[$f]|type == "string") and ($o[$f]|length > 0);
-        ["outcome", "reason"] as $need
-        | [ ($o.result_contract // 1 | tostring),
-          ($o.outcome // "" | tostring | gsub("\n"; " ")),
-          ([ $need[] | select(ok(.) | not) ] | first // ""),
-          (($o.reason // "" | tostring) + "\u0001") ] | join("\n")' "$resolved" 2>/dev/null)"; then
+    if ! _verdict_parse_result_v _rr_out "$resolved" "$state_dir"; then
         if ! jq empty "$resolved" >/dev/null 2>&1; then
             printf -v "${p}_state" '%s' "malformed"
             printf -v "${p}_viol" '%s' "contract_violation:malformed_json"
             return 0
         fi
-        _rr_out=$'1\n\n\n\001'   # valid JSON but not an object: no contract, no fields
+        _rr_out=$'1\n\n\n\n\001'   # valid JSON but not an object: no contract, no fields
     fi
     local _sv="${_rr_out%%$'\n'*}"; _rr_rest="${_rr_out#*$'\n'}"
     local _rr_outcome="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     local _rr_missing="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
+    printf -v "${p}_kind" '%s' "${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
     printf -v "${p}_contract" '%s' "$_sv"
     # NOTE: do NOT try to publish the version on a global from here. Every
@@ -333,7 +371,7 @@ runner_read_stage_verdict() {
         echo "fail"; return 0
     fi
 
-    local _r_state _r_contract _r_verdict _r_disp _r_reason _r_viol _r_path _r_present
+    local _r_state _r_contract _r_verdict _r_disp _r_reason _r_viol _r_path _r_present _r_kind
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _r
 
     # ADR-054 (#1821): a contract violation is a STRUCTURAL failure, not a warn.
@@ -391,7 +429,7 @@ runner_read_stage_reason() {
     # engine holding only an integer. Read whenever a result exists; a dispatch
     # that died before writing one still yields empty, which is the honest answer
     # and is what #1823's fallback classification keys on.
-    local _n_state _n_contract _n_verdict _n_disp _n_reason _n_viol _n_path _n_present
+    local _n_state _n_contract _n_verdict _n_disp _n_reason _n_viol _n_path _n_present _n_kind
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _n
     # A contract violation explains itself on this channel too, so an operator
     # reading the reason sees why the stage was failed rather than a blank. At
@@ -436,7 +474,7 @@ runner_read_stage_verdict_raw() {
         echo "fail"; return 0
     fi
 
-    local _w_state _w_contract _w_verdict _w_disp _w_reason _w_viol _w_path _w_present
+    local _w_state _w_contract _w_verdict _w_disp _w_reason _w_viol _w_path _w_present _w_kind
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _w
 
     # A contract violation surfaces as raw `error` here too, so the cycle's raw
@@ -461,7 +499,7 @@ runner_read_stage_verdict_raw() {
 # (files_changed / lines_added / lines_removed / scope_expansion_request).
 runner_read_stage_report() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
-    local _p_state _p_contract _p_verdict _p_disp _p_reason _p_viol _p_path _p_present
+    local _p_state _p_contract _p_verdict _p_disp _p_reason _p_viol _p_path _p_present _p_kind
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _p
     # Only a result this run wrote has a report (ADR-068 §8).
     [[ "$_p_state" == ok ]] || { printf '{}'; return 0; }
@@ -473,11 +511,11 @@ runner_read_stage_report() {
 # empty_diff resting point from a pass without reading the verdict channel.
 runner_read_stage_data_kind() {
     local state_dir="$1" manifest="$2" stage="$3"
-    local _k_state _k_contract _k_verdict _k_disp _k_reason _k_viol _k_path _k_present
+    local _k_state _k_contract _k_verdict _k_disp _k_reason _k_viol _k_path _k_present _k_kind
     _verdict_read_result "$state_dir" "$manifest" "$stage" 0 _k
     # Only a result this run wrote says what kind of build it was (ADR-068 §8).
     [[ "$_k_state" == ok ]] || return 0
-    jq -r '.data.build_kind // ""' "$_k_path" 2>/dev/null || true
+    [[ -z "$_k_kind" ]] || printf '%s\n' "$_k_kind"
 }
 
 # _verdict_report_from_file <result.json> — the extraction runner_read_stage_report
@@ -555,7 +593,7 @@ _verdict_report_from_file() {
 runner_read_stage_disposition() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
     local observation="${5-}" rate_limited="${6:-0}"
-    local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present
+    local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present _d_kind
     # The engine stopped this stage at its time limit (plugin_hook_call): that
     # is how it ended, whatever it left behind.
     if [[ -f "${state_dir}/runtime/stage-time-limit.${stage//[^A-Za-z0-9._-]/_}" ]]; then

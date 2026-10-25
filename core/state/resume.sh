@@ -16,7 +16,7 @@
 [[ -n "${_ZBUILD_STATE_RESUME_LOADED:-}" ]] && return 0
 _ZBUILD_STATE_RESUME_LOADED=1
 
-_ZBUILD_RESUME_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_RESUME_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./atomic.sh
 source "$_ZBUILD_RESUME_DIR/atomic.sh"
 

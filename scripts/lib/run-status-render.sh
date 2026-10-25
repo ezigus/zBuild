@@ -8,7 +8,7 @@
 [[ -n "${_ZBUILD_RUN_STATUS_RENDER_LOADED:-}" ]] && return 0 2>/dev/null
 _ZBUILD_RUN_STATUS_RENDER_LOADED=1
 
-_RSC_RENDER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_RSC_RENDER_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _RSC_ROOT="${_RSC_ROOT:-$(cd "$_RSC_RENDER_DIR/../.." && pwd)}"
 : "${ZBUILD_STATUS_COMMENT_MAX_BYTES:=60000}"   # GitHub rejects > 65,536; keep headroom
 : "${ZBUILD_STATUS_COMMENT_SUMMARY_CHARS:=200}" # first line of a stage summary

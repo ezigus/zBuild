@@ -13,7 +13,7 @@ _ZBUILD_REGISTRY_MANIFEST_LOADED=1
 
 # The engine's declared result-contract range (#1824). Sourced, not duplicated —
 # validate_manifest refuses a plugin whose declared contract falls outside it.
-_ZBUILD_MANIFEST_VALIDATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_MANIFEST_VALIDATION_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=../contract/version.sh
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../contract/version.sh"
 # ADR-017 §11 (#1816): the config.router.* reader + its ranges. Sourced here so
@@ -215,33 +215,37 @@ yaml_get_v() {
 _yaml_get_uncached() {
     local file="$1"
     local key="$2"
+    [[ -f "$file" && -r "$file" ]] || return 2
+    # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5); the
+    # key is a pattern there too, so it is one here.
+    local line v in_block=0 re_p re_c
     if [[ "$key" == *.* ]]; then
         # Nested key like hooks.init: find "<parent>:" then indented "<child>:"
         local parent="${key%.*}"
         local child="${key#*.}"
-        awk -v parent="$parent" -v child="$child" '
-        $0 ~ "^"parent":" { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/ { in_block = 0 }
-        in_block && $0 ~ "^[[:space:]]+"child":" {
-            sub(/^[[:space:]]+[^:]+:[[:space:]]*/, "")
-            sub(/[[:space:]]*#.*/, "")
-            gsub(/^["'"'"']|["'"'"']$/, "")
-            print
-            exit
-        }
-        ' "$file" 2>/dev/null
+        re_p="^${parent}:"; re_c="^[[:space:]]+${child}:"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ $re_p ]]; then in_block=1; continue; fi
+            (( in_block )) && [[ "$line" =~ ^[a-zA-Z_] ]] && in_block=0
+            (( in_block )) && [[ "$line" =~ $re_c ]] || continue
+            [[ "$line" =~ ^[[:space:]]+[^:]+:[[:space:]]* ]]
+            v="${line:${#BASH_REMATCH[0]}}"
+            break
+        done < "$file"
     else
         # Top-level scalar
-        awk -v key="$key" '
-        $0 ~ "^"key":" {
-            sub(/^[^:]+:[[:space:]]*/, "")
-            sub(/[[:space:]]*#.*/, "")
-            gsub(/^["'"'"']|["'"'"']$/, "")
-            print
-            exit
-        }
-        ' "$file" 2>/dev/null
+        re_p="^${key}:"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ $re_p ]] || continue
+            [[ "$line" =~ ^[^:]+:[[:space:]]* ]]
+            v="${line:${#BASH_REMATCH[0]}}"
+            break
+        done < "$file"
     fi
+    [[ -n "${v+set}" ]] || return 0
+    if [[ "$v" == *#* ]]; then v="${v%%#*}"; v="${v%"${v##*[![:space:]]}"}"; fi
+    v="${v#[\"\']}"; v="${v%[\"\']}"
+    printf '%s\n' "$v"
 }
 
 # ─── yaml_get_list — extract a simple list value (inline or multi-line) ─────

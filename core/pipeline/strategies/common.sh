@@ -6,7 +6,7 @@
 [[ -n "${_ZBUILD_STRATEGY_COMMON_LOADED:-}" ]] && return 0
 _ZBUILD_STRATEGY_COMMON_LOADED=1
 
-_ZBUILD_STRATEGIES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_STRATEGIES_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT="${_ZBUILD_ROOT:-$(cd "${_ZBUILD_STRATEGIES_DIR}/../../.." && pwd)}"
 
 # ─── _strategy_validate_stage ────────────────────────────────────────────────

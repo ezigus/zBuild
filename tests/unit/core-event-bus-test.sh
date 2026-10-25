@@ -74,6 +74,18 @@ _db_files="$(cd "$ZBUILD_EVENTS_DIR" && ls -A | grep -c '^events\.db' || true)"
 assert_eq "no events.db or events.db.lock is written" "0" "$_db_files"
 assert_file_exists "events.jsonl is written" "$ZBUILD_EVENTS_JSONL"
 
+# ─── An emit that cannot write never ends a `set -e` caller (#1153) ─────────
+# A lock or events file that cannot be opened is a redirect error, which
+# `set -e` does not forgive; emits run bare under it throughout the pipeline.
+_fs="$TEST_TEMP_DIR/failsoft"
+mkdir -p "$_fs/lock/events.jsonl.lock" "$_fs/file/events.jsonl"
+for _case in lock file; do
+    _out="$(ZBUILD_EVENTS_DIR="$_fs/$_case" ZBUILD_EVENTS_JSONL="$_fs/$_case/events.jsonl" \
+        bash -c 'set -e; source "$1/core/event-bus/event-bus.sh"
+                 eb_emit_event stage.complete stage=x; echo carried-on' _ "$REPO_ROOT" 2>/dev/null || true)"
+    assert_eq "[#1153] an unopenable $_case: the set -e caller carries on" "carried-on" "$_out"
+done
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

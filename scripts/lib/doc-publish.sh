@@ -15,7 +15,7 @@
 [[ -n "${_ZBUILD_DOC_PUBLISH_LOADED:-}" ]] && return 0
 _ZBUILD_DOC_PUBLISH_LOADED=1
 
-_DP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_DP_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=helpers.sh
 source "$_DP_DIR/helpers.sh"
 # shellcheck source=doc-generate.sh

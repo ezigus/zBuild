@@ -13,7 +13,7 @@
 # Override registry path via ZBUILD_MECHANICS_YAML env var (for tests).
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MECHANICS_YAML="${ZBUILD_MECHANICS_YAML:-$REPO_ROOT/config/mechanics.yaml}"
 WIKI_MECHANICS_DIR="$REPO_ROOT/docs/wiki/mechanics"

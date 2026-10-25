@@ -9,7 +9,7 @@
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
 if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=../../../../scripts/lib/helpers.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
 fi
 
 [[ -n "${_ZBUILD_BUILD_SUMMARY_LOADED:-}" ]] && return 0
@@ -18,14 +18,14 @@ _ZBUILD_BUILD_SUMMARY_LOADED=1
 # acceptance gate uses (env-scrub.sh sources nothing, so no cycle).
 if ! declare -F _zbuild_make_fresh_shell >/dev/null 2>&1; then
     # shellcheck source=../../../../scripts/lib/env-scrub.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/env-scrub.sh" 2>/dev/null || true
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../../scripts/lib" && pwd)/env-scrub.sh" 2>/dev/null || true
 fi
 # Keyed on _acceptance_file_timeout, not _acceptance_timeout_prefix: the latter
 # lives in timeout-cmd.sh (#1752), which route.sh loads too, so it can be defined
 # while acceptance-block.sh is not.
 if ! declare -F _acceptance_file_timeout >/dev/null 2>&1; then
     # shellcheck source=../../../../scripts/lib/acceptance-block.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/acceptance-block.sh" 2>/dev/null || true
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../../scripts/lib" && pwd)/acceptance-block.sh" 2>/dev/null || true
 fi
 
 # _build_format_numstat — thin wrapper around format_numstat (#506).
@@ -34,11 +34,11 @@ _BUILD_NUMSTAT_FILES_COUNT=0
 # #2187: router_reason_disposition names the cause of a failed router loop.
 # shellcheck source=../../../../scripts/lib/router-rc-classify.sh
 declare -F router_reason_disposition >/dev/null 2>&1 \
-    || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/router-rc-classify.sh"
+    || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../../scripts/lib" && pwd)/router-rc-classify.sh"
 # #2366: the result fields come from the one writer.
 # shellcheck source=../../../../scripts/lib/stage-result.sh
 declare -F stage_result_add >/dev/null 2>&1 \
-    || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/stage-result.sh"
+    || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../../scripts/lib" && pwd)/stage-result.sh"
 
 _build_format_numstat() {
     local raw="$1"

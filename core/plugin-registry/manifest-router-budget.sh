@@ -62,36 +62,38 @@ manifest_router_knob() {
 # can never disagree. With <knob>, it prints only that key's first value and
 # stops: one awk per lookup, not a parse piped into a second (ADR-065).
 _manifest_router_block() {
-    local manifest="${1:-}"
+    local manifest="${1:-}" knob="${2:-}"
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
-    awk -v knob="${2:-}" '
-        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+    # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5):
+    # this runs in the stage's own process, so no memo outlives it.
+    local line rest key val lead in_cfg=0 in_router=0 router_ind=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
         # A trailing comment on the block header is legal YAML and is exactly
-        # where a manifest explains WHY the numbers below it are what they are —
-        # the reasoning this block exists to keep next to the value.
-        /^config:[[:space:]]*(#.*)?$/ { in_cfg = 1; in_router = 0; next }
+        # where a manifest explains WHY the numbers below it are what they are.
+        if [[ "$line" =~ ^config:[[:space:]]*(#.*)?$ ]]; then in_cfg=1; in_router=0; continue; fi
         # Any other column-0 key closes `config:` (and with it `router:`).
-        in_cfg && /^[^[:space:]#]/ { in_cfg = 0; in_router = 0 }
-        in_cfg && !in_router && /^[[:space:]]+router:[[:space:]]*(#.*)?$/ {
-            in_router = 1; router_ind = indent($0); next
-        }
-        # A line at or shallower than `router:` ends the block; it may itself be
-        # another config key, so this rule only clears the flag and falls through.
-        # Comment-only lines are excluded exactly as they are for `config:`
-        # above: a comment carries no indentation meaning, and treating one as a
-        # block terminator would silently drop every knob declared after a
-        # left-aligned comment (claude-review on PR #1870).
-        in_router && /^[[:space:]]*[^[:space:]#]/ && indent($0) <= router_ind { in_router = 0 }
-        in_router && /^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:/ {
-            line = $0
-            sub(/^[[:space:]]+/, "", line)
-            key = line; sub(/:.*$/, "", key)
-            val = line; sub(/^[^:]*:[[:space:]]*/, "", val)
-            sub(/[[:space:]]*#.*/, "", val)
-            gsub(/^["'"'"']|["'"'"']$/, "", val)
-            gsub(/[[:space:]]/, "", val)
-            if (knob != "") { if (key == knob) { print val; exit }; next }
-            printf "%s %s\n", key, val
-        }
-    ' "$manifest" 2>/dev/null
+        if (( in_cfg )) && [[ "$line" =~ ^[^[:space:]#] ]]; then in_cfg=0; in_router=0; fi
+        if (( in_cfg && !in_router )) && [[ "$line" =~ ^[[:space:]]+router:[[:space:]]*(#.*)?$ ]]; then
+            lead="${line%%[! ]*}"; in_router=1; router_ind=${#lead}; continue
+        fi
+        # A line at or shallower than `router:` ends the block. Comment-only
+        # lines carry no indentation meaning and never end it (PR #1870).
+        if (( in_router )) && [[ "$line" =~ ^[[:space:]]*[^[:space:]#] ]]; then
+            lead="${line%%[! ]*}"; (( ${#lead} <= router_ind )) && in_router=0
+        fi
+        if (( in_router )) && [[ "$line" =~ ^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*: ]]; then
+            rest="${line#"${line%%[![:space:]]*}"}"
+            key="${rest%%:*}"
+            val="${rest#*:}"; val="${val#"${val%%[![:space:]]*}"}"
+            if [[ "$val" == *#* ]]; then val="${val%%#*}"; val="${val%"${val##*[![:space:]]}"}"; fi
+            val="${val#[\"\']}"; val="${val%[\"\']}"
+            val="${val//[[:space:]]/}"
+            if [[ -n "$knob" ]]; then
+                [[ "$key" == "$knob" ]] && { printf '%s\n' "$val"; return 0; }
+                continue
+            fi
+            printf '%s %s\n' "$key" "$val"
+        fi
+    done 2>/dev/null < "$manifest"
+    return 0
 }

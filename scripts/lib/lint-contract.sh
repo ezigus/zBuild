@@ -22,7 +22,7 @@
 # in tests/unit/preflight-lint-parity-test.sh asserts this).
 set -euo pipefail
 
-_LINT_CONTRACT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LINT_CONTRACT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _LINT_CONTRACT_REPO="$(cd "$_LINT_CONTRACT_DIR/../.." && pwd)"
 
 # shellcheck source=./manifest-graph.sh
