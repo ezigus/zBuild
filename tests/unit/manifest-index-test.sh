@@ -19,6 +19,9 @@
 # SPEC-6: absent key → 0 bytes rc 0; `key:` → one newline; a path outside the
 #         root → rc 2 (the lazy path, unchanged).
 # SPEC-7: sourcing core/pipeline/runner.sh forks ≤ 400 awk (was 1,050).
+# SPEC-9: a plugin dir that is a symlink under the root (fixture_link_personas
+#         links the real personas in) is indexed like any other — its reads
+#         went to awk on every call.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -216,6 +219,20 @@ _warm="$(manifest_index_rows "$_O" | grep $'\034outputs.path\034' | sed 's/.*\x1
 assert_eq "[SPEC-8] the warm rows path emits one row per output value (no fork)" \
     '${artifact_dir}/one.md ${artifact_dir}/only.md ${artifact_dir}/two.json ' "$_warm"
 assert_eq "[SPEC-8] …and forks nothing" "0|0" "$(_n "$AWKS")|$(_n "$FINDS")"
+
+# ─── SPEC-9: a symlinked plugin dir is indexed ───────────────────────────────
+print_test_section "SPEC-9: a plugin dir linked in by a symlink is in the index"
+_L="$TEST_TEMP_DIR/linked/plugins"; mkdir -p "$_L/persona" "$TEST_TEMP_DIR/real-persona/p9"
+printf 'id: p9\nkind: persona\npersona:\n  role: tester\n' > "$TEST_TEMP_DIR/real-persona/p9/manifest.yaml"
+ln -s "$TEST_TEMP_DIR/real-persona/p9" "$_L/persona/p9"
+yaml_cache_flush; manifest_index_load "$_L"
+_v9="$(manifest_index_get "$_L/persona/p9/manifest.yaml" persona.role)"; _rc9=$?
+assert_eq "[SPEC-9] the linked manifest is served from the index" "0|tester" "$_rc9|${_v9%$'\n'}"
+yaml_cache_flush; yaml_cache_prewarm "$_L"; : > "$AWKS"
+awk() { printf 'x\n' >> "$AWKS"; command awk "$@"; }
+_k9="$(yaml_get "$_L/persona/p9/manifest.yaml" kind)"
+unset -f awk
+assert_eq "[SPEC-9] …and a prewarm covers it (no awk)" "0|persona" "$(_n "$AWKS")|${_k9%$'\n'}"
 
 cleanup_test_env
 print_test_results

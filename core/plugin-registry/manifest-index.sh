@@ -103,7 +103,9 @@ _ZBUILD_MIDX_AWK='
 manifest_index_build() {
     local root="$1" f
     local -a files=()
-    mapfile -t files < <(find "$root" -name manifest.yaml -type f 2>/dev/null)
+    # -L: a plugin dir linked in by a symlink (tests link the real personas
+    # in) is a plugin like any other; find reports and skips a link loop.
+    mapfile -t files < <(find -L "$root" -name manifest.yaml -type f 2>/dev/null)
     for f in "${files[@]+"${files[@]}"}"; do printf '%s\034__file__\034\n' "$f"; done
     (( ${#files[@]} > 0 )) || return 0
     awk -v keys="${_ZBUILD_MIDX_KEYS[*]}" "$_ZBUILD_MIDX_AWK" "${files[@]}" 2>/dev/null
