@@ -231,9 +231,6 @@ write_boundary_allow_list() {
     if [[ -n "${ZBUILD_EVENTS_JSONL:-}" && "${ZBUILD_EVENTS_JSONL}" != "/dev/null" ]]; then
         printf '%s\n' "$(dirname "$ZBUILD_EVENTS_JSONL")"
     fi
-    if [[ -n "${ZBUILD_EVENTS_DB:-}" && "${ZBUILD_EVENTS_DB}" != "/dev/null" ]]; then
-        printf '%s\n' "$(dirname "$ZBUILD_EVENTS_DB")"
-    fi
 
     # Config additions (all tiers loaded — truly additive, not override).
     local _shipped="$_ZBUILD_WB_ROOT/config/write-boundary-allow.txt"

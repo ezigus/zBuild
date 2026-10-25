@@ -135,8 +135,8 @@ runner exports `ZBUILD_EVENTS_*` to follow that dir. Two gaps remained:
   state on measured evidence (its entries can vanish mid-run on macOS).
   *The implementation has not yet followed this — see #2004.*
   When only `ZBUILD_EVENTS_JSONL` is pinned, the dir
-  (hence the SQLite mirror + lock) is *derived* from it, so a pinned jsonl never
-  leaks a mirror/lock back to the global default. Engine runs are unaffected
+  (hence the lock) is *derived* from it, so a pinned jsonl never leaks a lock
+  back to the global default (amended 2026-10-24, [ADR-065](ADR-065-process-budget.md) §5: the SQLite event mirror had no reader and was removed; `events.jsonl` is the only event record). Engine runs are unaffected
   (the runner still pins `ZBUILD_EVENTS_*` to `runs/<run_id>/`).
 - **`--no-resume` clears stale artifacts at startup.** The runner rotates the
   run's own event log + locks and clears the shared global-default

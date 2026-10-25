@@ -151,7 +151,6 @@ _prep() {
     export ZBUILD_STATE_DIR="$CASE_DIR/state"
     export ZBUILD_EVENTS_DIR="$CASE_DIR/events"
     export ZBUILD_EVENTS_JSONL="$CASE_DIR/events/events.jsonl"
-    export ZBUILD_EVENTS_DB="$CASE_DIR/events/events.db"
     export RELEASE_MARKER="$CASE_DIR/release-marker"
     export BUILD_STARTED="$CASE_DIR/build-started"
     : > "$RELEASE_MARKER"

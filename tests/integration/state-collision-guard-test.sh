@@ -22,7 +22,6 @@ mkdir -p "$(dirname "$STATE_FILE")"
 EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_DIR="$EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$EVENTS_DIR"
 
@@ -98,6 +97,24 @@ locked_state_update "$STATE_FILE" "_guard_noop" >/dev/null 2>/dev/null
 fresh_rc=$?
 set -e
 assert_eq "[SPEC-7] no existing state file → rc=0 (fresh start, no collision)" "0" "$fresh_rc"
+
+# ─── Cost (ADR-065 §5, round 4): one guarded update ──────────────────────────
+# A state update started about twenty programs: dirname, two mktemps, a cp, three
+# jqs and two or three dates for the guard alone, then the write. The guard now
+# reads run id, status and age in one jq, against the shell's clock.
+print_test_section "cost: one guarded update"
+_write_state "other-run" "in_progress" "$STALE_ISO"
+_CALLS="$TEST_TEMP_DIR/lsu-calls"; : > "$_CALLS"
+for _c in dirname mktemp cp date jq; do
+    eval "$_c() { printf '%s\\n' $_c >> \"\$_CALLS\"; command $_c \"\$@\"; }"
+done
+_jq_upd() { command jq -c '.current_iteration = 7'; }
+ZBUILD_RUN_ID="this-run" locked_state_update "$STATE_FILE" _jq_upd 2>/dev/null; _rc_c=$?
+unset -f dirname mktemp cp date jq
+assert_eq "cost: a stale other run's file is updated" "0|7" "$_rc_c|$(jq -r .current_iteration "$STATE_FILE")"
+assert_eq "cost: no dirname or date" "0|0" "$(grep -c '^dirname$' "$_CALLS" || true)|$(grep -c '^date$' "$_CALLS" || true)"
+assert_eq "cost: one jq to validate and one for the guard (the update's own jq is not counted)" "2" "$(grep -c '^jq$' "$_CALLS" || true)"
+assert_eq "cost: mktemp and cp only for the .bak (one each)" "1|1" "$(grep -c '^mktemp$' "$_CALLS" || true)|$(grep -c '^cp$' "$_CALLS" || true)"
 
 cleanup_test_env
 print_test_results

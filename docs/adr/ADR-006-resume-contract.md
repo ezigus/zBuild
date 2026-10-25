@@ -43,7 +43,7 @@ zBuild's resume contract is explicit. Two tiers: **persisted** (engine guarantee
 | `cost_ledger_pointer` | core/cost | offset into ledger | enables resume to continue cost tracking |
 | `plugin_state[plugin_id]` | per-plugin | opaque blob | plugin-declared state (see below) |
 | `claim_lease_id` | core/locks | string | required for claim-coordinator's `heartbeat` after resume |
-| `events_db` | core/event-bus | SQLite file | full event history; durable mirror of JSONL |
+| ~~`events_db`~~ | core/event-bus | — | retired (amended 2026-10-24, ADR-065 §5): the SQLite mirror had no reader and was removed; the event history is `events.jsonl` |
 
 All persisted state is written via `core/state/atomic_write`, which:
 1. Disk-space precheck.
@@ -51,6 +51,12 @@ All persisted state is written via `core/state/atomic_write`, which:
 3. `mktemp` + write + `fsync`.
 4. `mv` (atomic on POSIX).
 5. Rotate previous to `.bak`.
+
+> **Amended 2026-10-24 ([ADR-065](ADR-065-process-budget.md) §5).** No disk-space precheck: a full
+> disk fails the write itself, which leaves the target untouched and says so. The temp file is
+> opened by the shell with noclobber (exclusive, as `mktemp`'s was). The `.bak` is rotated only by
+> the state writers (`atomic_write --bak`, used by `locked_state_update` and `init_state`), the
+> only files the `.bak` recovery reads; other files keep no `.bak`.
 
 Reads use `validate_json`; corruption triggers `.bak` recovery. (KEEPERS §C additions 1–2 lift these into the hot path.)
 

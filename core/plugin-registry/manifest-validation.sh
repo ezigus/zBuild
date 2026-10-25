@@ -190,6 +190,8 @@ yaml_get_v() {
     local -n _ygv_out="$1"
     local _ygv_f="$2" _ygv_k="$3" _ygv_rc=0 _ygv_v
     if [[ "${ZBUILD_YAML_CACHE:-1}" != "1" ]]; then
+        # With the cache off there is nowhere to read the value from but a
+        # capture; the kill switch is not a hot path (review on #2403).
         _ygv_v="$(_yaml_get_uncached "$_ygv_f" "$_ygv_k")" || _ygv_rc=$?
         _ygv_out="$_ygv_v"
         return "$_ygv_rc"

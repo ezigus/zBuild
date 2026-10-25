@@ -100,7 +100,7 @@ EOF
 run_pipeline() {
     local run_id="$1"; shift
     ( cd "$TARGET" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_STATE_FILE \
-        -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB -u ZBUILD_REPO_ROOT \
+        -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL  -u ZBUILD_REPO_ROOT \
         ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_RUN_ROOT="$ZBUILD_RUN_ROOT" \

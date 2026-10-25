@@ -35,7 +35,6 @@ setup_test_env "router-prompt-contract"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$TEST_TEMP_DIR/events"
 unset ZBUILD_SCOPE_MANIFEST ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS 2>/dev/null || true

@@ -19,7 +19,6 @@ setup_test_env "hooks-pre-tool-use-integration"
 # Point the event bus at our test temp dir
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 

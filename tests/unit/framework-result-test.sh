@@ -23,7 +23,6 @@ setup_test_env "framework-result"
 # Isolated event bus so plugin.sh's emit_event calls are inert.
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 

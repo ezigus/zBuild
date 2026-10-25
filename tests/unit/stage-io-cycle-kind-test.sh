@@ -25,7 +25,6 @@ _ZB_ID="$(zb_test_issue)"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="test-run-cycle-kind"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR"

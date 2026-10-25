@@ -29,7 +29,6 @@ setup_test_env "event-schema-composition"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB=/dev/null
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
 # ─── A fixture plugin root: one plugin declaring one event, nothing else ────
@@ -208,7 +207,7 @@ assert_file_exists "[SPEC-7] run-scoped cache written" "$_cache"
 # compose 30 times.
 _fresh_count="$(
     bash -c '
-        export ZBUILD_EVENTS_DIR="$1" ZBUILD_EVENTS_JSONL="$1/events.jsonl" ZBUILD_EVENTS_DB=/dev/null
+        export ZBUILD_EVENTS_DIR="$1" ZBUILD_EVENTS_JSONL="$1/events.jsonl"
         export ZBUILD_EVENT_SCHEMA="$2" ZBUILD_PLUGINS_ROOT="$3"
         source "$4/core/event-bus/event-bus.sh"
         eb_known_types_has "fixture_gate.pass" || exit 9

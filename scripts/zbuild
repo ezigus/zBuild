@@ -1110,7 +1110,6 @@ CLEANHELP
 
         _cl_run_dir="$(dirname "$state_file")"
         export ZBUILD_EVENTS_JSONL="${ZBUILD_EVENTS_JSONL:-$_cl_run_dir/events.jsonl}"
-        export ZBUILD_EVENTS_DB="${ZBUILD_EVENTS_DB:-$_cl_run_dir/events.db}"
         export ZBUILD_EVENT_SCHEMA="${ZBUILD_EVENT_SCHEMA:-$REPO_ROOT/config/event-schema.json}"
         export ZBUILD_RUN_ID="${ZBUILD_RUN_ID:-clean-$$}"
 

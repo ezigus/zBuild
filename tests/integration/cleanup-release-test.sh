@@ -18,7 +18,6 @@ setup_test_env "cleanup-release"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
@@ -135,7 +134,6 @@ EOF
     _spec2_result=0
     (
         export ZBUILD_EVENTS_JSONL="$_spec2_events"
-        export ZBUILD_EVENTS_DB="/dev/null"
         source "$TEARDOWN_DIR/plugin.sh"
         resolve_stage_plugin() { echo "$_spec2_plugin"; }
         export ZBUILD_TEARDOWN_SCOPE="release"
@@ -216,7 +214,6 @@ EOF
     _spec4_result=0
     (
         export ZBUILD_EVENTS_JSONL="$_spec4_events"
-        export ZBUILD_EVENTS_DB="/dev/null"
         source "$TEARDOWN_DIR/plugin.sh"
         resolve_stage_plugin() { echo "$_spec4_plugin"; }
         export ZBUILD_TEARDOWN_SCOPE="release"

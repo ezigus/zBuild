@@ -41,7 +41,6 @@ source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
 print_test_header "every model-calling stage sends a prompt in the contract order"
 setup_test_env "prompt-contract-every-stage"
 
-export ZBUILD_EVENTS_DB="/dev/null"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"

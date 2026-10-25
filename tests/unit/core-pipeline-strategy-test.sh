@@ -266,7 +266,6 @@ COMP_EVENTS_DIR="$TEST_TEMP_DIR/composite-events"
 mkdir -p "$COMP_EVENTS_DIR"
 export ZBUILD_EVENTS_DIR="$COMP_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$COMP_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$COMP_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 : > "$ZBUILD_EVENTS_JSONL"
 

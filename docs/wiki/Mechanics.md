@@ -30,7 +30,7 @@ The complete set. A template is a composition of these; there are no others.
 | [[mechanics/admission-gate]] | Fail-closed preconditions before a run starts. |
 | [[mechanics/scope-governance]] | Read/write scope, security floor, governed expansion (ADR-030). |
 | [[mechanics/state-and-resume]] | Atomic, crash-safe state; resume where a run stopped (ADR-006). |
-| [[mechanics/event-bus]] | Schema-validated events (SQLite + JSONL). |
+| [[mechanics/event-bus]] | Schema-validated events (JSONL). |
 | [[mechanics/router-models-as-data]] | Tiered model routing from config, no model names in code (ADR-003). |
 | [[mechanics/vision-document]] | Required repo vision: location, format, word cap, and validator (ADR-049). |
 | [[mechanics/stage-io]] | Per-stage INPUT/OUTPUT banners; persona: field; ZBUILD_STAGE_IO_FD (ADR-015). |

@@ -149,6 +149,26 @@ _w10="$(
 )"
 assert_eq "[SPEC-10] a warm lookup costs one process (find)" "1" "$_w10"
 
+# ─── SPEC-11: a flush drops only its own root's memo (review on #2403) ───────
+# The memo directory is shared by every file of a test run, so a flush that
+# wiped it made every other file pay its walk again.
+_sh11="$TEST_TEMP_DIR/memo11"
+_ftb="$TEST_TEMP_DIR/ftree11b"; mkdir -p "$_ftb/tool"; cp -R "$REPO_ROOT/plugins/tool/teardown" "$_ftb/tool/"
+(
+    export ZBUILD_DISCOVERY_MEMO_DIR="$_sh11"; unset ZBUILD_STATE_DIR
+    discover_plugins "$_ft10" >/dev/null 2>&1; discover_plugins "$_ftb" >/dev/null 2>&1
+    discovery_cache_flush "$_ft10"
+    _n=0 _other=0
+    for _f in "$_sh11"/*; do
+        [[ -f "$_f" ]] || continue
+        _n=$((_n + 1))
+        IFS= read -r _k < "$_f" || true
+        [[ "$_k" == "$_ftb"$'\034'* ]] && _other=$((_other + 1))
+    done
+    printf '%s|%s' "$_n" "$_other"
+) > "$TEST_TEMP_DIR/s11.out" || true
+assert_eq "[SPEC-11] flushing one root keeps the other root's memo (1 file left, and it is the other root's)" "1|1" "$(cat "$TEST_TEMP_DIR/s11.out")"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

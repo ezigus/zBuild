@@ -87,7 +87,6 @@ _run_runner() {
         ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
         ZBUILD_EVENTS_DIR="$_ev" \
         ZBUILD_EVENTS_JSONL="$_ev/events.jsonl" \
-        ZBUILD_EVENTS_DB="$_ev/events.db" \
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 \
         ZBUILD_RUN_ID="run-$_case-$$" \

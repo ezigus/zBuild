@@ -78,15 +78,14 @@ _SILENT="$(_mk_fixture rmb-silent '')"
 
 _dispatch() {  # <plugin dir> <stage name>
     local _rc=0
-    local _old_dir="${ZBUILD_EVENTS_DIR:-}" _old_jsonl="${ZBUILD_EVENTS_JSONL:-}" _old_db="${ZBUILD_EVENTS_DB:-}"
+    local _old_dir="${ZBUILD_EVENTS_DIR:-}" _old_jsonl="${ZBUILD_EVENTS_JSONL:-}"
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"
     ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl"
-    ZBUILD_EVENTS_DB="/dev/null"
     set +e
     plugin_hook_call "$1" run "$2" "$TEST_TEMP_DIR/pipeline-state.json" >/dev/null 2>&1
     _rc=$?
     set -e
-    ZBUILD_EVENTS_DIR="$_old_dir"; ZBUILD_EVENTS_JSONL="$_old_jsonl"; ZBUILD_EVENTS_DB="$_old_db"
+    ZBUILD_EVENTS_DIR="$_old_dir"; ZBUILD_EVENTS_JSONL="$_old_jsonl";
     return $_rc
 }
 

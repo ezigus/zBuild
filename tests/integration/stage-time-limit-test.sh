@@ -37,7 +37,7 @@ print_test_header "the engine stops a stage past its time limit"
 setup_test_env "stage-time-limit"
 
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR" ZBUILD_EVENTS_DB="/dev/null"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"
 
 TPL="$TEST_TEMP_DIR/t.yaml"
 cat > "$TPL" <<'YAML'

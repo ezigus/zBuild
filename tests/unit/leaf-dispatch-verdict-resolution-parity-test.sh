@@ -31,7 +31,6 @@ _test_cleanup_hook() { cleanup_test_env; }
 # ─── Events setup (required by verdict.sh / eb_emit_event) ──────────────────
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 

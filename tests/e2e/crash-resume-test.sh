@@ -23,7 +23,6 @@ export ZBUILD_NO_WORKTREE=1
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 mkdir -p "$ZBUILD_STATE_DIR" "$TEST_TEMP_DIR/events"
 
 mock_claude
@@ -120,7 +119,6 @@ install_template_overlay "$OVERLAY_REPO" crash-resume-minimal
   ZBUILD_STATE_DIR="$ZBUILD_STATE_DIR" \
   ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
   ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl" \
-  ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
       bash "$ZBUILD_CLI" pipeline start --goal "test crash resume" --template crash-resume-minimal 2>/dev/null ) &
 pipeline_pid=$!
 # Wait up to 12s (#1587) for state file to appear AND contain a status field
@@ -202,7 +200,6 @@ out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
        ZBUILD_STATE_DIR="$ZBUILD_STATE_DIR" \
        ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
        ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl" \
-       ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
        bash "$ZBUILD_CLI" pipeline resume 2>&1)"
 rc=$?
 set -e

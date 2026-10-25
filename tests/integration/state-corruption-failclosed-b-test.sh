@@ -33,7 +33,6 @@ EVENTS_DIR="$TEST_TEMP_DIR/events"
 mkdir -p "$EVENTS_DIR"
 export ZBUILD_EVENTS_DIR="$EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
 source "$REPO_ROOT/core/state/atomic.sh"

@@ -41,7 +41,6 @@ _test_cleanup_hook() { cleanup_test_env; }
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/ev"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="/dev/null"
 
 # shellcheck source=../../core/pipeline/runner.sh
 source "$REPO_ROOT/core/pipeline/runner.sh"

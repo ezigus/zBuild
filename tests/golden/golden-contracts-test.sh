@@ -102,10 +102,9 @@ export ZBUILD_SCOPE_OVERRIDE=1
 unset ZBUILD_RUN_ID
 
 OLDDIR="${ZBUILD_EVENTS_DIR:-}" OLDJSONL="${ZBUILD_EVENTS_JSONL:-}"
-OLDDB="${ZBUILD_EVENTS_DB:-}" OLDSCHEMA="${ZBUILD_EVENT_SCHEMA:-}"
+ OLDSCHEMA="${ZBUILD_EVENT_SCHEMA:-}"
 export ZBUILD_EVENTS_DIR="$_ROUTER_TMP/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
 source "$REPO_ROOT/core/router/route.sh"
@@ -146,7 +145,6 @@ export HOME="$OLDHOME"
 if [[ -n "$OLDSCOPE" ]]; then export ZBUILD_SCOPE_OVERRIDE="$OLDSCOPE"; else unset ZBUILD_SCOPE_OVERRIDE; fi
 if [[ -n "$OLDDIR" ]]; then export ZBUILD_EVENTS_DIR="$OLDDIR"; else unset ZBUILD_EVENTS_DIR; fi
 if [[ -n "$OLDJSONL" ]]; then export ZBUILD_EVENTS_JSONL="$OLDJSONL"; else unset ZBUILD_EVENTS_JSONL; fi
-if [[ -n "$OLDDB" ]]; then export ZBUILD_EVENTS_DB="$OLDDB"; else unset ZBUILD_EVENTS_DB; fi
 if [[ -n "$OLDSCHEMA" ]]; then export ZBUILD_EVENT_SCHEMA="$OLDSCHEMA"; else unset ZBUILD_EVENT_SCHEMA; fi
 
 # (#979) G6 removed: the retired cq.* event types were struck from

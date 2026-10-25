@@ -14,9 +14,9 @@
 # P5 [change] ...with GNU stat (Linux) as well as BSD stat (macOS) — GNU reads
 #             `stat -f` as "file-system status" and prints a block to stdout
 #             (review #2229); simulated here with coreutils' gstat as `stat`
-# P6 [change] atomic_write's free-space check is one df, read by the shell, and
-#             its directory is a parameter expansion: no dirname, tail or awk
-#             (ADR-065 §5 — every engine file write paid for all four)
+# P6 [change] atomic_write starts no df, dirname, tail or awk: its directory is
+#             a parameter expansion, and the free-space check is gone (a full
+#             disk fails the write itself — ADR-065 §5, round 4)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,25 +96,19 @@ else
     assert_pass "[P5] skipped — no GNU stat available"
 fi
 
-print_test_section "P6: the free-space check and the directory cost one program"
+print_test_section "P6: no df, dirname, tail or awk"
 _CALLS="$TEST_TEMP_DIR/calls"; : > "$_CALLS"
 for _c in df dirname tail awk; do eval "$_c() { printf '%s\\n' $_c >> \"\$_CALLS\"; command $_c \"\$@\"; }"; done
 F6="$TEST_TEMP_DIR/deep/p6.json"
 printf '{"a":1}\n' | atomic_write "$F6"; _rc6=$?
 assert_eq "[P6] atomic_write still writes a new file in a new directory" "0|{\"a\":1}" "$_rc6|$(cat "$F6" 2>/dev/null)"
-for _c in dirname tail awk; do
+for _c in df dirname tail awk; do
     assert_eq "[P6] …starting no $_c" "0" "$(grep -c "^$_c\$" "$_CALLS" || true)"
 done
-assert_eq "[P6] …and one df" "1" "$(grep -c '^df$' "$_CALLS" || true)"
 unset -f df dirname tail awk
 # The shell reads df's columns, so a caller's IFS must not change them (intake
 # writes its SIGTERM result with IFS set to a newline).
 ( IFS=$'\n'; printf 'y\n' | atomic_write "$TEST_TEMP_DIR/deep/p6-ifs.json" ) 2>/dev/null
-# A df that fails says nothing about free space: the write goes ahead (review
-# on #2401) rather than refusing as "0MB free".
-( df() { return 1; }; printf 'z\n' | atomic_write "$TEST_TEMP_DIR/deep/p6-nodf.json" ) 2>/dev/null
-assert_eq "[P6] a failed df does not refuse the write" "z" "$(cat "$TEST_TEMP_DIR/deep/p6-nodf.json" 2>/dev/null)"
-assert_eq "[P6] a caller's IFS does not make the free-space check refuse the write" "y" "$(cat "$TEST_TEMP_DIR/deep/p6-ifs.json" 2>/dev/null)"
 printf 'x\n' | atomic_write "p6-relative.txt" && assert_eq "[P6] a bare file name is written in the current directory" "x" "$(cat p6-relative.txt)"
 rm -f p6-relative.txt p6-relative.txt.bak
 

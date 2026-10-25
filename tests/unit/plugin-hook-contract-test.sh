@@ -94,10 +94,9 @@ EOF
 _spec4_events="$TEST_TEMP_DIR/spec4-events.jsonl"
 _old_events_dir="${ZBUILD_EVENTS_DIR:-}"
 _old_events_jsonl="${ZBUILD_EVENTS_JSONL:-}"
-_old_events_db="${ZBUILD_EVENTS_DB:-}"
+
 ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"
 ZBUILD_EVENTS_JSONL="$_spec4_events"
-ZBUILD_EVENTS_DB="/dev/null"
 
 set +e
 plugin_hook_call "$_spec4_dir" "cleanup" >/dev/null 2>&1
@@ -106,7 +105,6 @@ set -e
 
 ZBUILD_EVENTS_DIR="$_old_events_dir"
 ZBUILD_EVENTS_JSONL="$_old_events_jsonl"
-ZBUILD_EVENTS_DB="$_old_events_db"
 
 assert_eq "[SPEC-4] absent optional cleanup returns rc=0 (rc is binary — ADR-054 §4)" "0" "$_spec4_rc"
 if [[ -f "$_spec4_events" ]] && grep -q '"plugin.cleanup.absent"' "$_spec4_events"; then
@@ -136,10 +134,9 @@ EOF
 _spec5_events="$TEST_TEMP_DIR/spec5-events.jsonl"
 _old_events_dir="${ZBUILD_EVENTS_DIR:-}"
 _old_events_jsonl="${ZBUILD_EVENTS_JSONL:-}"
-_old_events_db="${ZBUILD_EVENTS_DB:-}"
+
 ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"
 ZBUILD_EVENTS_JSONL="$_spec5_events"
-ZBUILD_EVENTS_DB="/dev/null"
 
 set +e
 plugin_hook_call "$_spec5_dir" "run" >/dev/null 2>&1
@@ -148,7 +145,6 @@ set -e
 
 ZBUILD_EVENTS_DIR="$_old_events_dir"
 ZBUILD_EVENTS_JSONL="$_old_events_jsonl"
-ZBUILD_EVENTS_DB="$_old_events_db"
 
 if [[ "$_spec5_rc" -ne 0 ]]; then
     assert_pass "[SPEC-5] absent required hook (run) returns non-zero"

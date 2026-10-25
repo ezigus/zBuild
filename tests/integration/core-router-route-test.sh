@@ -19,7 +19,6 @@ setup_test_env "router"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$TEST_TEMP_DIR/events"
 
@@ -206,7 +205,6 @@ a4a2_result=$(
     export ZBUILD_MODELS_FILE="$ZBUILD_MODELS_FILE"
     export ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA"
     export ZBUILD_EVENTS_DIR="$ZBUILD_EVENTS_DIR"
-    export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DB"
     export ZBUILD_RUN_ID="${ZBUILD_RUN_ID:-}"
     # Use a PATH with only a safe temp dir that has no claude binary
     safe_dir="$(mktemp -d)"

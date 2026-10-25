@@ -27,7 +27,6 @@ _ZB_ID=90000042
 # ── Event bus pointing at isolated temp dir ──────────────────────────────────
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
 # shellcheck source=../../core/event-bus/event-bus.sh

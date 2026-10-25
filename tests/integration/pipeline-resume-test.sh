@@ -255,7 +255,6 @@ set +e
     ZBUILD_STATE_FILE="$INT_STATE_FILE" \
     ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events.jsonl" \
-    ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     PATH="$PATH" HOME="$HOME" \
     bash "$RUNNER" --template runner-state-dir-minimal --resume --issue "$_ZB_ID" ) 2>/dev/null
@@ -289,7 +288,6 @@ set +e
     ZBUILD_STATE_FILE="$INT_STATE_FILE" \
     ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events.jsonl" \
-    ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     PATH="$PATH" HOME="$HOME" \
     bash "$RUNNER" --template runner-state-dir-minimal --resume --issue "$_ZB_ID" --from-stage "nonexistent-stage" ) 2>"$TEST_TEMP_DIR/fs-unknown.err"
@@ -318,7 +316,6 @@ set +e
     ZBUILD_STATE_FILE="$INT_STATE_FILE" \
     ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events2.jsonl" \
-    ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     PATH="$PATH" HOME="$HOME" \
     bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" --from-stage "intake" ) 2>"$TEST_TEMP_DIR/fs-noresume.err"

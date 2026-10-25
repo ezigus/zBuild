@@ -109,7 +109,6 @@ _EBAL_ORIG_TMPDIR="${TMPDIR:-<unset>}"
 # SPEC-1 "no empty .plugin field" assertions passed VACUOUSLY on zero rows.
 export ZBUILD_EVENTS_JSONL="$EVENTS_LOG"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"
-export ZBUILD_EVENTS_DB="/dev/null"   # JSONL only — no SQLite mirror to diff
 plugin_hook_call "$FIXTURE_DIR" "run" "stage-a" "" || true
 plugin_hook_call "$FIXTURE_DIR" "run" "stage-b" "" || true
 
@@ -232,7 +231,6 @@ _ebal_terminal_probe() {
     (
         export ZBUILD_EVENTS_JSONL="$_log"
         export ZBUILD_EVENTS_DIR; ZBUILD_EVENTS_DIR="$(dirname "$_log")"
-        export ZBUILD_EVENTS_DB="/dev/null"   # JSONL only — no SQLite mirror
         if [[ "$_mode" == "scan" ]]; then
             scan_plugin_outputs() { return 1; }
         else

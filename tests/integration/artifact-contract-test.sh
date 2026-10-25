@@ -32,7 +32,6 @@ EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_CYCLES_ENABLED=0
 export ZBUILD_EVENTS_DIR="$EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$EVENTS_DIR"
 
@@ -162,7 +161,6 @@ install_template_overlay "$OVERLAY_REPO" artifact-contract-minimal
     ZBUILD_STATE_DIR="$A3_STATE_DIR" \
     ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
-    ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
     bash "$RUNNER" --template artifact-contract-minimal --issue "$_ZB_ID" 2>/dev/null ) || true
 
 # ─── Assert plugin.contract.violated event emitted ───────────────────────────
@@ -265,7 +263,6 @@ cp "$A3_PLUGINS/tool/output/plugin.sh"            "$B_PLUGINS/tool/output/"
     ZBUILD_STATE_DIR="$B_STATE_DIR" \
     ZBUILD_EVENTS_DIR="$B_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$B_EVENTS_JSONL" \
-    ZBUILD_EVENTS_DB="$B_DIR/events.db" \
     bash "$RUNNER" --template artifact-contract-minimal --issue "$_ZB_ID" 2>/dev/null ) || true
 
 if [[ -f "$B_EVENTS_JSONL" ]]; then

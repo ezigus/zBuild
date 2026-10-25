@@ -166,12 +166,12 @@ CONSUMER_DIR="$PROOT/tool/ir-consumer"
 EVENTS="$TEST_TEMP_DIR/events.jsonl"
 
 _dispatch_consumer() {
-    local _old_j="${ZBUILD_EVENTS_JSONL:-}" _old_d="${ZBUILD_EVENTS_DB:-}"
-    ZBUILD_EVENTS_JSONL="$EVENTS"; ZBUILD_EVENTS_DB="/dev/null"
-    export ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
+    local _old_j="${ZBUILD_EVENTS_JSONL:-}"
+    ZBUILD_EVENTS_JSONL="$EVENTS";
+    export ZBUILD_EVENTS_JSONL 
     plugin_hook_call "$CONSUMER_DIR" run "ir-consumer" "$STATE/pipeline-state.json"
     local rc=$?
-    ZBUILD_EVENTS_JSONL="$_old_j"; ZBUILD_EVENTS_DB="$_old_d"
+    ZBUILD_EVENTS_JSONL="$_old_j";
     return $rc
 }
 

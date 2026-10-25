@@ -22,7 +22,6 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "gate and housekeeping stages write contract 3 (#2366)"
 setup_test_env "gates-contract3"
-export ZBUILD_EVENTS_DB="/dev/null"
 
 for _p in lint-gate coverage-gate mutation-gate hydrate persist teardown; do
     # shellcheck source=/dev/null

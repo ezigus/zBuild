@@ -65,7 +65,6 @@ export ZBUILD_EVENTS_JSONL="$EVENTS_JSONL"
 # the graceful "no mirror" sentinel (#1153), and skipping it keeps this
 # spawn-heavy suite well under the 300s per-file budget on the slow shared macOS
 # runner. (Mirror behavior itself is covered by event-bus-concurrency-test.sh.)
-export ZBUILD_EVENTS_DB="/dev/null"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 # #511 F2: these tests pre-date the standard.yaml cycle wiring and assert
 # a strictly LINEAR per-stage banner/event sequence (e.g. "exactly 5 started
@@ -394,7 +393,6 @@ ZBUILD_PLUGINS_ROOT="$A2_PLUGINS" \
 ZBUILD_STATE_DIR="$A2_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A2_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
-ZBUILD_EVENTS_DB="/dev/null" \
 bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1 &   # #619: suppress info banner
 a2_pid=$!
 # #1149: anchor the kill on the slow stage's plugin.run.start (not just
@@ -501,7 +499,6 @@ ZBUILD_PLUGINS_ROOT="$A3_PLUGINS" \
 ZBUILD_STATE_DIR="$A3_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
-ZBUILD_EVENTS_DB="/dev/null" \
 bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1 || true   # #619: suppress info banner
 
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
@@ -671,7 +668,6 @@ ZBUILD_PLUGINS_ROOT="$I6_PLUGINS" \
 ZBUILD_STATE_DIR="$I6_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$I6_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$I6_EVENTS_JSONL" \
-ZBUILD_EVENTS_DB="/dev/null" \
 NO_COLOR=1 \
 bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" 2>"$I6_STDERR" >/dev/null &
 i6_pid=$!

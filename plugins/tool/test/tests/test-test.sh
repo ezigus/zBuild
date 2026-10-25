@@ -19,7 +19,6 @@ setup_test_env "plugin-test-stage"
 # Wire up isolated event bus
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
@@ -368,7 +367,6 @@ source "$PLUGIN_DIR/plugin.sh"
 
 export ZBUILD_EVENTS_DIR="$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_JSONL"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DB"
 export ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-11"
 mkdir -p "\$ZBUILD_STATE_DIR/artifacts/stage-io"

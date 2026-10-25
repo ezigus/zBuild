@@ -291,7 +291,6 @@ export PATH="$FIXTURE_BIN_DIR:$PATH"
 export ZBUILD_STATE_DIR="$FIXTURE_STATE_DIR"
 export ZBUILD_EVENTS_DIR="$FIXTURE_STATE_DIR/events"
 export ZBUILD_EVENTS_JSONL="$FIXTURE_STATE_DIR/events/events.jsonl"
-export ZBUILD_EVENTS_DB="/dev/null"          # exclude SQLite — JSONL only for diff
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_RUN_ID="parity-fixture-run-001"  # fixed run_id — prevents non-determinism

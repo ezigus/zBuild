@@ -123,7 +123,7 @@ _strategy_make_work_unit() {
     # Bake in fully-qualified, immutable paths at construction time.
     # Values are embedded as single-quoted literals to prevent re-expansion.
     # event-bus.sh is sourced so plugin_hook_call emits events to the shared
-    # ZBUILD_EVENTS_JSONL / ZBUILD_EVENTS_DB (inherited env vars from runner).
+    # ZBUILD_EVENTS_JSONL (inherited env var from runner).
     #
     # Issue #307: ADR-009 §"ZBUILD_PLATFORM env contract" promises plugins
     # see ZBUILD_PLATFORM=<single-platform> per per-platform invocation.
