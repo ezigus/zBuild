@@ -29,7 +29,7 @@
 [[ -n "${_ZBUILD_TIER_RESOLVE_LOADED:-}" ]] && return 0
 _ZBUILD_TIER_RESOLVE_LOADED=1
 
-_TIER_RESOLVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_TIER_RESOLVE_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _TIER_RESOLVE_ROOT="$(cd "$_TIER_RESOLVE_DIR/../.." && pwd)"
 
 # resolve_tier depends on yaml_get (core/plugin-registry/manifest-validation.sh)

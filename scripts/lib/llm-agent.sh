@@ -26,7 +26,7 @@ fi
 _ZBUILD_LLM_AGENT_LOADED=1
 
 # Source the rc classifier from PR #788 (idempotent).
-_LLM_AGENT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LLM_AGENT_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./router-rc-classify.sh
 source "$_LLM_AGENT_LIB_DIR/router-rc-classify.sh"
 # shellcheck source=./abort-propagation.sh

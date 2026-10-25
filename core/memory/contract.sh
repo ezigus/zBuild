@@ -13,7 +13,7 @@ _ZBUILD_MEMORY_PLUGIN_DIR=""
 _ZBUILD_MEMORY_INITIALIZED=0
 
 # ─── _memory_contract_dir — locate this file's directory ─────────────────────
-_MEMORY_CONTRACT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_MEMORY_CONTRACT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT="${_ZBUILD_ROOT:-$(cd "$_MEMORY_CONTRACT_DIR/../.." && pwd)}"
 
 # ─── memory_has_capability <cap> ─────────────────────────────────────────────

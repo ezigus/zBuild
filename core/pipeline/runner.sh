@@ -4,7 +4,7 @@
 # ADR-011 (pluggable orch backend)
 set -euo pipefail
 
-_RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_RUNNER_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT="$(cd "$_RUNNER_DIR/../.." && pwd)"
 
 # shellcheck source=../contract/version.sh
@@ -2977,6 +2977,10 @@ main() {
             # `stage.complete verdict=...` event emitted at runner.sh:1309 in the
             # `stage:*` dispatch branch. Mutating this to raw values like "approve"
             # would silently break the indicator-glyph + stage.verdicts contract.
+            # Read the result once in this shell: the readers below, each in its own
+            # $( ), inherit the parse instead of each parsing the file again (ADR-065 §5).
+            local _cdr_state _cdr_contract _cdr_verdict _cdr_disp _cdr_reason _cdr_viol _cdr_path _cdr_present _cdr_kind
+            _verdict_read_result "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" _cdr 2>/dev/null || true
             _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
             # Wave 19-A (#717): _CYCLE_DISPATCH_VERDICT_RAW is the parallel RAW
             # verdict (e.g. "approve", "request_changes", "block") consumed by the
@@ -3131,6 +3135,10 @@ main() {
         local _pd_manifest="$_pd_plugin_dir/manifest.yaml"
         # CLASSIFIED verdict (pass|warn|fail|…) — authoritative for the
         # .stage_verdicts contract + indicator glyph, recorded by the parent.
+        # Read the result once in this shell: the readers below, each in its own
+        # $( ), inherit the parse instead of each parsing the file again (ADR-065 §5).
+        local _pdr_state _pdr_contract _pdr_verdict _pdr_disp _pdr_reason _pdr_viol _pdr_path _pdr_present _pdr_kind
+        _verdict_read_result "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" _pdr 2>/dev/null || true
         _PARALLEL_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "missing")"
         # RAW verdict computed for the future aggregator (ADR-039 §4 group-verdict
         # collapse, a later issue); kept on its own channel so the predicate path
@@ -3866,6 +3874,10 @@ main() {
             if [[ -n "$_verdict_plugin_dir" ]]; then
                 _verdict_manifest="$_verdict_plugin_dir/manifest.yaml"
             fi
+            # Read the result once in this shell: the readers below, each in its own
+            # $( ), inherit the parse instead of each parsing the file again (ADR-065 §5).
+            local _vcr_state _vcr_contract _vcr_verdict _vcr_disp _vcr_reason _vcr_viol _vcr_path _vcr_present _vcr_kind
+            _verdict_read_result "$state_dir" "$_verdict_manifest" "$stage" "0" _vcr 2>/dev/null || true
             _verdict_class="$(runner_read_stage_verdict "$state_dir" "$_verdict_manifest" "$stage" 0)"
             if _runner_leaf_contract_halt "$state_file" "$stage" \
                     "$(runner_read_stage_reason "$state_dir" "$_verdict_manifest" "$stage" 0 2>/dev/null || true)"; then

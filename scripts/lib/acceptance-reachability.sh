@@ -24,7 +24,7 @@
 [[ -n "${_ACCEPTANCE_REACHABILITY_LOADED:-}" ]] && return 0
 _ACCEPTANCE_REACHABILITY_LOADED=1
 
-_ACCEPTANCE_REACHABILITY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ACCEPTANCE_REACHABILITY_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./acceptance-block.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
 # shellcheck source=env-scrub.sh
@@ -43,7 +43,7 @@ source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ER
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
 if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=./helpers.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" helpers.sh"
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/helpers.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" helpers.sh"
 fi
 
 

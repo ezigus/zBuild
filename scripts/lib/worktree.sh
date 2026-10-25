@@ -12,7 +12,7 @@
 [[ -n "${_ZBUILD_WORKTREE_LIB_LOADED:-}" ]] && return 0
 _ZBUILD_WORKTREE_LIB_LOADED=1
 
-_ZBUILD_WORKTREE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_WORKTREE_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=scripts/lib/worktree-sparse.sh
 source "$_ZBUILD_WORKTREE_LIB_DIR/worktree-sparse.sh"
 

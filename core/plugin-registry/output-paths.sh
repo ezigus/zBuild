@@ -25,47 +25,68 @@ _ZBUILD_REGISTRY_OUTPUT_PATHS_LOADED=1
 # since made it `required: true`, so it is now enforced like any other output.)
 _registry_output_path_rows() {
     local manifest="$1"
-    awk '
-        BEGIN { in_block = 0; cur_path = ""; cur_required = ""; cur_primary = "" }
-        function flush() {
-            if (cur_path != "" && cur_required != "false") {
-                print cur_path "\t" cur_primary
-            }
-            cur_path = ""; cur_required = ""; cur_primary = ""
-        }
-        /^outputs:[[:space:]]*$/ { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/ { flush(); in_block = 0 }
-        in_block && /^[[:space:]]*-[[:space:]]/ { flush() }
-        in_block && /^[[:space:]]+path:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            cur_path = line
-            next
-        }
-        in_block && /^[[:space:]]+required:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+required:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            cur_required = line
-            next
-        }
-        in_block && /^[[:space:]]+primary:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+primary:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            # Case-folded: a manifest writing `primary: True` must not read as
-            # non-primary and so slip past the empty-artifact guard downstream.
-            # `required` is deliberately NOT folded — a non-canonical value there
-            # already fails closed (treated as required).
-            cur_primary = tolower(line)
-            next
-        }
-        END { flush() }
-    ' "$manifest" 2>/dev/null
+    [[ -f "$manifest" && -r "$manifest" ]] || return 2
+    # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5).
+    local line v re in_block=0 cur_path="" cur_required="" cur_primary=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^outputs:[[:space:]]*$ ]]; then in_block=1; continue; fi
+        (( in_block )) || continue
+        if [[ "$line" =~ ^[a-zA-Z_] ]] || [[ "$line" =~ ^[[:space:]]*-[[:space:]] ]]; then
+            [[ -n "$cur_path" && "$cur_required" != "false" ]] && printf '%s\t%s\n' "$cur_path" "$cur_primary"
+            cur_path=""; cur_required=""; cur_primary=""
+            [[ "$line" =~ ^[a-zA-Z_] ]] && { in_block=0; continue; }
+        fi
+        for re in path required primary; do
+            [[ "$line" =~ ^[[:space:]]+$re:[[:space:]]* ]] || continue
+            v="${line:${#BASH_REMATCH[0]}}"
+            if [[ "$v" == *#* ]]; then v="${v%%#*}"; v="${v%"${v##*[![:space:]]}"}"; fi
+            v="${v#[\"\']}"; v="${v%[\"\']}"
+            case "$re" in
+                path)     cur_path="$v" ;;
+                required) cur_required="$v" ;;
+                # Case-folded: a manifest writing `primary: True` must not read as
+                # non-primary and so slip past the empty-artifact guard downstream.
+                # `required` is deliberately NOT folded — a non-canonical value there
+                # already fails closed (treated as required).
+                primary)  cur_primary="${v,,}" ;;
+            esac
+            break
+        done
+    done < "$manifest"
+    [[ -n "$cur_path" && "$cur_required" != "false" ]] && printf '%s\t%s\n' "$cur_path" "$cur_primary"
+    return 0
+}
+
+# ─── _inputs_manifest_formats <manifest> ─────────────────────────────────────
+# "id<TAB>format" for every output the manifest declares, in one read (the
+# producer index in core/pipeline/input-resolve.sh asks it).
+_inputs_manifest_formats() {
+    [[ -f "${1-}" && -r "$1" ]] || return 2
+    # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5).
+    local line l inb=0 id="" fmt="" re
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^outputs:[[:space:]]*$ ]]; then inb=1; continue; fi
+        if (( inb )) && [[ "$line" =~ ^[a-zA-Z_] ]]; then
+            [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"; id=""; fmt=""; inb=0
+        fi
+        (( inb )) || continue
+        re='^[[:space:]]*-[[:space:]]+id:[[:space:]]*'
+        if [[ "$line" =~ $re ]]; then
+            [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"; id=""; fmt=""
+            l="${line:${#BASH_REMATCH[0]}}"
+            if [[ "$l" == *#* ]]; then l="${l%%#*}"; l="${l%"${l##*[![:space:]]}"}"; fi
+            l="${l#[\"\']}"; id="${l%[\"\']}"
+            continue
+        fi
+        re='^[[:space:]]+format:[[:space:]]*'
+        if [[ "$line" =~ $re ]]; then
+            l="${line:${#BASH_REMATCH[0]}}"
+            if [[ "$l" == *#* ]]; then l="${l%%#*}"; l="${l%"${l##*[![:space:]]}"}"; fi
+            l="${l#[\"\']}"; fmt="${l%[\"\']}"
+        fi
+    done < "$1"
+    [[ -z "$id" ]] || printf '%s\t%s\n' "$id" "$fmt"
+    return 0
 }
 
 # ─── _registry_resolve_output_path <raw_path> <state_dir> <artifact_dir> ─────

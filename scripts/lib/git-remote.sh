@@ -19,7 +19,7 @@
 [[ -n "${_ZBUILD_GIT_REMOTE_LOADED:-}" ]] && return 0
 _ZBUILD_GIT_REMOTE_LOADED=1
 
-_ZBUILD_GIT_REMOTE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_GIT_REMOTE_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./default-branch.sh
 source "$_ZBUILD_GIT_REMOTE_DIR/default-branch.sh"
 

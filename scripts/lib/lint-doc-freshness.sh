@@ -24,7 +24,7 @@ set -euo pipefail
 
 SYSGREP=/usr/bin/grep
 
-_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _REPO_ROOT="$(cd "$_SCRIPT_DIR/../.." && pwd)"
 _PLUGINS_WIKI="$_REPO_ROOT/docs/wiki/plugins"
 _MECHANICS_WIKI="$_REPO_ROOT/docs/wiki/mechanics"

@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_SELF_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _REPO_ROOT="$(cd "$_SELF_DIR/../.." && pwd)"
 _WORKFLOWS_DIR="$_REPO_ROOT/.github/workflows"
 

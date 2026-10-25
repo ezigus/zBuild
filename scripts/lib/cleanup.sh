@@ -23,7 +23,7 @@ _ZBUILD_CLEANUP_LOADED=1
 # Sourced with `|| true`: a caller that has already loaded them wins via each
 # file's own load-once sentinel, and a stripped install must not break the
 # predicates that need none of this.
-_ZBUILD_CLEANUP_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_CLEANUP_LIB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 for _cl_dep in "$_ZBUILD_CLEANUP_LIB_DIR/../../core/state/layout.sh" \
                "$_ZBUILD_CLEANUP_LIB_DIR/../../core/state/issue-lock.sh" \
                "$_ZBUILD_CLEANUP_LIB_DIR/worktree.sh"; do
@@ -937,7 +937,7 @@ _cleanup_issue_closed_age_days() {
     # `date -d` and BSD `date -j` disagree, and getting that wrong would silently
     # mis-age every issue-keyed target.
     if ! declare -F _zbuild_iso8601_to_epoch >/dev/null 2>&1; then
-        local _cl_resume="${_CLEANUP_LIB_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/../../core/state/resume.sh"
+        local _cl_resume="${_CLEANUP_LIB_DIR:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)}/../../core/state/resume.sh"
         # shellcheck source=../../core/state/resume.sh
         [[ -f "$_cl_resume" ]] && source "$_cl_resume" 2>/dev/null || true
     fi
@@ -1369,7 +1369,7 @@ _cleanup_scan_cache() {
 # section of this file whose whole job is to act.
 if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
     # shellcheck source=proc-group.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/proc-group.sh"
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/proc-group.sh"
 fi
 
 # ─── _cleanup_scan_pgids <data_root> ────────────────────────────────────────

@@ -65,25 +65,41 @@ attempt_latest_copy() {
 # so the last manifest's answer is kept; manifests do not change during a run.
 _ATT_FACTS_FOR=""
 _ATT_FACTS=""
+# Read by the shell, rule for rule as the awk it replaced (ADR-065 §5): it ran
+# in the stage's own process, three times a dispatch.
+_attempt_manifest_facts_read_v() {
+    local -n _amf="$1"
+    local line l in_out=0 in_cap=0 p="" s=0 out=""
+    [[ -f "$2" && -r "$2" ]] || { _amf=""; return 0; }
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^outputs:[[:space:]]*$ ]]; then in_out=1; in_cap=0; continue; fi
+        if [[ "$line" =~ ^capabilities:[[:space:]]*$ || "$line" =~ ^[a-zA-Z_] ]]; then
+            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; fi
+            p=""; s=0
+            if [[ "$line" =~ ^capabilities:[[:space:]]*$ ]]; then in_cap=1; in_out=0; continue; fi
+            in_out=0; in_cap=0
+        fi
+        (( in_cap )) && [[ "$line" =~ ^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$ ]] && out+="R"$'\n'
+        (( in_out )) || continue
+        if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+id: ]]; then
+            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; fi
+            p=""; s=0
+        fi
+        if [[ "$line" =~ ^[[:space:]]+path:[[:space:]]* ]]; then
+            l="${line:${#BASH_REMATCH[0]}}"
+            if [[ "$l" == *#* ]]; then l="${l%%#*}"; l="${l%"${l##*[![:space:]]}"}"; fi
+            l="${l#[\"\']}"; p="${l%[\"\']}"
+        fi
+        [[ "$line" =~ ^[[:space:]]+summary:[[:space:]]*true ]] && s=1
+    done < "$2"
+    if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; fi
+    while [[ "$out" == *$'\n' ]]; do out="${out%$'\n'}"; done
+    _amf="$out"
+}
+
 _attempt_manifest_facts_v() {
     if [[ "$2" != "$_ATT_FACTS_FOR" ]]; then
-        _ATT_FACTS="$(awk '
-        function flush() { if (p != "") { print "P\t" p; if (s) { b = p; sub(/.*\//, "", b); print "S\t" b } } p = ""; s = 0 }
-        /^outputs:[[:space:]]*$/      { in_out = 1; in_cap = 0; next }
-        /^capabilities:[[:space:]]*$/ { flush(); in_cap = 1; in_out = 0; next }
-        /^[a-zA-Z_]/                  { flush(); in_out = 0; in_cap = 0 }
-        in_cap && /^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$/ { print "R" }
-        in_out && /^[[:space:]]*-[[:space:]]+id:/ { flush() }
-        in_out && /^[[:space:]]+path:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            p = line
-        }
-        in_out && /^[[:space:]]+summary:[[:space:]]*true/ { s = 1 }
-        END { flush() }
-    ' "$2" 2>/dev/null)" || true
+        _attempt_manifest_facts_read_v _ATT_FACTS "$2"
         _ATT_FACTS_FOR="$2"
     fi
     printf -v "$1" '%s' "$_ATT_FACTS"

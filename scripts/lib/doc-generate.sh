@@ -27,7 +27,7 @@
 [[ -n "${_ZBUILD_DOC_GENERATE_LOADED:-}" ]] && return 0
 _ZBUILD_DOC_GENERATE_LOADED=1
 
-_DOC_GENERATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_DOC_GENERATE_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _DOC_GENERATE_ROOT="$(cd "$_DOC_GENERATE_DIR/../.." && pwd)"
 
 # ─── Lazy-source router stack (same pattern as vision-init.sh) ──────────────

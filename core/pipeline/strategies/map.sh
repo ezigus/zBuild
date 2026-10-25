@@ -7,7 +7,7 @@
 [[ -n "${_ZBUILD_STRATEGY_MAP_LOADED:-}" ]] && return 0
 _ZBUILD_STRATEGY_MAP_LOADED=1
 
-_ZBUILD_STRATEGIES_DIR_MAP="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_STRATEGIES_DIR_MAP="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 source "${_ZBUILD_STRATEGIES_DIR_MAP}/common.sh"
 
 # ─── _strategy_map_resolve_dimension ─────────────────────────────────────────
@@ -136,7 +136,7 @@ _map_write_summary() {
     local state_dir art i raw res line body="" flagged=no outcome reason
     state_dir="$(dirname "$state_file")"; art="${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}"
     declare -F _registry_output_path_rows >/dev/null 2>&1 \
-        || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../plugin-registry" && pwd)/output-paths.sh" 2>/dev/null || true
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../plugin-registry" && pwd)/output-paths.sh" 2>/dev/null || true
     for (( i = 0; i < n; i++ )); do
         raw="$(_registry_output_path_rows "${plugins[$i]}/manifest.yaml" 2>/dev/null | awk -F'\t' '$2=="true"{print $1; exit}')"
         res=""

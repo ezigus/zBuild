@@ -18,7 +18,7 @@
 # Exit:  0 = every literal word is in the set; 1 = at least one is not.
 set -euo pipefail
 
-_LDW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LDW_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _LDW_ROOT="$(cd "$_LDW_DIR/../.." && pwd)"
 PLUGINS_ROOT="${1:-$_LDW_ROOT/plugins}"
 

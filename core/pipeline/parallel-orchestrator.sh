@@ -26,7 +26,7 @@
 [[ -n "${_ZBUILD_PARALLEL_ORCH_LOADED:-}" ]] && return 0
 _ZBUILD_PARALLEL_ORCH_LOADED=1
 
-_PARALLEL_ORCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_PARALLEL_ORCH_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _PARALLEL_ORCH_ROOT="$(cd "$_PARALLEL_ORCH_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh

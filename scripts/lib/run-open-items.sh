@@ -176,7 +176,7 @@ open_items_outbound() {
     [[ -n "$md" ]] || return 0
     manifest="$sd/scope-manifest.md"
     if [[ ! -s "$manifest" ]]; then printf '%s\n' "$md"; return 0; fi
-    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    root="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
     if ! declare -F apply_scope_redaction >/dev/null 2>&1; then
         # shellcheck source=../../core/redaction/scope-redaction.sh
         source "$root/core/redaction/scope-redaction.sh" 2>/dev/null || return 0

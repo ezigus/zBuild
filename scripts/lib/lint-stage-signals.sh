@@ -10,7 +10,7 @@
 # Usage: bash scripts/lib/lint-stage-signals.sh [plugins_root]
 # Exit:  0 = none found; 1 = at least one raw trap.
 set -euo pipefail
-_LSS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+_LSS_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 PLUGINS_ROOT="${1:-$_LSS_ROOT/plugins}"
 [[ -d "$PLUGINS_ROOT" ]] || { echo "lint-stage-signals: plugins root not found: $PLUGINS_ROOT" >&2; exit 1; }
 

@@ -359,6 +359,11 @@ saved at startup, even when the signal lands inside a call made with `2>/dev/nul
 redirect a trap would otherwise run under. Enforced by `tests/unit/stage-stop-on-signal-test.sh`
 S8–S10 and `tests/unit/runner-abort-banner-stderr-test.sh` B1–B4.
 
+KILL cannot be caught, so a runner killed by it stops nothing: its forked stage and the stage's
+time-limit watchdog run on, the watchdog for up to the stage's limit (amended 2026-10-25). A test
+that has to KILL a runner therefore kills the runner and every process under it
+(`zb_test_kill_tree`). Enforced by `tests/unit/test-kill-tree-test.sh` K1–K3.
+
 ### 8. Fail-closed artifact scanner contract
 
 Per ADR-001 §"Fail-closed scanner contract": if a plugin declares `provides.artifact_type` but no artifact exists at `outputs[].path` after `run` completes with `rc=0`, the engine emits a synthetic blocking finding. Absent evidence IS blocking evidence.

@@ -14,7 +14,7 @@
 #   _ZBUILD_MY_PLUGIN_LOADED=1
 #
 #   # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
-#   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+#   source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 #   zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 #   # _ZBUILD_PLUGIN_DIR  → absolute path to the plugin's own directory
 #   # _ZBUILD_PLUGIN_ROOT → absolute path to the repo root
@@ -53,7 +53,8 @@ zbuild_plugin_bootstrap() {
 
     # Resolve the plugin directory (absolute, symlink-safe).
     local _pdir
-    _pdir="$(cd "$(dirname "$plugin_source")" && pwd)" || {
+    local _psd="."; [[ "$plugin_source" == */* ]] && _psd="${plugin_source%/*}"
+    _pdir="$(cd "${_psd:-/}" && pwd)" || {
         printf 'plugin-bootstrap: cannot resolve plugin dir from: %s\n' "$plugin_source" >&2
         return 1
     }

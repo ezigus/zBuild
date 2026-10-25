@@ -10,7 +10,7 @@
 [[ -n "${_ZBUILD_TA_RECORD_LOADED:-}" ]] && return 0
 _ZBUILD_TA_RECORD_LOADED=1
 # shellcheck source=../../../../scripts/lib/earlier-output.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/scripts/lib/earlier-output.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../.." && pwd)/scripts/lib/earlier-output.sh"
 
 _AI_DIGESTS="assertion-digests.txt"
 _AI_COPIES="authored-testfiles"

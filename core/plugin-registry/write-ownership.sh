@@ -84,7 +84,7 @@ _lc_artifacts_left_deny() {
         done <<< "$(_lc_manifest_output_paths "$manifest")"
     fi
     declare -F stage_notes_path >/dev/null 2>&1 \
-        || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-prompt.sh"
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-prompt.sh"
     keep+="$(stage_notes_path "$state_dir" "$stage")"$'\n'
     _lc_artifacts_walk "$artifact_dir" "$keep"
 }
@@ -93,10 +93,24 @@ _lc_artifacts_left_deny() {
 # read from the file itself: the stage's own manifest need not be in the index.
 _lc_manifest_output_paths() {
     [[ -f "$1" ]] || return 0
-    awk '/^outputs:/{o=1;next} /^[^[:space:]#]/{o=0}
-         o && /^[[:space:]]+(-[[:space:]]+)?path:/ {
-             v=$0; sub(/^[[:space:]]+(-[[:space:]]+)?path:[[:space:]]*/, "", v)
-             gsub(/^["\047]|["\047][[:space:]]*$/, "", v); sub(/[[:space:]]+#.*$/, "", v); print v }' "$1"
+    [[ -r "$1" ]] || return 2
+    # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5): a
+    # quote is stripped before the comment, and only a `#` after a space is one.
+    local line v o=0 re='^[[:space:]]+(-[[:space:]]+)?path:[[:space:]]*'
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == outputs:* ]]; then o=1; continue; fi
+        [[ "$line" =~ ^[^[:space:]#] ]] && o=0
+        (( o )) && [[ "$line" =~ $re ]] || continue
+        v="${line:${#BASH_REMATCH[0]}}"
+        if [[ "$v" =~ ^[\"\'][[:space:]]*$ ]]; then v=""
+        else
+            v="${v#[\"\']}"
+            [[ "$v" =~ [\"\'][[:space:]]*$ ]] && v="${v%"${BASH_REMATCH[0]}"}"
+        fi
+        [[ "$v" =~ [[:space:]]+# ]] && v="${v%%"${BASH_REMATCH[0]}"*}"
+        printf '%s\n' "$v"
+    done < "$1"
+    return 0
 }
 
 # _lc_artifacts_walk <dir> <keep> — appends to _LC_DENY_OUT; recurses only

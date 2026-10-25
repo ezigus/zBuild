@@ -26,7 +26,7 @@
 # Usage: bash scripts/lib/lint-llm-envelope.sh [plugins_root]
 set -uo pipefail
 
-_LLE_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+_LLE_REPO="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 _LLE_ROOT="${1:-${ZBUILD_PLUGINS_ROOT:-$_LLE_REPO/plugins}}"
 
 _lle_violations=0

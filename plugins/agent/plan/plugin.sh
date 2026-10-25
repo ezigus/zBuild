@@ -19,10 +19,10 @@
 _ZBUILD_PLAN_LOADED=1
 
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../scripts/lib/stage-summary.sh"
 _PLAN_DIR="$_ZBUILD_PLUGIN_DIR"
 _PLAN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -47,7 +47,7 @@ source "$_PLAN_ROOT/scripts/lib/earlier-output.sh"
 # The stage's entry point, its inputs and its result writer (#1835) live in
 # lib/entry.sh — plan_run is defined there.
 # shellcheck source=lib/entry.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/entry.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/entry.sh"
 
 # _plan_is_valid <file> — rc 0 when <file> holds a plan: one object with
 # schema_version 1 and at least one work item, each with an id and a

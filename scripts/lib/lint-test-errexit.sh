@@ -11,7 +11,7 @@
 # Exit:  0 = clean; 1 = at least one offending file.
 set -euo pipefail
 
-_LTE_ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+_LTE_ROOT="${1:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}"
 _bad=0
 while IFS= read -r -d '' f; do
     [[ "$f" == */legacy-DoNotUse/* ]] && continue

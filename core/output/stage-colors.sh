@@ -24,7 +24,7 @@ _ZBUILD_STAGE_COLORS_LOADED=1
 # Defensively source helpers.sh — it has its own load guard, so this is
 # idempotent. Required so $CYAN/$BLUE/$YELLOW/etc are defined when this file
 # is sourced standalone (a unit test sourcing only stage-colors.sh).
-_ZBUILD_STAGE_COLORS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_STAGE_COLORS_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$_ZBUILD_STAGE_COLORS_DIR/../../scripts/lib/helpers.sh"
 

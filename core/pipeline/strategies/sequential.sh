@@ -7,7 +7,7 @@
 [[ -n "${_ZBUILD_STRATEGY_SEQUENTIAL_LOADED:-}" ]] && return 0
 _ZBUILD_STRATEGY_SEQUENTIAL_LOADED=1
 
-_ZBUILD_STRATEGIES_DIR_SEQ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_STRATEGIES_DIR_SEQ="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 source "${_ZBUILD_STRATEGIES_DIR_SEQ}/common.sh"
 
 # ─── _strategy_run_sequential ────────────────────────────────────────────────

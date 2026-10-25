@@ -26,7 +26,7 @@ _ACCEPTANCE_SPEC_RE='^(SPEC-[0-9]+)(\[([a-z-]+)\])?:'
 
 # The shared timeout helper (#1752), loaded as a same-directory
 # `source "$DIR/<file>.sh"` line so _runner_contract_lib_closure lists it too.
-_ACCEPTANCE_BLOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ACCEPTANCE_BLOCK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./timeout-cmd.sh
 source "$_ACCEPTANCE_BLOCK_DIR/timeout-cmd.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" timeout-cmd.sh"
 
@@ -36,7 +36,7 @@ source "$_ACCEPTANCE_BLOCK_DIR/timeout-cmd.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
 if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=./helpers.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" helpers.sh"
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/helpers.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" helpers.sh"
 fi
 
 # extract_acceptance_block <design_md>

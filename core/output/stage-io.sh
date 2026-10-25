@@ -27,7 +27,7 @@ declare -gA _STAGE_IO_PENDING_DESTS  # holds the begin-time dests by stage:seq
 declare -gA _STAGE_IO_PENDING_LABEL  # #682: holds the begin-time seq label (e.g. "1.2") by stage:seq
 _STAGE_IO_LAST_SEQ=""
 
-_STAGE_IO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_STAGE_IO_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT_FOR_STAGE_IO="$(cd "$_STAGE_IO_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
@@ -159,7 +159,7 @@ _stage_io_orphan_finalizer() {
         local io_dir="$state_dir/artifacts/stage-io"
         mkdir -p "$io_dir" 2>/dev/null || continue
         local path="$io_dir/${stage}-${seq}.partial.json"
-        local ts; ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        local ts; TZ=UTC0 printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
         local rec
         rec="$(jq -n \
             --arg stage "$stage" --arg kind "$kind" --arg seq "$seq" \
@@ -422,7 +422,7 @@ stage_io_end() {
     fi
 
     # ── Build merged record via jq --arg ────────────────────────────────────
-    local ts; ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    local ts; TZ=UTC0 printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
     local run_id="${ZBUILD_RUN_ID:-}"
     local metadata_json='{}'
     while IFS='=' read -r mk mv; do

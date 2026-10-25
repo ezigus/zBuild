@@ -151,7 +151,7 @@ done
 
 if [[ ! -f "$BUILD_STARTED" ]]; then
     # Runner failed to reach build — abort the test with diagnostic context.
-    kill -KILL "$RUNNER_PID" 2>/dev/null || true
+    zb_test_kill_tree "$RUNNER_PID"   # the runner and what it started (its stage, the watchdog)
     wait "$RUNNER_PID" 2>/dev/null || true
     assert_fail "build stage reached before signal" \
         "BUILD_STARTED never touched. Stderr tail: $(tail -c 600 "$TEST_TEMP_DIR/runner.stderr" 2>/dev/null)"

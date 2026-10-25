@@ -162,7 +162,7 @@ if wait_for_event "$ZBUILD_TEST_SLOW_MARK" 'running' 600 0.1; then
     assert_eq "[SPEC-4] no sidecar left behind after TERM" "0" "$(sidecars)"
 else
     assert_fail "[SPEC-4] the slow intake started" "marker never appeared; stderr: $(tail -5 "$TEST_TEMP_DIR/runner4.stderr")"
-    kill -KILL "$RUNNER_PID" 2>/dev/null || true
+    zb_test_kill_tree "$RUNNER_PID"   # the runner and what it started (its stage, the watchdog)
 fi
 unset ZBUILD_TEST_SLOW_MARK
 

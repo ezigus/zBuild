@@ -12,7 +12,7 @@
 [[ -n "${_ZBUILD_PRIVATE_PATHS_LOADED:-}" ]] && return 0
 _ZBUILD_PRIVATE_PATHS_LOADED=1
 
-_ZBUILD_PRIVATE_PATHS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+_ZBUILD_PRIVATE_PATHS_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 
 # _private_paths_clean — one pattern per line: no comments, blanks or `!` lines.
 _private_paths_clean() {

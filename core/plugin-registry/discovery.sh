@@ -228,7 +228,7 @@ _discover_plugins_walk() {
     fi
 
     find "$plugins_root" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | while IFS= read -r manifest; do
-        local plugin_dir; plugin_dir="$(dirname "$manifest")"
+        local plugin_dir="${manifest%/*}"   # find prints "<root>/…/manifest.yaml"
         local plugin_id; yaml_get_v plugin_id "$manifest" "id"
         # Check disabled list
         local is_disabled=0

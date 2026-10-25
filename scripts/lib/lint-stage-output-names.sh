@@ -14,7 +14,7 @@
 #
 # Usage: bash scripts/lib/lint-stage-output-names.sh [plugins_root]
 set -uo pipefail
-_LSO_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+_LSO_REPO="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 _LSO_ROOT="${1:-${ZBUILD_PLUGINS_ROOT:-$_LSO_REPO/plugins}}"
 
 # One row per declared output: "<plugin dir>\t<id>\t<file name>".

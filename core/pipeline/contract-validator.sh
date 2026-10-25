@@ -28,7 +28,7 @@
 [[ -n "${_ZBUILD_CONTRACT_VALIDATOR_LOADED:-}" ]] && return 0
 _ZBUILD_CONTRACT_VALIDATOR_LOADED=1
 
-_ZBUILD_CV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_CV_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_CV_ROOT="$(cd "$_ZBUILD_CV_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/manifest-graph.sh

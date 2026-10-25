@@ -25,7 +25,7 @@
 [[ -n "${_ZBUILD_DOC_GATHER_LOADED:-}" ]] && return 0
 _ZBUILD_DOC_GATHER_LOADED=1
 
-_DOC_GATHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_DOC_GATHER_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # Resolve repo root: scripts/lib is two levels below repo root.
 _DOC_GATHER_ROOT="$(cd "$_DOC_GATHER_DIR/../.." && pwd)"
 

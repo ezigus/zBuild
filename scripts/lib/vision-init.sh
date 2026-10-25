@@ -14,7 +14,7 @@
 _VISION_INIT_LOADED=1
 
 # shellcheck source=vision.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vision.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/vision.sh"
 
 # ─── vision_init_blank <out_path> ────────────────────────────────────────────
 # Writes a bare conforming skeleton with conventional headings and
@@ -43,7 +43,7 @@ EOF
 # so that vision_init_blank works in test environments without the full stack.
 _vision_ensure_router() {
     local _lib_root
-    _lib_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _lib_root="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
     local _repo_root
     _repo_root="$(cd "$_lib_root/../.." && pwd)"
 

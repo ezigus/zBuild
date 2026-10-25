@@ -16,7 +16,7 @@
 # Exit:  0 = every declared class classifies; 1 = at least one violation.
 set -euo pipefail
 
-_LDC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LDC_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _LDC_ROOT="$(cd "$_LDC_DIR/../.." && pwd)"
 PLUGINS_ROOT="${1:-$_LDC_ROOT/plugins}"
 

@@ -11,10 +11,10 @@
 _ZBUILD_PR_OPEN_LOADED=1
 
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../scripts/lib/stage-summary.sh"
 _PR_OPEN_DIR="$_ZBUILD_PLUGIN_DIR"
 _PR_OPEN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # #2364: earlier work is found by what it contains, never by which stage made it.
@@ -33,9 +33,9 @@ source "$_PR_OPEN_ROOT/scripts/lib/run-branch.sh"
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_PR_OPEN_ROOT/scripts/lib/merge-base.sh"
 # shellcheck source=lib/body.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/body.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/body.sh"
 # shellcheck source=lib/unsettled.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/unsettled.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/unsettled.sh"
 
 # ─── pr_open_run ─────────────────────────────────────────────────────────────
 # Entry point invoked by the pipeline runner.

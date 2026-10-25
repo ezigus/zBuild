@@ -16,7 +16,7 @@
 # Usage: bash scripts/lib/lint-test-engine-state.sh [root]   (default: the repo)
 # Exit:  0 = clean; 1 = at least one offending line.
 set -euo pipefail
-_LES_ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+_LES_ROOT="${1:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}"
 # A jq assignment is told from prose ("…cycle_iterations.status=complete" in an
 # assertion label) by what follows the `=`: a value — { [ ( $ or a quote.
 _LES_RE='"cycle_iterations"[[:space:]]*:[[:space:]]*\{|(^|[^."A-Za-z_])cycle_iterations[[:space:]]*:[[:space:]]*\{|\.cycle_iterations([.[][^[:space:]=]*)?[[:space:]]*(\|=|//=|=)[[:space:]]*[][{($"]'

@@ -67,7 +67,7 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-reachability.sh" || _ZBUILD_CONTRAC
 source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
 # The gate's reason, operator summary and small helpers (#2304: keeps this file under 500 lines).
 # shellcheck source=./acceptance-reason.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/acceptance-reason.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/acceptance-reason.sh"
 
 acceptance_gate_run() {
     local _stage_id="$1"

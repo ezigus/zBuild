@@ -20,7 +20,7 @@
 [[ -n "${_ZBUILD_EVENT_KNOWN_TYPES_LOADED:-}" ]] && return 0
 _ZBUILD_EVENT_KNOWN_TYPES_LOADED=1
 
-_ZBUILD_KNOWN_TYPES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_KNOWN_TYPES_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT_FOR_KNOWN_TYPES="$(cd "$_ZBUILD_KNOWN_TYPES_DIR/../.." && pwd)"
 
 # ─── eb_manifest_events <manifest> [manifest...] ────────────────────────────
@@ -158,7 +158,7 @@ _eb_known_types_cache_path() {
 _eb_known_types_cache_write() {
     local key="$1"; shift
     local cache; cache="$(_eb_known_types_cache_path)" || return 0
-    [[ -d "$(dirname "$cache")" ]] || return 0
+    [[ "$cache" == */* && -d "${cache%/*}" ]] || return 0
     # Atomic replace: concurrent stage processes read this file while another
     # writes it, and a torn read would silently drop event names.
     local tmp

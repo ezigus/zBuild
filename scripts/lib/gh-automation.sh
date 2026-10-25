@@ -7,7 +7,7 @@
 [[ -n "${_ZBUILD_GHA_LOADED:-}" ]] && return 0
 _ZBUILD_GHA_LOADED=1
 
-_ZBUILD_GHA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_GHA_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./helpers.sh
 source "$_ZBUILD_GHA_DIR/helpers.sh"
 # shellcheck source=./timeout-cmd.sh
@@ -139,7 +139,7 @@ gha_compute_similarity_llm() {
     # config/models.json if available; fall back to claude CLI's default.
     local model_id="${LLM_TIEBREAKER_MODEL:-}"
     if [[ -z "$model_id" ]]; then
-        local models_file="${ZBUILD_MODELS_FILE:-${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/config/models.json}"
+        local models_file="${ZBUILD_MODELS_FILE:-${REPO_ROOT:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}/config/models.json}"
         if [[ -f "$models_file" ]]; then
             model_id="$(jq -r '.tiers.T1.candidates[0].id // empty' "$models_file" 2>/dev/null || echo "")"
         fi

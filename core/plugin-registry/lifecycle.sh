@@ -18,17 +18,17 @@ _ZBUILD_REGISTRY_LIFECYCLE_LOADED=1
 # core/pipeline/write-boundary.sh so the artifact scanner and the write-boundary
 # classifier can never disagree about where a declared output lives.
 # shellcheck source=output-paths.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/output-paths.sh"
 # shellcheck source=write-ownership.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/write-ownership.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/write-ownership.sh"
 # shellcheck source=attempt-archive.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/attempt-archive.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/attempt-archive.sh"
 # shellcheck source=../../scripts/lib/stage-dispatch-mark.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-dispatch-mark.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-dispatch-mark.sh"
 # shellcheck source=../../scripts/lib/stage-summary.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-summary.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-summary.sh"
 # shellcheck source=../../scripts/lib/stage-time-limit.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-time-limit.sh"
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-time-limit.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -416,7 +416,7 @@ plugin_hook_call() {
 
         if ! declare -F stage_scratch_ensure >/dev/null 2>&1; then
             # shellcheck source=../pipeline/stage-scratch.sh
-            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/stage-scratch.sh" 2>/dev/null || true
+            source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../pipeline" && pwd)/stage-scratch.sh" 2>/dev/null || true
         fi
         if declare -F stage_scratch_ensure >/dev/null 2>&1; then
             local _ws_scratch
@@ -462,7 +462,7 @@ plugin_hook_call() {
         # leaves the mark unset and write_boundary_check returns 0 immediately.
         if ! declare -F write_boundary_mark >/dev/null 2>&1; then
             # shellcheck source=../pipeline/write-boundary.sh
-            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/write-boundary.sh" 2>/dev/null || true
+            source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../pipeline" && pwd)/write-boundary.sh" 2>/dev/null || true
         fi
     fi
 
@@ -483,11 +483,11 @@ plugin_hook_call() {
     if [[ "$hook_name" == "run" ]]; then
         if ! declare -F _inputs_resolve_stage >/dev/null 2>&1; then
             # shellcheck source=../pipeline/input-resolve.sh
-            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/input-resolve.sh" 2>/dev/null || true
+            source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../pipeline" && pwd)/input-resolve.sh" 2>/dev/null || true
         fi
         if ! declare -F stage_blocks_write >/dev/null 2>&1; then
             # shellcheck source=../../scripts/lib/stage-prompt.sh
-            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/stage-prompt.sh" 2>/dev/null || true
+            source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-prompt.sh" 2>/dev/null || true
         fi
         local _ir_proot; _ir_proot="$(cd "$plugin_dir/../.." 2>/dev/null && pwd)"
         local _ir_state="${ZBUILD_STATE_DIR:-}"
@@ -658,7 +658,7 @@ plugin_hook_call() {
             # probe first): the read costs several jq calls per dispatch, and a
             # probe that passes means there is nothing for the full check to say.
             local _lcr_state="" _lcr_contract="" _lcr_verdict="" _lcr_disp="" _lcr_reason="" \
-                  _lcr_viol="" _lcr_path="" _lcr_present="" _lc_unfinished="" _lc_missing=0
+                  _lcr_viol="" _lcr_path="" _lcr_present="" _lcr_kind="" _lc_unfinished="" _lc_missing=0
             scan_plugin_outputs "$plugin_dir" "$state_file_arg" "$stage_arg" probe 2>/dev/null || _lc_missing=1
             if (( _lc_missing )) && declare -F _verdict_read_result >/dev/null 2>&1 \
                     && declare -F disposition_unfinished >/dev/null 2>&1 \

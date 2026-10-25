@@ -26,7 +26,7 @@
 [[ -n "${_ZBUILD_ISSUE_LOCK_LOADED:-}" ]] && return 0
 _ZBUILD_ISSUE_LOCK_LOADED=1
 
-_ZBUILD_ISSUE_LOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_ISSUE_LOCK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./resume.sh
 source "$_ZBUILD_ISSUE_LOCK_DIR/resume.sh"
 

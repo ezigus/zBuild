@@ -18,7 +18,7 @@
 [[ -n "${_ZBUILD_RELEASE_TARBALL_LOADED:-}" ]] && return 0
 _ZBUILD_RELEASE_TARBALL_LOADED=1
 
-_ZBUILD_RELEASE_TARBALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_RELEASE_TARBALL_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # ADR-059 §6 (#1930): one owner/repo derivation, shared with the design stage.
 # shellcheck source=./identity.sh
 source "$_ZBUILD_RELEASE_TARBALL_DIR/identity.sh"

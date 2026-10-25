@@ -11,7 +11,7 @@
 [[ -n "${_ZBUILD_WRITE_BOUNDARY_LOADED:-}" ]] && return 0
 _ZBUILD_WRITE_BOUNDARY_LOADED=1
 
-_ZBUILD_WB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_WB_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_WB_ROOT="$(cd "$_ZBUILD_WB_DIR/../.." && pwd)"
 
 # #1809 (ADR-058 C9): the SAME resolver scan_plugin_outputs uses. Two copies of

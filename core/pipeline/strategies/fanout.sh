@@ -7,7 +7,7 @@
 [[ -n "${_ZBUILD_STRATEGY_FANOUT_LOADED:-}" ]] && return 0
 _ZBUILD_STRATEGY_FANOUT_LOADED=1
 
-_ZBUILD_STRATEGIES_DIR_FANOUT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_STRATEGIES_DIR_FANOUT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 source "${_ZBUILD_STRATEGIES_DIR_FANOUT}/common.sh"
 
 # ─── _strategy_run_fanout ────────────────────────────────────────────────────

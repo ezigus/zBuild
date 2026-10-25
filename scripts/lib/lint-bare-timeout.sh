@@ -26,7 +26,7 @@
 # Exit:  0 clean; 1 one or more findings (each printed as file:line: text).
 set -euo pipefail
 
-ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+ROOT="${1:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}"
 
 files=()
 for d in core scripts plugins; do

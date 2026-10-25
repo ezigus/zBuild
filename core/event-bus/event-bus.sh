@@ -13,7 +13,7 @@
 [[ -n "${_ZBUILD_EVENT_BUS_LOADED:-}" ]] && return 0
 _ZBUILD_EVENT_BUS_LOADED=1
 
-_ZBUILD_EVENT_BUS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_EVENT_BUS_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT_FOR_EVENTS="$(cd "$_ZBUILD_EVENT_BUS_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/compat.sh
@@ -257,13 +257,16 @@ eb_emit_event() {
 
     # Single-writer JSONL via flock. A brace group, not a subshell: the lock is
     # on fd 9's open file, held until the group closes it, and no shell is copied.
+    # `|| true` on each: a lock or file that cannot be opened is a redirect
+    # error, which `set -e` does not forgive, and an emit must never end its
+    # caller (#1153).
     if zbuild_has_flock; then
         {
             flock -w 5 9 && echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
-        } 9>"${ZBUILD_EVENTS_JSONL}.lock"
+        } 9>"${ZBUILD_EVENTS_JSONL}.lock" || true
     else
         # Best-effort fallback
-        echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
+        { echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"; } || true
     fi
 
     # Fire-and-forget: emit MUST never fail its caller — eb_emit_event is called

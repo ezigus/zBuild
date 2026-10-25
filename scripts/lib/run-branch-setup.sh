@@ -22,7 +22,7 @@
 [[ -n "${_ZBUILD_RUN_BRANCH_SETUP_LOADED:-}" ]] && return 0
 _ZBUILD_RUN_BRANCH_SETUP_LOADED=1
 
-_ZBUILD_RUN_BRANCH_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_RUN_BRANCH_SETUP_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./default-branch.sh
 source "$_ZBUILD_RUN_BRANCH_SETUP_DIR/default-branch.sh"
 # shellcheck source=./identity.sh

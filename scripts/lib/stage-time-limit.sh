@@ -30,21 +30,26 @@ template_stage_time_limit_v() {
 _template_stage_time_limit_read() {
     local stage_id="$1" v=""
     if [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]]; then
-        v="$(awk -v stage="$stage_id" '
-            function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
-            $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; block_ind = 0; in_defs = 0; next }
-            /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
-            in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
-            in_defs && !in_block && $0 ~ "^  "stage":[[:space:]]*$" { in_block = 1; block_ind = 2; next }
-            in_block {
-                ind = indent($0)
-                if ($0 ~ /[^[:space:]]/ && ind <= block_ind) { in_block = 0 }
-            }
-            in_block && indent($0) == block_ind + 2 && $0 ~ "^[[:space:]]+timeout_s:" {
-                sub(/^[[:space:]]+timeout_s:[[:space:]]*/, ""); sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
-                print; exit
-            }
-        ' "${_TPL_SOURCE_FILE}" 2>/dev/null)"
+        # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5):
+        # `<stage>:` at column 0, or two deep under `stage_definitions:`, then
+        # its own `timeout_s:` one level in.
+        local line lead ind in_block=0 block_ind=0 in_defs=0
+        local re_top="^${stage_id}:[[:space:]]*$" re_def="^  ${stage_id}:[[:space:]]*$"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ $re_top ]]; then in_block=1; block_ind=0; in_defs=0; continue; fi
+            if [[ "$line" =~ ^stage_definitions:[[:space:]]*$ ]]; then in_defs=1; continue; fi
+            (( in_defs )) && [[ "$line" =~ ^[a-zA-Z_] ]] && in_defs=0
+            if (( in_defs && !in_block )) && [[ "$line" =~ $re_def ]]; then in_block=1; block_ind=2; continue; fi
+            (( in_block )) || continue
+            lead="${line%%[! ]*}"; ind=${#lead}
+            if [[ "$line" =~ [^[:space:]] ]] && (( ind <= block_ind )); then in_block=0; continue; fi
+            if (( ind == block_ind + 2 )) && [[ "$line" =~ ^[[:space:]]+timeout_s:[[:space:]]* ]]; then
+                v="${line:${#BASH_REMATCH[0]}}"
+                if [[ "$v" == *#* ]]; then v="${v%%#*}"; v="${v%"${v##*[![:space:]]}"}"; fi
+                v="${v//[[:space:]]/}"
+                break
+            fi
+        done 2>/dev/null < "${_TPL_SOURCE_FILE}"
     fi
     [[ "$v" =~ ^[1-9][0-9]*$ ]] || v=900
     printf '%s' "$v"

@@ -12,7 +12,7 @@
 [[ -n "${_ZBUILD_RELEASE_NOTES_LOADED:-}" ]] && return 0
 _ZBUILD_RELEASE_NOTES_LOADED=1
 
-_ZBUILD_RELNOTES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_RELNOTES_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./helpers.sh
 source "$_ZBUILD_RELNOTES_DIR/helpers.sh"
 

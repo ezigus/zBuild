@@ -57,7 +57,8 @@ memory_capabilities() {
 memory_backend_init() {
     local db
     db="$(_memory_sqlite_db_path)"
-    mkdir -p "$(dirname "$db")"
+    local _dbd="."; [[ "$db" == */* ]] && _dbd="${db%/*}"
+    [[ -d "${_dbd:-/}" ]] || mkdir -p "$_dbd"
 
     if ! command -v sqlite3 >/dev/null 2>&1; then
         warn "memory-sqlite: sqlite3 not found; memory operations will fail" >&2 || true

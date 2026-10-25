@@ -6,7 +6,7 @@
 [[ -n "${_ZBUILD_MEMORY_RUFLO_LOADED:-}" ]] && return 0
 _ZBUILD_MEMORY_RUFLO_LOADED=1
 
-_ZBUILD_ROOT="${_ZBUILD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+_ZBUILD_ROOT="${_ZBUILD_ROOT:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}"
 _MEMORY_RUFLO_AVAILABLE=0
 _MEMORY_RUFLO_REPO_HASH=""
 

@@ -11,7 +11,7 @@
 _ZBUILD_HELPERS_LOADED=1
 
 # Source compat first (Bash 5 check, platform detection)
-_ZBUILD_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./compat.sh
 source "$_ZBUILD_SCRIPT_DIR/compat.sh"
 

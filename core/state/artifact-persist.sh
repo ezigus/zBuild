@@ -22,7 +22,7 @@
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
 if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=../../scripts/lib/helpers.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
+    source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
 fi
 
 [[ -n "${_ZBUILD_ARTIFACT_PERSIST_LOADED:-}" ]] && return 0
@@ -30,7 +30,7 @@ _ZBUILD_ARTIFACT_PERSIST_LOADED=1
 
 # #1931: zbuild_run_key, for a --goal run's own state branch. Guarded — this
 # file is sourced from contexts that may not have scripts/lib on hand.
-_ZBUILD_AP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_AP_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 if [[ -f "$_ZBUILD_AP_DIR/../../scripts/lib/identity.sh" ]]; then
     # shellcheck source=../../scripts/lib/identity.sh
     source "$_ZBUILD_AP_DIR/../../scripts/lib/identity.sh"
@@ -78,7 +78,7 @@ _artifact_persist_find_secret() {
     if ! declare -F zbuild_scan_secret_content >/dev/null 2>&1 \
         || ! declare -F zbuild_secret_candidate_files >/dev/null 2>&1; then
         # shellcheck source=../../scripts/lib/secret-patterns.sh
-        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" 2>/dev/null && pwd)/secret-patterns.sh" 2>/dev/null || {
+        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd ../../scripts/lib 2>/dev/null && pwd)/secret-patterns.sh" 2>/dev/null || {
             # No scanner, no proof the content is clean: refuse, never pass.
             printf '%s:scan_unavailable' "${art_dir##*/}"
             return 0
@@ -111,7 +111,7 @@ _artifact_persist_find_secret() {
 _artifact_persist_scan_base() {
     if ! declare -F zbuild_resolve_merge_base >/dev/null 2>&1; then
         # shellcheck source=../../scripts/lib/merge-base.sh
-        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" 2>/dev/null && pwd)/merge-base.sh" 2>/dev/null || true
+        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd ../../scripts/lib 2>/dev/null && pwd)/merge-base.sh" 2>/dev/null || true
     fi
     local b=""
     declare -F zbuild_resolve_merge_base >/dev/null 2>&1 && b="$(zbuild_resolve_merge_base "$1")"

@@ -3,7 +3,7 @@
 # Usage: assert_golden <name> <actual_output>
 # Set UPDATE_GOLDEN=1 to regenerate .golden files.
 
-GOLDEN_DIR="${GOLDEN_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../tests/golden" && pwd)}"
+GOLDEN_DIR="${GOLDEN_DIR:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../tests/golden" && pwd)}"
 
 assert_golden() {
   local name="$1"

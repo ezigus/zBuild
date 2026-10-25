@@ -7,7 +7,7 @@
 [[ -n "${_ZBUILD_ROUTER_LOADED:-}" ]] && return 0
 _ZBUILD_ROUTER_LOADED=1
 
-_ROUTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ROUTER_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT="$(cd "$_ROUTER_DIR/../.." && pwd)"
 # Opens the read-only scope block for a stage that may not change the
 # repository; also its idempotence guard (_route_redact_prompt).

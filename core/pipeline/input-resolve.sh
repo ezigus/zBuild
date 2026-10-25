@@ -13,7 +13,7 @@
 [[ -n "${_ZBUILD_INPUT_RESOLVE_LOADED:-}" ]] && return 0
 _ZBUILD_INPUT_RESOLVE_LOADED=1
 
-_ZBUILD_IR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_IR_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_IR_ROOT="$(cd "$_ZBUILD_IR_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/manifest-graph.sh
@@ -27,6 +27,9 @@ declare -F atomic_write >/dev/null 2>&1 || \
 # shellcheck source=./verdict.sh
 declare -F _verdict_resolve_path >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/pipeline/verdict.sh"
+# shellcheck source=../plugin-registry/output-paths.sh  # _inputs_manifest_formats
+declare -F _inputs_manifest_formats >/dev/null 2>&1 || \
+    source "$_ZBUILD_IR_ROOT/core/plugin-registry/output-paths.sh"
 # #2152: the manifest index _inputs_scan_manifests reads from.
 # shellcheck source=../plugin-registry/manifest-index.sh
 declare -F manifest_index_rows >/dev/null 2>&1 || \
@@ -174,22 +177,6 @@ _inputs_output_paths() {
     done
 }
 
-# ─── _inputs_manifest_formats <manifest> ─────────────────────────────────────
-# "id<TAB>format" for every output the manifest declares, in one read.
-_inputs_manifest_formats() {
-    awk '
-        function flush() { if (id != "") print id "\t" fmt; id = ""; fmt = "" }
-        /^outputs:[[:space:]]*$/ { inb = 1; next }
-        inb && /^[a-zA-Z_]/ { flush(); inb = 0 }
-        inb && /^[[:space:]]*-[[:space:]]+id:[[:space:]]*/ {
-            flush(); l = $0; sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", l)
-            sub(/[[:space:]]*#.*/, "", l); gsub(/^["\047]|["\047]$/, "", l); id = l; next }
-        inb && /^[[:space:]]+format:[[:space:]]*/ {
-            l = $0; sub(/^[[:space:]]+format:[[:space:]]*/, "", l); sub(/[[:space:]]*#.*/, "", l)
-            gsub(/^["\047]|["\047]$/, "", l); fmt = l }
-        END { flush() }' "$1" 2>/dev/null
-}
-
 # ─── _inputs_build_producer_index <plugins_root> <state_dir> ─────────────────
 # Populates the three globals below, keyed by OUTPUT ID. Legal because ADR-055
 # §5 requires each output id to be claimed by exactly one stage per resolved
@@ -270,7 +257,7 @@ _inputs_resolve_stage() {
         joined=""
         while IFS= read -r line; do
             [[ -n "$line" && -e "$line" ]] || continue
-            if _inputs_damaged "$line" "$id"; then
+            if _inputs_damaged "$line" "$id" "$state_dir/runtime/form-ok"; then
                 if declare -F eb_emit_event >/dev/null 2>&1; then
                     local _why="damaged"; [[ -n "${_IR_ISMAP[$id]:-}" ]] && _why="damaged_member"
                     eb_emit_event "stage.input.degraded" \
@@ -350,7 +337,7 @@ _inputs_format_for() {
     esac
 }
 
-# ─── _inputs_damaged <path> [output_id] ──────────────────────────────────────
+# ─── _inputs_damaged <path> [output_id] [mark_dir] ───────────────────────────
 # rc 0 when the artifact is present but UNUSABLE (#1894). Damage is judged by
 # FORM, never by meaning — a syntactically valid file whose contents are wrong
 # stays the consumer's business.
@@ -358,16 +345,29 @@ _inputs_format_for() {
 #   any format : zero bytes            -> damaged (empty or a failed write)
 #   json       : `jq empty` rejects it -> damaged (truncated / partial write)
 #
+# With <mark_dir>, JSON is parsed once per change (ADR-065 §5): a passing check
+# leaves a mark made BEFORE its read; while the mark is strictly newer than the
+# file, nothing has written it since. A failed check removes its mark.
+#
 # An ABSENT file is not damaged; absence is the caller's separate case, and
 # conflating them is what #1894 opened with.
 _inputs_damaged() {
-    local pth="${1-}" in_id="${2-}"
+    local pth="${1-}" in_id="${2-}" marks="${3-}"
     [[ -e "$pth" ]] || return 1
     [[ -s "$pth" ]] || return 0
-    if [[ "$(_inputs_format_for "$pth" "$in_id")" == "json" ]]; then
-        jq empty "$pth" >/dev/null 2>&1 || return 0
+    [[ "$(_inputs_format_for "$pth" "$in_id")" == "json" ]] || return 1
+    local mark="" key
+    if [[ -n "$marks" ]]; then
+        key="${pth//%/%25}"; key="${key//\//%2F}"
+        if (( ${#key} <= 240 )); then
+            mark="$marks/$key"
+            [[ "$mark" -nt "$pth" ]] && return 1
+            { [[ -d "$marks" ]] || mkdir -p "$marks"; : > "$mark"; } 2>/dev/null || mark=""
+        fi
     fi
-    return 1
+    jq empty "$pth" >/dev/null 2>&1 && return 1
+    [[ -z "$mark" ]] || rm -f "$mark"
+    return 0
 }
 
 # ─── _summaries_stage_summary_path <stage> <plugins_root> <state_dir> ────────
@@ -394,7 +394,7 @@ _summaries_stage_summary_path() {
 # stage's latest output reaches every later stage (ADR-068 §8).
 _summaries_collect() {
     local state_file="$1" plugins_root="$2"
-    local state_dir; state_dir="$(dirname "$state_file")"
+    local state_dir; zb_dirname_v state_dir "$state_file"
     local stage path verdict
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue

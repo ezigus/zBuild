@@ -14,7 +14,7 @@
 [[ -n "${_ZBUILD_ORCH_LOCAL_ENGINE_LOADED:-}" ]] && return 0
 _ZBUILD_ORCH_LOCAL_ENGINE_LOADED=1
 
-_ZBUILD_ORCH_LOCAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_ORCH_LOCAL_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ORCH_LOCAL_ROOT="$(cd "$_ZBUILD_ORCH_LOCAL_DIR/../.." && pwd)"
 
 # Defensive source: warn (scripts/lib/helpers.sh).

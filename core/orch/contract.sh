@@ -29,7 +29,7 @@ else
     _ZBUILD_ORCH_BACKEND_LOADED=0
 fi
 
-_ZBUILD_ORCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_ORCH_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _ZBUILD_ROOT="$(cd "${_ZBUILD_ORCH_DIR}/../.." && pwd)"
 
 # ─── Scratch directory for pool state ───────────────────────────────────────
