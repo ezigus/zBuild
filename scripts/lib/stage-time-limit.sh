@@ -14,6 +14,20 @@ _ZBUILD_STAGE_TIME_LIMIT_LOADED=1
 # which bounds one model call. 900 seconds (15 minutes) when unset. Read lazily
 # from the template source, like template_stage_retry.
 template_stage_time_limit() {
+    local _tstl; template_stage_time_limit_v _tstl "$1"; printf '%s' "$_tstl"
+}
+# template_stage_time_limit_v <var> <stage> — the same into <var>, read once
+# per (template, stage) per shell: the engine asks on every dispatch, and the
+# template does not change during a run (ADR-065 §5).
+declare -gA _ZB_STAGE_TL_MEMO=()
+template_stage_time_limit_v() {
+    local -n _tstv="$1"
+    local _k="${_TPL_SOURCE_FILE:-}"$'\034'"$2"
+    if [[ -n "${_ZB_STAGE_TL_MEMO[$_k]:-}" ]]; then _tstv="${_ZB_STAGE_TL_MEMO[$_k]}"; return 0; fi
+    _tstv="$(_template_stage_time_limit_read "$2")"
+    _ZB_STAGE_TL_MEMO[$_k]="$_tstv"
+}
+_template_stage_time_limit_read() {
     local stage_id="$1" v=""
     if [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]]; then
         v="$(awk -v stage="$stage_id" '
