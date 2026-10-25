@@ -122,6 +122,8 @@ _stage_io_now_short() {
     # BSD date (macOS): `date -u -r <sec>`. GNU date: `date -u -d @<sec>`.
     # Try BSD form first; fall back to GNU; final fallback is current time.
     local out
+    # The shell's clock, in UTC (ADR-065 §5); the date forms stay as the fallback.
+    TZ=UTC printf -v out '%(%H:%M:%S UTC)T' "$sec" 2>/dev/null && [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     out="$(date -u -r "$sec" +'%H:%M:%S UTC' 2>/dev/null \
         || date -u -d "@$sec" +'%H:%M:%S UTC' 2>/dev/null \
         || date -u +'%H:%M:%S UTC')"

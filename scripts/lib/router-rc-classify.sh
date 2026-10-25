@@ -269,7 +269,7 @@ _router_throttle_observed() {
 _router_clear_throttle_marker() {
     local _m; _m="$(_router_throttle_marker_path)"
     [[ -z "$_m" ]] && return 0
-    rm -f "$_m" 2>/dev/null || true
+    [[ -e "$_m" || -L "$_m" ]] && rm -f "$_m" 2>/dev/null
     return 0
 }
 

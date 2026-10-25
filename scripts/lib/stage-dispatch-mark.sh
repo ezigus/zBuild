@@ -21,8 +21,9 @@ stage_dispatch_mark_path() {
 stage_dispatch_mark() {
     local state_file="${1:-}" stage="${2:-}" m
     [[ "$state_file" == /* && -n "$stage" ]] || return 0
-    m="$(stage_dispatch_mark_path "$(dirname "$state_file")" "$stage")"
-    mkdir -p "${m%/*}" 2>/dev/null && : > "$m" 2>/dev/null || true
+    m="$(stage_dispatch_mark_path "${state_file%/*}" "$stage")"
+    [[ -d "${m%/*}" ]] || mkdir -p "${m%/*}" 2>/dev/null || true
+    : > "$m" 2>/dev/null || true
     return 0
 }
 

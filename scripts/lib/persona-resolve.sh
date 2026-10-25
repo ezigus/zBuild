@@ -117,7 +117,7 @@ persona_find_dir() {
     [[ -n "$_repo_root" ]] && _overlay_root="$_repo_root/.zbuild/plugins"
     mf="$(find_persona "$id" "$_installed_root" "$_overlay_root" 2>/dev/null || true)"
     [[ -n "$mf" ]] || return 1
-    printf '%s\n' "$(dirname "$mf")"
+    printf '%s\n' "${mf%/*}"
 }
 
 # ── persona_text <persona_dir> ───────────────────────────────────────────────

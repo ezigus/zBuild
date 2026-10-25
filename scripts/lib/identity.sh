@@ -119,7 +119,11 @@ zbuild_repo_slug() {
 #
 # Moved from plan_context_goal_hash (#1052) unchanged — byte-identical output.
 zbuild_goal_hash() {
-    printf '%s' "${1:-}" | tr -d '[:space:]' | shasum -a 256 | cut -d' ' -f1
+    local _h
+    # The whitespace goes in the shell, and the first word of shasum's line
+    # too: one program, not three (ADR-065 §5). Same bytes as tr -d '[:space:]'.
+    _h="$(printf '%s' "${1//[[:space:]]/}" | shasum -a 256)"
+    printf '%s\n' "${_h%% *}"
 }
 
 # ─── zbuild_scope_key <issue> <fallback> ─────────────────────────────────────
@@ -169,7 +173,8 @@ zbuild_scope_key() {
 zbuild_goal_key() {
     local text="${1:-}"
     [[ -n "${text//[[:space:]]/}" ]] || return 1
-    printf 'goal-%s' "$(zbuild_goal_hash "$text" | cut -c1-12)"
+    local _gh; _gh="$(zbuild_goal_hash "$text")"
+    printf 'goal-%s' "${_gh:0:12}"
 }
 
 # ─── zbuild_run_key <issue> <goal_text> ──────────────────────────────────────
