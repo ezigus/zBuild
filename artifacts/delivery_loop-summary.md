@@ -1,4 +1,4 @@
-## delivery_loop — round 1
+## delivery_loop — round 2
 
-- design: pass — design_produced
-- build_test_cycle: fail
+- design: fail — router_timeout
+- build_test_cycle: missing
