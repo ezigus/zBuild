@@ -139,7 +139,7 @@ assert_eq "[SPEC-3] gate-aggregator stage removed (#2368)" "" "${_TPL_STAGE_ROLE
 # design
 assert_eq "[SPEC-3] design roles"            "designer"    "$_TPL_STAGE_ROLES_design"
 assert_eq "[SPEC-3] design io_dests"         "file,stdout" "$_TPL_STAGE_IO_DESTS_design"
-assert_eq "[SPEC-3] design router timeout"   "600"         "$_TPL_STAGE_ROUTER_TIMEOUT_design"
+assert_eq "[SPEC-3] design router timeout"   "1200"        "$_TPL_STAGE_ROUTER_TIMEOUT_design"
 assert_eq "[SPEC-3] design router max_turns" "0"           "$_TPL_STAGE_ROUTER_MAX_TURNS_design"
 
 # #2369: design-gate and spec-coverage are retired — design checks its own design.md.

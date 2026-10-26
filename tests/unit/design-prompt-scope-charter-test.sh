@@ -100,10 +100,11 @@ else
     assert_pass "T7: prompt does not call design read-only"
 fi
 
-# T6: simple.yaml design timeout raised to 600 (repo-wide grep headroom).
+# T6: simple.yaml design call limit raised to 1200 (#1944: three 600s calls
+# in a row ran out of time on a resumed run).
 # router.timeout_s (4-space indent), not the whole-stage limit (ADR-063, amended).
 tmo="$(awk '/^design:/{f=1;next} /^[a-z]/{f=0} f && /^    timeout_s:/{print $2; exit}' "$REPO_ROOT/config/templates/simple.yaml")"
-assert_eq "T6: design timeout_s raised to 600" "600" "${tmo:-unset}"
+assert_eq "T6: design timeout_s raised to 1200" "1200" "${tmo:-unset}"
 
 cleanup_test_env
 print_test_results
