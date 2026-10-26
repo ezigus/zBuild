@@ -12,16 +12,24 @@
   [38;2;248;113;113m✗[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
     [2mfunction not found — the watchdog cannot be armed on resume without it[0m
 
-  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run completes normally with generous max_run_s[0m
+  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run with generous max_run_s completes normally[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: resumed run did not time out (status=complete)
   [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run
 
+  [38;2;0;212;255m[#1944/SPEC-4] P4: resumed run with tight limit times out — watchdog is armed[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-4] P4: resumed run exits 1 (watchdog fired, not outer timeout)
+    [2mexpected: 1, got: 124[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-4] P4: resumed run with slow stage ends timed_out (watchdog is armed)
+    [2mexpected: timed_out, got: interrupted[0m
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 4 tests failed[0m
+  [38;2;248;113;113m[1m4 of 6 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
   [38;2;248;113;113m✗[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
+  [38;2;248;113;113m✗[0m [#1944/SPEC-4] P4: resumed run exits 1 (watchdog fired, not outer timeout)
+  [38;2;248;113;113m✗[0m [#1944/SPEC-4] P4: resumed run with slow stage ends timed_out (watchdog is armed)
 
 ### SPEC-4 head tests/integration/resume-after-run-timeout-test.sh
 
@@ -35,11 +43,15 @@
   [38;2;0;212;255m[#1944/SPEC-4] P2: _runner_resolve_run_limit_s defined (watchdog arms on every invocation)[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
 
-  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run completes normally with generous max_run_s[0m
+  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run with generous max_run_s completes normally[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: resumed run did not time out (status=complete)
   [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run
 
+  [38;2;0;212;255m[#1944/SPEC-4] P4: resumed run with tight limit times out — watchdog is armed[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P4: resumed run exits 1 (watchdog fired, not outer timeout)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P4: resumed run with slow stage ends timed_out (watchdog is armed)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 4 tests passed[0m
+  [38;2;74;222;128m[1mAll 6 tests passed[0m
 

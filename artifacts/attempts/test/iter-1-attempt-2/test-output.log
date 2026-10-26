@@ -1,0 +1,142 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/scripts/run-tests.sh: line 171: 234088 Killed                  "${_rt_tout[@]}" bash "$1" < /dev/null 3> /dev/null > "$2" 2>&1
+unit: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+  scripts/lib/vision.sh — admission gate enforcement (ADR-049 #1360)
+
+  ✓ [SPEC-1] valid vision: load_vision_doc rc=0
+  ✓ [SPEC-1] valid vision: validate_vision_doc rc=0
+  ✓ [SPEC-2] missing vision: load_vision_doc rc=1
+  ✓ [SPEC-2] missing vision: rc=1 signals absence
+  ✓ [SPEC-2] the only search path is .zbuild/vision.md
+  ✓ [SPEC-3] doc missing ## Intent now passes validation (rc=0)
+  ✓ [SPEC-4] over-length vision: rc=1
+  ✓ [SPEC-4] over-length diagnostic contains '--condense'
+  ✓ [SPEC-5] over-length diagnostic contains body word count (got 313)
+  ✓ [SPEC-6] over-length diagnostic reports correct overage (13)
+  ✓ [SPEC-10] over-length message contains actionable hint
+  ✓ [SPEC-7] runner rc=1 on missing vision (enforce)
+  ✓ [SPEC-7] pipeline.end says the gate refused (status=preflight_failed)
+  ✓ [SPEC-7] runner names search paths in message
+  ✓ [SPEC-7] runner includes zbuild vision init hint
+  ✓ [SPEC-8] runner rc=1 on malformed vision (enforce)
+  ✓ [SPEC-8] pipeline.end says the gate refused (status=preflight_failed)
+  ✓ [SPEC-8] runner message references --condense
+unit: 526/527 passed (4 skipped, 1 timed out)
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/scripts/run-tests.sh: line 171: 461014 Killed                  "${_rt_tout[@]}" bash "$1" < /dev/null 3> /dev/null > "$2" 2>&1
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/scripts/run-tests.sh: line 171: 665973 Killed                  "${_rt_tout[@]}" bash "$1" < /dev/null 3> /dev/null > "$2" 2>&1
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)
+
+  ✓ no args exits 1
+  ✓ no args prints the usage
+  ✓ --help exits 0
+  ✓ --issue with no value exits 1
+  ✓ --issue with no value names the flag
+  ✓ --goal with no value exits 1
+  ✓ --goal with no value names the flag
+  ✓ dry-run shows intake stage
+  ✓ dry-run shows build stage
+  ✓ dry-run leaves state file untouched
+  ✓ happy path exits 0
+  ✓ events.jsonl created
+  ✓ pipeline.start emitted once
+  ✓ pipeline.end emitted once
+  ✓ pipeline.end carries status=success
+  ✓ [SPEC-1] stage.start emitted for each fixture stage (2x)
+  ✓ [SPEC-1] stage.complete emitted for each fixture stage (2x)
+  ✓ state file created
+  ✓ intake stage_status=complete (ADR-006 enum)
+  ✓ build stage_status=complete (ADR-006 enum)
+  ✓ mid-stage failure exits 1
+  ✓ events.jsonl present on failure
+  ✓ pipeline.end status=failed emitted
+  ✓ pipeline.end names the failing stage
+  ✓ stage.fail event emitted
+  ✓ build stage_status=failed in state
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+  core/pipeline/strategies — integration: runner delegates via orch contract
+
+
+  1. fanout: all orch contract functions called
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/core-pipeline-strategy-int.tlxgRJ/home/.zbuild/repos/local/strat-overlay-repo/goals/goal-6a33327f1817/worktree
+▸ Pipeline started — run_id=20261026211253-666370 issue= goal=test strategy dispatch template=strategy-dispatch-minimal engine=24b9a5a(zbuild/issue-1944-ci)
+  ✓ fanout: orch_spawn called (got 1)
+  ✓ fanout: orch_dispatch called (got 1)
+  ✓ fanout: orch_collect called (got 1)
+  ✓ fanout: orch_shutdown called (got 1)
+
+  2. fanout: no pool leaks (spawn count == shutdown count)
+  ✓ orch_spawn count == orch_shutdown count
+  ✓ no pool directories left after fanout (orch_shutdown cleaned up)
+
+  3. sequential halt-on-fail: only one dispatch when first fails
+▸ merge_policy: auto_unless_flagged
+  ✓ sequential: runner exits non-zero when stage fails (rc=1)
+
+  4. composite strategy: emits deferral error (Phase 1 deferred)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/runner-release-exit-paths-test.sh
+
+  runner dispatches cleanup(release) on every exit path (#1829)
+
+
+  SPEC-1: exit path = success (rc 0)
+  ✓ [SPEC-1] runner exits 0 on the success path
+  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  ✓ [SPEC-1] purge is never reachable from a run
+
+  SPEC-2: exit path = non-zero stage rc
+  ✓ [SPEC-2] runner exits non-zero when a stage fails
+  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-2] purge is never reachable from a run
+
+  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)
+  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  ✓ [SPEC-3] pipeline.aborted carries reason=sigint
+  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-3] purge is never reachable from a run
+
+  SPEC-4: exit path = external SIGTERM
+  ✓ [SPEC-4] the runner stops without waiting for the stage (1s)
+  ✓ [SPEC-4] the stage does not outlive the run
+  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build
+  ✓ [SPEC-4] purge is never reachable from a run
+
+  SPEC-5: exit path = external hard kill (timeout-style)
+  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
+    no release from: intake build | marker= 
+  ✓ [SPEC-5] purge is never reachable from a run
+
+  SPEC-6: a cleanup hook that blocks cannot hang the runner
+  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
+  ✓ [SPEC-6] the blocked hook does not outlive the run
+
+  SPEC-6b: a hook child that ignores TERM does not outlive the run
+  ✓ [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+
+  1 of 19 tests failed
+
+  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
+
+integration: 253/256 passed (2 timed out)
+e2e: 10/10 passed
+golden: 1/1 passed
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/scripts/run-mutation.sh: line 308: 821759 Killed                  ( cd "$wt" && "${_mut_tout[@]}" bash -c "$test_code" ) < /dev/null > /dev/null 2>&1 3> /dev/null
+/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/scripts/run-mutation.sh: line 308: 833550 Killed                  ( cd "$wt" && "${_mut_tout[@]}" bash -c "$test_code" ) < /dev/null > /dev/null 2>&1 3> /dev/null
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 816/820 passed (4 skipped, 3 timed out)

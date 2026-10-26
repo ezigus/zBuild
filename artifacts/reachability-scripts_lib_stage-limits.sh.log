@@ -21,22 +21,23 @@
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
   [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: pipeline-state.json written
     [2mstate file not found[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: watchdog fired (stage may or may not have run before it)
 
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 2s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 1s)
 
-  [38;2;0;212;255mP4: always_run release stage executes on timed-out exit path[0m
+  [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
   [38;2;248;113;113m✗[0m [#1944/SPEC-1] P4: pipeline-state.json written
     [2mstate file not found[0m
   [38;2;248;113;113m✗[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
-    [2mrelease marker not found — always_run stage did not execute[0m
+    [2mrelease marker not found — always_run release stage did not execute[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
+    [2mpersist marker not found — always_run persist stage did not execute[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m7 of 13 tests failed[0m
+  [38;2;248;113;113m[1m8 of 13 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1944/SPEC-1] P1: pipeline-state.json written
   [38;2;248;113;113m✗[0m [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
@@ -45,6 +46,7 @@
   [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: pipeline-state.json written
   [38;2;248;113;113m✗[0m [#1944/SPEC-1] P4: pipeline-state.json written
   [38;2;248;113;113m✗[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
 
 ### scripts/lib/stage-limits.sh head tests/integration/run-timed-out-test.sh
 
@@ -64,19 +66,20 @@
   [38;2;0;212;255mP2: watchdog fires even when engine is idle between dispatches[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: watchdog fired (stage may or may not have run before it)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
 
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 14s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 2763690 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 875360 killed)
 
-  [38;2;0;212;255mP4: always_run release stage executes on timed-out exit path[0m
+  [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: pipeline status=timed_out
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 14 tests passed[0m
+  [38;2;74;222;128m[1mAll 15 tests passed[0m
 
