@@ -93,6 +93,18 @@ else
         "stderr did not contain 'sequential'; got: ${_SPEC2_ERR:-<empty>}"
 fi
 
+# The run must be reported as `misconfigured` (not a generic failure).
+# New code emits "misconfigured" in its error message or sets
+# _ZBUILD_ORCH_BACKEND_DISPOSITION=misconfigured; old code silently succeeds
+# so this never reaches a misconfigured path at all.
+if grep -q 'misconfigured' <<< "$_SPEC2_ERR" || \
+   [[ "${_ZBUILD_ORCH_BACKEND_DISPOSITION:-}" == "misconfigured" ]]; then
+    assert_pass "[#1801/SPEC-2] backend failure is reported as 'misconfigured'"
+else
+    assert_fail "[#1801/SPEC-2] backend failure must be reported as 'misconfigured'" \
+        "neither error output nor _ZBUILD_ORCH_BACKEND_DISPOSITION contained 'misconfigured'; got: ${_SPEC2_ERR:-<empty>}"
+fi
+
 # ── SPEC-4: absent backend plugin fails naming the missing backend ─────────────
 # Backend name that is not present in the empty ZBUILD_PLUGINS_ROOT and has no
 # hardcoded fallback. Old code falls back to sequential silently; new code fails.
@@ -126,6 +138,14 @@ if grep -q 'orch-absent-spec4' <<< "$_SPEC4_ERR"; then
 else
     assert_fail "[#1801/SPEC-4] error output must name the missing backend 'orch-absent-spec4'" \
         "stderr: ${_SPEC4_ERR:-<empty>}"
+fi
+
+if grep -q 'misconfigured' <<< "$_SPEC4_ERR" || \
+   [[ "${_ZBUILD_ORCH_BACKEND_DISPOSITION:-}" == "misconfigured" ]]; then
+    assert_pass "[#1801/SPEC-4] absent backend failure is reported as 'misconfigured'"
+else
+    assert_fail "[#1801/SPEC-4] absent backend failure must be reported as 'misconfigured'" \
+        "neither error output nor _ZBUILD_ORCH_BACKEND_DISPOSITION contained 'misconfigured'; got: ${_SPEC4_ERR:-<empty>}"
 fi
 
 # ── SPEC-10: present dir, unreadable plugin.sh — fails naming the backend ─────
@@ -185,6 +205,14 @@ if grep -q 'orch-broken-spec10' <<< "$_SPEC10_ERR"; then
 else
     assert_fail "[#1801/SPEC-10] error output must name the backend 'orch-broken-spec10'" \
         "stderr: ${_SPEC10_ERR:-<empty>}"
+fi
+
+if grep -q 'misconfigured' <<< "$_SPEC10_ERR" || \
+   [[ "${_ZBUILD_ORCH_BACKEND_DISPOSITION:-}" == "misconfigured" ]]; then
+    assert_pass "[#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'"
+else
+    assert_fail "[#1801/SPEC-10] unreadable plugin.sh failure must be reported as 'misconfigured'" \
+        "neither error output nor _ZBUILD_ORCH_BACKEND_DISPOSITION contained 'misconfigured'; got: ${_SPEC10_ERR:-<empty>}"
 fi
 
 cleanup_test_env

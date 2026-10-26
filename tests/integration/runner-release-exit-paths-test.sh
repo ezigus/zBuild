@@ -481,6 +481,17 @@ else
         "runner took ${_spec5_elapsed}s — expected < 20s (timeout_s: 5); old code would use router.timeout_s: 30"
 fi
 
+# [#1801/SPEC-5] static guard: ZBUILD_RELEASE_TIMEOUT must not appear in runner.sh.
+# Old code reads ZBUILD_RELEASE_TIMEOUT for the always-run watchdog; new code reads
+# template_stage_time_limit instead. This grep fails on old code (the var is there)
+# and passes on new code (it has been removed).
+if ! grep -q 'ZBUILD_RELEASE_TIMEOUT' "$RUNNER"; then
+    assert_pass "[#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)"
+else
+    assert_fail "[#1801/SPEC-5] runner.sh must not reference ZBUILD_RELEASE_TIMEOUT" \
+        "ZBUILD_RELEASE_TIMEOUT still present in $RUNNER; must be replaced by template_stage_time_limit"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
