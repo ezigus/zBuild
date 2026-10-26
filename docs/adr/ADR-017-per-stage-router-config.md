@@ -427,3 +427,9 @@ plugin noisy on every dispatch. The one record that did change is
 `router.max_turns` telemetry: a plugin declaring the `0` sentinel now
 classifies as `manifest` rather than `default`, which is the one source it is
 not.
+
+## Enforced by
+
+- §Per-stage `timeout_s:` (top-level stage block) is used by fanout, map, and sequential strategies via `template_stage_time_limit`; `ZBUILD_ORCH_TIMEOUT` flat deadline removed — `tests/integration/orch-timeout-applies-test.sh` [#1801/SPEC-1].
+- §`_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit` (`timeout_s:` in the stage block); `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` no longer read for this purpose — `tests/integration/runner-release-exit-paths-test.sh` [#1801/SPEC-5].
+- §Override precedence (`per-stage template > env var > compile-time default`) — `tests/integration/router-timeout-precedence-e2e-test.sh`.

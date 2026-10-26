@@ -197,17 +197,24 @@ _assert_released() {
 }
 
 # SPEC-6 and SPEC-6b each wait out the release bound on purpose: their hook
-# blocks, and the bound (the base template's release `router.timeout_s`, 30s)
-# is what ends it. Started here, each from its own repo, so that bound runs
-# while SPEC-1..5 do; their assertions are made below, in order.
-_start_blocking() {   # <case name> <hook switch>
+# blocks, and the bound (the base template's release `timeout_s:` at the
+# top-level stage block, 30s after #1801) is what ends it. Started here, each
+# from its own repo, so that bound runs while SPEC-1..5 do; their assertions
+# are made below, in order.
+#
+# SPEC-5 (#1801): a separate blocking run uses a template with timeout_s: 5
+# for release (NOT router.timeout_s: 5) — old code reads router.timeout_s: 30
+# and takes ~30s; new code reads template_stage_time_limit (timeout_s: 5) and
+# exits in ~5s. Started here so it runs in parallel with SPEC-6/6b.
+_start_blocking() {   # <case name> <hook switch> [template-id]
     local _repo; _repo="$(setup_git_temp_repo "release-exit-paths-$1")"
     install_template_overlay "$_repo" resume-minimal
+    local _tpl="${3:-resume-minimal}"
     (
         _prep "$1"
         export BUILD_RC=0 "$2"=1
         _t0=$(date +%s)
-        ( cd "$_repo" && bash "$RUNNER" --template resume-minimal --goal "release-$1" ) \
+        ( cd "$_repo" && bash "$RUNNER" --template "$_tpl" --goal "release-$1" ) \
             >"$CASE_DIR/out" 2>&1 || true
         printf '%s\n' "$(( $(date +%s) - _t0 ))" > "$CASE_DIR/elapsed"
     ) &
@@ -216,6 +223,24 @@ _start_blocking blocking BLOCK_CLEANUP;                   _SPEC6_PID=$!
 _start_blocking blocking-ignore-term BLOCK_CLEANUP_IGNORE_TERM; _SPEC6B_PID=$!
 _SPEC6_DIR="$TEST_TEMP_DIR/case-1-blocking"
 _SPEC6B_DIR="$TEST_TEMP_DIR/case-1-blocking-ignore-term"
+
+# [#1801/SPEC-5]: blocking run with timeout_s: 5 for release (top-level, read
+# by template_stage_time_limit), while router.timeout_s: 30 is inherited from
+# simple — distinguishes new code (uses timeout_s: 5) from old (router.timeout_s: 30).
+_spec5_bound_repo="$(setup_git_temp_repo "release-exit-paths-spec5-bound")"
+install_template_overlay "$_spec5_bound_repo" resume-minimal
+if [[ -d "$_spec5_bound_repo/.git/info" ]] && \
+   ! grep -qxF '/.zbuild/' "$_spec5_bound_repo/.git/info/exclude" 2>/dev/null; then
+    printf '/.zbuild/\n' >> "$_spec5_bound_repo/.git/info/exclude"
+fi
+cat > "$_spec5_bound_repo/.zbuild/templates/resume-spec5-bound.yaml" <<'YAML'
+id: resume-spec5-bound
+extends: resume-minimal
+release:
+  timeout_s: 5
+YAML
+_start_blocking spec5-bound BLOCK_CLEANUP resume-spec5-bound; _SPEC5_BOUND_PID=$!
+_SPEC5_BOUND_DIR="$TEST_TEMP_DIR/case-1-spec5-bound"
 
 # ── SPEC-1: success ──────────────────────────────────────────────────────────
 print_test_section "SPEC-1: exit path = success (rc 0)"
@@ -329,29 +354,36 @@ if [[ -z "$_tbin" ]]; then
     SKIP=$((SKIP + 1))
     echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-5] external hard kill (no timeout binary available)" >&2
 else
-    # #2029: the force-kill grace is DERIVED from the engine's own teardown
-    # budget, not guessed.
+    # [#1801/SPEC-5]: #2029: the force-kill grace is DERIVED from the engine's own
+    # teardown budget, not guessed.
     #
-    # The engine bounds each always-run stage by its template `router.timeout_s`,
-    # falling back to ZBUILD_RELEASE_TIMEOUT (default 30s) only when the template
-    # sets none (#2287) — so the pin below is a fallback, and this case relies on
-    # its hooks returning promptly rather than on the bound. Three stages
-    # release on this path, so an unpinned run is entitled to spend far longer
-    # tidying up than the 3s literal that used to sit here. When it did, this
-    # test SIGKILLed the runner mid-teardown and then asserted on the markers
-    # teardown had not yet written: the marker came back EMPTY, with BOTH stages
-    # missing rather than one. Under a loaded machine that is exactly what
-    # happened, intermittently, for as long as this test has existed.
-    #
-    # Pin the budget so the worst case is knowable, then clear it with margin.
-    # The backstop exists so a runner that ignores TERM cannot hang the suite —
-    # it must never be the thing that stops teardown finishing.
-    _SPEC5_RELEASE_TIMEOUT=3
-    _SPEC5_KILL_GRACE=$(( _SPEC5_RELEASE_TIMEOUT * 3 + 6 ))   # 3 stages + margin
+    # After #1801 the engine bounds each always-run stage by template_stage_time_limit
+    # (top-level `timeout_s:` in the stage block), NOT by router.timeout_s or
+    # ZBUILD_RELEASE_TIMEOUT. The template below pins timeout_s: _SPEC5_STAGE_TIMEOUT
+    # for release so the worst case is knowable and the grace derives from it.
+    # This case relies on its hooks returning promptly rather than on the bound —
+    # the grace is purely a safety net so a runner that ignores TERM cannot hang the
+    # suite. Three stages release on this path, so an unpinned run could spend far
+    # longer tidying up than the 3s literal that used to sit here.
+    _SPEC5_STAGE_TIMEOUT=3
+    _SPEC5_KILL_GRACE=$(( _SPEC5_STAGE_TIMEOUT * 3 + 6 ))   # 3 stages + margin
+    # Create a repo with a template that has timeout_s: _SPEC5_STAGE_TIMEOUT for
+    # release (top-level, read by template_stage_time_limit after #1801).
+    _spec5_repo="$(setup_git_temp_repo "release-exit-paths-spec5")"
+    install_template_overlay "$_spec5_repo" resume-minimal
+    if [[ -d "$_spec5_repo/.git/info" ]] && \
+       ! grep -qxF '/.zbuild/' "$_spec5_repo/.git/info/exclude" 2>/dev/null; then
+        printf '/.zbuild/\n' >> "$_spec5_repo/.git/info/exclude"
+    fi
+    cat > "$_spec5_repo/.zbuild/templates/resume-timeout-bounded.yaml" <<YAMLEOF
+id: resume-timeout-bounded
+extends: resume-minimal
+release:
+  timeout_s: ${_SPEC5_STAGE_TIMEOUT}
+YAMLEOF
     set -m
-    ZBUILD_RELEASE_TIMEOUT="$_SPEC5_RELEASE_TIMEOUT" \
-    bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-minimal --goal "$3"' \
-        _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
+    bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-timeout-bounded --goal "$3"' \
+        _ "$_spec5_repo" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
     RUNNER_PID=$!
     set +m
     for _ in $(seq 1 300); do [[ -s "$BUILD_STARTED" ]] && break; sleep 0.1; done
@@ -374,9 +406,9 @@ wait "$_SPEC6_PID" 2>/dev/null || true
 CASE_DIR="$_SPEC6_DIR"
 _elapsed="$(cat "$CASE_DIR/elapsed" 2>/dev/null || echo 999)"
 # The blocking hook sleeps 120s. The bound is the release stage's own
-# `router.timeout_s` (30 in the template, which takes precedence over
-# ZBUILD_RELEASE_TIMEOUT), so the runner returns in about 30s. Allow generous
-# headroom for a loaded host while still failing an unbounded wait.
+# `timeout_s:` at the top-level stage block (read by template_stage_time_limit
+# after #1801 — 30s in simple.yaml), so the runner returns in about 30s.
+# Allow generous headroom for a loaded host while still failing an unbounded wait.
 if [[ "$_elapsed" -lt 60 ]]; then
     assert_pass "[SPEC-6] blocking cleanup is bounded (runner exited in ${_elapsed}s)"
 else
@@ -429,6 +461,24 @@ elif [[ "$_alive" -eq 1 ]]; then
     kill -KILL "$_child_pid" 2>/dev/null || true
 else
     assert_pass "[SPEC-6b] a hook child that ignores TERM does not outlive the run"
+fi
+
+# ── [#1801/SPEC-5]: _runner_dispatch_always_run uses template_stage_time_limit ──
+# A blocking hook under a template with `timeout_s: 5` for release (top-level)
+# must stop in ~5s, NOT in ~30s (router.timeout_s: 30 inherited from simple).
+# Old code reads _TPL_STAGE_ROUTER_TIMEOUT_release (router.timeout_s = 30) and
+# uses that as the watchdog → runner takes ~30s.
+# New code reads template_stage_time_limit("release") = 5 → runner takes ~5s.
+# Assertion at < 20s: FAILS on old code (~30s), PASSES on new code (~5s).
+print_test_section "[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)"
+wait "$_SPEC5_BOUND_PID" 2>/dev/null || true
+CASE_DIR="$_SPEC5_BOUND_DIR"
+_spec5_elapsed="$(cat "$CASE_DIR/elapsed" 2>/dev/null || echo 999)"
+if [[ "$_spec5_elapsed" -lt 20 ]]; then
+    assert_pass "[#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in ${_spec5_elapsed}s; would be ~30s with router.timeout_s)"
+else
+    assert_fail "[#1801/SPEC-5] always-run watchdog uses timeout_s: 5" \
+        "runner took ${_spec5_elapsed}s — expected < 20s (timeout_s: 5); old code would use router.timeout_s: 30"
 fi
 
 cleanup_test_env
