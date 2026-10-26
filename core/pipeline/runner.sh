@@ -2536,8 +2536,8 @@ main() {
         # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
         # ignored and `wait` would block until the full sleep expires. SIGKILL
         # cannot be caught or ignored, so the wait returns immediately.
-        kill -KILL "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
-        wait "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
+        kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
+        wait "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
         # #1829: free live resources first, while the state file and the
         # process tree are still intact.
         _runner_dispatch_always_run
