@@ -1,6 +1,6 @@
-## test-author — complete
+## test-author — fail
 
-- authored acceptance assertions for 6 SPEC(s) from the design contract
+- 1 assertion(s) still do not test what their SPEC says after 2 rounds
 
 - SPECs in the contract: 6
 - assertions are authored from the SPEC text, never from the implementation
