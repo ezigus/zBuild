@@ -223,20 +223,26 @@ else
     assert_pass "[#1944/SPEC-2] stage did not run when env limit is misconfigured"
 fi
 
-# Check that misconfigured is explained (state file OR stderr)
+# Check that misconfigured is explained AND names the source (ZBUILD_MAX_RUN_S)
 _miscfg_sf="$ZBUILD_STATE_DIR/pipeline-state.json"
 if [[ -f "$_miscfg_sf" ]]; then
     _miscfg_disp="$(jq -r '.disposition // empty' "$_miscfg_sf" 2>/dev/null || true)"
     assert_eq "[#1944/SPEC-2] pipeline-state.json disposition=misconfigured (env)" "misconfigured" "$_miscfg_disp"
+fi
+# Collect output: prefer state file reason field, fall back to stderr+stdout
+_miscfg_all_output=""
+if [[ -f "$_miscfg_sf" ]]; then
+    _miscfg_all_output="$(jq -r '.reason // .message // empty' "$_miscfg_sf" 2>/dev/null || true)"
+fi
+if [[ -z "$_miscfg_all_output" ]]; then
+    _miscfg_all_output="$(cat "$TEST_TEMP_DIR/miscfg.stderr" "$TEST_TEMP_DIR/miscfg.stdout" 2>/dev/null || true)"
+fi
+# The message must name the misconfigured source: ZBUILD_MAX_RUN_S
+if grep -q 'ZBUILD_MAX_RUN_S' <<< "$_miscfg_all_output" 2>/dev/null; then
+    assert_pass "[#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)"
 else
-    _miscfg_err="$(cat "$TEST_TEMP_DIR/miscfg.stderr" 2>/dev/null || true)"
-    if grep -qi "misconfigured\|invalid.*max_run_s\|max_run_s.*invalid\|non-integer\|non-positive\|max_run_s.*must be" \
-            <<< "$_miscfg_err" 2>/dev/null; then
-        assert_pass "[#1944/SPEC-2] stderr explains misconfigured env limit"
-    else
-        assert_fail "[#1944/SPEC-2] runner names misconfigured env limit on stderr" \
-            "stderr: $(head -c 400 "$TEST_TEMP_DIR/miscfg.stderr" 2>/dev/null)"
-    fi
+    assert_fail "[#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)" \
+        "ZBUILD_MAX_RUN_S not found in runner output — message must name the env source"
 fi
 
 # ─── SPEC-2 (template layer): runner rejects invalid template max_run_s ──────
@@ -293,6 +299,23 @@ if [[ -e "$STAGE_MARKER_TPL" ]]; then
         "stage marker exists — dispatch loop was reached"
 else
     assert_pass "[#1944/SPEC-2] stage did not run when template limit is misconfigured"
+fi
+
+# Message must name the misconfigured template source (max_run_s)
+_miscfg_tpl_sf="$ZBUILD_STATE_DIR/pipeline-state.json"
+_miscfg_tpl_output=""
+if [[ -f "$_miscfg_tpl_sf" ]]; then
+    _miscfg_tpl_output="$(jq -r '.reason // .message // empty' "$_miscfg_tpl_sf" 2>/dev/null || true)"
+fi
+if [[ -z "$_miscfg_tpl_output" ]]; then
+    _miscfg_tpl_output="$(cat "$TEST_TEMP_DIR/miscfg-tpl.stderr" "$TEST_TEMP_DIR/miscfg-tpl.stdout" 2>/dev/null || true)"
+fi
+# max_run_s is the template YAML field name — the message must name the source
+if grep -q 'max_run_s' <<< "$_miscfg_tpl_output" 2>/dev/null; then
+    assert_pass "[#1944/SPEC-2] message names the misconfigured template source (max_run_s)"
+else
+    assert_fail "[#1944/SPEC-2] message names the misconfigured template source (max_run_s)" \
+        "max_run_s not found in runner output — message must name the template source"
 fi
 
 # ─── SPEC-5: no platform-specific env vars in new limit code ────────────────
