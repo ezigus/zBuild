@@ -1,0 +1,69 @@
+### SPEC-10 baseline tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] orch_load_backend 'sequential' must return non-zero (sequential fallback removed)
+    [2mreturned 0; old code finds orch-sequential via hardcoded _ZBUILD_ROOT path and sources it[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] error output must name the backend 'sequential'
+    [2mstderr did not contain 'sequential'; got: <empty>[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] backend failure must be reported as 'misconfigured'
+    [2mneither error output nor _ZBUILD_ORCH_BACKEND_DISPOSITION contained 'misconfigured'; got: <empty>[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] orch_load_backend absent plugin must return non-zero (no fallback)
+    [2mreturned 0; old code's general sequential fallback fires for any missing backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] absent backend failure must be reported as 'misconfigured'
+    [2mneither error output nor _ZBUILD_ORCH_BACKEND_DISPOSITION contained 'misconfigured'; got: [38;2;250;204;21m[1m⚠[0m orch_load_backend: backend 'orch-absent-spec4' not found; falling back to sequential[0m
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh must return non-zero
+    [2mreturned 0; old code: source fails silently, _ZBUILD_ORCH_BACKEND_LOADED=1 runs anyway, returns 0[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m6 of 12 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] orch_load_backend 'sequential' must return non-zero (sequential fallback removed)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] error output must name the backend 'sequential'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] backend failure must be reported as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] orch_load_backend absent plugin must return non-zero (no fallback)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] absent backend failure must be reported as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh must return non-zero
+
+### SPEC-10 head tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+

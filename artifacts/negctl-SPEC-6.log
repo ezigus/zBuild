@@ -1,0 +1,51 @@
+### SPEC-6 baseline tests/unit/orch-kill-uses-pg-kill-guard-test.sh
+
+[38;2;0;212;255m[1m  orch kill sites use zbuild_pg_kill (not direct kill) (#1801 SPEC-6)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m SPEC-0a: local_engine.sh exists
+  [38;2;74;222;128m✓[0m SPEC-0b: runner.sh exists
+  [38;2;248;113;113m✗[0m [#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill
+    [2mbody uses direct kill; after #1801 it must call zbuild_pg_kill for process-group coverage[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot does not use bare kill on wrapper_pid
+  [38;2;248;113;113m✗[0m [#1801/SPEC-6] always-run watchdog in runner.sh calls zbuild_pg_kill
+    [2m_runner_dispatch_always_run uses direct kill; after #1801 the watchdog must call zbuild_pg_kill[0m
+  [38;2;74;222;128m✓[0m SPEC-6c: proc-group.sh defines zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] zbuild_pg_kill is defined in proc-group.sh
+  [38;2;248;113;113m✗[0m [#1801/SPEC-6] local_engine.sh sources proc-group.sh
+    [2mno reference to proc-group.sh found in local_engine.sh[0m
+
+  [38;2;0;212;255m[#1801/SPEC-6] TERM-ignoring child leaves no process after watchdog fires (runtime)[0m
+  ✗ [#1801/SPEC-6] TERM-ignoring child must not outlive the watchdog
+    pid 2023975 still alive; old code: direct kill misses TERM-ignoring children; new code: zbuild_pg_kill kills the group
+
+  ──────────────────────────────────────────
+
+  4 of 9 tests failed
+
+  ✗ [#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill
+  ✗ [#1801/SPEC-6] always-run watchdog in runner.sh calls zbuild_pg_kill
+  ✗ [#1801/SPEC-6] local_engine.sh sources proc-group.sh
+  ✗ [#1801/SPEC-6] TERM-ignoring child must not outlive the watchdog
+
+### SPEC-6 head tests/unit/orch-kill-uses-pg-kill-guard-test.sh
+
+[38;2;0;212;255m[1m  orch kill sites use zbuild_pg_kill (not direct kill) (#1801 SPEC-6)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m SPEC-0a: local_engine.sh exists
+  [38;2;74;222;128m✓[0m SPEC-0b: runner.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot does not use bare kill on wrapper_pid
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] always-run watchdog in runner.sh calls zbuild_pg_kill
+  [38;2;74;222;128m✓[0m SPEC-6c: proc-group.sh defines zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] zbuild_pg_kill is defined in proc-group.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] local_engine.sh sources proc-group.sh (or its parent does)
+
+  [38;2;0;212;255m[#1801/SPEC-6] TERM-ignoring child leaves no process after watchdog fires (runtime)[0m
+  ✓ [#1801/SPEC-6] TERM-ignoring child does not outlive the watchdog (group kill via zbuild_pg_kill)
+
+  ──────────────────────────────────────────
+
+  All 9 tests passed
+

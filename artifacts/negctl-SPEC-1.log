@@ -1,0 +1,110 @@
+### SPEC-1 baseline tests/integration/orch-timeout-applies-test.sh
+
+[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout: orch_collect must receive template timeout_s: (7)
+    [2mspy captured --timeout '300'; old code passes ZBUILD_ORCH_TIMEOUT:-300 = 300[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout: template timeout_s: (7) must win over ZBUILD_ORCH_TIMEOUT=300
+    [2mspy got --timeout '300'; old code passes ZBUILD_ORCH_TIMEOUT:-300 = 300[0m
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] sequential: orch_collect must receive template timeout_s: (7)
+    [2mspy captured --timeout '300'; old code passes ZBUILD_ORCH_TIMEOUT:-300 = 300[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] sequential: template timeout_s: (7) must win over ZBUILD_ORCH_TIMEOUT=300
+    [2mspy got --timeout '300'[0m
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
+  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] map strategy must call template_stage_time_limit for orch_collect timeout
+    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/core/pipeline/strategies/map.sh; old code passes ZBUILD_ORCH_TIMEOUT:-300[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] map strategy must not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline)
+    [2mZBUILD_ORCH_TIMEOUT still present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/core/pipeline/strategies/map.sh[0m
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT must not remain
+    [2mstill present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/core/pipeline/strategies/fanout.sh; the 300 s flat deadline applies on old code[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT must not remain
+    [2mstill present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/core/pipeline/strategies/sequential.sh; the 300 s flat deadline applies on old code[0m
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] map: orch_collect must receive template timeout_s: (7)
+    [2mspy captured --timeout '300'; old code passes ZBUILD_ORCH_TIMEOUT:-300 = 300[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] map: template timeout_s: (7) must win over ZBUILD_ORCH_TIMEOUT=300
+    [2mspy got --timeout '300'; old code passes ZBUILD_ORCH_TIMEOUT:-300 = 300[0m
+
+  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] _orch_local_collect_results must set _ORCH_COLLECT_OUTCOME=timed_out on timeout
+    [2mgot 'failed'; old code sets 'failed' because rc=124 counts as a non-zero exit[0m
+
+  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout timed_out output must name the stage ('testjob')
+    [2mstage not found in output: ''[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout timed_out output must name the timeout limit (7s)
+    [2mlimit not found in output: ''[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m14 of 15 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout: orch_collect must receive template timeout_s: (7)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout: template timeout_s: (7) must win over ZBUILD_ORCH_TIMEOUT=300
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] sequential: orch_collect must receive template timeout_s: (7)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] sequential: template timeout_s: (7) must win over ZBUILD_ORCH_TIMEOUT=300
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] map strategy must call template_stage_time_limit for orch_collect timeout
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] map strategy must not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT must not remain
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT must not remain
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] map: orch_collect must receive template timeout_s: (7)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] map: template timeout_s: (7) must win over ZBUILD_ORCH_TIMEOUT=300
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] _orch_local_collect_results must set _ORCH_COLLECT_OUTCOME=timed_out on timeout
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout timed_out output must name the stage ('testjob')
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout timed_out output must name the timeout limit (7s)
+
+### SPEC-1 head tests/integration/orch-timeout-applies-test.sh
+
+[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
+  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy calls template_stage_time_limit for orch_collect timeout
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy does not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline removed)
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
+
+  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 15 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+

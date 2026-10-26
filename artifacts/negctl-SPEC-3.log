@@ -1,0 +1,32 @@
+### SPEC-3 baseline tests/unit/orch-sequential-absent-guard-test.sh
+
+[38;2;0;212;255m[1m  orch-sequential is absent from the installed tree (#1801 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/plugins/tool/orch-sequential[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/core/orch/contract.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/plugins/tool/orch-ruflo-hive/plugin.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/plugins/tool/orch-mock/tests/orch-mock-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/plugins/tool/orch-sequential/manifest.yaml /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/plugins/tool/orch-sequential/tests/orch-sequential-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/plugins/tool/orch-sequential/plugin.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/tests/integration/orch-backend-misconfigured-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/tests/test-durations.tsv /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/tests/unit/map-strategy-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/tests/unit/plugin-artifact-goldens-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.ikOhIe/.github/issues/keepers-manifest.yaml[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 2 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+
+### SPEC-3 head tests/unit/orch-sequential-absent-guard-test.sh
+
+[38;2;0;212;255m[1m  orch-sequential is absent from the installed tree (#1801 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+    [2mstill referenced in: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/plugins/tool/orch-mock/tests/orch-mock-test.sh /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/tests/integration/orch-backend-misconfigured-test.sh /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/.github/issues/keepers-manifest.yaml[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 2 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+

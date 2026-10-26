@@ -1,0 +1,147 @@
+### core/orch/contract.sh reverted tests/integration/orch-timeout-applies-test.sh
+
+[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
+  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy calls template_stage_time_limit for orch_collect timeout
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy does not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline removed)
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
+
+  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 15 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+
+### core/orch/contract.sh head tests/integration/orch-timeout-applies-test.sh
+
+[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
+  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy calls template_stage_time_limit for orch_collect timeout
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy does not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline removed)
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
+
+  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 15 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+
+### core/orch/contract.sh reverted tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] backend failure must be reported as 'misconfigured'
+    [2mneither error output nor _ZBUILD_ORCH_BACKEND_DISPOSITION contained 'misconfigured'; got: [38;2;250;204;21m[1m⚠[0m orch_load_backend: backend 'sequential' not found (no plugin for role orchestrator-backend with alias sequential)[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] absent backend failure must be reported as 'misconfigured'
+    [2mneither error output nor _ZBUILD_ORCH_BACKEND_DISPOSITION contained 'misconfigured'; got: [38;2;250;204;21m[1m⚠[0m orch_load_backend: backend 'orch-absent-spec4' not found (no plugin for role orchestrator-backend with alias orch-absent-spec4)[0m
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh must return non-zero
+    [2mreturned 0; old code: source fails silently, _ZBUILD_ORCH_BACKEND_LOADED=1 runs anyway, returns 0[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 12 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-2] backend failure must be reported as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] absent backend failure must be reported as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh must return non-zero
+
+### core/orch/contract.sh head tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+

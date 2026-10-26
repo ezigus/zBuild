@@ -1,0 +1,381 @@
+### core/orch/local_engine.sh reverted tests/integration/orch-timeout-applies-test.sh
+
+[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
+  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy calls template_stage_time_limit for orch_collect timeout
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy does not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline removed)
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] _orch_local_collect_results must set _ORCH_COLLECT_OUTCOME=timed_out on timeout
+    [2mgot 'failed'; old code sets 'failed' because rc=124 counts as a non-zero exit[0m
+
+  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 15 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] _orch_local_collect_results must set _ORCH_COLLECT_OUTCOME=timed_out on timeout
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+
+### core/orch/local_engine.sh head tests/integration/orch-timeout-applies-test.sh
+
+[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
+  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy calls template_stage_time_limit for orch_collect timeout
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy does not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline removed)
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
+
+  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 15 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+
+### core/orch/local_engine.sh reverted tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### core/orch/local_engine.sh head tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### core/orch/local_engine.sh reverted tests/unit/orch-sequential-absent-guard-test.sh
+
+[38;2;0;212;255m[1m  orch-sequential is absent from the installed tree (#1801 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.MeKFrE/plugins/tool/orch-sequential[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.MeKFrE/plugins/tool/orch-mock/tests/orch-mock-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.MeKFrE/tests/integration/orch-backend-misconfigured-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.MeKFrE/.github/issues/keepers-manifest.yaml[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 2 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+
+### core/orch/local_engine.sh head tests/unit/orch-sequential-absent-guard-test.sh
+
+[38;2;0;212;255m[1m  orch-sequential is absent from the installed tree (#1801 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+    [2mstill referenced in: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/plugins/tool/orch-mock/tests/orch-mock-test.sh /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/tests/integration/orch-backend-misconfigured-test.sh /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/.github/issues/keepers-manifest.yaml[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 2 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+
+### core/orch/local_engine.sh reverted tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### core/orch/local_engine.sh head tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### core/orch/local_engine.sh reverted tests/integration/runner-release-exit-paths-test.sh
+
+[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
+  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
+  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
+  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (1s)
+  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
+  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 34s)
+  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
+
+  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
+  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+  [38;2;0;212;255m[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 0s; would be ~30s with router.timeout_s)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 22 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+
+### core/orch/local_engine.sh head tests/integration/runner-release-exit-paths-test.sh
+
+[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
+  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
+  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
+  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (0s)
+  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
+  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 33s)
+  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
+
+  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
+  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+  [38;2;0;212;255m[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 0s; would be ~30s with router.timeout_s)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 22 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+
+### core/orch/local_engine.sh reverted tests/unit/orch-kill-uses-pg-kill-guard-test.sh
+
+[38;2;0;212;255m[1m  orch kill sites use zbuild_pg_kill (not direct kill) (#1801 SPEC-6)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m SPEC-0a: local_engine.sh exists
+  [38;2;74;222;128m✓[0m SPEC-0b: runner.sh exists
+  [38;2;248;113;113m✗[0m [#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill
+    [2mbody uses direct kill; after #1801 it must call zbuild_pg_kill for process-group coverage[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot does not use bare kill on wrapper_pid
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] always-run watchdog in runner.sh calls zbuild_pg_kill
+  [38;2;74;222;128m✓[0m SPEC-6c: proc-group.sh defines zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] zbuild_pg_kill is defined in proc-group.sh
+  [38;2;248;113;113m✗[0m [#1801/SPEC-6] local_engine.sh sources proc-group.sh
+    [2mno reference to proc-group.sh found in local_engine.sh[0m
+
+  [38;2;0;212;255m[#1801/SPEC-6] TERM-ignoring child leaves no process after watchdog fires (runtime)[0m
+  ✗ [#1801/SPEC-6] TERM-ignoring child must not outlive the watchdog
+    pid 2089152 still alive; old code: direct kill misses TERM-ignoring children; new code: zbuild_pg_kill kills the group
+
+  ──────────────────────────────────────────
+
+  3 of 9 tests failed
+
+  ✗ [#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill
+  ✗ [#1801/SPEC-6] local_engine.sh sources proc-group.sh
+  ✗ [#1801/SPEC-6] TERM-ignoring child must not outlive the watchdog
+
+### core/orch/local_engine.sh head tests/unit/orch-kill-uses-pg-kill-guard-test.sh
+
+[38;2;0;212;255m[1m  orch kill sites use zbuild_pg_kill (not direct kill) (#1801 SPEC-6)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m SPEC-0a: local_engine.sh exists
+  [38;2;74;222;128m✓[0m SPEC-0b: runner.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot does not use bare kill on wrapper_pid
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] always-run watchdog in runner.sh calls zbuild_pg_kill
+  [38;2;74;222;128m✓[0m SPEC-6c: proc-group.sh defines zbuild_pg_kill
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] zbuild_pg_kill is defined in proc-group.sh
+  [38;2;74;222;128m✓[0m [#1801/SPEC-6] local_engine.sh sources proc-group.sh (or its parent does)
+
+  [38;2;0;212;255m[#1801/SPEC-6] TERM-ignoring child leaves no process after watchdog fires (runtime)[0m
+  ✓ [#1801/SPEC-6] TERM-ignoring child does not outlive the watchdog (group kill via zbuild_pg_kill)
+
+  ──────────────────────────────────────────
+
+  All 9 tests passed
+
