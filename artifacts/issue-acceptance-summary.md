@@ -1,11 +1,12 @@
 ## issue-acceptance — fail
 
-- `npm test` and `npm run lint` both fail — all four new test files use `set +e; ...; set -e` mid-file (rejected by lint-test-errexit), `run-limit-precedence-test.sh` aborts with a bash syntax error (env-var assignment cannot prefix a subshell `(...)` on line 173), and three existing integration tests time out.
+- `npm test` fails with four test failures — including a hard-kill exit-path regression in `runner-release-exit-paths-test.sh` that directly contradicts R-4 — `npm run lint` fails on eight new test files, R-2's critical sub-assertion is unfalsifiable, and R-5's test aborts with a bash syntax error before its end-to-end assertions run.
 
-- NOT MET: R-4: test only exercises `release` on the timed-out exit path
-- NOT MET: `persist` is never put in the always_run list, constructed, or asserted
-- NOT MET: R-5: `run-limit-precedence-test.sh` crashes with a syntax error before its end-to-end misconfigured-runner assertions run, and the template-layer path is never exercised in a full runner invocation (acceptance-gate confirmed `template.sh` is inert)
-- NOT MET: R-2: P2 in `run-timed-out-test.sh` calls `assert_pass` in both branches of its conditional, making the "watchdog fires when engine is idle between dispatches" sub-requirement unfalsifiable
-- NOT MET: R-10: `npm run lint` fails (lint-test-errexit: 8 files), `npm test` fails (syntax error + 3 integration timeouts)
-- NOT SURE: R-9: the issue acceptance criterion says "ADR-054 §9 amended" but §9 already exists as "Per-stage router configuration surface" (untouched) — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: the diff adds §11 with the correct run-limit content — whether the issue intended to amend the existing §9 or used §9 as a draft placeholder for the new (now §11) section cannot be determined without issue history — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT MET: R-2: P2 in `run-timed-out-test.sh` calls `assert_pass` in both branches of its conditional, so the "watchdog fires when engine is idle between dispatches" sub-requirement cannot be falsified
+- NOT MET: R-4: `persist` is never declared in any `always_run` list, constructed, or asserted anywhere in the change, and the analogous hard-kill exit path for `release` fails (`runner-release-exit-paths-test.sh` SPEC-5: "cleanup dispatched with scope=release for: intake build" — no marker found)
+- NOT MET: R-5: `run-limit-precedence-test.sh` aborts with a bash syntax error on line 173 (`ZBUILD_MAX_RUN_S="…" \` preceding a subshell is not valid bash), leaving the end-to-end misconfigured-runner and template-layer assertions unreachable
+- NOT MET: R-10: `npm test` fails (three existing integration tests time out at 480 s — `core-pipeline-runner-test.sh`, `core-pipeline-strategy-test.sh`, `vision-admission-gate-test.sh` — plus the `runner-release-exit-paths-test.sh` SPEC-5 failure), `npm run lint` fails (`lint-test-errexit` rejects eight new test files that use `set +e
+- NOT MET: …
+- NOT MET: set -e` mid-file)
+- NOT SURE: R-9: the issue acceptance criterion says "ADR-054 §9 amended" — §9 already exists as "Per-stage router configuration surface" and is untouched — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: the diff adds §11 with the correct per-run-limit content, matching SPEC-6 from the design, but whether the issue intended to amend the existing §9 or used §9 as a draft number for what became §11 cannot be determined from the diff or the documents shown — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
