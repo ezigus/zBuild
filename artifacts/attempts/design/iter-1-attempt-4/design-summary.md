@@ -1,0 +1,8 @@
+## design — fail
+
+- the design fails 2 check(s)
+
+- The issue asks for this and no SPEC covers it: R-1: SPEC-1 names strategies (fanout, map, sequential) but R-1 requires the hung-hook timeout to be verified "under bash-parallel, ruflo-hive and mock" — no SPEC demands multi-backend verification, so a single-backend test would satisfy SPEC-1 while missing the per-backend assurance R-1 requires
+- The issue asks for this and no SPEC covers it: R-3: R-3 requires "a guard test fails if the plugin directory exists or any file outside docs/adr/ names orch-sequential" and explicitly lists tests/golden/orch-sequential-capabilities.golden for deletion, but SPEC-3 restricts the guard to "any code or config file outside docs/adr/" — a .golden file is neither code nor config, so SPEC-3's guard would not catch it remaining, and no SPEC explicitly demands its deletion
+
+This try is kept as the working copy for the next run; design.md is unchanged.

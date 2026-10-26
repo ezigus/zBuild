@@ -1,6 +1,8 @@
-## design — pass
+## design — fail
 
-- authored design.md — 36 file(s) in scope, 10 acceptance SPEC(s)
+- the design fails 2 check(s)
 
-- scope: core/orch/contract.sh,core/orch/local_engine.sh,core/pipeline/runner.sh,core/pipeline/strategies/fanout.sh,core/pipeline/strategies/map.sh,core/pipeline/strategies/sequential.sh,scripts/lib/proc-group.sh,scripts/lib/stage-time-limit.sh,config/templates/simple.yaml,config/templates/deployed.yaml,config/adr-enforcement-baseline.txt,docs/adr/ADR-011-pluggable-backends.md,docs/adr/ADR-017-per-stage-router-config.md,docs/wiki/Plugins.md,docs/wiki/plugins/orch-sequential.md,plugins/tool/orch-sequential/plugin.sh,plugins/tool/orch-sequential/manifest.yaml,plugins/tool/orch-sequential/tests/orch-sequential-test.sh,plugins/tool/orch-mock/tests/orch-mock-test.sh,plugins/tool/orch-ruflo-hive/plugin.sh,tests/golden/orch-sequential-capabilities.golden,tests/test-durations.tsv,tests/integration/runner-release-exit-paths-test.sh,tests/integration/stage-time-limit-test.sh,tests/unit/exit-path-teardown-budget-guard-test.sh,tests/unit/summary-mandatory-test.sh,tests/unit/dispatch-rc-guard-test.sh,tests/unit/stdin-spawn-guard-test.sh,tests/unit/core-orch-run-id-isolation-test.sh,tests/unit/plugin-artifact-goldens-test.sh,tests/unit/adr059-no-tmpdir-defaults-test.sh,tests/unit/map-strategy-test.sh,tests/integration/orch-timeout-applies-test.sh,tests/unit/orch-sequential-absent-guard-test.sh,tests/integration/orch-backend-misconfigured-test.sh,tests/unit/orch-kill-uses-pg-kill-guard-test.sh
-- artifact: design.md
+- The issue asks for this and no SPEC covers it: R-3: "Every test that used it as a fixture passes on `orch-mock` or `bash-parallel`" — SPEC-11 covers only `plugins/tool/orch-sequential/tests/orch-sequential-test.sh`
+- The issue asks for this and no SPEC covers it: no SPEC requires that the other in-scope files (e.g., `tests/integration/stage-time-limit-test.sh`, `tests/unit/map-strategy-test.sh`) which referenced orch-sequential as a behavioral fixture are migrated to pass on orch-mock or bash-parallel rather than simply having their orch-sequential references stripped (and the files deleted) to satisfy SPEC-3's guard.
+
+This try is kept as the working copy for the next run; design.md is unchanged.
