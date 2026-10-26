@@ -77,10 +77,18 @@ CIRCLECI, RUNNER_OS, BUILD_BUILDID) but the requirement prohibits any platform-s
 a category with no fixed boundary. Added as open question — the finite-list grep approach may be
 accepted as sufficient but needs explicit confirmation.
 
-## Revised step list (final — 9 items)
+### F13 — SPEC-3 state-file re-read missing (test-author finding, cycle 5)
+test-author (verdict: fail): SPEC-3's assertion never re-reads pipeline-state.json after
+explicitly waiting past max_run_s=4s. The "status remains stage-driven result, not timed_out"
+sub-claim is left to implication from sentinel absence rather than a direct state-file
+verification. Fix: after the runner exits cleanly, explicitly sleep past max_run_s, then
+re-read pipeline-state.json and assert its status field is the stage-driven result (not timed_out).
+This is an addition to step-2 alongside the existing kill -0 check.
+
+## Revised step list (final — 9 items, step-2 expanded)
 
 1. Fix run-limit-precedence-test.sh: syntax error + lint-test-errexit + SPEC-2 disposition
-2. Fix run-watchdog-clean-exit-test.sh: lint-test-errexit + SPEC-3 PID check
+2. Fix run-watchdog-clean-exit-test.sh: lint-test-errexit + SPEC-3 PID check + SPEC-3 state-file re-read after waiting past max_run_s
 3. Fix run-timed-out-test.sh: lint-test-errexit + P2 falsifiability + persist on all paths
 4. Fix resume-after-run-timeout-test.sh: lint-test-errexit + SPEC-4 timing
 5. Fix core/pipeline/runner.sh: disown watchdog (integration timeout fix) + persist in fixture
@@ -101,6 +109,7 @@ accepted as sufficient but needs explicit confirmation.
 | SPEC-1 P2 unfalsifiable + persist on all paths | step-3 |
 | SPEC-2 disposition=misconfigured missing | step-1 |
 | SPEC-3 watchdog PID not proved gone | step-2 |
+| SPEC-3 state-file re-read missing (test-author F13) | step-2 |
 | SPEC-4 timing assertion non-inferential | step-4 |
 | SPEC-5 finite CI variable list | open question |
 | SPEC-6 npm test/lint not executed in test | resolved by all other steps passing |
@@ -108,7 +117,7 @@ accepted as sufficient but needs explicit confirmation.
 | ADR-054 §11 Enforced by entries | step-9 |
 | R-9/§9 vs §11 | open question |
 
-## Acceptance criteria coverage (final check — second plan cycle)
+## Acceptance criteria coverage (cycle 5)
 
 All 10 issue AC items are covered:
 - AC-1 timed_out with in-flight stage name + limit → step-3 (run-timed-out-test.sh, P1)
@@ -116,36 +125,16 @@ All 10 issue AC items are covered:
 - AC-3 whole process group dies (TERM → KILL after 10 s) → step-3 (P3)
 - AC-4 release and persist run after timed_out → step-3 (assert persist) + step-5 (fixture)
 - AC-5 precedence layers + validation → step-1 (SPEC-2 + syntax fix) + step-6 (template end-to-end)
-- AC-6 run inside limit untouched, watchdog gone → step-2 (SPEC-3 kill -0 check)
+- AC-6 run inside limit untouched, watchdog gone → step-2 (SPEC-3 kill -0 check + state-file re-read)
 - AC-7 resumed run gets fresh limit → step-4 (resume-after-run-timeout-test.sh timing fix)
 - AC-8 same locally and CI, no platform branch → covered by SPEC-5 (open question on adequacy)
 - AC-9 ADR-054 §9/§11 + ADR-025 Enforced by entries → step-9
 - AC-10 npm test + npm run lint green → all steps collectively
 
 No step defers testing, treats behavior as optional, or adds inert files.
-plan.json on disk is correct — no changes needed this cycle.
 
-## Third cycle review (after test + issue-acceptance failures confirmed)
+## Fifth cycle: one change to plan.json
 
-All 5 test failures and all 7 issue-acceptance findings are already covered by the 9-step plan:
-
-| Stage finding | Step |
-|---|---|
-| core-pipeline-runner-test.sh timeout | step-5 (disown) |
-| core-pipeline-strategy-test.sh timeout | step-5 (disown) |
-| vision-admission-gate-test.sh timeout | step-5 (disown) |
-| lint-test-errexit-test.sh [L5] fails (meta-test) | steps 1–4 (fix the 8 violations) |
-| run-limit-precedence-test.sh L173 syntax error | step-1 |
-| R-4 persist missing from always_run test | step-3 + step-5 |
-| R-5 template.sh inert + syntax error | step-1 + step-6 |
-| R-2 P2 unfalsifiable | step-3 |
-| R-10 npm test + lint fail | all steps collectively |
-| R-9 §9 vs §11 ambiguity | open question |
-
-No new findings. plan.json has 9 steps and remains accurate.
-
-## Fourth cycle review (re-entry after plan stage re-ran)
-
-Same test failures and issue-acceptance findings as cycle 3 — no new findings introduced.
-plan.json on disk has 9 steps and correctly covers every finding and every acceptance criterion.
-No changes to plan.json are needed.
+step-2 description expanded to include the test-author finding (F13): re-read pipeline-state.json
+after explicitly waiting past max_run_s, assert status is stage-driven result (not timed_out).
+All other steps unchanged. plan.json updated.
