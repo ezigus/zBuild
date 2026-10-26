@@ -143,6 +143,23 @@ assert_eq "[#1944/SPEC-3] clean run with max_run_s=4 exits 0" "0" "$_reaped_rc"
 # Wait past max_run_s=4: if watchdog not reaped, it would write the sentinel here
 sleep 5
 
+# Re-read pipeline-state.json AFTER sleeping past max_run_s=4 — SPEC-3 requires
+# this direct check (not only the sentinel proxy). An un-reaped watchdog fires at
+# max_run_s seconds after the RUNNER EXITS (runner exits before the 4s limit),
+# writing status=timed_out to the state file. This assertion is UNCONDITIONAL:
+# if the state file is absent the assertion fails (not silently skipped).
+_sentinel_state_file="$ZBUILD_STATE_DIR/pipeline-state.json"
+_post_sleep_status="$(jq -r '.status // empty' "$_sentinel_state_file" 2>/dev/null || true)"
+if [[ "$_post_sleep_status" == "timed_out" ]]; then
+    assert_fail "[#1944/SPEC-3] pipeline status still stage-driven after sleep past max_run_s=4s (not timed_out)" \
+        "status is timed_out after sleeping past max_run_s=4s — watchdog fired after runner exited and overwrote state"
+elif [[ -n "$_post_sleep_status" ]]; then
+    assert_pass "[#1944/SPEC-3] pipeline status still stage-driven after sleep past max_run_s=4s: ${_post_sleep_status} (not timed_out)"
+else
+    assert_fail "[#1944/SPEC-3] pipeline status still stage-driven after sleep past max_run_s=4s (not timed_out)" \
+        "pipeline-state.json absent or status empty after sleep — cannot verify watchdog was reaped"
+fi
+
 # The abort sentinel must NOT be present: the EXIT trap disarmed it (clean exit)
 # and a reaped watchdog cannot write it again after the runner exits.
 if [[ -f "$_ABORT_SENTINEL" ]]; then
