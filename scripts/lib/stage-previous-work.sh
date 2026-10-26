@@ -84,8 +84,13 @@ _sp_last_good_attempt() {
 # (primary: true), "R<TAB>path" (required: true). Read once per manifest per run and kept under the run's
 # runtime/ folder: the block is written at every dispatch, each dispatch is its
 # own subshell, and the fork budget (ADR-065) counts every read.
-_sp_manifest_roles() {
-    local m="$1" state_dir="$2" c
+_sp_manifest_roles() { local _smr; _sp_manifest_roles_v _smr "$1" "$2"; printf '%s' "$_smr"; }
+# _sp_manifest_roles_v <var> <manifest> <state_dir> — the same lines into <var>,
+# read in this shell: the block asks once for every earlier stage.
+_sp_manifest_roles_v() {
+    local -n _smrv="$1"
+    local m="$2" state_dir="$3" c
+    _smrv=""
     c="$state_dir/runtime/manifest-roles/${m//[^A-Za-z0-9._-]/_}"
     if [[ ! -e "$c" ]]; then
         [[ -d "${c%/*}" ]] || mkdir -p "${c%/*}" 2>/dev/null
@@ -112,7 +117,9 @@ _sp_manifest_roles() {
             END { flush() }' "$m" > "$c.$$" 2>/dev/null && mv -f "$c.$$" "$c" 2>/dev/null \
             || { rm -f "$c.$$" 2>/dev/null; return 0; }
     fi
-    printf '%s' "$(<"$c")"
+    # As `$(<"$c")` gave it: the whole file, less its trailing newlines.
+    IFS= read -r -d '' _smrv < "$c" || true
+    while [[ "$_smrv" == *$'\n' ]]; do _smrv="${_smrv%$'\n'}"; done
 }
 
 # _sp_read <file> <max> — the first <max> bytes of a file, without a fork.
@@ -174,7 +181,7 @@ _stage_block_previous_work() {
         _inputs_stage_manifest_v manifest "$s" "$plugins_root" 2>/dev/null || true
         summ=""; errp=""; res=""; req=""
         if [[ -n "$manifest" ]]; then
-            roles="$(_sp_manifest_roles "$manifest" "$state_dir")"
+            _sp_manifest_roles_v roles "$manifest" "$state_dir"
             while IFS=$'\t' read -r k raw; do
                 case "$k" in
                     S) [[ -z "$summ" ]] && { summ="$(_inputs_output_paths "$s" "$raw" "$state_dir")"; summ="${summ%%$'\n'*}"; } ;;

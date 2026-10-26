@@ -20,7 +20,7 @@
 # Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
 # file is sourced from several entry points and cannot assume helpers.sh
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
-if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
+if ! declare -F zbuild_engine_tmpdir_v >/dev/null 2>&1; then
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
 fi
@@ -159,22 +159,43 @@ _artifact_persist_has_identity() {
 # #1931: takes the goal text as an optional second argument so a `--goal` run
 # gets its own durable branch instead of sharing `issue-0` with every other one.
 # Callers that pass only an issue are unchanged.
-_artifact_persist_branch() {
-    local issue="${1:-0}" goal="${2:-${ZBUILD_GOAL:-}}"
+_artifact_persist_branch() { local _apb; _artifact_persist_branch_v _apb "$@"; printf '%s' "$_apb"; }
+# _artifact_persist_branch_v <var> [issue] [goal] — the same into <var>. A run
+# snapshots after every stage, so a goal's key (a hash) is worked out once a
+# shell (ADR-065 §5, round 9).
+declare -gA _AP_BRANCH_MEMO=()
+_artifact_persist_branch_v() {
+    local -n _apbo="$1"
+    local issue="${2:-0}" goal="${3:-${ZBUILD_GOAL:-}}"
     if [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]]; then
-        printf 'zbuild/state/issue-%s' "$issue"
+        _apbo="zbuild/state/issue-$issue"
         return 0
     fi
+    local mk="$issue"$'\034'"$goal"
+    if [[ -n "${_AP_BRANCH_MEMO[$mk]+x}" ]]; then _apbo="${_AP_BRANCH_MEMO[$mk]}"; return 0; fi
     local key=""
     if declare -F zbuild_run_key >/dev/null 2>&1; then
         key="$(zbuild_run_key "$issue" "$goal" 2>/dev/null || true)"
     fi
     if [[ -n "$key" ]]; then
-        printf 'zbuild/state/%s' "$key"
+        _apbo="zbuild/state/$key"
     else
         # Unchanged fallback: no issue and no goal is no identity.
-        printf 'zbuild/state/issue-%s' "$issue"
+        _apbo="zbuild/state/issue-$issue"
     fi
+    _AP_BRANCH_MEMO[$mk]="$_apbo"
+}
+# _artifact_persist_tmp_name_v <var> <prefix> — a path in the engine's temp dir
+# that does not exist yet, as `mktemp -u` names one, without starting it.
+_artifact_persist_tmp_name_v() {
+    local -n _aptn="$1"
+    local _aptd _apti
+    zbuild_engine_tmpdir_v _aptd
+    for (( _apti = 0; _apti < 10; _apti++ )); do
+        _aptn="$_aptd/$2.$BASHPID.$RANDOM$RANDOM"
+        [[ -e "$_aptn" ]] || return 0
+    done
+    _aptn=""; return 1
 }
 # ─── _artifact_persist_git_dir <repo_root> ───────────────────────────────────
 # Resolve the git dir to use for plumbing. NOT "$repo_root/.git": in a linked
@@ -266,13 +287,13 @@ _artifact_persist_snapshot() {
         return 0
     fi
 
-    local branch; branch="$(_artifact_persist_branch "$issue")"
+    local branch; _artifact_persist_branch_v branch "$issue"
     # A NON-existent path: git initializes a fresh index there. A pre-created
     # empty file (plain mktemp) is rejected as "index file smaller than expected".
     local tmp_index
-    if ! tmp_index="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-idx.XXXXXX")"; then
+    if ! _artifact_persist_tmp_name_v tmp_index zbuild-persist-idx; then
         _ARTIFACT_PERSIST_LAST_STATUS="failed"
-        _ARTIFACT_PERSIST_LAST_REASON="mktemp for throwaway index failed (TMPDIR=${TMPDIR:-/tmp})"
+        _ARTIFACT_PERSIST_LAST_REASON="no free name for the throwaway index (TMPDIR=${TMPDIR:-/tmp})"
         return 1
     fi
 
@@ -378,8 +399,7 @@ _artifact_persist_snapshot() {
     # no captured stderr — a silent failure inside the code whose whole purpose is
     # to stop silent failures. /dev/null is the honest fallback: we lose the
     # stderr detail but still report the real git failure.
-    local _ct_err; _ct_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ct_err="/dev/null"
-    [[ -n "$_ct_err" ]] || _ct_err="/dev/null"
+    local _ct_err; _artifact_persist_tmp_name_v _ct_err zbuild-persist-err || _ct_err="/dev/null"
     if [[ -n "$parent" ]]; then
         commit="$(GIT_DIR="$_gd" git commit-tree "$tree" -p "$parent" -m "$msg" 2>"$_ct_err")" || commit=""
     else
@@ -397,8 +417,7 @@ _artifact_persist_snapshot() {
     rm -f "$_ct_err"
 
     # PR #1880 review: guarded (see the _ct_err note above).
-    local _ur_err; _ur_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ur_err="/dev/null"
-    [[ -n "$_ur_err" ]] || _ur_err="/dev/null"
+    local _ur_err; _artifact_persist_tmp_name_v _ur_err zbuild-persist-err || _ur_err="/dev/null"
     if ! GIT_DIR="$_gd" git update-ref "refs/heads/$branch" "$commit" 2>"$_ur_err"; then
         err="$(cat "$_ur_err" 2>/dev/null | tr '\n' ' ')"
         rm -f "$_ur_err"
@@ -446,7 +465,7 @@ _artifact_persist_adopt_remote() {
         return 1
     fi
 
-    local branch; branch="$(_artifact_persist_branch "$issue")"
+    local branch; _artifact_persist_branch_v branch "$issue"
 
     if GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
         _ARTIFACT_PERSIST_LAST_STATUS="kept"
@@ -514,7 +533,7 @@ _artifact_persist_push() {
         return 1
     fi
 
-    local branch; branch="$(_artifact_persist_branch "$issue")"
+    local branch; _artifact_persist_branch_v branch "$issue"
     if ! GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
         _ARTIFACT_PERSIST_LAST_STATUS="empty"
         _ARTIFACT_PERSIST_LAST_REASON="no local branch $branch to push (nothing was snapshotted)"
@@ -564,7 +583,7 @@ _artifact_persist_restore() {
         return 1
     fi
 
-    local branch; branch="$(_artifact_persist_branch "$issue")"
+    local branch; _artifact_persist_branch_v branch "$issue"
     local ref=""
     if GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
         ref="refs/heads/$branch"

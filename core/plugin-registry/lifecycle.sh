@@ -172,15 +172,20 @@ scan_plugin_outputs() {
 # ─── _lc_owned_by_others_deny <state_dir> <stage> (#2189) ────────────────────
 # One absolute path per line: every file a stage OTHER than <stage> reported
 # owning (artifacts/stage-reports.json). Empty when nothing is owned.
-_lc_owned_by_others_deny() {
-    local rec="${1:-}/artifacts/stage-reports.json" me="${2:-}"
+_lc_owned_by_others_deny() { local _lod; _lc_owned_by_others_deny_v _lod "$@"; [[ -z "$_lod" ]] || printf '%s\n' "$_lod"; }
+# _lc_owned_by_others_deny_v <var> <state_dir> <stage> — the same lines into
+# <var>, in the dispatching shell.
+_lc_owned_by_others_deny_v() {
+    local -n _lodo="$1"
+    local rec="${2:-}/artifacts/stage-reports.json" me="${3:-}"
+    _lodo=""
     [[ -s "$rec" ]] || return 0
     # Read without a fork: nothing owned (most runs) needs no jq at all.
     local _body; _body="$(<"$rec")"
     [[ "$_body" == *'"owned_files"'* ]] || return 0
-    jq -r --arg me "$me" --arg root "${ZBUILD_REPO_ROOT:-.}" '
+    _lodo="$(jq -r --arg me "$me" --arg root "${ZBUILD_REPO_ROOT:-.}" '
         [(.owned_files // {}) | to_entries[] | select(.key != $me) | .value[] | "\($root)/\(.)"]
-        | unique[]' <<< "$_body" 2>/dev/null
+        | unique[]' <<< "$_body" 2>/dev/null)"
 }
 
 # _lc_kill_tree <pid> <signal> — signal a process and everything under it,
@@ -396,7 +401,8 @@ plugin_hook_call() {
         # #2189: files ANOTHER stage reported owning (test-author reports the
         # testfiles it authored) — from the run's stage-reports record, never
         # design.md by path and never a role name. The owner is not denied.
-        ZBUILD_PERMISSION_DENY_EDIT+="$(_lc_owned_by_others_deny "$_ws_state_dir" "${1:-}")"
+        local _lc_owned; _lc_owned_by_others_deny_v _lc_owned "$_ws_state_dir" "${1:-}"
+        ZBUILD_PERMISSION_DENY_EDIT+="$_lc_owned"
         [[ -n "$ZBUILD_PERMISSION_DENY_EDIT" ]] && ZBUILD_PERMISSION_DENY_EDIT+=$'\n'
 
         # #2174: write ownership from the manifests (write-ownership.sh) —
@@ -407,25 +413,25 @@ plugin_hook_call() {
         # this stage's own — other stages' notes, attempts, the stage reports.
         _lc_artifacts_left_deny "$manifest" "$_ws_state_dir" "${1:-}"
         ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
-        local _lc_wr; _lc_wr="$(manifest_index_get "$manifest" capabilities.writes_repository 2>/dev/null)" \
+        local _lc_wr; manifest_index_get_v _lc_wr "$manifest" capabilities.writes_repository 2>/dev/null \
             || yaml_get_v _lc_wr "$manifest" "capabilities.writes_repository" 2>/dev/null || true
         if [[ "${_lc_wr%$'\n'}" != "true" ]]; then
             _lc_repo_entries_deny "${ZBUILD_REPO_ROOT:-.}"
             ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
         fi
 
-        if ! declare -F stage_scratch_ensure >/dev/null 2>&1; then
+        if ! declare -F stage_scratch_ensure_v >/dev/null 2>&1; then
             # shellcheck source=../pipeline/stage-scratch.sh
             source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../pipeline" && pwd)/stage-scratch.sh" 2>/dev/null || true
         fi
-        if declare -F stage_scratch_ensure >/dev/null 2>&1; then
+        if declare -F stage_scratch_ensure_v >/dev/null 2>&1; then
             local _ws_scratch
             # Fail-open: an unnameable stage or an uncreatable directory leaves
             # both vars unset and every consumer on the fallback it has today.
             # A stage must not be refused dispatch because scratch was
             # unavailable — that would make a diagnostic convenience a new way
             # for a run to die.
-            if _ws_scratch="$(stage_scratch_ensure "$_ws_state_dir" "${ZBUILD_CURRENT_STAGE:-}" "${ZBUILD_MAP_ELEMENT:-}" 2>/dev/null)" \
+            if stage_scratch_ensure_v _ws_scratch "$_ws_state_dir" "${ZBUILD_CURRENT_STAGE:-}" "${ZBUILD_MAP_ELEMENT:-}" 2>/dev/null \
                && [[ -n "$_ws_scratch" ]]; then
                 local -x ZBUILD_STAGE_SCRATCH="$_ws_scratch"
                 local -x TMPDIR="$_ws_scratch"
@@ -481,26 +487,25 @@ plugin_hook_call() {
     # from ZBUILD_PLUGINS_ROOT — ADR-024 / persona-resolve.sh forbid relying on
     # that override as a root.
     if [[ "$hook_name" == "run" ]]; then
-        if ! declare -F _inputs_resolve_stage >/dev/null 2>&1; then
+        if ! declare -F _inputs_resolve_stage_v >/dev/null 2>&1; then
             # shellcheck source=../pipeline/input-resolve.sh
             source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../pipeline" && pwd)/input-resolve.sh" 2>/dev/null || true
         fi
-        if ! declare -F stage_blocks_write >/dev/null 2>&1; then
+        if ! declare -F stage_blocks_write_v >/dev/null 2>&1; then
             # shellcheck source=../../scripts/lib/stage-prompt.sh
             source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-prompt.sh" 2>/dev/null || true
         fi
         local _ir_proot; _ir_proot="$(cd "$plugin_dir/../.." 2>/dev/null && pwd)"
         local _ir_state="${ZBUILD_STATE_DIR:-}"
-        if [[ -n "$_ir_state" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F _inputs_resolve_stage >/dev/null 2>&1; then
-            local -x ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS
-            # Built here, in this shell, so the two readers below — each in its
-            # own subshell — share one producer index instead of each building it.
-            _inputs_build_producer_index "$_ir_proot" "$_ir_state" 2>/dev/null || true
-            ZBUILD_STAGE_INPUTS="$(_inputs_resolve_stage "$ZBUILD_CURRENT_STAGE" "$_ir_proot" "$_ir_state" 2>/dev/null || true)"
-            if declare -F stage_blocks_write >/dev/null 2>&1; then
+        if [[ -n "$_ir_state" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F _inputs_resolve_stage_v >/dev/null 2>&1; then
+            local -x ZBUILD_STAGE_INPUTS="" ZBUILD_STAGE_BLOCKS=""
+            # Both written in this shell, and both use one producer index
+            # (ADR-065 §5, round 9: each was its own $( ) before).
+            _inputs_resolve_stage_v ZBUILD_STAGE_INPUTS "$ZBUILD_CURRENT_STAGE" "$_ir_proot" "$_ir_state" 2>/dev/null || true
+            if declare -F stage_blocks_write_v >/dev/null 2>&1; then
                 local _sb_repo="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-                ZBUILD_STAGE_BLOCKS="$(stage_blocks_write "$ZBUILD_CURRENT_STAGE" "$_ir_state" "$manifest" \
-                    "$_ir_proot" "$ZBUILD_STAGE_INPUTS" "$_sb_repo" 2>/dev/null || true)"
+                stage_blocks_write_v ZBUILD_STAGE_BLOCKS "$ZBUILD_CURRENT_STAGE" "$_ir_state" "$manifest" \
+                    "$_ir_proot" "$ZBUILD_STAGE_INPUTS" "$_sb_repo" 2>/dev/null || true
                 # What Previous work carried, so a run's record says what each
                 # stage was given (#2124).
                 if [[ -s "${ZBUILD_STAGE_BLOCKS:-}/previous-work.md" ]]; then

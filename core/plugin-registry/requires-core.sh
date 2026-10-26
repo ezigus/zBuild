@@ -89,10 +89,13 @@ _ZBUILD_REQUIRES_CORE_TABLE=(
     "state|engine-ambient||core/state/atomic.sh,core/state/layout.sh,core/state/resume.sh,core/state/artifact-persist.sh,core/state/issue-lock.sh"
 )
 
-_requires_core_row() {
-    local want="${1:-}" row
-    for row in "${_ZBUILD_REQUIRES_CORE_TABLE[@]}"; do
-        [[ "${row%%|*}" == "$want" ]] && { printf '%s' "$row"; return 0; }
+_requires_core_row() { local _rcr; _requires_core_row_v _rcr "${1:-}" || return 1; printf '%s' "$_rcr"; }
+_requires_core_row_v() {
+    local -n _rcro="$1"
+    local _rcr_row
+    _rcro=""
+    for _rcr_row in "${_ZBUILD_REQUIRES_CORE_TABLE[@]}"; do
+        [[ "${_rcr_row%%|*}" == "${2:-}" ]] && { _rcro="$_rcr_row"; return 0; }
     done
     return 1
 }
@@ -174,7 +177,13 @@ _requires_core_reaches_model() {
 # A plugin with no plugin.sh is not skipped: kind:persona manifests are DATA,
 # and one declaring `router` would be a manifest bug worth naming rather than
 # waving through. Ambient entries still resolve for them.
-requires_core_unresolved() {
+requires_core_unresolved() { local _rcu _rcu_rc=0; requires_core_unresolved_v _rcu "$@" || _rcu_rc=$?; printf '%s' "$_rcu"; return "$_rcu_rc"; }
+# requires_core_unresolved_v <var> <plugin_dir> [entries] — the same lines into
+# <var>, worked out in this shell: it runs for every manifest at load (ADR-065
+# §5, round 9). Its locals are its own, so no <var> is hidden by one.
+requires_core_unresolved_v() {
+    local -n _rcuo="$1"; shift
+    _rcuo=""
     local plugin_dir="${1:-}"
     local manifest="$plugin_dir/manifest.yaml"
     [[ -f "$manifest" ]] || return 0
@@ -193,16 +202,19 @@ requires_core_unresolved() {
 
     # plugin.sh with comments stripped, read once on first need (ADR-065).
     local code="" code_read=""
-    local found=0 entry class prov satisfied prov_list
+    local found=0 entry class prov satisfied prov_list row
+    local -a provs
     while IFS= read -r entry; do
         [[ -n "$entry" ]] || continue
 
-        if ! class="$(requires_core_class "$entry")"; then
-            printf '%s\tis not a core module (accepted: %s)\n' \
-                "$entry" "$(requires_core_vocabulary | tr '\n' ' ' | sed 's/ $//')"
+        # requires_core_class and requires_core_providers, from the row.
+        if ! _requires_core_row_v row "$entry"; then
+            _rcuo+="$(printf '%s\tis not a core module (accepted: %s)' \
+                "$entry" "$(requires_core_vocabulary | tr '\n' ' ' | sed 's/ $//')")"$'\n'
             found=1
             continue
         fi
+        class="${row#*|}"; class="${class%%|*}"
 
         # The engine pre-loads it; the declaration is true without a source line.
         [[ "$class" == "engine-ambient" ]] && continue
@@ -216,19 +228,20 @@ requires_core_unresolved() {
 
         satisfied=0
         prov_list=""
-        while IFS= read -r prov; do
+        IFS=, read -ra provs <<< "${row##*|}"
+        for prov in "${provs[@]}"; do
             [[ -n "$prov" ]] || continue
             prov_list="${prov_list:+$prov_list or }$prov"
             [[ -f "$plugin_sh" ]] || continue
             [[ -n "$code_read" ]] || { code="$(_requires_core_code "$plugin_sh")"; code_read=1; }
             _requires_core_sources "$code" "$prov" && satisfied=1
-        done < <(requires_core_providers "$entry")
+        done
 
         if [[ "$satisfied" -eq 0 ]]; then
             if [[ ! -f "$plugin_sh" ]]; then
-                printf '%s\tis declared but the plugin has no plugin.sh to load it from\n' "$entry"
+                _rcuo+="$entry"$'\t'"is declared but the plugin has no plugin.sh to load it from"$'\n'
             else
-                printf '%s\tis declared but plugin.sh never sources %s\n' "$entry" "$prov_list"
+                _rcuo+="$entry"$'\t'"is declared but plugin.sh never sources $prov_list"$'\n'
             fi
             found=1
         fi
@@ -248,7 +261,12 @@ requires_core_unresolved() {
 # `redaction`, and CLAUDE.md's "no exceptions" stands. What is new is that
 # naming it is no longer sufficient: if the plugin reaches a model, a redactor
 # must be on its source path (directly, or via route.sh per ADR-043).
-requires_core_check() {
+requires_core_check() { local _rcc _rcc_rc=0; requires_core_check_v _rcc "$@" || _rcc_rc=$?; printf '%s' "$_rcc"; return "$_rcc_rc"; }
+# requires_core_check_v <var> <manifest> — the same lines into <var>, in this
+# shell (validate_manifest, for every manifest at load).
+requires_core_check_v() {
+    local -n _rcco="$1"; shift
+    _rcco=""
     local manifest="${1:-}"
     [[ -f "$manifest" ]] || return 0
     # The manifest's own directory, without a dirname process (ADR-065).
@@ -267,18 +285,19 @@ requires_core_check() {
     if [[ "$kind" == "agent" ]]; then
         # A whole line `redaction`, as `grep -Fx` matched it.
         if [[ $'\n'"$declared"$'\n' != *$'\n'redaction$'\n'* ]]; then
-            printf 'redaction\tis MUST for kind: agent and is not declared inside requires.core (ADR-004; got: %s)\n' \
-                "$(echo "$declared" | tr '\n' ',' | sed 's/,$//')"
+            _rcco+="$(printf 'redaction\tis MUST for kind: agent and is not declared inside requires.core (ADR-004; got: %s)' \
+                "$(echo "$declared" | tr '\n' ',' | sed 's/,$//')")"$'\n'
             found=1
         fi
     fi
 
-    local line
+    local line unresolved=""
+    requires_core_unresolved_v unresolved "$plugin_dir" "$declared" || true
     while IFS= read -r line; do
         [[ -n "$line" ]] || continue
-        printf '%s\n' "$line"
+        _rcco+="$line"$'\n'
         found=1
-    done < <(requires_core_unresolved "$plugin_dir" "$declared")
+    done <<< "$unresolved"
 
     return "$found"
 }

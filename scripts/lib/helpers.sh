@@ -9,6 +9,10 @@
 
 [[ -n "${_ZBUILD_HELPERS_LOADED:-}" ]] && return 0
 _ZBUILD_HELPERS_LOADED=1
+# The process's umask, read once when it loads this file, for atomic_write to
+# put back: nothing in the engine changes it, and every subshell then inherits
+# it instead of starting one more to read it (ADR-065 §5, round 9).
+_ZB_UMASK="$(umask)"
 
 # Source compat first (Bash 5 check, platform detection)
 _ZBUILD_SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
@@ -143,13 +147,16 @@ zbuild_stage_key() {
     printf '%s' "${_k//[^A-Za-z0-9._-]/_}"
 }
 
-zbuild_engine_tmpdir() {
+zbuild_engine_tmpdir() { local _etd; zbuild_engine_tmpdir_v _etd; printf '%s' "$_etd"; }
+# zbuild_engine_tmpdir_v <var> — the same into <var>, in this shell.
+zbuild_engine_tmpdir_v() {
+    local -n _etdo="$1"
     if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" && -d "${ZBUILD_STAGE_SCRATCH}" && -w "${ZBUILD_STAGE_SCRATCH}" ]]; then
-        printf '%s' "$ZBUILD_STAGE_SCRATCH"; return 0
+        _etdo="$ZBUILD_STAGE_SCRATCH"; return 0
     fi
     if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
         if [[ -d "${ZBUILD_STATE_DIR}/runtime" ]] || mkdir -p "${ZBUILD_STATE_DIR}/runtime" 2>/dev/null; then
-            printf '%s' "${ZBUILD_STATE_DIR}/runtime"; return 0
+            _etdo="${ZBUILD_STATE_DIR}/runtime"; return 0
         fi
     fi
     # #2017: the last resort is the DATA ROOT, not ${TMPDIR}. ADR-059 §1 makes
@@ -160,9 +167,9 @@ zbuild_engine_tmpdir() {
     # worse than a stray directory.
     local _dr="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/tmp"
     if mkdir -p "$_dr" 2>/dev/null; then
-        printf '%s' "$_dr"; return 0
+        _etdo="$_dr"; return 0
     fi
-    printf '%s' "${TMPDIR:-/tmp}"
+    _etdo="${TMPDIR:-/tmp}"
 }
 
 atomic_write() {
@@ -189,7 +196,6 @@ atomic_write() {
     local mode _um=""
     _zb_target_mode_v mode "$target"
     if [[ "$mode" =~ ^0?[0246]{3}$ ]]; then
-        # The process's own umask, read once: nothing in the engine changes it.
         [[ -n "${_ZB_UMASK:-}" ]] || _ZB_UMASK="$(umask)"
         printf -v _um '%03o' $(( 0777 & ~8#$mode ))
     fi

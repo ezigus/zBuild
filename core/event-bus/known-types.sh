@@ -88,12 +88,18 @@ eb_manifest_events() {
 # a shape rule kept in the validator and a parser kept here would drift, and the
 # failure mode of that drift is a declared name that silently never matches an
 # emit. validate_manifest turns each line into a load-time error.
-eb_manifest_events_invalid() {
-    local ev
-    while IFS= read -r ev; do
-        [[ -n "$ev" ]] || continue
-        [[ "$ev" =~ ^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$ ]] || printf '%s\n' "$ev"
-    done < <(eb_manifest_events "$1")
+eb_manifest_events_invalid() { local _emi; eb_manifest_events_invalid_v _emi "$1"; printf '%s' "$_emi"; }
+# eb_manifest_events_invalid_v <var> <manifest> — the same lines into <var>:
+# the manifest's events read with one awk, checked in this shell.
+eb_manifest_events_invalid_v() {
+    local -n _emio="$1"
+    local _emi_ev _emi_all
+    _emio=""
+    _emi_all="$(eb_manifest_events "$2")"
+    while IFS= read -r _emi_ev; do
+        [[ -n "$_emi_ev" ]] || continue
+        [[ "$_emi_ev" =~ ^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$ ]] || _emio+="$_emi_ev"$'\n'
+    done <<< "$_emi_all"
 }
 
 # ─── eb_compose_known_types [schema] [plugins_root] ─────────────────────────

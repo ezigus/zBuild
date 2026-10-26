@@ -18,7 +18,8 @@
 #             before
 # R5 [change] the build kind comes from the same parse, for each shape of data
 # R6 [change] each of the runner's three post-dispatch blocks reads the result
-#             in its own shell before its readers
+#             once: in its own shell before its `$( )` readers, or with readers
+#             that run in its shell (their _v forms, round 9) and no `$( )` one
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -97,13 +98,23 @@ unset -f jq
 
 print_test_section "R6: the runner reads first"
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
-_sites=0; _primed=0
+_sites=0; _primed=0; _inshell=0
 while IFS= read -r _ln; do
     _sites=$((_sites + 1))
     _before="$(sed -n "$(( _ln > 12 ? _ln - 12 : 1 )),$(( _ln - 1 ))p" "$RUNNER")"
     grep -q '^[[:space:]]*_verdict_read_result ' <<< "$_before" && _primed=$((_primed + 1))
 done < <(grep -n '="$(runner_read_stage_verdict "' "$RUNNER" | cut -d: -f1)
-assert_eq "[R6] each of the three blocks reads the result in its own shell first" "3 3" "$_sites $_primed"
+# A block whose verdict is read in this shell: none of the reads after it, to
+# the narrowing that ends the block, may go back to a `$( )`.
+while IFS= read -r _ln; do
+    _sites=$((_sites + 1))
+    _after="$(sed -n "${_ln},\$p" "$RUNNER" | sed '/dispatch_rc_narrow/q')"
+    grep -q '\$(runner_read_stage_' <<< "$_after" || _inshell=$((_inshell + 1))
+done < <(grep -n '^[[:space:]]*runner_read_stage_verdict_v ' "$RUNNER" | cut -d: -f1)
+assert_eq "[R6] each of the three blocks reads the result once (blocks, primed, in its shell)" \
+    "3 $(( _sites - _inshell )) $_inshell" "$_sites $_primed $_inshell"
+(( _inshell >= 1 )) && assert_pass "[R6] …and the dispatch blocks read in their shell ($_inshell)" \
+    || assert_fail "[R6] …and the dispatch blocks read in their shell" "none does"
 
 cleanup_test_env
 print_test_results

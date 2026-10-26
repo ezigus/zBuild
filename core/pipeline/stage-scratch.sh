@@ -39,26 +39,30 @@ _ZBUILD_STAGE_SCRATCH_LOADED=1
 # Everything outside [A-Za-z0-9_-] collapses to `_`, which is what makes the
 # result a path component rather than a path: `.` is excluded too, so `..`
 # cannot survive sanitisation and no key can climb out of the job folder.
-_stage_scratch_key() {
-    local stage="${1:-}"
-    local element="${2:-}"
+_stage_scratch_key() { local _ssk; _stage_scratch_key_v _ssk "$@" || return 1; printf '%s' "$_ssk"; }
+_stage_scratch_key_v() {
+    local -n _ssko="$1"; shift
+    _ssko=""
+    local _ssk_stage="${1:-}"
+    local _ssk_el="${2:-}"
     # A stage is required before the element is folded in. Without this a
     # dispatch that knows its map element but not its stage yields the key
     # "-security" — non-empty, so the caller gets a directory instead of the
     # refusal, and six lens members with no stage between them would share
     # it. The element qualifies an owner; it cannot be one.
-    [[ -n "$stage" ]] || return 1
+    [[ -n "$_ssk_stage" ]] || return 1
     # `run-tmp` belongs to zbuild_run_tmpdir (ADR-058 C10), which sits in this
     # same scratch/ namespace. A stage allowed to mint it would share the run's
     # ambient temp root and have its working files reclaimed by another owner.
-    [[ "$stage" == "run-tmp" ]] && return 1
-    local key="$stage"
-    [[ -n "$element" ]] && key="${key}-${element}"
-    key="${key//[^A-Za-z0-9_-]/_}"
+    [[ "$_ssk_stage" == "run-tmp" ]] && return 1
+    # (Its locals are its own: a caller's <var> named like one would be hidden.)
+    local _ssk_key="$_ssk_stage"
+    [[ -n "$_ssk_el" ]] && _ssk_key="${_ssk_key}-${_ssk_el}"
+    _ssk_key="${_ssk_key//[^A-Za-z0-9_-]/_}"
     # Bound the component. A stage id is template-authored and short, but a map
     # element comes from a data list; 96 chars keeps the deepest realistic path
     # clear of PATH_MAX without ever truncating a real stage name.
-    printf '%s' "${key:0:96}"
+    _ssko="${_ssk_key:0:96}"
 }
 
 # ─── stage_scratch_dir [<state_dir>] [<stage>] [<map_element>] ──────────────
@@ -76,19 +80,24 @@ _stage_scratch_key() {
 # rc=1 and no path when no stage can be named (#1850: was rc=2): a scratch dir
 # with no owner is a shared temp dir with extra steps, which is the thing this
 # file exists to end.
-stage_scratch_dir() {
-    local state_dir="${1:-${ZBUILD_STATE_DIR:-}}"
-    local stage="${2:-${ZBUILD_CURRENT_STAGE:-}}"
-    local element="${3:-${ZBUILD_MAP_ELEMENT:-}}"
+stage_scratch_dir() { local _ssd; stage_scratch_dir_v _ssd "$@" || return 1; printf '%s\n' "$_ssd"; }
+# stage_scratch_dir_v <var> [<state_dir>] [<stage>] [<map_element>] — the same
+# into <var>, in this shell: every dispatch asks (ADR-065 §5, round 9).
+stage_scratch_dir_v() {
+    local -n _ssdo="$1"; shift
+    _ssdo=""
+    local _ssd_state="${1:-${ZBUILD_STATE_DIR:-}}"
+    local _ssd_stage="${2:-${ZBUILD_CURRENT_STAGE:-}}"
+    local _ssd_el="${3:-${ZBUILD_MAP_ELEMENT:-}}"
 
-    local key; key="$(_stage_scratch_key "$stage" "$element")"
-    [[ -n "$key" ]] || return 1
+    local _ssd_key; _stage_scratch_key_v _ssd_key "$_ssd_stage" "$_ssd_el"
+    [[ -n "$_ssd_key" ]] || return 1
 
-    local base="${ZBUILD_SCRATCH_ROOT:-}"
-    [[ -n "$base" ]] || base="$state_dir"
-    [[ -n "$base" ]] || base="${ZBUILD_STATE_ROOT:-${HOME}/.zbuild/state}/runs/${ZBUILD_RUN_ID:-default}"
+    local _ssd_base="${ZBUILD_SCRATCH_ROOT:-}"
+    [[ -n "$_ssd_base" ]] || _ssd_base="$_ssd_state"
+    [[ -n "$_ssd_base" ]] || _ssd_base="${ZBUILD_STATE_ROOT:-${HOME}/.zbuild/state}/runs/${ZBUILD_RUN_ID:-default}"
 
-    printf '%s/scratch/%s\n' "${base%/}" "$key"
+    _ssdo="${_ssd_base%/}/scratch/$_ssd_key"
 }
 
 # ─── stage_scratch_ensure [<state_dir>] [<stage>] [<map_element>] ───────────
@@ -101,15 +110,18 @@ stage_scratch_dir() {
 # rc=1: an unnameable stage (no path printed) or the directory could not be
 # created (a warning names it). Both are non-fatal to the caller — the dispatch seam simply does not export the vars,
 # and every consumer keeps the `${TMPDIR:-/tmp}` fallback it has today.
-stage_scratch_ensure() {
-    local dir
-    dir="$(stage_scratch_dir "$@")" || return 1
-    if ! { mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null; }; then
+stage_scratch_ensure() { local _sse; stage_scratch_ensure_v _sse "$@" || return 1; printf '%s\n' "$_sse"; }
+stage_scratch_ensure_v() {
+    local -n _sseo="$1"; shift
+    _sseo=""
+    local _sse_dir
+    stage_scratch_dir_v _sse_dir "$@" || return 1
+    if ! { mkdir -p "$_sse_dir" 2>/dev/null && chmod 700 "$_sse_dir" 2>/dev/null; }; then
         if declare -F warn >/dev/null 2>&1; then
-            warn "stage-scratch: cannot create scratch dir: ${dir}" || true
+            warn "stage-scratch: cannot create scratch dir: ${_sse_dir}" || true
         fi
         return 1
     fi
-    printf '%s\n' "$dir"
+    _sseo="$_sse_dir"
 }
 

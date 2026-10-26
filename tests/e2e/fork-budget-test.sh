@@ -80,8 +80,9 @@ setup_test_env "fork-budget"
 # (round 6, C2: a dispatch's dirname/mkdir/rm/date/tr/cut/cat done by the shell)
 # — measured 2,659 macOS. 2250 (round 7: outputs and results parsed once per
 # change, the clock and a library's folder from the shell, eight manifest
-# readers in bash) — measured 2,196 macOS.
-FORK_BUDGET=2250
+# readers in bash) — measured 2,196 macOS. 2190 (round 9: a snapshot names its
+# temp files without mktemp; main measured 2,196) — measured 2,142 macOS.
+FORK_BUDGET=2190
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -94,7 +95,10 @@ FORK_BUDGET=2250
 # (round 6, C1 — measured 5,076 macOS). 5040 (round 6, C2 — measured 4,977 macOS).
 # 4840 (round 7 — measured 4,735 macOS). 3680 (round 8: the shell's own lookups
 # and per-dispatch helpers in the caller's shell, not in `$( )` — measured 3,608 macOS).
-PROCESS_BUDGET=3680
+# 2880 (round 9: a dispatch's result readers, input index, prompt blocks and
+# setup, the manifest checks and the snapshot's names fill variables in the
+# shell that asks — measured 2,819 macOS).
+PROCESS_BUDGET=2880
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh

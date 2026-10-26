@@ -31,16 +31,22 @@ _zbuild_abort_sentinel_path() {
     fi
 }
 
-_zbuild_abort_reason() {
+_zbuild_abort_reason() { local _zar; _zbuild_abort_reason_v _zar; printf '%s' "$_zar"; }
+# _zbuild_abort_reason_v <var> — the same into <var>, in this shell: the runner
+# checks for an abort after every dispatch.
+_zbuild_abort_reason_v() {
+    local -n _zaro="$1"
+    _zaro=""
     if [[ -n "${_ZB_ABORT_REASON:-}" ]]; then
-        printf '%s' "$_ZB_ABORT_REASON"
+        _zaro="$_ZB_ABORT_REASON"
         return 0
     fi
-    local _sentinel _word=""
-    _sentinel="$(_zbuild_abort_sentinel_path)"
-    [[ -n "$_sentinel" && -e "$_sentinel" ]] || return 0
-    IFS= read -r _word 2>/dev/null < "$_sentinel" || true
-    printf '%s' "${_word:-sigint}"
+    # _zbuild_abort_sentinel_path
+    [[ -n "${ZBUILD_STATE_DIR:-}" ]] || return 0
+    local _zar_s="$ZBUILD_STATE_DIR/.abort.signal" _zar_w=""
+    [[ -e "$_zar_s" ]] || return 0
+    IFS= read -r _zar_w 2>/dev/null < "$_zar_s" || true
+    _zaro="${_zar_w:-sigint}"
 }
 
 # Best-effort: a failed sentinel write must not fail a signal trap — the
@@ -79,7 +85,8 @@ _zbuild_abort() {
 }
 
 _zbuild_check_abort() {
-    [[ -n "$(_zbuild_abort_reason)" ]] && return 1
+    local _zca; _zbuild_abort_reason_v _zca
+    [[ -n "$_zca" ]] && return 1
     return 0
 }
 

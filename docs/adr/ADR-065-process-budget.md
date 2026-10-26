@@ -120,6 +120,31 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 >   reads the collision guard's run id, status and age with one `jq` against the shell's clock (no
 >   `dirname`, `mktemp`, `cp` or `date`).
 
+> **Amended 2026-10-26 (round 9): a dispatch's helpers fill a variable in the shell that asks.**
+> Measured on the slowest pipeline test after round 8: 11,714 processes for three runs, about
+> 775 at each run's start and about 55 for each stage. Most of the per-stage ones were not
+> programs but `$( )` and `< <( )` copies of the engine shell, made to print one value. So:
+> - The readers a dispatch uses after its stage (verdict, raw verdict, reason, disposition,
+>   report, build kind, and the rc observation and narrowing) have `_v` forms that fill a
+>   variable, and the cycle and parallel dispatch use them; a leaf stage still reads through
+>   the printing forms. A test that steers a dispatch by replacing a printing reader routes
+>   that reader's `_v` form to its stub (`zb_test_readers_through_stubs`).
+> - The abort check, the halt and retry tests, and the rules block's notes path and time limit
+>   are read in the shell too.
+> - The stage's input index and prompt blocks are written in the dispatching shell, and so are
+>   its deny list, scratch dir and write flag; the Previous work block reads each stage's output
+>   roles there too.
+> - `validate_manifest` runs its requires.core, events, router-budget, hook and contract checks
+>   in its own shell; what is left is one `awk` for each of the three file readers.
+> - A snapshot names its temp files in the shell, without `mktemp`, and works out a goal's
+>   branch once a shell.
+> - `atomic_write` reads the umask once, when `helpers.sh` loads: the engine never changes it,
+>   and every subshell then inherits it.
+> - The swallowed-call guard reads its ~3,700 lines in the shell: a `sed` for each line made
+>   that one test file start 7,600 processes.
+> - No caller passes a `_v` form a name the form declares local: the local would hide the
+>   caller's variable from the nameref, and the answer is lost.
+
 > **Amended 2026-10-25 (round 8): the shell's own work, once, in the shell that needs it.**
 > Measured on the full suite: 2,531 CPU-seconds in 407 s, 57% of it kernel time, and in the
 > slowest test 1.56 million shell commands in 18,745 processes, 11,800 of them `$( )` subshells.
@@ -296,6 +321,7 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 - §3 (amended 2026-10-24, round 3) → `tests/unit/yaml-get-cache-test.sh` SPEC-12 (`yaml_get_v` matches `$(yaml_get)`), SPEC-13 (a miss fills the calling shell's cache); `tests/unit/output-paths-resolve-test.sh` SPEC-1/2; `tests/unit/run-status-render-time-test.sh` SPEC-6 (a row costs one process); `tests/unit/discover-plugins-memo-test.sh` SPEC-9 (a shared memo directory), SPEC-10 (a warm lookup costs one process); `tests/unit/manifest-graph-collect-memo-test.sh` SPEC-7 (no `cksum`, and a hit only under its own root); `tests/unit/run-tests-schedule-test.sh` SPEC-7 (one memo directory per run, removed after it)
 - §5 (amended 2026-10-24, round 4: no SQLite mirror) → `tests/unit/event-bus-emit-cost-test.sh` E2 (an emit given a db path starts no `sqlite3`, takes one lock and writes no `events.db`); `tests/unit/core-event-bus-test.sh` (no `events.db` or its lock is written)
 - §5 (amended 2026-10-25, round 5: per-stage chores read once) → `tests/unit/persist-secret-scan-cost-test.sh` C1 (a clean dir costs two greps), C2 (only a matching file is read on its own), C3 (the finding is unchanged); `tests/unit/attempt-archive-cost-test.sh` C1 (what one record starts), C2 (no `$( )` copies), C3 (changed/unchanged/new still right); `tests/unit/helpers-cost-test.sh` H1 (no repeat `mkdir`), H2 (`atomic_replace` starts `cp` and `mv` only), H3 (the copy keeps its mode); `tests/unit/event-bus-emit-cost-test.sh` E1 (no `jq` for a plain-ASCII emit), E6 (the line is byte for byte what `jq` writes); `tests/unit/router-manifest-budget-test.sh` SPEC-8b (one lookup, one `awk`); `tests/unit/requires-core-resolution-test.sh` SPEC-14 (one check strips and parses once)
+- §5 (amended 2026-10-26, round 9) → `tests/unit/dispatch-work-cost-test.sh` P1/P2 (the Previous work block reads each stage's roles in its shell, each role's line in order), P3/P4 (the dispatch's result readers and rc helpers start no subshell and give main's answers), P5/P6 (a snapshot names its temp files and branch in its shell, with no `mktemp`; a goal's branch once a shell), P7 (a dispatch writes its input index, blocks, deny list and scratch dir in its shell), P8 (`validate_manifest`'s checks run in its shell and refuse what they refused), P9/P10 (`atomic_write` reads no umask in a child, and keeps modes and the umask), P11/P12 (the abort check, the disposition tests and the rules block start no subshell); `tests/unit/vacuous-call-guard-test.sh` SPEC-9/10 (the scan's work does not grow with its lines, and names what the `sed` named); `tests/unit/result-read-memo-test.sh` R6 (each post-dispatch block reads the result once); `tests/unit/nameref-local-clash-test.sh` N1/N2 (no call passes a `_v` function a name it declares local); `tests/e2e/fork-budget-test.sh` (FORK_BUDGET 2190, PROCESS_BUDGET 2880)
 - §5 (amended 2026-10-25, round 8) → `tests/unit/shell-work-cost-test.sh` W1 (an index lookup does the same work for 6 manifests as for 80), W2/W3 (a stage's manifest is found in the caller's shell, and its callers never use the `$( )` form), W4/W5 (one read of a template gives every stage's limit, filled by load_template, each as the old reader gave it), W6/W7 (an event's work is linear in its keys; a repeated key keeps its first place and last value), W8 (the per-dispatch helpers start no subshell); `tests/unit/run-tests-tier-concurrency-test.sh` SPEC-4b (the e2e tier gets the full worker count); `tests/e2e/fork-budget-test.sh` (PROCESS_BUDGET 3680)
 - §5 (amended 2026-10-25, round 7) → `tests/unit/output-check-memo-test.sh` M1–M7 (a passed output is not parsed again; broken in place at once, replaced, emptied or still damaged, it is caught); `tests/unit/result-read-memo-test.sh` R1–R6 (one parse for the six readers, a rewrite or a break seen at once, the build kind from the same parse, the runner reads first); `tests/unit/clock-dirname-cost-test.sh` T1–T6 (no `date` in the state writers, history row or stage-io records; no `dirname` when a library loads or in the per-round helpers; a bare-name load still finds its siblings); `tests/unit/manifest-line-readers-test.sh` Q1 (eight readers match the old awk over every manifest and template plus an edge set), Q2 (they start nothing); `tests/unit/core-event-bus-test.sh` (an emit that cannot open its lock or file never ends a `set -e` caller); `tests/e2e/fork-budget-test.sh` (FORK_BUDGET 2250, PROCESS_BUDGET 4840)
 - §3, §5 (amended 2026-10-25, round 6) → `tests/unit/manifest-index-test.sh` SPEC-5 (`a//b` and `a/b` are one key for the index, the input-resolve maps, `yaml_get`, `yaml_get_v` and a flush); `tests/unit/stage-dispatch-cost-test.sh` D1/D2 (what the write boundary starts), D3 (a non-writer's change is still refused), D4 (a repeat producer-index call starts nothing), D5 (a memo hit starts nothing), D6 (the id reader matches awk); `tests/unit/manifest-output-readers-test.sh` R1 (the outputs readers start nothing), R2 (they match the awk readers on every manifest and a corpus); `tests/unit/manifest-index-test.sh` SPEC-9 (a symlinked plugin dir is indexed); `tests/unit/run-constant-lookups-cost-test.sh` L1–L5 (the trunk, git dir and stage limit once per shell); `tests/unit/stage-housekeeping-cost-test.sh` K1–K11 (what each per-dispatch helper starts, K10 `zb_dirname_v` == `dirname`)

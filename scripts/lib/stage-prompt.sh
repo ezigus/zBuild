@@ -200,15 +200,16 @@ _stage_block_rules() {
         printf '  file in the repository — code, tests, or anything else. Write only the\n'
         printf '  outputs your instructions name, and your notes file.\n'
     fi
-    printf -- '- Your notes file is %s\n' "$(stage_notes_path "$state_dir" "$stage")"
+    local _sbr_np; stage_notes_path_v _sbr_np "$state_dir" "$stage"
+    printf -- '- Your notes file is %s\n' "$_sbr_np"
     printf '  Write to it as you work, not at the end: what you read, what you\n'
     printf '  concluded, and what is left. If you run out of time or turns, it is all that\n'
     printf '  survives, and its latest version comes back to you under Previous work.\n'
 
     # The limits every model call runs under, the same for every stage: the
     # engine needs no word from the stage about whether or how it calls one.
-    if declare -F template_stage_time_limit >/dev/null 2>&1; then
-        stage_secs="$(template_stage_time_limit "$stage" 2>/dev/null)"
+    if declare -F template_stage_time_limit_v >/dev/null 2>&1; then
+        template_stage_time_limit_v stage_secs "$stage" 2>/dev/null
     else
         tv="_TPL_STAGE_TIMEOUT_S_${stage//-/_}"; stage_secs="${!tv:-}"
     fi
@@ -251,7 +252,12 @@ EOF
 # The engine's three blocks for one dispatch. Prints the blocks directory, or
 # nothing (rc 1) when it could not be written — a stage that calls a model is
 # then refused by stage_prompt_compose rather than sent half a prompt.
-stage_blocks_write() {
+stage_blocks_write() { local _sbw; stage_blocks_write_v _sbw "$@" || return 1; printf '%s\n' "$_sbw"; }
+# stage_blocks_write_v <var> <stage> … — the same, the dir into <var>: written in
+# the dispatching shell, which already holds the producer index.
+stage_blocks_write_v() {
+    local -n _sbwo="$1"; shift
+    _sbwo=""
     local stage="$1" state_dir="$2" manifest="$3" plugins_root="$4" index="$5" repo_root="$6" dir
     [[ -n "$stage" && -n "$state_dir" ]] || return 1
     stage_blocks_dir_v dir "$state_dir" "$stage"
@@ -262,7 +268,7 @@ stage_blocks_write() {
     _stage_block_previous_work "$stage" "$state_dir" "$plugins_root" "$index" "$repo_root" \
         > "$dir/previous-work.md" 2>/dev/null || return 1
     _stage_block_rules "$stage" "$state_dir" "$manifest" > "$dir/rules.md" 2>/dev/null || return 1
-    printf '%s\n' "$dir"
+    _sbwo="$dir"
 }
 
 # ─── stage_prompt_compose <out> <own> <judge> <limits> ───────────────────────

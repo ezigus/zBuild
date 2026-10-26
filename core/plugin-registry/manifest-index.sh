@@ -177,6 +177,17 @@ manifest_index_get() {
     [[ -n "${_ZBUILD_MIDX["$f"$'\034'"$k"]+x}" ]] && printf '%s' "${_ZBUILD_MIDX["$f"$'\034'"$k"]}"
     return 0
 }
+# manifest_index_get_v <var> <manifest> <key> — the same into <var> (empty when
+# the key is absent), rc 2 when no loaded root lists the file.
+manifest_index_get_v() {
+    local -n _migo="$1"
+    local _mig_f
+    _migo=""
+    _manifest_path_key _mig_f "$2"
+    [[ -n "${_ZBUILD_MIDX_LISTED[$_mig_f]+x}" ]] || return 2
+    _migo="${_ZBUILD_MIDX["$_mig_f"$'\034'"$3"]-}"
+    return 0
+}
 
 manifest_index_flush() {
     _ZBUILD_MIDX=()

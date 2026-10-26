@@ -128,16 +128,20 @@ disposition_is_valid() {
 # operator reading the log has to distinguish "something outside us is down, a
 # human needs to act" from "this is our own defect". They differ in what is
 # reported, not in the stopping.
-disposition_response() {
-    case "${1-}" in
-        complete)                         printf 'proceed' ;;
-        unusable|timed_out|out_of_turns)  printf 'retry' ;;
-        interrupted)                      printf 'retry' ;;
-        throttled)                        printf 'retry_after_wait' ;;
-        rate_limited|unavailable)         printf 'halt_unavailable' ;;
-        misconfigured)                    printf 'halt_misconfigured' ;;
-        broken)                           printf 'halt_broken' ;;
-        *)                                return 1 ;;
+disposition_response() { local _dr; disposition_response_v _dr "${1-}" || return 1; printf '%s' "$_dr"; }
+# disposition_response_v <var> <disposition> — the same into <var>, in this
+# shell: the halt and retry tests ask it after every dispatch.
+disposition_response_v() {
+    local -n _dro="$1"
+    case "${2-}" in
+        complete)                         _dro='proceed' ;;
+        unusable|timed_out|out_of_turns)  _dro='retry' ;;
+        interrupted)                      _dro='retry' ;;
+        throttled)                        _dro='retry_after_wait' ;;
+        rate_limited|unavailable)         _dro='halt_unavailable' ;;
+        misconfigured)                    _dro='halt_misconfigured' ;;
+        broken)                           _dro='halt_broken' ;;
+        *)                                _dro=''; return 1 ;;
     esac
 }
 
@@ -147,7 +151,7 @@ disposition_response() {
 # A non-member HALTS (#1850, ADR-054 §4 — it was a third rc, 2): an unknown word
 # is a structural failure, so the one safe answer is to stop.
 disposition_halts() {
-    local r; r="$(disposition_response "${1-}")" || return 0
+    local r; disposition_response_v r "${1-}" || return 0
     case "$r" in
         halt_*) return 0 ;;
         *)      return 1 ;;
@@ -162,7 +166,7 @@ disposition_halts() {
 # A non-member is not retryable: it halts (see disposition_halts), and nothing
 # both halts and retries.
 disposition_retryable() {
-    local r; r="$(disposition_response "${1-}")" || return 1
+    local r; disposition_response_v r "${1-}" || return 1
     case "$r" in
         retry|retry_after_wait) return 0 ;;
         *)                      return 1 ;;
