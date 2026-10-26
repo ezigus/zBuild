@@ -16,6 +16,9 @@
 # D3 [change] second offence by the same stage: `broken`, files still put back
 # D4 [guard]  the count is per stage: another stage's first offence is `unusable`
 # D5 [guard]  a clean re-dispatch of the stage is not held to its earlier offence
+# D6 [change] the halt's reason names the stage and the files it changed, not
+#             the stage's own result (ADR-058 C12, amended 2026-10-26; #1801 run
+#             40390919951 halted saying "21 of 818 tests failed")
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -107,6 +110,10 @@ _run "$FXJ" judge
 assert_eq "[D3] the second offence resolves broken" "broken" "$(_disp "$FXJ" judge)"
 assert_eq "[D3] the files are still put back" "original" "$(cat "$WT/edited.txt")"
 assert_eq "[D3] ...including the earlier stage's work" "work in progress" "$(cat "$WT/tests/wip.txt")"
+_reason="$(runner_read_stage_reason "$JOB" "$FXJ/manifest.yaml" judge "$RC" 2>/dev/null)"
+assert_contains "[D6] the halt says which stage changed the repository" "$_reason" \
+    "judge changed files in the repository that it may not change"
+assert_contains "[D6] ...and which files" "$_reason" "edited.txt"
 
 print_test_section "D4: the count is per stage"
 rm -f "$JOB/runtime/write-boundary-violated"

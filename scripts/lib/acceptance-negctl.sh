@@ -54,10 +54,12 @@ source "$_ACCEPTANCE_NEGCTL_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=
 # shellcheck source=env-scrub.sh
 source "$_ACCEPTANCE_NEGCTL_DIR/env-scrub.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" env-scrub.sh"
 
-# _acceptance_is_test_path <path> — a test file: under tests/, or under a
-# plugin's own plugins/<kind>/<id>/tests/ (#2300).
+# _acceptance_is_test_path <path> — a test file: in one of the repository's
+# test folders (ADR-069 §10, scripts/lib/test-paths.sh; was hard-coded, #2300).
+# shellcheck source=test-paths.sh
+source "$_ACCEPTANCE_NEGCTL_DIR/test-paths.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" test-paths.sh"
 _acceptance_is_test_path() {
-    [[ "${1:-}" == tests/* || "${1:-}" =~ ^plugins/[^/]+/[^/]+/tests/ ]]
+    zb_is_test_path "${1:-}"
 }
 
 # _acceptance_is_production_path <path> — production code (ADR-069 §5): any

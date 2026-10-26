@@ -17,6 +17,8 @@
 #             — the outer loop does not go round to repeat it (written after
 #             the fix, with the rate-limit case covered by
 #             cycle-rate-limit-aborts-run-test.sh)
+# L7 [change] a member that halts the run (broken) inside the build loop stops
+#             the run there, naming what it said (ADR-068 §3, amended 2026-10-26)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,6 +50,15 @@ assert_eq "[L6] the outer loop does not go round" "1" "$(_count design 1)"
 # both end interrupted, so the reason word is what tells them apart.
 assert_eq "[L6] the run stops as blocked (rc=1, interrupted, reason blocked), not as a config error" \
     "1 interrupted blocked" "$rc ${_CYCLE_LAST_OUTCOME:-unset} ${_CYCLE_LAST_TERMINATED_REASON:-unset}"
+
+print_test_section "L7: a member that halts the run inside the build loop stops the run"
+# #1801 run 40390919951: test was broken (it changed the repository twice), the
+# outer loop went round anyway, and design was then blamed for the halt.
+DESIGN_GATE=pass TEST=broken _run; rc=$?
+assert_eq "[L7] the outer loop does not go round" "1" "$(_count design 1)"
+assert_eq "[L7] ...the run stops (rc=1, failed)" "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
+assert_contains "[L7] ...naming what the halting member said" "${_CYCLE_LAST_TERMINATED_REASON:-}" \
+    "test changed the repository: /repo/stray"
 
 cleanup_test_env
 print_test_results

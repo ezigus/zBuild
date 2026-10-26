@@ -127,8 +127,30 @@ _ta_write_result() {
     if ! stage_result_write "$dir/test-author-result.json" "$o" "$r" "$_data"; then
         _ta_emit "test_author.result.write_failed" "dir=$dir"
     fi
-    stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$r" \
-        "$(printf -- '- SPECs in the contract: %s\n- assertions are authored from the SPEC text, never from the implementation' "${n:-0}")"
+    # The test files and what each covers, for the stages after this one: build
+    # starts from them instead of running them to find them (#1801 run 40390919951).
+    local _tf_lines=""
+    if [[ -s "$_design" ]] && declare -F acceptance_list_spec_ids >/dev/null 2>&1; then
+        local -A _tf_specs=()
+        local -a _tf_order=()
+        local _sid _f
+        while IFS= read -r _sid; do
+            [[ -n "$_sid" ]] || continue
+            while IFS= read -r _f; do
+                [[ -n "$_f" ]] || continue
+                [[ -n "${_tf_specs[$_f]+x}" ]] || _tf_order+=("$_f")
+                _tf_specs[$_f]+="${_tf_specs[$_f]:+, }$_sid"
+            done < <(acceptance_list_testfiles_for_spec "$_design" "$_sid" 2>/dev/null || true)
+        done < <(acceptance_list_spec_ids "$_design" 2>/dev/null || true)
+        for _f in ${_tf_order[@]+"${_tf_order[@]}"}; do _tf_lines+=$'\n'"- ${_f} — ${_tf_specs[$_f]}"; done
+    fi
+    local _sum_body
+    printf -v _sum_body -- '- SPECs in the contract: %s\n- assertions are authored from the SPEC text, never from the implementation' "${n:-0}"
+    if [[ -n "$_tf_lines" ]]; then
+        _sum_body+=$'\n'"- the test files, and the requirements each covers:${_tf_lines}"
+        _sum_body+=$'\n'"- Each [code] requirement's test fails on the code as it is now, and passes once the code is written."
+    fi
+    stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$r" "$_sum_body"
 }
 
 # ─── test_author_run <stage_id> <state_file> [resolved_inputs] ───────────────

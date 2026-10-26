@@ -81,12 +81,13 @@ EOF
 
 LOG="$TEST_TEMP_DIR/dispatch.log"
 OUTER_ROUND_FILE="$TEST_TEMP_DIR/outer-round"
-# The stub: DESIGN_GATE=pass|fail|fail-first-round, TEST=pass|fail.
+# The stub: DESIGN_GATE=pass|fail|fail-first-round, TEST=pass|fail|broken.
 # shellcheck disable=SC2329  # called by the orchestrator
 cycle_dispatch_stage() {
     local stage="$1" iter="$2"
     printf '%s|iter=%s\n' "$stage" "$iter" >> "$LOG"
     _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"; _CYCLE_DISPATCH_REPORT="{}"
+    _CYCLE_DISPATCH_DISPOSITION=""; _CYCLE_DISPATCH_REASON=""
     case "$stage" in
         design)
             # Count outer rounds by design's own round-1 dispatches.
@@ -100,7 +101,12 @@ cycle_dispatch_stage() {
         build)
             [[ "${BUILD:-ok}" == "blocked" ]] && { _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_VERDICT_RAW="error"; } ;;
         test)
-            if [[ "${TEST:-pass}" == "fail" ]]; then
+            if [[ "${TEST:-pass}" == "broken" ]]; then
+                # ADR-068 §3 (amended 2026-10-26): a result that halts the run.
+                _CYCLE_DISPATCH_VERDICT="fail"
+                _CYCLE_DISPATCH_DISPOSITION="broken"
+                _CYCLE_DISPATCH_REASON="test changed the repository: /repo/stray"
+            elif [[ "${TEST:-pass}" == "fail" ]]; then
                 _CYCLE_DISPATCH_VERDICT="fail"
                 _CYCLE_DISPATCH_REPORT='{"tests":{"total":3,"failed":1}}'
             fi ;;

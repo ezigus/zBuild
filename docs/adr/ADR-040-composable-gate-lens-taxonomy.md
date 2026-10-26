@@ -539,9 +539,17 @@ run. Three causes, each fixed here:
    limit is sized for, and round 2 was killed by it. Round 2 gets only the calls round 1 left; with
    none left there is no round 2, and the outcome is `fail` with the check's findings.
 
+4. **test-author says which tests it wrote; build starts from them** (2026-10-26, later the same day).
+   test-author's summary — what later stages read under Previous work — lists each test file with
+   the requirements it covers, and says each [code] requirement's test fails on the code as it is
+   now. Build's prompt says to start from those files, not to run them to find that out, and to run
+   a test only after changing the code it checks. #1801 run 40390919951's builder ran 4–13 test
+   files per call and made no edit in three 15-minute calls.
+
 Enforced by: `tests/unit/design-acceptance-block-test.sh` J1; `tests/unit/design-coverage-test.sh` J1;
 `tests/unit/assertion-sources-test.sh` SPEC-6; `tests/unit/test-author-correspondence-test.sh` W1;
-`tests/unit/test-author-checks-own-output-test.sh` A6, A7.
+`tests/unit/test-author-checks-own-output-test.sh` A6, A7, A9;
+`tests/unit/build-prompt-loop-complete-rule-test.sh` T1.
 
 ### Amendment (2026-10-15, #2371) — build checks its own change for secrets
 

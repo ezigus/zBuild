@@ -452,6 +452,14 @@ runner_read_stage_reason_v() {
         _verdict_unreadable_violation_v _n_viol "$_n_state"
     fi
     if [[ -n "$_n_viol" ]]; then _rsro="$_n_viol"; return 0; fi
+    # ADR-058 C12 (amended 2026-10-26): a halt for changing the repository says
+    # so — the stage's own result describes its work, not why the run stopped
+    # (#1801 run 40390919951 halted saying "21 of 818 tests failed").
+    if [[ -s "${state_dir}/runtime/write-boundary-violated" ]]; then
+        local _wbv; _wbv="$(<"${state_dir}/runtime/write-boundary-violated")"
+        _rsro="${stage} changed files in the repository that it may not change: ${_wbv}"
+        return 0
+    fi
     _rsro="$_n_reason"
 }
 

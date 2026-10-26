@@ -64,10 +64,12 @@ stage that raised the finding to check. Do not keep searching for the cause of
 a failure you cannot produce, and do not change code to chase one.
 
 ### Running tests
-- Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline has
-  already run them and their results are under Previous work. Run only the one
-  failing test file a failed stage names, and only after changing code. A
-  command that runs longer than ~2 minutes can cost you the whole call.
+- Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline
+  runs them and their results are under Previous work.
+- Start from the test files listed under Previous work, and the requirements
+  each covers: they fail on the code as it is now; do not run them to find that
+  out. Run a test only after you change the code it checks, and only that test
+  file. A command that runs longer than ~2 minutes can cost you the whole call.
 - A failed stage under Previous work is red RIGHT NOW on this tree. Start from
   the failing line it quotes.
 
