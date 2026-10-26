@@ -116,7 +116,7 @@ mock_plugin_factory "slow-resume-stage" "agent" 0 >/dev/null
 cat > "$TEST_TEMP_DIR/plugins/agent/slow-resume-stage/plugin.sh" <<PLUG
 slow_resume_stage_run() {
     sleep 30
-    $(mock_v2_result_line slow-resume-stage)
+    $(mock_result_line slow-resume-stage)
     return 0
 }
 PLUG

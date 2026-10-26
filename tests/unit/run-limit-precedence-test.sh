@@ -203,7 +203,7 @@ STAGE_MARKER="$TEST_TEMP_DIR/stage-ran-marker"
 cat > "$TEST_TEMP_DIR/plugins/agent/intake/plugin.sh" <<PLUG
 intake_run() {
     : > "${STAGE_MARKER}"
-    $(mock_v2_result_line intake)
+    $(mock_result_line intake)
     return 0
 }
 PLUG
@@ -276,7 +276,7 @@ STAGE_MARKER_TPL="$TEST_TEMP_DIR/stage-ran-marker-tpl"
 cat > "$TEST_TEMP_DIR/plugins/agent/intake/plugin.sh" <<PLUG
 intake_run() {
     : > "${STAGE_MARKER_TPL}"
-    $(mock_v2_result_line intake)
+    $(mock_result_line intake)
     return 0
 }
 PLUG

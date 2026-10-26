@@ -131,7 +131,7 @@ cat > "$PLUGINS_ROOT/agent/slow-stage/plugin.sh" <<PLUG
 slow_stage_run() {
     : > "${SLOW_STAGE_STARTED}"
     sleep 120
-    $(mock_v2_result_line slow-stage)
+    $(mock_result_line slow-stage)
     return 0
 }
 PLUG
@@ -214,7 +214,7 @@ mock_plugin_factory "fast-two" "agent" 0 >/dev/null
 FAST_TWO_STARTED="$TEST_TEMP_DIR/fast-two-started"
 cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
 fast_one_run() {
-    $(mock_v2_result_line fast-one)
+    $(mock_result_line fast-one)
     return 0
 }
 PLUG
@@ -222,7 +222,7 @@ cat > "$PLUGINS_ROOT/agent/fast-two/plugin.sh" <<PLUG
 fast_two_run() {
     : > "${FAST_TWO_STARTED}"
     sleep 30
-    $(mock_v2_result_line fast-two)
+    $(mock_result_line fast-two)
     return 0
 }
 PLUG
@@ -270,7 +270,7 @@ slow_stage_run() {
     # Trap SIGTERM and ignore it (only SIGKILL can stop this)
     trap '' TERM
     sleep 120
-    $(mock_v2_result_line slow-stage)
+    $(mock_result_line slow-stage)
     return 0
 }
 PLUG
@@ -324,7 +324,7 @@ cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
 outcome_run() {
     : > "${OUTCOME_STARTED}"
     sleep 30
-    $(mock_v2_result_line outcome)
+    $(mock_result_line outcome)
     return 0
 }
 PLUG
@@ -334,7 +334,7 @@ RELEASE_MARKER="$TEST_TEMP_DIR/release-ran-on-timeout"
 cat > "$PLUGINS_ROOT/tool/teardown/plugin.sh" <<PLUG
 teardown_run() {
     : > "${RELEASE_MARKER}"
-    $(mock_v2_result_line teardown)
+    $(mock_result_line teardown)
     return 0
 }
 PLUG
@@ -344,7 +344,7 @@ PERSIST_MARKER="$TEST_TEMP_DIR/persist-ran-on-timeout"
 cat > "$PLUGINS_ROOT/tool/persist-stage/plugin.sh" <<PLUG
 persist_stage_run() {
     : > "${PERSIST_MARKER}"
-    $(mock_v2_result_line persist-stage)
+    $(mock_result_line persist-stage)
     return 0
 }
 PLUG
