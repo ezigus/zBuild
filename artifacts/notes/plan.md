@@ -143,3 +143,9 @@ All 5 test failures and all 7 issue-acceptance findings are already covered by t
 | R-9 §9 vs §11 ambiguity | open question |
 
 No new findings. plan.json has 9 steps and remains accurate.
+
+## Fourth cycle review (re-entry after plan stage re-ran)
+
+Same test failures and issue-acceptance findings as cycle 3 — no new findings introduced.
+plan.json on disk has 9 steps and correctly covers every finding and every acceptance criterion.
+No changes to plan.json are needed.
