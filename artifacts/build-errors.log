@@ -1,6 +1,2 @@
-model call iter=1 rc=124 turns=185
-model call iter=2 rc=124 turns=94
-model call iter=3 rc=124 turns=111
-model call iter=1 rc=124 turns=97
-model call iter=2 rc=124 turns=111
-model call iter=3 rc=124 turns=176
+model call iter=1 rc=124 turns=105
+model call iter=2 rc=1 subtype=success turns=42
