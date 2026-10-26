@@ -434,10 +434,10 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 399 artifact(s) from prior runs (restored)
+- restored 414 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 399 artifact(s) from zbuild/state/issue-1944
+- detail: restored 414 artifact(s) from zbuild/state/issue-1944
 
 ### intake (verdict: pass)
 Outputs:
@@ -753,8 +753,8 @@ Summary:
   Write to it as you work, not at the end: what you read, what you
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
-- Your budget: each model call has 600 seconds, with no limit on turns. A call that runs out of time
-  returns nothing: finish and write your answer well before the limit. The whole stage has 1500 seconds.
+- Your budget: each model call has 1200 seconds, with no limit on turns. A call that runs out of time
+  returns nothing: finish and write your answer well before the limit. The whole stage has 2700 seconds.
 
 ### How every stage works
 

@@ -29,19 +29,38 @@ Verified current worktree state after prior build:
 - runner.sh lines 2529-2540: `_runner_abort_trap` fires on EXIT and kills watchdog via SIGKILL at line 2539; uses `:-0` default → potential issue if PID empty sends SIGKILL to PG 0; bugs table updated to use `:-` (empty default instead)
 - runner.sh line 2734: `trap '_runner_abort_trap' EXIT` — fires on ALL exits (clean and abort)
 - runner.sh lines 2776-2818: watchdog subshell armed after traps; `_RUNNER_WATCHDOG_PID=$!` at line 2818
-- run-timed-out-test.sh, run-watchdog-clean-exit-test.sh, resume-after-run-timeout-test.sh: NO `set +e`/`set -e` patterns in current worktree (bugs already fixed from prior build iteration)
-- run-limit-precedence-test.sh: syntax error on old line 173 is fixed; now correctly uses `( cd ... && ZBUILD_MAX_RUN_S=... bash ... )` at line ~213
 
-## Design iteration 9 — what changed
+## What I read (current verification pass — after test stage failure)
 
-The ONLY design-stage finding was: **R-10 not covered by any SPEC**.
+Git log shows latest commit is `f915476a test-author: acceptance assertions for 6 SPEC(s), still failing their check`.
+The test stage ran on an EARLIER state (before f915476a). The current worktree is test-author's latest output.
 
-Fix: added `covers: R-10` to SPEC-1. SPEC-1 covers the primary integration test (run-timed-out-test.sh). Once the implementation bugs in the bugs table are all fixed and SPEC-1 through SPEC-6 pass, both `npm test` and `npm run lint` are green → R-10 is met.
+**Verified state of ALL 4 new test files in current worktree (f915476a):**
 
-Also clarified in the bugs table Decision point 3:
-- Changed `:-0` to `:-` for the watchdog kill default (empty = no kill when watchdog never armed; `0` = SIGKILL entire PG, which kills the test harness)
+- `tests/unit/run-watchdog-clean-exit-test.sh`: NO `set -e` patterns (FIXED). Uses `_clean_rc=0; (...) || _clean_rc=$?` pattern throughout (158 lines).
+- `tests/integration/run-timed-out-test.sh`: NO `set -e` patterns (FIXED, 382 lines). P4 at lines 312-378 tests BOTH release AND persist markers (FIXED). P2 at lines 236-255 uses conditional assert_pass/assert_fail correctly (not both assert_pass — FIXED).
+- `tests/unit/run-limit-precedence-test.sh`: Line 213 uses correct `( cd "$MISCFG_OVERLAY" && ZBUILD_MAX_RUN_S="not-a-number" bash "$RUNNER" ... )` syntax (FIXED). Line 173 is a comment (FIXED). Has lint-test-errexit assertion at line 459 (FIXED).
+- `tests/integration/resume-after-run-timeout-test.sh`: NO `set -e` patterns (FIXED, 238 lines). P1-P4 structure correct.
 
-All other scope entries, acceptance criteria, and findings are unchanged from iteration 8.
+**Remaining bug — runner.sh lines 2539-2540:**
+```
+2539:        kill -KILL "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
+2540:        wait "${_RUNNER_WATCHDOG_PID:-0}" 2>/dev/null || true
+```
+
+BOTH use `:-0`:
+- `kill -KILL "${_RUNNER_WATCHDOG_PID:-0}"` when empty → `kill -KILL 0` → SIGKILL to process group (kills test harness)
+- `wait "${_RUNNER_WATCHDOG_PID:-0}"` when empty → `wait 0` → waits for ALL background processes (hangs)
+
+Fix: `:-` (empty default) for BOTH lines. `kill -KILL ""` fails silently (2>/dev/null || true). `wait ""` fails silently.
+
+**run-open-items-test.sh O3 loop (lines 100-105): timed_out NOT in loop.**
+The `run_end_words "timed_out"` function exists in run-open-items.sh (line 107) and returns "stopped: the run exceeded its wall-clock limit". But there's no assertion in run-open-items-test.sh testing this output. O9 at line 189 says "6" (FIXED from 5). The bugs table entry for this is still valid.
+
+**run-watchdog-clean-exit-test.sh S3-4: no state-file re-read after sleep.**
+The test-author checker found that SPEC-3's requirement "after waiting past max_run_s the status is still the stage-driven result" is not directly verified: the test checks the state file BEFORE sleep (S3-2), then sleeps and checks only the sentinel (S3-4). No state-file re-read after sleep. SPEC-3 needs updating.
+
+**run-open-items.sh line 107:** `timed_out) printf 'stopped: the run exceeded its wall-clock limit%s' "$with" ;;` — the function exists and returns the right message. The O3 loop just needs `timed_out` added.
 
 ## Key architectural findings (carried forward)
 
@@ -50,6 +69,6 @@ All other scope entries, acceptance criteria, and findings are unchanged from it
 3. **zbuild_pg_kill refuses its own group** — watchdog uses raw kill commands.
 4. **Sentinel first-wins**: watchdog writes timed_out BEFORE sending TERM → SIGTERM trap's sentinel call is a no-op → timed_out propagates correctly.
 5. **resume.sh** updated to return manual_resume_only for timed_out status.
-6. **EXIT trap kill must use `:-` not `:-0`** — avoids SIGKILL to PG 0 when watchdog never armed.
+6. **EXIT trap kill must use `:-` not `:-0`** — avoids SIGKILL to PG 0 when watchdog never armed; `wait 0` would hang waiting for all background processes.
 7. **ADR-054 §9** already exists for per-stage router config; new run-level limit goes in §11.
-8. **O9 count assertion** superseded: 5 → 6 loop-ending lines when timed_out arm added.
+8. **O9 count assertion** superseded: 5 → 6 loop-ending lines when timed_out arm added (already fixed in current worktree).
