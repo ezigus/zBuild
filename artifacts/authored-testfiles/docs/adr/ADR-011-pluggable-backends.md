@@ -1,0 +1,218 @@
+# ADR-011: Pluggable Backends (Memory, Orchestrator, Cache)
+
+**Status:** Accepted
+**Amended:** 2026-08-22 — retention: the cache store is reclaimable, the memory store never is
+**Date:** 2026-05-24
+
+> **Memory split:** The "memory backend" in this ADR is **learning memory** —
+> patterns extracted from past runs, vector embeddings of source code,
+> architectural decisions, skill-success scores. It accumulates over time and
+> spans pipelines.
+>
+> It is **NOT** pipeline-resume memory (which is defined by
+> [ADR-006](ADR-006-resume-contract.md) and transported by
+> [ADR-010](ADR-010-ci-cli-parity.md) cache backends). Resume state is
+> operational ("continue at stage X iteration Y"); learning memory is
+> educational ("similar issues in the past took 3 cycles to converge").
+>
+> The two memory models share no storage and have independent failure modes:
+> learning memory can be totally unavailable and pipelines still resume
+> correctly; resume memory can be wiped and pipelines still benefit from
+> learned patterns on the next fresh run.
+
+## Context
+
+Three cross-cutting capabilities can be implemented multiple ways, and zBuild should not pick one implementation in core:
+
+1. **Memory backend** — where learned patterns, embeddings, and decisions live. Could be local SQLite, ruflo's HNSW vector store via MCP, a future cloud KV, etc.
+2. **Orchestrator backend** — how parallel agents are spawned and coordinated. Could be plain bash subshells, ruflo's hive-mind, a future job-queue worker pool, etc.
+3. **Cache backend** — where durable state persists across CI runs (covered in ADR-010); same pattern.
+
+User requirement: "I want the option to use ruflo memory and ruflo swarming/hive abilities — those are not hard dependencies early on but they need to be able to do it in the future, so the architecture needs to be set to handle that."
+
+Translation: ship working defaults that need zero external services; let ruflo (or anything else) drop in via the plugin contract.
+
+## Decision
+
+Each capability gets a **backend contract** (a fixed set of function names + I/O shapes). A "backend" is just a plugin (`kind: tool`, with `provides.role: memory-backend` etc.) that implements the contract. zBuild ships defaults; users select alternates via `.zbuild/config.yaml`.
+
+### Memory backend contract
+
+```bash
+memory_put <namespace> <key> <value>                 # store
+memory_get <namespace> <key>                          # → value or empty
+memory_search <namespace> <query> [--limit N]         # → list of matches
+memory_list_namespaces                                # → list of strings
+memory_namespace_exists <namespace>                   # exit 0/1
+memory_namespace_clear <namespace>                    # destructive cleanup
+```
+
+Optional (backends MAY implement; callers MUST handle absence):
+```bash
+memory_search_vector <namespace> <embedding>          # vector similarity search
+memory_capabilities                                   # → JSON of declared capabilities
+```
+
+**Default implementation**: `plugins/tool/memory-sqlite/` — local SQLite at `~/.zbuild/state/memory.db`, TF-IDF text search via `LIKE %query%`, no vector support. Always works, no external deps.
+
+**Optional implementation**: `plugins/tool/memory-ruflo/` — proxies to ruflo MCP for HNSW vector search. Requires `ruflo` binary on PATH; `memory_capabilities` declares `["vector_search", "hnsw"]`.
+
+### Orchestrator backend contract
+
+```bash
+orch_spawn <pool_id> <count> <role_arg>               # spawn N workers
+orch_dispatch <pool_id> <task_json>                   # send work to pool
+orch_collect <pool_id> [--timeout S]                  # gather results; exit 0=all pass, 1=all fail, 2=partial
+orch_shutdown <pool_id>                               # cleanup
+orch_capabilities                                     # → JSON
+```
+
+**(superseded 2026-10-08 by ADR-054 §4 / #1850 — now `orch_collect` returns 0 (all passed) or 1, naming mixed results on `_ORCH_COLLECT_OUTCOME=partial`)**
+
+**`orch_collect` exit code convention (all implementations must honour this):**
+- `0` — all dispatched work units exited 0 (success); pool dir removed.
+- `1` — all dispatched work units exited non-zero (complete failure).
+- `2` — mixed results: at least one unit passed and at least one failed (partial). **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_ORCH_COLLECT_OUTCOME=partial`)**
+
+Work-unit exit codes are normalised — individual codes are not passed through. Strategies use `2` to emit `stage.fail reason=partial` via the runner. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_ZB_STRATEGY_OUTCOME=partial`)**
+
+**Phase 0.5 default implementation**: `plugins/tool/orch-sequential/` — single-process, in-order dispatch. Chosen as the default for Phase 0.5 because it has zero coordination surface and the smallest reference impl of the 0/1/2 normalisation contract. The `.zbuild/config.yaml` snippet below shows how to opt in to one of the optional backends.
+
+**Parallel implementation**: `plugins/tool/orch-bash-parallel/` — uses bash subshells + `wait -n` for parallelism, no coordination beyond independent execution. Implements `fanout` and `sequential` strategies trivially; `composite` works via a single subshell.
+
+**Optional implementation**: `plugins/tool/orch-ruflo-hive/` — proxies to `ruflo hive-mind init/spawn/orchestrate`. Implements all three strategies natively; provides queen-collapse synthesis and shared-memory namespacing. `orch_capabilities` declares `["hive_mind", "queen_collapse", "shared_memory"]`.
+
+### Cache backend contract (covered in ADR-010)
+
+```bash
+cache_pull <key> <dest_dir>                           # restore from cache key into dest_dir
+cache_push <key> <src_dir>                            # snapshot src_dir under cache key
+cache_capabilities                                    # → JSON
+```
+
+The `<key>` is an opaque, plugin-agnostic identifier (e.g., a slot id or a content hash). The `<dest_dir>` / `<src_dir>` makes the caller's intent explicit and lets a single cache backend serve multiple consumers (resume snapshot, build artifact, etc.) within one run.
+
+Reconciled with the code (`core/cache/contract.sh`) on 2026-05-26 per #310: the initial sketch used a single-arg `cache_pull <slot_id>` that conflated key and destination. The two-arg form is what every implementation already needs and what the existing `gh-actions-cache` / `cache-local` plugins ship.
+
+Defaults: `local` — a real filesystem-backed cache under `$ZBUILD_CACHE_DIR` (defaults to `~/.zbuild/cache`). Optionals: `gh-actions-cache`, `s3`, `gist`.
+
+### Backend selection: `.zbuild/config.yaml`
+
+> **Scope note:** backend pluggability covers **memory, orchestrator, and cache only**. Model routing is core per ADR-003 — `core/router/route.sh` is not a backend and is not selectable via this config.
+
+```yaml
+backends:
+  memory: sqlite                    # default; or "ruflo"
+  orchestrator: sequential          # default; or "bash-parallel", "ruflo-hive"
+  cache: local                      # default; or "gh-actions-cache", "s3"
+
+# Optional per-backend config
+memory_ruflo:
+  mcp_server: "ruflo"
+  namespace_prefix: "zbuild"
+  fallback_to_default_on_error: true
+
+orchestrator_ruflo:
+  topology: hierarchical
+  max_agents: 8
+  hive_timeout_sec: 300
+```
+
+Resolution at startup: read config, look up the named backend in the plugin registry, verify it implements the contract. If a backend is selected but missing, `zbuild doctor` flags it. **Critical**: when a non-default backend is selected, callers MUST handle `_capabilities` differences (e.g., don't request `memory_search_vector` from the SQLite default).
+
+### Graceful degradation rules
+
+1. **Default backend always works.** Out-of-box experience requires nothing more than `./install.sh` (per ADR-023).
+2. **Optional backend can be configured but unavailable at runtime** (e.g., ruflo daemon crashed). Each backend declares `fallback_to_default_on_error: true|false`. If true, runtime falls back to default with a `backend.degraded` event; if false, hard-fails with a clear error.
+3. **Backend capabilities are declarative.** Callers query `<backend>_capabilities` and choose a code path based on what's available. Example: pipeline-intelligence might do vector search if `vector_search` is in capabilities, TF-IDF otherwise.
+
+### Plugin manifest extension
+
+Memory and orchestrator backends are `kind: tool` plugins with a special `provides.role`:
+
+```yaml
+# plugins/tool/memory-sqlite/manifest.yaml
+id: memory-sqlite
+kind: tool
+provides:
+  role: memory-backend                  # marks as backend implementation
+  capabilities: [text_search, namespacing, persistence]
+
+# plugins/tool/memory-ruflo/manifest.yaml
+id: memory-ruflo
+kind: tool
+provides:
+  role: memory-backend
+  capabilities: [text_search, vector_search, hnsw, namespacing, persistence, distributed]
+requires:
+  bin: [ruflo]                          # NEW manifest field: required binaries
+```
+
+The plugin registry can list all backends of a role: `zbuild plugin list --role memory-backend`.
+
+## Consequences
+
+**Good:**
+- Zero external dependencies for the out-of-box experience.
+- Adding a new backend (e.g., Pinecone, Redis, Dragonfly) = drop a plugin, declare capabilities, done.
+- Tests for the engine never need ruflo running.
+- Users opt in to advanced features (HNSW, hive-mind) by config, not by code change.
+- Failure modes are explicit: missing backend → doctor warns; runtime backend crash → graceful fallback if configured.
+
+**Bad:**
+- More plugins to maintain (defaults + ruflo + future variants).
+- Callers must check `_capabilities` before using optional features; easy to forget.
+- Backend selection lives in config; users with broken configs may not realize a feature is silently using the default.
+
+**Open questions:**
+- Should backends be per-namespace? (e.g., "use SQLite for cost ledger, ruflo HNSW for embeddings"). Initial design: per-capability is the unit (memory backend is one choice; can't split). Revisit if real demand.
+- Should `_capabilities` results be cached or queried every run? Initial: queried once at backend init.
+
+## Retention (amended 2026-08-22)
+
+This ADR defined two stores that outlive a run and said nothing about ever
+reclaiming either. They are not the same, and the difference is now a rule:
+
+| Store | Default location | Reclaimed? |
+|---|---|---|
+| **Cache** | `${ZBUILD_CACHE_DIR:-~/.zbuild/cache}/<key>` | **Yes** — `zbuild cleanup --cache`, in the default set, aged from last touch |
+| **Memory** | `~/.zbuild/state/memory.db` | **Never** |
+
+**The cache is reclaimable because a miss is a normal outcome.** `cache_pull`
+prints `CACHE_MISS` and returns 0 by contract, so deleting an entry costs a
+recomputation and nothing else. It is content-addressed by key, not keyed to an
+issue, so it ages from last touch like any other regenerable artifact.
+
+**The memory store is never reclaimed, and this is a rule, not an omission.** It
+is deliberately agnostic to the issues it supports — the knowledge it holds is
+not the residue of any one run and does not expire when that run's artifacts do.
+No cleanup target may name it, and `tests/unit/cleanup-new-reclaimers-test.sh`
+SPEC-4 asserts that `scripts/lib/cleanup.sh` contains no reference to it. If a
+future need to prune memory arises, it belongs behind its own deliberate command
+with its own reasoning, not folded into artifact reclamation.
+
+## Implementation Notes (Phase 0.5 — issue #291)
+
+| Item | Status | PR / Notes |
+|------|--------|------------|
+| Cache backend contract (local file + GH Actions cache) | Implemented | #211 (issue #82); local default wired |
+| Memory backend contract (local JSON + SQLite) | Implemented | #215, #216 (SQLite trial) |
+| Memory-ruflo optional backend | Implemented | #217 (issue #215/217) |
+| Orchestrator backend contract (sequential default) | Implemented | #219 (issue #88) |
+| Orchestrator-ruflo hive-mind optional backend | Implemented | #221 (issue #89) |
+| `_capabilities` query + graceful fallback | Implemented | all backend PRs above follow this pattern |
+| Ruflo HNSW / Pinecone / Redis additional backends | Deferred → Phase 1 | KEEPERS.md §B1 wish list |
+
+## Enforced by
+
+- §Orchestrator backend contract (§ orch_load_backend must fail when backend is absent, not fall back silently) — `tests/integration/orch-backend-misconfigured-test.sh` [#1801/SPEC-2], [#1801/SPEC-4], [#1801/SPEC-10].
+- §No sequential fallback (§ the built-in orch-sequential fallback is removed from orch_load_backend) — `tests/integration/orch-backend-misconfigured-test.sh` [#1801/SPEC-2] and `tests/unit/orch-sequential-absent-guard-test.sh` [#1801/SPEC-3].
+- §orch-sequential plugin directory absent from the installed tree — `tests/unit/orch-sequential-absent-guard-test.sh` [#1801/SPEC-3].
+- §Memory store is never reclaimed — `tests/unit/cleanup-new-reclaimers-test.sh` SPEC-4.
+
+## References
+
+- [ADR-001 — Plugin Contract](ADR-001-plugin-contract.md) — backends are plugins
+- [ADR-010 — CI / CLI Parity](ADR-010-ci-cli-parity.md) — cache backends follow same pattern
+- ruf-1..5 issues (#102-#106) — implement the ruflo memory backend as ONE of multiple options, not the only one
+- db-1..6 issues (#125-#130) — implement the SQLite default memory backend's tables
