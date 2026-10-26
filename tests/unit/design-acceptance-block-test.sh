@@ -170,6 +170,14 @@ assert_contains "T6: the example block carries a [done] line with evidence" "$_t
 # file contents, so the prompt says so before design writes one.
 assert_contains "T6: a [code] requirement must describe behaviour, not file contents (#2305)" "$_t6_prompt" \
     "A [code] requirement describes what the code does, not what a file contains"
+# J1 (#1801 run 40351795413): a SPEC joining several claims is judged against
+# one assertion and comes back partial; one claim per SPEC, several SPECs may
+# cover one requirement.
+_t6s="$(tr -s '[:space:]' ' ' <<< "$_t6_prompt")"
+assert_contains "J1: a requirement that asks for several things gets one SPEC per thing" "$_t6s" \
+    "A requirement that asks for several things gets one SPEC per thing"
+assert_contains "J1: ...never one SPEC joining them" "$_t6s" "never one SPEC that joins them with \"and\" or \";\""
+assert_contains "J1: ...each naming the same requirement in covers:" "$_t6s" "each naming the same R-n in covers:"
 for _old in '[guard]' '[change]'; do
     if grep -qF -- "$_old" <<< "$_t6_prompt"; then
         assert_fail "T6: the prompt no longer offers $_old" "found in design-prompt.txt"

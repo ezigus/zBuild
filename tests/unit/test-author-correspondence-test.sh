@@ -17,6 +17,10 @@
 #   #2143 every SPEC is judged in ONE call when the reply answers each
 #   #2032 a failed call is classified; a later success never hides it
 #   A SPEC with no tagged assertion is not judged (the acceptance check reports it)
+#   W1 the judge sees the whole test the assertion is in — its setup too, even
+#      when a blank line separates them — with the tagged lines marked (#1944
+#      run 40329284881: the check saw only the assertion's stanza and called it
+#      partial for what its setup established)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,6 +54,22 @@ _contract() {   # _contract <n> — SPEC-1..n, each with a tagged assertion
     done
 }
 _judge() { : > "$_CALLS"; : > "$_P_FILE"; _ta_correspondence "$D" "$R" T2 >/dev/null 2>&1; }
+
+# ── W1 ───────────────────────────────────────────────────────────────────────
+_contract 1
+cat > "$R/tests/acc-test.sh" <<'SH'
+got="$(thing_under_test --empty; echo $?)"
+wait_past_limit 5
+
+assert_eq "[SPEC-1] thing 1 holds" "1" "$got"
+SH
+_judge
+_P="$(cat "$_P_FILE")"
+assert_contains "[W1] the judge sees the test's setup" "$_P" 'thing_under_test --empty'
+assert_contains "[W1] ...all of it" "$_P" 'wait_past_limit 5'
+assert_contains "[W1] ...and the tagged assertion, marked" "$_P" '>> assert_eq "[SPEC-1] thing 1 holds"'
+assert_contains "[W1] the prompt says what the marks are" "$(tr -s '[:space:]' ' ' <<< "$_P")" \
+    "the lines marked >> are the ones tagged for the requirement; the lines above them set up the test"
 
 # ── SPEC-1 / SPEC-2 / SPEC-3 ────────────────────────────────────────────────
 _contract 1

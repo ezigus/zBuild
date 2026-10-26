@@ -18,6 +18,14 @@
 # A4 [change] the rounds come from test-author's own manifest (2)
 # A5 [change] the build loop requires test-author to pass; spec-correspondence
 #             is no longer a stage
+# A6 [change] the rounds share one budget of model calls: round 2 gets only the
+#             calls round 1 left (#1801 run 40329281392: a fresh 4 per round
+#             overran the stage's time limit, and the stage was killed)
+# A7 [change] no calls left after round 1: no round 2; the outcome is fail and
+#             the result lists the finding
+# A8 [change] the author is told to run nothing, and to read the existing tests
+#             and test helpers, not the code the change is about (#1944 run
+#             40329284881: it ran the suite and lint, and read core/)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,11 +41,16 @@ setup_test_env "test-author-checks-own-output"
 source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
 TAG="$(acceptance_spec_tag SPEC-1)"
 
-# The author's model: each call writes the tagged assertion and says done.
+# The author's model: each round writes the tagged assertion and says done,
+# having used USED of the calls it was given (the loop's own counter).
+_route_resolve_max_iterations() { printf '4'; }
+USED=1
 route_to_model_loop() {
     local n; n=$(( $(cat "$TEST_TEMP_DIR/author-calls" 2>/dev/null || echo 0) + 1 ))
     printf '%s' "$n" > "$TEST_TEMP_DIR/author-calls"
     cp "$2" "$TEST_TEMP_DIR/author-prompt-$n"
+    printf '%s' "$4" > "$TEST_TEMP_DIR/author-budget-$n"
+    _ROUTE_LOOP_ITERATIONS="$USED"
     printf 'assert_eq "%s an empty input returns rc 1" "1" "$rc"\n' "$TAG" > "$R/tests/acc-test.sh"
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
     return 0
@@ -104,6 +117,34 @@ unset -f _router_rc_classify
 # ── A4 ───────────────────────────────────────────────────────────────────────
 assert_eq "[A4] test-author's manifest sets its rounds" "2" \
     "$(yaml_get "$REPO_ROOT/plugins/agent/test-author/manifest.yaml" config.check_rounds 2>/dev/null)"
+
+# ── A6 ───────────────────────────────────────────────────────────────────────
+JUDGE=("$MISMATCH" "$CORRESP"); JUDGE_RC=0; USED=3
+_run
+assert_eq "[A6] round 1 is given the stage's calls" "4" "$(cat "$TEST_TEMP_DIR/author-budget-1" 2>/dev/null)"
+assert_eq "[A6] round 2 is given only the calls round 1 left" "1" "$(cat "$TEST_TEMP_DIR/author-budget-2" 2>/dev/null)"
+assert_eq "[A6] ...and corresponding then passes" "pass" "$OUTCOME"
+
+# ── A7 ───────────────────────────────────────────────────────────────────────
+JUDGE=("$MISMATCH"); JUDGE_RC=0; USED=4
+_run
+assert_eq "[A7] no calls left: no round 2" "1" "$CALLS"
+assert_eq "[A7] ...the outcome is fail" "fail" "$OUTCOME"
+assert_eq "[A7] ...rc 0 (the stage finished)" "0" "$RC"
+assert_contains "[A7] ...and the result lists the finding" "$FINDINGS" "SPEC-1"
+USED=1
+
+# ── A8 ───────────────────────────────────────────────────────────────────────
+JUDGE=("$CORRESP"); JUDGE_RC=0
+_run
+_AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
+assert_contains "[A8] the author is told to run nothing" "$_AP" "Do not run anything"
+assert_contains "[A8] ...naming tests, lint and the suite" "$_AP" "no tests, no lint, no test suite"
+assert_contains "[A8] it may read the existing tests and test helpers" "$_AP" \
+    "You may read the existing tests and the repository's test helpers"
+assert_contains "[A8] ...not the code the change is about" "$_AP" "do not read the code this change is about"
+assert_eq "[A8] it is no longer told to open the code that writes the data" "0" \
+    "$(grep -c 'open the code that writes it' <<< "$_AP" || true)"
 
 # ── A5 ───────────────────────────────────────────────────────────────────────
 # shellcheck source=../../core/pipeline/template.sh

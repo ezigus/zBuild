@@ -108,12 +108,15 @@ _acceptance_strip_comment() {
 # in the predicate. Stripping it leaves a bare label that reads as a vacuous
 # test, and a reader will (correctly) report exactly that about the mutilation.
 #
-# The stanza is the contiguous non-blank run containing the tagged line.
-# Comments are stripped: pasting the SPEC sentence beside a weak assertion is
-# the one gaming vector this input has.
+# The stanza is the contiguous non-blank run containing the tagged line, and
+# the test's setup travels with it: every line above it back to the previous
+# assertion's stanza, blank lines or not (#1944 run 40329284881: a judge shown
+# the stanza alone called it partial for what its setup established). The
+# tagged lines are marked ">> ". Comments are stripped: pasting the SPEC
+# sentence beside a weak assertion is the one gaming vector this input has.
 acceptance_find_assertion_sources() {
     local repo_root="${1:-}" spec_id="${2:-}"; shift 2
-    local tf abs i n a b line first=1
+    local tf abs i n a b j line first=1 tag
     for tf in "$@"; do
         [[ -z "$tf" ]] && continue
         abs="$repo_root/$tf"
@@ -122,11 +125,21 @@ acceptance_find_assertion_sources() {
         while IFS= read -r line || [[ -n "$line" ]]; do lines+=("$line"); done < "$abs"
         n=${#lines[@]}
         local -a starts=()
+        tag="$(acceptance_spec_tag "$spec_id")"
         for (( i = 0; i < n; i++ )); do
-            [[ "${lines[i]}" == *"$(acceptance_spec_tag "$spec_id")"* ]] || continue
+            [[ "${lines[i]}" == *"$tag"* ]] || continue
             [[ "${lines[i]}" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]] || continue
             a=$i; while (( a > 0 )) && [[ -n "${lines[a-1]// }" ]]; do (( a-- )); done
             b=$i; while (( b < n - 1 )) && [[ -n "${lines[b+1]// }" ]]; do (( b++ )); done
+            # The setup: back to the end of the previous assertion's stanza.
+            j=$(( a - 1 ))
+            while (( j >= 0 )) && ! [[ "${lines[j]}" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]]; do (( j-- )); done
+            if (( j >= 0 )); then
+                while (( j < a - 1 )) && [[ -n "${lines[j+1]// }" ]]; do (( j++ )); done
+                a=$(( j + 1 ))
+            else
+                a=0
+            fi
             # One stanza is emitted once however many tagged lines it holds.
             local seen=0 s
             for s in ${starts[@]+"${starts[@]}"}; do [[ "$s" == "$a:$b" ]] && seen=1; done
@@ -136,7 +149,11 @@ acceptance_find_assertion_sources() {
             first=0
             for (( ; a <= b; a++ )); do
                 line="$(_acceptance_strip_comment "${lines[a]}")"
-                [[ -n "${line// }" ]] && printf '%s\n' "$line"
+                [[ -n "${line// }" ]] || continue
+                if [[ "${lines[a]}" == *"$tag"* && "${lines[a]}" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]]; then
+                    line=">> ${line#"${line%%[![:space:]]*}"}"
+                fi
+                printf '%s\n' "$line"
             done
         done
     done

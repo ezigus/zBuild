@@ -16,6 +16,10 @@
 #   SPEC-7 how-the-change-is-verified requirements are not gaps (#2176)
 #   SPEC-8 a SPEC that demands less than its requirement does not cover it (#1849)
 #   SPEC-9 an already-done SPEC covers its requirement (#2304, ADR-069 §7)
+#   J1     several SPECs that name one requirement are judged together (#1801
+#          run 40351795413: one SPEC per requirement pushed design to join
+#          several claims into one SPEC, which test-author's check then called
+#          partial)
 #   E1/E2  every gap in one answer, not capped (#2245); E3 three gaps travel
 #   #2032  a failed call is classified, even after a verdict was printed
 #   #2366  an answer with no verdict is unusable
@@ -84,6 +88,9 @@ assert_contains "[SPEC-8] a narrower SPEC leaves the requirement uncovered" "$_P
 assert_contains "[SPEC-8] ...naming the ways a SPEC narrows" "$_P" "a subset of the cases"
 assert_contains "[SPEC-9] an already-done SPEC covers its requirement" "$_PS" \
     "A SPEC tagged [done] says the code already does it. A requirement it covers counts as covered"
+assert_contains "[J1] several SPECs may cover one requirement together" "$_PS" \
+    "Several SPECs may cover one requirement together"
+assert_contains "[J1] ...judged together" "$_PS" "judge every SPEC that names it, together"
 assert_contains "[E1] it asks for EVERY uncovered requirement" "$_P" "EVERY requirement"
 assert_contains "[E1] ...not only the first found" "$_P" "not only the first"
 assert_contains "[E1] ...because the next round fixes only what is listed" "$_P" "only what you list"

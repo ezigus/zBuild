@@ -273,6 +273,10 @@ path/to/file2
 3. A \`\`\`acceptance block listing what this change must deliver. Each line is
    one requirement: a permanent number (SPEC-1, SPEC-2, …), a status, and ONE
    behaviour someone could observe and test.
+   A requirement that asks for several things gets one SPEC per thing, each
+   naming the same R-n in covers: — never one SPEC that joins them with "and" or ";".
+   Each SPEC is checked against one assertion, so a SPEC that promises two
+   things is never fully met by it.
 
    The status says what work the requirement needs. Look at the code before you choose:
    - \`SPEC-n[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.

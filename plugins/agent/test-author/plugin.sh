@@ -247,7 +247,7 @@ An assertion for every requirement below, written to its testfile(s)${sup_block:
 
 Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass. Check the new value or file itself — the output, the field, the file's content — not only that the step finished without an error: a test that only checks that something ran passes on the old code too.
 
-A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code: open the code that writes it and use what it really produces. Never make such data by hand: hand-made data holds whatever its author assumed.
+A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code, never by hand: hand-made data holds whatever its author assumed. Find how the existing tests and test helpers already make it, and do the same.
 
 Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. ${_spec_tag1}. Tags that carry THIS issue's number are yours: one already there whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
 
@@ -264,7 +264,8 @@ The requirements below. Write what each requirement DEMANDS, not what some imple
 REQUIREMENTS:
 ${spec_block}${sup_section}
 ## What you must not do
-- You cannot see the implementation, and you must not guess at it.
+- You cannot see the implementation, and you must not guess at it. You may read the existing tests and the repository's test helpers; do not read the code this change is about.
+- Do not run anything: no tests, no lint, no test suite. You write the assertions; the test stage runs them, and an assertion is expected to fail on the code as it is today.
 - Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
 - A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
 EOF
@@ -295,6 +296,9 @@ EOF
     local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || printf '10')"
     [[ "$max_iter" =~ ^[0-9]+$ && "$max_iter" -gt 0 ]] || max_iter=10
     [[ -n "${ZBUILD_CYCLE_ITER:-}" && "$max_iter" -gt 15 ]] && max_iter=15
+    # The rounds share these calls: the stage's time limit is sized for them,
+    # not for a fresh set each round (#1801 run 40329281392 was killed in round 2).
+    local _calls_left="$max_iter"
     while :; do
     # ADR-067 §8: the stage's three parts and the engine's blocks — its budget
     # and notes file among the engine's rules — in the one prompt order.
@@ -316,9 +320,12 @@ ${_ta_limits}")"; then
     # implementation, which this stage must not see (#2022; review #2229).
     local _ctx; _ctx="$( { acceptance_list_testfiles "$design"; acceptance_list_supersedes "$design" | cut -f1; } 2>/dev/null \
         | awk 'NF && !seen[$0]++' | paste -sd, - || true)"
-    route_to_model_loop "$tier" "$prompt_file" "$repo" "$max_iter" \
+    _ROUTE_LOOP_ITERATIONS=0
+    route_to_model_loop "$tier" "$prompt_file" "$repo" "$_calls_left" \
         --context-paths "${_ctx:-.zbuild-no-testfiles}" || rc=$?
     rm -f "$prompt_file"
+    [[ "${_ROUTE_LOOP_ITERATIONS:-0}" =~ ^[0-9]+$ ]] || _ROUTE_LOOP_ITERATIONS=1
+    _calls_left=$(( _calls_left - (_ROUTE_LOOP_ITERATIONS > 0 ? _ROUTE_LOOP_ITERATIONS : 1) ))
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"
 
     if [[ "$_end" != "done_sentinel" ]]; then
@@ -363,11 +370,11 @@ ${_ta_limits}")"; then
     fi
     [[ ${#_TA_CORR_FINDINGS[@]} -eq 0 ]] && break
     _ta_emit "test_author.checks.failed" "round=$_round" "rounds=$_rounds" "findings=${#_TA_CORR_FINDINGS[@]}"
-    if (( _round >= _rounds )); then
+    if (( _round >= _rounds || _calls_left < 1 )); then
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), still failing their check"
         _ta_write_result "$art" "fail" \
-            "${#_TA_CORR_FINDINGS[@]} assertion(s) still do not test what their SPEC says after $_rounds rounds" "$n" \
+            "${#_TA_CORR_FINDINGS[@]} assertion(s) still do not test what their SPEC says after $_round round(s)" "$n" \
             "$(printf '%s\n' "${_TA_CORR_FINDINGS[@]}" | stage_findings_json)"
         return 0
     fi

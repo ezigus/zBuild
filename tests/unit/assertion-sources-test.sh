@@ -17,6 +17,11 @@
 #                    there corrupts the very input being judged
 #   SPEC-5 [guard] : acceptance_find_assertion_label is UNCHANGED — the operator
 #                    readout and the goldens that pin it are not in scope
+#   SPEC-6 [change]: the test's setup travels too — everything above the tagged
+#                    stanza back to the previous assertion, blank lines or not —
+#                    and the tagged lines are marked ">> " (#1944 run
+#                    40329284881: the judge saw only the stanza and called the
+#                    assertion partial for what its setup established)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,6 +66,23 @@ assert_eq "[SPEC-3][change] the trailing comment is stripped" \
     "0" "$(grep -c 'SPEC-1 says the boundary holds' <<< "$OUT" || true)"
 assert_contains "[SPEC-4][guard] a '#' inside quotes is not treated as a comment" \
     "$OUT" "pre-#141 flat path"
+
+# ── SPEC-6 ───────────────────────────────────────────────────────────────────
+cat > "$R/tests/setup-test.sh" <<'FIX'
+assert_eq "[SPEC-2] an earlier test" "1" "$a"
+
+run_the_thing --limit 4
+sleep_past_the_limit
+
+state="$(read_state)"
+assert_eq "[SPEC-3] the status is still the stage's" "complete" "$state"
+FIX
+OUT6="$(acceptance_find_assertion_sources "$R" "SPEC-3" "tests/setup-test.sh" 2>/dev/null || true)"
+assert_contains "[SPEC-6][change] the setup above the stanza travels with it" "$OUT6" "run_the_thing --limit 4"
+assert_contains "[SPEC-6][change] ...all of it" "$OUT6" "sleep_past_the_limit"
+assert_contains "[SPEC-6][change] the tagged line is marked" "$OUT6" '>> assert_eq "[SPEC-3] the status is still'
+assert_eq "[SPEC-6][guard] the previous assertion is NOT swept in" \
+    "0" "$(grep -c 'an earlier test' <<< "$OUT6" || true)"
 
 # The operator readout is a different job and stays exactly as it was.
 LBL="$(acceptance_find_assertion_label "$R" "SPEC-1" "tests/sample-test.sh" 2>/dev/null || true)"

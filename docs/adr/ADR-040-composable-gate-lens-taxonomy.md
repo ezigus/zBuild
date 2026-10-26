@@ -520,6 +520,29 @@ checked by test (#2372).
 Enforced by: `tests/unit/test-author-checks-own-output-test.sh` A1–A5;
 `tests/unit/test-author-correspondence-test.sh`.
 
+### Amendment (2026-10-26) — one claim per SPEC, one call budget, the whole test judged
+
+#1801 and #1944 (runs 40329281392, 40329284881, 40390919951, 40393999128) failed test-author on every
+run. Three causes, each fixed here:
+
+1. **One claim per SPEC; several SPECs may cover one requirement.** Design's coverage call rejected a
+   SPEC that demanded less than its requirement, so design joined several claims into one SPEC — and
+   test-author's check, which judges each SPEC against one assertion, called that assertion `partial`.
+   Design is now told: a requirement that asks for several things gets one SPEC per thing, each naming
+   the same R-n in `covers:`, never one SPEC joining them with "and" or ";". The coverage call judges
+   every SPEC that names a requirement together; together they must demand all of it.
+2. **The check sees the test, not only the assertion's stanza.** The judge is shown each tagged
+   assertion with its setup — every line above its stanza back to the previous assertion's stanza,
+   blank lines or not — and the tagged lines marked `>> `. Comments are still stripped.
+3. **The rounds share one budget of model calls.** Each round used to start the author's call loop
+   with the full `router.max_iterations`, so two rounds could make twice the calls the stage's time
+   limit is sized for, and round 2 was killed by it. Round 2 gets only the calls round 1 left; with
+   none left there is no round 2, and the outcome is `fail` with the check's findings.
+
+Enforced by: `tests/unit/design-acceptance-block-test.sh` J1; `tests/unit/design-coverage-test.sh` J1;
+`tests/unit/assertion-sources-test.sh` SPEC-6; `tests/unit/test-author-correspondence-test.sh` W1;
+`tests/unit/test-author-checks-own-output-test.sh` A6, A7.
+
 ### Amendment (2026-10-15, #2371) — build checks its own change for secrets
 
 secret-scan is retired as a stage, and build does the scan itself (`plugins/agent/build/lib/secrets.sh`,
