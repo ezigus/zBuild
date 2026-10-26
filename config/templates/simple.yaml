@@ -203,10 +203,10 @@ plan:
 design:
   gate: auto
   roles: [designer]
-  # The whole stage, every call and check inside it (one 10-minute design call
-  # and a 10-minute coverage call, plus a few minutes); the engine stops it
+  # The whole stage, every call and check inside it (one 20-minute design call
+  # and a 20-minute coverage call, plus a few minutes); the engine stops it
   # here. Each run is a new stage, with its own limit. The default is 900.
-  timeout_s: 1500
+  timeout_s: 2700
   # ADR-068 §8: a run whose design cannot be used is run again, handed its
   # failures and the last good design — 3 runs in all.
   retry: 2
@@ -216,7 +216,8 @@ design:
     destinations: [file, stdout]
     tail_lines: 200
   router:
-    timeout_s: 600
+    # #1944: three 600s calls in a row ran out of time on a resumed run.
+    timeout_s: 1200
     max_turns: 0
 
 # ─── build (leaf, cycle member) ──────────────────────────────────────────────
