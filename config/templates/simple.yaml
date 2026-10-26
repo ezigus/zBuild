@@ -318,6 +318,7 @@ pr:
 release:
   gate: auto
   roles: [teardown]
+  timeout_s: 30
   router:
     timeout_s: 30
   io:
@@ -336,6 +337,7 @@ release:
 persist:
   gate: auto
   roles: [persist]
+  timeout_s: 120
   router:
     timeout_s: 120
   io:

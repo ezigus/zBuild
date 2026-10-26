@@ -21,6 +21,9 @@ _ZBUILD_ORCH_LOCAL_ROOT="$(cd "$_ZBUILD_ORCH_LOCAL_DIR/../.." && pwd)"
 if ! declare -F warn >/dev/null 2>&1; then
     source "$_ZBUILD_ORCH_LOCAL_ROOT/scripts/lib/helpers.sh"
 fi
+# proc-group.sh supplies zbuild_pg_kill for the process-group kill path (#1801).
+# shellcheck source=../../scripts/lib/proc-group.sh
+source "$_ZBUILD_ORCH_LOCAL_ROOT/scripts/lib/proc-group.sh"
 
 # _orch_local_make_slot_id — collision-resistant slot id (epoch-ns + PID + rand)
 _orch_local_make_slot_id() {
@@ -30,13 +33,15 @@ _orch_local_make_slot_id() {
 }
 
 # _orch_local_kill_slot <sig> <wrapper_pid> [inner_pid]
-# Sends signal to both the wrapper PID and the inner work-unit PID (if known).
+# Kills the wrapper's entire process group (TERM then KILL via zbuild_pg_kill)
+# so children that ignore TERM are also terminated (#1801, ADR-011 §kill-path).
+# The sig argument is accepted for call-site compatibility but zbuild_pg_kill
+# handles its own TERM→KILL escalation internally.
 _orch_local_kill_slot() {
-    local sig="$1"
     local wrapper_pid="$2"
     local inner_pid="${3:-}"
-    kill "-${sig}" "$wrapper_pid" 2>/dev/null || true
-    [[ -n "$inner_pid" ]] && kill "-${sig}" "$inner_pid" 2>/dev/null || true
+    zbuild_pg_kill "$wrapper_pid"
+    [[ -n "$inner_pid" ]] && zbuild_pid_kill "$inner_pid" || true
 }
 
 # _orch_local_dispatch_workunit <pool_dir> <pid_subdir> <work_unit> <caller_tag>
@@ -112,7 +117,7 @@ _orch_local_collect_results() {
 
     [[ -d "${pool_dir}/${pid_subdir}" ]] || { _ORCH_COLLECT_OUTCOME="passed"; return 0; }
 
-    local pass_count=0 fail_count=0
+    local pass_count=0 fail_count=0 timed_out_flag=false
     local deadline=0
     [[ "$timeout_s" -gt 0 ]] && deadline=$(( ${EPOCHSECONDS:-$(date +%s)} + timeout_s ))
 
@@ -128,9 +133,9 @@ _orch_local_collect_results() {
         while [[ ! -f "${result_base}.exit" ]]; do
             if [[ "$timeout_s" -gt 0 && "${EPOCHSECONDS:-$(date +%s)}" -ge "$deadline" ]]; then
                 _orch_local_kill_slot TERM "$wrapper_pid" "$inner_pid"
-                sleep 0.5
                 _orch_local_kill_slot KILL "$wrapper_pid" "$inner_pid"
                 echo "124" > "${result_base}.exit"
+                timed_out_flag=true
                 break
             fi
             sleep 0.1  # fork-budget-exempt: polls until the slot exits — the count is how long it ran (#2236)
@@ -150,6 +155,9 @@ _orch_local_collect_results() {
         rm -rf "$pool_dir"
         _ORCH_COLLECT_OUTCOME="passed"
         return 0
+    elif $timed_out_flag; then
+        _ORCH_COLLECT_OUTCOME="timed_out"
+        return 1
     elif [[ "$pass_count" -gt 0 ]]; then
         _ORCH_COLLECT_OUTCOME="partial"
         return 1

@@ -11,13 +11,11 @@ ADR-007-test-strategy.md
 ADR-008-dependency-policy.md
 ADR-009-platform-aware-modularity.md
 ADR-010-ci-cli-parity.md
-ADR-011-pluggable-backends.md
 ADR-012-test-tiering-and-ci-gating.md
 ADR-013-canonical-stage-list.md
 ADR-014-backend-init-timing.md
 ADR-015-stage-io-capture.md
 ADR-016-per-repository-template-resolution.md
-ADR-017-per-stage-router-config.md
 ADR-018-stage-invocation-modes.md
 ADR-019-review-fail-closed-on-test-failure.md
 ADR-020-deferred-tracker.md

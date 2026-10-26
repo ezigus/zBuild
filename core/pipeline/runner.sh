@@ -13,6 +13,9 @@ source "$_ZBUILD_ROOT/core/contract/version.sh"
 source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/vision.sh
 source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
+# proc-group.sh supplies zbuild_pg_kill for the always-run watchdog (#1801).
+# shellcheck source=../../scripts/lib/proc-group.sh
+source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 # ADR-025 (Wave 15-B #684) abort-propagation helpers — sourced before any
 # dispatch site can call them; idempotent source guard inside.
 source "$_ZBUILD_ROOT/scripts/lib/abort-propagation.sh"
@@ -2490,9 +2493,7 @@ main() {
                 continue
             fi
 
-            local _ar_to_var="_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
-            _ar_to="${!_ar_to_var:-}"
-            [[ "$_ar_to" =~ ^[0-9]+$ && "$_ar_to" -gt 0 ]] || _ar_to="${ZBUILD_RELEASE_TIMEOUT:-30}"
+            _ar_to="$(template_stage_time_limit "$_ar_stage")"
 
             # Bounded, because this runs inside the EXIT trap: a hook that blocks
             # would turn a Ctrl-C into a hang — the exact class of bug this
@@ -2511,16 +2512,15 @@ main() {
             # running the stage hooks, and anything it spawned, lived on after
             # the run and wrote into its state minutes later. `set -m` (as the
             # router's model spawn does, #2056) makes each job a process-group
-            # leader, so `kill -- -<pid>` reaches the whole tree — TERM, then
-            # KILL after a short grace for a hook that traps TERM. The watchdog
-            # gets its own group too, so cancelling it leaves no `sleep` behind.
+            # leader, so zbuild_pg_kill reaches the whole tree — TERM then KILL
+            # after a grace for a hook that traps TERM. The watchdog gets its own
+            # group too, so cancelling it leaves no `sleep` behind. (#1801)
             (
                 export ZBUILD_TEARDOWN_SCOPE=release
                 set -m
                 plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
                 _ar_pid=$!
-                ( set +m; sleep "$_ar_to"; kill -TERM -- -"$_ar_pid" 2>/dev/null || true
-                  sleep 2; kill -KILL -- -"$_ar_pid" 2>/dev/null || true ) &
+                ( set +m; sleep "$_ar_to"; zbuild_pg_kill "$_ar_pid" ) &
                 _wd_pid=$!
                 set +m
                 # A signal to the run's group (`timeout` sends its TERM there a
@@ -2530,8 +2530,8 @@ main() {
                 while kill -0 "$_ar_pid" 2>/dev/null; do wait "$_ar_pid" 2>/dev/null || true; done
                 # #2333: the leader exiting does not mean its group did. A member
                 # that ignored TERM would lose its KILL when the watchdog is
-                # cancelled below, so KILL the group now; a no-op when it is gone.
-                kill -KILL -- -"$_ar_pid" 2>/dev/null || true
+                # cancelled below, so kill the group now; a no-op when it is gone.
+                zbuild_pg_kill "$_ar_pid"
                 kill -TERM -- -"$_wd_pid" 2>/dev/null || true
                 wait "$_wd_pid" 2>/dev/null || true
             ) >/dev/null 2>&1 || true

@@ -335,12 +335,16 @@ _strategy_run_map() {
         if [[ $batch_dispatched -gt 0 ]]; then
             local collect_rc=0
             _ORCH_COLLECT_OUTCOME=""
-            orch_collect "$sub_pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
+            orch_collect "$sub_pool_id" --timeout "$(template_stage_time_limit "$stage")" || collect_rc=$?
 
             if [[ $collect_rc -eq 0 ]]; then
                 success_count=$(( success_count + 1 ))
                 # #1906: artifact enforcement already ran per work unit inside
                 # plugin_hook_call (scan_plugin_outputs).
+            elif [[ "${_ORCH_COLLECT_OUTCOME:-}" == "timed_out" ]]; then
+                local _map_limit; _map_limit="$(template_stage_time_limit "$stage")"
+                warn "map: stage '${stage}' timed out after ${_map_limit}s" || true
+                fail_count=$(( fail_count + 1 ))
             elif [[ "${_ORCH_COLLECT_OUTCOME:-}" == "partial" ]]; then
                 success_count=$(( success_count + 1 ))
                 fail_count=$(( fail_count + 1 ))

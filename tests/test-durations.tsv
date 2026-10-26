@@ -608,7 +608,6 @@
 0	plugins/tool/memory-ruflo/tests/memory-ruflo-adversarial-test.sh
 0	plugins/tool/memory-sqlite/tests/memory-sqlite-test.sh
 0	plugins/tool/orch-mock/tests/orch-mock-test.sh
-0	plugins/tool/orch-sequential/tests/orch-sequential-test.sh
 0	plugins/tool/pr-open/tests/pr-open-body-test.sh
 0	tests/e2e/claim-race-test.sh
 0	tests/e2e/vision-cli-test.sh
