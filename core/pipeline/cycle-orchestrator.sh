@@ -13,6 +13,8 @@
 #       _CYCLE_LAST_TERMINATED_REASON  string enum
 #       _CYCLE_LAST_ITERATIONS         int
 #       _CYCLE_LAST_HISTORY_FILE       absolute path
+#       _CYCLE_LAST_MEMBER_HALT        "<word>: <reason>" when a member's result
+#                                      halted the run (ADR-068 §3), else empty
 #
 # Internal helpers (prefix `_cycle_`):
 #   _cycle_load_template / _cycle_iter_dispatch / _cycle_install_traps /
@@ -78,6 +80,7 @@ readonly _CYCLE_DEFAULT_DIVERGENCE_WINDOW=2
 _CYCLE_LAST_TERMINATED_REASON=""
 _CYCLE_LAST_ITERATIONS=0
 _CYCLE_LAST_HISTORY_FILE=""
+_CYCLE_LAST_MEMBER_HALT=""
 _CYCLE_VELOCITY_PLATEAU_WINDOW=0  # 0 = disabled until template sets velocity_plateau.window
 _CYCLE_LAST_PLATEAU_EVIDENCE=""
 

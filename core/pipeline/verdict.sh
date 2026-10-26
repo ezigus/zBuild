@@ -455,7 +455,14 @@ runner_read_stage_reason_v() {
     # ADR-058 C12 (amended 2026-10-26): a halt for changing the repository says
     # so — the stage's own result describes its work, not why the run stopped
     # (#1801 run 40390919951 halted saying "21 of 818 tests failed").
-    if [[ -s "${state_dir}/runtime/write-boundary-violated" ]]; then
+    # Only for the stage that offended twice: the marker is the run's, the
+    # offence count is the stage's own.
+    local _wbk="${stage:-stage}"; _wbk="${_wbk//[^A-Za-z0-9._-]/_}"   # zbuild_stage_key
+    local _wbn=0
+    [[ -f "${state_dir}/runtime/write-boundary.${_wbk}.offences" ]] \
+        && _wbn="$(<"${state_dir}/runtime/write-boundary.${_wbk}.offences")"
+    [[ "$_wbn" =~ ^[0-9]+$ ]] || _wbn=0
+    if (( _wbn >= 2 )) && [[ -s "${state_dir}/runtime/write-boundary-violated" ]]; then
         local _wbv; _wbv="$(<"${state_dir}/runtime/write-boundary-violated")"
         _rsro="${stage} changed files in the repository that it may not change: ${_wbv}"
         return 0

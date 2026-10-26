@@ -114,6 +114,9 @@ _reason="$(runner_read_stage_reason "$JOB" "$FXJ/manifest.yaml" judge "$RC" 2>/d
 assert_contains "[D6] the halt says which stage changed the repository" "$_reason" \
     "judge changed files in the repository that it may not change"
 assert_contains "[D6] ...and which files" "$_reason" "edited.txt"
+_other="$(runner_read_stage_reason "$JOB" "$FXC/manifest.yaml" other 0 2>/dev/null)"
+assert_eq "[D6] ...and only for the stage that did it" "0" \
+    "$(grep -c 'changed files in the repository' <<< "$_other" || true)"
 
 print_test_section "D4: the count is per stage"
 rm -f "$JOB/runtime/write-boundary-violated"
