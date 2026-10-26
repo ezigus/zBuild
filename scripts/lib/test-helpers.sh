@@ -1011,6 +1011,18 @@ mock_result_line() {
 # overlay (the #978/#1270 pattern).
 
 # ── wait_for_event ────────────────────────────────────────────────────────────
+# ─── zb_test_readers_through_stubs <reader>... ───────────────────────────────
+# A test that replaces runner_read_stage_<reader> to steer a dispatch must also
+# steer the runner's in-shell reads (ADR-065 §5, round 9): this makes each named
+# reader's _v form ask the test's stub. Only stubbed readers: the real printing
+# form calls its _v form, so routing an unstubbed one would loop.
+zb_test_readers_through_stubs() {
+    local r
+    for r; do
+        eval "runner_read_stage_${r}_v() { local -n _zbt_o=\"\$1\"; shift; _zbt_o=\"\$(runner_read_stage_${r} \"\$@\")\"; }"
+    done
+}
+
 # ─── zb_test_work <trace_file> <cmd...> ──────────────────────────────────────
 # Runs <cmd> in THIS shell with every shell command it runs traced into
 # <trace_file> (ADR-065 §5: work the shell itself does, which a count of the

@@ -36,11 +36,29 @@ _vcg_defs() {
         | sort -u
 }
 
+# ─── _vcg_line_fn[_v] <grep line> — the command after the line's first `$(` ──
+# Minus any VAR=value assignment prefixes: `$(_MAX=5 _build_read_x ...)` runs
+# _build_read_x, not _MAX. Worked out by the shell: a sed per line made this
+# file start 7,600 processes (ADR-065 §5, round 9). SPEC-10 holds it to the sed
+# it replaced. A line whose first `$` does not open `$(` is taken whole, as the
+# sed's unmatched pattern left it.
+_VCG_OPEN_RE='^[^$]*[$][(][[:space:]]*'
+_VCG_ASSIGN_RE='^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+'
+_vcg_line_fn() { local _o; _vcg_line_fn_v _o "$1"; printf '%s' "$_o"; }
+_vcg_line_fn_v() {
+    local -n _vlo="$1"
+    local _vl_cmd="$2"
+    [[ "$_vl_cmd" =~ $_VCG_OPEN_RE ]] && _vl_cmd="${_vl_cmd:${#BASH_REMATCH[0]}}"
+    while [[ "$_vl_cmd" =~ $_VCG_ASSIGN_RE ]]; do _vl_cmd="${_vl_cmd:${#BASH_REMATCH[0]}}"; done
+    _vlo="${_vl_cmd%%[^A-Za-z0-9_]*}"
+}
+
 # ─── _vcg_scan <root> [dir...] — report "<fn> <file>:<line>" per violation ───
 _vcg_scan() {
     local _root="$1"; shift
-    local _defs; _defs="$(_vcg_defs "$_root")"
-    local _line _file _rest _lno _cmd _fn
+    local -A _defs=()
+    local _d; while IFS= read -r _d; do [[ -n "$_d" ]] && _defs[$_d]=1; done < <(_vcg_defs "$_root")
+    local _line _file _rest _lno _fn
     # Same exclusions as sigpipe-antipattern-guard-test.sh (#1884): a COMMENT is
     # not executed, this guard's own file carries the pattern as documentation
     # and fixtures rather than as live calls, and legacy-DoNotUse/ is frozen.
@@ -50,13 +68,7 @@ _vcg_scan() {
     | { grep -v '/legacy-DoNotUse/' || true; } \
     | while IFS= read -r _line; do
         _file="${_line%%:*}"; _rest="${_line#*:}"; _lno="${_rest%%:*}"
-        # What follows the first `$(`, minus any VAR=value assignment prefixes:
-        # `$(_MAX=5 _build_read_x ...)` runs _build_read_x, not _MAX.
-        _cmd="$(sed -E 's/^[^$]*\$\([[:space:]]*//' <<< "$_line")"
-        while [[ "$_cmd" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+ ]]; do
-            _cmd="$(sed -E 's/^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+//' <<< "$_cmd")"
-        done
-        _fn="$(sed -E 's/[^A-Za-z0-9_].*$//' <<< "$_cmd")"
+        _vcg_line_fn_v _fn "$_line"
         # #2013: the old rule was `[[ "$_fn" == _* ]]`, chosen to keep the
         # false-positive budget at zero. It cost the guard its own bug class —
         # `zbuild_engine_tmp` was deleted in #2017 and seven files went on
@@ -74,7 +86,7 @@ _vcg_scan() {
         # Anything surviving all three is a call that silently yields "".
         [[ "$_fn" == *_* ]] || continue
         command -v "$_fn" >/dev/null 2>&1 && continue
-        grep -qx "$_fn" <<< "$_defs" || printf '%s %s:%s\n' "$_fn" "${_file#"$_root"/}" "$_lno"
+        [[ -n "${_defs[$_fn]+x}" ]] || printf '%s %s:%s\n' "$_fn" "${_file#"$_root"/}" "$_lno"
     done | sort -u
 }
 
@@ -180,6 +192,52 @@ c="$(read -r _x 2>/dev/null || true)"
 FX
 _vcg_bi="$(_vcg_scan "$_vcg_fx" "$_vcg_fx")"
 assert_eq "[SPEC-8] builtins are not flagged" "" "$_vcg_bi"
+
+# ─── SPEC-9: the scan's work does not grow with the lines it reads ──────────
+# It reads every swallowed call in the tree (~3,700 lines); a sed per line made
+# this file start 7,600 processes (ADR-065 §5, round 9).
+_vcg_cost() {   # <n> — subshells the scan of <n> swallowed calls runs in
+    local i; : > "$_vcg_fx/good.sh"
+    for (( i = 1; i <= $1; i++ )); do
+        printf 'a%s="$(_VCG_X=1 _vcg_defined_fn %s 2>/dev/null || true)"\n' "$i" "$i" >> "$_vcg_fx/good.sh"
+    done
+    printf '_vcg_defined_fn() { :; }\n' >> "$_vcg_fx/good.sh"
+    zb_test_work "$TEST_TEMP_DIR/vcg.trace" _vcg_scan "$_vcg_fx" "$_vcg_fx"
+    zb_test_work_procs "$TEST_TEMP_DIR/vcg.trace"
+}
+_vcg_1="$(_vcg_cost 1)"; _vcg_30="$(_vcg_cost 30)"
+assert_eq "[SPEC-9] 30 lines are scanned in as many subshells as 1 ($_vcg_1)" "$_vcg_1" "$_vcg_30"
+
+# ─── SPEC-10: …and each line names the command the sed extraction named ─────
+# The extraction before SPEC-9, verbatim, over lines of every shape it meets.
+_vcg_fn_old() {
+    local _cmd
+    _cmd="$(sed -E 's/^[^$]*\$\([[:space:]]*//' <<< "$1")"
+    while [[ "$_cmd" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+ ]]; do
+        _cmd="$(sed -E 's/^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+//' <<< "$_cmd")"
+    done
+    sed -E 's/[^A-Za-z0-9_].*$//' <<< "$_cmd"
+}
+_vcg_corpus=(
+    'f.sh:1:x="$(_vcg_a 2>/dev/null || true)"'
+    'f.sh:2:x="$(  _vcg_b arg 2>/dev/null)"'
+    'f.sh:3:x="$(A=1 B=2 _vcg_c || true)"'
+    'f.sh:4:x="$(A= _vcg_d || true)"'
+    'f.sh:5:y=$z; x="$(_vcg_e || true)"'
+    'f.sh:6:x="$(_vcg_f)$(_vcg_g || true)"'
+    'f.sh:7:x="$(git log 2>/dev/null)"'
+    'f.sh:8:x="$(__vcg_h-x 2>/dev/null)"'
+    'f.sh:9:x="$(A=1)"'
+    'f.sh:10:  [[ -n "$(_vcg_i "$1" 2>/dev/null || true)" ]]'
+    'f.sh:11:x="$( (_vcg_j) || true)"'
+)
+_vcg_diff=""
+for _l in "${_vcg_corpus[@]}"; do
+    _vcg_old="$(_vcg_fn_old "$_l")"
+    _vcg_new="$(_vcg_line_fn "$_l" 2>/dev/null)"
+    [[ "$_vcg_old" == "$_vcg_new" ]] || _vcg_diff+="[$_l] sed:[$_vcg_old] now:[$_vcg_new] "
+done
+assert_eq "[SPEC-10] the same command for every shape of line" "" "$_vcg_diff"
 
 cleanup_test_env
 print_test_results

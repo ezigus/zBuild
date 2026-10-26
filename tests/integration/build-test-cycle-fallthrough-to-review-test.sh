@@ -138,6 +138,7 @@ _run_case() {
         # #1850: the leaf contract check reads the reason channel too, which
         # would report the stubbed dispatch's missing result; stub it with the verdict.
         runner_read_stage_reason() { echo ""; }
+        zb_test_readers_through_stubs verdict reason   # the dispatch reads in its shell (round 9)
         # Stub stage dispatch — write minimal artifacts for review, skip the rest.
         eval "plugin_hook_call() {
             local dir=\"\$1\" hook=\"\$2\" stage=\"\$3\" state=\"\$4\"

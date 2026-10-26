@@ -313,13 +313,13 @@ _verdict_read_result() {
     printf -v "${p}_kind" '%s' "${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
     printf -v "${p}_contract" '%s' "$_sv"
-    # NOTE: do NOT try to publish the version on a global from here. Every
-    # public reader is invoked as `x="$(runner_read_stage_...)"`, and a `$()` is
+    # NOTE: do NOT try to publish the version on a global from here. Many
+    # callers still read through `x="$(runner_read_stage_...)"`, and a `$()` is
     # a SUBSHELL — an assignment inside it never reaches the parent. A gate
     # reading such a global would silently always see the default and never
     # fire: green, and inert. That is exactly what #1823 shipped for one commit
     # before review caught it. A caller that needs one of these values reads it
-    # from a reader's stdout.
+    # from a reader (its stdout, or its _v form's variable).
     # The \001 marks the end: `$( )` strips trailing newlines, so an empty
     # reason would otherwise shift every field above it.
     printf -v "${p}_reason" '%s' "${_rr_rest%$'\001'}"
@@ -354,24 +354,32 @@ _verdict_read_result() {
 # result. Prints nothing for `ok` (and for `malformed`, which already carries its
 # own violation). Each of these used to be a lenient default — pass, warn, or
 # unknown — which is how a stage that crashed before writing anything passed.
-_verdict_unreadable_violation() {
-    case "${1:-}" in
-        no_manifest) printf 'contract_violation:no_manifest' ;;
-        no_primary)  printf 'contract_violation:no_primary' ;;
-        nonjson)     printf 'contract_violation:nonjson_primary' ;;
-        absent)      printf 'contract_violation:missing_result' ;;
+_verdict_unreadable_violation() { local _vuv; _verdict_unreadable_violation_v _vuv "${1:-}"; printf '%s' "$_vuv"; }
+_verdict_unreadable_violation_v() {
+    local -n _vuvo="$1"
+    case "${2:-}" in
+        no_manifest) _vuvo='contract_violation:no_manifest' ;;
+        no_primary)  _vuvo='contract_violation:no_primary' ;;
+        nonjson)     _vuvo='contract_violation:nonjson_primary' ;;
+        absent)      _vuvo='contract_violation:missing_result' ;;
+        *)           _vuvo='' ;;
     esac
 }
 
 # ─── runner_read_stage_verdict <state_dir> <manifest> <stage> <rc> ───────────
 # Returns the verdict class. Side-effect: emits stage.verdict.missing when a
 # manifest declares a primary output but the artifact is missing/malformed.
-runner_read_stage_verdict() {
+runner_read_stage_verdict() { local _rsv; runner_read_stage_verdict_v _rsv "$@"; echo "$_rsv"; }
+# runner_read_stage_verdict_v <var> <state_dir> <manifest> <stage> <rc> — the
+# same into <var>, in this shell: a dispatch reads it, and the readers below,
+# every time (ADR-065 §5, round 9). Each _v form's locals are its own.
+runner_read_stage_verdict_v() {
+    local -n _rsvo="$1"; shift
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
 
     # rc always wins.
     if [[ "$rc" -ne 0 ]]; then
-        echo "fail"; return 0
+        _rsvo="fail"; return 0
     fi
 
     local _r_state _r_contract _r_verdict _r_disp _r_reason _r_viol _r_path _r_present _r_kind
@@ -382,19 +390,19 @@ runner_read_stage_verdict() {
     # _cycle_detect_blocked halts on it with no predicate or template change —
     # and carries its detail on the .reason channel. #1850: leaving no readable
     # result at rc 0 is one too.
-    [[ -n "$_r_viol" ]] || _r_viol="$(_verdict_unreadable_violation "$_r_state")"
+    [[ -n "$_r_viol" ]] || _verdict_unreadable_violation_v _r_viol "$_r_state"
     if [[ -n "$_r_viol" ]]; then
         eb_emit_event "stage.verdict.contract_violation" \
             "stage=$stage" "reason=$_r_viol" "result_contract=$_r_contract" \
             "path=$_r_path" 2>/dev/null || true
-        echo "error"; return 0
+        _rsvo="error"; return 0
     fi
 
     # A v2 result always carries a verdict (an empty one is a violation above).
     local raw_verdict="$_r_verdict"
 
     local cls
-    cls="$(verdict_classify "$raw_verdict")"
+    case "$raw_verdict" in pass) cls=pass ;; fail|error) cls=fail ;; *) cls=unknown ;; esac   # verdict_classify
     # #550: preserve structural-failure raw verdicts so the cycle blocked
     # predicate (_cycle_detect_blocked) can distinguish them from generic
     # "fail" (which means "test ran and failed — keep iterating").
@@ -404,15 +412,15 @@ runner_read_stage_verdict() {
     # every outcome that is not pass or fail to `error`; corrupt_diff and block
     # can no longer occur.)
     if [[ "$raw_verdict" == error ]]; then
-        echo "$raw_verdict"; return 0
+        _rsvo="$raw_verdict"; return 0
     fi
     if [[ "$cls" == "unknown" ]]; then
         eb_emit_event "pipeline.indicator.unknown_verdict" \
             "stage=$stage" "raw_verdict=$raw_verdict" "path=$_r_path" 2>/dev/null || true
         # Unknown verdict on a declared primary → warn (informational drift).
-        echo "warn"; return 0
+        _rsvo="warn"; return 0
     fi
-    echo "$cls"
+    _rsvo="$cls"
 }
 
 # ─── runner_read_stage_reason <state_dir> <manifest> <stage> <rc> ───────────
@@ -424,7 +432,9 @@ runner_read_stage_verdict() {
 #
 # Side-effects: NONE here. No events emitted; the classified verdict reader
 # already covered diagnostic events for this dispatch pass.
-runner_read_stage_reason() {
+runner_read_stage_reason() { local _rsr; runner_read_stage_reason_v _rsr "$@"; printf '%s' "$_rsr"; }
+runner_read_stage_reason_v() {
+    local -n _rsro="$1"; shift
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
     # ADR-054 (#1821): the `rc != 0 → echo ""` early return is GONE. It discarded
     # the reason for exactly the dispatches that needed explaining — a plugin
@@ -439,10 +449,10 @@ runner_read_stage_reason() {
     # rc 0, leaving no readable result is one (#1850); at rc≠0 the stage died,
     # and the blank is the honest answer #1823's classification keys on.
     if [[ -z "$_n_viol" && "$rc" -eq 0 ]]; then
-        _n_viol="$(_verdict_unreadable_violation "$_n_state")"
+        _verdict_unreadable_violation_v _n_viol "$_n_state"
     fi
-    if [[ -n "$_n_viol" ]]; then printf '%s' "$_n_viol"; return 0; fi
-    printf '%s' "$_n_reason"
+    if [[ -n "$_n_viol" ]]; then _rsro="$_n_viol"; return 0; fi
+    _rsro="$_n_reason"
 }
 
 # ─── runner_read_stage_verdict_raw <state_dir> <manifest> <stage> <rc> ───────
@@ -468,13 +478,15 @@ runner_read_stage_reason() {
 # diagnostic events (stage.verdict.missing, pipeline.indicator.unknown_verdict)
 # fire exactly once for the artifact — emitting them here too would double-
 # count.
-runner_read_stage_verdict_raw() {
+runner_read_stage_verdict_raw() { local _rsw; runner_read_stage_verdict_raw_v _rsw "$@"; printf '%s' "$_rsw"; }
+runner_read_stage_verdict_raw_v() {
+    local -n _rswo="$1"; shift
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
 
     # rc != 0 → no verdict semantics; mirror the classified path's "fail"
     # so cycle predicates evaluating `verdict == fail` still match.
     if [[ "$rc" -ne 0 ]]; then
-        echo "fail"; return 0
+        _rswo="fail"; return 0
     fi
 
     local _w_state _w_contract _w_verdict _w_disp _w_reason _w_viol _w_path _w_present _w_kind
@@ -484,9 +496,9 @@ runner_read_stage_verdict_raw() {
     # channel and the classified channel agree — including, since #1850, a
     # dispatch that left no readable result. Side-effect-free: the classified
     # reader already emitted the event for this dispatch pass.
-    [[ -n "$_w_viol" ]] || _w_viol="$(_verdict_unreadable_violation "$_w_state")"
-    if [[ -n "$_w_viol" ]]; then echo "error"; return 0; fi
-    printf '%s' "$_w_verdict"
+    [[ -n "$_w_viol" ]] || _verdict_unreadable_violation_v _w_viol "$_w_state"
+    if [[ -n "$_w_viol" ]]; then _rswo="error"; return 0; fi
+    _rswo="$_w_verdict"
 }
 
 # ─── runner_read_stage_report <state_dir> <manifest> <stage> <rc> (#2189) ────
@@ -500,25 +512,30 @@ runner_read_stage_verdict_raw() {
 #    reason:"…"?, scope_files:[…]?, owned_files:[…]?, wiring_files:[…]?}
 # Fields are read from `data.*` first, then the legacy top-level names
 # (files_changed / lines_added / lines_removed / scope_expansion_request).
-runner_read_stage_report() {
+runner_read_stage_report() { local _rsp; runner_read_stage_report_v _rsp "$@"; printf '%s' "$_rsp"; }
+runner_read_stage_report_v() {
+    local -n _rspo="$1"; shift
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
     local _p_state _p_contract _p_verdict _p_disp _p_reason _p_viol _p_path _p_present _p_kind
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _p
     # Only a result this run wrote has a report (ADR-068 §8).
-    [[ "$_p_state" == ok ]] || { printf '{}'; return 0; }
-    _verdict_report_from_file "$_p_path"
+    [[ "$_p_state" == ok ]] || { _rspo='{}'; return 0; }
+    _rspo="$(_verdict_report_from_file "$_p_path")"
 }
 
 # ─── runner_read_stage_data_kind <state_dir> <manifest> <stage> ─────────────
 # ADR-054: the primary result's data.build_kind, so the cycle can tell the
 # empty_diff resting point from a pass without reading the verdict channel.
-runner_read_stage_data_kind() {
+runner_read_stage_data_kind() { local _rsk; runner_read_stage_data_kind_v _rsk "$@"; [[ -z "$_rsk" ]] || printf '%s\n' "$_rsk"; }
+runner_read_stage_data_kind_v() {
+    local -n _rsko="$1"; shift
     local state_dir="$1" manifest="$2" stage="$3"
     local _k_state _k_contract _k_verdict _k_disp _k_reason _k_viol _k_path _k_present _k_kind
+    _rsko=""
     _verdict_read_result "$state_dir" "$manifest" "$stage" 0 _k
     # Only a result this run wrote says what kind of build it was (ADR-068 §8).
     [[ "$_k_state" == ok ]] || return 0
-    [[ -z "$_k_kind" ]] || printf '%s\n' "$_k_kind"
+    _rsko="$_k_kind"
 }
 
 # _verdict_report_from_file <result.json> — the extraction runner_read_stage_report
@@ -593,24 +610,26 @@ _verdict_report_from_file() {
 # Note the ordering against rc: a stage that wrote a result and THEN returned
 # non-zero keeps its declared word (`plan`'s hand-rolled `return 1` is exactly
 # this shape). rc never overwrites a declaration; it only fills the silence.
-runner_read_stage_disposition() {
+runner_read_stage_disposition() { local _rsd; runner_read_stage_disposition_v _rsd "$@"; printf '%s' "$_rsd"; }
+runner_read_stage_disposition_v() {
+    local -n _rsdo="$1"; shift
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
     local observation="${5-}" rate_limited="${6:-0}"
     local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present _d_kind
     # The engine stopped this stage at its time limit (plugin_hook_call): that
     # is how it ended, whatever it left behind.
     if [[ -f "${state_dir}/runtime/stage-time-limit.${stage//[^A-Za-z0-9._-]/_}" ]]; then
-        printf '%s' "timed_out"; return 0
+        _rsdo="timed_out"; return 0
     fi
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _d
 
     # #1850: at rc 0, leaving no readable result is a violation too — the stage
     # said it finished and the engine is holding nothing.
     if [[ -z "$_d_viol" && "$rc" -eq 0 ]]; then
-        _d_viol="$(_verdict_unreadable_violation "$_d_state")"
+        _verdict_unreadable_violation_v _d_viol "$_d_state"
     fi
     if [[ -n "$_d_viol" ]]; then
-        printf '%s' "broken"; return 0
+        _rsdo="broken"; return 0
     fi
     # #1809 (ADR-058 C9): file-backed markers set by lifecycle.sh after dispatch.
     # Checked between _d_viol and _d_disp so a stage that declared disposition=complete
@@ -619,17 +638,15 @@ runner_read_stage_disposition() {
     # script in a separate process — a global assigned there never reaches this reader.
     if [[ -f "${state_dir}/runtime/write-boundary-violated" ]] || \
        [[ -f "${state_dir}/runtime/artifact-contract-violated" ]]; then
-        printf '%s' "broken"; return 0
+        _rsdo="broken"; return 0
     fi
     # ADR-058 C12 amendment: this stage changed the repository without
     # declaring it may, and its changes were put back. Its output cannot be
     # trusted, so the engine retries it; a second offence wrote the halting
     # marker above instead.
-    local _wb_key
-    if declare -F zbuild_stage_key >/dev/null 2>&1; then _wb_key="$(zbuild_stage_key "$stage")"
-    else _wb_key="${stage//[^A-Za-z0-9._-]/_}"; fi   # ad-hoc callers without helpers.sh
+    local _wb_key="${stage:-stage}"; _wb_key="${_wb_key//[^A-Za-z0-9._-]/_}"   # zbuild_stage_key
     if [[ -f "${state_dir}/runtime/write-boundary-reverted.${_wb_key}" ]]; then
-        printf '%s' "unusable"; return 0
+        _rsdo="unusable"; return 0
     fi
     if [[ -n "$_d_disp" ]]; then
         # #2111: a rate limit observed on the wire ends the run whatever word
@@ -637,9 +654,9 @@ runner_read_stage_disposition() {
         # would otherwise be retried into the same limit. #2187: say so with
         # the cause's own word.
         if [[ "$rate_limited" == "1" ]] && disposition_retryable "$_d_disp" 2>/dev/null; then
-            printf '%s' "rate_limited"; return 0
+            _rsdo="rate_limited"; return 0
         fi
-        printf '%s' "$_d_disp"; return 0
+        _rsdo="$_d_disp"; return 0
     fi
     if [[ "$rc" -ne 0 ]] && ! _verdict_result_was_readable "$_d_state" "$_d_present"; then
         # The stage died leaving no result: classify how it died. Direct
@@ -647,9 +664,11 @@ runner_read_stage_disposition() {
         # observation the dispatch boundary took from the raw wait status. #1850
         # deleted the legacy rc mapping that used to sit between the two: every
         # stage declares its own disposition, so a number has nothing to add.
-        printf '%s' "$(dispatch_rc_failure_disposition "$observation" "$rate_limited")"; return 0
+        if [[ "$rate_limited" == "1" ]]; then _rsdo=unavailable   # dispatch_rc_failure_disposition
+        else case "$observation" in signal|timeout) _rsdo=interrupted ;; *) _rsdo=broken ;; esac; fi
+        return 0
     fi
-    printf '%s' ""
+    _rsdo=""
 }
 
 # ─── _verdict_result_was_readable <state> <present> ─────────────────────────

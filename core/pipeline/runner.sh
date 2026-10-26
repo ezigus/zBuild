@@ -2961,7 +2961,7 @@ main() {
             # #1823: read the RAW wait status once, here. The observation is the one
             # fact worth keeping across the narrowing — it separates a stage that was
             # killed from one that is defective, and it is knowable only here.
-            _cd_observation="$(dispatch_rc_observation "$_cd_rc")"
+            dispatch_rc_observation_v _cd_observation "$_cd_rc"
             # An `if`, not `[[ ... ]] && ...`: under errexit a failing && list is the
             # last command in the list and DOES trip it. (#1822 review finding.)
             _cd_rate_limited=0
@@ -2977,11 +2977,10 @@ main() {
             # `stage.complete verdict=...` event emitted at runner.sh:1309 in the
             # `stage:*` dispatch branch. Mutating this to raw values like "approve"
             # would silently break the indicator-glyph + stage.verdicts contract.
-            # Read the result once in this shell: the readers below, each in its own
-            # $( ), inherit the parse instead of each parsing the file again (ADR-065 §5).
-            local _cdr_state _cdr_contract _cdr_verdict _cdr_disp _cdr_reason _cdr_viol _cdr_path _cdr_present _cdr_kind
-            _verdict_read_result "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" _cdr 2>/dev/null || true
-            _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+            # The readers run in this shell and share one parse of the result
+            # (ADR-065 §5, round 9: each was its own $( ) before).
+            runner_read_stage_verdict_v _CYCLE_DISPATCH_VERDICT "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
+                || _CYCLE_DISPATCH_VERDICT="missing"
             # Wave 19-A (#717): _CYCLE_DISPATCH_VERDICT_RAW is the parallel RAW
             # verdict (e.g. "approve", "request_changes", "block") consumed by the
             # cycle orchestrator's exit_when / abort_when / until predicates which
@@ -2995,22 +2994,26 @@ main() {
             # (stage.verdict.missing, pipeline.indicator.unknown_verdict) are
             # emitted by the CLASSIFIED runner_read_stage_verdict call above —
             # the raw call here is side-effect-free and won't duplicate them.
-            _CYCLE_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+            runner_read_stage_verdict_raw_v _CYCLE_DISPATCH_VERDICT_RAW "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
+                || _CYCLE_DISPATCH_VERDICT_RAW="missing"
             [[ -z "$_CYCLE_DISPATCH_VERDICT_RAW" ]] && _CYCLE_DISPATCH_VERDICT_RAW="missing"
             # ADR-029 G2 (#810): expose the .reason channel when verdict=error so
             # the cycle orchestrator can distinguish router_timeout / router_oom_kill
             # (infra-failure → counts toward fast-abandon threshold) from other
             # error reasons (don't burn the abandon budget).
-            _CYCLE_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
+            runner_read_stage_reason_v _CYCLE_DISPATCH_REASON "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
+                || _CYCLE_DISPATCH_REASON=""
             # #1822 (ADR-054 §6): the recoverability channel. Empty for a v1 stage
             # (which declares no disposition), the declared word for a v2 one, and
             # `broken` when this dispatch died leaving nothing to read. Consumed by
             # the dispatch event; the response table that interprets it lives in
             # core/pipeline/disposition.sh, never in a plugin.
-            _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
+            runner_read_stage_disposition_v _CYCLE_DISPATCH_DISPOSITION "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null \
+                || _CYCLE_DISPATCH_DISPOSITION=""
             # #2189: what this member reported for the cycle to act on — read
             # off the member itself, never a stage's artifact by name.
-            _CYCLE_DISPATCH_REPORT="$(runner_read_stage_report "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || printf '{}')"
+            runner_read_stage_report_v _CYCLE_DISPATCH_REPORT "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
+                || _CYCLE_DISPATCH_REPORT='{}'
             _runner_record_report "$state_dir" "$_cd_stage" "$_CYCLE_DISPATCH_REPORT"
             # ADR-054: read the data.build_kind field from the primary artifact so the
             # cycle orchestrator can distinguish the empty_diff resting point from a
@@ -3018,7 +3021,7 @@ main() {
             # Inside the re-dispatch loop (#1887): a retried attempt writes a fresh
             # artifact, so a kind read once before the loop would describe the
             # attempt that was discarded.
-            _CYCLE_DISPATCH_DATA_KIND="$(runner_read_stage_data_kind "$state_dir" "$_cd_manifest" "$_cd_stage")"
+            runner_read_stage_data_kind_v _CYCLE_DISPATCH_DATA_KIND "$state_dir" "$_cd_manifest" "$_cd_stage" || _CYCLE_DISPATCH_DATA_KIND=""
             # The table decides. `interrupted` re-dispatches at once; `throttled`
             # waits first, because re-dispatching a throttled stage immediately is
             # simply throttled again — a retry loop that burns budget to learn
@@ -3084,7 +3087,7 @@ main() {
         # #1823 / #1850 (ADR-054 §4): every stage is held to rc ∈ {0,1}. A stage
         # speaks contract v2, so it declared a `disposition` and has somewhere
         # else to say everything its rc used to carry.
-        _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
+        dispatch_rc_narrow_v _cd_rc "$_cd_rc"
         return $_cd_rc
     }
 
@@ -3135,20 +3138,22 @@ main() {
         local _pd_manifest="$_pd_plugin_dir/manifest.yaml"
         # CLASSIFIED verdict (pass|warn|fail|…) — authoritative for the
         # .stage_verdicts contract + indicator glyph, recorded by the parent.
-        # Read the result once in this shell: the readers below, each in its own
-        # $( ), inherit the parse instead of each parsing the file again (ADR-065 §5).
-        local _pdr_state _pdr_contract _pdr_verdict _pdr_disp _pdr_reason _pdr_viol _pdr_path _pdr_present _pdr_kind
-        _verdict_read_result "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" _pdr 2>/dev/null || true
-        _PARALLEL_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "missing")"
+        # The readers run in this shell and share one parse of the result
+        # (ADR-065 §5, round 9).
+        runner_read_stage_verdict_v _PARALLEL_DISPATCH_VERDICT "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null \
+            || _PARALLEL_DISPATCH_VERDICT="missing"
         # RAW verdict computed for the future aggregator (ADR-039 §4 group-verdict
         # collapse, a later issue); kept on its own channel so the predicate path
         # can consume the template-declared value verbatim, mirroring the cycle.
-        _PARALLEL_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "missing")"
+        runner_read_stage_verdict_raw_v _PARALLEL_DISPATCH_VERDICT_RAW "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null \
+            || _PARALLEL_DISPATCH_VERDICT_RAW="missing"
         [[ -z "$_PARALLEL_DISPATCH_VERDICT_RAW" ]] && _PARALLEL_DISPATCH_VERDICT_RAW="missing"
-        _PARALLEL_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "")"
+        runner_read_stage_reason_v _PARALLEL_DISPATCH_REASON "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null \
+            || _PARALLEL_DISPATCH_REASON=""
         # #2189: the same report record the cycle boundary keeps.
-        _runner_record_report "$state_dir" "$_pd_stage" \
-            "$(runner_read_stage_report "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || printf '{}')"
+        local _pd_report
+        runner_read_stage_report_v _pd_report "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || _pd_report='{}'
+        _runner_record_report "$state_dir" "$_pd_stage" "$_pd_report"
         if [[ $_pd_rc -eq 0 ]]; then
             _PARALLEL_DISPATCH_STATUS="complete"
         else
@@ -3176,7 +3181,7 @@ main() {
         #
         # The narrowing below is still correct: every stage speaks v2 (#1850), so
         # it HAS somewhere else to say what its rc was carrying.
-        _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
+        dispatch_rc_narrow_v _pd_rc "$_pd_rc"
         return $_pd_rc
     }
 

@@ -160,7 +160,12 @@ _inputs_build_producer_index() {
 # it (ADR-068 §8). A file that is there but unusable (#1894: empty, or JSON
 # that does not parse) is left out and the omission is announced, so a reader
 # sees it exactly as it sees an absent one.
-_inputs_resolve_stage() {
+_inputs_resolve_stage() { local _irs; _inputs_resolve_stage_v _irs "$@" || return 1; printf '%s\n' "$_irs"; }
+# _inputs_resolve_stage_v <var> <stage> <plugins_root> <state_dir> — the same,
+# the index's path into <var>: written in the dispatching shell.
+_inputs_resolve_stage_v() {
+    local -n _irso="$1"; shift
+    _irso=""
     local stage="$1" plugins_root="$2" state_dir="$3"
     # The stage id is interpolated into a filesystem path: a value with '/' or
     # '..' must never traverse.
@@ -199,17 +204,17 @@ _inputs_resolve_stage() {
     # Built into a variable first: piping jq straight into atomic_write would let
     # a jq failure write a zero-byte index and still return 0.
     local json
-    json="$(printf '%s' "$tsv" | jq -nR --arg stage "$stage" '
+    json="$(jq -nR --arg stage "$stage" '
         {schema_version: 2, stage: $stage,
          inputs: ([inputs | select(length > 0) | split("\t")
                    | {key: .[0],
                       value: (if .[1] == "A"
                               then (.[2] | split("\u001f") | map(select(length > 0)))
                               else .[2] end)}]
-                  | from_entries)}' 2>/dev/null)"
+                  | from_entries)}' 2>/dev/null <<< "${tsv%$'\n'}")"
     [[ -n "$json" ]] || return 1
-    printf '%s\n' "$json" | atomic_write "$index" || return 1
-    printf '%s\n' "$index"
+    atomic_write "$index" <<< "$json" || return 1
+    _irso="$index"
 }
 
 # ─── _inputs_render_violations <header> <fix_text> <violation...> ────────────

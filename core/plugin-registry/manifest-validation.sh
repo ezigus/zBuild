@@ -362,14 +362,14 @@ _yaml_get_requires_core_list() {
 # ─── _required_hooks_for_kind — ADR-001 §"Required hooks per kind" ──────────
 # Returns space-separated required hook names for the given plugin kind.
 # Empty output = "no specifically required hooks" (still allow cleanup).
-_required_hooks_for_kind() {
-    case "$1" in
-        agent)             echo "run" ;;
-        tool)              echo "run" ;;
-        orchestrator)      echo "run" ;;
-        claim-coordinator) echo "claim release heartbeat list_claims" ;;
-        daemon)            echo "tick" ;;
-        *)                 echo "" ;;
+_required_hooks_for_kind() { local _rhk; _required_hooks_for_kind_v _rhk "$1"; echo "$_rhk"; }
+_required_hooks_for_kind_v() {
+    local -n _rhko="$1"
+    case "$2" in
+        agent|tool|orchestrator) _rhko="run" ;;
+        claim-coordinator)       _rhko="claim release heartbeat list_claims" ;;
+        daemon)                  _rhko="tick" ;;
+        *)                       _rhko="" ;;
     esac
 }
 
@@ -418,12 +418,13 @@ validate_manifest() {
     # enough, the entry has to resolve to a module the plugin can actually
     # reach. Keeping both here would have been two sites disagreeing about what
     # one field means, which is the shape #2060/#2061/#2062 shipped through.
-    local _rc_entry _rc_reason
+    local _rc_entry _rc_reason _rc_lines
+    requires_core_check_v _rc_lines "$manifest" || true
     while IFS=$'\t' read -r _rc_entry _rc_reason; do
         [[ -n "$_rc_entry" ]] || continue
         error "validate_manifest($manifest): requires.core '$_rc_entry' $_rc_reason"
         errors=$((errors + 1))
-    done < <(requires_core_check "$manifest")
+    done <<< "$_rc_lines"
 
     # kind: persona plugins (#1304) are DATA — a professional identity, no
     # plugin.sh and no hooks. They MUST declare a non-empty persona.role: the
@@ -481,8 +482,10 @@ validate_manifest() {
     while IFS= read -r _hp_line || [[ -n "$_hp_line" ]]; do
         [[ "$_hp_line" =~ ^[[:space:]]+primary:[[:space:]]*true ]] && { _has_prim=1; break; }
     done < "$manifest"
+    # contract_version_check, in this shell: its message only on a refusal.
     if [[ $_has_prim -eq 1 || -n "$_decl_contract" ]] \
-            && ! _msg="$(contract_version_check "$_decl_contract" "plugin '${_pid_c:-unknown}'")"; then
+            && ! contract_version_supported "${_decl_contract:-$_ZBUILD_CONTRACT_DEFAULT}"; then
+        _msg="$(contract_version_check "$_decl_contract" "plugin '${_pid_c:-unknown}'")"
         error "validate_manifest($manifest): $_msg"
         errors=$((errors + 1))
     fi
@@ -525,7 +528,7 @@ validate_manifest() {
     if [[ -n "$kind" ]]; then
         local provides_role; yaml_get_v provides_role "$manifest" "provides.role" 2>/dev/null || true
         if [[ -z "$provides_role" ]]; then
-            local required_hooks; required_hooks="$(_required_hooks_for_kind "$kind")"
+            local required_hooks; _required_hooks_for_kind_v required_hooks "$kind"
             if [[ -n "$required_hooks" ]]; then
                 local plugin_id_for_err; yaml_get_v plugin_id_for_err "$manifest" "id" 2>/dev/null || true
                 local h
@@ -590,18 +593,20 @@ validate_manifest() {
 
     # ─── Optional provides.events — ADR-001 §"Declared events" (#1717) ──────
     # A declared event stops the event-bus warning on every firing, so a malformed entry is a load-time failure, not a name that never matches an emit.
-    local _ev
+    local _ev _evs
+    eb_manifest_events_invalid_v _evs "$manifest"
     while IFS= read -r _ev; do
         [[ -n "$_ev" ]] || continue
         error "validate_manifest($manifest): provides.events entry '$_ev' is not a valid event name (lowercase, dot-separated, e.g. 'shape_floor.pass')"
         errors=$((errors + 1))
-    done < <(eb_manifest_events_invalid "$manifest")
+    done <<< "$_evs"
 
     # ─── Optional config.router budget block — ADR-017 §11 (#1816) ──────────
     # A declared budget is load-bearing at dispatch, so it is checked here
     # rather than at read time: the resolver ignores anything it cannot use,
     # and an ignored budget is a stage silently running on the wrong one.
-    local _rk _rv _rrange
+    local _rk _rv _rrange _rblock
+    _manifest_router_block_v _rblock "$manifest"
     while read -r _rk _rv; do
         [[ -n "$_rk" ]] || continue
         _rrange="$(_manifest_router_range "$_rk")"
@@ -615,7 +620,7 @@ validate_manifest() {
             error "validate_manifest($manifest): config.router.$_rk must be an integer in $_min..$_max, got: ${_rv:-<empty>}"
             errors=$((errors + 1))
         fi
-    done < <(_manifest_router_block "$manifest")
+    done <<< "$_rblock"
 
     return $((errors > 0))
 }

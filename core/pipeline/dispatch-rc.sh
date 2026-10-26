@@ -51,14 +51,11 @@ ZBUILD_RC_FAIL=1
 # distinction matters — narrowing is lossy by design, and that loss is the whole
 # point. A non-numeric status is a failure, not a 0: a caller holding something
 # that is not a number has already lost the status.
-dispatch_rc_narrow() {
-    local rc="${1-}"
-    [[ "$rc" =~ ^[0-9]+$ ]] || { printf '%s' "$ZBUILD_RC_FAIL"; return 0; }
-    if [[ "$rc" -eq 0 ]]; then
-        printf '%s' "$ZBUILD_RC_OK"
-    else
-        printf '%s' "$ZBUILD_RC_FAIL"
-    fi
+dispatch_rc_narrow() { local _drn; dispatch_rc_narrow_v _drn "${1-}"; printf '%s' "$_drn"; }
+dispatch_rc_narrow_v() {
+    local -n _drno="$1"
+    local rc="${2-}"
+    if [[ "$rc" =~ ^[0-9]+$ && "$rc" -eq 0 ]]; then _drno="$ZBUILD_RC_OK"; else _drno="$ZBUILD_RC_FAIL"; fi
 }
 
 # ─── dispatch_rc_observation <raw_rc> ───────────────────────────────────────
@@ -79,11 +76,14 @@ dispatch_rc_narrow() {
 # classify the rest as `broken` — a defect report for a stage that was killed.
 # 192 is the ceiling because signals stop there; anything above it is a plugin
 # returning a large number, which is not a signal death.
-dispatch_rc_observation() {
-    local rc="${1-}"
+dispatch_rc_observation() { local _dro; dispatch_rc_observation_v _dro "${1-}"; printf '%s' "$_dro"; }
+dispatch_rc_observation_v() {
+    local -n _droo="$1"
+    local rc="${2-}"
+    _droo=""
     [[ "$rc" =~ ^[0-9]+$ ]] || return 0
-    if [[ "$rc" -eq 124 ]]; then printf 'timeout'; return 0; fi
-    if [[ "$rc" -gt 128 && "$rc" -le 192 ]]; then printf 'signal'; return 0; fi
+    if [[ "$rc" -eq 124 ]]; then _droo=timeout; return 0; fi
+    if [[ "$rc" -gt 128 && "$rc" -le 192 ]]; then _droo=signal; fi
     return 0
 }
 

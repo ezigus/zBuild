@@ -71,6 +71,7 @@ _run() {
         }"
         _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
         runner_read_stage_verdict() { echo "pass"; }
+        zb_test_readers_through_stubs verdict   # the dispatch reads in its shell (round 9)
         eval "plugin_hook_call() {
             printf '%s\n' \"\$3\" >> '$d/dispatched'
             mkdir -p \"\$(dirname \"\$4\")/artifacts\"

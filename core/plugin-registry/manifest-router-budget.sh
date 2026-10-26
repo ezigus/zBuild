@@ -61,7 +61,12 @@ manifest_router_knob() {
 # through this, so "which keys are declared" and "what did key K resolve to"
 # can never disagree. With <knob>, it prints only that key's first value and
 # stops: one awk per lookup, not a parse piped into a second (ADR-065).
-_manifest_router_block() {
+_manifest_router_block() { local _mrb; _manifest_router_block_v _mrb "$@"; printf '%s' "$_mrb"; }
+# _manifest_router_block_v <var> <manifest> [knob] — the same lines into <var>.
+# Its locals are its own, so no <var> is hidden by one.
+_manifest_router_block_v() {
+    local -n _mrbo="$1"; shift
+    _mrbo=""
     local manifest="${1:-}" knob="${2:-}"
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
     # Read by the shell, rule for rule as the awk it replaced (ADR-065 §5):
@@ -89,10 +94,10 @@ _manifest_router_block() {
             val="${val#[\"\']}"; val="${val%[\"\']}"
             val="${val//[[:space:]]/}"
             if [[ -n "$knob" ]]; then
-                [[ "$key" == "$knob" ]] && { printf '%s\n' "$val"; return 0; }
+                [[ "$key" == "$knob" ]] && { _mrbo="$val"$'\n'; return 0; }
                 continue
             fi
-            printf '%s %s\n' "$key" "$val"
+            _mrbo+="$key $val"$'\n'
         fi
     done 2>/dev/null < "$manifest"
     return 0

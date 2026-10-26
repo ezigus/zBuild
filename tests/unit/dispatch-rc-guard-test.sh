@@ -162,8 +162,9 @@ print_test_section "3. The stage dispatch boundary narrows before reading"
 # see: the observation must be taken from the RAW status BEFORE narrowing, or
 # the one fact worth keeping is already gone.
 _runner="$REPO_ROOT/core/pipeline/runner.sh"
-_obs_line="$($SYSGREP -n 'dispatch_rc_observation "\$_cd_rc"' "$_runner" | head -1 | cut -d: -f1)"
-_narrow_line="$($SYSGREP -n '_cd_rc="\$(dispatch_rc_narrow "\$_cd_rc")"' "$_runner" | head -1 | cut -d: -f1)"
+# Round 9: both are read into a variable in the dispatching shell (the _v forms).
+_obs_line="$($SYSGREP -n 'dispatch_rc_observation_v _cd_observation "\$_cd_rc"' "$_runner" | head -1 | cut -d: -f1)" || _obs_line=""
+_narrow_line="$($SYSGREP -n 'dispatch_rc_narrow_v _cd_rc "\$_cd_rc"' "$_runner" | head -1 | cut -d: -f1)" || _narrow_line=""
 
 if [[ -n "$_obs_line" && -n "$_narrow_line" ]]; then
     assert_pass "[SPEC-3] the cycle dispatch boundary both observes and narrows"
@@ -195,8 +196,8 @@ fi
 # of them would make a stage's rc depend on which kind of group it was
 # composed into — and "the rule wired into one of two call sites" is the exact
 # defect this PR hit three times.
-_cyc_narrow="$($SYSGREP -c '_cd_rc="$(dispatch_rc_narrow "$_cd_rc")"' "$_runner" 2>/dev/null)" || _cyc_narrow=0
-_par_narrow="$($SYSGREP -c '_pd_rc="$(dispatch_rc_narrow "$_pd_rc")"' "$_runner" 2>/dev/null)" || _par_narrow=0
+_cyc_narrow="$($SYSGREP -c 'dispatch_rc_narrow_v _cd_rc "$_cd_rc"' "$_runner" 2>/dev/null)" || _cyc_narrow=0
+_par_narrow="$($SYSGREP -c 'dispatch_rc_narrow_v _pd_rc "$_pd_rc"' "$_runner" 2>/dev/null)" || _par_narrow=0
 assert_eq "[SPEC-3] cycle_dispatch_stage narrows the rc" "1" "${_cyc_narrow//[$'\n\r ']/}"
 assert_eq "[SPEC-3] parallel_dispatch_stage applies it too" "1" "${_par_narrow//[$'\n\r ']/}"
 
@@ -230,7 +231,7 @@ fi
 
 # #1850: there is no version gate any more — every stage speaks v2, so BOTH
 # boundaries narrow unconditionally, and the probe that fed the gate is gone.
-_narrow_uses="$($SYSGREP -cE '^[[:space:]]+_(cd|pd)_rc="\$\(dispatch_rc_narrow "\$_(cd|pd)_rc"\)"$' "$_runner" 2>/dev/null)" || _narrow_uses=0
+_narrow_uses="$($SYSGREP -cE '^[[:space:]]+dispatch_rc_narrow_v _(cd|pd)_rc "\$_(cd|pd)_rc"$' "$_runner" 2>/dev/null)" || _narrow_uses=0
 assert_eq "[SPEC-4] both boundaries narrow unconditionally (#1850)" "2" "${_narrow_uses//[$'\n\r ']/}"
 _probe_left="$(cat "$_runner" "$REPO_ROOT/core/pipeline/verdict.sh" | $SYSGREP -c '_verdict_probe_contract' 2>/dev/null)" || _probe_left=0
 assert_eq "[SPEC-4] the contract probe is gone (#1850)" "0" "$_probe_left"
