@@ -14,6 +14,10 @@
 # K3 [guard]  a pid that is already gone is not an error
 # K4 [change] …nor under set -e, where the abort tests run: their runner has
 #             usually exited on its TERM by the time they reap it
+# K5 [change] it stops nothing on the way: a stopped process whose parent dies
+#             leaves an orphaned process group with a stopped member, and the
+#             kernel then hangs up that whole group — on macOS CI the test's
+#             own (it died 0.9s in, twice, with no assertion failing)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -84,6 +88,20 @@ _k4="$(REPO_ROOT="$REPO_ROOT" G="$_gone" bash -c 'set -euo pipefail
     source "$REPO_ROOT/scripts/lib/helpers.sh"; source "$REPO_ROOT/scripts/lib/test-helpers.sh"
     zb_test_kill_tree "$G"; echo carried-on' 2>/dev/null || true)"
 assert_eq "[K4] under set -e the caller carries on" "carried-on" "$_k4"
+
+print_test_section "K5: nothing is stopped"
+SIGS="$TEST_TEMP_DIR/sigs"; : > "$SIGS"
+kill() { [[ "${1:-}" == -* ]] && printf '%s\n' "$1" >> "$SIGS"; builtin kill "$@"; }
+bash -c '( sleep 300 ) & sleep 300' &
+_k5=$!
+wait_tree "$_k5" 3
+_all="$(tree_of "$_k5")"
+zb_test_kill_tree "$_k5"
+wait "$_k5" 2>/dev/null
+unset -f kill
+sleep 0.3
+assert_eq "[K5] no STOP is sent" "" "$(grep -x -e -STOP -e -SIGSTOP -e -19 -e -17 "$SIGS" | tr '\n' ' ')"
+assert_eq "[K5] …and the tree is still gone" "0" "$(alive "$_all")"
 
 cleanup_test_env
 print_test_results
