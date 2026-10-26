@@ -49,10 +49,13 @@ An issue contains more than requirements — context, rationale, links, history.
 Those are not requirements and their absence from the SPECs is not a gap. Judge
 what the issue REQUIRES, not everything it mentions.
 
-Mapping is not enough: the SPEC must demand ALL of the requirement. A SPEC that
-demands less than the requirement — a subset of the cases, a weaker condition,
-some of the files, a narrower scope — leaves it uncovered. Name the requirement
-as uncovered and say what the SPEC leaves out.
+Several SPECs may cover one requirement together, one thing each: judge every
+SPEC that names it, together.
+
+Mapping is not enough: those SPECs together must demand ALL of the requirement.
+A set of SPECs that demands less than the requirement — a subset of the cases,
+a weaker condition, some of the files, a narrower scope — leaves it uncovered. Name the
+requirement as uncovered and say what the SPECs leave out.
 
 You judge the design before any code exists, so your part of each requirement
 is the BEHAVIOUR it asks of the software. A requirement about how the change is

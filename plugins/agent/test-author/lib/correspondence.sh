@@ -45,7 +45,9 @@ reach is partial, not mismatch.
 Exactly two things, shown at the end of this part:
 
 REQUIREMENT — a single sentence from a design document.
-ASSERTION   — the source of the test assertion tagged as covering it.
+ASSERTION   — the source of the test assertion tagged as covering it: the lines
+              marked >> are the ones tagged for the requirement; the lines
+              above them set up the test, and what they do counts.
 
 The failure you are looking for is an assertion that tests something real
 and specific, but not what the requirement says — including asserting its
@@ -136,7 +138,7 @@ Answer with exactly one line per SPEC, in this form and nothing else — begin e
 Reserve mismatch for a genuine disagreement.
 
 ## What you judge against
-The pairs below, each a REQUIREMENT and the ASSERTION tagged as covering it. The failure you are looking for is an assertion that tests something real and specific, but not what the requirement says — including its opposite.
+The pairs below, each a REQUIREMENT and the ASSERTION tagged as covering it. In each ASSERTION, the lines marked >> are the ones tagged for the requirement; the lines above them set up the test, and what they do counts. The failure you are looking for is an assertion that tests something real and specific, but not what the requirement says — including its opposite.
 EOF
     local _i
     for (( _i=0; _i<${#_bp_ids[@]}; _i++ )); do

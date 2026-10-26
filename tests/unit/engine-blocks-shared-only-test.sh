@@ -20,8 +20,9 @@
 #   B3b [change] an attempt counts as good only if every output its stage marks
 #               required: true is there and not empty
 #   B4 [change] the rules say each thing once, and hold no rule about a kind of
-#               work: "open the code that writes it" is in build, test-author
-#               and the review lenses instead
+#               work: "open the code that writes it" is in build and the review
+#               lenses instead; test-author makes such data the way the existing
+#               tests and test helpers do (it reads no implementation)
 #   B5 [change] the shared output contract has no FORBIDDEN phrase list
 #   B6 [change] the repo's rules file holds facts about this repo; the retired
 #               impact stage's overrides file is gone
@@ -158,14 +159,17 @@ if grep -qF "open the code that writes it" <<< "$_rules"; then
 else
     assert_pass "[B4] the engine's rules carry no rule about writing code"
 fi
-for _st in build test-author review-lens; do
+# test-author reads no implementation (ADR-067 §8, amended 2026-10-26): it makes
+# such data the way the existing tests and test helpers already do.
+for _st in build:"open the code that writes it" review-lens:"open the code that writes it" \
+           test-author:"Find how the existing tests and test helpers already make it"; do
     # Wrapped text is matched with its line breaks joined.
-    _src="$(find "$REPO_ROOT/plugins/agent/$_st" -path '*/tests' -prune -o -type f \( -name '*.sh' -o -name '*.md' \) -print0 \
+    _src="$(find "$REPO_ROOT/plugins/agent/${_st%%:*}" -path '*/tests' -prune -o -type f \( -name '*.sh' -o -name '*.md' \) -print0 \
         | xargs -0 cat | tr '\n' ' ' | tr -s ' ')"
-    if grep -qF "open the code that writes it" <<< "$_src"; then
-        assert_pass "[B4] $_st's own text has the rule"
+    if grep -qF "${_st#*:}" <<< "$_src"; then
+        assert_pass "[B4] ${_st%%:*}'s own text has the rule"
     else
-        assert_fail "[B4] $_st's own text has the rule" "not found"
+        assert_fail "[B4] ${_st%%:*}'s own text has the rule" "not found"
     fi
 done
 
