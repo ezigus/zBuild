@@ -29,8 +29,8 @@ template_stage_time_limit_v() {
     [[ "$_tstv" =~ ^[1-9][0-9]*$ ]] || _tstv=900
 }
 
-# template_stage_time_limits_load [force] — every stage's `timeout_s:` from the
-# template, in one pass, into _ZB_STAGE_TL_MEMO; once per template unless forced.
+# template_stage_time_limits_load — every stage's `timeout_s:` from the template,
+# in one pass, into _ZB_STAGE_TL_MEMO; once per template (…_reload reads again).
 # A stage's limit is its block's own `timeout_s:` one level in: the block opens
 # at `<stage>:` in column 0, or two deep under `stage_definitions:`, and closes
 # at the next line no deeper than its header; the first such line wins, and a
@@ -40,12 +40,6 @@ template_stage_time_limit_v() {
 template_stage_time_limits_load() {
     local f="${_TPL_SOURCE_FILE:-}"
     [[ -n "$f" ]] || return 0
-    local k
-    if [[ "${1:-}" == force ]]; then
-        for k in "${!_ZB_STAGE_TL_MEMO[@]}"; do
-            [[ "$k" == "$f"$'\034'* ]] && unset "_ZB_STAGE_TL_MEMO[$k]"
-        done
-    fi
     [[ -n "${_ZB_STAGE_TL_MEMO["$f"$'\034']+x}" ]] && return 0
     _ZB_STAGE_TL_MEMO["$f"$'\034']=1
     [[ -f "$f" ]] || return 0
@@ -70,4 +64,15 @@ template_stage_time_limits_load() {
         if [[ -n "$s1" && -z "${found[$s1]:-}" ]]; then open[$s1]=1; ind[$s1]=0; fi
         if [[ -n "$s4" && -z "${found[$s4]:-}" && -z "$s4_was" ]]; then open[$s4]=1; ind[$s4]=2; fi
     done 2>/dev/null < "$f"
+}
+
+# template_stage_time_limits_reload — forget the template's limits and read it
+# again: load_template's call, as the file may have changed since it was read.
+template_stage_time_limits_reload() {
+    local f="${_TPL_SOURCE_FILE:-}" k
+    [[ -n "$f" ]] || return 0
+    for k in "${!_ZB_STAGE_TL_MEMO[@]}"; do
+        [[ "$k" == "$f"$'\034'* ]] && unset "_ZB_STAGE_TL_MEMO[$k]"
+    done
+    template_stage_time_limits_load
 }

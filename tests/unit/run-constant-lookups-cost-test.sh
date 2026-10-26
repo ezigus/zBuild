@@ -71,7 +71,7 @@ _TPL_SOURCE_FILE="$T1"
 # a read is counted when the loader finds the template not yet read.
 eval "$(declare -f template_stage_time_limits_load | sed '1s/template_stage_time_limits_load/_tl_load_real/')"
 template_stage_time_limits_load() {
-    [[ -n "${_ZB_STAGE_TL_MEMO["${_TPL_SOURCE_FILE:-}"$'\034']+x}" && "${1:-}" != force ]] || printf 'read\n' >> "$CALLS"
+    [[ -n "${_ZB_STAGE_TL_MEMO["${_TPL_SOURCE_FILE:-}"$'\034']+x}" ]] || printf 'read\n' >> "$CALLS"
     _tl_load_real "$@"
 }
 _t1=""; template_stage_time_limit_v _t1 build; _t1b=""; template_stage_time_limit_v _t1b build
