@@ -255,6 +255,9 @@ Fix stage timeouts silently not applying by retiring the fallback orchestrator, 
 - scripts/lib/proc-group.sh
 - tests/
 - tests/golden/orch-sequential-capabilities.golden
+- tests/integration/stage-time-limit-test.sh
+- tests/unit/map-strategy-test.sh
+- tests/unit/plugin-artifact-goldens-test.sh
 
 ### Tools
 - You MAY use the Read tool to inspect any file in the repository.
@@ -263,10 +266,10 @@ Fix stage timeouts silently not applying by retiring the fallback orchestrator, 
 - You MAY use the Glob tool to discover files by pattern.
 
 ### Requirements from the issue (numbered by the engine)
-- R-1: A hung `run` hook dispatched through the **orchestrator route** (map, fanout, sequential strategy) under bash-parallel, ruflo-hive and mock is stopped at its `timeout_s:` and ends `timed_out` naming the stage and the limit. Regression test with a planted hang reddens at the merge-base.
+- R-1: A hung `run` hook dispatched through the **orchestrator route** (map, fanout, sequential strategy) is stopped at its stage's `timeout_s:` and ends `timed_out` naming the stage and the limit.
 - R-2: A stage whose `timeout_s:` is above 300 s and which runs longer than 300 s on the orchestrator route completes; `ZBUILD_ORCH_TIMEOUT` is no longer read.
-- R-3: `orch-sequential` is gone: plugin dir and `tests/golden/orch-sequential-capabilities.golden` deleted; a guard test fails if the plugin directory exists or any file outside `docs/adr/` names `orch-sequential`; a config naming `sequential` ends `misconfigured`. Every test that used it as a fixture passes on `orch-mock` or `bash-parallel`.
-- R-4: A configured backend that cannot be found, or an unreadable config, fails the run as `misconfigured` naming the backend — tested from the **installed** tree (`install.sh` layout), not only the checkout.
+- R-3: `orch-sequential` is gone: plugin dir and `tests/golden/orch-sequential-capabilities.golden` deleted, and no file outside `docs/adr/` names `orch-sequential` (a guard test enforces it); a config naming `sequential` or `orch-sequential` ends `misconfigured`.
+- R-4: A configured backend that cannot be found, or a config file that exists but cannot be read or parsed, fails the run as `misconfigured` naming the backend — tested from the **installed** tree (`install.sh` layout), not only the checkout.
 - R-5: `release` / `persist` are bounded by `timeout_s:` (30 s / 120 s); `_runner_dispatch_always_run` no longer reads `router.timeout_s`.
 - R-6: The `always_run` watchdog and `_orch_local_kill_slot` kill through `zbuild_pg_kill`; a hook that spawns a child which ignores TERM leaves nothing running.
 - R-7: Before writing tests: `grep -rl` for `orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `ZBUILD_RELEASE_TIMEOUT`, `router.timeout_s` and `_orch_local_kill_slot` in `tests/` — every test that pins them is in scope (CLAUDE.md, test scope discovery).
@@ -409,10 +412,10 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 71 artifact(s) from prior runs (restored)
+- restored 98 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 71 artifact(s) from zbuild/state/issue-1801
+- detail: restored 98 artifact(s) from zbuild/state/issue-1801
 
 ### intake (verdict: pass)
 Outputs:
@@ -427,7 +430,7 @@ Summary:
 
 - took in the goal for issue #1801: [bug] stage timeouts silently stop applying — the fallback o
 
-- goal length: 6345 chars
+- goal length: 6499 chars
 - platforms: 1
 
 ### plan (verdict: pass)
@@ -451,20 +454,16 @@ Outputs:
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 
 Findings:
-- design finding 1 (opened by design): The issue asks for this and no SPEC covers it: R-3: the requirement "Every test that used it as a fixture passes on `orch-mock` or `bash-parallel`" is not covered — SPEC-3 demands the plugin directory and golden be deleted and a guard catch any surviving reference, but a test satisfies that guard by simply being deleted (or having the reference stripped with no replacement)
-- design finding 2 (opened by design): The issue asks for this and no SPEC covers it: SPEC-2 covers the config-names-sequential path
-- design finding 3 (opened by design): The issue asks for this and no SPEC covers it: SPEC-9 requires the suite to pass, but it passes equally whether the formerly-orch-sequential test coverage is migrated or simply removed
-- design finding 4 (opened by design): The issue asks for this and no SPEC covers it: no SPEC demands the coverage be preserved and passing on another backend
+- design finding 1 (opened by design): The issue asks for this and no SPEC covers it: R-3: "Every test that used it as a fixture passes on `orch-mock` or `bash-parallel`" — SPEC-11 covers only `plugins/tool/orch-sequential/tests/orch-sequential-test.sh`
+- design finding 2 (opened by design): The issue asks for this and no SPEC covers it: no SPEC requires that the other in-scope files (e.g., `tests/integration/stage-time-limit-test.sh`, `tests/unit/map-strategy-test.sh`) which referenced orch-sequential as a behavioral fixture are migrated to pass on orch-mock or bash-parallel rather than simply having their orch-sequential references stripped (and the files deleted) to satisfy SPEC-3's guard.
 
 Summary:
 ## design — fail
 
-- the design fails 4 check(s)
+- the design fails 2 check(s)
 
-- The issue asks for this and no SPEC covers it: R-3: the requirement "Every test that used it as a fixture passes on `orch-mock` or `bash-parallel`" is not covered — SPEC-3 demands the plugin directory and golden be deleted and a guard catch any surviving reference, but a test satisfies that guard by simply being deleted (or having the reference stripped with no replacement)
-- The issue asks for this and no SPEC covers it: SPEC-2 covers the config-names-sequential path
-- The issue asks for this and no SPEC covers it: SPEC-9 requires the suite to pass, but it passes equally whether the formerly-orch-sequential test coverage is migrated or simply removed
-- The issue asks for this and no SPEC covers it: no SPEC demands the coverage be preserved and passing on another backend
+- The issue asks for this and no SPEC covers it: R-3: "Every test that used it as a fixture passes on `orch-mock` or `bash-parallel`" — SPEC-11 covers only `plugins/tool/orch-sequential/tests/orch-sequential-test.sh`
+- The issue asks for this and no SPEC covers it: no SPEC requires that the other in-scope files (e.g., `tests/integration/stage-time-limit-test.sh`, `tests/unit/map-strategy-test.sh`) which referenced orch-sequential as a behavioral fixture are migrated to pass on orch-mock or bash-parallel rather than simply having their orch-sequential references stripped (and the files deleted) to satisfy SPEC-3's guard.
 
 This try is kept as the working copy for the next run; design.md is unchanged.
 
@@ -482,122 +481,66 @@ Summary of that output:
 - artifact: design.md
 
 Your notes so far:
-# Design notes — issue #1801 (revision 5)
+# Design notes — issue #1801 (revision 6)
 
-## Revision 5: fix two verifier findings from latest design run
+## Revision 6: fix four verifier findings — add SPEC-11 for test migration coverage
 
-### Finding 1 fixed: SPEC-1 lacked explicit multi-backend verification
+### All four findings: same root cause
 
-R-1 requires verification "under bash-parallel, ruflo-hive and mock". SPEC-1 said
-"fanout, map, or sequential strategy" which allowed a single-backend test to satisfy it.
+All four verifier findings from the latest design run share one root: R-3 says
+"Every test that used orch-sequential as a fixture passes on orch-mock or
+bash-parallel," but no SPEC required behavioral coverage to be MIGRATED rather
+than simply DELETED. SPEC-3 (guard for orch-sequential references) could be
+satisfied by deleting tests without replacement, and SPEC-9 (green CI) passes
+equally whether coverage is preserved or removed.
 
-**Root cause check:**
-- `plugins/tool/orch-mock/plugin.sh:112`: "--timeout is accepted but ignored (mock is synchronous)"
-- `plugins/tool/orch-ruflo-hive/plugin.sh:126-131`: orch_collect takes --timeout and delegates to local engine
-- bash-parallel (`core/orch/local_engine.sh`): `_orch_local_collect_results` is the shared collect impl
+### Fix: SPEC-11[no-code]
 
-**Architecture:** Both bash-parallel and ruflo-hive delegate to `_orch_local_collect_results`. The
-strategy spy tests (SPEC-1a, 1b) mock `orch_collect` and verify ALL three strategies pass
-`template_stage_time_limit`, not 300 — so all three backends receive the correct value.
-SPEC-1e tests `_orch_local_collect_results` directly with a planted hang (covers bash-parallel
-AND ruflo-hive). Mock is synchronous — no hung hook possible, `--timeout` is a no-op.
+Added SPEC-11[no-code] covering pool isolation — the one ADR-011 contract
+behavior NOT already covered by surviving tests.
 
-**Fix:** Updated SPEC-1 text to explicitly describe multi-backend coverage:
-- Strategy spy → all backends (all receive timeout from strategy)
-- SPEC-1e → bash-parallel + ruflo-hive (both use local engine for collect)
-- Mock → synchronous, timeout accepted but inapplicable
+Gap analysis of orch-sequential-test.sh (9 behaviors):
+- Tests 3–5 (pass/fail/partial normalization): already in orch-mock-test.sh M1–M3
+  and core-orch-contract-test.sh. [done]
+- Tests 1, 2, 6, 9 (capabilities, pool-dir lifecycle, script-file work units):
+  orch-sequential-specific implementation details. No equivalent in orch-mock
+  (synchronous, no file-based pool state). Not required in a backend contract test.
+- Test 7 (pool isolation — two simultaneous pools don't bleed results): NOT in any
+  surviving test. core-orch-contract-test.sh tests two units in ONE pool, not two
+  pools simultaneously.
+- Test 8 (pool_id validation): covered at contract/sanitization level in
+  core-orch-contract-test.sh test 8. [done]
 
-The existing test `tests/integration/orch-timeout-applies-test.sh` provides full coverage.
-No new test file needed.
+SPEC-11 scope: add a pool-isolation assertion to plugins/tool/orch-mock/tests/orch-mock-test.sh
+(already in scope). Test file is [no-code]: it adds test coverage for existing
+behavior; passes on old code too (orch-mock works at merge-base), which is
+acceptable for [no-code].
 
-### Finding 2 fixed: SPEC-3 "code or config file" excluded .golden files
+### Supersedes block status
 
-R-3 says "any file outside docs/adr/" but SPEC-3 said "any code or config file".
-A `.golden` file is neither code nor config, so the wording allowed the golden to remain.
-
-**Root cause check:**
-The guard test `orch-sequential-absent-guard-test.sh` already searches:
-```
-grep -rl "orch-sequential" \
-    "$REPO_ROOT/core" "$REPO_ROOT/plugins" "$REPO_ROOT/scripts" \
-    "$REPO_ROOT/config" "$REPO_ROOT/tests" "$REPO_ROOT/.github"
-```
-This grep DOES find `tests/golden/orch-sequential-capabilities.golden` since:
-1. It searches all of `tests/` (not just `.sh` files)
-2. The golden file contains "orch-sequential" in its content
-
-**Fix:** Updated SPEC-3 text to:
-- Say "any file (including golden files) outside `docs/adr/`" — matches R-3 and guard behavior
-- Explicitly name `tests/golden/orch-sequential-capabilities.golden` for deletion
-
-## Revision 4: supersedes block updated after test-author work (carried forward)
-
-The test-author ran (rate_limited after 7 files written) and made changes that
-affect the supersedes block:
-
-### Files authored by test-author
-- docs/adr/ADR-011-pluggable-backends.md — `## Enforced by` section added (line 206)
-- docs/adr/ADR-017-per-stage-router-config.md — `## Enforced by` section added (line 431)
-- tests/integration/orch-backend-misconfigured-test.sh — SPEC-2/4/10 assertions
-- tests/integration/orch-timeout-applies-test.sh — SPEC-1 assertions
-- tests/integration/runner-release-exit-paths-test.sh — [#1801/SPEC-5] assertions added
-- tests/unit/orch-kill-uses-pg-kill-guard-test.sh — SPEC-6 assertions
-- tests/unit/orch-sequential-absent-guard-test.sh — SPEC-3 assertions
-
-### Key change that affects supersedes
-
-The test-author renamed `_SPEC5_RELEASE_TIMEOUT` → `_SPEC5_STAGE_TIMEOUT` in
-`runner-release-exit-paths-test.sh` SPEC-5 section:
-- Line 368: `_SPEC5_STAGE_TIMEOUT=3`
-- Line 369: `_SPEC5_KILL_GRACE=$(( _SPEC5_STAGE_TIMEOUT * 3 + 6 ))`
-- Line 382: `timeout_s: ${_SPEC5_STAGE_TIMEOUT}` (top-level stage block in fixture)
-
-The guard test `exit-path-teardown-budget-guard-test.sh` greps for `_SPEC5_RELEASE_TIMEOUT=`
-in its SPEC-3. After the rename, this grep finds nothing, `_pinned` is empty, and
-SPEC-3 fails with "pinned='none' grace='unevaluatable'".
-
-**Fix**: the two supersedes entries for `exit-path-teardown-budget-guard-test.sh` call
-out both SPEC-1 and SPEC-3 with the exact grep patterns to update.
-
-### runner-release-exit-paths-test.sh [SPEC-6] supersedes removed
-
-The test-author already updated the SPEC-6 comments (line 409–410 now reads
-"`timeout_s:` at the top-level stage block (read by template_stage_time_limit after #1801)").
-The `[SPEC-6]` assertion (runner exits in <60s) remains observationally correct after
-implementation. The supersedes entry for runner-release-exit-paths-test.sh [SPEC-6] has
-been removed since no implementation-time update is needed.
-
-### Implementation still pending (not done by test-author)
-
-All [code] SPECs require implementation:
-- SPEC-1: Replace `ZBUILD_ORCH_TIMEOUT:-300` with `template_stage_time_limit` in 3 strategy files
-- SPEC-2/3: Remove orch-sequential fallback from contract.sh; delete plugin dir and golden
-- SPEC-4/10: Make orch_load_backend fatal on missing/unreadable backend
-- SPEC-5: Fix _runner_dispatch_always_run to use template_stage_time_limit; move timeout_s: in templates
-- SPEC-6: Add zbuild_pg_kill to local_engine.sh and runner.sh watchdog
-
-The config/adr-enforcement-baseline.txt still has ADR-011 and ADR-017 (lines 14, 20);
-removing them is SPEC-7 implementation work.
-
-## Earlier revisions (carried forward)
+The supersedes block correctly has:
+- exit-path-teardown-budget-guard-test.sh [SPEC-1] and [SPEC-3]: caused by
+  test-author renaming _SPEC5_RELEASE_TIMEOUT → _SPEC5_STAGE_TIMEOUT
+- plugin-artifact-goldens-test.sh [G5]: orch-sequential golden deletion
+- runner-release-exit-paths-test.sh [SPEC-6] REMOVED: test-author already updated
 
 ### R-7 grep results
-- `grep -rl 'orch-sequential' tests/` → 8 files, all in scope
-- `grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/` → 0 hits
-- `grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/` → 2 files, both in scope
-- `grep -rl '_orch_local_kill_slot' tests/` → 0 hits
-- `grep -rl 'router\.timeout_s' tests/` → 17 files (2 in scope, 15 excluded)
+- grep -rl 'orch-sequential' tests/ → 8 files, all in scope
+- grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/ → 0 hits
+- grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/ → 2 files, both in scope
+- grep -rl '_orch_local_kill_slot' tests/ → 0 hits
+- grep -rl 'router\.timeout_s' tests/ → 17 files (2 in scope, 15 excluded)
 
 ### Key source locations for implementation
-- `core/pipeline/strategies/sequential.sh:62` — `ZBUILD_ORCH_TIMEOUT:-300`
-- `core/pipeline/strategies/fanout.sh:79` — `ZBUILD_ORCH_TIMEOUT:-300`
-- `core/pipeline/strategies/map.sh:338` — `ZBUILD_ORCH_TIMEOUT:-300`
-- `core/orch/contract.sh:165-181` — orch-sequential fallback (must be removed)
-- `core/orch/local_engine.sh:34-40` — direct `kill` (must use zbuild_pg_kill)
-- `core/pipeline/runner.sh:2463-2465` — reads `ZBUILD_RELEASE_TIMEOUT:-30` (must use template_stage_time_limit)
-- `core/pipeline/runner.sh:2493` — watchdog kill (must use zbuild_pg_kill)
+- core/pipeline/strategies/sequential.sh:62 — ZBUILD_ORCH_TIMEOUT:-300
+- core/pipeline/strategies/fanout.sh:79 — ZBUILD_ORCH_TIMEOUT:-300
+- core/pipeline/strategies/map.sh:338 — ZBUILD_ORCH_TIMEOUT:-300
+- core/orch/contract.sh:165-181 — orch-sequential fallback (must be removed)
+- core/orch/local_engine.sh:34-40 — direct kill (must use zbuild_pg_kill)
+- core/pipeline/runner.sh:2463-2465 — reads ZBUILD_RELEASE_TIMEOUT:-30
+- core/pipeline/runner.sh:2493 — watchdog kill (must use zbuild_pg_kill)
 
-## Status: COMPLETE (revision 5)
+## Status: COMPLETE (revision 6)
 Design written to /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 
 ### test-author (verdict: rate_limited)

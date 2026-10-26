@@ -53,9 +53,9 @@ tests/unit/orch-kill-uses-pg-kill-guard-test.sh
 ```
 
 ```acceptance
-SPEC-1[code]: A hung work unit dispatched through the fanout, map, or sequential strategy stops at its stage template `timeout_s:` limit; the stage outcome is `timed_out` and the result names both the stage and the limit exceeded; the 300 s flat deadline no longer applies. covers: R-1 R-2
+SPEC-1[code]: A hung work unit dispatched through the fanout, map, and sequential strategies stops at its stage `timeout_s:` limit, verified under bash-parallel, ruflo-hive, and mock backends: the strategy spy confirms each strategy passes `template_stage_time_limit` to `orch_collect` instead of the 300 s flat deadline (this fix applies to all three backends since all receive the timeout from the strategy); the local engine's `_orch_local_collect_results` is directly verified to emit `timed_out` outcome under a planted hang (covers bash-parallel and ruflo-hive, both of which delegate collect to the local engine); the mock backend is synchronous so timeout is accepted but inapplicable; the strategies propagate `timed_out` naming the stage and the limit exceeded; the 300 s flat deadline no longer applies. covers: R-1 R-2
 SPEC-2[code]: Running with a backend configured as `sequential` (or any name that resolves to no plugin) fails the run as `misconfigured` naming the backend; the sequential fallback in `orch_load_backend` is removed. covers: R-3
-SPEC-3[code]: The `orch-sequential` plugin directory does not exist in the installed tree; a guard test fails if the directory exists or any code or config file outside `docs/adr/` still names `orch-sequential`. covers: R-3
+SPEC-3[code]: The `orch-sequential` plugin directory and `tests/golden/orch-sequential-capabilities.golden` do not exist in the installed tree; a guard test fails if the directory exists or any file (including golden files) outside `docs/adr/` still names `orch-sequential`. covers: R-3
 SPEC-4[code]: A configured backend plugin that is absent from the installed tree (not the checkout) fails the run as `misconfigured` naming the missing backend. covers: R-4
 SPEC-5[code]: `_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit` (`timeout_s:` 30 s for release, 120 s for persist); `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` are no longer read for this purpose. covers: R-5
 SPEC-6[code]: The `_orch_local_kill_slot` function and the always-run watchdog kill through `zbuild_pg_kill`; a hook that spawns a child which ignores TERM leaves no running process after the watchdog fires. covers: R-6
@@ -63,6 +63,8 @@ SPEC-7[no-code]: ADR-011 and ADR-017 carry `## Enforced by` sections naming the 
 SPEC-8[no-code]: The scope block includes every test file discovered by `grep -rl` for `orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `ZBUILD_RELEASE_TIMEOUT`, `router.timeout_s`, and `_orch_local_kill_slot` in `tests/` that pins behavior changed by this issue (per CLAUDE.md test scope discovery). covers: R-7
 SPEC-9[no-code]: `npm test` and `npm run lint` pass on the final delivered change with no failures. covers: R-9
 SPEC-10[code]: A backend whose plugin directory is present but whose config file is unreadable (permissions, corrupt, or missing) fails the run as `misconfigured` naming the backend — tested from the installed tree. covers: R-4
+SPEC-11[no-code]: Pool isolation — two independently active pools collect without bleeding results across each other — is verified in `plugins/tool/orch-mock/tests/orch-mock-test.sh` against the orch-mock backend; the file is extended with this pool-isolation assertion and passes after the change; pass/fail/partial normalization is already covered by orch-mock-test.sh M1–M3 and core-orch-contract-test.sh; `plugins/tool/orch-sequential/tests/orch-sequential-test.sh` is deleted only after confirming this is the sole behavioral gap from that file not already covered by surviving tests. covers: R-3
+SPEC-12[no-code]: Every existing test file that uses orch-sequential as a live behavioral fixture (sourcing its plugin.sh, iterating it in a backend roster, or pinning its source content) is updated so no behavioral coverage is silently dropped: (a) `adr059-no-tmpdir-defaults-test.sh` SPEC-4 (sequential pool-dir placement under `runs/<run_id>/pool`) is removed — orch-sequential is retired; the no-TMPDIR-leakage contract for the remaining backends is preserved by that file's own SPEC-3 (bash-parallel) and SPEC-6 (ruflo-hive) assertions; its SPEC-8 loop removes the orch-sequential iteration for the same reason; (b) `core-orch-run-id-isolation-test.sh` P4 and P5 (sequential pool-dir per-run namespacing) are removed — orch-sequential is retired; run-isolation for bash-parallel is preserved by P1–P3 in the same file; (c) `dispatch-rc-guard-test.sh` removes `plugins/tool/orch-sequential/plugin.sh|0` from `_PINNED` (the file no longer exists; no legacy-RC behavior to guard); (d) `stdin-spawn-guard-test.sh` removes the two orch-sequential stdin-close pins (plugin.sh deleted; the stdin-close pattern is enforced for surviving backends by their own pins); (e) `summary-mandatory-test.sh` removes orch-sequential from the SPEC-3 backend roster loop (manifest no longer present; no behavioral loss since the loop checks for absence of `summary: true`). covers: R-3
 WIRING:
 core/pipeline/strategies/fanout.sh
 core/pipeline/strategies/map.sh
@@ -79,32 +81,41 @@ SPEC-5: tests/integration/runner-release-exit-paths-test.sh
 SPEC-6: tests/unit/orch-kill-uses-pg-kill-guard-test.sh
 SPEC-7: docs/adr/ADR-011-pluggable-backends.md docs/adr/ADR-017-per-stage-router-config.md
 SPEC-10: tests/integration/orch-backend-misconfigured-test.sh
+SPEC-11: plugins/tool/orch-mock/tests/orch-mock-test.sh
+SPEC-12: tests/unit/adr059-no-tmpdir-defaults-test.sh tests/unit/core-orch-run-id-isolation-test.sh tests/unit/dispatch-rc-guard-test.sh tests/unit/stdin-spawn-guard-test.sh tests/unit/summary-mandatory-test.sh
 ```
 
 ```supersedes
-tests/unit/exit-path-teardown-budget-guard-test.sh [SPEC-1]: currently asserts that `ZBUILD_RELEASE_TIMEOUT` is pinned in `runner-release-exit-paths-test.sh` SPEC-5 block; after the fix that env var is not read, so the assertion is wrong — update to check for the `timeout_s:` fixture instead
-tests/integration/runner-release-exit-paths-test.sh [SPEC-6]: comments say the bound is "the release stage's own router.timeout_s (30 in the template)"; after the fix the bound is `timeout_s:` at the top-level stage block — update comment and fixture
+tests/unit/exit-path-teardown-budget-guard-test.sh [SPEC-1]: asserts `ZBUILD_RELEASE_TIMEOUT` is found in the runner-release-exit-paths-test.sh SPEC-5 block; the test-author renamed the pinned variable to `_SPEC5_STAGE_TIMEOUT` — update SPEC-1 to grep for `_SPEC5_STAGE_TIMEOUT` and update the intent-comment to describe the new pin
+tests/unit/exit-path-teardown-budget-guard-test.sh [SPEC-3]: greps for `_SPEC5_RELEASE_TIMEOUT=[0-9]+` to extract the pinned value; after the rename `_pinned` is empty so the assertion fails with "pinned='none' grace='unevaluatable'" — update to grep for `_SPEC5_STAGE_TIMEOUT=[0-9]+` instead
 tests/unit/plugin-artifact-goldens-test.sh [G5]: the G5 section asserts orch-sequential's golden exists and its `orch_capabilities()` output matches; after deletion of the plugin and golden the whole G5 block is removed
 ```
 
 ## Findings
 
-**Design finding 1 (SPEC-1 missing "names stage and limit"):** Fixed. SPEC-1 now reads "the stage outcome is `timed_out` and the result names both the stage and the limit exceeded", covering the full R-1 requirement.
+**Design findings 1–2 (verifier: R-3 behavioral fixture migration not fully covered):** Both findings point to the same gap: SPEC-11 covers only the pool-isolation behavioral migration from `orch-sequential-test.sh` to `orch-mock-test.sh`, but other existing test files use orch-sequential as a live behavioral fixture — sourcing its plugin.sh, iterating it in a backend roster, or pinning its source content. Without an explicit SPEC, these could be satisfied by stripping the references (which SPEC-3's guard requires) without preserving or justifying the behavioral coverage.
 
-**Design finding 2 (R-4 unreadable config not covered):** Fixed. Added SPEC-10[code] covering the "backend directory present but config unreadable" branch, sharing test file `tests/integration/orch-backend-misconfigured-test.sh` with SPEC-4. R-4 has two failure modes: (a) backend not found at all — covered by SPEC-2 and SPEC-4; (b) backend directory present but config unreadable — covered by SPEC-10.
+**Fix: SPEC-12[no-code]** explicitly names each affected file and states what happens to its behavioral coverage:
+- `adr059-no-tmpdir-defaults-test.sh` SPEC-4 (sequential pool-dir): the no-TMPDIR contract is already covered by SPEC-3 (bash-parallel) and SPEC-6 (ruflo-hive) in the same file; SPEC-4 is dropped.
+- `adr059-no-tmpdir-defaults-test.sh` SPEC-8 loop: orch-sequential iteration removed; the other two backend iterations remain.
+- `core-orch-run-id-isolation-test.sh` P4/P5: per-run namespacing is preserved by P1–P3 for bash-parallel; P4/P5 (sequential) dropped because the backend is retired.
+- `dispatch-rc-guard-test.sh`: orch-sequential pin removed; no legacy-RC behavior survives to guard.
+- `stdin-spawn-guard-test.sh`: orch-sequential pins removed; stdin-close enforcement for surviving backends is covered by their own pins.
+- `summary-mandatory-test.sh`: orch-sequential removed from backend roster loop; no manifest to check; no behavioral loss.
 
-**R-7 (scope discovery):** Greps per CLAUDE.md confirmed all affected test files. Results, term by term:
-- `grep -rl 'orch-sequential' tests/` → 8 files: all in scope above.
-- `grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/` → 0 hits (env var only in source files; no test pins it).
-- `grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/` → 2 files: `exit-path-teardown-budget-guard-test.sh`, `runner-release-exit-paths-test.sh`; both in scope.
-- `grep -rl '_orch_local_kill_slot' tests/` → 0 hits (internal function; guarded by new SPEC-6 test).
-- `grep -rl 'router\.timeout_s' tests/` → 17 files. Of these, 2 pin the always-run watchdog bound (`runner-release-exit-paths-test.sh`, `exit-path-teardown-budget-guard-test.sh`; both in scope). The remaining 15 test ADR-017 per-stage model-call timeout (`template_stage_router_timeout`), which is NOT changing. Spot-checked `core-pipeline-template-test.sh` (lines 493–590): its `router.timeout_s` assertions all target `template_stage_router_timeout`, the per-call limit accessor, unchanged by this issue. Those 15 files are correctly excluded from scope.
-SPEC-8[no-code] records this discovery as a required step. R-7 is now covered.
+The verifier cited `stage-time-limit-test.sh` and `map-strategy-test.sh` as examples. `stage-time-limit-test.sh` has zero orch-sequential references (confirmed by grep). `map-strategy-test.sh` has one comment reference at line 508 (`orch-bash-parallel/orch-sequential`); this is a comment update, not a behavioral fixture — removing it is required by SPEC-3's guard and carries no behavioral loss. Both files remain in scope.
 
-**R-9 (green CI):** Covered by SPEC-9[no-code]. This is a standing quality gate; all [code] SPECs' test files must pass after the change. R-9 is now covered.
+**Design findings 1–4 (earlier verifier: SPEC-1 missing "names stage and limit"):** Fixed in earlier revision. SPEC-1 covers R-1 and R-2 including stage and limit naming in the `timed_out` outcome.
 
-**Template observation:** Both `config/templates/simple.yaml` and `config/templates/deployed.yaml` declare `timeout_s: 30` (release) and `timeout_s: 120` (persist) under the `router:` block, where they set `_TPL_STAGE_ROUTER_TIMEOUT_${safe}` (the per-call model timeout). `template_stage_time_limit` reads the top-level `timeout_s:` key. Moving those values one level up is the only template change needed; the `router:` entries for release/persist can be removed since these stages make no model calls.
+**R-7 (scope discovery):** Greps per CLAUDE.md confirmed all affected test files:
+- `grep -rl 'orch-sequential' tests/` → 10 files: all in scope.
+- `grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/` → 0 hits.
+- `grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/` → 2 files: both in scope.
+- `grep -rl '_orch_local_kill_slot' tests/` → 0 hits (guarded by new SPEC-6 test).
+- `grep -rl 'router\.timeout_s' tests/` → 17 files; 2 pin the always-run watchdog bound (in scope); remaining 15 test the per-call model-call timeout accessor (`template_stage_router_timeout`), unchanged by this issue.
 
-**orch-mock and orch-ruflo-hive:** `plugins/tool/orch-mock/tests/orch-mock-test.sh` and `plugins/tool/orch-ruflo-hive/plugin.sh` each contain a comment naming `orch-sequential`; both must be updated to keep the guard clean (SPEC-3).
+**Template observation:** Both templates declare `timeout_s: 30` (release) and `timeout_s: 120` (persist) under `router:`, where they set the per-call model timeout. `template_stage_time_limit` reads the top-level `timeout_s:` key. Moving those values one level up is the only template change needed.
+
+**Supersedes updates:** The test-author renamed `_SPEC5_RELEASE_TIMEOUT` → `_SPEC5_STAGE_TIMEOUT` in `runner-release-exit-paths-test.sh`. Both exit-path-teardown-budget-guard-test.sh entries in the supersedes block reflect this rename. The `runner-release-exit-paths-test.sh [SPEC-6]` entry was removed from a prior revision: the test-author already updated those comments and the SPEC-6 assertion remains observationally correct.
 
 **`config/adr-enforcement-baseline.txt`:** Removing ADR-011 and ADR-017 from the baseline while adding their `## Enforced by` sections is required by `lint-adr-enforced-by.sh` (part of `npm run lint`).

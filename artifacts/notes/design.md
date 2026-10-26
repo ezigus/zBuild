@@ -1,48 +1,88 @@
-# Design notes — issue #1801 (revision 6)
+# Design notes — issue #1801 (revision 7)
 
-## Revision 6: fix four verifier findings — add SPEC-11 for test migration coverage
+## Revision 7: fix two verifier findings — add SPEC-12 for behavioral fixture migration
 
-### All four findings: same root cause
+### Root cause of both verifier findings
 
-All four verifier findings from the latest design run share one root: R-3 says
-"Every test that used orch-sequential as a fixture passes on orch-mock or
-bash-parallel," but no SPEC required behavioral coverage to be MIGRATED rather
-than simply DELETED. SPEC-3 (guard for orch-sequential references) could be
-satisfied by deleting tests without replacement, and SPEC-9 (green CI) passes
-equally whether coverage is preserved or removed.
+Both findings: SPEC-11 covered only the pool-isolation behavioral migration from
+`orch-sequential-test.sh` → `orch-mock-test.sh`. Other existing test files that use
+orch-sequential as a live behavioral fixture had no SPEC requiring their coverage to
+be migrated or explicitly dropped.
 
-### Fix: SPEC-11[no-code]
+### Behavioral fixture files identified (grep -rl 'orch-sequential' tests/)
 
-Added SPEC-11[no-code] covering pool isolation — the one ADR-011 contract
-behavior NOT already covered by surviving tests.
+10 files total (previous design said 8; actual count is 10):
+1. tests/unit/summary-mandatory-test.sh:111 — roster loop includes orch-sequential
+2. tests/integration/orch-backend-misconfigured-test.sh — NEW test (already authored)
+3. tests/unit/dispatch-rc-guard-test.sh:87 — orch-sequential/plugin.sh in _PINNED
+4. tests/test-durations.tsv — just a duration entry, not a behavioral fixture
+5. tests/unit/stdin-spawn-guard-test.sh:30-31 — two _pin calls on plugin.sh
+6. tests/unit/orch-sequential-absent-guard-test.sh — NEW test (already authored)
+7. tests/unit/map-strategy-test.sh:508 — COMMENT only, not behavioral
+8. tests/unit/adr059-no-tmpdir-defaults-test.sh:65,100,102 — BEHAVIORAL: sources plugin.sh, calls _orch_seq_pool_dir
+9. tests/unit/plugin-artifact-goldens-test.sh — covered by supersedes [G5]
+10. tests/unit/core-orch-run-id-isolation-test.sh:77 — BEHAVIORAL: sources plugin.sh
 
-Gap analysis of orch-sequential-test.sh (9 behaviors):
-- Tests 3–5 (pass/fail/partial normalization): already in orch-mock-test.sh M1–M3
-  and core-orch-contract-test.sh. [done]
-- Tests 1, 2, 6, 9 (capabilities, pool-dir lifecycle, script-file work units):
-  orch-sequential-specific implementation details. No equivalent in orch-mock
-  (synchronous, no file-based pool state). Not required in a backend contract test.
-- Test 7 (pool isolation — two simultaneous pools don't bleed results): NOT in any
-  surviving test. core-orch-contract-test.sh tests two units in ONE pool, not two
-  pools simultaneously.
-- Test 8 (pool_id validation): covered at contract/sanitization level in
-  core-orch-contract-test.sh test 8. [done]
+### What each behavioral fixture needs
 
-SPEC-11 scope: add a pool-isolation assertion to plugins/tool/orch-mock/tests/orch-mock-test.sh
-(already in scope). Test file is [no-code]: it adds test coverage for existing
-behavior; passes on old code too (orch-mock works at merge-base), which is
-acceptable for [no-code].
+adr059-no-tmpdir-defaults-test.sh:
+- SPEC-4 (lines 62-68): Sources orch-sequential/plugin.sh, calls _orch_seq_pool_dir.
+  DROP: no-TMPDIR contract preserved by SPEC-3 (bash-parallel) and SPEC-6 (ruflo-hive)
+- SPEC-8 loop (line 100): iterates orch-bash-parallel, orch-sequential, orch-ruflo-hive
+  UPDATE: remove orch-sequential from loop
 
-### Supersedes block status
+core-orch-run-id-isolation-test.sh:
+- P4 (lines 74-81): Sources orch-sequential/plugin.sh, tests _orch_seq_pool_dir is per-run
+- P5 (lines 82-85): Tests ZBUILD_POOL_ROOT override for sequential
+  DROP both: run-isolation preserved by P1-P3 (bash-parallel)
 
-The supersedes block correctly has:
-- exit-path-teardown-budget-guard-test.sh [SPEC-1] and [SPEC-3]: caused by
-  test-author renaming _SPEC5_RELEASE_TIMEOUT → _SPEC5_STAGE_TIMEOUT
-- plugin-artifact-goldens-test.sh [G5]: orch-sequential golden deletion
-- runner-release-exit-paths-test.sh [SPEC-6] REMOVED: test-author already updated
+dispatch-rc-guard-test.sh:
+- Line 87: `plugins/tool/orch-sequential/plugin.sh|0` in _PINNED
+  REMOVE the pin line (file deleted; no legacy-RC behavior to guard)
 
-### R-7 grep results
-- grep -rl 'orch-sequential' tests/ → 8 files, all in scope
+stdin-spawn-guard-test.sh:
+- Lines 30-31: Two _pin calls checking orch-sequential/plugin.sh patterns
+  REMOVE both (file deleted)
+
+summary-mandatory-test.sh:
+- Line 111: `for _svc in cache-local memory-sqlite orch-sequential; do`
+  Has `[[ -f "$_sm" ]] || continue` so silently skips after deletion, but
+  SPEC-3 guard would catch the orch-sequential string.
+  REMOVE from loop
+
+map-strategy-test.sh:
+- Line 508: comment only (`orch-bash-parallel/orch-sequential`).
+  SPEC-3 guard catches this — comment update required.
+
+### Fix: SPEC-12[no-code]
+
+Added to acceptance block. Names each file and its treatment. TESTFILES bound:
+SPEC-12: tests/unit/adr059-no-tmpdir-defaults-test.sh
+         tests/unit/core-orch-run-id-isolation-test.sh
+         tests/unit/dispatch-rc-guard-test.sh
+         tests/unit/stdin-spawn-guard-test.sh
+         tests/unit/summary-mandatory-test.sh
+
+(map-strategy-test.sh comment update is implied by SPEC-3 guard + in scope block)
+
+### Verifier example files clarification
+- stage-time-limit-test.sh: 0 orch-sequential references (grep confirmed). The
+  verifier cited it as an example; it's in scope for other reasons (SPEC-1 timeout).
+  No behavioral fixture migration needed.
+- map-strategy-test.sh: 1 comment at line 508. Not a behavioral fixture. Comment
+  cleanup required by SPEC-3 guard; covered by scope + SPEC-3.
+
+### SPEC-11 (pool isolation) — unchanged
+Pool isolation from orch-sequential-test.sh test 7 is the only behavioral gap
+not covered by surviving tests. SPEC-11 adds it to orch-mock-test.sh.
+
+### Supersedes block status (unchanged from revision 6)
+- exit-path-teardown-budget-guard-test.sh [SPEC-1]: rename _SPEC5_RELEASE_TIMEOUT → _SPEC5_STAGE_TIMEOUT
+- exit-path-teardown-budget-guard-test.sh [SPEC-3]: same rename in grep pattern
+- plugin-artifact-goldens-test.sh [G5]: G5 block removed (golden deleted)
+
+### R-7 grep results (corrected: 10 files, not 8)
+- grep -rl 'orch-sequential' tests/ → 10 files, all in scope
 - grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/ → 0 hits
 - grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/ → 2 files, both in scope
 - grep -rl '_orch_local_kill_slot' tests/ → 0 hits
@@ -57,5 +97,5 @@ The supersedes block correctly has:
 - core/pipeline/runner.sh:2463-2465 — reads ZBUILD_RELEASE_TIMEOUT:-30
 - core/pipeline/runner.sh:2493 — watchdog kill (must use zbuild_pg_kill)
 
-## Status: COMPLETE (revision 6)
+## Status: COMPLETE (revision 7)
 Design written to /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
