@@ -84,3 +84,21 @@ Three gaps found in design.md vs. original plan, now corrected:
 3. **Step 12 areas expanded**: `config/adr-enforcement-baseline.txt` must have ADR-011 and ADR-017
    removed; `npm run lint` (lint-adr-enforced-by.sh) requires it once those ADRs carry
    `## Enforced by` sections.
+
+## Design findings applied (third pass — unusable design verdict)
+
+The "unusable" design attempt found two findings:
+1. "SPEC-11 covers only plugins/tool/orch-sequential/tests/orch-sequential-test.sh" for R-3
+2. No SPEC requires that tests/integration/stage-time-limit-test.sh and tests/unit/map-strategy-test.sh
+   are migrated to pass on orch-mock/bash-parallel (vs. just having references stripped)
+
+**Resolution:** The issue's "Not in scope" clause says how fixture tests are migrated is "build's
+choice, checked by the full suite (npm test)." AC9 (npm test green) is the operative criterion, not
+a specific migration SPEC. However, the plan step 3 was too general for the design to generate
+targeted SPECs. Updated step 3 to:
+- Explicitly name tests/integration/stage-time-limit-test.sh and tests/unit/map-strategy-test.sh
+  in areas
+- Distinguish "migrate so the test still passes on the new backend" from "strip the reference and
+  leave the test broken" in the description
+
+The 13 steps are otherwise unchanged. No open questions.
