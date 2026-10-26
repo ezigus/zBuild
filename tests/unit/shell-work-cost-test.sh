@@ -73,7 +73,13 @@ manifest_index_load "$TEST_TEMP_DIR/small"
 work manifest_index_get "$TEST_TEMP_DIR/small/tool/p3/manifest.yaml" id; _w_small="$(cmds)"
 manifest_index_load "$TEST_TEMP_DIR/big"
 work manifest_index_get "$TEST_TEMP_DIR/big/tool/p70/manifest.yaml" id; _w_big="$(cmds)"
-assert_eq "[W1] the same work for 6 manifests as for 80 ($_w_small vs $_w_big commands)" "$_w_small" "$_w_big"
+# Equal up to a command or two of tracing noise (the coverage run differs by
+# one); a walk of the file list would add one or more per manifest.
+if (( _w_big <= _w_small + 3 )); then
+    assert_pass "[W1] the same work for 6 manifests as for 80 ($_w_small vs $_w_big commands)"
+else
+    assert_fail "[W1] the same work for 6 manifests as for 80" "$_w_small vs $_w_big commands"
+fi
 assert_eq "[W1] …and the value" "p70" "$(manifest_index_get "$TEST_TEMP_DIR/big/tool/p70/manifest.yaml" id)"
 assert_eq "[W1] a file no root lists is still rc 2" "2" \
     "$(manifest_index_get "$TEST_TEMP_DIR/elsewhere/manifest.yaml" id >/dev/null; echo $?)"
