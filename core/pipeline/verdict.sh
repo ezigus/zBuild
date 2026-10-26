@@ -150,28 +150,31 @@ _verdict_primary_output_path_v() {
 # #1826 added ${stage_io_dir} and ${run_id}. The first had NO resolver anywhere
 # in the tree despite being canonical since ADR-015 v1; run_id comes from the
 # environment, so an unset ZBUILD_RUN_ID leaves the reference expanding to empty.
-_verdict_resolve_path() {
-    local raw="$1" state_dir="$2"
-    local artifact_dir="${state_dir}/artifacts"
-    local p="$raw"
-    p="${p//\$\{state_dir\}/$state_dir}"
-    p="${p//\$\{artifact_dir\}/$artifact_dir}"
-    p="${p//\$\{artifacts_dir\}/$artifact_dir}"
-    p="${p//\$\{stage_io_dir\}/$artifact_dir/stage-io}"
+_verdict_resolve_path() { local _vrp; _verdict_resolve_path_v _vrp "$1" "$2"; printf '%s' "$_vrp"; }
+# _verdict_resolve_path_v <var> <raw> <state_dir> — the same, into <var>, with no
+# subshell (ADR-065 §5).
+_verdict_resolve_path_v() {
+    local _vrv_out="$1" _vrv_raw="$2" _vrv_sd="$3"
+    local _vrv_ad="${_vrv_sd}/artifacts"
+    local _vrv_p="$_vrv_raw"
+    _vrv_p="${_vrv_p//\$\{state_dir\}/$_vrv_sd}"
+    _vrv_p="${_vrv_p//\$\{artifact_dir\}/$_vrv_ad}"
+    _vrv_p="${_vrv_p//\$\{artifacts_dir\}/$_vrv_ad}"
+    _vrv_p="${_vrv_p//\$\{stage_io_dir\}/$_vrv_ad/stage-io}"
     # run_id is interpolated into a path: strip anything but the sanitized set
     # the runner itself guarantees, so a hostile value cannot traverse.
-    local _rid="${ZBUILD_RUN_ID:-}"; _rid="${_rid//[^A-Za-z0-9._-]/_}"
-    p="${p//\$\{run_id\}/$_rid}"
+    local _vrv_rid="${ZBUILD_RUN_ID:-}"; _vrv_rid="${_vrv_rid//[^A-Za-z0-9._-]/_}"
+    _vrv_p="${_vrv_p//\$\{run_id\}/$_vrv_rid}"
     # #2270: a map element's own name, so parallel elements never share a file.
     # Sanitized like run_id — it is interpolated into a path.
     # With no element set (outside a map member) it stays unresolved: an empty
     # name would point at a file no element owns (`lens--checkpoint.md`).
-    local _me="${ZBUILD_MAP_ELEMENT:-}"; _me="${_me//[^A-Za-z0-9._-]/_}"; _me="${_me//../__}"
-    [[ -n "$_me" ]] && p="${p//\$\{map_element\}/$_me}"
-    if [[ "$p" != /* ]]; then
-        p="$state_dir/$p"
+    local _vrv_me="${ZBUILD_MAP_ELEMENT:-}"; _vrv_me="${_vrv_me//[^A-Za-z0-9._-]/_}"; _vrv_me="${_vrv_me//../__}"
+    [[ -n "$_vrv_me" ]] && _vrv_p="${_vrv_p//\$\{map_element\}/$_vrv_me}"
+    if [[ "$_vrv_p" != /* ]]; then
+        _vrv_p="$_vrv_sd/$_vrv_p"
     fi
-    printf '%s' "$p"
+    printf -v "$_vrv_out" '%s' "$_vrv_p"
 }
 
 # ─── _verdict_parse_result_v <var> <result.json> <state_dir> ─────────────────
@@ -269,12 +272,12 @@ _verdict_read_result() {
         printf -v "${p}_state" '%s' "no_manifest"; return 0
     fi
 
-    local prim_path; prim_path="$(_verdict_primary_output_path "$manifest")"
+    local prim_path; _verdict_primary_output_path_v prim_path "$manifest"
     if [[ -z "$prim_path" ]]; then
         printf -v "${p}_state" '%s' "no_primary"; return 0
     fi
 
-    local resolved; resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
+    local resolved; _verdict_resolve_path_v resolved "$prim_path" "$state_dir"
     printf -v "${p}_path" '%s' "$resolved"
 
     case "$resolved" in

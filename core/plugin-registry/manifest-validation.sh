@@ -123,7 +123,7 @@ yaml_cache_prewarm() {
     # -maxdepth 3 set as before: a path deeper than root/kind/name/manifest.yaml
     # (a plugin's tests/ fixture) is left to the lazy path.
     manifest_index_load "$root"
-    local nroot; nroot="$(_manifest_index_root "$root")"
+    local nroot; _manifest_index_root_v nroot "$root"
     [[ -n "${_ZBUILD_MIDX_FILES[$nroot]+x}" ]] || return 0
     local manifest key rel ck
     while IFS= read -r manifest; do

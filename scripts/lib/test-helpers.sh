@@ -1011,20 +1011,55 @@ mock_result_line() {
 # overlay (the #978/#1270 pattern).
 
 # ── wait_for_event ────────────────────────────────────────────────────────────
+# ─── zb_test_work <trace_file> <cmd...> ──────────────────────────────────────
+# Runs <cmd> in THIS shell with every shell command it runs traced into
+# <trace_file> (ADR-065 §5: work the shell itself does, which a count of the
+# programs started does not see). Then:
+#   zb_test_work_cmds <trace_file>   the shell commands it ran
+#   zb_test_work_procs <trace_file>  the subshells it ran in besides this one
+# <cmd>'s output is discarded; run it again for its answer.
+zb_test_work() {
+    local _zw_f="$1" _zw_ps4="${PS4-}" _zw_fd; shift
+    printf 'shell %s\n' "$BASHPID" > "$_zw_f"
+    exec {_zw_fd}>>"$_zw_f"
+    BASH_XTRACEFD=$_zw_fd; PS4='+#${BASHPID}# '
+    set -x
+    "$@" >/dev/null 2>&1
+    { set +x; } 2>/dev/null
+    unset BASH_XTRACEFD; PS4="$_zw_ps4"
+    exec {_zw_fd}>&-
+    return 0
+}
+# The closing `set +x` is traced too, and is not <cmd>'s.
+zb_test_work_cmds()  { local n; n="$(grep -c '^+*#[0-9]*# ' "$1" 2>/dev/null)"; printf '%s' "$(( ${n:-1} - 1 ))"; }
+zb_test_work_procs() {
+    local me n; me="$(sed -n '1s/^shell //p' "$1" 2>/dev/null)"
+    n="$(sed -n 's/^+*#\([0-9]*\)# .*/\1/p' "$1" 2>/dev/null | sort -u | grep -vxc "${me:-x}")"
+    printf '%s' "${n:-0}"
+}
+
 # ─── zb_test_kill_tree <pid> ─────────────────────────────────────────────────
 # KILL <pid> and every process under it. KILL cannot be caught, so a runner
 # killed alone cleans up nothing: its forked stage and the stage's time-limit
 # watchdog (copies of its shell, so they show as runner.sh) ran on, the watchdog
-# for up to the stage's limit. The tree is stopped before it is killed, and read
-# again once stopped, so a child forked while it was being read is not missed.
+# for up to the stage's limit.
+#
+# Deepest first, so no parent dies before its children (a child whose parent is
+# gone is re-parented away and can no longer be found), and read again until
+# nothing is left, for a child forked while the tree was being read. Nothing is
+# STOPped on the way: a stopped process whose parent dies leaves an orphaned
+# process group with a stopped member, and the kernel hangs up that whole group
+# — on macOS CI, the test's own. A process already gone is no error, under
+# set -e too: an abort test's runner has usually exited on its TERM by then.
 _zb_test_tree() { local c; printf '%s\n' "$1"; for c in $(pgrep -P "$1" 2>/dev/null || true); do _zb_test_tree "$c"; done; }
-# A process already gone is no error, under set -e too: an abort test's runner
-# has usually exited on its TERM by the time the test reaps it.
 zb_test_kill_tree() {
-    local t
-    t="$(_zb_test_tree "$1")"; kill -STOP $t 2>/dev/null || true
-    t="$(_zb_test_tree "$1")"; kill -STOP $t 2>/dev/null || true
-    kill -KILL $t 2>/dev/null || true
+    local -a t
+    local i r
+    for (( r = 0; r < 5; r++ )); do
+        mapfile -t t < <(_zb_test_tree "$1")
+        for (( i = ${#t[@]} - 1; i >= 0; i-- )); do kill -KILL "${t[i]}" 2>/dev/null || true; done
+        kill -0 "$1" 2>/dev/null || (( ${#t[@]} > 1 )) || break
+    done
     return 0
 }
 

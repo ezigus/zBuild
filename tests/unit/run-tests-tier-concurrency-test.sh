@@ -177,7 +177,12 @@ _all "$JOBS_FIX" ZBUILD_TIER_BUDGET=6
 _u_jobs="$(cat "$HOOK.unit" 2>/dev/null || echo MISSING)"
 _e_jobs="$(cat "$HOOK.e2e" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-4] unit tier sees the FULL count: JOBS=6 for 6 CPUs (was ceil(6/2)=3)" "6" "$_u_jobs"
-assert_eq "[SPEC-4b] a non-parallel-safe file-tier (e2e) sees JOBS=0 (serial within tier)" "0" "$_e_jobs"
+# Round 8 (ADR-065 §5): e2e runs its files in parallel too. Its ten files ran one
+# after another for 329s of a 407s suite; each one sets up its own HOME, state
+# and events dir, like the integration files (#989).
+assert_eq "[SPEC-4b] the e2e tier sees the FULL count too: JOBS=6" "6" "$_e_jobs"
+_g_jobs="$(cat "$HOOK.golden" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-4b] golden (one file) stays serial: JOBS=0" "0" "$_g_jobs"
 # #2123: integration is in _par_safe_tiers (#991) and is the suite's long pole
 # (243 files / 4,039s serial = the pipeline's 45–54-minute test stage). Under
 # --tier all it gets the same count as unit.

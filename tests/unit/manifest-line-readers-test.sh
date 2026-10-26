@@ -265,7 +265,9 @@ same() {
 }
 _new_attempt_facts() { local f=""; _ATT_FACTS_FOR=""; _attempt_manifest_facts_v f "$1"; [[ -z "$f" ]] || printf '%s\n' "$f"; }
 _old_attempt_facts_v() { local f; f="$(_old_attempt_facts "$1")"; [[ -z "$f" ]] || printf '%s\n' "$f"; }
-_tl_new() { _TPL_SOURCE_FILE="$1" _template_stage_time_limit_read "$2"; }
+# The new reader reads every stage in one pass (round 8); a fresh memo per call
+# makes each comparison a fresh read of the file.
+_tl_new() { local _TPL_SOURCE_FILE="$1" _tln; _ZB_STAGE_TL_MEMO=(); template_stage_time_limit_v _tln "$2"; printf '%s' "$_tln"; }
 _tl_old() { _TPL_SOURCE_FILE="$1" _old_template_stage_time_limit_read "$2"; }
 
 print_test_section "Q1: every reader, every input"

@@ -89,9 +89,15 @@ outcome_vocabulary() {
 }
 
 outcome_is_valid() {
-    local o="${1-}"
+    local o="${1-}" w
     [[ -n "$o" ]] || return 1
-    case " $(outcome_vocabulary) " in
+    # The vocabulary, built once in this shell (ADR-065 §5): asked on every
+    # result read, it was a subshell each time.
+    if [[ -z "${_ZB_OUTCOME_VOCAB:-}" ]]; then
+        _ZB_OUTCOME_VOCAB="pass fail"
+        for w in $_ZBUILD_DISPOSITION_SET; do [[ "$w" == complete ]] || _ZB_OUTCOME_VOCAB+=" $w"; done
+    fi
+    case " $_ZB_OUTCOME_VOCAB " in
         *" $o "*) return 0 ;;
         *)        return 1 ;;
     esac

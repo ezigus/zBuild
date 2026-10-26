@@ -167,19 +167,19 @@ _stage_block_previous_work() {
         # Only a stage's own notes come back to it (ADR-067 §8); another
         # stage's notes are its working file, not its output.
         notes=""
-        [[ "$s" == "$stage" ]] && notes="$(stage_notes_path "$state_dir" "$s")"
+        [[ "$s" == "$stage" ]] && stage_notes_path_v notes "$state_dir" "$s"
         [[ -n "$notes" && -s "$notes" ]] || notes=""
         [[ -n "${outs[$s]:-}" || -n "$notes" ]] || continue
         any=1
-        manifest="$(_inputs_stage_manifest "$s" "$plugins_root" 2>/dev/null || true)"
+        _inputs_stage_manifest_v manifest "$s" "$plugins_root" 2>/dev/null || true
         summ=""; errp=""; res=""; req=""
         if [[ -n "$manifest" ]]; then
             roles="$(_sp_manifest_roles "$manifest" "$state_dir")"
             while IFS=$'\t' read -r k raw; do
                 case "$k" in
                     S) [[ -z "$summ" ]] && { summ="$(_inputs_output_paths "$s" "$raw" "$state_dir")"; summ="${summ%%$'\n'*}"; } ;;
-                    E) [[ -z "$errp" ]] && errp="$(_verdict_resolve_path "$raw" "$state_dir")" ;;
-                    P) [[ -z "$res" ]] && res="$(_verdict_resolve_path "$raw" "$state_dir")" ;;
+                    E) [[ -z "$errp" ]] && _verdict_resolve_path_v errp "$raw" "$state_dir" ;;
+                    P) [[ -z "$res" ]] && _verdict_resolve_path_v res "$raw" "$state_dir" ;;
                     R) req+="${raw##*/}"$'\n' ;;
                 esac
             done <<< "$roles"

@@ -32,7 +32,9 @@ _lc_other_outputs_deny() {
     local artifact_dir="${state_dir}/artifacts" own_n idx_root
     # The index lists paths with `//` collapsed (_manifest_index_root); so must own.
     _manifest_path_key own_n "${own%/}"
-    idx_root="$(_manifest_index_root "$root")"
+    _manifest_index_root_v idx_root "$root"
+    # The index's own arrays, read in this shell: a `$( manifest_index_get )`
+    # per manifest was a subshell each, on every dispatch (ADR-065 §5).
     while IFS= read -r f; do
         [[ -n "$f" ]] || continue
         case "$f" in */tests/*) continue ;; esac
@@ -41,7 +43,7 @@ _lc_other_outputs_deny() {
             [[ -n "$raw" ]] || continue
             _registry_resolve_output_path_v resolved "$raw" "$state_dir" "$artifact_dir"
             [[ -n "$resolved" ]] && _LC_DENY_OUT+="$resolved"$'\n'
-        done <<< "$(manifest_index_get "$f" outputs.path 2>/dev/null || true)"
+        done <<< "${_ZBUILD_MIDX["$f"$'\034'outputs.path]-}"
     done <<< "${_ZBUILD_MIDX_FILES[$idx_root]:-}"
 }
 
@@ -85,7 +87,7 @@ _lc_artifacts_left_deny() {
     fi
     declare -F stage_notes_path >/dev/null 2>&1 \
         || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-prompt.sh"
-    keep+="$(stage_notes_path "$state_dir" "$stage")"$'\n'
+    local _np; stage_notes_path_v _np "$state_dir" "$stage"; keep+="$_np"$'\n'
     _lc_artifacts_walk "$artifact_dir" "$keep"
 }
 

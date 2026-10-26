@@ -34,7 +34,7 @@ stage_dispatch_mark() {
 stage_result_is_current() {
     local m
     [[ -n "${2:-}" ]] || return 0
-    m="$(stage_dispatch_mark_path "$1" "$2")"
+    m="$1/runtime/dispatched/${2//[^A-Za-z0-9._-]/_}"   # stage_dispatch_mark_path, without a subshell
     [[ -e "$m" && "$m" -nt "$3" ]] && return 1
     return 0
 }

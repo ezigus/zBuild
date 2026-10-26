@@ -713,7 +713,9 @@ run_tier() {
   # default job count) from an EXPLICIT value (honored as-is; 0 = serial escape
   # hatch) via ${VAR+x}. The default lives here (not in CI/env) so the tiers also
   # parallelize in the pipeline test stage, which scrubs ZBUILD_* before npm test.
-  local _par_safe_tiers="${ZBUILD_PARALLEL_SAFE_TIERS:-unit integration}"
+  # e2e joined in round 8 (ADR-065 §5): its files set up their own HOME, state
+  # and events dir like integration's, and in a row they held the suite open.
+  local _par_safe_tiers="${ZBUILD_PARALLEL_SAFE_TIERS:-unit integration e2e}"
   local _par_jobs
   if [[ -z "${ZBUILD_TEST_PARALLEL_JOBS+x}" ]]; then
     _par_jobs="$(_zb_default_jobs)"
@@ -941,9 +943,9 @@ case "$tier" in
       # of work, 240 available; unit's 54.8 min of files ÷ 2 = the 27.5-min
       # tier wall observed), while CI runs each tier alone at the full count
       # in 8–9 min. The tiers are fork-bound, not CPU-bound (sys > user on
-      # every file), so the overlap at 4+4+4 on 4 vCPU is the point. e2e and
-      # golden run serial within themselves (JOBS=0) — short, they overlap
-      # the others at the tier level.
+      # every file), so the overlap at 4+4+4 on 4 vCPU is the point. e2e gets
+      # the full count too (round 8: its ten files in a row held the suite open);
+      # golden, one file, runs serial (JOBS=0).
       _B="$(_rt_tier_budget)"
       _M="$(_zb_max_jobs)"
       (( _B > _M )) && _B=$_M
@@ -968,6 +970,7 @@ case "$tier" in
           case "$t" in
             unit)        export ZBUILD_TEST_PARALLEL_JOBS=$_ujobs ;;
             integration) export ZBUILD_TEST_PARALLEL_JOBS=$_ijobs ;;
+            e2e)         export ZBUILD_TEST_PARALLEL_JOBS=$_ujobs ;;
             *)           export ZBUILD_TEST_PARALLEL_JOBS=0 ;;
           esac
           # #993: give each tier its OWN private trace file so concurrent tiers

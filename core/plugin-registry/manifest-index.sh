@@ -33,17 +33,20 @@ _ZBUILD_MIDX_KEYS=(
 # -g: this file can be sourced from inside a function (see manifest-validation.sh).
 declare -gA _ZBUILD_MIDX=()        # "<path>\034<key>" → value + "\n" (present keys only)
 declare -gA _ZBUILD_MIDX_FILES=()  # "<root>" → newline-joined manifest paths
+declare -gA _ZBUILD_MIDX_LISTED=() # "<path>" → 1 for every manifest a loaded root lists
 
 # Trailing slashes stripped and `//` collapsed, nothing else: the runner fills
 # from the env's spelling ($TMPDIR ends in /) while lifecycle.sh reads with
 # `cd && pwd`'s, and the two must be one key. Symlinks are NOT resolved — index
 # rows are keyed by the paths find prints under the root, and yaml_get's memo
 # keys are the strings callers pass (with `//` collapsed, see _manifest_path_key).
-_manifest_index_root() {
-    local root="$1"
-    while [[ "$root" == *//* ]]; do root="${root//\/\//\/}"; done
-    while [[ "$root" == */ && "$root" != "/" ]]; do root="${root%/}"; done
-    printf '%s' "$root"
+_manifest_index_root() { local _mir; _manifest_index_root_v _mir "$1"; printf '%s' "$_mir"; }
+# _manifest_index_root_v <var> <root> — the same, into <var>, with no subshell.
+_manifest_index_root_v() {
+    local _mirv="$2"
+    while [[ "$_mirv" == *//* ]]; do _mirv="${_mirv//\/\//\/}"; done
+    while [[ "$_mirv" == */ && "$_mirv" != "/" ]]; do _mirv="${_mirv%/}"; done
+    printf -v "$1" '%s' "$_mirv"
 }
 
 # _manifest_path_key <var> <path> — <path> with `//` collapsed, into <var>; no fork.
@@ -117,14 +120,14 @@ manifest_index_build() {
 # Call it in the PARENT shell: a `$( )` caller's fill dies with the subshell.
 manifest_index_load() {
     [[ "${ZBUILD_YAML_CACHE:-1}" == "1" ]] || return 0
-    local root; root="$(_manifest_index_root "$1")"
+    local root; _manifest_index_root_v root "$1"
     [[ -n "${_ZBUILD_MIDX_FILES[$root]+x}" ]] && return 0
     local -a files=()
     local p k v
     # The loop body runs in this shell — `< <( )`, never a pipe (a pipe would put
     # the writes in a subshell and keep nothing).
     while IFS=$'\034' read -r p k v; do
-        [[ "$k" == "__file__" ]] && { files+=("$p"); continue; }
+        [[ "$k" == "__file__" ]] && { files+=("$p"); _ZBUILD_MIDX_LISTED["$p"]=1; continue; }
         if [[ "$k" == "outputs.path" ]]; then
             _ZBUILD_MIDX["$p"$'\034'"$k"]+="$v"$'\n'   # list key: accumulate (#2174)
         else
@@ -139,7 +142,7 @@ manifest_index_load() {
 # markers: from the loaded index when it exists (no fork), else streamed from a
 # fresh build (one find + one awk) — the kill-switch path.
 manifest_index_rows() {
-    local root; root="$(_manifest_index_root "$1")"
+    local root; _manifest_index_root_v root "$1"
     if [[ -n "${_ZBUILD_MIDX_FILES[$root]+x}" ]]; then
         local f k v
         while IFS= read -r f; do
@@ -166,14 +169,11 @@ manifest_index_rows() {
 # yaml_get's exact shape from the loaded index: present → value + newline, rc 0;
 # absent key of a listed file → 0 bytes, rc 0; a file no loaded root lists → rc 2.
 manifest_index_get() {
-    local f k="$2" root listed=0
+    local f k="$2"
     _manifest_path_key f "$1"
-    for root in "${!_ZBUILD_MIDX_FILES[@]}"; do
-        [[ "$f" == "$root"/* ]] || continue
-        while IFS= read -r p; do [[ "$p" == "$f" ]] && { listed=1; break; }; done <<< "${_ZBUILD_MIDX_FILES[$root]}"
-        (( listed )) && break
-    done
-    (( listed )) || return 2
+    # A lookup, not a walk of every root's file list (ADR-065 §5): it ran on
+    # every manifest read, and its work grew with the number of plugins.
+    [[ -n "${_ZBUILD_MIDX_LISTED[$f]+x}" ]] || return 2
     [[ -n "${_ZBUILD_MIDX["$f"$'\034'"$k"]+x}" ]] && printf '%s' "${_ZBUILD_MIDX["$f"$'\034'"$k"]}"
     return 0
 }
@@ -181,4 +181,113 @@ manifest_index_get() {
 manifest_index_flush() {
     _ZBUILD_MIDX=()
     _ZBUILD_MIDX_FILES=()
+    _ZBUILD_MIDX_LISTED=()
+}
+
+# ─── _inputs_scan_manifests <plugins_root> ───────────────────────────────────
+# ONE pass over the plugin tree, building the id→manifest and role→manifest maps
+# _inputs_stage_manifest resolves against.
+#
+# Why not just call resolve_stage_plugin per stage: it goes through
+# discover_plugins, which costs ~8s per call on this tree. The index needs a
+# manifest for EVERY stage in the flow, so a per-stage call would add ~2 minutes
+# to every dispatch. One find + one awk for the whole tree (#2152) is ~40ms.
+# #2152 (ADR-065 §3): every reader of these maps is a `$( )` — the fill has to
+# happen in the PARENT shell, at the runner's prewarm seam, or it happens on
+# every call. Bare `declare -gA` (no `=()`): route.sh re-sources this file
+# lazily inside a function, and an initialiser there would wipe the fill.
+declare -gA _IR_BY_ID
+declare -gA _IR_BY_ROLE
+[[ -n "${_IR_SCAN_KEY+x}" ]] || _IR_SCAN_KEY=""
+_inputs_scan_manifests() {
+    local plugins_root; _manifest_index_root_v plugins_root "$1"
+    [[ "$plugins_root" == "$_IR_SCAN_KEY" ]] && return 0
+    _IR_SCAN_KEY="$plugins_root"
+    _IR_BY_ID=(); _IR_BY_ROLE=()
+    # #2152: read from the manifest index — no awk per manifest. Rows arrive
+    # file by file; a file's `__file__` marker precedes its keys, so the
+    # previous file is complete when the next marker (or the end) arrives.
+    manifest_index_load "$plugins_root"
+    # Collect per file, commit in marker order at the end: the rows' order is
+    # not a contract (the memo streams them per file, a fresh build emits every
+    # `__file__` marker first — review on #2155), and first-occurrence-wins
+    # needs the files in the order they were enumerated.
+    local -a _files=()
+    local -A _id=() _role=() _plat=()
+    local m p k v
+    if [[ -n "${_ZBUILD_MIDX_FILES[$plugins_root]+x}" ]]; then
+        # The loaded index, read from its arrays in this shell: streaming its
+        # rows as text was most of a run's shell commands (ADR-065 §5).
+        while IFS= read -r p; do
+            [[ -n "$p" ]] || continue
+            _files+=("$p")
+            for k in id platform provides.role; do
+                [[ -n "${_ZBUILD_MIDX["$p"$'\034'"$k"]+x}" ]] || continue
+                v="${_ZBUILD_MIDX["$p"$'\034'"$k"]%$'\n'}"; v="${v%"${v##*[![:space:]]}"}"
+                case "$k" in id) _id["$p"]="$v" ;; platform) _plat["$p"]="$v" ;; *) _role["$p"]="$v" ;; esac
+            done
+        done <<< "${_ZBUILD_MIDX_FILES[$plugins_root]}"
+    else
+        while IFS=$'\034' read -r p k v; do
+            if [[ "$k" == "__file__" ]]; then _files+=("$p"); continue; fi
+            # the old per-file awk also trimmed trailing whitespace
+            v="${v%"${v##*[![:space:]]}"}"
+            case "$k" in
+                id) _id["$p"]="$v" ;; platform) _plat["$p"]="$v" ;; provides.role) _role["$p"]="$v" ;;
+            esac
+        done < <(manifest_index_rows "$plugins_root")
+    fi
+    for m in "${_files[@]+"${_files[@]}"}"; do
+        [[ "$m" != */tests/* ]] || continue
+        [[ -n "${_id[$m]:-}" && -z "${_IR_BY_ID[${_id[$m]}]:-}" ]] && _IR_BY_ID["${_id[$m]}"]="$m"
+        # Platform-specific plugins never win the generic slot; the engine's own
+        # resolver prefers a platform match and this module has no platform.
+        if [[ -n "${_role[$m]:-}" && ( -z "${_plat[$m]:-}" || "${_plat[$m]:-}" == "null" ) && -z "${_IR_BY_ROLE[${_role[$m]}]:-}" ]]; then
+            _IR_BY_ROLE["${_role[$m]}"]="$m"
+        fi
+    done
+}
+
+# ─── _inputs_stage_manifest <stage> <plugins_root> ───────────────────────────
+# The manifest DISPATCH would actually use — role-THEN-id, the resolve_stage_plugin
+# rule (dispatch.sh), applied to the single-scan maps above.
+#
+# NOT manifest_graph_collect: that is id-only, and against the live simple.yaml
+# stage list it resolves `acceptance-gate` and `review_lenses` to no manifest at
+# all — they are silently skipped by contract-validator.sh:213 today. NOT
+# manifest_graph_resolve_member either: it tries id-match FIRST, so `pr` lands on
+# plugins/tool/pr-open, the manifest whose own header documents it as deliberately
+# unreachable at dispatch (the real plugin is plugins/agent/pr-delivery, bound by
+# role). Role-first is the only rule that agrees with dispatch on all three.
+#
+# Fail-closed on a declared-but-unresolved role, matching resolve_stage_plugin:
+# no id-match fallback once roles are declared.
+_inputs_stage_manifest() {
+    local _ism; _inputs_stage_manifest_v _ism "$1" "$2" || return 1
+    printf '%s\n' "$_ism"
+}
+# _inputs_stage_manifest_v <var> <stage> <plugins_root> — the same, into <var>,
+# in this shell (ADR-065 §5): asked through `$( )`, every lookup rebuilt the
+# maps in a subshell, whose fill died with it.
+_inputs_stage_manifest_v() {
+    local -n _isv="$1"
+    local stage="$2" plugins_root="$3"
+    _isv=""
+    _inputs_scan_manifests "$plugins_root"
+    local safe="${stage//-/_}"
+    local roles_var="_TPL_STAGE_ROLES_${safe}"
+    local roles="${!roles_var:-}" role
+    if [[ -n "$roles" ]]; then
+        local -a rlist=()
+        IFS=',' read -r -a rlist <<< "$roles"
+        for role in "${rlist[@]}"; do
+            [[ -z "$role" ]] && continue
+            if [[ -n "${_IR_BY_ROLE[$role]:-}" ]]; then
+                _isv="${_IR_BY_ROLE[$role]}"; return 0
+            fi
+        done
+        return 1
+    fi
+    [[ -n "${_IR_BY_ID[$stage]:-}" ]] || return 1
+    _isv="${_IR_BY_ID[$stage]}"
 }

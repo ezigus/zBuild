@@ -690,8 +690,10 @@ fi
 zb_test_kill_tree "$i6_pid"   # the runner and what it started (its stage, the watchdog)
 wait "$i6_pid" 2>/dev/null || true
 
-i6_ev_detail="$( [[ -f "$I6_EVENTS_JSONL" ]] && tr '\n' '|' < "$I6_EVENTS_JSONL" | head -c 200 )"
-i6_err_detail="$( [[ -f "$I6_STDERR" ]] && tr '\n' '|' < "$I6_STDERR" | head -c 200 )"
+# Trimmed in the shell: `tr | head -c` under pipefail ended this file whenever
+# head closed the pipe while tr still had bytes to write (CI, a large events file).
+i6_ev_detail=""; [[ -f "$I6_EVENTS_JSONL" ]] && { i6_ev_detail="$(<"$I6_EVENTS_JSONL")"; i6_ev_detail="${i6_ev_detail//$'\n'/|}"; i6_ev_detail="${i6_ev_detail:0:200}"; }
+i6_err_detail=""; [[ -f "$I6_STDERR" ]] && { i6_err_detail="$(<"$I6_STDERR")"; i6_err_detail="${i6_err_detail//$'\n'/|}"; i6_err_detail="${i6_err_detail:0:200}"; }
 _kill_assert "$i6_event_ok" "I6 #525: SIGTERM emits pipeline.abort event via EXIT trap" \
     "events: $i6_ev_detail"
 _kill_assert "$i6_banner_ok" "I6 #525: SIGTERM emits ✗ aborted terminal banner" \

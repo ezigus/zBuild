@@ -7,7 +7,8 @@
 #             starts no git (it ran up to 7 per stage)
 # L2 [guard]  an unresolved trunk is not remembered — the next call asks again
 # L3 [change] _artifact_persist_git_dir_v asks git once per repo per shell
-# L4 [change] template_stage_time_limit_v reads each (template, stage) once per
+# L4 [change] template_stage_time_limit_v reads each template once per shell, for
+#             every stage (round 8; once per (template, stage) in round 6), once per
 #             shell (one awk per stage per dispatch before)
 # L5 [guard]  …and gives what template_stage_time_limit gives, for a set stage,
 #             an unset one, and another template
@@ -66,13 +67,16 @@ printf 'stages:\n  - build\nbuild:\n  timeout_s: 3600\nplan:\n  gate: auto\n' > 
 printf 'stage_definitions:\n  build:\n    timeout_s: 120\n' > "$T2"
 : > "$CALLS"
 _TPL_SOURCE_FILE="$T1"
-# The reader is the shell's now (round 7), so its reads are counted by wrapping
-# the reader itself.
-eval "$(declare -f _template_stage_time_limit_read | sed '1s/_template_stage_time_limit_read/_tl_read_real/')"
-_template_stage_time_limit_read() { printf 'read\n' >> "$CALLS"; _tl_read_real "$@"; }
+# The reader is the shell's (round 7), and reads every stage at once (round 8):
+# a read is counted when the loader finds the template not yet read.
+eval "$(declare -f template_stage_time_limits_load | sed '1s/template_stage_time_limits_load/_tl_load_real/')"
+template_stage_time_limits_load() {
+    [[ -n "${_ZB_STAGE_TL_MEMO["${_TPL_SOURCE_FILE:-}"$'\034']+x}" ]] || printf 'read\n' >> "$CALLS"
+    _tl_load_real "$@"
+}
 _t1=""; template_stage_time_limit_v _t1 build; _t1b=""; template_stage_time_limit_v _t1b build
 _t2=""; template_stage_time_limit_v _t2 plan
-assert_eq "[L4] one read per (template, stage)" "2" "$(_n read)"
+assert_eq "[L4] one read of the template for three lookups of two stages" "1" "$(_n read)"
 assert_eq "[L5] a set limit, read twice, and the default for an unset one" "3600|3600|900" "$_t1|$_t1b|$_t2"
 _TPL_SOURCE_FILE="$T2"
 _t3=""; template_stage_time_limit_v _t3 build

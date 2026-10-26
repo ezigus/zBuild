@@ -31,8 +31,9 @@ source "$_ZBUILD_WB_DIR/write-boundary-repo.sh"
 # defaulted form was handled by a hardcoded substitution PER TOKEN — three of
 # them — so every new default form needed a fourth and any variable an operator
 # chose themselves expanded to nothing (#1952).
-_wb_expand_line() {
-    local _exp="$1" _v _d _tok _rep _n=0
+_wb_expand_line() { local _wbel; _wb_expand_line_v _wbel "$1"; printf '%s' "$_wbel"; }
+_wb_expand_line_v() {   # <var> <line>: the same, into <var>, with no subshell
+    local _wbx_out="$1" _exp="$2" _v _d _tok _rep _n=0
     while [[ $_n -lt 16 ]]; do
         _n=$((_n + 1))
         if [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; then
@@ -53,7 +54,7 @@ _wb_expand_line() {
         # token literal while the bare * stays a wildcard.
         _exp="${_exp%%"$_tok"*}${_rep}${_exp#*"$_tok"}"
     done
-    printf '%s' "$_exp"
+    printf -v "$_wbx_out" '%s' "$_exp"
 }
 
 # Keyed on stage + element: nested teardown, map elements and parallel members
@@ -168,12 +169,12 @@ write_boundary_watch_list() {
     if [[ -f "$_cfg" ]]; then
         while IFS= read -r _line; do
             [[ -z "$_line" || "$_line" =~ ^# ]] && continue
-            local _exp; _exp="$(_wb_expand_line "$_line")"
+            local _wbe=""; _wb_expand_line_v _wbe "$_line"
             # Emit every configured entry, unconditionally. The shipped config
             # deliberately carries no system-temp root — see ADR-058 C9, "What
             # the sweep does not cover" — so the omission lives in the config an
             # operator can override, not in logic they cannot.
-            printf '%s\n' "$_exp"
+            printf '%s\n' "$_wbe"
         done < "$_cfg"
     else
         # Built-in defaults when config file is absent.
@@ -248,8 +249,8 @@ write_boundary_allow_list() {
         [[ -f "$_cfg" ]] || continue
         while IFS= read -r _line; do
             [[ -z "$_line" || "$_line" =~ ^# ]] && continue
-            local _exp; _exp="$(_wb_expand_line "$_line")"
-            printf '%s\n' "$_exp"
+            local _wbe=""; _wb_expand_line_v _wbe "$_line"
+            printf '%s\n' "$_wbe"
         done < "$_cfg"
     done
 }

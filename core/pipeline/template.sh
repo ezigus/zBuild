@@ -65,6 +65,9 @@ load_template() {
     # (e.g. template_stage_negctl_timeout) can read additive scalar knobs without
     # threading them through the pipe-delimited row shape.
     _TPL_SOURCE_FILE="$template_file"; export _TPL_SOURCE_FILE
+    # Every stage's time limit, read now in the runner's shell so each dispatch
+    # inherits it (ADR-065 §5); forced, as the file may have changed since.
+    declare -F template_stage_time_limits_reload >/dev/null 2>&1 && template_stage_time_limits_reload
 
     # ADR-021 v2 (#585): legacy top-level `cycles:` block is a hard-break.
     # Detect and refuse with a pointer to the migration helper.

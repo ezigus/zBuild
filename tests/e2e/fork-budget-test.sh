@@ -92,8 +92,9 @@ FORK_BUDGET=2250
 # changes — measured 5,930 macOS). 5330 (round 5, the same changes — measured
 # 5,255 macOS). 5200 (round 6, the same changes — measured 5,129 macOS). 5140
 # (round 6, C1 — measured 5,076 macOS). 5040 (round 6, C2 — measured 4,977 macOS).
-# 4840 (round 7 — measured 4,735 macOS).
-PROCESS_BUDGET=4840
+# 4840 (round 7 — measured 4,735 macOS). 3680 (round 8: the shell's own lookups
+# and per-dispatch helpers in the caller's shell, not in `$( )` — measured 3,608 macOS).
+PROCESS_BUDGET=3680
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh
