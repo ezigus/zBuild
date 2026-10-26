@@ -29,26 +29,31 @@ Issue: stage timeouts silently stop applying — fallback orchestrator ignores -
 - `scripts/lib/proc-group.sh` — shared kill helper (already exists)
 - `plugins/tool/orch-sequential/` — DELETE
 - `tests/golden/orch-sequential-capabilities.golden` — DELETE
+- `docs/wiki/Plugins.md`, `docs/wiki/plugins/orch-sequential.md` — remove orch-sequential references
+- `plugins/tool/orch-mock/tests/orch-mock-test.sh`, `plugins/tool/orch-ruflo-hive/plugin.sh` — remove orch-sequential comments
+- `config/templates/simple.yaml`, `config/templates/deployed.yaml` — move timeout_s: from router: to top-level for release/persist
 - `docs/adr/ADR-011.md`, `docs/adr/ADR-017.md` — amend with Enforced by
+- `config/adr-enforcement-baseline.txt` — remove ADR-011 and ADR-017
 
 ### Test-first requirement
 Every implementation step is preceded by its failing test. Scope discovery is step 1 (mandated by acceptance criteria).
 
 ## Plan structure decided
 
-13 steps:
+13 steps (updated from original after reviewing design findings):
+
 1. Scope discovery
 2. Write failing tests — orch-sequential guard + misconfigured config
-3. Delete orch-sequential; migrate/delete its tests; remove its lookup
-4. Write failing tests — hard backend error from installed tree
+3. Delete orch-sequential; migrate/delete its tests; remove its lookup; clean all orch-sequential references in wiki + plugin files
+4. Write failing tests — hard backend error from installed tree (missing + unreadable)
 5. Harden backend loader (remove both fallback paths)
 6. Write failing tests — hung stage timed_out, ZBUILD_ORCH_TIMEOUT no longer honored
 7. Remove ZBUILD_ORCH_TIMEOUT from strategy collect calls
 8. Write failing tests — always_run bounded by timeout_s:, not router.timeout_s
-9. Fix always_run dispatch (use timeout_s:, use zbuild_pg_kill)
+9. Fix always_run dispatch (use timeout_s:, use zbuild_pg_kill); move timeout_s: in templates from router: to top-level
 10. Write failing test — local engine kill leaves no orphan
 11. Fix local engine slot killer (use zbuild_pg_kill)
-12. Amend ADR-011 and ADR-017 (Enforced by entries)
+12. Amend ADR-011 and ADR-017 (Enforced by entries); remove from adr-enforcement-baseline.txt
 13. Verify npm test + npm run lint pass
 
 All acceptance criteria mapped:
@@ -63,3 +68,19 @@ All acceptance criteria mapped:
 - [AC9] npm test + lint green → step 13
 
 No open questions identified.
+
+## Design findings applied (second pass)
+
+Three gaps found in design.md vs. original plan, now corrected:
+
+1. **Step 3 areas expanded**: SPEC-3 guard fails on any reference outside docs/adr/ — must clean
+   docs/wiki/Plugins.md, docs/wiki/plugins/orch-sequential.md, orch-mock and ruflo-hive comments,
+   and the G5 block in plugin-artifact-goldens-test.sh.
+
+2. **Step 9 areas expanded**: Both shipped templates declare `timeout_s:` under `router:` for
+   release/persist stages; `template_stage_time_limit` reads the top-level key only — templates
+   must move those values before the watchdog fix is effective.
+
+3. **Step 12 areas expanded**: `config/adr-enforcement-baseline.txt` must have ADR-011 and ADR-017
+   removed; `npm run lint` (lint-adr-enforced-by.sh) requires it once those ADRs carry
+   `## Enforced by` sections.
