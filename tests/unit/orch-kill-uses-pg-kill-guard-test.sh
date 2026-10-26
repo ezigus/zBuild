@@ -81,4 +81,76 @@ else
         "no reference to proc-group.sh found in local_engine.sh"
 fi
 
+# ── SPEC-6 runtime: TERM-ignoring child leaves no running process ─────────────
+# Behavioral guarantee: after the watchdog kills a slot whose wrapper spawned a
+# child that ignores TERM, that child must also be gone.
+#
+# Old _orch_local_kill_slot: `kill "-${sig}" "$wrapper_pid"` only. Killing the
+# wrapper with SIGKILL does not kill its children — they are orphaned and continue
+# running. So a TERM-ignoring child outlives the watchdog on old code.
+# New _orch_local_kill_slot: calls zbuild_pg_kill, which sends TERM then KILL to
+# the WHOLE process group. The TERM-ignoring child receives KILL and exits.
+#
+# Fails on old code (child alive after collect kills wrapper).
+# Passes on new code (process-group KILL reaches child).
+print_test_section "[#1801/SPEC-6] TERM-ignoring child leaves no process after watchdog fires (runtime)"
+# Source the implementations so the runtime paths execute (not just pattern-match).
+# shellcheck source=../../core/orch/local_engine.sh
+source "$REPO_ROOT/core/orch/local_engine.sh"
+# shellcheck source=../../scripts/lib/proc-group.sh
+source "$REPO_ROOT/scripts/lib/proc-group.sh"
+
+_s6rt_pool="$TEST_TEMP_DIR/spec6-rt-pool"
+mkdir -p "$_s6rt_pool/pids" "$_s6rt_pool/results"
+_s6rt_child_file="$TEST_TEMP_DIR/spec6-rt-child.pid"
+
+# Start the wrapper as a NEW process group (set -m → background job is group leader).
+# The wrapper forks a child that ignores TERM and records its PID. The wrapper
+# itself waits and never writes a .exit file, so _orch_local_collect_results will
+# time out and call _orch_local_kill_slot to kill the slot.
+set -m
+(
+    ( trap '' TERM; printf '%s\n' "$BASHPID" > "$_s6rt_child_file"; sleep 120 ) &
+    _s6rt_inner=$!
+    trap ':' TERM
+    wait "$_s6rt_inner" 2>/dev/null || true
+) &
+_s6rt_wrapper_pid=$!
+set +m
+
+printf '%s\n' "$_s6rt_wrapper_pid" > "$_s6rt_pool/pids/spec6rt.pid"
+# No .inner_pid file: _orch_local_kill_slot only receives wrapper_pid, so the
+# child can be reached only via process-group kill (the new code path).
+
+# Wait for the child pid to be recorded (up to 5 s).
+for _ in $(seq 1 50); do [[ -s "$_s6rt_child_file" ]] && break; sleep 0.1; done
+_s6rt_child_pid="$(head -n 1 "$_s6rt_child_file" 2>/dev/null || true)"
+
+# Collect with 2 s timeout. The wrapper never writes .exit, so collect fires the
+# kill path. After collect returns, the child should be dead (new code) or alive (old).
+set +e
+_orch_local_collect_results "$_s6rt_pool" "pids" 2
+set -e
+
+# Poll briefly: the KILL signal needs a moment to be processed.
+_s6rt_alive=1
+if [[ -n "$_s6rt_child_pid" ]]; then
+    for _ in $(seq 1 30); do
+        kill -0 "$_s6rt_child_pid" 2>/dev/null || { _s6rt_alive=0; break; }
+        sleep 0.1
+    done
+fi
+
+if [[ -z "$_s6rt_child_pid" ]]; then
+    assert_fail "[#1801/SPEC-6] fixture: TERM-ignoring child recorded its pid" \
+        "no pid written to $_s6rt_child_file (wrapper may not have started)"
+elif [[ "$_s6rt_alive" -eq 1 ]]; then
+    assert_fail "[#1801/SPEC-6] TERM-ignoring child must not outlive the watchdog" \
+        "pid $_s6rt_child_pid still alive; old code: direct kill misses TERM-ignoring children; new code: zbuild_pg_kill kills the group"
+    kill -KILL "$_s6rt_child_pid" 2>/dev/null || true
+    wait "$_s6rt_child_pid" 2>/dev/null || true
+else
+    assert_pass "[#1801/SPEC-6] TERM-ignoring child does not outlive the watchdog (group kill via zbuild_pg_kill)"
+fi
+
 print_test_results

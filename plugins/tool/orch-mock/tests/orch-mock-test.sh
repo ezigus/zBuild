@@ -85,4 +85,43 @@ else
 fi
 orch_shutdown "$pool"
 
+
+# ─── M5 [#1801/SPEC-11]: pool isolation — two concurrent pools do not bleed ──
+# Two pools are spawned independently and each dispatches its own work units.
+# Collect on each pool must return only that pool's results: the passing pool
+# returns 0 and the failing pool returns 1, with no cross-contamination.
+# Fails if orch_collect drains a shared queue instead of a per-pool queue.
+pool_pass="m5-pool-pass"
+pool_fail="m5-pool-fail"
+orch_spawn "$pool_pass" 2 ""
+orch_spawn "$pool_fail" 2 ""
+
+# Dispatch only passing work to pool_pass, only failing work to pool_fail.
+orch_dispatch "$pool_pass" "$(orch_work_unit 'exit 0')" >/dev/null
+orch_dispatch "$pool_pass" "$(orch_work_unit 'exit 0')" >/dev/null
+orch_dispatch "$pool_fail" "$(orch_work_unit 'exit 1')" >/dev/null
+orch_dispatch "$pool_fail" "$(orch_work_unit 'exit 1')" >/dev/null
+
+set +e
+orch_collect "$pool_pass" >/dev/null
+rc_pass=$?
+orch_collect "$pool_fail" >/dev/null
+rc_fail=$?
+set -e
+
+if [[ $rc_pass -eq 0 ]]; then
+    assert_pass "[#1801/SPEC-11] pool isolation: passing pool collect returns 0 (not contaminated by failing pool)"
+else
+    assert_fail "[#1801/SPEC-11] pool isolation: passing pool collect must return 0" \
+        "got $rc_pass — results from the failing pool may have bled into the passing pool"
+fi
+if [[ $rc_fail -eq 1 ]]; then
+    assert_pass "[#1801/SPEC-11] pool isolation: failing pool collect returns 1 (not contaminated by passing pool)"
+else
+    assert_fail "[#1801/SPEC-11] pool isolation: failing pool collect must return 1" \
+        "got $rc_fail — results from the passing pool may have bled into the failing pool"
+fi
+orch_shutdown "$pool_pass"
+orch_shutdown "$pool_fail"
+
 cleanup_test_env

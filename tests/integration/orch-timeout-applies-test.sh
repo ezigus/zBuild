@@ -51,6 +51,8 @@ load_template "$TPL" >/dev/null 2>&1
 source "$REPO_ROOT/core/pipeline/strategies/fanout.sh"
 # shellcheck source=../../core/pipeline/strategies/sequential.sh
 source "$REPO_ROOT/core/pipeline/strategies/sequential.sh"
+# shellcheck source=../../core/pipeline/strategies/map.sh
+source "$REPO_ROOT/core/pipeline/strategies/map.sh"
 
 # ── Minimal plugin for resolve_plugin_for_role ───────────────────────────────
 _SPEC1_PLUGIN_DIR="$TEST_TEMP_DIR/plugins/agent/testworker"
@@ -198,6 +200,42 @@ for _s1_strat in fanout sequential; do
             "still present in $_s1_file; the 300 s flat deadline applies on old code"
     fi
 done
+
+# ── SPEC-1 (map runtime spy): map passes template timeout_s: to orch_collect ──
+# map.sh uses ZBUILD_ORCH_TIMEOUT:-300 on old code; must use template_stage_time_limit
+# on new code. The spy (defined above) is still the capturing version at this point.
+# Fails on old code (spy captures 300); passes on new code (spy captures _spec1_expected_timeout).
+print_test_section "[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)"
+unset ZBUILD_ORCH_TIMEOUT 2>/dev/null || true
+_SPEC1_OC_TIMEOUT=""
+set +e
+_strategy_run_map "pool-map-spec1" "testjob" "testworker" \
+    "$ZBUILD_STATE_DIR/pipeline-state.json" \
+    "$TEST_TEMP_DIR/plugins" 2>/dev/null
+set -e
+
+if [[ "$_SPEC1_OC_TIMEOUT" == "$_spec1_expected_timeout" ]]; then
+    assert_pass "[#1801/SPEC-1] map: orch_collect received --timeout ${_spec1_expected_timeout} (template timeout_s:, not 300)"
+else
+    assert_fail "[#1801/SPEC-1] map: orch_collect must receive template timeout_s: (${_spec1_expected_timeout})" \
+        "spy captured --timeout '${_SPEC1_OC_TIMEOUT:-<none>}'; old code passes ZBUILD_ORCH_TIMEOUT:-300 = 300"
+fi
+
+# With ZBUILD_ORCH_TIMEOUT=300 explicitly set, map must still ignore it.
+export ZBUILD_ORCH_TIMEOUT=300
+_SPEC1_OC_TIMEOUT=""
+set +e
+_strategy_run_map "pool-map-spec1b" "testjob" "testworker" \
+    "$ZBUILD_STATE_DIR/pipeline-state.json" \
+    "$TEST_TEMP_DIR/plugins" 2>/dev/null
+set -e
+if [[ "$_SPEC1_OC_TIMEOUT" == "$_spec1_expected_timeout" ]]; then
+    assert_pass "[#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (${_spec1_expected_timeout})"
+else
+    assert_fail "[#1801/SPEC-1] map: template timeout_s: (${_spec1_expected_timeout}) must win over ZBUILD_ORCH_TIMEOUT=300" \
+        "spy got --timeout '${_SPEC1_OC_TIMEOUT:-<none>}'; old code passes ZBUILD_ORCH_TIMEOUT:-300 = 300"
+fi
+unset ZBUILD_ORCH_TIMEOUT 2>/dev/null || true
 
 # ── SPEC-1e: _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out ─
 # This is a runtime test: start a real hung process, run collect with a 2 s

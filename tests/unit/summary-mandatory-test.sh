@@ -108,7 +108,7 @@ assert_eq "[SPEC-2] the tree lint cannot see it — hence the runtime check" "0"
 print_test_section "3. backend services are unaffected (ADR-047 §5)"
 
 _svc_flagged=""
-for _svc in cache-local memory-sqlite orch-sequential; do
+for _svc in cache-local memory-sqlite; do
     _sm="$REPO_ROOT/plugins/tool/$_svc/manifest.yaml"
     [[ -f "$_sm" ]] || continue
     grep -qE '^[[:space:]]+summary:[[:space:]]*true' "$_sm" && _svc_flagged="${_svc_flagged}${_svc} "

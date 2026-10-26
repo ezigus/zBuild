@@ -492,6 +492,19 @@ else
         "ZBUILD_RELEASE_TIMEOUT still present in $RUNNER; must be replaced by template_stage_time_limit"
 fi
 
+# [#1801/SPEC-5] static guard: _runner_dispatch_always_run must not reference
+# router.timeout_s (its bash manifestation: _TPL_STAGE_ROUTER_TIMEOUT_*).
+# Old code (runner.sh): local _ar_to_var="_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
+# which reads router.timeout_s from the template config.
+# New code: reads template_stage_time_limit instead.
+# This grep fails on old code (the string is present) and passes on new (removed).
+if ! grep -q '_TPL_STAGE_ROUTER_TIMEOUT' "$RUNNER"; then
+    assert_pass "[#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)"
+else
+    assert_fail "[#1801/SPEC-5] runner.sh must not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s)" \
+        "_TPL_STAGE_ROUTER_TIMEOUT still present in $RUNNER; must be replaced by template_stage_time_limit"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
