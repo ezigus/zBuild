@@ -34,7 +34,7 @@ breaks one is wrong, whoever wrote it.
 
 #### Facts about this repo
 - `ZBUILD_*` environment variables are set by the engine at dispatch (the artifact dir, the stage's input index `ZBUILD_STAGE_INPUTS`, the issue, the run). They are trusted engine inputs, not user or attacker input.
-- A stage never builds a path to another stage's output: the engine resolves every input and hands the stage an index (ADR-055 §1). A plugin that derives a path from its state file is a defect.
+- A stage never names another stage's output — not its output name, not its file. The engine hands every stage every earlier stage's latest output, and a stage finds what it needs by what it contains (scripts/lib/earlier-output.sh; ADR-055 §1). A plugin that names another stage's output is a defect.
 - Every stage writes a v2 result (`result_contract`, `verdict`, `disposition`, `reason`, detail under `data`) on every exit path, and exits 0 or 1 (ADR-054).
 - `[SPEC-n]` / `[#<issue>/SPEC-n]` tags in a test tie an assertion to one issue's acceptance contract. A tag that belongs to another issue must never be changed or removed.
 
@@ -114,7 +114,7 @@ orphan failures if present.
 
 Your job: write the design — the change's decisions, its acceptance contract and its scope — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts.
 
-The working copy already holds YOUR LATEST DESIGN (below). Change only what needs to change.
+The working copy holds your last try, which was rejected: Previous work says why. Fix what it names. If YOUR LATEST DESIGN below is closer to right, start from that instead.
 
 Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract or its scope. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails.
 
@@ -395,10 +395,10 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 326 artifact(s) from prior runs (restored)
+- restored 353 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 326 artifact(s) from zbuild/state/issue-1944
+- detail: restored 353 artifact(s) from zbuild/state/issue-1944
 
 ### intake (verdict: pass)
 Outputs:
@@ -429,18 +429,24 @@ Summary:
 - open questions: 3
 - artifact: plan.json
 
-### design (verdict: timed_out) — your own
+### design (verdict: unusable) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
+- design_draft: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 
+Findings:
+- design finding 1 (opened by design): requirement R-10 from the issue is not covered by any SPEC: `npm test` + `npm run lint` green.. End the line of the SPEC that delivers it with " covers: R-10" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it
+
 Summary:
-## design — error
+## design — fail
 
-- Design ran out of time before writing a design.
+- the design fails 1 check(s)
 
-design.md is unchanged: it stays the last good design.
+- requirement R-10 from the issue is not covered by any SPEC: `npm test` + `npm run lint` green.. End the line of the SPEC that delivers it with " covers: R-10" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it
+
+This try is kept as the working copy for the next run; design.md is unchanged.
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-7/design-summary.md
@@ -529,6 +535,55 @@ Your notes so far:
 
 Primary: core/pipeline/runner.sh — calls _runner_resolve_run_limit_s(), arms watchdog, modifies _runner_abort_trap and _runner_end_on_abort for timed_out
 Secondary: core/pipeline/template.sh — provides template_max_run_s() which _runner_resolve_run_limit_s() calls
+
+---
+
+## Refinement pass (2026-10-26): what this pass confirmed and fixed in the design
+
+### EXIT trap missing watchdog kill (root cause of 3 integration timeouts)
+
+diff.patch shows _runner_abort_trap() kills _RUNNER_WATCHDOG_PID, but the runner's
+main EXIT trap (fires on ALL exits including clean) has NO watchdog kill. A
+cleanly-exiting runner leaves the watchdog sleeping as an orphan — tests that
+invoke the runner wait for it and hang past 480 s.
+
+core-pipeline-runner-test.sh, core-pipeline-strategy-test.sh, and
+vision-admission-gate-test.sh all run the actual runner, which arms a watchdog with
+the default 20700 s limit. Runner completes; watchdog keeps sleeping; test hangs.
+
+Fix: add `kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true` to the
+EXIT trap (installed via `trap '...' EXIT`), not only in _runner_abort_trap.
+
+### Syntax error in run-limit-precedence-test.sh line 173
+
+```
+ZBUILD_MAX_RUN_S="not-a-number" \
+( cd "$MISCFG_OVERLAY" && bash "$RUNNER" ... )
+```
+`VAR=val (...)` is invalid bash — can't prefix a subshell with assignment.
+Fix: move the assignment inside the subshell:
+```
+( cd "$MISCFG_OVERLAY" && ZBUILD_MAX_RUN_S="not-a-number" bash "$RUNNER" ... )
+```
+
+### set +e / set -e mid-file (8 occurrences in 4 test files)
+
+All four files use `set -uo pipefail` (no -e). lint-test-errexit rejects `set -e`.
+
+Pattern to replace:
+```bash
+set +e
+( ... ) >"$f" 2>&1
+_rc=$?
+set -e
+```
+With:
+```bash
+_rc=0
+( ... ) >"$f" 2>&1 || _rc=$?
+```
+
+Exact locations: tests/integrati
 
 ### test-author (verdict: complete)
 Outputs:

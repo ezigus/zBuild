@@ -19,55 +19,37 @@
 
 ## What I read (refinement pass)
 
-- docs/adr/ADR-006-resume-contract.md lines 140-149: exhaustive pipeline status enum table (in_progress, complete, interrupted, aborted, failed, preflight_failed) — WRONG BY OMISSION when timed_out added
+- docs/adr/ADR-006-resume-contract.md lines 140-149: exhaustive pipeline status enum table — WRONG BY OMISSION when timed_out added
 - docs/adr/ADR-015-stage-io-capture.md lines 819-823: exhaustive pipeline status → glyph/color table — WRONG BY OMISSION when timed_out added
 - scripts/lib/run-open-items.sh lines 79-116: run_end_words() case statement — timed_out falls through to catch-all; needs explicit case added
-- core/pipeline/runner.sh _runner_abort_trap (2487-2559): sets pipeline status "interrupted" on exit; does NOT check abort word — the timed_out arm needs to be in _runner_end_on_abort (called from dispatch points), AND the signal trap (line 2652) overwrites _RUNNER_ABORT_REASON with the signal word, which must be amended to read from sentinel post-arm
-- core/pipeline/runner.sh _runner_render_open_items (line 996): gate is `failed|interrupted|aborted` — needs timed_out added
-- tests/integration/always-run-exit-paths-test.sh: tests specific exit paths for always-run stages; does NOT enumerate all cases exhaustively; not wrong by omission
-- tests/integration/pipeline-resume-test.sh: tests specific get_resume_recommendation cases; does NOT enumerate all manual_resume_only cases; not wrong by omission
 
-## Key architectural findings
+## What I read (iteration 9 verification pass)
+
+Verified current worktree state after prior build:
+- runner.sh lines 2529-2540: `_runner_abort_trap` fires on EXIT and kills watchdog via SIGKILL at line 2539; uses `:-0` default → potential issue if PID empty sends SIGKILL to PG 0; bugs table updated to use `:-` (empty default instead)
+- runner.sh line 2734: `trap '_runner_abort_trap' EXIT` — fires on ALL exits (clean and abort)
+- runner.sh lines 2776-2818: watchdog subshell armed after traps; `_RUNNER_WATCHDOG_PID=$!` at line 2818
+- run-timed-out-test.sh, run-watchdog-clean-exit-test.sh, resume-after-run-timeout-test.sh: NO `set +e`/`set -e` patterns in current worktree (bugs already fixed from prior build iteration)
+- run-limit-precedence-test.sh: syntax error on old line 173 is fixed; now correctly uses `( cd ... && ZBUILD_MAX_RUN_S=... bash ... )` at line ~213
+
+## Design iteration 9 — what changed
+
+The ONLY design-stage finding was: **R-10 not covered by any SPEC**.
+
+Fix: added `covers: R-10` to SPEC-1. SPEC-1 covers the primary integration test (run-timed-out-test.sh). Once the implementation bugs in the bugs table are all fixed and SPEC-1 through SPEC-6 pass, both `npm test` and `npm run lint` are green → R-10 is met.
+
+Also clarified in the bugs table Decision point 3:
+- Changed `:-0` to `:-` for the watchdog kill default (empty = no kill when watchdog never armed; `0` = SIGKILL entire PG, which kills the test harness)
+
+All other scope entries, acceptance criteria, and findings are unchanged from iteration 8.
+
+## Key architectural findings (carried forward)
 
 1. **No existing run-level limit**: only per-stage router.timeout_s knobs. This is entirely new.
-
-2. **Abort word vocabulary** (ADR-025 #1850): sigint | sigterm | cycle_abort | llm_unavailable | llm_rate_limited | scope_too_large. Adding timed_out grows this set.
-
-3. **zbuild_pg_kill in proc-group.sh REFUSES ITS OWN GROUP** — the watchdog runs in the runner's PG, so it cannot use zbuild_pg_kill to kill that PG. Watchdog must use raw kill commands instead.
-
-4. **Watchdog design**: background subshell captures _RUNNER_RUN_PGID at arm time (before & ), then sleeps, writes timed_out to sentinel, kills the runner PG with TERM + 10s + KILL. Does NOT source proc-group.sh — uses raw kill/sleep.
-
-5. **Sentinel first-wins**: _zbuild_arm_abort_sentinel is no-op if a word is already recorded. Watchdog writes timed_out BEFORE sending TERM → runner's SIGTERM trap calls _zbuild_arm_abort_sentinel("sigterm") which is a no-op → _RUNNER_ABORT_REASON must be read from the sentinel after arming (not from the signal word) for timed_out to propagate correctly.
-
-6. **resume.sh get_resume_recommendation** falls through to `*) → fresh_start` for unknown statuses. A timed_out pipeline-state would NOT be resumable unless resume.sh is updated to handle `timed_out → manual_resume_only`.
-
-7. **timed_out disposition** already exists in disposition.sh for STAGE-level use. This change adds it as a PIPELINE-level abort word and pipeline status.
-
-8. **O9 count assertion**: run-open-items-test.sh O9 asserts EXACTLY 5 runner "loop-ending lines." Adding a timed_out arm to _runner_end_on_abort adds a 6th matching line → O9 is SUPERSEDED.
-
-9. **_render_pipeline_end has a catch-all** (line 947: `*) word="$status"`) so `timed_out` would render as "Pipeline timed_out:" without a specific case — this is acceptable. But _pipeline_status_glyph and _pipeline_status_color need explicit timed_out → fail cases (currently `*` gives `?` glyph / yellow color).
-
-10. **proc-group.sh is NOT sourced by runner.sh** — only by route.sh. Watchdog uses inline kill commands (no zbuild_pg_kill needed, since it's killing its own PG which zbuild_pg_kill refuses anyway).
-
-11. **ADR-006 and ADR-015 missed in previous pass** — both enumerate the pipeline status set exhaustively and are wrong by omission when timed_out is added. Added to scope in refinement pass.
-
-## Scope — confirmed exhaustive
-
-### Wrong by omission (closed-set enumerations that grow):
-- tests/unit/abort-propagation-test.sh (A8 abort word loop, line 86)
-- tests/unit/runner-pipeline-end-test.sh (T9 STATUSES array, lines 155-161)
-- tests/unit/run-open-items-test.sh (O3 reason loop, line 102)
-- tests/golden/pipeline-end/ — two new golden files needed
-- docs/adr/ADR-006-resume-contract.md (pipeline status enum table, lines 140-149) [NEW]
-- docs/adr/ADR-015-stage-io-capture.md (glyph/color table, lines 819-823) [NEW]
-
-### Superseded by behavior change:
-- tests/unit/run-open-items-test.sh O9: asserts count=5, becomes 6 when timed_out arm added to _runner_end_on_abort
-
-### ADR baseline:
-- config/adr-enforcement-baseline.txt — remove ADR-054-stage-contract.md when ## Enforced by added
-
-## WIRING
-
-Primary: core/pipeline/runner.sh — calls _runner_resolve_run_limit_s(), arms watchdog, modifies _runner_abort_trap and _runner_end_on_abort for timed_out
-Secondary: core/pipeline/template.sh — provides template_max_run_s() which _runner_resolve_run_limit_s() calls
+2. **Abort word vocabulary** (ADR-025): 6 words → 7 with timed_out.
+3. **zbuild_pg_kill refuses its own group** — watchdog uses raw kill commands.
+4. **Sentinel first-wins**: watchdog writes timed_out BEFORE sending TERM → SIGTERM trap's sentinel call is a no-op → timed_out propagates correctly.
+5. **resume.sh** updated to return manual_resume_only for timed_out status.
+6. **EXIT trap kill must use `:-` not `:-0`** — avoids SIGKILL to PG 0 when watchdog never armed.
+7. **ADR-054 §9** already exists for per-stage router config; new run-level limit goes in §11.
+8. **O9 count assertion** superseded: 5 → 6 loop-ending lines when timed_out arm added.
