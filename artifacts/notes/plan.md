@@ -85,6 +85,28 @@ verification. Fix: after the runner exits cleanly, explicitly sleep past max_run
 re-read pipeline-state.json and assert its status field is the stage-driven result (not timed_out).
 This is an addition to step-2 alongside the existing kill -0 check.
 
+## Cycle 6: no plan changes required
+
+All findings from test stage, issue-acceptance stage, and test-author stage are already captured
+in the 9-step plan written in cycle 5. The plan.json on disk is correct and complete.
+
+Verified mapping of current open findings to steps:
+- Syntax error run-limit-precedence-test.sh L173 → step-1
+- lint-test-errexit 8 files → steps 1–4
+- Integration test timeouts (disown missing) → step-5
+- template.sh inert → step-6
+- run-open-items.sh untested → step-7
+- SPEC-1 P2 unfalsifiable + persist on all paths → step-3
+- SPEC-2 disposition=misconfigured missing → step-1
+- SPEC-3 watchdog PID not proved gone → step-2
+- SPEC-3 state-file re-read missing (test-author F13) → step-2
+- SPEC-4 timing assertion non-inferential → step-4
+- SPEC-5 finite CI variable list → open question
+- SPEC-6 npm test/lint not executed in test → resolved by all other steps passing
+- Golden files not updated → step-8
+- ADR-054 §11 Enforced by entries → step-9
+- R-9/§9 vs §11 → open question
+
 ## Revised step list (final — 9 items, step-2 expanded)
 
 1. Fix run-limit-precedence-test.sh: syntax error + lint-test-errexit + SPEC-2 disposition
@@ -117,7 +139,7 @@ This is an addition to step-2 alongside the existing kill -0 check.
 | ADR-054 §11 Enforced by entries | step-9 |
 | R-9/§9 vs §11 | open question |
 
-## Acceptance criteria coverage (cycle 5)
+## Acceptance criteria coverage (cycle 5/6 — unchanged)
 
 All 10 issue AC items are covered:
 - AC-1 timed_out with in-flight stage name + limit → step-3 (run-timed-out-test.sh, P1)
@@ -132,9 +154,3 @@ All 10 issue AC items are covered:
 - AC-10 npm test + npm run lint green → all steps collectively
 
 No step defers testing, treats behavior as optional, or adds inert files.
-
-## Fifth cycle: one change to plan.json
-
-step-2 description expanded to include the test-author finding (F13): re-read pipeline-state.json
-after explicitly waiting past max_run_s, assert status is stage-driven result (not timed_out).
-All other steps unchanged. plan.json updated.
