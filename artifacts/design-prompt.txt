@@ -239,10 +239,13 @@ Correct all test failures, lint violations, and wiring gaps found after the firs
 - config/adr-enforcement-baseline.txt
 - core/pipeline/runner.sh
 - core/pipeline/template.sh
+- docs/adr/ADR-025-abort-propagation.md
 - docs/adr/ADR-054-stage-contract.md
 - scripts/lib/run-open-items.sh
 - tests/golden/full-pipeline/event-sequence.golden
 - tests/golden/parity/event-sequence.golden
+- tests/golden/pipeline-end/timed_out-w80.colored.txt
+- tests/golden/pipeline-end/timed_out-w80.layout.txt
 - tests/integration/resume-after-run-timeout-test.sh
 - tests/integration/run-timed-out-test.sh
 - tests/unit/run-limit-precedence-test.sh
@@ -510,13 +513,25 @@ Summary:
 - open questions: 3
 - artifact: plan.json
 
-### design (verdict: pass) — your own
+### design (verdict: unavailable) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 
 Summary:
+## design — error
+
+- no design was written (router_rc_nonzero)
+
+design.md is unchanged: it stays the last good design.
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-25/design-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-25/design-verdict.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-25/design.md
+
+Summary of that output:
 ## design — pass
 
 - authored design.md — 22 file(s) in scope, 6 acceptance SPEC(s)
@@ -645,7 +660,7 @@ wait "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
 arrives during `wait`. Bash interrupts the `wait` and fires `_runner_signal_trap TERM` again.
 That handler calls `exit 1`. Calling `exit` from within an EXIT trap in ba
 
-### test (verdict: fail)
+### test (verdict: unknown)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json

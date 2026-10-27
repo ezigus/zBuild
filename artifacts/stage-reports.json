@@ -21,7 +21,8 @@
     "tests/unit/run-limit-precedence-test.sh",
     "tests/unit/run-open-items-test.sh",
     "tests/unit/run-watchdog-clean-exit-test.sh",
-    "tests/unit/runner-pipeline-end-test.sh"
+    "tests/unit/runner-pipeline-end-test.sh",
+    "tests/unit/runner-signal-rearm-test.sh"
   ],
   "wiring_files": [
     "core/pipeline/runner.sh",
