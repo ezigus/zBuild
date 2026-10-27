@@ -146,6 +146,10 @@ path/to/file2
 3. A ```acceptance block listing what this change must deliver. Each line is
    one requirement: a permanent number (SPEC-1, SPEC-2, …), a status, and ONE
    behaviour someone could observe and test.
+   A requirement that asks for several things gets one SPEC per thing, each
+   naming the same R-n in covers: — never one SPEC that joins them with "and" or ";".
+   Each SPEC is checked against one assertion, so a SPEC that promises two
+   things is never fully met by it.
 
    The status says what work the requirement needs. Look at the code before you choose:
    - `SPEC-n[code]:` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
@@ -455,10 +459,10 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 414 artifact(s) from prior runs (restored)
+- restored 481 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 414 artifact(s) from zbuild/state/issue-1944
+- detail: restored 481 artifact(s) from zbuild/state/issue-1944
 
 ### intake (verdict: pass)
 Outputs:
@@ -489,7 +493,7 @@ Summary:
 - open questions: 3
 - artifact: plan.json
 
-### design (verdict: pass) — your own
+### design (verdict: timed_out) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
@@ -591,7 +595,7 @@ The test-author checker found that SPEC-3's requirement "after waiting past max_
 7. **ADR-054 §9** already exists for per-stage router config; new run-level limit goes in §11.
 8. **O9 count assertion** superseded: 5 → 6 loop-ending lines when timed_out arm added (already fixed in current worktree).
 
-### test-author (verdict: fail)
+### test-author (verdict: timed_out)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
