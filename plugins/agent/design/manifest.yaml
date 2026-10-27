@@ -2,6 +2,8 @@ id: design
 name: Design Stage
 kind: agent
 version: 0.1.0
+# ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
+takes: [ask, requirement-findings]
 description: |
   Design stage agent. Reads plan.json produced by the plan stage and invokes
   the LLM (T2) to produce an ADR-style design.md containing a fenced ```scope
@@ -38,6 +40,7 @@ config:
 
 outputs:
   - id: design
+    topic: ask
     path: "${artifact_dir}/design.md"
     type: design.md@1
     format: markdown
@@ -46,6 +49,7 @@ outputs:
   # passes design's checks; one still on disk is a try that did not pass, and
   # the next run starts from it.
   - id: design_draft
+    topic: ask
     path: "${artifact_dir}/design-draft.md"
     type: design.md@1
     format: markdown
@@ -55,6 +59,7 @@ outputs:
   # as timed_out, not as "design.md present"). Written on every exit after
   # the model call (plugin.sh), so it is never stale.
   - id: design_result
+    topic: requirement-findings
     path: "${artifact_dir}/design-verdict.json"
     type: design-verdict.json@1
     format: json
@@ -63,6 +68,7 @@ outputs:
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: design_summary
+    topic: requirement-findings
     path: "${artifact_dir}/design-summary.md"
     type: design-summary.md@1
     format: markdown

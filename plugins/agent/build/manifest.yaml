@@ -2,6 +2,8 @@ id: build
 name: Build Stage
 kind: agent
 version: 0.1.0
+# ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
+takes: [ask, tests, change, requirement-findings, code-findings]
 description: |
   Build stage agent. Reads the plan.json artifact produced by the plan stage
   and invokes the LLM (T2) to produce a diff.patch and build-summary.json.
@@ -63,11 +65,13 @@ config:
 
 outputs:
   - id: diff_patch
+    topic: change
     path: "${artifact_dir}/diff.patch"
     type: diff.patch@1
     format: patch
     required: true
   - id: build_summary
+    topic: change
     path: "${artifact_dir}/build-summary.json"
     type: build-summary.json@4
     format: json
@@ -78,6 +82,7 @@ outputs:
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: build_stage_summary
+    topic: change
     path: "${artifact_dir}/build-summary.md"
     type: build-summary.md@1
     format: markdown

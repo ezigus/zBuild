@@ -2,6 +2,8 @@ id: plan
 name: Plan Stage
 kind: agent
 version: 0.1.0
+# ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
+takes: [ask]
 description: |
   Plan stage agent (ADR-013, T2). Consumes a scope-manifest and goal text,
   routes to the T2 model tier, and produces a plan.json artifact: the issue
@@ -50,6 +52,7 @@ config:
 
 outputs:
   - id: plan
+    topic: ask
     path: ${artifact_dir}/plan.json
     type: plan.json@1
     format: json
@@ -59,6 +62,7 @@ outputs:
     primary: true
   # written on every terminal verdict, so absence means something went wrong.
   - id: plan-summary.md
+    topic: ask
     path: "${artifact_dir}/plan-summary.md"
     type: plan-summary.md@1
     format: markdown

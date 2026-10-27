@@ -2,6 +2,8 @@ id: test-author
 name: Test Author
 kind: agent
 version: 0.1.0
+# ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
+takes: [ask, tests, code-findings]
 description: |
   Authors the acceptance assertions from the design's SPEC sentences, in the
   target's own language, BEFORE build implements against them.
@@ -53,6 +55,7 @@ capabilities:
 
 outputs:
   - id: test_author_result
+    topic: code-findings
     path: "${artifact_dir}/test-author-result.json"
     type: test-author-result.json@1
     format: json
@@ -60,6 +63,7 @@ outputs:
     primary: true
   # ADR-055 §9: this stage's statement of what it DID.
   - id: test_author_summary
+    topic: tests
     path: "${artifact_dir}/test-author-summary.md"
     type: test-author-summary.md@1
     format: markdown
