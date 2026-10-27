@@ -10,6 +10,8 @@
 
 [[ -n "${_ZBUILD_DESIGN_CHECKS_LOADED:-}" ]] && return 0
 _ZBUILD_DESIGN_CHECKS_LOADED=1
+# shellcheck source=../../../../scripts/lib/test-paths.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/test-paths.sh"
 
 # _dck_scope_nonempty <design_md>
 # C1: returns 0 iff design.md carries a ```scope fence with ≥1 non-blank entry.
@@ -90,6 +92,8 @@ _dck_plain() {
             # The requirement's own words go last, unquoted, so quotes inside them
             # cannot break the sentence (review #2320).
             printf 'requirement %s from the issue is not covered by any SPEC: %s. End the line of the SPEC that delivers it with " covers: %s" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it' "$id" "$_rt" "$id" ;;
+        TESTFILE_NOT_A_TEST*) local _tg; zb_test_path_globs_v _tg
+            printf '%s is named as a test, but it is not in a test folder (%s) — name a test file in one of them, or leave it out: a document or a source file is not a test' "$id" "${_tg// /, }" ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
@@ -156,6 +160,17 @@ _design_checks() {
                 *)       violations+=("UNKNOWN_STATUS $_spec [${_ACC_SPEC_TAG}] (not a status)") ;;
             esac
         done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+    fi
+
+    # ── C8 TEST FOLDERS (ADR-069 §10): every test file is in a test folder ──
+    # #1801 run 40390919951: two ADR documents named as tests were run with bash.
+    if [[ $_accept_ok -eq 1 ]]; then
+        local _tf
+        while IFS= read -r _tf; do
+            [[ -n "$_tf" ]] || continue
+            zb_is_test_path "$_tf" "$repo_root" \
+                || violations+=("TESTFILE_NOT_A_TEST $_tf (not in a test folder)")
+        done < <(acceptance_list_testfiles "$design_md" 2>/dev/null | LC_ALL=C sort -u)
     fi
 
     # ── C7 REQUIREMENTS (#2306, ADR-070 §3): every requirement intake numbered

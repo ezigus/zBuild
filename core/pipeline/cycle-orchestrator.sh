@@ -13,6 +13,8 @@
 #       _CYCLE_LAST_TERMINATED_REASON  string enum
 #       _CYCLE_LAST_ITERATIONS         int
 #       _CYCLE_LAST_HISTORY_FILE       absolute path
+#       _CYCLE_LAST_MEMBER_HALT        "<word>: <reason>" when a member's result
+#                                      halted the run (ADR-068 §3), else empty
 #
 # Internal helpers (prefix `_cycle_`):
 #   _cycle_load_template / _cycle_iter_dispatch / _cycle_install_traps /
@@ -78,6 +80,7 @@ readonly _CYCLE_DEFAULT_DIVERGENCE_WINDOW=2
 _CYCLE_LAST_TERMINATED_REASON=""
 _CYCLE_LAST_ITERATIONS=0
 _CYCLE_LAST_HISTORY_FILE=""
+_CYCLE_LAST_MEMBER_HALT=""
 _CYCLE_VELOCITY_PLATEAU_WINDOW=0  # 0 = disabled until template sets velocity_plateau.window
 _CYCLE_LAST_PLATEAU_EVIDENCE=""
 
@@ -1491,7 +1494,7 @@ _cycle_iter_dispatch() {
             _CYCLE_NEST_DEPTH=$(( ${_CYCLE_NEST_DEPTH:-0} + 1 ))
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
-            local _inner_outcome="${_CYCLE_LAST_OUTCOME:-}"
+            local _inner_outcome="${_CYCLE_LAST_OUTCOME:-}" _inner_halt="${_CYCLE_LAST_MEMBER_HALT:-}"
             _CYCLE_NEST_DEPTH=$(( _CYCLE_NEST_DEPTH - 1 ))
             # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
             # (verdict normal, or an inner loop that stops the run). Prefix must
@@ -1541,7 +1544,11 @@ _cycle_iter_dispatch() {
                         *) [[ "$_inner_on_max" == "halt" ]] && _end_round=1 ;;
                     esac ;;
                 failed)
-                    if (( iter < _CYCLE_MAX_ITER )); then _end_round=1
+                    # A member that halts the run (broken, misconfigured) stops
+                    # it here: going round would only repeat it, and the next
+                    # stage would be blamed (#1801 run 40390919951).
+                    if [[ -n "$_inner_halt" ]]; then _inner_stops="failed"
+                    elif (( iter < _CYCLE_MAX_ITER )); then _end_round=1
                     else _inner_stops="failed"; fi ;;
                 *) [[ "$_inner_on_max" == "halt" ]] && _end_round=1 ;;
             esac
@@ -1591,10 +1598,12 @@ _cycle_iter_dispatch() {
                    _CYCLE_ITER_OUTCOME="aborted"
                    return 1 ;;
                 failed)
-                   # blocking_member_failure propagates outward.
-                   _CYCLE_LAST_TERMINATED_REASON="blocking_member_failure"
-                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "blocking_member_failure" "failed"
-                   _cycle_state_write_member_atomic "$state_file" "$s" "failed" "blocking_member_failure" || true
+                   # blocking_member_failure propagates outward; a member's halt
+                   # keeps its own words, so the run says what stopped it.
+                   _CYCLE_LAST_TERMINATED_REASON="${_inner_halt:-blocking_member_failure}"
+                   _CYCLE_LAST_MEMBER_HALT="$_inner_halt"
+                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "${_inner_halt:-blocking_member_failure}" "failed"
+                   _cycle_state_write_member_atomic "$state_file" "$s" "failed" "${_inner_halt:-blocking_member_failure}" || true
                    _cycle_clear_traps
                    _CYCLE_ITER_OUTCOME="failed"
                    return 1 ;;
@@ -1830,6 +1839,9 @@ _cycle_iter_dispatch() {
             _cycle_emit "cycle.member.blocking_failure" \
                 "iter=$iter" "stage=$s" "rc=$rc" "reason=${_halt_why:-blocking_member}"
             _CYCLE_LAST_TERMINATED_REASON="${_halt_why:-blocking_member_failure}"
+            # ADR-068 §3 (amended 2026-10-26): a member whose result halts the
+            # run stops the loops around this one too; they read it here.
+            _CYCLE_LAST_MEMBER_HALT="$_halt_why"
             _CYCLE_LAST_VERDICTS_BLOB="$blob"
             _CYCLE_LAST_FAILURE_COUNT="$fail"
             [[ $_had_e -eq 1 ]] && set -e
@@ -2111,7 +2123,7 @@ cycle_orchestrator_run() {
     local _cor_had_e=0 _cor_rc=0
     [[ $- == *e* ]] && _cor_had_e=1
     set +e
-    _CYCLE_LAST_OUTCOME=""
+    _CYCLE_LAST_OUTCOME=""; _CYCLE_LAST_MEMBER_HALT=""
     _cycle_orchestrator_run_body "$@"
     _cor_rc=$?
     # A way out that named no outcome is read from its rc: success converged,

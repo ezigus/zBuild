@@ -1,0 +1,6 @@
+# The folders that hold tests (ADR-069 §10). One glob per line, matched against
+# a path from the repository root; `*` also matches `/`. Lines starting with `#`
+# are comments. A repository replaces this list with its own
+# .zbuild/test-paths.txt.
+tests/*
+plugins/*/*/tests/*

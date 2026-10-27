@@ -65,5 +65,17 @@ assert_contains "[#2138] …forbidding the full suite" "$_b_out" "npm test"
 assert_contains "[#2138] …and making a failed stage under Previous work authoritative" \
     "$_b_out" "A failed stage under Previous work is red RIGHT NOW"
 
+# ─── T1: build starts from the tests listed under Previous work (#1801 run 40390919951)
+# With no stage failed yet, its builder ran 4–13 test files per call to find
+# them and their state, and made no edit in three 15-minute calls.
+_t1="$(tr -s '[:space:]' ' ' <<< "$_b_out")"
+assert_contains "[T1] build starts from the test files listed under Previous work" "$_t1" \
+    "Start from the test files listed under Previous work, and the requirements each covers"
+assert_eq "[T1] ...without naming another stage (ADR-067 §8)" "0" "$(grep -c 'test-author' <<< "$_t1" || true)"
+assert_contains "[T1] ...which fail now, so it does not run them to find that out" "$_t1" \
+    "they fail on the code as it is now; do not run them to find that out"
+assert_contains "[T1] a test is run only after changing the code it checks" "$_t1" \
+    "Run a test only after you change the code it checks, and only that test file"
+
 print_test_results
 exit $((FAIL > 0))

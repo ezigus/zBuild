@@ -23,6 +23,9 @@
 #             overran the stage's time limit, and the stage was killed)
 # A7 [change] no calls left after round 1: no round 2; the outcome is fail and
 #             the result lists the finding
+# A9 [change] the summary later stages read lists each test file and the
+#             requirements it covers, and says they fail on today's code
+#             (#1801 run 40390919951: build ran them to find out)
 # A8 [change] the author is told to run nothing, and to read the existing tests
 #             and test helpers, not the code the change is about (#1944 run
 #             40329284881: it ran the suite and lint, and read core/)
@@ -145,6 +148,14 @@ assert_contains "[A8] it may read the existing tests and test helpers" "$_AP" \
 assert_contains "[A8] ...not the code the change is about" "$_AP" "do not read the code this change is about"
 assert_eq "[A8] it is no longer told to open the code that writes the data" "0" \
     "$(grep -c 'open the code that writes it' <<< "$_AP" || true)"
+
+# ── A9 ───────────────────────────────────────────────────────────────────────
+JUDGE=("$CORRESP"); JUDGE_RC=0
+_run
+_SUM="$(tr -s '[:space:]' ' ' < "$A/test-author-summary.md" 2>/dev/null)"
+assert_contains "[A9] the summary lists each test file with its requirements" "$_SUM" "tests/acc-test.sh — SPEC-1"
+assert_contains "[A9] ...and says they fail on today's code" "$_SUM" \
+    "Each [code] requirement's test fails on the code as it is now, and passes once the code is written"
 
 # ── A5 ───────────────────────────────────────────────────────────────────────
 # shellcheck source=../../core/pipeline/template.sh

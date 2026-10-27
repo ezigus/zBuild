@@ -604,8 +604,12 @@ but a stage that misbehaves once should cost a retry, not the run.
   own first chance. An undo that could not complete also halts.
 - The recorded event is the same `stage.write_boundary.violated`, with
   `action=reverted` on the first offence.
+- **The halt says why** (amended 2026-10-26). The reason the run stops with is
+  "<stage> changed files in the repository that it may not change: <paths>",
+  not the stage's own result. #1801 run 40390919951 halted saying "21 of 818
+  tests failed", and then naming the next stage.
 
-Verification: `tests/integration/write-boundary-revert-test.sh` (D1–D5).
+Verification: `tests/integration/write-boundary-revert-test.sh` (D1–D6).
 
 ## Amendment — in the artifacts folder a stage writes only its own (2026-10-14, #2379)
 

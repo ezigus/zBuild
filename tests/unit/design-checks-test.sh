@@ -3,6 +3,7 @@
 # lib/checks.sh; #2369 moved them out of the design-gate stage, ADR-046, #1218).
 # No model, nothing executed; pure reads of design.md and the files it names.
 # Runs the structural checks (C1..C5, C7), reports ALL violations in ONE pass.
+# G8 (ADR-069 §10): every test file is in one of the repo's test folders.
 # C3 is the requirement status (#2304, ADR-069): G1–G6 below; G7 (#2305) reads a
 # [code] requirement's words.
 set -euo pipefail
@@ -457,5 +458,33 @@ SPEC-1: /etc/passwd-test.sh
 assert_eq "[SPEC-15] an absolute testfile path → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-15] a dropped absolute path also surfaces as MISSING_TESTFILE_FOR_SPEC" \
     "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
+
+# ─── G8 (ADR-069 §10): a test file is in one of the repo's test folders ─────
+# #1801 run 40390919951 named two ADR documents as a requirement's tests; the
+# test stage ran them with bash, and their markdown quote lines ("> word")
+# created files in the worktree.
+_g8_md() {   # _g8_md <SPEC-2 test file>
+    printf '# Design\n\n```scope\nscripts/wire.sh\n```\n\n```acceptance\n'
+    printf 'SPEC-1[code]: x\nSPEC-2[no-code]: the ADR says so\n'
+    printf 'WIRING: scripts/wire.sh\nTESTFILES:\nSPEC-1: tests/a-test.sh\nSPEC-2: %s\n```\n' "$1"
+}
+_run_gate_with_md "$(_g8_md docs/adr/ADR-011-pluggable-backends.md)"
+assert_eq "[G8] a document named as a test → verdict=fail" "fail" "$VERDICT"
+assert_contains "[G8] the violation names the file" "$(_viol)" "TESTFILE_NOT_A_TEST docs/adr/ADR-011-pluggable-backends.md"
+assert_contains "[G8] the feedback says it in plain words" "$(cat "$FEEDBACK_PATH")" \
+    "docs/adr/ADR-011-pluggable-backends.md is named as a test, but it is not in a test folder"
+assert_contains "[G8] ...naming the test folders" "$(cat "$FEEDBACK_PATH")" "tests/*"
+_run_gate_with_md "$(_g8_md tests/unit/b-test.sh)"
+assert_eq "[G8] a file under tests/ passes" "pass" "$VERDICT"
+_run_gate_with_md "$(_g8_md plugins/tool/x/tests/x-test.sh)"
+assert_eq "[G8] a file in a plugin's own tests folder passes" "pass" "$VERDICT"
+_run_gate_with_md "$(_g8_md scripts/lib/thing.sh)"
+assert_contains "[G8] a source file is not a test either" "$(_viol)" "TESTFILE_NOT_A_TEST scripts/lib/thing.sh"
+# The folders are the repository's data: its own list replaces the default.
+mkdir -p "$ROOT/.zbuild"; printf '# this repo keeps its tests in spec/\nspec/*\n' > "$ROOT/.zbuild/test-paths.txt"
+_run_gate_with_md "$(_g8_md spec/thing_spec.rb)"
+assert_contains "[G8] a repo's own list decides: tests/ is not one of its folders" "$(_viol)" "TESTFILE_NOT_A_TEST tests/a-test.sh"
+assert_eq "[G8] ...and spec/ is" "0" "$(grep -c 'TESTFILE_NOT_A_TEST spec/' <<< "$(_viol)" || true)"
+rm -f "$ROOT/.zbuild/test-paths.txt"
 
 print_test_results
