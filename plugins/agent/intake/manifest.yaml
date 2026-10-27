@@ -29,12 +29,14 @@ requires:
 outputs:
   # ADR-055 v2: JSON result file — verdict-bearing primary output.
   - id: intake_result
+    topic: ask
     path: "${artifact_dir}/intake-result.json"
     type: intake-result.json@1
     format: json
     required: true
     primary: true
   - id: scope_manifest
+    topic: ask
     path: ${state_dir}/scope-manifest.md
     type: scope-manifest.md@1
     format: markdown
@@ -42,6 +44,7 @@ outputs:
     # ADR-020 amendment (#507): non-JSON secondary output. Under v2, primary
     # is intake-result.json; scope_manifest is the downstream-consumed artifact.
   - id: intake_goal
+    topic: ask
     path: ${state_dir}/intake.md
     type: intake.md@1
     format: markdown
@@ -51,6 +54,7 @@ outputs:
   # required:false; design and issue-acceptance
   # read it as their `requirements` input.
   - id: requirements
+    topic: ask
     path: "${artifact_dir}/requirements.json"
     type: requirements.json@1
     format: json
@@ -59,6 +63,7 @@ outputs:
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: intake_summary
+    topic: ask
     path: "${artifact_dir}/intake-summary.md"
     type: intake-summary.md@1
     format: markdown

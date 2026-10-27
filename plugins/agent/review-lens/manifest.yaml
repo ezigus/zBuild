@@ -2,6 +2,8 @@ id: review-lens
 name: Review Lens (single, advisory)
 kind: agent
 version: 0.1.0
+# ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
+takes: [ask, change]
 description: |
   A single advisory review lens as its OWN isolated LLM stage (ADR-040 §3,
   EPIC #1129 C1). One isolated, redacted route_to_model call asks ONE lens's
@@ -60,6 +62,7 @@ config:
 
 outputs:
   - id: lens_result
+    topic: code-findings
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"
     type: review-lens.json@1
     format: json
@@ -68,6 +71,7 @@ outputs:
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: review_lens_summary
+    topic: code-findings
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-summary.md"
     type: review-lens-summary.md@1
     format: markdown

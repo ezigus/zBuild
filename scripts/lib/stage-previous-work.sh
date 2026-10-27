@@ -81,7 +81,8 @@ _sp_last_good_attempt() {
 # ─── Previous work ───────────────────────────────────────────────────────────
 # _sp_manifest_roles <manifest> <state_dir> — one line per output that plays a
 # role: "S<TAB>path" (summary: true), "E<TAB>path" (errors: true), "P<TAB>path"
-# (primary: true), "R<TAB>path" (required: true). Read once per manifest per run and kept under the run's
+# (primary: true), "R<TAB>path" (required: true), and for every output that
+# names a topic (ADR-071) "T<TAB>topic<TAB>id<TAB>path". Read once per manifest per run and kept under the run's
 # runtime/ folder: the block is written at every dispatch, each dispatch is its
 # own subshell, and the fork budget (ADR-065) counts every read.
 _sp_manifest_roles() { local _smr; _sp_manifest_roles_v _smr "$1" "$2"; printf '%s' "$_smr"; }
@@ -101,12 +102,15 @@ _sp_manifest_roles_v() {
                     if (err)  print "E\t" path
                     if (prim) print "P\t" path
                     if (req)  print "R\t" path
+                    if (topic != "") print "T\t" topic "\t" id "\t" path
                 }
-                path = ""; summ = 0; err = 0; prim = 0; req = 0
+                path = ""; id = ""; topic = ""; summ = 0; err = 0; prim = 0; req = 0
             }
             /^outputs:[[:space:]]*$/ { inb = 1; next }
             inb && /^[a-zA-Z_]/ { flush(); inb = 0 }
-            inb && /^[[:space:]]*-[[:space:]]/ { flush() }
+            inb && /^[[:space:]]*-[[:space:]]/ {
+                flush(); i = $0; sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", i)
+                if (i != $0) { sub(/[[:space:]]*#.*/, "", i); gsub(/^["\047]|["\047]$/, "", i); id = i } }
             inb && /^[[:space:]]+path:[[:space:]]*/ {
                 p = $0; sub(/^[[:space:]]+path:[[:space:]]*/, "", p); sub(/[[:space:]]*#.*/, "", p)
                 gsub(/^["\047]|["\047]$/, "", p); path = p }
@@ -114,6 +118,11 @@ _sp_manifest_roles_v() {
             inb && /^[[:space:]]+errors:[[:space:]]*true/  { err = 1 }
             inb && /^[[:space:]]+primary:[[:space:]]*true/ { prim = 1 }
             inb && /^[[:space:]]+required:[[:space:]]*true/ { req = 1 }
+            inb && /^[[:space:]]+id:[[:space:]]*/ {
+                i = $0; sub(/^[[:space:]]+id:[[:space:]]*/, "", i); sub(/[[:space:]]*#.*/, "", i)
+                gsub(/^["\047]|["\047]$/, "", i); id = i }
+            inb && /^[[:space:]]+topic:[[:space:]]*/ {
+                t = $0; sub(/^[[:space:]]+topic:[[:space:]]*/, "", t); sub(/[[:space:]]*#.*/, "", t); topic = t }
             END { flush() }' "$m" > "$c.$$" 2>/dev/null && mv -f "$c.$$" "$c" 2>/dev/null \
             || { rm -f "$c.$$" 2>/dev/null; return 0; }
     fi
@@ -122,28 +131,58 @@ _sp_manifest_roles_v() {
     while [[ "$_smrv" == *$'\n' ]]; do _smrv="${_smrv%$'\n'}"; done
 }
 
+# _sp_takes_v <var> <manifest> — the topics the stage's `takes:` names, as
+# " ask change " (spaces around each), or "" when it declares none: a stage
+# with no takes: is shown every stage's output (ADR-071).
+_sp_takes_v() {
+    local -n _stv="$1"
+    local line
+    _stv=""
+    [[ -n "${2:-}" && -r "$2" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^takes:[[:space:]]*\[(.*)\] ]]; then
+            line="${BASH_REMATCH[1]//,/ }"
+            local -a _sp_tw; read -ra _sp_tw <<< "$line"
+            _stv=" ${_sp_tw[*]} "
+            return 0
+        fi
+    done < "$2"
+}
+
 # _sp_read <file> <max> — the first <max> bytes of a file, without a fork.
 _sp_read() { local c; [[ -r "$1" ]] || return 0; c="$(<"$1")"; printf '%s' "${c:0:$2}"; }
 
-# _stage_block_previous_work <stage> <state_dir> <plugins_root> <index> <repo_root>
+# _stage_block_previous_work <stage> <state_dir> <plugins_root> <index> <repo_root> [<manifest>]
+# <manifest> is the stage's own (its takes:); without it, it is looked up.
 _stage_block_previous_work() {
-    local stage="$1" state_dir="$2" plugins_root="$3" index="$4" repo_root="$5"
+    local stage="$1" state_dir="$2" plugins_root="$3" index="$4" repo_root="$5" self_manifest="${6:-}"
     local state_file="$state_dir/pipeline-state.json"
     declare -F _inputs_build_producer_index >/dev/null 2>&1 \
         || source "$_ZBUILD_SP_ROOT/core/pipeline/input-resolve.sh"
     declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1 \
         || source "$_ZBUILD_SP_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
     _inputs_build_producer_index "$plugins_root" "$state_dir"
+    # ADR-071: what the stage takes. Each output's topic is checked against it.
+    local takes=""
+    [[ -n "$self_manifest" ]] || _inputs_stage_manifest_v self_manifest "$stage" "$plugins_root" 2>/dev/null || true
+    _sp_takes_v takes "$self_manifest"
 
-    printf 'The latest output of every stage that has run, with where to find it. Use\n'
-    printf 'what your job needs.\n'
-    local changed; changed="$(_sp_work_changed_line "$repo_root")"
-    [[ -n "$changed" ]] && printf '\n%s\n' "$changed"
+    if [[ -n "$takes" ]]; then
+        printf 'The latest output of every stage that has run, as far as it is about what\n'
+        printf 'your job takes (%s), with where to find it. Use what your job needs.\n' "$(_sp_list_words "$takes")"
+    else
+        printf 'The latest output of every stage that has run, with where to find it. Use\n'
+        printf 'what your job needs.\n'
+    fi
+    if [[ -z "$takes" || "$takes" == *" change "* ]]; then
+        local changed; changed="$(_sp_work_changed_line "$repo_root")"
+        [[ -n "$changed" ]] && printf '\n%s\n' "$changed"
+    fi
 
     # Everything read once: the stages in the order they first completed with
     # their verdicts, then every output in the index.
     local -a order=()
-    local -A verdicts=() outs=() seen=()
+    local -A verdicts=() outs=() seen=() outtext=()
     local line k v id
     while IFS=$'\t' read -r k v; do
         [[ -n "$k" && -z "${seen[$k]:-}" ]] || continue
@@ -158,11 +197,12 @@ _stage_block_previous_work() {
         while IFS=$'\t' read -r id v; do
             [[ -n "$id" ]] || continue
             k="${_IR_PRODUCER[$id]:-}"; [[ -n "$k" ]] || continue
+            outs[$k]+="$id "
             if [[ "$v" == *$'\x1f'* ]]; then
-                outs[$k]+="- $id:"$'\n'
-                local m; while IFS= read -r m; do [[ -n "$m" ]] && outs[$k]+="    - $m"$'\n'; done <<< "${v//$'\x1f'/$'\n'}"
+                outtext[$id]="- $id:"$'\n'
+                local m; while IFS= read -r m; do [[ -n "$m" ]] && outtext[$id]+="    - $m"$'\n'; done <<< "${v//$'\x1f'/$'\n'}"
             else
-                outs[$k]+="- $id: $v"$'\n'
+                outtext[$id]="- $id: $v"$'\n'
             fi
         done < <(jq -r '(.inputs // {}) | to_entries[]
                         | "\(.key)\t\(if (.value|type) == "array" then (.value | join("\u001f")) + "\u001f" else .value end)"' \
@@ -170,6 +210,8 @@ _stage_block_previous_work() {
     fi
 
     local s manifest roles summ errp res req notes verdict own body any=0 raw content
+    local listed t_topic t_id t_path
+    local -A topic_of=()
     for s in "${order[@]}"; do
         # Only a stage's own notes come back to it (ADR-067 §8); another
         # stage's notes are its working file, not its output.
@@ -177,20 +219,32 @@ _stage_block_previous_work() {
         [[ "$s" == "$stage" ]] && stage_notes_path_v notes "$state_dir" "$s"
         [[ -n "$notes" && -s "$notes" ]] || notes=""
         [[ -n "${outs[$s]:-}" || -n "$notes" ]] || continue
-        any=1
         _inputs_stage_manifest_v manifest "$s" "$plugins_root" 2>/dev/null || true
-        summ=""; errp=""; res=""; req=""
-        if [[ -n "$manifest" ]]; then
-            _sp_manifest_roles_v roles "$manifest" "$state_dir"
-            while IFS=$'\t' read -r k raw; do
-                case "$k" in
-                    S) [[ -z "$summ" ]] && { summ="$(_inputs_output_paths "$s" "$raw" "$state_dir")"; summ="${summ%%$'\n'*}"; } ;;
-                    E) [[ -z "$errp" ]] && _verdict_resolve_path_v errp "$raw" "$state_dir" ;;
-                    P) [[ -z "$res" ]] && _verdict_resolve_path_v res "$raw" "$state_dir" ;;
-                    R) req+="${raw##*/}"$'\n' ;;
-                esac
-            done <<< "$roles"
-        fi
+        summ=""; errp=""; res=""; req=""; roles=""
+        topic_of=()
+        [[ -n "$manifest" ]] && _sp_manifest_roles_v roles "$manifest" "$state_dir"
+        # ADR-071: an output is shown when the stage takes its topic (by id
+        # for the listed paths, by manifest path for the summary, the errors
+        # and the result). With no takes:, everything is.
+        while IFS=$'\t' read -r k t_topic t_id t_path; do
+            [[ "$k" == T ]] || continue
+            topic_of["id:$t_id"]="$t_topic"; topic_of["path:$t_path"]="$t_topic"
+        done <<< "$roles"
+        while IFS=$'\t' read -r k raw; do
+            [[ "$k" == [SEP] ]] || { [[ "$k" == R ]] && req+="${raw##*/}"$'\n'; continue; }
+            [[ -z "$takes" || "$takes" == *" ${topic_of["path:$raw"]:-none} "* ]] || continue
+            case "$k" in
+                S) [[ -z "$summ" ]] && { summ="$(_inputs_output_paths "$s" "$raw" "$state_dir")"; summ="${summ%%$'\n'*}"; } ;;
+                E) [[ -z "$errp" ]] && _verdict_resolve_path_v errp "$raw" "$state_dir" ;;
+                P) [[ -z "$res" ]] && _verdict_resolve_path_v res "$raw" "$state_dir" ;;
+            esac
+        done <<< "$roles"
+        listed=""
+        for id in ${outs[$s]:-}; do
+            [[ -z "$takes" || "$takes" == *" ${topic_of["id:$id"]:-none} "* ]] && listed+="${outtext[$id]}"
+        done
+        [[ -n "$listed" || -n "$summ" || -n "$errp" || -n "$res" || ( "$s" == "$stage" && -n "$notes" ) ]] || continue
+        any=1
         [[ "$res" == *.json && -s "$res" ]] || res=""
         verdict="${verdicts[$s]:-}"
         content=""; [[ -n "$res" && -r "$res" ]] && content="$(<"$res")"
@@ -199,7 +253,7 @@ _stage_block_previous_work() {
         fi
         own=""; [[ "$s" == "$stage" ]] && own=" — your own"
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
-        [[ -n "${outs[$s]:-}" ]] && printf 'Outputs:\n%s' "${outs[$s]}"
+        [[ -n "$listed" ]] && printf 'Outputs:\n%s' "$listed"
 
         if [[ "$content" == *'"findings"'* ]]; then
             body="$(jq -r --arg s "$s" '(.data.findings // [])[]?
@@ -249,4 +303,13 @@ _stage_block_previous_work() {
     done
     [[ "$any" -eq 1 ]] || printf '\nNo stage has run before this one.\n'
     return 0
+}
+
+# _sp_list_words " a b c " — "a, b and c".
+_sp_list_words() {
+    local -a w; read -ra w <<< "$1"
+    local n=${#w[@]}
+    (( n <= 1 )) && { printf '%s' "${w[*]}"; return 0; }
+    local IFS=','; local head="${w[*]:0:n-1}"
+    printf '%s and %s' "${head//,/, }" "${w[n-1]}"
 }

@@ -45,6 +45,11 @@ source "$_ZBUILD_MANIFEST_VALIDATION_DIR/requires-core.sh"
 # reasoning in ADR-001's 2026-08-20 amendment. Do not re-add.
 ZBUILD_PLUGIN_KINDS=(agent tool orchestrator claim-coordinator daemon persona)
 
+# ─── What an output is about, and what a stage takes (ADR-071) ──────────────
+# Each output names one topic; a stage's `takes:` names the topics its prompt's
+# Previous work holds.
+ZBUILD_STAGE_TOPICS=(ask tests change requirement-findings code-findings)
+
 # ─── yaml_get memoization (#1614) ───────────────────────────────────────────
 # yaml_get spawned one awk per lookup and was called 6,338 times per pipeline
 # run — 12.97s of a 27s run. The cache is process-scoped: manifests are static
@@ -621,6 +626,30 @@ validate_manifest() {
             errors=$((errors + 1))
         fi
     done <<< "$_rblock"
+
+    # ─── ADR-071: outputs[].topic and takes: use the five words ─────────────
+    # Plain bash, no fork: this runs for every plugin at load (ADR-065).
+    local _tl _tw _tin=0 _tbad
+    while IFS= read -r _tl || [[ -n "$_tl" ]]; do
+        [[ "$_tl" == outputs:* ]] && { _tin=1; continue; }
+        [[ "$_tl" =~ ^[a-zA-Z_] ]] && _tin=0
+        _tbad=""
+        if [[ "$_tl" =~ ^takes:[[:space:]]*\[(.*)\][[:space:]]*$ ]]; then
+            for _tw in ${BASH_REMATCH[1]//,/ }; do
+                [[ " ${ZBUILD_STAGE_TOPICS[*]} " == *" $_tw "* ]] || _tbad+="takes '$_tw' "
+            done
+        elif [[ "$_tl" =~ ^takes: ]]; then
+            error "validate_manifest($manifest): takes: must be a list on one line, e.g. takes: [ask, change] (ADR-071)"
+            errors=$((errors + 1))
+        elif (( _tin )) && [[ "$_tl" =~ ^[[:space:]]+topic:[[:space:]]*([^[:space:]#]*) ]]; then
+            _tw="${BASH_REMATCH[1]}"
+            [[ " ${ZBUILD_STAGE_TOPICS[*]} " == *" $_tw "* ]] || _tbad="topic '$_tw' "
+        fi
+        if [[ -n "$_tbad" ]]; then
+            error "validate_manifest($manifest): ${_tbad% } is not one of: ${ZBUILD_STAGE_TOPICS[*]} (ADR-071)"
+            errors=$((errors + 1))
+        fi
+    done < "$manifest"
 
     return $((errors > 0))
 }

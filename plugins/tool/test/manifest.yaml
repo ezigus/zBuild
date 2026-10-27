@@ -107,12 +107,14 @@ outputs:
   # they failed. Published to the other stages' prompts (bounded) when this
   # stage's verdict is a failure; the per-file output of a suite run that failed.
   - id: test_errors
+    topic: code-findings
     path: "${artifact_dir}/test-errors.log"
     type: test-errors.log@1
     format: text
     required: false
     errors: true
   - id: test_results
+    topic: code-findings
     path: "${artifact_dir}/test-results.json"
     type: test-results.json@1
     format: json
@@ -127,6 +129,7 @@ outputs:
   # machinery enforces it with no new engine code. This REPLACES the older
   # #511 F2 "missing == empty" semantics, under which a passing run left no file.
   - id: test_failures_summary
+    topic: code-findings
     path: "${artifact_dir}/test-failures-summary.md"
     type: test-failures-summary.md@1
     format: markdown
@@ -143,11 +146,13 @@ outputs:
   # `summary: true` — it is far too large for a prompt, and the extraction is
   # what a stage reads. Optional: a stage that died before spawning has none.
   - id: test_output_log
+    topic: code-findings
     path: "${artifact_dir}/test-output.log"
     type: test-output.log@1
     format: text
     required: false
   - id: test_timing
+    topic: code-findings
     path: "${artifact_dir}/test-timing.log"
     type: test-timing.log@1
     format: text
@@ -156,26 +161,31 @@ outputs:
   # Their findings reach later stages through test-results.json; these files
   # keep each check's detail.
   - id: shape_floor_result
+    topic: code-findings
     path: "${artifact_dir}/shape-floor-result.json"
     type: shape-floor-result.json@1
     format: json
     required: false
   - id: shape_floor_detail
+    topic: code-findings
     path: "${artifact_dir}/shape-floor-detail.md"
     type: shape-floor-detail.md@1
     format: markdown
     required: false
   - id: acceptance_result
+    topic: requirement-findings
     path: "${artifact_dir}/acceptance-gate-result.json"
     type: acceptance-gate-result.json@1
     format: json
     required: false
   - id: acceptance_detail
+    topic: requirement-findings
     path: "${artifact_dir}/acceptance-summary.txt"
     type: acceptance-summary.txt@1
     format: text
     required: false
   - id: acceptance_errors
+    topic: requirement-findings
     path: "${artifact_dir}/acceptance-gate-errors.log"
     type: acceptance-gate-errors.log@1
     format: text

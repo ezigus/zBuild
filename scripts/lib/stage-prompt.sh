@@ -265,7 +265,7 @@ stage_blocks_write_v() {
     [[ -d "$dir" && -d "${np%/*}" ]] || mkdir -p "$dir" "${np%/*}" 2>/dev/null || return 1
     _stage_block_from_repo "$stage" "$repo_root" \
         "$state_dir/runtime/from-repo-${repo_root//[^A-Za-z0-9._-]/_}.md" > "$dir/from-repo.md" 2>/dev/null || return 1
-    _stage_block_previous_work "$stage" "$state_dir" "$plugins_root" "$index" "$repo_root" \
+    _stage_block_previous_work "$stage" "$state_dir" "$plugins_root" "$index" "$repo_root" "$manifest" \
         > "$dir/previous-work.md" 2>/dev/null || return 1
     _stage_block_rules "$stage" "$state_dir" "$manifest" > "$dir/rules.md" 2>/dev/null || return 1
     _sbwo="$dir"

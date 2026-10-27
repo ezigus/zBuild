@@ -2,6 +2,8 @@ id: issue-acceptance
 name: Issue Acceptance
 kind: agent
 version: 0.1.0
+# ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
+takes: [ask, change, code-findings]
 description: |
   Judges the finished change against the ISSUE: every requirement the issue
   states must be met by the diff, with the tests passing. Runs inside
@@ -39,12 +41,14 @@ config:
 
 outputs:
   - id: issue_acceptance_result
+    topic: requirement-findings
     path: "${artifact_dir}/issue-acceptance-result.json"
     type: issue-acceptance-result.json@1
     format: json
     required: true
     primary: true
   - id: issue_acceptance_summary
+    topic: requirement-findings
     path: "${artifact_dir}/issue-acceptance-summary.md"
     type: issue-acceptance-summary.md@1
     format: markdown
