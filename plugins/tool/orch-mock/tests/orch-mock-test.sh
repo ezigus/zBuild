@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests: orch-mock orch_collect honors the orch contract — 0/1 plus the partial word (PR #269, #1850) — issue #277
-# Sibling backends (orch-sequential, orch-bash-parallel, orch-ruflo-hive) were
+# Sibling backends (orch-bash-parallel, orch-ruflo-hive) were
 # normalised in #269; orch-mock was missed. This test guards the fix.
 set -euo pipefail
 

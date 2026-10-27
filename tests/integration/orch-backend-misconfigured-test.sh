@@ -17,8 +17,8 @@
 # on new code (which removes the fallback and returns 1 naming the backend).
 #
 # Old code behaviour under each SPEC:
-#   SPEC-2: orch_load_backend "sequential" → hardcoded path to orch-sequential/plugin.sh
-#           found at _ZBUILD_ROOT → sources it → returns 0.
+#   SPEC-2: orch_load_backend "sequential" → hardcoded path to the fallback backend
+#           via hardcoded path → sources it → returns 0.
 #   SPEC-4: orch_load_backend "absent-backend" → _orch_find_backend_dir fails →
 #           general sequential fallback fires → returns 0 with a warning.
 #   SPEC-10: source on unreadable plugin.sh fails silently (no set -e in contract.sh) →
@@ -48,7 +48,7 @@ export ZBUILD_PROJECT_ROOT="$TEST_TEMP_DIR/project"
 # Source contract.sh — it auto-calls _orch_load_backend at end.
 # With ZBUILD_PLUGINS_ROOT pointing at an empty dir and no zbuild_config_get_backend
 # available, it defaults to "sequential" and:
-#   old code: sources orch-sequential via hardcoded _ZBUILD_ROOT path → BACKEND_LOADED=1
+#   old code: sources the fallback backend via hardcoded _ZBUILD_ROOT path → BACKEND_LOADED=1
 #   new code: no fallback → orch_load_backend returns 1 (silenced by || true) → BACKEND_LOADED=0
 # We reset _ZBUILD_ORCH_BACKEND_LOADED=0 before each SPEC section so the
 # explicit call we are testing starts from a clean state.
@@ -67,16 +67,13 @@ _ZBUILD_ORCH_BACKEND_LOADED=0
 export ZBUILD_PLUGINS_ROOT="$_EMPTY_PLUGINS"
 _SPEC2_ERR=""
 _SPEC2_RC=0
-set +e
-_SPEC2_ERR="$(orch_load_backend "sequential" 2>&1)"
-_SPEC2_RC=$?
-set -e
+_SPEC2_ERR="$(orch_load_backend "sequential" 2>&1)" || _SPEC2_RC=$?
 
 if [[ "$_SPEC2_RC" -ne 0 ]]; then
     assert_pass "[#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)"
 else
     assert_fail "[#1801/SPEC-2] orch_load_backend 'sequential' must return non-zero (sequential fallback removed)" \
-        "returned 0; old code finds orch-sequential via hardcoded _ZBUILD_ROOT path and sources it"
+        "returned 0; old code finds the fallback backend via hardcoded _ZBUILD_ROOT path and sources it"
 fi
 
 if [[ "${_ZBUILD_ORCH_BACKEND_LOADED:-0}" -ne 1 ]]; then
@@ -114,10 +111,7 @@ _ZBUILD_ORCH_BACKEND_LOADED=0
 export ZBUILD_PLUGINS_ROOT="$_EMPTY_PLUGINS"
 _SPEC4_ERR=""
 _SPEC4_RC=0
-set +e
-_SPEC4_ERR="$(orch_load_backend "orch-absent-spec4" 2>&1)"
-_SPEC4_RC=$?
-set -e
+_SPEC4_ERR="$(orch_load_backend "orch-absent-spec4" 2>&1)" || _SPEC4_RC=$?
 
 if [[ "$_SPEC4_RC" -ne 0 ]]; then
     assert_pass "[#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)"
@@ -178,10 +172,7 @@ export ZBUILD_PLUGINS_ROOT="$_S10_PLUGINS"
 _ZBUILD_ORCH_BACKEND_LOADED=0
 _SPEC10_ERR=""
 _SPEC10_RC=0
-set +e
-_SPEC10_ERR="$(orch_load_backend "orch-broken-spec10" 2>&1)"
-_SPEC10_RC=$?
-set -e
+_SPEC10_ERR="$(orch_load_backend "orch-broken-spec10" 2>&1)" || _SPEC10_RC=$?
 
 # Restore permissions so cleanup_test_env can remove the directory.
 chmod 644 "$_S10_PLUGIN_DIR/plugin.sh" 2>/dev/null || true

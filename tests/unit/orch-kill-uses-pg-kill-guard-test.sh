@@ -128,9 +128,8 @@ _s6rt_child_pid="$(head -n 1 "$_s6rt_child_file" 2>/dev/null || true)"
 
 # Collect with 2 s timeout. The wrapper never writes .exit, so collect fires the
 # kill path. After collect returns, the child should be dead (new code) or alive (old).
-set +e
-_orch_local_collect_results "$_s6rt_pool" "pids" 2
-set -e
+_s6rt_rc=0
+_orch_local_collect_results "$_s6rt_pool" "pids" 2 || _s6rt_rc=$?
 
 # Poll briefly: the KILL signal needs a moment to be processed.
 _s6rt_alive=1

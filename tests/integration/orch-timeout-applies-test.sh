@@ -109,11 +109,10 @@ _spec1_expected_timeout="$(template_stage_time_limit testjob)"
 print_test_section "[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect"
 unset ZBUILD_ORCH_TIMEOUT 2>/dev/null || true
 _SPEC1_OC_TIMEOUT=""
-set +e
+_s1a_rc=0
 _strategy_run_fanout "pool-fanout-spec1" "testjob" "testworker" \
     "$ZBUILD_STATE_DIR/pipeline-state.json" \
-    "$TEST_TEMP_DIR/plugins" 2>/dev/null
-set -e
+    "$TEST_TEMP_DIR/plugins" 2>/dev/null || _s1a_rc=$?
 
 if [[ "$_SPEC1_OC_TIMEOUT" == "$_spec1_expected_timeout" ]]; then
     assert_pass "[#1801/SPEC-1] fanout: orch_collect received --timeout ${_spec1_expected_timeout} (template timeout_s:, not 300)"
@@ -125,11 +124,10 @@ fi
 # With ZBUILD_ORCH_TIMEOUT=300 set explicitly, new code must still ignore it
 export ZBUILD_ORCH_TIMEOUT=300
 _SPEC1_OC_TIMEOUT=""
-set +e
+_s1a2_rc=0
 _strategy_run_fanout "pool-fanout-spec1b" "testjob" "testworker" \
     "$ZBUILD_STATE_DIR/pipeline-state.json" \
-    "$TEST_TEMP_DIR/plugins" 2>/dev/null
-set -e
+    "$TEST_TEMP_DIR/plugins" 2>/dev/null || _s1a2_rc=$?
 if [[ "$_SPEC1_OC_TIMEOUT" == "$_spec1_expected_timeout" ]]; then
     assert_pass "[#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (${_spec1_expected_timeout})"
 else
@@ -141,11 +139,10 @@ unset ZBUILD_ORCH_TIMEOUT 2>/dev/null || true
 # ── SPEC-1b: sequential passes template timeout_s: (not 300) to orch_collect ─
 print_test_section "[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect"
 _SPEC1_OC_TIMEOUT=""
-set +e
+_s1b_rc=0
 _strategy_run_sequential "pool-seq-spec1" "testjob" "testworker" \
     "$ZBUILD_STATE_DIR/pipeline-state.json" \
-    "$TEST_TEMP_DIR/plugins" 2>/dev/null
-set -e
+    "$TEST_TEMP_DIR/plugins" 2>/dev/null || _s1b_rc=$?
 
 if [[ "$_SPEC1_OC_TIMEOUT" == "$_spec1_expected_timeout" ]]; then
     assert_pass "[#1801/SPEC-1] sequential: orch_collect received --timeout ${_spec1_expected_timeout} (template timeout_s:, not 300)"
@@ -157,11 +154,10 @@ fi
 # With ZBUILD_ORCH_TIMEOUT=300 set, sequential must still use template value
 export ZBUILD_ORCH_TIMEOUT=300
 _SPEC1_OC_TIMEOUT=""
-set +e
+_s1b2_rc=0
 _strategy_run_sequential "pool-seq-spec1b" "testjob" "testworker" \
     "$ZBUILD_STATE_DIR/pipeline-state.json" \
-    "$TEST_TEMP_DIR/plugins" 2>/dev/null
-set -e
+    "$TEST_TEMP_DIR/plugins" 2>/dev/null || _s1b2_rc=$?
 if [[ "$_SPEC1_OC_TIMEOUT" == "$_spec1_expected_timeout" ]]; then
     assert_pass "[#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (${_spec1_expected_timeout})"
 else
@@ -208,11 +204,10 @@ done
 print_test_section "[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)"
 unset ZBUILD_ORCH_TIMEOUT 2>/dev/null || true
 _SPEC1_OC_TIMEOUT=""
-set +e
+_s1m_rc=0
 _strategy_run_map "pool-map-spec1" "testjob" "testworker" \
     "$ZBUILD_STATE_DIR/pipeline-state.json" \
-    "$TEST_TEMP_DIR/plugins" 2>/dev/null
-set -e
+    "$TEST_TEMP_DIR/plugins" 2>/dev/null || _s1m_rc=$?
 
 if [[ "$_SPEC1_OC_TIMEOUT" == "$_spec1_expected_timeout" ]]; then
     assert_pass "[#1801/SPEC-1] map: orch_collect received --timeout ${_spec1_expected_timeout} (template timeout_s:, not 300)"
@@ -224,11 +219,10 @@ fi
 # With ZBUILD_ORCH_TIMEOUT=300 explicitly set, map must still ignore it.
 export ZBUILD_ORCH_TIMEOUT=300
 _SPEC1_OC_TIMEOUT=""
-set +e
+_s1m2_rc=0
 _strategy_run_map "pool-map-spec1b" "testjob" "testworker" \
     "$ZBUILD_STATE_DIR/pipeline-state.json" \
-    "$TEST_TEMP_DIR/plugins" 2>/dev/null
-set -e
+    "$TEST_TEMP_DIR/plugins" 2>/dev/null || _s1m2_rc=$?
 if [[ "$_SPEC1_OC_TIMEOUT" == "$_spec1_expected_timeout" ]]; then
     assert_pass "[#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (${_spec1_expected_timeout})"
 else
@@ -256,9 +250,8 @@ sleep 60 &
 _s1e_pid=$!
 printf '%s\n' "$_s1e_pid" > "$_s1e_pool/pids/spec1e.pid"
 
-set +e
-_orch_local_collect_results "$_s1e_pool" "pids" 2
-set -e
+_s1e_rc=0
+_orch_local_collect_results "$_s1e_pool" "pids" 2 || _s1e_rc=$?
 _s1e_outcome="$_ORCH_COLLECT_OUTCOME"
 
 # Ensure the sleeping process is cleaned up regardless of outcome.
@@ -286,12 +279,15 @@ orch_collect() {
 
 _ZB_STRATEGY_OUTCOME=""
 _s1f_timeout="$(template_stage_time_limit testjob)"
-_s1f_stderr=""
-set +e
-_s1f_stderr="$(_strategy_run_fanout "pool-spec1f" "testjob" "testworker" \
+# Run directly in the parent shell (not a subshell) so _ZB_STRATEGY_OUTCOME
+# set inside _strategy_run_fanout is visible after the call. Capture all output
+# (stdout + stderr) to a temp file and read it back into _s1f_stderr.
+_s1f_stderr_file="$TEST_TEMP_DIR/spec1f-stderr.txt"
+_s1f_rc=0
+_strategy_run_fanout "pool-spec1f" "testjob" "testworker" \
     "$ZBUILD_STATE_DIR/pipeline-state.json" \
-    "$TEST_TEMP_DIR/plugins" 2>&1)"
-set -e
+    "$TEST_TEMP_DIR/plugins" >"$_s1f_stderr_file" 2>&1 || _s1f_rc=$?
+_s1f_stderr="$(cat "$_s1f_stderr_file" 2>/dev/null || true)"
 
 if [[ "${_ZB_STRATEGY_OUTCOME:-}" == "timed_out" ]]; then
     assert_pass "[#1801/SPEC-1] fanout strategy propagates timed_out from _ORCH_COLLECT_OUTCOME"
