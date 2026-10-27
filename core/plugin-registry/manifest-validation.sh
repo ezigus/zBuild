@@ -646,7 +646,7 @@ validate_manifest() {
             [[ " ${ZBUILD_STAGE_TOPICS[*]} " == *" $_tw "* ]] || _tbad="topic '$_tw' "
         fi
         if [[ -n "$_tbad" ]]; then
-            error "validate_manifest($manifest): ${_tbad% }is not one of: ${ZBUILD_STAGE_TOPICS[*]} (ADR-071)"
+            error "validate_manifest($manifest): ${_tbad% } is not one of: ${ZBUILD_STAGE_TOPICS[*]} (ADR-071)"
             errors=$((errors + 1))
         fi
     done < "$manifest"

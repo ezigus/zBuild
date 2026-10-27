@@ -13,7 +13,7 @@ The prompt was not enough. A stage should not be handed what its job does not us
 
 ## Decision
 
-1. **Every output names its topic.** In the stage's manifest, each output has `topic:`, one of five:
+1. **Every output a later stage may need names its topic.** In the stage's manifest, the output has `topic:`, one of five (an output no stage takes — monitor's report, deploy's and the pull request's results, hydrate's and persist's — names none, and reaches no stage that declares `takes:`, §2):
    - `ask` — what is to be built: the issue, the requirements, the plan, the design;
    - `tests` — the tests written for the change, and what each covers;
    - `change` — the code the change made, and its summary;
