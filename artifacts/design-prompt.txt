@@ -424,11 +424,15 @@ tests/unit/plugin-artifact-goldens-test.sh [G5]: the G5 section asserts orch-seq
 
 **Template observation:** Both templates declare `timeout_s: 30` (release) and `timeout_s: 120` (persist) under `router:`, where they set the per-call model timeout. `template_stage_time_limit` reads the top-level `timeout_s:` key. Moving those values one level up is the only template change needed.
 
-**Supersedes updates:** The test-author renamed `_SPEC5_RELEASE_TIMEOUT` → `_SPEC5_STAGE_TIMEOUT` in `runner-release-exit-paths-test.sh`. Both exit-path-teardown-budget-guard-test.sh entries in the supersedes block reflect this rename.
+**Supersedes updates:** The test-author renamed `_SPEC5_RELEASE_TIMEOUT` → `_SPEC5_STAGE_TIMEOUT` in `runner-release-exit-paths-test.sh`. Both exit-path-teardown-budget-guard-test.sh entries in the supersedes block reflect this rename. Confirmed: `exit-path-teardown-budget-guard-test.sh` at HEAD already greps for `_SPEC5_STAGE_TIMEOUT` (lines 40–68), so the supersedes rename is already implemented.
 
 **`config/adr-enforcement-baseline.txt`:** Removing ADR-011 and ADR-017 from the baseline while adding their `## Enforced by` sections is required by `lint-adr-enforced-by.sh` (part of `npm run lint`).
 
 **Design findings 1–2 (SPEC-7 TESTFILES named ADR docs, not test files):** The previous design listed `docs/adr/ADR-011-pluggable-backends.md` and `docs/adr/ADR-017-per-stage-router-config.md` as TESTFILES for SPEC-7. These are source docs, not test files. Fixed: SPEC-7 TESTFILES now names `tests/unit/lint-adr-enforced-by-test.sh`, which verifies that every live ADR carries an `## Enforced by` section and is not in the baseline (`config/adr-enforcement-baseline.txt`). Adding the `## Enforced by` sections to ADR-011 and ADR-017 and removing them from the baseline is exactly what SPEC-7 requires; `lint-adr-enforced-by-test.sh` A3/A5 assertions enforce both checks. Both ADR files remain in the scope block (they are still changed by this issue); only the TESTFILES entry changed. `tests/unit/lint-adr-enforced-by-test.sh` and `tests/integration/always-run-exit-paths-test.sh` (already referenced in SPEC-5 TESTFILES) were also added to the scope block.
+
+**Test-stage finding 1 (SPEC-1 — one assertion fails at HEAD; code issue):** The negctl check at HEAD for SPEC-1 shows 14/15 assertions pass. The one remaining failure is `[#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME` — got `<empty>`. Confirmed by reading `fanout.sh`: the strategy correctly clears `_ORCH_COLLECT_OUTCOME=""` before calling `orch_collect` and then tests `${_ORCH_COLLECT_OUTCOME:-}`. The variable does not propagate back from the collect call into the strategy's shell context. The design correctly requires both (a) `_orch_local_collect_results` sets `_ORCH_COLLECT_OUTCOME=timed_out` and (b) the fanout strategy reads it and sets `_ZB_STRATEGY_OUTCOME=timed_out`. The build must ensure `orch_collect` is called without a subshell boundary that would lose the export. This is a code issue for the build stage; the design's scope (fanout.sh, local_engine.sh) and SPEC-1 text are correct and unchanged.
+
+**Test-stage finding 2 (SPEC-3 — 3 files remain at HEAD; code issue):** The negctl check at HEAD for SPEC-3 confirms that `orch-mock-test.sh`, `orch-backend-misconfigured-test.sh`, and `.github/issues/keepers-manifest.yaml` still contain the literal `orch-sequential`. All three are in scope; SPEC-3 names the exact lines to update in each. The guard test also scans `core/`, `plugins/`, `scripts/`, `config/`, `tests/`, `.github/` — `docs/audits/` is outside its search path and the `docs/audits/adr-2026-10-03/batch-1.md` audit file found by a broad worktree grep is not in the guard's scope. Build issue; no design change needed.
 
 Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
@@ -484,7 +488,7 @@ Summary:
 - artifact: design.md
 
 Your notes so far:
-# Design notes — issue #1801 (revision 9)
+# Design notes — issue #1801 (revision 10)
 
 ## What changed from revision 8
 
@@ -533,7 +537,44 @@ written were incomplete — that is fixed in the test content, not the design sp
 ### orch-mock-test.sh (1 occurrence)
 - Line 3: sibling-backends comment
 
-## Status: COMPLETE (revision 9)
+## New findings from test stage (revision 10)
+
+**Test-stage finding 1 (SPEC-1 — one assertion fails at HEAD; code issue):**
+Negctl at HEAD shows 14/15 SPEC-1 assertions pass. One fails:
+`[#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME`
+Got `<empty>`.
+
+Root cause (confirmed by reading fanout.sh lines 78–95): the strategy clears
+`_ORCH_COLLECT_OUTCOME=""` before calling `orch_collect`, then checks
+`${_ORCH_COLLECT_OUTCOME:-}`. If `orch_collect` is invoked via a subshell
+(pipe, process substitution, etc.) the variable set inside doesn't propagate
+back. The design correctly specifies both sides must work; this is a build
+code issue for the build stage to fix. Scope and SPEC-1 text are unchanged.
+
+**Test-stage finding 2 (SPEC-3 — 3 files remain at HEAD; code issue):**
+Guard test at HEAD confirms: `orch-mock-test.sh`, `orch-backend-misconfigured-test.sh`,
+and `.github/issues/keepers-manifest.yaml` still contain `orch-sequential`.
+All 3 are in scope. SPEC-3 names each with exact line references. Build issue.
+
+Note: a broad worktree grep found `docs/audits/adr-2026-10-03/batch-1.md`
+also references `orch-sequential`, but the SPEC-3 guard only scans
+`core/`, `plugins/`, `scripts/`, `config/`, `tests/`, `.github/` —
+`docs/audits/` is outside its scope. No design change needed.
+
+**Confirmed: supersedes renames already implemented:**
+`exit-path-teardown-budget-guard-test.sh` at HEAD already uses
+`_SPEC5_STAGE_TIMEOUT` (lines 40–68). The supersedes block is accurate.
+
+## Passing/failing SPECs at HEAD (from test stage)
+- SPEC-2: NEGCTL PASS ✓
+- SPEC-4: NEGCTL PASS ✓
+- SPEC-5: NEGCTL PASS ✓
+- SPEC-6: NEGCTL PASS ✓
+- SPEC-10: NEGCTL PASS ✓
+- SPEC-1: NEGCTL FAIL (14/15 — one fanout propagation assertion) — build issue
+- SPEC-3: NEGCTL FAIL (1/2 — 3 files still name orch-sequential) — build issue
+
+## Status: COMPLETE (revision 10)
 Design written to /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 
 ### test (verdict: unknown)
