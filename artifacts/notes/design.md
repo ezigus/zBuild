@@ -151,6 +151,17 @@ NEGCTL found the first `[#1944/SPEC-2]` assertion as `assert_pass "... _runner_r
 
 shape-floor flagged tests/golden/full-pipeline/event-sequence.golden and tests/golden/parity/event-sequence.golden. But `golden: 1/1 passed` in the test output confirms the golden tests PASS. The shape-floor flag is a heuristic; no update needed.
 
+## Current pass (design refinement after build stage)
+
+Git state: latest commit is `a60f39a4 fix :-0 default on watchdog PID kill/wait`.
+
+Three bugs still outstanding:
+1. **Bug A** (root cause of 3 integration hangs): `    ) &` at runner.sh:2817 — watchdog subshell has no redirect; orphaned sleep holds pipe open. Fix: `    ) >/dev/null 2>&1 &`.
+2. **Bug B** (SPEC-5 regression in runner-release-exit-paths-test.sh): double-SIGTERM from `timeout` interrupts `wait` in abort trap → EXIT trap aborted before `_runner_dispatch_always_run`. Fix: `trap ':' INT TERM` guard before kill/wait block in `_runner_abort_trap`.
+3. **NEGCTL WIRING for SPEC-4**: `core/state/resume.sh` added to WIRING alongside `core/pipeline/runner.sh` so NEGCTL catches a missing `get_resume_recommendation` implementation.
+
+Design updated: bugs table replaced `:-0` entry (already fixed) with Bug A and Bug B entries; WIRING updated; section 3 rewritten to reflect correct root cause; sections 3 and 4 renumbered.
+
 ## Key architectural findings (carried forward)
 
 1. **No existing run-level limit**: only per-stage router.timeout_s knobs. This is entirely new.

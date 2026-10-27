@@ -446,23 +446,8 @@ If Previous work says a [code] requirement's test already passes on the code fro
 
 ## Previous work
 
-The latest output of every stage that has run, with where to find it. Use
-what your job needs.
-
-Files this issue's work has changed so far: config/adr-enforcement-baseline.txt, core/pipeline/runner.sh, core/pipeline/template.sh, core/state/resume.sh, docs/adr/ADR-006-resume-contract.md, docs/adr/ADR-015-stage-io-capture.md, docs/adr/ADR-025-abort-propagation.md, docs/adr/ADR-054-stage-contract.md, scripts/lib/abort-propagation.sh, scripts/lib/run-open-items.sh, scripts/lib/stage-limits.sh, tests/golden/pipeline-end/timed_out-w80.colored.txt, tests/golden/pipeline-end/timed_out-w80.layout.txt, tests/integration/resume-after-run-timeout-test.sh, tests/integration/run-timed-out-test.sh, tests/unit/run-limit-precedence-test.sh, tests/unit/run-open-items-test.sh, tests/unit/run-watchdog-clean-exit-test.sh, tests/unit/runner-pipeline-end-test.sh
-
-### hydrate (verdict: pass)
-Outputs:
-- hydrate_result: /home/runner/work/_temp/zbuild-state/artifacts/hydrate-result.json
-- hydrate_summary: /home/runner/work/_temp/zbuild-state/artifacts/hydrate-summary.md
-
-Summary:
-## hydrate — pass
-
-- restored 481 artifact(s) from prior runs (restored)
-
-- source: remote
-- detail: restored 481 artifact(s) from zbuild/state/issue-1944
+The latest output of every stage that has run, as far as it is about what
+your job takes (ask and requirement-findings), with where to find it. Use what your job needs.
 
 ### intake (verdict: pass)
 Outputs:
@@ -584,199 +569,66 @@ The test-author checker found that SPEC-3's requirement "after waiting past max_
 
 **run-open-items.sh line 107:** `timed_out) printf 'stopped: the run exceeded its wall-clock limit%s' "$with" ;;` — the function exists and returns the right message. The O3 loop just needs `timed_out` added.
 
-## Key architectural findings (carried forward)
+## Root cause analysis — post-build-stage failures (current pass)
 
-1. **No existing run-level limit**: only per-stage router.timeout_s knobs. This is entirely new.
-2. **Abort word vocabulary** (ADR-025): 6 words → 7 with timed_out.
-3. **zbuild_pg_kill refuses its own group** — watchdog uses raw kill commands.
-4. **Sentinel first-wins**: watchdog writes timed_out BEFORE sending TERM → SIGTERM trap's sentinel call is a no-op → timed_out propagates correctly.
-5. **resume.sh** updated to return manual_resume_only for timed_out status.
-6. **EXIT trap kill must use `:-` not `:-0`** — avoids SIGKILL to PG 0 when watchdog never armed; `wait 0` would hang waiting for all background processes.
-7. **ADR-054 §9** already exists for per-stage router config; new run-level limit goes in §11.
-8. **O9 count assertion** superseded: 5 → 6 loop-ending lines when timed_out arm added (already fixed in current worktree).
+### Bug A: 3 integration test hangs + vision-admission-gate unit test hang
 
-### test-author (verdict: timed_out)
-Outputs:
-- test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
-- test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
+The `:-0` → `:-` fix was applied by the build stage to lines 2539-2540. Tests STILL hang.
+Root cause is different and more fundamental:
 
-Summary:
-## test-author — timed_out
+The watchdog subshell at line 2792-2817 is armed WITHOUT stdout/stderr redirect:
+```
+    ( ... sleep "$_wdg_lim" || exit 0 ... ) &
+```
+No `>/dev/null 2>&1` before `&`.
 
-- the author did not finish (router_timeout) — what it wrote is kept for the next attempt
+When the runner is invoked inside a command substitution `$(bash "$RUNNER" ... 2>&1)`, bash
+creates a pipe. Runner's stdout/stderr are the pipe's write end. The watchdog subshell
+inherits these fds (no explicit redirect). The watchdog's `sleep "$_wdg_lim"` child also
+inherits them.
 
-- SPECs in the contract: 6
-- assertions are authored from the SPEC text, never from the implementation
+EXIT trap fires, kills watchdog bash subshell (SIGKILL). The subshell's CHILD (`sleep 20700`)
+is ORPHANED — reparented to init. The orphaned sleep STILL HOLDS THE PIPE WRITE END OPEN.
 
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-2-attempt-2/test-author-result.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-2-attempt-2/test-author-summary.md
+The `$(...)` waits for all references to the pipe's write end to close. The orphaned sleep
+keeps it open for 20700 seconds. Test hangs until 480s timeout fires.
 
-Summary of that output:
-## test-author — complete
+Affected:
+- core-pipeline-runner-test.sh line 250: `out="$(bash "$RUNNER" ... 2>&1)"`
+- core-pipeline-strategy-test.sh section 4: `composite_out="$(... bash "$RUNNER" ...)"`
+- vision-admission-gate-test.sh SPEC-9: `gate_off_out="$(bash "$RUNNER" ...)"`
 
-- authored acceptance assertions for 6 SPEC(s) from the design contract
+FIX: `(...) >/dev/null 2>&1 &` at runner.sh line 2817 (the watchdog arm line).
+This redirects watchdog subshell and its children to /dev/null. Orphaned sleep holds
+/dev/null fd (not the pipe). `$(...)` closes normally.
 
-- SPECs in the contract: 6
-- assertions are authored from the SPEC text, never from the implementation
+The watchdog's actual functionality (write to sentinel file, send kill signals) uses files
+and system calls, not stdout/stderr. Redirect to /dev/null is safe.
 
-### build (verdict: pass)
-Outputs:
-- build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
-- build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
-- diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
+### Bug B: SPEC-5 regression (runner-release-exit-paths)
 
-Summary:
-## build — pass
+SPEC-5 uses `timeout 120 bash "$RUNNER" ...` as the runner invocation. The test sends
+`kill -TERM -$RUNNER_PID` to the process group. GNU coreutils `timeout`, when it receives
+external SIGTERM, forwards SIGTERM to its child's process group (same PG) and exits.
 
-- changed 1 file(s) over 1 pass(es), 1 iteration(s)
+Result: runner receives TWO SIGTERM signals:
+1. From the test's `kill -TERM -$RUNNER_PID` (PG kill)
+2. From `timeout`'s forwarding
 
-- lines: +2 / -2
-- terminated: done_sentinel
-- scope violation: false
+First SIGTERM: `_runner_signal_trap TERM` → `exit 1` → EXIT trap starts.
 
-### test (verdict: fail)
+In the EXIT trap at line 2540:
+```
+wait "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
+```
+`wait` is a blocking call that CAN BE INTERRUPTED BY SIGNALS in bash. The second SIGTERM
+arrives during `wait`. Bash interrupts the `wait` and fires `_runner_signal_trap TERM` again.
+That handler calls `exit 1`. Calling `exit` from within an EXIT trap in ba
+
+### test (verdict: unknown)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
-- shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
-- shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
-- test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
-- test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
-- test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
-- test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
-
-Findings:
-- test finding 1 (opened by test): tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137) fails: timed out before finishing (last check that passed: build stage_status=failed in state)
-- test finding 2 (opened by test): tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137) fails: timed out before finishing (last check that passed: sequential: runner exits non-zero when stage fails (rc=1))
-- test finding 3 (opened by test): tests/integration/runner-release-exit-paths-test.sh fails: ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-- test finding 4 (opened by test): tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137) fails: timed out before finishing (last check that passed: [SPEC-8] runner message references --condense)
-- test finding 5 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 6 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-
-Summary:
-# Test stage summary
-
-- verdict: fail
-- passed: 816
-- failed: 4
-- exit_code: 1
-
-## Failing files
-
-- tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: build stage_status=failed in state)
-- tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: sequential: runner exits non-zero when stage fails (rc=1))
-- tests/integration/runner-release-exit-paths-test.sh — ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-- tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: [SPEC-8] runner message references --condense)
-
-## Failing lines (extracted)
-
-```
-  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-    no release from: intake build | marker= 
-unit: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137)
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137)
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137)
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/runner-release-exit-paths-test.sh
-  ✓ [SPEC-7] pipeline.end says the gate refused (status=preflight_failed)
-  ✓ [SPEC-7] runner names search paths in message
-  ✓ [SPEC-7] runner includes zbuild vision init hint
-  ✓ [SPEC-8] runner rc=1 on malformed vision (enforce)
-  ✓ [SPEC-8] pipeline.end says the gate refused (status=preflight_failed)
-  ✓ [SPEC-8] runner message references --condense
-  ✓ mid-stage failure exits 1
-  ✓ events.jsonl present on failure
-  ✓ pipeline.end status=failed emitted
-  ✓ pipeline.end names the failing stage
-  ✓ stage.fail event emitted
-  ✓ build stage_status=failed in state
-  ✓ orch_spawn count == orch_shutdown count
-  ✓ no pool directories left after fanout (orch_shutdown cleaned up)
-  3. sequential halt-on-fail: only one dispatch when first fails
-▸ merge_policy: auto_unless_flagged
-  ✓ sequential: runner exits non-zero when stage fails (rc=1)
-  4. composite strategy: emits deferral error (Phase 1 deferred)
-  ✓ [SPEC-6] the blocked hook does not outlive the run
-  SPEC-6b: a hook child that ignores TERM does not outlive the run
-  ✓ [SPEC-6b] a hook child that ignores TERM does not outlive the run
-  1 of 19 tests failed
-```
-
-## The checks of this run
-- the shape floor failed: missing_floor_files
-
-Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-an against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
-
-[38;2;0;212;255m[1m  core/pipeline/strategies — integration: runner delegates via orch contract[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m1. fanout: all orch contract functions called[0m
-▸ merge_policy: auto_unless_flagged
-▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/core-pipeline-strategy-int.tlxgRJ/home/.zbuild/repos/local/strat-overlay-repo/goals/goal-6a33327f1817/worktree
-▸ Pipeline started — run_id=20261026211253-666370 issue= goal=test strategy dispatch template=strategy-dispatch-minimal engine=24b9a5a(zbuild/issue-1944-ci)
-  [38;2;74;222;128m✓[0m fanout: orch_spawn called (got 1)
-  [38;2;74;222;128m✓[0m fanout: orch_dispatch called (got 1)
-  [38;2;74;222;128m✓[0m fanout: orch_collect called (got 1)
-  [38;2;74;222;128m✓[0m fanout: orch_shutdown called (got 1)
-
-  [38;2;0;212;255m2. fanout: no pool leaks (spawn count == shutdown count)[0m
-  [38;2;74;222;128m✓[0m orch_spawn count == orch_shutdown count
-  [38;2;74;222;128m✓[0m no pool directories left after fanout (orch_shutdown cleaned up)
-
-  [38;2;0;212;255m3. sequential halt-on-fail: only one dispatch when first fails[0m
-▸ merge_policy: auto_unless_flagged
-  [38;2;74;222;128m✓[0m sequential: runner exits non-zero when stage fails (rc=1)
-
-  [38;2;0;212;255m4. composite strategy: emits deferral error (Phase 1 deferred)[0m
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/runner-release-exit-paths-test.sh
-
-[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
-  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
-  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
-  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
-  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
-  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (1s)
-  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
-  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-    [2mno release from: intake build | marker= [0m
-  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
-  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
-
-  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 19 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
 
 ### issue-acceptance (verdict: fail)
 Outputs:

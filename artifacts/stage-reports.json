@@ -25,7 +25,8 @@
   ],
   "wiring_files": [
     "core/pipeline/runner.sh",
-    "core/pipeline/template.sh"
+    "core/pipeline/template.sh",
+    "core/state/resume.sh"
   ],
   "owned_files": {
     "test-author": [
