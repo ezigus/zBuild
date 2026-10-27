@@ -1,7 +1,7 @@
 # Test stage summary
 
 - verdict: fail
-- passed: 816
+- passed: 817
 - failed: 4
 - exit_code: 1
 
@@ -9,18 +9,21 @@
 
 - tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: build stage_status=failed in state)
 - tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: sequential: runner exits non-zero when stage fails (rc=1))
-- tests/integration/runner-release-exit-paths-test.sh — ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
+- tests/unit/runner-signal-rearm-test.sh — ✗ [SPEC-5] re-arm TERM handler matches the startup install — expected: <startup-not-found>, got: trap '_runner_signal_trap TERM' TERM
 - tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: [SPEC-8] runner message references --condense)
 
 ## Failing lines (extracted)
 
 ```
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-    [2mno release from: intake build | marker= [0m
-unit: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137)
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137)
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137)
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gH68rE/tests/integration/runner-release-exit-paths-test.sh
+  [38;2;248;113;113m✗[0m [SPEC-5] re-arm TERM handler matches the startup install
+    [2mexpected: <startup-not-found>, got: trap '_runner_signal_trap TERM' TERM[0m
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/unit/runner-signal-rearm-test.sh
+unit: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137)
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137)
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137)
+  [38;2;74;222;128m✓[0m [SPEC-4] re-arm INT handler matches the startup install
+[2m  ──────────────────────────────────────────[0m
+  [38;2;248;113;113m[1m1 of 5 tests failed[0m
   [38;2;74;222;128m✓[0m [SPEC-7] pipeline.end says the gate refused (status=preflight_failed)
   [38;2;74;222;128m✓[0m [SPEC-7] runner names search paths in message
   [38;2;74;222;128m✓[0m [SPEC-7] runner includes zbuild vision init hint
@@ -39,11 +42,6 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 ▸ merge_policy: auto_unless_flagged
   [38;2;74;222;128m✓[0m sequential: runner exits non-zero when stage fails (rc=1)
   [38;2;0;212;255m4. composite strategy: emits deferral error (Phase 1 deferred)[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
-  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-[2m  ──────────────────────────────────────────[0m
-  [38;2;248;113;113m[1m1 of 19 tests failed[0m
 ```
 
 ## The checks of this run

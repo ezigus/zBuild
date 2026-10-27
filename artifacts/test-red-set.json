@@ -1,6 +1,6 @@
 [
   "tests/integration/core-pipeline-runner-test.sh",
   "tests/integration/core-pipeline-strategy-test.sh",
-  "tests/integration/runner-release-exit-paths-test.sh",
+  "tests/unit/runner-signal-rearm-test.sh",
   "tests/unit/vision-admission-gate-test.sh"
 ]

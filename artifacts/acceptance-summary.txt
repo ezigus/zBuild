@@ -18,9 +18,9 @@ NEGCTL SKIP SPEC-6 no_code
       design : ADR-025 lists timed_out in its abort-word vocabulary and has ## Enforced by entries citing the new t…
       asserts: assert_fail "[#1944/SPEC-6] ADR-025 file exists" "not found: $ADR025"
 REACHABILITY PASS core/pipeline/runner.sh
+REACHABILITY PASS core/state/resume.sh
 REACHABILITY PASS change config/adr-enforcement-baseline.txt
 REACHABILITY PASS change core/pipeline/template.sh
-REACHABILITY PASS change core/state/resume.sh
 REACHABILITY SKIP no_code scripts/lib/abort-propagation.sh
 REACHABILITY PASS change scripts/lib/run-open-items.sh
 REACHABILITY PASS change scripts/lib/stage-limits.sh
