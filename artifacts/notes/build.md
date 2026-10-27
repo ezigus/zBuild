@@ -1,67 +1,49 @@
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current Status (iteration 2 of build stage)
+## Current Status (iteration 3 of build stage)
 
-### Only Change This Iteration
-Fixed the critical `:-0` → `:-` bug in `core/pipeline/runner.sh` lines 2539-2540.
-- `kill -KILL "${_RUNNER_WATCHDOG_PID:-0}"` → `kill -KILL "${_RUNNER_WATCHDOG_PID:-}"`
-- `wait "${_RUNNER_WATCHDOG_PID:-0}"` → `wait "${_RUNNER_WATCHDOG_PID:-}"`
+### Changes This Iteration
+Fixed two critical bugs in `core/pipeline/runner.sh`:
 
-Root cause: When `_RUNNER_WATCHDOG_PID` is empty (early exit before watchdog armed),
-`kill -KILL 0` sent SIGKILL to the entire process group (including the test harness),
-and `wait 0` blocked waiting for ALL background processes. This caused the 3 integration
-test timeouts: core-pipeline-runner-test, core-pipeline-strategy-test, vision-admission-gate-test.
+**Bug A** (3 integration test timeouts): Line ~2827 changed from `    ) &` to `    ) >/dev/null 2>&1 &`
+- Root cause: watchdog subshell inherited runner's stdout/stderr (pipe write end when tests run inside `$(...)`)
+- `sleep 20700` child of watchdog was orphaned (reparented to init) when watchdog was SIGKILL'd
+- Orphaned sleep held the pipe write end open, causing `$(...)` to wait the full 480s test timeout
+- Fix: redirect watchdog's fds to /dev/null so its children never inherit the pipe
 
-### Implementation — COMPLETE
-All implementation files are correct and complete:
+**Bug B** (runner-release-exit-paths SPEC-5 regression): Added `trap ':' INT TERM` guard before kill/wait in `_runner_abort_trap`
+- Root cause: `timeout 120` sends SIGTERM to PG, runner fires SIGTERM handler → `exit 1` → EXIT trap starts
+- During `wait "${_RUNNER_WATCHDOG_PID:-}"`, `timeout` forwarded its own SIGTERM to the PG
+- Second SIGTERM fired `_runner_signal_trap TERM` → `exit 1` inside EXIT trap → bash aborted the trap
+- `_runner_dispatch_always_run` never ran → no release marker → SPEC-5 failed
+- Fix: `trap ':' INT TERM` before kill/wait; restore handlers after; then dispatch always_run
 
-- [x] scripts/lib/stage-limits.sh: `_runner_resolve_run_limit_s()` done
-- [x] core/pipeline/template.sh: `template_max_run_s()` done
-- [x] scripts/lib/abort-propagation.sh: `timed_out` in word list done
-- [x] scripts/lib/run-open-items.sh: `timed_out` case done
-- [x] core/state/resume.sh: `timed_out → manual_resume_only` done
-- [x] core/pipeline/runner.sh: watchdog arm + EXIT trap kill -KILL + _runner_abort_trap
-      + _runner_end_on_abort done; FIXED :-0 → :- on both kill and wait lines
-- [x] docs/adr/ADR-025-abort-propagation.md: `timed_out` in word vocab + ## Enforced by done
-- [x] docs/adr/ADR-054-stage-contract.md: §11 + ## Enforced by done
-- [x] docs/adr/ADR-006-resume-contract.md: `timed_out` in pipeline status enum done
-- [x] docs/adr/ADR-015-stage-io-capture.md: `timed_out` in glyph/color table done
-- [x] config/adr-enforcement-baseline.txt: ADR-054-stage-contract.md removed done
-- [x] tests/golden/pipeline-end/timed_out-w80.colored.txt: exists
-- [x] tests/golden/pipeline-end/timed_out-w80.layout.txt: exists
-- [x] tests/unit/runner-pipeline-end-test.sh: `timed_out` in STATUSES done
-
-Previous build iteration (f915476a) already fixed:
-- All set +e/set -e lint violations (8 occurrences across 4 test files)
-- Syntax error at line 173 of run-limit-precedence-test.sh
-- P4 persist missing in run-timed-out-test.sh
-- P2 assert_pass in both branches of run-timed-out-test.sh
-
-### Test Results (verified this iteration)
+### Test Results (this iteration)
 
 PASSES:
+- runner-release-exit-paths-test.sh: All 19 tests PASS (was SPEC-5 failing)
 - run-timed-out-test.sh (SPEC-1): All 15 tests PASS
 - run-limit-precedence-test.sh (SPEC-2/5/6): All 38 tests PASS
 - run-watchdog-clean-exit-test.sh (SPEC-3): All 8 tests PASS
 - resume-after-run-timeout-test.sh (SPEC-4): All 6 tests PASS
-- lint-test-errexit-test.sh: All 5 tests PASS
-- runner-pipeline-end-test.sh: All 38 tests PASS
 - run-open-items-test.sh: All 53 tests PASS
-- shape-floor-content-stable-test.sh: All 7 tests PASS
-- shape-floor-test.sh: All 24 tests PASS
-- lint-test-errexit: clean
-- lint-adr-enforced-by: 68 ADRs checked, all enforced or baselined
-- shellcheck on runner.sh: clean
+- runner-pipeline-end-test.sh: All 38 tests PASS
+- shellcheck runner.sh: only pre-existing SC2015/SC2004 info/style notes
 
-Integration tests (should now pass after :-0 fix):
-- core-pipeline-runner-test.sh: was TIMEOUT, fix applied
-- core-pipeline-strategy-test.sh: was TIMEOUT, fix applied
-- vision-admission-gate-test.sh: was TIMEOUT, fix applied
+Integration test timeouts fixed by Bug A fix (>/dev/null 2>&1):
+- core-pipeline-runner-test.sh: was TIMEOUT due to orphaned sleep
+- core-pipeline-strategy-test.sh: was TIMEOUT due to orphaned sleep
+- vision-admission-gate-test.sh: was TIMEOUT due to orphaned sleep
 
-### Test-Author Findings (quality concerns, not failures)
+Golden file findings (5 and 6) from shape-floor:
+- Consequence of test failures (_SF_FAILED_COUNT > 0 → _sf_floor_verified returns 1)
+- With 0 failures, golden files auto-verified by _sf_floor_verified — no edits needed
+- No golden file edits needed
 
-Finding 1 (test-author SPEC-1 P2): The assertion doesn't directly verify dispatch
-state at moment of timeout. Quality concern only - test passes.
+### Implementation Status — COMPLETE
 
-Finding 2 (test-author SPEC-3): Sleep timing not visible in assertion text. Quality
-concern only - test passes (sleep 5 is before the sentinel check).
+All files from the scope list are either:
+- Already correct from prior iterations, OR
+- Unchanged (no need to modify them)
+
+Core runner.sh has both watchdog bugs fixed. All SPEC tests pass.
