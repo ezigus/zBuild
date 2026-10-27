@@ -23,7 +23,7 @@ Issue: stage timeouts silently stop applying — fallback orchestrator ignores -
 
 ## Plan structure: 15 steps
 
-Original 13 steps, updated for test-stage open findings, plus 2 new steps.
+Original 13 steps, updated for test-stage open findings, plus 2 new steps; updated again for design-stage findings.
 
 ### Changes from prior plan
 
@@ -35,7 +35,7 @@ test file) contains an orch-sequential reference and must be cleaned.
 sequential-strategy), not only fanout — test-author finding 1. The variable that must be checked is
 `_ORCH_COLLECT_OUTCOME` from the collect call.
 
-**Step 7 modified**: The strategy implementation must set `_ZB_STRATEGY_OUTCOME=timed_out` (not
+**Step 7 modified (test stage)**: The strategy implementation must set `_ZB_STRATEGY_OUTCOME=timed_out` (not
 `failed`) when the collect call returns a timed_out outcome via `_ORCH_COLLECT_OUTCOME`. The test
 failure message was: "got '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed" —
 meaning the implementation maps collect_rc=1 to failed, but must read _ORCH_COLLECT_OUTCOME first.
@@ -61,6 +61,27 @@ contract broken). These all trace to the step 9 build changes to runner.sh.
 
 **Old step 13** (npm test + lint green) becomes **step 15**.
 
+### Changes from design stage
+
+**Step 3 modified (design)**: SPEC-11 requires adding a NEW pool isolation assertion tagged
+`[#1801/SPEC-11]` to `plugins/tool/orch-mock/tests/orch-mock-test.sh` (not just migrating existing
+tests). SPEC-12 requires updating 5 additional test files that iterate or assert on orch-sequential
+behavior: `tests/unit/adr059-no-tmpdir-defaults-test.sh`, `tests/unit/core-orch-run-id-isolation-test.sh`,
+`tests/unit/dispatch-rc-guard-test.sh`, `tests/unit/stdin-spawn-guard-test.sh`,
+`tests/unit/summary-mandatory-test.sh`. These are now added to step-3's areas and description.
+Two golden event-sequence files added to areas in case pipeline-event changes from deletion land there.
+
+**Step 7 modified (design)**: Original plan said "remove ZBUILD_ORCH_TIMEOUT argument from collect
+calls." Design requires REPLACING it with `template_stage_time_limit "$stage"`. Simply removing the
+argument would prevent `orch_collect` from ever emitting `_ORCH_COLLECT_OUTCOME=timed_out`, breaking
+SPEC-1. The stage's declared timeout_s: (default 900 s) is passed instead of the flat 300 s cap.
+`scripts/lib/stage-time-limit.sh` added to step-7's areas since strategies must source it.
+
+**Step 9 modified (design)**: `tests/unit/exit-path-teardown-budget-guard-test.sh` added to areas.
+Its SPEC-1 and SPEC-3 assertions grep for the variable renamed from `ZBUILD_RELEASE_TIMEOUT` to
+`_SPEC5_STAGE_TIMEOUT` in `runner-release-exit-paths-test.sh`; without updating the guard test,
+the budget guard breaks on the rename. The step-9 description now names this update explicitly.
+
 ### Open questions
 None.
 
@@ -68,7 +89,7 @@ None.
 
 - [AC1] hung stage ends timed_out → steps 6+7
 - [AC2] stage > 300s completes → steps 6+7
-- [AC3] orch-sequential gone, guard test → steps 2+3
+- [AC3] orch-sequential gone, guard test, SPEC-11 pool isolation → steps 2+3
 - [AC4] missing/unreadable backend → misconfigured, from installed tree → steps 4+5
 - [AC5] release/persist bounded by timeout_s: → steps 8+9
 - [AC6] kill through zbuild_pg_kill, no orphans → steps 10+11
