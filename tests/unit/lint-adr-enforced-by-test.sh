@@ -115,6 +115,25 @@ else
         "ADR-017 still listed in $BASELINE; remove the entry once the ## Enforced by section is added"
 fi
 
+# Verify each ADR's ## Enforced by section actually names test files (not just
+# that the heading exists). A section with prose but no test file references
+# does not satisfy the requirement.
+_adr011_eb_content="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p{print}' "$ADR_011" 2>/dev/null || true)"
+if grep -q 'tests/' <<< "$_adr011_eb_content"; then
+    assert_pass "[#1801/SPEC-7] ADR-011 ## Enforced by section names at least one test file"
+else
+    assert_fail "[#1801/SPEC-7] ADR-011 ## Enforced by section must name test file(s) (contain 'tests/')" \
+        "no 'tests/' reference found in the ## Enforced by content of $ADR_011"
+fi
+
+_adr017_eb_content="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p{print}' "$ADR_017" 2>/dev/null || true)"
+if grep -q 'tests/' <<< "$_adr017_eb_content"; then
+    assert_pass "[#1801/SPEC-7] ADR-017 ## Enforced by section names at least one test file"
+else
+    assert_fail "[#1801/SPEC-7] ADR-017 ## Enforced by section must name test file(s) (contain 'tests/')" \
+        "no 'tests/' reference found in the ## Enforced by content of $ADR_017"
+fi
+
 _reset; _adr ADR-908-x "Accepted" 'Covered by the unit tests, see the suite.'; _lint
 assert_eq "[A9] a section that names no test fails" "1" "$rc"
 assert_contains "[A9] it says the section names no test" "$out" "names no test"

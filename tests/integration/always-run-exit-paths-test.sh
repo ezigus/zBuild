@@ -238,6 +238,82 @@ fi
 assert_file_exists "[SPEC-5] the hanging hook was actually dispatched" "$RELEASE_ENTERED"
 assert_file_not_exists "[SPEC-5] the hanging hook was killed before completing" "$RELEASE_MARKER"
 
+# ─── [#1801/SPEC-5]: persist always_run stage bounded by timeout_s: (not 120s) ─
+# _runner_dispatch_always_run must use template_stage_time_limit (top-level
+# timeout_s:) instead of ZBUILD_RELEASE_TIMEOUT / router.timeout_s.
+# The fixture template sets persist.timeout_s: 4 (new code reads) and
+# persist.router.timeout_s: 120 (old code reads ZBUILD_RELEASE_TIMEOUT / router.timeout_s).
+# A blocking persist hook must be killed in ~4s, NOT ~120s.
+# FAILS on old code (elapsed ~120s > 20), PASSES on new code (elapsed ~4s < 20).
+print_test_section "[#1801/SPEC-5] persist always_run watchdog uses timeout_s: not router.timeout_s: 120"
+mkdir -p "$PLUGINS_ROOT/tool/persist"
+cat > "$PLUGINS_ROOT/tool/persist/manifest.yaml" <<'MF'
+id: persist
+name: Persist Stub Spec5
+kind: tool
+version: 0.0.1
+hooks:
+  run: persist_run
+requires:
+  core:
+    - redaction
+provides:
+  role: persist
+MF
+_SPEC5P_ENTERED="$TEST_TEMP_DIR/spec5p-entered"
+_SPEC5P_DONE="$TEST_TEMP_DIR/spec5p-done"
+cat > "$PLUGINS_ROOT/tool/persist/plugin.sh" <<PLUG
+persist_run() {
+    : > "${_SPEC5P_ENTERED}"
+    sleep 120
+    : > "${_SPEC5P_DONE}"
+    return 0
+}
+PLUG
+
+_spec5p_repo="$(setup_git_temp_repo "always-run-spec5p")"
+install_template_overlay "$_spec5p_repo" always-run-minimal
+if [[ -d "$_spec5p_repo/.git/info" ]] && \
+   ! grep -qxF '/.zbuild/' "$_spec5p_repo/.git/info/exclude" 2>/dev/null; then
+    printf '/.zbuild/\n' >> "$_spec5p_repo/.git/info/exclude"
+fi
+cat > "$_spec5p_repo/.zbuild/templates/always-run-spec5p.yaml" <<'YAML'
+id: always-run-spec5p
+extends: always-run-minimal
+always_run:
+  - release
+  - persist
+persist:
+  gate: auto
+  roles: [persist]
+  timeout_s: 4
+  router:
+    timeout_s: 120
+  io:
+    destinations: [file]
+    tail_lines: 50
+YAML
+_arm_outcome "" 0
+_arm_release
+rm -f "$_SPEC5P_ENTERED" "$_SPEC5P_DONE"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-spec5p"
+export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/spec5p-events.jsonl"
+mkdir -p "$ZBUILD_STATE_DIR"
+_spec5p_t0=$(date +%s)
+set +e
+( cd "$_spec5p_repo" && bash "$RUNNER" --template always-run-spec5p \
+    --goal "spec5-persist" ) >"$TEST_TEMP_DIR/spec5p.out" 2>&1
+set -e
+_spec5p_elapsed=$(( $(date +%s) - _spec5p_t0 ))
+if [[ "$_spec5p_elapsed" -lt 20 ]]; then
+    assert_pass "[#1801/SPEC-5] persist always_run watchdog bounds at timeout_s: 4 (exited in ${_spec5p_elapsed}s; old code: router.timeout_s: 120)"
+else
+    assert_fail "[#1801/SPEC-5] persist always_run watchdog must use timeout_s: 4" \
+        "runner took ${_spec5p_elapsed}s; expected < 20s (timeout_s: 4); old code reads router.timeout_s: 120 → ~120s"
+fi
+assert_file_exists "[#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)" "$_SPEC5P_ENTERED"
+assert_file_not_exists "[#1801/SPEC-5] persist hook killed before completing (bounded by timeout_s: 4, not 120s)" "$_SPEC5P_DONE"
+
 # ─── [SPEC-6][guard] an unresolvable always-run role is LOUD ───────────────
 # The code this replaces did `[[ -d "$_td_dir" ]] || return 0` — a missing
 # plugin was a silent no-op. An always-run stage that cannot be resolved has not

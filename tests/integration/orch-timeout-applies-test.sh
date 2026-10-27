@@ -312,6 +312,74 @@ else
         "limit not found in output: '${_s1f_stderr:0:300}'"
 fi
 
+# ── SPEC-1g: sequential strategy propagates timed_out; output names stage+limit
+# The timed-out orch_collect mock (set in SPEC-1f) is still in effect here.
+# Fails on old code: collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed (no timed_out branch).
+print_test_section "[#1801/SPEC-1] sequential strategy propagates timed_out; output names stage and limit"
+_ZB_STRATEGY_OUTCOME=""
+_s1g_timeout="$(template_stage_time_limit testjob)"
+_s1g_stderr_file="$TEST_TEMP_DIR/spec1g-stderr.txt"
+_s1g_rc=0
+_strategy_run_sequential "pool-spec1g" "testjob" "testworker" \
+    "$ZBUILD_STATE_DIR/pipeline-state.json" \
+    "$TEST_TEMP_DIR/plugins" >"$_s1g_stderr_file" 2>&1 || _s1g_rc=$?
+_s1g_stderr="$(cat "$_s1g_stderr_file" 2>/dev/null || true)"
+
+if [[ "${_ZB_STRATEGY_OUTCOME:-}" == "timed_out" ]]; then
+    assert_pass "[#1801/SPEC-1] sequential strategy propagates timed_out from _ORCH_COLLECT_OUTCOME"
+else
+    assert_fail "[#1801/SPEC-1] sequential strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME" \
+        "got '${_ZB_STRATEGY_OUTCOME:-<empty>}'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed"
+fi
+
+if grep -q 'testjob' <<< "$_s1g_stderr"; then
+    assert_pass "[#1801/SPEC-1] sequential timed_out output names the stage ('testjob')"
+else
+    assert_fail "[#1801/SPEC-1] sequential timed_out output must name the stage ('testjob')" \
+        "stage not found in output: '${_s1g_stderr:0:300}'"
+fi
+
+if grep -q "${_s1g_timeout}" <<< "$_s1g_stderr"; then
+    assert_pass "[#1801/SPEC-1] sequential timed_out output names the timeout limit (${_s1g_timeout}s)"
+else
+    assert_fail "[#1801/SPEC-1] sequential timed_out output must name the timeout limit (${_s1g_timeout}s)" \
+        "limit not found in output: '${_s1g_stderr:0:300}'"
+fi
+
+# ── SPEC-1h: map strategy propagates timed_out; output names stage+limit ──────
+# The timed-out orch_collect mock is still in effect here.
+# Fails on old code: collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed (no timed_out branch).
+print_test_section "[#1801/SPEC-1] map strategy propagates timed_out; output names stage and limit"
+_ZB_STRATEGY_OUTCOME=""
+_s1h_timeout="$(template_stage_time_limit testjob)"
+_s1h_stderr_file="$TEST_TEMP_DIR/spec1h-stderr.txt"
+_s1h_rc=0
+_strategy_run_map "pool-spec1h" "testjob" "testworker" \
+    "$ZBUILD_STATE_DIR/pipeline-state.json" \
+    "$TEST_TEMP_DIR/plugins" >"$_s1h_stderr_file" 2>&1 || _s1h_rc=$?
+_s1h_stderr="$(cat "$_s1h_stderr_file" 2>/dev/null || true)"
+
+if [[ "${_ZB_STRATEGY_OUTCOME:-}" == "timed_out" ]]; then
+    assert_pass "[#1801/SPEC-1] map strategy propagates timed_out from _ORCH_COLLECT_OUTCOME"
+else
+    assert_fail "[#1801/SPEC-1] map strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME" \
+        "got '${_ZB_STRATEGY_OUTCOME:-<empty>}'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed"
+fi
+
+if grep -q 'testjob' <<< "$_s1h_stderr"; then
+    assert_pass "[#1801/SPEC-1] map timed_out output names the stage ('testjob')"
+else
+    assert_fail "[#1801/SPEC-1] map timed_out output must name the stage ('testjob')" \
+        "stage not found in output: '${_s1h_stderr:0:300}'"
+fi
+
+if grep -q "${_s1h_timeout}" <<< "$_s1h_stderr"; then
+    assert_pass "[#1801/SPEC-1] map timed_out output names the timeout limit (${_s1h_timeout}s)"
+else
+    assert_fail "[#1801/SPEC-1] map timed_out output must name the timeout limit (${_s1h_timeout}s)" \
+        "limit not found in output: '${_s1h_stderr:0:300}'"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

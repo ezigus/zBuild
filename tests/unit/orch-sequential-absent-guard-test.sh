@@ -59,4 +59,16 @@ else
         "still referenced in: $(printf '%s' "$_hits" | tr '\n' ' ')"
 fi
 
+# ── SPEC-3c: golden file does not exist ─────────────────────────────────────
+# Directly assert the golden file is absent — a file by that name whose
+# content lacks the string 'orch-sequential' would pass the grep above but
+# still violate the requirement.
+_golden_file="$REPO_ROOT/tests/golden/orch-sequential-capabilities.golden"
+if [[ ! -f "$_golden_file" ]]; then
+    assert_pass "[#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden does not exist"
+else
+    assert_fail "[#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden must not exist" \
+        "file still present: $_golden_file"
+fi
+
 print_test_results
