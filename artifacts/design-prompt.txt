@@ -303,31 +303,48 @@ without reading platform variables (R-8).
    because the watchdog is in the runner's own process group, which
    `zbuild_pg_kill` refuses.
 
-3. **EXIT trap kills watchdog on EVERY exit.** Both the `kill` and `wait`
-   calls in `_runner_abort_trap` must use `:-` (empty default), not `:-0`:
-   ```
-   kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
-   wait "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
-   ```
-   - `:-0` on `kill`: if `_RUNNER_WATCHDOG_PID` is empty, `kill -KILL 0`
-     sends SIGKILL to the entire process group — including the test harness.
-   - `:-0` on `wait`: if `_RUNNER_WATCHDOG_PID` is empty, `wait 0` waits
-     for ALL background processes in the shell, blocking indefinitely.
-   - `:-` (empty): both calls fail silently (caught by `2>/dev/null || true`)
-     when the watchdog was never armed.
-   **Root cause of the three integration-test timeouts** (core-pipeline-runner,
-   core-pipeline-strategy, vision-admission-gate): the runner now always arms
-   a watchdog; on exit paths where `_RUNNER_WATCHDOG_PID` could be empty
-   (early exit before arming), `kill -KILL 0` nukes the test harness's
-   process group. Even when PID is set, `wait 0` (expanded from `:-0` if
-   the variable was not yet initialized) can cause a hang.
+3. **Watchdog subshell must redirect to /dev/null.** When the runner is
+   invoked inside `$(bash "$RUNNER" ... 2>&1)` (as existing tests do), bash
+   creates a pipe. Runner stdout/stderr are the pipe's write end. The watchdog
+   subshell — and its `sleep "$_wdg_lim"` child — inherit these fds unless
+   explicitly redirected. The EXIT trap kills the watchdog bash subshell with
+   SIGKILL, but the subshell's child (`sleep 20700`) is ORPHANED — reparented
+   to init. The orphaned sleep STILL HOLDS THE PIPE WRITE END OPEN for the
+   full sleep duration. The outer `$(...)` waits for all pipe-write-end holders
+   to close; the test hangs until the 480 s timeout fires.
+   **Fix:** `    ) >/dev/null 2>&1 &` at line 2817 (the watchdog arm line).
+   Redirect is safe: the watchdog's sentinel write and kill calls use files
+   and system calls, not stdout/stderr.
 
-4. **New abort word and pipeline status.** `timed_out` is the seventh abort
+4. **EXIT trap kill/wait block must be guarded against repeat signals.** The
+   existing tests drive the runner via `timeout 120 bash "$RUNNER" ...` and
+   send `kill -TERM -$RUNNER_PID` to the process group. GNU `timeout`, on
+   receiving SIGTERM, forwards SIGTERM to its child's process group (same PG)
+   before exiting. The runner therefore receives TWO SIGTERMs. The first fires
+   `_runner_signal_trap TERM` → `exit 1` → the EXIT trap (`_runner_abort_trap`)
+   starts. During the `wait "${_RUNNER_WATCHDOG_PID:-}" …` call inside the
+   trap, the second SIGTERM arrives and interrupts `wait`. Bash fires
+   `_runner_signal_trap TERM` again, which calls `exit 1`. Calling `exit`
+   from within an EXIT trap causes bash to abort the trap immediately —
+   `_runner_dispatch_always_run` is never reached.
+   **Fix:** mirror the `trap ':' INT TERM` guard already used inside
+   `_runner_dispatch_always_run` (line 2516) — add it before the kill/wait
+   block in `_runner_abort_trap`, restoring the real handlers afterwards:
+   ```
+   trap ':' INT TERM
+   kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
+   [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && wait "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true
+   trap '_runner_signal_trap TERM' TERM
+   trap '_runner_signal_trap INT' INT
+   _runner_dispatch_always_run
+   ```
+
+5. **New abort word and pipeline status.** `timed_out` is the seventh abort
    word (ADR-025) and a new pipeline status (ADR-006, ADR-015). A
    `timed_out` state is `manual_resume_only` (resume.sh). A resumed run
    receives a fresh watchdog armed from its own wall-clock start.
 
-5. **Always-run stages (release AND persist) still execute** via
+6. **Always-run stages (release AND persist) still execute** via
    `_runner_dispatch_always_run` in the abort trap, which fires before the
    timed_out path writes the final state. Both role types must be in the
    `timeout-with-release` test template's `always_run` list and asserted.
@@ -336,12 +353,13 @@ without reading platform variables (R-8).
 
 | Bug | Affected file:line | Fix |
 |-----|---------------------|-----|
-| `:-0` default on BOTH kill and wait in abort trap | `core/pipeline/runner.sh:2539,2540` | change `"${_RUNNER_WATCHDOG_PID:-0}"` → `"${_RUNNER_WATCHDOG_PID:-}"` on BOTH lines; `kill -KILL ""` and `wait ""` each fail silently (2>/dev/null \|\| true) |
+| Watchdog subshell inherits stdout/stderr fds — orphaned `sleep` keeps `$(...)` pipe open | `core/pipeline/runner.sh:2817` | change `    ) &` to `    ) >/dev/null 2>&1 &`; watchdog only writes to files and sends signals, not stdout/stderr |
+| Second SIGTERM (from `timeout` forwarding) interrupts `wait` in abort trap, calling `exit 1` from within EXIT trap aborts the trap before `_runner_dispatch_always_run` | `core/pipeline/runner.sh` in `_runner_abort_trap()`, lines ~2539-2543 | add `trap ':' INT TERM` before kill/wait block; restore handlers with `trap '_runner_signal_trap TERM' TERM` and `trap '_runner_signal_trap INT' INT` after wait; then call `_runner_dispatch_always_run` — mirrors line 2516 pattern |
 | `run_end_words "timed_out"` not covered in O3 loop | `tests/unit/run-open-items-test.sh` O3 for-loop | add `timed_out` to the for-loop variable list; also add an explicit `assert_contains "[O3] timed_out says wall-clock limit in words" "$(run_end_words timed_out 0)" "wall-clock limit"` |
-| SPEC-3 test does not re-read state file after sleeping past max_run_s | `tests/unit/run-watchdog-clean-exit-test.sh` S3-4 | after `sleep 5` and before the sentinel check, add: `_reaped_sf="$ZBUILD_STATE_DIR/pipeline-state.json"; if [[ -f "$_reaped_sf" ]]; then _reaped_status_after="$(jq -r '.status // empty' "$_reaped_sf" 2>/dev/null \|\| true)"; assert_eq "[#1944/SPEC-3] pipeline status not timed_out after waiting past max_run_s" "" "$([[ "$_reaped_status_after" == "timed_out" ]] && echo "timed_out" \|\| echo "")"; fi` — `ZBUILD_STATE_DIR` is already set to `state-sentinel` at this point |
+| SPEC-3 test does not re-read state file after sleeping past max_run_s | `tests/unit/run-watchdog-clean-exit-test.sh` S3-4 | after `sleep 5` and before the sentinel check, add: `_reaped_sf="$ZBUILD_STATE_DIR/pipeline-state.json"; if [[ -f "$_reaped_sf" ]]; then _reaped_status_after="$(jq -r '.status // empty' "$_reaped_sf" 2>/dev/null || true)"; assert_eq "[#1944/SPEC-3] pipeline status not timed_out after waiting past max_run_s" "" "$([[ "$_reaped_status_after" == "timed_out" ]] && echo "timed_out" || echo "")"; fi` |
 
-**Note:** The following bugs were identified in the previous design iteration but are
-ALREADY FIXED in the current worktree (commit f915476a by test-author):
+**Already fixed in current worktree (commit a60f39a4):**
+- `:-0` default on kill/wait in abort trap — FIXED (`${_RUNNER_WATCHDOG_PID:-}` on both lines 2539-2540)
 - `VAR=val (subshell)` syntax error at run-limit-precedence-test.sh — FIXED
 - `set -e` mid-file patterns (8 occurrences across 4 files) — FIXED
 - P4 only tested `release`, not `persist` — FIXED
@@ -359,12 +377,19 @@ is "Per-stage router configuration surface" (unchanged). The implementation
 correctly placed the run-level limit content in a new **§11**. SPEC-6 reflects
 §11. The issue-acceptance "NOT SURE" is a false alarm; no design change needed.
 
-**Test stage failures vs current worktree** — the test stage ran on a state
-before the test-author's latest commit (f915476a). That commit fixed the
-syntax error, set-e patterns, P4, and P2 issues. The ONLY remaining
-implementation bug is the `:-0` → `:-` fix in runner.sh:2539-2540. The
-test-author's check for SPEC-3 was "still failing" because the test does not
-re-read the state file after sleeping past max_run_s; SPEC-3 is updated below.
+**Integration hangs root cause** — the `:-0` → `:-` fix (applied in build
+commit a60f39a4) was a necessary correctness fix but NOT the root cause of the
+three test hangs. The root cause is Bug A (watchdog subshell fd inheritance):
+the orphaned `sleep 20700` inherits the pipe's write end from the runner and
+holds it open after the watchdog is killed. Bug A and Bug B (double-SIGTERM in
+abort trap) are the two remaining implementation bugs.
+
+**SPEC-5 regression (runner-release-exit-paths)** — `runner-release-exit-paths-test.sh`
+SPEC-5 is an EXISTING test that the new watchdog code broke. It drives the
+runner under `timeout 120`, then sends a PG-kill SIGTERM. Before this change
+there was no watchdog `wait` in the abort trap, so the double-SIGTERM race
+never occurred. Bug B is a direct regression. Once Bug B is fixed (trap guard),
+the release markers are written and SPEC-5 passes.
 
 ```scope
 config/adr-enforcement-baseline.txt
@@ -400,6 +425,7 @@ SPEC-5[no-code]: scripts/lib/stage-limits.sh and core/pipeline/runner.sh contain
 SPEC-6[no-code]: ADR-025 lists timed_out in its abort-word vocabulary and has ## Enforced by entries citing the new test files; ADR-054 has a §11 for the per-run limit with ## Enforced by entries; config/adr-enforcement-baseline.txt no longer lists ADR-054-stage-contract.md covers: R-9
 WIRING:
 core/pipeline/runner.sh
+core/state/resume.sh
 TESTFILES:
 SPEC-1: tests/integration/run-timed-out-test.sh
 SPEC-2: tests/unit/run-limit-precedence-test.sh
@@ -417,27 +443,33 @@ tests/unit/run-open-items-test.sh [O9]: asserts the runner has exactly 5 loop-en
 
 **Finding 1 (design — R-10 not covered by any SPEC)**: Fixed. Added `covers: R-10` to SPEC-1. R-10 ("npm test + npm run lint green") is a meta-requirement: once the implementation bugs are fixed and SPEC-1 through SPEC-6 all pass, both `npm test` and `npm run lint` are green.
 
-**Finding 2 (test — 3 integration timeouts)**: Root cause: `:-0` in BOTH `kill` and `wait` calls in `_runner_abort_trap`. When `_RUNNER_WATCHDOG_PID` is empty, `kill -KILL 0` kills the process group (test harness) and `wait 0` hangs waiting for all background processes. Fix: `:-` (empty default) on BOTH lines 2539 and 2540 of `core/pipeline/runner.sh`. The three existing tests (core-pipeline-runner, core-pipeline-strategy, vision-admission-gate) fail because they invoke the runner and the `:-0` bug causes the EXIT trap to malfunction.
+**Finding 2 (test — 3 integration timeouts)**: Root cause updated. The original design attributed the 3 integration hangs to `:-0` in kill/wait. The `:-0` → `:-` fix was applied in commit a60f39a4 but tests STILL hang. The actual root cause is Bug A (watchdog fd inheritance): the orphaned `sleep "$_wdg_lim"` child of the watchdog subshell holds the pipe's write end open after the watchdog subshell is killed. Fix: `>/dev/null 2>&1 &` on line 2817 (the watchdog arm). See Finding 13.
 
-**Finding 3 (test — lint-test-errexit: 8 occurrences)**: Fixed in current worktree (f915476a). All 4 new test files now use `_rc=0; cmd || _rc=$?` pattern instead of `set +e; cmd; set -e`. The lint-test-errexit-test.sh should pass.
+**Finding 3 (test — lint-test-errexit: 8 occurrences)**: Fixed in prior worktree commit. All 4 new test files use `_rc=0; cmd || _rc=$?` pattern.
 
-**Finding 4 (test — syntax error line 173)**: Fixed in current worktree (f915476a). Line 213 now correctly uses `( cd "$MISCFG_OVERLAY" && ZBUILD_MAX_RUN_S="not-a-number" bash "$RUNNER" ... )`.
+**Finding 4 (test — syntax error line 173)**: Fixed in prior worktree commit. Line 213 correctly uses `( cd "$MISCFG_OVERLAY" && ZBUILD_MAX_RUN_S="not-a-number" bash "$RUNNER" ... )`.
 
-**Finding 5 (issue-acceptance — R-4 persist missing)**: Fixed in current worktree. P4 in run-timed-out-test.sh tests both release (line 368) and persist (line 375) markers on the timed-out exit path. Template has both roles in always_run.
+**Finding 5 (issue-acceptance — R-4 persist missing)**: Fixed in prior worktree commit. P4 in run-timed-out-test.sh tests both release and persist markers. Template has both roles in always_run.
 
-**Finding 6 (issue-acceptance — R-2 unfalsifiable P2)**: Fixed in current worktree. P2 uses conditional `assert_pass`/`assert_fail` correctly, not `assert_pass` in both branches.
+**Finding 6 (issue-acceptance — R-2 unfalsifiable P2)**: Fixed in prior worktree commit. P2 uses conditional assert_pass/assert_fail correctly.
 
 **Finding 7 (issue-acceptance — R-9 §9 vs §11)**: False alarm. ADR-054 §9 is per-stage router config (unchanged). §11 is the run-level limit. SPEC-6 already says §11.
 
 **Finding 8 (issue-acceptance — R-9 §11 content)**: Same as Finding 7. Design is correct.
 
-**Finding 9 (issue-acceptance — template.sh inert)**: Fixed. The syntax error at run-limit-precedence-test.sh:173 is gone; the template-layer runner invocation reaches the template-layer assertion.
+**Finding 9 (issue-acceptance — template.sh inert)**: Cleared. The syntax error at run-limit-precedence-test.sh:173 is gone; the template-layer runner invocation reaches the template-layer assertion.
 
-**Finding 10 (issue-acceptance — run-open-items.sh untested)**: Partially fixed. run-open-items.sh has the `timed_out)` case (line 107) returning "stopped: the run exceeded its wall-clock limit". But the O3 for-loop in run-open-items-test.sh still does NOT include `timed_out`. Bugs table updated.
+**Finding 10 (issue-acceptance — run-open-items.sh untested)**: run-open-items.sh has `timed_out)` at line 107. The O3 for-loop in run-open-items-test.sh still does NOT include `timed_out`. Bugs table entry present.
 
-**Finding 11 (test-author — SPEC-3 partially satisfied)**: The test-author checker found that SPEC-3's "after waiting past max_run_s the status is still the stage-driven result" is not directly verified — the test checks the state file before the sleep (S3-2) and only checks the sentinel after the sleep (S3-4). SPEC-3 updated to require explicit state-file re-read after sleeping past max_run_s. Bugs table updated with the exact assertion to add to S3-4.
+**Finding 11 (test-author — SPEC-3 partially satisfied)**: SPEC-3's "after waiting past max_run_s the status is still the stage-driven result" is not directly verified — test checks state file BEFORE sleep (S3-2) and checks only sentinel after sleep (S3-4). SPEC-3 updated to require explicit state-file re-read after sleeping past max_run_s. Bugs table entry present.
 
-**Finding 12 (test — wait 0 hang risk)**: In addition to `kill -KILL 0`, the `wait "${_RUNNER_WATCHDOG_PID:-0}"` with empty PID expands to `wait 0`. In bash, `wait 0` waits for all background processes in the current shell — this can hang indefinitely if there are orphan background processes. The fix for line 2540 (same as line 2539) is `:-` (empty default). Design and bugs table updated to cover both lines.
+**Finding 12 (test — wait 0 hang risk)**: `wait "${_RUNNER_WATCHDOG_PID:-0}"` with empty PID expands to `wait 0` in bash, which waits for ALL background processes and can hang indefinitely. This was fixed in commit a60f39a4 (both lines 2539-2540 now use `:-`). Not an outstanding bug.
+
+**Finding 13 (build — Bug A: watchdog fd inheritance)**: After commit a60f39a4 fixed `:-0`, integration tests STILL hang. Root cause: the watchdog subshell at line 2817 `    ) &` has no stdout/stderr redirect. When the runner is invoked inside `$(bash "$RUNNER" ... 2>&1)`, the subshell inherits the pipe's write end. After the watchdog bash subshell is killed, its child `sleep "$_wdg_lim"` is orphaned and holds the pipe's write end for the full sleep duration. Fix: `    ) >/dev/null 2>&1 &`. Added to bugs table. Scope and design sections 2 and 3 updated.
+
+**Finding 14 (build — Bug B: double-SIGTERM aborts EXIT trap)**: `runner-release-exit-paths-test.sh` SPEC-5 regression. The test drives the runner under `timeout 120`, then sends a PG-kill SIGTERM. GNU `timeout` also forwards SIGTERM to its child process group on receiving SIGTERM — the runner gets two SIGTERMs. The first fires the EXIT trap; the second arrives during `wait` in the abort trap and causes bash to re-fire `_runner_signal_trap TERM`. Calling `exit 1` from within an EXIT trap aborts the trap immediately, so `_runner_dispatch_always_run` is never called and release markers are never written. Fix: `trap ':' INT TERM` guard before kill/wait block in `_runner_abort_trap`, mirroring line 2516. Added to bugs table.
+
+**Finding 15 (build — NEGCTL WIRING for SPEC-4)**: WIRING was `core/pipeline/runner.sh` only. SPEC-4 asserts `get_resume_recommendation(timed_out) = manual_resume_only`, which is implemented in `core/state/resume.sh`. When only runner.sh is reverted, resume.sh stays new and SPEC-4 still passes — NEGCTL would not detect a missing wiring. Added `core/state/resume.sh` to WIRING.
 
 Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
@@ -478,25 +510,13 @@ Summary:
 - open questions: 3
 - artifact: plan.json
 
-### design (verdict: timed_out) — your own
+### design (verdict: pass) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 
 Summary:
-## design — error
-
-- Design ran out of time before writing a design.
-
-design.md is unchanged: it stays the last good design.
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-21/design-summary.md
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-21/design-verdict.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-21/design.md
-
-Summary of that output:
 ## design — pass
 
 - authored design.md — 22 file(s) in scope, 6 acceptance SPEC(s)
@@ -625,7 +645,7 @@ wait "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
 arrives during `wait`. Bash interrupts the `wait` and fires `_runner_signal_trap TERM` again.
 That handler calls `exit 1`. Calling `exit` from within an EXIT trap in ba
 
-### test (verdict: unknown)
+### test (verdict: fail)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
@@ -635,29 +655,12 @@ Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
-Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-2: P2 in `run-timed-out-test.sh` calls `assert_pass` in both branches of its conditional, so the "watchdog fires when engine is idle between dispatches" sub-requirement cannot be falsified. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4: `persist` is never declared in any `always_run` list, constructed, or asserted anywhere in the change, and the analogous hard-kill exit path for `release` fails (`runner-release-exit-paths-test.sh` SPEC-5: "cleanup dispatched with scope=release for: intake build" — no marker found). What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 3 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-5: `run-limit-precedence-test.sh` aborts with a bash syntax error on line 173 (`ZBUILD_MAX_RUN_S="…" \` preceding a subshell is not valid bash), leaving the end-to-end misconfigured-runner and template-layer assertions unreachable. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 4 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-10: `npm test` fails (three existing integration tests time out at 480 s — `core-pipeline-runner-test.sh`, `core-pipeline-strategy-test.sh`, `vision-admission-gate-test.sh` — plus the `runner-release-exit-paths-test.sh` SPEC-5 failure), `npm run lint` fails (`lint-test-errexit` rejects eight new test files that use `set +e. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 5 (opened by issue-acceptance): The issue requires this and the change does not meet it: …. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 6 (opened by issue-acceptance): The issue requires this and the change does not meet it: set -e` mid-file). What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 7 (opened by issue-acceptance): Not sure this requirement is met: R-9: the issue acceptance criterion says "ADR-054 §9 amended" — §9 already exists as "Per-stage router configuration surface" and is untouched. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 8 (opened by issue-acceptance): Not sure this requirement is met: the diff adds §11 with the correct per-run-limit content, matching SPEC-6 from the design, but whether the issue intended to amend the existing §9 or used §9 as a draft number for what became §11 cannot be determined from the diff or the documents shown. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-
 Summary:
 ## issue-acceptance — fail
 
-- `npm test` fails with four test failures — including a hard-kill exit-path regression in `runner-release-exit-paths-test.sh` that directly contradicts R-4 — `npm run lint` fails on eight new test files, R-2's critical sub-assertion is unfalsifiable, and R-5's test aborts with a bash syntax error before its end-to-end assertions run.
+- judged the change against the issue
 
-- NOT MET: R-2: P2 in `run-timed-out-test.sh` calls `assert_pass` in both branches of its conditional, so the "watchdog fires when engine is idle between dispatches" sub-requirement cannot be falsified
-- NOT MET: R-4: `persist` is never declared in any `always_run` list, constructed, or asserted anywhere in the change, and the analogous hard-kill exit path for `release` fails (`runner-release-exit-paths-test.sh` SPEC-5: "cleanup dispatched with scope=release for: intake build" — no marker found)
-- NOT MET: R-5: `run-limit-precedence-test.sh` aborts with a bash syntax error on line 173 (`ZBUILD_MAX_RUN_S="…" \` preceding a subshell is not valid bash), leaving the end-to-end misconfigured-runner and template-layer assertions unreachable
-- NOT MET: R-10: `npm test` fails (three existing integration tests time out at 480 s — `core-pipeline-runner-test.sh`, `core-pipeline-strategy-test.sh`, `vision-admission-gate-test.sh` — plus the `runner-release-exit-paths-test.sh` SPEC-5 failure), `npm run lint` fails (`lint-test-errexit` rejects eight new test files that use `set +e
-- NOT MET: …
-- NOT MET: set -e` mid-file)
-- NOT SURE: R-9: the issue acceptance criterion says "ADR-054 §9 amended" — §9 already exists as "Per-stage router configuration surface" and is untouched — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: the diff adds §11 with the correct per-run-limit content, matching SPEC-6 from the design, but whether the issue intended to amend the existing §9 or used §9 as a draft number for what became §11 cannot be determined from the diff or the documents shown — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- every requirement the issue states is met by the change
 
 ## What you must not do
 
