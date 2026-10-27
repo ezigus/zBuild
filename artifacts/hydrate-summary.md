@@ -1,6 +1,6 @@
 ## hydrate — pass
 
-- restored 98 artifact(s) from prior runs (restored)
+- restored 189 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 98 artifact(s) from zbuild/state/issue-1801
+- detail: restored 189 artifact(s) from zbuild/state/issue-1801
