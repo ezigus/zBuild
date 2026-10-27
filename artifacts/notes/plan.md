@@ -1,4 +1,4 @@
-# Plan notes — issue #1944 (run-level wall-clock limit) — REVISION after build/test cycle
+# Plan notes — issue #1944 (run-level wall-clock limit) — REVISION after cycle 7 (test + issue-acceptance)
 
 ## What the build produced (15 files changed)
 
@@ -85,47 +85,39 @@ verification. Fix: after the runner exits cleanly, explicitly sleep past max_run
 re-read pipeline-state.json and assert its status field is the stage-driven result (not timed_out).
 This is an addition to step-2 alongside the existing kill -0 check.
 
-## Cycle 6: no plan changes required
+### F14 — runner-release-exit-paths-test.sh SPEC-5 regression (NEW — cycle 7)
+Test output: `✗ [SPEC-5] cleanup dispatched with scope=release for: intake build` with
+`no release from: intake build | marker=`. This test was passing before this change.
+Root cause: the watchdog is still running when the runner's EXIT trap fires after a hard-kill
+(SIGKILL-style, simulating an external timeout). While the EXIT trap dispatches `release`,
+the watchdog's timer expires and zbuild_pg_kill kills the whole process group — including the
+release dispatch — before release can write its marker.
+Fix: the EXIT trap in runner.sh must kill (disarm) the watchdog PID at the very beginning of
+the trap body, before dispatching release or persist. This is distinct from the disown fix
+(which addresses bash job-control blocking on exit) — the watchdog process must be explicitly
+killed, not just disowned.
+This finding also reinforces that `persist` must be added to the always_run list in runner.sh
+(production code), not only in test fixtures — issue-acceptance confirms persist is absent from
+every always_run list in the change.
 
-All findings from test stage, issue-acceptance stage, and test-author stage are already captured
-in the 9-step plan written in cycle 5. The plan.json on disk is correct and complete.
+## Cycle 7 update: step-5 description expanded
 
-Verified mapping of current open findings to steps:
-- Syntax error run-limit-precedence-test.sh L173 → step-1
-- lint-test-errexit 8 files → steps 1–4
-- Integration test timeouts (disown missing) → step-5
-- template.sh inert → step-6
-- run-open-items.sh untested → step-7
-- SPEC-1 P2 unfalsifiable + persist on all paths → step-3
-- SPEC-2 disposition=misconfigured missing → step-1
-- SPEC-3 watchdog PID not proved gone → step-2
-- SPEC-3 state-file re-read missing (test-author F13) → step-2
-- SPEC-4 timing assertion non-inferential → step-4
-- SPEC-5 finite CI variable list → open question
-- SPEC-6 npm test/lint not executed in test → resolved by all other steps passing
-- Golden files not updated → step-8
-- ADR-054 §11 Enforced by entries → step-9
-- R-9/§9 vs §11 → open question
+The existing step-5 covered: disown watchdog + persist in always_run fixture.
+F14 requires step-5 to also cover:
+- Kill the watchdog PID at the start of the EXIT trap (disarm) so it cannot fire during release/persist dispatch
+- Add persist to always_run in runner.sh production code (not only fixture)
 
-## Revised step list (final — 9 items, step-2 expanded)
+The number of steps stays at 9. Only step-5's description is updated.
 
-1. Fix run-limit-precedence-test.sh: syntax error + lint-test-errexit + SPEC-2 disposition
-2. Fix run-watchdog-clean-exit-test.sh: lint-test-errexit + SPEC-3 PID check + SPEC-3 state-file re-read after waiting past max_run_s
-3. Fix run-timed-out-test.sh: lint-test-errexit + P2 falsifiability + persist on all paths
-4. Fix resume-after-run-timeout-test.sh: lint-test-errexit + SPEC-4 timing
-5. Fix core/pipeline/runner.sh: disown watchdog (integration timeout fix) + persist in fixture
-6. Fix template.sh wiring: add end-to-end template runner invocation to run-limit-precedence-test.sh
-7. Fix run-open-items.sh coverage: update/add run-open-items-test.sh count assertion (5→6)
-8. Update golden files: regenerate event-sequence.golden files
-9. Verify ADR-054 §11 Enforced by entries: confirm they name existing test files
-
-## Coverage matrix
+## Coverage matrix (cycle 7)
 
 | Finding | Step |
 |---|---|
 | Syntax error run-limit-precedence-test.sh L173 | step-1 |
 | lint-test-errexit 8 files | steps 1–4 |
 | Integration test timeouts (disown missing) | step-5 |
+| Watchdog fires during EXIT trap, killing release (SPEC-5 regression) | step-5 |
+| persist absent from always_run in production runner.sh | step-5 |
 | template.sh inert | step-6 |
 | run-open-items.sh untested | step-7 |
 | SPEC-1 P2 unfalsifiable + persist on all paths | step-3 |
@@ -139,13 +131,13 @@ Verified mapping of current open findings to steps:
 | ADR-054 §11 Enforced by entries | step-9 |
 | R-9/§9 vs §11 | open question |
 
-## Acceptance criteria coverage (cycle 5/6 — unchanged)
+## Acceptance criteria coverage (cycle 7 — unchanged from cycle 5/6)
 
 All 10 issue AC items are covered:
 - AC-1 timed_out with in-flight stage name + limit → step-3 (run-timed-out-test.sh, P1)
 - AC-2 watchdog fires during inter-dispatch idle → step-3 (P2 falsifiability fix)
 - AC-3 whole process group dies (TERM → KILL after 10 s) → step-3 (P3)
-- AC-4 release and persist run after timed_out → step-3 (assert persist) + step-5 (fixture)
+- AC-4 release and persist run after timed_out → step-3 (assert persist) + step-5 (production always_run + watchdog disarm)
 - AC-5 precedence layers + validation → step-1 (SPEC-2 + syntax fix) + step-6 (template end-to-end)
 - AC-6 run inside limit untouched, watchdog gone → step-2 (SPEC-3 kill -0 check + state-file re-read)
 - AC-7 resumed run gets fresh limit → step-4 (resume-after-run-timeout-test.sh timing fix)
