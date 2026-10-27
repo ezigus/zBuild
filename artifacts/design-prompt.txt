@@ -114,7 +114,7 @@ orphan failures if present.
 
 Your job: write the design — the change's decisions, its acceptance contract and its scope — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts.
 
-The working copy already holds YOUR LATEST DESIGN (below). Change only what needs to change.
+The working copy holds your last try, which was rejected: Previous work says why. Fix what it names. If YOUR LATEST DESIGN below is closer to right, start from that instead.
 
 Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract or its scope. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails.
 
@@ -146,6 +146,10 @@ path/to/file2
 3. A ```acceptance block listing what this change must deliver. Each line is
    one requirement: a permanent number (SPEC-1, SPEC-2, …), a status, and ONE
    behaviour someone could observe and test.
+   A requirement that asks for several things gets one SPEC per thing, each
+   naming the same R-n in covers: — never one SPEC that joins them with "and" or ";".
+   Each SPEC is checked against one assertion, so a SPEC that promises two
+   things is never fully met by it.
 
    The status says what work the requirement needs. Look at the code before you choose:
    - `SPEC-n[code]:` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
@@ -232,6 +236,7 @@ Retire orch-sequential, harden backend errors, remove flat collect deadline, uni
 Fix stage timeouts silently not applying by retiring the fallback orchestrator, making backend errors fatal, removing the 300 s flat collect deadline, bounding always_run stages by timeout_s:, and routing all process kills through the shared kill helper.
 
 ### Seed scope (from plan.files[])
+- .github/issues/keepers-manifest.yaml
 - config/adr-enforcement-baseline.txt
 - config/templates/deployed.yaml
 - config/templates/simple.yaml
@@ -255,8 +260,11 @@ Fix stage timeouts silently not applying by retiring the fallback orchestrator, 
 - scripts/lib/proc-group.sh
 - tests/
 - tests/golden/orch-sequential-capabilities.golden
+- tests/integration/orch-backend-misconfigured-test.sh
+- tests/integration/orch-timeout-applies-test.sh
 - tests/integration/stage-time-limit-test.sh
 - tests/unit/map-strategy-test.sh
+- tests/unit/orch-kill-uses-pg-kill-guard-test.sh
 - tests/unit/plugin-artifact-goldens-test.sh
 
 ### Tools
@@ -423,10 +431,10 @@ Outputs:
 Summary:
 ## hydrate — pass
 
-- restored 98 artifact(s) from prior runs (restored)
+- restored 189 artifact(s) from prior runs (restored)
 
 - source: remote
-- detail: restored 98 artifact(s) from zbuild/state/issue-1801
+- detail: restored 189 artifact(s) from zbuild/state/issue-1801
 
 ### intake (verdict: pass)
 Outputs:
@@ -452,18 +460,38 @@ Outputs:
 Summary:
 ## plan — pass
 
-- split the issue into 13 work item(s)
+- split the issue into 15 work item(s)
 
 - open questions: 0
 - artifact: plan.json
 
-### design (verdict: pass) — your own
+### design (verdict: unusable) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
+- design_draft: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 
+Findings:
+- design finding 1 (opened by design): docs/adr/ADR-011-pluggable-backends.md is named as a test, but it is not in a test folder (tests/*, plugins/*/*/tests/*) — name a test file in one of them, or leave it out: a document or a source file is not a test
+- design finding 2 (opened by design): docs/adr/ADR-017-per-stage-router-config.md is named as a test, but it is not in a test folder (tests/*, plugins/*/*/tests/*) — name a test file in one of them, or leave it out: a document or a source file is not a test
+
 Summary:
+## design — fail
+
+- the design fails 2 check(s)
+
+- docs/adr/ADR-011-pluggable-backends.md is named as a test, but it is not in a test folder (tests/*, plugins/*/*/tests/*) — name a test file in one of them, or leave it out: a document or a source file is not a test
+- docs/adr/ADR-017-per-stage-router-config.md is named as a test, but it is not in a test folder (tests/*, plugins/*/*/tests/*) — name a test file in one of them, or leave it out: a document or a source file is not a test
+
+This try is kept as the working copy for the next run; design.md is unchanged.
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-7/design-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-7/design-verdict.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-7/design.md
+
+Summary of that output:
 ## design — pass
 
 - authored design.md — 36 file(s) in scope, 12 acceptance SPEC(s)
@@ -472,106 +500,67 @@ Summary:
 - artifact: design.md
 
 Your notes so far:
-# Design notes — issue #1801 (revision 7)
+# Design notes — issue #1801 (revision 8)
 
-## Revision 7: fix two verifier findings — add SPEC-12 for behavioral fixture migration
+## What changed from revision 7
 
-### Root cause of both verifier findings
+### 1. Scope additions (3 files)
+- `.github/issues/keepers-manifest.yaml` — was in seed scope, missed from design. SPEC-3 guard
+  found it contains 4 literal `orch-sequential` occurrences (lines 2841, 3329, 3335, 3345) in
+  historical closed-issue entries. Must be cleaned up.
+- `tests/golden/full-pipeline/event-sequence.golden` — flagged by test stage as potentially stale.
+  Added to scope.
+- `tests/golden/parity/event-sequence.golden` — same reason. Added to scope.
 
-Both findings: SPEC-11 covered only the pool-isolation behavioral migration from
-`orch-sequential-test.sh` → `orch-mock-test.sh`. Other existing test files that use
-orch-sequential as a live behavioral fixture had no SPEC requiring their coverage to
-be migrated or explicitly dropped.
+### 2. SPEC-3 strengthened
+Previously: generic "no file outside docs/adr/ names orch-sequential".
+Now: explicitly names the 3 files found by the guard and the specific lines/type of reference in
+each that must be removed:
+- `orch-backend-misconfigured-test.sh` lines 20, 51 (comments), 79 (test description string)
+- `orch-mock-test.sh` line 3 (sibling-backends comment)
+- `.github/issues/keepers-manifest.yaml` lines 2841, 3329, 3335, 3345 with per-line instruction
 
-### Behavioral fixture files identified (grep -rl 'orch-sequential' tests/)
+### 3. SPEC-1 strengthened (test-author finding 1)
+Previously: generic "strategies propagate timed_out naming stage and limit".
+Now: explicitly requires fanout, map, AND sequential strategy each to propagate `timed_out` via
+`_ORCH_COLLECT_OUTCOME` (the variable name the test-author chose). The test failure showed the
+partial build set `<empty>` for this variable — code issue for build to fix.
 
-10 files total (previous design said 8; actual count is 10):
-1. tests/unit/summary-mandatory-test.sh:111 — roster loop includes orch-sequential
-2. tests/integration/orch-backend-misconfigured-test.sh — NEW test (already authored)
-3. tests/unit/dispatch-rc-guard-test.sh:87 — orch-sequential/plugin.sh in _PINNED
-4. tests/test-durations.tsv — just a duration entry, not a behavioral fixture
-5. tests/unit/stdin-spawn-guard-test.sh:30-31 — two _pin calls on plugin.sh
-6. tests/unit/orch-sequential-absent-guard-test.sh — NEW test (already authored)
-7. tests/unit/map-strategy-test.sh:508 — COMMENT only, not behavioral
-8. tests/unit/adr059-no-tmpdir-defaults-test.sh:65,100,102 — BEHAVIORAL: sources plugin.sh, calls _orch_seq_pool_dir
-9. tests/unit/plugin-artifact-goldens-test.sh — covered by supersedes [G5]
-10. tests/unit/core-orch-run-id-isolation-test.sh:77 — BEHAVIORAL: sources plugin.sh
+### 4. SPEC-5 strengthened (test-author finding 2)
+Now: release (30s) AND persist (120s) are separately tested.
+Added `tests/integration/always-run-exit-paths-test.sh` to SPEC-5 TESTFILES.
 
-### What each behavioral fixture needs
+### 5. SPEC-11 clarified (test-author finding 3)
+Now states the assertion carries `[#1801/SPEC-11]` tag in orch-mock-test.sh, and that
+SPEC-12 accounts for all other behavioral tests in orch-sequential-test.sh.
 
-adr059-no-tmpdir-defaults-test.sh:
-- SPEC-4 (lines 62-68): Sources orch-sequential/plugin.sh, calls _orch_seq_pool_dir.
-  DROP: no-TMPDIR contract preserved by SPEC-3 (bash-parallel) and SPEC-6 (ruflo-hive)
-- SPEC-8 loop (line 100): iterates orch-bash-parallel, orch-sequential, orch-ruflo-hive
-  UPDATE: remove orch-sequential from loop
+### 6. SPEC-9 updated
+Added explicit note: test files must use `cmd || rc=$?` not `set -e` mid-file.
+lint-test-errexit failed on 3 new test files in the partial build.
 
-core-orch-run-id-isolation-test.sh:
-- P4 (lines 74-81): Sources orch-sequential/plugin.sh, tests _orch_seq_pool_dir is per-run
-- P5 (lines 82-85): Tests ZBUILD_POOL_ROOT override for sequential
-  DROP both: run-isolation preserved by P1-P3 (bash-parallel)
+## Key facts confirmed by grep
 
-dispatch-rc-guard-test.sh:
-- Line 87: `plugins/tool/orch-sequential/plugin.sh|0` in _PINNED
-  REMOVE the pin line (file deleted; no legacy-RC behavior to guard)
+### keepers-manifest.yaml (4 occurrences)
+- Line 2841: `closed_reason` for orch-contract PR — references `plugins/tool/orch-sequential/`
+- Lines 3329, 3335, 3345: `cleanup-delta-d` keeper entry (memory-sqlite AND orch-sequential trial)
+  Entry is closed. Strip orch-sequential parts; retain memory-sqlite parts.
 
-stdin-spawn-guard-test.sh:
-- Lines 30-31: Two _pin calls checking orch-sequential/plugin.sh patterns
-  REMOVE both (file deleted)
+### orch-backend-misconfigured-test.sh (3 occurrences)
+- Line 20, 51: comments referencing orch-sequential path
+- Line 79: TEST DESCRIPTION STRING (not just a comment) — must also be updated
 
-summary-mandatory-test.sh:
-- Line 111: `for _svc in cache-local memory-sqlite orch-sequential; do`
-  Has `[[ -f "$_sm" ]] || continue` so silently skips after deletion, but
-  SPEC-3 guard would catch the orch-sequential string.
-  REMOVE from loop
+### orch-mock-test.sh (1 occurrence)
+- Line 3: sibling-backends comment
 
-map-strategy-test.sh:
-- Line 508: comment only (`orch-bash-parallel/orch-sequential`).
-  SPEC-3 guard catches this — comment update required.
+## Test failures (code issues — not design issues)
 
-### Fix: SPEC-12[no-code]
+- SPEC-3 guard: 3 files found — all now addressed in SPEC-3 and scope
+- SPEC-1 fanout: `_ORCH_COLLECT_OUTCOME` is empty in partial build — code fix needed
+- Broad pipeline failures (findings 3–18): contract.sh sequential-fallback removal too aggressive
+- lint-test-errexit: 3 test files use `set -e` mid-file — SPEC-9 now names this constraint
+- Golden files (findings 21–22): added to scope; neither references orch-sequential
 
-Added to acceptance block. Names each file and its treatment. TESTFILES bound:
-SPEC-12: tests/unit/adr059-no-tmpdir-defaults-test.sh
-         tests/unit/core-orch-run-id-isolation-test.sh
-         tests/unit/dispatch-rc-guard-test.sh
-         tests/unit/stdin-spawn-guard-test.sh
-         tests/unit/summary-mandatory-test.sh
-
-(map-strategy-test.sh comment update is implied by SPEC-3 guard + in scope block)
-
-### Verifier example files clarification
-- stage-time-limit-test.sh: 0 orch-sequential references (grep confirmed). The
-  verifier cited it as an example; it's in scope for other reasons (SPEC-1 timeout).
-  No behavioral fixture migration needed.
-- map-strategy-test.sh: 1 comment at line 508. Not a behavioral fixture. Comment
-  cleanup required by SPEC-3 guard; covered by scope + SPEC-3.
-
-### SPEC-11 (pool isolation) — unchanged
-Pool isolation from orch-sequential-test.sh test 7 is the only behavioral gap
-not covered by surviving tests. SPEC-11 adds it to orch-mock-test.sh.
-
-### Supersedes block status (unchanged from revision 6)
-- exit-path-teardown-budget-guard-test.sh [SPEC-1]: rename _SPEC5_RELEASE_TIMEOUT → _SPEC5_STAGE_TIMEOUT
-- exit-path-teardown-budget-guard-test.sh [SPEC-3]: same rename in grep pattern
-- plugin-artifact-goldens-test.sh [G5]: G5 block removed (golden deleted)
-
-### R-7 grep results (corrected: 10 files, not 8)
-- grep -rl 'orch-sequential' tests/ → 10 files, all in scope
-- grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/ → 0 hits
-- grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/ → 2 files, both in scope
-- grep -rl '_orch_local_kill_slot' tests/ → 0 hits
-- grep -rl 'router\.timeout_s' tests/ → 17 files (2 in scope, 15 excluded)
-
-### Key source locations for implementation
-- core/pipeline/strategies/sequential.sh:62 — ZBUILD_ORCH_TIMEOUT:-300
-- core/pipeline/strategies/fanout.sh:79 — ZBUILD_ORCH_TIMEOUT:-300
-- core/pipeline/strategies/map.sh:338 — ZBUILD_ORCH_TIMEOUT:-300
-- core/orch/contract.sh:165-181 — orch-sequential fallback (must be removed)
-- core/orch/local_engine.sh:34-40 — direct kill (must use zbuild_pg_kill)
-- core/pipeline/runner.sh:2463-2465 — reads ZBUILD_RELEASE_TIMEOUT:-30
-- core/pipeline/runner.sh:2493 — watchdog kill (must use zbuild_pg_kill)
-
-## Status: COMPLETE (revision 7)
+## Status: COMPLETE (revision 8)
 Design written to /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 
 ### test-author (verdict: fail)
@@ -592,7 +581,7 @@ Summary:
 - SPECs in the contract: 12
 - assertions are authored from the SPEC text, never from the implementation
 
-### build (verdict: error)
+### build (verdict: timed_out)
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
@@ -787,8 +776,8 @@ lint-test-errexit: tests/integration/orch-b
   Write to it as you work, not at the end: what you read, what you
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
-- Your budget: each model call has 600 seconds, with no limit on turns. A call that runs out of time
-  returns nothing: finish and write your answer well before the limit. The whole stage has 1500 seconds.
+- Your budget: each model call has 1200 seconds, with no limit on turns. A call that runs out of time
+  returns nothing: finish and write your answer well before the limit. The whole stage has 2700 seconds.
 
 ### How every stage works
 

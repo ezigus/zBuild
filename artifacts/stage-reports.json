@@ -1,5 +1,6 @@
 {
   "scope_files": [
+    ".github/issues/keepers-manifest.yaml",
     "config/adr-enforcement-baseline.txt",
     "config/templates/deployed.yaml",
     "config/templates/simple.yaml",
@@ -20,7 +21,10 @@
     "plugins/tool/orch-sequential/tests/orch-sequential-test.sh",
     "scripts/lib/proc-group.sh",
     "scripts/lib/stage-time-limit.sh",
+    "tests/golden/full-pipeline/event-sequence.golden",
     "tests/golden/orch-sequential-capabilities.golden",
+    "tests/golden/parity/event-sequence.golden",
+    "tests/integration/always-run-exit-paths-test.sh",
     "tests/integration/orch-backend-misconfigured-test.sh",
     "tests/integration/orch-timeout-applies-test.sh",
     "tests/integration/runner-release-exit-paths-test.sh",
@@ -30,6 +34,7 @@
     "tests/unit/core-orch-run-id-isolation-test.sh",
     "tests/unit/dispatch-rc-guard-test.sh",
     "tests/unit/exit-path-teardown-budget-guard-test.sh",
+    "tests/unit/lint-adr-enforced-by-test.sh",
     "tests/unit/map-strategy-test.sh",
     "tests/unit/orch-kill-uses-pg-kill-guard-test.sh",
     "tests/unit/orch-sequential-absent-guard-test.sh",
