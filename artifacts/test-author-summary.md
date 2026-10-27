@@ -1,6 +1,6 @@
-## test-author — pass
+## test-author — timed_out
 
-- authored acceptance assertions for 6 SPEC(s) from the design contract
+- the author did not finish (router_timeout) — what it wrote is kept for the next attempt
 
 - SPECs in the contract: 6
 - assertions are authored from the SPEC text, never from the implementation

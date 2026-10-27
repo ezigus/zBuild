@@ -1,8 +1,8 @@
-# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 12
+# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 13
 
 ## Status: COMPLETE
 
-All 6 SPECs have their assertions written. All 5 test files verified on disk.
+All 6 SPECs have their assertions written. All 5 test files verified on disk in round 13.
 
 ## All files — final state
 
@@ -52,7 +52,7 @@ All 6 SPECs have their assertions written. All 5 test files verified on disk.
 - [#1944/SPEC-6] lint-adr-enforced-by passes
 - [#1944/SPEC-6] lint-test-errexit passes
 
-### tests/unit/run-watchdog-clean-exit-test.sh — SPEC-3 (complete, round 11 fix)
+### tests/unit/run-watchdog-clean-exit-test.sh — SPEC-3 (complete)
 - [#1944/SPEC-3] S3-1: _runner_resolve_run_limit_s is defined
 - [#1944/SPEC-3] S3-2: clean run exits 0
 - [#1944/SPEC-3] S3-2: pipeline status is complete (not timed_out)
@@ -64,7 +64,7 @@ All 6 SPECs have their assertions written. All 5 test files verified on disk.
 - [#1944/SPEC-3] S3-4: watchdog killed: abort sentinel absent after runner exits
 
 ### tests/unit/run-open-items-test.sh — O9 (updated to 6)
-- [O9]: 6 loop-ending lines (updated from 5→6 in prior round for timed_out arm)
+- [O9]: 6 loop-ending lines (updated from 5→6 for timed_out arm in _runner_end_on_abort)
 
 ### tests/integration/resume-after-run-timeout-test.sh — SPEC-4 (complete)
 - [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
@@ -76,10 +76,10 @@ All 6 SPECs have their assertions written. All 5 test files verified on disk.
 
 ## Failures from test stage that are NOT in scope
 
-The following failures from the test stage are outside my named testfiles and cannot be addressed here:
+The following failures from the previous test stage are outside my named testfiles and cannot be addressed here:
 - tests/integration/core-pipeline-runner-test.sh — TIMEOUT (existing file, not mine)
 - tests/integration/core-pipeline-strategy-test.sh — TIMEOUT (existing file, not mine)
-- tests/integration/runner-release-exit-paths-test.sh [SPEC-5] — FAIL (existing file, not mine; the SPEC-5 there refers to a different feature)
+- tests/unit/runner-signal-rearm-test.sh [SPEC-5] — FAIL (existing file, not mine; SPEC-5 there refers to a different issue's feature)
 - tests/unit/vision-admission-gate-test.sh — TIMEOUT (existing file, not mine)
 - tests/golden/full-pipeline/event-sequence.golden — golden file, not in my named testfiles
 - tests/golden/parity/event-sequence.golden — golden file, not in my named testfiles
