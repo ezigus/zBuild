@@ -1,4 +1,4 @@
-# Design notes — issue #1801 (revision 9)
+# Design notes — issue #1801 (revision 10)
 
 ## What changed from revision 8
 
@@ -47,5 +47,42 @@ written were incomplete — that is fixed in the test content, not the design sp
 ### orch-mock-test.sh (1 occurrence)
 - Line 3: sibling-backends comment
 
-## Status: COMPLETE (revision 9)
+## New findings from test stage (revision 10)
+
+**Test-stage finding 1 (SPEC-1 — one assertion fails at HEAD; code issue):**
+Negctl at HEAD shows 14/15 SPEC-1 assertions pass. One fails:
+`[#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME`
+Got `<empty>`.
+
+Root cause (confirmed by reading fanout.sh lines 78–95): the strategy clears
+`_ORCH_COLLECT_OUTCOME=""` before calling `orch_collect`, then checks
+`${_ORCH_COLLECT_OUTCOME:-}`. If `orch_collect` is invoked via a subshell
+(pipe, process substitution, etc.) the variable set inside doesn't propagate
+back. The design correctly specifies both sides must work; this is a build
+code issue for the build stage to fix. Scope and SPEC-1 text are unchanged.
+
+**Test-stage finding 2 (SPEC-3 — 3 files remain at HEAD; code issue):**
+Guard test at HEAD confirms: `orch-mock-test.sh`, `orch-backend-misconfigured-test.sh`,
+and `.github/issues/keepers-manifest.yaml` still contain `orch-sequential`.
+All 3 are in scope. SPEC-3 names each with exact line references. Build issue.
+
+Note: a broad worktree grep found `docs/audits/adr-2026-10-03/batch-1.md`
+also references `orch-sequential`, but the SPEC-3 guard only scans
+`core/`, `plugins/`, `scripts/`, `config/`, `tests/`, `.github/` —
+`docs/audits/` is outside its scope. No design change needed.
+
+**Confirmed: supersedes renames already implemented:**
+`exit-path-teardown-budget-guard-test.sh` at HEAD already uses
+`_SPEC5_STAGE_TIMEOUT` (lines 40–68). The supersedes block is accurate.
+
+## Passing/failing SPECs at HEAD (from test stage)
+- SPEC-2: NEGCTL PASS ✓
+- SPEC-4: NEGCTL PASS ✓
+- SPEC-5: NEGCTL PASS ✓
+- SPEC-6: NEGCTL PASS ✓
+- SPEC-10: NEGCTL PASS ✓
+- SPEC-1: NEGCTL FAIL (14/15 — one fanout propagation assertion) — build issue
+- SPEC-3: NEGCTL FAIL (1/2 — 3 files still name orch-sequential) — build issue
+
+## Status: COMPLETE (revision 10)
 Design written to /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
