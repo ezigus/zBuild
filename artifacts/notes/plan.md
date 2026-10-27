@@ -21,43 +21,52 @@ Issue: stage timeouts silently stop applying — fallback orchestrator ignores -
 4. `router.timeout_s` bounds one model call only. `always_run` stages use `timeout_s:` (30s/120s in shipped templates).
 5. Kill via `zbuild_pg_kill` in both places.
 
-### Areas
-- `core/orch/contract.sh` — backend loader hardening
-- `core/pipeline/strategies/map.sh`, `fanout.sh`, `sequential.sh` — remove ZBUILD_ORCH_TIMEOUT
-- `core/pipeline/runner.sh` — fix always_run dispatch
-- `core/orch/local_engine.sh` — fix slot kill
-- `scripts/lib/proc-group.sh` — shared kill helper (already exists)
-- `plugins/tool/orch-sequential/` — DELETE
-- `tests/golden/orch-sequential-capabilities.golden` — DELETE
-- `docs/wiki/Plugins.md`, `docs/wiki/plugins/orch-sequential.md` — remove orch-sequential references
-- `plugins/tool/orch-mock/tests/orch-mock-test.sh`, `plugins/tool/orch-ruflo-hive/plugin.sh` — remove orch-sequential comments
-- `config/templates/simple.yaml`, `config/templates/deployed.yaml` — move timeout_s: from router: to top-level for release/persist
-- `docs/adr/ADR-011.md`, `docs/adr/ADR-017.md` — amend with Enforced by
-- `config/adr-enforcement-baseline.txt` — remove ADR-011 and ADR-017
+## Plan structure: 15 steps
 
-### Test-first requirement
-Every implementation step is preceded by its failing test. Scope discovery is step 1 (mandated by acceptance criteria).
+Original 13 steps, updated for test-stage open findings, plus 2 new steps.
 
-## Plan structure decided
+### Changes from prior plan
 
-13 steps (updated from original after reviewing design findings):
+**Step 3 modified**: Add `.github/issues/keepers-manifest.yaml` to areas — the guard test named it as still
+referencing orch-sequential. Also `tests/integration/orch-backend-misconfigured-test.sh` (a new
+test file) contains an orch-sequential reference and must be cleaned.
 
-1. Scope discovery
-2. Write failing tests — orch-sequential guard + misconfigured config
-3. Delete orch-sequential; migrate/delete its tests; remove its lookup; clean all orch-sequential references in wiki + plugin files
-4. Write failing tests — hard backend error from installed tree (missing + unreadable)
-5. Harden backend loader (remove both fallback paths)
-6. Write failing tests — hung stage timed_out, ZBUILD_ORCH_TIMEOUT no longer honored
-7. Remove ZBUILD_ORCH_TIMEOUT from strategy collect calls
-8. Write failing tests — always_run bounded by timeout_s:, not router.timeout_s
-9. Fix always_run dispatch (use timeout_s:, use zbuild_pg_kill); move timeout_s: in templates from router: to top-level
-10. Write failing test — local engine kill leaves no orphan
-11. Fix local engine slot killer (use zbuild_pg_kill)
-12. Amend ADR-011 and ADR-017 (Enforced by entries); remove from adr-enforcement-baseline.txt
-13. Verify npm test + npm run lint pass
+**Step 6 modified**: The test must check timed_out propagation for all three strategies (map, fanout,
+sequential-strategy), not only fanout — test-author finding 1. The variable that must be checked is
+`_ORCH_COLLECT_OUTCOME` from the collect call.
 
-All acceptance criteria mapped:
-- [AC1] hung stage ends timed_out → steps 2+3 (retire orch-sequential) + steps 6+7 (remove flat limit)
+**Step 7 modified**: The strategy implementation must set `_ZB_STRATEGY_OUTCOME=timed_out` (not
+`failed`) when the collect call returns a timed_out outcome via `_ORCH_COLLECT_OUTCOME`. The test
+failure message was: "got '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed" —
+meaning the implementation maps collect_rc=1 to failed, but must read _ORCH_COLLECT_OUTCOME first.
+
+**Step 8 modified**: The test must separately verify release at 30s AND persist at 120s as two hung-
+stage scenarios — test-author finding 2.
+
+**Step 9 modified**: The runner regression shows the always_run dispatch changes broke pre-existing
+tests (`always-run-exit-paths-test.sh` SPEC-5: a 60s release hook held the exit; `runner-release-
+exit-paths-test.sh` SPEC-5: cleanup not dispatched). The fix must correctly route always_run dispatch
+to use timeout_s: without breaking the dispatch of cleanup stages for prior pipeline stages.
+
+**Step 2 modified**: Deleting `orch-sequential-test.sh` must be confirmed safe by checking whether
+the behaviors it asserted are now covered by other tests — test-author finding 3.
+
+**NEW step 13**: Fix `set -e` mid-file lint violations in `orch-timeout-applies-test.sh`
+(8 occurrences), `orch-backend-misconfigured-test.sh` (2 occurrences), and
+`orch-kill-uses-pg-kill-guard-test.sh` (1 occurrence) — replace with `cmd || rc=$?` pattern.
+
+**NEW step 14**: Fix the `core/pipeline/runner.sh` regression that broke 14+ integration tests
+(happy path exits 0; always-run dispatch; cleanup dispatch; pipeline.end not emitted; stage manifests
+contract broken). These all trace to the step 9 build changes to runner.sh.
+
+**Old step 13** (npm test + lint green) becomes **step 15**.
+
+### Open questions
+None.
+
+## Acceptance criteria mapping (updated)
+
+- [AC1] hung stage ends timed_out → steps 6+7
 - [AC2] stage > 300s completes → steps 6+7
 - [AC3] orch-sequential gone, guard test → steps 2+3
 - [AC4] missing/unreadable backend → misconfigured, from installed tree → steps 4+5
@@ -65,40 +74,4 @@ All acceptance criteria mapped:
 - [AC6] kill through zbuild_pg_kill, no orphans → steps 10+11
 - [AC7] scope discovery → step 1
 - [AC8] ADR-011, ADR-017 Enforced by → step 12
-- [AC9] npm test + lint green → step 13
-
-No open questions identified.
-
-## Design findings applied (second pass)
-
-Three gaps found in design.md vs. original plan, now corrected:
-
-1. **Step 3 areas expanded**: SPEC-3 guard fails on any reference outside docs/adr/ — must clean
-   docs/wiki/Plugins.md, docs/wiki/plugins/orch-sequential.md, orch-mock and ruflo-hive comments,
-   and the G5 block in plugin-artifact-goldens-test.sh.
-
-2. **Step 9 areas expanded**: Both shipped templates declare `timeout_s:` under `router:` for
-   release/persist stages; `template_stage_time_limit` reads the top-level key only — templates
-   must move those values before the watchdog fix is effective.
-
-3. **Step 12 areas expanded**: `config/adr-enforcement-baseline.txt` must have ADR-011 and ADR-017
-   removed; `npm run lint` (lint-adr-enforced-by.sh) requires it once those ADRs carry
-   `## Enforced by` sections.
-
-## Design findings applied (third pass — unusable design verdict)
-
-The "unusable" design attempt found two findings:
-1. "SPEC-11 covers only plugins/tool/orch-sequential/tests/orch-sequential-test.sh" for R-3
-2. No SPEC requires that tests/integration/stage-time-limit-test.sh and tests/unit/map-strategy-test.sh
-   are migrated to pass on orch-mock/bash-parallel (vs. just having references stripped)
-
-**Resolution:** The issue's "Not in scope" clause says how fixture tests are migrated is "build's
-choice, checked by the full suite (npm test)." AC9 (npm test green) is the operative criterion, not
-a specific migration SPEC. However, the plan step 3 was too general for the design to generate
-targeted SPECs. Updated step 3 to:
-- Explicitly name tests/integration/stage-time-limit-test.sh and tests/unit/map-strategy-test.sh
-  in areas
-- Distinguish "migrate so the test still passes on the new backend" from "strip the reference and
-  leave the test broken" in the description
-
-The 13 steps are otherwise unchanged. No open questions.
+- [AC9] npm test + lint green → step 15
