@@ -1,6 +1,6 @@
-## test-author — interrupted
+## test-author — pass
 
-- the author did not finish (signal) — what it wrote is kept for the next attempt
+- authored acceptance assertions for 12 SPEC(s) from the design contract
 
 - SPECs in the contract: 12
 - assertions are authored from the SPEC text, never from the implementation

@@ -1,14 +1,14 @@
 # authored_by: test-author
-4a7908c691a638c905ef9574ce6e9792721b18fed0b6387e9b6b004573d99958  tests/integration/orch-timeout-applies-test.sh
-2afde074585c5ec026645c5d93cacad774357bd6706bfe72b7b2148b799ced50  tests/integration/orch-backend-misconfigured-test.sh
-c75655e10b823104322705a2b5fcf08a2dc54e819190da13d350da62452a1914  tests/unit/orch-sequential-absent-guard-test.sh
-2afde074585c5ec026645c5d93cacad774357bd6706bfe72b7b2148b799ced50  tests/integration/orch-backend-misconfigured-test.sh
+205ecb48ba8c91570e013af79136c9b874aaf837dddb9bfe9d1c6ebfd3bcdb83  tests/integration/orch-timeout-applies-test.sh
+d57e440a93bc03f09f246174d1f63a873c4a397724a922c8b5bef4f520b24d42  tests/integration/orch-backend-misconfigured-test.sh
+e591a98fca5870b25da620ac3be9a12bdff14310307971eaf1f81b356f1b4542  tests/unit/orch-sequential-absent-guard-test.sh
+d57e440a93bc03f09f246174d1f63a873c4a397724a922c8b5bef4f520b24d42  tests/integration/orch-backend-misconfigured-test.sh
 da21affd9d209df83c65ef4d3c51dad1953151bc9787b16cf68406abd01ee5cf  tests/integration/runner-release-exit-paths-test.sh
-77401104c6fc2e5d29770570edf136146cdd217e8acf5cffe6e28edb2e52f828  tests/unit/orch-kill-uses-pg-kill-guard-test.sh
-8bf698c82059c35e273e3ca9cd941ed78ce9748042d1a0ec3cd5d74a58edb870  docs/adr/ADR-011-pluggable-backends.md
-4c52acc583ec009dc770b18cb2db519f6e33248133fb51b730983076804126cd  docs/adr/ADR-017-per-stage-router-config.md
-2afde074585c5ec026645c5d93cacad774357bd6706bfe72b7b2148b799ced50  tests/integration/orch-backend-misconfigured-test.sh
-a96b08370bfc6d7d12f62cf3ee4180668322422ff188db2f79557b8c607896a2  plugins/tool/orch-mock/tests/orch-mock-test.sh
+d70ca67b42d77304e5d0133828100385612e0ce961a30259e92292671e7d0b90  tests/integration/always-run-exit-paths-test.sh
+76bcf704b4680a446636600562e92c81a38c2e8334a40f680a89e02343e60a09  tests/unit/orch-kill-uses-pg-kill-guard-test.sh
+5361e34b6c7f7abcd283e4837ad8033a647cb51ca30c0beb5357d63c1296d291  tests/unit/lint-adr-enforced-by-test.sh
+d57e440a93bc03f09f246174d1f63a873c4a397724a922c8b5bef4f520b24d42  tests/integration/orch-backend-misconfigured-test.sh
+91e745d9d262960071fc5b2cf386dc7818e53c61ab3a261271d5d02878b91e28  plugins/tool/orch-mock/tests/orch-mock-test.sh
 71da1c09b70f2222fa3f9fe7122abf63ab7fe34fdf7f821052b8f1bf1443fb4d  tests/unit/adr059-no-tmpdir-defaults-test.sh
 3743a31ffd98baaf1a4478bb3c8a918d4db32d1ce31a6d8baa49349ad70e2d4d  tests/unit/core-orch-run-id-isolation-test.sh
 65e9dcbd4a5ed16925e885773b38904e455a5ffa673bcb2cbb35760422ad9aaa  tests/unit/dispatch-rc-guard-test.sh

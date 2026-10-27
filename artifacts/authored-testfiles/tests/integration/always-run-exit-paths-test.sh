@@ -1,0 +1,340 @@
+#!/usr/bin/env bash
+# Integration: #1831 — an `always_run:` stage runs on EVERY exit path.
+#
+# This is the assertion the attribute exists for. A mechanism that fires on four
+# of five exit paths is #1878's defect wearing a new name ("the snapshot was
+# never called"), so each path gets its own case and names itself on failure —
+# a single parameterised assertion would report "one of five" and leave the
+# operator to find which.
+#
+# Paths covered: rc=0, rc=1, a stage killed by SIGINT (rc=130 + the recorded
+# abort word), SIGTERM to the runner, and a release hook that hangs past its
+# own timeout_s.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
+
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+
+print_test_header "always_run dispatches on every exit path (#1831)"
+setup_test_env "zb-always-run-exit"
+export ZBUILD_CONTRACT_VALIDATOR=warn
+
+PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
+export ZBUILD_CYCLES_ENABLED=0
+export ZBUILD_SCOPE_OVERRIDE=1
+mkdir -p "$ZBUILD_EVENTS_DIR" "$HOME/.zbuild"
+printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
+
+OVERLAY_REPO="$(setup_git_temp_repo always-run-overlay)"
+install_template_overlay "$OVERLAY_REPO" always-run-minimal
+
+# The always-run plugin, bound by ROLE (not by directory — that coupling is
+# what #1831 removes). It touches a marker so "did it run?" is a file test
+# rather than an inference from an event that might not be emitted.
+mock_plugin_factory "outcome"  "agent" 0 "" ""         >/dev/null
+mock_plugin_factory "teardown" "tool"  0 "" "teardown" >/dev/null
+
+RELEASE_MARKER="$TEST_TEMP_DIR/release-ran"
+RELEASE_ENTERED="$TEST_TEMP_DIR/release-entered"
+_arm_release() {
+    # Two markers, not one. ENTERED is written before the optional sleep,
+    # RAN after it. With a single completion marker, "the watchdog killed a
+    # hanging hook" and "the hook was never dispatched at all" are the same
+    # observation — and SPEC-5 passed for that wrong reason during development,
+    # before the dispatch worked at all.
+    # $1 = optional `sleep N` injected between the two, for the watchdog case.
+    cat > "$PLUGINS_ROOT/tool/teardown/plugin.sh" <<PLUG
+teardown_run() {
+    : > "${RELEASE_ENTERED}"
+    ${1:-:}
+    : > "${RELEASE_MARKER}"
+    return 0
+}
+PLUG
+}
+
+# The stage announces that it is RUNNING (#2029). `pipeline-state.json` appears
+# during startup, long before any stage is dispatched, so waiting on it and then
+# sleeping a second is not "the stage has started" — it is a guess that happens to
+# hold on an idle machine.
+#
+# On a loaded one it does not, and SPEC-4 then SIGTERMs a runner still setting up
+# its worktree: no stage has run, no release hook is armed, no marker is written,
+# and the assertion reports a missing file with no hint that the run never got
+# that far. Observed directly — `wait` returned in 0s, the hook-entered marker was
+# absent, and the runner's last line was "Working in the run's worktree".
+#
+# `runner-release-exit-paths-test.sh` already does this correctly with
+# BUILD_STARTED; this is the same idea. The marker can only appear once the stage
+# is genuinely executing, so load can only delay it, never fake it.
+# #1850: the stage writes the v2 result its manifest (mock_plugin_factory's)
+# promises — pass on rc 0, error/broken otherwise — so a run that should succeed
+# is not failed for leaving no readable result.
+_arm_outcome() {
+    local _o=pass
+    [[ "${2:-0}" -ne 0 ]] && _o=broken
+    cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() {
+    : > "\${STAGE_STARTED:-/dev/null}"
+    ${1:-:}
+    $(mock_result_line outcome "$_o")
+    return ${2:-0}
+}
+PLUG
+}
+
+# Each case gets its own state dir: a stale marker or state file from a prior
+# case would make a later one pass for the wrong reason.
+_run_case() {
+    local name="$1" rc_want_set="$2"
+    rm -f "$RELEASE_MARKER" "$RELEASE_ENTERED"
+    export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-$name"
+    mkdir -p "$ZBUILD_STATE_DIR"
+    set +e
+    ( cd "$OVERLAY_REPO" && bash "$RUNNER" --template always-run-minimal \
+        --goal "always-run $name" ) >"$TEST_TEMP_DIR/$name.out" 2>&1
+    _CASE_RC=$?
+    set -e
+    [[ "$rc_want_set" == "skip" ]] || true
+}
+
+# ─── [SPEC-1][change] rc=0 — the ordinary success path ──────────────────────
+print_test_section "[SPEC-1][change] release runs when the pipeline succeeds"
+_arm_release; _arm_outcome "" 0
+_run_case "rc0" skip
+assert_file_exists "[SPEC-1] release ran on rc=0" "$RELEASE_MARKER"
+
+# ─── [SPEC-2][change] rc=1 — a failed run still frees its resources ─────────
+# The failing path is the one that matters most: a run that died is exactly the
+# run holding process groups and locks nobody else will clean up.
+print_test_section "[SPEC-2][change] release runs when a stage fails"
+_arm_release; _arm_outcome "" 1
+_run_case "rc1" skip
+assert_file_exists "[SPEC-2] release ran on a non-zero stage rc" "$RELEASE_MARKER"
+
+# ─── [SPEC-3][change] the SIGINT path ─────────────────────────────────────
+# #1850 (ADR-054 §4, ADR-025): the SIGINT path is the recorded abort word, not
+# rc=130 — a bare 130 from a stage is just a failed stage now. So the stage
+# does what a Ctrl-C does to the process group: the sentinel is armed (empty =
+# sigint) and the child dies with 130. The run must end on the abort path —
+# exit 1, status interrupted — or this case would only repeat SPEC-2.
+print_test_section "[SPEC-3][change] release runs on the SIGINT path (abort word sigint)"
+_arm_release
+# shellcheck disable=SC2016  # expanded by the stage at run time, not here
+_arm_outcome ': > "$ZBUILD_STATE_DIR/.abort.signal"' 130
+_run_case "rc130" skip
+assert_file_exists "[SPEC-3] release ran on the SIGINT path" "$RELEASE_MARKER"
+assert_eq "[SPEC-3] the run took the abort path: exit 1 (not 130), status interrupted" \
+    "1 interrupted" "$_CASE_RC $(jq -r '.status // "MISSING"' "$TEST_TEMP_DIR/state-rc130/pipeline-state.json" 2>/dev/null)"
+
+# ─── [SPEC-4][change] SIGTERM delivered to the runner itself ───────────────
+# Distinct from SPEC-3: there the stage returned a code, here the signal is
+# delivered to the runner process while a stage is still executing. #1759's
+# re-armed INT/TERM traps are what give this path somewhere to hang off.
+print_test_section "[SPEC-4][change] release runs when the runner is SIGTERMed mid-stage"
+_arm_release; _arm_outcome "sleep 30" 0
+rm -f "$RELEASE_MARKER" "$RELEASE_ENTERED"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-sigterm"
+export STAGE_STARTED="$TEST_TEMP_DIR/stage-started-sigterm"
+rm -f "$STAGE_STARTED"
+mkdir -p "$ZBUILD_STATE_DIR"
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template always-run-minimal \
+    --goal "always-run sigterm" ) >"$TEST_TEMP_DIR/sigterm.out" 2>&1 &
+_runner_pid=$!
+# Wait for the run to actually reach the stage before signalling — signalling a
+# runner still in startup would prove nothing about the exit path.
+#
+# #2029: this used to wait for `pipeline-state.json` and then sleep 1. That file
+# is written during STARTUP, so the wait proved nothing and the sleep was the only
+# real margin. Under load it was not enough and the signal landed mid-startup.
+# STAGE_STARTED is written by the stage itself, so it cannot be reached early.
+_waited=0
+while [[ ! -f "$STAGE_STARTED" && $_waited -lt 300 ]]; do
+    sleep 0.2; _waited=$(( _waited + 1 ))
+done
+if [[ ! -f "$STAGE_STARTED" ]]; then
+    assert_fail "[SPEC-4] the stage started before the signal was sent" \
+        "STAGE_STARTED never appeared in 60s — the run never reached a stage, so the exit path was never exercised"
+fi
+_spec4_t0=$(date +%s)
+kill -TERM "$_runner_pid" 2>/dev/null || true
+wait "$_runner_pid" 2>/dev/null || true
+_spec4_wait_s=$(( $(date +%s) - _spec4_t0 ))
+# The trap runs in the dying process; give it a moment to land the marker.
+_waited=0
+while [[ ! -f "$RELEASE_MARKER" && $_waited -lt 50 ]]; do
+    sleep 0.2; _waited=$(( _waited + 1 ))
+done
+
+# #2029: say WHAT WAS SEEN, not merely that the file is absent.
+#
+# This assertion has failed intermittently on CI for as long as it has existed,
+# and it could never be diagnosed because "file not found" is the same output
+# whether the runner ignored the signal, died before its trap, ran teardown into
+# a different path, or simply had not finished yet. Three separate mechanisms
+# were proposed for it and all three were disproven.
+#
+# The sibling assertion in runner-release-exit-paths prints the marker it read,
+# and that one line is what let #2046 identify its cause in minutes after days of
+# guessing. This is that lesson applied here: the next occurrence explains itself
+# instead of starting another hunt.
+if [[ ! -f "$RELEASE_MARKER" ]]; then
+    {
+        printf '  DIAGNOSTIC [SPEC-4]: release marker absent after %ss of polling\n' "$(( _waited * 2 / 10 ))"
+        printf '    wait on the runner returned after: %ss\n' "$_spec4_wait_s"
+        printf '    runner pid %s still alive: %s\n' "$_runner_pid" \
+            "$(kill -0 "$_runner_pid" 2>/dev/null && echo YES || echo no)"
+        printf '    release hook ENTERED marker: %s\n' \
+            "$([[ -f "$RELEASE_ENTERED" ]] && echo present || echo absent)"
+        printf '    state dir: %s\n' \
+            "$([[ -d "$ZBUILD_STATE_DIR" ]] && (cd "$ZBUILD_STATE_DIR" && printf '%s ' * 2>/dev/null) || echo '<missing>')"
+        printf '    runner output (last 5 lines):\n'
+        tail -5 "$TEST_TEMP_DIR/sigterm.out" 2>/dev/null | sed 's/^/      /' || printf '      <no output>\n'
+    } >&2
+fi
+# RELEASE_ENTERED separates "the hook never started" from "it started and did not
+# finish" — the single most useful split, and the one the bare check cannot make.
+assert_file_exists "[SPEC-4] release ran after SIGTERM to the runner" "$RELEASE_MARKER"
+
+# ─── [SPEC-5][guard] a hanging release cannot hang the exit ────────────────
+# The stage declares timeout_s: 2. A hook that blocks past it must be killed and
+# the exit must continue — otherwise Ctrl-C becomes a lockup, which is the exact
+# class of bug an EXIT-trap dispatch exists to avoid. Asserting the WALL CLOCK
+# rather than the marker: the marker would also be absent if release never ran
+# at all, so it cannot distinguish "bounded" from "broken".
+print_test_section "[SPEC-5][guard] a release hook that hangs is bounded by its timeout_s"
+_arm_release "sleep 60"; _arm_outcome "" 0
+rm -f "$RELEASE_MARKER" "$RELEASE_ENTERED"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-hang"
+mkdir -p "$ZBUILD_STATE_DIR"
+_t0=$(date +%s)
+set +e
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template always-run-minimal \
+    --goal "always-run hang" ) >"$TEST_TEMP_DIR/hang.out" 2>&1
+set -e
+_elapsed=$(( $(date +%s) - _t0 ))
+# 45s is generous against a 2s bound plus runner startup; the assertion is
+# "bounded at all", not a tight budget — a tight one would flake under a loaded
+# parallel pool (the #991 lesson).
+if [[ "$_elapsed" -lt 45 ]]; then
+    assert_pass "[SPEC-5] a 60s release hook did not hold the exit (${_elapsed}s)"
+else
+    assert_fail "[SPEC-5] a 60s release hook held the exit" "elapsed=${_elapsed}s"
+fi
+# These two together are what make the case meaningful: the hook WAS entered
+# (so the bound is what stopped it) and did NOT complete (so it was actually
+# killed). Either alone is satisfied by a dispatch that never happened.
+assert_file_exists "[SPEC-5] the hanging hook was actually dispatched" "$RELEASE_ENTERED"
+assert_file_not_exists "[SPEC-5] the hanging hook was killed before completing" "$RELEASE_MARKER"
+
+# ─── [#1801/SPEC-5]: persist always_run stage bounded by timeout_s: (not 120s) ─
+# _runner_dispatch_always_run must use template_stage_time_limit (top-level
+# timeout_s:) instead of ZBUILD_RELEASE_TIMEOUT / router.timeout_s.
+# The fixture template sets persist.timeout_s: 4 (new code reads) and
+# persist.router.timeout_s: 120 (old code reads ZBUILD_RELEASE_TIMEOUT / router.timeout_s).
+# A blocking persist hook must be killed in ~4s, NOT ~120s.
+# FAILS on old code (elapsed ~120s > 20), PASSES on new code (elapsed ~4s < 20).
+print_test_section "[#1801/SPEC-5] persist always_run watchdog uses timeout_s: not router.timeout_s: 120"
+mkdir -p "$PLUGINS_ROOT/tool/persist"
+cat > "$PLUGINS_ROOT/tool/persist/manifest.yaml" <<'MF'
+id: persist
+name: Persist Stub Spec5
+kind: tool
+version: 0.0.1
+hooks:
+  run: persist_run
+requires:
+  core:
+    - redaction
+provides:
+  role: persist
+MF
+_SPEC5P_ENTERED="$TEST_TEMP_DIR/spec5p-entered"
+_SPEC5P_DONE="$TEST_TEMP_DIR/spec5p-done"
+cat > "$PLUGINS_ROOT/tool/persist/plugin.sh" <<PLUG
+persist_run() {
+    : > "${_SPEC5P_ENTERED}"
+    sleep 120
+    : > "${_SPEC5P_DONE}"
+    return 0
+}
+PLUG
+
+_spec5p_repo="$(setup_git_temp_repo "always-run-spec5p")"
+install_template_overlay "$_spec5p_repo" always-run-minimal
+if [[ -d "$_spec5p_repo/.git/info" ]] && \
+   ! grep -qxF '/.zbuild/' "$_spec5p_repo/.git/info/exclude" 2>/dev/null; then
+    printf '/.zbuild/\n' >> "$_spec5p_repo/.git/info/exclude"
+fi
+cat > "$_spec5p_repo/.zbuild/templates/always-run-spec5p.yaml" <<'YAML'
+id: always-run-spec5p
+extends: always-run-minimal
+always_run:
+  - release
+  - persist
+persist:
+  gate: auto
+  roles: [persist]
+  timeout_s: 4
+  router:
+    timeout_s: 120
+  io:
+    destinations: [file]
+    tail_lines: 50
+YAML
+_arm_outcome "" 0
+_arm_release
+rm -f "$_SPEC5P_ENTERED" "$_SPEC5P_DONE"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-spec5p"
+export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/spec5p-events.jsonl"
+mkdir -p "$ZBUILD_STATE_DIR"
+_spec5p_t0=$(date +%s)
+set +e
+( cd "$_spec5p_repo" && bash "$RUNNER" --template always-run-spec5p \
+    --goal "spec5-persist" ) >"$TEST_TEMP_DIR/spec5p.out" 2>&1
+set -e
+_spec5p_elapsed=$(( $(date +%s) - _spec5p_t0 ))
+if [[ "$_spec5p_elapsed" -lt 20 ]]; then
+    assert_pass "[#1801/SPEC-5] persist always_run watchdog bounds at timeout_s: 4 (exited in ${_spec5p_elapsed}s; old code: router.timeout_s: 120)"
+else
+    assert_fail "[#1801/SPEC-5] persist always_run watchdog must use timeout_s: 4" \
+        "runner took ${_spec5p_elapsed}s; expected < 20s (timeout_s: 4); old code reads router.timeout_s: 120 → ~120s"
+fi
+assert_file_exists "[#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)" "$_SPEC5P_ENTERED"
+assert_file_not_exists "[#1801/SPEC-5] persist hook killed before completing (bounded by timeout_s: 4, not 120s)" "$_SPEC5P_DONE"
+
+# ─── [SPEC-6][guard] an unresolvable always-run role is LOUD ───────────────
+# The code this replaces did `[[ -d "$_td_dir" ]] || return 0` — a missing
+# plugin was a silent no-op. An always-run stage that cannot be resolved has not
+# run, and the operator must be able to see that rather than infer it from a
+# missing effect.
+print_test_section "[SPEC-6][guard] an unresolvable role emits an event instead of failing silently"
+_arm_outcome "" 0
+rm -f "$RELEASE_MARKER"
+rm -rf "$PLUGINS_ROOT/tool/teardown"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-unresolved"
+export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/unresolved.jsonl"
+mkdir -p "$ZBUILD_STATE_DIR"
+set +e
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template always-run-minimal \
+    --goal "always-run unresolved" ) >"$TEST_TEMP_DIR/unresolved.out" 2>&1
+_unres_rc=$?
+set -e
+assert_event_emitted "[SPEC-6] stage.always_run.unresolved is emitted" \
+    "$ZBUILD_EVENTS_JSONL" "stage.always_run.unresolved"
+# And it must not change the run's fate — an always-run stage never decides the
+# verdict, including when it could not be found.
+assert_eq "[SPEC-6] an unresolvable always-run stage does not fail the run" "0" "$_unres_rc"
+
+print_test_results
