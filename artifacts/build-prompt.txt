@@ -329,7 +329,7 @@ Summary:
 - tests/unit/summary-mandatory-test.sh — SPEC-12
 - Each [code] requirement's test fails on the code as it is now, and passes once the code is written.
 
-### build (verdict: timed_out) — your own
+### build (verdict: error) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
@@ -338,7 +338,7 @@ Outputs:
 Summary:
 ## build — timed_out
 
-- changed 1 file(s) over 1 pass(es), 3 iteration(s)
+- changed 1 file(s) over 2 pass(es), 6 iteration(s)
 
 - lines: +5 / -10
 - terminated: router_timeout
@@ -428,50 +428,45 @@ Outputs:
 
 Findings:
 - test finding 1 (opened by test): tests/integration/always-run-exit-paths-test.sh fails: ✗ [SPEC-5] a 60s release hook held the exit
-- test finding 2 (opened by test): tests/integration/artifact-contract-test.sh fails: ✗ plugin.contract.violated event emitted — not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.GLcWBD/a3/events/events.jsonl
+- test finding 2 (opened by test): tests/integration/artifact-contract-test.sh fails: ✗ plugin.contract.violated event emitted — not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/events/events.jsonl
 - test finding 3 (opened by test): tests/integration/core-pipeline-runner-test.sh fails: ✗ happy path exits 0 — expected: 0, got: 1
 - test finding 4 (opened by test): tests/integration/core-pipeline-verdict-indicators-test.sh fails: ✗ Pipeline cannot start — stage manifests break the contract:
-- test finding 5 (opened by test): tests/integration/cycle-acceptance-terminal-failure-test.sh fails: ✗ Pipeline failed: status=failed run_id=20261026222851-1674108 issue=0 (took 5.2s)
+- test finding 5 (opened by test): tests/integration/cycle-acceptance-terminal-failure-test.sh fails: ✗ Pipeline failed: status=failed run_id=20261028021215-835200 issue=0 (took 3.9s)
 - test finding 6 (opened by test): tests/integration/cycle-on-max-pipeline-continues-test.sh fails: ✗ T1.4: pipeline.end emitted exactly once — expected: 1, got: 0
 - test finding 7 (opened by test): tests/integration/design-pipeline-test.sh fails: ✗ runner exits 0 — expected: 0, got: 1
-- test finding 8 (opened by test): tests/integration/engine-run-branch-test.sh fails: ✗ [E1] the first stage is already on the run's branch — expected: zbuild/issue-92110001, got:
+- test finding 8 (opened by test): tests/integration/engine-run-branch-test.sh fails: ✗ [E1] the first stage is already on the run's branch — expected: zbuild/issue-90090001, got:
 - test finding 9 (opened by test): tests/integration/full-pipeline-seq-cardinal-test.sh fails: ✗ pipeline exits 0 — expected: 0, got: 1
 - test finding 10 (opened by test): tests/integration/leaf-dispatch-role-bound-verdict-test.sh fails: ✗ [SPEC-4] the fixture stage dispatched (stage.complete emitted)
-- test finding 11 (opened by test): tests/integration/orch-timeout-applies-test.sh fails: ✗ [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME — got '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed
-- test finding 12 (opened by test): tests/integration/per-run-state-isolation-test.sh fails: ✗ T1: run-aaa exits 0 — expected: 0, got: 1
-- test finding 13 (opened by test): tests/integration/pipeline-resume-test.sh fails: ✗ integration: --resume exits 0 when remaining stage succeeds — expected: 0, got: 1
-- test finding 14 (opened by test): tests/integration/runner-exports-state-dir-test.sh fails: ✗ runner exits 0 — expected: 0, got: 1
-- test finding 15 (opened by test): tests/integration/runner-init-state-abort-test.sh fails: ✗ SPEC-6: writable state dir → run completes — expected: 0, got: 1
-- test finding 16 (opened by test): tests/integration/runner-release-exit-paths-test.sh fails: ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-- test finding 17 (opened by test): tests/integration/state-root-isolation-test.sh fails: ✗ nested run exits 0 — expected: 0, got: 1
-- test finding 18 (opened by test): tests/integration/worktree-run-isolation-test.sh fails: ✗ [SPEC-3a] the build stage must commit to the work branch
-- test finding 19 (opened by test): tests/unit/lint-test-errexit-test.sh fails: ✗ [L5] the real tree passes — expected: 0, got: 1
-- test finding 20 (opened by test): tests/unit/orch-sequential-absent-guard-test.sh fails: ✗ [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-- test finding 21 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 22 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 23 (opened by test): SPEC-1/SPEC-3/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh: its test does not pass on the new code — the code or the test is wrong
+- test finding 11 (opened by test): tests/integration/per-run-state-isolation-test.sh fails: ✗ T1: run-aaa exits 0 — expected: 0, got: 1
+- test finding 12 (opened by test): tests/integration/pipeline-resume-test.sh fails: ✗ integration: --resume exits 0 when remaining stage succeeds — expected: 0, got: 1
+- test finding 13 (opened by test): tests/integration/runner-exports-state-dir-test.sh fails: ✗ runner exits 0 — expected: 0, got: 1
+- test finding 14 (opened by test): tests/integration/runner-init-state-abort-test.sh fails: ✗ SPEC-6: writable state dir → run completes — expected: 0, got: 1
+- test finding 15 (opened by test): tests/integration/runner-release-exit-paths-test.sh fails: ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
+- test finding 16 (opened by test): tests/integration/state-root-isolation-test.sh fails: ✗ nested run exits 0 — expected: 0, got: 1
+- test finding 17 (opened by test): tests/integration/worktree-run-isolation-test.sh fails: ✗ [SPEC-3a] the build stage must commit to the work branch
+- test finding 18 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 19 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
 
 Summary:
 # Test stage summary
 
 - verdict: fail
-- passed: 797
-- failed: 21
+- passed: 802
+- failed: 17
 - exit_code: 1
 
 ## Failing files
 
 - tests/integration/always-run-exit-paths-test.sh — ✗ [SPEC-5] a 60s release hook held the exit
-- tests/integration/artifact-contract-test.sh — ✗ plugin.contract.violated event emitted — not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.GLcWBD/a3/events/events.jsonl
+- tests/integration/artifact-contract-test.sh — ✗ plugin.contract.violated event emitted — not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/events/events.jsonl
 - tests/integration/core-pipeline-runner-test.sh — ✗ happy path exits 0 — expected: 0, got: 1
 - tests/integration/core-pipeline-verdict-indicators-test.sh — ✗ Pipeline cannot start — stage manifests break the contract:
-- tests/integration/cycle-acceptance-terminal-failure-test.sh — ✗ Pipeline failed: status=failed run_id=20261026222851-1674108 issue=0 (took 5.2s)
+- tests/integration/cycle-acceptance-terminal-failure-test.sh — ✗ Pipeline failed: status=failed run_id=20261028021215-835200 issue=0 (took 3.9s)
 - tests/integration/cycle-on-max-pipeline-continues-test.sh — ✗ T1.4: pipeline.end emitted exactly once — expected: 1, got: 0
 - tests/integration/design-pipeline-test.sh — ✗ runner exits 0 — expected: 0, got: 1
-- tests/integration/engine-run-branch-test.sh — ✗ [E1] the first stage is already on the run's branch — expected: zbuild/issue-92110001, got: 
+- tests/integration/engine-run-branch-test.sh — ✗ [E1] the first stage is already on the run's branch — expected: zbuild/issue-90090001, got: 
 - tests/integration/full-pipeline-seq-cardinal-test.sh — ✗ pipeline exits 0 — expected: 0, got: 1
 - tests/integration/leaf-dispatch-role-bound-verdict-test.sh — ✗ [SPEC-4] the fixture stage dispatched (stage.complete emitted)
-- tests/integration/orch-timeout-applies-test.sh — ✗ [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME — got '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed
 - tests/integration/per-run-state-isolation-test.sh — ✗ T1: run-aaa exits 0 — expected: 0, got: 1
 - tests/integration/pipeline-resume-test.sh — ✗ integration: --resume exits 0 when remaining stage succeeds — expected: 0, got: 1
 - tests/integration/runner-exports-state-dir-test.sh — ✗ runner exits 0 — expected: 0, got: 1
@@ -479,29 +474,26 @@ Summary:
 - tests/integration/runner-release-exit-paths-test.sh — ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
 - tests/integration/state-root-isolation-test.sh — ✗ nested run exits 0 — expected: 0, got: 1
 - tests/integration/worktree-run-isolation-test.sh — ✗ [SPEC-3a] the build stage must commit to the work branch
-- tests/unit/lint-test-errexit-test.sh — ✗ [L5] the real tree passes — expected: 0, got: 1
-- tests/unit/orch-sequential-absent-guard-test.sh — ✗ [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
 
 ## Failing lines (extracted)
 
 ```
-  ✗ [L5] the real tree passes
-    expected: 0, got: 1
-  ✗ [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-    still referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/plugins/tool/orch-mock/tests/orch-mock-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/orch-backend-misconfigured-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/.github/issues/keepers-manifest.yaml
   ✗ [SPEC-5] a 60s release hook held the exit
     elapsed=62s
   ✗ [SPEC-5] the hanging hook was killed before completing
-    file should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.HymqJ2/release-ran
+    file should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.ZqRVnY/release-ran
+  ✗ [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.ZqRVnY/spec5p-entered
   ✗ plugin.contract.violated event emitted
-    not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.GLcWBD/a3/events/events.jsonl
+    not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/events/events.jsonl
   ✗ synthetic findings.json created
-    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.GLcWBD/a3/state/artifacts/intake-intake-contract-violated-findings.json
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/state/artifacts/intake-intake-contract-violated-findings.json
   ✗ plugin.contract.violated event names the expected artifact path
     output missing: intake-findings.json
   ✗ plugin.contract.violated event carries reason=artifact_missing_or_empty
     expected: artifact_missing_or_empty, got: 
   ✗ happy path exits 0
+    expected: 0, got: 1
   ✗ pipeline.end carries status=success
     expected: 1, got: 0
   ✗ [SPEC-1] stage.start emitted for each fixture stage (2x)
@@ -512,25 +504,22 @@ Summary:
     expected: complete, got: failed
   ✗ build stage_status=complete (ADR-006 enum)
     expected: complete, got: 
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/unit/lint-test-errexit-test.sh
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/unit/orch-sequential-absent-guard-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/always-run-exit-paths-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/artifact-contract-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/core-pipeline-runner-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/core-pipeline-verdict-indicators-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/cycle-acceptance-terminal-failure-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/cycle-on-max-pipeline-continues-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/design-pipeline-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/engine-run-branch-test.sh
-lint-test-errexit: tests/integration/orch-backend-misconfigured-test.sh:184 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/unit/orch-kill-uses-pg-kill-guard-test.sh:133 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: 12 file(s) switch stop-on-error on mid-file
-  1 of 5 tests failed
-  ✓ [#1801/SPEC-3] orch-sequential plugin directory does not exist
-  1 of 2 tests failed
-  ✓ [SPEC-6] stage.always_run.unresolved is emitted
+  ✗ pipeline.end names the failing stage
+  ✗ build stage_status=failed in state
+    expected: failed, got: 
+  ✗ kill mid-run emits pipeline.abort
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/always-run-exit-paths-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/artifact-contract-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/core-pipeline-runner-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/core-pipeline-verdict-indicators-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/cycle-acceptance-terminal-failure-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/cycle-on-max-pipeline-continues-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/design-pipeline-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/engine-run-branch-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/full-pipeline-seq-cardinal-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/leaf-dispatch-role-bound-verdict-test.sh
   ✓ [SPEC-6] an unresolvable always-run stage does not fail the run
-  2 of 10 tests failed
+  3 of 13 tests failed
   4 of 5 tests failed
   ✗ A2 abort trap: pipeline.abort event emitted on kill
   ✗ A2 abort trap: no state.error when state file writable
@@ -541,41 +530,113 @@ lint-test-errexit: 12 file(s) switch stop-on-error on mid-file
   ✗ all-pass: ✓ on test line
   ✗ stage.complete carries verdict=pass for each stage
   ✗ state.stage_verdicts.intake == pass
-  ✗ test verdict=fail -> ✗
+  ✗ test verdict=fail -> ✗ on test line
+  ✗ build scope_violation=true -> ✗ on build line
+  ✗ T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)
+    expected: success, got: 
+  ✓ T3 [SPEC-5]: cycle.member.terminal_failure NOT emitted for infra timeout
+  1 of 8 tests failed
+    pr_run_count=0
+  3 of 7 tests failed
+  ✗ T1.4: pipeline.end emitted exactly once
+  ✗ T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)
+  ✗ T2.2: pr plugin did NOT run
+    searched under /home/runner/work/_temp/zbuild-state/scratch/test/design-pipeline-754.x1go5T/home/.zbuild
+  3 of 3 tests failed
+  ✗ runner exits 0
+  ✗ events.jsonl contains plugin.run.start plugin=design
+  ✗ design.md exists in state artifacts
+  5 of 15 tests failed
+  ✗ [E1] the first stage is already on the run's branch
+  ✗ [E1] ...and is told its name
+  ✗ [E1] ...and the commit the
 
 [truncated]
 
 ## The checks of this run
 - the shape floor failed: missing_floor_files
-- the acceptance check failed: the acceptance check failed — SPEC-1/SPEC-3/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/test
-[… cut at 8192B — read /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md for the rest]
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
+e run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/state-root-isolation-1127.2G8X5T/home/.zbuild/repos/local/zbuild-test-stage.UfQr1K/issues/90360001/worktree
+    ▸ Pipeline started — run_id=nested-suite issue=90360001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+    
+    
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:51 UTC
+    
+    
+    ▸ Running stage: intake  (started 02:12:51 UTC)
+    ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-880784-1793153571724418607)
+    
+    ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:51 UTC
+    ✗ Pipeline failed: status=failed stage=intake run_id=nested-suite issue=90360001 (took 0.3s)
+    The run stopped before finishing.
+    ✗ Stage intake: orch_spawn failed for pool zbuild-intake-880784-1793153571724418607
+  DIAGNOSTIC: copied state: {  "schema_version": 1,  "run_id": "nested-suite",  "issue": 90360001,  "engine_sha": "64da51c3c64b7062c8b7614cae8e262b947bc86b",  "engine_branch": "zbuild/issue-1801-ci",  "stage_statuses": {    "intake": "failed"  },  "current_iteration": 0,  "self_heal_count": {},  "scope_manifest_hash": "",  "cost_ledger_pointer": 0,  "claim_lease_id": "",  "plugin_state": {},  "updated_at": "2026-10-28T02:12:
+  [38;2;248;113;113m✗[0m [SPEC-7] nested run used the fixture roster
+    [2mstage_statuses keys=intake (expected the intake→build fixture, not the built-in fallback)[0m
 
-> zbuild@0.1.0 lint
-> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh
+[2m  ──────────────────────────────────────────[0m
 
-lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
-lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
-lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
-validate-mechanics-yaml: OK — 18 mechanics validated
-lint-doc-freshness: OK — 44 plugin(s), 18 mechanic(s) — all checks passed.
-lint-action-versions: OK — no action version drift detected.
-lint-grep-c: OK — no grep -c || echo occurrences in scripts/ core/ plugins/ tests/
-lint-test-identity: OK — no real issue number used as test identity
-lint-llm-envelope: OK — 57 plugin source(s) checked, no markdown-document envelope fields
-lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
-lint-silenced-redirect: clean
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:116 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:132 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:148 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:164 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:215 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:231 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:261 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:294 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-backend-misconfigured-test.sh:73 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-b
+  [38;2;248;113;113m[1m4 of 21 tests failed[0m
+
+  [38;2;248;113;113m✗[0m nested run exits 0
+  [38;2;248;113;113m✗[0m D: nested run not terminal
+  [38;2;248;113;113m✗[0m E: default-root run exits 0
+  [38;2;248;113;113m✗[0m [SPEC-7] nested run used the fixture roster
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/worktree-run-isolation-test.sh
+
+[38;2;0;212;255m[1m  engine-owned per-run worktree (ADR-052, #1640)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] the main checkout's HEAD is unmoved by a full run
+  [38;2;74;222;128m✓[0m [SPEC-2] the main checkout's branch is unmoved by a full run
+  [38;2;248;113;113m✗[0m [SPEC-3a] the build stage must commit to the work branch
+    [2mrc=1 wt=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree build_root= branch_sha=dec075556efe08b76af1e2db16e74640c470d044 base=dec075556efe08b76af1e2db16e74640c470d044[0m
+  [38;2;248;113;113m✗[0m [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
+    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] the worktree is recorded and lives outside the target repo
+  [38;2;248;113;113m✗[0m [SPEC-5] the main checkout must survive a run that never reaches pr
+    [2mrc=1 head=b002b17b8e3ff2b1367ed3eb09de208e0e5e799e (was b002b17b8e3ff2b1367ed3eb09de208e0e5e799e) branch=main (was main) build_root=[0m
+  [38;2;248;113;113m✗[0m [SPEC-6] the opt-out must keep in-place semantics
+    [2mbranch=zbuild/issue-99090001 wt_recorded=0[0m
+  [38;2;248;113;113m✗[0m [SPEC-7] resume must reuse the run's worktree
+    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m5 of 8 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3a] the build stage must commit to the work branch
+  [38;2;248;113;113m✗[0m [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
+  [38;2;248;113;113m✗[0m [SPEC-5] the main checkout must survive a run that never reaches pr
+  [38;2;248;113;113m✗[0m [SPEC-6] the opt-out must keep in-place semantics
+  [38;2;248;113;113m✗[0m [SPEC-7] resume must reuse the run's worktree
+
+### issue-acceptance (verdict: fail)
+Outputs:
+- issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
+- issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
+
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-5: `always-run-exit-paths-test.sh` fails "a 60s release hook held the exit" / "the hanging hook was killed before completing" — always_run stages are not bounded by `timeout_s:`. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-9: `npm test` red (17 integration failures across core-pipeline-runner, design-pipeline, worktree-run-isolation, cycle tests, and others). What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1: broad pipeline integration failures cast doubt on orchestrator-route timeout enforcement reaching a working state. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 4 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-2: strategy files (`fanout.sh`, `map.sh`, `sequential.sh`) are listed in changed-files but absent from the diff — `ZBUILD_ORCH_TIMEOUT` removal is unverifiable with a broken test suite. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 5 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4: installed-tree misconfigured test not present in diff and pipeline is broken. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 6 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-6: `zbuild_pg_kill` wiring in `_orch_local_kill_slot` and the always-run watchdog not visible in the diff and unconfirmable against a failing suite.. What would settle it: a change that meets this requirement in full.
+
+Summary:
+## issue-acceptance — fail
+
+- The build stage timed out after changing only 1 file, leaving the implementation incomplete; `npm test` returns 17 failures including explicit SPEC-5 failures in `always-run-exit-paths-test.sh` proving `_runner_dispatch_always_run` still does not bound always-run stages by `timeout_s:`.
+
+- NOT MET: R-5: `always-run-exit-paths-test.sh` fails "a 60s release hook held the exit" / "the hanging hook was killed before completing" — always_run stages are not bounded by `timeout_s:`
+- NOT MET: R-9: `npm test` red (17 integration failures across core-pipeline-runner, design-pipeline, worktree-run-isolation, cycle tests, and others)
+- NOT MET: R-1: broad pipeline integration failures cast doubt on orchestrator-route timeout enforcement reaching a working state
+- NOT MET: R-2: strategy files (`fanout.sh`, `map.sh`, `sequential.sh`) are listed in changed-files but absent from the diff — `ZBUILD_ORCH_TIMEOUT` removal is unverifiable with a broken test suite
+- NOT MET: R-4: installed-tree misconfigured test not present in diff and pipeline is broken
+- NOT MET: R-6: `zbuild_pg_kill` wiring in `_orch_local_kill_slot` and the always-run watchdog not visible in the diff and unconfirmable against a failing suite.
 
 ## What you must not do
 
@@ -657,7 +718,7 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   Write to it as you work, not at the end: what you read, what you
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
-- Your budget: each model call has 900 seconds, with no limit on turns. A call that runs out of time
+- Your budget: each model call has 900 seconds and 37 turns. A call that runs out of time
   returns nothing: finish and write your answer well before the limit. The whole stage has 3600 seconds.
 
 ### How every stage works

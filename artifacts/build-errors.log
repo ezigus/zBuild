@@ -1,3 +1,5 @@
-model call iter=1 rc=124 turns=86
-model call iter=2 rc=124 turns=147
-model call iter=3 rc=124 turns=135
+model call iter=1 rc=1 subtype=error_max_turns turns=38
+model call iter=2 rc=1 subtype=error_max_turns turns=38
+model call iter=3 rc=1 subtype=error_max_turns turns=38
+model call iter=4 rc=1 subtype=error_max_turns turns=38
+model call iter=5 rc=1 subtype=success turns=32

@@ -1,0 +1,1 @@
+{"schema_version":4,"iterations":5,"data":{"rate_limit":{"message":"LLM rate-limited — resets 4:30am (UTC)"}},"result_contract":3,"outcome":"rate_limited","reason":"router_rate_limited"}
