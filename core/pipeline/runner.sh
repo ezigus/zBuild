@@ -926,6 +926,17 @@ _pipeline_status_color() {
 # with 2>/dev/null runs under that redirect, so the abort banner went to
 # /dev/null when SIGTERM landed during one. A no-op when nothing was saved.
 _runner_restore_stderr() {
+    # Guard against a repeat signal (e.g. `timeout` forwarding its own SIGTERM
+    # to the process group after the first already fired). Called only from
+    # _runner_abort_trap (EXIT trap). Setting the guard here — as the very first
+    # instruction inside the function body — closes the race window that exists
+    # AFTER this function returns to _runner_abort_trap: bash checks pending
+    # signals at function-return boundaries, so a pending second TERM would fire
+    # _runner_signal_trap TERM (→ exit 1) before the explicit guard in
+    # _runner_abort_trap could execute. By setting it HERE the guard is already
+    # active by the time the function returns. B3 is satisfied because
+    # _runner_restore_stderr is still the first call in _runner_abort_trap.
+    trap ':' INT TERM
     [[ -n "${_RUNNER_ERR_FD:-}" ]] && exec 2>&"$_RUNNER_ERR_FD"
     return 0
 }
@@ -2530,16 +2541,13 @@ main() {
         # ADR-054 §7: restore stderr FIRST so every subsequent log line reaches
         # the runner's own stderr even when the trap fired inside a 2>/dev/null call.
         _runner_restore_stderr
-        # Guard against a repeat signal (e.g. `timeout` forwarding its own SIGTERM
-        # to the process group after the first already fired) aborting this trap.
-        # Must be in place BEFORE `plugin_stop_running` below, which calls `wait`;
-        # bash interrupts `wait` on signal delivery — a second TERM would fire
-        # `_runner_signal_trap TERM`, call `exit 1`, and abort the EXIT trap before
-        # `_runner_dispatch_always_run` runs. Mirrors the pattern already used
-        # inside `_runner_dispatch_always_run` (line 2516). Restore real handlers
-        # after the kill/wait block so `_runner_dispatch_always_run` can still
-        # handle signals. `_runner_restore_stderr` is a single `exec 2>&N` with no
-        # `wait`, so placing the guard immediately after it is safe.
+        # Guard set inside _runner_restore_stderr (first command of that function)
+        # so it is active before the function returns — bash checks pending signals
+        # at function-return boundaries, which is before this line. The explicit
+        # install here is retained for clarity; it is idempotent. Restore real
+        # handlers after the kill/wait block so `_runner_dispatch_always_run` can
+        # still handle signals. Mirrors the pattern already used inside
+        # `_runner_dispatch_always_run` (line 2516).
         trap ':' INT TERM
         # ADR-054 §7: a signal ends the run while a stage is still running;
         # stop it, and all it started, before anything else.
