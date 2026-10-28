@@ -192,6 +192,8 @@ omit this line the pipeline falls back to the plan title.
 **Test-stage finding 1 (SPEC-1 — one assertion fails at HEAD; code issue):** The negctl check at HEAD for SPEC-1 shows 14/15 assertions pass. The one remaining failure is `[#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME` — got `<empty>`. Confirmed by reading `fanout.sh`: the strategy correctly clears `_ORCH_COLLECT_OUTCOME=""` before calling `orch_collect` and then tests `${_ORCH_COLLECT_OUTCOME:-}`. The variable does not propagate back from the collect call into the strategy's shell context. The design correctly requires both (a) `_orch_local_collect_results` sets `_ORCH_COLLECT_OUTCOME=timed_out` and (b) the fanout strategy reads it and sets `_ZB_STRATEGY_OUTCOME=timed_out`. The build must ensure `orch_collect` is called without a subshell boundary that would lose the export. This is a code issue for the build stage; the design's scope (fanout.sh, local_engine.sh) and SPEC-1 text are correct and unchanged.
 
 **Test-stage finding 2 (SPEC-3 — 3 files remain at HEAD; code issue):** The negctl check at HEAD for SPEC-3 confirms that `orch-mock-test.sh`, `orch-backend-misconfigured-test.sh`, and `.github/issues/keepers-manifest.yaml` still contain the literal `orch-sequential`. All three are in scope; SPEC-3 names the exact lines to update in each. The guard test also scans `core/`, `plugins/`, `scripts/`, `config/`, `tests/`, `.github/` — `docs/audits/` is outside its search path and the `docs/audits/adr-2026-10-03/batch-1.md` audit file found by a broad worktree grep is not in the guard's scope. Build issue; no design change needed.
+
+**Acceptance gate finding (revision 11):** The acceptance gate (test stage second pass) reported `not_passing_at_head` failures for SPEC-1, SPEC-3, and reachability checks for fanout.sh, map.sh, sequential.sh, config/adr-enforcement-baseline.txt, config/templates/deployed.yaml, and config/templates/simple.yaml — all attributed to `orch-timeout-applies-test.sh`. The gate also confirmed NEGCTL PASS for SPEC-2, SPEC-4, SPEC-5, SPEC-6, SPEC-10 (those tests correctly fail on old code) and REACHABILITY PASS for contract.sh, runner.sh, and local_engine.sh. All gate failures are implementation-incomplete issues, not design issues: (a) SPEC-1's test fails at HEAD because fanout.sh still calls `orch_collect` across a subshell boundary so `_ORCH_COLLECT_OUTCOME` never propagates back — build stage must call `orch_collect` in the same shell context; (b) SPEC-3's test fails at HEAD because the three identified files still contain `orch-sequential` — build stage must apply the SPEC-3-specified cleanups; (c) the reachability failures for fanout.sh, map.sh, sequential.sh, and config files are a cascade of the SPEC-1 test not passing at HEAD — once SPEC-1's implementation is complete, reachability for those files will resolve. The design scope and wiring block are correct: reverting any of those wiring files would cause the timeout propagation to regress; the gate could not verify this because the test cannot pass until the subshell issue is fixed. No design change needed.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
@@ -336,9 +338,9 @@ Outputs:
 Summary:
 ## build — timed_out
 
-- changed 20 file(s) over 2 pass(es), 6 iteration(s)
+- changed 1 file(s) over 1 pass(es), 3 iteration(s)
 
-- lines: +76 / -456
+- lines: +5 / -10
 - terminated: router_timeout
 - scope violation: false
 
