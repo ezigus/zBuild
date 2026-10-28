@@ -205,20 +205,32 @@ rm -f "$STATE_FILE" "$EVENTS_JSONL"
 mock_plugin_factory "fast-one" "agent" 0 >/dev/null
 mock_plugin_factory "fast-two" "agent" 0 >/dev/null
 
-# fast-one: sleeps 1s then returns normally (1s < max_run_s=2s, so not killed).
-# fast-two: sleeps 60s. The watchdog fires at wall-clock t=2s while fast-two is
+# fast-one: sleeps 5s then returns normally (5s < max_run_s=6s, so not killed).
+# fast-two: sleeps 60s. The watchdog fires at wall-clock t=6s while fast-two is
 # sleeping. fast-one completing before the watchdog fires proves the timer tracks
-# total wall-clock time from run start, not a per-stage reset — the timer was
-# already ticking through the idle gap between dispatches.
+# total wall-clock time from run start.
+#
+# Distinguishing global watchdog from per-stage reset timer:
+#   Global timer (correct): fires at absolute t=6s from run start.
+#     fast-two has been running for ~1s.  elapsed ≈ 6s.
+#   Per-stage timer (wrong — resets at each stage dispatch):
+#     fires at fast-two-start + 6s = ~5s + 6s = ~11s from run start.
+#     elapsed ≈ 11s.
+#   Bound of 10s sits between 6s (global) and 11s (per-stage), so only a
+#   global wall-clock timer passes.  The "fast-one completed" check
+#   additionally proves the watchdog didn't fire before fast-one finished
+#   (t < 5s), so the watchdog window is (5s, 10s] — exactly where the
+#   global timer (6s) lives.
 #
 # Falsifiability:
-#   OLD code (no watchdog): fast-one (1s) + fast-two (60s) → outer timeout 25s.
-#     Elapsed ≈ 25s > 8s → elapsed-time assertion FAILS.
-#   NEW code (watchdog at t=2s): watchdog fires at t=2s.
-#     Elapsed ≈ 2-3s ≤ 8s → assertion PASSES.
+#   OLD code (no watchdog): fast-one (5s) + fast-two (60s) → outer timeout 25s.
+#     Elapsed ≈ 25s > 10s → elapsed-time assertion FAILS.
+#   Per-stage reset (wrong implementation): fires at ~11s.
+#     Elapsed ≈ 11s > 10s → elapsed-time assertion FAILS.
+#   NEW code (global watchdog at t=6s): elapsed ≈ 6-8s ≤ 10s → PASSES.
 cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
 fast_one_run() {
-    sleep 1
+    sleep 5
     $(mock_result_line fast-one)
     return 0
 }
@@ -233,7 +245,7 @@ PLUG
 
 _p2_start="$(date +%s)"
 p2_rc=0
-( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 25 bash "$RUNNER" \
+( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=6 timeout 25 bash "$RUNNER" \
     --template timeout-two-stage --goal "run-timed-out test p2" ) \
     >"$TEST_TEMP_DIR/p2.stdout" 2>"$TEST_TEMP_DIR/p2.stderr" \
     || p2_rc=$?
@@ -262,15 +274,16 @@ else
 fi
 
 # Wall-clock limit check: the run must end within max_run_s + buffer.
-# Old code (no watchdog): outer timeout fires at 25s → elapsed ≈ 25s > 8s → FAILS.
-# New code (watchdog at t=2s): elapsed ≈ 2-3s ≤ 8s → PASSES.
-# Combined with "fast-one completed" this proves the timer tracks wall-clock time
-# from run start (firing even across idle windows), not a per-stage reset.
-if [[ "$_p2_elapsed" -le 8 ]]; then
-    assert_pass "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog fires independently of dispatch state (elapsed ${_p2_elapsed}s)"
+# Old code (no watchdog): outer timeout fires at 25s → elapsed ≈ 25s > 10s → FAILS.
+# Per-stage reset (wrong): fires at fast-one + max_run_s ≈ 5+6=11s > 10s → FAILS.
+# New code (global watchdog at t=6s): elapsed ≈ 6-8s ≤ 10s → PASSES.
+# Combined with "fast-one completed" this proves the timer is a global wall-clock
+# timer tracking from run start (not a per-stage reset that would fire at ~11s).
+if [[ "$_p2_elapsed" -le 10 ]]; then
+    assert_pass "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset (elapsed ${_p2_elapsed}s)"
 else
-    assert_fail "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog fires independently of dispatch state" \
-        "elapsed ${_p2_elapsed}s > 8s — watchdog did not fire or fired very late; expected ≤ 8s"
+    assert_fail "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset" \
+        "elapsed ${_p2_elapsed}s > 10s — per-stage reset timer would fire at ~11s; global watchdog fires at ~6s; expected ≤ 10s"
 fi
 
 # ── P3: TERM-ignore → KILL within TERM + 10s ────────────────────────────────
