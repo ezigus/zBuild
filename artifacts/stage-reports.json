@@ -10,6 +10,8 @@
     "core/pipeline/strategies/fanout.sh",
     "core/pipeline/strategies/map.sh",
     "core/pipeline/strategies/sequential.sh",
+    "core/pipeline/template-resolver.sh",
+    "core/pipeline/template.sh",
     "docs/adr/ADR-011-pluggable-backends.md",
     "docs/adr/ADR-017-per-stage-router-config.md",
     "docs/wiki/Plugins.md",

@@ -493,13 +493,25 @@ Summary:
 - open questions: 0
 - artifact: plan.json
 
-### design (verdict: pass) — your own
+### design (verdict: unavailable) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 
 Summary:
+## design — error
+
+- no design was written (router_rc_nonzero)
+
+design.md is unchanged: it stays the last good design.
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-2/design-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-2/design-verdict.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-2/design.md
+
+Summary of that output:
 ## design — pass
 
 - authored design.md — 42 file(s) in scope, 12 acceptance SPEC(s)

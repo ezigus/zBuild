@@ -20,6 +20,8 @@ core/pipeline/runner.sh
 core/pipeline/strategies/fanout.sh
 core/pipeline/strategies/map.sh
 core/pipeline/strategies/sequential.sh
+core/pipeline/template-resolver.sh
+core/pipeline/template.sh
 scripts/lib/proc-group.sh
 scripts/lib/stage-time-limit.sh
 config/templates/simple.yaml
@@ -153,3 +155,9 @@ tests/unit/plugin-artifact-goldens-test.sh [G5]: the G5 section asserts orch-seq
 *Finding 4 (R-9): 2 failing tests.* Follows from findings 2 and 3. The build must fix both code issues.
 
 *Finding 5 (R-7 confirmed).* The scope discovery greps have been run at HEAD in this revision and results are documented above. R-7 is met. SPEC-8 is satisfied.
+
+**Issue-acceptance findings (revision 14 — root-cause confirmed):**
+
+*Scope gap: `core/pipeline/template-resolver.sh` and `core/pipeline/template.sh` missing from scope block.* The root cause of R-5 finding 2 (persist hook never entered) is fully traceable: `template-resolver.sh`'s old-shape merge path (the branch that runs when the per-repo file lacks a top-level `flow:`) extracts `stages:` and `stage_definitions:` from the per-repo file but never extracts `always_run:`. So the merged file retains only the base template's `always_run: [release]`; the per-repo overlay's `always_run: [release, persist]` is silently dropped. `template.sh`'s `_tpl_parse_always_run` already handles both block and inline forms correctly — it reads whatever the merged file contains. The code change is therefore entirely in `template-resolver.sh` (add an `always_run:` extraction step, analogous to the `stages:` extraction step, replacing the base's list when the per-repo declares its own). `template.sh` needs no code change but belongs in scope as the consumer of the resolved file. Both files added to scope block.
+
+*R-7 re-confirmed at HEAD.* Greps re-run: `grep -rl 'orch-sequential' tests/` → 1 file (`orch-sequential-absent-guard-test.sh`, the new guard — correct); `grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/` → 0 hits; `grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/` → 2 files (always-run-exit-paths-test.sh, runner-release-exit-paths-test.sh) — both in scope; `grep -rl '_orch_local_kill_slot' tests/` → 1 file (orch-kill-uses-pg-kill-guard-test.sh) — in scope; `grep -rl 'router\.timeout_s' tests/` → 21 files; the 2 that pin the always-run watchdog bound are in scope; remaining 19 test `template_stage_router_timeout` (per-call model timeout, unchanged). No new test file is required in scope.

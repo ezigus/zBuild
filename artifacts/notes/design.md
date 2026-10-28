@@ -1,69 +1,86 @@
-# Design notes — issue #1801 (revision 13)
+# Design notes — issue #1801 (revision 14)
 
-## What changed from revision 12
+## What changed from revision 13
 
-### Issue-acceptance findings addressed in revision 13
+### Scope gap fixed in revision 14
 
-**Finding 1/2 (R-4): installed-tree end-to-end test absent**
-`orch-backend-misconfigured-test.sh` only calls `orch_load_backend` in isolation (sourcing
-contract.sh from checkout). The issue requires the full pipeline run to fail as `misconfigured`.
+The revision 13 notes said `core/pipeline/template.sh` and
+`core/pipeline/template-resolver.sh` were to be added to scope, but the
+scope block in design-draft.md did not contain them. Added in revision 14.
 
-SPEC-4 and SPEC-10 updated to require two layers:
-- (a) unit: existing `orch_load_backend` call returning non-zero (already in test)
-- (b) end-to-end: create minimal installed tree (rsync core/plugins/config/scripts to temp dir),
-  run `bash $ZBUILD_HOME/core/pipeline/runner.sh` end-to-end, assert pipeline exits non-zero
-  with `misconfigured`
+### Root cause of R-5 Finding 2 confirmed (persist hook never entered)
 
-runner.sh code change needed (in scope): check `_ZBUILD_ORCH_BACKEND_DISPOSITION` immediately
-after sourcing `contract.sh`; fail pipeline before any stage dispatch when `misconfigured`.
+Confirmed by reading `template-resolver.sh` directly (lines ~60-120).
 
-**Finding 3 (R-5): persist hook never entered**
-`always-run-exit-paths-test.sh` exits in 0s without dispatching persist. Root cause: `extends:`
-does not propagate `always_run:` from the extending template. Only base template's `[release]`
-ends up in `_TPL_ALWAYS_RUN`.
+The OLD-shape merge path (entered when per-repo file lacks top-level `flow:`)
+performs three steps:
+1. Copy base file minus `stages:` and `stage_definitions:` blocks
+2. Append `stages:` from per-repo file
+3. Append `stage_definitions:` from per-repo file
 
-SPEC-5 updated: template extension must propagate `always_run:` from extending template.
-Scope additions: `core/pipeline/template.sh` and `core/pipeline/template-resolver.sh`
-(these were absent but contain the code building `_TPL_ALWAYS_RUN`).
+`always_run:` is NOT extracted from the per-repo file. When
+`always-run-spec5p.yaml` (extends: always-run-minimal, declares
+`always_run: [release, persist]`) is resolved, the merged file only has
+the base's `always_run: [release]`. `_tpl_parse_always_run` reads the
+merged file → `_TPL_ALWAYS_RUN = [release]` → persist never dispatched.
 
-**Finding 4 (R-5): `[SPEC-5]` release cleanup regression**
-negctl confirms `[SPEC-5]` cleanup FAILS at BOTH baseline AND HEAD. It was failing at baseline
-with old code (router.timeout_s=30s watchdog, 15s kill grace too short). At HEAD the 3s
-watchdog should allow teardown within the 15s kill grace — but it STILL fails. Root cause is in
-the hard-kill abort-trap dispatch path. Build stage must fix.
+The fix belongs in `template-resolver.sh`: add an `always_run:` extraction
+step analogous to the `stages:` step, replacing the base's block when the
+per-repo file declares its own `always_run:`.
 
-**Finding 5 (R-9)**: Follows from findings 3 and 4 (2 failing tests remain).
+`template.sh`'s `_tpl_parse_always_run` (line 1592) already handles both
+block and inline forms correctly and needs no code change. It is in scope
+as the consumer of the resolved file.
 
-**Finding 6 (R-7 confirmed)**: Ran all five greps at HEAD. 22 total matching files. All files
-pinning always-run watchdog behavior are in scope. Files matching `router.timeout_s` for the
-per-call model timeout are not in scope. Documented in issue-acceptance findings section.
-
-## Key invariants for build stage
-
-1. runner.sh must check `_ZBUILD_ORCH_BACKEND_DISPOSITION` at startup (after sourcing
-   contract.sh), before any stage is dispatched, and fail the pipeline as `misconfigured`.
-
-2. Template extension (`extends:`) must propagate `always_run:` from the extending template
-   (extending template wins over base, consistent with all other field overrides).
-
-3. Hard-kill path: `_runner_abort_trap` → `_runner_dispatch_always_run` must complete before
-   the kill grace expires. With `_SPEC5_KILL_GRACE=15` s and a 3 s watchdog, there is 12 s
-   slack — this should be achievable if the abort trap is correctly wired to the EXIT trap.
-
-4. negctl must show `[SPEC-5]` cleanup FAILING at baseline and PASSING at HEAD.
-
-## Scope additions in revision 13
+### Template resolver call chain
 
 ```
-core/pipeline/template.sh
-core/pipeline/template-resolver.sh
+runner.sh:53   — source "template-resolver.sh"
+runner.sh:1788 — template_file="$(resolve_template_file ...)"
+template.sh:58 — load_template "$template_file"
+template.sh:697 — _tpl_parse_always_run "$template_file"
 ```
 
-## Status: COMPLETE (revision 13)
+WIRING: `runner.sh` is already in WIRING and is the direct caller of
+`resolve_template_file` from `template-resolver.sh`. No change needed to WIRING.
+
+### R-7 scope discovery re-run at HEAD (revision 14)
+
+- `grep -rl 'orch-sequential' tests/` → 1 file (orch-sequential-absent-guard-test.sh) ✓
+- `grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/` → 0 hits ✓
+- `grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/` → 2 files
+  (always-run-exit-paths-test.sh, runner-release-exit-paths-test.sh) — both in scope ✓
+- `grep -rl '_orch_local_kill_slot' tests/` → 1 file
+  (orch-kill-uses-pg-kill-guard-test.sh) — in scope ✓
+- `grep -rl 'router\.timeout_s' tests/` → 21 files; 2 pin always-run watchdog
+  (in scope); 19 test per-call model timeout (unchanged) ✓
+
+No new test file is required in scope beyond what revision 13 established.
+
+## Invariants for build stage (carried from revision 13)
+
+1. runner.sh: check `_ZBUILD_ORCH_BACKEND_DISPOSITION` at startup (after
+   sourcing contract.sh), fail pipeline before any stage dispatch when
+   disposition is `misconfigured`.
+
+2. template-resolver.sh: in the old-shape merge path, extract `always_run:`
+   from per-repo file (if present) and replace the base's `always_run:`.
+   This is the root cause of the persist hook never entering.
+
+3. Hard-kill path (runner.sh): `_runner_abort_trap` → `_runner_dispatch_always_run`
+   must complete within kill grace. With `_SPEC5_KILL_GRACE=15` s and 3 s
+   watchdog, 12 s slack — achievable if abort trap correctly wires to EXIT trap.
+
+4. SPEC-5 cleanup test MUST fail at baseline (old code) and pass at HEAD.
+
+## Status: COMPLETE (revision 14)
+
 Design written to /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 
-Key changes from revision 12:
-- SPEC-4 and SPEC-10: added end-to-end installed-tree test requirement
-- SPEC-5: added template extension propagation requirement; added template.sh/template-resolver.sh to scope
-- issue-acceptance findings section added (revision 13)
-- R-7 scope discovery results documented explicitly
+Key changes vs revision 13:
+- Added `core/pipeline/template-resolver.sh` and `core/pipeline/template.sh`
+  to the scope block (the gap the revision 13 notes identified but the
+  design-draft.md scope block did not reflect)
+- Revision 14 findings section added to design-draft.md Findings
+- Root cause of R-5 Finding 2 fully documented with file/line evidence
+- R-7 greps re-run at HEAD and confirmed complete
