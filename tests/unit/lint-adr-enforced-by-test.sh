@@ -115,23 +115,26 @@ else
         "ADR-017 still listed in $BASELINE; remove the entry once the ## Enforced by section is added"
 fi
 
-# Verify each ADR's ## Enforced by section actually names test files (not just
-# that the heading exists). A section with prose but no test file references
-# does not satisfy the requirement.
-_adr011_eb_content="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p{print}' "$ADR_011" 2>/dev/null || true)"
-if grep -q 'tests/' <<< "$_adr011_eb_content"; then
-    assert_pass "[#1801/SPEC-7] ADR-011 ## Enforced by section names at least one test file"
+# Verify each ADR's ## Enforced by section maps every individual § statement to
+# a test file. A section that exists but has § lines without tests/ references
+# does not satisfy the per-statement coverage the requirement specifies.
+# awk reads the file directly — no pipeline, no SIGPIPE risk.
+_adr011_unmapped="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p && /^- §/ && !/tests\//{print}' "$ADR_011" 2>/dev/null || true)"
+_adr011_stmt_count="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p && /^- §/{c++} END{print c+0}' "$ADR_011" 2>/dev/null || printf '0')"
+if [[ "${_adr011_stmt_count}" -gt 0 ]] && [[ -z "$_adr011_unmapped" ]]; then
+    assert_pass "[#1801/SPEC-7] ADR-011 ## Enforced by: every § statement maps to a test file (${_adr011_stmt_count} statement(s))"
 else
-    assert_fail "[#1801/SPEC-7] ADR-011 ## Enforced by section must name test file(s) (contain 'tests/')" \
-        "no 'tests/' reference found in the ## Enforced by content of $ADR_011"
+    assert_fail "[#1801/SPEC-7] ADR-011 ## Enforced by: every § statement must name a test file" \
+        "§ count: ${_adr011_stmt_count}; unmapped lines: '${_adr011_unmapped:-none found}'"
 fi
 
-_adr017_eb_content="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p{print}' "$ADR_017" 2>/dev/null || true)"
-if grep -q 'tests/' <<< "$_adr017_eb_content"; then
-    assert_pass "[#1801/SPEC-7] ADR-017 ## Enforced by section names at least one test file"
+_adr017_unmapped="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p && /^- §/ && !/tests\//{print}' "$ADR_017" 2>/dev/null || true)"
+_adr017_stmt_count="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p && /^- §/{c++} END{print c+0}' "$ADR_017" 2>/dev/null || printf '0')"
+if [[ "${_adr017_stmt_count}" -gt 0 ]] && [[ -z "$_adr017_unmapped" ]]; then
+    assert_pass "[#1801/SPEC-7] ADR-017 ## Enforced by: every § statement maps to a test file (${_adr017_stmt_count} statement(s))"
 else
-    assert_fail "[#1801/SPEC-7] ADR-017 ## Enforced by section must name test file(s) (contain 'tests/')" \
-        "no 'tests/' reference found in the ## Enforced by content of $ADR_017"
+    assert_fail "[#1801/SPEC-7] ADR-017 ## Enforced by: every § statement must name a test file" \
+        "§ count: ${_adr017_stmt_count}; unmapped lines: '${_adr017_unmapped:-none found}'"
 fi
 
 _reset; _adr ADR-908-x "Accepted" 'Covered by the unit tests, see the suite.'; _lint
