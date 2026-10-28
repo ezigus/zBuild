@@ -17,7 +17,7 @@
 
   [38;2;0;212;255m[#1801/SPEC-6] TERM-ignoring child leaves no process after watchdog fires (runtime)[0m
   ✗ [#1801/SPEC-6] TERM-ignoring child must not outlive the watchdog
-    pid 1184733 still alive; old code: direct kill misses TERM-ignoring children; new code: zbuild_pg_kill kills the group
+    pid 1266719 still alive; old code: direct kill misses TERM-ignoring children; new code: zbuild_pg_kill kills the group
 
   ──────────────────────────────────────────
 

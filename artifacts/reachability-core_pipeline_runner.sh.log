@@ -158,7 +158,7 @@
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
-    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.76lCr7/plugins/tool/orch-sequential[0m
+    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2qVjk4/plugins/tool/orch-sequential[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden does not exist
 
