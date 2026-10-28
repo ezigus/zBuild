@@ -1,33 +1,78 @@
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index 8d9aba53..8a625b70 100755
+index 8a625b70..56e699eb 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -2536,8 +2536,18 @@ main() {
-         # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
-         # ignored and `wait` would block until the full sleep expires. SIGKILL
-         # cannot be caught or ignored, so the wait returns immediately.
-+        # Guard against a second SIGTERM (e.g. from `timeout` forwarding its own
-+        # SIGTERM to the process group after the first already fired): without the
-+        # guard, `_runner_signal_trap TERM` calls `exit 1`, and calling `exit`
-+        # from inside an EXIT trap aborts the trap immediately before
-+        # `_runner_dispatch_always_run` can run. Mirrors the pattern already used
-+        # inside `_runner_dispatch_always_run` (line 2516). Restore real handlers
-+        # after `wait` so `_runner_dispatch_always_run` can still handle signals.
-+        trap ':' INT TERM
-         kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
--        wait "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
-+        [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && wait "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true
-+        trap '_runner_signal_trap TERM' TERM
-+        trap '_runner_signal_trap INT' INT
-         # #1829: free live resources first, while the state file and the
-         # process tree are still intact.
-         _runner_dispatch_always_run
-@@ -2814,7 +2824,7 @@ main() {
+@@ -2824,7 +2824,7 @@ main() {
                  kill -KILL "$_wdg_child" 2>/dev/null || true
              fi
          done < <(pgrep -P "$_wdg_runner_pid" 2>/dev/null)
--    ) &
-+    ) >/dev/null 2>&1 &
+-    ) >/dev/null 2>&1 &
++    ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &
      _RUNNER_WATCHDOG_PID=$!
  
      # ── ADR-015 stage-io stdout channel ─────────────────────────────────────
+diff --git a/tests/integration/run-timed-out-test.sh b/tests/integration/run-timed-out-test.sh
+index b3951ef6..d16cf71d 100644
+--- a/tests/integration/run-timed-out-test.sh
++++ b/tests/integration/run-timed-out-test.sh
+@@ -204,16 +204,21 @@ rm -f "$STATE_FILE" "$EVENTS_JSONL"
+ mock_plugin_factory "fast-one" "agent" 0 >/dev/null
+ mock_plugin_factory "fast-two" "agent" 0 >/dev/null
+ 
+-# fast-one: returns immediately (proves it can complete BEFORE the watchdog fires)
+-# fast-two: sleeps 30s (watchdog fires during fast-two's execution)
+-# max_run_s=3: watchdog fires 3s into the run. fast-one completes in < 1s.
+-# After 3s, fast-one's status in pipeline-state.json MUST be "complete", proving
+-# the watchdog ran independently — it did not need a stage to be dispatching.
+-# If the watchdog fired BEFORE fast-one completed, fast-one's status would not be
+-# "complete", and the assertion below would fail.
++# fast-one: sleeps 2s, consuming most of the 3s limit, then returns.
++# fast-two: writes a sentinel file immediately at start, then sleeps 30s.
++# max_run_s=3: watchdog fires at ~t=3s. fast-one completes at ~t=2s, leaving
++# a ~1s idle window where the engine is between dispatches. The watchdog fires
++# in this window — before the engine can fork fast-two (bash dispatch takes
++# ~0.2-0.5s, far less than 1s). fast-two's sentinel must therefore be absent.
++#
++# Falsifiability:
++#   OLD code (no watchdog): fast-two starts at ~t=2s and writes its sentinel;
++#     outer timeout 25 kills at t=25s. Sentinel IS present → assertion FAILS.
++#   NEW code (watchdog at t=3s): fast-two never starts → sentinel ABSENT → PASSES.
+ FAST_TWO_STARTED="$TEST_TEMP_DIR/fast-two-started"
+ cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
+ fast_one_run() {
++    sleep 2
+     $(mock_result_line fast-one)
+     return 0
+ }
+@@ -255,6 +260,18 @@ else
+     assert_fail "[#1944/SPEC-1] P2: pipeline-state.json written" "state file not found"
+ fi
+ 
++# The "idle between dispatches" check: fast-two must never have started.
++# fast-one consumed 2s of the 3s limit; the watchdog fires in the ~1s idle
++# window after fast-one completes, before the engine can dispatch fast-two.
++# Old code (no watchdog): fast-two starts and writes its sentinel immediately.
++# New code (with watchdog): the watchdog fires before fast-two is dispatched.
++if [[ -e "$FAST_TWO_STARTED" ]]; then
++    assert_fail "[#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches" \
++        "fast-two sentinel found at ${FAST_TWO_STARTED} — watchdog did not fire before fast-two was dispatched"
++else
++    assert_pass "[#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches"
++fi
++
+ # ── P3: TERM-ignore → KILL within TERM + 10s ────────────────────────────────
+ print_test_section "P3: stage that ignores SIGTERM is dead within TERM + 10s"
+ 
+diff --git a/tests/unit/runner-signal-rearm-test.sh b/tests/unit/runner-signal-rearm-test.sh
+index d3fe3418..c09c6dfa 100755
+--- a/tests/unit/runner-signal-rearm-test.sh
++++ b/tests/unit/runner-signal-rearm-test.sh
+@@ -89,7 +89,7 @@ _runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
+ # the first cut of this test and was caught in review.
+ _startup_int="$(awk '/^main\(\) \{/{f=1} f && /trap .* INT$/{print; exit}' "$_runner_sh" \
+     | grep -oE "trap '[^']+' INT" || true)"
+-_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap .* TERM$/{print; exit}' "$_runner_sh" \
++_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap '"'"'.*'"'"' TERM$/{print; exit}' "$_runner_sh" \
+     | grep -oE "trap '[^']+' TERM" || true)"
+ # What the promoted helper installs, taken from the live function body.
+ _rearm_body="$(declare -f _runner_rearm_traps 2>/dev/null || true)"
