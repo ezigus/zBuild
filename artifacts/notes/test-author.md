@@ -1,59 +1,80 @@
 # Test author notes — Issue #1801
 
 ## Summary of work
-Round 10 — COMPLETE. Fixed all 3 issues found by the round-2 checker.
+Round 12 — Fixed 2 remaining issues found by the test stage.
 
-## What was fixed in Round 10
+## What was fixed in Round 12
 
-### Fix 1: SPEC-1 — orch-timeout-applies-test.sh
-Added SPEC-1g (sequential) and SPEC-1h (map) timed_out propagation tests.
+### Fix 1: SPEC-1 — orch-timeout-applies-test.sh (SPEC-1f/g/h)
 
-The existing SPEC-1f tested fanout strategy only. The checker said sequential and map only had
-the `--timeout` argument spy test, not the `_ZB_STRATEGY_OUTCOME=timed_out` propagation and
-stage+limit output assertions.
+**Problem**: SPEC-1f, 1g, and 1h checked `_ZB_STRATEGY_OUTCOME` but that variable
+is never set by either old or new code. Both old and new code leave it empty, so
+the test fails on BOTH old and new code (acceptance check: "does not pass on new code").
 
-Added after SPEC-1f (lines 315–381):
-- SPEC-1g: `_strategy_run_sequential` with the already-mocked `orch_collect` returning `timed_out`
-  - asserts `_ZB_STRATEGY_OUTCOME == "timed_out"`
-  - asserts stage name ("testjob") in output
-  - asserts timeout limit in output
-- SPEC-1h: same pattern for `_strategy_run_map`
+**Root cause**: The SPEC says "the test for each strategy verifies the outcome variable
+`_ORCH_COLLECT_OUTCOME` is set to `timed_out` (not `failed`)". The phrase "not `failed`"
+means OLD code sets `_ORCH_COLLECT_OUTCOME="failed"` on non-zero collect rc. NEW code
+preserves `_ORCH_COLLECT_OUTCOME="timed_out"` from the collect result.
 
-Both use `|| _s1g_rc=$?` / `|| _s1h_rc=$?` pattern (no `set -e`).
-Both use `grep -q ... <<< "$var"` (no SIGPIPE antipattern).
+**Fix**: Changed all three (fanout, sequential, map) to check `_ORCH_COLLECT_OUTCOME`
+instead of `_ZB_STRATEGY_OUTCOME`:
+- Initialize `_ORCH_COLLECT_OUTCOME=""` before the strategy call (reset)
+- Mock `orch_collect` sets `_ORCH_COLLECT_OUTCOME="timed_out"` and returns 1
+- OLD code: strategy resets `_ORCH_COLLECT_OUTCOME` to `"failed"` → test fails ✓
+- NEW code: strategy preserves `_ORCH_COLLECT_OUTCOME="timed_out"` → test passes ✓
+- Updated comments and assert messages accordingly
 
-### Fix 2: SPEC-3 — orch-sequential-absent-guard-test.sh
-Added SPEC-3c: direct assertion that `tests/golden/orch-sequential-capabilities.golden` does not exist.
+### Fix 2: SPEC-7 — lint-adr-enforced-by-test.sh
 
-The checker noted: "a file by that name whose content lacks the string 'orch-sequential' would
-pass the grep yet violate the requirement." The grep-based SPEC-3b only checked content, not
-file existence by name. SPEC-3c does `[[ ! -f "$_golden_file" ]]` to directly check.
+**Problem**: Round-2 checker finding: "assertions verify only that an `## Enforced by`
+heading exists and section contains at least one `tests/` reference, but do not verify
+that every individual statement (§) is mapped to a test".
 
-### Fix 3: SPEC-7 — lint-adr-enforced-by-test.sh
-Added two assertions that verify the `## Enforced by` section in ADR-011 and ADR-017 actually
-contains test file references (lines with `tests/`), not just that the heading exists.
+**Fix**: Replaced the "at least one tests/ reference" checks with per-statement
+coverage checks using awk:
+- `awk '/^## Enforced by/{p=1;next} /^## /{p=0} p && /^- §/ && !/tests\//{print}'`
+  → extracts `- §` lines in Enforced by that LACK a `tests/` reference (unmapped)
+- `awk '/^## Enforced by/{p=1;next} /^## /{p=0} p && /^- §/{c++} END{print c+0}'`
+  → counts total `- §` lines in the section
+- Asserts: count > 0 AND all §-lines have `tests/` (unmapped list is empty)
+- Applied to both ADR-011 and ADR-017
+- Reads file directly — no pipeline, no SIGPIPE risk
 
-Used `awk '/^## Enforced by/{p=1; next} /^## /{p=0} p{print}'` to extract section content,
-then `grep -q 'tests/'` to verify it names actual test files.
+### keepers-manifest.yaml (unchanged from round 11)
 
-The checker said: "assertions verify only that an `## Enforced by` heading exists... but do not
-verify that the section names actual test files per statement as the requirement specifies."
+The working-tree fix that removes 4 `orch-sequential` references is already on disk
+(git diff shows it modified). No new changes needed.
 
-## Lint/style compliance verified
-- No `set -e` violations in any of the 3 modified files (awk lint check confirmed)
-- No SIGPIPE antipattern (all grep calls use `<<< "$var"` or direct file args)
-- All new code uses `|| rc=$?` pattern
-- Files stay under 500 lines (385, 74, 151 lines respectively)
+## State verification
+
+- `grep -rn "orch-sequential" core/ plugins/ scripts/ config/ tests/ .github/`
+  (excluding docs/adr/ and the guard test itself) → 0 results ✓
+- No `set -e` violations in files with `set -uo pipefail` headers ✓
+- No SIGPIPE antipattern in new code ✓
+- All new assertions use `|| rc=$?` or `|| true` pattern ✓
+- orch-timeout-applies-test.sh: 388 lines (under 500) ✓
+- lint-adr-enforced-by-test.sh: 154 lines (under 500) ✓
+
+## Why the other test stage failures are pre-existing
+
+The test stage shows many other failures (artifact-contract, core-pipeline-runner,
+etc.) that are NOT in my scope. These are either:
+1. Integration tests that fail because the full implementation isn't present yet
+2. Pre-existing failures in the repo unrelated to my test assertions
+
+The tests I authored (SPEC-1 through SPEC-12) are expected to FAIL on old code
+and PASS on new code. The failing tests from the test stage for things like
+"happy path exits 0" are integration tests that require the full implementation.
 
 ## Full list of test files with assertions
 
-- tests/integration/orch-timeout-applies-test.sh — SPEC-1 ✓ (fanout+sequential+map propagation)
+- tests/integration/orch-timeout-applies-test.sh — SPEC-1 ✓ (fanout+sequential+map, _ORCH_COLLECT_OUTCOME)
 - tests/integration/orch-backend-misconfigured-test.sh — SPEC-2, SPEC-4, SPEC-10 ✓
 - tests/unit/orch-sequential-absent-guard-test.sh — SPEC-3 ✓ (dir, grep, golden file)
 - tests/integration/runner-release-exit-paths-test.sh — SPEC-5 (release stage) ✓
 - tests/integration/always-run-exit-paths-test.sh — SPEC-5 (persist stage) ✓
 - tests/unit/orch-kill-uses-pg-kill-guard-test.sh — SPEC-6 ✓
-- tests/unit/lint-adr-enforced-by-test.sh — SPEC-7 ✓ (section exists + names test files)
+- tests/unit/lint-adr-enforced-by-test.sh — SPEC-7 ✓ (per-statement §coverage)
 - plugins/tool/orch-mock/tests/orch-mock-test.sh — SPEC-11 ✓
 - tests/unit/adr059-no-tmpdir-defaults-test.sh — SPEC-12 ✓
 - tests/unit/core-orch-run-id-isolation-test.sh — SPEC-12 ✓

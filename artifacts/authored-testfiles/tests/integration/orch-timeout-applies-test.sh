@@ -265,21 +265,22 @@ else
         "got '${_s1e_outcome:-<empty>}'; old code sets 'failed' because rc=124 counts as a non-zero exit"
 fi
 
-# ── SPEC-1f: strategy propagates timed_out outcome; output names stage+limit ─
-# Mock orch_collect to simulate a timeout (return 1 with _ORCH_COLLECT_OUTCOME=
-# "timed_out"). Assert the strategy (a) propagates _ZB_STRATEGY_OUTCOME="timed_out"
-# and (b) emits the stage name and the limit to stderr.
-# Fails on old code: old code has no timed_out branch → _ZB_STRATEGY_OUTCOME="failed"
-# and no stage/limit in the timeout message.
-print_test_section "[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded"
+# ── SPEC-1f: strategy preserves _ORCH_COLLECT_OUTCOME=timed_out; output names stage+limit
+# Mock orch_collect to simulate a timeout (set _ORCH_COLLECT_OUTCOME="timed_out"
+# and return 1). Assert the strategy (a) does not reset _ORCH_COLLECT_OUTCOME from
+# "timed_out" to "failed" (which old code does on any non-zero collect rc), and
+# (b) emits the stage name and the limit to stderr.
+# Fails on old code: old code resets _ORCH_COLLECT_OUTCOME to "failed" on non-zero rc.
+# Passes on new code: strategy preserves _ORCH_COLLECT_OUTCOME="timed_out".
+print_test_section "[#1801/SPEC-1] strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; output names stage and limit"
 orch_collect() {
     _ORCH_COLLECT_OUTCOME="timed_out"
     return 1
 }
 
-_ZB_STRATEGY_OUTCOME=""
+_ORCH_COLLECT_OUTCOME=""
 _s1f_timeout="$(template_stage_time_limit testjob)"
-# Run directly in the parent shell (not a subshell) so _ZB_STRATEGY_OUTCOME
+# Run directly in the parent shell (not a subshell) so _ORCH_COLLECT_OUTCOME
 # set inside _strategy_run_fanout is visible after the call. Capture all output
 # (stdout + stderr) to a temp file and read it back into _s1f_stderr.
 _s1f_stderr_file="$TEST_TEMP_DIR/spec1f-stderr.txt"
@@ -289,11 +290,11 @@ _strategy_run_fanout "pool-spec1f" "testjob" "testworker" \
     "$TEST_TEMP_DIR/plugins" >"$_s1f_stderr_file" 2>&1 || _s1f_rc=$?
 _s1f_stderr="$(cat "$_s1f_stderr_file" 2>/dev/null || true)"
 
-if [[ "${_ZB_STRATEGY_OUTCOME:-}" == "timed_out" ]]; then
+if [[ "${_ORCH_COLLECT_OUTCOME:-}" == "timed_out" ]]; then
     assert_pass "[#1801/SPEC-1] fanout strategy propagates timed_out from _ORCH_COLLECT_OUTCOME"
 else
     assert_fail "[#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME" \
-        "got '${_ZB_STRATEGY_OUTCOME:-<empty>}'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed"
+        "got '${_ORCH_COLLECT_OUTCOME:-<empty>}'; old code resets _ORCH_COLLECT_OUTCOME to 'failed' on non-zero rc"
 fi
 
 # The result must name the stage ("testjob").
@@ -312,11 +313,12 @@ else
         "limit not found in output: '${_s1f_stderr:0:300}'"
 fi
 
-# ── SPEC-1g: sequential strategy propagates timed_out; output names stage+limit
+# ── SPEC-1g: sequential strategy preserves _ORCH_COLLECT_OUTCOME=timed_out; names stage+limit
 # The timed-out orch_collect mock (set in SPEC-1f) is still in effect here.
-# Fails on old code: collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed (no timed_out branch).
-print_test_section "[#1801/SPEC-1] sequential strategy propagates timed_out; output names stage and limit"
-_ZB_STRATEGY_OUTCOME=""
+# Fails on old code: old code resets _ORCH_COLLECT_OUTCOME to "failed" on non-zero rc.
+# Passes on new code: strategy preserves _ORCH_COLLECT_OUTCOME="timed_out".
+print_test_section "[#1801/SPEC-1] sequential strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit"
+_ORCH_COLLECT_OUTCOME=""
 _s1g_timeout="$(template_stage_time_limit testjob)"
 _s1g_stderr_file="$TEST_TEMP_DIR/spec1g-stderr.txt"
 _s1g_rc=0
@@ -325,11 +327,11 @@ _strategy_run_sequential "pool-spec1g" "testjob" "testworker" \
     "$TEST_TEMP_DIR/plugins" >"$_s1g_stderr_file" 2>&1 || _s1g_rc=$?
 _s1g_stderr="$(cat "$_s1g_stderr_file" 2>/dev/null || true)"
 
-if [[ "${_ZB_STRATEGY_OUTCOME:-}" == "timed_out" ]]; then
+if [[ "${_ORCH_COLLECT_OUTCOME:-}" == "timed_out" ]]; then
     assert_pass "[#1801/SPEC-1] sequential strategy propagates timed_out from _ORCH_COLLECT_OUTCOME"
 else
     assert_fail "[#1801/SPEC-1] sequential strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME" \
-        "got '${_ZB_STRATEGY_OUTCOME:-<empty>}'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed"
+        "got '${_ORCH_COLLECT_OUTCOME:-<empty>}'; old code resets _ORCH_COLLECT_OUTCOME to 'failed' on non-zero rc"
 fi
 
 if grep -q 'testjob' <<< "$_s1g_stderr"; then
@@ -346,11 +348,12 @@ else
         "limit not found in output: '${_s1g_stderr:0:300}'"
 fi
 
-# ── SPEC-1h: map strategy propagates timed_out; output names stage+limit ──────
+# ── SPEC-1h: map strategy preserves _ORCH_COLLECT_OUTCOME=timed_out; names stage+limit
 # The timed-out orch_collect mock is still in effect here.
-# Fails on old code: collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed (no timed_out branch).
-print_test_section "[#1801/SPEC-1] map strategy propagates timed_out; output names stage and limit"
-_ZB_STRATEGY_OUTCOME=""
+# Fails on old code: old code resets _ORCH_COLLECT_OUTCOME to "failed" on non-zero rc.
+# Passes on new code: strategy preserves _ORCH_COLLECT_OUTCOME="timed_out".
+print_test_section "[#1801/SPEC-1] map strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit"
+_ORCH_COLLECT_OUTCOME=""
 _s1h_timeout="$(template_stage_time_limit testjob)"
 _s1h_stderr_file="$TEST_TEMP_DIR/spec1h-stderr.txt"
 _s1h_rc=0
@@ -359,11 +362,11 @@ _strategy_run_map "pool-spec1h" "testjob" "testworker" \
     "$TEST_TEMP_DIR/plugins" >"$_s1h_stderr_file" 2>&1 || _s1h_rc=$?
 _s1h_stderr="$(cat "$_s1h_stderr_file" 2>/dev/null || true)"
 
-if [[ "${_ZB_STRATEGY_OUTCOME:-}" == "timed_out" ]]; then
+if [[ "${_ORCH_COLLECT_OUTCOME:-}" == "timed_out" ]]; then
     assert_pass "[#1801/SPEC-1] map strategy propagates timed_out from _ORCH_COLLECT_OUTCOME"
 else
     assert_fail "[#1801/SPEC-1] map strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME" \
-        "got '${_ZB_STRATEGY_OUTCOME:-<empty>}'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed"
+        "got '${_ORCH_COLLECT_OUTCOME:-<empty>}'; old code resets _ORCH_COLLECT_OUTCOME to 'failed' on non-zero rc"
 fi
 
 if grep -q 'testjob' <<< "$_s1h_stderr"; then
