@@ -1,0 +1,59 @@
+diff --git a/core/orch/contract.sh b/core/orch/contract.sh
+index 6781efaa..e13db847 100644
+--- a/core/orch/contract.sh
++++ b/core/orch/contract.sh
+@@ -171,7 +171,25 @@ orch_load_backend() {
+         return 0
+     fi
+ 
+-    # No plugin found and no fallback — hard misconfigured error naming the backend.
++    # Last-resort: try the built-in bash-parallel backend by its known repo path (#1801).
++    # This resolves the default even when ZBUILD_PLUGINS_ROOT does not include the
++    # installed orch backends (common in integration tests that override ZBUILD_PLUGINS_ROOT).
++    # Only bash-parallel gets this treatment — it is the declared system default; any other
++    # backend that reaches this point is truly misconfigured.
++    local _bash_parallel_sh="${_ZBUILD_ROOT}/plugins/tool/orch-bash-parallel/plugin.sh"
++    if [[ "$backend" == "bash-parallel" && -f "$_bash_parallel_sh" ]]; then
++        if [[ ! -r "$_bash_parallel_sh" ]]; then
++            warn "orch_load_backend: backend '${backend}' plugin.sh is not readable — misconfigured" || true
++            _ZBUILD_ORCH_BACKEND_DISPOSITION=misconfigured
++            return 1
++        fi
++        # shellcheck disable=SC1090
++        source "$_bash_parallel_sh"
++        _ZBUILD_ORCH_BACKEND_LOADED=1
++        return 0
++    fi
++
++    # No plugin found — hard misconfigured error naming the backend.
+     warn "orch_load_backend: backend '${backend}' not found — misconfigured (no plugin for role orchestrator-backend with alias '${backend}')" || true
+     _ZBUILD_ORCH_BACKEND_DISPOSITION=misconfigured
+     return 1
+@@ -190,11 +208,12 @@ _orch_load_backend() {
+ 
+     local backend
+ 
+-    # Get configured backend, falling back to "sequential" if config unavailable
++    # Get configured backend; default is bash-parallel (the system default, #1801).
++    # "sequential" is no longer a valid backend alias — any unknown alias fails misconfigured.
+     if declare -F zbuild_config_get_backend >/dev/null 2>&1; then
+-        backend="$(zbuild_config_get_backend "orchestrator" 2>/dev/null)" || backend="sequential"
++        backend="$(zbuild_config_get_backend "orchestrator" 2>/dev/null)" || backend="bash-parallel"
+     else
+-        backend="${ZBUILD_ORCHESTRATOR_BACKEND:-sequential}"
++        backend="${ZBUILD_ORCHESTRATOR_BACKEND:-bash-parallel}"
+     fi
+ 
+     # Attempt to load the configured backend; if it fails, that is OK —
+diff --git a/tests/fixtures/templates/always-run-minimal.yaml b/tests/fixtures/templates/always-run-minimal.yaml
+index e7310e4c..d7481ac7 100644
+--- a/tests/fixtures/templates/always-run-minimal.yaml
++++ b/tests/fixtures/templates/always-run-minimal.yaml
+@@ -34,6 +34,7 @@ outcome:
+ release:
+   gate: auto
+   roles: [teardown]
++  timeout_s: 2
+   router:
+     timeout_s: 2
+   io:
