@@ -1,0 +1,186 @@
+diff --git a/core/orch/contract.sh b/core/orch/contract.sh
+index e13db847..4ba1a421 100644
+--- a/core/orch/contract.sh
++++ b/core/orch/contract.sh
+@@ -216,6 +216,9 @@ _orch_load_backend() {
+         backend="${ZBUILD_ORCHESTRATOR_BACKEND:-bash-parallel}"
+     fi
+ 
++    # Record the alias so runner.sh can name it in the misconfigured gate message (#1801).
++    _ZBUILD_ORCH_BACKEND_ALIAS="$backend"
++
+     # Attempt to load the configured backend; if it fails, that is OK —
+     # the stubs remain and callers will get informative errors.
+     orch_load_backend "$backend" 2>/dev/null || true
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 3c5b2272..cff54ac7 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -65,6 +65,14 @@ if declare -F discover_plugins >/dev/null 2>&1; then
+ fi
+ # shellcheck source=../orch/contract.sh
+ source "$_ZBUILD_ROOT/core/orch/contract.sh"
++# #1801 (ADR-011 §hard-error): if the backend failed to load as misconfigured, fail the
++# pipeline here — before sourcing strategy modules or dispatching any stage.
++# contract.sh's _orch_load_backend sets _ZBUILD_ORCH_BACKEND_DISPOSITION=misconfigured when
++# the configured backend cannot be found or sourced.
++if [[ "${_ZBUILD_ORCH_BACKEND_DISPOSITION:-}" == "misconfigured" ]]; then
++    echo "runner: orchestrator backend misconfigured: ${_ZBUILD_ORCH_BACKEND_ALIAS:-unknown}" >&2
++    exit 1
++fi
+ # Strategy modules (ADR-009 §fanout/sequential/composite, issue #222; map ADR-047)
+ source "$_ZBUILD_ROOT/core/pipeline/strategies/fanout.sh"
+ source "$_ZBUILD_ROOT/core/pipeline/strategies/sequential.sh"
+diff --git a/core/pipeline/template-resolver.sh b/core/pipeline/template-resolver.sh
+index ecf6498c..8da4ce8b 100644
+--- a/core/pipeline/template-resolver.sh
++++ b/core/pipeline/template-resolver.sh
+@@ -48,8 +48,17 @@ resolve_template_file() {
+ 
+     local base_file="$_TEMPLATE_RESOLVER_ROOT/config/templates/${extends_id}.yaml"
+     if [[ ! -f "$base_file" ]]; then
+-        echo "template-resolver: per-repo template '${id}' extends '${extends_id}' but config/templates/${extends_id}.yaml does not exist" >&2
+-        return 1
++        # Fallback: check the per-repo templates directory for the base (#1801).
++        # This allows test fixtures to install a base template as a per-repo overlay
++        # (e.g. install_template_overlay places always-run-minimal in .zbuild/templates/)
++        # and have a second per-repo file extend it without the base being a shipped template.
++        local _per_repo_base="$repo_root/.zbuild/templates/${extends_id}.yaml"
++        if [[ -f "$_per_repo_base" ]]; then
++            base_file="$_per_repo_base"
++        else
++            echo "template-resolver: per-repo template '${id}' extends '${extends_id}' but config/templates/${extends_id}.yaml does not exist" >&2
++            return 1
++        fi
+     fi
+ 
+     # Write merged file to temp dir (TEST_TEMP_DIR in tests, mktemp in production).
+@@ -84,14 +93,40 @@ resolve_template_file() {
+ 
+     # OLD shape: emit base file minus its stages:/stage_definitions: blocks,
+     # then append the per-repo stages:/stage_definitions: blocks wholesale.
+-    awk '
+-        /^stages:[[:space:]]*$/ { in_stages=1; next }
+-        /^stage_definitions:[[:space:]]*$/ { in_defs=1; next }
+-        in_stages && /^[a-zA-Z_]/ { in_stages=0 }
+-        in_defs   && /^[a-zA-Z_]/ { in_defs=0 }
+-        in_stages || in_defs { next }
+-        { print }
+-    ' "$base_file" > "$merged_file"
++    # always_run: is stripped from the base ONLY when the per-repo file declares its
++    # own always_run: — that signals intent to override (#1801: template extension
++    # must propagate always_run: from the extending template without dropping the
++    # base's list when the per-repo is silent about it).
++    local _per_repo_has_always_run=0
++    if awk '/^always_run:[[:space:]]/{found=1;exit} /^always_run:[[:space:]]*$/{found=1;exit} END{exit !found}' \
++            "$per_repo_file" 2>/dev/null; then
++        _per_repo_has_always_run=1
++    fi
++
++    if [[ "$_per_repo_has_always_run" -eq 1 ]]; then
++        # Per-repo declares always_run: — strip base's copy so the override wins.
++        awk '
++            /^stages:[[:space:]]*$/ { in_stages=1; next }
++            /^stage_definitions:[[:space:]]*$/ { in_defs=1; next }
++            /^always_run:[[:space:]]/ { next }
++            /^always_run:[[:space:]]*$/ { in_ar=1; next }
++            in_stages && /^[a-zA-Z_]/ { in_stages=0 }
++            in_defs   && /^[a-zA-Z_]/ { in_defs=0 }
++            in_ar     && /^[a-zA-Z_]/ { in_ar=0 }
++            in_stages || in_defs || in_ar { next }
++            { print }
++        ' "$base_file" > "$merged_file"
++    else
++        # Per-repo is silent about always_run: — inherit the base's list unchanged.
++        awk '
++            /^stages:[[:space:]]*$/ { in_stages=1; next }
++            /^stage_definitions:[[:space:]]*$/ { in_defs=1; next }
++            in_stages && /^[a-zA-Z_]/ { in_stages=0 }
++            in_defs   && /^[a-zA-Z_]/ { in_defs=0 }
++            in_stages || in_defs { next }
++            { print }
++        ' "$base_file" > "$merged_file"
++    fi
+ 
+     # Extract and append stages: block from per-repo file.
+     awk '
+@@ -107,6 +142,34 @@ resolve_template_file() {
+         in_block { print }
+     ' "$per_repo_file" >> "$merged_file"
+ 
++    # Extract and append always_run: block from per-repo file (#1801), only when
++    # the per-repo file declares it (overriding the base's stripped copy above).
++    if [[ "$_per_repo_has_always_run" -eq 1 ]]; then
++        awk '
++            /^always_run:[[:space:]]/ { print; next }
++            /^always_run:[[:space:]]*$/ { in_block=1; print; next }
++            in_block && /^[a-zA-Z_]/ { in_block=0 }
++            in_block { print }
++        ' "$per_repo_file" >> "$merged_file"
++    fi
++
++    # Extract and append any additional top-level stage-definition blocks from the
++    # per-repo file that are not already handled above — e.g. a new always-run stage
++    # definition like `persist:` that the per-repo adds (#1801).
++    # Skip: id:, extends:, stages:, stage_definitions:, always_run: (all handled above).
++    awk '
++        /^id:[[:space:]]/ { skip=1; next }
++        /^extends:[[:space:]]/ { skip=1; next }
++        /^stages:[[:space:]]/ { skip=1; next }
++        /^stages:[[:space:]]*$/ { skip=1; next }
++        /^stage_definitions:[[:space:]]/ { skip=1; next }
++        /^stage_definitions:[[:space:]]*$/ { skip=1; next }
++        /^always_run:[[:space:]]/ { skip=1; next }
++        /^always_run:[[:space:]]*$/ { skip=1; next }
++        skip && /^[a-zA-Z_]/ { skip=0 }
++        !skip { print }
++    ' "$per_repo_file" >> "$merged_file"
++
+     echo "$merged_file"
+     return 0
+ }
+diff --git a/tests/integration/orch-backend-misconfigured-test.sh b/tests/integration/orch-backend-misconfigured-test.sh
+index 61b2d440..8ad24c59 100644
+--- a/tests/integration/orch-backend-misconfigured-test.sh
++++ b/tests/integration/orch-backend-misconfigured-test.sh
+@@ -236,9 +236,11 @@ fi
+ # New code: runner.sh gates early → exits 1 with "misconfigured" naming the backend.
+ #
+ # ZBUILD_ORCHESTRATOR_BACKEND="sequential" was exported above for the SPEC-2 unit
+-# test.  Unset it here so the runner uses its compiled-in default (bash-parallel)
+-# and the output names bash-parallel, not sequential.
++# test.  Unset it here; each e2e section sets it explicitly inside the subshell
++# so the backend name is reliable in the gate error output.
+ unset ZBUILD_ORCHESTRATOR_BACKEND
++# ZBUILD_ORCHESTRATOR_BACKEND is set explicitly in the subshell below so the gate
++# message reliably names bash-parallel regardless of the runner's compiled-in default.
+ print_test_section "[#1801/SPEC-4] e2e: absent backend fails pipeline as misconfigured"
+ 
+ if ! command -v rsync >/dev/null 2>&1; then
+@@ -268,6 +270,7 @@ else
+         ZBUILD_MODELS_FILE="$_E2E_S4_INSTALL/config/models.json" \
+         ZBUILD_EVENT_SCHEMA="$_E2E_S4_INSTALL/config/event-schema.json" \
+         ZBUILD_PLUGINS_ROOT="$_E2E_S4_INSTALL/plugins" \
++        ZBUILD_ORCHESTRATOR_BACKEND=bash-parallel \
+         ZBUILD_CONTRACT_VALIDATOR=warn \
+         ZBUILD_CYCLES_ENABLED=0 \
+         ZBUILD_VISION_GATE=off \
+@@ -307,8 +310,8 @@ fi
+ # Old code: runner.sh ignores disposition → continues without the check.
+ # New code: disposition=misconfigured is caught by the runner gate → exits 1.
+ #
+-# Keep ZBUILD_ORCHESTRATOR_BACKEND unset (cleared before SPEC-4 e2e above) so
+-# the runner uses its compiled-in default (bash-parallel) and the gate names it.
++# ZBUILD_ORCHESTRATOR_BACKEND=bash-parallel is set explicitly in the subshell below
++# so the gate message reliably names bash-parallel regardless of the runner's default.
+ print_test_section "[#1801/SPEC-10] e2e: unreadable plugin.sh fails pipeline as misconfigured"
+ 
+ if ! command -v rsync >/dev/null 2>&1; then
+@@ -337,6 +340,7 @@ else
+         ZBUILD_MODELS_FILE="$_E2E_S10_INSTALL/config/models.json" \
+         ZBUILD_EVENT_SCHEMA="$_E2E_S10_INSTALL/config/event-schema.json" \
+         ZBUILD_PLUGINS_ROOT="$_E2E_S10_INSTALL/plugins" \
++        ZBUILD_ORCHESTRATOR_BACKEND=bash-parallel \
+         ZBUILD_CONTRACT_VALIDATOR=warn \
+         ZBUILD_CYCLES_ENABLED=0 \
+         ZBUILD_VISION_GATE=off \

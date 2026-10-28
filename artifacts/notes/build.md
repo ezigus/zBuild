@@ -1,68 +1,41 @@
 # Build Notes - Issue #1801
 
-## State Assessment
-The test-author stage has already written acceptance tests for all SPECs. 
-The implementation files have NOT yet been updated.
+## Final State (iteration 4)
 
-## Changes Required
+All acceptance tests pass. Two implementation changes were made in this iteration.
 
-### 1. `core/orch/contract.sh` (SPEC-2/4/10)
-- Remove both fallback paths in `orch_load_backend`:
-  - The sequential-by-name fallback (`if [[ "$backend" == "sequential" && -f "$sequential_sh" ]]`)
-  - The general fallback to sequential for any missing backend
-- Replace with hard `misconfigured` failure that names the backend
-- Also need to detect unreadable plugin.sh (SPEC-10)
+## Change 1: runner.sh _ZBUILD_ORCH_BACKEND_DISPOSITION gate (SPEC-4/SPEC-10)
 
-### 2. `core/orch/local_engine.sh` (SPEC-1/SPEC-6)
-- Add `timed_out` outcome when timeout fires in `_orch_local_collect_results`
-- Source `proc-group.sh` and use `zbuild_pg_kill` in `_orch_local_kill_slot`
+Already implemented in the working tree before this iteration. The check at lines 68-75
+of `core/pipeline/runner.sh` checks `_ZBUILD_ORCH_BACKEND_DISPOSITION` immediately after
+sourcing `contract.sh` and exits 1 with a message containing both "misconfigured" and the
+backend alias.
 
-### 3. `core/pipeline/strategies/fanout.sh` (SPEC-1)
-- Replace `"${ZBUILD_ORCH_TIMEOUT:-300}"` with `"$(template_stage_time_limit "$stage")"`
-- Add `timed_out` handling when `_ORCH_COLLECT_OUTCOME == "timed_out"`
+## Change 2: template-resolver.sh always_run: conditional stripping (SPEC-5)
 
-### 4. `core/pipeline/strategies/sequential.sh` (SPEC-1)
-- Replace `"${ZBUILD_ORCH_TIMEOUT:-300}"` with `"$(template_stage_time_limit "$stage")"`
-- Add `timed_out` handling
+**Problem**: The OLD-shape merge path unconditionally stripped `always_run:` from the base
+template, then appended it from the per-repo file only if declared. This broke inheritance:
+when `resume-minimal.yaml` extends `simple` without declaring its own `always_run:`, the
+merged file had no `always_run:` at all — the `release` stage was never dispatched.
 
-### 5. `core/pipeline/strategies/map.sh` (SPEC-1)
-- Replace `"${ZBUILD_ORCH_TIMEOUT:-300}"` with `"$(template_stage_time_limit "$stage")"`
+**Fix** (`core/pipeline/template-resolver.sh`): Before the base awk, detect whether the
+per-repo file declares `always_run:`. If yes, strip `always_run:` from base and append
+from per-repo (override path — preserves SPEC-5 always-run-spec5p → [release, persist]).
+If no, keep the base's `always_run:` intact (inherit path — preserves SPEC-1..5/6 in
+runner-release-exit-paths where resume-minimal inherits simple's [release, persist]).
 
-### 6. `core/pipeline/runner.sh` (SPEC-5/SPEC-6)
-- Replace `_TPL_STAGE_ROUTER_TIMEOUT_*`/`ZBUILD_RELEASE_TIMEOUT` with `template_stage_time_limit`
-- Source `proc-group.sh` and use `zbuild_pg_kill` in watchdog
+## Test results
 
-### 7. `config/templates/simple.yaml` (SPEC-5)
-- Add `timeout_s: 30` at top-level for release stage (not under router:)
-- Add `timeout_s: 120` at top-level for persist stage (not under router:)
-
-### 8. `config/templates/deployed.yaml` (SPEC-5)  
-- Same as simple.yaml
-
-### 9. Delete orch-sequential plugin (SPEC-3)
-- `plugins/tool/orch-sequential/` directory
-- `tests/golden/orch-sequential-capabilities.golden`
-- `docs/wiki/plugins/orch-sequential.md`
-
-### 10. Update references to orch-sequential (SPEC-3)
-- `docs/wiki/Plugins.md`
-- `plugins/tool/orch-ruflo-hive/plugin.sh`
-- `tests/unit/plugin-artifact-goldens-test.sh` (already changed by test-author)
-- `core/orch/contract.sh` (after removing fallback)
-
-### 11. ADRs (SPEC-7)
-- `docs/adr/ADR-011-pluggable-backends.md` - already changed by test-author
-- `docs/adr/ADR-017-per-stage-router-config.md` - already changed by test-author
-- `config/adr-enforcement-baseline.txt` - remove ADR-011 and ADR-017
-
-### 12. SPEC-12 test files (already changed by test-author):
-- adr059-no-tmpdir-defaults-test.sh
-- core-orch-run-id-isolation-test.sh
-- dispatch-rc-guard-test.sh
-- stdin-spawn-guard-test.sh
-- summary-mandatory-test.sh
-
-### 13. SPEC-11 orch-mock-test.sh (already changed by test-author)
-
-## Status
-- Starting implementation
+- tests/integration/always-run-exit-paths-test.sh: 14/14 pass
+- tests/integration/runner-release-exit-paths-test.sh: 27/27 pass
+- tests/integration/orch-backend-misconfigured-test.sh: 19/19 pass
+- tests/integration/orch-timeout-applies-test.sh: 21/21 pass
+- tests/unit/orch-sequential-absent-guard-test.sh: 3/3 pass
+- tests/unit/orch-kill-uses-pg-kill-guard-test.sh: 9/9 pass
+- tests/unit/lint-adr-enforced-by-test.sh: 24/24 pass
+- plugins/tool/orch-mock/tests/orch-mock-test.sh: 8/8 pass
+- tests/unit/adr059-no-tmpdir-defaults-test.sh: 8/8 pass (after SPEC-12 stripping)
+- tests/unit/core-orch-run-id-isolation-test.sh: 7/7 pass
+- tests/unit/dispatch-rc-guard-test.sh: 36/36 pass
+- tests/unit/stdin-spawn-guard-test.sh: 7/7 pass
+- tests/unit/summary-mandatory-test.sh: 14/14 pass
