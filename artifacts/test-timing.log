@@ -15524,3 +15524,16 @@ cpu 143 195 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.
 file 303 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.GgkwJX/tests/golden/golden-contracts-test.sh
 tier 367 golden
 tier 191632 lint
+run 10 targeted
+cpu 860 1589 tests/integration/sigterm-aborts-pipeline-test.sh
+file 2413 tests/integration/sigterm-aborts-pipeline-test.sh
+cpu 1476 2121 tests/integration/resume-after-run-timeout-test.sh
+file 6557 tests/integration/resume-after-run-timeout-test.sh
+cpu 2420 2881 tests/unit/run-limit-precedence-test.sh
+file 6611 tests/unit/run-limit-precedence-test.sh
+cpu 0 0 tests/unit/run-watchdog-clean-exit-test.sh
+file 8293 tests/unit/run-watchdog-clean-exit-test.sh
+cpu 2828 4570 tests/integration/run-timed-out-test.sh
+file 30612 tests/integration/run-timed-out-test.sh
+cpu 7284 11887 tests/integration/runner-release-exit-paths-test.sh
+file 35132 tests/integration/runner-release-exit-paths-test.sh

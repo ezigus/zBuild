@@ -1,9 +1,4 @@
-
-> zbuild@0.1.0 test
-> bash tests/run-all.sh
-
-unit: 528/528 passed (4 skipped)
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.GgkwJX/tests/integration/runner-release-exit-paths-test.sh
+unit: FAIL tests/integration/runner-release-exit-paths-test.sh
 
   runner dispatches cleanup(release) on every exit path (#1829)
 
@@ -47,16 +42,4 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
 
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.GgkwJX/tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
-
-  sigterm-aborts-pipeline — kill -TERM halts pipeline (#686)
-
-integration: 254/256 passed (1 timed out)
-e2e: 10/10 passed
-golden: 1/1 passed
-mutation: 25/25 passed
-lint: 1/1 passed
-
-total: 819/821 passed (4 skipped, 1 timed out)
+unit: 5/6 passed

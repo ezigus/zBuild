@@ -1,4 +1,3 @@
 [
-  "tests/integration/runner-release-exit-paths-test.sh",
-  "tests/integration/sigterm-aborts-pipeline-test.sh"
+  "tests/integration/runner-release-exit-paths-test.sh"
 ]
