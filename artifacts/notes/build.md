@@ -1,6 +1,40 @@
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current iteration (iteration 3) — ANALYZING ISSUE-ACCEPTANCE FINDINGS
+## Current iteration (iteration 4) — WATCHDOG CHILD LEAK FIX
+
+The test stage failed: sigterm-aborts-pipeline-test.sh timed out at 480s.
+Issue-acceptance found R-10 unmet and shape-floor flagging two event-sequence goldens.
+
+### Root cause: orphaned `sleep` child from watchdog subshell
+
+When the runner is externally SIGTERMed (kill -TERM -$RUNNER_PGID):
+1. The watchdog subshell has `trap '' TERM` → survives the PG-wide TERM
+2. The watchdog's `sleep "$_RUNNER_MAX_RUN_S"` child inherits SIG_IGN for TERM
+   (POSIX: exec preserves SIG_IGN across exec)
+3. The EXIT trap's `kill -KILL $watchdog_pid` kills the watchdog bash subshell, but
+   NOT its `sleep` child — SIGKILL to a PID kills only that PID, not its children
+4. The sleep is orphaned (reparented to init) and holds the pipe write-end open,
+   blocking any $(…) caller for up to 20700s
+
+### Fix applied: runner.sh EXIT trap watchdog cleanup
+
+Added pgrep-based collection of watchdog children BEFORE killing the watchdog:
+- `pgrep -P "${_RUNNER_WATCHDOG_PID}"` collects children (the sleep process)
+- Then `kill -KILL $watchdog_pid && wait $watchdog_pid` as before
+- Then `kill -KILL $_wc` for each orphaned child
+
+Must be BEFORE the kill because once the watchdog dies, its children are reparented
+to init and `pgrep -P` can no longer find them.
+
+### Golden file concern
+The shape floor flagged tests/golden/full-pipeline/event-sequence.golden and
+tests/golden/parity/event-sequence.golden. These do NOT need changes — they're for
+successful pipeline runs (no new events on that path). The shape floor couldn't verify
+them because there was a test failure; once sigterm test passes, full-pass verifies them.
+
+---
+
+## Previous iteration (iteration 3) — ANALYZING ISSUE-ACCEPTANCE FINDINGS (was COMPLETE)
 
 The test stage passed with 821/0. The issue-acceptance stage returned FAIL with 5 findings.
 After thorough investigation, ALL 5 findings are FALSE POSITIVES.

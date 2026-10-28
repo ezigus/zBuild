@@ -1,5 +1,5 @@
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index 227455a2..ef5308af 100755
+index 227455a2..1373421d 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
 @@ -926,6 +926,17 @@ _pipeline_status_color() {
@@ -44,8 +44,34 @@ index 227455a2..ef5308af 100755
          trap ':' INT TERM
          # ADR-054 §7: a signal ends the run while a stage is still running;
          # stop it, and all it started, before anything else.
+@@ -2549,8 +2557,25 @@ main() {
+         # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
+         # ignored and `wait` would block until the full sleep expires. SIGKILL
+         # cannot be caught or ignored, so the wait returns immediately.
++        # Collect watchdog children BEFORE the KILL — once the watchdog is dead
++        # its children are reparented to init and pgrep -P can no longer find them.
++        # The `sleep` child inherits SIG_IGN for TERM (POSIX: exec inherits SIG_IGN)
++        # so only SIGKILL can terminate it; without this it stays alive for the full
++        # sleep duration (up to 20700 s), holding the pipe write-end open and
++        # blocking any $(…) caller's wait.
++        local _wdg_orphans=""
++        if [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && command -v pgrep >/dev/null 2>&1; then
++            _wdg_orphans="$(pgrep -P "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true)"
++        fi
+         kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
+         [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && wait "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true
++        # Kill any orphaned children the watchdog left behind (the `sleep`).
++        if [[ -n "$_wdg_orphans" ]]; then
++            local _wc
++            while IFS= read -r _wc; do
++                [[ -n "$_wc" ]] && kill -KILL "$_wc" 2>/dev/null || true
++            done <<< "$_wdg_orphans"
++        fi
+         trap '_runner_signal_trap TERM' TERM
+         trap '_runner_signal_trap INT' INT
+         # #1829: free live resources first, while the state file and the
 diff --git a/tests/unit/run-limit-precedence-test.sh b/tests/unit/run-limit-precedence-test.sh
-index b44d6376..2d07c497 100644
+index b44d6376..ecd39f8f 100644
 --- a/tests/unit/run-limit-precedence-test.sh
 +++ b/tests/unit/run-limit-precedence-test.sh
 @@ -364,15 +364,16 @@ else
@@ -73,20 +99,30 @@ index b44d6376..2d07c497 100644
  fi
  
  print_test_section "[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by"
-@@ -389,15 +390,16 @@ else
+@@ -389,15 +390,27 @@ else
              "no §11 heading found in ADR-054"
      fi
  
 -    # §11 area must have an ## Enforced by entry citing a run-limit test
-+    # ## Enforced by section must cite ALL four new test files
-     _adr054_enf="$(awk '/## Enforced by/,0' "$ADR054" 2>/dev/null || true)"
+-    _adr054_enf="$(awk '/## Enforced by/,0' "$ADR054" 2>/dev/null || true)"
 -    if grep -q "run-limit-precedence-test\|run-timed-out-test\|run-watchdog-clean-exit-test\|resume-after-run-timeout-test" \
 -            <<< "$_adr054_enf" 2>/dev/null; then
 -        assert_pass "[#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests"
--    else
++    # §11's content must describe the per-run limit specifically.
++    # Extract the §11 body: lines from after its heading up to the next ## heading.
++    _s11_body="$(awk '/§[[:space:]]*11\b|###[[:space:]]+11\./{f=1;next} f&&/^##/{exit} f{print}' \
++        "$ADR054" 2>/dev/null || true)"
++    if grep -qiE 'max_run_s|wall.clock|per.run|run.level|run limit' <<< "$_s11_body" 2>/dev/null; then
++        assert_pass "[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit"
+     else
 -        assert_fail "[#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests" \
 -            "no run-limit test referenced in ADR-054 ## Enforced by"
--    fi
++        assert_fail "[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit" \
++            "§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic"
+     fi
++
++    # ## Enforced by section must cite ALL four new test files
++    _adr054_enf="$(awk '/## Enforced by/,0' "$ADR054" 2>/dev/null || true)"
 +    for _tfile in run-timed-out-test run-limit-precedence-test run-watchdog-clean-exit-test resume-after-run-timeout-test; do
 +        if grep -q "$_tfile" <<< "$_adr054_enf" 2>/dev/null; then
 +            assert_pass "[#1944/SPEC-6] ADR-054 ## Enforced by cites $_tfile"
