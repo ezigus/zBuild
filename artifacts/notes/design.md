@@ -1,23 +1,107 @@
 # design stage notes — issue #1944
 
-## Current pass (iter-2 design refinement)
+## Current pass (iter-3 design refinement)
 
-### What changed since iter-1 design passed
+### What changed since iter-2
 
-Build stage (commit 741c8466) applied two fixes to runner.sh:
-1. Bug B fix: added `trap ':' INT TERM` guard + trap restore to `_runner_abort_trap`
-2. Bug A partial fix: `    ) &` → `    ) >/dev/null 2>&1 &` at watchdog arm (line 2827)
+Issue-acceptance pass 2 flagged:
+1. `runner-release-exit-paths-test.sh` SPEC-5 regresses after `{_RUNNER_ERR_FD}>&-` boundary change
+2. Shape floor breach (golden files need updating)
+3. R-4: persist "never constructed or tested" (was already fixed in iter-2; stale finding)
+4. R-9: §9 vs §11 (already addressed; issue text had a draft numbering; §11 is correct)
 
-Test stage result after commit 741c8466:
-- 817 of 821 passed
-- 3 timeouts: core-pipeline-runner-test.sh, core-pipeline-strategy-test.sh, vision-admission-gate-test.sh
-- 1 failure: runner-signal-rearm-test.sh [SPEC-5]
-- Shape floor: golden files flagged as not updated
+### Root cause: boundary `{_RUNNER_ERR_FD}>&-` vs inside-body close
+
+The previous design had Bug A fix as:
+`    ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
+
+This caused `runner-release-exit-paths-test.sh` SPEC-5 to fail:
+- SPEC-5 sends SIGTERM to the runner's PG while the build stage is sleeping
+- Asserts that `intake` and `build` both wrote release markers
+- After the boundary form: release was NOT dispatched
+
+"hard-kill exit path no longer dispatches release at all after the FD-close change"
+
+This means `_runner_dispatch_always_run` was not reached. The 15s backstop SIGKILL fires and kills the runner mid-trap.
+
+The SAFE alternative: close the fd INSIDE the watchdog body (first thing after `trap '' TERM`):
+```bash
+(
+    trap '' TERM
+    exec {_RUNNER_ERR_FD}>&- || true   # close saved-stderr fd
+    _wdg_lim="${_RUNNER_MAX_RUN_S}"
+    ...
+) >/dev/null 2>&1 &
+```
+
+Effect:
+- Watchdog body runs with fd{N} = inherited pipe
+- `exec {_RUNNER_ERR_FD}>&-` closes fd{N} in the watchdog subshell
+- `sleep` is forked AFTER the close → inherits fd{N}=closed
+- No pipe reference in orphaned sleep
+- Outer launch line stays simple: `>/dev/null 2>&1 &`
+- Does NOT affect the main runner shell's fd{N}, so `_runner_restore_stderr` continues to work
+
+### Scope addition
+
+Added `tests/integration/runner-release-exit-paths-test.sh` to scope.
+- Exercises the SIGTERM abort path with watchdog disarm
+- Our watchdog arm change affects it
+- Boundary form broke it; inside-body form should restore it
+
+### Shape floor
+
+Golden files already in scope. Shape floor breach = golden files are stale and need updating by the implementation stage. No new scope entries needed.
+
+### Design changes summary (iter-3)
+
+1. Decision 3: revised to describe inside-body close instead of boundary redirect
+2. Bugs table: Bug A fix updated to inside-body form with explicit note against boundary form
+3. Scope: added `tests/integration/runner-release-exit-paths-test.sh`
+4. Notes on acceptance gate: updated "Integration hangs root cause" and "R-4 persist"
+5. Finding 18: documents the boundary-form regression and the alternative fix
+6. Finding 19: explains why R-4 persist from issue-acceptance is stale
+
+## Iter-3 judgment findings
+
+### §9 vs §11 confirmed
+
+Read ADR-054:
+- `### 9. Per-stage router configuration surface` exists as an unchanged section (line ~371)
+- `### Amendment (2026-10-12, #1944) — §11: per-run wall-clock limit` is the new section
+- The `## Enforced by` section (line 542) only covers §11 entries
+- ADR-054 is NOT in config/adr-enforcement-baseline.txt (removed by implementation)
+
+R-9 says "ADR-054 §9" but that was a draft-numbering error. The correct section is §11. SPEC-6 reflects §11. This is covered.
+
+Note: The implementation has only added ## Enforced by entries for §11. Sections §1-§10 lack ## Enforced by entries but ADR-054 has been removed from the baseline. This would cause lint to fail unless §1-§10 also get ## Enforced by entries. However, this is a BUILD/implementation concern, not a DESIGN gap — the SPEC says "baseline no longer lists ADR-054" and the lint will enforce the consequence.
+
+### R-9 coverage verdict
+
+SPEC-6 covers R-9:
+- ADR-025 gets ## Enforced by entries ✓
+- ADR-054 §11 (the per-run limit section) gets ## Enforced by entries ✓
+- Baseline removal forces all existing sections to get ## Enforced by entries via lint ✓
+
+### All requirements: COVERED
+
+- R-1: SPEC-1 (timed_out status, in-flight stage name, limit_s in pipeline.end) ✓
+- R-2: SPEC-1 (watchdog fires between dispatches, not only inside a stage) ✓
+- R-3: SPEC-1 (TERM-ignoring stage dead within TERM+10s) ✓
+- R-4: SPEC-1 (release and persist always_run stages execute on timed-out exit path) ✓
+- R-5: SPEC-2 (precedence template > env > 20700; non-integer/non-positive refused) ✓
+- R-6: SPEC-3 (status unchanged after normal run; abort sentinel absent after sleep) ✓
+- R-7: SPEC-4 (get_resume_recommendation=manual_resume_only; resumed run completes) ✓
+- R-8: SPEC-5 (no CI env var references in limit-resolution code) ✓
+- R-9: SPEC-6 (ADR-025 amended; ADR-054 §11 with ## Enforced by; baseline updated) ✓
+- R-10: SPEC-1 covers tag (all SPECs passing = npm test + lint green) ✓
+
+## Prior pass notes (iter-2, carried forward)
 
 ### Root cause of 3 remaining timeouts (Bug A incomplete)
 
 The `>/dev/null 2>&1 &` redirect closes fds 1 and 2. BUT:
-- At line 2743 (BEFORE watchdog arm at line 2802): `exec {_RUNNER_ERR_FD}>&2`
+- At line 2745 (BEFORE watchdog arm): `exec {_RUNNER_ERR_FD}>&2`
 - This opens _RUNNER_ERR_FD = some fd >= 10 = fd 2 = pipe write end
   (when runner is inside `$(bash "$RUNNER" ... 2>&1)`)
 - Watchdog subshell inherits _RUNNER_ERR_FD = pipe write end
@@ -25,13 +109,7 @@ The `>/dev/null 2>&1 &` redirect closes fds 1 and 2. BUT:
 - Orphaned sleep holds _RUNNER_ERR_FD open indefinitely
 - $() waits for all pipe write end holders → hangs
 
-FIX: `    ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
-
-Confirmed by awk check: `awk '/^main\(\) \{/{f=1} f && /exec \{/' runner.sh` finds only:
-- Line 2743: `exec {_RUNNER_ERR_FD}>&2`
-The only extra fd opened before watchdog arm.
-
-fd 3 (exec 3>&2 at line 2839) is opened AFTER watchdog arm — not inherited by watchdog.
+FIX (revised): `exec {_RUNNER_ERR_FD}>&- || true` inside watchdog body (NOT at boundary)
 
 ### Root cause of runner-signal-rearm-test.sh SPEC-5 failure (Bug C)
 
@@ -52,40 +130,15 @@ But _rearm_term = "trap '_runner_signal_trap TERM' TERM" (from _runner_rearm_tra
 Test FAILS: expected <startup-not-found>, got trap '_runner_signal_trap TERM' TERM
 
 FIX: Change awk pattern in SPEC-5 from `/trap .* TERM$/` to `/trap '.*' TERM$/`
-- Old: matches any line ending with TERM
-- New: requires `trap '...' TERM` form (single-quoted handler followed by exactly ` TERM`)
-- `trap ':' INT TERM` ends with ` INT TERM` not `' TERM` → NOT matched by new pattern
-- Wait: `/trap '.*' TERM$/` also won't match `trap ':' INT TERM` because after the closing `'`
-  we have ` INT TERM` not ` TERM`. So the pattern `trap '.*' TERM$` requires the line to
-  end exactly with `' TERM`. `trap ':' INT TERM` ends with `INT TERM` not `' TERM`. ✓
+- `trap ':' INT TERM` ends with ` INT TERM` not `' TERM` → NOT matched by new pattern ✓
 - The startup install `trap '_runner_signal_trap TERM' TERM` ends with `' TERM`. ✓
 
-### Shape floor
+### Key code locations (runner.sh)
 
-tests/golden/full-pipeline/event-sequence.golden and parity: in scope, already.
-Shape floor flagged them but golden tests PASS (shape-floor is a heuristic).
-Build must update them if they are wrong.
-
-### Design gate failure
-
-Previous iter-2 attempts wrote designs without `covers: R-10` (or wrote nothing).
-Current design-draft.md has `covers: R-10` in SPEC-1. Re-writing with correct content.
-
-### Scope additions
-
-Added tests/unit/runner-signal-rearm-test.sh (Bug C fix file).
-
-### Supersedes additions
-
-Added runner-signal-rearm-test.sh [SPEC-5] entry.
-
-## Prior pass notes (carried forward for reference)
-
-- exec {_RUNNER_ERR_FD}>&2 at line 2743: ERR fd set before watchdog arm
-- exec 3>&2 at line 2839: fd 3 set AFTER watchdog arm (not inherited by watchdog)
-- main() starts at line 1721
-- Watchdog arm at lines 2802-2828
-- _runner_abort_trap defined inside main() at line 2529
-- Bug B fix: trap ':' INT TERM at line 2546 (inside _runner_abort_trap, inside main())
-- Startup TERM install: trap '_runner_signal_trap TERM' TERM at line 2751
-- _runner_rearm_traps: lines 1716-1718, top-level, has both INT and TERM handlers
+- exec {_RUNNER_ERR_FD}>&2: line 2745
+- _runner_abort_trap defined: line 2529 (inside main())
+- trap ':' INT TERM guard in abort trap: line 2539
+- trap '_runner_signal_trap TERM' TERM startup install: line 2753
+- Watchdog arm: lines 2804-2830
+- Watchdog launch line: line 2829
+- exec 3>&2 (fd 3, AFTER watchdog arm): line 2841

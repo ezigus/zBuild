@@ -17,6 +17,7 @@
     "tests/golden/pipeline-end/timed_out-w80.layout.txt",
     "tests/integration/resume-after-run-timeout-test.sh",
     "tests/integration/run-timed-out-test.sh",
+    "tests/integration/runner-release-exit-paths-test.sh",
     "tests/unit/abort-propagation-test.sh",
     "tests/unit/run-limit-precedence-test.sh",
     "tests/unit/run-open-items-test.sh",
