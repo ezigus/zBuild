@@ -1,4 +1,0 @@
-[
-  "tests/integration/always-run-exit-paths-test.sh",
-  "tests/integration/orch-backend-misconfigured-test.sh"
-]
