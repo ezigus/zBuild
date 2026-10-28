@@ -33,7 +33,7 @@ without reading platform variables (R-8).
    body.** When the runner is invoked inside `$(bash "$RUNNER" ... 2>&1)` (as
    existing tests do), bash creates a pipe; both stdout and stderr of the runner
    point to its write end. Before the watchdog is armed, `main()` runs
-   `exec {_RUNNER_ERR_FD}>&2` (line 2745) to save a copy of stderr on a
+   `exec {_RUNNER_ERR_FD}>&2` (line 2756) to save a copy of stderr on a
    high-numbered fd (`_RUNNER_ERR_FD` ≥ 10). The watchdog subshell inherits
    this fd. The `>/dev/null 2>&1 &` redirect closes fds 1 and 2 in the
    watchdog, but `_RUNNER_ERR_FD` is NOT covered. When the watchdog is
@@ -53,36 +53,34 @@ without reading platform variables (R-8).
    process can hold the pipe write end.
 
 4. **EXIT trap must guard against repeat signals with `trap ':' INT TERM` as
-   its absolute first executable line.** The tests drive the runner via
+   its absolute first executable instruction.** The tests drive the runner via
    `timeout 120 bash "$RUNNER" ...` and send `kill -TERM -$RUNNER_PID` to the
    process group. GNU `timeout`, on receiving SIGTERM, forwards SIGTERM to its
    child's process group (same PG) before exiting. The runner therefore
    receives TWO SIGTERMs. The first fires `_runner_signal_trap TERM` →
    `exit 1` → the EXIT trap (`_runner_abort_trap`) starts. The second SIGTERM
-   can arrive at any point before `trap ':' INT TERM` is installed. Bash fires
-   `_runner_signal_trap TERM` again, which calls `exit 1`. Calling `exit`
-   from within an EXIT trap causes bash to abort the trap immediately —
-   `_runner_dispatch_always_run` is never reached.
-   **Fix:** `trap ':' INT TERM` must be the ABSOLUTE FIRST EXECUTABLE LINE of
-   `_runner_abort_trap` — before `_runner_restore_stderr` and before anything
-   else. Any code that precedes the guard creates a race window, regardless of
-   whether it calls `wait`. `_runner_restore_stderr` follows immediately after
-   (still before any wait-bearing or dispatching code). The guard is restored
-   to real handlers after the kill/wait block so `_runner_dispatch_always_run`
-   can still handle signals. Mirrors the pattern used inside
-   `_runner_dispatch_always_run` (line 2516).
-   **Current worktree defect (Finding 21):** `_runner_restore_stderr` is at
-   line 2532 and `trap ':' INT TERM` is at line 2543. The race window between
-   them causes `runner-release-exit-paths-test.sh` SPEC-5 to fail — the
-   second SIGTERM aborts the EXIT trap before `_runner_dispatch_always_run`
-   runs, leaving the release marker empty.
+   can arrive before the guard is installed. Bash fires `_runner_signal_trap
+   TERM` again, which calls `exit 1`. Calling `exit` from within an EXIT trap
+   causes bash to abort the trap immediately — `_runner_dispatch_always_run`
+   is never reached.
+   **Fix:** `trap ':' INT TERM` must be the ABSOLUTE FIRST EXECUTABLE
+   INSTRUCTION of `_runner_abort_trap`. The guard is placed as the first line
+   of `_runner_restore_stderr()` — because bash checks pending signals at
+   function-return boundaries, a pending second TERM would fire
+   `_runner_signal_trap TERM` (→ exit 1) BEFORE any explicit guard in
+   `_runner_abort_trap` could execute. By placing the guard inside
+   `_runner_restore_stderr` as its very first line, the guard is active before
+   the function returns. The explicit `trap ':' INT TERM` at the top of
+   `_runner_abort_trap` is retained as an idempotent belt-and-suspenders
+   install. Current worktree: this is **correctly applied** — `_runner_restore_stderr`
+   has `trap ':' INT TERM` at line 939 (its first line).
 
 5. **runner-signal-rearm-test.sh SPEC-5 regression.** The Bug B fix (Decision
    4) defines `_runner_abort_trap()` inside `main()`. This nested function
    contains `trap ':' INT TERM` — a guard line that ends with `TERM`. The
    SPEC-5 awk pattern `/trap .* TERM$/` finds this line as the FIRST
    `trap...TERM` inside `main()` (the nested function definition precedes the
-   startup install at line 2751). The subsequent `grep -oE "trap '[^']+' TERM"`
+   startup install at line 2763). The subsequent `grep -oE "trap '[^']+' TERM"`
    does not match `trap ':' INT TERM` (two-signal form), so `_startup_term`
    comes up empty (`<startup-not-found>`), while `_rearm_term` from
    `_runner_rearm_traps` is `trap '_runner_signal_trap TERM' TERM`. Test fails.
@@ -103,22 +101,50 @@ without reading platform variables (R-8).
    `timeout-with-release` test template's `always_run` list and both are
    asserted in P4 of run-timed-out-test.sh.
 
+8. **EXIT trap must kill watchdog children before disarming the watchdog.**
+   The watchdog subshell sets `trap '' TERM` so it can survive a PG-wide SIGTERM
+   and escalate to SIGKILL. POSIX requires SIG_IGN to be inherited across
+   exec: the watchdog's `sleep "$_wdg_lim"` child therefore also has SIGTERM=SIG_IGN.
+   When the runner is stopped EXTERNALLY (e.g. `sigterm-aborts-pipeline-test.sh`
+   sends `kill -TERM -$RUNNER_PGID`), the PG-wide TERM does not kill the sleep.
+   The EXIT trap's `kill -KILL "${_RUNNER_WATCHDOG_PID}"` kills the watchdog
+   bash subshell, but NOT its `sleep` child — bash SIGKILL only kills the target
+   PID, not its children. The sleep is then ORPHANED (reparented to init) and
+   continues for `_RUNNER_MAX_RUN_S` seconds (default 20700 s). The test
+   framework's `_kill_test_children` does a bare `wait`, which blocks until
+   ALL background jobs (including any process in the test's job table that can
+   reach the orphaned sleep) are done, causing the 480 s test timeout.
+   **Fix:** in the EXIT trap's watchdog cleanup block, collect the watchdog's
+   direct children via `pgrep -P "${_RUNNER_WATCHDOG_PID}"` BEFORE sending
+   SIGKILL to the watchdog. This must be done before the kill — after the
+   watchdog dies, its children are reparented to PID 1 and `pgrep -P` would
+   miss them. Send SIGKILL to both the watchdog PID and its children (using
+   SIGKILL, not SIGTERM, because the children have SIGTERM=SIG_IGN). Added
+   `tests/integration/sigterm-aborts-pipeline-test.sh` to scope: it is an
+   existing test for #686 that regresses on this orphaned-sleep defect.
+
 ## Bug fix status
 
 **Applied correctly in current worktree:**
-- Bug A: `exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2818, inside the watchdog body
+- Bug A: `exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2826, inside the watchdog body
   (after `trap '' TERM`, before `_wdg_lim=`). Orphaned `sleep` cannot hold the pipe write
-  end open. CAUTION: the boundary form `( ... ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
+  end open for `$(...)` callers. CAUTION: the boundary form `( ... ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
   closes `_RUNNER_ERR_FD` in the parent (bash evaluates named-fd redirects before
   forking), causing `_runner_restore_stderr`'s `exec 2>&"$_RUNNER_ERR_FD"` to fail under
   `set -e`, which aborts the EXIT trap. Inside-body form is the only correct approach.
+- Bug B: `trap ':' INT TERM` is line 939, the FIRST executable line of `_runner_restore_stderr()`.
+  `_runner_abort_trap` calls `_runner_restore_stderr` first (line 2543), so the guard is
+  active before any function-return signal-check boundary. The explicit `trap ':' INT TERM` at
+  line 2551 is idempotent.
 - Bug C: runner-signal-rearm-test.sh:92 — awk pattern narrowed from `/trap .* TERM$/` to
   `/trap '.*' TERM$/`, skipping the two-signal `trap ':' INT TERM` guard line.
 
 **Still defective in current worktree — must be fixed:**
-- Bug B (ordering): `_runner_restore_stderr` at runner.sh:2532 precedes `trap ':' INT TERM`
-  at runner.sh:2543. The guard must be the FIRST executable line (before
-  `_runner_restore_stderr`). See Decision 4 and Finding 21.
+- Bug D (orphaned watchdog sleep): EXIT trap's watchdog cleanup at runner.sh:2560-2561 does
+  not kill the watchdog's `sleep "$_wdg_lim"` child before SIGKILL-ing the watchdog. The child
+  inherits SIGTERM=SIG_IGN and survives as an orphan for `_RUNNER_MAX_RUN_S` seconds, causing
+  `sigterm-aborts-pipeline-test.sh` to time out at 480 s. Fix: `pgrep -P "$_RUNNER_WATCHDOG_PID"`
+  BEFORE the SIGKILL, then SIGKILL all found children alongside the watchdog.
 
 **Fixed in earlier commit (a60f39a4):**
 - `:-0` default on kill/wait in abort trap → changed to `:-`
@@ -144,13 +170,28 @@ correctly placed the run-level limit content in a new **§11**. SPEC-6 reflects
 §11. The issue-acceptance "NOT SURE" about this is resolved: the issue text
 contained a draft section number; §11 is the correct final number.
 
-**Integration hangs root cause — resolved.** Bug A fix (`exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2818 inside the watchdog body) is now applied. Orphaned `sleep` can no longer hold `_RUNNER_ERR_FD` (the pipe write end) open, so `$(...)` callers no longer hang waiting for all write-end holders to close. The boundary form `{_RUNNER_ERR_FD}>&-` was tested and regressed runner-release-exit-paths SPEC-5 (Finding 18); the inside-body form is the only correct approach and is what is in the worktree.
+**Integration hangs root cause — resolved.** Bug A fix (`exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2826 inside the watchdog body) prevents orphaned `sleep` from holding `_RUNNER_ERR_FD` (the pipe write end) open in `$(...)` invocations. The boundary form `{_RUNNER_ERR_FD}>&-` was tested and regressed runner-release-exit-paths SPEC-5 (Finding 18); the inside-body form is the only correct approach.
 
-**SPEC-5 regression (runner-release-exit-paths) — STILL FAILING.** The Bug B
-guard (`trap ':' INT TERM` at runner.sh:2543) is present but in the wrong
-position: `_runner_restore_stderr` at line 2532 comes first, leaving a race
-window for the second SIGTERM to abort the EXIT trap before
-`_runner_dispatch_always_run` runs. See Finding 21 and Decision 4.
+**runner-release-exit-paths SPEC-5 — NOW PASSES.** Bug B is correctly applied:
+`trap ':' INT TERM` is the first line of `_runner_restore_stderr()` (runner.sh:939),
+so the guard is active before the function returns. The test confirms this in the
+current worktree (820 pass, 1 fail — only sigterm-aborts fails).
+
+**sigterm-aborts-pipeline-test.sh — 480 s hang, one remaining defect.**
+The test sends `kill -TERM -$RUNNER_PGID` to the runner's process group from
+the test harness. The watchdog's `sleep "$_wdg_lim"` child inherits SIGTERM=SIG_IGN
+and survives both the PG-wide TERM and the EXIT trap's SIGKILL (which targets only
+the watchdog bash PID, not its children). The orphaned sleep runs for `_RUNNER_MAX_RUN_S`
+(default 20700 s), causing the test framework's bare `wait` in `_kill_test_children`
+(test-helpers.sh:114) to block until the 480 s test timeout fires. Fix described
+in Decision 8: collect children via `pgrep -P` before killing the watchdog, then
+SIGKILL all. See Finding 24.
+
+**Shape floor** — Golden files contain NO new content from this change; the
+normal-run event sequence is unaffected. The shape-floor check flags the two
+event-sequence golden files only because `_SF_FAILED_COUNT > 0` (sigterm-aborts
+failing). Once Bug D is fixed and sigterm-aborts passes, `_SF_FAILED_COUNT == 0`
+and the shape-floor check auto-verifies the golden files with no content change needed.
 
 **NEGCTL timeout on SPEC-1** — The negctl baseline run for SPEC-1 timed out
 (pipeline problem, not our change). The negctl head run shows all 15 assertions
@@ -181,6 +222,7 @@ tests/golden/pipeline-end/timed_out-w80.layout.txt
 tests/integration/resume-after-run-timeout-test.sh
 tests/integration/run-timed-out-test.sh
 tests/integration/runner-release-exit-paths-test.sh
+tests/integration/sigterm-aborts-pipeline-test.sh
 tests/unit/abort-propagation-test.sh
 tests/unit/run-limit-precedence-test.sh
 tests/unit/run-open-items-test.sh
@@ -217,7 +259,7 @@ tests/unit/runner-signal-rearm-test.sh [SPEC-5]: the awk pattern /trap .* TERM$/
 
 **Finding 1 (design — R-10 not covered by any SPEC)**: Fixed. Added `covers: R-10` to SPEC-1. R-10 ("npm test + npm run lint green") is a meta-requirement: once the implementation bugs are fixed and SPEC-1 through SPEC-6 all pass, both `npm test` and `npm run lint` are green.
 
-**Finding 2 (test — 3 integration timeouts)**: Fully resolved. The original design attributed the 3 integration hangs to `:-0` in kill/wait. The `:-0` → `:-` fix was applied in commit a60f39a4 but tests still hung. The build then applied `>/dev/null 2>&1 &` (Bug A partial), but the 3 tests STILL timed out because `_RUNNER_ERR_FD` (opened at line 2745 before the watchdog arm) is also a pipe write end and is not covered by the `2>&1` redirect. Bug A is now fully fixed: `exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2818 closes this fd inside the watchdog body. The orphaned `sleep` can no longer hold the pipe open. See Finding 16 and Finding 18.
+**Finding 2 (test — 3 integration timeouts)**: Fully resolved. The original design attributed the 3 integration hangs to `:-0` in kill/wait. The `:-0` → `:-` fix was applied in commit a60f39a4 but tests still hung. The build then applied `>/dev/null 2>&1 &` (Bug A partial), but the 3 tests STILL timed out because `_RUNNER_ERR_FD` (opened at line 2756 before the watchdog arm) is also a pipe write end and is not covered by the `2>&1` redirect. Bug A is now fully fixed: `exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2826 closes this fd inside the watchdog body. The orphaned `sleep` can no longer hold the pipe open. See Finding 16 and Finding 18.
 
 **Finding 3 (test — lint-test-errexit: 8 occurrences)**: Fixed in prior worktree commit. All 4 new test files use `_rc=0; cmd || _rc=$?` pattern.
 
@@ -241,22 +283,24 @@ tests/unit/runner-signal-rearm-test.sh [SPEC-5]: the awk pattern /trap .* TERM$/
 
 **Finding 13 (build — Bug A: watchdog fd inheritance)**: After commit a60f39a4 fixed `:-0`, integration tests still hung. The build applied `>/dev/null 2>&1 &` (partial fix). Tests still timed out until Bug A was fully fixed — see Finding 16 for details. Now resolved.
 
-**Finding 14 (build — Bug B: double-SIGTERM aborts EXIT trap)**: Partially applied in commit 741c8466 — `trap ':' INT TERM` guard was added to `_runner_abort_trap`, but placed AFTER `_runner_restore_stderr` (line 2532), leaving a race window. The guard must be the FIRST executable line (see Finding 21 and Decision 4). This also introduced a regression in runner-signal-rearm-test.sh SPEC-5 (see Finding 17).
+**Finding 14 (build — Bug B: double-SIGTERM aborts EXIT trap)**: Commit 741c8466 added the `trap ':' INT TERM` guard. The guard was placed as the first line of `_runner_restore_stderr()`, which is the first call in `_runner_abort_trap`. Effective guard placement: runner.sh:939. See Finding 21 for the correction of the mistaken "still defective" claim.
 
 **Finding 15 (build — NEGCTL WIRING for SPEC-4)**: WIRING was `core/pipeline/runner.sh` only. SPEC-4 asserts `get_resume_recommendation(timed_out) = manual_resume_only`, which is implemented in `core/state/resume.sh`. Added `core/state/resume.sh` to WIRING.
 
-**Finding 16 (build pass 2 — Bug A incomplete, now resolved)**: The `>/dev/null 2>&1 &` redirect fixed fds 1 and 2 but not `_RUNNER_ERR_FD`. `exec {_RUNNER_ERR_FD}>&2` at line 2745 opens this fd pointing to fd 2 (pipe write end when runner is in `$(... 2>&1)`). The watchdog inherits it. The orphaned `sleep` holds `_RUNNER_ERR_FD` open indefinitely. The fix (see Finding 18 for why the boundary form was abandoned) is `exec {_RUNNER_ERR_FD}>&- || true` as the second line inside the watchdog body. This is now applied at runner.sh:2818.
+**Finding 16 (build pass 2 — Bug A incomplete, now resolved)**: The `>/dev/null 2>&1 &` redirect fixed fds 1 and 2 but not `_RUNNER_ERR_FD`. `exec {_RUNNER_ERR_FD}>&2` at line 2756 opens this fd pointing to fd 2 (pipe write end when runner is in `$(... 2>&1)`). The watchdog inherits it. The orphaned `sleep` holds `_RUNNER_ERR_FD` open indefinitely. The fix (see Finding 18 for why the boundary form was abandoned) is `exec {_RUNNER_ERR_FD}>&- || true` as the second line inside the watchdog body. This is now applied at runner.sh:2826.
 
 **Finding 17 (build pass 2 — Bug C: runner-signal-rearm-test.sh SPEC-5 regression)**: The Bug B fix (trap guard in `_runner_abort_trap`) added `trap ':' INT TERM` inside the nested function, which is defined inside main(). The existing test's awk pattern `/trap .* TERM$/` matches this guard line first (before the startup install). `grep -oE "trap '[^']+' TERM"` does not match the two-signal `trap ':' INT TERM` form, so `_startup_term` = empty. `_rearm_term` = `trap '_runner_signal_trap TERM' TERM`. Test fails. Fix: narrow the awk pattern to `/trap '.*' TERM$/`. Added `tests/unit/runner-signal-rearm-test.sh` to scope and supersedes block. Decision section 5 added.
 
-**Finding 18 (issue-acceptance pass 2 — Bug A boundary form breaks runner-release-exit-paths SPEC-5)**: The issue-acceptance reported that applying `{_RUNNER_ERR_FD}>&-` at the `( ... ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &` boundary caused `runner-release-exit-paths-test.sh` SPEC-5 to fail — `release` was no longer dispatched on the hard-kill (SIGTERM→SIGKILL) exit path. The boundary form has a behavioral difference from the inside-body form that corrupts the abort trap's watchdog-disarm sequence. The correct fix closes `_RUNNER_ERR_FD` INSIDE the watchdog subshell body (after `trap '' TERM`, before `_wdg_lim=...`): `exec {_RUNNER_ERR_FD}>&- || true`. The launch line reverts to the simpler `    ) >/dev/null 2>&1 &`. This achieves the same fd-close result (the `sleep` child inherits a closed fd{N}) without the boundary-form regression. Added `tests/integration/runner-release-exit-paths-test.sh` to scope: this test exercises the SIGTERM abort path through the watchdog disarm, which our watchdog arm change touches.
+**Finding 18 (issue-acceptance pass 2 — Bug A boundary form breaks runner-release-exit-paths SPEC-5)**: The issue-acceptance reported that applying `{_RUNNER_ERR_FD}>&-` at the `( ... ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &` boundary caused `runner-release-exit-paths-test.sh` SPEC-5 to fail — `release` was no longer dispatched on the hard-kill (SIGTERM→SIGKILL) exit path. The boundary form closes `_RUNNER_ERR_FD` in the parent before fork (bash evaluates named-fd redirects in the parent), which causes `_runner_restore_stderr`'s `exec 2>&"$_RUNNER_ERR_FD"` to fail under `set -e`. The correct fix closes `_RUNNER_ERR_FD` INSIDE the watchdog subshell body (after `trap '' TERM`, before `_wdg_lim=...`): `exec {_RUNNER_ERR_FD}>&- || true`. Added `tests/integration/runner-release-exit-paths-test.sh` to scope.
 
 **Finding 19 (issue-acceptance pass 2 — R-4 persist from latest issue-acceptance)**: The latest issue-acceptance again flagged "persist is never constructed or tested". This was addressed in commit a60f39a4 (Finding 5). The current worktree already has `persist-stage` in `timeout-with-release.yaml` with a `persist` role, and P4 asserts both the release marker (`RELEASE_MARKER`) and the persist marker (`PERSIST_MARKER`). The finding is from a stale diff snapshot that predates those fixes. No design change needed.
 
-**Finding 20 (issue-acceptance pass 3 — stale claim corrected)**: The iter-4 design incorrectly claimed all NOT MET findings were stale. The current issue-acceptance (pass 4, verdict: fail) shows `runner-release-exit-paths-test.sh` SPEC-5 still fails. The real remaining defect is the Bug B ordering issue: `_runner_restore_stderr` (line 2532) precedes `trap ':' INT TERM` (line 2543) in `_runner_abort_trap`. See Finding 21.
+**Finding 20 (issue-acceptance pass 3/4 — corrected)**: Earlier passes flagged `runner-release-exit-paths-test.sh` SPEC-5 as still failing. This was due to the Bug B guard being placed at the wrong location. Bug B is now correctly applied: `trap ':' INT TERM` is the first line of `_runner_restore_stderr()` (runner.sh:939), so the guard is active before the function returns to `_runner_abort_trap`. Test passes (820 pass, 1 fail in current worktree — only sigterm-aborts fails). No design change needed beyond this correction.
 
-**Finding 21 (issue-acceptance pass 4 — Bug B ordering regression persists)**: The current worktree has `trap ':' INT TERM` at runner.sh:2543 but `_runner_restore_stderr` at runner.sh:2532 comes first. This creates a race window between the two lines. In SPEC-5, SIGTERM is sent to the process group that includes `timeout 120`; `timeout` forwards SIGTERM to the runner again (GNU timeout behavior), giving the runner two SIGTERMs in rapid succession. The second SIGTERM can arrive in the window between lines 2532 and 2543, firing `_runner_signal_trap TERM` → `exit 1` from within the EXIT trap, aborting it before `_runner_dispatch_always_run` runs. Marker stays empty; SPEC-5 fails. Fix: move `trap ':' INT TERM` to be the ABSOLUTE FIRST LINE of `_runner_abort_trap` — before `_runner_restore_stderr`.
+**Finding 21 (issue-acceptance pass 4 — corrected)**: The pass-4 design claimed Bug B was still defective: `_runner_restore_stderr` at line 2532 preceded `trap ':' INT TERM` at line 2543. This was WRONG — it read the function-call ORDER in `_runner_abort_trap` but not the BODY of `_runner_restore_stderr`. The function body has `trap ':' INT TERM` at line 939 as its FIRST line. Since `_runner_abort_trap` calls `_runner_restore_stderr` first (line 2543), the guard is installed before any function-return signal-check boundary. Bug B is correctly applied. The supersedes entry for runner-signal-rearm-test.sh and Decision 5 (Bug C narrowed awk pattern) remain correct.
 
 **Finding 22 (issue-acceptance pass 4 — R-1 merge-base NOT SURE)**: The issue-acceptance asks for evidence that SPEC-1's test fails on the merge-base. SPEC-1 is `[code]` — by definition, the test must fail before the change. On the merge-base: `scripts/lib/stage-limits.sh` does not exist (it is new), `_runner_resolve_run_limit_s` is undefined, the watchdog arm is absent from runner.sh, and `timed_out` is not a valid pipeline status. Every assertion in `run-timed-out-test.sh` about `pipeline.end status=timed_out` and the `timed_out` value in `pipeline-state.json` will fail on the merge-base. No additional evidence is required in the design — the [code] label already encodes this obligation.
 
 **Finding 23 (issue-acceptance pass 4 — R-9 NOT SURE resolved)**: The issue-acceptance asks whether the issue's "§9" refers to ADR-054's §9 (unchanged per-stage section) or means something else. Finding 7 settled this: the issue text contained a draft section number. ADR-054's §9 is "Per-stage router configuration surface" (unchanged). The per-run limit is in §11. SPEC-6 correctly cites §11. No design change needed.
+
+**Finding 24 (issue-acceptance pass 5/6 — sigterm-aborts-pipeline-test.sh 480 s hang)**: The test sends `kill -TERM -$RUNNER_PGID` to the runner's process group. The watchdog subshell has `trap '' TERM` and ignores the signal. Its `sleep "$_wdg_lim"` child inherits SIGTERM=SIG_IGN at the OS level (POSIX: SIG_IGN is inherited across exec). When the EXIT trap sends `kill -KILL "${_RUNNER_WATCHDOG_PID}"`, the watchdog bash dies but its `sleep "$_wdg_lim"` child is ORPHANED — reparented to PID 1, SIGKILL was sent only to the watchdog's bash PID. With default `_RUNNER_MAX_RUN_S = 20700`, this orphaned sleep runs for 20700 s. The test framework's `_kill_test_children` (test-helpers.sh:108-114) calls bare `wait 2>/dev/null || true` which blocks on all remaining background/descended processes, hitting the 480 s test timeout. Fix (Decision 8): in the EXIT trap's watchdog cleanup block, use `pgrep -P "${_RUNNER_WATCHDOG_PID}"` BEFORE `kill -KILL` to collect children, then SIGKILL both watchdog and children. `tests/integration/sigterm-aborts-pipeline-test.sh` is added to scope as the test that regresses on this defect.
