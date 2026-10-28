@@ -4,11 +4,11 @@
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
-    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/plugins/tool/orch-sequential[0m
+    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/plugins/tool/orch-sequential[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/core/orch/contract.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/plugins/tool/orch-ruflo-hive/plugin.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/plugins/tool/orch-sequential/manifest.yaml /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/plugins/tool/orch-sequential/tests/orch-sequential-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/plugins/tool/orch-sequential/plugin.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/tests/test-durations.tsv /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/tests/unit/map-strategy-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/tests/unit/plugin-artifact-goldens-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/.github/issues/keepers-manifest.yaml[0m
+    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/core/orch/contract.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/plugins/tool/orch-ruflo-hive/plugin.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/plugins/tool/orch-sequential/manifest.yaml /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/plugins/tool/orch-sequential/plugin.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/plugins/tool/orch-sequential/tests/orch-sequential-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/tests/unit/plugin-artifact-goldens-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/tests/unit/map-strategy-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/tests/test-durations.tsv /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/.github/issues/keepers-manifest.yaml[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden must not exist
-    [2mfile still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.XdD0Jl/tests/golden/orch-sequential-capabilities.golden[0m
+    [2mfile still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.DaY8MG/tests/golden/orch-sequential-capabilities.golden[0m
 
 [2m  ──────────────────────────────────────────[0m
 

@@ -22,7 +22,7 @@
   [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
   [38;2;248;113;113m✗[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT must not remain
-    [2mstill present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.LR1dOL/core/pipeline/strategies/sequential.sh; the 300 s flat deadline applies on old code[0m
+    [2mstill present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.qmjRJl/core/pipeline/strategies/sequential.sh; the 300 s flat deadline applies on old code[0m
 
   [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)

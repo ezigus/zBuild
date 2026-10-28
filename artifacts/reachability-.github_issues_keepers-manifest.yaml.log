@@ -120,9 +120,57 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
 
+  [38;2;0;212;255m[#1801/SPEC-4] static: runner.sh contains _ZBUILD_ORCH_BACKEND_DISPOSITION gate[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] runner.sh must check _ZBUILD_ORCH_BACKEND_DISPOSITION after sourcing contract.sh
+    [2mgrep found no _ZBUILD_ORCH_BACKEND_DISPOSITION in runner.sh; old code has no disposition gate[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] e2e: absent backend fails pipeline as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] e2e: absent backend causes pipeline to exit non-zero
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name absent backend as 'misconfigured'
+    [2moutput did not contain 'misconfigured'; old code: no runner.sh gate, orch_spawn stub fires with 'not implemented' instead; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name the missing backend
+    [2moutput did not contain 'bash-parallel'; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+
+  [38;2;0;212;255m[#1801/SPEC-10] e2e: unreadable plugin.sh fails pipeline as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] e2e: unreadable plugin.sh causes pipeline to exit non-zero
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name unreadable plugin.sh as 'misconfigured'
+    [2moutput did not contain 'misconfigured'; old code: no runner.sh gate; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name the misconfigured backend
+    [2moutput did not contain 'bash-parallel'; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;248;113;113m[1m5 of 19 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] runner.sh must check _ZBUILD_ORCH_BACKEND_DISPOSITION after sourcing contract.sh
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name absent backend as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name the missing backend
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name unreadable plugin.sh as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name the misconfigured backend
 
 ### .github/issues/keepers-manifest.yaml head tests/integration/orch-backend-misconfigured-test.sh
 
@@ -148,9 +196,57 @@
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
   [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
 
+  [38;2;0;212;255m[#1801/SPEC-4] static: runner.sh contains _ZBUILD_ORCH_BACKEND_DISPOSITION gate[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] runner.sh must check _ZBUILD_ORCH_BACKEND_DISPOSITION after sourcing contract.sh
+    [2mgrep found no _ZBUILD_ORCH_BACKEND_DISPOSITION in runner.sh; old code has no disposition gate[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] e2e: absent backend fails pipeline as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] e2e: absent backend causes pipeline to exit non-zero
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name absent backend as 'misconfigured'
+    [2moutput did not contain 'misconfigured'; old code: no runner.sh gate, orch_spawn stub fires with 'not implemented' instead; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name the missing backend
+    [2moutput did not contain 'bash-parallel'; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+
+  [38;2;0;212;255m[#1801/SPEC-10] e2e: unreadable plugin.sh fails pipeline as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] e2e: unreadable plugin.sh causes pipeline to exit non-zero
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name unreadable plugin.sh as 'misconfigured'
+    [2moutput did not contain 'misconfigured'; old code: no runner.sh gate; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name the misconfigured backend
+    [2moutput did not contain 'bash-parallel'; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;248;113;113m[1m5 of 19 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] runner.sh must check _ZBUILD_ORCH_BACKEND_DISPOSITION after sourcing contract.sh
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name absent backend as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name the missing backend
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name unreadable plugin.sh as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name the misconfigured backend
 
 ### .github/issues/keepers-manifest.yaml reverted tests/unit/orch-sequential-absent-guard-test.sh
 
@@ -158,9 +254,9 @@
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
-    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.WdSNKc/plugins/tool/orch-sequential[0m
+    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.1F2LW5/plugins/tool/orch-sequential[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.WdSNKc/.github/issues/keepers-manifest.yaml[0m
+    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.1F2LW5/.github/issues/keepers-manifest.yaml[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden does not exist
 
 [2m  ──────────────────────────────────────────[0m

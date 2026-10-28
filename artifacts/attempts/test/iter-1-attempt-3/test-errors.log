@@ -1,0 +1,118 @@
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.fEMKds/tests/integration/always-run-exit-paths-test.sh
+
+[38;2;0;212;255m[1m  always_run dispatches on every exit path (#1831)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[SPEC-1][change] release runs when the pipeline succeeds[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] release ran on rc=0
+
+  [38;2;0;212;255m[SPEC-2][change] release runs when a stage fails[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] release ran on a non-zero stage rc
+
+  [38;2;0;212;255m[SPEC-3][change] release runs on the SIGINT path (abort word sigint)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] release ran on the SIGINT path
+  [38;2;74;222;128m✓[0m [SPEC-3] the run took the abort path: exit 1 (not 130), status interrupted
+
+  [38;2;0;212;255m[SPEC-4][change] release runs when the runner is SIGTERMed mid-stage[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] release ran after SIGTERM to the runner
+
+  [38;2;0;212;255m[SPEC-5][guard] a release hook that hangs is bounded by its timeout_s[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] a 60s release hook did not hold the exit (4s)
+  [38;2;74;222;128m✓[0m [SPEC-5] the hanging hook was actually dispatched
+  [38;2;74;222;128m✓[0m [SPEC-5] the hanging hook was killed before completing
+
+  [38;2;0;212;255m[#1801/SPEC-5] persist always_run watchdog uses timeout_s: not router.timeout_s: 120[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] persist always_run watchdog bounds at timeout_s: 4 (exited in 0s; old code: router.timeout_s: 120)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.YlXA1N/spec5p-entered[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] persist hook killed before completing (bounded by timeout_s: 4, not 120s)
+
+  [38;2;0;212;255m[SPEC-6][guard] an unresolvable role emits an event instead of failing silently[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] stage.always_run.unresolved is emitted
+  [38;2;74;222;128m✓[0m [SPEC-6] an unresolvable always-run stage does not fail the run
+
+  [38;2;0;212;255m[#1801/SPEC-5] static: always-run-minimal.yaml release.timeout_s at stage level[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run-minimal.yaml: release.timeout_s is 2 at stage level (not under router:)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 14 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.fEMKds/tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] static: runner.sh contains _ZBUILD_ORCH_BACKEND_DISPOSITION gate[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] runner.sh must check _ZBUILD_ORCH_BACKEND_DISPOSITION after sourcing contract.sh
+    [2mgrep found no _ZBUILD_ORCH_BACKEND_DISPOSITION in runner.sh; old code has no disposition gate[0m
+
+  [38;2;0;212;255m[#1801/SPEC-4] e2e: absent backend fails pipeline as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] e2e: absent backend causes pipeline to exit non-zero
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name absent backend as 'misconfigured'
+    [2moutput did not contain 'misconfigured'; old code: no runner.sh gate, orch_spawn stub fires with 'not implemented' instead; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name the missing backend
+    [2moutput did not contain 'bash-parallel'; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+
+  [38;2;0;212;255m[#1801/SPEC-10] e2e: unreadable plugin.sh fails pipeline as misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] e2e: unreadable plugin.sh causes pipeline to exit non-zero
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name unreadable plugin.sh as 'misconfigured'
+    [2moutput did not contain 'misconfigured'; old code: no runner.sh gate; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name the misconfigured backend
+    [2moutput did not contain 'bash-parallel'; got: ⚠ backend.missing: orchestrator=sequential configured but plugin not found
+▸ merge_policy: auto_unless_flagged
+
+⚠ Startup preflight: persona bindings or required plugins are unresolvable:
+
+  issue-acceptance: PERSONA_MISSING (id=product-owner)
+    the template names persona 'product-owner', which is[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m5 of 19 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] runner.sh must check _ZBUILD_ORCH_BACKEND_DISPOSITION after sourcing contract.sh
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name absent backend as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-4] e2e: pipeline output must name the missing backend
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name unreadable plugin.sh as 'misconfigured'
+  [38;2;248;113;113m✗[0m [#1801/SPEC-10] e2e: pipeline output must name the misconfigured backend
