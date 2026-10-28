@@ -1,0 +1,15 @@
+{
+  "stage": "build",
+  "cycle_iter": 2,
+  "attempt": 2,
+  "rc": "1",
+  "generated_at": "2026-10-28T13:28:59Z",
+  "files": 3,
+  "outputs": {
+    "diff.patch": "unchanged",
+    "build-summary.json": "changed",
+    "build-summary.md": "unchanged",
+    "__repository__": "unchanged"
+  },
+  "progress": false
+}
