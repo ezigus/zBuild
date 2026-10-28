@@ -390,6 +390,17 @@ else
             "no §11 heading found in ADR-054"
     fi
 
+    # §11's content must describe the per-run limit specifically.
+    # Extract the §11 body: lines from after its heading up to the next ## heading.
+    _s11_body="$(awk '/§[[:space:]]*11\b|###[[:space:]]+11\./{f=1;next} f&&/^##/{exit} f{print}' \
+        "$ADR054" 2>/dev/null || true)"
+    if grep -qiE 'max_run_s|wall.clock|per.run|run.level|run limit' <<< "$_s11_body" 2>/dev/null; then
+        assert_pass "[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit"
+    else
+        assert_fail "[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit" \
+            "§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic"
+    fi
+
     # ## Enforced by section must cite ALL four new test files
     _adr054_enf="$(awk '/## Enforced by/,0' "$ADR054" 2>/dev/null || true)"
     for _tfile in run-timed-out-test run-limit-precedence-test run-watchdog-clean-exit-test resume-after-run-timeout-test; do

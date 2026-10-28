@@ -1,34 +1,40 @@
-# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 23
+# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 25
 
 ## Status: COMPLETE
 
 All 6 SPECs have assertions written. Round-2 checker feedback addressed.
 
-## Round 23 fix
+## Round 25 fix
 
-**Problem**: SPEC-6's ADR-025 and ADR-054 "## Enforced by cites new tests" checks
-each used a single `grep -q` with an OR pattern over all four new test file names.
-The assertion passed if even one of the four files was mentioned; the requirement
-says "entries citing the new test files" (plural), meaning all four must be cited.
+**Problem (checker feedback)**: SPEC-6's assertion confirmed §11 exists in
+ADR-054 (by pattern-matching the section marker) and that the Enforced-by
+section cited the four test files, but never checked that §11's **content**
+describes the per-run limit. A §11 about an unrelated topic would still pass.
 
 **Fix applied to `tests/unit/run-limit-precedence-test.sh`**:
 
-1. Lines 367-376 (ADR-025 ## Enforced by check): Replaced the single OR-grep
-   with a for loop checking each of the four test files individually.
+After the `§11 exists` if-block (line 391), added a new assertion block that:
+1. Extracts the §11 body using awk: lines from after the §11 heading to the
+   next `##` heading (any markdown heading level).
+2. Checks the body contains at least one of: `max_run_s`, `wall.clock`,
+   `per.run`, `run.level`, `run limit`.
+3. Asserts pass/fail with label `[#1944/SPEC-6] ADR-054 §11 content describes
+   the per-run limit`.
 
-2. Lines 393-402 (ADR-054 ## Enforced by check): Same — replaced single OR-grep
-   with a for loop checking each of the four test files individually.
+The awk command:
+```
+awk '/§[[:space:]]*11\b|###[[:space:]]+11\./{f=1;next} f&&/^##/{exit} f{print}'
+```
+- Activates (`f=1`) on the §11 heading, skipping that line (`next`)
+- Exits on the next `##`-level markdown heading
+- Prints all body lines between them
 
-The four test files checked in each loop:
-- run-timed-out-test
-- run-limit-precedence-test
-- run-watchdog-clean-exit-test
-- resume-after-run-timeout-test
+Uses `grep -qiE ... <<< "$_s11_body"` (here-string, approved pattern).
 
 ## All files — final state
 
 ### tests/integration/run-timed-out-test.sh — SPEC-1 ✓
-### tests/unit/run-limit-precedence-test.sh — SPEC-2, SPEC-5, SPEC-6 ✓ (fixed)
+### tests/unit/run-limit-precedence-test.sh — SPEC-2, SPEC-5, SPEC-6 ✓ (fixed §11 content)
 ### tests/unit/run-watchdog-clean-exit-test.sh — SPEC-3 ✓
 ### tests/integration/resume-after-run-timeout-test.sh — SPEC-4 ✓
 ### tests/unit/run-open-items-test.sh — O9 updated to 6 ✓
