@@ -1,6 +1,47 @@
 # design stage notes — issue #1944
 
-## Current pass (iter-3 design refinement)
+## Current pass (iter-4 design refinement)
+
+### What changed in iter-4
+
+Issue-acceptance pass 3 flagged:
+1. R-4: SPEC-5 in runner-release-exit-paths proves release not dispatched (stale — was boundary form)
+2. R-4: persist stage not constructed or tested (stale — was fixed in a60f39a4)
+3. R-10: npm test exits non-zero (stale — Bug A boundary form + Bug C caused this)
+4. R-9 NOT SURE: §9 vs §11 (already addressed; issue text had a draft section number)
+
+### Verification (iter-4) — current worktree state
+
+runner.sh:2818 — Bug A (inside-body close) IS APPLIED:
+  `exec {_RUNNER_ERR_FD}>&- || true`
+  Inside watchdog body, after `trap '' TERM`, before `_wdg_lim=`.
+
+runner-signal-rearm-test.sh:92 — Bug C (awk pattern) IS APPLIED:
+  `/trap '.*' TERM$/` — correctly skips `trap ':' INT TERM`.
+
+runner.sh:2543 — Bug B (double-SIGTERM guard) IS APPLIED:
+  `trap ':' INT TERM`
+
+run-timed-out-test.sh P4 — persist IS tested (PERSIST_MARKER at line 409-413).
+
+ADR-054: §11 exists with ## Enforced by entries.
+ADR-025: timed_out word + ## Enforced by entries for new tests.
+adr-enforcement-baseline.txt: ADR-054 NOT listed.
+Acceptance gate: outcome=pass, severity=none.
+
+### Design changes (iter-4)
+
+1. "Bugs that the next build pass must fix" → renamed to "All bugs now fixed"
+2. Bug A and Bug C moved to "Fixed in current worktree" with line references
+3. Finding 2 updated: "Fully resolved" 
+4. Finding 13 updated: "Now resolved"
+5. Finding 16 updated: "Now resolved, applied at runner.sh:2818"
+6. Notes on acceptance gate: updated "Integration hangs" note to say "resolved"
+7. Added Finding 20: explains all three NOT MET findings are stale
+
+## Prior pass notes (iter-3, carried forward)
+
+### What changed since iter-2
 
 ### What changed since iter-2
 
