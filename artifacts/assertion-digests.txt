@@ -1,5 +1,5 @@
 # authored_by: test-author
-6afacf51ef406720ca0f122eaaaa4d1929c3295f1cc6783d7b956c1b67b43194  tests/integration/run-timed-out-test.sh
+3afe16d6b1ebf5bcd34f317918e0e2b96e77ef70b86371804fd68ed741c85967  tests/integration/run-timed-out-test.sh
 facc66bba7989796672262d2018c07a54d2f047ece4a08980dada23491a4056a  tests/unit/run-limit-precedence-test.sh
 dfabfd6b96ee8536aa7a05b86768757a1f26f06f5e6859f173113a15099f43c9  tests/unit/run-watchdog-clean-exit-test.sh
 d0db0cdc49d885bafee4e07cad97ca44a5817bb699ad17c5b598f28b6fdc64a7  tests/integration/resume-after-run-timeout-test.sh

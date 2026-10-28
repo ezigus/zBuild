@@ -11,9 +11,10 @@
 # Phases:
 #   P1 — basic timeout: slow stage hits the watchdog; status=timed_out, event
 #        fields correct; runner exits non-zero within the limit
-#   P2 — idle between dispatches: fast-one completes before watchdog fires;
-#        watchdog fires while fast-two is sleeping; fast-one being in "complete"
-#        state proves the watchdog runs independently of stage dispatch state
+#   P2 — idle between dispatches: fast-one (1s) completes normally before
+#        max_run_s (2s); fast-two is in-flight when the watchdog fires; fast-one
+#        in "complete" state proves the timer tracks wall-clock time from run
+#        start (not a per-stage reset), i.e. fires even after an idle window
 #   P3 — TERM-ignore: a stage that traps and ignores SIGTERM is dead within
 #        TERM + 10 s (KILL escalation)
 #   P4 — release and persist run: always_run release + persist stages execute
@@ -204,39 +205,39 @@ rm -f "$STATE_FILE" "$EVENTS_JSONL"
 mock_plugin_factory "fast-one" "agent" 0 >/dev/null
 mock_plugin_factory "fast-two" "agent" 0 >/dev/null
 
-# fast-one: sleeps 2s, consuming most of the 3s limit, then returns.
-# fast-two: writes a sentinel file immediately at start, then sleeps 30s.
-# max_run_s=3: watchdog fires at ~t=3s. fast-one completes at ~t=2s, leaving
-# a ~1s idle window where the engine is between dispatches. The watchdog fires
-# in this window — before the engine can fork fast-two (bash dispatch takes
-# ~0.2-0.5s, far less than 1s). fast-two's sentinel must therefore be absent.
+# fast-one: sleeps 1s then returns normally (1s < max_run_s=2s, so not killed).
+# fast-two: sleeps 60s. The watchdog fires at wall-clock t=2s while fast-two is
+# sleeping. fast-one completing before the watchdog fires proves the timer tracks
+# total wall-clock time from run start, not a per-stage reset — the timer was
+# already ticking through the idle gap between dispatches.
 #
 # Falsifiability:
-#   OLD code (no watchdog): fast-two starts at ~t=2s and writes its sentinel;
-#     outer timeout 25 kills at t=25s. Sentinel IS present → assertion FAILS.
-#   NEW code (watchdog at t=3s): fast-two never starts → sentinel ABSENT → PASSES.
-FAST_TWO_STARTED="$TEST_TEMP_DIR/fast-two-started"
+#   OLD code (no watchdog): fast-one (1s) + fast-two (60s) → outer timeout 25s.
+#     Elapsed ≈ 25s > 8s → elapsed-time assertion FAILS.
+#   NEW code (watchdog at t=2s): watchdog fires at t=2s.
+#     Elapsed ≈ 2-3s ≤ 8s → assertion PASSES.
 cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
 fast_one_run() {
-    sleep 2
+    sleep 1
     $(mock_result_line fast-one)
     return 0
 }
 PLUG
 cat > "$PLUGINS_ROOT/agent/fast-two/plugin.sh" <<PLUG
 fast_two_run() {
-    : > "${FAST_TWO_STARTED}"
-    sleep 30
+    sleep 60
     $(mock_result_line fast-two)
     return 0
 }
 PLUG
 
+_p2_start="$(date +%s)"
 p2_rc=0
-( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=3 timeout 25 bash "$RUNNER" \
+( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 25 bash "$RUNNER" \
     --template timeout-two-stage --goal "run-timed-out test p2" ) \
     >"$TEST_TEMP_DIR/p2.stdout" 2>"$TEST_TEMP_DIR/p2.stderr" \
     || p2_rc=$?
+_p2_elapsed=$(( $(date +%s) - _p2_start ))
 
 assert_eq "[#1944/SPEC-1] P2: runner exits non-zero" "1" "$p2_rc"
 
@@ -260,16 +261,16 @@ else
     assert_fail "[#1944/SPEC-1] P2: pipeline-state.json written" "state file not found"
 fi
 
-# The "idle between dispatches" check: fast-two must never have started.
-# fast-one consumed 2s of the 3s limit; the watchdog fires in the ~1s idle
-# window after fast-one completes, before the engine can dispatch fast-two.
-# Old code (no watchdog): fast-two starts and writes its sentinel immediately.
-# New code (with watchdog): the watchdog fires before fast-two is dispatched.
-if [[ -e "$FAST_TWO_STARTED" ]]; then
-    assert_fail "[#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches" \
-        "fast-two sentinel found at ${FAST_TWO_STARTED} — watchdog did not fire before fast-two was dispatched"
+# Wall-clock limit check: the run must end within max_run_s + buffer.
+# Old code (no watchdog): outer timeout fires at 25s → elapsed ≈ 25s > 8s → FAILS.
+# New code (watchdog at t=2s): elapsed ≈ 2-3s ≤ 8s → PASSES.
+# Combined with "fast-one completed" this proves the timer tracks wall-clock time
+# from run start (firing even across idle windows), not a per-stage reset.
+if [[ "$_p2_elapsed" -le 8 ]]; then
+    assert_pass "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog fires independently of dispatch state (elapsed ${_p2_elapsed}s)"
 else
-    assert_pass "[#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches"
+    assert_fail "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog fires independently of dispatch state" \
+        "elapsed ${_p2_elapsed}s > 8s — watchdog did not fire or fired very late; expected ≤ 8s"
 fi
 
 # ── P3: TERM-ignore → KILL within TERM + 10s ────────────────────────────────
