@@ -1,6 +1,33 @@
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current iteration (new) — investigating SPEC-5 failure
+## Current iteration — COMPLETE
+
+### Fix applied: double-SIGTERM race in _runner_abort_trap (DONE)
+
+Added `trap ':' INT TERM` as the FIRST statement inside `_runner_restore_stderr()`.
+This ensures the guard is active before the function returns to `_runner_abort_trap`,
+closing the race window where a second SIGTERM could fire at the function-return
+boundary and abort the EXIT trap before `_runner_dispatch_always_run` ran.
+
+B3 (runner-abort-banner-stderr-test.sh) still passes — `_runner_restore_stderr` is
+still the first non-blank, non-comment statement in `_runner_abort_trap`.
+
+**All acceptance tests pass:**
+- runner-release-exit-paths-test.sh: 19/19 ✓ (SPEC-5 was the failing one)
+- runner-abort-banner-stderr-test.sh: 4/4 ✓ (B3 preserved)
+- runner-signal-rearm-test.sh: 5/5 ✓
+- run-limit-precedence-test.sh: 38/38 ✓
+- run-watchdog-clean-exit-test.sh: 8/8 ✓
+- resume-after-run-timeout-test.sh: 6/6 ✓
+- run-timed-out-test.sh: 16/16 ✓
+
+Shape floor: The 9 failing floor files were a consequence of the previous run
+being in "targeted" mode with 1 failure. With all tests passing in a full run,
+`_SF_FAILED_COUNT=0` and `_SF_VERIFY_OK=1` → all floor files verified → PASS.
+
+---
+
+## Previous investigation — investigating SPEC-5 failure
 
 ### Failures from test stage:
 
