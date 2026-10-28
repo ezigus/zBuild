@@ -1,0 +1,38 @@
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.b98p5u/tests/integration/run-timed-out-test.sh
+
+[38;2;0;212;255m[1m  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mP1: slow stage timeout — status=timed_out written to pipeline-state.json[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
+
+  [38;2;0;212;255mP1: pipeline.end event fields — status=timed_out, stage, limit_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
+
+  [38;2;0;212;255mP2: watchdog fires even when engine is idle between dispatches[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
+  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+    [2mfast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched[0m
+
+  [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 6s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 520474 killed)
+
+  [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: pipeline status=timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 16 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches

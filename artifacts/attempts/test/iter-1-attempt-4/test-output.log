@@ -1,0 +1,49 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: 528/528 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.b98p5u/tests/integration/run-timed-out-test.sh
+
+  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)
+
+
+  P1: slow stage timeout — status=timed_out written to pipeline-state.json
+  ✓ [#1944/SPEC-1] P1: runner exits non-zero
+  ✓ [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
+
+  P1: pipeline.end event fields — status=timed_out, stage, limit_s
+  ✓ [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
+  ✓ [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
+  ✓ [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
+
+  P2: watchdog fires even when engine is idle between dispatches
+  ✓ [#1944/SPEC-1] P2: runner exits non-zero
+  ✓ [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
+  ✓ [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
+  ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+    fast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched
+
+  P3: stage that ignores SIGTERM is dead within TERM + 10s
+  ✓ [#1944/SPEC-1] P3: runner exits non-zero (not still running)
+  ✓ [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 6s)
+  ✓ [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 520474 killed)
+
+  P4: always_run release and persist stages execute on timed-out exit path
+  ✓ [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
+  ✓ [#1944/SPEC-1] P4: pipeline status=timed_out
+  ✓ [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+  ✓ [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
+
+
+  1 of 16 tests failed
+
+  ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+
+integration: 255/256 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 820/821 passed (4 skipped)

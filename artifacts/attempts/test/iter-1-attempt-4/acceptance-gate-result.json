@@ -1,0 +1,1 @@
+{"severity":"advisory","failures":["negctl_error:timeout:SPEC-1"],"data":{"findings":[]},"result_contract":3,"outcome":"pass","reason":"the acceptance check failed — the run of timeout:SPEC-1's test on the code from before this change could not be done (a problem in the pipeline, not in your change)"}

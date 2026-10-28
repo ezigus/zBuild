@@ -1,0 +1,26 @@
+the acceptance check failed — the run of timeout:SPEC-1's test on the code from before this change could not be done (a problem in the pipeline, not in your change)
+NEGCTL ERROR timeout:SPEC-1
+      design : a run whose wall-clock time exceeds max_run_s ends with pipeline status timed_out in pipeline-state.…
+      asserts: assert_eq "[#1944/SPEC-1] P1: runner exits non-zero" "1" "$p1_rc"
+NEGCTL PASS SPEC-2
+      design : _runner_resolve_run_limit_s resolves template max_run_s > ZBUILD_MAX_RUN_S > 20700; a non-integer or…
+      asserts: assert_pass "[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh"
+NEGCTL PASS SPEC-3
+      design : a run that finishes within max_run_s exits with its own pipeline status unchanged (not timed_out) an…
+      asserts: assert_pass "[#1944/SPEC-3] _runner_resolve_run_limit_s is defined"
+NEGCTL PASS SPEC-4
+      design : get_resume_recommendation returns manual_resume_only for a timed_out pipeline state (not fresh_start…
+      asserts: assert_eq "[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only" \
+NEGCTL SKIP SPEC-5 no_code
+      design : scripts/lib/stage-limits.sh and core/pipeline/runner.sh contain no reference to GITHUB_ACTIONS, bare…
+      asserts: assert_eq "[#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference" "0" "$_ga_count_sl"
+NEGCTL SKIP SPEC-6 no_code
+      design : ADR-025 lists timed_out in its abort-word vocabulary and has ## Enforced by entries citing the new t…
+      asserts: assert_fail "[#1944/SPEC-6] ADR-025 file exists" "not found: $ADR025"
+REACHABILITY PASS core/pipeline/runner.sh
+REACHABILITY PASS core/state/resume.sh
+REACHABILITY PASS change config/adr-enforcement-baseline.txt
+REACHABILITY PASS change core/pipeline/template.sh
+REACHABILITY SKIP no_code scripts/lib/abort-propagation.sh
+REACHABILITY PASS change scripts/lib/run-open-items.sh
+REACHABILITY PASS change scripts/lib/stage-limits.sh

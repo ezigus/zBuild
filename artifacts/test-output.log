@@ -2,117 +2,48 @@
 > zbuild@0.1.0 test
 > bash tests/run-all.sh
 
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/scripts/run-tests.sh: line 171: 188946 Killed                  "${_rt_tout[@]}" bash "$1" < /dev/null 3> /dev/null > "$2" 2>&1
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/unit/runner-signal-rearm-test.sh
+unit: 528/528 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.b98p5u/tests/integration/run-timed-out-test.sh
 
-  runner _runner_rearm_traps after nested trap clear (#1759)
-
-
-  SPEC-1: _runner_rearm_traps is defined in runner.sh (top-level)
-  ✓ [SPEC-1] _runner_rearm_traps is defined as a top-level function in runner.sh
-
-  SPEC-2: handler installed by re-arm calls _zbuild_arm_abort_sentinel
-  ✓ [SPEC-2] re-arm installs _runner_signal_trap on INT
-  ✓ [SPEC-3] re-arm installs _runner_signal_trap on TERM
-  ✓ [SPEC-4] re-arm INT handler matches the startup install
-  ✗ [SPEC-5] re-arm TERM handler matches the startup install
-    expected: <startup-not-found>, got: trap '_runner_signal_trap TERM' TERM
+  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)
 
 
-  1 of 5 tests failed
+  P1: slow stage timeout — status=timed_out written to pipeline-state.json
+  ✓ [#1944/SPEC-1] P1: runner exits non-zero
+  ✓ [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
 
-  ✗ [SPEC-5] re-arm TERM handler matches the startup install
+  P1: pipeline.end event fields — status=timed_out, stage, limit_s
+  ✓ [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
+  ✓ [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
+  ✓ [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
 
-unit: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+  P2: watchdog fires even when engine is idle between dispatches
+  ✓ [#1944/SPEC-1] P2: runner exits non-zero
+  ✓ [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
+  ✓ [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
+  ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+    fast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched
 
-  scripts/lib/vision.sh — admission gate enforcement (ADR-049 #1360)
+  P3: stage that ignores SIGTERM is dead within TERM + 10s
+  ✓ [#1944/SPEC-1] P3: runner exits non-zero (not still running)
+  ✓ [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 6s)
+  ✓ [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 520474 killed)
 
-  ✓ [SPEC-1] valid vision: load_vision_doc rc=0
-  ✓ [SPEC-1] valid vision: validate_vision_doc rc=0
-  ✓ [SPEC-2] missing vision: load_vision_doc rc=1
-  ✓ [SPEC-2] missing vision: rc=1 signals absence
-  ✓ [SPEC-2] the only search path is .zbuild/vision.md
-  ✓ [SPEC-3] doc missing ## Intent now passes validation (rc=0)
-  ✓ [SPEC-4] over-length vision: rc=1
-  ✓ [SPEC-4] over-length diagnostic contains '--condense'
-  ✓ [SPEC-5] over-length diagnostic contains body word count (got 313)
-  ✓ [SPEC-6] over-length diagnostic reports correct overage (13)
-  ✓ [SPEC-10] over-length message contains actionable hint
-  ✓ [SPEC-7] runner rc=1 on missing vision (enforce)
-  ✓ [SPEC-7] pipeline.end says the gate refused (status=preflight_failed)
-  ✓ [SPEC-7] runner names search paths in message
-  ✓ [SPEC-7] runner includes zbuild vision init hint
-  ✓ [SPEC-8] runner rc=1 on malformed vision (enforce)
-  ✓ [SPEC-8] pipeline.end says the gate refused (status=preflight_failed)
-  ✓ [SPEC-8] runner message references --condense
-unit: 526/528 passed (4 skipped, 1 timed out)
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/scripts/run-tests.sh: line 171: 417794 Killed                  "${_rt_tout[@]}" bash "$1" < /dev/null 3> /dev/null > "$2" 2>&1
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/scripts/run-tests.sh: line 171: 621541 Killed                  "${_rt_tout[@]}" bash "$1" < /dev/null 3> /dev/null > "$2" 2>&1
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
-
-  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)
-
-  ✓ no args exits 1
-  ✓ no args prints the usage
-  ✓ --help exits 0
-  ✓ --issue with no value exits 1
-  ✓ --issue with no value names the flag
-  ✓ --goal with no value exits 1
-  ✓ --goal with no value names the flag
-  ✓ dry-run shows intake stage
-  ✓ dry-run shows build stage
-  ✓ dry-run leaves state file untouched
-  ✓ happy path exits 0
-  ✓ events.jsonl created
-  ✓ pipeline.start emitted once
-  ✓ pipeline.end emitted once
-  ✓ pipeline.end carries status=success
-  ✓ [SPEC-1] stage.start emitted for each fixture stage (2x)
-  ✓ [SPEC-1] stage.complete emitted for each fixture stage (2x)
-  ✓ state file created
-  ✓ intake stage_status=complete (ADR-006 enum)
-  ✓ build stage_status=complete (ADR-006 enum)
-  ✓ mid-stage failure exits 1
-  ✓ events.jsonl present on failure
-  ✓ pipeline.end status=failed emitted
-  ✓ pipeline.end names the failing stage
-  ✓ stage.fail event emitted
-  ✓ build stage_status=failed in state
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
-
-  core/pipeline/strategies — integration: runner delegates via orch contract
+  P4: always_run release and persist stages execute on timed-out exit path
+  ✓ [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
+  ✓ [#1944/SPEC-1] P4: pipeline status=timed_out
+  ✓ [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+  ✓ [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
 
 
-  1. fanout: all orch contract functions called
-▸ merge_policy: auto_unless_flagged
-▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/core-pipeline-strategy-int.1ZZBti/home/.zbuild/repos/local/strat-overlay-repo/goals/goal-6a33327f1817/worktree
-▸ Pipeline started — run_id=20261027120903-621946 issue= goal=test strategy dispatch template=strategy-dispatch-minimal engine=741c846(zbuild/issue-1944-ci)
-  ✓ fanout: orch_spawn called (got 1)
-  ✓ fanout: orch_dispatch called (got 1)
-  ✓ fanout: orch_collect called (got 1)
-  ✓ fanout: orch_shutdown called (got 1)
+  1 of 16 tests failed
 
-  2. fanout: no pool leaks (spawn count == shutdown count)
-  ✓ orch_spawn count == orch_shutdown count
-  ✓ no pool directories left after fanout (orch_shutdown cleaned up)
+  ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
 
-  3. sequential halt-on-fail: only one dispatch when first fails
-▸ merge_policy: auto_unless_flagged
-  ✓ sequential: runner exits non-zero when stage fails (rc=1)
-
-  4. composite strategy: emits deferral error (Phase 1 deferred)
-integration: 254/256 passed (2 timed out)
+integration: 255/256 passed
 e2e: 10/10 passed
 golden: 1/1 passed
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/scripts/run-mutation.sh: line 308: 777762 Killed                  ( cd "$wt" && "${_mut_tout[@]}" bash -c "$test_code" ) < /dev/null > /dev/null 2>&1 3> /dev/null
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/scripts/run-mutation.sh: line 308: 789503 Killed                  ( cd "$wt" && "${_mut_tout[@]}" bash -c "$test_code" ) < /dev/null > /dev/null 2>&1 3> /dev/null
 mutation: 25/25 passed
 lint: 1/1 passed
 
-total: 817/821 passed (4 skipped, 3 timed out)
+total: 820/821 passed (4 skipped)
