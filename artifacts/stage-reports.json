@@ -21,6 +21,7 @@
     "plugins/tool/orch-sequential/tests/orch-sequential-test.sh",
     "scripts/lib/proc-group.sh",
     "scripts/lib/stage-time-limit.sh",
+    "tests/fixtures/templates/always-run-minimal.yaml",
     "tests/golden/full-pipeline/event-sequence.golden",
     "tests/golden/orch-sequential-capabilities.golden",
     "tests/golden/parity/event-sequence.golden",
