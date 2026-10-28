@@ -1,0 +1,1898 @@
+diff --git a/config/adr-enforcement-baseline.txt b/config/adr-enforcement-baseline.txt
+index 31061bd1..6257ce0e 100644
+--- a/config/adr-enforcement-baseline.txt
++++ b/config/adr-enforcement-baseline.txt
+@@ -48,7 +48,6 @@ ADR-048-release-versioning-signing.md
+ ADR-049-vision-document-standard.md
+ ADR-052-engine-owned-run-worktree.md
+ ADR-053-test-flake-policy.md
+-ADR-054-stage-contract.md
+ ADR-055-inter-stage-data-contract-v2.md
+ ADR-056-run-cleanup-only-lifecycle.md
+ ADR-058-engine-write-boundary.md
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index b2ae495f..1373421d 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -110,6 +110,10 @@ source "$_ZBUILD_ROOT/scripts/lib/worktree.sh"
+ source "$_ZBUILD_ROOT/scripts/lib/run-branch.sh"
+ # shellcheck source=../../scripts/lib/run-branch-setup.sh
+ source "$_ZBUILD_ROOT/scripts/lib/run-branch-setup.sh"
++# ADR-054 §11 (#1944): run-level wall-clock limit resolver lives in stage-limits.sh
++# alongside all other limit-resolution functions.
++# shellcheck source=../../scripts/lib/stage-limits.sh
++source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
+ 
+ _usage() {
+     # Usage shown on error or --help. Unix convention: stderr (#619).
+@@ -146,6 +150,10 @@ EOF
+ 
+ # Globals (not local) so EXIT trap can read them after main() returns.
+ _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
++# ADR-054 §11 (#1944): run-level watchdog globals — PID of the watchdog background
++# subshell (killed by the EXIT trap on clean exit) and the resolved limit in seconds.
++_RUNNER_WATCHDOG_PID=""
++_RUNNER_MAX_RUN_S=""
+ # #1878: last reported snapshot-failure reason, so a static precondition is
+ # reported once rather than once per stage boundary.
+ _RUNNER_LAST_SNAPSHOT_FAIL_REASON=""
+@@ -874,11 +882,11 @@ _runner_pipeline_duration_token() {
+ _pipeline_status_glyph() {
+     local status="${1:-}"
+     case "$status" in
+-        complete|success)              verdict_glyph "pass" ;;
+-        complete_unconverged)          verdict_glyph "warn" ;;
+-        failed|interrupted|aborted)    verdict_glyph "fail" ;;
+-        preflight_failed)              verdict_glyph "warn" ;;
+-        *)                             printf '%s' "?" ;;
++        complete|success)                        verdict_glyph "pass" ;;
++        complete_unconverged)                    verdict_glyph "warn" ;;
++        failed|interrupted|aborted|timed_out)    verdict_glyph "fail" ;;
++        preflight_failed)                        verdict_glyph "warn" ;;
++        *)                                       printf '%s' "?" ;;
+     esac
+ }
+ 
+@@ -888,11 +896,11 @@ _pipeline_status_glyph() {
+ _pipeline_status_color() {
+     local status="${1:-}"
+     case "$status" in
+-        complete|success)              verdict_color "pass" ;;
+-        complete_unconverged)          verdict_color "warn" ;;
+-        failed|interrupted|aborted)    verdict_color "fail" ;;
+-        preflight_failed)              verdict_color "warn" ;;
+-        *)                             printf '%s' "${YELLOW:-}" ;;
++        complete|success)                        verdict_color "pass" ;;
++        complete_unconverged)                    verdict_color "warn" ;;
++        failed|interrupted|aborted|timed_out)    verdict_color "fail" ;;
++        preflight_failed)                        verdict_color "warn" ;;
++        *)                                       printf '%s' "${YELLOW:-}" ;;
+     esac
+ }
+ 
+@@ -918,6 +926,17 @@ _pipeline_status_color() {
+ # with 2>/dev/null runs under that redirect, so the abort banner went to
+ # /dev/null when SIGTERM landed during one. A no-op when nothing was saved.
+ _runner_restore_stderr() {
++    # Guard against a repeat signal (e.g. `timeout` forwarding its own SIGTERM
++    # to the process group after the first already fired). Called only from
++    # _runner_abort_trap (EXIT trap). Setting the guard here — as the very first
++    # instruction inside the function body — closes the race window that exists
++    # AFTER this function returns to _runner_abort_trap: bash checks pending
++    # signals at function-return boundaries, so a pending second TERM would fire
++    # _runner_signal_trap TERM (→ exit 1) before the explicit guard in
++    # _runner_abort_trap could execute. By setting it HERE the guard is already
++    # active by the time the function returns. B3 is satisfied because
++    # _runner_restore_stderr is still the first call in _runner_abort_trap.
++    trap ':' INT TERM
+     [[ -n "${_RUNNER_ERR_FD:-}" ]] && exec 2>&"$_RUNNER_ERR_FD"
+     return 0
+ }
+@@ -955,6 +974,7 @@ _render_pipeline_end() {
+         failed)                  word="failed" ;;
+         interrupted)             word="interrupted" ;;
+         aborted)                 word="aborted" ;;
++        timed_out)               word="timed_out" ;;
+         preflight_failed)        word="preflight_failed" ;;
+         *)                       word="$status" ;;
+     esac
+@@ -1005,7 +1025,7 @@ _render_pipeline_end() {
+ # pass ends by saying why in words and naming each open item, with what would
+ # settle it. pipeline.end keeps the engine's code; this is what a reader sees.
+ _runner_render_open_items() {
+-    case "${1:-}" in failed|interrupted|aborted) ;; *) return 0 ;; esac
++    case "${1:-}" in failed|interrupted|aborted|timed_out) ;; *) return 0 ;; esac
+     [[ -n "${_runner_state_file:-}" ]] && declare -F open_items_markdown >/dev/null 2>&1 || return 0
+     local sd="${_runner_state_file%/*}" items n
+     items="$(open_items_markdown "$sd")" || items=""
+@@ -1986,6 +2006,14 @@ main() {
+         return 0
+     fi
+ 
++    # ADR-054 §11 (#1944): resolve the per-run wall-clock limit BEFORE creating
++    # the state file so a misconfigured value aborts with no state artifact.
++    # template_max_run_s() is available because load_template() ran above.
++    if ! _runner_resolve_run_limit_s; then
++        error "run limit is misconfigured — see above; aborting before any stage runs"
++        return 1
++    fi
++
+     mkdir -p "$state_dir"
+     # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`)
+     # Cross-check vs --issue happened earlier (before --dry-run); see #296 Δ-4.
+@@ -2510,10 +2538,46 @@ main() {
+     }
+ 
+     _runner_abort_trap() {
++        # ADR-054 §7: restore stderr FIRST so every subsequent log line reaches
++        # the runner's own stderr even when the trap fired inside a 2>/dev/null call.
+         _runner_restore_stderr
++        # Guard set inside _runner_restore_stderr (first command of that function)
++        # so it is active before the function returns — bash checks pending signals
++        # at function-return boundaries, which is before this line. The explicit
++        # install here is retained for clarity; it is idempotent. Restore real
++        # handlers after the kill/wait block so `_runner_dispatch_always_run` can
++        # still handle signals. Mirrors the pattern already used inside
++        # `_runner_dispatch_always_run` (line 2516).
++        trap ':' INT TERM
+         # ADR-054 §7: a signal ends the run while a stage is still running;
+         # stop it, and all it started, before anything else.
+         declare -F plugin_stop_running >/dev/null 2>&1 && plugin_stop_running
++        # ADR-054 §11 (#1944): disarm the watchdog before dispatching always-run
++        # stages — it has already done its work (or was never needed on this path).
++        # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
++        # ignored and `wait` would block until the full sleep expires. SIGKILL
++        # cannot be caught or ignored, so the wait returns immediately.
++        # Collect watchdog children BEFORE the KILL — once the watchdog is dead
++        # its children are reparented to init and pgrep -P can no longer find them.
++        # The `sleep` child inherits SIG_IGN for TERM (POSIX: exec inherits SIG_IGN)
++        # so only SIGKILL can terminate it; without this it stays alive for the full
++        # sleep duration (up to 20700 s), holding the pipe write-end open and
++        # blocking any $(…) caller's wait.
++        local _wdg_orphans=""
++        if [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && command -v pgrep >/dev/null 2>&1; then
++            _wdg_orphans="$(pgrep -P "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true)"
++        fi
++        kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
++        [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && wait "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true
++        # Kill any orphaned children the watchdog left behind (the `sleep`).
++        if [[ -n "$_wdg_orphans" ]]; then
++            local _wc
++            while IFS= read -r _wc; do
++                [[ -n "$_wc" ]] && kill -KILL "$_wc" 2>/dev/null || true
++            done <<< "$_wdg_orphans"
++        fi
++        trap '_runner_signal_trap TERM' TERM
++        trap '_runner_signal_trap INT' INT
+         # #1829: free live resources first, while the state file and the
+         # process tree are still intact.
+         _runner_dispatch_always_run
+@@ -2528,6 +2592,13 @@ main() {
+         if declare -F zbuild_run_cap_release >/dev/null 2>&1; then
+             zbuild_run_cap_release || true
+         fi
++        # ADR-054 §11 (#1944): capture the abort word BEFORE disarming the
++        # sentinel — _zbuild_disarm_abort_sentinel clears both _ZB_ABORT_REASON
++        # and the sentinel file. _RUNNER_ABORT_REASON is set by _runner_signal_trap
++        # using first-wins semantics: if the watchdog wrote `timed_out` before the
++        # signal fired, _runner_signal_trap's _zbuild_arm_abort_sentinel call saw it
++        # and set _RUNNER_ABORT_REASON="timed_out". This survives the disarm.
++        local _at_abort_word; _at_abort_word="${_RUNNER_ABORT_REASON:-}"
+         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
+         # exit path — clean end, normal failure, or abort — so a follow-on
+         # zbuild invocation in the same state_dir never sees a stale
+@@ -2547,6 +2618,20 @@ main() {
+         # #2131: the normal path — pipeline.end and the always-run stages are
+         # on disk; the sidecar renders them in its final PATCH, then goes.
+         if [[ "$_runner_ended" == "true" ]]; then _runner_status_comment_reap; return 0; fi
++        if [[ "${_at_abort_word:-}" == "timed_out" ]]; then
++            if ! _set_pipeline_status "$_runner_state_file" "timed_out" 2>/dev/null; then
++                eb_emit_event "pipeline.state.error" \
++                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
++                    "reason=abort_trap_set_status_failed" 2>/dev/null || true
++            fi
++            eb_emit_event "pipeline.end" "status=timed_out" \
++                "stage=${ZBUILD_CURRENT_STAGE:-}" \
++                "limit_s=${_RUNNER_MAX_RUN_S:-}" \
++                "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
++            ( _render_pipeline_end "timed_out" ) || true
++            _runner_status_comment_reap
++            return 0
++        fi
+         # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere.
+         # Fail-closed: if we cannot mark the pipeline interrupted, emit an error event so the
+         # operator can detect the unrecorded abort (was: || true, which silently dropped failures).
+@@ -2677,7 +2762,10 @@ main() {
+                 disown $! 2>/dev/null || true
+             fi
+         fi
+-        _RUNNER_ABORT_REASON="$_word"
++        # ADR-054 §11 (#1944): read back the ACTUAL abort reason after arming —
++        # if the watchdog wrote `timed_out` before this signal fired, first-wins
++        # preserves it; _RUNNER_ABORT_REASON must carry that, not the signal word.
++        _RUNNER_ABORT_REASON="$(_zbuild_abort_reason)"
+         # Not a clean 0: the parent sees the run failed; why is in the events.
+         exit 1
+     }
+@@ -2725,6 +2813,57 @@ main() {
+         info "Pipeline started — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template engine=${_eng_sha:0:7}(${_eng_br})"
+     fi
+ 
++    # ── ADR-054 §11 (#1944): arm the run-level watchdog ─────────────────────
++    # The watchdog is a background subshell that sleeps for the resolved limit,
++    # then writes `timed_out` to the abort sentinel and sends SIGTERM to the
++    # runner's process group. The EXIT trap kills the watchdog on clean exit.
++    #
++    # Raw kill (not zbuild_pg_kill): the watchdog IS in the runner's process
++    # group, so zbuild_pg_kill's self-group guard would refuse the kill.
++    # First-wins: the sentinel write happens BEFORE the signal, so if the
++    # runner's SIGTERM trap calls _zbuild_arm_abort_sentinel "sigterm", ADR-025
++    # first-wins preserves `timed_out` over that later write.
++    local _RUNNER_RUN_PGID=""
++    if command -v ps >/dev/null 2>&1; then
++        _RUNNER_RUN_PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')" || _RUNNER_RUN_PGID="$$"
++    fi
++    [[ -z "$_RUNNER_RUN_PGID" ]] && _RUNNER_RUN_PGID="$$"
++    local _RUNNER_SELF_PID="$$"
++    (
++        # Ignore SIGTERM so the watchdog survives its own PG-wide TERM and
++        # can escalate to KILL after the grace period. The runner's EXIT trap
++        # uses SIGKILL (not TERM) to disarm this watchdog on clean exit.
++        trap '' TERM
++        # Close the saved-stderr fd so the orphaned `sleep` child (if the
++        # watchdog is SIGKILL'd before `sleep` returns) cannot hold the pipe
++        # write end open and block a `$(...)` caller forever (#1944 Bug A).
++        # Must be INSIDE the body — at the boundary the parent-side close
++        # prevents _runner_restore_stderr from pointing stderr at the right
++        # destination, which breaks always-run dispatch on SPEC-5 exit paths.
++        exec {_RUNNER_ERR_FD}>&- || true
++        _wdg_lim="${_RUNNER_MAX_RUN_S}"
++        _wdg_pgid="${_RUNNER_RUN_PGID}"
++        _wdg_runner_pid="${_RUNNER_SELF_PID}"
++        sleep "$_wdg_lim" || exit 0
++        # Arm the sentinel BEFORE signalling so first-wins preserves timed_out.
++        _zbuild_arm_abort_sentinel timed_out 2>/dev/null || true
++        kill -TERM -- "-${_wdg_pgid}" 2>/dev/null || true
++        sleep 10 || exit 0
++        # KILL escalation: target only children of the runner process (not the
++        # runner itself) so the runner's deferred SIGTERM trap fires after the
++        # stage is killed and the runner exits cleanly with rc=1, not rc=137.
++        # A PG-wide KILL also hits the runner process, preventing the EXIT trap
++        # from writing the timed_out state and dispatching always-run stages.
++        _wdg_self="${BASHPID}"
++        while IFS= read -r _wdg_child; do
++            [[ "$_wdg_child" == "$_wdg_self" ]] && continue
++            if [[ -n "$_wdg_child" ]]; then
++                kill -KILL "$_wdg_child" 2>/dev/null || true
++            fi
++        done < <(pgrep -P "$_wdg_runner_pid" 2>/dev/null)
++    ) >/dev/null 2>&1 &
++    _RUNNER_WATCHDOG_PID=$!
++
+     # ── ADR-015 stage-io stdout channel ─────────────────────────────────────
+     # Allocate a dedicated fd that survives plugin-side `2>/dev/null`
+     # suppression. Plugins (intake, plan, etc.) call route_to_model or
+@@ -2865,6 +3004,17 @@ main() {
+                 _runner_ended=true
+                 error "${_ea_unit%%=*} ${_ea_unit#*=}: the run $(run_end_words "$_ea_word" 0)${_ea_detail:+ — $_ea_detail}"
+                 ;;
++            timed_out)
++                # ADR-054 §11 (#1944): run-level wall-clock limit exceeded.
++                _set_pipeline_status "$_ea_state" "timed_out"
++                eb_emit_event "pipeline.end" "status=timed_out" "$_ea_unit" \
++                    "stage=${ZBUILD_CURRENT_STAGE:-}" \
++                    "limit_s=${_RUNNER_MAX_RUN_S:-}" \
++                    "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
++                _render_pipeline_end "timed_out" || true
++                _runner_ended=true
++                error "${_ea_unit%%=*} ${_ea_unit#*=}: the run $(run_end_words "$_ea_word" 0)"
++                ;;
+             *)
+                 _set_pipeline_status "$_ea_state" "interrupted"
+                 # #612 / Wave 15-F (#686): the postmortem event stream answers
+diff --git a/core/pipeline/template.sh b/core/pipeline/template.sh
+index 91e1f575..209614a7 100644
+--- a/core/pipeline/template.sh
++++ b/core/pipeline/template.sh
+@@ -2708,3 +2708,18 @@ template_config_persona() {
+         }
+     ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+ }
++
++# ADR-054 §11 (#1944): top-level run wall-clock limit. Reads `max_run_s:` from
++# the loaded template source file. Returns empty when the key is absent so the
++# caller can detect no-override. Follows the same pattern as other scalar knobs
++# (template_stage_negctl_timeout) that read lazily from _TPL_SOURCE_FILE.
++template_max_run_s() {
++    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
++    awk '
++        /^max_run_s:[[:space:]]/ {
++            sub(/^max_run_s:[[:space:]]*/, "")
++            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
++            print; exit
++        }
++    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
++}
+diff --git a/core/state/resume.sh b/core/state/resume.sh
+index 09d1516f..a6a4a3ec 100644
+--- a/core/state/resume.sh
++++ b/core/state/resume.sh
+@@ -257,7 +257,7 @@ get_resume_recommendation() {
+         complete|"")
+             echo "fresh_start"
+             ;;
+-        aborted)
++        aborted|timed_out)
+             echo "manual_resume_only"
+             ;;
+         interrupted)
+diff --git a/docs/adr/ADR-006-resume-contract.md b/docs/adr/ADR-006-resume-contract.md
+index 70c08e77..74fe5a34 100644
+--- a/docs/adr/ADR-006-resume-contract.md
++++ b/docs/adr/ADR-006-resume-contract.md
+@@ -159,6 +159,7 @@ The pipeline status enum now includes:
+ | `aborted` | runner / operator | explicit cancellation |
+ | `failed` | runner | terminal failure after at least one stage ran |
+ | `preflight_failed` | contract-validator (ADR-020) | rejected before any stage; no resume target |
++| `timed_out` | runner watchdog (ADR-054 §11) | run exceeded per-run wall-clock limit; resumable |
+ 
+ Pipelines in `preflight_failed` status are NOT resumable; the runner's
+ resume policy refuses to restart them (the contract violation is in the
+diff --git a/docs/adr/ADR-015-stage-io-capture.md b/docs/adr/ADR-015-stage-io-capture.md
+index 1107e90f..d285f558 100644
+--- a/docs/adr/ADR-015-stage-io-capture.md
++++ b/docs/adr/ADR-015-stage-io-capture.md
+@@ -821,6 +821,7 @@ mapping and does NOT extend the verdict-table enum:
+ | `interrupted`       | `✗`   | RED    | fail          |
+ | `aborted`           | `✗`   | RED    | fail          |
+ | `preflight_failed`  | `⚠`   | YELLOW | warn          |
++| `timed_out`         | `✗`   | RED    | fail          |
+ 
+ Duration is sourced from `_RUNNER_PIPELINE_START_MS`, cached immediately
+ after `_runner_run_id` is sanitized (before the EXIT trap installs) so
+diff --git a/docs/adr/ADR-025-abort-propagation.md b/docs/adr/ADR-025-abort-propagation.md
+index 47860314..72c130ce 100644
+--- a/docs/adr/ADR-025-abort-propagation.md
++++ b/docs/adr/ADR-025-abort-propagation.md
+@@ -362,7 +362,7 @@ test, no event-schema changes in this PR. Only the ADR text.
+ 
+ ADR-054 §4 makes exit codes binary everywhere, the engine's own paths included. This ADR's two layers carried the abort *as* an rc (130, then 143, and later 6, 9 and 10 joined), and every reader mapped those numbers its own way — `cycle_orchestrator_run` collapsed a nested `cycle_abort` into `config_invalid` (#1860). The layers stay; what they carry changes.
+ 
+-- **An abort is recorded once, as a word:** `sigint`, `sigterm`, `cycle_abort`, `llm_unavailable`, `llm_rate_limited` or `scope_too_large`. It is held in the process (`_ZB_ABORT_REASON`) and written into the sentinel `${ZBUILD_STATE_DIR}/.abort.signal`, which still crosses subshells and env scrubs (ADR-024). The first recorded abort wins. An empty sentinel reads as `sigint`.
++- **An abort is recorded once, as a word:** `sigint`, `sigterm`, `cycle_abort`, `llm_unavailable`, `llm_rate_limited`, `scope_too_large`, or `timed_out`. It is held in the process (`_ZB_ABORT_REASON`) and written into the sentinel `${ZBUILD_STATE_DIR}/.abort.signal`, which still crosses subshells and env scrubs (ADR-024). The first recorded abort wins. An empty sentinel reads as `sigint`. The run-level watchdog writes `timed_out` before sending SIGTERM to the process group; first-wins preserves `timed_out` over the `sigterm` that the runner's signal trap would otherwise record.
+ - **The helpers return 0 or 1.** `_zbuild_abort <word>` records and returns 1; `_zbuild_abort_reason` reads the word back (from the sentinel when this process has none); `_zbuild_check_abort` is 1 when an abort is recorded; `_zbuild_propagate_abort <rc>` is 1 only when the child failed *and* an abort is recorded. `_zbuild_arm_abort_sentinel [word]` records (default `sigint`); disarming clears both channels.
+ - **Every signal handler records the word:** the runner's (`_runner_signal_trap`), the cycle's (`_cycle_on_signal`) and the parallel group's (`_parallel_on_signal`). An `abort_when` match records `cycle_abort`; an unavailable model records `llm_unavailable` / `llm_rate_limited`.
+ - **The runner ends on the word**, in one place (`_runner_end_on_abort`): `sigint` / `sigterm` / `cycle_abort` → status `interrupted`; `llm_unavailable` / `llm_rate_limited` / `scope_too_large` → status `aborted`. `pipeline.aborted` carries the word as its reason. The process exits 1 — the signal is in that reason, not in 130 or 143.
+@@ -380,6 +380,10 @@ The dispatch-site contract is unchanged in shape: pre-flight `_zbuild_check_abor
+ - Cleanup contract (the EXIT trap clears the sentinel; `pipeline.aborted reason=sigint` on Ctrl-C) → `tests/integration/full-pipeline-sigint-test.sh`
+ - SIGTERM extension (`reason=sigterm`) → `tests/integration/sigterm-aborts-pipeline-test.sh`
+ - Resume clears a stale sentinel before the first pre-flight → `tests/integration/resume-after-sigint-test.sh`
++- Run-level watchdog writes `timed_out`; first-wins preserves it over the runner's `sigterm` write; pipeline ends `timed_out`, watchdog fires between dispatches, TERM-ignoring stage reaped within TERM+10 s, always-run stages execute → `tests/integration/run-timed-out-test.sh`
++- `timed_out` in the word vocabulary; limit resolution precedence and misconfigured validation → `tests/unit/run-limit-precedence-test.sh`
++- Watchdog reaped on clean exit; pipeline status unchanged after clean run → `tests/unit/run-watchdog-clean-exit-test.sh`
++- Resume after `timed_out`: `get_resume_recommendation` returns `manual_resume_only`; fresh watchdog armed on resume → `tests/integration/resume-after-run-timeout-test.sh`
+ 
+ ## References
+ 
+diff --git a/docs/adr/ADR-054-stage-contract.md b/docs/adr/ADR-054-stage-contract.md
+index 6e12b777..b659655d 100644
+--- a/docs/adr/ADR-054-stage-contract.md
++++ b/docs/adr/ADR-054-stage-contract.md
+@@ -506,3 +506,48 @@ A word off the list, a missing `outcome` or a missing `reason` is a broken resul
+ 
+ **Enforced by** `tests/unit/result-outcome-test.sh` O1–O9 (O2b: `stage_result_add`); `tests/unit/result-outcome-readers-test.sh` R1–R5 (readers; the template tests only pass/fail); `tests/unit/contract2-retired-test.sh` V1–V5 (contract 2, the verdict words and their tooling are gone).
+ 
++### Amendment (2026-10-12, #1944) — §11: per-run wall-clock limit
++
++A run has no upper bound on its lifetime without this section. A long-running stage or a
++deadlock between dispatches can run indefinitely. CI job limits are platform-specific; the
++engine must enforce its own ceiling.
++
++**§11 — run-level wall-clock limit.**
++
++- The engine resolves a single per-run limit (`_runner_resolve_run_limit_s` in
++  `scripts/lib/stage-limits.sh`) using this precedence order:
++  1. Template `max_run_s:` key (top-level YAML) — read by `template_max_run_s()` in
++     `core/pipeline/template.sh`.
++  2. `ZBUILD_MAX_RUN_S` environment variable.
++  3. Engine default: **20700 seconds** (≈ 5 h 45 m).
++  A non-integer or non-positive value in either source (1) or (2) is a misconfigured
++  disposition: the runner exits 1 before any stage runs.
++- The limit source is never platform-specific. No reference to `GITHUB_ACTIONS`, `CI`,
++  `TRAVIS`, `CIRCLECI`, `RUNNER_OS`, or similar variables appears in the limit-resolution
++  code.
++- A background watchdog subshell is armed in `main()` after the traps are installed. It
++  sleeps for the resolved limit, writes `timed_out` to the abort sentinel
++  (`_zbuild_arm_abort_sentinel timed_out`), then sends SIGTERM to the runner's process
++  group. After a 10-second grace, it sends SIGKILL to the runner's child processes (not
++  the runner itself), allowing the runner's deferred SIGTERM trap to fire and exit with
++  rc=1. The EXIT trap kills the watchdog on clean exit.
++- A timed-out run ends with pipeline status `timed_out` (ADR-006), a `pipeline.end`
++  event carrying `status=timed_out`, the in-flight stage name, and `limit_s`. The
++  `always_run` stages (release, persist) still execute via the EXIT trap's
++  `_runner_dispatch_always_run` call.
++- A resumed run receives a fresh watchdog armed from its own wall-clock start — the
++  original run's elapsed time is not carried forward. `get_resume_recommendation`
++  returns `manual_resume_only` for `timed_out` state.
++
++## Enforced by
++
++- §11: limit resolution precedence (template > env > 20700), misconfigured validation →
++  `tests/unit/run-limit-precedence-test.sh`
++- §11: run ends `timed_out`, `pipeline.end` event carries stage + `limit_s`, watchdog
++  fires between dispatches, TERM-ignoring stage reaped within TERM+10 s, always-run
++  stages execute →
++  `tests/integration/run-timed-out-test.sh`
++- §11: watchdog reaped on clean exit, pipeline status unchanged after normal run →
++  `tests/unit/run-watchdog-clean-exit-test.sh`
++- §11: resumed run gets fresh watchdog; `get_resume_recommendation(timed_out)` =
++  `manual_resume_only` → `tests/integration/resume-after-run-timeout-test.sh`
+diff --git a/scripts/lib/abort-propagation.sh b/scripts/lib/abort-propagation.sh
+index 5ab5034a..bdbed719 100644
+--- a/scripts/lib/abort-propagation.sh
++++ b/scripts/lib/abort-propagation.sh
+@@ -11,7 +11,7 @@
+ #   }
+ #
+ # Words: sigint | sigterm | cycle_abort | llm_unavailable | llm_rate_limited |
+-# scope_too_large. The first recorded abort wins.
++# scope_too_large | timed_out. The first recorded abort wins.
+ #
+ # Two channels hold the word: `_ZB_ABORT_REASON` in this process, and the
+ # sentinel file ${ZBUILD_STATE_DIR}/.abort.signal, which crosses subshells and
+diff --git a/scripts/lib/run-open-items.sh b/scripts/lib/run-open-items.sh
+index f0cfa269..2c83e759 100644
+--- a/scripts/lib/run-open-items.sh
++++ b/scripts/lib/run-open-items.sh
+@@ -104,6 +104,8 @@ run_end_words() {
+             printf 'stopped: the change needs files it was not allowed to edit%s' "$with" ;;
+         cycle_abort)
+             printf 'stopped: a check asked for the run to stop%s' "$with" ;;
++        timed_out)
++            printf 'stopped: the run exceeded its wall-clock limit%s' "$with" ;;
+         sigterm)
+             printf 'stopped: the run was told to stop (TERM signal)%s' "$with" ;;
+         sigint)
+diff --git a/scripts/lib/stage-limits.sh b/scripts/lib/stage-limits.sh
+index d212d780..9c93357f 100644
+--- a/scripts/lib/stage-limits.sh
++++ b/scripts/lib/stage-limits.sh
+@@ -159,3 +159,40 @@ _route_resolve_retries() {
+         printf '0'
+     fi
+ }
++
++# ADR-054 §11 (#1944): per-run wall-clock limit.
++# Priority: template max_run_s > ZBUILD_MAX_RUN_S > 20700 s default.
++# A non-integer or non-positive value in either source is refused (rc=1).
++# Result written to global _RUNNER_MAX_RUN_S.
++_runner_resolve_run_limit_s() {
++    local _tpl_v="" _env_v=""
++    # Template layer — calls template_max_run_s() when available.
++    if declare -F template_max_run_s >/dev/null 2>&1; then
++        _tpl_v="$(template_max_run_s 2>/dev/null || true)"
++    fi
++    if [[ -n "$_tpl_v" ]]; then
++        if [[ "$_tpl_v" =~ ^[0-9]+$ ]] && [[ "$_tpl_v" -gt 0 ]]; then
++            _RUNNER_MAX_RUN_S="$_tpl_v"
++            return 0
++        else
++            printf 'run limit misconfigured: template max_run_s must be a positive integer (got: %s)\n' \
++                "$_tpl_v" >&2
++            return 1
++        fi
++    fi
++    # Env layer.
++    _env_v="${ZBUILD_MAX_RUN_S:-}"
++    if [[ -n "$_env_v" ]]; then
++        if [[ "$_env_v" =~ ^[0-9]+$ ]] && [[ "$_env_v" -gt 0 ]]; then
++            _RUNNER_MAX_RUN_S="$_env_v"
++            return 0
++        else
++            printf 'run limit misconfigured: ZBUILD_MAX_RUN_S must be a positive integer (got: %s)\n' \
++                "$_env_v" >&2
++            return 1
++        fi
++    fi
++    # Default.
++    _RUNNER_MAX_RUN_S=20700
++    return 0
++}
+diff --git a/tests/golden/pipeline-end/timed_out-w80.colored.txt b/tests/golden/pipeline-end/timed_out-w80.colored.txt
+new file mode 100644
+index 00000000..429fb90a
+--- /dev/null
++++ b/tests/golden/pipeline-end/timed_out-w80.colored.txt
+@@ -0,0 +1,3 @@
++
++[38;2;0;102;255m══════════════════════════[1m pipeline.end [0m[38;2;0;102;255m═══════════════════════════[0m 03:25:45 UTC
++[38;2;248;113;113m[1m✗[0m Pipeline timed_out: status=timed_out run_id=r1 issue=83 (took 0.4s)
+\ No newline at end of file
+diff --git a/tests/golden/pipeline-end/timed_out-w80.layout.txt b/tests/golden/pipeline-end/timed_out-w80.layout.txt
+new file mode 100644
+index 00000000..19765d21
+--- /dev/null
++++ b/tests/golden/pipeline-end/timed_out-w80.layout.txt
+@@ -0,0 +1,3 @@
++
++══════════════════════════ pipeline.end ═══════════════════════════ 03:25:45 UTC
++✗ Pipeline timed_out: status=timed_out run_id=r1 issue=83 (took 0.4s)
+\ No newline at end of file
+diff --git a/tests/integration/resume-after-run-timeout-test.sh b/tests/integration/resume-after-run-timeout-test.sh
+new file mode 100755
+index 00000000..9350182a
+--- /dev/null
++++ b/tests/integration/resume-after-run-timeout-test.sh
+@@ -0,0 +1,238 @@
++#!/usr/bin/env bash
++# Integration: resumed run after timed_out uses a fresh watchdog (#1944)
++#
++# SPEC-4 [code]: a run resumed after a timed_out end is not stopped
++#   immediately — its watchdog is armed from the resumed run's wall-clock
++#   start, not the original run's.
++#
++# Phases:
++#   P1 (unit):        get_resume_recommendation(timed_out) = manual_resume_only;
++#                     not auto_resume and not fresh_start.
++#   P2 (unit):        _runner_resolve_run_limit_s is defined in stage-limits.sh
++#                     — the function that arms the watchdog on every invocation,
++#                     including --resume. Absent before the implementation.
++#   P3 (integration): a run resumed (--force) after a timed_out state with a
++#                     generous max_run_s completes normally — not stopped
++#                     immediately, proving the watchdog was armed from the
++#                     resumed run's wall-clock start.
++#   P4 (integration): a run resumed with a tight max_run_s and a slow stage
++#                     DOES time out — proving the watchdog is actually ARMED
++#                     on the resumed run (not absent or disarmed). Together
++#                     P3 + P4 establish "armed from the resumed run's start":
++#                     P3 shows it doesn't fire too early, P4 shows it fires
++#                     when the resumed run's OWN limit is genuinely exceeded.
++#
++# Why the test fails before implementation:
++#   P1: get_resume_recommendation has no timed_out case; the `*` catch-all
++#       returns fresh_start, not manual_resume_only. The assert_eq fails.
++#   P2: _runner_resolve_run_limit_s is not yet defined. The assert_fail fires.
++#   P3 and P4: blocked by P1 and P2 failures.
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "resume-after-run-timeout: watchdog armed from resumed run's wall-clock start (#1944 SPEC-4)"
++setup_test_env "resume-after-run-timeout"
++
++# ─── P1: get_resume_recommendation returns manual_resume_only for timed_out ──
++print_test_section "[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only"
++
++# shellcheck source=../../core/state/resume.sh
++source "$REPO_ROOT/core/state/resume.sh" 2>/dev/null || true
++
++P1_STATE="$TEST_TEMP_DIR/p1-timed-out-state.json"
++jq -n \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    '{schema_version:1, run_id:"test-run-timed-out", issue:0,
++      status:"timed_out", stage_statuses:{}, current_iteration:0,
++      self_heal_count:{}, scope_manifest_hash:"", cost_ledger_pointer:0,
++      claim_lease_id:"", plugin_state:{}, updated_at:$now}' \
++    > "$P1_STATE"
++
++if declare -F get_resume_recommendation >/dev/null 2>&1; then
++    _p1_rec="$(get_resume_recommendation "$P1_STATE" 2>/dev/null || true)"
++    # Must be manual_resume_only — not fresh_start (the `*` catch-all before
++    # implementation) and not auto_resume (which would silently re-run it).
++    assert_eq "[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only" \
++        "manual_resume_only" "$_p1_rec"
++else
++    assert_fail "[#1944/SPEC-4] P1: get_resume_recommendation is defined" \
++        "function not found after sourcing core/state/resume.sh"
++fi
++
++# ─── P2: _runner_resolve_run_limit_s is defined ───────────────────────────────
++print_test_section "[#1944/SPEC-4] P2: _runner_resolve_run_limit_s defined (watchdog arms on every invocation)"
++
++# shellcheck source=../../scripts/lib/stage-limits.sh
++source "$REPO_ROOT/scripts/lib/stage-limits.sh" 2>/dev/null || true
++
++if declare -F _runner_resolve_run_limit_s >/dev/null 2>&1; then
++    assert_pass "[#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh"
++else
++    assert_fail "[#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh" \
++        "function not found — the watchdog cannot be armed on resume without it"
++fi
++
++# ─── Common setup for P3 + P4 ────────────────────────────────────────────────
++export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_CONTRACT_VALIDATOR=warn
++export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
++export ZBUILD_CYCLES_ENABLED=0
++export ZBUILD_SCOPE_OVERRIDE=1
++mkdir -p "$ZBUILD_STATE_DIR" "$ZBUILD_EVENTS_DIR" "$HOME/.zbuild"
++printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
++
++# Overlay repo with two templates: one for the quick stage (P3) and one for the
++# slow stage (P4).
++RESUME_OVERLAY="$(setup_git_temp_repo resume-after-timeout)"
++mkdir -p "$RESUME_OVERLAY/.zbuild/templates"
++
++# Quick-completing plugin (no sleep) for P3
++mock_plugin_factory "resume-stage" "agent" 0 >/dev/null
++
++cat > "$RESUME_OVERLAY/.zbuild/templates/resume-timeout.yaml" <<'EOF'
++id: resume-timeout
++extends: simple
++stages:
++  - id: resume-stage
++    gate: auto
++    io:
++      destinations: [file]
++      tail_lines: 50
++EOF
++
++# Slow plugin for P4: sleeps longer than the tight max_run_s
++mock_plugin_factory "slow-resume-stage" "agent" 0 >/dev/null
++cat > "$TEST_TEMP_DIR/plugins/agent/slow-resume-stage/plugin.sh" <<PLUG
++slow_resume_stage_run() {
++    sleep 30
++    $(mock_result_line slow-resume-stage)
++    return 0
++}
++PLUG
++
++cat > "$RESUME_OVERLAY/.zbuild/templates/resume-timeout-slow.yaml" <<'EOF'
++id: resume-timeout-slow
++extends: simple
++stages:
++  - id: slow-resume-stage
++    gate: auto
++    io:
++      destinations: [file]
++      tail_lines: 50
++    router:
++      timeout_s: 120
++EOF
++
++(cd "$RESUME_OVERLAY" && git add .zbuild && git commit -q -m "add resume-timeout templates") \
++    >/dev/null 2>&1
++
++# ─── P3: resumed run with generous limit completes — not stopped immediately ─
++print_test_section "[#1944/SPEC-4] P3: resumed run with generous max_run_s completes normally"
++
++RESUME_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
++jq -n \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    '{schema_version:1, run_id:"prev-timed-out-run", issue:0,
++      status:"timed_out", stage_statuses:{}, current_iteration:0,
++      self_heal_count:{}, scope_manifest_hash:"", cost_ledger_pointer:0,
++      claim_lease_id:"", plugin_state:{}, updated_at:$now}' \
++    > "$RESUME_STATE_FILE"
++
++export ZBUILD_STATE_FILE="$RESUME_STATE_FILE"
++
++# max_run_s=30: the quick stage completes in < 5s, well within the limit.
++# A watchdog that fires immediately (stale from original run) would produce
++# timed_out status even though the stage finished quickly. A watchdog armed
++# from the resumed run's start gives 30s — more than enough.
++_p3_rc=0
++( cd "$RESUME_OVERLAY" && ZBUILD_MAX_RUN_S=30 bash "$RUNNER" \
++    --template resume-timeout --goal "resume-after-timeout test p3" \
++    --resume --force ) \
++    >"$TEST_TEMP_DIR/p3.stdout" 2>"$TEST_TEMP_DIR/p3.stderr" \
++    || _p3_rc=$?
++
++# The resumed run must NOT end with timed_out — the fresh watchdog has
++# 30 s, and the stage completes in < 5 s.
++if [[ -f "$RESUME_STATE_FILE" ]]; then
++    _p3_status="$(jq -r '.status // empty' "$RESUME_STATE_FILE" 2>/dev/null || true)"
++    if [[ "$_p3_status" == "timed_out" ]]; then
++        assert_fail "[#1944/SPEC-4] P3: resumed run did not time out (watchdog is fresh)" \
++            "pipeline status is still timed_out — watchdog may have fired immediately"
++    else
++        assert_pass "[#1944/SPEC-4] P3: resumed run did not time out (status=$_p3_status)"
++    fi
++else
++    assert_fail "[#1944/SPEC-4] P3: pipeline-state.json accessible after resumed run" \
++        "state file not found: $RESUME_STATE_FILE"
++fi
++
++# No pipeline.end event with status=timed_out in the resumed run's events
++if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
++    _p3_to_events="$(jq -r \
++        'select(.type=="pipeline.end" and .data.status=="timed_out") | .type' \
++        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
++    assert_eq "[#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run" \
++        "0" "$_p3_to_events"
++fi
++
++# ─── P4: resumed run with tight limit and slow stage DOES time out ────────────
++# Proves the watchdog is ARMED on the resumed run, not absent or disarmed.
++# Without a watchdog: slow stage runs until the outer timeout 25s kills it
++# (rc=137), not rc=1 from a clean watchdog-driven timed_out exit.
++# With a watchdog armed from the resumed run's start (max_run_s=2): the run
++# ends with status=timed_out and rc=1 before the outer timeout fires.
++print_test_section "[#1944/SPEC-4] P4: resumed run with tight limit times out — watchdog is armed"
++
++# Fresh state and events for P4
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-p4"
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events-p4"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++mkdir -p "$ZBUILD_STATE_DIR" "$ZBUILD_EVENTS_DIR"
++
++RESUME_STATE_P4="$ZBUILD_STATE_DIR/pipeline-state.json"
++jq -n \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    '{schema_version:1, run_id:"prev-timed-out-run-p4", issue:0,
++      status:"timed_out", stage_statuses:{}, current_iteration:0,
++      self_heal_count:{}, scope_manifest_hash:"", cost_ledger_pointer:0,
++      claim_lease_id:"", plugin_state:{}, updated_at:$now}' \
++    > "$RESUME_STATE_P4"
++
++export ZBUILD_STATE_FILE="$RESUME_STATE_P4"
++
++# max_run_s=2, slow stage sleeps 30s → watchdog fires at 2s if armed correctly
++# Outer timeout 25s as safety net; rc=1 proves watchdog (not rc=137 from outer timeout)
++_p4_rc=0
++( cd "$RESUME_OVERLAY" && ZBUILD_MAX_RUN_S=2 timeout 25 bash "$RUNNER" \
++    --template resume-timeout-slow --goal "resume-after-timeout test p4" \
++    --resume --force ) \
++    >"$TEST_TEMP_DIR/p4.stdout" 2>"$TEST_TEMP_DIR/p4.stderr" \
++    || _p4_rc=$?
++
++# rc=1 means the watchdog fired cleanly (not rc=137 from outer timeout)
++assert_eq "[#1944/SPEC-4] P4: resumed run exits 1 (watchdog fired, not outer timeout)" \
++    "1" "$_p4_rc"
++
++if [[ -f "$RESUME_STATE_P4" ]]; then
++    _p4_status="$(jq -r '.status // empty' "$RESUME_STATE_P4" 2>/dev/null || true)"
++    assert_eq "[#1944/SPEC-4] P4: resumed run with slow stage ends timed_out (watchdog is armed)" \
++        "timed_out" "$_p4_status"
++else
++    assert_fail "[#1944/SPEC-4] P4: pipeline-state.json written after timed-out resumed run" \
++        "state file not found: $RESUME_STATE_P4"
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/integration/run-timed-out-test.sh b/tests/integration/run-timed-out-test.sh
+new file mode 100644
+index 00000000..4a3a238d
+--- /dev/null
++++ b/tests/integration/run-timed-out-test.sh
+@@ -0,0 +1,417 @@
++#!/usr/bin/env bash
++# Integration: run-level wall-clock limit with watchdog (#1944)
++#
++# SPEC-1 [code]: a run whose wall-clock time exceeds max_run_s ends with
++#   pipeline status timed_out in pipeline-state.json and pipeline.end event
++#   carrying status=timed_out, the in-flight stage, and limit_s; the watchdog
++#   fires even when the engine is idle between dispatches (not only inside a
++#   stage); a process that ignores TERM is dead within TERM + 10 s; release and
++#   persist execute on every timed-out exit path.
++#
++# Phases:
++#   P1 — basic timeout: slow stage hits the watchdog; status=timed_out, event
++#        fields correct; runner exits non-zero within the limit
++#   P2 — idle between dispatches: fast-one (5s) completes normally before
++#        max_run_s (6s); fast-two is in-flight when the watchdog fires; fast-one
++#        in "complete" state proves the timer tracks wall-clock time from run
++#        start (not a per-stage reset), i.e. fires even after an idle window;
++#        elapsed ≤ 20s (global: ~18s) vs per-stage: ~23s proves it is global
++#   P3 — TERM-ignore: a stage that traps and ignores SIGTERM is dead within
++#        TERM + 10 s (KILL escalation)
++#   P4 — release and persist run: always_run release + persist stages execute
++#        on every timed-out exit path
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)"
++setup_test_env "run-timed-out"
++export ZBUILD_CONTRACT_VALIDATOR=warn
++
++PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
++STATE_DIR="$TEST_TEMP_DIR/state"
++EVENTS_DIR="$TEST_TEMP_DIR/events"
++EVENTS_JSONL="$EVENTS_DIR/events.jsonl"
++export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
++export ZBUILD_EVENTS_DIR="$EVENTS_DIR"
++export ZBUILD_EVENTS_JSONL="$EVENTS_JSONL"
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
++export ZBUILD_CYCLES_ENABLED=0
++export ZBUILD_SCOPE_OVERRIDE=1
++mkdir -p "$STATE_DIR" "$EVENTS_DIR" "$HOME/.zbuild"
++printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
++
++# ── Shared overlay repo ─────────────────────────────────────────────────────
++OVERLAY_REPO="$(setup_git_temp_repo run-timed-out-overlay)"
++mkdir -p "$OVERLAY_REPO/.zbuild/templates"
++
++# Single-stage template: one slow stage (the main timeout victim)
++cat > "$OVERLAY_REPO/.zbuild/templates/timeout-single.yaml" <<'EOF'
++id: timeout-single
++extends: simple
++stages:
++  - id: slow-stage
++    gate: auto
++    io:
++      destinations: [file]
++      tail_lines: 50
++    router:
++      timeout_s: 120
++      max_turns: 0
++EOF
++
++# Two-stage template: fast-one is instant; fast-two blocks for a long time
++cat > "$OVERLAY_REPO/.zbuild/templates/timeout-two-stage.yaml" <<'EOF'
++id: timeout-two-stage
++extends: simple
++stages:
++  - id: fast-one
++    gate: auto
++    io:
++      destinations: [file]
++      tail_lines: 50
++  - id: fast-two
++    gate: auto
++    io:
++      destinations: [file]
++      tail_lines: 50
++EOF
++
++# Always-run (release + persist) template: flow stage + always_run release + persist
++cat > "$OVERLAY_REPO/.zbuild/templates/timeout-with-release.yaml" <<'EOF'
++id: timeout-with-release
++extends: simple
++flow:
++  - outcome
++
++always_run:
++  - release
++  - persist-stage
++
++outcome:
++  gate: auto
++  io:
++    destinations: [file]
++    tail_lines: 50
++
++release:
++  gate: auto
++  roles: [teardown]
++  router:
++    timeout_s: 30
++  io:
++    destinations: [file]
++    tail_lines: 50
++
++persist-stage:
++  gate: auto
++  roles: [persist]
++  router:
++    timeout_s: 30
++  io:
++    destinations: [file]
++    tail_lines: 50
++EOF
++
++# Commit the templates into the overlay repo so the runner can find them
++(cd "$OVERLAY_REPO" && git add .zbuild && git commit -q -m "add timeout test templates") >/dev/null 2>&1
++
++# ── P1: basic timeout — slow stage, status=timed_out ───────────────────────
++
++# Stage that sleeps far longer than max_run_s
++mock_plugin_factory "slow-stage" "agent" 0 >/dev/null
++SLOW_STAGE_STARTED="$TEST_TEMP_DIR/slow-stage-started"
++cat > "$PLUGINS_ROOT/agent/slow-stage/plugin.sh" <<PLUG
++slow_stage_run() {
++    : > "${SLOW_STAGE_STARTED}"
++    sleep 120
++    $(mock_result_line slow-stage)
++    return 0
++}
++PLUG
++
++export ZBUILD_STATE_DIR="$STATE_DIR"
++print_test_section "P1: slow stage timeout — status=timed_out written to pipeline-state.json"
++
++# Run with ZBUILD_MAX_RUN_S=2 (2 seconds); wrap in timeout 25s to prevent hanging
++# before implementation (no watchdog → stage sleeps forever → outer timeout kills it)
++p1_rc=0
++( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 25 bash "$RUNNER" \
++    --template timeout-single --goal "run-timed-out test p1" ) \
++    >"$TEST_TEMP_DIR/p1.stdout" 2>"$TEST_TEMP_DIR/p1.stderr" \
++    || p1_rc=$?
++
++STATE_FILE="$STATE_DIR/pipeline-state.json"
++
++# Runner must exit non-zero (timed-out runs are failures)
++assert_eq "[#1944/SPEC-1] P1: runner exits non-zero" "1" "$p1_rc"
++
++# pipeline-state.json must exist and have status=timed_out
++if [[ ! -f "$STATE_FILE" ]]; then
++    assert_fail "[#1944/SPEC-1] P1: pipeline-state.json written" "state file not found"
++else
++    _p1_status="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || true)"
++    assert_eq "[#1944/SPEC-1] P1: pipeline-state.json status=timed_out" "timed_out" "$_p1_status"
++fi
++
++print_test_section "P1: pipeline.end event fields — status=timed_out, stage, limit_s"
++
++if [[ ! -f "$EVENTS_JSONL" ]]; then
++    assert_fail "[#1944/SPEC-1] P1: events.jsonl written" "events file not found"
++else
++    # Event: pipeline.end with status=timed_out
++    _p1_end_event="$(jq -c 'select(.type=="pipeline.end" and .data.status=="timed_out")' \
++        "$EVENTS_JSONL" 2>/dev/null | tail -1)"
++    if [[ -n "$_p1_end_event" ]]; then
++        assert_pass "[#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted"
++    else
++        assert_fail "[#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted" \
++            "no such event in $(wc -l < "$EVENTS_JSONL") events"
++    fi
++
++    # The event must carry the in-flight stage name
++    _p1_stage="$(jq -r 'select(.type=="pipeline.end" and .data.status=="timed_out") | .data.stage // empty' \
++        "$EVENTS_JSONL" 2>/dev/null | tail -1)"
++    if [[ -n "$_p1_stage" ]]; then
++        assert_pass "[#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=$_p1_stage)"
++    else
++        assert_fail "[#1944/SPEC-1] P1: pipeline.end event carries in-flight stage" \
++            "stage field empty in timed_out pipeline.end event"
++    fi
++
++    # The event must carry limit_s (the max_run_s value that was applied)
++    _p1_limit="$(jq -r 'select(.type=="pipeline.end" and .data.status=="timed_out") | .data.limit_s // empty' \
++        "$EVENTS_JSONL" 2>/dev/null | tail -1)"
++    if [[ -n "$_p1_limit" && "$_p1_limit" =~ ^[0-9]+$ ]]; then
++        assert_pass "[#1944/SPEC-1] P1: pipeline.end event carries limit_s=$_p1_limit"
++    else
++        assert_fail "[#1944/SPEC-1] P1: pipeline.end event carries limit_s" \
++            "limit_s field absent or non-numeric in timed_out pipeline.end event"
++    fi
++fi
++
++# ── P2: idle between dispatches — watchdog fires independently of stage state ─
++print_test_section "P2: watchdog fires even when engine is idle between dispatches"
++
++# Reset state/events for fresh run
++rm -f "$STATE_FILE" "$EVENTS_JSONL"
++mock_plugin_factory "fast-one" "agent" 0 >/dev/null
++mock_plugin_factory "fast-two" "agent" 0 >/dev/null
++
++# fast-one: sleeps 5s then returns normally (5s < max_run_s=6s, so not killed).
++# fast-two: sleeps 60s. The watchdog fires at wall-clock t=6s while fast-two is
++# sleeping. fast-one completing before the watchdog fires proves the timer tracks
++# total wall-clock time from run start.
++#
++# Distinguishing global watchdog from per-stage reset timer:
++#   After the watchdog fires it sends SIGTERM and then waits TERM+10s before
++#   SIGKILL, plus cleanup time — roughly 12s of overhead after the timer fires.
++#   Global timer (correct): fires at absolute t=6s from run start.
++#     SIGKILL at ~16s; cleanup done by ~18s.  elapsed ≈ max_run_s + 12 ≈ 18s.
++#   Per-stage timer (wrong — resets at each stage dispatch):
++#     fires at fast-two-start + 6s = ~5s + 6s = ~11s from run start.
++#     SIGKILL at ~21s; cleanup done by ~23s.  elapsed ≈ 23s.
++#   Bound of 20s sits between 18s (global) and 23s (per-stage), so only a
++#   global wall-clock timer passes.  The "fast-one completed" check
++#   additionally proves the watchdog didn't fire before fast-one finished
++#   (t < 5s), so the watchdog window is (5s, 8s] — exactly where the global
++#   timer (6s) lives; the per-stage timer (11s) is outside the window.
++#
++# Falsifiability:
++#   OLD code (no watchdog): fast-two (60s) → outer timeout 25s fires.
++#     Elapsed ≈ 25s > 20s → elapsed-time assertion FAILS.
++#   Per-stage reset (wrong implementation): fires at ~11s; elapsed ≈ 23s.
++#     Elapsed ≈ 23s > 20s → elapsed-time assertion FAILS.
++#   NEW code (global watchdog at t=6s): elapsed ≈ 18s ≤ 20s → PASSES.
++cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
++fast_one_run() {
++    sleep 5
++    $(mock_result_line fast-one)
++    return 0
++}
++PLUG
++cat > "$PLUGINS_ROOT/agent/fast-two/plugin.sh" <<PLUG
++fast_two_run() {
++    sleep 60
++    $(mock_result_line fast-two)
++    return 0
++}
++PLUG
++
++_p2_start="$(date +%s)"
++p2_rc=0
++( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=6 timeout 25 bash "$RUNNER" \
++    --template timeout-two-stage --goal "run-timed-out test p2" ) \
++    >"$TEST_TEMP_DIR/p2.stdout" 2>"$TEST_TEMP_DIR/p2.stderr" \
++    || p2_rc=$?
++_p2_elapsed=$(( $(date +%s) - _p2_start ))
++
++assert_eq "[#1944/SPEC-1] P2: runner exits non-zero" "1" "$p2_rc"
++
++if [[ -f "$STATE_FILE" ]]; then
++    _p2_status="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || true)"
++    assert_eq "[#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)" \
++        "timed_out" "$_p2_status"
++
++    # fast-one MUST have completed before the watchdog fired: its status must be
++    # "complete". This is the falsifiable check — if the watchdog fired before
++    # fast-one completed, fast-one's status would not be "complete" and this fails.
++    # Stage names are stored with their literal name (hyphenated) as the key.
++    _p2_fast_one="$(jq -r '.stage_statuses["fast-one"] // empty' "$STATE_FILE" 2>/dev/null || true)"
++    if [[ "$_p2_fast_one" == "complete" ]]; then
++        assert_pass "[#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)"
++    else
++        assert_fail "[#1944/SPEC-1] P2: fast-one completed before watchdog fired" \
++            "fast-one status: '${_p2_fast_one:-<empty>}' — watchdog fired too early or fast-one did not run"
++    fi
++else
++    assert_fail "[#1944/SPEC-1] P2: pipeline-state.json written" "state file not found"
++fi
++
++# Wall-clock limit check: the run must end within max_run_s + TERM+10s + overhead.
++# After the watchdog fires it sends SIGTERM, waits 10s, then SIGKILL, plus cleanup.
++# Global (correct, fires at t=6s):   6+10+overhead ≈ 18s ≤ 20s → PASSES.
++# Per-stage (wrong, fires at t=11s): 11+10+overhead ≈ 23s > 20s → FAILS.
++# Old code (no watchdog):            outer timeout at 25s → elapsed ≈ 25s > 20s → FAILS.
++# Combined with "fast-one completed" this proves the timer is a global wall-clock
++# timer tracking from run start (not a per-stage reset that would fire at ~11s).
++if [[ "$_p2_elapsed" -le 20 ]]; then
++    assert_pass "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset (elapsed ${_p2_elapsed}s)"
++else
++    assert_fail "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset" \
++        "elapsed ${_p2_elapsed}s > 20s — per-stage reset timer would fire at ~23s; global watchdog fires at ~18s; expected ≤ 20s"
++fi
++
++# ── P3: TERM-ignore → KILL within TERM + 10s ────────────────────────────────
++print_test_section "P3: stage that ignores SIGTERM is dead within TERM + 10s"
++
++rm -f "$STATE_FILE" "$EVENTS_JSONL"
++
++# Stage that traps SIGTERM and does NOT exit, sleeps indefinitely
++TERM_IGNORED_PID_FILE="$TEST_TEMP_DIR/term-ignore-pid"
++cat > "$PLUGINS_ROOT/agent/slow-stage/plugin.sh" <<PLUG
++slow_stage_run() {
++    : > "${SLOW_STAGE_STARTED}"
++    # Record our PID so the test can check it is dead
++    printf '%s\n' "\$\$" > "${TERM_IGNORED_PID_FILE}"
++    # Trap SIGTERM and ignore it (only SIGKILL can stop this)
++    trap '' TERM
++    sleep 120
++    $(mock_result_line slow-stage)
++    return 0
++}
++PLUG
++
++_p3_start="$(date +%s)"
++# max_run_s=2 → watchdog fires at 2s, sends TERM; stage ignores it;
++# watchdog escalates to KILL at 2+10=12s. The runner must exit within ~15s.
++p3_rc=0
++( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 30 bash "$RUNNER" \
++    --template timeout-single --goal "run-timed-out test p3 term-ignore" ) \
++    >"$TEST_TEMP_DIR/p3.stdout" 2>"$TEST_TEMP_DIR/p3.stderr" \
++    || p3_rc=$?
++_p3_elapsed=$(( $(date +%s) - _p3_start ))
++
++# Runner must exit (not hang past 30s timeout)
++assert_eq "[#1944/SPEC-1] P3: runner exits non-zero (not still running)" "1" "$p3_rc"
++
++# Runner must exit within TERM + 10s + buffer = 2 + 10 + 5 = 17s
++if [[ "$_p3_elapsed" -le 17 ]]; then
++    assert_pass "[#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed ${_p3_elapsed}s)"
++else
++    assert_fail "[#1944/SPEC-1] P3: runner exits within TERM+10s+buffer" \
++        "elapsed ${_p3_elapsed}s > 17s"
++fi
++
++# If stage PID was written, check the process is dead
++if [[ -f "$TERM_IGNORED_PID_FILE" ]]; then
++    _ignore_pid="$(cat "$TERM_IGNORED_PID_FILE" 2>/dev/null || true)"
++    if [[ "$_ignore_pid" =~ ^[0-9]+$ ]]; then
++        if kill -0 "$_ignore_pid" 2>/dev/null; then
++            assert_fail "[#1944/SPEC-1] P3: TERM-ignoring stage process is dead after TERM+10s" \
++                "PID $_ignore_pid is still alive"
++        else
++            assert_pass "[#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID $_ignore_pid killed)"
++        fi
++    fi
++fi
++
++# ── P4: release AND persist stages run on timed-out exit path ───────────────
++print_test_section "P4: always_run release and persist stages execute on timed-out exit path"
++
++rm -f "$STATE_FILE" "$EVENTS_JSONL"
++
++mock_plugin_factory "outcome"       "agent" 0 "" ""        >/dev/null
++mock_plugin_factory "teardown"      "tool"  0 "" "teardown" >/dev/null
++mock_plugin_factory "persist-stage" "tool"  0 "" "persist"  >/dev/null
++
++# Outcome (flow) stage: sleeps 30s (will be killed by watchdog)
++OUTCOME_STARTED="$TEST_TEMP_DIR/outcome-started"
++cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
++outcome_run() {
++    : > "${OUTCOME_STARTED}"
++    sleep 30
++    $(mock_result_line outcome)
++    return 0
++}
++PLUG
++
++# Release (teardown) stage: drops a marker to prove it ran
++RELEASE_MARKER="$TEST_TEMP_DIR/release-ran-on-timeout"
++cat > "$PLUGINS_ROOT/tool/teardown/plugin.sh" <<PLUG
++teardown_run() {
++    : > "${RELEASE_MARKER}"
++    $(mock_result_line teardown)
++    return 0
++}
++PLUG
++
++# Persist stage: drops a marker to prove it ran
++PERSIST_MARKER="$TEST_TEMP_DIR/persist-ran-on-timeout"
++cat > "$PLUGINS_ROOT/tool/persist-stage/plugin.sh" <<PLUG
++persist_stage_run() {
++    : > "${PERSIST_MARKER}"
++    $(mock_result_line persist-stage)
++    return 0
++}
++PLUG
++
++p4_rc=0
++( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 25 bash "$RUNNER" \
++    --template timeout-with-release --goal "run-timed-out test p4 release+persist" ) \
++    >"$TEST_TEMP_DIR/p4.stdout" 2>"$TEST_TEMP_DIR/p4.stderr" \
++    || p4_rc=$?
++
++assert_eq "[#1944/SPEC-1] P4: runner exits non-zero on timed-out path" "1" "$p4_rc"
++
++if [[ -f "$STATE_FILE" ]]; then
++    _p4_status="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || true)"
++    assert_eq "[#1944/SPEC-1] P4: pipeline status=timed_out" "timed_out" "$_p4_status"
++else
++    assert_fail "[#1944/SPEC-1] P4: pipeline-state.json written" "state file not found"
++fi
++
++if [[ -e "$RELEASE_MARKER" ]]; then
++    assert_pass "[#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path"
++else
++    assert_fail "[#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path" \
++        "release marker not found — always_run release stage did not execute"
++fi
++
++if [[ -e "$PERSIST_MARKER" ]]; then
++    assert_pass "[#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path"
++else
++    assert_fail "[#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path" \
++        "persist marker not found — always_run persist stage did not execute"
++fi
++
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/run-limit-precedence-test.sh b/tests/unit/run-limit-precedence-test.sh
+new file mode 100644
+index 00000000..431d43ea
+--- /dev/null
++++ b/tests/unit/run-limit-precedence-test.sh
+@@ -0,0 +1,483 @@
++#!/usr/bin/env bash
++# tests/unit/run-limit-precedence-test.sh — run-level wall-clock limit (#1944)
++#
++# SPEC-2 [code]:
++#   _runner_resolve_run_limit_s resolves template max_run_s > ZBUILD_MAX_RUN_S >
++#   20700; a non-integer or non-positive value in template or env yields
++#   disposition misconfigured and the run does not reach the dispatch loop.
++#
++# SPEC-5 [no-code]:
++#   The limit is resolved from template, env, or constant only; scripts/lib/
++#   stage-limits.sh and core/pipeline/runner.sh contain no reference to
++#   GITHUB_ACTIONS, CI, or any platform-specific variable in the new code.
++#
++# SPEC-6 [no-code]:
++#   ADR-025 names timed_out in its word vocabulary with ## Enforced by entries
++#   citing the new tests; ADR-054 gains a §11 for the run-level limit with
++#   ## Enforced by; config/adr-enforcement-baseline.txt no longer lists
++#   ADR-054-stage-contract.md.
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)"
++setup_test_env "run-limit-precedence"
++
++RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
++STAGE_LIMITS="$REPO_ROOT/scripts/lib/stage-limits.sh"
++
++# ─── SPEC-2: _runner_resolve_run_limit_s ────────────────────────────────────
++
++print_test_section "[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh"
++
++# shellcheck source=../../scripts/lib/stage-limits.sh
++source "$STAGE_LIMITS" 2>/dev/null || true
++
++if declare -F _runner_resolve_run_limit_s >/dev/null 2>&1; then
++    assert_pass "[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh"
++else
++    assert_fail "[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh" \
++        "function not found after sourcing scripts/lib/stage-limits.sh"
++fi
++
++print_test_section "[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700"
++
++if declare -F _runner_resolve_run_limit_s >/dev/null 2>&1; then
++    # Case 1: no template value, no env → falls back to default 20700
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf ''; }
++    unset ZBUILD_MAX_RUN_S
++    _runner_resolve_run_limit_s 2>/dev/null || true
++    assert_eq "[#1944/SPEC-2] no template, no env → default 20700" "20700" "${_RUNNER_MAX_RUN_S:-}"
++
++    # Case 2: env only → uses env
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf ''; }
++    ZBUILD_MAX_RUN_S=3600
++    _runner_resolve_run_limit_s 2>/dev/null || true
++    assert_eq "[#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value" "3600" "${_RUNNER_MAX_RUN_S:-}"
++    unset ZBUILD_MAX_RUN_S
++
++    # Case 3: template value > env → template wins
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf '7200'; }
++    ZBUILD_MAX_RUN_S=3600
++    _runner_resolve_run_limit_s 2>/dev/null || true
++    assert_eq "[#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S" "7200" "${_RUNNER_MAX_RUN_S:-}"
++    unset ZBUILD_MAX_RUN_S
++
++    # Case 4: template value only (no env) → template wins over default
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf '1800'; }
++    unset ZBUILD_MAX_RUN_S
++    _runner_resolve_run_limit_s 2>/dev/null || true
++    assert_eq "[#1944/SPEC-2] template value wins over default" "1800" "${_RUNNER_MAX_RUN_S:-}"
++else
++    assert_fail "[#1944/SPEC-2] precedence checks skipped — function not found" "missing implementation"
++fi
++
++print_test_section "[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1"
++
++if declare -F _runner_resolve_run_limit_s >/dev/null 2>&1; then
++    # Non-integer in template
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf 'not-a-number'; }
++    unset ZBUILD_MAX_RUN_S
++    _rc2=0
++    _runner_resolve_run_limit_s 2>/dev/null || _rc2=$?
++    assert_eq "[#1944/SPEC-2] non-integer template value → rc=1" "1" "$_rc2"
++
++    # Non-positive (zero) in template
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf '0'; }
++    unset ZBUILD_MAX_RUN_S
++    _rc2=0
++    _runner_resolve_run_limit_s 2>/dev/null || _rc2=$?
++    assert_eq "[#1944/SPEC-2] template value=0 → rc=1" "1" "$_rc2"
++
++    # Negative in template
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf -- '-5'; }
++    unset ZBUILD_MAX_RUN_S
++    _rc2=0
++    _runner_resolve_run_limit_s 2>/dev/null || _rc2=$?
++    assert_eq "[#1944/SPEC-2] negative template value → rc=1" "1" "$_rc2"
++
++    # Non-integer in ZBUILD_MAX_RUN_S
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf ''; }
++    ZBUILD_MAX_RUN_S="thirty"
++    _rc2=0
++    _runner_resolve_run_limit_s 2>/dev/null || _rc2=$?
++    assert_eq "[#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1" "1" "$_rc2"
++    unset ZBUILD_MAX_RUN_S
++
++    # Non-positive in ZBUILD_MAX_RUN_S
++    _RUNNER_MAX_RUN_S=""
++    template_max_run_s() { printf ''; }
++    ZBUILD_MAX_RUN_S=0
++    _rc2=0
++    _runner_resolve_run_limit_s 2>/dev/null || _rc2=$?
++    assert_eq "[#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1" "1" "$_rc2"
++    unset ZBUILD_MAX_RUN_S
++else
++    assert_fail "[#1944/SPEC-2] validation checks skipped — function not found" "missing implementation"
++fi
++
++# ─── SPEC-2: template_max_run_s() from the real template.sh ─────────────────
++# This section sources the REAL template.sh to test its template_max_run_s()
++# function directly. If template.sh is reverted (function removed), the
++# assert_fail below fires — making template.sh testable.
++print_test_section "[#1944/SPEC-2] template_max_run_s() reads max_run_s from template YAML (real function)"
++TEMPLATE_SH="$REPO_ROOT/core/pipeline/template.sh"
++
++# shellcheck source=../../core/pipeline/template.sh
++source "$TEMPLATE_SH" 2>/dev/null || true
++
++# Build two YAML fixtures: one WITH max_run_s, one WITHOUT
++_tpl_yaml="$TEST_TEMP_DIR/max-run-test.yaml"
++cat > "$_tpl_yaml" <<'EOF'
++id: max-run-test
++max_run_s: 3600
++extends: simple
++EOF
++
++_tpl_none="$TEST_TEMP_DIR/no-max-run.yaml"
++cat > "$_tpl_none" <<'EOF'
++id: no-max-run-test
++extends: simple
++EOF
++
++if declare -F template_max_run_s >/dev/null 2>&1; then
++    # Real function from template.sh: must extract the value from the YAML.
++    _TPL_SOURCE_FILE="$_tpl_yaml"
++    _tmr="$(template_max_run_s 2>/dev/null || true)"
++    assert_eq "[#1944/SPEC-2] template_max_run_s() returns max_run_s value from YAML" "3600" "$_tmr"
++
++    # When max_run_s is absent, function returns empty (no override)
++    _TPL_SOURCE_FILE="$_tpl_none"
++    _tmr_empty="$(template_max_run_s 2>/dev/null || true)"
++    assert_eq "[#1944/SPEC-2] template_max_run_s() returns empty when max_run_s absent" "" "$_tmr_empty"
++    unset _TPL_SOURCE_FILE
++else
++    assert_fail "[#1944/SPEC-2] template_max_run_s() defined in core/pipeline/template.sh" \
++        "function not found after sourcing template.sh — implementation missing or template.sh reverted"
++fi
++
++print_test_section "[#1944/SPEC-2] misconfigured run (invalid ZBUILD_MAX_RUN_S): runner rejects before dispatch"
++# Run the actual runner with an invalid ZBUILD_MAX_RUN_S; it must exit non-zero
++# before dispatching any stage (no stage marker written).
++export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-miscfg"
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events-miscfg"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_CONTRACT_VALIDATOR=warn
++export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
++export ZBUILD_CYCLES_ENABLED=0
++export ZBUILD_SCOPE_OVERRIDE=1
++mkdir -p "$ZBUILD_STATE_DIR" "$ZBUILD_EVENTS_DIR" "$HOME/.zbuild"
++printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
++
++# Minimal single-stage plugin
++mock_plugin_factory "intake" "agent" 0 >/dev/null
++
++MISCFG_OVERLAY="$(setup_git_temp_repo miscfg-run-limit)"
++mkdir -p "$MISCFG_OVERLAY/.zbuild/templates"
++cat > "$MISCFG_OVERLAY/.zbuild/templates/limit-single.yaml" <<'EOF'
++id: limit-single
++extends: simple
++stages:
++  - id: intake
++    gate: auto
++    io:
++      destinations: [file]
++      tail_lines: 50
++EOF
++
++STAGE_MARKER="$TEST_TEMP_DIR/stage-ran-marker"
++cat > "$TEST_TEMP_DIR/plugins/agent/intake/plugin.sh" <<PLUG
++intake_run() {
++    : > "${STAGE_MARKER}"
++    $(mock_result_line intake)
++    return 0
++}
++PLUG
++
++# Run with invalid env var — must fail before dispatch loop
++_miscfg_rc=0
++( cd "$MISCFG_OVERLAY" && ZBUILD_MAX_RUN_S="not-a-number" bash "$RUNNER" \
++    --template limit-single --goal "test misconfigured limit" ) \
++    >"$TEST_TEMP_DIR/miscfg.stdout" 2>"$TEST_TEMP_DIR/miscfg.stderr" \
++    || _miscfg_rc=$?
++
++assert_eq "[#1944/SPEC-2] invalid ZBUILD_MAX_RUN_S → runner exits non-zero" "1" "$_miscfg_rc"
++if [[ -e "$STAGE_MARKER" ]]; then
++    assert_fail "[#1944/SPEC-2] stage did not run when env limit is misconfigured" \
++        "stage marker exists — dispatch loop was reached"
++else
++    assert_pass "[#1944/SPEC-2] stage did not run when env limit is misconfigured"
++fi
++
++# Check that misconfigured is explained AND names the source (ZBUILD_MAX_RUN_S)
++_miscfg_sf="$ZBUILD_STATE_DIR/pipeline-state.json"
++if [[ -f "$_miscfg_sf" ]]; then
++    _miscfg_disp="$(jq -r '.disposition // empty' "$_miscfg_sf" 2>/dev/null || true)"
++    assert_eq "[#1944/SPEC-2] pipeline-state.json disposition=misconfigured (env)" "misconfigured" "$_miscfg_disp"
++fi
++# Collect output: prefer state file reason field, fall back to stderr+stdout
++_miscfg_all_output=""
++if [[ -f "$_miscfg_sf" ]]; then
++    _miscfg_all_output="$(jq -r '.reason // .message // empty' "$_miscfg_sf" 2>/dev/null || true)"
++fi
++if [[ -z "$_miscfg_all_output" ]]; then
++    _miscfg_all_output="$(cat "$TEST_TEMP_DIR/miscfg.stderr" "$TEST_TEMP_DIR/miscfg.stdout" 2>/dev/null || true)"
++fi
++# The message must name the misconfigured source: ZBUILD_MAX_RUN_S
++if grep -q 'ZBUILD_MAX_RUN_S' <<< "$_miscfg_all_output" 2>/dev/null; then
++    assert_pass "[#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)"
++else
++    assert_fail "[#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)" \
++        "ZBUILD_MAX_RUN_S not found in runner output — message must name the env source"
++fi
++
++# ─── SPEC-2 (template layer): runner rejects invalid template max_run_s ──────
++# A template that contains `max_run_s: not-a-number` must make the runner
++# abort with rc=1 before any stage dispatches. This exercises template.sh's
++# template_max_run_s() function, which is called by _runner_resolve_run_limit_s.
++print_test_section "[#1944/SPEC-2] misconfigured run (invalid template max_run_s): runner rejects before dispatch"
++
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-miscfg-tpl"
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events-miscfg-tpl"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++mkdir -p "$ZBUILD_STATE_DIR" "$ZBUILD_EVENTS_DIR"
++unset ZBUILD_MAX_RUN_S
++
++# Template with an invalid max_run_s value in the YAML.
++# MUST use new-shape (flow: style): the old-shape merger strips top-level keys
++# like max_run_s: when building the merged file (only stages:/stage_definitions:
++# blocks are carried over from the per-repo file). New-shape copies the file
++# verbatim, so max_run_s: not-a-number survives in _TPL_SOURCE_FILE.
++cat > "$MISCFG_OVERLAY/.zbuild/templates/limit-bad-tpl.yaml" <<'EOF'
++id: limit-bad-tpl
++extends: simple
++max_run_s: not-a-number
++flow:
++  - intake
++
++intake:
++  gate: auto
++  io:
++    destinations: [file]
++    tail_lines: 50
++EOF
++(cd "$MISCFG_OVERLAY" && git add .zbuild && git commit -q -m "add limit-bad-tpl template") \
++    >/dev/null 2>&1
++
++STAGE_MARKER_TPL="$TEST_TEMP_DIR/stage-ran-marker-tpl"
++cat > "$TEST_TEMP_DIR/plugins/agent/intake/plugin.sh" <<PLUG
++intake_run() {
++    : > "${STAGE_MARKER_TPL}"
++    $(mock_result_line intake)
++    return 0
++}
++PLUG
++
++_miscfg_tpl_rc=0
++( cd "$MISCFG_OVERLAY" && bash "$RUNNER" \
++    --template limit-bad-tpl --goal "test misconfigured template limit" ) \
++    >"$TEST_TEMP_DIR/miscfg-tpl.stdout" 2>"$TEST_TEMP_DIR/miscfg-tpl.stderr" \
++    || _miscfg_tpl_rc=$?
++
++assert_eq "[#1944/SPEC-2] invalid template max_run_s → runner exits non-zero" "1" "$_miscfg_tpl_rc"
++if [[ -e "$STAGE_MARKER_TPL" ]]; then
++    assert_fail "[#1944/SPEC-2] stage did not run when template limit is misconfigured" \
++        "stage marker exists — dispatch loop was reached"
++else
++    assert_pass "[#1944/SPEC-2] stage did not run when template limit is misconfigured"
++fi
++
++# Message must name the misconfigured template source (max_run_s)
++_miscfg_tpl_sf="$ZBUILD_STATE_DIR/pipeline-state.json"
++_miscfg_tpl_output=""
++if [[ -f "$_miscfg_tpl_sf" ]]; then
++    _miscfg_tpl_output="$(jq -r '.reason // .message // empty' "$_miscfg_tpl_sf" 2>/dev/null || true)"
++fi
++if [[ -z "$_miscfg_tpl_output" ]]; then
++    _miscfg_tpl_output="$(cat "$TEST_TEMP_DIR/miscfg-tpl.stderr" "$TEST_TEMP_DIR/miscfg-tpl.stdout" 2>/dev/null || true)"
++fi
++# max_run_s is the template YAML field name — the message must name the source
++if grep -q 'max_run_s' <<< "$_miscfg_tpl_output" 2>/dev/null; then
++    assert_pass "[#1944/SPEC-2] message names the misconfigured template source (max_run_s)"
++else
++    assert_fail "[#1944/SPEC-2] message names the misconfigured template source (max_run_s)" \
++        "max_run_s not found in runner output — message must name the template source"
++fi
++
++# ─── SPEC-5: no platform-specific env vars in new limit code ────────────────
++
++print_test_section "[#1944/SPEC-5] stage-limits.sh contains no GITHUB_ACTIONS or bare CI reference"
++
++# GITHUB_ACTIONS check — never acceptable in limit resolution
++_ga_count_sl="$(grep -c 'GITHUB_ACTIONS' "$STAGE_LIMITS" 2>/dev/null || true)"
++assert_eq "[#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference" "0" "$_ga_count_sl"
++
++# $CI or ${CI} in non-comment code lines in stage-limits.sh
++_ci_sl="$(grep -v '^[[:space:]]*#' "$STAGE_LIMITS" 2>/dev/null | grep -cE '\$\{?CI\}?[^A-Za-z0-9_]' || true)"
++assert_eq "[#1944/SPEC-5] stage-limits.sh: no bare \$CI in non-comment code" "0" "$_ci_sl"
++
++# runner.sh: no GITHUB_ACTIONS in code lines (excluding pure comments)
++_ga_rn="$(grep -v '^[[:space:]]*#' "$RUNNER" 2>/dev/null | grep -c 'GITHUB_ACTIONS' || true)"
++assert_eq "[#1944/SPEC-5] runner.sh: no GITHUB_ACTIONS in code lines" "0" "$_ga_rn"
++
++# runner.sh: no bare $CI in non-comment code lines
++_ci_rn="$(grep -v '^[[:space:]]*#' "$RUNNER" 2>/dev/null | grep -cE '\$\{?CI\}?[^A-Za-z0-9_]' || true)"
++assert_eq "[#1944/SPEC-5] runner.sh: no bare \$CI in non-comment code" "0" "$_ci_rn"
++
++# Additional platform-specific variables — none should appear in limit-resolution code
++for _plat_var in TRAVIS CIRCLECI RUNNER_OS BUILD_BUILDID; do
++    _cnt_sl="$(grep -c "$_plat_var" "$STAGE_LIMITS" 2>/dev/null || true)"
++    assert_eq "[#1944/SPEC-5] stage-limits.sh: no $_plat_var reference" "0" "$_cnt_sl"
++    _cnt_rn="$(grep -v '^[[:space:]]*#' "$RUNNER" 2>/dev/null | grep -c "$_plat_var" || true)"
++    assert_eq "[#1944/SPEC-5] runner.sh: no $_plat_var in code lines" "0" "$_cnt_rn"
++done
++
++# ─── SPEC-6: ADR alignment ──────────────────────────────────────────────────
++
++print_test_section "[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary"
++ADR025="$REPO_ROOT/docs/adr/ADR-025-abort-propagation.md"
++
++if [[ ! -f "$ADR025" ]]; then
++    assert_fail "[#1944/SPEC-6] ADR-025 file exists" "not found: $ADR025"
++else
++    # The word vocabulary line lists the abort words; timed_out must be among them
++    _vocab_line="$(grep -E '(sigint|sigterm|cycle_abort).*timed_out|timed_out.*(sigint|sigterm|cycle_abort)' \
++        "$ADR025" 2>/dev/null || true)"
++    if [[ -n "$_vocab_line" ]]; then
++        assert_pass "[#1944/SPEC-6] ADR-025 word vocabulary includes timed_out"
++    else
++        assert_fail "[#1944/SPEC-6] ADR-025 word vocabulary includes timed_out" \
++            "timed_out not found alongside sigint/sigterm/cycle_abort in ADR-025"
++    fi
++
++    # ## Enforced by section must cite ALL four new test files
++    _enf_sec="$(awk '/^## Enforced by/,0' "$ADR025" 2>/dev/null || true)"
++    for _tfile in run-timed-out-test run-limit-precedence-test run-watchdog-clean-exit-test resume-after-run-timeout-test; do
++        if grep -q "$_tfile" <<< "$_enf_sec" 2>/dev/null; then
++            assert_pass "[#1944/SPEC-6] ADR-025 ## Enforced by cites $_tfile"
++        else
++            assert_fail "[#1944/SPEC-6] ADR-025 ## Enforced by cites $_tfile" \
++                "$_tfile not referenced in ADR-025 ## Enforced by"
++        fi
++    done
++fi
++
++print_test_section "[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by"
++ADR054="$REPO_ROOT/docs/adr/ADR-054-stage-contract.md"
++
++if [[ ! -f "$ADR054" ]]; then
++    assert_fail "[#1944/SPEC-6] ADR-054 file exists" "not found: $ADR054"
++else
++    # §11 must exist (run-level limit section)
++    if grep -qE '§[[:space:]]*11\b|###[[:space:]]+11\.' "$ADR054" 2>/dev/null; then
++        assert_pass "[#1944/SPEC-6] ADR-054 §11 exists"
++    else
++        assert_fail "[#1944/SPEC-6] ADR-054 §11 exists" \
++            "no §11 heading found in ADR-054"
++    fi
++
++    # §11's content must describe the per-run limit specifically.
++    # Extract the §11 body: lines from after its heading up to the next ## heading.
++    # Use [^0-9] instead of \b: POSIX awk treats \b as a backspace character (0x08),
++    # not a word boundary. [^0-9] matches §11 followed by any non-digit (: space — etc.)
++    # and correctly excludes §110, §112, etc.
++    _s11_body="$(awk '/§[[:space:]]*11[^0-9]|###[[:space:]]+11\./{f=1;next} f&&/^##/{exit} f{print}' \
++        "$ADR054" 2>/dev/null || true)"
++    if grep -qiE 'max_run_s|wall.clock|per.run|run.level|run limit' <<< "$_s11_body" 2>/dev/null; then
++        assert_pass "[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit"
++    else
++        assert_fail "[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit" \
++            "§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic"
++    fi
++
++    # ## Enforced by section must cite ALL four new test files
++    _adr054_enf="$(awk '/## Enforced by/,0' "$ADR054" 2>/dev/null || true)"
++    for _tfile in run-timed-out-test run-limit-precedence-test run-watchdog-clean-exit-test resume-after-run-timeout-test; do
++        if grep -q "$_tfile" <<< "$_adr054_enf" 2>/dev/null; then
++            assert_pass "[#1944/SPEC-6] ADR-054 ## Enforced by cites $_tfile"
++        else
++            assert_fail "[#1944/SPEC-6] ADR-054 ## Enforced by cites $_tfile" \
++                "$_tfile not referenced in ADR-054 ## Enforced by"
++        fi
++    done
++fi
++
++print_test_section "[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md"
++BASELINE="$REPO_ROOT/config/adr-enforcement-baseline.txt"
++
++if [[ ! -f "$BASELINE" ]]; then
++    assert_fail "[#1944/SPEC-6] adr-enforcement-baseline.txt exists" "not found: $BASELINE"
++else
++    if grep -q 'ADR-054-stage-contract\.md' "$BASELINE" 2>/dev/null; then
++        assert_fail "[#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline" \
++            "still listed in config/adr-enforcement-baseline.txt"
++    else
++        assert_pass "[#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline"
++    fi
++fi
++
++# ─── SPEC-6: run_end_words knows timed_out (run-open-items.sh) ──────────────
++# run-open-items.sh adds timed_out to run_end_words. If reverted, the
++# timed_out case falls through to a generic message that does not mention the
++# wall-clock limit, and the assertion fails.
++print_test_section "[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit"
++RUN_OPEN_ITEMS="$REPO_ROOT/scripts/lib/run-open-items.sh"
++
++# shellcheck source=../../scripts/lib/run-open-items.sh
++source "$RUN_OPEN_ITEMS" 2>/dev/null || true
++
++if declare -F run_end_words >/dev/null 2>&1; then
++    _to_words="$(run_end_words timed_out 0 2>/dev/null || true)"
++    if grep -qi 'wall-clock' <<< "$_to_words" 2>/dev/null; then
++        assert_pass "[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit"
++    else
++        assert_fail "[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit" \
++            "got: '${_to_words:-<empty>}' — timed_out case missing from run_end_words"
++    fi
++else
++    assert_fail "[#1944/SPEC-6] run_end_words defined in run-open-items.sh" \
++        "function not found after sourcing run-open-items.sh"
++fi
++
++# ─── SPEC-6: lint-adr-enforced-by passes ────────────────────────────────────
++# Verifies every ## Enforced by citation in all ADRs (including ADR-025 and
++# ADR-054) references a real file. Passes after this change (new test files
++# exist); would fail if an ADR cited a test that did not exist yet.
++print_test_section "[#1944/SPEC-6] lint-adr-enforced-by: all Enforced-by citations resolve"
++_adr_lint_rc=0
++bash "$REPO_ROOT/scripts/lib/lint-adr-enforced-by.sh" \
++    >"$TEST_TEMP_DIR/adr-lint.stdout" 2>"$TEST_TEMP_DIR/adr-lint.stderr" \
++    || _adr_lint_rc=$?
++assert_eq "[#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)" \
++    "0" "$_adr_lint_rc"
++
++# ─── SPEC-6: lint-test-errexit passes (npm run lint subset) ─────────────────
++# Verifies no new test file uses set -e mid-file (the pattern lint-test-errexit
++# rejects). This is the specific lint check that failed in previous attempts
++# when new test files had `set +e; ...; set -e` patterns. Running it here
++# provides a direct assertion for the "npm run lint passes" clause of SPEC-6.
++print_test_section "[#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files"
++_errexit_rc=0
++bash "$REPO_ROOT/scripts/lib/lint-test-errexit.sh" \
++    >"$TEST_TEMP_DIR/errexit-lint.stdout" 2>"$TEST_TEMP_DIR/errexit-lint.stderr" \
++    || _errexit_rc=$?
++assert_eq "[#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)" \
++    "0" "$_errexit_rc"
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/run-open-items-test.sh b/tests/unit/run-open-items-test.sh
+index 36f2a9bb..e1e6b3e7 100644
+--- a/tests/unit/run-open-items-test.sh
++++ b/tests/unit/run-open-items-test.sh
+@@ -184,8 +184,9 @@ print_test_section "O9: the runner says in words why a loop ended the run"
+ # #1850: the two abort endings are one shared function, _runner_end_on_abort,
+ # whose lines name the unit ("cycle <id>: the run …").
+ _rn="$(grep -E '^[[:space:]]*error "(Cycle|Pipeline failed|\$\{_ea_unit)' "$REPO_ROOT/core/pipeline/runner.sh" || true)"
+-# Not vacuous: the five lines that say a loop ended the run are all found.
+-assert_eq "[O9] the runner's five loop-ending lines are found" "5" "$(grep -c . <<< "$_rn" || true)"
++# Not vacuous: the six lines that say a loop ended the run are all found
++# (#1944 adds a timed_out arm to _runner_end_on_abort, which is a sixth matching line).
++assert_eq "[O9] the runner's six loop-ending lines are found" "6" "$(grep -c . <<< "$_rn" || true)"
+ assert_eq "[O9] no such line prints rc=N or the reason code" "" \
+     "$(grep -E 'rc=\$_rc|reason=\$_(CYCLE_LAST_TERMINATED|RUNNER_CYCLE_UNCONVERGED)_REASON|: scope_too_large' <<< "$_rn" || true)"
+ assert_eq "[O9] each says why through run_end_words" "$(grep -c . <<< "$_rn")" \
+diff --git a/tests/unit/run-watchdog-clean-exit-test.sh b/tests/unit/run-watchdog-clean-exit-test.sh
+new file mode 100644
+index 00000000..04ab42f3
+--- /dev/null
++++ b/tests/unit/run-watchdog-clean-exit-test.sh
+@@ -0,0 +1,175 @@
++#!/usr/bin/env bash
++# tests/unit/run-watchdog-clean-exit-test.sh — clean-exit watchdog lifecycle (#1944)
++#
++# SPEC-3 [code]:
++#   A run that finishes within max_run_s exits with its own pipeline status
++#   unchanged; the watchdog process does not exist after the runner process exits.
++#
++# A test that only checks "runner exits 0" passes BEFORE implementation too.
++# We discriminate by also asserting:
++#   1. _runner_resolve_run_limit_s is defined (fails before implementation)
++#   2. With ZBUILD_MAX_RUN_S set, the completed run's status is the stage-reported
++#      status — not timed_out (impl must not fire the watchdog on a clean run)
++#   3. No pipeline.end status=timed_out in the events log (watchdog was reaped)
++#   4. Watchdog process is dead after runner exits: abort sentinel is NOT written
++#      after the runner exits — an un-reaped watchdog would write it when it fires.
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "run-watchdog-clean-exit: watchdog reaped, status unchanged (#1944 SPEC-3)"
++setup_test_env "run-watchdog-clean-exit"
++
++RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
++STAGE_LIMITS="$REPO_ROOT/scripts/lib/stage-limits.sh"
++
++# ─── S3-1: _runner_resolve_run_limit_s is defined ───────────────────────────
++print_test_section "[#1944/SPEC-3] _runner_resolve_run_limit_s defined in stage-limits.sh"
++
++# shellcheck source=../../scripts/lib/stage-limits.sh
++source "$STAGE_LIMITS" 2>/dev/null || true
++
++if declare -F _runner_resolve_run_limit_s >/dev/null 2>&1; then
++    assert_pass "[#1944/SPEC-3] _runner_resolve_run_limit_s is defined"
++else
++    assert_fail "[#1944/SPEC-3] _runner_resolve_run_limit_s is defined" \
++        "function not found; watchdog arms only when this function exists"
++fi
++
++# ─── S3-2: clean run with max_run_s set → status unchanged, not timed_out ──
++print_test_section "[#1944/SPEC-3] clean run with max_run_s=30 exits with complete status"
++
++export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_CONTRACT_VALIDATOR=warn
++export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
++export ZBUILD_CYCLES_ENABLED=0
++export ZBUILD_SCOPE_OVERRIDE=1
++mkdir -p "$ZBUILD_STATE_DIR" "$ZBUILD_EVENTS_DIR" "$HOME/.zbuild"
++printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
++
++# Minimal 1-stage pipeline that completes quickly (no sleep)
++mock_plugin_factory "intake" "agent" 0 >/dev/null
++
++CLEAN_OVERLAY="$(setup_git_temp_repo watchdog-clean-exit)"
++mkdir -p "$CLEAN_OVERLAY/.zbuild/templates"
++cat > "$CLEAN_OVERLAY/.zbuild/templates/watchdog-single.yaml" <<'EOF'
++id: watchdog-single
++extends: simple
++stages:
++  - id: intake
++    gate: auto
++    io:
++      destinations: [file]
++      tail_lines: 50
++EOF
++(cd "$CLEAN_OVERLAY" && git add .zbuild && git commit -q -m "add watchdog-single template") \
++    >/dev/null 2>&1
++
++# max_run_s=30 is generous: the pipeline completes in < 5s, well before the limit
++_clean_rc=0
++( cd "$CLEAN_OVERLAY" && ZBUILD_MAX_RUN_S=30 bash "$RUNNER" \
++    --template watchdog-single --goal "clean run watchdog test" ) \
++    >"$TEST_TEMP_DIR/clean.stdout" 2>"$TEST_TEMP_DIR/clean.stderr" \
++    || _clean_rc=$?
++
++_clean_sf="$ZBUILD_STATE_DIR/pipeline-state.json"
++
++assert_eq "[#1944/SPEC-3] clean run exits 0" "0" "$_clean_rc"
++
++if [[ -f "$_clean_sf" ]]; then
++    _clean_status="$(jq -r '.status // empty' "$_clean_sf" 2>/dev/null || true)"
++    # Status must be the stage-driven completion, not timed_out
++    if [[ "$_clean_status" == "complete" || "$_clean_status" == "success" ]]; then
++        assert_pass "[#1944/SPEC-3] pipeline status is complete (not timed_out)"
++    else
++        assert_fail "[#1944/SPEC-3] pipeline status is complete (not timed_out)" \
++            "actual status: ${_clean_status:-<empty>}"
++    fi
++    assert_eq "[#1944/SPEC-3] pipeline status is NOT timed_out" "" \
++        "$([[ "$_clean_status" == "timed_out" ]] && echo "timed_out" || echo "")"
++else
++    assert_fail "[#1944/SPEC-3] pipeline-state.json written" \
++        "state file not found: $_clean_sf"
++fi
++
++# ─── S3-3: no timed_out event after clean run ───────────────────────────────
++print_test_section "[#1944/SPEC-3] no pipeline.end status=timed_out in events log after clean run"
++
++if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
++    _timed_out_events="$(jq -r 'select(.type=="pipeline.end" and .data.status=="timed_out") | .type' \
++        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
++    assert_eq "[#1944/SPEC-3] no pipeline.end/timed_out event after clean run" "0" "$_timed_out_events"
++else
++    # Events file absent means no events fired — acceptable for a clean run
++    assert_pass "[#1944/SPEC-3] no timed_out event (events file absent)"
++fi
++
++# ─── S3-4: watchdog process is dead — abort sentinel NOT written after exit ──
++# The watchdog does `sleep $_wdg_lim` and writes to the abort sentinel when it
++# fires. The runner's EXIT trap kills the watchdog (kill -KILL) and disarms the
++# sentinel. If the watchdog is NOT reaped, it fires at max_run_s seconds after
++# the runner exits and writes to the sentinel file. We verify:
++#   - Runner exits cleanly within max_run_s=4s (fast stage, << 4s)
++#   - We wait past max_run_s=4 (sleep 5s)
++#   - The abort sentinel must not be present: neither created by the watchdog
++#     firing after the runner exited, nor left over from the run.
++print_test_section "[#1944/SPEC-3] watchdog killed: abort sentinel not written after runner exits"
++
++rm -f "$ZBUILD_EVENTS_JSONL"
++# Use a fresh state dir to keep sentinel check clean
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-sentinel"
++mkdir -p "$ZBUILD_STATE_DIR"
++_ABORT_SENTINEL="$ZBUILD_STATE_DIR/.abort.signal"
++rm -f "$_ABORT_SENTINEL"
++
++# max_run_s=4: watchdog would fire 4s after runner exits if not reaped.
++# The fast stage completes in < 2s, so the runner exits well before max_run_s.
++_reaped_rc=0
++( cd "$CLEAN_OVERLAY" && ZBUILD_MAX_RUN_S=4 bash "$RUNNER" \
++    --template watchdog-single --goal "watchdog reaped sentinel test" ) \
++    >"$TEST_TEMP_DIR/reaped.stdout" 2>"$TEST_TEMP_DIR/reaped.stderr" \
++    || _reaped_rc=$?
++
++assert_eq "[#1944/SPEC-3] clean run with max_run_s=4 exits 0" "0" "$_reaped_rc"
++
++# Wait past max_run_s=4: if watchdog not reaped, it would write the sentinel here
++sleep 5
++
++# Re-read pipeline-state.json AFTER sleeping past max_run_s=4 — SPEC-3 requires
++# this direct check (not only the sentinel proxy). An un-reaped watchdog fires at
++# max_run_s seconds after the RUNNER EXITS (runner exits before the 4s limit),
++# writing status=timed_out to the state file. This assertion is UNCONDITIONAL:
++# if the state file is absent the assertion fails (not silently skipped).
++_sentinel_state_file="$ZBUILD_STATE_DIR/pipeline-state.json"
++_post_sleep_status="$(jq -r '.status // empty' "$_sentinel_state_file" 2>/dev/null || true)"
++if [[ "$_post_sleep_status" == "timed_out" ]]; then
++    assert_fail "[#1944/SPEC-3] pipeline status still stage-driven after sleep past max_run_s=4s (not timed_out)" \
++        "status is timed_out after sleeping past max_run_s=4s — watchdog fired after runner exited and overwrote state"
++elif [[ -n "$_post_sleep_status" ]]; then
++    assert_pass "[#1944/SPEC-3] pipeline status still stage-driven after sleep past max_run_s=4s: ${_post_sleep_status} (not timed_out)"
++else
++    assert_fail "[#1944/SPEC-3] pipeline status still stage-driven after sleep past max_run_s=4s (not timed_out)" \
++        "pipeline-state.json absent or status empty after sleep — cannot verify watchdog was reaped"
++fi
++
++# The abort sentinel must NOT be present: the EXIT trap disarmed it (clean exit)
++# and a reaped watchdog cannot write it again after the runner exits.
++if [[ -f "$_ABORT_SENTINEL" ]]; then
++    _sentinel_content="$(cat "$_ABORT_SENTINEL" 2>/dev/null || true)"
++    assert_fail "[#1944/SPEC-3] watchdog killed before it fired: abort sentinel absent after runner exit" \
++        "sentinel exists with content '${_sentinel_content:-<empty>}' — watchdog fired AFTER runner exited"
++else
++    assert_pass "[#1944/SPEC-3] watchdog killed: abort sentinel absent after runner exits (watchdog was reaped)"
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/runner-pipeline-end-test.sh b/tests/unit/runner-pipeline-end-test.sh
+index 9cab6dd1..db4b2d9a 100755
+--- a/tests/unit/runner-pipeline-end-test.sh
++++ b/tests/unit/runner-pipeline-end-test.sh
+@@ -158,6 +158,7 @@ declare -a STATUSES=(
+     "interrupted"
+     "aborted"
+     "preflight_failed"
++    "timed_out"
+ )
+ for status in "${STATUSES[@]}"; do
+     stage=""
+diff --git a/tests/unit/runner-signal-rearm-test.sh b/tests/unit/runner-signal-rearm-test.sh
+index d3fe3418..c09c6dfa 100755
+--- a/tests/unit/runner-signal-rearm-test.sh
++++ b/tests/unit/runner-signal-rearm-test.sh
+@@ -89,7 +89,7 @@ _runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
+ # the first cut of this test and was caught in review.
+ _startup_int="$(awk '/^main\(\) \{/{f=1} f && /trap .* INT$/{print; exit}' "$_runner_sh" \
+     | grep -oE "trap '[^']+' INT" || true)"
+-_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap .* TERM$/{print; exit}' "$_runner_sh" \
++_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap '"'"'.*'"'"' TERM$/{print; exit}' "$_runner_sh" \
+     | grep -oE "trap '[^']+' TERM" || true)"
+ # What the promoted helper installs, taken from the live function body.
+ _rearm_body="$(declare -f _runner_rearm_traps 2>/dev/null || true)"
