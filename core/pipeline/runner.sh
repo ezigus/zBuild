@@ -2527,17 +2527,20 @@ main() {
     }
 
     _runner_abort_trap() {
+        # ADR-054 §7: restore stderr FIRST so every subsequent log line reaches
+        # the runner's own stderr even when the trap fired inside a 2>/dev/null call.
+        _runner_restore_stderr
         # Guard against a repeat signal (e.g. `timeout` forwarding its own SIGTERM
         # to the process group after the first already fired) aborting this trap.
-        # Must be the FIRST line: `plugin_stop_running` below calls `wait`, which
-        # bash interrupts on signal delivery — a second TERM would fire
+        # Must be in place BEFORE `plugin_stop_running` below, which calls `wait`;
+        # bash interrupts `wait` on signal delivery — a second TERM would fire
         # `_runner_signal_trap TERM`, call `exit 1`, and abort the EXIT trap before
         # `_runner_dispatch_always_run` runs. Mirrors the pattern already used
         # inside `_runner_dispatch_always_run` (line 2516). Restore real handlers
         # after the kill/wait block so `_runner_dispatch_always_run` can still
-        # handle signals.
+        # handle signals. `_runner_restore_stderr` is a single `exec 2>&N` with no
+        # `wait`, so placing the guard immediately after it is safe.
         trap ':' INT TERM
-        _runner_restore_stderr
         # ADR-054 §7: a signal ends the run while a stage is still running;
         # stop it, and all it started, before anything else.
         declare -F plugin_stop_running >/dev/null 2>&1 && plugin_stop_running
@@ -2806,6 +2809,13 @@ main() {
         # can escalate to KILL after the grace period. The runner's EXIT trap
         # uses SIGKILL (not TERM) to disarm this watchdog on clean exit.
         trap '' TERM
+        # Close the saved-stderr fd so the orphaned `sleep` child (if the
+        # watchdog is SIGKILL'd before `sleep` returns) cannot hold the pipe
+        # write end open and block a `$(...)` caller forever (#1944 Bug A).
+        # Must be INSIDE the body — at the boundary the parent-side close
+        # prevents _runner_restore_stderr from pointing stderr at the right
+        # destination, which breaks always-run dispatch on SPEC-5 exit paths.
+        exec {_RUNNER_ERR_FD}>&- || true
         _wdg_lim="${_RUNNER_MAX_RUN_S}"
         _wdg_pgid="${_RUNNER_RUN_PGID}"
         _wdg_runner_pid="${_RUNNER_SELF_PID}"
@@ -2826,7 +2836,7 @@ main() {
                 kill -KILL "$_wdg_child" 2>/dev/null || true
             fi
         done < <(pgrep -P "$_wdg_runner_pid" 2>/dev/null)
-    ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &
+    ) >/dev/null 2>&1 &
     _RUNNER_WATCHDOG_PID=$!
 
     # ── ADR-015 stage-io stdout channel ─────────────────────────────────────
