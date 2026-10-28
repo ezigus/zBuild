@@ -364,15 +364,16 @@ else
             "timed_out not found alongside sigint/sigterm/cycle_abort in ADR-025"
     fi
 
-    # ## Enforced by section must cite the new test files
+    # ## Enforced by section must cite ALL four new test files
     _enf_sec="$(awk '/^## Enforced by/,0' "$ADR025" 2>/dev/null || true)"
-    if grep -q "run-timed-out-test\|run-limit-precedence-test\|run-watchdog-clean-exit-test\|resume-after-run-timeout-test" \
-            <<< "$_enf_sec" 2>/dev/null; then
-        assert_pass "[#1944/SPEC-6] ADR-025 ## Enforced by cites new tests"
-    else
-        assert_fail "[#1944/SPEC-6] ADR-025 ## Enforced by cites new tests" \
-            "none of the new test files referenced in ## Enforced by"
-    fi
+    for _tfile in run-timed-out-test run-limit-precedence-test run-watchdog-clean-exit-test resume-after-run-timeout-test; do
+        if grep -q "$_tfile" <<< "$_enf_sec" 2>/dev/null; then
+            assert_pass "[#1944/SPEC-6] ADR-025 ## Enforced by cites $_tfile"
+        else
+            assert_fail "[#1944/SPEC-6] ADR-025 ## Enforced by cites $_tfile" \
+                "$_tfile not referenced in ADR-025 ## Enforced by"
+        fi
+    done
 fi
 
 print_test_section "[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by"
@@ -389,15 +390,16 @@ else
             "no §11 heading found in ADR-054"
     fi
 
-    # §11 area must have an ## Enforced by entry citing a run-limit test
+    # ## Enforced by section must cite ALL four new test files
     _adr054_enf="$(awk '/## Enforced by/,0' "$ADR054" 2>/dev/null || true)"
-    if grep -q "run-limit-precedence-test\|run-timed-out-test\|run-watchdog-clean-exit-test\|resume-after-run-timeout-test" \
-            <<< "$_adr054_enf" 2>/dev/null; then
-        assert_pass "[#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests"
-    else
-        assert_fail "[#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests" \
-            "no run-limit test referenced in ADR-054 ## Enforced by"
-    fi
+    for _tfile in run-timed-out-test run-limit-precedence-test run-watchdog-clean-exit-test resume-after-run-timeout-test; do
+        if grep -q "$_tfile" <<< "$_adr054_enf" 2>/dev/null; then
+            assert_pass "[#1944/SPEC-6] ADR-054 ## Enforced by cites $_tfile"
+        else
+            assert_fail "[#1944/SPEC-6] ADR-054 ## Enforced by cites $_tfile" \
+                "$_tfile not referenced in ADR-054 ## Enforced by"
+        fi
+    done
 fi
 
 print_test_section "[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md"
