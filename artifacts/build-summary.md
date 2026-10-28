@@ -1,7 +1,7 @@
-## build — pass
+## build — timed_out
 
-- changed 0 file(s) over 1 pass(es), 1 iteration(s)
+- changed 0 file(s) over 1 pass(es), 3 iteration(s)
 
 - lines: +0 / -0
-- terminated: done_sentinel
+- terminated: router_timeout
 - scope violation: false
