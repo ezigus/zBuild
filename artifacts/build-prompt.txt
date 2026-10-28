@@ -352,39 +352,52 @@ Summary:
 - tests/integration/resume-after-run-timeout-test.sh — SPEC-4
 - Each [code] requirement's test fails on the code as it is now, and passes once the code is written.
 
-### build (verdict: rate_limited) — your own
+### build (verdict: pass) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
-## build — timed_out
-
-- changed 1 file(s) over 2 pass(es), 4 iteration(s)
-
-- lines: +15 / -5
-- terminated: router_timeout
-- scope violation: false
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-2/build-summary.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-2/build-summary.md
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-2/diff.patch
-
-Summary of that output:
 ## build — pass
 
-- changed 1 file(s) over 2 pass(es), 4 iteration(s)
+- changed 1 file(s) over 1 pass(es), 2 iteration(s)
 
-- lines: +10 / -8
+- lines: +18 / -10
 - terminated: done_sentinel
 - scope violation: false
 
 Your notes so far:
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current iteration (new) — investigating SPEC-5 failure
+## Current iteration — COMPLETE
+
+### Fix applied: double-SIGTERM race in _runner_abort_trap (DONE)
+
+Added `trap ':' INT TERM` as the FIRST statement inside `_runner_restore_stderr()`.
+This ensures the guard is active before the function returns to `_runner_abort_trap`,
+closing the race window where a second SIGTERM could fire at the function-return
+boundary and abort the EXIT trap before `_runner_dispatch_always_run` ran.
+
+B3 (runner-abort-banner-stderr-test.sh) still passes — `_runner_restore_stderr` is
+still the first non-blank, non-comment statement in `_runner_abort_trap`.
+
+**All acceptance tests pass:**
+- runner-release-exit-paths-test.sh: 19/19 ✓ (SPEC-5 was the failing one)
+- runner-abort-banner-stderr-test.sh: 4/4 ✓ (B3 preserved)
+- runner-signal-rearm-test.sh: 5/5 ✓
+- run-limit-precedence-test.sh: 38/38 ✓
+- run-watchdog-clean-exit-test.sh: 8/8 ✓
+- resume-after-run-timeout-test.sh: 6/6 ✓
+- run-timed-out-test.sh: 16/16 ✓
+
+Shape floor: The 9 failing floor files were a consequence of the previous run
+being in "targeted" mode with 1 failure. With all tests passing in a full run,
+`_SF_FAILED_COUNT=0` and `_SF_VERIFY_OK=1` → all floor files verified → PASS.
+
+---
+
+## Previous investigation — investigating SPEC-5 failure
 
 ### Failures from test stage:
 
@@ -484,98 +497,26 @@ Need to investigate what's failing. All are in scope.
   2. `_runner_abort_trap`: swapped `trap ':' INT TERM` and `_runner_restore_stderr` order;
      `_runner_restore_stderr` is now first, updated comment
 
-### test (verdict: fail)
+### test (verdict: pass)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
-Findings:
-- test finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 3 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 4 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 5 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 6 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 7 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 8 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 9 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-
 Summary:
 # Test stage summary
 
-- verdict: fail
-- passed: 5
-- failed: 1
-- exit_code: 1
+- verdict: pass
+- passed: 821
+- failed: 0
+- exit_code: 0
 
-## Failing lines (extracted)
-
-```
-  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-    no release from: intake build | marker= 
-unit: FAIL tests/integration/runner-release-exit-paths-test.sh
-  ✓ [SPEC-6] the blocked hook does not outlive the run
-  SPEC-6b: a hook child that ignores TERM does not outlive the run
-  ✓ [SPEC-6b] a hook child that ignores TERM does not outlive the run
-  1 of 19 tests failed
-```
-
-## The checks of this run
-- the shape floor failed: missing_floor_files
-
-Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-unit: FAIL tests/integration/runner-release-exit-paths-test.sh
-
-[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
-  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
-  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
-  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
-  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
-  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (1s)
-  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
-  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-    [2mno release from: intake build | marker= [0m
-  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
-  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
-
-  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 19 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+The suite ran to completion with no failing assertions.
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -583,24 +524,22 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4: release and persist still run after a timed-out run — the SPEC-5 assertion "cleanup dispatched with scope=release for: intake build" fails with "no release from: intake build | marker=", a regression caused by this diff's changes to `_runner_abort_trap()` (reordering `_runner_restore_stderr` before `trap ':' INT TERM`) and the watchdog fd-close relocation (moving `exec {_RUNNER_ERR_FD}>&-` from the spawn line into the watchdog body, leaving the parent holding the fd open on the hard-kill path where the abort trap never fires). What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-10: `npm test` + `npm run lint` green — 1 of 19 tests in `runner-release-exit-paths-test.sh` fails. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: R-1: regression-test reddens at merge-base — the issue requires this be verified. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 4 (opened by issue-acceptance): Not sure this requirement is met: no evidence of a merge-base run is shown. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 5 (opened by issue-acceptance): Not sure this requirement is met: R-9: ADR-054 §9 vs §11 — the issue says "§9" but REQUIREMENTS/SPEC-6 say "§11". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 6 (opened by issue-acceptance): Not sure this requirement is met: previous notes note the discrepancy but cannot confirm the issue's numbering was a draft error rather than a distinct requirement to amend the existing §9. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4: `release` and `persist` still run after a timed-out run — test fixture `timeout-with-release.yaml` declares only `always_run: [release]`. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: the persist path is never exercised or asserted, so the requirement is verified for release only. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: R-2: between-stage firing sub-requirement — if both the "engine idle" and "inside dispatch" branches of the test call assert_pass unconditionally, the assertion cannot turn red when between-stage firing is absent. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 4 (opened by issue-acceptance): Not sure this requirement is met: R-8: SPEC-5 carries no mechanical enforcement — CI-env variable references (GITHUB_ACTIONS, TRAVIS, CIRCLECI, RUNNER_OS, BUILD_BUILDID) in `scripts/lib/stage-limits.sh` cannot be ruled out from the diff alone, and the diff does not touch that file. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 5 (opened by issue-acceptance): Not sure this requirement is met: R-9: issue body cites "ADR-054 §9 — amended" but REQUIREMENTS/SPEC-6 say §11 was added — whether the right section was targeted or whether the issue's numbering was a draft error cannot be determined without reading the ADR file. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
 
 Summary:
 ## issue-acceptance — fail
 
-- The diff introduces a regression in `runner-release-exit-paths-test.sh` SPEC-5 (hard-kill exit path) where `release` does not run — directly violating R-4 — and `npm test` is red, violating R-10.
+- R-4 is structurally unmet — the test fixture covers only the `release` always_run stage; no `persist` stage is constructed or asserted, so a regression where persist skips on timeout would not be caught.
 
-- NOT MET: R-4: release and persist still run after a timed-out run — the SPEC-5 assertion "cleanup dispatched with scope=release for: intake build" fails with "no release from: intake build | marker=", a regression caused by this diff's changes to `_runner_abort_trap()` (reordering `_runner_restore_stderr` before `trap ':' INT TERM`) and the watchdog fd-close relocation (moving `exec {_RUNNER_ERR_FD}>&-` from the spawn line into the watchdog body, leaving the parent holding the fd open on the hard-kill path where the abort trap never fires)
-- NOT MET: R-10: `npm test` + `npm run lint` green — 1 of 19 tests in `runner-release-exit-paths-test.sh` fails
-- NOT SURE: R-1: regression-test reddens at merge-base — the issue requires this be verified — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: no evidence of a merge-base run is shown — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: R-9: ADR-054 §9 vs §11 — the issue says "§9" but REQUIREMENTS/SPEC-6 say "§11" — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: previous notes note the discrepancy but cannot confirm the issue's numbering was a draft error rather than a distinct requirement to amend the existing §9 — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT MET: R-4: `release` and `persist` still run after a timed-out run — test fixture `timeout-with-release.yaml` declares only `always_run: [release]`
+- NOT MET: the persist path is never exercised or asserted, so the requirement is verified for release only
+- NOT SURE: R-2: between-stage firing sub-requirement — if both the "engine idle" and "inside dispatch" branches of the test call assert_pass unconditionally, the assertion cannot turn red when between-stage firing is absent — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: R-8: SPEC-5 carries no mechanical enforcement — CI-env variable references (GITHUB_ACTIONS, TRAVIS, CIRCLECI, RUNNER_OS, BUILD_BUILDID) in `scripts/lib/stage-limits.sh` cannot be ruled out from the diff alone, and the diff does not touch that file — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: R-9: issue body cites "ADR-054 §9 — amended" but REQUIREMENTS/SPEC-6 say §11 was added — whether the right section was targeted or whether the issue's numbering was a draft error cannot be determined without reading the ADR file — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ## What you must not do
 

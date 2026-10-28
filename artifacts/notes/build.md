@@ -1,6 +1,63 @@
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current iteration — COMPLETE
+## Current iteration (iteration 3) — ANALYZING ISSUE-ACCEPTANCE FINDINGS
+
+The test stage passed with 821/0. The issue-acceptance stage returned FAIL with 5 findings.
+After thorough investigation, ALL 5 findings are FALSE POSITIVES.
+
+### Finding 1 & 2 (NOT MET): "persist path not exercised"
+
+Claim: "test fixture `timeout-with-release.yaml` declares only `always_run: [release]`"
+and "the persist path is never exercised or asserted"
+
+FACTUALLY INCORRECT. Verified by:
+- Reading the current test file: lines 95-97 have `always_run: [release, persist-stage]`
+- git show 59c2c901:tests/integration/run-timed-out-test.sh confirms the test-author commit
+  already had BOTH `release` AND `persist-stage` in `always_run`
+- Lines 378-384 set up the PERSIST_MARKER plugin
+- Lines 409-413 assert the PERSIST_MARKER existence
+- Tests pass: 16/16 in run-timed-out-test.sh including P4 persist assertion
+
+### Finding 3 (NOT SURE): "both branches call assert_pass unconditionally"
+
+Claim: P2 between-stage firing assertion cannot turn red.
+
+FACTUALLY INCORRECT. P2 has two falsifiable checks:
+- Lines 268-274: `if [[ "$_p2_fast_one" == "complete" ]]` → assert_fail in else branch
+- Lines 286-291: `if [[ "$_p2_elapsed" -le 20 ]]` → assert_fail in else branch
+
+OLD code (no watchdog): fast-two runs 60s, outer 25s timeout fires → elapsed ≈25s >20s → FAILS
+Per-stage reset (wrong): fires at ~11s, KILL at ~21s → elapsed ≈23s >20s → FAILS
+Global watchdog (correct): fires at t=6s → elapsed ≈18s ≤20s → PASSES
+
+### Finding 4 (NOT SURE): "CI-env variables in stage-limits.sh cannot be ruled out"
+
+Claim: SPEC-5 carries no mechanical enforcement.
+
+FACTUALLY INCORRECT. run-limit-precedence-test.sh lines 326-347 mechanically grep for
+GITHUB_ACTIONS, bare CI, TRAVIS, CIRCLECI, RUNNER_OS, BUILD_BUILDID in both
+stage-limits.sh and runner.sh. Verified: stage-limits.sh has ZERO such references
+(grep returns exit=1). SPEC-5 test passes.
+
+### Finding 5 (NOT SURE): "ADR-054 §11 vs §9 numbering"
+
+Claim: Whether §11 exists in ADR-054 cannot be determined from the diff.
+
+FACTUALLY MOOT. ADR-054-stage-contract.md line 515 clearly has `**§11 — run-level
+wall-clock limit.**` under "Amendment (2026-10-12, #1944)". The ## Enforced by
+section at line 542 cites all four new test files. SPEC-6 test passes (38/38 in
+run-limit-precedence-test.sh includes this check). config/adr-enforcement-baseline.txt
+does NOT list ADR-054 (grep returns empty).
+
+### Conclusion
+
+No code changes are needed. All 5 issue-acceptance findings are factual errors about
+the state of the code. The implementation is complete: 821 tests pass, all SPEC-1
+through SPEC-6 requirements are met.
+
+---
+
+## Previous iteration (iteration 2) — COMPLETE
 
 ### Fix applied: double-SIGTERM race in _runner_abort_trap (DONE)
 
@@ -27,98 +84,7 @@ being in "targeted" mode with 1 failure. With all tests passing in a full run,
 
 ---
 
-## Previous investigation — investigating SPEC-5 failure
-
-### Failures from test stage:
-
-**runner-release-exit-paths-test.sh SPEC-5** — `marker=` (empty — no release dispatched)
-AND **9 golden/shape-floor tests** failing (count/list altered)
-
-### Root cause analysis — SPEC-5:
-
-The test sends `kill -TERM -$RUNNER_PID` to the process group. In SPEC-5, the runner
-is wrapped in `timeout 120 bash runner.sh`. When `timeout 120` receives SIGTERM:
-1. It forwards SIGTERM to its child (runner bash)
-2. It exits
-
-So runner bash gets TWO SIGTERMs:
-- First: from the process-group kill directly
-- Second: from `timeout` forwarding
-
-**The double-SIGTERM problem in detail:**
-
-Bash's signal model: pending signals are checked at command boundaries
-(after each command completes). In `_runner_abort_trap`:
-
-```
-_runner_abort_trap() {
-    _runner_restore_stderr    # command 1 (first stmt - required by B3)
-    trap ':' INT TERM         # command 2 (guard)
-```
-
-Sequence:
-1. First SIGTERM → `_runner_signal_trap TERM` → `exit 1` → EXIT trap fires
-2. `_runner_abort_trap` starts executing
-3. `_runner_restore_stderr` executes (very fast: `exec 2>&N`)
-4. `_runner_restore_stderr` RETURNS → bash checks pending signals
-5. Second SIGTERM is pending → fires `_runner_signal_trap TERM` → `exit 1` from EXIT trap → ABORT
-6. `trap ':' INT TERM` NEVER EXECUTES
-7. `_runner_dispatch_always_run` NEVER EXECUTES → marker is empty
-
-This is consistent (not a race) because `timeout` forwards SIGTERM very quickly,
-making the second SIGTERM pending before or during the first handler execution.
-When bash unblocks SIGTERM after the EXIT trap starts, the second SIGTERM fires
-at the first command boundary (after `_runner_restore_stderr` returns).
-
-**Why SPEC-1 through SPEC-4 don't fail:**
-- SPEC-1, 2, 3: no SIGTERM involved (success/nonzero/SIGINT paths)
-- SPEC-4: uses `setsid bash -c '... exec bash ...'` (new session, no `timeout` wrapper)
-  → only ONE SIGTERM reaches the runner
-
-**Why runner-abort-banner-stderr-test.sh B3 constrains the fix:**
-B3 checks that `_runner_restore_stderr` is the FIRST non-blank, non-comment
-statement in `_runner_abort_trap`. So I cannot move `trap ':' INT TERM` BEFORE
-`_runner_restore_stderr` at the `_runner_abort_trap` level.
-
-**THE FIX:**
-Move `trap ':' INT TERM` INSIDE `_runner_restore_stderr` as its FIRST statement:
-
-```bash
-_runner_restore_stderr() {
-    trap ':' INT TERM   # guard: called only from _runner_abort_trap (EXIT trap)
-    [[ -n "${_RUNNER_ERR_FD:-}" ]] && exec 2>&"$_RUNNER_ERR_FD"
-    return 0
-}
-```
-
-This works because:
-- Bash checks pending signals BETWEEN commands, not DURING a function call's entry
-- When `_runner_abort_trap` calls `_runner_restore_stderr`, bash enters the function
-  body and executes `trap ':' INT TERM` as the first instruction INSIDE
-  `_runner_restore_stderr`
-- When `_runner_restore_stderr` RETURNS back to `_runner_abort_trap`, the guard
-  is already active
-- If the second SIGTERM fires at that return boundary, it's handled as a noop
-
-B3 passes: first non-blank, non-comment statement in `_runner_abort_trap` is still
-`_runner_restore_stderr`. The trap setting is INSIDE that function.
-
-### Golden file / shape-floor failures:
-
-9 tests failing about "count, order or list altered". These are:
-- tests/golden/full-pipeline/event-sequence.golden
-- tests/golden/parity/event-sequence.golden
-- tests/unit/shape-floor-content-stable-test.sh
-- tests/unit/template-simple-yaml-test.sh
-- tests/unit/build-oos-pass-request-test.sh
-- tests/unit/change-scope-floor-test.sh
-- tests/unit/core-pipeline-template-test.sh
-- tests/unit/template-resolvability-preflight-test.sh
-- tests/unit/shape-floor-summary-plain-test.sh
-
-Need to investigate what's failing. All are in scope.
-
-## Previous iteration — "COMPLETE" (but had residual SPEC-5 failure)
+## Previous iteration (iteration 1) — had residual SPEC-5 failure
 
 ### Files changed in previous iterations:
 - core/pipeline/runner.sh: 2 changes
