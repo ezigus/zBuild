@@ -362,62 +362,60 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed 1 file(s) over 1 pass(es), 1 iteration(s)
+- changed 2 file(s) over 1 pass(es), 2 iteration(s)
 
-- lines: +12 / -2
+- lines: +2 / -2
 - terminated: done_sentinel
 - scope violation: false
 
 Your notes so far:
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current Status (iteration 3 of build stage)
+## Current Status (iteration 4 of build stage)
 
-### Changes This Iteration
-Fixed two critical bugs in `core/pipeline/runner.sh`:
+### Summary of All Bugs and Their Status
 
-**Bug A** (3 integration test timeouts): Line ~2827 changed from `    ) &` to `    ) >/dev/null 2>&1 &`
-- Root cause: watchdog subshell inherited runner's stdout/stderr (pipe write end when tests run inside `$(...)`)
-- `sleep 20700` child of watchdog was orphaned (reparented to init) when watchdog was SIGKILL'd
-- Orphaned sleep held the pipe write end open, causing `$(...)` to wait the full 480s test timeout
-- Fix: redirect watchdog's fds to /dev/null so its children never inherit the pipe
+**Bug A** (3 integration test timeouts — orphaned sleep holds pipe write end):
+- Committed in 741c8466: partial fix `>/dev/null 2>&1 &` (fds 1 and 2 closed)
+- Still needed: `{_RUNNER_ERR_FD}>&-` to close the high-numbered fd that also points to the pipe
+- APPLIED IN WORKING TREE (uncommitted): line 2827 changed from `) >/dev/null 2>&1 &` to `) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
 
-**Bug B** (runner-release-exit-paths SPEC-5 regression): Added `trap ':' INT TERM` guard before kill/wait in `_runner_abort_trap`
-- Root cause: `timeout 120` sends SIGTERM to PG, runner fires SIGTERM handler → `exit 1` → EXIT trap starts
-- During `wait "${_RUNNER_WATCHDOG_PID:-}"`, `timeout` forwarded its own SIGTERM to the PG
-- Second SIGTERM fired `_runner_signal_trap TERM` → `exit 1` inside EXIT trap → bash aborted the trap
-- `_runner_dispatch_always_run` never ran → no release marker → SPEC-5 failed
-- Fix: `trap ':' INT TERM` before kill/wait; restore handlers after; then dispatch always_run
+**Bug B** (double-SIGTERM aborts EXIT trap → always_run never runs):
+- Committed in 741c8466: `trap ':' INT TERM` guard + trap restore in `_runner_abort_trap`
+- COMPLETE
 
-### Test Results (this iteration)
+**Bug C** (SPEC-5 in runner-signal-rearm-test.sh — awk matches wrong line):
+- The `trap ':' INT TERM` guard added by Bug B fix is inside `_runner_abort_trap` in main()
+- The old awk pattern `/trap .* TERM$/` found this line first (before the startup install at 2751)
+- grep -oE couldn't extract from it → `_startup_term` empty → SPEC-5 failed
+- APPLIED IN WORKING TREE (uncommitted): runner-signal-rearm-test.sh line 92 awk changed from `/trap .* TERM$/` to `/trap '.*' TERM$/` (requires single-quoted handler)
+- Test confirmed passing after change
 
-PASSES:
-- runner-release-exit-paths-test.sh: All 19 tests PASS (was SPEC-5 failing)
-- run-timed-out-test.sh (SPEC-1): All 15 tests PASS
-- run-limit-precedence-test.sh (SPEC-2/5/6): All 38 tests PASS
-- run-watchdog-clean-exit-test.sh (SPEC-3): All 8 tests PASS
-- resume-after-run-timeout-test.sh (SPEC-4): All 6 tests PASS
-- run-open-items-test.sh: All 53 tests PASS
-- runner-pipeline-end-test.sh: All 38 tests PASS
-- shellcheck runner.sh: only pre-existing SC2015/SC2004 info/style notes
+### Findings from Previous Test Stage
 
-Integration test timeouts fixed by Bug A fix (>/dev/null 2>&1):
-- core-pipeline-runner-test.sh: was TIMEOUT due to orphaned sleep
-- core-pipeline-strategy-test.sh: was TIMEOUT due to orphaned sleep
-- vision-admission-gate-test.sh: was TIMEOUT due to orphaned sleep
+1. core-pipeline-runner-test.sh TIMEOUT → fixed by Bug A completion
+2. core-pipeline-strategy-test.sh TIMEOUT → fixed by Bug A completion
+3. runner-signal-rearm-test.sh SPEC-5 → fixed by Bug C, VERIFIED NOT REPRODUCED (test passes)
+4. vision-admission-gate-test.sh TIMEOUT → fixed by Bug A completion
+5. full-pipeline/event-sequence.golden → consequence of test failures (shape floor's _sf_floor_verified requires _SF_FAILED_COUNT=0), will auto-resolve when all tests pass
+6. parity/event-sequence.golden → same as finding 5
 
-Golden file findings (5 and 6) from shape-floor:
-- Consequence of test failures (_SF_FAILED_COUNT > 0 → _sf_floor_verified returns 1)
-- With 0 failures, golden files auto-verified by _sf_floor_verified — no edits needed
-- No golden file edits needed
+### Changes Applied This Iteration (working tree, uncommitted)
 
-### Implementation Status — COMPLETE
+1. `core/pipeline/runner.sh:2827`: `) >/dev/null 2>&1 &` → `) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
+   - Closes the high-numbered fd in the watchdog subshell so orphaned sleep child can't hold the pipe
+   - Shellcheck: only pre-existing SC2015 info notes, no new issues
 
-All files from the scope list are either:
-- Already correct from prior iterations, OR
-- Unchanged (no need to modify them)
+2. `tests/unit/runner-signal-rearm-test.sh:92`: awk pattern `/trap .* TERM$/` → `/trap '.*' TERM$/`
+   - Requires single-quoted handler before TERM, skips `trap ':' INT TERM` (the guard line)
+   - SC2317 is pre-existing on line 106 (not from this change)
 
-Core runner.sh has both watchdog bugs fixed. All SPEC tests pass.
+### Verification
+
+- SPEC-2/5/6 acceptance tests (run-limit-precedence-test.sh): all 38 pass ✓
+- runner-signal-rearm-test.sh: all 5 pass ✓
+- shellcheck runner.sh: only pre-existing SC2015 info notes ✓
+- shellcheck runner-signal-rearm-test.sh: only pre-existing SC2317 info note ✓
 
 ### test (verdict: fail)
 Outputs:
@@ -432,140 +430,93 @@ Outputs:
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137) fails: timed out before finishing (last check that passed: build stage_status=failed in state)
-- test finding 2 (opened by test): tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137) fails: timed out before finishing (last check that passed: sequential: runner exits non-zero when stage fails (rc=1))
-- test finding 3 (opened by test): tests/unit/runner-signal-rearm-test.sh fails: ✗ [SPEC-5] re-arm TERM handler matches the startup install — expected: <startup-not-found>, got: trap '_runner_signal_trap TERM' TERM
-- test finding 4 (opened by test): tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137) fails: timed out before finishing (last check that passed: [SPEC-8] runner message references --condense)
-- test finding 5 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 6 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 1 (opened by test): tests/integration/run-timed-out-test.sh fails: ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches — fast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched
+- test finding 2 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 3 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
 
 Summary:
 # Test stage summary
 
 - verdict: fail
-- passed: 817
-- failed: 4
+- passed: 820
+- failed: 1
 - exit_code: 1
 
 ## Failing files
 
-- tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: build stage_status=failed in state)
-- tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: sequential: runner exits non-zero when stage fails (rc=1))
-- tests/unit/runner-signal-rearm-test.sh — ✗ [SPEC-5] re-arm TERM handler matches the startup install — expected: <startup-not-found>, got: trap '_runner_signal_trap TERM' TERM
-- tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137) — timed out before finishing (last check that passed: [SPEC-8] runner message references --condense)
+- tests/integration/run-timed-out-test.sh — ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches — fast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched
 
 ## Failing lines (extracted)
 
 ```
-  ✗ [SPEC-5] re-arm TERM handler matches the startup install
-    expected: <startup-not-found>, got: trap '_runner_signal_trap TERM' TERM
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/unit/runner-signal-rearm-test.sh
-unit: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/unit/vision-admission-gate-test.sh (exceeded 480s, rc=137)
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137)
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137)
-  ✓ [SPEC-4] re-arm INT handler matches the startup install
-  1 of 5 tests failed
-  ✓ [SPEC-7] pipeline.end says the gate refused (status=preflight_failed)
-  ✓ [SPEC-7] runner names search paths in message
-  ✓ [SPEC-7] runner includes zbuild vision init hint
-  ✓ [SPEC-8] runner rc=1 on malformed vision (enforce)
-  ✓ [SPEC-8] pipeline.end says the gate refused (status=preflight_failed)
-  ✓ [SPEC-8] runner message references --condense
-  ✓ mid-stage failure exits 1
-  ✓ events.jsonl present on failure
-  ✓ pipeline.end status=failed emitted
-  ✓ pipeline.end names the failing stage
-  ✓ stage.fail event emitted
-  ✓ build stage_status=failed in state
-  ✓ orch_spawn count == orch_shutdown count
-  ✓ no pool directories left after fanout (orch_shutdown cleaned up)
-  3. sequential halt-on-fail: only one dispatch when first fails
-▸ merge_policy: auto_unless_flagged
-  ✓ sequential: runner exits non-zero when stage fails (rc=1)
-  4. composite strategy: emits deferral error (Phase 1 deferred)
+  ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+    fast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.b98p5u/tests/integration/run-timed-out-test.sh
+  ✓ [#1944/SPEC-1] P4: pipeline status=timed_out
+  ✓ [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+  ✓ [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
+  1 of 16 tests failed
 ```
 
 ## The checks of this run
 - the shape floor failed: missing_floor_files
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
--7] pipeline.end says the gate refused (status=preflight_failed)
-  [38;2;74;222;128m✓[0m [SPEC-7] runner names search paths in message
-  [38;2;74;222;128m✓[0m [SPEC-7] runner includes zbuild vision init hint
-  [38;2;74;222;128m✓[0m [SPEC-8] runner rc=1 on malformed vision (enforce)
-  [38;2;74;222;128m✓[0m [SPEC-8] pipeline.end says the gate refused (status=preflight_failed)
-  [38;2;74;222;128m✓[0m [SPEC-8] runner message references --condense
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/integration/core-pipeline-runner-test.sh (exceeded 480s, rc=137)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.b98p5u/tests/integration/run-timed-out-test.sh
 
-[38;2;0;212;255m[1m  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m no args exits 1
-  [38;2;74;222;128m✓[0m no args prints the usage
-  [38;2;74;222;128m✓[0m --help exits 0
-  [38;2;74;222;128m✓[0m --issue with no value exits 1
-  [38;2;74;222;128m✓[0m --issue with no value names the flag
-  [38;2;74;222;128m✓[0m --goal with no value exits 1
-  [38;2;74;222;128m✓[0m --goal with no value names the flag
-  [38;2;74;222;128m✓[0m dry-run shows intake stage
-  [38;2;74;222;128m✓[0m dry-run shows build stage
-  [38;2;74;222;128m✓[0m dry-run leaves state file untouched
-  [38;2;74;222;128m✓[0m happy path exits 0
-  [38;2;74;222;128m✓[0m events.jsonl created
-  [38;2;74;222;128m✓[0m pipeline.start emitted once
-  [38;2;74;222;128m✓[0m pipeline.end emitted once
-  [38;2;74;222;128m✓[0m pipeline.end carries status=success
-  [38;2;74;222;128m✓[0m [SPEC-1] stage.start emitted for each fixture stage (2x)
-  [38;2;74;222;128m✓[0m [SPEC-1] stage.complete emitted for each fixture stage (2x)
-  [38;2;74;222;128m✓[0m state file created
-  [38;2;74;222;128m✓[0m intake stage_status=complete (ADR-006 enum)
-  [38;2;74;222;128m✓[0m build stage_status=complete (ADR-006 enum)
-  [38;2;74;222;128m✓[0m mid-stage failure exits 1
-  [38;2;74;222;128m✓[0m events.jsonl present on failure
-  [38;2;74;222;128m✓[0m pipeline.end status=failed emitted
-  [38;2;74;222;128m✓[0m pipeline.end names the failing stage
-  [38;2;74;222;128m✓[0m stage.fail event emitted
-  [38;2;74;222;128m✓[0m build stage_status=failed in state
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.t8GnJH/tests/integration/core-pipeline-strategy-test.sh (exceeded 480s, rc=137)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
-
-[38;2;0;212;255m[1m  core/pipeline/strategies — integration: runner delegates via orch contract[0m
+[38;2;0;212;255m[1m  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)[0m
 [2m  ══════════════════════════════════════════[0m
 
 
-  [38;2;0;212;255m1. fanout: all orch contract functions called[0m
-▸ merge_policy: auto_unless_flagged
-▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/core-pipeline-strategy-int.1ZZBti/home/.zbuild/repos/local/strat-overlay-repo/goals/goal-6a33327f1817/worktree
-▸ Pipeline started — run_id=20261027120903-621946 issue= goal=test strategy dispatch template=strategy-dispatch-minimal engine=741c846(zbuild/issue-1944-ci)
-  [38;2;74;222;128m✓[0m fanout: orch_spawn called (got 1)
-  [38;2;74;222;128m✓[0m fanout: orch_dispatch called (got 1)
-  [38;2;74;222;128m✓[0m fanout: orch_collect called (got 1)
-  [38;2;74;222;128m✓[0m fanout: orch_shutdown called (got 1)
+  [38;2;0;212;255mP1: slow stage timeout — status=timed_out written to pipeline-state.json[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
 
-  [38;2;0;212;255m2. fanout: no pool leaks (spawn count == shutdown count)[0m
-  [38;2;74;222;128m✓[0m orch_spawn count == orch_shutdown count
-  [38;2;74;222;128m✓[0m no pool directories left after fanout (orch_shutdown cleaned up)
+  [38;2;0;212;255mP1: pipeline.end event fields — status=timed_out, stage, limit_s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
 
-  [38;2;0;212;255m3. sequential halt-on-fail: only one dispatch when first fails[0m
-▸ merge_policy: auto_unless_flagged
-  [38;2;74;222;128m✓[0m sequential: runner exits non-zero when stage fails (rc=1)
+  [38;2;0;212;255mP2: watchdog fires even when engine is idle between dispatches[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
+  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+    [2mfast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched[0m
 
-  [38;2;0;212;255m4. composite strategy: emits deferral error (Phase 1 deferred)[0m
+  [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 6s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 520474 killed)
+
+  [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: pipeline status=timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 16 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
 
 ### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-2: watchdog fires when engine is idle between dispatches — [#1944/SPEC-1] P2 asserts fast-two never started, but the sentinel was present, meaning the watchdog did not fire before the engine forked fast-two. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-10: `npm test` fails (1 test failure, exit code 1) — the single code change in runner.sh (`{_RUNNER_ERR_FD}>&-`) was intended to fix the FD-leak that delayed watchdog delivery, but the test result shows it did not close the gap between fast-one completing (~t=2s) and fast-two being dispatched before the t=3s watchdog fires. What would settle it: a change that meets this requirement in full.
+
 Summary:
 ## issue-acceptance — fail
 
-- judged the change against the issue
+- The test specifically written to prove R-2 (watchdog fires in the idle window between stage dispatches) explicitly fails — fast-two's sentinel file was found, proving the engine dispatched fast-two before the watchdog could fire — and `npm test` therefore exits non-zero.
 
-- every requirement the issue states is met by the change
+- NOT MET: R-2: watchdog fires when engine is idle between dispatches — [#1944/SPEC-1] P2 asserts fast-two never started, but the sentinel was present, meaning the watchdog did not fire before the engine forked fast-two
+- NOT MET: R-10: `npm test` fails (1 test failure, exit code 1) — the single code change in runner.sh (`{_RUNNER_ERR_FD}>&-`) was intended to fix the FD-leak that delayed watchdog delivery, but the test result shows it did not close the gap between fast-one completing (~t=2s) and fast-two being dispatched before the t=3s watchdog fires
 
 ## What you must not do
 
