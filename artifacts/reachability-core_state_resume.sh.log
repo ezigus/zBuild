@@ -17,13 +17,12 @@
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
-    [2mfast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.7WwKYS/fast-two-started — watchdog did not fire before fast-two was dispatched[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog fires independently of dispatch state (elapsed 3s)
 
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 954061 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 2055976 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -33,9 +32,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 16 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+  [38;2;74;222;128m[1mAll 16 tests passed[0m
 
 ### core/state/resume.sh head tests/integration/run-timed-out-test.sh
 
@@ -56,13 +53,12 @@
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
-    [2mfast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.6op4bs/fast-two-started — watchdog did not fire before fast-two was dispatched[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog fires independently of dispatch state (elapsed 3s)
 
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 947291 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 2052936 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -72,9 +68,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 16 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+  [38;2;74;222;128m[1mAll 16 tests passed[0m
 
 ### core/state/resume.sh reverted tests/unit/run-limit-precedence-test.sh
 
