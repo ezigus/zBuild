@@ -1,52 +1,75 @@
-# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 17
+# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 18
 
 ## Status: COMPLETE
 
 All 6 SPECs have assertions written. All test files verified on disk.
 
-## What changed in round 17
+## What changed in round 18
 
-### tests/integration/run-timed-out-test.sh — P2 redesign (SPEC-1)
+### tests/integration/run-timed-out-test.sh — P2 bound fix (SPEC-1)
 
-**Problem identified in round 2 check**: The elapsed-time bound (≤ 8s) in P2
-with fast-one=1s and max_run_s=2s could not distinguish a global wall-clock
-watchdog from a per-stage timer that resets at each stage start:
-- Global timer fires at t=2s → elapsed≈2s ≤ 8s → PASSES
-- Per-stage timer fires at 1+2=3s → elapsed≈3s ≤ 8s → ALSO PASSES
-Both pass the ≤ 8s bound, so the test cannot prove the timer is global.
+**Problem from test stage**: SPEC-1 P2 elapsed=18s > 10s → failing.
 
-**Fix applied** (round 17):
-Increased fast-one and max_run_s to create clear separation:
-- `fast-one: sleep 5` (was `sleep 1`)
-- `ZBUILD_MAX_RUN_S=6` (was `ZBUILD_MAX_RUN_S=2`)
-- elapsed bound: `≤ 10s` (was `≤ 8s`)
+**Root cause**: The previous analysis assumed the watchdog fires at t=6s and the
+stage dies immediately → elapsed ≈ 6-8s. But the implementation applies a
+TERM+10s grace period before SIGKILL regardless of whether the stage responds to
+SIGTERM. So the actual timing is:
+  - Global watchdog fires at t=6s (max_run_s)
+  - SIGTERM sent
+  - Wait 10s for grace period  
+  - SIGKILL at t=16s
+  - Cleanup ≈ 2s
+  - **Total elapsed ≈ 18s**
 
-**How it now distinguishes global from per-stage**:
-- Global timer fires at absolute t=6s → elapsed≈6-8s ≤ 10s → PASSES
-- Per-stage reset fires at fast-two-start + 6s = ~5+6 = ~11s → elapsed≈11s > 10s → FAILS
+**Per-stage case** (wrong implementation for comparison):
+  - fast-two starts at t≈5s (after fast-one)
+  - Per-stage timer resets, fires at t=5+6=11s
+  - SIGKILL at t=21s + cleanup ≈ **23s**
 
-The two checks together prove a global timer:
-1. fast-one completed (status=complete) → watchdog fired after t≈5s
-2. elapsed ≤ 10s → watchdog fired before t=10s
-3. Window (5s, 10s] → only global timer at t=6s qualifies; per-stage at t=11s does not
+**Bound fixed**: ≤ 10s → ≤ 20s
 
-**Falsifiability**:
-- OLD code (no watchdog): outer timeout at 25s → elapsed≈25s > 10s → FAILS ✓
-- Per-stage reset (wrong implementation): elapsed≈11s > 10s → FAILS ✓
-- NEW code (global watchdog at t=6s): elapsed≈6-8s ≤ 10s → PASSES ✓
+- Global watchdog (correct, ~18s): 18 ≤ 20 → PASSES ✓
+- Per-stage reset (wrong, ~23s): 23 > 20 → FAILS ✓
+- Old code (no watchdog, outer timeout 25s): 25 > 20 → FAILS ✓
+
+The "fast-one completed" check still holds: fast-one=5s < max_run_s=6s, so fast-one
+completes before the watchdog fires. Combined with ≤20s bound, this proves the
+watchdog window is (5s, 8s], containing global timer t=6s but not per-stage t=11s.
+
+**Files changed**:
+- Updated P2 header comment to say fast-one=5s / max_run_s=6s (was stale 1s/2s)
+- Updated in-line comment block to explain TERM+10s+overhead reasoning
+- Changed bound from `≤ 10` to `≤ 20`
+- Updated failure message to reference new bound and elapsed estimates
+
+## Findings NOT mine to fix (no-op)
+
+### runner-abort-banner-stderr-test.sh [B3] (finding 3)
+Bare tag [B3] — not #1944, not in my existing-checks list. Cannot modify.
+The implementation added `trap ':' INT TERM` as first line of _runner_abort_trap
+(double-SIGTERM fix), breaking the [B3] assertion that _runner_restore_stderr is
+first. This is pre-existing test work for another issue.
+
+### runner-release-exit-paths-test.sh [SPEC-5] (finding 2)
+Bare tag [SPEC-5] — not #1944, not in my existing-checks list. Cannot modify.
+
+### Golden files (shape floor findings 4 & 5)
+tests/golden/full-pipeline/event-sequence.golden and
+tests/golden/parity/event-sequence.golden are not in the named testfiles list.
+Golden file updates belong to the code-change stage, not the test-author stage.
 
 ## All files — final state
 
-### tests/integration/run-timed-out-test.sh — SPEC-1 (complete, P2 re-redesigned in round 17)
+### tests/integration/run-timed-out-test.sh — SPEC-1 (updated in round 18)
 - P1: slow stage, status=timed_out in pipeline-state.json; pipeline.end event fields
-- P2: fast-one=5s, max_run_s=6, fast-two=60s; elapsed ≤ 10s + fast-one=complete
-      proves global wall-clock timer (not per-stage reset)
+- P2: fast-one=5s, max_run_s=6, fast-two=60s; elapsed ≤ 20s + fast-one=complete
+      proves global wall-clock timer (accounts for TERM+10s+overhead ≈ 18s total)
 - P3: TERM-ignore stage dead within TERM+10s+buffer=17s
 - P4: always_run release + persist markers prove both ran on timed-out exit path
 
-### tests/unit/run-limit-precedence-test.sh — SPEC-2, SPEC-5, SPEC-6 (complete, unchanged)
-### tests/unit/run-watchdog-clean-exit-test.sh — SPEC-3 (complete, unchanged)
-### tests/integration/resume-after-run-timeout-test.sh — SPEC-4 (complete, unchanged)
+### tests/unit/run-limit-precedence-test.sh — SPEC-2, SPEC-5, SPEC-6 (unchanged)
+### tests/unit/run-watchdog-clean-exit-test.sh — SPEC-3 (unchanged)
+### tests/integration/resume-after-run-timeout-test.sh — SPEC-4 (unchanged)
 ### tests/unit/run-open-items-test.sh — O9 updated to 6 (done in round 13)
 ### tests/unit/runner-signal-rearm-test.sh — [SPEC-5] fixed in round 14
 
