@@ -1,68 +1,80 @@
-# Plan notes — issue #1944 (run-level wall-clock limit) — cycle 9 (design-stage review)
+# Plan notes — issue #1944 (run-level wall-clock limit) — cycle 10 (design findings incorporated)
 
 ## Status
-Plan.json updated in cycle 9 to correct two inaccuracies revealed by the design stage.
+Plan.json updated in cycle 10 to address two outstanding bugs identified by the design stage
+that were not reflected in the cycle-9 plan.
 
-## Design-stage findings that required plan changes
+## Design-stage findings that required plan changes in cycle 10
 
-### Finding D-A (Bug A: fd inheritance — step-5 mechanism was wrong)
-- Old step-5 said "disown the watchdog PID after spawning so bash job-control does not block the runner's exit"
-- Design identified the real root cause: watchdog subshell inherits stdout/stderr fds; after watchdog is killed, its orphaned `sleep` child holds the pipe write-end open, so `$(bash "$RUNNER" ...)` hangs until sleep expires
-- Correct fix: redirect watchdog to `/dev/null 2>&1 &` at arm time, not disown
-- Updated step-5 description accordingly
+### Bug A remaining (Finding 16 in design.md)
+- The partial Bug A fix (`>/dev/null 2>&1 &`) was applied in a prior commit, but the
+  integration tests STILL time out.
+- Root cause: `exec {_RUNNER_ERR_FD}>&2` at runner.sh:2743 opens a high-numbered fd pointing
+  to fd 2. When the runner is invoked inside `$(bash ... 2>&1)`, fd 2 is the pipe write end.
+  The watchdog subshell inherits `_RUNNER_ERR_FD` (fd ≥ 10). The `2>&1` redirect in
+  `>/dev/null 2>&1 &` only covers fds 1 and 2; `_RUNNER_ERR_FD` is NOT covered. The orphaned
+  `sleep` child (from the SIGKILL'd watchdog) holds `_RUNNER_ERR_FD` indefinitely, keeping the
+  pipe write end open, so `$(bash ...)` hangs until the sleep expires.
+- Fix: change `    ) >/dev/null 2>&1 &` to `    ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
+  at the watchdog arm site (runner.sh:2827).
+- Old step-5 said "redirect stdout and stderr to /dev/null" — that partial fix is done. The
+  remaining step is adding `{_RUNNER_ERR_FD}>&-`.
 
-### Finding D-B (Bug B: double-SIGTERM aborts EXIT trap — step-5 was incomplete)
-- GNU `timeout` forwards SIGTERM to its child process group on receiving SIGTERM
-- Runner gets two SIGTERMs; second arrives during `wait` in abort trap, re-fires `_runner_signal_trap TERM`, calls `exit 1` from within EXIT trap, aborting `_runner_dispatch_always_run`
-- Correct fix: `trap ':' INT TERM` guard before kill/wait block in `_runner_abort_trap`, mirror line 2516 pattern
-- Old step-5 described this as "kill the watchdog PID at the very start of the EXIT trap" — inaccurate mechanism
-- Updated step-5 to describe the signal-guard fix
+### Bug C regression (Finding 17 in design.md)
+- The Bug B fix (commit 741c8466) added `trap ':' INT TERM` inside `_runner_abort_trap()`,
+  which is a nested function defined inside main(). This guard line ends with `INT TERM`.
+- The existing `runner-signal-rearm-test.sh` SPEC-5 uses awk pattern `/trap .* TERM$/` to
+  find the startup trap install. Because `_runner_abort_trap` is defined BEFORE the startup
+  install in main(), the awk pattern matches the guard `trap ':' INT TERM` FIRST.
+- `grep -oE "trap '[^']+' TERM"` does not match `trap ':' INT TERM` (two-signal form), so
+  `_startup_term` = `<startup-not-found>` ≠ `_rearm_term`. Test fails.
+- Fix: narrow awk pattern from `/trap .* TERM$/` to `/trap '.*' TERM$/` (requires a
+  single-quoted handler before `TERM`), skipping the two-signal guard.
+- `tests/unit/runner-signal-rearm-test.sh` was NOT in any step's areas in the cycle-9 plan.
 
-### Finding D-C (pipeline-end golden files not in step-8 areas)
-- Design scope section includes `tests/golden/pipeline-end/timed_out-w80.colored.txt` and `tests/golden/pipeline-end/timed_out-w80.layout.txt`
-- step-8 previously only listed event-sequence goldens
-- Added both pipeline-end golden files to step-8 areas and description
+### Already-done items removed from step-5 in cycle 10
+- Bug B (double-SIGTERM guard in `_runner_abort_trap`): fixed in commit 741c8466
+- Persist in always_run: fixed in prior commit (Finding 5 in design.md says "Fixed")
+- The `>/dev/null 2>&1 &` partial fix (Bug A partial): applied in a prior commit
 
-### Finding D-D (ADR-025 not in step-9 areas)
-- Design scope includes ADR-025-abort-propagation.md which needs Enforced by entries
-- step-9 previously only listed ADR-054-stage-contract.md
-- Added ADR-025-abort-propagation.md to step-9 areas
-
-## Acceptance criteria coverage (unchanged from cycle 7, verified against design)
+## Acceptance criteria coverage (unchanged from cycle 9)
 - AC-1 timed_out with in-flight stage name + limit → step-3
 - AC-2 watchdog fires during inter-dispatch idle (falsifiable P2) → step-3
 - AC-3 whole process group dies (TERM → KILL 10 s) → step-3
-- AC-4 release and persist run after timed_out → step-3 + step-5
+- AC-4 release and persist run after timed_out → step-3 + step-5 (persist already in always_run)
 - AC-5 precedence layers + validation → step-1 + step-6
 - AC-6 run inside limit untouched, watchdog gone → step-2
 - AC-7 resumed run gets fresh limit → step-4
 - AC-8 same locally and CI, no platform branch → SPEC-5 (open question on adequacy)
-- AC-9 ADR-054 §9/§11 + ADR-025 Enforced by entries → step-9
+- AC-9 ADR-054 §11 + ADR-025 Enforced by entries → step-9
 - AC-10 npm test + npm run lint green → all steps collectively
 
-## Coverage matrix (F1–F14 + D-A/D-B/D-C/D-D → steps)
-| Finding | Step |
-|---|---|
-| F1: Syntax error run-limit-precedence-test.sh L173 | step-1 (already fixed per design) |
-| F2: lint-test-errexit 8 files | steps 1–4 (already fixed per design) |
-| F3: Integration test timeouts (fd inheritance, not disown) | step-5 (description corrected) |
-| F4: template.sh inert | step-6 |
-| F5: run-open-items.sh untested | step-7 |
-| F6: persist missing from always_run test | step-3 (already fixed per design) |
-| F7: P2 unfalsifiable | step-3 (already fixed per design) |
-| F8: SPEC-2 disposition=misconfigured missing | step-1 |
-| F9: SPEC-3 watchdog PID not proved gone | step-2 |
-| F10: Golden files not updated | step-8 |
-| F11: ADR-054 §11 Enforced by entries | step-9 |
-| F12: SPEC-5 finite CI variable list | open question |
-| F13: SPEC-3 state-file re-read missing | step-2 |
-| F14: Watchdog fires during EXIT trap, killing release | step-5 (mechanism corrected to signal-guard) |
-| D-A: fd inheritance root cause (not disown) | step-5 (corrected) |
-| D-B: double-SIGTERM aborts EXIT trap | step-5 (corrected) |
-| D-C: pipeline-end golden files missing from step-8 | step-8 (areas + description updated) |
-| D-D: ADR-025 missing from step-9 areas | step-9 (areas updated) |
+## Coverage matrix after cycle 10 update
+| Finding        | Step                                                                      |
+|----------------|---------------------------------------------------------------------------|
+| F1: Syntax error run-limit-precedence-test.sh L173         | step-1 (fixed in prior commit) |
+| F2: lint-test-errexit 8 files                              | steps 1–4 (fixed in prior commit) |
+| F3: Integration test timeouts (Bug A remaining)            | step-5 (description updated: {_RUNNER_ERR_FD}>&-) |
+| F4: template.sh inert                                      | step-6 (cleared per Finding 9) |
+| F5: run-open-items.sh untested                             | step-7 (fixed per Finding 10) |
+| F6: persist missing from always_run test                   | step-3 (fixed in prior commit) |
+| F7: P2 unfalsifiable                                       | step-3 (fixed in prior commit) |
+| F8: SPEC-2 disposition=misconfigured missing               | step-1 |
+| F9: SPEC-3 watchdog PID not proved gone                    | step-2 (fixed per Finding 11) |
+| F10: Golden files not updated                              | step-8 |
+| F11: ADR-054 §11 Enforced by entries                       | step-9 |
+| F12: SPEC-5 finite CI variable list                        | open question |
+| F13: SPEC-3 state-file re-read missing                     | step-2 (fixed per Finding 11) |
+| F14: Watchdog fires during EXIT trap, killing release      | step-5 (Bug B fixed in commit 741c8466; AC-4 covered by step-3+step-5) |
+| Bug A remaining: {_RUNNER_ERR_FD}>&- not yet closed        | step-5 (description updated) |
+| Bug B: double-SIGTERM guard                                | DONE (commit 741c8466; removed from step-5) |
+| Bug C: runner-signal-rearm-test.sh awk regression          | step-5 (areas + description updated, new file added) |
+| D-A: fd inheritance root cause                             | step-5 (description updated to {_RUNNER_ERR_FD}>&-) |
+| D-B: double-SIGTERM aborts EXIT trap                       | DONE (removed from step-5) |
+| D-C: pipeline-end golden files                             | step-8 (areas already correct from cycle 9) |
+| D-D: ADR-025 missing from step-9 areas                    | step-9 (areas already correct from cycle 9) |
 
-## Open questions (unchanged)
-1. ADR §9 vs §11 numbering: design confirmed §11 is correct; issue text using §9 is a stale draft label
-2. Test timeout root cause contingency: design confirmed fd inheritance is the root cause; disown fix not needed
-3. SPEC-5 finite CI variable list adequacy: still unresolved
+## Open questions (unchanged from cycle 9)
+1. ADR §9 vs §11 numbering: design confirmed §11 is correct; "§9" in issue text is a stale draft label
+2. SPEC-5 finite CI variable list: whether enumerated-set grep covers the open-ended category
+3. SPEC-4 NEGCTL wiring: reverting only runner.sh leaves core/state/resume.sh new; both listed in WIRING
