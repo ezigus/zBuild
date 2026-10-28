@@ -89,7 +89,7 @@ _runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
 # the first cut of this test and was caught in review.
 _startup_int="$(awk '/^main\(\) \{/{f=1} f && /trap .* INT$/{print; exit}' "$_runner_sh" \
     | grep -oE "trap '[^']+' INT" || true)"
-_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap .* TERM$/{print; exit}' "$_runner_sh" \
+_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap '"'"'.*'"'"' TERM$/{print; exit}' "$_runner_sh" \
     | grep -oE "trap '[^']+' TERM" || true)"
 # What the promoted helper installs, taken from the live function body.
 _rearm_body="$(declare -f _runner_rearm_traps 2>/dev/null || true)"

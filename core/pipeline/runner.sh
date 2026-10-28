@@ -2824,7 +2824,7 @@ main() {
                 kill -KILL "$_wdg_child" 2>/dev/null || true
             fi
         done < <(pgrep -P "$_wdg_runner_pid" 2>/dev/null)
-    ) >/dev/null 2>&1 &
+    ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &
     _RUNNER_WATCHDOG_PID=$!
 
     # ── ADR-015 stage-io stdout channel ─────────────────────────────────────
