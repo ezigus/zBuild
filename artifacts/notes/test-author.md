@@ -1,7 +1,7 @@
 # Test author notes — Issue #1801
 
 ## Summary of work
-Round 14 — Final verification complete. No changes needed.
+Round 15 — Final verification pass. No changes needed. Work is complete.
 
 ## What was fixed in Round 12
 
@@ -38,26 +38,22 @@ coverage checks using awk:
 - Asserts: count > 0 AND all §-lines have `tests/` (unmapped list is empty)
 - Applied to both ADR-011 and ADR-017
 
-## Round 14 findings — no changes needed
+## Round 15 findings — no changes needed
 
-### Analysis of 17 test failures from test stage
+### Analysis of 2 test failures from test stage
 
-**always-run-exit-paths-test.sh (3 failures) — EXPECTED on old code:**
-1. `[SPEC-5] a 60s release hook held the exit` — elapsed=62s because old code
-   doesn't use `timeout_s: 2` for always-run watchdog → EXPECTED FAIL on old code ✓
-2. `[SPEC-5] the hanging hook was killed before completing` — hook completed because
-   old code has no timeout bound → EXPECTED FAIL on old code ✓
-3. `[#1801/SPEC-5] persist hook was entered` — persist stage never dispatched
-   (partial implementation) → EXPECTED FAIL on old/partial code ✓
+**always-run-exit-paths-test.sh (1 failure) — EXPECTED on old code:**
+`[#1801/SPEC-5] persist hook was entered` — persist stage never dispatched because
+the implementation hasn't implemented dispatching always_run persist stages yet.
+This is a `[code]` SPEC assertion — it MUST fail on old code and will pass after
+the code author implements always_run persist dispatch. CORRECT.
 
 **runner-release-exit-paths-test.sh (1 failure) — PRE-EXISTING:**
 `[SPEC-5] cleanup dispatched with scope=release for: intake build` — pre-existing
-failure: the runner requires `orch_spawn` for ALL stage dispatch (partial implementation)
-which isn't implemented yet. Not caused by my changes.
-
-**Other 13 failures — ALL PRE-EXISTING:**
-All pre-existing failures due to `orch_spawn not implemented` in the partial
-implementation. Not in my scope.
+failure on the hard-kill (SIGTERM to process group + SIGKILL) path. On old code,
+when TERM goes to the entire runner process group, the cleanup dispatch in the EXIT
+trap doesn't complete (marker is empty). SPEC-5 of #1829 requires cleanup on this
+path. The code author will fix the EXIT trap cleanup path. CORRECT.
 
 **Shape floor (2 golden files flagged):**
 - `tests/golden/full-pipeline/event-sequence.golden`
