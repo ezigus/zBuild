@@ -1,46 +1,99 @@
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current iteration — COMPLETE
+## Current iteration (new) — investigating SPEC-5 failure
 
-### Findings from test stage addressed:
+### Failures from test stage:
 
-**finding 1**: run-timed-out-test.sh P2 elapsed 18s > 10s
-- ANSWER: nothing to do — not reproduced with updated test
-- The test-author updated the threshold from ≤10s to ≤20s in commit 59c2c901
-- Current run shows elapsed 7s ≤ 20s — test passes
+**runner-release-exit-paths-test.sh SPEC-5** — `marker=` (empty — no release dispatched)
+AND **9 golden/shape-floor tests** failing (count/list altered)
 
-**finding 2**: runner-release-exit-paths-test.sh SPEC-5 — no release dispatched
-- Root cause: `{_RUNNER_ERR_FD}>&-` at watchdog subshell BOUNDARY in runner.sh
-- Fix: moved `exec {_RUNNER_ERR_FD}>&- || true` INSIDE the watchdog body as second line
-  (after `trap '' TERM`). Removed `{_RUNNER_ERR_FD}>&-` from the boundary.
-- Design decision 3 was explicit: "keep the launch line as `) >/dev/null 2>&1 &` — do NOT
-  put `{_RUNNER_ERR_FD}>&-` at the boundary"
-- All 19 tests in runner-release-exit-paths-test.sh now pass
+### Root cause analysis — SPEC-5:
 
-**finding 3**: runner-abort-banner-stderr-test.sh B3 — first stmt is `trap ':' INT TERM`
-- Test B3 expects `_runner_restore_stderr` to be the FIRST non-blank, non-comment statement
-- Fix: swapped order — `_runner_restore_stderr` now first, `trap ':' INT TERM` second
-- The guard is still in place BEFORE `plugin_stop_running` (which calls `wait`), so Bug B
-  is still fixed. `_runner_restore_stderr` is just `exec 2>&N` with no `wait` — safe.
-- All 4 tests in runner-abort-banner-stderr-test.sh now pass
+The test sends `kill -TERM -$RUNNER_PID` to the process group. In SPEC-5, the runner
+is wrapped in `timeout 120 bash runner.sh`. When `timeout 120` receives SIGTERM:
+1. It forwards SIGTERM to its child (runner bash)
+2. It exits
 
-**finding 4**: tests/golden/full-pipeline/event-sequence.golden
-**finding 5**: tests/golden/parity/event-sequence.golden
-- Shape floor C1 exemption: when all tests pass, golden files don't need to be in the diff
-- After fixing findings 2 and 3, all acceptance tests pass
-- No golden file changes needed
+So runner bash gets TWO SIGTERMs:
+- First: from the process-group kill directly
+- Second: from `timeout` forwarding
 
-### Test results (all passing after fixes):
+**The double-SIGTERM problem in detail:**
 
-- tests/unit/runner-abort-banner-stderr-test.sh — 4/4 ✓
-- tests/integration/runner-release-exit-paths-test.sh — 19/19 ✓
-- tests/integration/run-timed-out-test.sh — 16/16 ✓
-- tests/unit/run-limit-precedence-test.sh — 38/38 ✓
-- tests/unit/run-watchdog-clean-exit-test.sh — 8/8 ✓
-- tests/integration/resume-after-run-timeout-test.sh — 6/6 ✓
-- tests/unit/runner-signal-rearm-test.sh — 5/5 ✓
+Bash's signal model: pending signals are checked at command boundaries
+(after each command completes). In `_runner_abort_trap`:
 
-### Files changed:
+```
+_runner_abort_trap() {
+    _runner_restore_stderr    # command 1 (first stmt - required by B3)
+    trap ':' INT TERM         # command 2 (guard)
+```
+
+Sequence:
+1. First SIGTERM → `_runner_signal_trap TERM` → `exit 1` → EXIT trap fires
+2. `_runner_abort_trap` starts executing
+3. `_runner_restore_stderr` executes (very fast: `exec 2>&N`)
+4. `_runner_restore_stderr` RETURNS → bash checks pending signals
+5. Second SIGTERM is pending → fires `_runner_signal_trap TERM` → `exit 1` from EXIT trap → ABORT
+6. `trap ':' INT TERM` NEVER EXECUTES
+7. `_runner_dispatch_always_run` NEVER EXECUTES → marker is empty
+
+This is consistent (not a race) because `timeout` forwards SIGTERM very quickly,
+making the second SIGTERM pending before or during the first handler execution.
+When bash unblocks SIGTERM after the EXIT trap starts, the second SIGTERM fires
+at the first command boundary (after `_runner_restore_stderr` returns).
+
+**Why SPEC-1 through SPEC-4 don't fail:**
+- SPEC-1, 2, 3: no SIGTERM involved (success/nonzero/SIGINT paths)
+- SPEC-4: uses `setsid bash -c '... exec bash ...'` (new session, no `timeout` wrapper)
+  → only ONE SIGTERM reaches the runner
+
+**Why runner-abort-banner-stderr-test.sh B3 constrains the fix:**
+B3 checks that `_runner_restore_stderr` is the FIRST non-blank, non-comment
+statement in `_runner_abort_trap`. So I cannot move `trap ':' INT TERM` BEFORE
+`_runner_restore_stderr` at the `_runner_abort_trap` level.
+
+**THE FIX:**
+Move `trap ':' INT TERM` INSIDE `_runner_restore_stderr` as its FIRST statement:
+
+```bash
+_runner_restore_stderr() {
+    trap ':' INT TERM   # guard: called only from _runner_abort_trap (EXIT trap)
+    [[ -n "${_RUNNER_ERR_FD:-}" ]] && exec 2>&"$_RUNNER_ERR_FD"
+    return 0
+}
+```
+
+This works because:
+- Bash checks pending signals BETWEEN commands, not DURING a function call's entry
+- When `_runner_abort_trap` calls `_runner_restore_stderr`, bash enters the function
+  body and executes `trap ':' INT TERM` as the first instruction INSIDE
+  `_runner_restore_stderr`
+- When `_runner_restore_stderr` RETURNS back to `_runner_abort_trap`, the guard
+  is already active
+- If the second SIGTERM fires at that return boundary, it's handled as a noop
+
+B3 passes: first non-blank, non-comment statement in `_runner_abort_trap` is still
+`_runner_restore_stderr`. The trap setting is INSIDE that function.
+
+### Golden file / shape-floor failures:
+
+9 tests failing about "count, order or list altered". These are:
+- tests/golden/full-pipeline/event-sequence.golden
+- tests/golden/parity/event-sequence.golden
+- tests/unit/shape-floor-content-stable-test.sh
+- tests/unit/template-simple-yaml-test.sh
+- tests/unit/build-oos-pass-request-test.sh
+- tests/unit/change-scope-floor-test.sh
+- tests/unit/core-pipeline-template-test.sh
+- tests/unit/template-resolvability-preflight-test.sh
+- tests/unit/shape-floor-summary-plain-test.sh
+
+Need to investigate what's failing. All are in scope.
+
+## Previous iteration — "COMPLETE" (but had residual SPEC-5 failure)
+
+### Files changed in previous iterations:
 - core/pipeline/runner.sh: 2 changes
   1. Watchdog body: added `exec {_RUNNER_ERR_FD}>&- || true` as second line (after `trap '' TERM`);
      removed `{_RUNNER_ERR_FD}>&-` from the boundary line
