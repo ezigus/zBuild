@@ -236,9 +236,11 @@ fi
 # New code: runner.sh gates early → exits 1 with "misconfigured" naming the backend.
 #
 # ZBUILD_ORCHESTRATOR_BACKEND="sequential" was exported above for the SPEC-2 unit
-# test.  Unset it here so the runner uses its compiled-in default (bash-parallel)
-# and the output names bash-parallel, not sequential.
+# test.  Unset it here; each e2e section sets it explicitly inside the subshell
+# so the backend name is reliable in the gate error output.
 unset ZBUILD_ORCHESTRATOR_BACKEND
+# ZBUILD_ORCHESTRATOR_BACKEND is set explicitly in the subshell below so the gate
+# message reliably names bash-parallel regardless of the runner's compiled-in default.
 print_test_section "[#1801/SPEC-4] e2e: absent backend fails pipeline as misconfigured"
 
 if ! command -v rsync >/dev/null 2>&1; then
@@ -268,6 +270,7 @@ else
         ZBUILD_MODELS_FILE="$_E2E_S4_INSTALL/config/models.json" \
         ZBUILD_EVENT_SCHEMA="$_E2E_S4_INSTALL/config/event-schema.json" \
         ZBUILD_PLUGINS_ROOT="$_E2E_S4_INSTALL/plugins" \
+        ZBUILD_ORCHESTRATOR_BACKEND=bash-parallel \
         ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_CYCLES_ENABLED=0 \
         ZBUILD_VISION_GATE=off \
@@ -307,8 +310,8 @@ fi
 # Old code: runner.sh ignores disposition → continues without the check.
 # New code: disposition=misconfigured is caught by the runner gate → exits 1.
 #
-# Keep ZBUILD_ORCHESTRATOR_BACKEND unset (cleared before SPEC-4 e2e above) so
-# the runner uses its compiled-in default (bash-parallel) and the gate names it.
+# ZBUILD_ORCHESTRATOR_BACKEND=bash-parallel is set explicitly in the subshell below
+# so the gate message reliably names bash-parallel regardless of the runner's default.
 print_test_section "[#1801/SPEC-10] e2e: unreadable plugin.sh fails pipeline as misconfigured"
 
 if ! command -v rsync >/dev/null 2>&1; then
@@ -337,6 +340,7 @@ else
         ZBUILD_MODELS_FILE="$_E2E_S10_INSTALL/config/models.json" \
         ZBUILD_EVENT_SCHEMA="$_E2E_S10_INSTALL/config/event-schema.json" \
         ZBUILD_PLUGINS_ROOT="$_E2E_S10_INSTALL/plugins" \
+        ZBUILD_ORCHESTRATOR_BACKEND=bash-parallel \
         ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_CYCLES_ENABLED=0 \
         ZBUILD_VISION_GATE=off \
