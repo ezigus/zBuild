@@ -1,7 +1,7 @@
 # authored_by: test-author
 c6a35ab9ca7a2c5df9ee2aaf3f47bcb3f30fde8c97bd5384909e7d4602770f4d  tests/integration/run-timed-out-test.sh
-0c7156964e4ac3f166323cbfec25e1e89e81264e41f6d76c3af254fe1e8add8f  tests/unit/run-limit-precedence-test.sh
+58f1777fb59c430f288932c8a1854fcc5a5193e1d5a620ad177a34b81e139b06  tests/unit/run-limit-precedence-test.sh
 dfabfd6b96ee8536aa7a05b86768757a1f26f06f5e6859f173113a15099f43c9  tests/unit/run-watchdog-clean-exit-test.sh
 d0db0cdc49d885bafee4e07cad97ca44a5817bb699ad17c5b598f28b6fdc64a7  tests/integration/resume-after-run-timeout-test.sh
-0c7156964e4ac3f166323cbfec25e1e89e81264e41f6d76c3af254fe1e8add8f  tests/unit/run-limit-precedence-test.sh
-0c7156964e4ac3f166323cbfec25e1e89e81264e41f6d76c3af254fe1e8add8f  tests/unit/run-limit-precedence-test.sh
+58f1777fb59c430f288932c8a1854fcc5a5193e1d5a620ad177a34b81e139b06  tests/unit/run-limit-precedence-test.sh
+58f1777fb59c430f288932c8a1854fcc5a5193e1d5a620ad177a34b81e139b06  tests/unit/run-limit-precedence-test.sh
