@@ -1,10 +1,13 @@
-# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 19
+# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 20
 
 ## Status: COMPLETE
 
 All 6 SPECs have assertions written. All test files verified on disk.
 
-## Round 19 analysis
+## Round 20 analysis
+
+All test files from the previous round are confirmed on disk and correct.
+The two failing tests from the previous test stage run are outside scope.
 
 ### Failing tests from test stage — both outside my scope
 
@@ -26,18 +29,24 @@ All 6 SPECs have assertions written. All test files verified on disk.
 
 ## All files — final state
 
-### tests/integration/run-timed-out-test.sh — SPEC-1 (updated in round 18)
+### tests/integration/run-timed-out-test.sh — SPEC-1 ✓
 - P1: slow stage, status=timed_out in pipeline-state.json; pipeline.end event fields
 - P2: fast-one=5s, max_run_s=6, fast-two=60s; elapsed ≤ 20s + fast-one=complete
       proves global wall-clock timer (accounts for TERM+10s+overhead ≈ 18s total)
 - P3: TERM-ignore stage dead within TERM+10s+buffer=17s
 - P4: always_run release + persist markers prove both ran on timed-out exit path
 
-### tests/unit/run-limit-precedence-test.sh — SPEC-2, SPEC-5, SPEC-6 (unchanged)
-### tests/unit/run-watchdog-clean-exit-test.sh — SPEC-3 (unchanged)
-### tests/integration/resume-after-run-timeout-test.sh — SPEC-4 (unchanged)
-### tests/unit/run-open-items-test.sh — O9 updated to 6 (done in round 13)
-### tests/unit/runner-signal-rearm-test.sh — [SPEC-5] fixed in round 14
+### tests/unit/run-limit-precedence-test.sh — SPEC-2, SPEC-5, SPEC-6 ✓
+### tests/unit/run-watchdog-clean-exit-test.sh — SPEC-3 ✓
+### tests/integration/resume-after-run-timeout-test.sh — SPEC-4 ✓
+### tests/unit/run-open-items-test.sh — O9 updated to 6 ✓
+### tests/unit/runner-signal-rearm-test.sh — [SPEC-5] awk pattern narrowed to /trap '.*' TERM$/ ✓
+
+## Existing checks verified
+
+1. run-open-items-test.sh [O9]: count is 6 (line 189 asserts "6") ✓
+2. runner-signal-rearm-test.sh [SPEC-5]: awk pattern at line 92 uses `/trap '.*' TERM$/`
+   (shell-escaped as `/trap '"'"'.*'"'"' TERM$/`), correctly skipping `trap ':' INT TERM` ✓
 
 ## What remains (not mine)
 
