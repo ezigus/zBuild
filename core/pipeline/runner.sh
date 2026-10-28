@@ -2527,6 +2527,16 @@ main() {
     }
 
     _runner_abort_trap() {
+        # Guard against a repeat signal (e.g. `timeout` forwarding its own SIGTERM
+        # to the process group after the first already fired) aborting this trap.
+        # Must be the FIRST line: `plugin_stop_running` below calls `wait`, which
+        # bash interrupts on signal delivery — a second TERM would fire
+        # `_runner_signal_trap TERM`, call `exit 1`, and abort the EXIT trap before
+        # `_runner_dispatch_always_run` runs. Mirrors the pattern already used
+        # inside `_runner_dispatch_always_run` (line 2516). Restore real handlers
+        # after the kill/wait block so `_runner_dispatch_always_run` can still
+        # handle signals.
+        trap ':' INT TERM
         _runner_restore_stderr
         # ADR-054 §7: a signal ends the run while a stage is still running;
         # stop it, and all it started, before anything else.
@@ -2536,14 +2546,6 @@ main() {
         # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
         # ignored and `wait` would block until the full sleep expires. SIGKILL
         # cannot be caught or ignored, so the wait returns immediately.
-        # Guard against a second SIGTERM (e.g. from `timeout` forwarding its own
-        # SIGTERM to the process group after the first already fired): without the
-        # guard, `_runner_signal_trap TERM` calls `exit 1`, and calling `exit`
-        # from inside an EXIT trap aborts the trap immediately before
-        # `_runner_dispatch_always_run` can run. Mirrors the pattern already used
-        # inside `_runner_dispatch_always_run` (line 2516). Restore real handlers
-        # after `wait` so `_runner_dispatch_always_run` can still handle signals.
-        trap ':' INT TERM
         kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
         [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && wait "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true
         trap '_runner_signal_trap TERM' TERM
