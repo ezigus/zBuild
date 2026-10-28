@@ -1,13 +1,16 @@
-# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 20
+# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 21
 
 ## Status: COMPLETE
 
 All 6 SPECs have assertions written. All test files verified on disk.
 
-## Round 20 analysis
+## Round 21 analysis
 
-All test files from the previous round are confirmed on disk and correct.
-The two failing tests from the previous test stage run are outside scope.
+Re-invoked after test stage verdict=fail. Verified all test files on disk.
+The failing test from the test stage (runner-release-exit-paths-test.sh [SPEC-5])
+carries a bare [SPEC-5] tag (no issue number) and is NOT in my named testfiles
+or existing-checks list. All shape floor findings are also outside my scope.
+All 6 SPEC assertions and 2 existing-check updates remain correct on disk.
 
 ### Failing tests from test stage — both outside my scope
 
