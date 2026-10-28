@@ -57,12 +57,15 @@ You are checking whether a finished CHANGE does what an ISSUE asked for.
 One verdict on the whole issue: does the DIFF meet every requirement the issue
 states, in full — including what its tests must catch?
 
-Answer in at most four lines:
+Answer in this form:
 
 VERDICT: pass | fail | unsure
 REASON: <one sentence>
-UNMET: <semicolon-separated issue requirements the diff does not meet; omit on pass>
-UNSURE: <semicolon-separated requirements you cannot tell are met, each named as listed; omit when sure>
+UNMET: <one issue requirement the diff does not meet, and why>
+UNSURE: <one requirement you cannot tell is met, named as listed, and why>
+
+Write one UNMET: line for each requirement the diff does not meet (none on a
+pass), and one UNSURE: line for each you cannot tell is met (none when sure).
 
 ## What you judge against
 Five things, shown at the end of this part:
@@ -221,10 +224,9 @@ issue_acceptance_run() {
     _v="${_v%%$'\n'*}"; _v="${_v##*[[:space:]]}"
     _r="$(grep -E '^REASON:' <<< "$_raw" || true)"
     _r="${_r%%$'\n'*}"; _r="${_r#REASON:}"; _r="${_r#"${_r%%[![:space:]]*}"}"
+    # Every UNMET:/UNSURE: line, each one whole finding (ADR-068 §5).
     _u_line="$(grep -E '^UNMET:' <<< "$_raw" || true)"
-    _u_line="${_u_line%%$'\n'*}"; _u_line="${_u_line#UNMET:}"
     _s_line="$(grep -E '^UNSURE:' <<< "$_raw" || true)"
-    _s_line="${_s_line%%$'\n'*}"; _s_line="${_s_line#UNSURE:}"
 
     if [[ -z "$_v" ]]; then
         # ADR-054 §6a: the stage ran but its output cannot be used — retry.
@@ -248,12 +250,12 @@ issue_acceptance_run() {
     return 0
 }
 
-# _ia_list <semicolon-separated line> — a JSON array of its trimmed items; "none"
-# (any case) and blanks are dropped.
+# _ia_list <lines> — a JSON array with one item per `KEY: text` line, the key
+# and surrounding blanks dropped; "none" (any case) and blanks are dropped. A
+# line is never split: a `;` in its prose is part of the finding (#1944).
 _ia_list() {
     local _j=""
-    [[ -n "${1// }" ]] && _j="$(tr ';' '\n' <<< "$1" \
-        | jq -Rsc 'split("\n") | map(sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0 and ascii_downcase != "none"))' 2>/dev/null || true)"
+    [[ -n "${1// }" ]] && _j="$(jq -Rsc 'split("\n") | map(sub("^[A-Z]+:";"") | sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0 and ascii_downcase != "none"))' <<< "$1" 2>/dev/null || true)"
     printf '%s' "${_j:-[]}"
 }
 

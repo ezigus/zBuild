@@ -27,6 +27,10 @@
 #             → misconfigured) instead of leaving no reason
 # A8 [change] a loop that fails at startup never reports the PREVIOUS loop's
 #             end reason (a stale done_sentinel read as success)
+# A9 [change] a pass's reason says how many test files this attempt changed,
+#             as build's does: a rerun that rewrites nothing says 0, so a round
+#             that added no test can be told from one that did (a retryable
+#             outcome's reason carries no count: test-author-test.sh SPEC-14)
 # A5 [change] the loop never shows the author the implementation (review #2229):
 #             neither the uncommitted change nor build's commits reach any call's
 #             prompt — only the testfiles' own progress does
@@ -79,7 +83,7 @@ fi
 printf '%s' "$_in" > "$FAKE_DIR/prompt.$(( $(wc -l < "$FAKE_DIR/calls") + 1 ))"
 echo x >> "$FAKE_DIR/calls"
 n="$(wc -l < "$FAKE_DIR/calls" | tr -d ' ')"
-printf 'assert_eq "[SPEC-%s] assertion %s" "1" "$v"\n' "$n" "$n" >> "$FAKE_REPO/tests/acc-test.sh"
+[[ "${FAKE_NOWRITE:-0}" == "1" ]] || printf 'assert_eq "[SPEC-%s] assertion %s" "1" "$v"\n' "$n" "$n" >> "$FAKE_REPO/tests/acc-test.sh"
 grep -c 'assertion' "$FAKE_REPO/tests/acc-test.sh" >> "$FAKE_DIR/commits-seen" || true
 if [[ "${FAKE_DONE_AT:-0}" != "0" && "$n" -ge "$FAKE_DONE_AT" ]]; then last=LOOP_COMPLETE; else last="wrote SPEC-$n"; fi
 jq -n --arg r "$(printf 'done some\n%s' "$last")" '{type:"result",result:$r,usage:{input_tokens:1,output_tokens:1}}'
@@ -93,6 +97,8 @@ _run() {
     mkdir -p "$d/state/artifacts/stage-io" "$d/repo/tests" "$d/fake" "$d/events"
     : > "$d/fake/calls"; : > "$d/fake/commits-seen"; : > "$d/events/events.jsonl"
     printf '#!/usr/bin/env bash\n' > "$d/repo/tests/acc-test.sh"
+    # A9: a testfile an earlier attempt already wrote in full.
+    [[ "${ZB_SEEDED:-0}" == "1" ]] && printf 'assert_eq "[SPEC-%s] assertion %s" "1" "$v"\n' 1 1 2 2 3 3 >> "$d/repo/tests/acc-test.sh"
     ( cd "$d/repo" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
         && git add -A && git commit -q -m seed ) >/dev/null 2>&1
     # An implementation the author must not see: a build commit since intake,
@@ -162,6 +168,12 @@ assert_eq "[A3] the loop's calls were all made" "2" "$(_calls a3)"
 assert_eq "[A3] rc=1" "1" "$_rc3"
 assert_eq "[A3] outcome out_of_turns (the shared mapping)" "out_of_turns" "$(_res a3 .outcome)"
 assert_eq "[A3] the work is committed" "" "$(git -C "$TEST_TEMP_DIR/a3/repo" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
+
+print_test_section "A9: the reason counts the test files changed"
+assert_contains "[A9] an attempt that wrote its testfile says 1" "$(_res a1 .reason)" "changed 1 test file(s)"
+_rc9="$(ZB_SEEDED=1 FAKE_NOWRITE=1 _run a9 1 3)"
+assert_eq "[A9] fixture: the rerun passed" "pass" "$(_res a9 .outcome)"
+assert_contains "[A9] a rerun that rewrote nothing says 0" "$(_res a9 .reason)" "changed 0 test file(s)"
 
 print_test_section "A6: a loop that cannot start"
 mkdir -p "$TEST_TEMP_DIR/nobin"

@@ -100,18 +100,21 @@ rsc_gh() {
 }
 
 # ─── rsc_id_save / rsc_id_load — <state_dir>/status-comment.json ────────────
-# tmp+mv (legacy e-1): a concurrent reader never sees a truncated id.
+# tmp+mv (legacy e-1): a concurrent reader never sees a truncated id. Part 1's
+# id lives where the run's one id always did; part k's in status-comment-<k>.json.
+_rsc_id_file() { if [[ "${2:-1}" == "1" ]]; then printf '%s/status-comment.json' "$1"; else printf '%s/status-comment-%s.json' "$1" "$2"; fi; }
 rsc_id_save() {
-    local state_dir="$1" slug="$2" issue="$3" run_id="$4" id="$5" tmp
-    tmp="$(mktemp "$state_dir/status-comment.json.XXXXXX")" || return 0
+    local state_dir="$1" slug="$2" issue="$3" run_id="$4" id="$5" f tmp
+    f="$(_rsc_id_file "$state_dir" "${6:-1}")"
+    tmp="$(mktemp "$f.XXXXXX")" || return 0
     jq -n --arg slug "$slug" --arg issue "$issue" --arg run_id "$run_id" --arg id "$id" \
         --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{schema_version:1, repo:$slug, issue:($issue|tonumber), run_id:$run_id, comment_id:($id|tonumber), created_at:$at}' \
-        > "$tmp" 2>/dev/null && mv -f "$tmp" "$state_dir/status-comment.json" || rm -f "$tmp"
+        > "$tmp" 2>/dev/null && mv -f "$tmp" "$f" || rm -f "$tmp"
     return 0
 }
-rsc_id_load() {
-    local f="$1/status-comment.json"
+rsc_id_load() {   # <state_dir> [part]
+    local f; f="$(_rsc_id_file "$1" "${2:-1}")"
     [[ -s "$f" ]] || return 0
     jq -r '.comment_id // empty' "$f" 2>/dev/null || true
 }
@@ -119,15 +122,16 @@ rsc_id_load() {
 # ─── rsc_comment_find <state_dir> <slug> <issue> <run_id> — by marker ───────
 # Only when the id file is gone (resume, lost create response): this is what
 # makes "exactly one comment per run" hold across a restart.
-rsc_comment_find() {
-    local state_dir="$1" slug="$2" issue="$3" run_id="$4" out id=""
+rsc_comment_find() {   # … [part]
+    local state_dir="$1" slug="$2" issue="$3" run_id="$4" part="${5:-1}" out id="" tag=""
+    [[ "$part" == "1" ]] || tag=" part=${part}"
     out="$(mktemp "${TMPDIR:-$state_dir}/rsc-find.XXXXXX")" || return 0
     # The marker is matched HERE with --arg, never interpolated into a --jq
     # filter: a run id carrying a quote would break the filter, the search
     # would come back empty, and the next upsert would POST a second comment.
     # --paginate prints one array per page; take the first id on any page.
     if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
-        id="$(jq -r --arg m "${_RSC_MARKER_PREFIX}${run_id} -->" \
+        id="$(jq -r --arg m "${_RSC_MARKER_PREFIX}${run_id}${tag} -->" \
             '.[]? | select((.body // "") | contains($m)) | .id' "$out" 2>/dev/null | awk 'NF { print; exit }' || true)"
     fi
     rm -f "$out"
@@ -183,7 +187,7 @@ rsc_finalize_issue() {
     return 0
 }
 
-# ─── rsc_upsert <state_dir> <slug> <issue> <run_id> <body_file> ─────────────
+# ─── rsc_upsert <state_dir> <slug> <issue> <run_id> <body_file> [part] ──────
 # id known → PATCH; else marker search → PATCH; else POST. A PATCH 404 clears
 # the id and allows one re-create per process, so a vandalised comment cannot
 # fan out. Always returns 0.
@@ -193,21 +197,21 @@ _RSC_GIVEN_UP=0
 # that was really sent, so a failed send is tried again).
 _RSC_UPSERT_SENT=0
 rsc_upsert() {
-    local state_dir="$1" slug="$2" issue="$3" run_id="$4" body_file="$5"
+    local state_dir="$1" slug="$2" issue="$3" run_id="$4" body_file="$5" part="${6:-1}"
     local id rc=0
     _RSC_UPSERT_SENT=0
     [[ "$_RSC_GIVEN_UP" -eq 1 ]] && return 0
-    id="$(rsc_id_load "$state_dir")"
+    id="$(rsc_id_load "$state_dir" "$part")"
     if [[ -z "$id" ]]; then
-        id="$(rsc_comment_find "$state_dir" "$slug" "$issue" "$run_id")"
-        [[ -n "$id" ]] && rsc_id_save "$state_dir" "$slug" "$issue" "$run_id" "$id"
+        id="$(rsc_comment_find "$state_dir" "$slug" "$issue" "$run_id" "$part")"
+        [[ -n "$id" ]] && rsc_id_save "$state_dir" "$slug" "$issue" "$run_id" "$id" "$part"
     fi
     if [[ -n "$id" ]]; then
         rsc_comment_patch "$state_dir" "$slug" "$id" "$body_file"; rc=$?
         if [[ $rc -eq 0 ]]; then _RSC_UPSERT_SENT=1; return 0; fi
         if [[ $rc -ne 44 ]]; then return 0; fi
         # Gone. Forget it; re-create at most once.
-        rm -f "$state_dir/status-comment.json"
+        rm -f "$(_rsc_id_file "$state_dir" "$part")"
         if [[ "$_RSC_RECREATED" -ge 1 ]]; then
             _RSC_GIVEN_UP=1
             rsc_log "$state_dir" "comment ${id} gone again; giving up for this run"
@@ -219,7 +223,7 @@ rsc_upsert() {
     id="$(rsc_comment_create "$state_dir" "$slug" "$issue" "$body_file")"
     if [[ -n "$id" ]]; then
         _RSC_UPSERT_SENT=1
-        rsc_id_save "$state_dir" "$slug" "$issue" "$run_id" "$id"
+        rsc_id_save "$state_dir" "$slug" "$issue" "$run_id" "$id" "$part"
         [[ "${GITHUB_ACTIONS:-}" == "true" ]] && \
             echo "::notice title=zbuild status comment::https://github.com/${slug}/issues/${issue}#issuecomment-${id}"
     fi
@@ -231,31 +235,31 @@ rsc_upsert() {
 _RSC_STOP=0
 _rsc_on_stop() { _RSC_STOP=1; }
 
-# The body rsc_flush last sent, and for which state dir (#1806).
-_RSC_LAST_SENT=""
+# The body rsc_flush last sent for each part, and for which state dir (#1806).
+declare -gA _RSC_LAST_SENT=()
 _RSC_LAST_SENT_DIR=""
 
 # ─── rsc_flush <events> <state_dir> <slug> <issue> <run_id> [override] ──────
-# Render → redact → upsert. A redactor failure posts nothing (logged).
+# Render → redact → upsert each part, oldest first (so a new comment lands
+# after the ones before it). A redactor failure posts nothing (logged).
 rsc_flush() {
     local events="$1" state_dir="$2" slug="$3" issue="$4" run_id="$5" override="${6:-}"
-    local body_file
-    body_file="$(mktemp "${TMPDIR:-$state_dir}/rsc-body.XXXXXX")" || return 0
-    if ! rsc_outbound_body "$events" "$state_dir" "$override" > "$body_file"; then
+    local d n k body
+    d="$(mktemp -d "${TMPDIR:-$state_dir}/rsc-parts.XXXXXX")" || return 0
+    if ! n="$(rsc_outbound_pages "$events" "$state_dir" "$d" "$override")"; then
         rsc_log "$state_dir" "redaction_failed: body not posted"
-        rm -f "$body_file"; return 0
+        rm -rf "$d"; return 0
     fi
-    # #1806: a render identical to the last one this process sent for this run
-    # is not sent again — the watcher wakes for events that change nothing shown.
-    local body; body="$(<"$body_file")"
-    if [[ "$state_dir" == "$_RSC_LAST_SENT_DIR" && "$body" == "$_RSC_LAST_SENT" ]]; then
-        rm -f "$body_file"; return 0
-    fi
-    rsc_upsert "$state_dir" "$slug" "$issue" "$run_id" "$body_file"
-    if [[ "$_RSC_UPSERT_SENT" -eq 1 ]]; then
-        _RSC_LAST_SENT="$body"; _RSC_LAST_SENT_DIR="$state_dir"
-    fi
-    rm -f "$body_file"
+    [[ "$state_dir" == "$_RSC_LAST_SENT_DIR" ]] || { _RSC_LAST_SENT=(); _RSC_LAST_SENT_DIR="$state_dir"; }
+    for (( k = 1; k <= n; k++ )); do
+        body="$(<"$d/part-${k}.md")"
+        # #1806: a part identical to the one this process last sent is not
+        # sent again — the watcher wakes for events that change nothing shown.
+        [[ -n "${_RSC_LAST_SENT[$k]+x}" && "$body" == "${_RSC_LAST_SENT[$k]}" ]] && continue
+        rsc_upsert "$state_dir" "$slug" "$issue" "$run_id" "$d/part-${k}.md" "$k"
+        [[ "$_RSC_UPSERT_SENT" -eq 1 ]] && _RSC_LAST_SENT[$k]="$body"
+    done
+    rm -rf "$d"
     return 0
 }
 

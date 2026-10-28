@@ -23,6 +23,9 @@
 #                    and the loop's exit_when names it (#2368)
 #   SPEC-9 [change]: the prompt judges what the tests must catch too, and asks
 #                    whether the tests would catch a broken change (#2303)
+#   SPEC-10 [change]: one finding per UNMET:/UNSURE: line, never split at a
+#                    semicolon — on #1944 a finding whose prose held a `;` came
+#                    out as fragments ("…", "set -e` mid-file)")
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -172,6 +175,21 @@ assert_contains "[SPEC-9] the prompt says what the tests must catch is a require
 assert_contains "[SPEC-9] the prompt asks whether the tests would catch a broken change" \
     "$_p9" "if the change were broken, would its tests catch it?"
 assert_contains "[SPEC-9] the narrowed-SPEC rule is kept" "$_p9" "a SPEC that narrowed a"
+
+print_test_section "SPEC-10: one finding per line, whole"
+_setup s10
+_IA_ANSWER=$'VERDICT: fail\nREASON: two unmet\nUNMET: R-4: persist is not tested; only release is\nUNMET: R-10: lint fails (eight files use `set +e`; one sets `set -e` mid-file)\nUNSURE: R-9: §9 or §11; the issue is unclear'
+_run
+assert_eq "[SPEC-10] two UNMET lines → two unmet items" "2" "$(_res '.data.unmet | length')"
+assert_eq "[SPEC-10] a semicolon inside a finding does not split it" \
+    "R-4: persist is not tested; only release is" "$(_res '.data.unmet[0]')"
+assert_eq "[SPEC-10] ...nor a backticked one" \
+    'R-10: lint fails (eight files use `set +e`; one sets `set -e` mid-file)' "$(_res '.data.unmet[1]')"
+assert_eq "[SPEC-10] an UNSURE line is one item too" "R-9: §9 or §11; the issue is unclear" "$(_res '.data.unsure[0]')"
+assert_eq "[SPEC-10] three findings in all" "3" "$(_res '.data.findings | length')"
+_p10="$(_ia_prompt "I" "S" "D" "pass")"
+assert_eq "[SPEC-10] the prompt no longer asks for a semicolon-separated list" \
+    "0" "$(grep -c "semicolon" <<< "$_p10" || true)"
 
 print_test_section "#2366: contract 3 and no verdict words"
 _M="$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml"

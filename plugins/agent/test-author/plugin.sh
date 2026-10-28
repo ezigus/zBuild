@@ -161,17 +161,25 @@ _ta_write_result() {
 # that stopped mid-write — so the next attempt, or a new session restoring the
 # work branch, continues from them instead of from nothing. Only the testfiles
 # the contract names are staged. Best-effort: a commit failure never fails the
-# stage, it only leaves the work uncommitted as before.
+# stage, it only leaves the work uncommitted as before. Sets _TA_CHANGED to how
+# many testfiles this attempt changed, for a pass's or fail's reason (as build's
+# says). Never in a retryable outcome's: the engine retries only while an attempt
+# changes the stage's outputs, and a count would make a no-op attempt look like
+# one that wrote (#2186).
+_TA_CHANGED=0
 _ta_commit_testfiles() {
-    local design="$1" repo="$2" msg="$3" tf
+    local design="$1" repo="$2" msg="$3" tf _changed
     local -a files=()
+    _TA_CHANGED=0
     git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || return 0
     while IFS= read -r tf; do
         [[ -n "$tf" && -e "$repo/$tf" ]] && files+=("$tf")
     done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
     [[ ${#files[@]} -gt 0 ]] || return 0
     git -C "$repo" add -- "${files[@]}" 2>/dev/null || return 0
-    git -C "$repo" diff --cached --quiet -- "${files[@]}" 2>/dev/null && return 0
+    _changed="$(git -C "$repo" diff --cached --name-only -- "${files[@]}" 2>/dev/null || true)"
+    [[ -n "$_changed" ]] || return 0
+    _TA_CHANGED="$(grep -c . <<< "$_changed" || true)"
     git -C "$repo" commit -q --no-verify --author "zbuild-pipeline <pipeline@local>" \
         -m "$msg" -- "${files[@]}" >/dev/null 2>&1 || return 0
     _ta_emit "test_author.committed" "files=${#files[@]}"
@@ -369,9 +377,9 @@ ${_ta_limits}")"; then
         else
             _disp="$(router_reason_disposition "$_reason")"
         fi
+        _ta_commit_testfiles "$design" "$repo" "test-author: partial assertions (${_reason}) — continued by the next attempt"
         _ta_write_result "$art" "$_disp" \
             "the author did not finish (${_reason}) — what it wrote is kept for the next attempt" "$n"
-        _ta_commit_testfiles "$design" "$repo" "test-author: partial assertions (${_reason}) — continued by the next attempt"
         return 1
     fi
 
@@ -396,7 +404,7 @@ ${_ta_limits}")"; then
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), still failing their check"
         _ta_write_result "$art" "fail" \
-            "${#_TA_CORR_FINDINGS[@]} assertion(s) still do not test what their SPEC says after $_round round(s)" "$n" \
+            "changed $_TA_CHANGED test file(s); ${#_TA_CORR_FINDINGS[@]} assertion(s) still do not test what their SPEC says after $_round round(s)" "$n" \
             "$(printf '%s\n' "${_TA_CORR_FINDINGS[@]}" | stage_findings_json)"
         return 0
     fi
@@ -415,7 +423,7 @@ ${_ta_limits}")"; then
     _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s)"
     _ta_emit "test_author.authored" "specs=$n"
     _ta_write_result "$art" "pass" \
-        "authored acceptance assertions for $n SPEC(s) from the design contract" "$n"
+        "changed $_TA_CHANGED test file(s); acceptance assertions for $n SPEC(s) from the design contract" "$n"
     return 0
 }
 

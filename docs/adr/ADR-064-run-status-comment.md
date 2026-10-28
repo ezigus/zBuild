@@ -2,6 +2,7 @@
 
 **Status:** Proposed (2026-09-18)
 **Amended:** 2026-10-14 (#2378) — the open items list only results this run wrote. Hydrate restores an earlier run's results with their saved times; one older than this run's start belongs to a stage that did not run this time, and is left out.
+**Amended:** 2026-10-28 — nothing a stage reported is cut, and a run that outgrows one comment continues in the next (§4, §6; see the amendment below).
 **Issue:** #2131
 **Keeper:** e-1 (KEEPERS §E — live-updating GitHub comment, PATCH, atomic id)
 **Amends:** ADR-010 §3 (the `gh-pr-comment` destination row), ADR-015 (References — per-stage `gh_comment` capture is a separate surface and unchanged)
@@ -80,8 +81,9 @@ Two constraints shaped where it lives:
    running row names no inputs (amended 2026-10-23): every stage gets every
    earlier stage's latest output (ADR-055), so the list was the same long
    string on every row. "What just happened" = the first line
-   of the stage's own summary, cut at 200 chars. Prompt bodies stay in
-   `stage-io/`.
+   of the stage's own summary, whole, with the rest of the summary folded
+   under it (amended 2026-10-28; it was cut at 200 chars). Prompt bodies stay
+   in `stage-io/`.
 
 5. **`seq` on the envelope.** `eb_emit_event` stamps `seq` from
    `ZBUILD_STAGE_IO_SEQ_LABEL` by the same present-only-while-active rule as
@@ -89,9 +91,10 @@ Two constraints shaped where it lives:
    runner cardinal was persisted nowhere; without it a consumer had no key to
    pair a stage's start with its end. The stage-less envelope keeps its 8 keys.
 
-6. **Bounded, redacted, advisory.** The body is capped at 60,000 bytes
-   (GitHub rejects 65,536): rows are added newest-first until the next would
-   overflow, then `… N earlier rows omitted — see run log`. The whole body
+6. **Bounded, redacted, advisory.** Each comment is capped at 60,000 bytes
+   (GitHub rejects 65,536). A run that outgrows one comment continues in the
+   next (amended 2026-10-28; it used to drop its oldest rows behind
+   `… N earlier rows omitted — see run log`). The whole body
    passes `apply_scope_redaction` when a scope manifest exists; a redactor
    failure posts nothing. Every `gh` call runs under a 30 s watchdog; every
    failure is one line in `status-comment.log` and `rc 0`. PATCHes are
@@ -142,7 +145,7 @@ Two constraints shaped where it lives:
   (unit); `run-status-comment-runner` (integration — the real runner, a
   GitHub that fails every call leaves the exit status alone). Mutation notes
   in `tests/mutation/run-status-comment.md`.
-- Tunables: `ZBUILD_STATUS_COMMENT_{MIN_INTERVAL,POLL,GH_TIMEOUT,MAX_BYTES,SUMMARY_CHARS,REAP_TIMEOUT}`.
+- Tunables: `ZBUILD_STATUS_COMMENT_{MIN_INTERVAL,POLL,GH_TIMEOUT,MAX_BYTES,HEADER_RESERVE,REAP_TIMEOUT}`.
 
 ## Amendment 2026-09-19 (#2145) — time first, Eastern, the ceiling
 
@@ -183,6 +186,29 @@ such events (stage-less, the largest share of the run's event volume) and 1,476 
 - The "1 s resolution on macOS" consequence above no longer holds: event timestamps carry real
   milliseconds on every host (ADR-065 §5, amended #1806).
 
+## Amendment 2026-10-28 — nothing a stage reported is lost from the issue
+
+On #1944 (2026-10-28) every row was cut at 200 characters mid-word ("…would not be caug…"),
+the rest of each stage's summary never appeared, and test-author's row read the same in every
+round, so a round that added no test could not be told from one that did.
+
+- **A row shows the stage's whole first summary line**, and the rest of its summary folded under
+  it (`<details>`). The snapshot (#2154) freezes both: its values are stored escaped (`esc: 1`),
+  so a multi-line summary survives the file; a file without `esc` holds raw single lines.
+- **A run that outgrows one comment continues in the next.** Rows fill the parts oldest first,
+  each part keeping `ZBUILD_STATUS_COMMENT_HEADER_RESERVE` (20,000) bytes for the header, so a
+  full part never changes again and a new row only lands in the newest. The newest part carries
+  the run's header (status, open items, current stage); an earlier part says it holds earlier
+  stages. Part 1 keeps the run's marker; part k is marked `run_id=<id> part=<k>`, its id kept in
+  `status-comment-<k>.json` (part 1's where it always was), and each is POSTed once and PATCHed
+  only when its text changes. The finalizer already edits the newest marked comment: the newest
+  part. A single row larger than a part keeps its first line and points at the run log for the rest.
+- **A stage that writes files says how many** (§4 "what just happened"): build's reason counts
+  the files it changed, and test-author's pass or fail reason the test files this attempt changed
+  ("changed 0 test file(s)" when it rewrote nothing). A retryable outcome's reason carries no
+  count: the engine retries a stage only while an attempt changes its outputs (#2186), and a
+  count would make an attempt that wrote nothing look like one that did.
+
 ## Amendment 2026-10-29 — a map member has its own row
 
 Each member of a map group has its own row, `<cardinal>.<n> <group>.<element>`, closed with its
@@ -191,6 +217,8 @@ whose summary says whether every member finished (ADR-047 amendment 2026-10-29).
 #1944 no lens had a row: a member's events carried no seq.
 
 ## Enforced by
+
+- Amendment 2026-10-28 → `tests/unit/run-status-comment-pages-test.sh` P1–P2 (the whole line, the rest folded), P3 (the snapshot keeps it whole), P4–P6 (parts, not omissions; the newest has the header; earlier parts do not change), P7 (one comment per part); `tests/unit/run-status-comment-render-test.sh` SPEC-4 (never cut), SPEC-6 (no omission); `tests/unit/test-author-loop-test.sh` A9 (test-author counts the test files it changed); `tests/unit/test-author-test.sh` SPEC-14 (a retryable outcome carries no count)
 
 - Open items list only results this run wrote (#2378) → `tests/unit/run-open-items-test.sh` O10
 

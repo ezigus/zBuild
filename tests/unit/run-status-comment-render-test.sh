@@ -129,13 +129,13 @@ assert_eq "[SPEC-3] reused members collapse to one row per iteration" \
     '**9:40 AM ET** · **6.2 reused** · iter 2 · build, test from iter 1 (empty_diff)' \
     "$reused_row"
 
-# ─── SPEC-4: summary line is cut at 200 chars and `|` is escaped ────────────
+# ─── SPEC-4: summary line is whole (ADR-064 §4, 2026-10-28) and `|` is escaped
 long="$(printf 'x%.0s' $(seq 1 260))"
 printf '## pr-open — pass\n\n- a|b %s\n' "$long" > "$STATE/artifacts/pr-open-summary.md"
 body="$(rsc_render_body "$EV" "$STATE")"
 pr_row="$(row_of '**8 pr-open**')"
 summary_part="${pr_row#*— }"
-assert_eq "[SPEC-4] summary cut at 200 chars (+ ellipsis)" "201" "${#summary_part}"
+assert_eq "[SPEC-4] summary line is never cut (all 265 chars)" "265" "${#summary_part}"
 assert_contains "[SPEC-4] pipe escaped" "$pr_row" 'a\|b'
 
 # ─── SPEC-5: terminal events drive the header ───────────────────────────────
@@ -151,7 +151,7 @@ assert_eq "[SPEC-5] no current stage once terminal" "0" "$(grep -c -F 'current: 
 assert_eq "[SPEC-5] the row killed mid-way keeps its start" '**10:11 AM ET → running** · **9 deploy**' \
     "$(row_of '**9 deploy**')"
 
-# ─── SPEC-6: the 60 KB bound ────────────────────────────────────────────────
+# ─── SPEC-6: the 60 KB bound, per part ────────────────────────────────────────────────
 BSTATE="$TEST_TEMP_DIR/bound"; BEV="$BSTATE/events.jsonl"
 mkdir -p "$BSTATE/artifacts"; : > "$BEV"
 long300="$(printf 'y%.0s' $(seq 1 300))"
@@ -170,12 +170,9 @@ else
     assert_fail "[SPEC-6] 400-row feed renders under 60,000 bytes" "got $bytes"
 fi
 assert_contains "[SPEC-6] newest row present" "$body" '**400 s400**'
-assert_eq "[SPEC-6] oldest row omitted" "0" "$(grep -c -F -- '**1 s1**' <<< "$body")"
-omit_line="$(grep -F 'earlier rows omitted' <<< "$body")"
-assert_contains "[SPEC-6] omission line is the last line" "$(tail -1 <<< "$body")" 'earlier rows omitted — see run log'
-rendered="$(grep -c -E '· \*\*[0-9]+ s[0-9]+\*\*' <<< "$body")"
-omitted="$(sed -E 's/.*… ([0-9]+) earlier rows omitted.*/\1/' <<< "$omit_line")"
-assert_eq "[SPEC-6] omitted count + rendered rows == 400" "400" "$(( rendered + omitted ))"
+assert_eq "[SPEC-6] the oldest row is not in the newest part" "0" "$(grep -c -F -- '**1 s1**' <<< "$body")"
+# Older rows are not omitted: they are in earlier parts (run-status-comment-pages-test.sh P4).
+assert_eq "[SPEC-6] no omission line" "0" "$(grep -c 'omitted' <<< "$body" || true)"
 
 # rsc_byte_len counts BYTES under any locale (the GitHub limit is bytes).
 assert_eq "[SPEC-6] rsc_byte_len counts bytes, not characters" "14" "$(rsc_byte_len 'héllo — ✓')"
