@@ -33,7 +33,7 @@ without reading platform variables (R-8).
    body.** When the runner is invoked inside `$(bash "$RUNNER" ... 2>&1)` (as
    existing tests do), bash creates a pipe; both stdout and stderr of the runner
    point to its write end. Before the watchdog is armed, `main()` runs
-   `exec {_RUNNER_ERR_FD}>&2` (line 2756) to save a copy of stderr on a
+   `exec {_RUNNER_ERR_FD}>&2` (line 2773) to save a copy of stderr on a
    high-numbered fd (`_RUNNER_ERR_FD` ≥ 10). The watchdog subshell inherits
    this fd. The `>/dev/null 2>&1 &` redirect closes fds 1 and 2 in the
    watchdog, but `_RUNNER_ERR_FD` is NOT covered. When the watchdog is
@@ -80,7 +80,7 @@ without reading platform variables (R-8).
    contains `trap ':' INT TERM` — a guard line that ends with `TERM`. The
    SPEC-5 awk pattern `/trap .* TERM$/` finds this line as the FIRST
    `trap...TERM` inside `main()` (the nested function definition precedes the
-   startup install at line 2763). The subsequent `grep -oE "trap '[^']+' TERM"`
+   startup install at line 2781). The subsequent `grep -oE "trap '[^']+' TERM"`
    does not match `trap ':' INT TERM` (two-signal form), so `_startup_term`
    comes up empty (`<startup-not-found>`), while `_rearm_term` from
    `_runner_rearm_traps` is `trap '_runner_signal_trap TERM' TERM`. Test fails.
@@ -110,23 +110,24 @@ without reading platform variables (R-8).
    The EXIT trap's `kill -KILL "${_RUNNER_WATCHDOG_PID}"` kills the watchdog
    bash subshell, but NOT its `sleep` child — bash SIGKILL only kills the target
    PID, not its children. The sleep is then ORPHANED (reparented to init) and
-   continues for `_RUNNER_MAX_RUN_S` seconds (default 20700 s). The test
-   framework's `_kill_test_children` does a bare `wait`, which blocks until
-   ALL background jobs (including any process in the test's job table that can
-   reach the orphaned sleep) are done, causing the 480 s test timeout.
-   **Fix:** in the EXIT trap's watchdog cleanup block, collect the watchdog's
-   direct children via `pgrep -P "${_RUNNER_WATCHDOG_PID}"` BEFORE sending
-   SIGKILL to the watchdog. This must be done before the kill — after the
-   watchdog dies, its children are reparented to PID 1 and `pgrep -P` would
-   miss them. Send SIGKILL to both the watchdog PID and its children (using
-   SIGKILL, not SIGTERM, because the children have SIGTERM=SIG_IGN). Added
-   `tests/integration/sigterm-aborts-pipeline-test.sh` to scope: it is an
-   existing test for #686 that regresses on this orphaned-sleep defect.
+   continues for `_RUNNER_MAX_RUN_S` seconds (default 20700 s).
+   **Fix (applied — commit 9e7ad118):** in the EXIT trap's watchdog cleanup block,
+   collect the watchdog's direct children via `pgrep -P "${_RUNNER_WATCHDOG_PID}"`
+   BEFORE sending SIGKILL to the watchdog. Send SIGKILL to both the watchdog PID
+   and its children (using SIGKILL, not SIGTERM, because the children have
+   SIGTERM=SIG_IGN). This fix is present at runner.sh:2566-2578.
+   **Residual issue:** despite this fix being applied, `sigterm-aborts-pipeline-test.sh`
+   STILL hangs at 480 s when the test stage runs (tree SHA confirmed as current HEAD).
+   The hang is at `wait "$RUNNER_PID"` in the test (the runner bash has not exited
+   after 480 s). The pgrep+kill approach is correct in theory; the actual root cause
+   of the remaining hang could not be determined from static analysis alone.
+   `tests/integration/sigterm-aborts-pipeline-test.sh` is in scope as the test
+   that regresses on this orphaned-process defect.
 
 ## Bug fix status
 
 **Applied correctly in current worktree:**
-- Bug A: `exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2826, inside the watchdog body
+- Bug A: `exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2843, inside the watchdog body
   (after `trap '' TERM`, before `_wdg_lim=`). Orphaned `sleep` cannot hold the pipe write
   end open for `$(...)` callers. CAUTION: the boundary form `( ... ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
   closes `_RUNNER_ERR_FD` in the parent (bash evaluates named-fd redirects before
@@ -138,13 +139,9 @@ without reading platform variables (R-8).
   line 2551 is idempotent.
 - Bug C: runner-signal-rearm-test.sh:92 — awk pattern narrowed from `/trap .* TERM$/` to
   `/trap '.*' TERM$/`, skipping the two-signal `trap ':' INT TERM` guard line.
-
-**Still defective in current worktree — must be fixed:**
-- Bug D (orphaned watchdog sleep): EXIT trap's watchdog cleanup at runner.sh:2560-2561 does
-  not kill the watchdog's `sleep "$_wdg_lim"` child before SIGKILL-ing the watchdog. The child
-  inherits SIGTERM=SIG_IGN and survives as an orphan for `_RUNNER_MAX_RUN_S` seconds, causing
-  `sigterm-aborts-pipeline-test.sh` to time out at 480 s. Fix: `pgrep -P "$_RUNNER_WATCHDOG_PID"`
-  BEFORE the SIGKILL, then SIGKILL all found children alongside the watchdog.
+- Bug D: EXIT trap watchdog cleanup at runner.sh:2566-2578 now collects watchdog children
+  via `pgrep -P` before SIGKILL-ing the watchdog, then SIGKILL-s each found child. Applied
+  in commit 9e7ad118. The orphaned `sleep` with SIGTERM=SIG_IGN is killed.
 
 **Fixed in earlier commit (a60f39a4):**
 - `:-0` default on kill/wait in abort trap → changed to `:-`
@@ -157,7 +154,23 @@ without reading platform variables (R-8).
 - O3 for-loop in run-open-items-test.sh now includes `timed_out` — test passes
 - run-watchdog-clean-exit-test.sh S3-4 re-reads state file after sleep — test passes
 
+**Outstanding (not yet resolved):**
+- `sigterm-aborts-pipeline-test.sh` times out at 480 s despite Bug D fix being applied.
+  The runner bash does not exit within 480 s after receiving SIGTERM. Root cause of the
+  remaining hang could not be determined from static analysis. The Bug D fix is structurally
+  correct (pgrep+kill before watchdog kill); there may be an additional issue in the EXIT
+  trap flow that causes the runner bash itself to hang.
+
 ## Notes on acceptance gate findings
+
+**Acceptance gate PASSED:** All 4 [code] SPECs pass the negctl check (fail on old code,
+pass on new code). All WIRING reachability checks pass. SPEC-5 and SPEC-6 (no-code)
+skipped as expected.
+
+**Full test suite (npm test) still FAILS:** 820 of 821 tests pass. The one failure is
+`tests/integration/sigterm-aborts-pipeline-test.sh` (480 s timeout). This is a pre-existing
+test for #686 that regresses on the watchdog addition. The test stage verdict is "unknown"
+due to a model-call failure; the test-results.json confirms the failure.
 
 **`core/pipeline/template.sh` reachability** — cleared once the syntax error
 in `run-limit-precedence-test.sh:173` was fixed. The template-layer precedence
@@ -170,28 +183,24 @@ correctly placed the run-level limit content in a new **§11**. SPEC-6 reflects
 §11. The issue-acceptance "NOT SURE" about this is resolved: the issue text
 contained a draft section number; §11 is the correct final number.
 
-**Integration hangs root cause — resolved.** Bug A fix (`exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2826 inside the watchdog body) prevents orphaned `sleep` from holding `_RUNNER_ERR_FD` (the pipe write end) open in `$(...)` invocations. The boundary form `{_RUNNER_ERR_FD}>&-` was tested and regressed runner-release-exit-paths SPEC-5 (Finding 18); the inside-body form is the only correct approach.
+**Integration hangs root cause — partially resolved.** Bug A fix prevents
+orphaned `sleep` from holding `_RUNNER_ERR_FD` (the pipe write end) open in
+`$(...)` invocations. The three original integration hangs (run-timed-out,
+resume-after-run-timeout, runner-release-exit-paths) are fixed. One remain:
+sigterm-aborts (see Bug D above and the outstanding items section).
 
-**runner-release-exit-paths SPEC-5 — NOW PASSES.** Bug B is correctly applied:
-`trap ':' INT TERM` is the first line of `_runner_restore_stderr()` (runner.sh:939),
-so the guard is active before the function returns. The test confirms this in the
-current worktree (820 pass, 1 fail — only sigterm-aborts fails).
+**runner-release-exit-paths SPEC-5 — PASSES.** Bug B is correctly applied:
+`trap ':' INT TERM` is the first line of `_runner_restore_stderr()` (runner.sh:939).
 
-**sigterm-aborts-pipeline-test.sh — 480 s hang, one remaining defect.**
-The test sends `kill -TERM -$RUNNER_PGID` to the runner's process group from
-the test harness. The watchdog's `sleep "$_wdg_lim"` child inherits SIGTERM=SIG_IGN
-and survives both the PG-wide TERM and the EXIT trap's SIGKILL (which targets only
-the watchdog bash PID, not its children). The orphaned sleep runs for `_RUNNER_MAX_RUN_S`
-(default 20700 s), causing the test framework's bare `wait` in `_kill_test_children`
-(test-helpers.sh:114) to block until the 480 s test timeout fires. Fix described
-in Decision 8: collect children via `pgrep -P` before killing the watchdog, then
-SIGKILL all. See Finding 24.
+**sigterm-aborts-pipeline-test.sh — 480 s hang, root cause partially identified.**
+Bug D fix kills the orphaned `sleep "$_wdg_lim"` child. Despite this, the test still
+hangs at 480 s. The runner bash does not exit. The design cannot determine the additional
+cause from static analysis; the implementation has a defect in the EXIT trap that prevents
+the runner from exiting after receiving SIGTERM.
 
-**Shape floor** — Golden files contain NO new content from this change; the
-normal-run event sequence is unaffected. The shape-floor check flags the two
-event-sequence golden files only because `_SF_FAILED_COUNT > 0` (sigterm-aborts
-failing). Once Bug D is fixed and sigterm-aborts passes, `_SF_FAILED_COUNT == 0`
-and the shape-floor check auto-verifies the golden files with no content change needed.
+**Shape floor** — flagged two event-sequence golden files because `_SF_FAILED_COUNT > 0`
+(sigterm-aborts failing). The golden files need no content change (normal-run event sequence
+is unaffected by this change). Once sigterm-aborts passes, the shape floor auto-verifies.
 
 **NEGCTL timeout on SPEC-1** — The negctl baseline run for SPEC-1 timed out
 (pipeline problem, not our change). The negctl head run shows all 15 assertions
@@ -259,7 +268,7 @@ tests/unit/runner-signal-rearm-test.sh [SPEC-5]: the awk pattern /trap .* TERM$/
 
 **Finding 1 (design — R-10 not covered by any SPEC)**: Fixed. Added `covers: R-10` to SPEC-1. R-10 ("npm test + npm run lint green") is a meta-requirement: once the implementation bugs are fixed and SPEC-1 through SPEC-6 all pass, both `npm test` and `npm run lint` are green.
 
-**Finding 2 (test — 3 integration timeouts)**: Fully resolved. The original design attributed the 3 integration hangs to `:-0` in kill/wait. The `:-0` → `:-` fix was applied in commit a60f39a4 but tests still hung. The build then applied `>/dev/null 2>&1 &` (Bug A partial), but the 3 tests STILL timed out because `_RUNNER_ERR_FD` (opened at line 2756 before the watchdog arm) is also a pipe write end and is not covered by the `2>&1` redirect. Bug A is now fully fixed: `exec {_RUNNER_ERR_FD}>&- || true` at runner.sh:2826 closes this fd inside the watchdog body. The orphaned `sleep` can no longer hold the pipe open. See Finding 16 and Finding 18.
+**Finding 2 (test — 3 integration timeouts)**: Substantially resolved. The original design attributed the 3 integration hangs to `:-0` in kill/wait. The `:-0` → `:-` fix was applied in commit a60f39a4. Bug A (pipe fd inheritance) fixed the remaining $(…) callers. The three original hangs (run-timed-out, resume-after-run-timeout, runner-release-exit-paths) now pass. sigterm-aborts is the remaining failing test (see Finding 25).
 
 **Finding 3 (test — lint-test-errexit: 8 occurrences)**: Fixed in prior worktree commit. All 4 new test files use `_rc=0; cmd || _rc=$?` pattern.
 
@@ -287,7 +296,7 @@ tests/unit/runner-signal-rearm-test.sh [SPEC-5]: the awk pattern /trap .* TERM$/
 
 **Finding 15 (build — NEGCTL WIRING for SPEC-4)**: WIRING was `core/pipeline/runner.sh` only. SPEC-4 asserts `get_resume_recommendation(timed_out) = manual_resume_only`, which is implemented in `core/state/resume.sh`. Added `core/state/resume.sh` to WIRING.
 
-**Finding 16 (build pass 2 — Bug A incomplete, now resolved)**: The `>/dev/null 2>&1 &` redirect fixed fds 1 and 2 but not `_RUNNER_ERR_FD`. `exec {_RUNNER_ERR_FD}>&2` at line 2756 opens this fd pointing to fd 2 (pipe write end when runner is in `$(... 2>&1)`). The watchdog inherits it. The orphaned `sleep` holds `_RUNNER_ERR_FD` open indefinitely. The fix (see Finding 18 for why the boundary form was abandoned) is `exec {_RUNNER_ERR_FD}>&- || true` as the second line inside the watchdog body. This is now applied at runner.sh:2826.
+**Finding 16 (build pass 2 — Bug A incomplete, now resolved)**: The `>/dev/null 2>&1 &` redirect fixed fds 1 and 2 but not `_RUNNER_ERR_FD`. `exec {_RUNNER_ERR_FD}>&2` at line 2773 opens this fd pointing to fd 2 (pipe write end when runner is in `$(... 2>&1)`). The watchdog inherits it. The orphaned `sleep` holds `_RUNNER_ERR_FD` open indefinitely. The fix (see Finding 18 for why the boundary form was abandoned) is `exec {_RUNNER_ERR_FD}>&- || true` as the second line inside the watchdog body. This is now applied at runner.sh:2843.
 
 **Finding 17 (build pass 2 — Bug C: runner-signal-rearm-test.sh SPEC-5 regression)**: The Bug B fix (trap guard in `_runner_abort_trap`) added `trap ':' INT TERM` inside the nested function, which is defined inside main(). The existing test's awk pattern `/trap .* TERM$/` matches this guard line first (before the startup install). `grep -oE "trap '[^']+' TERM"` does not match the two-signal `trap ':' INT TERM` form, so `_startup_term` = empty. `_rearm_term` = `trap '_runner_signal_trap TERM' TERM`. Test fails. Fix: narrow the awk pattern to `/trap '.*' TERM$/`. Added `tests/unit/runner-signal-rearm-test.sh` to scope and supersedes block. Decision section 5 added.
 
@@ -304,3 +313,5 @@ tests/unit/runner-signal-rearm-test.sh [SPEC-5]: the awk pattern /trap .* TERM$/
 **Finding 23 (issue-acceptance pass 4 — R-9 NOT SURE resolved)**: The issue-acceptance asks whether the issue's "§9" refers to ADR-054's §9 (unchanged per-stage section) or means something else. Finding 7 settled this: the issue text contained a draft section number. ADR-054's §9 is "Per-stage router configuration surface" (unchanged). The per-run limit is in §11. SPEC-6 correctly cites §11. No design change needed.
 
 **Finding 24 (issue-acceptance pass 5/6 — sigterm-aborts-pipeline-test.sh 480 s hang)**: The test sends `kill -TERM -$RUNNER_PGID` to the runner's process group. The watchdog subshell has `trap '' TERM` and ignores the signal. Its `sleep "$_wdg_lim"` child inherits SIGTERM=SIG_IGN at the OS level (POSIX: SIG_IGN is inherited across exec). When the EXIT trap sends `kill -KILL "${_RUNNER_WATCHDOG_PID}"`, the watchdog bash dies but its `sleep "$_wdg_lim"` child is ORPHANED — reparented to PID 1, SIGKILL was sent only to the watchdog's bash PID. With default `_RUNNER_MAX_RUN_S = 20700`, this orphaned sleep runs for 20700 s. The test framework's `_kill_test_children` (test-helpers.sh:108-114) calls bare `wait 2>/dev/null || true` which blocks on all remaining background/descended processes, hitting the 480 s test timeout. Fix (Decision 8): in the EXIT trap's watchdog cleanup block, use `pgrep -P "${_RUNNER_WATCHDOG_PID}"` BEFORE `kill -KILL` to collect children, then SIGKILL both watchdog and children. `tests/integration/sigterm-aborts-pipeline-test.sh` is added to scope as the test that regresses on this defect.
+
+**Finding 25 (iter-8 — sigterm-aborts STILL fails despite Bug D fix)**: Commit 9e7ad118 applied the Bug D fix (pgrep+kill orphan children). Test stage confirmed it ran against current HEAD tree (tree SHA 4e0a75df matches). sigterm-aborts STILL times out at 480 s. The hang is at `wait "$RUNNER_PID"` in the test (line 173) — the runner bash has not exited. No assertions are printed before the timeout, confirming the runner never exits. The Bug D fix should kill the orphaned `sleep 20700` child; that mechanism is structurally correct (pgrep -P before kill), but the test still hangs. There is likely an additional cause in the EXIT trap that prevents the runner bash from completing. The design cannot determine the additional root cause through static analysis. The acceptance gate (which tests the specific SPEC assertions) passes; the regression affects an existing test for #686 that is not a SPEC for this issue.
