@@ -21,8 +21,8 @@
 
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 6s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 920691 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1821598 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -58,7 +58,7 @@
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 905648 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1806554 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -122,11 +122,17 @@
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
-  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites new tests
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
-  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
 
   [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
@@ -144,7 +150,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 38 tests failed[0m
+  [38;2;248;113;113m[1m2 of 44 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
@@ -201,11 +207,17 @@
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
-  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites new tests
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
-  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
 
   [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
@@ -221,5 +233,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 38 tests passed[0m
+  [38;2;74;222;128m[1mAll 44 tests passed[0m
 

@@ -1,0 +1,3 @@
+[
+  "tests/integration/sigterm-aborts-pipeline-test.sh"
+]

@@ -53,14 +53,26 @@
   [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
     [2mtimed_out not found alongside sigint/sigterm/cycle_abort in ADR-025[0m
-  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites new tests
-    [2mnone of the new test files referenced in ## Enforced by[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+    [2mrun-timed-out-test not referenced in ADR-025 ## Enforced by[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+    [2mrun-limit-precedence-test not referenced in ADR-025 ## Enforced by[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+    [2mrun-watchdog-clean-exit-test not referenced in ADR-025 ## Enforced by[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
+    [2mresume-after-run-timeout-test not referenced in ADR-025 ## Enforced by[0m
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 exists
     [2mno §11 heading found in ADR-054[0m
-  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests
-    [2mno run-limit test referenced in ADR-054 ## Enforced by[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+    [2mrun-timed-out-test not referenced in ADR-054 ## Enforced by[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+    [2mrun-limit-precedence-test not referenced in ADR-054 ## Enforced by[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+    [2mrun-watchdog-clean-exit-test not referenced in ADR-054 ## Enforced by[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
+    [2mresume-after-run-timeout-test not referenced in ADR-054 ## Enforced by[0m
 
   [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
@@ -78,7 +90,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m15 of 31 tests failed[0m
+  [38;2;248;113;113m[1m21 of 37 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
   [38;2;248;113;113m✗[0m [#1944/SPEC-2] precedence checks skipped — function not found
@@ -90,9 +102,15 @@
   [38;2;248;113;113m✗[0m [#1944/SPEC-2] stage did not run when template limit is misconfigured
   [38;2;248;113;113m✗[0m [#1944/SPEC-2] message names the misconfigured template source (max_run_s)
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
-  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites new tests
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 exists
-  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit
 
@@ -148,11 +166,17 @@
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
-  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites new tests
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
-  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
 
   [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
@@ -168,5 +192,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 38 tests passed[0m
+  [38;2;74;222;128m[1mAll 44 tests passed[0m
 
