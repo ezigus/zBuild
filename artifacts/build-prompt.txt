@@ -143,13 +143,13 @@ omit this line the pipeline falls back to the plan title.
 
 **Goal:** Fix stage timeouts silently not applying on the orchestrator route, and close the gaps that enable it: a fallback backend (orch-sequential) that ignores the timeout, a flat 300 s hard-coded deadline that overrides per-stage configuration, and a kill path that only signals individual PIDs rather than process groups.
 
-**Context:** Three separate mechanisms interact to make per-stage `timeout_s:` silently ineffective on the orchestrator route. (1) The strategies pass `ZBUILD_ORCH_TIMEOUT:-300` to `orch_collect` instead of the stage's declared limit. (2) orch-sequential's `orch_collect` ignores `--timeout` entirely, so the 300 s cap never applied to it either. (3) `_runner_dispatch_always_run` reads `router.timeout_s` (the per-call model timeout) as the watchdog bound, not the whole-stage `timeout_s:`. (4) `_orch_local_kill_slot` sends individual-PID signals, leaving child processes alive when the parent ignores TERM. (5) A missing or wrong backend silently falls through to orch-sequential rather than failing fast.
+**Context:** Three separate mechanisms interact to make per-stage `timeout_s:` silently ineffective on the orchestrator route. (1) The strategies pass `ZBUILD_ORCH_TIMEOUT:-300` to `orch_collect` instead of the stage's declared limit. (2) orch-sequential's `orch_collect` ignores `--timeout` entirely, so the 300 s cap never applied to it either. (3) `_runner_dispatch_always_run` reads `router.timeout_s` (the per-call model timeout) as the watchdog bound, not the whole-stage `timeout_s:`. (4) `_orch_local_kill_slot` sends individual-PID signals, leaving child processes alive when the parent ignores TERM. (5) A missing or wrong backend silently falls through to orch-sequential rather than failing fast. (6) When the backend fails to load at source time, runner.sh does not detect `_ZBUILD_ORCH_BACKEND_DISPOSITION=misconfigured` and instead proceeds with stubs that produce uninformative errors.
 
 **Decision:**
 1. Retire orch-sequential entirely: delete the plugin directory, the golden, the wiki page; change the `sequential` fallback in `_orch_load_backend` (contract.sh) to `bash-parallel` (the actual system default) — the `sequential` string must not remain anywhere; a config explicitly naming `sequential` or `orch-sequential` ends `misconfigured`.
 2. Replace the `ZBUILD_ORCH_TIMEOUT:-300` literal in all three strategies with `template_stage_time_limit "$stage"`, which reads the stage's declared `timeout_s:` (default 900 s). `ZBUILD_ORCH_TIMEOUT` is no longer read.
-3. Make a missing backend fatal: `orch_load_backend` no longer falls through to sequential; runner.sh detects the failed load and surfaces it as `misconfigured` naming the backend.
-4. Fix `_runner_dispatch_always_run` to read `template_stage_time_limit` instead of `router.timeout_s`/`ZBUILD_RELEASE_TIMEOUT`. Move `timeout_s: 30` (release) and `timeout_s: 120` (persist) from under `router:` to the top-level stage block in both shipped templates so `template_stage_time_limit` finds them. The `always-run-minimal.yaml` fixture template must also have `release.timeout_s: 2` as a direct child of its `release:` block (not under `router:`) — `template_stage_time_limits_load` reads the overlay source file, not the merged template, so the fixture must carry the value explicitly at stage-block indent.
+3. Make a missing backend fatal: `orch_load_backend` no longer falls through to sequential; runner.sh checks `_ZBUILD_ORCH_BACKEND_DISPOSITION` immediately after sourcing `contract.sh` and fails the pipeline as `misconfigured` before dispatching any stage.
+4. Fix `_runner_dispatch_always_run` to read `template_stage_time_limit` instead of `router.timeout_s`/`ZBUILD_RELEASE_TIMEOUT`. Move `timeout_s: 30` (release) and `timeout_s: 120` (persist) from under `router:` to the top-level stage block in both shipped templates so `template_stage_time_limit` finds them. The `always-run-minimal.yaml` fixture template must carry `timeout_s: 2` as a direct child of its `release:` block (not under `router:`) — `template_stage_time_limits_load` reads the overlay source file, not the merged template, so the fixture must carry the value explicitly at stage-block indent. Template extension via `extends:` must propagate `always_run:` lists from the extending template so persist is included in `_TPL_ALWAYS_RUN` when the extending template names it.
 5. Route all kills through `zbuild_pg_kill`/`zbuild_pid_kill`: source `proc-group.sh` in `local_engine.sh`; replace the bare `kill` calls in `_orch_local_kill_slot` and the watchdog in `_runner_dispatch_always_run` with the shared helper.
 
 
@@ -157,51 +157,66 @@ omit this line the pipeline falls back to the plan title.
 
 ## Findings
 
-**Test finding 20 (SPEC-3 guard fails — 3 files still name orch-sequential):** The guard test (`orch-sequential-absent-guard-test.sh`) found the literal string `orch-sequential` in three files outside `docs/adr/`: `.github/issues/keepers-manifest.yaml`, `plugins/tool/orch-mock/tests/orch-mock-test.sh`, and `tests/integration/orch-backend-misconfigured-test.sh`. Fixed in this revision:
-- `.github/issues/keepers-manifest.yaml` added to scope; SPEC-3 now names all 4 occurrences (lines 2841, 3329, 3335, 3345) and specifies the update for each (remove from `closed_reason`; strip orch-sequential title/body from the `cleanup-delta-d` keeper entry while retaining the memory-sqlite portions).
-- `orch-backend-misconfigured-test.sh` lines 20, 51 (comments) and 79 (test description string) must replace `orch-sequential` with neutral phrasing; SPEC-3 now names these explicitly.
-- `orch-mock-test.sh` line 3 (sibling-backends comment) must be updated; SPEC-3 now names this explicitly.
+**Test finding 20 (SPEC-3 guard fails — 3 files still name orch-sequential):** The guard test found `orch-sequential` in `.github/issues/keepers-manifest.yaml`, `plugins/tool/orch-mock/tests/orch-mock-test.sh`, and `tests/integration/orch-backend-misconfigured-test.sh`. Fixed: all three files are in scope; SPEC-3 names all 4 occurrences and specifies the update for each.
 
-**test-author finding 1 (SPEC-1 — all three strategies must propagate `timed_out`):** The test-author found that propagation of `timed_out` naming the stage and limit was only asserted for the fanout strategy. SPEC-1 now explicitly requires all three strategies (fanout, map, sequential) to each propagate `timed_out` from `_ORCH_COLLECT_OUTCOME`. The test failure also showed that on the partial build the fanout implementation did not set `_ORCH_COLLECT_OUTCOME` at all (got `<empty>`); this is a code issue for the build stage to fix.
+**test-author finding 1 (SPEC-1 — all three strategies must propagate `timed_out`):** SPEC-1 now explicitly requires all three strategies (fanout, map, sequential) to each propagate `timed_out` from `_ORCH_COLLECT_OUTCOME`. The one remaining failure at HEAD — `[#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME` — is a code issue: `orch_collect` is called across a subshell boundary, so `_ORCH_COLLECT_OUTCOME` never propagates back. The build must call `orch_collect` in the same shell context.
 
-**test-author finding 2 (SPEC-5 — both release and persist must be separately tested):** SPEC-5 now requires the test to cover both the release stage (30 s) and the persist stage (120 s) as separate hung-stage scenarios. `tests/integration/always-run-exit-paths-test.sh` added to SPEC-5 TESTFILES.
+**test-author finding 2 (SPEC-5 — both release and persist must be separately tested):** SPEC-5 now requires both release (30 s) and persist (120 s) scenarios.
 
-**test-author finding 3 (SPEC-11 — pool isolation test must be in orch-mock-test.sh):** SPEC-11 now states the assertion carries the `[#1801/SPEC-11]` tag in `plugins/tool/orch-mock/tests/orch-mock-test.sh`, and clarifies that SPEC-12 accounts for all other behavioral tests in `orch-sequential-test.sh`.
+**test-author finding 3 (SPEC-11 — pool isolation test must be in orch-mock-test.sh):** SPEC-11 states the assertion carries the `[#1801/SPEC-11]` tag in `plugins/tool/orch-mock/tests/orch-mock-test.sh`.
 
-**Test findings 3–18, 22–23 (broad pipeline failures):** Many integration tests fail with "exits 0, got: 1". These are code issues in the partial build (contract.sh sequential-fallback removal or runner.sh changes). The design's scope already includes all affected source files. Not a design issue.
+**Test findings 3–18, 22–23 (broad pipeline failures):** Many integration tests fail with "exits 0, got: 1". These are code issues in the partial build. The design's scope already includes all affected source files.
 
-**lint-test-errexit failures:** `orch-timeout-applies-test.sh`, `orch-backend-misconfigured-test.sh`, and `orch-kill-uses-pg-kill-guard-test.sh` use `set -e` mid-file in files whose headers are `set -uo pipefail`. SPEC-9 now explicitly names this constraint. Code issue for build to fix.
+**lint-test-errexit failures:** `orch-timeout-applies-test.sh`, `orch-backend-misconfigured-test.sh`, and `orch-kill-uses-pg-kill-guard-test.sh` use `set -e` mid-file. SPEC-9 names this constraint. Code issue for build.
 
-**Test findings 21–22 (golden files may be stale):** `tests/golden/full-pipeline/event-sequence.golden` and `tests/golden/parity/event-sequence.golden` were flagged as potentially stale. Neither references `orch-sequential`; both are added to scope in case pipeline-event changes from the implementation require updates.
+**Test findings 21–22 (golden files may be stale):** Both `tests/golden/full-pipeline/event-sequence.golden` and `tests/golden/parity/event-sequence.golden` are in scope.
 
-**R-7 (scope discovery):** Greps per CLAUDE.md confirmed all affected test files:
-- `grep -rl 'orch-sequential' tests/` → 10 files: all in scope.
+**R-7 (scope discovery — confirmed at HEAD):** Greps run at HEAD per CLAUDE.md confirm all affected test files:
+- `grep -rl 'orch-sequential' tests/` → 9 files with behavior pins: all in scope.
 - `grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/` → 0 hits.
-- `grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/` → 2 files: both in scope.
+- `grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/` → 2 files (runner-release-exit-paths-test.sh, always-run-exit-paths-test.sh): both in scope.
 - `grep -rl '_orch_local_kill_slot' tests/` → 0 hits (guarded by new SPEC-6 test).
-- `grep -rl 'router\.timeout_s' tests/` → 17 files; 2 pin the always-run watchdog bound (in scope); remaining 15 test the per-call model-call timeout accessor (`template_stage_router_timeout`), unchanged by this issue.
+- `grep -rl 'router\.timeout_s' tests/` → 22 files; 2 pin the always-run watchdog bound (in scope); remaining 20 test the per-call model-call timeout accessor (`template_stage_router_timeout`), unchanged by this issue. R-7 is met by the scope block and this Findings section.
 
-**Template observation (revised — implemented in build commit `ee6aab95`):** `simple.yaml` and `deployed.yaml` now carry `timeout_s: 30` (release) and `timeout_s: 120` (persist) as direct stage-block children alongside a separate `router.timeout_s` for per-call model limits. Both shipped templates are confirmed correct. The remaining gap is the fixture file `tests/fixtures/templates/always-run-minimal.yaml` which still has `router.timeout_s: 2` only; see the issue-acceptance finding 1 above.
+**Template observation (implemented in build commit `ee6aab95`):** `simple.yaml` and `deployed.yaml` carry `timeout_s: 30` (release) and `timeout_s: 120` (persist) as direct stage-block children. `always-run-minimal.yaml` has `timeout_s: 2` added as a direct child of `release:` (diff confirmed). The remaining fixture gap from revision 12 is resolved.
 
-**Supersedes updates:** The test-author renamed `_SPEC5_RELEASE_TIMEOUT` → `_SPEC5_STAGE_TIMEOUT` in `runner-release-exit-paths-test.sh`. Both exit-path-teardown-budget-guard-test.sh entries in the supersedes block reflect this rename. Confirmed: `exit-path-teardown-budget-guard-test.sh` at HEAD already greps for `_SPEC5_STAGE_TIMEOUT` (lines 40–68), so the supersedes rename is already implemented.
+**Supersedes updates:** The test-author renamed `_SPEC5_RELEASE_TIMEOUT` → `_SPEC5_STAGE_TIMEOUT` in `runner-release-exit-paths-test.sh`. Both exit-path-teardown-budget-guard-test.sh entries reflect this rename. Confirmed: `exit-path-teardown-budget-guard-test.sh` at HEAD already greps for `_SPEC5_STAGE_TIMEOUT` (lines 40–68), so the supersedes rename is already implemented.
 
 **`config/adr-enforcement-baseline.txt`:** Removing ADR-011 and ADR-017 from the baseline while adding their `## Enforced by` sections is required by `lint-adr-enforced-by.sh` (part of `npm run lint`).
 
-**Design findings 1–2 (SPEC-7 TESTFILES named ADR docs, not test files):** The previous design listed `docs/adr/ADR-011-pluggable-backends.md` and `docs/adr/ADR-017-per-stage-router-config.md` as TESTFILES for SPEC-7. These are source docs, not test files. Fixed: SPEC-7 TESTFILES now names `tests/unit/lint-adr-enforced-by-test.sh`, which verifies that every live ADR carries an `## Enforced by` section and is not in the baseline (`config/adr-enforcement-baseline.txt`). Adding the `## Enforced by` sections to ADR-011 and ADR-017 and removing them from the baseline is exactly what SPEC-7 requires; `lint-adr-enforced-by-test.sh` A3/A5 assertions enforce both checks. Both ADR files remain in the scope block (they are still changed by this issue); only the TESTFILES entry changed. `tests/unit/lint-adr-enforced-by-test.sh` and `tests/integration/always-run-exit-paths-test.sh` (already referenced in SPEC-5 TESTFILES) were also added to the scope block.
+**Design findings 1–2 (SPEC-7 TESTFILES):** SPEC-7 TESTFILES names `tests/unit/lint-adr-enforced-by-test.sh` (not the ADR source docs).
 
-**Test-stage finding 1 (SPEC-1 — one assertion fails at HEAD; code issue):** The negctl check at HEAD for SPEC-1 shows 14/15 assertions pass. The one remaining failure is `[#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME` — got `<empty>`. Confirmed by reading `fanout.sh`: the strategy correctly clears `_ORCH_COLLECT_OUTCOME=""` before calling `orch_collect` and then tests `${_ORCH_COLLECT_OUTCOME:-}`. The variable does not propagate back from the collect call into the strategy's shell context. The design correctly requires both (a) `_orch_local_collect_results` sets `_ORCH_COLLECT_OUTCOME=timed_out` and (b) the fanout strategy reads it and sets `_ZB_STRATEGY_OUTCOME=timed_out`. The build must ensure `orch_collect` is called without a subshell boundary that would lose the export. This is a code issue for the build stage; the design's scope (fanout.sh, local_engine.sh) and SPEC-1 text are correct and unchanged.
+**Test-stage finding 1 (SPEC-1 subshell boundary):** `_ORCH_COLLECT_OUTCOME` is cleared inside fanout.sh before calling `orch_collect` but does not propagate back from the collect call — code issue for build stage (fanout.sh, local_engine.sh in scope).
 
-**Test-stage finding 2 (SPEC-3 — 3 files remain at HEAD; code issue):** The negctl check at HEAD for SPEC-3 confirms that `orch-mock-test.sh`, `orch-backend-misconfigured-test.sh`, and `.github/issues/keepers-manifest.yaml` still contain the literal `orch-sequential`. All three are in scope; SPEC-3 names the exact lines to update in each. The guard test also scans `core/`, `plugins/`, `scripts/`, `config/`, `tests/`, `.github/` — `docs/audits/` is outside its search path and the `docs/audits/adr-2026-10-03/batch-1.md` audit file found by a broad worktree grep is not in the guard's scope. Build issue; no design change needed.
+**Test-stage finding 2 (SPEC-3 — 3 files remain at HEAD):** All three files are in scope; SPEC-3 names the exact lines. Build issue.
 
-**Acceptance gate finding (revision 11):** The acceptance gate (test stage second pass) reported `not_passing_at_head` failures for SPEC-1, SPEC-3, and reachability checks for fanout.sh, map.sh, sequential.sh, config/adr-enforcement-baseline.txt, config/templates/deployed.yaml, and config/templates/simple.yaml — all attributed to `orch-timeout-applies-test.sh`. The gate also confirmed NEGCTL PASS for SPEC-2, SPEC-4, SPEC-5, SPEC-6, SPEC-10 (those tests correctly fail on old code) and REACHABILITY PASS for contract.sh, runner.sh, and local_engine.sh. All gate failures are implementation-incomplete issues, not design issues: (a) SPEC-1's test fails at HEAD because fanout.sh still calls `orch_collect` across a subshell boundary so `_ORCH_COLLECT_OUTCOME` never propagates back — build stage must call `orch_collect` in the same shell context; (b) SPEC-3's test fails at HEAD because the three identified files still contain `orch-sequential` — build stage must apply the SPEC-3-specified cleanups; (c) the reachability failures for fanout.sh, map.sh, sequential.sh, and config files are a cascade of the SPEC-1 test not passing at HEAD — once SPEC-1's implementation is complete, reachability for those files will resolve. The design scope and wiring block are correct: reverting any of those wiring files would cause the timeout propagation to regress; the gate could not verify this because the test cannot pass until the subshell issue is fixed. No design change needed.
+**Acceptance gate finding (revision 11):** All gate failures are implementation-incomplete issues, not design issues. Reachability for fanout.sh, map.sh, sequential.sh, and config files is a cascade of the SPEC-1 subshell issue.
 
 **Issue-acceptance findings (revision 12):**
 
-*Finding 1 (R-5): fixture template scope gap.* `tests/integration/always-run-exit-paths-test.sh`'s `[SPEC-5][guard]` test fails — "a 60s release hook held the exit". Root cause: `tests/fixtures/templates/always-run-minimal.yaml` has `release.router.timeout_s: 2` (indent 4) but `template_stage_time_limits_load` only matches `timeout_s:` at stage-level indent + 2 (indent 2 for root-level stages). The nested key is invisible; the function returns 900 (default), so the watchdog never fires within 45 s. The fixture also `extends: simple` — `simple.yaml` now has `release.timeout_s: 30` at the top level (from build commit `ee6aab95`), but `template_stage_time_limits_load` reads the overlay source file directly, NOT the merged result. The fixture must carry `timeout_s: 2` as a direct child of `release:`. **Fixed in this revision**: added `tests/fixtures/templates/always-run-minimal.yaml` to scope; SPEC-5 updated to state the requirement explicitly; Decision 4 updated to name this fixture.
+*Finding 1 (R-5): fixture template scope gap.* `always-run-exit-paths-test.sh` [SPEC-5][guard] was failing because `always-run-minimal.yaml` had `release.router.timeout_s: 2` at indent 4 instead of `timeout_s: 2` at stage-block level. Fixed in build (diff confirmed).
 
-*Finding 2 (R-9): `_orch_load_backend` fallback still names `sequential`.* After `orch-sequential` is deleted, `core/orch/contract.sh` `_orch_load_backend` still falls back to `backend="sequential"` when `zbuild_config_get_backend` is unavailable or `ZBUILD_ORCHESTRATOR_BACKEND` is unset. `orch_load_backend "sequential"` cannot find the plugin, sets `_ZBUILD_ORCH_BACKEND_DISPOSITION=misconfigured`, and returns 1; the `|| true` suppresses the error but the stubs remain, causing any pipeline run without an explicit backend to fail when a strategy calls `orch_spawn`. This explains the 17 broad integration failures. **Fixed in Decision 1 this revision**: the fallback must change from `sequential` to `bash-parallel` (the actual system default), not be removed entirely. `contract.sh` is already in scope.
+*Finding 2 (R-9): `_orch_load_backend` fallback.* Fixed in build (diff: changed `sequential` fallback to `bash-parallel` in `_orch_load_backend`).
 
-*Findings 3–6 (R-1, R-2, R-4, R-6):* Build stage timed out after committing only `keepers-manifest.yaml` in its second pass; strategy files, runner.sh, local_engine.sh, contract.sh, and ADR files carry partial or no changes. These are code issues. All affected source files are in scope. No design change needed — the design correctly requires the implementation.
+*Findings 3–6 (R-1, R-2, R-4, R-6):* Build stage timed out. All source files are in scope.
+
+**Issue-acceptance findings (revision 13):**
+
+*Finding 1 (R-4) — installed-tree end-to-end test absent.* The test for SPEC-4/SPEC-10 sources `contract.sh` from the checkout and calls `orch_load_backend` in isolation. R-4 requires the **pipeline run** (not just `orch_load_backend`) to fail as `misconfigured`. Fix encoded in SPEC-4 and SPEC-10 (updated this revision): the test must also run `runner.sh` end-to-end from a minimal installed tree (rsync of core/plugins/config/scripts to a temp dir) with the backend absent or unreadable; runner.sh must check `_ZBUILD_ORCH_BACKEND_DISPOSITION` immediately after sourcing `contract.sh` and fail the pipeline before dispatching any stage. This is a code change to runner.sh (already in scope) plus test extensions to `orch-backend-misconfigured-test.sh` (already in scope).
+
+*Finding 2 (R-5): persist hook never entered.* `always-run-exit-paths-test.sh` exits in 0 s without dispatching the persist always_run stage. Root cause: the `extends:` template mechanism does not propagate `always_run: [release, persist]` from the extending template (`always-run-spec5p`); `_TPL_ALWAYS_RUN` contains only `[release]` (from the base `always-run-minimal`). Fix encoded in SPEC-5 (updated this revision): template extension must propagate `always_run:` from the extending template so `_TPL_ALWAYS_RUN` includes all entries. This is a code change to the template loader (`core/pipeline/template.sh` or `template-resolver.sh`) — these files are not yet in the scope block. Adding them: the template-loading code that builds `_TPL_ALWAYS_RUN` must be changed so `always_run:` from the extending template overrides (not is ignored by) the base. **`core/pipeline/template.sh` and `core/pipeline/template-resolver.sh` are added to scope.**
+
+*Finding 3 (R-5): `[SPEC-5]` release cleanup regression.* `runner-release-exit-paths-test.sh` `[SPEC-5]` cleanup on the hard-kill exit path fails at both HEAD and baseline (old code + new test file). Root cause: the test-author changed the SPEC-5 case from using `timeout 6` to using `resume-timeout-bounded` with `release.timeout_s: 3` and `_SPEC5_KILL_GRACE=15` s. At baseline (old code), `router.timeout_s: 30` was used for the watchdog — 30 s > 15 s kill grace — so the KILL arrives before teardown can complete. At HEAD (new code), `template_stage_time_limit("release")=3` should complete teardown in < 3 s, but the marker remains empty. The build stage must investigate and fix the hard-kill dispatch path so `_runner_abort_trap` → `_runner_dispatch_always_run` → teardown runs correctly and writes to RELEASE_MARKER before the runner process exits. This test MUST pass (fail at baseline, pass at HEAD) as it is the observable proof that the SPEC-5 mechanism works on the hard-kill path.
+
+*Finding 4 (R-9): 2 failing tests.* Follows from findings 2 and 3. The build must fix both code issues.
+
+*Finding 5 (R-7 confirmed).* The scope discovery greps have been run at HEAD in this revision and results are documented above. R-7 is met. SPEC-8 is satisfied.
+
+**Issue-acceptance findings (revision 14 — root-cause confirmed):**
+
+*Scope gap: `core/pipeline/template-resolver.sh` and `core/pipeline/template.sh` missing from scope block.* The root cause of R-5 finding 2 (persist hook never entered) is fully traceable: `template-resolver.sh`'s old-shape merge path (the branch that runs when the per-repo file lacks a top-level `flow:`) extracts `stages:` and `stage_definitions:` from the per-repo file but never extracts `always_run:`. So the merged file retains only the base template's `always_run: [release]`; the per-repo overlay's `always_run: [release, persist]` is silently dropped. `template.sh`'s `_tpl_parse_always_run` already handles both block and inline forms correctly — it reads whatever the merged file contains. The code change is therefore entirely in `template-resolver.sh` (add an `always_run:` extraction step, analogous to the `stages:` extraction step, replacing the base's list when the per-repo declares its own). `template.sh` needs no code change but belongs in scope as the consumer of the resolved file. Both files added to scope block.
+
+*R-7 re-confirmed at HEAD.* Greps re-run: `grep -rl 'orch-sequential' tests/` → 1 file (`orch-sequential-absent-guard-test.sh`, the new guard — correct); `grep -rl 'ZBUILD_ORCH_TIMEOUT' tests/` → 0 hits; `grep -rl 'ZBUILD_RELEASE_TIMEOUT' tests/` → 2 files (always-run-exit-paths-test.sh, runner-release-exit-paths-test.sh) — both in scope; `grep -rl '_orch_local_kill_slot' tests/` → 1 file (orch-kill-uses-pg-kill-guard-test.sh) — in scope; `grep -rl 'router\.timeout_s' tests/` → 21 files; the 2 that pin the always-run watchdog bound are in scope; remaining 19 test `template_stage_router_timeout` (per-call model timeout, unchanged). No new test file is required in scope.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
@@ -221,13 +236,13 @@ What each SPEC requires:
 - [#1801/SPEC-1] A hung work unit dispatched through the fanout, map, and sequential strategies stops at its stage `timeout_s:` limit; each of the three strategies individually propagates a `timed_out` outcome naming the stage and the limit exceeded — the test for each strategy verifies the outcome variable `_ORCH_COLLECT_OUTCOME` is set to `timed_out` (not `failed`) with the stage name and limit; the strategy spy also confirms each strategy passes `template_stage_time_limit` to `orch_collect` instead of the 300 s flat deadline; the local engine's `_orch_local_collect_results` emits `timed_out` under a planted hang; the 300 s flat deadline no longer applies.
 - [#1801/SPEC-2] Running with a backend configured as `sequential` (or any name that resolves to no plugin) fails the run as `misconfigured` naming the backend; the sequential fallback in `orch_load_backend` is removed.
 - [#1801/SPEC-3] The `orch-sequential` plugin directory and `tests/golden/orch-sequential-capabilities.golden` do not exist in the installed tree; a guard test fails if the directory exists or any file (including golden files) outside `docs/adr/` still contains the literal string `orch-sequential`. All newly authored or modified test files must not contain the literal string `orch-sequential` anywhere — including comments and test description strings: (a) `orch-backend-misconfigured-test.sh` comments at lines 20 and 51 and the test description string at line 79 must have `orch-sequential` replaced with neutral phrasing (e.g. "the fallback backend via hardcoded path"); (b) `orch-mock-test.sh` sibling-backends comment at line 3 must be updated to remove `orch-sequential`; (c) `.github/issues/keepers-manifest.yaml` 4 occurrences (lines 2841, 3329, 3335, 3345) in historical closed-issue entries must be removed: at line 2841 remove `plugins/tool/orch-sequential/` from the `closed_reason`; for the `cleanup-delta-d` entry (lines 3329–3360) remove the orch-sequential title reference, body paragraphs, and test-file list that describe the now-deleted plugin, retaining the memory-sqlite portions.
-- [#1801/SPEC-4] A configured backend plugin that is absent from the installed tree (not the checkout) fails the run as `misconfigured` naming the missing backend.
-- [#1801/SPEC-5] `_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit`; `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` are no longer read for this purpose; the shipped templates (`simple.yaml`, `deployed.yaml`) carry `timeout_s: 30` (release) and `timeout_s: 120` (persist) as direct stage-block children; the `always-run-minimal.yaml` fixture carries `timeout_s: 2` as a direct child of its `release:` block (not under `router:`) so `template_stage_time_limits_load` finds it — the function reads the overlay source file directly and only matches `timeout_s:` at stage-level indent + 2; the test exercises both a hung release hook (fixture timeout_s: 2) and a hung persist hook (fixture timeout_s: 4 vs router.timeout_s: 120) as separate scenarios, each verifying the watchdog kills within the stage's `timeout_s:` and not at the 300 s / 120 s / router flat values.
+- [#1801/SPEC-4] A configured backend plugin that is absent from the installed tree fails the full pipeline run as `misconfigured` naming the missing backend — tested in two ways: (a) unit: `orch_load_backend "absent-name"` returns non-zero and names the backend (current test); (b) end-to-end: a minimal installed tree is created (rsync of core/plugins/config/scripts to a temp `$ZBUILD_HOME`), the configured backend plugin is removed from the temp install's plugins/ tree, and `bash $ZBUILD_HOME/core/pipeline/runner.sh --template X --goal Y` is run — the pipeline exits non-zero with `misconfigured` in stderr or pipeline-state.json; runner.sh must check `_ZBUILD_ORCH_BACKEND_DISPOSITION` immediately after sourcing `contract.sh` and fail the pipeline before dispatching any stage when the disposition is `misconfigured`.
+- [#1801/SPEC-5] `_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit`; `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` are no longer read for this purpose; the shipped templates (`simple.yaml`, `deployed.yaml`) carry `timeout_s: 30` (release) and `timeout_s: 120` (persist) as direct stage-block children; the `always-run-minimal.yaml` fixture carries `timeout_s: 2` as a direct child of its `release:` block (not under `router:`) so `template_stage_time_limits_load` finds it — the function reads the overlay source file directly and only matches `timeout_s:` at stage-level indent + 2; template extension (`extends:`) must propagate `always_run:` from the extending template so `_TPL_ALWAYS_RUN` includes persist when the template names it; the test exercises both a hung release hook (fixture timeout_s: 2 or 3) and a hung persist hook (fixture persist.timeout_s: 4 vs router.timeout_s: 120) as separate scenarios, each verifying the watchdog kills within the stage's `timeout_s:` and not at the 300 s / 120 s / router flat values; `[SPEC-5]` cleanup (pre-existing #1829 assertion) must pass on the hard-kill exit path — the test sends TERM to the runner process group, the runner's EXIT trap dispatches teardown, and cleanup hooks write to the release marker before the kill grace expires.
 - [#1801/SPEC-6] The `_orch_local_kill_slot` function and the always-run watchdog kill through `zbuild_pg_kill`; a hook that spawns a child which ignores TERM leaves no running process after the watchdog fires.
 - [#1801/SPEC-7] ADR-011 and ADR-017 carry `## Enforced by` sections naming the tests that enforce each statement; both are removed from `config/adr-enforcement-baseline.txt`.
 - [#1801/SPEC-8] The scope block includes every test file discovered by `grep -rl` for `orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `ZBUILD_RELEASE_TIMEOUT`, `router.timeout_s`, and `_orch_local_kill_slot` in `tests/` that pins behavior changed by this issue (per CLAUDE.md test scope discovery).
 - [#1801/SPEC-9] `npm test` and `npm run lint` pass on the final delivered change with no failures; all new and modified test files use `cmd || rc=$?` instead of `set -e` mid-file to remain compatible with `lint-test-errexit` (repo rule: test file headers are `set -uo pipefail`, not `set -euo pipefail`).
-- [#1801/SPEC-10] A backend whose plugin directory is present but whose config file is unreadable (permissions, corrupt, or missing) fails the run as `misconfigured` naming the backend — tested from the installed tree.
+- [#1801/SPEC-10] A backend whose plugin directory is present but whose plugin.sh is unreadable (permissions, corrupt, or missing) fails the run as `misconfigured` naming the backend — tested in two ways: (a) unit: `orch_load_backend "broken-backend"` returns non-zero and names the backend (current test); (b) end-to-end: same minimal installed tree approach as SPEC-4, with the backend plugin.sh present but chmod 000 — the pipeline exits non-zero with `misconfigured`.
 - [#1801/SPEC-11] Pool isolation — two independently active pools collect without bleeding results across each other — is verified in `plugins/tool/orch-mock/tests/orch-mock-test.sh` by an assertion tagged `[#1801/SPEC-11]` that submits work to two distinct pools concurrently and asserts results do not cross pool boundaries; this is the only behavioral gap from `orch-sequential-test.sh` test 7 (pool isolation) not already covered by surviving tests; all other behavioral tests in `orch-sequential-test.sh` are accounted for by SPEC-12.
 - [#1801/SPEC-12] Every existing test file that uses orch-sequential as a live behavioral fixture (sourcing its plugin.sh, iterating it in a backend roster, or pinning its source content) is updated so no behavioral coverage is silently dropped: (a) `adr059-no-tmpdir-defaults-test.sh` SPEC-4 (sequential pool-dir placement under `runs/<run_id>/pool`) is removed — orch-sequential is retired; the no-TMPDIR-leakage contract for the remaining backends is preserved by that file's own SPEC-3 (bash-parallel) and SPEC-6 (ruflo-hive) assertions; its SPEC-8 loop removes the orch-sequential iteration for the same reason; (b) `core-orch-run-id-isolation-test.sh` P4 and P5 (sequential pool-dir per-run namespacing) are removed — orch-sequential is retired; run-isolation for bash-parallel is preserved by P1–P3 in the same file; (c) `dispatch-rc-guard-test.sh` removes `plugins/tool/orch-sequential/plugin.sh|0` from `_PINNED` (the file no longer exists; no legacy-RC behavior to guard); (d) `stdin-spawn-guard-test.sh` removes the two orch-sequential stdin-close pins (plugin.sh deleted; the stdin-close pattern is enforced for surviving backends by their own pins); (e) `summary-mandatory-test.sh` removes orch-sequential from the SPEC-3 backend roster loop (manifest no longer present; no behavioral loss since the loop checks for absence of `summary: true`).
 
@@ -239,9 +254,9 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [#1801/SPEC-3] The `orch-sequential` plugin directory and `tests/golden/orch-sequential-capabilities.golden` do not exist in the installed tree; a guard test fails if the directory exists or any file (including golden files) outside `docs/adr/` still contains the literal string `orch-sequential`. All newly authored or modified test files must not contain the literal string `orch-sequential` anywhere — including comments and test description strings: (a) `orch-backend-misconfigured-test.sh` comments at lines 20 and 51 and the test description string at line 79 must have `orch-sequential` replaced with neutral phrasing (e.g. "the fallback backend via hardcoded path"); (b) `orch-mock-test.sh` sibling-backends comment at line 3 must be updated to remove `orch-sequential`; (c) `.github/issues/keepers-manifest.yaml` 4 occurrences (lines 2841, 3329, 3335, 3345) in historical closed-issue entries must be removed: at line 2841 remove `plugins/tool/orch-sequential/` from the `closed_reason`; for the `cleanup-delta-d` entry (lines 3329–3360) remove the orch-sequential title reference, body paragraphs, and test-file list that describe the now-deleted plugin, retaining the memory-sqlite portions.
   → its test is already written; make it pass
-- [#1801/SPEC-4] A configured backend plugin that is absent from the installed tree (not the checkout) fails the run as `misconfigured` naming the missing backend.
+- [#1801/SPEC-4] A configured backend plugin that is absent from the installed tree fails the full pipeline run as `misconfigured` naming the missing backend — tested in two ways: (a) unit: `orch_load_backend "absent-name"` returns non-zero and names the backend (current test); (b) end-to-end: a minimal installed tree is created (rsync of core/plugins/config/scripts to a temp `$ZBUILD_HOME`), the configured backend plugin is removed from the temp install's plugins/ tree, and `bash $ZBUILD_HOME/core/pipeline/runner.sh --template X --goal Y` is run — the pipeline exits non-zero with `misconfigured` in stderr or pipeline-state.json; runner.sh must check `_ZBUILD_ORCH_BACKEND_DISPOSITION` immediately after sourcing `contract.sh` and fail the pipeline before dispatching any stage when the disposition is `misconfigured`.
   → its test is already written; make it pass
-- [#1801/SPEC-5] `_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit`; `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` are no longer read for this purpose; the shipped templates (`simple.yaml`, `deployed.yaml`) carry `timeout_s: 30` (release) and `timeout_s: 120` (persist) as direct stage-block children; the `always-run-minimal.yaml` fixture carries `timeout_s: 2` as a direct child of its `release:` block (not under `router:`) so `template_stage_time_limits_load` finds it — the function reads the overlay source file directly and only matches `timeout_s:` at stage-level indent + 2; the test exercises both a hung release hook (fixture timeout_s: 2) and a hung persist hook (fixture timeout_s: 4 vs router.timeout_s: 120) as separate scenarios, each verifying the watchdog kills within the stage's `timeout_s:` and not at the 300 s / 120 s / router flat values.
+- [#1801/SPEC-5] `_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit`; `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` are no longer read for this purpose; the shipped templates (`simple.yaml`, `deployed.yaml`) carry `timeout_s: 30` (release) and `timeout_s: 120` (persist) as direct stage-block children; the `always-run-minimal.yaml` fixture carries `timeout_s: 2` as a direct child of its `release:` block (not under `router:`) so `template_stage_time_limits_load` finds it — the function reads the overlay source file directly and only matches `timeout_s:` at stage-level indent + 2; template extension (`extends:`) must propagate `always_run:` from the extending template so `_TPL_ALWAYS_RUN` includes persist when the template names it; the test exercises both a hung release hook (fixture timeout_s: 2 or 3) and a hung persist hook (fixture persist.timeout_s: 4 vs router.timeout_s: 120) as separate scenarios, each verifying the watchdog kills within the stage's `timeout_s:` and not at the 300 s / 120 s / router flat values; `[SPEC-5]` cleanup (pre-existing #1829 assertion) must pass on the hard-kill exit path — the test sends TERM to the runner process group, the runner's EXIT trap dispatches teardown, and cleanup hooks write to the release marker before the kill grace expires.
   → its test is already written; make it pass
 - [#1801/SPEC-6] The `_orch_local_kill_slot` function and the always-run watchdog kill through `zbuild_pg_kill`; a hook that spawns a child which ignores TERM leaves no running process after the watchdog fires.
   → its test is already written; make it pass
@@ -251,7 +266,7 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [#1801/SPEC-9] `npm test` and `npm run lint` pass on the final delivered change with no failures; all new and modified test files use `cmd || rc=$?` instead of `set -e` mid-file to remain compatible with `lint-test-errexit` (repo rule: test file headers are `set -uo pipefail`, not `set -euo pipefail`).
   → its test is already written; make it pass
-- [#1801/SPEC-10] A backend whose plugin directory is present but whose config file is unreadable (permissions, corrupt, or missing) fails the run as `misconfigured` naming the backend — tested from the installed tree.
+- [#1801/SPEC-10] A backend whose plugin directory is present but whose plugin.sh is unreadable (permissions, corrupt, or missing) fails the run as `misconfigured` naming the backend — tested in two ways: (a) unit: `orch_load_backend "broken-backend"` returns non-zero and names the backend (current test); (b) end-to-end: same minimal installed tree approach as SPEC-4, with the backend plugin.sh present but chmod 000 — the pipeline exits non-zero with `misconfigured`.
   → its test is already written; make it pass
 - [#1801/SPEC-11] Pool isolation — two independently active pools collect without bleeding results across each other — is verified in `plugins/tool/orch-mock/tests/orch-mock-test.sh` by an assertion tagged `[#1801/SPEC-11]` that submits work to two distinct pools concurrently and asserts results do not cross pool boundaries; this is the only behavioral gap from `orch-sequential-test.sh` test 7 (pool isolation) not already covered by surviving tests; all other behavioral tests in `orch-sequential-test.sh` are accounted for by SPEC-12.
   → its test is already written; make it pass
@@ -304,20 +319,23 @@ Outputs:
 Summary:
 ## design — pass
 
-- authored design.md — 42 file(s) in scope, 12 acceptance SPEC(s)
+- authored design.md — 44 file(s) in scope, 12 acceptance SPEC(s)
 
-- scope: core/orch/contract.sh,core/orch/local_engine.sh,core/pipeline/runner.sh,core/pipeline/strategies/fanout.sh,core/pipeline/strategies/map.sh,core/pipeline/strategies/sequential.sh,scripts/lib/proc-group.sh,scripts/lib/stage-time-limit.sh,config/templates/simple.yaml,config/templates/deployed.yaml,config/adr-enforcement-baseline.txt,docs/adr/ADR-011-pluggable-backends.md,docs/adr/ADR-017-per-stage-router-config.md,docs/wiki/Plugins.md,docs/wiki/plugins/orch-sequential.md,plugins/tool/orch-sequential/plugin.sh,plugins/tool/orch-sequential/manifest.yaml,plugins/tool/orch-sequential/tests/orch-sequential-test.sh,plugins/tool/orch-mock/tests/orch-mock-test.sh,plugins/tool/orch-ruflo-hive/plugin.sh,tests/golden/orch-sequential-capabilities.golden,tests/golden/full-pipeline/event-sequence.golden,tests/golden/parity/event-sequence.golden,tests/test-durations.tsv,tests/integration/runner-release-exit-paths-test.sh,tests/integration/stage-time-limit-test.sh,tests/unit/exit-path-teardown-budget-guard-test.sh,tests/unit/summary-mandatory-test.sh,tests/unit/dispatch-rc-guard-test.sh,tests/unit/stdin-spawn-guard-test.sh,tests/unit/core-orch-run-id-isolation-test.sh,tests/unit/plugin-artifact-goldens-test.sh,tests/unit/adr059-no-tmpdir-defaults-test.sh,tests/unit/map-strategy-test.sh,tests/integration/orch-timeout-applies-test.sh,tests/unit/orch-sequential-absent-guard-test.sh,tests/integration/orch-backend-misconfigured-test.sh,tests/unit/orch-kill-uses-pg-kill-guard-test.sh,tests/unit/lint-adr-enforced-by-test.sh,tests/integration/always-run-exit-paths-test.sh,tests/fixtures/templates/always-run-minimal.yaml,.github/issues/keepers-manifest.yaml
+- scope: core/orch/contract.sh,core/orch/local_engine.sh,core/pipeline/runner.sh,core/pipeline/strategies/fanout.sh,core/pipeline/strategies/map.sh,core/pipeline/strategies/sequential.sh,core/pipeline/template-resolver.sh,core/pipeline/template.sh,scripts/lib/proc-group.sh,scripts/lib/stage-time-limit.sh,config/templates/simple.yaml,config/templates/deployed.yaml,config/adr-enforcement-baseline.txt,docs/adr/ADR-011-pluggable-backends.md,docs/adr/ADR-017-per-stage-router-config.md,docs/wiki/Plugins.md,docs/wiki/plugins/orch-sequential.md,plugins/tool/orch-sequential/plugin.sh,plugins/tool/orch-sequential/manifest.yaml,plugins/tool/orch-sequential/tests/orch-sequential-test.sh,plugins/tool/orch-mock/tests/orch-mock-test.sh,plugins/tool/orch-ruflo-hive/plugin.sh,tests/golden/orch-sequential-capabilities.golden,tests/golden/full-pipeline/event-sequence.golden,tests/golden/parity/event-sequence.golden,tests/test-durations.tsv,tests/integration/runner-release-exit-paths-test.sh,tests/integration/stage-time-limit-test.sh,tests/unit/exit-path-teardown-budget-guard-test.sh,tests/unit/summary-mandatory-test.sh,tests/unit/dispatch-rc-guard-test.sh,tests/unit/stdin-spawn-guard-test.sh,tests/unit/core-orch-run-id-isolation-test.sh,tests/unit/plugin-artifact-goldens-test.sh,tests/unit/adr059-no-tmpdir-defaults-test.sh,tests/unit/map-strategy-test.sh,tests/integration/orch-timeout-applies-test.sh,tests/unit/orch-sequential-absent-guard-test.sh,tests/integration/orch-backend-misconfigured-test.sh,tests/unit/orch-kill-uses-pg-kill-guard-test.sh,tests/unit/lint-adr-enforced-by-test.sh,tests/integration/always-run-exit-paths-test.sh,tests/fixtures/templates/always-run-minimal.yaml,.github/issues/keepers-manifest.yaml
 - artifact: design.md
 
-### test-author (verdict: pass)
+### test-author (verdict: fail)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
 
-Summary:
-## test-author — pass
+Findings:
+- test-author finding 1 (opened by test-author): SPEC-5's assertion establishes only part of the requirement: The assertions cover the watchdog-timing scenarios (release and persist), removal of `ZBUILD_RELEASE_TIMEOUT` and `_TPL_STAGE_ROUTER_TIMEOUT` from runner.sh, stage-level `timeout_s:` values in the shipped templates and fixture, and implicit propagation of `always_run:` via extends — but they contain no assertion for the pre-existing `[SPEC-5]` hard-kill (SIGTERM-to-process-group) exit path cleanup that the requirement explicitly mandates must also pass.
 
-- authored acceptance assertions for 12 SPEC(s) from the design contract
+Summary:
+## test-author — fail
+
+- 1 assertion(s) still do not test what their SPEC says after 2 round(s)
 
 - SPECs in the contract: 12
 - assertions are authored from the SPEC text, never from the implementation
@@ -346,7 +364,7 @@ Outputs:
 Summary:
 ## build — timed_out
 
-- changed 2 file(s) over 1 pass(es), 3 iteration(s)
+- changed 2 file(s) over 2 pass(es), 6 iteration(s)
 
 - lines: +24 / -4
 - terminated: router_timeout
@@ -435,191 +453,113 @@ Outputs:
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): tests/integration/always-run-exit-paths-test.sh fails: ✗ [SPEC-5] a 60s release hook held the exit
-- test finding 2 (opened by test): tests/integration/artifact-contract-test.sh fails: ✗ plugin.contract.violated event emitted — not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/events/events.jsonl
-- test finding 3 (opened by test): tests/integration/core-pipeline-runner-test.sh fails: ✗ happy path exits 0 — expected: 0, got: 1
-- test finding 4 (opened by test): tests/integration/core-pipeline-verdict-indicators-test.sh fails: ✗ Pipeline cannot start — stage manifests break the contract:
-- test finding 5 (opened by test): tests/integration/cycle-acceptance-terminal-failure-test.sh fails: ✗ Pipeline failed: status=failed run_id=20261028021215-835200 issue=0 (took 3.9s)
-- test finding 6 (opened by test): tests/integration/cycle-on-max-pipeline-continues-test.sh fails: ✗ T1.4: pipeline.end emitted exactly once — expected: 1, got: 0
-- test finding 7 (opened by test): tests/integration/design-pipeline-test.sh fails: ✗ runner exits 0 — expected: 0, got: 1
-- test finding 8 (opened by test): tests/integration/engine-run-branch-test.sh fails: ✗ [E1] the first stage is already on the run's branch — expected: zbuild/issue-90090001, got:
-- test finding 9 (opened by test): tests/integration/full-pipeline-seq-cardinal-test.sh fails: ✗ pipeline exits 0 — expected: 0, got: 1
-- test finding 10 (opened by test): tests/integration/leaf-dispatch-role-bound-verdict-test.sh fails: ✗ [SPEC-4] the fixture stage dispatched (stage.complete emitted)
-- test finding 11 (opened by test): tests/integration/per-run-state-isolation-test.sh fails: ✗ T1: run-aaa exits 0 — expected: 0, got: 1
-- test finding 12 (opened by test): tests/integration/pipeline-resume-test.sh fails: ✗ integration: --resume exits 0 when remaining stage succeeds — expected: 0, got: 1
-- test finding 13 (opened by test): tests/integration/runner-exports-state-dir-test.sh fails: ✗ runner exits 0 — expected: 0, got: 1
-- test finding 14 (opened by test): tests/integration/runner-init-state-abort-test.sh fails: ✗ SPEC-6: writable state dir → run completes — expected: 0, got: 1
-- test finding 15 (opened by test): tests/integration/runner-release-exit-paths-test.sh fails: ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-- test finding 16 (opened by test): tests/integration/state-root-isolation-test.sh fails: ✗ nested run exits 0 — expected: 0, got: 1
-- test finding 17 (opened by test): tests/integration/worktree-run-isolation-test.sh fails: ✗ [SPEC-3a] the build stage must commit to the work branch
-- test finding 18 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 19 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 1 (opened by test): tests/integration/always-run-exit-paths-test.sh fails: ✗ [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched) — file not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.H9pkiA/spec5p-entered
+- test finding 2 (opened by test): tests/integration/runner-release-exit-paths-test.sh fails: ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
+- test finding 3 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 4 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
 
 Summary:
 # Test stage summary
 
 - verdict: fail
-- passed: 802
-- failed: 17
+- passed: 818
+- failed: 2
 - exit_code: 1
 
 ## Failing files
 
-- tests/integration/always-run-exit-paths-test.sh — ✗ [SPEC-5] a 60s release hook held the exit
-- tests/integration/artifact-contract-test.sh — ✗ plugin.contract.violated event emitted — not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/events/events.jsonl
-- tests/integration/core-pipeline-runner-test.sh — ✗ happy path exits 0 — expected: 0, got: 1
-- tests/integration/core-pipeline-verdict-indicators-test.sh — ✗ Pipeline cannot start — stage manifests break the contract:
-- tests/integration/cycle-acceptance-terminal-failure-test.sh — ✗ Pipeline failed: status=failed run_id=20261028021215-835200 issue=0 (took 3.9s)
-- tests/integration/cycle-on-max-pipeline-continues-test.sh — ✗ T1.4: pipeline.end emitted exactly once — expected: 1, got: 0
-- tests/integration/design-pipeline-test.sh — ✗ runner exits 0 — expected: 0, got: 1
-- tests/integration/engine-run-branch-test.sh — ✗ [E1] the first stage is already on the run's branch — expected: zbuild/issue-90090001, got: 
-- tests/integration/full-pipeline-seq-cardinal-test.sh — ✗ pipeline exits 0 — expected: 0, got: 1
-- tests/integration/leaf-dispatch-role-bound-verdict-test.sh — ✗ [SPEC-4] the fixture stage dispatched (stage.complete emitted)
-- tests/integration/per-run-state-isolation-test.sh — ✗ T1: run-aaa exits 0 — expected: 0, got: 1
-- tests/integration/pipeline-resume-test.sh — ✗ integration: --resume exits 0 when remaining stage succeeds — expected: 0, got: 1
-- tests/integration/runner-exports-state-dir-test.sh — ✗ runner exits 0 — expected: 0, got: 1
-- tests/integration/runner-init-state-abort-test.sh — ✗ SPEC-6: writable state dir → run completes — expected: 0, got: 1
+- tests/integration/always-run-exit-paths-test.sh — ✗ [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched) — file not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.H9pkiA/spec5p-entered
 - tests/integration/runner-release-exit-paths-test.sh — ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-- tests/integration/state-root-isolation-test.sh — ✗ nested run exits 0 — expected: 0, got: 1
-- tests/integration/worktree-run-isolation-test.sh — ✗ [SPEC-3a] the build stage must commit to the work branch
 
 ## Failing lines (extracted)
 
 ```
-  ✗ [SPEC-5] a 60s release hook held the exit
-    elapsed=62s
-  ✗ [SPEC-5] the hanging hook was killed before completing
-    file should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.ZqRVnY/release-ran
   ✗ [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
-    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.ZqRVnY/spec5p-entered
-  ✗ plugin.contract.violated event emitted
-    not found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/events/events.jsonl
-  ✗ synthetic findings.json created
-    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/state/artifacts/intake-intake-contract-violated-findings.json
-  ✗ plugin.contract.violated event names the expected artifact path
-    output missing: intake-findings.json
-  ✗ plugin.contract.violated event carries reason=artifact_missing_or_empty
-    expected: artifact_missing_or_empty, got: 
-  ✗ happy path exits 0
-    expected: 0, got: 1
-  ✗ pipeline.end carries status=success
-    expected: 1, got: 0
-  ✗ [SPEC-1] stage.start emitted for each fixture stage (2x)
-    expected: 2, got: 1
-  ✗ [SPEC-1] stage.complete emitted for each fixture stage (2x)
-    expected: 2, got: 0
-  ✗ intake stage_status=complete (ADR-006 enum)
-    expected: complete, got: failed
-  ✗ build stage_status=complete (ADR-006 enum)
-    expected: complete, got: 
-  ✗ pipeline.end names the failing stage
-  ✗ build stage_status=failed in state
-    expected: failed, got: 
-  ✗ kill mid-run emits pipeline.abort
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/always-run-exit-paths-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/artifact-contract-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/core-pipeline-runner-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/core-pipeline-verdict-indicators-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/cycle-acceptance-terminal-failure-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/cycle-on-max-pipeline-continues-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/design-pipeline-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/engine-run-branch-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/full-pipeline-seq-cardinal-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/leaf-dispatch-role-bound-verdict-test.sh
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.H9pkiA/spec5p-entered
+  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
+    no release from: intake build | marker= 
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.RrtDdP/tests/integration/always-run-exit-paths-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.RrtDdP/tests/integration/runner-release-exit-paths-test.sh
+  [SPEC-6][guard] an unresolvable role emits an event instead of failing silently
+  ✓ [SPEC-6] stage.always_run.unresolved is emitted
   ✓ [SPEC-6] an unresolvable always-run stage does not fail the run
-  3 of 13 tests failed
-  4 of 5 tests failed
-  ✗ A2 abort trap: pipeline.abort event emitted on kill
-  ✗ A2 abort trap: no state.error when state file writable
-  ✓ A2 abort trap: pipeline status=interrupted in state
-  ✗ A3 artifact contract: plugin.contract.violated event emitted
-  ✗ A3 artifact contract: synthetic findings.json not created
-  ✗ all-pass: ✓ on build line
-  ✗ all-pass: ✓ on test line
-  ✗ stage.complete carries verdict=pass for each stage
-  ✗ state.stage_verdicts.intake == pass
-  ✗ test verdict=fail -> ✗ on test line
-  ✗ build scope_violation=true -> ✗ on build line
-  ✗ T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)
-    expected: success, got: 
-  ✓ T3 [SPEC-5]: cycle.member.terminal_failure NOT emitted for infra timeout
-  1 of 8 tests failed
-    pr_run_count=0
-  3 of 7 tests failed
-  ✗ T1.4: pipeline.end emitted exactly once
-  ✗ T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)
-  ✗ T2.2: pr plugin did NOT run
-    searched under /home/runner/work/_temp/zbuild-state/scratch/test/design-pipeline-754.x1go5T/home/.zbuild
-  3 of 3 tests failed
-  ✗ runner exits 0
-  ✗ events.jsonl contains plugin.run.start plugin=design
-  ✗ design.md exists in state artifacts
-  5 of 15 tests failed
-  ✗ [E1] the first stage is already on the run's branch
-  ✗ [E1] ...and is told its name
-  ✗ [E1] ...and the commit the
-
-[truncated]
+  1 of 13 tests failed
+  ✓ [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 1s; would be ~30s with router.timeout_s)
+  ✓ [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
+  ✓ [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
+  1 of 22 tests failed
+```
 
 ## The checks of this run
 - the shape floor failed: missing_floor_files
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-e run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/state-root-isolation-1127.2G8X5T/home/.zbuild/repos/local/zbuild-test-stage.UfQr1K/issues/90360001/worktree
-    ▸ Pipeline started — run_id=nested-suite issue=90360001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
-    
-    
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:51 UTC
-    
-    
-    ▸ Running stage: intake  (started 02:12:51 UTC)
-    ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-880784-1793153571724418607)
-    
-    ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:51 UTC
-    ✗ Pipeline failed: status=failed stage=intake run_id=nested-suite issue=90360001 (took 0.3s)
-    The run stopped before finishing.
-    ✗ Stage intake: orch_spawn failed for pool zbuild-intake-880784-1793153571724418607
-  DIAGNOSTIC: copied state: {  "schema_version": 1,  "run_id": "nested-suite",  "issue": 90360001,  "engine_sha": "64da51c3c64b7062c8b7614cae8e262b947bc86b",  "engine_branch": "zbuild/issue-1801-ci",  "stage_statuses": {    "intake": "failed"  },  "current_iteration": 0,  "self_heal_count": {},  "scope_manifest_hash": "",  "cost_ledger_pointer": 0,  "claim_lease_id": "",  "plugin_state": {},  "updated_at": "2026-10-28T02:12:
-  [38;2;248;113;113m✗[0m [SPEC-7] nested run used the fixture roster
-    [2mstage_statuses keys=intake (expected the intake→build fixture, not the built-in fallback)[0m
+imeout_s: not router.timeout_s: 120[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] persist always_run watchdog bounds at timeout_s: 4 (exited in 0s; old code: router.timeout_s: 120)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.H9pkiA/spec5p-entered[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] persist hook killed before completing (bounded by timeout_s: 4, not 120s)
+
+  [38;2;0;212;255m[SPEC-6][guard] an unresolvable role emits an event instead of failing silently[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] stage.always_run.unresolved is emitted
+  [38;2;74;222;128m✓[0m [SPEC-6] an unresolvable always-run stage does not fail the run
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m4 of 21 tests failed[0m
+  [38;2;248;113;113m[1m1 of 13 tests failed[0m
 
-  [38;2;248;113;113m✗[0m nested run exits 0
-  [38;2;248;113;113m✗[0m D: nested run not terminal
-  [38;2;248;113;113m✗[0m E: default-root run exits 0
-  [38;2;248;113;113m✗[0m [SPEC-7] nested run used the fixture roster
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/worktree-run-isolation-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.RrtDdP/tests/integration/runner-release-exit-paths-test.sh
 
-[38;2;0;212;255m[1m  engine-owned per-run worktree (ADR-052, #1640)[0m
+[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m [SPEC-1] the main checkout's HEAD is unmoved by a full run
-  [38;2;74;222;128m✓[0m [SPEC-2] the main checkout's branch is unmoved by a full run
-  [38;2;248;113;113m✗[0m [SPEC-3a] the build stage must commit to the work branch
-    [2mrc=1 wt=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree build_root= branch_sha=dec075556efe08b76af1e2db16e74640c470d044 base=dec075556efe08b76af1e2db16e74640c470d044[0m
-  [38;2;248;113;113m✗[0m [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
-    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] the worktree is recorded and lives outside the target repo
-  [38;2;248;113;113m✗[0m [SPEC-5] the main checkout must survive a run that never reaches pr
-    [2mrc=1 head=b002b17b8e3ff2b1367ed3eb09de208e0e5e799e (was b002b17b8e3ff2b1367ed3eb09de208e0e5e799e) branch=main (was main) build_root=[0m
-  [38;2;248;113;113m✗[0m [SPEC-6] the opt-out must keep in-place semantics
-    [2mbranch=zbuild/issue-99090001 wt_recorded=0[0m
-  [38;2;248;113;113m✗[0m [SPEC-7] resume must reuse the run's worktree
-    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree[0m
+
+  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
+  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
+  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
+  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (1s)
+  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
+  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
+  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
+
+  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
+  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+  [38;2;0;212;255m[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 1s; would be ~30s with router.timeout_s)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m5 of 8 tests failed[0m
+  [38;2;248;113;113m[1m1 of 22 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [SPEC-3a] the build stage must commit to the work branch
-  [38;2;248;113;113m✗[0m [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
-  [38;2;248;113;113m✗[0m [SPEC-5] the main checkout must survive a run that never reaches pr
-  [38;2;248;113;113m✗[0m [SPEC-6] the opt-out must keep in-place semantics
-  [38;2;248;113;113m✗[0m [SPEC-7] resume must reuse the run's worktree
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -627,24 +567,24 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-5: `always-run-exit-paths-test.sh` fails "a 60s release hook held the exit" / "the hanging hook was killed before completing" — always_run stages are not bounded by `timeout_s:`. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-9: `npm test` red (17 integration failures across core-pipeline-runner, design-pipeline, worktree-run-isolation, cycle tests, and others). What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 3 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1: broad pipeline integration failures cast doubt on orchestrator-route timeout enforcement reaching a working state. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 4 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-2: strategy files (`fanout.sh`, `map.sh`, `sequential.sh`) are listed in changed-files but absent from the diff — `ZBUILD_ORCH_TIMEOUT` removal is unverifiable with a broken test suite. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 5 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4: installed-tree misconfigured test not present in diff and pipeline is broken. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 6 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-6: `zbuild_pg_kill` wiring in `_orch_local_kill_slot` and the always-run watchdog not visible in the diff and unconfirmable against a failing suite.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4: `orch-backend-misconfigured-test.sh` tests `orch_load_backend` by sourcing it from the checkout in isolation. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: the issue explicitly requires testing from the installed tree (`install.sh` layout), not only the checkout — no such end-to-end test exists. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-5: `always-run-exit-paths-test.sh` [#1801/SPEC-5] persist hook was never entered (sentinel file absent, runner exited in 0 s without dispatching the persist always_run stage). What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 4 (opened by issue-acceptance): The issue requires this and the change does not meet it: `runner-release-exit-paths-test.sh` [SPEC-5] release cleanup not dispatched on the hard-kill exit path (regression). What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 5 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-9: `npm test` exits 1 with 2 failing tests. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 6 (opened by issue-acceptance): Not sure this requirement is met: R-7: test scope discovery (grep-rl for `orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `ZBUILD_RELEASE_TIMEOUT`, `router.timeout_s`, `_orch_local_kill_slot` in `tests/`) — process requirement that nothing in the diff or output confirms was completed. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
 
 Summary:
 ## issue-acceptance — fail
 
-- The build stage timed out after changing only 1 file, leaving the implementation incomplete; `npm test` returns 17 failures including explicit SPEC-5 failures in `always-run-exit-paths-test.sh` proving `_runner_dispatch_always_run` still does not bound always-run stages by `timeout_s:`.
+- The test suite reports 2 failures — a regression on the hard-kill release exit path and the persist always_run hook never entering — and the installed-tree testing required by R-4 is absent from the delivered test.
 
-- NOT MET: R-5: `always-run-exit-paths-test.sh` fails "a 60s release hook held the exit" / "the hanging hook was killed before completing" — always_run stages are not bounded by `timeout_s:`
-- NOT MET: R-9: `npm test` red (17 integration failures across core-pipeline-runner, design-pipeline, worktree-run-isolation, cycle tests, and others)
-- NOT MET: R-1: broad pipeline integration failures cast doubt on orchestrator-route timeout enforcement reaching a working state
-- NOT MET: R-2: strategy files (`fanout.sh`, `map.sh`, `sequential.sh`) are listed in changed-files but absent from the diff — `ZBUILD_ORCH_TIMEOUT` removal is unverifiable with a broken test suite
-- NOT MET: R-4: installed-tree misconfigured test not present in diff and pipeline is broken
-- NOT MET: R-6: `zbuild_pg_kill` wiring in `_orch_local_kill_slot` and the always-run watchdog not visible in the diff and unconfirmable against a failing suite.
+- NOT MET: R-4: `orch-backend-misconfigured-test.sh` tests `orch_load_backend` by sourcing it from the checkout in isolation
+- NOT MET: the issue explicitly requires testing from the installed tree (`install.sh` layout), not only the checkout — no such end-to-end test exists
+- NOT MET: R-5: `always-run-exit-paths-test.sh` [#1801/SPEC-5] persist hook was never entered (sentinel file absent, runner exited in 0 s without dispatching the persist always_run stage)
+- NOT MET: `runner-release-exit-paths-test.sh` [SPEC-5] release cleanup not dispatched on the hard-kill exit path (regression)
+- NOT MET: R-9: `npm test` exits 1 with 2 failing tests
+- NOT SURE: R-7: test scope discovery (grep-rl for `orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `ZBUILD_RELEASE_TIMEOUT`, `router.timeout_s`, `_orch_local_kill_slot` in `tests/`) — process requirement that nothing in the diff or output confirms was completed — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ## What you must not do
 
@@ -658,6 +598,8 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - core/pipeline/strategies/fanout.sh
   - core/pipeline/strategies/map.sh
   - core/pipeline/strategies/sequential.sh
+  - core/pipeline/template-resolver.sh
+  - core/pipeline/template.sh
   - scripts/lib/proc-group.sh
   - scripts/lib/stage-time-limit.sh
   - config/templates/simple.yaml
@@ -694,13 +636,13 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - tests/integration/always-run-exit-paths-test.sh
   - tests/fixtures/templates/always-run-minimal.yaml
   - .github/issues/keepers-manifest.yaml
-  - tests/unit/shape-floor-content-stable-test.sh
-  - tests/unit/template-simple-yaml-test.sh
-  - tests/unit/build-oos-pass-request-test.sh
-  - tests/unit/change-scope-floor-test.sh
   - tests/unit/core-pipeline-template-test.sh
-  - tests/unit/template-resolvability-preflight-test.sh
+  - tests/unit/shape-floor-content-stable-test.sh
   - tests/unit/shape-floor-summary-plain-test.sh
+  - tests/unit/build-oos-pass-request-test.sh
+  - tests/unit/template-simple-yaml-test.sh
+  - tests/unit/template-resolvability-preflight-test.sh
+  - tests/unit/change-scope-floor-test.sh
 
 ### Rules
 - Touch only files in the scope list above.
