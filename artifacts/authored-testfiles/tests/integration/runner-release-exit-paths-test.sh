@@ -354,36 +354,17 @@ if [[ -z "$_tbin" ]]; then
     SKIP=$((SKIP + 1))
     echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-5] external hard kill (no timeout binary available)" >&2
 else
-    # [#1801/SPEC-5]: #2029: the force-kill grace is DERIVED from the engine's own
-    # teardown budget, not guessed.
-    #
-    # After #1801 the engine bounds each always-run stage by template_stage_time_limit
-    # (top-level `timeout_s:` in the stage block), NOT by router.timeout_s or
-    # ZBUILD_RELEASE_TIMEOUT. The template below pins timeout_s: _SPEC5_STAGE_TIMEOUT
-    # for release so the worst case is knowable and the grace derives from it.
-    # This case relies on its hooks returning promptly rather than on the bound —
-    # the grace is purely a safety net so a runner that ignores TERM cannot hang the
-    # suite. Three stages release on this path, so an unpinned run could spend far
-    # longer tidying up than the 3s literal that used to sit here.
+    # #2029: the force-kill grace must be DERIVED from the release budget, not a
+    # hardcoded literal. _SPEC5_STAGE_TIMEOUT is the per-stage bound (after #1801
+    # this is template_stage_time_limit — 30s in simple.yaml; 3s here is a
+    # test-safe stand-in). Three stages release on this path, so the grace clears
+    # 3x the per-hook bound. The hooks in this case return promptly; the grace is
+    # only a runaway guard so a runner that ignores TERM cannot hang the suite.
     _SPEC5_STAGE_TIMEOUT=3
     _SPEC5_KILL_GRACE=$(( _SPEC5_STAGE_TIMEOUT * 3 + 6 ))   # 3 stages + margin
-    # Create a repo with a template that has timeout_s: _SPEC5_STAGE_TIMEOUT for
-    # release (top-level, read by template_stage_time_limit after #1801).
-    _spec5_repo="$(setup_git_temp_repo "release-exit-paths-spec5")"
-    install_template_overlay "$_spec5_repo" resume-minimal
-    if [[ -d "$_spec5_repo/.git/info" ]] && \
-       ! grep -qxF '/.zbuild/' "$_spec5_repo/.git/info/exclude" 2>/dev/null; then
-        printf '/.zbuild/\n' >> "$_spec5_repo/.git/info/exclude"
-    fi
-    cat > "$_spec5_repo/.zbuild/templates/resume-timeout-bounded.yaml" <<YAMLEOF
-id: resume-timeout-bounded
-extends: resume-minimal
-release:
-  timeout_s: ${_SPEC5_STAGE_TIMEOUT}
-YAMLEOF
     set -m
-    bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-timeout-bounded --goal "$3"' \
-        _ "$_spec5_repo" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
+    bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
     RUNNER_PID=$!
     set +m
     for _ in $(seq 1 300); do [[ -s "$BUILD_STARTED" ]] && break; sleep 0.1; done
@@ -503,6 +484,102 @@ if ! grep -q '_TPL_STAGE_ROUTER_TIMEOUT' "$RUNNER"; then
 else
     assert_fail "[#1801/SPEC-5] runner.sh must not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s)" \
         "_TPL_STAGE_ROUTER_TIMEOUT still present in $RUNNER; must be replaced by template_stage_time_limit"
+fi
+
+# [#1801/SPEC-5] static: shipped templates carry timeout_s: at stage level ──────
+# template_stage_time_limits_load reads timeout_s: at stage-level indent (2
+# spaces from the stage name at column 0, NOT inside `router:` at 4 spaces).
+# These assertions verify that simple.yaml and deployed.yaml carry the correct
+# values directly under the stage block — so the watchdog reads them, not
+# router.timeout_s.
+#
+# Old code: these values might not exist or might only be under router:
+#   → awk extracts nothing (or wrong value) → assertion fails on old code ✓
+# New code: values are present at stage level → assertions pass ✓
+print_test_section "[#1801/SPEC-5] static: simple.yaml and deployed.yaml carry timeout_s: at stage level"
+
+_SIMPLE_YAML="$REPO_ROOT/config/templates/simple.yaml"
+_DEPLOYED_YAML="$REPO_ROOT/config/templates/deployed.yaml"
+
+# Extract stage-level timeout_s: for release in simple.yaml.
+# awk: enter release: section, stop at next top-level key (0-indent), stop
+# inside router: sub-section, only match `  timeout_s:` (exactly 2 leading spaces).
+_simple_release_ts="$(awk '
+    /^release:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_SIMPLE_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_simple_release_ts" == "30" ]]; then
+    assert_pass "[#1801/SPEC-5] simple.yaml: release.timeout_s is 30 at stage level (not under router:)"
+else
+    assert_fail "[#1801/SPEC-5] simple.yaml: release.timeout_s must be 30 at stage level" \
+        "got: '${_simple_release_ts:-<not found>}'; template_stage_time_limits_load reads 2-space indent, not router.timeout_s"
+fi
+
+# Extract stage-level timeout_s: for persist in simple.yaml.
+_simple_persist_ts="$(awk '
+    /^persist:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_SIMPLE_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_simple_persist_ts" == "120" ]]; then
+    assert_pass "[#1801/SPEC-5] simple.yaml: persist.timeout_s is 120 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] simple.yaml: persist.timeout_s must be 120 at stage level" \
+        "got: '${_simple_persist_ts:-<not found>}'"
+fi
+
+# deployed.yaml: same values.
+_deployed_release_ts="$(awk '
+    /^release:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_DEPLOYED_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_deployed_release_ts" == "30" ]]; then
+    assert_pass "[#1801/SPEC-5] deployed.yaml: release.timeout_s is 30 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] deployed.yaml: release.timeout_s must be 30 at stage level" \
+        "got: '${_deployed_release_ts:-<not found>}'"
+fi
+
+_deployed_persist_ts="$(awk '
+    /^persist:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_DEPLOYED_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_deployed_persist_ts" == "120" ]]; then
+    assert_pass "[#1801/SPEC-5] deployed.yaml: persist.timeout_s is 120 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] deployed.yaml: persist.timeout_s must be 120 at stage level" \
+        "got: '${_deployed_persist_ts:-<not found>}'"
 fi
 
 cleanup_test_env

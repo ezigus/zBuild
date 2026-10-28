@@ -206,6 +206,155 @@ else
         "neither error output nor _ZBUILD_ORCH_BACKEND_DISPOSITION contained 'misconfigured'; got: ${_SPEC10_ERR:-<empty>}"
 fi
 
+# ── SPEC-4 static: runner.sh gates on _ZBUILD_ORCH_BACKEND_DISPOSITION ────────
+# runner.sh must check _ZBUILD_ORCH_BACKEND_DISPOSITION immediately after
+# sourcing contract.sh and exit 1 naming the backend when the disposition is
+# `misconfigured`, before dispatching any stage.
+#
+# Old code: no such check in runner.sh → grep fails → assertion FAILS on old code.
+# New code: the check exists → grep succeeds → assertion PASSES.
+print_test_section "[#1801/SPEC-4] static: runner.sh contains _ZBUILD_ORCH_BACKEND_DISPOSITION gate"
+
+if grep -q '_ZBUILD_ORCH_BACKEND_DISPOSITION' "$REPO_ROOT/core/pipeline/runner.sh"; then
+    assert_pass "[#1801/SPEC-4] runner.sh contains _ZBUILD_ORCH_BACKEND_DISPOSITION gate (checked after contract.sh)"
+else
+    assert_fail "[#1801/SPEC-4] runner.sh must check _ZBUILD_ORCH_BACKEND_DISPOSITION after sourcing contract.sh" \
+        "grep found no _ZBUILD_ORCH_BACKEND_DISPOSITION in runner.sh; old code has no disposition gate"
+fi
+
+# ── SPEC-4 e2e: absent backend fails full pipeline run as misconfigured ───────
+# Create a minimal installed tree (rsync), remove orch-bash-parallel from it,
+# then run bash $ZBUILD_HOME/core/pipeline/runner.sh. With _ZBUILD_ROOT pointing
+# at the temp install, the last-resort check ($ZBUILD_HOME/plugins/tool/orch-bash-
+# parallel/plugin.sh) also fails — so both the registry path and last resort agree
+# the backend is absent.
+#
+# Old code: runner.sh ignores _ZBUILD_ORCH_BACKEND_DISPOSITION → continues →
+#   eventually fails with "orch_spawn: not implemented" or similar (not "misconfigured").
+# New code: runner.sh gates early → exits 1 with "misconfigured" naming the backend.
+print_test_section "[#1801/SPEC-4] e2e: absent backend fails pipeline as misconfigured"
+
+if ! command -v rsync >/dev/null 2>&1; then
+    SKIP=$((SKIP + 1))
+    printf '  \033[38;2;250;204;21mSKIP\033[0m: [#1801/SPEC-4] e2e: rsync not available\n' >&2
+else
+    _E2E_S4_INSTALL="$TEST_TEMP_DIR/e2e-install-spec4"
+    mkdir -p "$_E2E_S4_INSTALL"
+    rsync -aL --quiet \
+        "$REPO_ROOT/core" \
+        "$REPO_ROOT/plugins" \
+        "$REPO_ROOT/config" \
+        "$REPO_ROOT/scripts" \
+        "$_E2E_S4_INSTALL/"
+    # Remove the default backend from the temp install so both the registry scan
+    # and the bash-parallel last-resort check fail.
+    rm -rf "$_E2E_S4_INSTALL/plugins/tool/orch-bash-parallel"
+
+    _E2E_S4_STATE="$TEST_TEMP_DIR/e2e-s4-state"
+    _E2E_S4_EVDIR="$TEST_TEMP_DIR/e2e-s4-events"
+    mkdir -p "$_E2E_S4_STATE" "$_E2E_S4_EVDIR"
+    _E2E_S4_RC=0
+    _E2E_S4_OUT="$(
+        ZBUILD_STATE_DIR="$_E2E_S4_STATE" \
+        ZBUILD_EVENTS_DIR="$_E2E_S4_EVDIR" \
+        ZBUILD_EVENTS_JSONL="$_E2E_S4_EVDIR/events.jsonl" \
+        ZBUILD_MODELS_FILE="$_E2E_S4_INSTALL/config/models.json" \
+        ZBUILD_EVENT_SCHEMA="$_E2E_S4_INSTALL/config/event-schema.json" \
+        ZBUILD_CONTRACT_VALIDATOR=warn \
+        ZBUILD_CYCLES_ENABLED=0 \
+        ZBUILD_VISION_GATE=off \
+        bash "$_E2E_S4_INSTALL/core/pipeline/runner.sh" \
+            --template simple --goal "e2e-spec4-absent" 2>&1
+    )" || _E2E_S4_RC=$?
+
+    if [[ "$_E2E_S4_RC" -ne 0 ]]; then
+        assert_pass "[#1801/SPEC-4] e2e: absent backend causes pipeline to exit non-zero"
+    else
+        assert_fail "[#1801/SPEC-4] e2e: absent backend must cause pipeline to exit non-zero" \
+            "runner exited 0; expected non-zero when backend missing from installed tree"
+    fi
+
+    if grep -q 'misconfigured' <<< "$_E2E_S4_OUT"; then
+        assert_pass "[#1801/SPEC-4] e2e: pipeline output names absent backend as 'misconfigured'"
+    else
+        assert_fail "[#1801/SPEC-4] e2e: pipeline output must name absent backend as 'misconfigured'" \
+            "output did not contain 'misconfigured'; old code: no runner.sh gate, orch_spawn stub fires with 'not implemented' instead; got: ${_E2E_S4_OUT:0:300}"
+    fi
+
+    if grep -q 'bash-parallel' <<< "$_E2E_S4_OUT"; then
+        assert_pass "[#1801/SPEC-4] e2e: pipeline output names the missing backend 'bash-parallel'"
+    else
+        assert_fail "[#1801/SPEC-4] e2e: pipeline output must name the missing backend" \
+            "output did not contain 'bash-parallel'; got: ${_E2E_S4_OUT:0:300}"
+    fi
+fi
+
+# ── SPEC-10 e2e: unreadable plugin.sh fails full pipeline run as misconfigured ─
+# Same minimal-install approach: rsync, then chmod 000 the backend plugin.sh.
+# The plugin directory and manifest are present (discovery succeeds) but plugin.sh
+# is unreadable, simulating a corrupt or permission-denied installation.
+#
+# Old code: runner.sh ignores disposition → continues without the check.
+# New code: disposition=misconfigured is caught by the runner gate → exits 1.
+print_test_section "[#1801/SPEC-10] e2e: unreadable plugin.sh fails pipeline as misconfigured"
+
+if ! command -v rsync >/dev/null 2>&1; then
+    SKIP=$((SKIP + 1))
+    printf '  \033[38;2;250;204;21mSKIP\033[0m: [#1801/SPEC-10] e2e: rsync not available\n' >&2
+else
+    _E2E_S10_INSTALL="$TEST_TEMP_DIR/e2e-install-spec10"
+    mkdir -p "$_E2E_S10_INSTALL"
+    rsync -aL --quiet \
+        "$REPO_ROOT/core" \
+        "$REPO_ROOT/plugins" \
+        "$REPO_ROOT/config" \
+        "$REPO_ROOT/scripts" \
+        "$_E2E_S10_INSTALL/"
+    # Make orch-bash-parallel's plugin.sh unreadable.
+    chmod 000 "$_E2E_S10_INSTALL/plugins/tool/orch-bash-parallel/plugin.sh"
+
+    _E2E_S10_STATE="$TEST_TEMP_DIR/e2e-s10-state"
+    _E2E_S10_EVDIR="$TEST_TEMP_DIR/e2e-s10-events"
+    mkdir -p "$_E2E_S10_STATE" "$_E2E_S10_EVDIR"
+    _E2E_S10_RC=0
+    _E2E_S10_OUT="$(
+        ZBUILD_STATE_DIR="$_E2E_S10_STATE" \
+        ZBUILD_EVENTS_DIR="$_E2E_S10_EVDIR" \
+        ZBUILD_EVENTS_JSONL="$_E2E_S10_EVDIR/events.jsonl" \
+        ZBUILD_MODELS_FILE="$_E2E_S10_INSTALL/config/models.json" \
+        ZBUILD_EVENT_SCHEMA="$_E2E_S10_INSTALL/config/event-schema.json" \
+        ZBUILD_CONTRACT_VALIDATOR=warn \
+        ZBUILD_CYCLES_ENABLED=0 \
+        ZBUILD_VISION_GATE=off \
+        bash "$_E2E_S10_INSTALL/core/pipeline/runner.sh" \
+            --template simple --goal "e2e-spec10-unreadable" 2>&1
+    )" || _E2E_S10_RC=$?
+
+    # Restore permissions so cleanup_test_env can remove the directory.
+    chmod 644 "$_E2E_S10_INSTALL/plugins/tool/orch-bash-parallel/plugin.sh" 2>/dev/null || true
+
+    if [[ "$_E2E_S10_RC" -ne 0 ]]; then
+        assert_pass "[#1801/SPEC-10] e2e: unreadable plugin.sh causes pipeline to exit non-zero"
+    else
+        assert_fail "[#1801/SPEC-10] e2e: unreadable plugin.sh must cause pipeline to exit non-zero" \
+            "runner exited 0; expected non-zero when plugin.sh is chmod 000"
+    fi
+
+    if grep -q 'misconfigured' <<< "$_E2E_S10_OUT"; then
+        assert_pass "[#1801/SPEC-10] e2e: pipeline output names unreadable plugin.sh as 'misconfigured'"
+    else
+        assert_fail "[#1801/SPEC-10] e2e: pipeline output must name unreadable plugin.sh as 'misconfigured'" \
+            "output did not contain 'misconfigured'; old code: no runner.sh gate; got: ${_E2E_S10_OUT:0:300}"
+    fi
+
+    if grep -q 'bash-parallel' <<< "$_E2E_S10_OUT"; then
+        assert_pass "[#1801/SPEC-10] e2e: pipeline output names the misconfigured backend 'bash-parallel'"
+    else
+        assert_fail "[#1801/SPEC-10] e2e: pipeline output must name the misconfigured backend" \
+            "output did not contain 'bash-parallel'; got: ${_E2E_S10_OUT:0:300}"
+    fi
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
