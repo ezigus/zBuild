@@ -1,6 +1,31 @@
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current iteration (iteration 4) — WATCHDOG CHILD LEAK FIX
+## Current iteration (iteration 5) — NO CODE CHANGES NEEDED
+
+The test stage failed with 1 failing assertion: SPEC-6 "ADR-054 §11 content describes the per-run limit."
+
+### Root cause of the test failure
+
+The test file used `awk '/§[[:space:]]*11\b|.../'` — but POSIX awk treats `\b` as a
+backspace character (0x08), NOT a word boundary. So the awk pattern never matched the
+§11 heading, `_s11_body` was empty, and the grep for keywords failed.
+
+### Fix: test-author commit 2595a712
+
+The test-author stage ran and fixed this by replacing `\b` with `[^0-9]` in the awk
+pattern. This is in commit 2595a712 (already in the worktree).
+
+### Verification
+
+- run-limit-precedence-test.sh: 45/45 pass ✓
+- run-watchdog-clean-exit-test.sh: 8/8 pass ✓
+- runner-signal-rearm-test.sh: 5/5 pass ✓
+- shape-floor findings 1-9: consequence of prior test failure, cleared when tests pass
+- No code changes needed
+
+---
+
+## Previous iteration (iteration 4) — WATCHDOG CHILD LEAK FIX
 
 The test stage failed: sigterm-aborts-pipeline-test.sh timed out at 480s.
 Issue-acceptance found R-10 unmet and shape-floor flagging two event-sequence goldens.

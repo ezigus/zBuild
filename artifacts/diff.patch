@@ -71,7 +71,7 @@ index 227455a2..1373421d 100755
          trap '_runner_signal_trap INT' INT
          # #1829: free live resources first, while the state file and the
 diff --git a/tests/unit/run-limit-precedence-test.sh b/tests/unit/run-limit-precedence-test.sh
-index b44d6376..ecd39f8f 100644
+index b44d6376..431d43ea 100644
 --- a/tests/unit/run-limit-precedence-test.sh
 +++ b/tests/unit/run-limit-precedence-test.sh
 @@ -364,15 +364,16 @@ else
@@ -99,7 +99,7 @@ index b44d6376..ecd39f8f 100644
  fi
  
  print_test_section "[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by"
-@@ -389,15 +390,27 @@ else
+@@ -389,15 +390,30 @@ else
              "no §11 heading found in ADR-054"
      fi
  
@@ -110,7 +110,10 @@ index b44d6376..ecd39f8f 100644
 -        assert_pass "[#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit tests"
 +    # §11's content must describe the per-run limit specifically.
 +    # Extract the §11 body: lines from after its heading up to the next ## heading.
-+    _s11_body="$(awk '/§[[:space:]]*11\b|###[[:space:]]+11\./{f=1;next} f&&/^##/{exit} f{print}' \
++    # Use [^0-9] instead of \b: POSIX awk treats \b as a backspace character (0x08),
++    # not a word boundary. [^0-9] matches §11 followed by any non-digit (: space — etc.)
++    # and correctly excludes §110, §112, etc.
++    _s11_body="$(awk '/§[[:space:]]*11[^0-9]|###[[:space:]]+11\./{f=1;next} f&&/^##/{exit} f{print}' \
 +        "$ADR054" 2>/dev/null || true)"
 +    if grep -qiE 'max_run_s|wall.clock|per.run|run.level|run limit' <<< "$_s11_body" 2>/dev/null; then
 +        assert_pass "[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit"

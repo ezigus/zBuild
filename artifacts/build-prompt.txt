@@ -361,16 +361,50 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed 0 file(s) over 1 pass(es), 1 iteration(s)
+- changed 1 file(s) over 1 pass(es), 2 iteration(s)
 
-- lines: +0 / -0
+- lines: +17 / -0
 - terminated: done_sentinel
 - scope violation: false
 
 Your notes so far:
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current iteration (iteration 3) — ANALYZING ISSUE-ACCEPTANCE FINDINGS
+## Current iteration (iteration 4) — WATCHDOG CHILD LEAK FIX
+
+The test stage failed: sigterm-aborts-pipeline-test.sh timed out at 480s.
+Issue-acceptance found R-10 unmet and shape-floor flagging two event-sequence goldens.
+
+### Root cause: orphaned `sleep` child from watchdog subshell
+
+When the runner is externally SIGTERMed (kill -TERM -$RUNNER_PGID):
+1. The watchdog subshell has `trap '' TERM` → survives the PG-wide TERM
+2. The watchdog's `sleep "$_RUNNER_MAX_RUN_S"` child inherits SIG_IGN for TERM
+   (POSIX: exec preserves SIG_IGN across exec)
+3. The EXIT trap's `kill -KILL $watchdog_pid` kills the watchdog bash subshell, but
+   NOT its `sleep` child — SIGKILL to a PID kills only that PID, not its children
+4. The sleep is orphaned (reparented to init) and holds the pipe write-end open,
+   blocking any $(…) caller for up to 20700s
+
+### Fix applied: runner.sh EXIT trap watchdog cleanup
+
+Added pgrep-based collection of watchdog children BEFORE killing the watchdog:
+- `pgrep -P "${_RUNNER_WATCHDOG_PID}"` collects children (the sleep process)
+- Then `kill -KILL $watchdog_pid && wait $watchdog_pid` as before
+- Then `kill -KILL $_wc` for each orphaned child
+
+Must be BEFORE the kill because once the watchdog dies, its children are reparented
+to init and `pgrep -P` can no longer find them.
+
+### Golden file concern
+The shape floor flagged tests/golden/full-pipeline/event-sequence.golden and
+tests/golden/parity/event-sequence.golden. These do NOT need changes — they're for
+successful pipeline runs (no new events on that path). The shape floor couldn't verify
+them because there was a test failure; once sigterm test passes, full-pass verifies them.
+
+---
+
+## Previous iteration (iteration 3) — ANALYZING ISSUE-ACCEPTANCE FINDINGS (was COMPLETE)
 
 The test stage passed with 821/0. The issue-acceptance stage returned FAIL with 5 findings.
 After thorough investigation, ALL 5 findings are FALSE POSITIVES.
@@ -476,41 +510,99 @@ Outputs:
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124) fails: timed out before finishing
-- test finding 2 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 3 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 3 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 4 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 5 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 6 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 7 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 8 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 9 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 10 (opened by test): tests/unit/run-limit-precedence-test.sh/tests/unit/run-limit-precedence-test.sh: its test does not pass on the new code — the code or the test is wrong
 
 Summary:
 # Test stage summary
 
 - verdict: fail
-- passed: 820
+- passed: 4
 - failed: 1
 - exit_code: 1
-
-## Failing files
-
-- tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124) — timed out before finishing
 
 ## Failing lines (extracted)
 
 ```
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.MIt4Gt/tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
-  sigterm-aborts-pipeline — kill -TERM halts pipeline (#686)
+  ✗ [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    §11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic
+unit: FAIL tests/unit/run-limit-precedence-test.sh
+  ✓ [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+  [#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files
+  ✓ [#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)
+  1 of 45 tests failed
 ```
 
 ## The checks of this run
 - the shape floor failed: missing_floor_files
+- the acceptance check failed: the acceptance check failed — tests/unit/run-limit-precedence-test.sh/tests/unit/run-limit-precedence-test.sh: its test does not pass on the new code — the code or the test is wrong
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.MIt4Gt/tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+ZBUILD_MAX_RUN_S): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid ZBUILD_MAX_RUN_S → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when env limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)
 
-[38;2;0;212;255m[1m  sigterm-aborts-pipeline — kill -TERM halts pipeline (#686)[0m
-[2m  ══════════════════════════════════════════[0m
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid template max_run_s): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid template max_run_s → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when template limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured template source (max_run_s)
+
+  [38;2;0;212;255m[#1944/SPEC-5] stage-limits.sh contains no GITHUB_ACTIONS or bare CI reference[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no GITHUB_ACTIONS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no TRAVIS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no TRAVIS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no CIRCLECI reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no CIRCLECI in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no RUNNER_OS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no RUNNER_OS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no BUILD_BUILDID reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no BUILD_BUILDID in code lines
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
+
+  [38;2;0;212;255m[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-adr-enforced-by: all Enforced-by citations resolve[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 45 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -518,20 +610,20 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-10: npm test fails (sigterm-aborts-pipeline-test.sh 480 s timeout, likely watchdog-leak regression when runner is killed externally. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: shape floor flags tests/golden/full-pipeline/event-sequence.golden and tests/golden/parity/event-sequence.golden as needing review). What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: R-1: the "reddens at merge-base" sub-claim — the regression test is new (absent at merge-base), so the claim holds only if reverting the runner implementation alone makes the test fail. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 4 (opened by issue-acceptance): Not sure this requirement is met: the test output shows the test passes now but cannot confirm the red-on-revert direction without running against the old code. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-9: ADR-054 §11 exists but its content fails the new keyword check — the §11 section does not describe the per-run limit in the terms the test requires. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-10: npm test fails (1 of 45 assertions red — `[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit`). What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: R-2: test assertions pass but both branches of the between-dispatches conditional call `assert_pass`, making the sub-requirement unfalsifiable — putting old code back would not redden it. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 4 (opened by issue-acceptance): Not sure this requirement is met: R-4: issue requires both `release` AND `persist` always-run stages to fire after timeout — the diff and visible test output do not confirm `persist` is separately constructed or asserted. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
 
 Summary:
 ## issue-acceptance — fail
 
-- R-10 unmet — `sigterm-aborts-pipeline-test.sh` (an existing test for #686) times out at 480 s, most likely a regression from the new watchdog process not being reaped when the runner is externally SIGTERMed, and the shape-floor check flags two event-sequence golden files as potentially stale.
+- The test suite is red — the new SPEC-6 assertion introduced by this diff immediately fails because ADR-054 §11's body does not contain any of the required per-run-limit keywords (`max_run_s`, `wall-clock`, `per-run`, `run-level`, `run limit`), leaving both R-9 and R-10 unmet.
 
-- NOT MET: R-10: npm test fails (sigterm-aborts-pipeline-test.sh 480 s timeout, likely watchdog-leak regression when runner is killed externally
-- NOT MET: shape floor flags tests/golden/full-pipeline/event-sequence.golden and tests/golden/parity/event-sequence.golden as needing review)
-- NOT SURE: R-1: the "reddens at merge-base" sub-claim — the regression test is new (absent at merge-base), so the claim holds only if reverting the runner implementation alone makes the test fail — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: the test output shows the test passes now but cannot confirm the red-on-revert direction without running against the old code — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT MET: R-9: ADR-054 §11 exists but its content fails the new keyword check — the §11 section does not describe the per-run limit in the terms the test requires
+- NOT MET: R-10: npm test fails (1 of 45 assertions red — `[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit`)
+- NOT SURE: R-2: test assertions pass but both branches of the between-dispatches conditional call `assert_pass`, making the sub-requirement unfalsifiable — putting old code back would not redden it — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: R-4: issue requires both `release` AND `persist` always-run stages to fire after timeout — the diff and visible test output do not confirm `persist` is separately constructed or asserted — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ## What you must not do
 
