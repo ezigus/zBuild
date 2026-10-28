@@ -2,5 +2,5 @@
 
 - split the issue into 9 work item(s)
 
-- open questions: 3
+- open questions: 1
 - artifact: plan.json
