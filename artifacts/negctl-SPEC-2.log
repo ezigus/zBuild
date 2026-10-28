@@ -65,6 +65,8 @@
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 exists
     [2mno §11 heading found in ADR-054[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
     [2mrun-timed-out-test not referenced in ADR-054 ## Enforced by[0m
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
@@ -90,7 +92,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m21 of 37 tests failed[0m
+  [38;2;248;113;113m[1m22 of 38 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
   [38;2;248;113;113m✗[0m [#1944/SPEC-2] precedence checks skipped — function not found
@@ -107,6 +109,7 @@
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
@@ -173,6 +176,8 @@
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
@@ -192,5 +197,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 44 tests passed[0m
+  [38;2;248;113;113m[1m1 of 45 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
 

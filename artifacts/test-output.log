@@ -1,18 +1,83 @@
+unit: FAIL tests/unit/run-limit-precedence-test.sh
 
-> zbuild@0.1.0 test
-> bash tests/run-all.sh
+  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)
 
-unit: 528/528 passed (4 skipped)
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.MIt4Gt/tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
 
-  sigterm-aborts-pipeline — kill -TERM halts pipeline (#686)
+  [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+  ✓ [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
 
-integration: 255/256 passed (1 timed out)
-e2e: 10/10 passed
-golden: 1/1 passed
-mutation: 25/25 passed
-lint: 1/1 passed
+  [#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700
+  ✓ [#1944/SPEC-2] no template, no env → default 20700
+  ✓ [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  ✓ [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  ✓ [#1944/SPEC-2] template value wins over default
 
-total: 820/821 passed (4 skipped, 1 timed out)
+  [#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1
+  ✓ [#1944/SPEC-2] non-integer template value → rc=1
+  ✓ [#1944/SPEC-2] template value=0 → rc=1
+  ✓ [#1944/SPEC-2] negative template value → rc=1
+  ✓ [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  ✓ [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [#1944/SPEC-2] template_max_run_s() reads max_run_s from template YAML (real function)
+  ✓ [#1944/SPEC-2] template_max_run_s() returns max_run_s value from YAML
+  ✓ [#1944/SPEC-2] template_max_run_s() returns empty when max_run_s absent
+
+  [#1944/SPEC-2] misconfigured run (invalid ZBUILD_MAX_RUN_S): runner rejects before dispatch
+  ✓ [#1944/SPEC-2] invalid ZBUILD_MAX_RUN_S → runner exits non-zero
+  ✓ [#1944/SPEC-2] stage did not run when env limit is misconfigured
+  ✓ [#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)
+
+  [#1944/SPEC-2] misconfigured run (invalid template max_run_s): runner rejects before dispatch
+  ✓ [#1944/SPEC-2] invalid template max_run_s → runner exits non-zero
+  ✓ [#1944/SPEC-2] stage did not run when template limit is misconfigured
+  ✓ [#1944/SPEC-2] message names the misconfigured template source (max_run_s)
+
+  [#1944/SPEC-5] stage-limits.sh contains no GITHUB_ACTIONS or bare CI reference
+  ✓ [#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference
+  ✓ [#1944/SPEC-5] stage-limits.sh: no bare $CI in non-comment code
+  ✓ [#1944/SPEC-5] runner.sh: no GITHUB_ACTIONS in code lines
+  ✓ [#1944/SPEC-5] runner.sh: no bare $CI in non-comment code
+  ✓ [#1944/SPEC-5] stage-limits.sh: no TRAVIS reference
+  ✓ [#1944/SPEC-5] runner.sh: no TRAVIS in code lines
+  ✓ [#1944/SPEC-5] stage-limits.sh: no CIRCLECI reference
+  ✓ [#1944/SPEC-5] runner.sh: no CIRCLECI in code lines
+  ✓ [#1944/SPEC-5] stage-limits.sh: no RUNNER_OS reference
+  ✓ [#1944/SPEC-5] runner.sh: no RUNNER_OS in code lines
+  ✓ [#1944/SPEC-5] stage-limits.sh: no BUILD_BUILDID reference
+  ✓ [#1944/SPEC-5] runner.sh: no BUILD_BUILDID in code lines
+
+  [#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary
+  ✓ [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
+  ✓ [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  ✓ [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  ✓ [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  ✓ [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
+
+  [#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by
+  ✓ [#1944/SPEC-6] ADR-054 §11 exists
+  ✗ [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    §11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic
+  ✓ [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  ✓ [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  ✓ [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  ✓ [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
+
+  [#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md
+  ✓ [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
+
+  [#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit
+  ✓ [#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit
+
+  [#1944/SPEC-6] lint-adr-enforced-by: all Enforced-by citations resolve
+  ✓ [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+
+  [#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files
+  ✓ [#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)
+
+
+  1 of 45 tests failed
+
+  ✗ [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+
+unit: 4/5 passed

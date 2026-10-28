@@ -22,7 +22,7 @@
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1821598 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1990196 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -58,7 +58,7 @@
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1806554 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1975100 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -129,6 +129,8 @@
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
@@ -150,8 +152,9 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 44 tests failed[0m
+  [38;2;248;113;113m[1m3 of 45 tests failed[0m
 
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
   [38;2;248;113;113m✗[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
 
@@ -214,6 +217,8 @@
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
@@ -233,5 +238,451 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 44 tests passed[0m
+  [38;2;248;113;113m[1m1 of 45 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/run-watchdog-clean-exit-test.sh
+
+[38;2;0;212;255m[1m  run-watchdog-clean-exit: watchdog reaped, status unchanged (#1944 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-3] _runner_resolve_run_limit_s defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] _runner_resolve_run_limit_s is defined
+
+  [38;2;0;212;255m[#1944/SPEC-3] clean run with max_run_s=30 exits with complete status[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] clean run exits 0
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is complete (not timed_out)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is NOT timed_out
+
+  [38;2;0;212;255m[#1944/SPEC-3] no pipeline.end status=timed_out in events log after clean run[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no pipeline.end/timed_out event after clean run
+
+  [38;2;0;212;255m[#1944/SPEC-3] watchdog killed: abort sentinel not written after runner exits[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] clean run with max_run_s=4 exits 0
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status still stage-driven after sleep past max_run_s=4s: complete (not timed_out)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] watchdog killed: abort sentinel absent after runner exits (watchdog was reaped)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/unit/run-watchdog-clean-exit-test.sh
+
+[38;2;0;212;255m[1m  run-watchdog-clean-exit: watchdog reaped, status unchanged (#1944 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-3] _runner_resolve_run_limit_s defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] _runner_resolve_run_limit_s is defined
+
+  [38;2;0;212;255m[#1944/SPEC-3] clean run with max_run_s=30 exits with complete status[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] clean run exits 0
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is complete (not timed_out)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status is NOT timed_out
+
+  [38;2;0;212;255m[#1944/SPEC-3] no pipeline.end status=timed_out in events log after clean run[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] no pipeline.end/timed_out event after clean run
+
+  [38;2;0;212;255m[#1944/SPEC-3] watchdog killed: abort sentinel not written after runner exits[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] clean run with max_run_s=4 exits 0
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] pipeline status still stage-driven after sleep past max_run_s=4s: complete (not timed_out)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-3] watchdog killed: abort sentinel absent after runner exits (watchdog was reaped)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/integration/resume-after-run-timeout-test.sh
+
+[38;2;0;212;255m[1m  resume-after-run-timeout: watchdog armed from resumed run's wall-clock start (#1944 SPEC-4)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
+
+  [38;2;0;212;255m[#1944/SPEC-4] P2: _runner_resolve_run_limit_s defined (watchdog arms on every invocation)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run with generous max_run_s completes normally[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: resumed run did not time out (status=complete)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run
+
+  [38;2;0;212;255m[#1944/SPEC-4] P4: resumed run with tight limit times out — watchdog is armed[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P4: resumed run exits 1 (watchdog fired, not outer timeout)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P4: resumed run with slow stage ends timed_out (watchdog is armed)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 6 tests passed[0m
+
+### config/adr-enforcement-baseline.txt head tests/integration/resume-after-run-timeout-test.sh
+
+[38;2;0;212;255m[1m  resume-after-run-timeout: watchdog armed from resumed run's wall-clock start (#1944 SPEC-4)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only
+
+  [38;2;0;212;255m[#1944/SPEC-4] P2: _runner_resolve_run_limit_s defined (watchdog arms on every invocation)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P2: _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-4] P3: resumed run with generous max_run_s completes normally[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: resumed run did not time out (status=complete)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P3: no pipeline.end/timed_out event in resumed run
+
+  [38;2;0;212;255m[#1944/SPEC-4] P4: resumed run with tight limit times out — watchdog is armed[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P4: resumed run exits 1 (watchdog fired, not outer timeout)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-4] P4: resumed run with slow stage ends timed_out (watchdog is armed)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 6 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] template_max_run_s() reads max_run_s from template YAML (real function)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template_max_run_s() returns max_run_s value from YAML
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template_max_run_s() returns empty when max_run_s absent
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid ZBUILD_MAX_RUN_S): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid ZBUILD_MAX_RUN_S → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when env limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid template max_run_s): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid template max_run_s → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when template limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured template source (max_run_s)
+
+  [38;2;0;212;255m[#1944/SPEC-5] stage-limits.sh contains no GITHUB_ACTIONS or bare CI reference[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no GITHUB_ACTIONS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no TRAVIS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no TRAVIS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no CIRCLECI reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no CIRCLECI in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no RUNNER_OS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no RUNNER_OS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no BUILD_BUILDID reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no BUILD_BUILDID in code lines
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
+    [2mstill listed in config/adr-enforcement-baseline.txt[0m
+
+  [38;2;0;212;255m[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-adr-enforced-by: all Enforced-by citations resolve[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+    [2mexpected: 0, got: 1[0m
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 45 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+
+### config/adr-enforcement-baseline.txt head tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] template_max_run_s() reads max_run_s from template YAML (real function)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template_max_run_s() returns max_run_s value from YAML
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template_max_run_s() returns empty when max_run_s absent
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid ZBUILD_MAX_RUN_S): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid ZBUILD_MAX_RUN_S → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when env limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid template max_run_s): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid template max_run_s → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when template limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured template source (max_run_s)
+
+  [38;2;0;212;255m[#1944/SPEC-5] stage-limits.sh contains no GITHUB_ACTIONS or bare CI reference[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no GITHUB_ACTIONS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no TRAVIS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no TRAVIS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no CIRCLECI reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no CIRCLECI in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no RUNNER_OS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no RUNNER_OS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no BUILD_BUILDID reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no BUILD_BUILDID in code lines
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
+
+  [38;2;0;212;255m[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-adr-enforced-by: all Enforced-by citations resolve[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 45 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] template_max_run_s() reads max_run_s from template YAML (real function)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template_max_run_s() returns max_run_s value from YAML
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template_max_run_s() returns empty when max_run_s absent
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid ZBUILD_MAX_RUN_S): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid ZBUILD_MAX_RUN_S → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when env limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid template max_run_s): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid template max_run_s → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when template limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured template source (max_run_s)
+
+  [38;2;0;212;255m[#1944/SPEC-5] stage-limits.sh contains no GITHUB_ACTIONS or bare CI reference[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no GITHUB_ACTIONS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no TRAVIS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no TRAVIS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no CIRCLECI reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no CIRCLECI in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no RUNNER_OS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no RUNNER_OS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no BUILD_BUILDID reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no BUILD_BUILDID in code lines
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
+    [2mstill listed in config/adr-enforcement-baseline.txt[0m
+
+  [38;2;0;212;255m[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-adr-enforced-by: all Enforced-by citations resolve[0m
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+    [2mexpected: 0, got: 1[0m
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 45 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+
+### config/adr-enforcement-baseline.txt head tests/unit/run-limit-precedence-test.sh
+
+[38;2;0;212;255m[1m  run-limit-precedence: max_run_s resolution + platform-free + ADR alignment (#1944)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] _runner_resolve_run_limit_s is defined in stage-limits.sh
+
+  [38;2;0;212;255m[#1944/SPEC-2] precedence: template max_run_s > ZBUILD_MAX_RUN_S > 20700[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] no template, no env → default 20700
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] env ZBUILD_MAX_RUN_S=3600 used when no template value
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over ZBUILD_MAX_RUN_S
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value wins over default
+
+  [38;2;0;212;255m[#1944/SPEC-2] non-integer / non-positive → misconfigured, rc=1[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template value=0 → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] negative template value → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] non-integer ZBUILD_MAX_RUN_S → rc=1
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] ZBUILD_MAX_RUN_S=0 → rc=1
+
+  [38;2;0;212;255m[#1944/SPEC-2] template_max_run_s() reads max_run_s from template YAML (real function)[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template_max_run_s() returns max_run_s value from YAML
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] template_max_run_s() returns empty when max_run_s absent
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid ZBUILD_MAX_RUN_S): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid ZBUILD_MAX_RUN_S → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when env limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured env source (ZBUILD_MAX_RUN_S)
+
+  [38;2;0;212;255m[#1944/SPEC-2] misconfigured run (invalid template max_run_s): runner rejects before dispatch[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] invalid template max_run_s → runner exits non-zero
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] stage did not run when template limit is misconfigured
+  [38;2;74;222;128m✓[0m [#1944/SPEC-2] message names the misconfigured template source (max_run_s)
+
+  [38;2;0;212;255m[#1944/SPEC-5] stage-limits.sh contains no GITHUB_ACTIONS or bare CI reference[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no GITHUB_ACTIONS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no GITHUB_ACTIONS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no bare $CI in non-comment code
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no TRAVIS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no TRAVIS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no CIRCLECI reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no CIRCLECI in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no RUNNER_OS reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no RUNNER_OS in code lines
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] stage-limits.sh: no BUILD_BUILDID reference
+  [38;2;74;222;128m✓[0m [#1944/SPEC-5] runner.sh: no BUILD_BUILDID in code lines
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-025 names timed_out in its word vocabulary[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 word vocabulary includes timed_out
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-025 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites resume-after-run-timeout-test
+
+  [38;2;0;212;255m[#1944/SPEC-6] config/adr-enforcement-baseline.txt does not list ADR-054-stage-contract.md[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054-stage-contract.md removed from baseline
+
+  [38;2;0;212;255m[#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] run_end_words timed_out describes the wall-clock limit
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-adr-enforced-by: all Enforced-by citations resolve[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] lint-adr-enforced-by passes (ADR citations all resolve)
+
+  [38;2;0;212;255m[#1944/SPEC-6] lint-test-errexit: no mid-file set -e in test files[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] lint-test-errexit passes (no mid-file set -e, npm run lint subset)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 45 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
 
