@@ -360,62 +360,89 @@ Outputs:
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
+## build — timed_out
+
+- changed 1 file(s) over 1 pass(es), 3 iteration(s)
+
+- lines: +10 / -8
+- terminated: router_timeout
+- scope violation: false
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-2-attempt-1/build-summary.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-2-attempt-1/build-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-2-attempt-1/diff.patch
+
+Summary of that output:
 ## build — pass
 
-- changed 2 file(s) over 1 pass(es), 2 iteration(s)
+- changed 0 file(s) over 1 pass(es), 1 iteration(s)
 
-- lines: +2 / -2
+- lines: +0 / -0
 - terminated: done_sentinel
 - scope violation: false
 
 Your notes so far:
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Current Status (iteration 4 of build stage)
+## Current Status (iteration 6 — ACTIVE)
 
-### Summary of All Bugs and Their Status
+### Previous fixes (committed)
 
 **Bug A** (3 integration test timeouts — orphaned sleep holds pipe write end):
-- Committed in 741c8466: partial fix `>/dev/null 2>&1 &` (fds 1 and 2 closed)
-- Still needed: `{_RUNNER_ERR_FD}>&-` to close the high-numbered fd that also points to the pipe
-- APPLIED IN WORKING TREE (uncommitted): line 2827 changed from `) >/dev/null 2>&1 &` to `) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
+- Committed in 9a853724: `{_RUNNER_ERR_FD}>&-` closes the high-numbered fd in watchdog subshell
+- COMPLETE ✓
 
 **Bug B** (double-SIGTERM aborts EXIT trap → always_run never runs):
 - Committed in 741c8466: `trap ':' INT TERM` guard + trap restore in `_runner_abort_trap`
-- COMPLETE
+- PARTIAL — guard was placed AFTER `plugin_stop_running` which also calls `wait`, leaving a window
 
 **Bug C** (SPEC-5 in runner-signal-rearm-test.sh — awk matches wrong line):
-- The `trap ':' INT TERM` guard added by Bug B fix is inside `_runner_abort_trap` in main()
-- The old awk pattern `/trap .* TERM$/` found this line first (before the startup install at 2751)
-- grep -oE couldn't extract from it → `_startup_term` empty → SPEC-5 failed
-- APPLIED IN WORKING TREE (uncommitted): runner-signal-rearm-test.sh line 92 awk changed from `/trap .* TERM$/` to `/trap '.*' TERM$/` (requires single-quoted handler)
-- Test confirmed passing after change
+- Committed in 9a853724: runner-signal-rearm-test.sh awk pattern fixed to `/trap '.*' TERM$/`
+- COMPLETE ✓
 
-### Findings from Previous Test Stage
+### NEW Issue: runner-release-exit-paths-test.sh SPEC-5 regression
 
-1. core-pipeline-runner-test.sh TIMEOUT → fixed by Bug A completion
-2. core-pipeline-strategy-test.sh TIMEOUT → fixed by Bug A completion
-3. runner-signal-rearm-test.sh SPEC-5 → fixed by Bug C, VERIFIED NOT REPRODUCED (test passes)
-4. vision-admission-gate-test.sh TIMEOUT → fixed by Bug A completion
-5. full-pipeline/event-sequence.golden → consequence of test failures (shape floor's _sf_floor_verified requires _SF_FAILED_COUNT=0), will auto-resolve when all tests pass
-6. parity/event-sequence.golden → same as finding 5
+**Root cause**: In SPEC-5 (external hard kill / timeout-style), `kill -TERM -$RUNNER_PID` sends
+SIGTERM to the whole process group. This includes `timeout 120` which receives SIGTERM and then
+forwards SIGTERM to its child (runner bash) — creating a SECOND SIGTERM.
 
-### Changes Applied This Iteration (working tree, uncommitted)
+The guard `trap ':' INT TERM` was placed AFTER `plugin_stop_running` in `_runner_abort_trap`.
+`plugin_stop_running` calls `wait "$p"` internally. If the second SIGTERM arrives during this `wait`,
+`_runner_signal_trap TERM` fires → calls `exit 1` from inside the EXIT trap → aborts the trap →
+`_runner_dispatch_always_run` never runs → marker file is empty.
 
-1. `core/pipeline/runner.sh:2827`: `) >/dev/null 2>&1 &` → `) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &`
-   - Closes the high-numbered fd in the watchdog subshell so orphaned sleep child can't hold the pipe
-   - Shellcheck: only pre-existing SC2015 info notes, no new issues
+SPEC-4 (single SIGTERM to just the PID, not PG) passes because `timeout` is not in the kill target,
+so no second SIGTERM is generated.
 
-2. `tests/unit/runner-signal-rearm-test.sh:92`: awk pattern `/trap .* TERM$/` → `/trap '.*' TERM$/`
-   - Requires single-quoted handler before TERM, skips `trap ':' INT TERM` (the guard line)
-   - SC2317 is pre-existing on line 106 (not from this change)
+**Fix**: Move `trap ':' INT TERM` to the TOP of `_runner_abort_trap`, BEFORE `_runner_restore_stderr`
+and `plugin_stop_running`. This protects the entire trap body from being aborted by a repeat signal.
 
-### Verification
+`plugin_stop_running`'s `wait` would no longer be interrupted by signals, but that's fine — the stage
+was already TERMed by `plugin_stop_running` itself, and the KILL backup fires after 2s, so the stage
+dies and the wait loop exits naturally within ~2-3 seconds.
 
-- SPEC-2/5/6 acceptance tests (run-limit-precedence-test.sh): all 38 pass ✓
-- runner-signal-rearm-test.sh: all 5 pass ✓
-- shellcheck runner.sh: only pre-existing SC2015 info notes ✓
-- shellcheck runner-signal-rearm-test.sh: only pre-existing SC2317 info note ✓
+### Shape floor
+
+The "missing_floor_files" failure is a CONSEQUENCE of runner-release-exit-paths-test.sh failing.
+When all tests pass, the shape floor uses "full pass = verified" shortcut and doesn't require
+the golden files to be in the diff. Fix SPEC-5 → all tests pass → shape floor auto-clears.
+
+### Issue-acceptance findings
+
+Finding 1 (R-10): test suite fails → fix SPEC-5 → auto-resolves
+Finding 2 (R-4): issue-acceptance claims persist is not tested — WRONG, timeout-with-release.yaml
+  already has persist-stage, and P4 assertions in run-timed-out-test.sh test both. P4 PASSES.
+  The real issue is the SPEC-5 regression (release not dispatched on hard-kill path). Fix: same as above.
+Finding 3/4 (R-9/ADR-054 §9): SPEC-6 test PASSES, ADR-054 has §11 with Enforced by. The issue-acceptance
+  is uncertain but SPEC-6 being green proves the requirement is met.
+
+## Plan for iteration 6
+
+1. In core/pipeline/runner.sh: move `trap ':' INT TERM` to be the FIRST line of `_runner_abort_trap`
+   (before `_runner_restore_stderr` and before `plugin_stop_running`)
+2. Run tests/integration/runner-release-exit-paths-test.sh to verify the fix
+3. Run tests/unit/run-limit-precedence-test.sh to verify it still passes (SPEC-2/5/6)
 
 ### test (verdict: fail)
 Outputs:
@@ -430,7 +457,7 @@ Outputs:
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): tests/integration/run-timed-out-test.sh fails: ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches — fast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched
+- test finding 1 (opened by test): tests/integration/runner-release-exit-paths-test.sh fails: ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
 - test finding 2 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
 - test finding 3 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
 
@@ -444,62 +471,69 @@ Summary:
 
 ## Failing files
 
-- tests/integration/run-timed-out-test.sh — ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches — fast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched
+- tests/integration/runner-release-exit-paths-test.sh — ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
 
 ## Failing lines (extracted)
 
 ```
-  ✗ [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
-    fast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.b98p5u/tests/integration/run-timed-out-test.sh
-  ✓ [#1944/SPEC-1] P4: pipeline status=timed_out
-  ✓ [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
-  ✓ [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
-  1 of 16 tests failed
+  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
+    no release from: intake build | marker= 
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.esL6cT/tests/integration/runner-release-exit-paths-test.sh
+  ✓ [SPEC-6] the blocked hook does not outlive the run
+  SPEC-6b: a hook child that ignores TERM does not outlive the run
+  ✓ [SPEC-6b] a hook child that ignores TERM does not outlive the run
+  1 of 19 tests failed
 ```
 
 ## The checks of this run
 - the shape floor failed: missing_floor_files
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.b98p5u/tests/integration/run-timed-out-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.esL6cT/tests/integration/runner-release-exit-paths-test.sh
 
-[38;2;0;212;255m[1m  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)[0m
+[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
 [2m  ══════════════════════════════════════════[0m
 
 
-  [38;2;0;212;255mP1: slow stage timeout — status=timed_out written to pipeline-state.json[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: runner exits non-zero
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
+  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
+  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
 
-  [38;2;0;212;255mP1: pipeline.end event fields — status=timed_out, stage, limit_s[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
+  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
+  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
 
-  [38;2;0;212;255mP2: watchdog fires even when engine is idle between dispatches[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
-    [2mfast-two sentinel found at /home/runner/work/_temp/zbuild-state/scratch/test/run-timed-out.DIwXFB/fast-two-started — watchdog did not fire before fast-two was dispatched[0m
+  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
+  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
 
-  [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 6s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 520474 killed)
+  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (1s)
+  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
+  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
 
-  [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: pipeline status=timed_out
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
+  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 36s)
+  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
+
+  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
+  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 16 tests failed[0m
+  [38;2;248;113;113m[1m1 of 19 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -507,16 +541,20 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-2: watchdog fires when engine is idle between dispatches — [#1944/SPEC-1] P2 asserts fast-two never started, but the sentinel was present, meaning the watchdog did not fire before the engine forked fast-two. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-10: `npm test` fails (1 test failure, exit code 1) — the single code change in runner.sh (`{_RUNNER_ERR_FD}>&-`) was intended to fix the FD-leak that delayed watchdog delivery, but the test result shows it did not close the gap between fast-one completing (~t=2s) and fast-two being dispatched before the t=3s watchdog fires. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-10: test suite fails (1 regression + shape_floor breach — neither is a pre-existing failure, both are introduced by this diff). What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4: `persist` is never constructed or tested in the timed_out scenario (only `release` appears in the `timeout-with-release.yaml` template), and the SPEC-5 regression in `runner-release-exit-paths-test.sh` shows that the hard-kill exit path no longer dispatches `release` at all after the FD-close change — so even the `release` half of R-4 is not safely covered on the kill escalation path. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: R-9: the issue specifies "ADR-054 §9" as the section to amend, but the diff adds §11. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 4 (opened by issue-acceptance): Not sure this requirement is met: cannot determine from the diff alone whether §9 was also updated or whether the issue carried a draft-numbering error — the ADR file is in the changed-files list but the section numbers cannot be verified here. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
 
 Summary:
 ## issue-acceptance — fail
 
-- The test specifically written to prove R-2 (watchdog fires in the idle window between stage dispatches) explicitly fails — fast-two's sentinel file was found, proving the engine dispatched fast-two before the watchdog could fire — and `npm test` therefore exits non-zero.
+- `npm test` fails — `runner-release-exit-paths-test.sh` SPEC-5 (release stage on the hard-kill exit path) regresses after the `{_RUNNER_ERR_FD}>&-` change, and the shape_floor floor is breached; R-10 is directly unmet and the regression bears on R-4.
 
-- NOT MET: R-2: watchdog fires when engine is idle between dispatches — [#1944/SPEC-1] P2 asserts fast-two never started, but the sentinel was present, meaning the watchdog did not fire before the engine forked fast-two
-- NOT MET: R-10: `npm test` fails (1 test failure, exit code 1) — the single code change in runner.sh (`{_RUNNER_ERR_FD}>&-`) was intended to fix the FD-leak that delayed watchdog delivery, but the test result shows it did not close the gap between fast-one completing (~t=2s) and fast-two being dispatched before the t=3s watchdog fires
+- NOT MET: R-10: test suite fails (1 regression + shape_floor breach — neither is a pre-existing failure, both are introduced by this diff)
+- NOT MET: R-4: `persist` is never constructed or tested in the timed_out scenario (only `release` appears in the `timeout-with-release.yaml` template), and the SPEC-5 regression in `runner-release-exit-paths-test.sh` shows that the hard-kill exit path no longer dispatches `release` at all after the FD-close change — so even the `release` half of R-4 is not safely covered on the kill escalation path
+- NOT SURE: R-9: the issue specifies "ADR-054 §9" as the section to amend, but the diff adds §11 — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: cannot determine from the diff alone whether §9 was also updated or whether the issue carried a draft-numbering error — the ADR file is in the changed-files list but the section numbers cannot be verified here — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ## What you must not do
 

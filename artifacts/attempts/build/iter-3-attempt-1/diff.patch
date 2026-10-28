@@ -1,0 +1,159 @@
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 8a625b70..0f6b78c5 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -2527,6 +2527,16 @@ main() {
+     }
+ 
+     _runner_abort_trap() {
++        # Guard against a repeat signal (e.g. `timeout` forwarding its own SIGTERM
++        # to the process group after the first already fired) aborting this trap.
++        # Must be the FIRST line: `plugin_stop_running` below calls `wait`, which
++        # bash interrupts on signal delivery — a second TERM would fire
++        # `_runner_signal_trap TERM`, call `exit 1`, and abort the EXIT trap before
++        # `_runner_dispatch_always_run` runs. Mirrors the pattern already used
++        # inside `_runner_dispatch_always_run` (line 2516). Restore real handlers
++        # after the kill/wait block so `_runner_dispatch_always_run` can still
++        # handle signals.
++        trap ':' INT TERM
+         _runner_restore_stderr
+         # ADR-054 §7: a signal ends the run while a stage is still running;
+         # stop it, and all it started, before anything else.
+@@ -2536,14 +2546,6 @@ main() {
+         # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
+         # ignored and `wait` would block until the full sleep expires. SIGKILL
+         # cannot be caught or ignored, so the wait returns immediately.
+-        # Guard against a second SIGTERM (e.g. from `timeout` forwarding its own
+-        # SIGTERM to the process group after the first already fired): without the
+-        # guard, `_runner_signal_trap TERM` calls `exit 1`, and calling `exit`
+-        # from inside an EXIT trap aborts the trap immediately before
+-        # `_runner_dispatch_always_run` can run. Mirrors the pattern already used
+-        # inside `_runner_dispatch_always_run` (line 2516). Restore real handlers
+-        # after `wait` so `_runner_dispatch_always_run` can still handle signals.
+-        trap ':' INT TERM
+         kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
+         [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && wait "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true
+         trap '_runner_signal_trap TERM' TERM
+@@ -2824,7 +2826,7 @@ main() {
+                 kill -KILL "$_wdg_child" 2>/dev/null || true
+             fi
+         done < <(pgrep -P "$_wdg_runner_pid" 2>/dev/null)
+-    ) >/dev/null 2>&1 &
++    ) >/dev/null 2>&1 {_RUNNER_ERR_FD}>&- &
+     _RUNNER_WATCHDOG_PID=$!
+ 
+     # ── ADR-015 stage-io stdout channel ─────────────────────────────────────
+diff --git a/tests/integration/run-timed-out-test.sh b/tests/integration/run-timed-out-test.sh
+index b3951ef6..189234e2 100644
+--- a/tests/integration/run-timed-out-test.sh
++++ b/tests/integration/run-timed-out-test.sh
+@@ -11,9 +11,10 @@
+ # Phases:
+ #   P1 — basic timeout: slow stage hits the watchdog; status=timed_out, event
+ #        fields correct; runner exits non-zero within the limit
+-#   P2 — idle between dispatches: fast-one completes before watchdog fires;
+-#        watchdog fires while fast-two is sleeping; fast-one being in "complete"
+-#        state proves the watchdog runs independently of stage dispatch state
++#   P2 — idle between dispatches: fast-one (1s) completes normally before
++#        max_run_s (2s); fast-two is in-flight when the watchdog fires; fast-one
++#        in "complete" state proves the timer tracks wall-clock time from run
++#        start (not a per-stage reset), i.e. fires even after an idle window
+ #   P3 — TERM-ignore: a stage that traps and ignores SIGTERM is dead within
+ #        TERM + 10 s (KILL escalation)
+ #   P4 — release and persist run: always_run release + persist stages execute
+@@ -204,34 +205,51 @@ rm -f "$STATE_FILE" "$EVENTS_JSONL"
+ mock_plugin_factory "fast-one" "agent" 0 >/dev/null
+ mock_plugin_factory "fast-two" "agent" 0 >/dev/null
+ 
+-# fast-one: returns immediately (proves it can complete BEFORE the watchdog fires)
+-# fast-two: sleeps 30s (watchdog fires during fast-two's execution)
+-# max_run_s=3: watchdog fires 3s into the run. fast-one completes in < 1s.
+-# After 3s, fast-one's status in pipeline-state.json MUST be "complete", proving
+-# the watchdog ran independently — it did not need a stage to be dispatching.
+-# If the watchdog fired BEFORE fast-one completed, fast-one's status would not be
+-# "complete", and the assertion below would fail.
+-FAST_TWO_STARTED="$TEST_TEMP_DIR/fast-two-started"
++# fast-one: sleeps 5s then returns normally (5s < max_run_s=6s, so not killed).
++# fast-two: sleeps 60s. The watchdog fires at wall-clock t=6s while fast-two is
++# sleeping. fast-one completing before the watchdog fires proves the timer tracks
++# total wall-clock time from run start.
++#
++# Distinguishing global watchdog from per-stage reset timer:
++#   Global timer (correct): fires at absolute t=6s from run start.
++#     fast-two has been running for ~1s.  elapsed ≈ 6s.
++#   Per-stage timer (wrong — resets at each stage dispatch):
++#     fires at fast-two-start + 6s = ~5s + 6s = ~11s from run start.
++#     elapsed ≈ 11s.
++#   Bound of 10s sits between 6s (global) and 11s (per-stage), so only a
++#   global wall-clock timer passes.  The "fast-one completed" check
++#   additionally proves the watchdog didn't fire before fast-one finished
++#   (t < 5s), so the watchdog window is (5s, 10s] — exactly where the
++#   global timer (6s) lives.
++#
++# Falsifiability:
++#   OLD code (no watchdog): fast-one (5s) + fast-two (60s) → outer timeout 25s.
++#     Elapsed ≈ 25s > 10s → elapsed-time assertion FAILS.
++#   Per-stage reset (wrong implementation): fires at ~11s.
++#     Elapsed ≈ 11s > 10s → elapsed-time assertion FAILS.
++#   NEW code (global watchdog at t=6s): elapsed ≈ 6-8s ≤ 10s → PASSES.
+ cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
+ fast_one_run() {
++    sleep 5
+     $(mock_result_line fast-one)
+     return 0
+ }
+ PLUG
+ cat > "$PLUGINS_ROOT/agent/fast-two/plugin.sh" <<PLUG
+ fast_two_run() {
+-    : > "${FAST_TWO_STARTED}"
+-    sleep 30
++    sleep 60
+     $(mock_result_line fast-two)
+     return 0
+ }
+ PLUG
+ 
++_p2_start="$(date +%s)"
+ p2_rc=0
+-( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=3 timeout 25 bash "$RUNNER" \
++( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=6 timeout 25 bash "$RUNNER" \
+     --template timeout-two-stage --goal "run-timed-out test p2" ) \
+     >"$TEST_TEMP_DIR/p2.stdout" 2>"$TEST_TEMP_DIR/p2.stderr" \
+     || p2_rc=$?
++_p2_elapsed=$(( $(date +%s) - _p2_start ))
+ 
+ assert_eq "[#1944/SPEC-1] P2: runner exits non-zero" "1" "$p2_rc"
+ 
+@@ -255,6 +273,19 @@ else
+     assert_fail "[#1944/SPEC-1] P2: pipeline-state.json written" "state file not found"
+ fi
+ 
++# Wall-clock limit check: the run must end within max_run_s + buffer.
++# Old code (no watchdog): outer timeout fires at 25s → elapsed ≈ 25s > 10s → FAILS.
++# Per-stage reset (wrong): fires at fast-one + max_run_s ≈ 5+6=11s > 10s → FAILS.
++# New code (global watchdog at t=6s): elapsed ≈ 6-8s ≤ 10s → PASSES.
++# Combined with "fast-one completed" this proves the timer is a global wall-clock
++# timer tracking from run start (not a per-stage reset that would fire at ~11s).
++if [[ "$_p2_elapsed" -le 10 ]]; then
++    assert_pass "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset (elapsed ${_p2_elapsed}s)"
++else
++    assert_fail "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset" \
++        "elapsed ${_p2_elapsed}s > 10s — per-stage reset timer would fire at ~11s; global watchdog fires at ~6s; expected ≤ 10s"
++fi
++
+ # ── P3: TERM-ignore → KILL within TERM + 10s ────────────────────────────────
+ print_test_section "P3: stage that ignores SIGTERM is dead within TERM + 10s"
+ 
+diff --git a/tests/unit/runner-signal-rearm-test.sh b/tests/unit/runner-signal-rearm-test.sh
+index d3fe3418..c09c6dfa 100755
+--- a/tests/unit/runner-signal-rearm-test.sh
++++ b/tests/unit/runner-signal-rearm-test.sh
+@@ -89,7 +89,7 @@ _runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
+ # the first cut of this test and was caught in review.
+ _startup_int="$(awk '/^main\(\) \{/{f=1} f && /trap .* INT$/{print; exit}' "$_runner_sh" \
+     | grep -oE "trap '[^']+' INT" || true)"
+-_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap .* TERM$/{print; exit}' "$_runner_sh" \
++_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap '"'"'.*'"'"' TERM$/{print; exit}' "$_runner_sh" \
+     | grep -oE "trap '[^']+' TERM" || true)"
+ # What the promoted helper installs, taken from the live function body.
+ _rearm_body="$(declare -f _runner_rearm_traps 2>/dev/null || true)"
