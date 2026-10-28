@@ -1,3 +1,5 @@
 [
-  "tests/integration/runner-release-exit-paths-test.sh"
+  "tests/integration/run-timed-out-test.sh",
+  "tests/integration/runner-release-exit-paths-test.sh",
+  "tests/unit/runner-abort-banner-stderr-test.sh"
 ]
