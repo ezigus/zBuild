@@ -87,16 +87,35 @@ None.
 
 ## Design stage review (plan re-entry after design verdict: unknown)
 
-All design findings already incorporated in the prior plan revision:
-- Test finding 20 (3 files still name orch-sequential) → step-3 (already listed all 3 files + specific line edits)
+All design findings incorporated in the prior plan revision:
+- Test finding 20 (3 files still name orch-sequential) → step-3
 - Test-author findings 1-3 → steps 6, 8, 3 respectively
 - Broad pipeline failures → step-14
 - lint-test-errexit failures → step-13
-- Design findings 1-2 (SPEC-7 TESTFILES) → step-12 (already correctly names lint-adr-enforced-by-test.sh)
-- Acceptance gate finding (SPEC-1 subshell boundary, SPEC-3 residual refs) → implementation issues, covered by steps 7 and 3
-- tests/test-durations.tsv in design scope block but not in plan areas: this file is mechanically auto-updated by the test runner on test addition/deletion; no behavioral plan item required.
+- Design findings 1-2 (SPEC-7 TESTFILES) → step-12
+- Acceptance gate finding (SPEC-1 subshell boundary, SPEC-3 residual refs) → steps 7 and 3
+- tests/test-durations.tsv: mechanically auto-updated by test runner; no behavioral item required.
 
-No new steps or changes required. Plan is final at 15 items.
+## Plan re-entry after second read of design revisions 13–14
+
+Two scope gaps found in the prior plan that the notes did NOT capture:
+
+**Gap 1 — step-5 missing runner.sh:** Design revision 13 finding 1 (R-4) requires `runner.sh` to check
+`_ZBUILD_ORCH_BACKEND_DISPOSITION` immediately after sourcing `contract.sh` and fail the pipeline before
+dispatching any stage. Without this, the installed-tree end-to-end test for SPEC-4/SPEC-10 cannot pass —
+`orch_load_backend` returns misconfigured to contract.sh but runner.sh proceeds anyway. Added
+`core/pipeline/runner.sh` to step-5's areas and expanded its description to name this check.
+
+**Gap 2 — step-9 missing template-resolver.sh:** Design revision 14 (root-cause confirmed) identified that
+`template-resolver.sh`'s old-shape merge path never extracts `always_run:` from the extending template, so
+`_TPL_ALWAYS_RUN` retains only the base template's list (e.g. `[release]`) and the extending template's
+`always_run: [release, persist]` is silently dropped — persist is never dispatched. The fix is in
+`template-resolver.sh` (add an `always_run:` extraction step). Also added `core/pipeline/template.sh` as
+the consumer of the resolved file. Added both files to step-9's areas and description.
+Also added `tests/fixtures/templates/always-run-minimal.yaml` to step-9's areas (must carry `timeout_s: 2`
+as direct stage-block child, not under `router:`, for SPEC-5 fixture to work).
+
+Plan is final at 15 items.
 
 ## Acceptance criteria mapping (updated)
 
