@@ -1,52 +1,48 @@
 # Build notes — issue #1944: run-level wall-clock limit with watchdog
 
-## Final Status (iteration 7 — COMPLETE)
+## Current iteration — COMPLETE
 
-### All fixes committed
+### Findings from test stage addressed:
 
-**Bug A** (3 integration test timeouts — orphaned sleep holds pipe write end):
-- Committed in 9a853724: `{_RUNNER_ERR_FD}>&-` closes the high-numbered fd in watchdog subshell
-- COMPLETE ✓
+**finding 1**: run-timed-out-test.sh P2 elapsed 18s > 10s
+- ANSWER: nothing to do — not reproduced with updated test
+- The test-author updated the threshold from ≤10s to ≤20s in commit 59c2c901
+- Current run shows elapsed 7s ≤ 20s — test passes
 
-**Bug B** (double-SIGTERM aborts EXIT trap → always_run never runs):
-- Initially committed in 741c8466, but guard was placed AFTER `plugin_stop_running`
-- Fixed in 772cef6f: moved `trap ':' INT TERM` to FIRST line of `_runner_abort_trap` (before `_runner_restore_stderr` and `plugin_stop_running`)
-- COMPLETE ✓
+**finding 2**: runner-release-exit-paths-test.sh SPEC-5 — no release dispatched
+- Root cause: `{_RUNNER_ERR_FD}>&-` at watchdog subshell BOUNDARY in runner.sh
+- Fix: moved `exec {_RUNNER_ERR_FD}>&- || true` INSIDE the watchdog body as second line
+  (after `trap '' TERM`). Removed `{_RUNNER_ERR_FD}>&-` from the boundary.
+- Design decision 3 was explicit: "keep the launch line as `) >/dev/null 2>&1 &` — do NOT
+  put `{_RUNNER_ERR_FD}>&-` at the boundary"
+- All 19 tests in runner-release-exit-paths-test.sh now pass
 
-**Bug C** (SPEC-5 in runner-signal-rearm-test.sh — awk matches wrong line):
-- Committed in 9a853724: runner-signal-rearm-test.sh awk pattern fixed to `/trap '.*' TERM$/`
-- COMPLETE ✓
+**finding 3**: runner-abort-banner-stderr-test.sh B3 — first stmt is `trap ':' INT TERM`
+- Test B3 expects `_runner_restore_stderr` to be the FIRST non-blank, non-comment statement
+- Fix: swapped order — `_runner_restore_stderr` now first, `trap ':' INT TERM` second
+- The guard is still in place BEFORE `plugin_stop_running` (which calls `wait`), so Bug B
+  is still fixed. `_runner_restore_stderr` is just `exec 2>&N` with no `wait` — safe.
+- All 4 tests in runner-abort-banner-stderr-test.sh now pass
 
-### Test results (all passing)
+**finding 4**: tests/golden/full-pipeline/event-sequence.golden
+**finding 5**: tests/golden/parity/event-sequence.golden
+- Shape floor C1 exemption: when all tests pass, golden files don't need to be in the diff
+- After fixing findings 2 and 3, all acceptance tests pass
+- No golden file changes needed
 
+### Test results (all passing after fixes):
+
+- tests/unit/runner-abort-banner-stderr-test.sh — 4/4 ✓
 - tests/integration/runner-release-exit-paths-test.sh — 19/19 ✓
-- tests/unit/run-limit-precedence-test.sh (SPEC-2/5/6) — 38/38 ✓
-- tests/unit/run-watchdog-clean-exit-test.sh (SPEC-3) — 8/8 ✓
-- tests/integration/resume-after-run-timeout-test.sh (SPEC-4) — 6/6 ✓
-- tests/integration/run-timed-out-test.sh (SPEC-1) — 16/16 ✓
+- tests/integration/run-timed-out-test.sh — 16/16 ✓
+- tests/unit/run-limit-precedence-test.sh — 38/38 ✓
+- tests/unit/run-watchdog-clean-exit-test.sh — 8/8 ✓
+- tests/integration/resume-after-run-timeout-test.sh — 6/6 ✓
 - tests/unit/runner-signal-rearm-test.sh — 5/5 ✓
-- tests/unit/runner-pipeline-end-test.sh — 38/38 ✓
-- tests/unit/run-open-items-test.sh — 53/53 ✓
-- tests/unit/abort-propagation-test.sh — 18/18 ✓
-- tests/unit/shape-floor-test.sh — 24/24 ✓
-- tests/unit/shape-floor-content-stable-test.sh — 7/7 ✓
 
-### Findings addressed
-
-**test finding 1**: runner-release-exit-paths-test.sh SPEC-5 — RESOLVED (test now passes)
-
-**test finding 2/3**: event-sequence.golden files — NOTHING TO DO. When the full test suite
-passes, `_sf_floor_verified` returns 0 for event-sequence.golden files (via _SF_VERIFY_OK=1,
-_SF_FAILED_COUNT=0), so the shape floor does not require them in the diff. No content test
-asserts these files for this issue's acceptance criteria.
-
-**issue-acceptance finding 1 (R-10)**: RESOLVED — test suite passes.
-**issue-acceptance finding 2 (R-4)**: RESOLVED — P4 in run-timed-out-test.sh tests both
-release and persist (both pass). The SPEC-5 regression is now fixed.
-**issue-acceptance finding 3/4 (R-9/ADR-054 §9)**: NOTHING TO DO — SPEC-6 passes, ADR-054
-§11 exists with Enforced by section. The issue draft said "§9 amended" but §11 was correctly
-added. This is a stale label in the issue text per the design.
-
-### Working tree state
-
-Clean — no uncommitted changes. All fixes are in commits 772cef6f and earlier.
+### Files changed:
+- core/pipeline/runner.sh: 2 changes
+  1. Watchdog body: added `exec {_RUNNER_ERR_FD}>&- || true` as second line (after `trap '' TERM`);
+     removed `{_RUNNER_ERR_FD}>&-` from the boundary line
+  2. `_runner_abort_trap`: swapped `trap ':' INT TERM` and `_runner_restore_stderr` order;
+     `_runner_restore_stderr` is now first, updated comment
