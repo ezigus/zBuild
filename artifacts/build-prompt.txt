@@ -354,13 +354,26 @@ Summary:
 - tests/integration/resume-after-run-timeout-test.sh — SPEC-4
 - Each [code] requirement's test fails on the code as it is now, and passes once the code is written.
 
-### build (verdict: pass) — your own
+### build (verdict: error) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
-- diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
+## build — timed_out
+
+- changed 0 file(s) over 1 pass(es), 3 iteration(s)
+
+- lines: +0 / -0
+- terminated: router_timeout
+- scope violation: false
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-3/build-summary.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-3/build-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-3/diff.patch
+
+Summary of that output:
 ## build — pass
 
 - changed 0 file(s) over 1 pass(es), 1 iteration(s)
@@ -530,66 +543,32 @@ Outputs:
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
-Findings:
-- test finding 1 (opened by test): tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124) fails: timed out before finishing
-- test finding 2 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 3 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-
 Summary:
 # Test stage summary
 
-- verdict: fail
-- passed: 820
-- failed: 1
-- exit_code: 1
+- verdict: pass
+- passed: 821
+- failed: 0
+- exit_code: 0
 
-## Failing files
+The suite ran to completion with no failing assertions.
 
-- tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124) — timed out before finishing
-
-## Failing lines (extracted)
-
-```
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pf3EXq/tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124)
---- output below ran against a process being killed at its time bound;
---- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
-  sigterm-aborts-pipeline — kill -TERM halts pipeline (#686)
-```
-
-## The checks of this run
-- the shape floor failed: missing_floor_files
-
-### issue-acceptance (verdict: unavailable)
+### issue-acceptance (verdict: pass)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Summary:
-## issue-acceptance — unavailable
+## issue-acceptance — pass
 
-- the model call failed (router_rc_nonzero) — the change was not judged
+- Every requirement is satisfied — behavioral tests are falsifiable and passed (821/0), SPEC-5's no-CI-branch property is mechanically enforced by grep-count assertions in `run-limit-precedence-test.sh`, both ADRs carry `## Enforced by` sections citing the new test files, and the issue's "§9" label for the ADR-054 amendment is a draft numbering error (the existing §9 is per-stage router config; the per-run limit correctly landed as §11 with identical content).
 
-- the change was not judged against the issue
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-2/issue-acceptance-result.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-2/issue-acceptance-summary.md
-
-Summary of that output:
-## issue-acceptance — fail
-
-- R-10 unmet — `sigterm-aborts-pipeline-test.sh` (an existing test for #686) times out at 480 s, most likely a regression from the new watchdog process not being reaped when the runner is externally SIGTERMed, and the shape-floor check flags two event-sequence golden files as potentially stale.
-
-- NOT MET: R-10: npm test fails (sigterm-aborts-pipeline-test.sh 480 s timeout, likely watchdog-leak regression when runner is killed externally
-- NOT MET: shape floor flags tests/golden/full-pipeline/event-sequence.golden and tests/golden/parity/event-sequence.golden as needing review)
-- NOT SURE: R-1: the "reddens at merge-base" sub-claim — the regression test is new (absent at merge-base), so the claim holds only if reverting the runner implementation alone makes the test fail — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: the test output shows the test passes now but cannot confirm the red-on-revert direction without running against the old code — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- every requirement the issue states is met by the change
 
 ## What you must not do
 
@@ -655,7 +634,7 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   Write to it as you work, not at the end: what you read, what you
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
-- Your budget: each model call has 900 seconds, with no limit on turns. A call that runs out of time
+- Your budget: each model call has 900 seconds and 37 turns. A call that runs out of time
   returns nothing: finish and write your answer well before the limit. The whole stage has 3600 seconds.
 
 ### How every stage works
