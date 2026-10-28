@@ -28,17 +28,24 @@
   [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
 
-  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
-    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
+  [38;2;0;212;255m[#1801/SPEC-1] strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; output names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
 
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential timed_out output names the timeout limit (7s)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map timed_out output names the timeout limit (7s)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 15 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
 
 ### config/templates/deployed.yaml head tests/integration/orch-timeout-applies-test.sh
 
@@ -70,17 +77,24 @@
   [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
 
-  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
-    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
+  [38;2;0;212;255m[#1801/SPEC-1] strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; output names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
   [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
 
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential timed_out output names the timeout limit (7s)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map timed_out output names the timeout limit (7s)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 15 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
 
 ### config/templates/deployed.yaml reverted tests/integration/orch-backend-misconfigured-test.sh
 
@@ -144,16 +158,15 @@
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
-    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/plugins/tool/orch-sequential[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/plugins/tool/orch-mock/tests/orch-mock-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/tests/integration/orch-backend-misconfigured-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/.github/issues/keepers-manifest.yaml[0m
+    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.KkFbXa/plugins/tool/orch-sequential[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden does not exist
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 2 tests failed[0m
+  [38;2;248;113;113m[1m1 of 3 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
 
 ### config/templates/deployed.yaml head tests/unit/orch-sequential-absent-guard-test.sh
 
@@ -161,614 +174,10 @@
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;74;222;128m✓[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-    [2mstill referenced in: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/plugins/tool/orch-mock/tests/orch-mock-test.sh /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/tests/integration/orch-backend-misconfigured-test.sh /home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/.github/issues/keepers-manifest.yaml[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden does not exist
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 2 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-
-### config/templates/deployed.yaml reverted tests/integration/orch-backend-misconfigured-test.sh
-
-[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
-
-  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
-
-  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
-
-### config/templates/deployed.yaml head tests/integration/orch-backend-misconfigured-test.sh
-
-[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
-
-  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
-
-  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
-
-### config/templates/deployed.yaml reverted tests/integration/runner-release-exit-paths-test.sh
-
-[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
-  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
-  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
-  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
-  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
-  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (0s)
-  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
-  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-    [2mno release from: intake build | marker= [0m
-  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 33s)
-  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
-
-  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-
-  [38;2;0;212;255m[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 1s; would be ~30s with router.timeout_s)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 22 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-
-### config/templates/deployed.yaml head tests/integration/runner-release-exit-paths-test.sh
-
-[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
-  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
-  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
-  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
-  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
-  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (0s)
-  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
-  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-    [2mno release from: intake build | marker= [0m
-  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 33s)
-  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
-
-  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-
-  [38;2;0;212;255m[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 0s; would be ~30s with router.timeout_s)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 22 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-
-### config/templates/deployed.yaml reverted tests/unit/orch-kill-uses-pg-kill-guard-test.sh
-
-[38;2;0;212;255m[1m  orch kill sites use zbuild_pg_kill (not direct kill) (#1801 SPEC-6)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m SPEC-0a: local_engine.sh exists
-  [38;2;74;222;128m✓[0m SPEC-0b: runner.sh exists
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot does not use bare kill on wrapper_pid
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] always-run watchdog in runner.sh calls zbuild_pg_kill
-  [38;2;74;222;128m✓[0m SPEC-6c: proc-group.sh defines zbuild_pg_kill
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] zbuild_pg_kill is defined in proc-group.sh
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] local_engine.sh sources proc-group.sh (or its parent does)
-
-  [38;2;0;212;255m[#1801/SPEC-6] TERM-ignoring child leaves no process after watchdog fires (runtime)[0m
-  ✓ [#1801/SPEC-6] TERM-ignoring child does not outlive the watchdog (group kill via zbuild_pg_kill)
-
-  ──────────────────────────────────────────
-
-  All 9 tests passed
-
-### config/templates/deployed.yaml head tests/unit/orch-kill-uses-pg-kill-guard-test.sh
-
-[38;2;0;212;255m[1m  orch kill sites use zbuild_pg_kill (not direct kill) (#1801 SPEC-6)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m SPEC-0a: local_engine.sh exists
-  [38;2;74;222;128m✓[0m SPEC-0b: runner.sh exists
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] _orch_local_kill_slot does not use bare kill on wrapper_pid
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] always-run watchdog in runner.sh calls zbuild_pg_kill
-  [38;2;74;222;128m✓[0m SPEC-6c: proc-group.sh defines zbuild_pg_kill
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] zbuild_pg_kill is defined in proc-group.sh
-  [38;2;74;222;128m✓[0m [#1801/SPEC-6] local_engine.sh sources proc-group.sh (or its parent does)
-
-  [38;2;0;212;255m[#1801/SPEC-6] TERM-ignoring child leaves no process after watchdog fires (runtime)[0m
-  ✓ [#1801/SPEC-6] TERM-ignoring child does not outlive the watchdog (group kill via zbuild_pg_kill)
-
-  ──────────────────────────────────────────
-
-  All 9 tests passed
-
-### config/templates/deployed.yaml reverted docs/adr/ADR-011-pluggable-backends.md
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 3: **Status:**: command not found
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 4: **Amended:**: command not found
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 5: **Date:**: command not found
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 7: split:**: command not found
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 8: extracted: command not found
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 9: decisions,: command not found
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 10: pipelines.: command not found
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 11: syntax error near unexpected token `newline'
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-011-pluggable-backends.md: line 11: `>'
-### config/templates/deployed.yaml head docs/adr/ADR-011-pluggable-backends.md
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 3: **Status:**: command not found
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 4: **Amended:**: command not found
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 5: **Date:**: command not found
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 7: split:**: command not found
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 8: extracted: command not found
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 9: decisions,: command not found
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 10: pipelines.: command not found
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 11: syntax error near unexpected token `newline'
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-011-pluggable-backends.md: line 11: `>'
-### config/templates/deployed.yaml reverted docs/adr/ADR-017-per-stage-router-config.md
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-017-per-stage-router-config.md: line 3: syntax error near unexpected token `('
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.j7wEVB/docs/adr/ADR-017-per-stage-router-config.md: line 3: `**Status:** Accepted (2026-05-29)'
-### config/templates/deployed.yaml head docs/adr/ADR-017-per-stage-router-config.md
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-017-per-stage-router-config.md: line 3: syntax error near unexpected token `('
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1801/worktree/docs/adr/ADR-017-per-stage-router-config.md: line 3: `**Status:** Accepted (2026-05-29)'
-### config/templates/deployed.yaml reverted tests/integration/orch-backend-misconfigured-test.sh
-
-[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
-
-  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
-
-  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
-
-### config/templates/deployed.yaml head tests/integration/orch-backend-misconfigured-test.sh
-
-[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
-
-  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
-
-  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
-  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
-
-### config/templates/deployed.yaml reverted plugins/tool/orch-mock/tests/orch-mock-test.sh
-
-[38;2;0;212;255m[1m  orch-mock — orch_collect returns 0/1 and names partial per orch contract[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m M1: all-pass returns 0 (got 0)
-  [38;2;74;222;128m✓[0m M2: all-fail returns 1 (got 1) — not raw rc passthrough (pre-fix would have returned 5)
-  [38;2;74;222;128m✓[0m M3: mixed returns 1
-  [38;2;74;222;128m✓[0m M3: mixed is named partial
-  [38;2;74;222;128m✓[0m M4: empty pool returns 0 (got 0)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-11] pool isolation: passing pool collect returns 0 (not contaminated by failing pool)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-11] pool isolation: failing pool collect returns 1 (not contaminated by passing pool)
-### config/templates/deployed.yaml head plugins/tool/orch-mock/tests/orch-mock-test.sh
-
-[38;2;0;212;255m[1m  orch-mock — orch_collect returns 0/1 and names partial per orch contract[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m M1: all-pass returns 0 (got 0)
-  [38;2;74;222;128m✓[0m M2: all-fail returns 1 (got 1) — not raw rc passthrough (pre-fix would have returned 5)
-  [38;2;74;222;128m✓[0m M3: mixed returns 1
-  [38;2;74;222;128m✓[0m M3: mixed is named partial
-  [38;2;74;222;128m✓[0m M4: empty pool returns 0 (got 0)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-11] pool isolation: passing pool collect returns 0 (not contaminated by failing pool)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-11] pool isolation: failing pool collect returns 1 (not contaminated by passing pool)
-### config/templates/deployed.yaml reverted tests/unit/adr059-no-tmpdir-defaults-test.sh
-
-[38;2;0;212;255m[1m  ADR-059: engine defaults are reclaimable, not ${TMPDIR}-rooted (#2004)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m [SPEC-1] unpinned event dir is under the data root
-  [38;2;74;222;128m✓[0m [SPEC-2] an explicit ZBUILD_EVENTS_DIR pin still wins
-  [38;2;74;222;128m✓[0m [SPEC-3] bash-parallel pool dir is under runs/<run_id>/pool
-  [38;2;74;222;128m✓[0m [SPEC-5] an explicit ZBUILD_POOL_ROOT pin still wins
-  [38;2;74;222;128m✓[0m [SPEC-6] ruflo-hive pool dir is under runs/<run_id>/pool
-  [38;2;74;222;128m✓[0m [SPEC-7] hive honours an explicit ZBUILD_POOL_ROOT
-  [38;2;74;222;128m✓[0m [SPEC-8] orch-bash-parallel falls back to the data root, not $TMPDIR
-  [38;2;74;222;128m✓[0m [SPEC-8] orch-ruflo-hive falls back to the data root, not $TMPDIR
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 8 tests passed[0m
-
-### config/templates/deployed.yaml head tests/unit/adr059-no-tmpdir-defaults-test.sh
-
-[38;2;0;212;255m[1m  ADR-059: engine defaults are reclaimable, not ${TMPDIR}-rooted (#2004)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m [SPEC-1] unpinned event dir is under the data root
-  [38;2;74;222;128m✓[0m [SPEC-2] an explicit ZBUILD_EVENTS_DIR pin still wins
-  [38;2;74;222;128m✓[0m [SPEC-3] bash-parallel pool dir is under runs/<run_id>/pool
-  [38;2;74;222;128m✓[0m [SPEC-5] an explicit ZBUILD_POOL_ROOT pin still wins
-  [38;2;74;222;128m✓[0m [SPEC-6] ruflo-hive pool dir is under runs/<run_id>/pool
-  [38;2;74;222;128m✓[0m [SPEC-7] hive honours an explicit ZBUILD_POOL_ROOT
-  [38;2;74;222;128m✓[0m [SPEC-8] orch-bash-parallel falls back to the data root, not $TMPDIR
-  [38;2;74;222;128m✓[0m [SPEC-8] orch-ruflo-hive falls back to the data root, not $TMPDIR
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 8 tests passed[0m
-
-### config/templates/deployed.yaml reverted tests/unit/core-orch-run-id-isolation-test.sh
-
-[38;2;0;212;255m[1m  orch scratch + pool dirs per-run isolation (#898)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m S1 default scratch is per-run (runs/run-AAA/orch)
-  [38;2;74;222;128m✓[0m S2 different run_id → distinct scratch
-  [38;2;74;222;128m✓[0m S2 scratch dirs differ per run
-  [38;2;74;222;128m✓[0m S3 explicit ZBUILD_ORCH_SCRATCH overrides
-  [38;2;74;222;128m✓[0m P1 default pool dir is per-run (run-AAA)
-  [38;2;74;222;128m✓[0m P2 same pool_id, different run → distinct pool dir
-  [38;2;74;222;128m✓[0m P3 ZBUILD_POOL_ROOT overrides
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 7 tests passed[0m
-
-### config/templates/deployed.yaml head tests/unit/core-orch-run-id-isolation-test.sh
-
-[38;2;0;212;255m[1m  orch scratch + pool dirs per-run isolation (#898)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m S1 default scratch is per-run (runs/run-AAA/orch)
-  [38;2;74;222;128m✓[0m S2 different run_id → distinct scratch
-  [38;2;74;222;128m✓[0m S2 scratch dirs differ per run
-  [38;2;74;222;128m✓[0m S3 explicit ZBUILD_ORCH_SCRATCH overrides
-  [38;2;74;222;128m✓[0m P1 default pool dir is per-run (run-AAA)
-  [38;2;74;222;128m✓[0m P2 same pool_id, different run → distinct pool dir
-  [38;2;74;222;128m✓[0m P3 ZBUILD_POOL_ROOT overrides
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 7 tests passed[0m
-
-### config/templates/deployed.yaml reverted tests/unit/dispatch-rc-guard-test.sh
-
-[38;2;0;212;255m[1m  dispatch-rc guard — the legacy rc inventory is a ratchet (#1823)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m1. The inventory matches the pin exactly[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/runner.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/cycle-orchestrator.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/parallel-orchestrator.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/map.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/fanout.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/sequential.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/composite.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/plugin-registry/lifecycle.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] scripts/lib/abort-propagation.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/common.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/stage-scratch.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/disposition.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/contract-validator.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/orch/local_engine.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] plugins/tool/orch-mock/plugin.sh holds 0 legacy rc returns
-
-  [38;2;0;212;255m2. The contract boundary itself is clean[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] plugin_hook_call returns nothing outside {0,1}
-  [38;2;74;222;128m✓[0m [SPEC-2] the ZBUILD_HOOK_ABSENT sentinel is gone
-  [38;2;74;222;128m✓[0m [SPEC-2] an absent optional hook is still recorded on the event stream
-
-  [38;2;0;212;255m3. The stage dispatch boundary narrows before reading[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] the cycle dispatch boundary both observes and narrows
-  [38;2;74;222;128m✓[0m [SPEC-3] it observes the RAW status before narrowing it away
-  [38;2;74;222;128m✓[0m [SPEC-3] the throttle marker is cleared before the dispatch
-  [38;2;74;222;128m✓[0m [SPEC-3] cycle_dispatch_stage narrows the rc
-  [38;2;74;222;128m✓[0m [SPEC-3] parallel_dispatch_stage applies it too
-  [38;2;74;222;128m✓[0m [SPEC-3] both dispatch boundaries clear the throttle marker
-
-  [38;2;0;212;255m4. The version gate cannot be fed by a subshell global[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] no gate reads a contract global
-  [38;2;74;222;128m✓[0m [SPEC-4] both boundaries narrow unconditionally (#1850)
-  [38;2;74;222;128m✓[0m [SPEC-4] the contract probe is gone (#1850)
-
-  [38;2;0;212;255m5. the cycle.complete fan-in reads the reason word, not an rc[0m
-  [38;2;74;222;128m✓[0m [SPEC-5] no _cycle_handle_terminal_rc remains (orchestrator + runner)
-  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal is defined in the orchestrator
-  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal reads _CYCLE_LAST_TERMINATED_REASON
-  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal keys on no signal rc
-
-  [38;2;0;212;255m6. write-boundary wiring leaves lifecycle.sh rc-clean[0m
-  [38;2;74;222;128m✓[0m [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
-
-  [38;2;0;212;255m[#1850/SPEC-16] the plain rule: no engine path returns or reads a legacy rc[0m
-  [38;2;74;222;128m✓[0m [#1850/SPEC-16] every guarded engine file is pinned at 0
-  [38;2;74;222;128m✓[0m [#1850/SPEC-16] no guarded engine file reads an rc as a legacy number
-
-  [38;2;0;212;255m[#1850/SPEC-17] every dispatch boundary checks for an abort before it dispatches[0m
-  [38;2;74;222;128m✓[0m [SPEC-17] cycle_dispatch_stage checks for an abort before plugin_hook_call
-  [38;2;74;222;128m✓[0m [SPEC-17] parallel_dispatch_stage checks for an abort before plugin_hook_call
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 36 tests passed[0m
-
-### config/templates/deployed.yaml head tests/unit/dispatch-rc-guard-test.sh
-
-[38;2;0;212;255m[1m  dispatch-rc guard — the legacy rc inventory is a ratchet (#1823)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m1. The inventory matches the pin exactly[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/runner.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/cycle-orchestrator.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/parallel-orchestrator.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/map.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/fanout.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/sequential.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/composite.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/plugin-registry/lifecycle.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] scripts/lib/abort-propagation.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/strategies/common.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/stage-scratch.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/disposition.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/pipeline/contract-validator.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] core/orch/local_engine.sh holds 0 legacy rc returns
-  [38;2;74;222;128m✓[0m [SPEC-1] plugins/tool/orch-mock/plugin.sh holds 0 legacy rc returns
-
-  [38;2;0;212;255m2. The contract boundary itself is clean[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] plugin_hook_call returns nothing outside {0,1}
-  [38;2;74;222;128m✓[0m [SPEC-2] the ZBUILD_HOOK_ABSENT sentinel is gone
-  [38;2;74;222;128m✓[0m [SPEC-2] an absent optional hook is still recorded on the event stream
-
-  [38;2;0;212;255m3. The stage dispatch boundary narrows before reading[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] the cycle dispatch boundary both observes and narrows
-  [38;2;74;222;128m✓[0m [SPEC-3] it observes the RAW status before narrowing it away
-  [38;2;74;222;128m✓[0m [SPEC-3] the throttle marker is cleared before the dispatch
-  [38;2;74;222;128m✓[0m [SPEC-3] cycle_dispatch_stage narrows the rc
-  [38;2;74;222;128m✓[0m [SPEC-3] parallel_dispatch_stage applies it too
-  [38;2;74;222;128m✓[0m [SPEC-3] both dispatch boundaries clear the throttle marker
-
-  [38;2;0;212;255m4. The version gate cannot be fed by a subshell global[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] no gate reads a contract global
-  [38;2;74;222;128m✓[0m [SPEC-4] both boundaries narrow unconditionally (#1850)
-  [38;2;74;222;128m✓[0m [SPEC-4] the contract probe is gone (#1850)
-
-  [38;2;0;212;255m5. the cycle.complete fan-in reads the reason word, not an rc[0m
-  [38;2;74;222;128m✓[0m [SPEC-5] no _cycle_handle_terminal_rc remains (orchestrator + runner)
-  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal is defined in the orchestrator
-  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal reads _CYCLE_LAST_TERMINATED_REASON
-  [38;2;74;222;128m✓[0m [SPEC-5] _cycle_handle_terminal keys on no signal rc
-
-  [38;2;0;212;255m6. write-boundary wiring leaves lifecycle.sh rc-clean[0m
-  [38;2;74;222;128m✓[0m [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
-
-  [38;2;0;212;255m[#1850/SPEC-16] the plain rule: no engine path returns or reads a legacy rc[0m
-  [38;2;74;222;128m✓[0m [#1850/SPEC-16] every guarded engine file is pinned at 0
-  [38;2;74;222;128m✓[0m [#1850/SPEC-16] no guarded engine file reads an rc as a legacy number
-
-  [38;2;0;212;255m[#1850/SPEC-17] every dispatch boundary checks for an abort before it dispatches[0m
-  [38;2;74;222;128m✓[0m [SPEC-17] cycle_dispatch_stage checks for an abort before plugin_hook_call
-  [38;2;74;222;128m✓[0m [SPEC-17] parallel_dispatch_stage checks for an abort before plugin_hook_call
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 36 tests passed[0m
-
-### config/templates/deployed.yaml reverted tests/unit/stdin-spawn-guard-test.sh
-
-[38;2;0;212;255m[1m  guard: spawns never inherit a data-bearing stdin (#2108)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m [#2108] the fresh shell closes stdin
-  [38;2;74;222;128m✓[0m [#2108] negctl spawns under the fresh shell
-  [38;2;74;222;128m✓[0m [#2108] reachability spawns under the fresh shell
-  [38;2;74;222;128m✓[0m [#2108] test-author's assertion check closes stdin
-  [38;2;74;222;128m✓[0m [#2108] build's false-completion guard spawns under the fresh shell
-  [38;2;74;222;128m✓[0m [#2108] the test stage's suite closes stdin under set -m
-  [38;2;74;222;128m✓[0m [#2108] local_engine work units close stdin
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 7 tests passed[0m
-
-### config/templates/deployed.yaml head tests/unit/stdin-spawn-guard-test.sh
-
-[38;2;0;212;255m[1m  guard: spawns never inherit a data-bearing stdin (#2108)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m [#2108] the fresh shell closes stdin
-  [38;2;74;222;128m✓[0m [#2108] negctl spawns under the fresh shell
-  [38;2;74;222;128m✓[0m [#2108] reachability spawns under the fresh shell
-  [38;2;74;222;128m✓[0m [#2108] test-author's assertion check closes stdin
-  [38;2;74;222;128m✓[0m [#2108] build's false-completion guard spawns under the fresh shell
-  [38;2;74;222;128m✓[0m [#2108] the test stage's suite closes stdin under set -m
-  [38;2;74;222;128m✓[0m [#2108] local_engine work units close stdin
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 7 tests passed[0m
-
-### config/templates/deployed.yaml reverted tests/unit/summary-mandatory-test.sh
-
-[38;2;0;212;255m[1m  every stage publishes a summary; pre-flight enforces it (#2000)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m1. every stage-bound plugin declares exactly one summary[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] no stage-bound plugin is without a summary
-  [38;2;74;222;128m✓[0m [SPEC-1] and none declares more than one
-
-  [38;2;0;212;255m2. pre-flight refuses a summary-less stage OUTSIDE the tree[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] the refusal names the offending stage
-  [38;2;74;222;128m✓[0m [SPEC-2] and says a summary is missing
-  [38;2;74;222;128m✓[0m [SPEC-2] pre-flight REFUSES rather than warning
-  [38;2;74;222;128m✓[0m [SPEC-2] the tree lint cannot see it — hence the runtime check
-
-  [38;2;0;212;255m3. backend services are unaffected (ADR-047 §5)[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] no backend service was forced to declare one
-
-  [38;2;0;212;255m4. the tree lint mirrors the refusal locally[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] the lint names the summary-less stage
-
-  [38;2;0;212;255m5. a summary is written on pass, fail and skip[0m
-  [38;2;74;222;128m✓[0m [SPEC-5] a 'pass' verdict still writes a summary
-  [38;2;74;222;128m✓[0m [SPEC-5] and states the verdict 'pass'
-  [38;2;74;222;128m✓[0m [SPEC-5] a 'fail' verdict still writes a summary
-  [38;2;74;222;128m✓[0m [SPEC-5] and states the verdict 'fail'
-  [38;2;74;222;128m✓[0m [SPEC-5] a 'skip' verdict still writes a summary
-  [38;2;74;222;128m✓[0m [SPEC-5] and states the verdict 'skip'
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 14 tests passed[0m
-
-### config/templates/deployed.yaml head tests/unit/summary-mandatory-test.sh
-
-[38;2;0;212;255m[1m  every stage publishes a summary; pre-flight enforces it (#2000)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m1. every stage-bound plugin declares exactly one summary[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] no stage-bound plugin is without a summary
-  [38;2;74;222;128m✓[0m [SPEC-1] and none declares more than one
-
-  [38;2;0;212;255m2. pre-flight refuses a summary-less stage OUTSIDE the tree[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] the refusal names the offending stage
-  [38;2;74;222;128m✓[0m [SPEC-2] and says a summary is missing
-  [38;2;74;222;128m✓[0m [SPEC-2] pre-flight REFUSES rather than warning
-  [38;2;74;222;128m✓[0m [SPEC-2] the tree lint cannot see it — hence the runtime check
-
-  [38;2;0;212;255m3. backend services are unaffected (ADR-047 §5)[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] no backend service was forced to declare one
-
-  [38;2;0;212;255m4. the tree lint mirrors the refusal locally[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] the lint names the summary-less stage
-
-  [38;2;0;212;255m5. a summary is written on pass, fail and skip[0m
-  [38;2;74;222;128m✓[0m [SPEC-5] a 'pass' verdict still writes a summary
-  [38;2;74;222;128m✓[0m [SPEC-5] and states the verdict 'pass'
-  [38;2;74;222;128m✓[0m [SPEC-5] a 'fail' verdict still writes a summary
-  [38;2;74;222;128m✓[0m [SPEC-5] and states the verdict 'fail'
-  [38;2;74;222;128m✓[0m [SPEC-5] a 'skip' verdict still writes a summary
-  [38;2;74;222;128m✓[0m [SPEC-5] and states the verdict 'skip'
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 14 tests passed[0m
+  [38;2;74;222;128m[1mAll 3 tests passed[0m
 

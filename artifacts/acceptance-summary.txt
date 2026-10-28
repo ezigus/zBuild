@@ -1,30 +1,29 @@
-the acceptance check failed — SPEC-1/SPEC-3/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh/tests/integration/orch-timeout-applies-test.sh: its test does not pass on the new code — the code or the test is wrong
-NEGCTL FAIL SPEC-1 not_passing_at_head
+NEGCTL PASS SPEC-1
       design : A hung work unit dispatched through the fanout, map, and sequential strategies stops at its stage `t…
       asserts: assert_pass "[#1801/SPEC-1] fanout: orch_collect received --timeout ${_spec1_expected_timeout} (temp…
 NEGCTL PASS SPEC-2
       design : Running with a backend configured as `sequential` (or any name that resolves to no plugin) fails the…
       asserts: assert_pass "[#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback rem…
-NEGCTL FAIL SPEC-3 not_passing_at_head
+NEGCTL PASS SPEC-3
       design : The `orch-sequential` plugin directory and `tests/golden/orch-sequential-capabilities.golden` do not…
       asserts: assert_pass "[#1801/SPEC-3] orch-sequential plugin directory does not exist"
 NEGCTL PASS SPEC-4
       design : A configured backend plugin that is absent from the installed tree (not the checkout) fails the run …
       asserts: assert_pass "[#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)"
 NEGCTL PASS SPEC-5
-      design : `_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit` (`timeou…
+      design : `_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit`; `ZBUILD…
       asserts: assert_pass "[#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in ${_spec5_elapsed…
 NEGCTL PASS SPEC-6
       design : The `_orch_local_kill_slot` function and the always-run watchdog kill through `zbuild_pg_kill`; a ho…
       asserts: assert_pass "[#1801/SPEC-6] _orch_local_kill_slot calls zbuild_pg_kill"
 NEGCTL SKIP SPEC-7 no_code
       design : ADR-011 and ADR-017 carry `## Enforced by` sections naming the tests that enforce each statement; bo…
-      asserts: <none found>
+      asserts: assert_pass "[#1801/SPEC-7] ADR-011 carries an ## Enforced by section"
 NEGCTL SKIP SPEC-8 no_code
       design : The scope block includes every test file discovered by `grep -rl` for `orch-sequential`, `ZBUILD_ORC…
       asserts: <none found>
 NEGCTL SKIP SPEC-9 no_code
-      design : `npm test` and `npm run lint` pass on the final delivered change with no failures.
+      design : `npm test` and `npm run lint` pass on the final delivered change with no failures; all new and modif…
       asserts: <none found>
 NEGCTL PASS SPEC-10
       design : A backend whose plugin directory is present but whose config file is unreadable (permissions, corrup…
@@ -35,13 +34,14 @@ NEGCTL SKIP SPEC-11 no_code
 NEGCTL SKIP SPEC-12 no_code
       design : Every existing test file that uses orch-sequential as a live behavioral fixture (sourcing its plugin…
       asserts: <none found>
-REACHABILITY FAIL not_passing_at_head core/pipeline/strategies/fanout.sh tests/integration/orch-timeout-applies-test.sh
-REACHABILITY FAIL not_passing_at_head core/pipeline/strategies/map.sh tests/integration/orch-timeout-applies-test.sh
-REACHABILITY FAIL not_passing_at_head core/pipeline/strategies/sequential.sh tests/integration/orch-timeout-applies-test.sh
+REACHABILITY PASS core/pipeline/strategies/fanout.sh
+REACHABILITY PASS core/pipeline/strategies/map.sh
+REACHABILITY PASS core/pipeline/strategies/sequential.sh
 REACHABILITY PASS core/orch/contract.sh
 REACHABILITY PASS core/pipeline/runner.sh
 REACHABILITY PASS core/orch/local_engine.sh
-REACHABILITY FAIL not_passing_at_head config/adr-enforcement-baseline.txt tests/integration/orch-timeout-applies-test.sh
-REACHABILITY FAIL not_passing_at_head config/templates/deployed.yaml tests/integration/orch-timeout-applies-test.sh
-REACHABILITY FAIL not_passing_at_head config/templates/simple.yaml tests/integration/orch-timeout-applies-test.sh
+REACHABILITY PASS change .github/issues/keepers-manifest.yaml
+REACHABILITY PASS change config/adr-enforcement-baseline.txt
+REACHABILITY PASS change config/templates/deployed.yaml
+REACHABILITY PASS change config/templates/simple.yaml
 REACHABILITY SKIP no_code plugins/tool/orch-ruflo-hive/plugin.sh

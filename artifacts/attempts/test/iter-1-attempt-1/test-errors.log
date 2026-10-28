@@ -1,0 +1,949 @@
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/always-run-exit-paths-test.sh
+
+[38;2;0;212;255m[1m  always_run dispatches on every exit path (#1831)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[SPEC-1][change] release runs when the pipeline succeeds[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] release ran on rc=0
+
+  [38;2;0;212;255m[SPEC-2][change] release runs when a stage fails[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] release ran on a non-zero stage rc
+
+  [38;2;0;212;255m[SPEC-3][change] release runs on the SIGINT path (abort word sigint)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] release ran on the SIGINT path
+  [38;2;74;222;128m✓[0m [SPEC-3] the run took the abort path: exit 1 (not 130), status interrupted
+
+  [38;2;0;212;255m[SPEC-4][change] release runs when the runner is SIGTERMed mid-stage[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] release ran after SIGTERM to the runner
+
+  [38;2;0;212;255m[SPEC-5][guard] a release hook that hangs is bounded by its timeout_s[0m
+  [38;2;248;113;113m✗[0m [SPEC-5] a 60s release hook held the exit
+    [2melapsed=62s[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] the hanging hook was actually dispatched
+  [38;2;248;113;113m✗[0m [SPEC-5] the hanging hook was killed before completing
+    [2mfile should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.ZqRVnY/release-ran[0m
+
+  [38;2;0;212;255m[#1801/SPEC-5] persist always_run watchdog uses timeout_s: not router.timeout_s: 120[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] persist always_run watchdog bounds at timeout_s: 4 (exited in 0s; old code: router.timeout_s: 120)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.ZqRVnY/spec5p-entered[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] persist hook killed before completing (bounded by timeout_s: 4, not 120s)
+
+  [38;2;0;212;255m[SPEC-6][guard] an unresolvable role emits an event instead of failing silently[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] stage.always_run.unresolved is emitted
+  [38;2;74;222;128m✓[0m [SPEC-6] an unresolvable always-run stage does not fail the run
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 13 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-5] a 60s release hook held the exit
+  [38;2;248;113;113m✗[0m [SPEC-5] the hanging hook was killed before completing
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/artifact-contract-test.sh
+
+[38;2;0;212;255m[1m  artifact contract — A3: missing artifact triggers plugin.contract.violated[0m
+[2m  ══════════════════════════════════════════[0m
+
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/90620001/worktree
+▸ Pipeline started — run_id=20261028021316-921426 issue=90620001 goal= template=artifact-contract-minimal engine=64da51c(zbuild/issue-1801-ci)
+  [38;2;248;113;113m✗[0m plugin.contract.violated event emitted
+    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/events/events.jsonl[0m
+  [38;2;248;113;113m✗[0m synthetic findings.json created
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/state/artifacts/intake-intake-contract-violated-findings.json[0m
+  [38;2;248;113;113m✗[0m plugin.contract.violated event names the expected artifact path
+    [2moutput missing: intake-findings.json[0m
+  [38;2;248;113;113m✗[0m plugin.contract.violated event carries reason=artifact_missing_or_empty
+    [2mexpected: artifact_missing_or_empty, got: [0m
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/90620001/worktree
+▸ Pipeline started — run_id=20261028021317-923813 issue=90620001 goal= template=artifact-contract-minimal engine=64da51c(zbuild/issue-1801-ci)
+  [38;2;74;222;128m✓[0m a plugin declaring no outputs raises no contract violation (#1906)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 5 tests failed[0m
+
+  [38;2;248;113;113m✗[0m plugin.contract.violated event emitted
+  [38;2;248;113;113m✗[0m synthetic findings.json created
+  [38;2;248;113;113m✗[0m plugin.contract.violated event names the expected artifact path
+  [38;2;248;113;113m✗[0m plugin.contract.violated event carries reason=artifact_missing_or_empty
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/core-pipeline-runner-test.sh
+
+[38;2;0;212;255m[1m  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m no args exits 1
+  [38;2;74;222;128m✓[0m no args prints the usage
+  [38;2;74;222;128m✓[0m --help exits 0
+  [38;2;74;222;128m✓[0m --issue with no value exits 1
+  [38;2;74;222;128m✓[0m --issue with no value names the flag
+  [38;2;74;222;128m✓[0m --goal with no value exits 1
+  [38;2;74;222;128m✓[0m --goal with no value names the flag
+  [38;2;74;222;128m✓[0m dry-run shows intake stage
+  [38;2;74;222;128m✓[0m dry-run shows build stage
+  [38;2;74;222;128m✓[0m dry-run leaves state file untouched
+  [38;2;248;113;113m✗[0m happy path exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m events.jsonl created
+  [38;2;74;222;128m✓[0m pipeline.start emitted once
+  [38;2;74;222;128m✓[0m pipeline.end emitted once
+  [38;2;248;113;113m✗[0m pipeline.end carries status=success
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] stage.start emitted for each fixture stage (2x)
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] stage.complete emitted for each fixture stage (2x)
+    [2mexpected: 2, got: 0[0m
+  [38;2;74;222;128m✓[0m state file created
+  [38;2;248;113;113m✗[0m intake stage_status=complete (ADR-006 enum)
+    [2mexpected: complete, got: failed[0m
+  [38;2;248;113;113m✗[0m build stage_status=complete (ADR-006 enum)
+    [2mexpected: complete, got: [0m
+  [38;2;74;222;128m✓[0m mid-stage failure exits 1
+  [38;2;74;222;128m✓[0m events.jsonl present on failure
+  [38;2;74;222;128m✓[0m pipeline.end status=failed emitted
+  [38;2;248;113;113m✗[0m pipeline.end names the failing stage
+    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m stage.fail event emitted
+  [38;2;248;113;113m✗[0m build stage_status=failed in state
+    [2mexpected: failed, got: [0m
+  [38;2;74;222;128m✓[0m missing required plugin exits 1 (warn: caught at dispatch)
+  [38;2;74;222;128m✓[0m dispatch-time missing-plugin error names the unresolved stage 'intake'
+  [38;2;74;222;128m✓[0m missing plugin causes pipeline.end status=failed
+  [38;2;248;113;113m✗[0m kill mid-run emits pipeline.abort
+  [38;2;74;222;128m✓[0m --template runner-state-dir-minimal dry-run shows intake
+  [38;2;74;222;128m✓[0m --template runner-state-dir-minimal dry-run shows build
+  [38;2;74;222;128m✓[0m missing template fails closed (rc=1; #1850 — was 2) [#1283]
+  [38;2;74;222;128m✓[0m missing template error names the template
+  [38;2;248;113;113m✗[0m role-based dispatch exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m role-based dispatch: 2 stage.complete events
+    [2mexpected: 2, got: 0[0m
+  [38;2;248;113;113m✗[0m role-based: build stage_status=complete
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m fanout 2 platforms exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m fanout 2 platforms: 4 plugin.run.start events (2 stages × 2)
+    [2mexpected: 4, got: 0[0m
+  [38;2;74;222;128m✓[0m partial fanout failure exits 1
+  [38;2;248;113;113m✗[0m partial fanout emits stage.fail with reason=partial
+    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m partial fanout emits pipeline.end status=failed
+  [38;2;248;113;113m✗[0m A2 abort trap: pipeline.abort event emitted on kill
+  [38;2;248;113;113m✗[0m A2 abort trap: no state.error when state file writable
+  [38;2;74;222;128m✓[0m A2 abort trap: pipeline status=interrupted in state
+  [38;2;248;113;113m✗[0m A3 artifact contract: plugin.contract.violated event emitted
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m A3 artifact contract: synthetic findings.json not created
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/core-pipeline-verdict-indicators-test.sh
+
+[38;2;0;212;255m[1m  runner verdict-driven indicators (#507)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mall-pass: every stage line ends with ✓[0m
+--- runner.err on failure ---
+
+✗ Pipeline cannot start — stage manifests break the contract:
+
+  intake: INPUTS_RETIRED (id=-)
+    the manifest declares inputs:, which are retired — every stage gets every stage's latest output under Previous work (ADR-068 §8); remove the block
+
+  intake: SUMMARY_MISSING (id=-)
+    stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+
+  build: INPUTS_RETIRED (id=-)
+    the manifest declares inputs:, which are retired — every stage gets every stage's latest output under Previous work (ADR-068 §8); remove the block
+
+  build: SUMMARY_MISSING (id=-)
+    stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+
+  test: INPUTS_RETIRED (id=-)
+    the manifest declares inputs:, which are retired — every stage gets every stage's latest output under Previous work (ADR-068 §8); remove the block
+
+  test: SUMMARY_MISSING (id=-)
+    stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+
+Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+     or the active template (config/templates/<id>.yaml).
+     See docs/adr/ADR-020-inter-stage-data-contract.md.
+
+  ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:13:19 UTC
+
+
+▸ Running stage: intake  (started 02:13:19 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-927229-1793153599793795538)
+
+══════════════════════════ pipeline.end ═══════════════════════════ 02:13:19 UTC
+✗ Pipeline failed: status=failed stage=intake run_id=20261028021319-927229 issue=98620001 (took 0.3s)
+The run stopped before finishing.
+✗ Stage intake: orch_spawn failed for pool zbuild-intake-927229-1793153599793795538
+--- end ---
+  [38;2;248;113;113m✗[0m all-pass: runner exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m all-pass: ✓ on intake line
+    [2mstage line not found[0m
+  [38;2;248;113;113m✗[0m all-pass: ✓ on build line
+    [2mstage line not found[0m
+  [38;2;248;113;113m✗[0m all-pass: ✓ on test line
+    [2mstage line not found[0m
+  [38;2;248;113;113m✗[0m stage.complete carries verdict=pass for each stage
+    [2mgot 0[0m
+  [38;2;248;113;113m✗[0m state.stage_verdicts.intake == pass
+    [2mexpected: pass, got: [0m
+
+  [38;2;0;212;255mtest verdict=fail produces ✗[0m
+  [38;2;248;113;113m✗[0m test verdict=fail -> ✗ on test line
+    [2m  test: INPUTS_RETIRED (id=-)
+    the manifest declares inputs:, which are retired — every stage gets every stage's latest output under Previous work (ADR-068 §8); remove the block
+  test: SUMMARY_MISSING (id=-)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ test ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:13:20 UTC
+▸ Running stage: test  (started 02:13:20 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-test-929390-1793153600722914201)
+✗ Pipeline failed: status=failed stage=test run_id=20261028021320-929390 issue=98620001 (took 0.2s)
+✗ Stage test: orch_spawn failed for pool zbuild-test-929390-1793153600722914201[0m
+  [38;2;74;222;128m✓[0m test verdict=fail -> ✗ on test line: the run stops (rc 1)
+
+  [38;2;0;212;255mbuild scope_violation=true produces ✗[0m
+  [38;2;248;113;113m✗[0m build scope_violation=true -> ✗ on build line
+    [2m  build: INPUTS_RETIRED (id=-)
+  build: SUMMARY_MISSING (id=-)
+  ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ build ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:13:21 UTC
+▸ Running stage: build  (started 02:13:21 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-build-931188-1793153601611566706)
+✗ Pipeline failed: status=failed stage=build run_id=20261028021321-931188 issue=98620001 (took 0.2s)
+✗ Stage build: orch_spawn failed for pool zbuild-build-931188-1793153601611566706[0m
+  [38;2;74;222;128m✓[0m build scope_violation=true -> ✗ on build line: the run stops (rc 1)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m8 of 10 tests failed[0m
+
+  [38;2;248;113;113m✗[0m all-pass: runner exits 0
+  [38;2;248;113;113m✗[0m all-pass: ✓ on intake line
+  [38;2;248;113;113m✗[0m all-pass: ✓ on build line
+  [38;2;248;113;113m✗[0m all-pass: ✓ on test line
+  [38;2;248;113;113m✗[0m stage.complete carries verdict=pass for each stage
+  [38;2;248;113;113m✗[0m state.stage_verdicts.intake == pass
+  [38;2;248;113;113m✗[0m test verdict=fail -> ✗ on test line
+  [38;2;248;113;113m✗[0m build scope_violation=true -> ✗ on build line
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/cycle-acceptance-terminal-failure-test.sh
+
+[38;2;0;212;255m[1m  #1044: acceptance terminal failure halts pipeline[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT1 [SPEC-4]: terminal acceptance failure (inert_wiring) halts cycle (rc=8)[0m
+  [38;2;74;222;128m✓[0m T1 [SPEC-4]: pipeline.end status=failed on terminal acceptance failure
+  [38;2;74;222;128m✓[0m T1 [SPEC-4]: cycle.member.terminal_failure emitted
+  [38;2;74;222;128m✓[0m T1 [SPEC-4]: terminal_failure event names the failing member (test, #2372)
+  [38;2;74;222;128m✓[0m T1 [SPEC-4]: build_test_cycle did NOT converge (no reason=converged)
+
+  [38;2;0;212;255mT2 [SPEC-2]: untagged_spec-only acceptance failure does NOT halt — the loop goes round[0m
+  [38;2;74;222;128m✓[0m T2 [SPEC-2]: build_test_cycle goes round again (more than one round)
+  [38;2;74;222;128m✓[0m T2 [SPEC-2]: cycle.member.terminal_failure NOT emitted for untagged_spec
+
+  [38;2;0;212;255mT3 [SPEC-5]: infra negctl_error:timeout does NOT halt (status=success)[0m
+--- t3: no pipeline.end; events: orch.contract.not_implemented registry.role-unresolved stage.always_run.unresolved registry.role-unresolved stage.always_run.unresolved 
+↳ iter 1 complete: verdict=test-author=pass build=pass test=pass issue-acceptance=pass score=0 failure_count=0 elapsed=1s
+══ build_test_cycle [cycle] seq=1 output OK 1.6s ═══════════════ 02:12:18 UTC ══
+exit_when stage=issue-acceptance field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build_test_cycle ✓ ──
+
+═══════════════════════════ cycle: build_test_cycle ═══════════════════════════
+✓ Cycle build_test_cycle converged in 1/3 iters
+
+↳ iter 1 complete: verdict=design=pass build_test_cycle=pass score=0 failure_count=0 elapsed=1s
+══ delivery_loop [cycle] seq=1 output OK 2.4s ══════════════════ 02:12:19 UTC ══
+exit_when stage=build_test_cycle field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: delivery_loop ✓ ──
+⚠ orch contract: orch_spawn not implemented (context: map-review_lenses-835200)
+
+══════════════════════════ pipeline.end ═══════════════════════════ 02:12:19 UTC
+✗ Pipeline failed: status=failed run_id=20261028021215-835200 issue=0 (took 3.9s)
+The run finished.
+✗ map group 'review_lenses': orch_spawn failed
+  [38;2;248;113;113m✗[0m T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)
+    [2mexpected: success, got: [0m
+  [38;2;74;222;128m✓[0m T3 [SPEC-5]: cycle.member.terminal_failure NOT emitted for infra timeout
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 8 tests failed[0m
+
+  [38;2;248;113;113m✗[0m T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/cycle-on-max-pipeline-continues-test.sh
+
+[38;2;0;212;255m[1m  cycle on_max=continue → runner continues to next cycle (#766)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT1: events.jsonl chain around build_test_cycle exhaustion[0m
+  [38;2;74;222;128m✓[0m T1.1: cycle.complete fired with non-convergence reason for build_test_cycle (count=2)
+  [38;2;74;222;128m✓[0m T1.2: cycle.unconverged event emitted (proves runner continues past cycle exit)
+  [38;2;74;222;128m✓[0m T1.3: pipeline.abort MUST NOT fire on on_max=continue cycle exhaustion
+  [38;2;248;113;113m✗[0m T1.4: pipeline.end emitted exactly once
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)
+    [2mexpected: failed, got: [0m
+
+  [38;2;0;212;255mT2: build ran, and pr was dispatched after the loops ran out[0m
+  [38;2;74;222;128m✓[0m T2.1: build plugin ran (build_test_cycle was dispatched)
+  [38;2;248;113;113m✗[0m T2.2: pr plugin did NOT run
+    [2mpr_run_count=0[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 7 tests failed[0m
+
+  [38;2;248;113;113m✗[0m T1.4: pipeline.end emitted exactly once
+  [38;2;248;113;113m✗[0m T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)
+  [38;2;248;113;113m✗[0m T2.2: pr plugin did NOT run
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/design-pipeline-test.sh
+
+[38;2;0;212;255m[1m  design: design stage runs in pipeline and produces scope block (#754)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m runner exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m events.jsonl contains plugin.run.start plugin=design
+    [2m(no events file)[0m
+  [38;2;248;113;113m✗[0m design.md exists in state artifacts
+    [2msearched under /home/runner/work/_temp/zbuild-state/scratch/test/design-pipeline-754.x1go5T/home/.zbuild[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 3 tests failed[0m
+
+  [38;2;248;113;113m✗[0m runner exits 0
+  [38;2;248;113;113m✗[0m events.jsonl contains plugin.run.start plugin=design
+  [38;2;248;113;113m✗[0m design.md exists in state artifacts
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/engine-run-branch-test.sh
+
+[38;2;0;212;255m[1m  the engine owns the run's branch and starting commit (#2367)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mE1: the branch and starting commit are set before the first stage[0m
+  [38;2;248;113;113m✗[0m [E1] the first stage is already on the run's branch
+    [2mexpected: zbuild/issue-90090001, got: [0m
+  [38;2;248;113;113m✗[0m [E1] ...and is told its name
+    [2mexpected: zbuild/issue-90090001, got: [0m
+  [38;2;248;113;113m✗[0m [E1] ...and the commit the run started from
+    [2mexpected: dc88ef204c1d3263e0421a2b182cfca19fa7c106, got: [0m
+
+  [38;2;0;212;255mE2: the template names the branch[0m
+  [38;2;74;222;128m✓[0m [E2] the shipped template says the default
+  [38;2;74;222;128m✓[0m [E2] the template's branch: is used
+
+  [38;2;0;212;255mE3: .zbuild/branch overrides the template[0m
+  [38;2;248;113;113m✗[0m [E3] the repository's .zbuild/branch is used
+    [2mexpected: mine/issue-90090001, got: [0m
+
+  [38;2;0;212;255mE4: ZBUILD_WORKSPACE_BRANCH overrides both[0m
+  [38;2;248;113;113m✗[0m [E4] the CI setting is used
+    [2mexpected: ci/issue-90090001-ci, got: [0m
+
+  [38;2;0;212;255mE5: no stage's files hold the branch or starting commit[0m
+  [38;2;74;222;128m✓[0m [E5] no intake-branch.txt
+  [38;2;74;222;128m✓[0m [E5] no intake-baseline-ref.txt
+  [38;2;74;222;128m✓[0m [E5] intake declares no branch or baseline output
+
+  [38;2;0;212;255mE6: a branch that cannot be set up stops the run[0m
+  [38;2;74;222;128m✓[0m [E6] no stage ran
+  [38;2;74;222;128m✓[0m [E6] the run stops
+  [38;2;74;222;128m✓[0m [E6] a remote that cannot be fetched leaves the run resumable
+  [38;2;74;222;128m✓[0m [E6] ...and says the remote is not responding
+  [38;2;74;222;128m✓[0m [E6] a bad branch name fails the run
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m5 of 15 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [E1] the first stage is already on the run's branch
+  [38;2;248;113;113m✗[0m [E1] ...and is told its name
+  [38;2;248;113;113m✗[0m [E1] ...and the commit the run started from
+  [38;2;248;113;113m✗[0m [E3] the repository's .zbuild/branch is used
+  [38;2;248;113;113m✗[0m [E4] the CI setting is used
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/full-pipeline-seq-cardinal-test.sh
+
+[38;2;0;212;255m[1m  full pipeline cardinal seq labels (#682)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m pipeline exits 0
+    [2mexpected: 0, got: 1[0m
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/leaf-dispatch-role-bound-verdict-test.sh
+
+[38;2;0;212;255m[1m  leaf dispatch — a role-bound stage reports its real verdict (#1770)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-4] the fixture stage dispatched (stage.complete emitted)
+    [2mrc=1; stderr: ✗ Pipeline failed: status=failed stage=role-bound-leaf run_id=20261028021338-963441 issue=91020001 (took 0.3s)
+The run stopped before finishing.
+✗ Stage role-bound-leaf: orch_spawn failed for pool zbuild-role-bound-leaf-963441-1793153618851649288[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 1 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-4] the fixture stage dispatched (stage.complete emitted)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/per-run-state-isolation-test.sh
+
+[38;2;0;212;255m[1m  per-run state isolation (#887)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  ---- nested runner run-aaa exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  | 
+  | ✗ Pipeline cannot start — stage manifests break the contract:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-aaa issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:34 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:12:34 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-856656-1793153554180040773)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:34 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-aaa issue=94330001 (took 0.2s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-856656-1793153554180040773
+  ---- end run-aaa ----
+  [38;2;248;113;113m✗[0m T1: run-aaa exits 0
+    [2mexpected: 0, got: 1[0m
+  ---- nested runner run-bbb exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  | 
+  | ✗ Pipeline cannot start — stage manifests break the contract:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-bbb issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:34 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:12:34 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-857746-1793153554890118942)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:34 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-bbb issue=94330001 (took 0.2s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-857746-1793153554890118942
+  ---- end run-bbb ----
+  [38;2;248;113;113m✗[0m T2: run-bbb exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m T1: run-aaa state under runs/run-aaa/
+  [38;2;74;222;128m✓[0m T2: run-bbb state under runs/run-bbb/
+  [38;2;74;222;128m✓[0m T2: run-aaa state has its own run_id (no clobber)
+  [38;2;74;222;128m✓[0m T2: run-bbb state has its own run_id (no clobber)
+  [38;2;74;222;128m✓[0m T3: latest → run-bbb (most recent)
+  ---- nested runner run-ccc exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  | 
+  | ✗ Pipeline cannot start — stage manifests break the contract:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-ccc issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:35 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:12:35 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-858830-1793153555725128226)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:35 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ccc issue=94330001 (took 0.2s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-858830-1793153555725128226
+  ---- end run-ccc ----
+  [38;2;248;113;113m✗[0m T4: explicit-state run exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)
+  [38;2;74;222;128m✓[0m T4: explicit state dir not re-rooted
+  ---- nested runner run-ddd exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  | 
+  | ✗ Pipeline cannot start — stage manifests break the contract:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-ddd issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:36 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:12:36 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-859805-1793153556696117354)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:36 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ddd issue=94330001 (took 0.3s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-859805-1793153556696117354
+  ---- end run-ddd ----
+  [38;2;248;113;113m✗[0m T5: ZBUILD_EVENTS_DIR not per-run
+    [2mgot: [0m
+  ---- nested runner t6 exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  | 
+  | ✗ Pipeline cannot start — stage manifests break the contract:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-eee issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:37 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:12:37 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-861436-1793153557637447662)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:37 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-eee issue=94330001 (took 0.3s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-861436-1793153557637447662
+  ---- end t6 ----
+  [38;2;248;113;113m✗[0m T6: events did not follow STATE_FILE dir
+    [2mrunner_rc=1 got= (canon=/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP) expected=/home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/state/runs/run-eee[0m
+  ---- nested runner run-hyg exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  | 
+  | ✗ Pipeline cannot start — stage manifests break the contract:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-hyg issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:38 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:12:38 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-862814-1793153558570197852)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:38 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-hyg issue=94330001 (took 0.3s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-862814-1793153558570197852
+  ---- end run-hyg ----
+  [38;2;248;113;113m✗[0m T7: run-hyg exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m T7: --no-resume cleared stale global-default event log + locks
+  [38;2;74;222;128m✓[0m T8: run-hyg events under its per-run dir
+  [38;2;74;222;128m✓[0m T8: engine run kept events out of the shared global default
+  [38;2;74;222;128m✓[0m T9: unpinned ad-hoc emit → ephemeral dir under the data root
+  [38;2;74;222;128m✓[0m T9: unpinned ad-hoc emit wrote nothing under $TMPDIR (#2004)
+  [38;2;74;222;128m✓[0m T9: unpinned ad-hoc emit left the shared global default untouched
+  ---- nested runner run-ddd exited rc=1; its output: ----
+  | ▸ merge_policy: auto_unless_flagged
+  | 
+  | ✗ Pipeline cannot start — stage manifests break the contract:
+  | 
+  |   intake: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  |   build: SUMMARY_MISSING (id=-)
+  |     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+  | 
+  | Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+  |      or the active template (config/templates/<id>.yaml).
+  |      See docs/adr/ADR-020-inter-stage-data-contract.md.
+  | 
+  |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+  | 
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-ddd issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+  | 
+  | 
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:39 UTC
+  | 
+  | 
+  | ▸ Running stage: intake  (started 02:12:39 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-864116-1793153559543653398)
+  | 
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:39 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ddd issue=94330001 (took 0.3s)
+  | The run stopped before finishing.
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-864116-1793153559543653398
+  ---- end run-ddd ----
+  [38;2;248;113;113m✗[0m T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state run
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m T4b: the explicit dir is still what was used
+  [38;2;74;222;128m✓[0m T4b: T4 itself clears the ambient state-file setting
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m7 of 22 tests failed[0m
+
+  [38;2;248;113;113m✗[0m T1: run-aaa exits 0
+  [38;2;248;113;113m✗[0m T2: run-bbb exits 0
+  [38;2;248;113;113m✗[0m T4: explicit-state run exits 0
+  [38;2;248;113;113m✗[0m T5: ZBUILD_EVENTS_DIR not per-run
+  [38;2;248;113;113m✗[0m T6: events did not follow STATE_FILE dir
+  [38;2;248;113;113m✗[0m T7: run-hyg exits 0
+  [38;2;248;113;113m✗[0m T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state run
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/pipeline-resume-test.sh
+
+[38;2;0;212;255m[1m  pipeline resume — CLI + auto-resume policy (#225)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mget_resume_recommendation: in_progress < 24h[0m
+  [38;2;74;222;128m✓[0m in_progress recent → auto_resume
+
+  [38;2;0;212;255mget_resume_recommendation: complete[0m
+  [38;2;74;222;128m✓[0m complete → fresh_start
+
+  [38;2;0;212;255mget_resume_recommendation: aborted[0m
+  [38;2;74;222;128m✓[0m aborted → manual_resume_only
+
+  [38;2;0;212;255mget_resume_recommendation: no state file[0m
+  [38;2;74;222;128m✓[0m no state file → fresh_start
+
+  [38;2;0;212;255mget_resume_recommendation: in_progress > 24h[0m
+  [38;2;74;222;128m✓[0m in_progress old → manual_resume_only
+
+  [38;2;0;212;255mget_resume_recommendation: interrupted[0m
+  [38;2;74;222;128m✓[0m interrupted → auto_resume
+
+  [38;2;0;212;255mrunner --resume skips completed stages[0m
+  [38;2;74;222;128m✓[0m intake stage is complete in state
+  [38;2;74;222;128m✓[0m output stage is pending in state
+  [38;2;74;222;128m✓[0m completed stage (intake) would be skipped on resume
+
+  [38;2;0;212;255mset_state_field updates pipeline status[0m
+  [38;2;74;222;128m✓[0m set_state_field writes status=in_progress
+  [38;2;74;222;128m✓[0m set_state_field writes status=complete
+
+  [38;2;0;212;255m--force: aborted pipeline can be resumed[0m
+  [38;2;74;222;128m✓[0m aborted + force=true → can_resume
+  [38;2;74;222;128m✓[0m aborted + force=false → cannot auto-resume
+  [38;2;74;222;128m✓[0m aborted still returns manual_resume_only (force is caller's responsibility)
+
+  [38;2;0;212;255mintegration: runner --resume skips stages with status=complete[0m
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/pipeline-resume.CREXAa/home/.zbuild/repos/local/int-tpl-overlay-repo/issues/98620001/worktree
+▸ Pipeline resuming — run_id=integ-test-resume-225 issue=98620001 goal= template=runner-state-dir-minimal
+  [38;2;248;113;113m✗[0m integration: --resume exits 0 when remaining stage succeeds
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m integration: state file still present after resume
+  [38;2;248;113;113m✗[0m integration: build stage_status=complete after resume
+    [2mexpected: complete, got: failed[0m
+  [38;2;74;222;128m✓[0m integration: only 1 stage.start (skipped 1 complete stage)
+  [38;2;74;222;128m✓[0m integration: pipeline.resume event emitted
+
+  [38;2;0;212;255mintegration: --from-stage with unknown stage exits 1[0m
+▸ merge_policy: auto_unless_flagged
+  [38;2;74;222;128m✓[0m --from-stage unknown stage exits 1
+  [38;2;74;222;128m✓[0m --from-stage unknown stage says it is not a known stage
+
+  [38;2;0;212;255mintegration: --from-stage without --resume exits 1[0m
+  [38;2;74;222;128m✓[0m --from-stage without --resume exits 1
+  [38;2;74;222;128m✓[0m --from-stage without --resume says it needs --resume
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 23 tests failed[0m
+
+  [38;2;248;113;113m✗[0m integration: --resume exits 0 when remaining stage succeeds
+  [38;2;248;113;113m✗[0m integration: build stage_status=complete after resume
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/runner-exports-state-dir-test.sh
+
+[38;2;0;212;255m[1m  runner: exports ZBUILD_STATE_DIR to child plugins (#618)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m runner exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m build stub captured its env
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/runner-618-export-state-dir.wtuTWx/env-capture.txt[0m
+  [38;2;248;113;113m✗[0m child plugin env contains ZBUILD_STATE_DIR
+    [2mcaptured env: [0m
+  [38;2;248;113;113m✗[0m ZBUILD_STATE_DIR value matches runner's state_dir
+    [2mexpected substring: ZBUILD_STATE_DIR=/home/runner/work/_temp/zbuild-state/scratch/test/runner-618-export-state-dir.wtuTWx/home/.zbuild/repos/local/tpl-overlay-repo/issues/90110001/runs/run-618-924011; got: [0m
+  [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_RUN_ID (regression)
+    [2mmissing from captured env[0m
+  [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_ISSUE (regression)
+    [2mmissing from captured env[0m
+  [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_GOAL (regression)
+    [2mmissing from captured env[0m
+  [38;2;74;222;128m✓[0m [SPEC-C10] the runner establishes the run-scoped temp root
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m7 of 8 tests failed[0m
+
+  [38;2;248;113;113m✗[0m runner exits 0
+  [38;2;248;113;113m✗[0m build stub captured its env
+  [38;2;248;113;113m✗[0m child plugin env contains ZBUILD_STATE_DIR
+  [38;2;248;113;113m✗[0m ZBUILD_STATE_DIR value matches runner's state_dir
+  [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_RUN_ID (regression)
+  [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_ISSUE (regression)
+  [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_GOAL (regression)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/runner-init-state-abort-test.sh
+
+[38;2;0;212;255m[1m  runner — init_state write failure aborts the run (#1773)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m SPEC-5: a refused state write aborts the run
+  [38;2;74;222;128m✓[0m SPEC-5: the abort names init_state as the failing writer
+  [38;2;74;222;128m✓[0m SPEC-5: the abort states the stateless-run consequence
+  [38;2;74;222;128m✓[0m SPEC-5: the runner reports a controlled abort, not a bare death
+  [38;2;74;222;128m✓[0m SPEC-5: no state file was persisted
+  [38;2;74;222;128m✓[0m SPEC-5: no stage runs after a refused state write
+  [38;2;248;113;113m✗[0m SPEC-6: writable state dir → run completes
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m SPEC-6: state file is persisted
+  [38;2;74;222;128m✓[0m SPEC-6: stages run when state was persisted
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m SPEC-6: writable state dir → run completes
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/runner-release-exit-paths-test.sh
+
+[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
+  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
+  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
+  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
+  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (1s)
+  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
+  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
+  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+    [2mno release from: intake build | marker= [0m
+  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
+
+  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 34s)
+  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
+
+  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
+  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
+
+  [38;2;0;212;255m[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 0s; would be ~30s with router.timeout_s)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 22 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/state-root-isolation-test.sh
+
+[38;2;0;212;255m[1m  state-root isolation (#1127)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m nested run exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m A: parent latest still → PARENT run dir
+  [38;2;74;222;128m✓[0m A: fenced latest → nested run
+  [38;2;74;222;128m✓[0m B: parent pipeline-state.json byte-identical
+  [38;2;74;222;128m✓[0m B: nested state under the fence
+  [38;2;74;222;128m✓[0m B: nested state is contained by the fence tree
+  [38;2;74;222;128m✓[0m B: nested run kept out of the parent root
+  [38;2;74;222;128m✓[0m C: parent events.jsonl untouched (global-clear targets fence)
+  [38;2;74;222;128m✓[0m D: nested state has its own run_id
+  [38;2;248;113;113m✗[0m D: nested run not terminal
+    [2mstatus=interrupted[0m
+  [38;2;74;222;128m✓[0m D: nested events under the fence
+  [38;2;248;113;113m✗[0m E: default-root run exits 0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m E: unset root → state under $HOME/.zbuild/
+  [38;2;74;222;128m✓[0m E: and it is HOME-anchored
+  [38;2;74;222;128m✓[0m E2: zbuild --resume-latest honors ZBUILD_STATE_ROOT (empty fence → no state)
+  [38;2;74;222;128m✓[0m F: parent latest unchanged after test-stage nested run
+  [38;2;74;222;128m✓[0m F: parent state byte-identical after test-stage nested run
+  [38;2;74;222;128m✓[0m F: parent events unchanged after test-stage nested run
+  [38;2;74;222;128m✓[0m F: test-stage nested run stayed out of the parent root
+  [38;2;74;222;128m✓[0m [SPEC-7] nested runner reached state-init (persisted pipeline-state.json under the fence)
+  DIAGNOSTIC: nested runner log (tail):
+    ▸ merge_policy: auto_unless_flagged
+    
+    ✗ Pipeline cannot start — stage manifests break the contract:
+    
+      intake: SUMMARY_MISSING (id=-)
+        stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+    
+      build: SUMMARY_MISSING (id=-)
+        stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)
+    
+    Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
+         or the active template (config/templates/<id>.yaml).
+         See docs/adr/ADR-020-inter-stage-data-contract.md.
+    
+      ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
+    
+    ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/state-root-isolation-1127.2G8X5T/home/.zbuild/repos/local/zbuild-test-stage.UfQr1K/issues/90360001/worktree
+    ▸ Pipeline started — run_id=nested-suite issue=90360001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
+    
+    
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:51 UTC
+    
+    
+    ▸ Running stage: intake  (started 02:12:51 UTC)
+    ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-880784-1793153571724418607)
+    
+    ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:51 UTC
+    ✗ Pipeline failed: status=failed stage=intake run_id=nested-suite issue=90360001 (took 0.3s)
+    The run stopped before finishing.
+    ✗ Stage intake: orch_spawn failed for pool zbuild-intake-880784-1793153571724418607
+  DIAGNOSTIC: copied state: {  "schema_version": 1,  "run_id": "nested-suite",  "issue": 90360001,  "engine_sha": "64da51c3c64b7062c8b7614cae8e262b947bc86b",  "engine_branch": "zbuild/issue-1801-ci",  "stage_statuses": {    "intake": "failed"  },  "current_iteration": 0,  "self_heal_count": {},  "scope_manifest_hash": "",  "cost_ledger_pointer": 0,  "claim_lease_id": "",  "plugin_state": {},  "updated_at": "2026-10-28T02:12:
+  [38;2;248;113;113m✗[0m [SPEC-7] nested run used the fixture roster
+    [2mstage_statuses keys=intake (expected the intake→build fixture, not the built-in fallback)[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 21 tests failed[0m
+
+  [38;2;248;113;113m✗[0m nested run exits 0
+  [38;2;248;113;113m✗[0m D: nested run not terminal
+  [38;2;248;113;113m✗[0m E: default-root run exits 0
+  [38;2;248;113;113m✗[0m [SPEC-7] nested run used the fixture roster
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/worktree-run-isolation-test.sh
+
+[38;2;0;212;255m[1m  engine-owned per-run worktree (ADR-052, #1640)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] the main checkout's HEAD is unmoved by a full run
+  [38;2;74;222;128m✓[0m [SPEC-2] the main checkout's branch is unmoved by a full run
+  [38;2;248;113;113m✗[0m [SPEC-3a] the build stage must commit to the work branch
+    [2mrc=1 wt=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree build_root= branch_sha=dec075556efe08b76af1e2db16e74640c470d044 base=dec075556efe08b76af1e2db16e74640c470d044[0m
+  [38;2;248;113;113m✗[0m [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
+    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] the worktree is recorded and lives outside the target repo
+  [38;2;248;113;113m✗[0m [SPEC-5] the main checkout must survive a run that never reaches pr
+    [2mrc=1 head=b002b17b8e3ff2b1367ed3eb09de208e0e5e799e (was b002b17b8e3ff2b1367ed3eb09de208e0e5e799e) branch=main (was main) build_root=[0m
+  [38;2;248;113;113m✗[0m [SPEC-6] the opt-out must keep in-place semantics
+    [2mbranch=zbuild/issue-99090001 wt_recorded=0[0m
+  [38;2;248;113;113m✗[0m [SPEC-7] resume must reuse the run's worktree
+    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m5 of 8 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3a] the build stage must commit to the work branch
+  [38;2;248;113;113m✗[0m [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
+  [38;2;248;113;113m✗[0m [SPEC-5] the main checkout must survive a run that never reaches pr
+  [38;2;248;113;113m✗[0m [SPEC-6] the opt-out must keep in-place semantics
+  [38;2;248;113;113m✗[0m [SPEC-7] resume must reuse the run's worktree

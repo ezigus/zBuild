@@ -6,7 +6,7 @@
 
   [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
   [38;2;248;113;113m✗[0m [#1801/SPEC-2] orch_load_backend 'sequential' must return non-zero (sequential fallback removed)
-    [2mreturned 0; old code finds orch-sequential via hardcoded _ZBUILD_ROOT path and sources it[0m
+    [2mreturned 0; old code finds the fallback backend via hardcoded _ZBUILD_ROOT path and sources it[0m
   [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
   [38;2;248;113;113m✗[0m [#1801/SPEC-2] error output must name the backend 'sequential'
     [2mstderr did not contain 'sequential'; got: <empty>[0m

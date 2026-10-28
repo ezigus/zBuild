@@ -1,0 +1,185 @@
+### .github/issues/keepers-manifest.yaml reverted tests/integration/orch-timeout-applies-test.sh
+
+[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
+  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy calls template_stage_time_limit for orch_collect timeout
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy does not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline removed)
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
+
+  [38;2;0;212;255m[#1801/SPEC-1] strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; output names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential timed_out output names the timeout limit (7s)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map timed_out output names the timeout limit (7s)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
+
+### .github/issues/keepers-manifest.yaml head tests/integration/orch-timeout-applies-test.sh
+
+[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
+  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy calls template_stage_time_limit for orch_collect timeout
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy does not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline removed)
+
+  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
+
+  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
+
+  [38;2;0;212;255m[#1801/SPEC-1] strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; output names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
+
+  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential timed_out output names the timeout limit (7s)
+
+  [38;2;0;212;255m[#1801/SPEC-1] map strategy preserves timed_out in _ORCH_COLLECT_OUTCOME; names stage and limit[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy propagates timed_out from _ORCH_COLLECT_OUTCOME
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map timed_out output names the stage ('testjob')
+  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map timed_out output names the timeout limit (7s)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
+
+### .github/issues/keepers-manifest.yaml reverted tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### .github/issues/keepers-manifest.yaml head tests/integration/orch-backend-misconfigured-test.sh
+
+[38;2;0;212;255m[1m  orch_load_backend fails misconfigured naming backend when fallback removed (#1801 SPEC-2,4,10)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1801/SPEC-2] orch_load_backend 'sequential' fails when sequential fallback is removed[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] orch_load_backend 'sequential' returns non-zero (sequential fallback removed)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (backend correctly not loaded)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] error output names the backend 'sequential'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-2] backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-4] orch_load_backend absent plugin fails naming backend (no general fallback)[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] orch_load_backend absent plugin returns non-zero (no fallback)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (absent backend)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] error output names the missing backend 'orch-absent-spec4'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-4] absent backend failure is reported as 'misconfigured'
+
+  [38;2;0;212;255m[#1801/SPEC-10] orch_load_backend unreadable plugin.sh fails naming backend[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] orch_load_backend with unreadable plugin.sh returns non-zero
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] _ZBUILD_ORCH_BACKEND_LOADED is not 1 (unreadable plugin.sh)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] error output names the backend 'orch-broken-spec10'
+  [38;2;74;222;128m✓[0m [#1801/SPEC-10] unreadable plugin.sh failure is reported as 'misconfigured'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### .github/issues/keepers-manifest.yaml reverted tests/unit/orch-sequential-absent-guard-test.sh
+
+[38;2;0;212;255m[1m  orch-sequential is absent from the installed tree (#1801 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+    [2mdirectory still present: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.Pu8Og0/plugins/tool/orch-sequential[0m
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.Pu8Og0/.github/issues/keepers-manifest.yaml[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden does not exist
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 3 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+
+### .github/issues/keepers-manifest.yaml head tests/unit/orch-sequential-absent-guard-test.sh
+
+[38;2;0;212;255m[1m  orch-sequential is absent from the installed tree (#1801 SPEC-3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
+  [38;2;74;222;128m✓[0m [#1801/SPEC-3] tests/golden/orch-sequential-capabilities.golden does not exist
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 3 tests passed[0m
+

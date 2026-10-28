@@ -1,50 +1,4 @@
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/unit/lint-test-errexit-test.sh
-
-[38;2;0;212;255m[1m  a test file never turns stop-on-error on mid-file (#2252 G)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m [L1] no -e header, then set -e → refused
-  [38;2;74;222;128m✓[0m [L2] ...set -euo pipefail mid-file → refused
-  [38;2;74;222;128m✓[0m [L3] an -e header may toggle it
-  [38;2;74;222;128m✓[0m [L4] set +e and set -o pipefail are fine
-  [38;2;248;113;113m✗[0m [L5] the real tree passes
-    [2mexpected: 0, got: 1[0m
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:116 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:132 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:148 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:164 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:215 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:231 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:261 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:294 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-backend-misconfigured-test.sh:73 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-backend-misconfigured-test.sh:120 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-backend-misconfigured-test.sh:184 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/unit/orch-kill-uses-pg-kill-guard-test.sh:133 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: 12 file(s) switch stop-on-error on mid-file
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 5 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [L5] the real tree passes
-
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/unit/orch-sequential-absent-guard-test.sh
-
-[38;2;0;212;255m[1m  orch-sequential is absent from the installed tree (#1801 SPEC-3)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m [#1801/SPEC-3] orch-sequential plugin directory does not exist
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-    [2mstill referenced in: /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/plugins/tool/orch-mock/tests/orch-mock-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/orch-backend-misconfigured-test.sh /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/.github/issues/keepers-manifest.yaml[0m
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 2 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-3] no code or config file outside docs/adr/ names orch-sequential
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/always-run-exit-paths-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/always-run-exit-paths-test.sh
 
 [38;2;0;212;255m[1m  always_run dispatches on every exit path (#1831)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -68,7 +22,13 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
     [2melapsed=62s[0m
   [38;2;74;222;128m✓[0m [SPEC-5] the hanging hook was actually dispatched
   [38;2;248;113;113m✗[0m [SPEC-5] the hanging hook was killed before completing
-    [2mfile should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.HymqJ2/release-ran[0m
+    [2mfile should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.ZqRVnY/release-ran[0m
+
+  [38;2;0;212;255m[#1801/SPEC-5] persist always_run watchdog uses timeout_s: not router.timeout_s: 120[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] persist always_run watchdog bounds at timeout_s: 4 (exited in 0s; old code: router.timeout_s: 120)
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-always-run-exit.ZqRVnY/spec5p-entered[0m
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] persist hook killed before completing (bounded by timeout_s: 4, not 120s)
 
   [38;2;0;212;255m[SPEC-6][guard] an unresolvable role emits an event instead of failing silently[0m
   [38;2;74;222;128m✓[0m [SPEC-6] stage.always_run.unresolved is emitted
@@ -76,30 +36,31 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 10 tests failed[0m
+  [38;2;248;113;113m[1m3 of 13 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-5] a 60s release hook held the exit
   [38;2;248;113;113m✗[0m [SPEC-5] the hanging hook was killed before completing
+  [38;2;248;113;113m✗[0m [#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/artifact-contract-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/artifact-contract-test.sh
 
 [38;2;0;212;255m[1m  artifact contract — A3: missing artifact triggers plugin.contract.violated[0m
 [2m  ══════════════════════════════════════════[0m
 
 ▸ merge_policy: auto_unless_flagged
-▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.GLcWBD/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/92360001/worktree
-▸ Pipeline started — run_id=20261026223011-1761601 issue=92360001 goal= template=artifact-contract-minimal engine=00496d2(zbuild/issue-1801-ci)
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/90620001/worktree
+▸ Pipeline started — run_id=20261028021316-921426 issue=90620001 goal= template=artifact-contract-minimal engine=64da51c(zbuild/issue-1801-ci)
   [38;2;248;113;113m✗[0m plugin.contract.violated event emitted
-    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.GLcWBD/a3/events/events.jsonl[0m
+    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/events/events.jsonl[0m
   [38;2;248;113;113m✗[0m synthetic findings.json created
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.GLcWBD/a3/state/artifacts/intake-intake-contract-violated-findings.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/a3/state/artifacts/intake-intake-contract-violated-findings.json[0m
   [38;2;248;113;113m✗[0m plugin.contract.violated event names the expected artifact path
     [2moutput missing: intake-findings.json[0m
   [38;2;248;113;113m✗[0m plugin.contract.violated event carries reason=artifact_missing_or_empty
     [2mexpected: artifact_missing_or_empty, got: [0m
 ▸ merge_policy: auto_unless_flagged
-▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.GLcWBD/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/92360001/worktree
-▸ Pipeline started — run_id=20261026223013-1763592 issue=92360001 goal= template=artifact-contract-minimal engine=00496d2(zbuild/issue-1801-ci)
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/artifact-contract.1yKfId/home/.zbuild/repos/local/artifact-contract-overlay-repo/issues/90620001/worktree
+▸ Pipeline started — run_id=20261028021317-923813 issue=90620001 goal= template=artifact-contract-minimal engine=64da51c(zbuild/issue-1801-ci)
   [38;2;74;222;128m✓[0m a plugin declaring no outputs raises no contract violation (#1906)
 
 [2m  ──────────────────────────────────────────[0m
@@ -111,7 +72,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m plugin.contract.violated event names the expected artifact path
   [38;2;248;113;113m✗[0m plugin.contract.violated event carries reason=artifact_missing_or_empty
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/core-pipeline-runner-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/core-pipeline-runner-test.sh
 
 [38;2;0;212;255m[1m  core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -178,7 +139,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m A3 artifact contract: plugin.contract.violated event emitted
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m A3 artifact contract: synthetic findings.json not created
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/core-pipeline-verdict-indicators-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/core-pipeline-verdict-indicators-test.sh
 
 [38;2;0;212;255m[1m  runner verdict-driven indicators (#507)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -215,16 +176,16 @@ Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml)
 
 
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:30:16 UTC
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:13:19 UTC
 
 
-▸ Running stage: intake  (started 22:30:16 UTC)
-⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1766927-1793053816040889928)
+▸ Running stage: intake  (started 02:13:19 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-927229-1793153599793795538)
 
-══════════════════════════ pipeline.end ═══════════════════════════ 22:30:16 UTC
-✗ Pipeline failed: status=failed stage=intake run_id=20261026223015-1766927 issue=96240001 (took 0.4s)
+══════════════════════════ pipeline.end ═══════════════════════════ 02:13:19 UTC
+✗ Pipeline failed: status=failed stage=intake run_id=20261028021319-927229 issue=98620001 (took 0.3s)
 The run stopped before finishing.
-✗ Stage intake: orch_spawn failed for pool zbuild-intake-1766927-1793053816040889928
+✗ Stage intake: orch_spawn failed for pool zbuild-intake-927229-1793153599793795538
 --- end ---
   [38;2;248;113;113m✗[0m all-pass: runner exits 0
     [2mexpected: 0, got: 1[0m
@@ -244,11 +205,11 @@ The run stopped before finishing.
     [2m  test: INPUTS_RETIRED (id=-)
     the manifest declares inputs:, which are retired — every stage gets every stage's latest output under Previous work (ADR-068 §8); remove the block
   test: SUMMARY_MISSING (id=-)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ test ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:30:17 UTC
-▸ Running stage: test  (started 22:30:17 UTC)
-⚠ orch contract: orch_spawn not implemented (context: zbuild-test-1769100-1793053817421111400)
-✗ Pipeline failed: status=failed stage=test run_id=20261026223017-1769100 issue=96240001 (took 0.3s)
-✗ Stage test: orch_spawn failed for pool zbuild-test-1769100-1793053817421111400[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ test ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:13:20 UTC
+▸ Running stage: test  (started 02:13:20 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-test-929390-1793153600722914201)
+✗ Pipeline failed: status=failed stage=test run_id=20261028021320-929390 issue=98620001 (took 0.2s)
+✗ Stage test: orch_spawn failed for pool zbuild-test-929390-1793153600722914201[0m
   [38;2;74;222;128m✓[0m test verdict=fail -> ✗ on test line: the run stops (rc 1)
 
   [38;2;0;212;255mbuild scope_violation=true produces ✗[0m
@@ -256,11 +217,11 @@ The run stopped before finishing.
     [2m  build: INPUTS_RETIRED (id=-)
   build: SUMMARY_MISSING (id=-)
   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ build ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:30:18 UTC
-▸ Running stage: build  (started 22:30:18 UTC)
-⚠ orch contract: orch_spawn not implemented (context: zbuild-build-1770838-1793053818790231373)
-✗ Pipeline failed: status=failed stage=build run_id=20261026223018-1770838 issue=96240001 (took 0.3s)
-✗ Stage build: orch_spawn failed for pool zbuild-build-1770838-1793053818790231373[0m
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ build ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:13:21 UTC
+▸ Running stage: build  (started 02:13:21 UTC)
+⚠ orch contract: orch_spawn not implemented (context: zbuild-build-931188-1793153601611566706)
+✗ Pipeline failed: status=failed stage=build run_id=20261028021321-931188 issue=98620001 (took 0.2s)
+✗ Stage build: orch_spawn failed for pool zbuild-build-931188-1793153601611566706[0m
   [38;2;74;222;128m✓[0m build scope_violation=true -> ✗ on build line: the run stops (rc 1)
 
 [2m  ──────────────────────────────────────────[0m
@@ -276,7 +237,7 @@ The run stopped before finishing.
   [38;2;248;113;113m✗[0m test verdict=fail -> ✗ on test line
   [38;2;248;113;113m✗[0m build scope_violation=true -> ✗ on build line
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/cycle-acceptance-terminal-failure-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/cycle-acceptance-terminal-failure-test.sh
 
 [38;2;0;212;255m[1m  #1044: acceptance terminal failure halts pipeline[0m
 [2m  ══════════════════════════════════════════[0m
@@ -294,8 +255,8 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;0;212;255mT3 [SPEC-5]: infra negctl_error:timeout does NOT halt (status=success)[0m
 --- t3: no pipeline.end; events: orch.contract.not_implemented registry.role-unresolved stage.always_run.unresolved registry.role-unresolved stage.always_run.unresolved 
-↳ iter 1 complete: verdict=test-author=pass build=pass test=pass issue-acceptance=pass score=0 failure_count=0 elapsed=2s
-══ build_test_cycle [cycle] seq=1 output OK 2.2s ═══════════════ 22:28:56 UTC ══
+↳ iter 1 complete: verdict=test-author=pass build=pass test=pass issue-acceptance=pass score=0 failure_count=0 elapsed=1s
+══ build_test_cycle [cycle] seq=1 output OK 1.6s ═══════════════ 02:12:18 UTC ══
 exit_when stage=issue-acceptance field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_test_cycle ✓ ──
@@ -303,15 +264,15 @@ health: progress=0 (no progress) - defects=0 → score=0
 ═══════════════════════════ cycle: build_test_cycle ═══════════════════════════
 ✓ Cycle build_test_cycle converged in 1/3 iters
 
-↳ iter 1 complete: verdict=design=pass build_test_cycle=pass score=0 failure_count=0 elapsed=2s
-══ delivery_loop [cycle] seq=1 output OK 3.2s ══════════════════ 22:28:56 UTC ══
+↳ iter 1 complete: verdict=design=pass build_test_cycle=pass score=0 failure_count=0 elapsed=1s
+══ delivery_loop [cycle] seq=1 output OK 2.4s ══════════════════ 02:12:19 UTC ══
 exit_when stage=build_test_cycle field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: delivery_loop ✓ ──
-⚠ orch contract: orch_spawn not implemented (context: map-review_lenses-1674108)
+⚠ orch contract: orch_spawn not implemented (context: map-review_lenses-835200)
 
-══════════════════════════ pipeline.end ═══════════════════════════ 22:28:56 UTC
-✗ Pipeline failed: status=failed run_id=20261026222851-1674108 issue=0 (took 5.2s)
+══════════════════════════ pipeline.end ═══════════════════════════ 02:12:19 UTC
+✗ Pipeline failed: status=failed run_id=20261028021215-835200 issue=0 (took 3.9s)
 The run finished.
 ✗ map group 'review_lenses': orch_spawn failed
   [38;2;248;113;113m✗[0m T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)
@@ -324,7 +285,7 @@ The run finished.
 
   [38;2;248;113;113m✗[0m T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/cycle-on-max-pipeline-continues-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/cycle-on-max-pipeline-continues-test.sh
 
 [38;2;0;212;255m[1m  cycle on_max=continue → runner continues to next cycle (#766)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -352,7 +313,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)
   [38;2;248;113;113m✗[0m T2.2: pr plugin did NOT run
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/design-pipeline-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/design-pipeline-test.sh
 
 [38;2;0;212;255m[1m  design: design stage runs in pipeline and produces scope block (#754)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -362,7 +323,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m events.jsonl contains plugin.run.start plugin=design
     [2m(no events file)[0m
   [38;2;248;113;113m✗[0m design.md exists in state artifacts
-    [2msearched under /home/runner/work/_temp/zbuild-state/scratch/test/design-pipeline-754.39qwmn/home/.zbuild[0m
+    [2msearched under /home/runner/work/_temp/zbuild-state/scratch/test/design-pipeline-754.x1go5T/home/.zbuild[0m
 
 [2m  ──────────────────────────────────────────[0m
 
@@ -372,7 +333,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m events.jsonl contains plugin.run.start plugin=design
   [38;2;248;113;113m✗[0m design.md exists in state artifacts
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/engine-run-branch-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/engine-run-branch-test.sh
 
 [38;2;0;212;255m[1m  the engine owns the run's branch and starting commit (#2367)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -380,11 +341,11 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;0;212;255mE1: the branch and starting commit are set before the first stage[0m
   [38;2;248;113;113m✗[0m [E1] the first stage is already on the run's branch
-    [2mexpected: zbuild/issue-92110001, got: [0m
+    [2mexpected: zbuild/issue-90090001, got: [0m
   [38;2;248;113;113m✗[0m [E1] ...and is told its name
-    [2mexpected: zbuild/issue-92110001, got: [0m
+    [2mexpected: zbuild/issue-90090001, got: [0m
   [38;2;248;113;113m✗[0m [E1] ...and the commit the run started from
-    [2mexpected: 735794149fcb748835751a7c167e302ef1b51863, got: [0m
+    [2mexpected: dc88ef204c1d3263e0421a2b182cfca19fa7c106, got: [0m
 
   [38;2;0;212;255mE2: the template names the branch[0m
   [38;2;74;222;128m✓[0m [E2] the shipped template says the default
@@ -392,11 +353,11 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;0;212;255mE3: .zbuild/branch overrides the template[0m
   [38;2;248;113;113m✗[0m [E3] the repository's .zbuild/branch is used
-    [2mexpected: mine/issue-92110001, got: [0m
+    [2mexpected: mine/issue-90090001, got: [0m
 
   [38;2;0;212;255mE4: ZBUILD_WORKSPACE_BRANCH overrides both[0m
   [38;2;248;113;113m✗[0m [E4] the CI setting is used
-    [2mexpected: ci/issue-92110001-ci, got: [0m
+    [2mexpected: ci/issue-90090001-ci, got: [0m
 
   [38;2;0;212;255mE5: no stage's files hold the branch or starting commit[0m
   [38;2;74;222;128m✓[0m [E5] no intake-branch.txt
@@ -420,22 +381,22 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m [E3] the repository's .zbuild/branch is used
   [38;2;248;113;113m✗[0m [E4] the CI setting is used
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/full-pipeline-seq-cardinal-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/full-pipeline-seq-cardinal-test.sh
 
 [38;2;0;212;255m[1m  full pipeline cardinal seq labels (#682)[0m
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;248;113;113m✗[0m pipeline exits 0
     [2mexpected: 0, got: 1[0m
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/leaf-dispatch-role-bound-verdict-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/leaf-dispatch-role-bound-verdict-test.sh
 
 [38;2;0;212;255m[1m  leaf dispatch — a role-bound stage reports its real verdict (#1770)[0m
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;248;113;113m✗[0m [SPEC-4] the fixture stage dispatched (stage.complete emitted)
-    [2mrc=1; stderr: ✗ Pipeline failed: status=failed stage=role-bound-leaf run_id=20261026223044-1804415 issue=90760001 (took 0.5s)
+    [2mrc=1; stderr: ✗ Pipeline failed: status=failed stage=role-bound-leaf run_id=20261028021338-963441 issue=91020001 (took 0.3s)
 The run stopped before finishing.
-✗ Stage role-bound-leaf: orch_spawn failed for pool zbuild-role-bound-leaf-1804415-1793053844990598769[0m
+✗ Stage role-bound-leaf: orch_spawn failed for pool zbuild-role-bound-leaf-963441-1793153618851649288[0m
 
 [2m  ──────────────────────────────────────────[0m
 
@@ -443,49 +404,7 @@ The run stopped before finishing.
 
   [38;2;248;113;113m✗[0m [SPEC-4] the fixture stage dispatched (stage.complete emitted)
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/orch-timeout-applies-test.sh
-
-[38;2;0;212;255m[1m  orch strategies pass template timeout_s: (not 300s) to orch_collect (#1801 SPEC-1)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1801/SPEC-1] fanout strategy uses template_stage_time_limit for orch_collect[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: orch_collect received --timeout 7 (template timeout_s:, not 300)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
-
-  [38;2;0;212;255m[#1801/SPEC-1] sequential strategy uses template_stage_time_limit for orch_collect[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: orch_collect received --timeout 7 (template timeout_s:, not 300)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
-
-  [38;2;0;212;255m[#1801/SPEC-1] map strategy no longer uses ZBUILD_ORCH_TIMEOUT (static guard)[0m
-  [38;2;74;222;128m✓[0m SPEC-0: map.sh exists
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy calls template_stage_time_limit for orch_collect timeout
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map strategy does not reference ZBUILD_ORCH_TIMEOUT (flat 300 s deadline removed)
-
-  [38;2;0;212;255m[#1801/SPEC-1] fanout and sequential source files have no ZBUILD_ORCH_TIMEOUT[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] sequential.sh: ZBUILD_ORCH_TIMEOUT removed (flat 300 s deadline gone)
-
-  [38;2;0;212;255m[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: orch_collect received --timeout 7 (template timeout_s:, not 300)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] map: ZBUILD_ORCH_TIMEOUT=300 does not override template timeout_s: (7)
-
-  [38;2;0;212;255m[#1801/SPEC-1] _orch_local_collect_results sets timed_out outcome on timeout[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out on timeout
-
-  [38;2;0;212;255m[#1801/SPEC-1] strategy propagates timed_out; output names stage and limit exceeded[0m
-  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
-    [2mgot '<empty>'; old code passes collect_rc=1 → _ZB_STRATEGY_OUTCOME=failed[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the stage ('testjob')
-  [38;2;74;222;128m✓[0m [#1801/SPEC-1] fanout timed_out output names the timeout limit (7s)
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 15 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1801/SPEC-1] fanout strategy must propagate timed_out from _ORCH_COLLECT_OUTCOME
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/per-run-state-isolation-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/per-run-state-isolation-test.sh
 
 [38;2;0;212;255m[1m  per-run state isolation (#887)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -507,20 +426,20 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   | 
   |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
   | 
-  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.ymPWIw/home/.zbuild/repos/local/tpl-overlay-repo/issues/92840001/worktree
-  | ▸ Pipeline started — run_id=run-aaa issue=92840001 goal= template=runner-state-dir-minimal engine=00496d2(zbuild/issue-1801-ci)
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-aaa issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
   | 
   | 
-  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:29:12 UTC
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:34 UTC
   | 
   | 
-  | ▸ Running stage: intake  (started 22:29:12 UTC)
-  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1696529-1793053752795083954)
+  | ▸ Running stage: intake  (started 02:12:34 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-856656-1793153554180040773)
   | 
-  | ══════════════════════════ pipeline.end ═══════════════════════════ 22:29:12 UTC
-  | ✗ Pipeline failed: status=failed stage=intake run_id=run-aaa issue=92840001 (took 0.4s)
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:34 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-aaa issue=94330001 (took 0.2s)
   | The run stopped before finishing.
-  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1696529-1793053752795083954
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-856656-1793153554180040773
   ---- end run-aaa ----
   [38;2;248;113;113m✗[0m T1: run-aaa exits 0
     [2mexpected: 0, got: 1[0m
@@ -541,20 +460,20 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   | 
   |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
   | 
-  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.ymPWIw/home/.zbuild/repos/local/tpl-overlay-repo/issues/92840001/worktree
-  | ▸ Pipeline started — run_id=run-bbb issue=92840001 goal= template=runner-state-dir-minimal engine=00496d2(zbuild/issue-1801-ci)
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-bbb issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
   | 
   | 
-  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:29:14 UTC
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:34 UTC
   | 
   | 
-  | ▸ Running stage: intake  (started 22:29:14 UTC)
-  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1698183-1793053754076935136)
+  | ▸ Running stage: intake  (started 02:12:34 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-857746-1793153554890118942)
   | 
-  | ══════════════════════════ pipeline.end ═══════════════════════════ 22:29:14 UTC
-  | ✗ Pipeline failed: status=failed stage=intake run_id=run-bbb issue=92840001 (took 0.3s)
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:34 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-bbb issue=94330001 (took 0.2s)
   | The run stopped before finishing.
-  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1698183-1793053754076935136
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-857746-1793153554890118942
   ---- end run-bbb ----
   [38;2;248;113;113m✗[0m T2: run-bbb exits 0
     [2mexpected: 0, got: 1[0m
@@ -580,20 +499,20 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   | 
   |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
   | 
-  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.ymPWIw/home/.zbuild/repos/local/tpl-overlay-repo/issues/92840001/worktree
-  | ▸ Pipeline started — run_id=run-ccc issue=92840001 goal= template=runner-state-dir-minimal engine=00496d2(zbuild/issue-1801-ci)
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-ccc issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
   | 
   | 
-  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:29:15 UTC
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:35 UTC
   | 
   | 
-  | ▸ Running stage: intake  (started 22:29:15 UTC)
-  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1699746-1793053755293271281)
+  | ▸ Running stage: intake  (started 02:12:35 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-858830-1793153555725128226)
   | 
-  | ══════════════════════════ pipeline.end ═══════════════════════════ 22:29:15 UTC
-  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ccc issue=92840001 (took 0.3s)
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:35 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ccc issue=94330001 (took 0.2s)
   | The run stopped before finishing.
-  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1699746-1793053755293271281
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-858830-1793153555725128226
   ---- end run-ccc ----
   [38;2;248;113;113m✗[0m T4: explicit-state run exits 0
     [2mexpected: 0, got: 1[0m
@@ -616,20 +535,20 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   | 
   |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
   | 
-  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.ymPWIw/home/.zbuild/repos/local/tpl-overlay-repo/issues/92840001/worktree
-  | ▸ Pipeline started — run_id=run-ddd issue=92840001 goal= template=runner-state-dir-minimal engine=00496d2(zbuild/issue-1801-ci)
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-ddd issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
   | 
   | 
-  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:29:16 UTC
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:36 UTC
   | 
   | 
-  | ▸ Running stage: intake  (started 22:29:16 UTC)
-  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1700658-1793053756445616950)
+  | ▸ Running stage: intake  (started 02:12:36 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-859805-1793153556696117354)
   | 
-  | ══════════════════════════ pipeline.end ═══════════════════════════ 22:29:16 UTC
-  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ddd issue=92840001 (took 0.3s)
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:36 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ddd issue=94330001 (took 0.3s)
   | The run stopped before finishing.
-  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1700658-1793053756445616950
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-859805-1793153556696117354
   ---- end run-ddd ----
   [38;2;248;113;113m✗[0m T5: ZBUILD_EVENTS_DIR not per-run
     [2mgot: [0m
@@ -650,23 +569,23 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   | 
   |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
   | 
-  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.ymPWIw/home/.zbuild/repos/local/tpl-overlay-repo/issues/92840001/worktree
-  | ▸ Pipeline started — run_id=run-eee issue=92840001 goal= template=runner-state-dir-minimal engine=00496d2(zbuild/issue-1801-ci)
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-eee issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
   | 
   | 
-  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:29:17 UTC
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:37 UTC
   | 
   | 
-  | ▸ Running stage: intake  (started 22:29:17 UTC)
-  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1701678-1793053757565937957)
+  | ▸ Running stage: intake  (started 02:12:37 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-861436-1793153557637447662)
   | 
-  | ══════════════════════════ pipeline.end ═══════════════════════════ 22:29:17 UTC
-  | ✗ Pipeline failed: status=failed stage=intake run_id=run-eee issue=92840001 (took 0.3s)
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:37 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-eee issue=94330001 (took 0.3s)
   | The run stopped before finishing.
-  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1701678-1793053757565937957
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-861436-1793153557637447662
   ---- end t6 ----
   [38;2;248;113;113m✗[0m T6: events did not follow STATE_FILE dir
-    [2mrunner_rc=1 got= (canon=/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm) expected=/home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.ymPWIw/home/.zbuild/state/runs/run-eee[0m
+    [2mrunner_rc=1 got= (canon=/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP) expected=/home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/state/runs/run-eee[0m
   ---- nested runner run-hyg exited rc=1; its output: ----
   | ▸ merge_policy: auto_unless_flagged
   | 
@@ -684,20 +603,20 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   | 
   |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
   | 
-  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.ymPWIw/home/.zbuild/repos/local/tpl-overlay-repo/issues/92840001/worktree
-  | ▸ Pipeline started — run_id=run-hyg issue=92840001 goal= template=runner-state-dir-minimal engine=00496d2(zbuild/issue-1801-ci)
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-hyg issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
   | 
   | 
-  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:29:18 UTC
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:38 UTC
   | 
   | 
-  | ▸ Running stage: intake  (started 22:29:18 UTC)
-  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1702617-1793053758747210264)
+  | ▸ Running stage: intake  (started 02:12:38 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-862814-1793153558570197852)
   | 
-  | ══════════════════════════ pipeline.end ═══════════════════════════ 22:29:18 UTC
-  | ✗ Pipeline failed: status=failed stage=intake run_id=run-hyg issue=92840001 (took 0.4s)
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:38 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-hyg issue=94330001 (took 0.3s)
   | The run stopped before finishing.
-  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1702617-1793053758747210264
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-862814-1793153558570197852
   ---- end run-hyg ----
   [38;2;248;113;113m✗[0m T7: run-hyg exits 0
     [2mexpected: 0, got: 1[0m
@@ -724,20 +643,20 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   | 
   |   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
   | 
-  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.ymPWIw/home/.zbuild/repos/local/tpl-overlay-repo/issues/92840001/worktree
-  | ▸ Pipeline started — run_id=run-ddd issue=92840001 goal= template=runner-state-dir-minimal engine=00496d2(zbuild/issue-1801-ci)
+  | ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/per-run-state-isolation-887.W2nwqI/home/.zbuild/repos/local/tpl-overlay-repo/issues/94330001/worktree
+  | ▸ Pipeline started — run_id=run-ddd issue=94330001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
   | 
   | 
-  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:29:20 UTC
+  | ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:39 UTC
   | 
   | 
-  | ▸ Running stage: intake  (started 22:29:20 UTC)
-  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1704020-1793053760186804206)
+  | ▸ Running stage: intake  (started 02:12:39 UTC)
+  | ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-864116-1793153559543653398)
   | 
-  | ══════════════════════════ pipeline.end ═══════════════════════════ 22:29:20 UTC
-  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ddd issue=92840001 (took 0.4s)
+  | ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:39 UTC
+  | ✗ Pipeline failed: status=failed stage=intake run_id=run-ddd issue=94330001 (took 0.3s)
   | The run stopped before finishing.
-  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1704020-1793053760186804206
+  | ✗ Stage intake: orch_spawn failed for pool zbuild-intake-864116-1793153559543653398
   ---- end run-ddd ----
   [38;2;248;113;113m✗[0m T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state run
     [2mexpected: 0, got: 1[0m
@@ -756,7 +675,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m T7: run-hyg exits 0
   [38;2;248;113;113m✗[0m T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state run
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/pipeline-resume-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/pipeline-resume-test.sh
 
 [38;2;0;212;255m[1m  pipeline resume — CLI + auto-resume policy (#225)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -796,8 +715,8 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;0;212;255mintegration: runner --resume skips stages with status=complete[0m
 ▸ merge_policy: auto_unless_flagged
-▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/pipeline-resume.yT6rNu/home/.zbuild/repos/local/int-tpl-overlay-repo/issues/95180001/worktree
-▸ Pipeline resuming — run_id=integ-test-resume-225 issue=95180001 goal= template=runner-state-dir-minimal
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/pipeline-resume.CREXAa/home/.zbuild/repos/local/int-tpl-overlay-repo/issues/98620001/worktree
+▸ Pipeline resuming — run_id=integ-test-resume-225 issue=98620001 goal= template=runner-state-dir-minimal
   [38;2;248;113;113m✗[0m integration: --resume exits 0 when remaining stage succeeds
     [2mexpected: 0, got: 1[0m
   [38;2;74;222;128m✓[0m integration: state file still present after resume
@@ -822,7 +741,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m integration: --resume exits 0 when remaining stage succeeds
   [38;2;248;113;113m✗[0m integration: build stage_status=complete after resume
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/runner-exports-state-dir-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/runner-exports-state-dir-test.sh
 
 [38;2;0;212;255m[1m  runner: exports ZBUILD_STATE_DIR to child plugins (#618)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -830,11 +749,11 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m runner exits 0
     [2mexpected: 0, got: 1[0m
   [38;2;248;113;113m✗[0m build stub captured its env
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/runner-618-export-state-dir.RBrEha/env-capture.txt[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/runner-618-export-state-dir.wtuTWx/env-capture.txt[0m
   [38;2;248;113;113m✗[0m child plugin env contains ZBUILD_STATE_DIR
     [2mcaptured env: [0m
   [38;2;248;113;113m✗[0m ZBUILD_STATE_DIR value matches runner's state_dir
-    [2mexpected substring: ZBUILD_STATE_DIR=/home/runner/work/_temp/zbuild-state/scratch/test/runner-618-export-state-dir.RBrEha/home/.zbuild/repos/local/tpl-overlay-repo/issues/91810001/runs/run-618-1762181; got: [0m
+    [2mexpected substring: ZBUILD_STATE_DIR=/home/runner/work/_temp/zbuild-state/scratch/test/runner-618-export-state-dir.wtuTWx/home/.zbuild/repos/local/tpl-overlay-repo/issues/90110001/runs/run-618-924011; got: [0m
   [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_RUN_ID (regression)
     [2mmissing from captured env[0m
   [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_ISSUE (regression)
@@ -855,7 +774,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_ISSUE (regression)
   [38;2;248;113;113m✗[0m child plugin env still contains ZBUILD_GOAL (regression)
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/runner-init-state-abort-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/runner-init-state-abort-test.sh
 
 [38;2;0;212;255m[1m  runner — init_state write failure aborts the run (#1773)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -877,7 +796,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;248;113;113m✗[0m SPEC-6: writable state dir → run completes
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/runner-release-exit-paths-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/runner-release-exit-paths-test.sh
 
 [38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -906,20 +825,19 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/scripts/lib/test-helpers.sh: line 130: wait_for: No record of process 1679011
   [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
     [2mno release from: intake build | marker= [0m
   [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 36s)
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 34s)
   [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
 
   [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
   [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
 
   [38;2;0;212;255m[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 1s; would be ~30s with router.timeout_s)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in 0s; would be ~30s with router.timeout_s)
   [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
   [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
 
@@ -929,7 +847,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/state-root-isolation-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/state-root-isolation-test.sh
 
 [38;2;0;212;255m[1m  state-root isolation (#1127)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -974,21 +892,21 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
     
       ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast.
     
-    ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/state-root-isolation-1127.6ImJ6L/home/.zbuild/repos/local/zbuild-test-stage.s6QzUA/issues/92610001/worktree
-    ▸ Pipeline started — run_id=nested-suite issue=92610001 goal= template=runner-state-dir-minimal engine=00496d2(zbuild/issue-1801-ci)
+    ▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/state-root-isolation-1127.2G8X5T/home/.zbuild/repos/local/zbuild-test-stage.UfQr1K/issues/90360001/worktree
+    ▸ Pipeline started — run_id=nested-suite issue=90360001 goal= template=runner-state-dir-minimal engine=64da51c(zbuild/issue-1801-ci)
     
     
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22:29:37 UTC
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ intake ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 02:12:51 UTC
     
     
-    ▸ Running stage: intake  (started 22:29:37 UTC)
-    ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-1720356-1793053777608949529)
+    ▸ Running stage: intake  (started 02:12:51 UTC)
+    ⚠ orch contract: orch_spawn not implemented (context: zbuild-intake-880784-1793153571724418607)
     
-    ══════════════════════════ pipeline.end ═══════════════════════════ 22:29:37 UTC
-    ✗ Pipeline failed: status=failed stage=intake run_id=nested-suite issue=92610001 (took 0.4s)
+    ══════════════════════════ pipeline.end ═══════════════════════════ 02:12:51 UTC
+    ✗ Pipeline failed: status=failed stage=intake run_id=nested-suite issue=90360001 (took 0.3s)
     The run stopped before finishing.
-    ✗ Stage intake: orch_spawn failed for pool zbuild-intake-1720356-1793053777608949529
-  DIAGNOSTIC: copied state: {  "schema_version": 1,  "run_id": "nested-suite",  "issue": 92610001,  "engine_sha": "00496d2c2b279ab8c6e9c2336381ee39348fa712",  "engine_branch": "zbuild/issue-1801-ci",  "stage_statuses": {    "intake": "failed"  },  "current_iteration": 0,  "self_heal_count": {},  "scope_manifest_hash": "",  "cost_ledger_pointer": 0,  "claim_lease_id": "",  "plugin_state": {},  "updated_at": "2026-10-26T22:29:
+    ✗ Stage intake: orch_spawn failed for pool zbuild-intake-880784-1793153571724418607
+  DIAGNOSTIC: copied state: {  "schema_version": 1,  "run_id": "nested-suite",  "issue": 90360001,  "engine_sha": "64da51c3c64b7062c8b7614cae8e262b947bc86b",  "engine_branch": "zbuild/issue-1801-ci",  "stage_statuses": {    "intake": "failed"  },  "current_iteration": 0,  "self_heal_count": {},  "scope_manifest_hash": "",  "cost_ledger_pointer": 0,  "claim_lease_id": "",  "plugin_state": {},  "updated_at": "2026-10-28T02:12:
   [38;2;248;113;113m✗[0m [SPEC-7] nested run used the fixture roster
     [2mstage_statuses keys=intake (expected the intake→build fixture, not the built-in fallback)[0m
 
@@ -1001,7 +919,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m E: default-root run exits 0
   [38;2;248;113;113m✗[0m [SPEC-7] nested run used the fixture roster
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eQyrXm/tests/integration/worktree-run-isolation-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0YS9uP/tests/integration/worktree-run-isolation-test.sh
 
 [38;2;0;212;255m[1m  engine-owned per-run worktree (ADR-052, #1640)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -1009,16 +927,16 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;74;222;128m✓[0m [SPEC-1] the main checkout's HEAD is unmoved by a full run
   [38;2;74;222;128m✓[0m [SPEC-2] the main checkout's branch is unmoved by a full run
   [38;2;248;113;113m✗[0m [SPEC-3a] the build stage must commit to the work branch
-    [2mrc=1 wt=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.9OB66V/runroot/repos/local/target/issues/92010001/worktree build_root= branch_sha=34a7078e2a19f2890ef05e99b4bd74156b55c1b3 base=34a7078e2a19f2890ef05e99b4bd74156b55c1b3[0m
+    [2mrc=1 wt=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree build_root= branch_sha=dec075556efe08b76af1e2db16e74640c470d044 base=dec075556efe08b76af1e2db16e74640c470d044[0m
   [38;2;248;113;113m✗[0m [SPEC-3b] stage 2 must resolve its repo root to the run's worktree
-    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.9OB66V/runroot/repos/local/target/issues/92010001/worktree[0m
+    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree[0m
   [38;2;74;222;128m✓[0m [SPEC-4] the worktree is recorded and lives outside the target repo
   [38;2;248;113;113m✗[0m [SPEC-5] the main checkout must survive a run that never reaches pr
-    [2mrc=1 head=f6e25e21f91756e2e720b08c51895f7d4225b2f4 (was f6e25e21f91756e2e720b08c51895f7d4225b2f4) branch=main (was main) build_root=[0m
+    [2mrc=1 head=b002b17b8e3ff2b1367ed3eb09de208e0e5e799e (was b002b17b8e3ff2b1367ed3eb09de208e0e5e799e) branch=main (was main) build_root=[0m
   [38;2;248;113;113m✗[0m [SPEC-6] the opt-out must keep in-place semantics
-    [2mbranch=zbuild/issue-92010001 wt_recorded=0[0m
+    [2mbranch=zbuild/issue-99090001 wt_recorded=0[0m
   [38;2;248;113;113m✗[0m [SPEC-7] resume must reuse the run's worktree
-    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.9OB66V/runroot/repos/local/target/issues/92010001/worktree[0m
+    [2mbuild_root= worktree=/home/runner/work/_temp/zbuild-state/scratch/test/worktree-run-isolation.0FSXDR/runroot/repos/local/target/issues/99090001/worktree[0m
 
 [2m  ──────────────────────────────────────────[0m
 
@@ -1029,30 +947,3 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m [SPEC-5] the main checkout must survive a run that never reaches pr
   [38;2;248;113;113m✗[0m [SPEC-6] the opt-out must keep in-place semantics
   [38;2;248;113;113m✗[0m [SPEC-7] resume must reuse the run's worktree
-
-lint: FAIL (npm run lint)
-
-> zbuild@0.1.0 lint
-> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh
-
-lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
-lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
-lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
-validate-mechanics-yaml: OK — 18 mechanics validated
-lint-doc-freshness: OK — 44 plugin(s), 18 mechanic(s) — all checks passed.
-lint-action-versions: OK — no action version drift detected.
-lint-grep-c: OK — no grep -c || echo occurrences in scripts/ core/ plugins/ tests/
-lint-test-identity: OK — no real issue number used as test identity
-lint-llm-envelope: OK — 57 plugin source(s) checked, no markdown-document envelope fields
-lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
-lint-silenced-redirect: clean
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:116 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:132 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:148 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:164 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:215 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:231 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:261 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-timeout-applies-test.sh:294 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-backend-misconfigured-test.sh:73 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
-lint-test-errexit: tests/integration/orch-b
