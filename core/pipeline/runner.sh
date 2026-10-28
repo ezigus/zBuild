@@ -2557,8 +2557,25 @@ main() {
         # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
         # ignored and `wait` would block until the full sleep expires. SIGKILL
         # cannot be caught or ignored, so the wait returns immediately.
+        # Collect watchdog children BEFORE the KILL — once the watchdog is dead
+        # its children are reparented to init and pgrep -P can no longer find them.
+        # The `sleep` child inherits SIG_IGN for TERM (POSIX: exec inherits SIG_IGN)
+        # so only SIGKILL can terminate it; without this it stays alive for the full
+        # sleep duration (up to 20700 s), holding the pipe write-end open and
+        # blocking any $(…) caller's wait.
+        local _wdg_orphans=""
+        if [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && command -v pgrep >/dev/null 2>&1; then
+            _wdg_orphans="$(pgrep -P "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true)"
+        fi
         kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
         [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && wait "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true
+        # Kill any orphaned children the watchdog left behind (the `sleep`).
+        if [[ -n "$_wdg_orphans" ]]; then
+            local _wc
+            while IFS= read -r _wc; do
+                [[ -n "$_wc" ]] && kill -KILL "$_wc" 2>/dev/null || true
+            done <<< "$_wdg_orphans"
+        fi
         trap '_runner_signal_trap TERM' TERM
         trap '_runner_signal_trap INT' INT
         # #1829: free live resources first, while the state file and the
