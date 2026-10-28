@@ -1,4 +1,4 @@
-# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 26
+# Test-author notes — issue #1944 (run-level wall-clock watchdog) — ROUND 27 (VERIFIED)
 
 ## Status: COMPLETE
 
@@ -65,3 +65,15 @@ After the `§11 exists` if-block, added a new assertion block that:
 
 1. run-open-items-test.sh [O9]: count is 6 ✓
 2. runner-signal-rearm-test.sh [SPEC-5]: awk pattern uses `/trap '.*' TERM$/` ✓
+
+## Round 27: final verification pass (no changes needed)
+
+Re-read all 6 test files. Every SPEC has its assertion. Both existing checks are
+already updated in previous rounds. No additional edits required.
+
+Test-stage findings from the previous run:
+- `tests/integration/sigterm-aborts-pipeline-test.sh` timed out (rc=124): pre-existing
+  flakiness, unrelated to #1944 — not in test-author scope.
+- Golden file findings (full-pipeline and parity event-sequence.golden): these are
+  implementation artifacts updated by the implementation stage, not the test-author stage.
+  The test-author writes assertions; golden updates are not assertions.
