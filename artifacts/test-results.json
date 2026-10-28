@@ -1,1 +1,70 @@
-{"test_output":"unit: FAIL tests/integration/runner-release-exit-paths-test.sh\n\n  runner dispatches cleanup(release) on every exit path (#1829)\n\n\n  SPEC-1: exit path = success (rc 0)\n  ✓ [SPEC-1] runner exits 0 on the success path\n  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test\n  ✓ [SPEC-1] purge is never reachable from a run\n\n  SPEC-2: exit path = non-zero stage rc\n  ✓ [SPEC-2] runner exits non-zero when a stage fails\n  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-2] purge is never reachable from a run\n\n  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)\n  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)\n  ✓ [SPEC-3] pipeline.aborted carries reason=sigint\n  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-3] purge is never reachable from a run\n\n  SPEC-4: exit path = external SIGTERM\n  ✓ [SPEC-4] the runner stops without waiting for the stage (1s)\n  ✓ [SPEC-4] the stage does not outlive the run\n  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-4] purge is never reachable from a run\n\n  SPEC-5: exit path = external hard kill (timeout-style)\n  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build\n    no release from: intake build | marker= \n  ✓ [SPEC-5] purge is never reachable from a run\n\n  SPEC-6: a cleanup hook that blocks cannot hang the runner\n  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)\n  ✓ [SPEC-6] the blocked hook does not outlive the run\n\n  SPEC-6b: a hook child that ignores TERM does not outlive the run\n  ✓ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n\n\n  1 of 19 tests failed\n\n  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build\n\nunit: 5/6 passed","run_mode":"targeted","exit_code":1,"data":{"exit_code":1,"passed":5,"failed":1,"test_output":"unit: FAIL tests/integration/runner-release-exit-paths-test.sh\n\n  runner dispatches cleanup(release) on every exit path (#1829)\n\n\n  SPEC-1: exit path = success (rc 0)\n  ✓ [SPEC-1] runner exits 0 on the success path\n  ✓ [SPEC-1] cleanup dispatched with scope=release for: intake build test\n  ✓ [SPEC-1] purge is never reachable from a run\n\n  SPEC-2: exit path = non-zero stage rc\n  ✓ [SPEC-2] runner exits non-zero when a stage fails\n  ✓ [SPEC-2] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-2] purge is never reachable from a run\n\n  SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)\n  ✓ [SPEC-3] runner exits 1 on the SIGINT chain (not 130)\n  ✓ [SPEC-3] pipeline.aborted carries reason=sigint\n  ✓ [SPEC-3] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-3] purge is never reachable from a run\n\n  SPEC-4: exit path = external SIGTERM\n  ✓ [SPEC-4] the runner stops without waiting for the stage (1s)\n  ✓ [SPEC-4] the stage does not outlive the run\n  ✓ [SPEC-4] cleanup dispatched with scope=release for: intake build\n  ✓ [SPEC-4] purge is never reachable from a run\n\n  SPEC-5: exit path = external hard kill (timeout-style)\n  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build\n    no release from: intake build | marker= \n  ✓ [SPEC-5] purge is never reachable from a run\n\n  SPEC-6: a cleanup hook that blocks cannot hang the runner\n  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)\n  ✓ [SPEC-6] the blocked hook does not outlive the run\n\n  SPEC-6b: a hook child that ignores TERM does not outlive the run\n  ✓ [SPEC-6b] a hook child that ignores TERM does not outlive the run\n\n\n  1 of 19 tests failed\n\n  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build\n\nunit: 5/6 passed","diff_applied":false,"test_cmd":"bash scripts/run-tests.sh --files 'tests/integration/resume-after-run-timeout-test.sh' 'tests/integration/run-timed-out-test.sh' 'tests/integration/runner-release-exit-paths-test.sh' 'tests/integration/sigterm-aborts-pipeline-test.sh' 'tests/unit/run-limit-precedence-test.sh' 'tests/unit/run-watchdog-clean-exit-test.sh'","run_mode":"targeted","timing":{"tiers":{},"slowest_files":[{"file":"tests/integration/runner-release-exit-paths-test.sh","ms":35132},{"file":"tests/integration/run-timed-out-test.sh","ms":30612},{"file":"tests/unit/run-watchdog-clean-exit-test.sh","ms":8293},{"file":"tests/unit/run-limit-precedence-test.sh","ms":6611},{"file":"tests/integration/resume-after-run-timeout-test.sh","ms":6557},{"file":"tests/integration/sigterm-aborts-pipeline-test.sh","ms":2413}]},"findings":[{"n":1,"text":"tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong"},{"n":2,"text":"tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong"},{"n":3,"text":"tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong"},{"n":4,"text":"tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong"},{"n":5,"text":"tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong"},{"n":6,"text":"tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong"},{"n":7,"text":"tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong"},{"n":8,"text":"tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong"},{"n":9,"text":"tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong"}]},"result_contract":3,"outcome":"fail","reason":"1 of 6 tests failed; the shape floor failed: missing_floor_files"}
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 528/528 passed (4 skipped)\nintegration: 256/256 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 821/821 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 821,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 528/528 passed (4 skipped)\nintegration: 256/256 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 821/821 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 191630,
+        "e2e": 41325,
+        "golden": 6163,
+        "unit": 297822,
+        "integration": 260857
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 57939
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/integration/run-timed-out-test.sh",
+          "ms": 41580
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 40607
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 36223
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/e2e/fork-budget-test.sh",
+          "ms": 34433
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/unit/router-prompt-size-test.sh",
+          "ms": 32293
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 31511
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/unit/runner-cycle-rc-action-mapping-test.sh",
+          "ms": 31078
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 30147
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bwQPDy/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 30091
+        }
+      ]
+    },
+    "tree_sha": "ea5e63ec9e0c6ff135be1839ee3aef4d78f43afe",
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "821 of 821 tests passed"
+}

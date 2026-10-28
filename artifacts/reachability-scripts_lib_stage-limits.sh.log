@@ -25,7 +25,7 @@
 
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 1s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 0s)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -72,8 +72,8 @@
 
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 6s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1085007 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 905648 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
