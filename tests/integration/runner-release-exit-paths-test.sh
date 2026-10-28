@@ -486,6 +486,102 @@ else
         "_TPL_STAGE_ROUTER_TIMEOUT still present in $RUNNER; must be replaced by template_stage_time_limit"
 fi
 
+# [#1801/SPEC-5] static: shipped templates carry timeout_s: at stage level ──────
+# template_stage_time_limits_load reads timeout_s: at stage-level indent (2
+# spaces from the stage name at column 0, NOT inside `router:` at 4 spaces).
+# These assertions verify that simple.yaml and deployed.yaml carry the correct
+# values directly under the stage block — so the watchdog reads them, not
+# router.timeout_s.
+#
+# Old code: these values might not exist or might only be under router:
+#   → awk extracts nothing (or wrong value) → assertion fails on old code ✓
+# New code: values are present at stage level → assertions pass ✓
+print_test_section "[#1801/SPEC-5] static: simple.yaml and deployed.yaml carry timeout_s: at stage level"
+
+_SIMPLE_YAML="$REPO_ROOT/config/templates/simple.yaml"
+_DEPLOYED_YAML="$REPO_ROOT/config/templates/deployed.yaml"
+
+# Extract stage-level timeout_s: for release in simple.yaml.
+# awk: enter release: section, stop at next top-level key (0-indent), stop
+# inside router: sub-section, only match `  timeout_s:` (exactly 2 leading spaces).
+_simple_release_ts="$(awk '
+    /^release:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_SIMPLE_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_simple_release_ts" == "30" ]]; then
+    assert_pass "[#1801/SPEC-5] simple.yaml: release.timeout_s is 30 at stage level (not under router:)"
+else
+    assert_fail "[#1801/SPEC-5] simple.yaml: release.timeout_s must be 30 at stage level" \
+        "got: '${_simple_release_ts:-<not found>}'; template_stage_time_limits_load reads 2-space indent, not router.timeout_s"
+fi
+
+# Extract stage-level timeout_s: for persist in simple.yaml.
+_simple_persist_ts="$(awk '
+    /^persist:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_SIMPLE_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_simple_persist_ts" == "120" ]]; then
+    assert_pass "[#1801/SPEC-5] simple.yaml: persist.timeout_s is 120 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] simple.yaml: persist.timeout_s must be 120 at stage level" \
+        "got: '${_simple_persist_ts:-<not found>}'"
+fi
+
+# deployed.yaml: same values.
+_deployed_release_ts="$(awk '
+    /^release:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_DEPLOYED_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_deployed_release_ts" == "30" ]]; then
+    assert_pass "[#1801/SPEC-5] deployed.yaml: release.timeout_s is 30 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] deployed.yaml: release.timeout_s must be 30 at stage level" \
+        "got: '${_deployed_release_ts:-<not found>}'"
+fi
+
+_deployed_persist_ts="$(awk '
+    /^persist:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_DEPLOYED_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_deployed_persist_ts" == "120" ]]; then
+    assert_pass "[#1801/SPEC-5] deployed.yaml: persist.timeout_s is 120 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] deployed.yaml: persist.timeout_s must be 120 at stage level" \
+        "got: '${_deployed_persist_ts:-<not found>}'"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

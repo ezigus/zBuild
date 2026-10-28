@@ -337,4 +337,36 @@ assert_event_emitted "[SPEC-6] stage.always_run.unresolved is emitted" \
 # verdict, including when it could not be found.
 assert_eq "[SPEC-6] an unresolvable always-run stage does not fail the run" "0" "$_unres_rc"
 
+# [#1801/SPEC-5] static: always-run-minimal.yaml carries timeout_s: at stage level
+# template_stage_time_limits_load matches `timeout_s:` at stage-level indent
+# (exactly 2 spaces from the stage name at column 0). It must NOT be under
+# `router:` (4-space indent) — that is the old path this change removes.
+#
+# Old code: always-run-minimal.yaml might only have timeout_s inside router: → awk
+#   finds nothing at 2-space indent → extracted value empty/wrong → FAILS ✓
+# New code: timeout_s: 2 is present as a direct child of release: → PASSES ✓
+print_test_section "[#1801/SPEC-5] static: always-run-minimal.yaml release.timeout_s at stage level"
+
+_ARM_FIXTURE="$REPO_ROOT/tests/fixtures/templates/always-run-minimal.yaml"
+
+# Extract stage-level timeout_s: for release: (exactly 2-space indent, not inside router:)
+_arm_release_ts="$(awk '
+    /^release:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_ARM_FIXTURE" 2>/dev/null || printf '')"
+
+if [[ "$_arm_release_ts" == "2" ]]; then
+    assert_pass "[#1801/SPEC-5] always-run-minimal.yaml: release.timeout_s is 2 at stage level (not under router:)"
+else
+    assert_fail "[#1801/SPEC-5] always-run-minimal.yaml: release.timeout_s must be 2 as direct stage child" \
+        "got: '${_arm_release_ts:-<not found>}'; old code reads router.timeout_s; template_stage_time_limits_load needs 2-space indent"
+fi
+
 print_test_results
