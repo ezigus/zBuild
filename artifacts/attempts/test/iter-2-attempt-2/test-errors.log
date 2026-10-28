@@ -1,0 +1,6 @@
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pf3EXq/tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+[38;2;0;212;255m[1m  sigterm-aborts-pipeline — kill -TERM halts pipeline (#686)[0m
+[2m  ══════════════════════════════════════════[0m

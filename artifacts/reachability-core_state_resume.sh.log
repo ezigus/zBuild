@@ -22,7 +22,7 @@
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1978169 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 3087398 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -53,12 +53,12 @@
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset (elapsed 7s)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset (elapsed 17s)
 
   [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1975100 killed)
+  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 3084334 killed)
 
   [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
@@ -129,8 +129,7 @@
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
-  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
-    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
@@ -150,9 +149,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 45 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+  [38;2;74;222;128m[1mAll 45 tests passed[0m
 
 ### core/state/resume.sh head tests/unit/run-limit-precedence-test.sh
 
@@ -213,8 +210,7 @@
 
   [38;2;0;212;255m[#1944/SPEC-6] ADR-054 has §11 for run-level limit with ## Enforced by[0m
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 exists
-  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
-    [2m§11 body does not contain max_run_s/wall-clock/per-run — may describe an unrelated topic[0m
+  [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-timed-out-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-limit-precedence-test
   [38;2;74;222;128m✓[0m [#1944/SPEC-6] ADR-054 ## Enforced by cites run-watchdog-clean-exit-test
@@ -234,9 +230,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 45 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1944/SPEC-6] ADR-054 §11 content describes the per-run limit
+  [38;2;74;222;128m[1mAll 45 tests passed[0m
 
 ### core/state/resume.sh reverted tests/unit/run-watchdog-clean-exit-test.sh
 
