@@ -65,6 +65,14 @@ if declare -F discover_plugins >/dev/null 2>&1; then
 fi
 # shellcheck source=../orch/contract.sh
 source "$_ZBUILD_ROOT/core/orch/contract.sh"
+# #1801 (ADR-011 §hard-error): if the backend failed to load as misconfigured, fail the
+# pipeline here — before sourcing strategy modules or dispatching any stage.
+# contract.sh's _orch_load_backend sets _ZBUILD_ORCH_BACKEND_DISPOSITION=misconfigured when
+# the configured backend cannot be found or sourced.
+if [[ "${_ZBUILD_ORCH_BACKEND_DISPOSITION:-}" == "misconfigured" ]]; then
+    echo "runner: orchestrator backend misconfigured: ${_ZBUILD_ORCH_BACKEND_ALIAS:-unknown}" >&2
+    exit 1
+fi
 # Strategy modules (ADR-009 §fanout/sequential/composite, issue #222; map ADR-047)
 source "$_ZBUILD_ROOT/core/pipeline/strategies/fanout.sh"
 source "$_ZBUILD_ROOT/core/pipeline/strategies/sequential.sh"

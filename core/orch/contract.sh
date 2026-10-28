@@ -216,6 +216,9 @@ _orch_load_backend() {
         backend="${ZBUILD_ORCHESTRATOR_BACKEND:-bash-parallel}"
     fi
 
+    # Record the alias so runner.sh can name it in the misconfigured gate message (#1801).
+    _ZBUILD_ORCH_BACKEND_ALIAS="$backend"
+
     # Attempt to load the configured backend; if it fails, that is OK —
     # the stubs remain and callers will get informative errors.
     orch_load_backend "$backend" 2>/dev/null || true
