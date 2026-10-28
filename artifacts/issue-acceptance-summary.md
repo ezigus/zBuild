@@ -1,10 +1,10 @@
 ## issue-acceptance — fail
 
-- The build stage timed out after changing only 1 file, leaving the implementation incomplete; `npm test` returns 17 failures including explicit SPEC-5 failures in `always-run-exit-paths-test.sh` proving `_runner_dispatch_always_run` still does not bound always-run stages by `timeout_s:`.
+- The test suite reports 2 failures — a regression on the hard-kill release exit path and the persist always_run hook never entering — and the installed-tree testing required by R-4 is absent from the delivered test.
 
-- NOT MET: R-5: `always-run-exit-paths-test.sh` fails "a 60s release hook held the exit" / "the hanging hook was killed before completing" — always_run stages are not bounded by `timeout_s:`
-- NOT MET: R-9: `npm test` red (17 integration failures across core-pipeline-runner, design-pipeline, worktree-run-isolation, cycle tests, and others)
-- NOT MET: R-1: broad pipeline integration failures cast doubt on orchestrator-route timeout enforcement reaching a working state
-- NOT MET: R-2: strategy files (`fanout.sh`, `map.sh`, `sequential.sh`) are listed in changed-files but absent from the diff — `ZBUILD_ORCH_TIMEOUT` removal is unverifiable with a broken test suite
-- NOT MET: R-4: installed-tree misconfigured test not present in diff and pipeline is broken
-- NOT MET: R-6: `zbuild_pg_kill` wiring in `_orch_local_kill_slot` and the always-run watchdog not visible in the diff and unconfirmable against a failing suite.
+- NOT MET: R-4: `orch-backend-misconfigured-test.sh` tests `orch_load_backend` by sourcing it from the checkout in isolation
+- NOT MET: the issue explicitly requires testing from the installed tree (`install.sh` layout), not only the checkout — no such end-to-end test exists
+- NOT MET: R-5: `always-run-exit-paths-test.sh` [#1801/SPEC-5] persist hook was never entered (sentinel file absent, runner exited in 0 s without dispatching the persist always_run stage)
+- NOT MET: `runner-release-exit-paths-test.sh` [SPEC-5] release cleanup not dispatched on the hard-kill exit path (regression)
+- NOT MET: R-9: `npm test` exits 1 with 2 failing tests
+- NOT SURE: R-7: test scope discovery (grep-rl for `orch-sequential`, `ZBUILD_ORCH_TIMEOUT`, `ZBUILD_RELEASE_TIMEOUT`, `router.timeout_s`, `_orch_local_kill_slot` in `tests/`) — process requirement that nothing in the diff or output confirms was completed — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
