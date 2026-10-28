@@ -1,80 +1,69 @@
-# Design notes — issue #1801 (revision 12)
+# Design notes — issue #1801 (revision 13)
 
-## What changed from revision 11
+## What changed from revision 12
 
-### Issue-acceptance findings (revision 12)
+### Issue-acceptance findings addressed in revision 13
 
-The issue-acceptance stage returned 6 findings:
-- Finding 1 (R-5): `always-run-exit-paths-test.sh` fails `[SPEC-5][guard]` tests.
-- Finding 2 (R-9): npm test red — 17 integration failures.
-- Findings 3–6: pipeline failures (R-1, R-2, R-4, R-6) from incomplete build.
+**Finding 1/2 (R-4): installed-tree end-to-end test absent**
+`orch-backend-misconfigured-test.sh` only calls `orch_load_backend` in isolation (sourcing
+contract.sh from checkout). The issue requires the full pipeline run to fail as `misconfigured`.
 
-**Root cause — Finding 1 (R-5, SPEC-5):**
-`tests/fixtures/templates/always-run-minimal.yaml` has `release.router.timeout_s: 2`
-instead of a top-level `release.timeout_s: 2`. `template_stage_time_limits_load` looks
-for `timeout_s:` at `ind[$stage] + 2` indent (2 spaces for root-level stages). In the
-fixture `router.timeout_s: 2` is at indent 4, not 2. So `template_stage_time_limit "release"`
-returns 900 (the default). The watchdog uses 900 s; a 60-second hook completes unchecked.
-**Fix**: add `tests/fixtures/templates/always-run-minimal.yaml` to scope; SPEC-5 now
-explicitly names this fixture as needing `timeout_s: 2` at the direct stage-block level.
+SPEC-4 and SPEC-10 updated to require two layers:
+- (a) unit: existing `orch_load_backend` call returning non-zero (already in test)
+- (b) end-to-end: create minimal installed tree (rsync core/plugins/config/scripts to temp dir),
+  run `bash $ZBUILD_HOME/core/pipeline/runner.sh` end-to-end, assert pipeline exits non-zero
+  with `misconfigured`
 
-Note: `simple.yaml` already has `release.timeout_s: 30` at the top level (from `ee6aab95`
-build commit). The fixture `always-run-minimal.yaml` `extends: simple` but
-`template_stage_time_limits_load` reads only the overlay source file, NOT the merged
-template — so the fixture's stage block must have its own `timeout_s:`.
+runner.sh code change needed (in scope): check `_ZBUILD_ORCH_BACKEND_DISPOSITION` immediately
+after sourcing `contract.sh`; fail pipeline before any stage dispatch when `misconfigured`.
 
-**Root cause — Finding 2 (R-9), 17 integration failures:**
-`core/orch/contract.sh`'s `_orch_load_backend` still uses `sequential` as the fallback
-when `zbuild_config_get_backend` is unavailable or `ZBUILD_ORCHESTRATOR_BACKEND` is unset.
-Since `orch-sequential` is now deleted, `orch_load_backend "sequential"` fails with
-`_ZBUILD_ORCH_BACKEND_DISPOSITION=misconfigured`. The stubs remain active but useless;
-any pipeline run that doesn't explicitly configure a backend via `ZBUILD_ORCHESTRATOR_BACKEND`
-fails when the stubs are called. This is the source of the 17 broad integration failures.
-**Fix**: Decision 1 is clarified: change the `sequential` fallback in `_orch_load_backend`
-to `bash-parallel` (the actual system default), not remove all fallback. This is a code
-issue in scope (contract.sh). The design already covers contract.sh.
+**Finding 3 (R-5): persist hook never entered**
+`always-run-exit-paths-test.sh` exits in 0s without dispatching persist. Root cause: `extends:`
+does not propagate `always_run:` from the extending template. Only base template's `[release]`
+ends up in `_TPL_ALWAYS_RUN`.
 
-**Findings 3–6 (R-1, R-2, R-4, R-6):** Implementation incomplete (build timed out after
-only committing keepers-manifest.yaml in the second build pass). All affected source files
-are in scope. Code issue for the next build pass.
+SPEC-5 updated: template extension must propagate `always_run:` from extending template.
+Scope additions: `core/pipeline/template.sh` and `core/pipeline/template-resolver.sh`
+(these were absent but contain the code building `_TPL_ALWAYS_RUN`).
 
-## Key facts carried from revision 11
+**Finding 4 (R-5): `[SPEC-5]` release cleanup regression**
+negctl confirms `[SPEC-5]` cleanup FAILS at BOTH baseline AND HEAD. It was failing at baseline
+with old code (router.timeout_s=30s watchdog, 15s kill grace too short). At HEAD the 3s
+watchdog should allow teardown within the 15s kill grace — but it STILL fails. Root cause is in
+the hard-kill abort-trap dispatch path. Build stage must fix.
 
-### always-run-minimal.yaml fixture (NEW scope gap added in revision 12)
-File: `tests/fixtures/templates/always-run-minimal.yaml`
-Issue: `release.router.timeout_s: 2` (indent 4) — not visible to `template_stage_time_limit`
-       which looks for `timeout_s:` at indent 2 (stage-level + 2).
-Fix: add `timeout_s: 2` as a direct child of `release:` in the fixture.
+**Finding 5 (R-9)**: Follows from findings 3 and 4 (2 failing tests remain).
 
-### _orch_load_backend fallback (code issue in scope)
-File: `core/orch/contract.sh` lines 193-197
-Issue: fallback is `sequential` → triggers misconfigured → stubs remain → all pipeline tests fail
-Fix: change to `bash-parallel` (the real default backend)
+**Finding 6 (R-7 confirmed)**: Ran all five greps at HEAD. 22 total matching files. All files
+pinning always-run watchdog behavior are in scope. Files matching `router.timeout_s` for the
+per-call model timeout are not in scope. Documented in issue-acceptance findings section.
 
-### keepers-manifest.yaml (4 occurrences — partial fix in build commit 64da51c3)
-- Line 2841: done (closed_reason updated in build commit)
-- Lines 3329, 3335, 3345: cleanup-delta-d entry (done in same build commit per diff)
+## Key invariants for build stage
 
-### orch-backend-misconfigured-test.sh (3 occurrences)
-- Lines 20, 51: comments
-- Line 79: test description string
+1. runner.sh must check `_ZBUILD_ORCH_BACKEND_DISPOSITION` at startup (after sourcing
+   contract.sh), before any stage is dispatched, and fail the pipeline as `misconfigured`.
 
-### orch-mock-test.sh (1 occurrence)
-- Line 3: sibling-backends comment
+2. Template extension (`extends:`) must propagate `always_run:` from the extending template
+   (extending template wins over base, consistent with all other field overrides).
 
-## SPEC status (from issue-acceptance stage)
-- SPEC-5 (R-5): failing — root cause identified (fixture template scope gap + code issue)
-- SPEC-1 (R-1/R-2): code issue in build (fanout.sh subshell boundary, _orch_load_backend fallback)
-- SPEC-2 (R-3): test passes negctl
-- SPEC-4 (R-4): test passes negctl; installed-tree test not yet present in diff
-- SPEC-6 (R-6): test passes negctl; wiring confirmed in local_engine.sh
-- SPEC-10 (R-4): test passes negctl
-- SPEC-3 (R-3): 3 files still contain orch-sequential (code issue)
-- SPEC-7 (R-8): ADR files not yet updated with Enforced by sections
+3. Hard-kill path: `_runner_abort_trap` → `_runner_dispatch_always_run` must complete before
+   the kill grace expires. With `_SPEC5_KILL_GRACE=15` s and a 3 s watchdog, there is 12 s
+   slack — this should be achievable if the abort trap is correctly wired to the EXIT trap.
 
-## Status: COMPLETE (revision 12)
+4. negctl must show `[SPEC-5]` cleanup FAILING at baseline and PASSING at HEAD.
+
+## Scope additions in revision 13
+
+```
+core/pipeline/template.sh
+core/pipeline/template-resolver.sh
+```
+
+## Status: COMPLETE (revision 13)
 Design written to /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 
-Key changes: added `tests/fixtures/templates/always-run-minimal.yaml` to scope;
-updated SPEC-5 to name the fixture fix; clarified Decision 1 re: `sequential`→`bash-parallel`;
-added issue-acceptance findings section.
+Key changes from revision 12:
+- SPEC-4 and SPEC-10: added end-to-end installed-tree test requirement
+- SPEC-5: added template extension propagation requirement; added template.sh/template-resolver.sh to scope
+- issue-acceptance findings section added (revision 13)
+- R-7 scope discovery results documented explicitly
