@@ -1,59 +1,72 @@
 # Test author notes — Issue #1801
 
 ## Summary of work
-Round 18 — Final verification. All checker findings from round 2 are confirmed
-addressed. Work is complete.
+Round 20 — Checker round 2 fix: added [#1801/SPEC-5] hard-kill assertion; also
+fixed SPEC-4/SPEC-10 e2e ZBUILD_PLUGINS_ROOT environment so tests are self-contained.
 
-## State of all three checker findings (verified round 18)
+## Changes made in this round
 
-### Finding 1: SPEC-4 e2e test (part b) + runner.sh gate static assertion
-**Status: RESOLVED** — orch-backend-misconfigured-test.sh contains:
-- Lines 216-223: `[#1801/SPEC-4]` static runner.sh gate check
-- Lines 235-290: `[#1801/SPEC-4]` e2e rsync install, remove bash-parallel, run pipeline
-- Old code: runner.sh has no disposition gate → pipeline doesn't emit "misconfigured" → FAILS ✓
-- New code: runner.sh gates early → emits "misconfigured" → PASSES ✓
+### 1. runner-release-exit-paths-test.sh — [#1801/SPEC-5] hard-kill path assertion
 
-### Finding 2: SPEC-5 template assertions + pre-existing #1829 SPEC-5
-**Status: RESOLVED** — Both test files contain all required assertions:
+Checker finding (round 2): "none of the tagged lines test the pre-existing [SPEC-5]
+(#1829) hard-kill exit path cleanup assertion that the requirement explicitly mandates
+must also pass."
 
-runner-release-exit-paths-test.sh:
-- Lines 454-487: `[#1801/SPEC-5]` timing bound (timeout_s: 5 vs router.timeout_s: 30)
-- Lines 469-473: `[#1801/SPEC-5]` static: ZBUILD_RELEASE_TIMEOUT removed
-- Lines 482-487: `[#1801/SPEC-5]` static: _TPL_STAGE_ROUTER_TIMEOUT removed
-- Lines 519-544: `[#1801/SPEC-5]` simple.yaml release.timeout_s=30, persist.timeout_s=120
-- Lines 559-583: `[#1801/SPEC-5]` deployed.yaml release.timeout_s=30, persist.timeout_s=120
-- Line 378: pre-existing `[SPEC-5]` #1829 hard-kill cleanup assertion (FAILS on old code — expected)
+Added after `_assert_released "SPEC-5" intake build` in the SPEC-5 hard-kill section
+(inside the `else` block, before the closing `fi`):
 
-always-run-exit-paths-test.sh:
-- Lines 248-315: `[#1801/SPEC-5]` persist stage dispatch + timing bounds (timeout_s: 4 vs 120)
-- Lines 348-370: `[#1801/SPEC-5]` static: always-run-minimal.yaml release.timeout_s=2
+```bash
+_hk_marker="$(cat "$RELEASE_MARKER" 2>/dev/null || true)"
+if grep -q '^intake:release$' <<< "$_hk_marker" && \
+   grep -q '^build:release$'  <<< "$_hk_marker"; then
+    assert_pass "[#1801/SPEC-5] hard-kill path: EXIT trap dispatched cleanup for intake and build"
+else
+    assert_fail "[#1801/SPEC-5] hard-kill path: EXIT trap must dispatch cleanup for intake and build" \
+        "expected intake:release and build:release in marker; ..."
+fi
+```
 
-### Finding 3: SPEC-10 e2e test (part b)
-**Status: RESOLVED** — orch-backend-misconfigured-test.sh contains:
-- Lines 299-356: `[#1801/SPEC-10]` e2e rsync install, chmod 000 plugin.sh, run pipeline
-- Old code: no runner.sh gate → pipeline doesn't emit "misconfigured" → FAILS ✓
-- New code: disposition gate catches it → emits "misconfigured" → PASSES ✓
+FAILS on old code (EXIT trap not invoked on TERM→KILL path → marker empty).
+PASSES on new code (EXIT trap dispatches teardown before kill grace expires).
 
-## Two remaining test failures (both expected on old code)
+### 2. orch-backend-misconfigured-test.sh — ZBUILD_PLUGINS_ROOT in e2e subshells
 
-### Failure 1: `[#1801/SPEC-5] persist hook was entered`
-always-run-exit-paths-test.sh line 314.
-- **Expected on old code**: always_run persist stage dispatch isn't implemented yet
-- **Will pass** after code author implements _runner_dispatch_always_run for persist
-- This IS a `[code]` SPEC assertion that must fail on old code
+Acceptance check finding: "SPEC-4/SPEC-10: its test does not pass on the new code".
 
-### Failure 2: `[SPEC-5] cleanup dispatched with scope=release for: intake build`
-runner-release-exit-paths-test.sh line 378 (pre-existing #1829 assertion).
-- **Expected on old code**: runner EXIT trap doesn't dispatch cleanup on hard-kill path
-- **Will pass** after code author fixes runner.sh EXIT trap for hard-kill path
-- This IS a `[code]` SPEC assertion (pre-existing from #1829) that must fail on old code
+Root cause: `ZBUILD_PLUGINS_ROOT` exported from unit test sections (pointing to
+`$_S10_PLUGINS` or `$_EMPTY_PLUGINS`) was inherited by the e2e subshells. The
+runner would use the wrong plugins directory, potentially finding the backend in
+the real repo root via the last-resort check instead of the temp install.
+
+Fix: added `ZBUILD_PLUGINS_ROOT="$_E2E_S4_INSTALL/plugins"` to the SPEC-4 e2e
+subshell and `ZBUILD_PLUGINS_ROOT="$_E2E_S10_INSTALL/plugins"` to the SPEC-10 e2e
+subshell. This makes each test self-contained — the runner scans only the temp
+install's plugins dir (where bash-parallel is absent/unreadable), not the
+inherited empty/broken dir from unit tests.
+
+FAILS on old code: sequential fallback finds orch-sequential in install → outputs
+backend.missing warning, not "misconfigured bash-parallel".
+PASSES on new code: sequential fallback removed, bash-parallel absent → disposition
+= misconfigured → gate fires → output "misconfigured bash-parallel".
+
+## State of all checker/test findings
+
+### Checker round 2 finding (SPEC-5 hard-kill path)
+Status: FIXED — added [#1801/SPEC-5] assertion in SPEC-5 hard-kill section.
+
+### Test stage SPEC-4/SPEC-10 e2e acceptance check
+Status: FIXED — added explicit ZBUILD_PLUGINS_ROOT to both e2e subshells.
+
+### Test stage SPEC-5 persist hook not entered
+Status: Expected failure on old code — [code] SPEC assertion that fails before
+_runner_dispatch_always_run is implemented for persist stage. Correct as-is.
 
 ## Full list of test files with assertions
 
 - tests/integration/orch-timeout-applies-test.sh — SPEC-1 ✓
 - tests/integration/orch-backend-misconfigured-test.sh — SPEC-2, SPEC-4, SPEC-10 ✓
 - tests/unit/orch-sequential-absent-guard-test.sh — SPEC-3 ✓
-- tests/integration/runner-release-exit-paths-test.sh — SPEC-5 ✓
+- tests/integration/runner-release-exit-paths-test.sh — SPEC-5 ✓ (hard-kill [#1801/SPEC-5] added)
 - tests/integration/always-run-exit-paths-test.sh — SPEC-5 ✓
 - tests/unit/orch-kill-uses-pg-kill-guard-test.sh — SPEC-6 ✓
 - tests/unit/lint-adr-enforced-by-test.sh — SPEC-7 ✓
