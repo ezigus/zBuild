@@ -1,8 +1,8 @@
 ## issue-acceptance — fail
 
-- R-10 unmet — `sigterm-aborts-pipeline-test.sh` (an existing test for #686) times out at 480 s, most likely a regression from the new watchdog process not being reaped when the runner is externally SIGTERMed, and the shape-floor check flags two event-sequence golden files as potentially stale.
+- The test suite is red — the new SPEC-6 assertion introduced by this diff immediately fails because ADR-054 §11's body does not contain any of the required per-run-limit keywords (`max_run_s`, `wall-clock`, `per-run`, `run-level`, `run limit`), leaving both R-9 and R-10 unmet.
 
-- NOT MET: R-10: npm test fails (sigterm-aborts-pipeline-test.sh 480 s timeout, likely watchdog-leak regression when runner is killed externally
-- NOT MET: shape floor flags tests/golden/full-pipeline/event-sequence.golden and tests/golden/parity/event-sequence.golden as needing review)
-- NOT SURE: R-1: the "reddens at merge-base" sub-claim — the regression test is new (absent at merge-base), so the claim holds only if reverting the runner implementation alone makes the test fail — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: the test output shows the test passes now but cannot confirm the red-on-revert direction without running against the old code — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT MET: R-9: ADR-054 §11 exists but its content fails the new keyword check — the §11 section does not describe the per-run limit in the terms the test requires
+- NOT MET: R-10: npm test fails (1 of 45 assertions red — `[#1944/SPEC-6] ADR-054 §11 content describes the per-run limit`)
+- NOT SURE: R-2: test assertions pass but both branches of the between-dispatches conditional call `assert_pass`, making the sub-requirement unfalsifiable — putting old code back would not redden it — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: R-4: issue requires both `release` AND `persist` always-run stages to fire after timeout — the diff and visible test output do not confirm `persist` is separately constructed or asserted — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
