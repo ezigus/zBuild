@@ -1,64 +1,4 @@
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.DLpGR0/tests/unit/runner-abort-banner-stderr-test.sh
-
-[38;2;0;212;255m[1m  the abort banner reaches stderr (ADR-054 §7)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mB1/B2: _runner_restore_stderr[0m
-  [38;2;74;222;128m✓[0m [B1] what follows it inside a silenced call reaches the saved stderr
-  [38;2;74;222;128m✓[0m [B2] with nothing saved the redirect stands, and it returns 0
-
-  [38;2;0;212;255mB3/B4: where the runner uses it[0m
-  [38;2;248;113;113m✗[0m [B3] the abort trap's first statement restores stderr
-    [2mexpected: _runner_restore_stderr, got: trap ':' INT TERM[0m
-  [38;2;74;222;128m✓[0m [B4] stderr is saved (line 2745) before the EXIT trap is set (line 2746)
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 4 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [B3] the abort trap's first statement restores stderr
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.DLpGR0/tests/integration/run-timed-out-test.sh
-
-[38;2;0;212;255m[1m  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mP1: slow stage timeout — status=timed_out written to pipeline-state.json[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: runner exits non-zero
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
-
-  [38;2;0;212;255mP1: pipeline.end event fields — status=timed_out, stage, limit_s[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
-
-  [38;2;0;212;255mP2: watchdog fires even when engine is idle between dispatches[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-    [2melapsed 18s > 10s — per-stage reset timer would fire at ~11s; global watchdog fires at ~6s; expected ≤ 10s[0m
-
-  [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 14s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 2697470 killed)
-
-  [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: pipeline status=timed_out
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 16 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.DLpGR0/tests/integration/runner-release-exit-paths-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.GgkwJX/tests/integration/runner-release-exit-paths-test.sh
 
 [38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -92,7 +32,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
 
   [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 36s)
+  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
   [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
 
   [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
@@ -103,3 +43,10 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m[1m1 of 19 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
+
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.GgkwJX/tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+[38;2;0;212;255m[1m  sigterm-aborts-pipeline — kill -TERM halts pipeline (#686)[0m
+[2m  ══════════════════════════════════════════[0m

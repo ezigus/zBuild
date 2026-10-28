@@ -2,64 +2,8 @@
 > zbuild@0.1.0 test
 > bash tests/run-all.sh
 
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.DLpGR0/tests/unit/runner-abort-banner-stderr-test.sh
-
-  the abort banner reaches stderr (ADR-054 §7)
-
-
-  B1/B2: _runner_restore_stderr
-  ✓ [B1] what follows it inside a silenced call reaches the saved stderr
-  ✓ [B2] with nothing saved the redirect stands, and it returns 0
-
-  B3/B4: where the runner uses it
-  ✗ [B3] the abort trap's first statement restores stderr
-    expected: _runner_restore_stderr, got: trap ':' INT TERM
-  ✓ [B4] stderr is saved (line 2745) before the EXIT trap is set (line 2746)
-
-
-  1 of 4 tests failed
-
-  ✗ [B3] the abort trap's first statement restores stderr
-
-unit: 527/528 passed (4 skipped)
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.DLpGR0/tests/integration/run-timed-out-test.sh
-
-  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)
-
-
-  P1: slow stage timeout — status=timed_out written to pipeline-state.json
-  ✓ [#1944/SPEC-1] P1: runner exits non-zero
-  ✓ [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
-
-  P1: pipeline.end event fields — status=timed_out, stage, limit_s
-  ✓ [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
-  ✓ [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
-  ✓ [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
-
-  P2: watchdog fires even when engine is idle between dispatches
-  ✓ [#1944/SPEC-1] P2: runner exits non-zero
-  ✓ [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
-  ✓ [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
-  ✗ [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-    elapsed 18s > 10s — per-stage reset timer would fire at ~11s; global watchdog fires at ~6s; expected ≤ 10s
-
-  P3: stage that ignores SIGTERM is dead within TERM + 10s
-  ✓ [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  ✓ [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 14s)
-  ✓ [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 2697470 killed)
-
-  P4: always_run release and persist stages execute on timed-out exit path
-  ✓ [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
-  ✓ [#1944/SPEC-1] P4: pipeline status=timed_out
-  ✓ [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
-  ✓ [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
-
-
-  1 of 16 tests failed
-
-  ✗ [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.DLpGR0/tests/integration/runner-release-exit-paths-test.sh
+unit: 528/528 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.GgkwJX/tests/integration/runner-release-exit-paths-test.sh
 
   runner dispatches cleanup(release) on every exit path (#1829)
 
@@ -92,7 +36,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   ✓ [SPEC-5] purge is never reachable from a run
 
   SPEC-6: a cleanup hook that blocks cannot hang the runner
-  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 36s)
+  ✓ [SPEC-6] blocking cleanup is bounded (runner exited in 35s)
   ✓ [SPEC-6] the blocked hook does not outlive the run
 
   SPEC-6b: a hook child that ignores TERM does not outlive the run
@@ -103,10 +47,16 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
 
-integration: 254/256 passed
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.GgkwJX/tests/integration/sigterm-aborts-pipeline-test.sh (exceeded 480s, rc=124)
+--- output below ran against a process being killed at its time bound;
+--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---
+
+  sigterm-aborts-pipeline — kill -TERM halts pipeline (#686)
+
+integration: 254/256 passed (1 timed out)
 e2e: 10/10 passed
 golden: 1/1 passed
 mutation: 25/25 passed
 lint: 1/1 passed
 
-total: 818/821 passed (4 skipped)
+total: 819/821 passed (4 skipped, 1 timed out)
