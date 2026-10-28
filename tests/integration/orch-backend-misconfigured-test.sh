@@ -224,14 +224,21 @@ fi
 
 # ── SPEC-4 e2e: absent backend fails full pipeline run as misconfigured ───────
 # Create a minimal installed tree (rsync), remove orch-bash-parallel from it,
-# then run bash $ZBUILD_HOME/core/pipeline/runner.sh. With _ZBUILD_ROOT pointing
-# at the temp install, the last-resort check ($ZBUILD_HOME/plugins/tool/orch-bash-
-# parallel/plugin.sh) also fails — so both the registry path and last resort agree
-# the backend is absent.
+# then run bash $ZBUILD_HOME/core/pipeline/runner.sh. ZBUILD_PLUGINS_ROOT is
+# explicitly set to the temp install's plugins dir so the registry scan uses the
+# installed tree (not the inherited unit-test empty dir). With _ZBUILD_ROOT
+# derived from runner.sh's own path ($0 → $_E2E_S4_INSTALL), the last-resort
+# check ($ZBUILD_HOME/plugins/tool/orch-bash-parallel/plugin.sh) also fails —
+# so both the registry scan and last-resort check agree the backend is absent.
 #
 # Old code: runner.sh ignores _ZBUILD_ORCH_BACKEND_DISPOSITION → continues →
 #   eventually fails with "orch_spawn: not implemented" or similar (not "misconfigured").
 # New code: runner.sh gates early → exits 1 with "misconfigured" naming the backend.
+#
+# ZBUILD_ORCHESTRATOR_BACKEND="sequential" was exported above for the SPEC-2 unit
+# test.  Unset it here so the runner uses its compiled-in default (bash-parallel)
+# and the output names bash-parallel, not sequential.
+unset ZBUILD_ORCHESTRATOR_BACKEND
 print_test_section "[#1801/SPEC-4] e2e: absent backend fails pipeline as misconfigured"
 
 if ! command -v rsync >/dev/null 2>&1; then
@@ -260,6 +267,7 @@ else
         ZBUILD_EVENTS_JSONL="$_E2E_S4_EVDIR/events.jsonl" \
         ZBUILD_MODELS_FILE="$_E2E_S4_INSTALL/config/models.json" \
         ZBUILD_EVENT_SCHEMA="$_E2E_S4_INSTALL/config/event-schema.json" \
+        ZBUILD_PLUGINS_ROOT="$_E2E_S4_INSTALL/plugins" \
         ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_CYCLES_ENABLED=0 \
         ZBUILD_VISION_GATE=off \
@@ -293,9 +301,14 @@ fi
 # Same minimal-install approach: rsync, then chmod 000 the backend plugin.sh.
 # The plugin directory and manifest are present (discovery succeeds) but plugin.sh
 # is unreadable, simulating a corrupt or permission-denied installation.
+# ZBUILD_PLUGINS_ROOT is explicitly set to the temp install's plugins dir so the
+# registry scan uses the installed tree (not the inherited unit-test empty dir).
 #
 # Old code: runner.sh ignores disposition → continues without the check.
 # New code: disposition=misconfigured is caught by the runner gate → exits 1.
+#
+# Keep ZBUILD_ORCHESTRATOR_BACKEND unset (cleared before SPEC-4 e2e above) so
+# the runner uses its compiled-in default (bash-parallel) and the gate names it.
 print_test_section "[#1801/SPEC-10] e2e: unreadable plugin.sh fails pipeline as misconfigured"
 
 if ! command -v rsync >/dev/null 2>&1; then
@@ -323,6 +336,7 @@ else
         ZBUILD_EVENTS_JSONL="$_E2E_S10_EVDIR/events.jsonl" \
         ZBUILD_MODELS_FILE="$_E2E_S10_INSTALL/config/models.json" \
         ZBUILD_EVENT_SCHEMA="$_E2E_S10_INSTALL/config/event-schema.json" \
+        ZBUILD_PLUGINS_ROOT="$_E2E_S10_INSTALL/plugins" \
         ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_CYCLES_ENABLED=0 \
         ZBUILD_VISION_GATE=off \

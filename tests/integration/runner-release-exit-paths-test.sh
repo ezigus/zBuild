@@ -376,6 +376,20 @@ else
     wait "$_spec5_killer" 2>/dev/null || true
     for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
     _assert_released "SPEC-5" intake build
+    # [#1801/SPEC-5]: the hard-kill exit path must dispatch cleanup — pre-existing
+    # [SPEC-5] (#1829) assertion that must continue to hold after #1801's changes
+    # to _runner_dispatch_always_run (template_stage_time_limit replaces router.timeout_s).
+    # The runner's EXIT trap dispatches teardown on TERM→KILL; cleanup hooks write the
+    # release marker before the kill grace expires.
+    # FAILS on old code (EXIT trap not invoked on TERM→KILL path); PASSES on new code.
+    _hk_marker="$(cat "$RELEASE_MARKER" 2>/dev/null || true)"
+    if grep -q '^intake:release$' <<< "$_hk_marker" && \
+       grep -q '^build:release$'  <<< "$_hk_marker"; then
+        assert_pass "[#1801/SPEC-5] hard-kill path: EXIT trap dispatched cleanup for intake and build"
+    else
+        assert_fail "[#1801/SPEC-5] hard-kill path: EXIT trap must dispatch cleanup for intake and build" \
+            "expected intake:release and build:release in marker; got: $(tr '\n' ' ' <<< "$_hk_marker"); old code: EXIT trap not invoked on TERM→KILL path"
+    fi
 fi
 
 # ── SPEC-6: a blocking cleanup hook cannot hold the exit open ────────────────
