@@ -204,16 +204,21 @@ rm -f "$STATE_FILE" "$EVENTS_JSONL"
 mock_plugin_factory "fast-one" "agent" 0 >/dev/null
 mock_plugin_factory "fast-two" "agent" 0 >/dev/null
 
-# fast-one: returns immediately (proves it can complete BEFORE the watchdog fires)
-# fast-two: sleeps 30s (watchdog fires during fast-two's execution)
-# max_run_s=3: watchdog fires 3s into the run. fast-one completes in < 1s.
-# After 3s, fast-one's status in pipeline-state.json MUST be "complete", proving
-# the watchdog ran independently — it did not need a stage to be dispatching.
-# If the watchdog fired BEFORE fast-one completed, fast-one's status would not be
-# "complete", and the assertion below would fail.
+# fast-one: sleeps 2s, consuming most of the 3s limit, then returns.
+# fast-two: writes a sentinel file immediately at start, then sleeps 30s.
+# max_run_s=3: watchdog fires at ~t=3s. fast-one completes at ~t=2s, leaving
+# a ~1s idle window where the engine is between dispatches. The watchdog fires
+# in this window — before the engine can fork fast-two (bash dispatch takes
+# ~0.2-0.5s, far less than 1s). fast-two's sentinel must therefore be absent.
+#
+# Falsifiability:
+#   OLD code (no watchdog): fast-two starts at ~t=2s and writes its sentinel;
+#     outer timeout 25 kills at t=25s. Sentinel IS present → assertion FAILS.
+#   NEW code (watchdog at t=3s): fast-two never starts → sentinel ABSENT → PASSES.
 FAST_TWO_STARTED="$TEST_TEMP_DIR/fast-two-started"
 cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
 fast_one_run() {
+    sleep 2
     $(mock_result_line fast-one)
     return 0
 }
@@ -253,6 +258,18 @@ if [[ -f "$STATE_FILE" ]]; then
     fi
 else
     assert_fail "[#1944/SPEC-1] P2: pipeline-state.json written" "state file not found"
+fi
+
+# The "idle between dispatches" check: fast-two must never have started.
+# fast-one consumed 2s of the 3s limit; the watchdog fires in the ~1s idle
+# window after fast-one completes, before the engine can dispatch fast-two.
+# Old code (no watchdog): fast-two starts and writes its sentinel immediately.
+# New code (with watchdog): the watchdog fires before fast-two is dispatched.
+if [[ -e "$FAST_TWO_STARTED" ]]; then
+    assert_fail "[#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches" \
+        "fast-two sentinel found at ${FAST_TWO_STARTED} — watchdog did not fire before fast-two was dispatched"
+else
+    assert_pass "[#1944/SPEC-1] P2: fast-two never started — watchdog fired in idle window between dispatches"
 fi
 
 # ── P3: TERM-ignore → KILL within TERM + 10s ────────────────────────────────
