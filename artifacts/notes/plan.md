@@ -85,6 +85,19 @@ the budget guard breaks on the rename. The step-9 description now names this upd
 ### Open questions
 None.
 
+## Design stage review (plan re-entry after design verdict: unknown)
+
+All design findings already incorporated in the prior plan revision:
+- Test finding 20 (3 files still name orch-sequential) → step-3 (already listed all 3 files + specific line edits)
+- Test-author findings 1-3 → steps 6, 8, 3 respectively
+- Broad pipeline failures → step-14
+- lint-test-errexit failures → step-13
+- Design findings 1-2 (SPEC-7 TESTFILES) → step-12 (already correctly names lint-adr-enforced-by-test.sh)
+- Acceptance gate finding (SPEC-1 subshell boundary, SPEC-3 residual refs) → implementation issues, covered by steps 7 and 3
+- tests/test-durations.tsv in design scope block but not in plan areas: this file is mechanically auto-updated by the test runner on test addition/deletion; no behavioral plan item required.
+
+No new steps or changes required. Plan is final at 15 items.
+
 ## Acceptance criteria mapping (updated)
 
 - [AC1] hung stage ends timed_out → steps 6+7
