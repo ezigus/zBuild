@@ -1027,11 +1027,13 @@ _render_pipeline_end() {
 _runner_render_open_items() {
     case "${1:-}" in failed|interrupted|aborted|timed_out) ;; *) return 0 ;; esac
     [[ -n "${_runner_state_file:-}" ]] && declare -F open_items_markdown >/dev/null 2>&1 || return 0
-    local sd="${_runner_state_file%/*}" items n
+    local sd="${_runner_state_file%/*}" items n reason="${_CYCLE_LAST_TERMINATED_REASON:-}"
+    # The watchdog fires outside any cycle, so the status is the reason (#1944).
+    [[ "$1" == timed_out ]] && reason=timed_out
     items="$(open_items_markdown "$sd")" || items=""
     n=0; [[ -n "$items" ]] && n="$(grep -c '^[0-9][0-9]*\. ' <<< "$items" || true)"
     {
-        printf 'The run %s.\n' "$(run_end_words "${_CYCLE_LAST_TERMINATED_REASON:-}" "$n")"
+        printf 'The run %s.\n' "$(run_end_words "$reason" "$n")"
         [[ -n "$items" ]] && printf '%s\n' "$items"
     } >&2
 }

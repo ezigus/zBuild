@@ -162,6 +162,12 @@ else
     assert_eq "[#1944/SPEC-1] P1: pipeline-state.json status=timed_out" "timed_out" "$_p1_status"
 fi
 
+# The run's last words say why it ended: the wall-clock limit, not the
+# generic "stopped before finishing" (the watchdog fires outside any cycle,
+# so no cycle reason is set).
+assert_contains "[#1944/SPEC-1] P1: the run's footer names the wall-clock limit" \
+    "$(grep '^The run ' "$TEST_TEMP_DIR/p1.stderr" || true)" "exceeded its wall-clock limit"
+
 print_test_section "P1: pipeline.end event fields — status=timed_out, stage, limit_s"
 
 if [[ ! -f "$EVENTS_JSONL" ]]; then
