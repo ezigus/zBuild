@@ -3692,6 +3692,11 @@ main() {
                     _RUNNER_STAGE_START_MS[$_mg_id]="$(_runner_now_ms)"
                     export ZBUILD_CURRENT_STAGE="$_mg_id"
                     _render_parallel_entry "$_mg_id" "$_mg_max" "$_mg_elems_csv"
+                    # The group's row is its cardinal; each member's is
+                    # <cardinal>.<n> (ADR-064 §4).
+                    export ZBUILD_SEQ_PREFIX="$_runner_cardinal"
+                    ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_cardinal" \
+                        eb_emit_event "parallel.group.start" "group=$_mg_id" 2>/dev/null || true
                     set +e
                     # #1312: pass max_parallel and on_member_error so _strategy_run_map
                     # can enforce the FIFO concurrency cap and error-continue policy
@@ -3701,6 +3706,14 @@ main() {
                         "$_mg_max" "$_mg_on_err"
                     _rc=$?
                     set -e
+                    unset ZBUILD_SEQ_PREFIX
+                    # A member that did not finish is said, in the log and on
+                    # the group's row: an incomplete review must not read clean.
+                    [[ -n "${_ZB_MAP_UNFINISHED:-}" ]] && warn "$_mg_id: ${_ZB_MAP_UNFINISHED}"
+                    ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_cardinal" \
+                        eb_emit_event "parallel.group.complete" "group=$_mg_id" \
+                        "verdict=$([[ -n "${_ZB_MAP_UNFINISHED:-}" ]] && echo incomplete || echo pass)" \
+                        2>/dev/null || true
                     # #1850: an empty dimension returns 0 (outcome `empty`).
                     if [[ $_rc -ne 0 ]]; then
                         _set_pipeline_status "$state_file" "failed"

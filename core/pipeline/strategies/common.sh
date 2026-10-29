@@ -73,6 +73,7 @@ _strategy_orch_scratch_dir() {
 _strategy_make_work_unit() {
     local plugin_dir="$1" stage="$2" state_file="$3" platform="${4:-generic}"
     local map_element="${5:-}" map_dimension="${6:-}" env_target="${7:-}" unit_element="${8:-}"
+    local seq_label="${9:-}"
 
     _strategy_validate_stage "$stage"   || return 1
     _strategy_validate_platform "$platform" || return 1
@@ -100,6 +101,10 @@ _strategy_make_work_unit() {
     # (`<element>` or `<role>.<element>`); baked like the others, so validated.
     if [[ -n "$unit_element" && ! "$unit_element" =~ ^[a-zA-Z0-9_-]{1,64}(\.[a-zA-Z0-9_-]{1,64})?$ ]]; then
         warn "strategy: invalid unit element: ${unit_element}" || true
+        return 1
+    fi
+    if [[ -n "$seq_label" && ! "$seq_label" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+        warn "strategy: invalid seq label: ${seq_label}" || true
         return 1
     fi
     if [[ -n "$env_target" && ! "$env_target" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,63}$ ]]; then
@@ -150,6 +155,10 @@ export ${env_target}='${map_element}'"
     [[ -z "$_unit_elem" && "$platform" != "generic" ]] && _unit_elem="$platform"
     [[ -n "$_unit_elem" ]] && _map_env_lines="${_map_env_lines:+${_map_env_lines}
 }export ZBUILD_UNIT_ELEMENT='${_unit_elem}'"
+    # The member's own place in the run (<group cardinal>.<n>), so its events
+    # open its own row on the status comment (ADR-064 §4).
+    [[ -n "$seq_label" ]] && _map_env_lines="${_map_env_lines:+${_map_env_lines}
+}export ZBUILD_STAGE_IO_SEQ_LABEL='${seq_label}'"
 
     cat > "$wu" <<WORKUNIT
 #!/usr/bin/env bash
