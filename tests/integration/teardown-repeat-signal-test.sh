@@ -91,7 +91,7 @@ kill -KILL "$RUNNER_PID" 2>/dev/null || true
 wait "$RUNNER_PID" 2>/dev/null || true
 
 if [[ ! -e "$REL_IN" ]]; then
-    assert_fail "[T1] fixture: release started" "$(tail -20 "$TEST_TEMP_DIR/run.out")"
+    assert_fail "[setup] release started" "$(tail -20 "$TEST_TEMP_DIR/run.out")"
 fi
 assert_file_exists "[T1] release finishes despite a second TERM" "$REL_OUT"
 assert_file_exists "[T2] persist still runs after it" "$PERSISTED"
