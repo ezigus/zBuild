@@ -183,6 +183,13 @@ such events (stage-less, the largest share of the run's event volume) and 1,476 
 - The "1 s resolution on macOS" consequence above no longer holds: event timestamps carry real
   milliseconds on every host (ADR-065 §5, amended #1806).
 
+## Amendment 2026-10-29 — a map member has its own row
+
+Each member of a map group has its own row, `<cardinal>.<n> <group>.<element>`, closed with its
+own outcome and its own summary, and is not shown as a loop iteration. The group has a row too,
+whose summary says whether every member finished (ADR-047 amendment 2026-10-29). On #1801 and
+#1944 no lens had a row: a member's events carried no seq.
+
 ## Enforced by
 
 - Open items list only results this run wrote (#2378) → `tests/unit/run-open-items-test.sh` O10
@@ -197,3 +204,4 @@ such events (stage-less, the largest share of the run's event volume) and 1,476 
 - §7 → `tests/unit/run-status-comment-gh-test.sh`; `tests/unit/cli-status-comment-test.sh`
 - Amendment #2145 → `tests/unit/run-status-comment-render-test.sh`
 - Amendment #2154 → `tests/unit/run-status-comment-render-test.sh` SPEC-9
+- Amendment 2026-10-29 (a map member has its own row) → `tests/integration/map-members-reported-test.sh` MR1–MR4, MR6
