@@ -201,7 +201,7 @@ print_test_section "T7: the shipped stages"
 _takes_of() { sed -n 's/^takes:[[:space:]]*\[\(.*\)\][[:space:]]*$/\1/p' "$REPO_ROOT/plugins/agent/$1/manifest.yaml" | tr -d ' '; }
 assert_eq "[T7] plan takes" "ask" "$(_takes_of plan)"
 assert_eq "[T7] design takes" "ask,requirement-findings" "$(_takes_of design)"
-assert_eq "[T7] test-author takes (never change)" "ask,tests,code-findings" "$(_takes_of test-author)"
+assert_eq "[T7] test-author takes (never change; requirement findings, e.g. a test that misses a requirement)" "ask,tests,requirement-findings,code-findings" "$(_takes_of test-author)"
 assert_eq "[T7] build takes" "ask,tests,change,requirement-findings,code-findings" "$(_takes_of build)"
 assert_eq "[T7] issue-acceptance takes" "ask,change,code-findings" "$(_takes_of issue-acceptance)"
 assert_eq "[T7] review-lens takes" "ask,change" "$(_takes_of review-lens)"

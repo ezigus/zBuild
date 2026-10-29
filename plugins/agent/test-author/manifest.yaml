@@ -3,7 +3,7 @@ name: Test Author
 kind: agent
 version: 0.1.0
 # ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
-takes: [ask, tests, code-findings]
+takes: [ask, tests, requirement-findings, code-findings]
 description: |
   Authors the acceptance assertions from the design's SPEC sentences, in the
   target's own language, BEFORE build implements against them.

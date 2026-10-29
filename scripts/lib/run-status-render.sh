@@ -11,10 +11,11 @@ _ZBUILD_RUN_STATUS_RENDER_LOADED=1
 _RSC_RENDER_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _RSC_ROOT="${_RSC_ROOT:-$(cd "$_RSC_RENDER_DIR/../.." && pwd)}"
 : "${ZBUILD_STATUS_COMMENT_MAX_BYTES:=60000}"   # GitHub rejects > 65,536; keep headroom
-: "${ZBUILD_STATUS_COMMENT_SUMMARY_CHARS:=200}" # first line of a stage summary
 _RSC_MARKER_PREFIX='<!-- zbuild-run-status run_id='
 # shellcheck source=./run-open-items.sh
 source "$_RSC_ROOT/scripts/lib/run-open-items.sh"   # run_end_words, open_items_* (#2330)
+# shellcheck source=./run-status-pages.sh
+source "$_RSC_ROOT/scripts/lib/run-status-pages.sh"  # rsc_render_pages, rsc_outbound_pages
 
 # ─── rsc_byte_len <string> — bytes, not chars (the GitHub limit is bytes) ───
 rsc_byte_len() {
@@ -181,8 +182,9 @@ rsc_row_inputs_line_v() {   # <var> <state_dir> <stage>
 # ─── rsc_row_summary_line <state_dir> <stage> — what the stage reported ─────
 # ADR-055 §9: the stage's ONE declared summary. Resolved through the manifest
 # when the engine libs are reachable, else `artifacts/<stage>-summary.md`.
-# First non-empty non-heading line, `- ` stripped, `|` escaped, cut to
-# ZBUILD_STATUS_COMMENT_SUMMARY_CHARS.
+# Its first non-empty non-heading line, `- ` stripped, `|` escaped, whole; and
+# the rest of the summary folded under it in a <details> block (ADR-064 §4,
+# amended 2026-10-28: nothing a stage reported is cut).
 rsc_row_summary_line() { local _rs; rsc_row_summary_line_v _rs "$@"; printf '%s' "$_rs"; }
 rsc_row_summary_line_v() {   # <var> <state_dir> <stage>
     local _rsv_sd="$2" _rsv_st="$3" _rsv_p="" _rsv_l=""
@@ -195,22 +197,30 @@ rsc_row_summary_line_v() {   # <var> <state_dir> <stage>
 }
 
 # _rsc_first_line_v <var> <summary_file> — the first line with a non-blank
-# character that is not a heading, `- ` stripped, `|` escaped, cut.
+# character that is not a heading, `- ` stripped, `|` escaped, whole; the rest
+# folded under it.
 _rsc_first_line_v() {
     local _rsv_p="$2" _rsv_l=""
     printf -v "$1" '%s' ""
     [[ -s "$_rsv_p" ]] || return 0
-    # Read by the shell (it was an awk: `NF && $0 !~ /^#/`).
-    local _rsv_found=0
-    while IFS= read -r _rsv_l || [[ -n "$_rsv_l" ]]; do
-        [[ "$_rsv_l" =~ [^[:space:]] && "$_rsv_l" != \#* ]] && { _rsv_found=1; break; }
+    # The first line with a non-blank character that is not a heading, read by
+    # the shell (it was an awk: `NF && $0 !~ /^#/`).
+    local _rsv_found=0 _rsv_rest="" _rsv_x
+    while IFS= read -r _rsv_x || [[ -n "$_rsv_x" ]]; do
+        if (( _rsv_found )); then
+            _rsv_rest+="${_rsv_x}"$'\n'
+        elif [[ "$_rsv_x" =~ [^[:space:]] && "$_rsv_x" != \#* ]]; then
+            _rsv_found=1; _rsv_l="$_rsv_x"
+        fi
     done < "$_rsv_p"
     (( _rsv_found )) || return 0
     _rsv_l="${_rsv_l#- }"
     _rsv_l="${_rsv_l//|/\\|}"
-    if [[ "${#_rsv_l}" -gt "$ZBUILD_STATUS_COMMENT_SUMMARY_CHARS" ]]; then
-        _rsv_l="${_rsv_l:0:$ZBUILD_STATUS_COMMENT_SUMMARY_CHARS}…"
-    fi
+    # The rest, without its leading and trailing blank lines.
+    while [[ "$_rsv_rest" == $'\n'* ]]; do _rsv_rest="${_rsv_rest#$'\n'}"; done
+    while [[ "$_rsv_rest" == *$'\n' ]]; do _rsv_rest="${_rsv_rest%$'\n'}"; done
+    [[ "$_rsv_rest" =~ [^[:space:]] ]] \
+        && _rsv_l+=$'\n'"<details><summary>the rest of what it reported</summary>"$'\n\n'"${_rsv_rest}"$'\n\n'"</details>"
     printf -v "$1" '%s' "$_rsv_l"
 }
 
@@ -232,13 +242,23 @@ declare -gA _RSC_SNAP_END=()
 _RSC_SNAP_RUN=""
 _RSC_SNAP_DIRTY=0
 _rsc_snapshot_path() { printf '%s/status-comment-rows.json' "$1"; }
+_rsc_esc_v() {     # <var> <text> — \\, newline and tab as two-character escapes
+    local _t="${2//\\/\\\\}"; _t="${_t//$'\n'/\\n}"; printf -v "$1" '%s' "${_t//$'\t'/\\t}"
+}
+_rsc_unesc_v() {   # <var> <text> — the reverse of _rsc_esc_v
+    local _t="${2//\\\\/$'\x01'}"; _t="${_t//\\n/$'\n'}"; _t="${_t//\\t/$'\t'}"; printf -v "$1" '%s' "${_t//$'\x01'/\\}"
+}
 _rsc_snapshot_load() {   # <state_dir> <run_id>
     local f; f="$(_rsc_snapshot_path "$1")"
     _RSC_SNAP=(); _RSC_SNAP_END=(); _RSC_SNAP_RUN="$2"; _RSC_SNAP_DIRTY=0
     [[ -s "$f" ]] || return 0
     [[ "$(jq -r '.run_id // ""' "$f" 2>/dev/null)" == "$2" ]] || return 0
-    local k v
+    local k v esc
+    # esc:1 — values are stored with \\ \n \t escaped, so a multi-line summary
+    # survives the tab-and-newline transport; a file without it holds raw lines.
+    esc="$(jq -r '.esc // 0' "$f" 2>/dev/null || true)"
     while IFS=$'\t' read -r k v; do
+        [[ "$esc" == "1" ]] && _rsc_unesc_v v "$v"
         [[ -n "$k" ]] && _RSC_SNAP["$k"]="$v"
     # Not @tsv: it escapes a tab inside the value as the two characters `\t`,
     # and the save side stores the raw line (review on #2156).
@@ -257,9 +277,10 @@ _rsc_snapshot_save() {   # <state_dir> — atomic; only when something new was f
     # `{}` — every row would then read as legacy-frozen (the stale first close).
     if [[ -z "$ends" && "${#_RSC_SNAP_END[@]}" -gt 0 ]]; then rm -f "$tmp"; return 0; fi
     {
-        for k in "${!_RSC_SNAP[@]}"; do printf '%s\t%s\n' "$k" "${_RSC_SNAP[$k]}"; done
+        local _e
+        for k in "${!_RSC_SNAP[@]}"; do _rsc_esc_v _e "${_RSC_SNAP[$k]}"; printf '%s\t%s\n' "$k" "$_e"; done
     } | jq -Rs --arg run "$_RSC_SNAP_RUN" --argjson ends "${ends:-{\}}" '
-        {run_id: $run,
+        {run_id: $run, esc: 1,
          rows: ([split("\n")[] | select(length > 0) | split("\t") | {key: .[0], value: (.[1:] | join("\t"))}] | from_entries),
          ends: $ends}' \
         > "$tmp" 2>/dev/null && mv -f "$tmp" "$f" || rm -f "$tmp"
@@ -407,71 +428,24 @@ rsc_render_header() {
     fi
 }
 
-# ─── rsc_bound_body <header> <rows_file> — newest rows first, under the cap ─
-# Rows arrive newest-first, one per line. Add until the next would overflow,
-# then say how many were dropped — the count is what keeps an elision
-# distinguishable from a stage that never ran.
-rsc_bound_body() {
-    local header="$1" rows_file="$2"
-    local max="$ZBUILD_STATUS_COMMENT_MAX_BYTES"
-    local total; total="$(wc -l < "$rows_file" | tr -d ' ')"
-    local omit_tpl="_… ${total} earlier rows omitted — see run log_"
-    local budget=$(( max - $(rsc_byte_len "$header") - $(rsc_byte_len "$omit_tpl") - 4 ))
-    local used=0 kept=0 out="" line
-    while IFS= read -r line; do
-        local n; n=$(( $(rsc_byte_len "$line") + 1 ))
-        if [[ $kept -gt 0 && $(( used + n )) -gt $budget ]]; then break; fi
-        out+="${line}"$'\n'
-        used=$(( used + n )); kept=$(( kept + 1 ))
-    done < "$rows_file"
-    printf '%s\n%s' "$header" "$out"
-    if [[ $kept -lt $total ]]; then
-        printf '_… %d earlier rows omitted — see run log_\n' $(( total - kept ))
-    fi
-}
-
 # ─── rsc_render_body <events_jsonl> <state_dir> [status_override] ───────────
+# The newest part of the comment: the run's header and its newest rows
+# (run-status-pages.sh splits a run that outgrows one comment).
 rsc_render_body() {
-    local events="$1" state_dir="$2" override="${3:-}"
-    local model header rows_file
-    model="$(rsc_rows_json "$events")"
-    header="$(rsc_render_header "$model" "$state_dir" "$override")"
-    # #2154: rows are rendered in THIS shell (`< <( )`, not a pipe) so the
-    # snapshot they freeze survives the loop and is saved once at the end.
-    _rsc_snapshot_load "$state_dir" "$(jq -r '.header.run_id // ""' <<< "$model")"
-    rows_file="$(mktemp "${TMPDIR:-$state_dir}/rsc-rows.XXXXXX")" || return 1
-    # Every row from one jq, one compact row per line (ADR-065 §4).
-    local row
-    while IFS= read -r row; do
-        rsc_render_row "$state_dir" "$row"
-        printf '\n'
-    done < <(jq -c '. as $m | $m.order | reverse | .[] | select((. // "") != "") as $k | $m.rows[$k | tostring]' <<< "$model") > "$rows_file"
-    _rsc_snapshot_save "$state_dir"
-    rsc_bound_body "$header" "$rows_file"
-    rm -f "$rows_file"
+    local d n
+    d="$(mktemp -d "${TMPDIR:-$2}/rsc-body.XXXXXX")" || return 1
+    n="$(rsc_render_pages "$1" "$2" "$d" "${3:-}")" || { rm -rf "$d"; return 1; }
+    cat "$d/part-${n}.md"; rm -rf "$d"
 }
 
 # ─── rsc_outbound_body <events_jsonl> <state_dir> [status_override] ─────────
-# The rendered body after scope redaction (mirror of _stage_io_redact_outbound).
-# A redactor failure returns 1 with nothing on stdout: never post unredacted.
+# The newest part after scope redaction. A redactor failure returns 1 with
+# nothing on stdout: never post unredacted.
 rsc_outbound_body() {
-    local events="$1" state_dir="$2" override="${3:-}"
-    local body manifest="$state_dir/scope-manifest.md"
-    body="$(rsc_render_body "$events" "$state_dir" "$override")" || return 1
-    if [[ ! -s "$manifest" ]]; then printf '%s' "$body"; return 0; fi
-    if ! declare -F apply_scope_redaction >/dev/null 2>&1; then
-        # shellcheck source=../../core/redaction/scope-redaction.sh
-        source "$_RSC_ROOT/core/redaction/scope-redaction.sh" 2>/dev/null || return 1
-    fi
-    local tin tout
-    tin="$(mktemp "${TMPDIR:-$state_dir}/rsc-in.XXXXXX")" || return 1
-    tout="$(mktemp "${TMPDIR:-$state_dir}/rsc-out.XXXXXX")" || { rm -f "$tin"; return 1; }
-    printf '%s' "$body" > "$tin"
-    if apply_scope_redaction "$tin" "$tout" "$manifest" "" "0" >/dev/null 2>&1; then
-        cat "$tout"; rm -f "$tin" "$tout"; return 0
-    fi
-    rm -f "$tin" "$tout"
-    return 1
+    local d n
+    d="$(mktemp -d "${TMPDIR:-$2}/rsc-out.XXXXXX")" || return 1
+    n="$(rsc_outbound_pages "$1" "$2" "$d" "${3:-}")" || { rm -rf "$d"; return 1; }
+    cat "$d/part-${n}.md"; rm -rf "$d"
 }
 
 # ─── rsc_cancel_status [<started_iso>] (#2166) ──────────────────────────────

@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27)
+**Status:** Accepted (2026-10-27); amended 2026-10-28 (§3: test-author takes requirement-findings)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -27,10 +27,12 @@ The prompt was not enough. A stage should not be handed what its job does not us
    |---|---|
    | plan | ask |
    | design | ask, requirement-findings |
-   | test-author | ask, tests, code-findings — never `change`: it does not see the code it is testing |
+   | test-author | ask, tests, requirement-findings, code-findings — never `change`: it does not see the code it is testing |
    | build | ask, tests, change, requirement-findings, code-findings |
    | issue-acceptance | ask, change, code-findings |
    | review lenses, monitor | ask, change |
+
+   *Amended 2026-10-28:* test-author takes `requirement-findings`. Without it, a finding that a test misses a requirement (#1944: "R-4's test builds no `persist` stage") reached build, which may not edit the acceptance tests, and design, which does not run inside the build-and-test loop — so no stage in that loop could answer it, and every round repeated it.
 
 4. **`takes:` is what a stage looks for, not what it needs.** A topic with nothing in it is left out of the prompt. A stage that cannot work without something checks for it itself and says so (test-author refuses to run without the design's requirements).
 5. **A stage answers only the findings it is given** (amends ADR-068 §6). Since it is given only the topics it takes, the findings it answers are those.
