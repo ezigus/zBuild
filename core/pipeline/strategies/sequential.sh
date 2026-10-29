@@ -59,12 +59,19 @@ _strategy_run_sequential() {
             }
 
             prc=0
-            orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || prc=$?
+            orch_collect "$pool_id" --timeout "$(template_stage_time_limit "$stage")" || prc=$?
             rm -f "$wu" 2>/dev/null || true
 
             if [[ $prc -ne 0 ]]; then
-                warn "sequential: stage=$stage role=$role platform=$platform failed (rc=$prc)" || true
-                orch_shutdown "$pool_id" 2>/dev/null || true
+                if [[ "${_ORCH_COLLECT_OUTCOME:-}" == "timed_out" ]]; then
+                    local _seq_limit; _seq_limit="$(template_stage_time_limit "$stage")"
+                    warn "sequential: stage '${stage}' timed out after ${_seq_limit}s" || true
+                    orch_shutdown "$pool_id" 2>/dev/null || true
+                    _ZB_STRATEGY_OUTCOME="timed_out"
+                else
+                    warn "sequential: stage=$stage role=$role platform=$platform failed (rc=$prc)" || true
+                    orch_shutdown "$pool_id" 2>/dev/null || true
+                fi
                 return 1
             fi
 

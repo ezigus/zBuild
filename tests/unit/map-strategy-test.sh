@@ -505,7 +505,7 @@ export _MAP_DIM_batch11
 SPEC11_LOG="$TEST_TEMP_DIR/spec11-spy.log"
 : > "$SPEC11_LOG"
 # Spy enforces the REAL backend validation: reject any pool_id > 64 chars or with
-# invalid chars, exactly like orch-bash-parallel/orch-sequential. A rejected spawn
+# invalid chars, exactly like orch-bash-parallel. A rejected spawn
 # returns 1 → the batch would be skipped, so a passing test proves truncation works.
 _spec11_orch_spawn() {
     local pid="$1"

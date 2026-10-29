@@ -34,11 +34,13 @@ assert_file_exists "SPEC-0: the integration test exists" "$T"
 # ── SPEC-1: the hard-kill case pins the engine's release budget ────────────
 # Unpinned, it is the 30s default and the test is racing a number it does not
 # control. Pinning makes teardown's worst case knowable.
+# After #1801 the pin is _SPEC5_STAGE_TIMEOUT (the template `timeout_s:` for the
+# release stage), replacing ZBUILD_RELEASE_TIMEOUT which the engine no longer reads.
 _spec5_block="$(sed -n '/SPEC-5: exit path = external hard kill/,/SPEC-6/p' "$T")"
-if grep -q 'ZBUILD_RELEASE_TIMEOUT' <<< "$_spec5_block"; then
-    assert_pass "SPEC-1: the hard-kill case pins ZBUILD_RELEASE_TIMEOUT"
+if grep -q '_SPEC5_STAGE_TIMEOUT' <<< "$_spec5_block"; then
+    assert_pass "SPEC-1: the hard-kill case pins _SPEC5_STAGE_TIMEOUT (template timeout_s: for release)"
 else
-    assert_fail "SPEC-1: the hard-kill case pins ZBUILD_RELEASE_TIMEOUT" \
+    assert_fail "SPEC-1: the hard-kill case pins _SPEC5_STAGE_TIMEOUT (template timeout_s: for release)" \
         "unpinned — teardown may take the 30s default per stage while the test force-kills far sooner"
 fi
 
@@ -57,13 +59,13 @@ fi
 # this path, each bounded independently, so the grace must clear 3x the per-hook
 # bound. Evaluated rather than pattern-matched: the grace is an expression, and a
 # guard that only recognised a literal would pass the moment someone wrote one.
-_pinned="$(grep -oE '_SPEC5_RELEASE_TIMEOUT=[0-9]+' <<< "$_spec5_block" | head -1 | cut -d= -f2)"
+_pinned="$(grep -oE '_SPEC5_STAGE_TIMEOUT=[0-9]+' <<< "$_spec5_block" | head -1 | cut -d= -f2)"
 _expr="$(grep -oE '_SPEC5_KILL_GRACE=\$\(\([^)]*\)\)' <<< "$_spec5_block" | head -1 | sed -E 's/^_SPEC5_KILL_GRACE=\$\(\((.*)\)\)$/\1/')"
 _graceval=""
 if [[ -n "$_pinned" && -n "$_expr" ]]; then
     # Only our own arithmetic reaches here, and only after the two greps above
     # matched the exact shapes; nothing external is evaluated.
-    _SPEC5_RELEASE_TIMEOUT="$_pinned"
+    _SPEC5_STAGE_TIMEOUT="$_pinned"
     _graceval="$(( _expr ))" 2>/dev/null || _graceval=""
 fi
 if [[ -n "$_graceval" ]] && (( _graceval >= _pinned * 3 )); then

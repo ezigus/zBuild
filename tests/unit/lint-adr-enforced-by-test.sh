@@ -83,6 +83,60 @@ FORM="$REPO_ROOT/.github/ISSUE_TEMPLATE/change.yml"
 _a8="$(awk '/^[[:space:]]*- type:/{inb=0} /^[[:space:]]*id:[[:space:]]*adr[[:space:]]*$/{inb=1} inb&&/^[[:space:]]*required:[[:space:]]*true/{print "yes"; exit}' "$FORM" 2>/dev/null)"
 assert_eq "[A8] the issue form requires the ADR § field" "yes" "$_a8"
 
+# ── SPEC-7 (#1801): ADR-011 and ADR-017 have Enforced by sections, not in baseline
+# Verifies: (a) each ADR file carries an `## Enforced by` section, and
+#           (b) neither file appears in config/adr-enforcement-baseline.txt.
+# "must pass after this change; it need not fail before."
+ADR_011="$REPO_ROOT/docs/adr/ADR-011-pluggable-backends.md"
+ADR_017="$REPO_ROOT/docs/adr/ADR-017-per-stage-router-config.md"
+BASELINE="$REPO_ROOT/config/adr-enforcement-baseline.txt"
+if grep -q '## Enforced by' "$ADR_011" 2>/dev/null; then
+    assert_pass "[#1801/SPEC-7] ADR-011 carries an ## Enforced by section"
+else
+    assert_fail "[#1801/SPEC-7] ADR-011 must carry an ## Enforced by section" \
+        "no '## Enforced by' found in $ADR_011"
+fi
+if grep -q '## Enforced by' "$ADR_017" 2>/dev/null; then
+    assert_pass "[#1801/SPEC-7] ADR-017 carries an ## Enforced by section"
+else
+    assert_fail "[#1801/SPEC-7] ADR-017 must carry an ## Enforced by section" \
+        "no '## Enforced by' found in $ADR_017"
+fi
+if ! grep -q 'ADR-011' "$BASELINE" 2>/dev/null; then
+    assert_pass "[#1801/SPEC-7] ADR-011.md is not in the enforcement baseline (it has its section)"
+else
+    assert_fail "[#1801/SPEC-7] ADR-011.md must be removed from config/adr-enforcement-baseline.txt" \
+        "ADR-011 still listed in $BASELINE; remove the entry once the ## Enforced by section is added"
+fi
+if ! grep -q 'ADR-017' "$BASELINE" 2>/dev/null; then
+    assert_pass "[#1801/SPEC-7] ADR-017.md is not in the enforcement baseline (it has its section)"
+else
+    assert_fail "[#1801/SPEC-7] ADR-017.md must be removed from config/adr-enforcement-baseline.txt" \
+        "ADR-017 still listed in $BASELINE; remove the entry once the ## Enforced by section is added"
+fi
+
+# Verify each ADR's ## Enforced by section maps every individual § statement to
+# a test file. A section that exists but has § lines without tests/ references
+# does not satisfy the per-statement coverage the requirement specifies.
+# awk reads the file directly — no pipeline, no SIGPIPE risk.
+_adr011_unmapped="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p && /^- §/ && !/tests\//{print}' "$ADR_011" 2>/dev/null || true)"
+_adr011_stmt_count="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p && /^- §/{c++} END{print c+0}' "$ADR_011" 2>/dev/null || printf '0')"
+if [[ "${_adr011_stmt_count}" -gt 0 ]] && [[ -z "$_adr011_unmapped" ]]; then
+    assert_pass "[#1801/SPEC-7] ADR-011 ## Enforced by: every § statement maps to a test file (${_adr011_stmt_count} statement(s))"
+else
+    assert_fail "[#1801/SPEC-7] ADR-011 ## Enforced by: every § statement must name a test file" \
+        "§ count: ${_adr011_stmt_count}; unmapped lines: '${_adr011_unmapped:-none found}'"
+fi
+
+_adr017_unmapped="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p && /^- §/ && !/tests\//{print}' "$ADR_017" 2>/dev/null || true)"
+_adr017_stmt_count="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p && /^- §/{c++} END{print c+0}' "$ADR_017" 2>/dev/null || printf '0')"
+if [[ "${_adr017_stmt_count}" -gt 0 ]] && [[ -z "$_adr017_unmapped" ]]; then
+    assert_pass "[#1801/SPEC-7] ADR-017 ## Enforced by: every § statement maps to a test file (${_adr017_stmt_count} statement(s))"
+else
+    assert_fail "[#1801/SPEC-7] ADR-017 ## Enforced by: every § statement must name a test file" \
+        "§ count: ${_adr017_stmt_count}; unmapped lines: '${_adr017_unmapped:-none found}'"
+fi
+
 _reset; _adr ADR-908-x "Accepted" 'Covered by the unit tests, see the suite.'; _lint
 assert_eq "[A9] a section that names no test fails" "1" "$rc"
 assert_contains "[A9] it says the section names no test" "$out" "names no test"

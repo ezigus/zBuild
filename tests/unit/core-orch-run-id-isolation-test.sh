@@ -71,19 +71,6 @@ export ZBUILD_POOL_ROOT="/tmp/mypools-898"
 assert_eq "P3 ZBUILD_POOL_ROOT overrides" \
     "/tmp/mypools-898/zbuild-pool-poolX" "$(_orch_par_pool_dir poolX)"
 
-# ─── Sequential backend uses the same per-run namespacing (#898) ─────────────
-unset ZBUILD_POOL_ROOT
-# shellcheck disable=SC1091
-source "$REPO_ROOT/plugins/tool/orch-sequential/plugin.sh"
-export ZBUILD_RUN_ID="run-AAA"
-sp_a="$(_orch_seq_pool_dir poolX)"
-assert_contains "P4 sequential pool dir is per-run (run-AAA)" \
-    "$sp_a" "run-AAA/pool/zbuild-pool-poolX"
-export ZBUILD_POOL_ROOT="/tmp/seqpools-898"
-assert_eq "P5 sequential ZBUILD_POOL_ROOT overrides" \
-    "/tmp/seqpools-898/zbuild-pool-poolX" "$(_orch_seq_pool_dir poolX)"
-unset ZBUILD_POOL_ROOT
-
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

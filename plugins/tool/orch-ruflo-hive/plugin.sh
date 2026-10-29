@@ -32,8 +32,8 @@ _orch_hive_pool_dir() {
     # goal's) area, so they sit inside something a reclaimer can name.
     # ZBUILD_STATE_DIR already resolves to runs/<run_id>/.
     #
-    # #2004: this backend was missed when orch-bash-parallel and orch-sequential
-    # were fixed, and it was worse than either — a bare ${TMPDIR} path with no
+    # #2004: this backend was missed when orch-bash-parallel was fixed, and it was
+    # worse — a bare ${TMPDIR} path with no
     # per-run namespace, so two concurrent runs shared a pool id space, and
     # `zbuild-hive-*` was absent from ZBUILD_TMPDIR_PATTERNS, so nothing swept
     # it. It also ignored ZBUILD_POOL_ROOT, which both other backends honour.

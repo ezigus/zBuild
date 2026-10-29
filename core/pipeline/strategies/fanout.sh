@@ -76,15 +76,22 @@ _strategy_run_fanout() {
     if [[ "$dispatch_count" -gt 0 ]]; then
         local collect_rc=0
         _ORCH_COLLECT_OUTCOME=""
-        orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
+        orch_collect "$pool_id" --timeout "$(template_stage_time_limit "$stage")" || collect_rc=$?
 
-        # orch_collect: 0 = all passed; 1 otherwise, partial named on
+        # orch_collect: 0 = all passed; 1 otherwise, partial/timed_out named on
         # _ORCH_COLLECT_OUTCOME (#1850 — it was rc 2).
         if [[ $collect_rc -eq 0 ]]; then
             success_count=$((success_count + 1))
             # #1906: no artifact check here. Each work unit calls plugin_hook_call
             # (strategies/common.sh), so scan_plugin_outputs has already enforced
             # every declared output for every dispatched plugin.
+        elif [[ "${_ORCH_COLLECT_OUTCOME:-}" == "timed_out" ]]; then
+            local _fanout_limit; _fanout_limit="$(template_stage_time_limit "$stage")"
+            warn "fanout: stage '${stage}' timed out after ${_fanout_limit}s" || true
+            _strategy_cleanup_work_units "${work_units[@]+"${work_units[@]}"}"
+            orch_shutdown "$pool_id" 2>/dev/null || true
+            _ZB_STRATEGY_OUTCOME="timed_out"
+            return 1
         elif [[ "${_ORCH_COLLECT_OUTCOME:-}" == "partial" ]]; then
             success_count=$((success_count + 1))
             fail_count=$((fail_count + 1))

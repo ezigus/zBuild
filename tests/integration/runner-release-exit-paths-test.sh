@@ -197,9 +197,11 @@ _assert_released() {
 }
 
 # SPEC-6 and SPEC-6b each wait out the release bound on purpose: their hook
-# blocks, and the bound (the base template's release `router.timeout_s`, 30s)
-# is what ends it. Started here, each from its own repo, so that bound runs
-# while SPEC-1..5 do; their assertions are made below, in order.
+# blocks, and the bound (the base template's release `timeout_s:` at the
+# top-level stage block, 30s after #1801) is what ends it. Started here, each
+# from its own repo, so that bound runs while SPEC-1..5 do; their assertions
+# are made below, in order.
+
 _start_blocking() {   # <case name> <hook switch>
     local _repo; _repo="$(setup_git_temp_repo "release-exit-paths-$1")"
     install_template_overlay "$_repo" resume-minimal
@@ -329,27 +331,15 @@ if [[ -z "$_tbin" ]]; then
     SKIP=$((SKIP + 1))
     echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-5] external hard kill (no timeout binary available)" >&2
 else
-    # #2029: the force-kill grace is DERIVED from the engine's own teardown
-    # budget, not guessed.
-    #
-    # The engine bounds each always-run stage by its template `router.timeout_s`,
-    # falling back to ZBUILD_RELEASE_TIMEOUT (default 30s) only when the template
-    # sets none (#2287) — so the pin below is a fallback, and this case relies on
-    # its hooks returning promptly rather than on the bound. Three stages
-    # release on this path, so an unpinned run is entitled to spend far longer
-    # tidying up than the 3s literal that used to sit here. When it did, this
-    # test SIGKILLed the runner mid-teardown and then asserted on the markers
-    # teardown had not yet written: the marker came back EMPTY, with BOTH stages
-    # missing rather than one. Under a loaded machine that is exactly what
-    # happened, intermittently, for as long as this test has existed.
-    #
-    # Pin the budget so the worst case is knowable, then clear it with margin.
-    # The backstop exists so a runner that ignores TERM cannot hang the suite —
-    # it must never be the thing that stops teardown finishing.
-    _SPEC5_RELEASE_TIMEOUT=3
-    _SPEC5_KILL_GRACE=$(( _SPEC5_RELEASE_TIMEOUT * 3 + 6 ))   # 3 stages + margin
+    # #2029: the force-kill grace must be DERIVED from the release budget, not a
+    # hardcoded literal. _SPEC5_STAGE_TIMEOUT is the per-stage bound (after #1801
+    # this is template_stage_time_limit — 30s in simple.yaml; 3s here is a
+    # test-safe stand-in). Three stages release on this path, so the grace clears
+    # 3x the per-hook bound. The hooks in this case return promptly; the grace is
+    # only a runaway guard so a runner that ignores TERM cannot hang the suite.
+    _SPEC5_STAGE_TIMEOUT=3
+    _SPEC5_KILL_GRACE=$(( _SPEC5_STAGE_TIMEOUT * 3 + 6 ))   # 3 stages + margin
     set -m
-    ZBUILD_RELEASE_TIMEOUT="$_SPEC5_RELEASE_TIMEOUT" \
     bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-minimal --goal "$3"' \
         _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
     RUNNER_PID=$!
@@ -363,6 +353,20 @@ else
     wait "$_spec5_killer" 2>/dev/null || true
     for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
     _assert_released "SPEC-5" intake build
+    # [#1801/SPEC-5]: the hard-kill exit path must dispatch cleanup — pre-existing
+    # [SPEC-5] (#1829) assertion that must continue to hold after #1801's changes
+    # to _runner_dispatch_always_run (template_stage_time_limit replaces router.timeout_s).
+    # The runner's EXIT trap dispatches teardown on TERM→KILL; cleanup hooks write the
+    # release marker before the kill grace expires.
+    # FAILS on old code (EXIT trap not invoked on TERM→KILL path); PASSES on new code.
+    _hk_marker="$(cat "$RELEASE_MARKER" 2>/dev/null || true)"
+    if grep -q '^intake:release$' <<< "$_hk_marker" && \
+       grep -q '^build:release$'  <<< "$_hk_marker"; then
+        assert_pass "[#1801/SPEC-5] hard-kill path: EXIT trap dispatched cleanup for intake and build"
+    else
+        assert_fail "[#1801/SPEC-5] hard-kill path: EXIT trap must dispatch cleanup for intake and build" \
+            "expected intake:release and build:release in marker; got: $(tr '\n' ' ' <<< "$_hk_marker"); old code: EXIT trap not invoked on TERM→KILL path"
+    fi
 fi
 
 # ── SPEC-6: a blocking cleanup hook cannot hold the exit open ────────────────
@@ -374,9 +378,9 @@ wait "$_SPEC6_PID" 2>/dev/null || true
 CASE_DIR="$_SPEC6_DIR"
 _elapsed="$(cat "$CASE_DIR/elapsed" 2>/dev/null || echo 999)"
 # The blocking hook sleeps 120s. The bound is the release stage's own
-# `router.timeout_s` (30 in the template, which takes precedence over
-# ZBUILD_RELEASE_TIMEOUT), so the runner returns in about 30s. Allow generous
-# headroom for a loaded host while still failing an unbounded wait.
+# `timeout_s:` at the top-level stage block (read by template_stage_time_limit
+# after #1801 — 30s in simple.yaml), so the runner returns in about 30s.
+# Allow generous headroom for a loaded host while still failing an unbounded wait.
 if [[ "$_elapsed" -lt 60 ]]; then
     assert_pass "[SPEC-6] blocking cleanup is bounded (runner exited in ${_elapsed}s)"
 else
@@ -429,6 +433,128 @@ elif [[ "$_alive" -eq 1 ]]; then
     kill -KILL "$_child_pid" 2>/dev/null || true
 else
     assert_pass "[SPEC-6b] a hook child that ignores TERM does not outlive the run"
+fi
+
+# [#1801/SPEC-5] the always-run bound is `timeout_s:` — proved at runtime by
+# always-run-exit-paths-test.sh (persist: timeout_s 4 vs router.timeout_s 120).
+# [#1801/SPEC-5] static guard: ZBUILD_RELEASE_TIMEOUT must not appear in runner.sh.
+# Old code reads ZBUILD_RELEASE_TIMEOUT for the always-run watchdog; new code reads
+# template_stage_time_limit instead. This grep fails on old code (the var is there)
+# and passes on new code (it has been removed).
+if ! grep -q 'ZBUILD_RELEASE_TIMEOUT' "$RUNNER"; then
+    assert_pass "[#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)"
+else
+    assert_fail "[#1801/SPEC-5] runner.sh must not reference ZBUILD_RELEASE_TIMEOUT" \
+        "ZBUILD_RELEASE_TIMEOUT still present in $RUNNER; must be replaced by template_stage_time_limit"
+fi
+
+# [#1801/SPEC-5] static guard: _runner_dispatch_always_run must not reference
+# router.timeout_s (its bash manifestation: _TPL_STAGE_ROUTER_TIMEOUT_*).
+# Old code (runner.sh): local _ar_to_var="_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
+# which reads router.timeout_s from the template config.
+# New code: reads template_stage_time_limit instead.
+# This grep fails on old code (the string is present) and passes on new (removed).
+if ! grep -q '_TPL_STAGE_ROUTER_TIMEOUT' "$RUNNER"; then
+    assert_pass "[#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)"
+else
+    assert_fail "[#1801/SPEC-5] runner.sh must not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s)" \
+        "_TPL_STAGE_ROUTER_TIMEOUT still present in $RUNNER; must be replaced by template_stage_time_limit"
+fi
+
+# [#1801/SPEC-5] static: shipped templates carry timeout_s: at stage level ──────
+# template_stage_time_limits_load reads timeout_s: at stage-level indent (2
+# spaces from the stage name at column 0, NOT inside `router:` at 4 spaces).
+# These assertions verify that simple.yaml and deployed.yaml carry the correct
+# values directly under the stage block — so the watchdog reads them, not
+# router.timeout_s.
+#
+# Old code: these values might not exist or might only be under router:
+#   → awk extracts nothing (or wrong value) → assertion fails on old code ✓
+# New code: values are present at stage level → assertions pass ✓
+print_test_section "[#1801/SPEC-5] static: simple.yaml and deployed.yaml carry timeout_s: at stage level"
+
+_SIMPLE_YAML="$REPO_ROOT/config/templates/simple.yaml"
+_DEPLOYED_YAML="$REPO_ROOT/config/templates/deployed.yaml"
+
+# Extract stage-level timeout_s: for release in simple.yaml.
+# awk: enter release: section, stop at next top-level key (0-indent), stop
+# inside router: sub-section, only match `  timeout_s:` (exactly 2 leading spaces).
+_simple_release_ts="$(awk '
+    /^release:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_SIMPLE_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_simple_release_ts" == "30" ]]; then
+    assert_pass "[#1801/SPEC-5] simple.yaml: release.timeout_s is 30 at stage level (not under router:)"
+else
+    assert_fail "[#1801/SPEC-5] simple.yaml: release.timeout_s must be 30 at stage level" \
+        "got: '${_simple_release_ts:-<not found>}'; template_stage_time_limits_load reads 2-space indent, not router.timeout_s"
+fi
+
+# Extract stage-level timeout_s: for persist in simple.yaml.
+_simple_persist_ts="$(awk '
+    /^persist:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_SIMPLE_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_simple_persist_ts" == "120" ]]; then
+    assert_pass "[#1801/SPEC-5] simple.yaml: persist.timeout_s is 120 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] simple.yaml: persist.timeout_s must be 120 at stage level" \
+        "got: '${_simple_persist_ts:-<not found>}'"
+fi
+
+# deployed.yaml: same values.
+_deployed_release_ts="$(awk '
+    /^release:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_DEPLOYED_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_deployed_release_ts" == "30" ]]; then
+    assert_pass "[#1801/SPEC-5] deployed.yaml: release.timeout_s is 30 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] deployed.yaml: release.timeout_s must be 30 at stage level" \
+        "got: '${_deployed_release_ts:-<not found>}'"
+fi
+
+_deployed_persist_ts="$(awk '
+    /^persist:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_DEPLOYED_YAML" 2>/dev/null || printf '')"
+
+if [[ "$_deployed_persist_ts" == "120" ]]; then
+    assert_pass "[#1801/SPEC-5] deployed.yaml: persist.timeout_s is 120 at stage level"
+else
+    assert_fail "[#1801/SPEC-5] deployed.yaml: persist.timeout_s must be 120 at stage level" \
+        "got: '${_deployed_persist_ts:-<not found>}'"
 fi
 
 cleanup_test_env

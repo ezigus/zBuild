@@ -34,6 +34,7 @@ outcome:
 release:
   gate: auto
   roles: [teardown]
+  timeout_s: 2
   router:
     timeout_s: 2
   io:

@@ -254,45 +254,5 @@ else
     assert_fail "G4: pr-result-artifact exact golden match" "assert_golden returned $g4_golden_rc"
 fi
 
-# ─── G5: orch-sequential-capabilities ────────────────────────────────────────
-# plugins/tool/orch-sequential orch_capabilities() output
-# Required fields: backend == "sequential", capabilities array
-print_test_section "G5: orch-sequential-capabilities.golden"
-assert_golden_exists "orch-sequential-capabilities"
-assert_golden_is_valid_json "orch-sequential-capabilities"
-assert_golden_contains "orch-sequential-capabilities" '"backend"'
-assert_golden_contains "orch-sequential-capabilities" '"capabilities"'
-assert_golden_contains "orch-sequential-capabilities" '"sequential"'
-
-g5_content="$(cat "$GOLDEN_DIR/orch-sequential-capabilities.golden" 2>/dev/null || echo '{}')"
-g5_backend="$(printf '%s' "$g5_content" | jq -r '.backend' 2>/dev/null || echo '')"
-if [[ "$g5_backend" == "sequential" ]]; then
-    assert_pass "G5: orch-sequential-capabilities backend == sequential"
-else
-    assert_fail "G5: orch-sequential-capabilities backend == sequential" "got: $g5_backend"
-fi
-
-g5_caps_len="$(printf '%s' "$g5_content" | jq '.capabilities | length' 2>/dev/null || echo '0')"
-if [[ "$g5_caps_len" -gt 0 ]] 2>/dev/null; then
-    assert_pass "G5: orch-sequential-capabilities has non-empty capabilities array"
-else
-    assert_fail "G5: orch-sequential-capabilities has non-empty capabilities array" "length: $g5_caps_len"
-fi
-
-# Verify actual plugin output matches golden (source plugin to call orch_capabilities)
-source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/plugins/tool/orch-sequential/plugin.sh"
-g5_live_output="$(orch_capabilities)"
-set +e
-assert_golden "orch-sequential-capabilities" "$g5_live_output"
-g5_golden_rc=$?
-set -e
-if [[ $g5_golden_rc -eq 0 ]]; then
-    assert_pass "G5: orch-sequential live orch_capabilities() matches golden"
-else
-    assert_fail "G5: orch-sequential live orch_capabilities() matches golden" \
-        "assert_golden returned $g5_golden_rc; live output: $g5_live_output"
-fi
-
 print_test_results
 exit $((FAIL > 0))

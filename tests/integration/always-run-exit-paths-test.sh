@@ -238,6 +238,84 @@ fi
 assert_file_exists "[SPEC-5] the hanging hook was actually dispatched" "$RELEASE_ENTERED"
 assert_file_not_exists "[SPEC-5] the hanging hook was killed before completing" "$RELEASE_MARKER"
 
+# ─── [#1801/SPEC-5]: persist always_run stage bounded by timeout_s: (not 120s) ─
+# _runner_dispatch_always_run must use template_stage_time_limit (top-level
+# timeout_s:) instead of ZBUILD_RELEASE_TIMEOUT / router.timeout_s.
+# The fixture template sets persist.timeout_s: 4 (new code reads) and
+# persist.router.timeout_s: 120 (old code reads ZBUILD_RELEASE_TIMEOUT / router.timeout_s).
+# A blocking persist hook must be killed in ~4s, NOT ~120s.
+# FAILS on old code (elapsed ~120s > 20), PASSES on new code (elapsed ~4s < 20).
+print_test_section "[#1801/SPEC-5] persist always_run watchdog uses timeout_s: not router.timeout_s: 120"
+mkdir -p "$PLUGINS_ROOT/tool/persist"
+cat > "$PLUGINS_ROOT/tool/persist/manifest.yaml" <<'MF'
+id: persist
+name: Persist Stub Spec5
+kind: tool
+version: 0.0.1
+hooks:
+  run: persist_run
+requires:
+  core:
+    - redaction
+provides:
+  role: persist
+MF
+_SPEC5P_ENTERED="$TEST_TEMP_DIR/spec5p-entered"
+_SPEC5P_DONE="$TEST_TEMP_DIR/spec5p-done"
+cat > "$PLUGINS_ROOT/tool/persist/plugin.sh" <<PLUG
+persist_run() {
+    : > "${_SPEC5P_ENTERED}"
+    sleep 120
+    : > "${_SPEC5P_DONE}"
+    return 0
+}
+PLUG
+
+_spec5p_repo="$(setup_git_temp_repo "always-run-spec5p")"
+install_template_overlay "$_spec5p_repo" always-run-minimal
+if [[ -d "$_spec5p_repo/.git/info" ]] && \
+   ! grep -qxF '/.zbuild/' "$_spec5p_repo/.git/info/exclude" 2>/dev/null; then
+    printf '/.zbuild/\n' >> "$_spec5p_repo/.git/info/exclude"
+fi
+# A whole new-shape template (the resolver uses one verbatim): the fixture,
+# renamed, with persist added to always_run and its section appended.
+awk '/^id: always-run-minimal$/ { print "id: always-run-spec5p"; next }
+     { print } /^  - release$/ { print "  - persist" }' \
+    "$REPO_ROOT/tests/fixtures/templates/always-run-minimal.yaml" \
+    > "$_spec5p_repo/.zbuild/templates/always-run-spec5p.yaml"
+cat >> "$_spec5p_repo/.zbuild/templates/always-run-spec5p.yaml" <<'YAML'
+
+persist:
+  gate: auto
+  roles: [persist]
+  timeout_s: 4
+  router:
+    timeout_s: 120
+  io:
+    destinations: [file]
+    tail_lines: 50
+YAML
+_arm_outcome "" 0
+_arm_release
+rm -f "$_SPEC5P_ENTERED" "$_SPEC5P_DONE"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-spec5p"
+export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/spec5p-events.jsonl"
+mkdir -p "$ZBUILD_STATE_DIR"
+_spec5p_t0=$(date +%s)
+set +e
+( cd "$_spec5p_repo" && bash "$RUNNER" --template always-run-spec5p \
+    --goal "spec5-persist" ) >"$TEST_TEMP_DIR/spec5p.out" 2>&1
+set -e
+_spec5p_elapsed=$(( $(date +%s) - _spec5p_t0 ))
+if [[ "$_spec5p_elapsed" -lt 20 ]]; then
+    assert_pass "[#1801/SPEC-5] persist always_run watchdog bounds at timeout_s: 4 (exited in ${_spec5p_elapsed}s; old code: router.timeout_s: 120)"
+else
+    assert_fail "[#1801/SPEC-5] persist always_run watchdog must use timeout_s: 4" \
+        "runner took ${_spec5p_elapsed}s; expected < 20s (timeout_s: 4); old code reads router.timeout_s: 120 → ~120s"
+fi
+assert_file_exists "[#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)" "$_SPEC5P_ENTERED"
+assert_file_not_exists "[#1801/SPEC-5] persist hook killed before completing (bounded by timeout_s: 4, not 120s)" "$_SPEC5P_DONE"
+
 # ─── [SPEC-6][guard] an unresolvable always-run role is LOUD ───────────────
 # The code this replaces did `[[ -d "$_td_dir" ]] || return 0` — a missing
 # plugin was a silent no-op. An always-run stage that cannot be resolved has not
@@ -260,5 +338,37 @@ assert_event_emitted "[SPEC-6] stage.always_run.unresolved is emitted" \
 # And it must not change the run's fate — an always-run stage never decides the
 # verdict, including when it could not be found.
 assert_eq "[SPEC-6] an unresolvable always-run stage does not fail the run" "0" "$_unres_rc"
+
+# [#1801/SPEC-5] static: always-run-minimal.yaml carries timeout_s: at stage level
+# template_stage_time_limits_load matches `timeout_s:` at stage-level indent
+# (exactly 2 spaces from the stage name at column 0). It must NOT be under
+# `router:` (4-space indent) — that is the old path this change removes.
+#
+# Old code: always-run-minimal.yaml might only have timeout_s inside router: → awk
+#   finds nothing at 2-space indent → extracted value empty/wrong → FAILS ✓
+# New code: timeout_s: 2 is present as a direct child of release: → PASSES ✓
+print_test_section "[#1801/SPEC-5] static: always-run-minimal.yaml release.timeout_s at stage level"
+
+_ARM_FIXTURE="$REPO_ROOT/tests/fixtures/templates/always-run-minimal.yaml"
+
+# Extract stage-level timeout_s: for release: (exactly 2-space indent, not inside router:)
+_arm_release_ts="$(awk '
+    /^release:/{in_r=1;in_sub=0;next}
+    in_r && /^[a-zA-Z]/{in_r=0}
+    in_r && /^  [a-zA-Z]/ && !/^  timeout_s:/{
+        if ($0 ~ /^  router:/) { in_sub=1 } else { in_sub=0 }
+        next
+    }
+    in_r && !in_sub && /^  timeout_s:/{
+        sub(/^[[:space:]]*timeout_s:[[:space:]]*/, ""); print; exit
+    }
+' "$_ARM_FIXTURE" 2>/dev/null || printf '')"
+
+if [[ "$_arm_release_ts" == "2" ]]; then
+    assert_pass "[#1801/SPEC-5] always-run-minimal.yaml: release.timeout_s is 2 at stage level (not under router:)"
+else
+    assert_fail "[#1801/SPEC-5] always-run-minimal.yaml: release.timeout_s must be 2 as direct stage child" \
+        "got: '${_arm_release_ts:-<not found>}'; old code reads router.timeout_s; template_stage_time_limits_load needs 2-space indent"
+fi
 
 print_test_results
