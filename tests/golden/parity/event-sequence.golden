@@ -57,6 +57,7 @@ plugin.run.complete
 stage.complete
 artifact.snapshot.saved
 stage.start
+parallel.group.start
 stage.previous_work.written
 plugin.run.start
 redaction.applied
@@ -66,6 +67,8 @@ model.outcome
 stage.io.captured
 plugin.result
 plugin.run.complete
+parallel.member.dispatch.complete
+parallel.group.complete
 stage.complete
 artifact.snapshot.saved
 stage.start

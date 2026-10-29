@@ -177,8 +177,9 @@ assert_eq "[SPEC-3] review_lenses elements csv" \
     "security,performance,red-team,correctness,scope,sre" \
     "${_TPL_MAP_ELEMENTS_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses io_dests"     "file" "${_TPL_STAGE_IO_DESTS_review_lenses:-}"
-assert_eq "[SPEC-3] review_lenses router timeout"   "300" "${_TPL_STAGE_ROUTER_TIMEOUT_review_lenses:-}"
-assert_eq "[SPEC-3] review_lenses router max_turns" "25"  "${_TPL_STAGE_ROUTER_MAX_TURNS_review_lenses:-}"
+# 900 s a call, no turn cap, as build (#1801/#1944 lenses were cut off at 300 s).
+assert_eq "[SPEC-3] review_lenses router timeout"   "900" "${_TPL_STAGE_ROUTER_TIMEOUT_review_lenses:-}"
+assert_eq "[SPEC-3] review_lenses router max_turns" "0"   "${_TPL_STAGE_ROUTER_MAX_TURNS_review_lenses:-}"
 
 # #2368: review-aggregator is retired — the engine sums up the lenses.
 assert_eq "[SPEC-3] review-aggregator stage removed" "" "${_TPL_STAGE_ROLES_review_aggregator:-}"

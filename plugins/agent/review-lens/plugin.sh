@@ -351,7 +351,8 @@ _review_lens_run_inner() {
         _router_rc_classify "$router_rc" _rl_v _rl_r 2>/dev/null || true
         _rl_disp="$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")"
         _rl_notes="$(_review_lens_saved_notes "$artifact_dir")"
-        _review_lens_write_result "$out" "$_rl_disp" "router_error" "$_rl_notes"
+        _review_lens_write_result "$out" "$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")" "router_error" \
+            "$_rl_notes"
         _rl_head="the model call failed, so this lens reviewed nothing"
         _rl_body="Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
         # A lens cut off by its time limit says so, and hands on what it noted
