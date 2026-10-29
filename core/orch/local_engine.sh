@@ -82,6 +82,11 @@ _orch_local_dispatch_workunit() {
 
     # Background subshell: writes inner work-unit PID, traps on exit to
     # propagate signals, then waits for inner and writes .exit file.
+    # `set -m` makes it its own process group (PGID == its PID), so
+    # _orch_local_kill_slot's group kill reaches everything the unit started
+    # (#1801, as in route.sh #2056). Opened and closed tightly.
+    local _had_m=false; [[ $- == *m* ]] && _had_m=true
+    set -m
     (
         local rc=0 inner=0
         # #2108: dispatched from a `<<< "$roles_out"` loop — never its stdin.
@@ -94,6 +99,7 @@ _orch_local_dispatch_workunit() {
         echo "$rc" > "${result_base}.exit"
     ) &
     local worker_pid=$!
+    $_had_m || set +m
     echo "$worker_pid" > "${pool_dir}/${pid_subdir}/${slot_id}.pid"
     _ORCH_LOCAL_LAST_SLOT_ID="$slot_id"
     echo "$slot_id"
@@ -133,7 +139,6 @@ _orch_local_collect_results() {
         while [[ ! -f "${result_base}.exit" ]]; do
             if [[ "$timeout_s" -gt 0 && "${EPOCHSECONDS:-$(date +%s)}" -ge "$deadline" ]]; then
                 _orch_local_kill_slot TERM "$wrapper_pid" "$inner_pid"
-                _orch_local_kill_slot KILL "$wrapper_pid" "$inner_pid"
                 echo "124" > "${result_base}.exit"
                 timed_out_flag=true
                 break

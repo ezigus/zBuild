@@ -104,23 +104,19 @@ _s6rt_pool="$TEST_TEMP_DIR/spec6-rt-pool"
 mkdir -p "$_s6rt_pool/pids" "$_s6rt_pool/results"
 _s6rt_child_file="$TEST_TEMP_DIR/spec6-rt-child.pid"
 
-# Start the wrapper as a NEW process group (set -m → background job is group leader).
-# The wrapper forks a child that ignores TERM and records its PID. The wrapper
-# itself waits and never writes a .exit file, so _orch_local_collect_results will
-# time out and call _orch_local_kill_slot to kill the slot.
-set -m
-(
-    ( trap '' TERM; printf '%s\n' "$BASHPID" > "$_s6rt_child_file"; sleep 120 ) &
-    _s6rt_inner=$!
-    trap ':' TERM
-    wait "$_s6rt_inner" 2>/dev/null || true
-) &
-_s6rt_wrapper_pid=$!
-set +m
-
-printf '%s\n' "$_s6rt_wrapper_pid" > "$_s6rt_pool/pids/spec6rt.pid"
-# No .inner_pid file: _orch_local_kill_slot only receives wrapper_pid, so the
-# child can be reached only via process-group kill (the new code path).
+# The work unit goes through the engine's own dispatch: a hand-made wrapper
+# started under `set -m` is a group leader by construction, and so proves
+# nothing about the wrapper the engine really starts (#2423 review). The unit
+# forks a child that ignores TERM, records its pid, and waits forever, so
+# collect times out and takes the kill path.
+_s6rt_unit="$TEST_TEMP_DIR/spec6-rt-unit.sh"
+cat > "$_s6rt_unit" <<UNIT
+#!/usr/bin/env bash
+( trap '' TERM; printf '%s\\n' "\$BASHPID" > "$_s6rt_child_file"; sleep 120 ) &
+wait
+UNIT
+chmod +x "$_s6rt_unit"
+_orch_local_dispatch_workunit "$_s6rt_pool" "pids" "$_s6rt_unit" "spec6rt" >/dev/null
 
 # Wait for the child pid to be recorded (up to 5 s).
 for _ in $(seq 1 50); do [[ -s "$_s6rt_child_file" ]] && break; sleep 0.1; done
@@ -145,7 +141,7 @@ if [[ -z "$_s6rt_child_pid" ]]; then
         "no pid written to $_s6rt_child_file (wrapper may not have started)"
 elif [[ "$_s6rt_alive" -eq 1 ]]; then
     assert_fail "[#1801/SPEC-6] TERM-ignoring child must not outlive the watchdog" \
-        "pid $_s6rt_child_pid still alive; old code: direct kill misses TERM-ignoring children; new code: zbuild_pg_kill kills the group"
+        "pid $_s6rt_child_pid still alive: the group kill did not reach the work unit's child"
     kill -KILL "$_s6rt_child_pid" 2>/dev/null || true
     wait "$_s6rt_child_pid" 2>/dev/null || true
 else
