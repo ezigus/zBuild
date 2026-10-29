@@ -159,3 +159,40 @@ _route_resolve_retries() {
         printf '0'
     fi
 }
+
+# ADR-054 §11 (#1944): per-run wall-clock limit.
+# Priority: template max_run_s > ZBUILD_MAX_RUN_S > 20700 s default.
+# A non-integer or non-positive value in either source is refused (rc=1).
+# Result written to global _RUNNER_MAX_RUN_S.
+_runner_resolve_run_limit_s() {
+    local _tpl_v="" _env_v=""
+    # Template layer — calls template_max_run_s() when available.
+    if declare -F template_max_run_s >/dev/null 2>&1; then
+        _tpl_v="$(template_max_run_s 2>/dev/null || true)"
+    fi
+    if [[ -n "$_tpl_v" ]]; then
+        if [[ "$_tpl_v" =~ ^[0-9]+$ ]] && [[ "$_tpl_v" -gt 0 ]]; then
+            _RUNNER_MAX_RUN_S="$_tpl_v"
+            return 0
+        else
+            printf 'run limit misconfigured: template max_run_s must be a positive integer (got: %s)\n' \
+                "$_tpl_v" >&2
+            return 1
+        fi
+    fi
+    # Env layer.
+    _env_v="${ZBUILD_MAX_RUN_S:-}"
+    if [[ -n "$_env_v" ]]; then
+        if [[ "$_env_v" =~ ^[0-9]+$ ]] && [[ "$_env_v" -gt 0 ]]; then
+            _RUNNER_MAX_RUN_S="$_env_v"
+            return 0
+        else
+            printf 'run limit misconfigured: ZBUILD_MAX_RUN_S must be a positive integer (got: %s)\n' \
+                "$_env_v" >&2
+            return 1
+        fi
+    fi
+    # Default.
+    _RUNNER_MAX_RUN_S=20700
+    return 0
+}

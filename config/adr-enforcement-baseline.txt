@@ -48,7 +48,6 @@ ADR-048-release-versioning-signing.md
 ADR-049-vision-document-standard.md
 ADR-052-engine-owned-run-worktree.md
 ADR-053-test-flake-policy.md
-ADR-054-stage-contract.md
 ADR-055-inter-stage-data-contract-v2.md
 ADR-056-run-cleanup-only-lifecycle.md
 ADR-058-engine-write-boundary.md

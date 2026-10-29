@@ -2708,3 +2708,18 @@ template_config_persona() {
         }
     ' "${_TPL_SOURCE_FILE}" 2>/dev/null
 }
+
+# ADR-054 §11 (#1944): top-level run wall-clock limit. Reads `max_run_s:` from
+# the loaded template source file. Returns empty when the key is absent so the
+# caller can detect no-override. Follows the same pattern as other scalar knobs
+# (template_stage_negctl_timeout) that read lazily from _TPL_SOURCE_FILE.
+template_max_run_s() {
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk '
+        /^max_run_s:[[:space:]]/ {
+            sub(/^max_run_s:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
