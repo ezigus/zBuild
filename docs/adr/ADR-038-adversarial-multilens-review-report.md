@@ -211,3 +211,13 @@ merge of their results into one report — `review-aggregator` and `review-repor
 engine writes the lens group's summary and says whether a lens was flagged (ADR-040, #2368 part 2). The
 PR body no longer carries review findings. Enforced by `tests/unit/engine-combines-map-test.sh` M1, M2
 and `plugins/tool/pr-open/tests/pr-open-body-test.sh` B2.
+
+## Amendment (2026-10-29): a lens is given the code in full and the tests by name
+
+Every lens still gets the same evidence (amendment 2026-10-12), but no longer all of the diff: each
+changed file's diff is in the prompt except the tests', which are listed with their lines added
+and removed. A lens that needs a test opens it in the worktree with its own tools. Which paths
+are tests is the repository's list (`.zbuild/test-paths.txt`, else the engine's; ADR-069 §10).
+On #1944 the test diffs were 68 KB of a 98 KB diff, read by every lens before it could start;
+five of six then ran out of time. Enforced by
+`plugins/agent/review-lens/tests/review-lens-evidence-test.sh`.

@@ -125,41 +125,86 @@ _map_unit_element() {
     if [[ "$2" -gt 1 ]]; then printf -v "$1" '%s.%s' "$3" "$4"; else printf -v "$1" '%s' "$4"; fi
 }
 
-# _map_write_summary <stage> <state_file> <env_target> <n> <plugin_dir…> <element…>
+# _map_write_summary <stage> <state_file> <env_target> <dimension> <n> <plugin_dir…> <element…>
 # #2368: the engine sums up a map group — every element, its outcome and its
 # one-line reason, read from the element's own primary result — into
 # artifacts/<stage>-summary.md, and tells later stages whether any element
 # failed (ZBUILD_RUN_FLAGGED=yes|no). Fail-open: a diagnostic never fails the group.
+# Its first line says whether every element finished — a pass or a fail is a
+# finish; anything else (timed_out, an error, no result) is not — and
+# _ZB_MAP_UNFINISHED keeps that line for the runner when one did not.
+# Each member's row on the status comment is closed with its own outcome and
+# what it reported (parallel.member.dispatch.complete under its seq).
 _map_write_summary() {
-    local stage="$1" state_file="$2" env_target="$3" n="$4"; shift 4
+    local stage="$1" state_file="$2" env_target="$3" dimension="$4" n="$5"; shift 5
     local -a plugins=("${@:1:$n}") elems=("${@:$((n + 1)):$n}")
-    local state_dir art i raw res line body="" flagged=no outcome reason
+    local state_dir art i raw res line body="" flagged=no outcome reason sum
+    local -a unfinished=()
+    _ZB_MAP_UNFINISHED=""
     state_dir="$(dirname "$state_file")"; art="${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}"
     declare -F _registry_output_path_rows >/dev/null 2>&1 \
         || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../plugin-registry" && pwd)/output-paths.sh" 2>/dev/null || true
+    declare -F manifest_graph_get_outputs >/dev/null 2>&1 \
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../scripts/lib" && pwd)/manifest-graph.sh" 2>/dev/null || true
     for (( i = 0; i < n; i++ )); do
         raw="$(_registry_output_path_rows "${plugins[$i]}/manifest.yaml" 2>/dev/null | awk -F'\t' '$2=="true"{print $1; exit}')"
-        res=""
-        if [[ -n "$raw" ]]; then
-            if [[ -n "$env_target" ]]; then
-                res="$(export "$env_target=${elems[$i]}"; _registry_resolve_output_path "$raw" "$state_dir" "$art")"
-            else
-                _registry_resolve_output_path_v res "$raw" "$state_dir" "$art"
-            fi
-        fi
+        res="$(_map_member_path "$raw" "$env_target" "${elems[$i]}" "$state_dir" "$art")"
         outcome="missing"; reason=""
         if [[ -n "$res" && -s "$res" ]]; then
             outcome="$(jq -r '.outcome // "missing"' "$res" 2>/dev/null || echo missing)"
             reason="$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$res" 2>/dev/null || true)"
         fi
         [[ "$outcome" == fail ]] && flagged=yes
+        [[ "$outcome" == pass || "$outcome" == fail ]] || unfinished+=("${elems[$i]} (${outcome})")
         line="- ${elems[$i]}: $outcome${reason:+ — $reason}"
         body+="$line"$'\n'
+        if [[ -n "${ZBUILD_SEQ_PREFIX:-}" ]]; then
+            sum="$(_map_member_path "$(_map_summary_raw "${plugins[$i]}/manifest.yaml")" \
+                "$env_target" "${elems[$i]}" "$state_dir" "$art")"
+            ZBUILD_STAGE_IO_SEQ_LABEL="${ZBUILD_SEQ_PREFIX}.$(( i + 1 ))" \
+                eb_emit_event "parallel.member.dispatch.complete" "group=$stage" \
+                "member=${stage}.${elems[$i]}" "verdict=$outcome" "reason=$reason" \
+                "summary_path=$sum" 2>/dev/null || true
+        fi
     done
+    local noun="${dimension:-members}" head
+    if [[ ${#unfinished[@]} -gt 0 ]]; then
+        local u list=""
+        for u in "${unfinished[@]}"; do list+="${list:+, }$u"; done
+        head="${#unfinished[@]} of $n $noun did not finish: $list"
+        _ZB_MAP_UNFINISHED="$head"
+    else
+        head="all $n $noun finished"
+    fi
     export ZBUILD_RUN_FLAGGED="$flagged"
     mkdir -p "$art" 2>/dev/null || true
-    printf '## %s\n\n%s' "$stage" "$body" > "$art/${stage//[^A-Za-z0-9_.-]/_}-summary.md" 2>/dev/null || true
+    printf '## %s\n\n%s\n\n%s' "$stage" "$head" "$body" > "$art/${stage//[^A-Za-z0-9_.-]/_}-summary.md" 2>/dev/null || true
     return 0
+}
+
+# _map_member_path <raw> <env_target> <element> <state_dir> <art> — a member's
+# declared output path, resolved as that member saw it.
+_map_member_path() {
+    local raw="$1" env_target="$2" elem="$3" res=""
+    [[ -n "$raw" ]] || return 0
+    if [[ -n "$env_target" ]]; then
+        res="$(export "$env_target=$elem"; _registry_resolve_output_path "$raw" "$4" "$5")"
+    else
+        _registry_resolve_output_path_v res "$raw" "$4" "$5"
+    fi
+    printf '%s' "$res"
+}
+
+# _map_summary_raw <manifest> — the unresolved path of the output a plugin
+# marks `summary: true`, or nothing.
+_map_summary_raw() {
+    local rec id
+    declare -F manifest_graph_get_outputs >/dev/null 2>&1 || return 0
+    while IFS= read -r rec; do
+        id="${rec%%|*}"
+        [[ -n "$id" && "$(manifest_graph_output_summary "$1" "$id")" == true ]] || continue
+        printf '%s' "${rec##*|}"; return 0
+    done < <(manifest_graph_get_outputs "$1" 2>/dev/null)
 }
 
 _strategy_run_map() {
@@ -226,7 +271,7 @@ _strategy_run_map() {
     # Build the ordered list of (plugin_dir, element) work items by iterating
     # roles × elements — same order as before, just collected before dispatch.
     local -a wu_list=() plugin_list=() elem_list=()
-    local role element plugin_dir wu
+    local role element plugin_dir wu _u_label
     while IFS= read -r role; do
         [[ -z "$role" ]] && continue
         for element in "${elements[@]}"; do
@@ -247,10 +292,12 @@ _strategy_run_map() {
             # sets a named env var to the element — a generic mapping the strategy
             # applies without knowing which dimension or var it is.
             _map_unit_element _u_elem "$_u_roles" "$role" "$element"
+            # The group's cardinal comes from the runner (ZBUILD_SEQ_PREFIX).
+            _u_label="${ZBUILD_SEQ_PREFIX:+${ZBUILD_SEQ_PREFIX}.$(( ${#wu_list[@]} + 1 ))}"
             if [[ "$dimension" == "platforms" ]]; then
-                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "$element" "" "" "" "$_u_elem")"
+                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "$element" "" "" "" "$_u_elem" "$_u_label")"
             else
-                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "generic" "$element" "$dimension" "$env_target" "$_u_elem")"
+                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "generic" "$element" "$dimension" "$env_target" "$_u_elem" "$_u_label")"
             fi || {
                 warn "map: failed to create work unit for role=$role element=$element" || true
                 fail_count=$((fail_count + 1))
@@ -357,7 +404,7 @@ _strategy_run_map() {
     done
 
     _strategy_cleanup_work_units "${wu_list[@]+"${wu_list[@]}"}"
-    _map_write_summary "$stage" "$state_file" "$env_target" "${#plugin_list[@]}" \
+    _map_write_summary "$stage" "$state_file" "$env_target" "$dimension" "${#plugin_list[@]}" \
         "${plugin_list[@]+"${plugin_list[@]}"}" "${elem_list[@]+"${elem_list[@]}"}"
     # Shut down the original pool_id (caller spawned it; we use sub-pools per batch
     # but the caller's pool must still be closed via orch_shutdown for contract compliance).

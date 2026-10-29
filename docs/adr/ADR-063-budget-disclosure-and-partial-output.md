@@ -324,3 +324,15 @@ build 3600, test 2700, design 2700, test-author 3780, acceptance-gate 2700).
   (`scripts/lib/stage-time-limit.sh`, from the loaded template).
 
 Enforced by: `tests/integration/stage-time-limit-test.sh` S1–S5.
+
+## Amendment (2026-10-29): a map group's rounds fit its stage limit; a cut-off lens says so
+
+A map group runs its members `max_parallel` at a time, so its stage limit must hold every round:
+`ceil(members / max_parallel) × per-call limit ≤ timeout_s`. The review lenses get the per-call
+limit build gets (they were stopped at 300 s on #1801 and #1944 while still reading) and run in
+one round. Enforced by `tests/unit/map-group-budget-test.sh`.
+
+A lens cut off by its time limit says it ran out of time — not that the model call failed — and
+its summary carries what it noted so far, marked partial (§6: the summary is what later stages
+and the status comment read). Enforced by
+`plugins/agent/review-lens/tests/review-lens-partial-notes-test.sh` N6, N7.

@@ -47,10 +47,13 @@ rsc_rows_json() {
                         engine_sha: ($d.engine_sha // .header.engine_sha // ""),
                         engine_branch: ($d.engine_branch // .header.engine_branch // ""),
                         started: (.header.started // $e.ts)}
-          elif $t == "plugin.run.start" and $seq != "" then
-            if .rows[$seq] == null then
+          elif ($t == "plugin.run.start" or $t == "parallel.group.start") and $seq != "" then
+            (if $t == "parallel.group.start" then .groups[$seq] = true else . end)
+            | if .rows[$seq] == null then
               .rows[$seq] = {key:$seq, seq:$seq, stage:($e.stage // ""), kind:($d.kind // ""), started_ts:$e.ts,
-                             ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null}
+                             ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null,
+                             # A map member (<group>.<n>) is not a loop iteration.
+                             member: (.groups[$seq | split(".")[:-1] | join(".")] // false)}
               | .order += [$seq]
               | (if ($seq|contains(".")) then .cardinal = ($seq|split(".")[0]) else . end)
             elif .rows[$seq].verdict != null then
@@ -64,6 +67,14 @@ rsc_rows_json() {
           elif $t == "cycle.member.dispatch.complete" then
             (if $seq != "" and .rows[$seq] != null then $seq else open_for(.; ($d.member // "")) end) as $k
             | close($k; $e; {verdict: ($d.verdict // "unknown"), rc: $d.rc, status: $d.status, disposition: $d.disposition})
+          elif $t == "parallel.group.complete" and $seq != "" and .rows[$seq] != null then
+            close($seq; $e; {verdict: ($d.verdict // "pass")})
+          elif $t == "parallel.member.dispatch.complete" and $seq != "" and .rows[$seq] != null then
+            # A map member: its own name, outcome and summary (ADR-064 §4). It
+            # ended when its run did, not when the group was summed up.
+            .rows[$seq] += {stage: ($d.member // .rows[$seq].stage), verdict: ($d.verdict // "unknown"),
+                            reason: $d.reason, summary_path: $d.summary_path,
+                            ended_ts: (.rows[$seq].ended_ts // $e.ts)}
           elif $t == "stage.complete" then
             (if $seq != "" and .rows[$seq] != null then $seq else open_for(.; ($d.stage // "")) end) as $k
             | close($k; $e; {verdict: ($d.verdict // "pass")})
@@ -180,9 +191,16 @@ rsc_row_summary_line_v() {   # <var> <state_dir> <stage>
         _rsv_p="$(_summaries_stage_summary_path "$_rsv_st" "${ZBUILD_PLUGINS_ROOT:-$_RSC_ROOT/plugins}" "$_rsv_sd" 2>/dev/null || true)"
     fi
     [[ -n "$_rsv_p" && -s "$_rsv_p" ]] || _rsv_p="$_rsv_sd/artifacts/${_rsv_st}-summary.md"
+    _rsc_first_line_v "$1" "$_rsv_p"
+}
+
+# _rsc_first_line_v <var> <summary_file> — the first line with a non-blank
+# character that is not a heading, `- ` stripped, `|` escaped, cut.
+_rsc_first_line_v() {
+    local _rsv_p="$2" _rsv_l=""
+    printf -v "$1" '%s' ""
     [[ -s "$_rsv_p" ]] || return 0
-    # The first line with a non-blank character that is not a heading, read by
-    # the shell (it was an awk: `NF && $0 !~ /^#/`).
+    # Read by the shell (it was an awk: `NF && $0 !~ /^#/`).
     local _rsv_found=0
     while IFS= read -r _rsv_l || [[ -n "$_rsv_l" ]]; do
         [[ "$_rsv_l" =~ [^[:space:]] && "$_rsv_l" != \#* ]] && { _rsv_found=1; break; }
@@ -256,10 +274,12 @@ rsc_render_row() {
     # empty field stays a field; a value may carry a newline, so `read -d ''`.
     local members from reason it _f
     _f="$(jq -r '[.kind, .seq, .started_ts, .stage, .ended_ts, .verdict, .rc, .summaries,
-                  (.resolve // "0"), ((.members // []) | map(tostring) | join(", ")), .from_iter, .reason, .iter]
+                  (.resolve // "0"), ((.members // []) | map(tostring) | join(", ")), .from_iter, .reason, .iter,
+                  .summary_path, (.member // false)]
                  | map(. // "" | tostring) | join("\u001f")' <<< "$row")"
-    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it <<< "$_f" || true
-    it="${it%$'\n'}"
+    local spath member
+    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member <<< "$_f" || true
+    member="${member%$'\n'}"
     if [[ "$kind" == "reused" ]]; then
         printf '**%s** · **%s reused** · iter %s · %s from iter %s (%s)' \
             "$(_rsc_clock "$started")" "$seq" "$it" "$members" "$from" "$reason"
@@ -267,7 +287,7 @@ rsc_render_row() {
     fi
     # iter = second-to-last segment: `6.1.3` → 1, `1.2` → 1, `6.1.3.2.1` → 2.
     iter=""
-    if [[ "$seq" == *.* ]]; then
+    if [[ "$seq" == *.* && "$member" != true ]]; then
         local _s="${seq%.*}"; iter="${_s##*.}"
     fi
     # #2145: WHEN first — a reader scanning the feed wants the clock before
@@ -291,7 +311,9 @@ rsc_render_row() {
         if [[ -n "${_RSC_SNAP[$seq]+x}" && ( -z "${_RSC_SNAP_END[$seq]+x}" || "${_RSC_SNAP_END[$seq]}" == "$ended" ) ]]; then
             summary="${_RSC_SNAP[$seq]}"
         else
-            rsc_row_summary_line_v summary "$state_dir" "$stage"
+            # A map member names its own summary file; any other row's is its stage's.
+            if [[ -n "$spath" && -s "$spath" ]]; then _rsc_first_line_v summary "$spath"
+            else rsc_row_summary_line_v summary "$state_dir" "$stage"; fi
             if [[ -n "$summary" && -n "$_RSC_SNAP_RUN" ]]; then
                 _RSC_SNAP["$seq"]="$summary"; _RSC_SNAP_END["$seq"]="$ended"; _RSC_SNAP_DIRTY=1
             fi

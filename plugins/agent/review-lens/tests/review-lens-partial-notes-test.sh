@@ -12,6 +12,11 @@
 # N2, N3 retired with review-aggregator (#2368)
 # N4 [change] a lens stopped by a signal also hands over what it saved
 # N5 [change] the notes are found whatever the artifacts folder is called
+# N6 [change] a lens that ran out of time says so, not "the model call failed",
+#             and its summary carries what it noted so far, marked partial
+#             (#1944 2026-10-28: the security lens's notes were in its result,
+#             but its summary said it "reviewed nothing")
+# N7 [change] one that ran out of time with nothing saved says that
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,6 +61,15 @@ out2="$artifact_dir/lens-red-team.json"
 # shellcheck disable=SC2030,SC2031
 ( export ZBUILD_MAP_ELEMENT=red-team ZBUILD_REVIEW_LENS_ID=red-team
   _review_lens_run_inner "red-team" "$scope_manifest" "$evidence" "$out2" "$artifact_dir" ) >/dev/null 2>&1
+
+sum1="$(cat "$artifact_dir/lens-correctness-summary.md" 2>/dev/null)"
+assert_contains "[N6] the summary says it ran out of time" "$sum1" "ran out of time before it finished"
+assert_eq "[N6] ...not that the model call failed" "0" "$(grep -c 'the model call failed' <<< "$sum1" || true)"
+assert_contains "[N6] the summary carries its notes, marked partial" "$sum1" "What it noted before it was stopped (partial)"
+assert_contains "[N6] ...the notes themselves" "$sum1" "draft is written twice"
+sum2="$(cat "$artifact_dir/lens-red-team-summary.md" 2>/dev/null)"
+assert_contains "[N7] nothing saved: it says it ran out of time" "$sum2" "ran out of time before it finished"
+assert_contains "[N7] ...and saved nothing" "$sum2" "it saved no notes"
 
 # N2/N3 retired with review-aggregator (#2368): each lens's own result carries its notes.
 

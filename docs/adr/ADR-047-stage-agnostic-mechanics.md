@@ -210,3 +210,13 @@ destinations — write none and stay out, still with no stage named.
 
 Enforced by: `tests/unit/lint-contract-scope-derivation-test.sh`; `tests/unit/lint-contract-test.sh`
 TC-5 (a manifest with no `result_contract` is not linted).
+
+## Amendment (2026-10-29): a map group says whether every member finished
+
+A map group occupies one cardinal in the run, and each member runs as `<cardinal>.<n>`, so its
+own events name its own place (ADR-064 §4). The group's summary starts with whether every member
+finished — a pass or a fail is a finish; a member that timed out, broke or left no result did
+not: `all N <dimension> finished`, or `K of N <dimension> did not finish: <element> (<outcome>), …`.
+The runner logs that line and the group's row says `incomplete`. On #1801 and #1944 five of six
+lenses did not finish and nothing said so. Enforced by
+`tests/integration/map-members-reported-test.sh`.

@@ -56,6 +56,37 @@ source "$_RL_ROOT/scripts/lib/acceptance-block.sh"
 source "$_RL_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=lib/charters.sh
 source "$_RL_DIR/lib/charters.sh"
+# zb_is_test_path: which changed files are tests (ADR-069 §10).
+# shellcheck source=../../../scripts/lib/test-paths.sh
+source "$_RL_ROOT/scripts/lib/test-paths.sh"
+
+# _rl_lens_evidence <diff_file> — what a lens is given of the change: every
+# file's diff in full except the tests', which are named with their lines added
+# and removed. On #1944 the test diffs were 68 KB of a 98 KB diff, read by
+# every lens before it could start; a test a lens wants, it opens itself.
+_rl_lens_evidence() {
+    local f="$1" line path="" block="" add=0 del=0 out="" tests=""
+    _rl_flush() {
+        [[ -n "$path" ]] || return 0
+        if zb_is_test_path "$path"; then tests+="- ${path} (+${add} -${del})"$'\n'
+        else out+="$block"; fi
+    }
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == "diff --git a/"* ]]; then
+            _rl_flush
+            path="${line##* b/}"; block=""; add=0; del=0
+        elif [[ -n "$path" && "$line" != "+++ "* && "$line" != "--- "* ]]; then
+            [[ "$line" == +* ]] && add=$((add + 1))
+            [[ "$line" == -* ]] && del=$((del + 1))
+        fi
+        block+="$line"$'\n'
+    done < "$f"
+    _rl_flush
+    unset -f _rl_flush
+    printf '%s' "$out"
+    [[ -n "$tests" ]] && printf '\nCHANGED TEST FILES (not shown above; open any of them in the worktree when your lens needs it):\n%s' "$tests"
+    return 0
+}
 
 # ─── _review_lens_envelope_schema_ok <json> ──────────────────────────────────
 # Schema gate for _llm_envelope_parse: accepts an object with a .findings array.
@@ -248,7 +279,7 @@ _review_lens_run_inner() {
     local evidence_content="(no change bundle available)"
     if [[ -s "$evidence" ]]; then
         # #721: strip OOS-marker tags + ANSI fragments from terminal capture.
-        evidence_content="$(printf '%s' "$(cat "$evidence")" | _zbuild_sanitize_for_llm)"
+        evidence_content="$(printf '%s' "$(_rl_lens_evidence "$evidence")" | _zbuild_sanitize_for_llm)"
     fi
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
@@ -316,13 +347,26 @@ _review_lens_run_inner() {
     # A failed or unparseable lens degrades to empty (advisory — never fatal).
     if [[ $router_rc -ne 0 || -z "$raw_response" ]]; then
         emit_event "review_lens.failed" "lens=$lens" "router_rc=$router_rc"
-        local _rl_v="" _rl_r=""
+        local _rl_v="" _rl_r="" _rl_disp _rl_notes _rl_head _rl_body
         _router_rc_classify "$router_rc" _rl_v _rl_r 2>/dev/null || true
+        _rl_disp="$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")"
+        _rl_notes="$(_review_lens_saved_notes "$artifact_dir")"
         _review_lens_write_result "$out" "$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")" "router_error" \
-            "$(_review_lens_saved_notes "$artifact_dir")"
+            "$_rl_notes"
+        _rl_head="the model call failed, so this lens reviewed nothing"
+        _rl_body="Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
+        # A lens cut off by its time limit says so, and hands on what it noted
+        # (#2270; on #1944 those notes were in its result but not its summary).
+        if [[ "$_rl_disp" == timed_out ]]; then
+            _rl_head="the ${lens} lens ran out of time before it finished"
+            if [[ -n "$_rl_notes" ]]; then
+                _rl_body="What it noted before it was stopped (partial):"$'\n\n'"$_rl_notes"$'\n\n'"$_rl_body"
+            else
+                _rl_body="Nothing it found is known: it saved no notes. $_rl_body"
+            fi
+        fi
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
-            "the model call failed, so this lens reviewed nothing" \
-            "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
+            "$_rl_head" "$_rl_body"
         emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
     fi

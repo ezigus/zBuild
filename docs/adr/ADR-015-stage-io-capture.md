@@ -1153,3 +1153,11 @@ The per-stage `gh_comment` destination described here posts one comment per
 stage capture and stays off in every shipped template. The run-level, live,
 edited-in-place status comment is a different surface with its own process
 model; see ADR-064. Neither replaces the other.
+
+## Amendment (2026-10-29) — a record is kept whatever its size
+
+A stage's input and output reach its record through files, never as command-line arguments: the
+OS caps an argument (128 KB on Linux; 1 MB for all of them on macOS), and on #1801 and #1944 a
+~115 KB review-lens prompt failed with "jq: Argument list too long", so its record was lost and
+nothing said so. The partial record of a stage cut off before its end is built the same way.
+Enforced by `tests/unit/stage-io-large-capture-test.sh`.
