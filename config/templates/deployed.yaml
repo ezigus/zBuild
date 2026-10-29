@@ -184,15 +184,19 @@ review_lenses:
       persona: sre
   roles: [review_lens]
   as: ZBUILD_REVIEW_LENS_ID
-  max_parallel: 4
+  # All six at once, each call bounded like build's: on #1801 and #1944
+  # (2026-10-28) five of six lenses were stopped by a 300 s call limit while
+  # still reading. The stage limit holds the one round with room to spare.
+  max_parallel: 6
   on_member_error: continue
   aggregate: advisory
+  timeout_s: 1200
   io:
     destinations: [file]
     tail_lines: 200
   router:
-    timeout_s: 300
-    max_turns: 25
+    timeout_s: 900
+    max_turns: 0
 
 # ─── pr (leaf) ───────────────────────────────────────────────────────────────
 pr:
