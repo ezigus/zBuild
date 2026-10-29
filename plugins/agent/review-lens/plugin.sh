@@ -56,6 +56,37 @@ source "$_RL_ROOT/scripts/lib/acceptance-block.sh"
 source "$_RL_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=lib/charters.sh
 source "$_RL_DIR/lib/charters.sh"
+# zb_is_test_path: which changed files are tests (ADR-069 §10).
+# shellcheck source=../../../scripts/lib/test-paths.sh
+source "$_RL_ROOT/scripts/lib/test-paths.sh"
+
+# _rl_lens_evidence <diff_file> — what a lens is given of the change: every
+# file's diff in full except the tests', which are named with their lines added
+# and removed. On #1944 the test diffs were 68 KB of a 98 KB diff, read by
+# every lens before it could start; a test a lens wants, it opens itself.
+_rl_lens_evidence() {
+    local f="$1" line path="" block="" add=0 del=0 out="" tests=""
+    _rl_flush() {
+        [[ -n "$path" ]] || return 0
+        if zb_is_test_path "$path"; then tests+="- ${path} (+${add} -${del})"$'\n'
+        else out+="$block"; fi
+    }
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == "diff --git a/"* ]]; then
+            _rl_flush
+            path="${line##* b/}"; block=""; add=0; del=0
+        elif [[ -n "$path" && "$line" != "+++ "* && "$line" != "--- "* ]]; then
+            [[ "$line" == +* ]] && add=$((add + 1))
+            [[ "$line" == -* ]] && del=$((del + 1))
+        fi
+        block+="$line"$'\n'
+    done < "$f"
+    _rl_flush
+    unset -f _rl_flush
+    printf '%s' "$out"
+    [[ -n "$tests" ]] && printf '\nCHANGED TEST FILES (not shown above; open any of them in the worktree when your lens needs it):\n%s' "$tests"
+    return 0
+}
 
 # ─── _review_lens_envelope_schema_ok <json> ──────────────────────────────────
 # Schema gate for _llm_envelope_parse: accepts an object with a .findings array.
@@ -248,7 +279,7 @@ _review_lens_run_inner() {
     local evidence_content="(no change bundle available)"
     if [[ -s "$evidence" ]]; then
         # #721: strip OOS-marker tags + ANSI fragments from terminal capture.
-        evidence_content="$(printf '%s' "$(cat "$evidence")" | _zbuild_sanitize_for_llm)"
+        evidence_content="$(printf '%s' "$(_rl_lens_evidence "$evidence")" | _zbuild_sanitize_for_llm)"
     fi
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
