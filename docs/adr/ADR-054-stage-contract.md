@@ -336,6 +336,12 @@ stage outlives the run. Enforced by `tests/integration/runner-release-exit-paths
 ("the blocked hook does not outlive the run") and SPEC-6b ("a hook child that ignores TERM does
 not outlive the run").
 
+**A second signal does not cut teardown short — amended 2026-10-29.** Once the first INT or TERM
+has started the run's teardown, every later one is ignored until the always-run stages are done:
+`timeout` sends its TERM to the run and then to its group, and Ctrl-C is pressed twice. Each
+always-run stage is bounded by its own limit, so teardown cannot hang. Enforced by
+`tests/integration/teardown-repeat-signal-test.sh`.
+
 **A signal stops the running stage; the engine does not wait it out — amended 2026-10-24.**
 Bash runs a trap only once the foreground command returns. The stage used to run in the
 foreground, so a SIGTERM sent to the runner alone (not its whole process group) waited until the
@@ -541,6 +547,8 @@ engine must enforce its own ceiling.
 
 ## Enforced by
 
+- §7: a second signal during teardown does not cut it short; release finishes and persist
+  still runs → `tests/integration/teardown-repeat-signal-test.sh`
 - §11: limit resolution precedence (template > env > 20700), misconfigured validation →
   `tests/unit/run-limit-precedence-test.sh`
 - §11: run ends `timed_out`, `pipeline.end` event carries stage + `limit_s`, watchdog
