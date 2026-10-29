@@ -201,20 +201,15 @@ _assert_released() {
 # top-level stage block, 30s after #1801) is what ends it. Started here, each
 # from its own repo, so that bound runs while SPEC-1..5 do; their assertions
 # are made below, in order.
-#
-# SPEC-5 (#1801): a separate blocking run uses a template with timeout_s: 5
-# for release (NOT router.timeout_s: 5) — old code reads router.timeout_s: 30
-# and takes ~30s; new code reads template_stage_time_limit (timeout_s: 5) and
-# exits in ~5s. Started here so it runs in parallel with SPEC-6/6b.
-_start_blocking() {   # <case name> <hook switch> [template-id]
+
+_start_blocking() {   # <case name> <hook switch>
     local _repo; _repo="$(setup_git_temp_repo "release-exit-paths-$1")"
     install_template_overlay "$_repo" resume-minimal
-    local _tpl="${3:-resume-minimal}"
     (
         _prep "$1"
         export BUILD_RC=0 "$2"=1
         _t0=$(date +%s)
-        ( cd "$_repo" && bash "$RUNNER" --template "$_tpl" --goal "release-$1" ) \
+        ( cd "$_repo" && bash "$RUNNER" --template resume-minimal --goal "release-$1" ) \
             >"$CASE_DIR/out" 2>&1 || true
         printf '%s\n' "$(( $(date +%s) - _t0 ))" > "$CASE_DIR/elapsed"
     ) &
@@ -223,24 +218,6 @@ _start_blocking blocking BLOCK_CLEANUP;                   _SPEC6_PID=$!
 _start_blocking blocking-ignore-term BLOCK_CLEANUP_IGNORE_TERM; _SPEC6B_PID=$!
 _SPEC6_DIR="$TEST_TEMP_DIR/case-1-blocking"
 _SPEC6B_DIR="$TEST_TEMP_DIR/case-1-blocking-ignore-term"
-
-# [#1801/SPEC-5]: blocking run with timeout_s: 5 for release (top-level, read
-# by template_stage_time_limit), while router.timeout_s: 30 is inherited from
-# simple — distinguishes new code (uses timeout_s: 5) from old (router.timeout_s: 30).
-_spec5_bound_repo="$(setup_git_temp_repo "release-exit-paths-spec5-bound")"
-install_template_overlay "$_spec5_bound_repo" resume-minimal
-if [[ -d "$_spec5_bound_repo/.git/info" ]] && \
-   ! grep -qxF '/.zbuild/' "$_spec5_bound_repo/.git/info/exclude" 2>/dev/null; then
-    printf '/.zbuild/\n' >> "$_spec5_bound_repo/.git/info/exclude"
-fi
-cat > "$_spec5_bound_repo/.zbuild/templates/resume-spec5-bound.yaml" <<'YAML'
-id: resume-spec5-bound
-extends: resume-minimal
-release:
-  timeout_s: 5
-YAML
-_start_blocking spec5-bound BLOCK_CLEANUP resume-spec5-bound; _SPEC5_BOUND_PID=$!
-_SPEC5_BOUND_DIR="$TEST_TEMP_DIR/case-1-spec5-bound"
 
 # ── SPEC-1: success ──────────────────────────────────────────────────────────
 print_test_section "SPEC-1: exit path = success (rc 0)"
@@ -458,24 +435,8 @@ else
     assert_pass "[SPEC-6b] a hook child that ignores TERM does not outlive the run"
 fi
 
-# ── [#1801/SPEC-5]: _runner_dispatch_always_run uses template_stage_time_limit ──
-# A blocking hook under a template with `timeout_s: 5` for release (top-level)
-# must stop in ~5s, NOT in ~30s (router.timeout_s: 30 inherited from simple).
-# Old code reads _TPL_STAGE_ROUTER_TIMEOUT_release (router.timeout_s = 30) and
-# uses that as the watchdog → runner takes ~30s.
-# New code reads template_stage_time_limit("release") = 5 → runner takes ~5s.
-# Assertion at < 20s: FAILS on old code (~30s), PASSES on new code (~5s).
-print_test_section "[#1801/SPEC-5]: always-run watchdog bound by timeout_s: (not router.timeout_s)"
-wait "$_SPEC5_BOUND_PID" 2>/dev/null || true
-CASE_DIR="$_SPEC5_BOUND_DIR"
-_spec5_elapsed="$(cat "$CASE_DIR/elapsed" 2>/dev/null || echo 999)"
-if [[ "$_spec5_elapsed" -lt 20 ]]; then
-    assert_pass "[#1801/SPEC-5] always-run watchdog uses timeout_s: 5 (runner exited in ${_spec5_elapsed}s; would be ~30s with router.timeout_s)"
-else
-    assert_fail "[#1801/SPEC-5] always-run watchdog uses timeout_s: 5" \
-        "runner took ${_spec5_elapsed}s — expected < 20s (timeout_s: 5); old code would use router.timeout_s: 30"
-fi
-
+# [#1801/SPEC-5] the always-run bound is `timeout_s:` — proved at runtime by
+# always-run-exit-paths-test.sh (persist: timeout_s 4 vs router.timeout_s 120).
 # [#1801/SPEC-5] static guard: ZBUILD_RELEASE_TIMEOUT must not appear in runner.sh.
 # Old code reads ZBUILD_RELEASE_TIMEOUT for the always-run watchdog; new code reads
 # template_stage_time_limit instead. This grep fails on old code (the var is there)

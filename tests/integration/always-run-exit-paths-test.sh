@@ -277,12 +277,14 @@ if [[ -d "$_spec5p_repo/.git/info" ]] && \
    ! grep -qxF '/.zbuild/' "$_spec5p_repo/.git/info/exclude" 2>/dev/null; then
     printf '/.zbuild/\n' >> "$_spec5p_repo/.git/info/exclude"
 fi
-cat > "$_spec5p_repo/.zbuild/templates/always-run-spec5p.yaml" <<'YAML'
-id: always-run-spec5p
-extends: always-run-minimal
-always_run:
-  - release
-  - persist
+# A whole new-shape template (the resolver uses one verbatim): the fixture,
+# renamed, with persist added to always_run and its section appended.
+awk '/^id: always-run-minimal$/ { print "id: always-run-spec5p"; next }
+     { print } /^  - release$/ { print "  - persist" }' \
+    "$REPO_ROOT/tests/fixtures/templates/always-run-minimal.yaml" \
+    > "$_spec5p_repo/.zbuild/templates/always-run-spec5p.yaml"
+cat >> "$_spec5p_repo/.zbuild/templates/always-run-spec5p.yaml" <<'YAML'
+
 persist:
   gate: auto
   roles: [persist]

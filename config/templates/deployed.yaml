@@ -45,7 +45,7 @@ flow:
 # convergence, verdicts, or the run's exit status.
 #
 # Each entry is an ordinary top-level stage section — resolved by `roles:` like
-# any other stage, and bounded by its own `router.timeout_s`. A name here with
+# any other stage, and bounded by its own `timeout_s:` (#1801). A name here with
 # no section, or a section with no `roles:`, REFUSES the template rather than
 # quietly running nothing.
 always_run:

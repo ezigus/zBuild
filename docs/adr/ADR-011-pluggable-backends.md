@@ -208,7 +208,6 @@ with its own reasoning, not folded into artifact reclamation.
 - §Orchestrator backend contract (§ orch_load_backend must fail when backend is absent, not fall back silently) — `tests/integration/orch-backend-misconfigured-test.sh` [#1801/SPEC-2], [#1801/SPEC-4], [#1801/SPEC-10].
 - §No sequential fallback (§ the built-in orch-sequential fallback is removed from orch_load_backend) — `tests/integration/orch-backend-misconfigured-test.sh` [#1801/SPEC-2] and `tests/unit/orch-sequential-absent-guard-test.sh` [#1801/SPEC-3].
 - §orch-sequential plugin directory absent from the installed tree — `tests/unit/orch-sequential-absent-guard-test.sh` [#1801/SPEC-3].
-- §Memory store is never reclaimed — `tests/unit/cleanup-new-reclaimers-test.sh` SPEC-4.
 
 ## References
 
