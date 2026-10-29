@@ -160,13 +160,18 @@ _stage_io_orphan_finalizer() {
         mkdir -p "$io_dir" 2>/dev/null || continue
         local path="$io_dir/${stage}-${seq}.partial.json"
         local ts; TZ=UTC0 printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
-        local rec
+        local rec _in_f
+        # The input goes to jq through a file: as an argument the OS caps it
+        # (128 KB on Linux) and the record is lost (#1801, #1944).
+        _in_f="$(mktemp "${TMPDIR:-/tmp}/stage-io-in.XXXXXX")" || continue
+        printf '%s' "$input" > "$_in_f"
         rec="$(jq -n \
             --arg stage "$stage" --arg kind "$kind" --arg seq "$seq" \
-            --arg input "$input" --arg ts "$ts" \
+            --rawfile input "$_in_f" --arg ts "$ts" \
             '{schema_version:1, stage:$stage, kind:$kind, seq:($seq|tonumber),
               input:$input, output:"", exit_code:null, duration_ms:null,
-              metadata:{partial:"output_never_emitted"}, ts:$ts}' 2>/dev/null)" || continue
+              metadata:{partial:"output_never_emitted"}, ts:$ts}' 2>/dev/null)" || { rm -f "$_in_f"; continue; }
+        rm -f "$_in_f"
         printf '%s\n' "$rec" > "$path" 2>/dev/null || true
     done
 }
@@ -434,15 +439,24 @@ stage_io_end() {
         }
     done <<< "$meta_blob"
 
-    local record
+    # The input and output go to jq through files: as arguments the OS caps
+    # them (128 KB each on Linux, 1 MB in all on macOS), and a large prompt's
+    # record was lost with "Argument list too long" (#1801, #1944).
+    local record _io_in _io_out
+    _io_in="$(mktemp "${TMPDIR:-/tmp}/stage-io-in.XXXXXX")" \
+        && _io_out="$(mktemp "${TMPDIR:-/tmp}/stage-io-out.XXXXXX")" || {
+        error "stage_io_end: could not make a temp file"
+        return 2
+    }
+    printf '%s' "$input" > "$_io_in"; printf '%s' "$output" > "$_io_out"
     record="$(jq -n \
         --arg schema_version "1" \
         --arg run_id "$run_id" \
         --arg stage "$stage" \
         --arg kind "$kind" \
         --arg seq "$seq" \
-        --arg input "$input" \
-        --arg output "$output" \
+        --rawfile input "$_io_in" \
+        --rawfile output "$_io_out" \
         --arg exit_code "$exit_code" \
         --arg duration_ms "$duration_ms" \
         --argjson metadata "$metadata_json" \
@@ -460,10 +474,12 @@ stage_io_end() {
             metadata: $metadata,
             ts: $ts
         }')" || {
+        rm -f "$_io_in" "$_io_out"
         error "stage_io_end: jq assembly failed"
         eb_emit_event "stage.io.error" "stage=$stage" "reason=jq_assembly_failed" 2>/dev/null || true
         return 2
     }
+    rm -f "$_io_in" "$_io_out"
 
     # Validate against locked schema
     if ! printf '%s' "$record" | jq -e \
