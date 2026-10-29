@@ -76,6 +76,8 @@ orch_capabilities                                     # → JSON
 
 Work-unit exit codes are normalised — individual codes are not passed through. Strategies use `2` to emit `stage.fail reason=partial` via the runner. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_ZB_STRATEGY_OUTCOME=partial`)**
 
+**Kill path — amended 2026-10-29 (#1801).** A dispatched work unit runs as its own process group, and a work unit stopped at its limit is stopped whole: the backend sends the group TERM, then KILL (`zbuild_pg_kill`), so a child that ignores TERM does not outlive it.
+
 **Phase 0.5 default implementation**: `plugins/tool/orch-sequential/` — single-process, in-order dispatch. Chosen as the default for Phase 0.5 because it has zero coordination surface and the smallest reference impl of the 0/1/2 normalisation contract. The `.zbuild/config.yaml` snippet below shows how to opt in to one of the optional backends.
 
 **Parallel implementation**: `plugins/tool/orch-bash-parallel/` — uses bash subshells + `wait -n` for parallelism, no coordination beyond independent execution. Implements `fanout` and `sequential` strategies trivially; `composite` works via a single subshell.
@@ -208,6 +210,7 @@ with its own reasoning, not folded into artifact reclamation.
 - §Orchestrator backend contract (§ orch_load_backend must fail when backend is absent, not fall back silently) — `tests/integration/orch-backend-misconfigured-test.sh` [#1801/SPEC-2], [#1801/SPEC-4], [#1801/SPEC-10].
 - §No sequential fallback (§ the built-in orch-sequential fallback is removed from orch_load_backend) — `tests/integration/orch-backend-misconfigured-test.sh` [#1801/SPEC-2] and `tests/unit/orch-sequential-absent-guard-test.sh` [#1801/SPEC-3].
 - §orch-sequential plugin directory absent from the installed tree — `tests/unit/orch-sequential-absent-guard-test.sh` [#1801/SPEC-3].
+- §Kill path (§ a work unit runs as its own process group; stopping it reaches everything it started) — `tests/unit/orch-kill-uses-pg-kill-guard-test.sh` [#1801/SPEC-6].
 
 ## References
 

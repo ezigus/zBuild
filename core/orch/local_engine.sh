@@ -34,7 +34,7 @@ _orch_local_make_slot_id() {
 
 # _orch_local_kill_slot <sig> <wrapper_pid> [inner_pid]
 # Kills the wrapper's entire process group (TERM then KILL via zbuild_pg_kill)
-# so children that ignore TERM are also terminated (#1801, ADR-011 §kill-path).
+# so children that ignore TERM are also terminated (#1801, ADR-011 §Kill path).
 # The sig argument is accepted for call-site compatibility but zbuild_pg_kill
 # handles its own TERM→KILL escalation internally.
 _orch_local_kill_slot() {

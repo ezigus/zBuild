@@ -219,8 +219,9 @@ _orch_load_backend() {
     # Record the alias so runner.sh can name it in the misconfigured gate message (#1801).
     _ZBUILD_ORCH_BACKEND_ALIAS="$backend"
 
-    # Attempt to load the configured backend; if it fails, that is OK —
-    # the stubs remain and callers will get informative errors.
+    # A backend that will not load records itself misconfigured
+    # (_ZBUILD_ORCH_BACKEND_DISPOSITION); runner.sh refuses the run and says
+    # why, so warn() is silenced here (#1801).
     orch_load_backend "$backend" 2>/dev/null || true
 }
 
