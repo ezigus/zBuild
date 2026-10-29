@@ -445,6 +445,7 @@ stage_io_end() {
     local record _io_in _io_out
     _io_in="$(mktemp "${TMPDIR:-/tmp}/stage-io-in.XXXXXX")" \
         && _io_out="$(mktemp "${TMPDIR:-/tmp}/stage-io-out.XXXXXX")" || {
+        rm -f "${_io_in:-}"
         error "stage_io_end: could not make a temp file"
         return 2
     }

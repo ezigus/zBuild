@@ -9,6 +9,7 @@
 # L1 a stage whose input and output are each 700 KB gets its record, whole
 # L2 a stage that never reached its end leaves a partial record with its
 #    whole input (1.1 MB)
+# L3 when a temp file cannot be made, the end fails and leaves none behind
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,6 +69,22 @@ bash -c '
 seq2="$(cat "$TEST_TEMP_DIR/l2.seq")"
 assert_eq "[L2] the partial record holds the whole input" "1100000" \
     "$(jq -r '.input | length' "$IO_DIR/cutoff-${seq2}.partial.json" 2>/dev/null || echo none)"
+
+# ─── L3: the second temp file cannot be made ─────────────────────────────────
+print_test_section "L3: a failed temp file leaves none behind"
+L3_TMP="$TEST_TEMP_DIR/l3-tmp"; mkdir -p "$L3_TMP"
+stage_io_begin --kind llm --stage tmpfail --input "small" >/dev/null 2>&1
+seq3="$_STAGE_IO_LAST_SEQ"
+# The first mktemp succeeds, the second fails. Counted in a file: each call
+# runs in a $( ) subshell.
+_mk_count="$TEST_TEMP_DIR/l3-mktemp-calls"; : > "$_mk_count"
+# shellcheck disable=SC2329
+mktemp() { printf 'x' >> "$_mk_count"; [[ $(wc -c < "$_mk_count") -ge 2 ]] && return 1; command mktemp "$@"; }
+rc=0
+TMPDIR="$L3_TMP" stage_io_end --stage tmpfail --kind llm --seq "$seq3" --output "o" >/dev/null 2>&1 || rc=$?
+unset -f mktemp
+assert_eq "[L3] the end fails" "2" "$rc"
+assert_eq "[L3] ...and leaves no temp file" "" "$(ls -A "$L3_TMP")"
 
 cleanup_test_env
 print_test_results
