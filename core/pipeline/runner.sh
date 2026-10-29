@@ -2524,6 +2524,9 @@ main() {
             # after a grace for a hook that traps TERM. The watchdog gets its own
             # group too, so cancelling it leaves no `sleep` behind. (#1801)
             (
+                # First: a subshell starts with the default TERM, so a signal to
+                # the run's group before this line would end it (and its stage).
+                trap ':' INT TERM
                 export ZBUILD_TEARDOWN_SCOPE=release
                 set -m
                 plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
@@ -2532,9 +2535,9 @@ main() {
                 _wd_pid=$!
                 set +m
                 # A signal to the run's group (`timeout` sends its TERM there a
-                # second time) must not end this wait, or the KILL below would
-                # stop the stage before its bound.
-                trap ':' INT TERM  # waits out a repeat signal (above)
+                # second time) must not end this wait — the trap at the top of
+                # this subshell — or the KILL below would stop the stage before
+                # its bound.
                 while kill -0 "$_ar_pid" 2>/dev/null; do wait "$_ar_pid" 2>/dev/null || true; done
                 # #2333: the leader exiting does not mean its group did. A member
                 # that ignored TERM would lose its KILL when the watchdog is
@@ -2554,10 +2557,11 @@ main() {
         # Guard set inside _runner_restore_stderr (first command of that function)
         # so it is active before the function returns — bash checks pending signals
         # at function-return boundaries, which is before this line. The explicit
-        # install here is retained for clarity; it is idempotent. Restore real
-        # handlers after the kill/wait block so `_runner_dispatch_always_run` can
-        # still handle signals. Mirrors the pattern already used inside
-        # `_runner_dispatch_always_run` (line 2516).
+        # install here is retained for clarity; it is idempotent. It stays for the
+        # whole trap: a repeat signal (`timeout` sends its TERM twice; Ctrl-C
+        # pressed twice) would otherwise run _runner_signal_trap, whose `exit 1`
+        # ends this trap before the always-run stages are done. Each always-run
+        # stage is bounded by its own timeout_s, so teardown cannot hang.
         trap ':' INT TERM
         # ADR-054 §7: a signal ends the run while a stage is still running;
         # stop it, and all it started, before anything else.
@@ -2586,8 +2590,6 @@ main() {
                 [[ -n "$_wc" ]] && kill -KILL "$_wc" 2>/dev/null || true
             done <<< "$_wdg_orphans"
         fi
-        trap '_runner_signal_trap TERM' TERM
-        trap '_runner_signal_trap INT' INT
         # #1829: free live resources first, while the state file and the
         # process tree are still intact.
         _runner_dispatch_always_run
