@@ -83,6 +83,22 @@ outputs:
     format: markdown
     required: true
     summary: true
+  # #2433 (ADR-071 §1): one output per topic the lens writes findings to —
+  # those that send the run back, numbered; each passes when it holds none.
+  - id: review_lens_code
+    topic: code-findings
+    description: "the lens's findings that send the run back and that the code or a test must fix"
+    path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-code-result.json"
+    type: review-lens-routed.json@1
+    format: json
+    required: false
+  - id: review_lens_design
+    topic: requirement-findings
+    description: "the lens's findings that send the run back and that the design must fix, or that say the issue itself is wrong"
+    path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-design-result.json"
+    type: review-lens-routed.json@1
+    format: json
+    required: false
   # ADR-060 §6: every reply the lens got, in order — a reply that could not be
   # used is kept beside the one that was.
   - id: review_lens_replies

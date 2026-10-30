@@ -52,6 +52,17 @@ earlier_output_with_json() {
     return 1
 }
 
+# earlier_outputs_with_json <jq-test> [dir...] — every earlier JSON output
+# <jq-test> is true of, one path per line. rc 0 always.
+earlier_outputs_with_json() {
+    local test="$1" f; shift
+    while IFS= read -r f; do
+        [[ "$f" == *.json && -s "$f" ]] || continue
+        jq -e "$test" "$f" >/dev/null 2>&1 && printf '%s\n' "$f"
+    done < <(_eo_candidates "$@")
+    return 0
+}
+
 # The kinds of earlier work stages ask for, each named for what it is. Each
 # takes the caller's own directories to search when there is no index.
 # The acceptance contract: a document with an ```acceptance block.
@@ -80,3 +91,9 @@ earlier_deploy_result() { earlier_output_with_json '(.data.deployed | type) == "
 earlier_pr_url_file() { earlier_output_with_text '^https://[^ ]+/pull/[0-9]+$' "$@"; }
 # The change as a patch: a unified diff.
 earlier_change_patch() { earlier_output_with_text '^diff --git ' "$@"; }
+# Every review lens's result: its findings, each graded and saying whether the
+# change introduced it (#2433).
+earlier_review_findings() {
+    earlier_outputs_with_json '(.name | type) == "string" and (.findings | type) == "array"
+        and all(.findings[]; type == "object" and has("severity") and has("introduced"))' "$@"
+}

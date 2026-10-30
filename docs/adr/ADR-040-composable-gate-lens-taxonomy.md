@@ -597,3 +597,35 @@ test's outcome.
 - build_test_cycle's `exit_when` requires test-author, build, test and issue-acceptance.
 
 Enforced by: `tests/integration/test-checks-own-run-test.sh` R1–R5.
+
+### Amendment (2026-10-30, #2433) — the lenses run inside the loop and send the change back
+
+The lens group ran after `delivery_loop`, so no stage that could fix a finding ran after it, and only a
+`high` or `critical` finding failed a lens. Now:
+
+- **The lens group is a member of `delivery_loop`,** after `build_test_cycle`, in simple.yaml and
+  deployed.yaml. The loop exits only when design, `build_test_cycle` and `review_lenses` all pass.
+  A map group may be a loop member: the loader registers it before the loop (as a parallel group is),
+  and the loop runs it with `map_group_run` (`core/pipeline/strategies/map.sh`), the same function the
+  runner uses for a group in the top-level flow.
+- **What sends the run back:** a finding at `medium` or above that the change introduced
+  (`fail_on: [medium, high, critical]`). The lens writes such findings to one output per topic
+  (ADR-071 §1): `code` and `test` findings to `lens-<id>-code-result.json` (`code-findings`, read by
+  test-author and build), `design` findings to `lens-<id>-design-result.json` (`requirement-findings`,
+  read by design). Each is numbered and fails when it holds a finding, so the run's open items list them.
+- **Two tries.** `delivery_loop` keeps `max_iterations: 2, on_max: halt`: if the lenses still fail in the
+  second round, the run stops with their findings as its open items, and no PR is opened.
+- **A lens that does not finish stops the run at once** (as #1753 made it at top level): the loop records
+  the group failed and does not go round. So does a finding that **the issue itself is wrong** at a
+  `fail_on` severity: the lens's outcome is `misconfigured` (the operator's to fix — no stage can fix an
+  issue's text), and its reason names the problem.
+- **What does not send the run back:** `low` findings and findings already there before the change. The
+  PR body lists them, each with its lens ("Other review findings"), replacing "review findings stay out"
+  above.
+
+Enforced by: `tests/integration/cycle-map-member-test.sh` M0 (a map group in a loop loads and folds under
+the loop), M1 (R5: fail then pass converges in round 2), M2 (R6: fail twice stops after round 2, not
+converged), M3 (R7, R8: a lens that did not finish stops at once), M4 (the group's verdict is recorded);
+`tests/unit/template-simple-yaml-test.sh` SPEC-11, SPEC-18, #2433/R4, #2433/R2;
+`plugins/agent/review-lens/tests/review-lens-loop-test.sh` R2, R3 (findings routed by what fixes them),
+R7 (the issue being wrong → `misconfigured`); `plugins/tool/pr-open/tests/pr-open-body-test.sh` B4 (R9).

@@ -206,19 +206,23 @@ assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
 
 # ─── SPEC-11: dispatch units (cycles + map groups each fold to one) ───────────
 # #2271 (ADR-068): design, impact and build_test_cycle fold into
-# ONE outer loop, delivery_loop. Count is 6: hydrate, intake, plan,
-# cycle:delivery_loop, map:review_lenses, pr (#2368: review-aggregator retired).
-assert_eq "[SPEC-11] dispatch units count is 6" "6" "${#_TPL_DISPATCH_UNITS[@]}"
+# ONE outer loop, delivery_loop. #2433: the review lenses run inside it, so
+# the count is 5: hydrate, intake, plan, cycle:delivery_loop, pr.
+assert_eq "[SPEC-11] dispatch units count is 5 (#2433)" "5" "${#_TPL_DISPATCH_UNITS[@]}"
 assert_eq "[SPEC-11] dispatch[0] stage:hydrate"        "stage:hydrate"        "${_TPL_DISPATCH_UNITS[0]}"
 assert_eq "[SPEC-11] dispatch[1] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[1]}"
 assert_eq "[SPEC-11] dispatch[2] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[2]}"
 assert_eq "[SPEC-11] dispatch[3] cycle:delivery_loop"  "cycle:delivery_loop"  "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "[SPEC-11] dispatch[4] map:review_lenses"    "map:review_lenses"    "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[5]}"
+assert_eq "[SPEC-11] dispatch[4] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[4]}"
 
 # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
-assert_eq "[SPEC-18] [#1668/SPEC-1] delivery_loop holds design and the build loop (#2369)" \
-    "design,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[SPEC-18] [#2433/R4] delivery_loop holds design, the build loop, then the lenses" \
+    "design,build_test_cycle,review_lenses" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[#2433/R4] delivery_loop exits only when design, the build loop and the lenses pass" \
+    "all:design=pass,build_test_cycle=pass,review_lenses=pass" \
+    "$(_c=delivery_loop; n="_TPL_CYCLE_EXIT_COUNT_$_c"; out="all:"; for (( i=1; i<=${!n:-0}; i++ )); do s="_TPL_CYCLE_EXIT_${i}_STAGE_$_c"; v="_TPL_CYCLE_EXIT_${i}_VALUE_$_c"; out+="${!s}=${!v},"; done; c="_TPL_CYCLE_EXIT_COMBINATOR_$_c"; [[ "${!c:-}" == all ]] || out="not-all:"; printf '%s' "${out%,}")"
+assert_eq "[#2433/R2] the lenses fail on a medium or worse problem the change introduced" \
+    "medium high critical" "${_TPL_STAGE_FAIL_ON_review_lenses:-}"
 assert_eq "[SPEC-18] a design that still fails ends the run (#2369, ADR-068 §3)" \
     "design" "${_TPL_CYCLE_STOP_RUN_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop runs at most 2 rounds" "2" "${_TPL_CYCLE_MAX_delivery_loop:-}"

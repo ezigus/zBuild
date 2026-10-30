@@ -330,9 +330,15 @@ _pr_open_run_inner() {
     fi
     [[ -n "$_merge_base" ]] && files_changed="$(git diff --name-only "$_merge_base" HEAD 2>/dev/null || true)"
 
+    # #2433: the review findings that did not send the change back.
+    local _review_lines="" _lens_f
+    local -a _lens_files=()
+    while IFS= read -r _lens_f; do [[ -n "$_lens_f" ]] && _lens_files+=("$_lens_f"); done \
+        < <(earlier_review_findings "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null)
+    [[ ${#_lens_files[@]} -gt 0 ]] && _review_lines="$(_pr_open_review_findings "${_lens_files[@]}")"
     local pr_body
     pr_body="$(_pr_open_compose_body "$issue_num" "$plan_json" "$test_verdict" "$files_changed" \
-        "$_unsettled_block" "$_forced_draft")"
+        "$_unsettled_block" "$_forced_draft" "$_review_lines")"
 
     local -a _gh_args=()
     [[ "${_draft_bool}" == "true" ]] && _gh_args+=("--draft")
