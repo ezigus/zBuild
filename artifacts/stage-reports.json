@@ -12,7 +12,8 @@
     "tests/unit/merge-v2-result-test.sh",
     "tests/unit/pr-delivery-v2-result-test.sh",
     "tests/unit/pr-open-v2-inputs-test.sh",
-    "tests/unit/pr-open-v2-result-test.sh"
+    "tests/unit/pr-open-v2-result-test.sh",
+    "tests/unit/runner-map-parallel-stage-envelope-test.sh"
   ],
   "wiring_files": [
     "core/pipeline/runner.sh"
