@@ -1,0 +1,62 @@
+### core/pipeline/runner.sh reverted tests/unit/engine-combines-map-test.sh
+
+[38;2;0;212;255m[1m  the engine sums up a map group (#2368 part 2)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mM1: the group's summary[0m
+  [38;2;74;222;128m✓[0m [M1] the engine writes the group's summary
+  [38;2;74;222;128m✓[0m [M1] each element, its outcome and its reason
+  [38;2;74;222;128m✓[0m [M1] ...every one
+
+  [38;2;0;212;255mM2: the engine's word for later stages[0m
+  [38;2;74;222;128m✓[0m [M2] an element failed → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [M2] none failed → ZBUILD_RUN_FLAGGED=no
+
+  [38;2;0;212;255m#1753/SPEC-1: any non-pass outcome sets ZBUILD_RUN_FLAGGED[0m
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] timed_out outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] out_of_turns outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] unusable outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] throttled outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] rate_limited outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] unavailable outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] misconfigured outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] broken outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] fail outcome → ZBUILD_RUN_FLAGGED=yes
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 15 tests passed[0m
+
+### core/pipeline/runner.sh head tests/unit/engine-combines-map-test.sh
+
+[38;2;0;212;255m[1m  the engine sums up a map group (#2368 part 2)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mM1: the group's summary[0m
+  [38;2;74;222;128m✓[0m [M1] the engine writes the group's summary
+  [38;2;74;222;128m✓[0m [M1] each element, its outcome and its reason
+  [38;2;74;222;128m✓[0m [M1] ...every one
+
+  [38;2;0;212;255mM2: the engine's word for later stages[0m
+  [38;2;74;222;128m✓[0m [M2] an element failed → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [M2] none failed → ZBUILD_RUN_FLAGGED=no
+
+  [38;2;0;212;255m#1753/SPEC-1: any non-pass outcome sets ZBUILD_RUN_FLAGGED[0m
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] timed_out outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] out_of_turns outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] unusable outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] throttled outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] rate_limited outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] unavailable outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] misconfigured outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] broken outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] fail outcome → ZBUILD_RUN_FLAGGED=yes
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 15 tests passed[0m
+

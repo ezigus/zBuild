@@ -1,0 +1,12 @@
+the acceptance check failed — core/pipeline/runner.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
+NEGCTL PASS SPEC-1
+      design : When any map member's outcome is not `pass`, `_strategy_run_map` exports `ZBUILD_RUN_FLAGGED=yes`.
+      asserts: assert_eq "[#1753/SPEC-1] timed_out outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-u…
+NEGCTL SKIP SPEC-2 no_code
+      design : ADR-040 is amended to state that an element with outcome ≠ `pass` (whether `fail` or unfinished) set…
+      asserts: <none found>
+NEGCTL SKIP SPEC-3 already_done
+      design : Under `auto_unless_flagged`, pr-delivery routes to pr-open (not merge) when `ZBUILD_RUN_FLAGGED=yes`…
+      asserts: <none found>
+REACHABILITY FAIL inert_wiring core/pipeline/runner.sh
+REACHABILITY PASS change core/pipeline/strategies/map.sh

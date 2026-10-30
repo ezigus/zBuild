@@ -1,0 +1,49 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/unit/runner-map-parallel-stage-envelope-test.sh
+
+  runner — parallel:/map: stage envelope (ADR-039, ADR-047 §2)
+
+
+  1–5: parallel: arm envelope
+  ✓ [SPEC-1] parallel: dispatch arm emits stage.start
+  ✓ [SPEC-2] parallel: dispatch arm emits stage.complete
+  ✓ [SPEC-3] parallel: dispatch arm writes stage_statuses[id]=complete
+  ✓ [SPEC-4] parallel: dispatch arm writes stage_verdicts[id]=pass
+  ✓ [SPEC-5] parallel: dispatch arm exports ZBUILD_CURRENT_STAGE=id
+
+  6–10: map: arm envelope
+  ✓ [SPEC-6] map: dispatch arm emits stage.start
+  ✓ [SPEC-7] map: dispatch arm emits stage.complete
+  ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete
+    output missing: _update_stage_status
+  ✓ [SPEC-8] map: _update_stage_status targets _mg_id
+  ✓ [SPEC-9] map: dispatch arm writes stage_verdicts[id]=pass
+  ✓ [SPEC-10] map: dispatch arm exports ZBUILD_CURRENT_STAGE=id
+
+  B1: _update_stage_status writes stage_statuses[group]=complete
+  ✓ B1: state_statuses[review_group]=complete written to state file
+
+  B2: _zbuild_state_set_stage_verdict writes stage_verdicts[group]=pass
+  ✓ B2: stage_verdicts[review_group]=pass written to state file
+
+  B3: stage_statuses covers all units including map and parallel groups
+  ✓ B3: stage_statuses includes intake (covers all dispatch unit types)
+  ✓ B3: stage_statuses includes review_lenses (covers all dispatch unit types)
+  ✓ B3: stage_statuses includes feature_work (covers all dispatch unit types)
+
+
+  1 of 16 tests failed
+
+  ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete
+
+unit: 532/533 passed (4 skipped)
+integration: 260/260 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 829/830 passed (4 skipped)
