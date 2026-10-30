@@ -67,8 +67,7 @@ SPEC-3[no-code]: persist.* and hydrate.* entries are removed from config/event-s
 SPEC-4[no-code]: plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manifest.yaml provides.events, and the two tests that previously asserted plugin.result was present in those manifests are updated to remove that sub-assertion covers: R-1
 SPEC-5[no-code]: docs/adr/ADR-001-plugin-contract.md has an ## Enforced by section naming tests/unit/event-schema-emitted-coverage-test.sh, and config/adr-enforcement-baseline.txt no longer lists ADR-001-plugin-contract.md covers: R-1
 SPEC-6[no-code]: The hardcoded _PLUGIN_NS_RE variable and its associated guard block are absent from tests/unit/event-schema-emitted-coverage-test.sh after the change — no occurrence of _PLUGIN_NS_RE remains in the file covers: R-1
-WIRING:
-tests/unit/event-schema-emitted-coverage-test.sh
+WIRING: none
 TESTFILES:
 SPEC-1: tests/unit/event-schema-emitted-coverage-test.sh
 SPEC-2: tests/unit/event-schema-emitted-coverage-test.sh
