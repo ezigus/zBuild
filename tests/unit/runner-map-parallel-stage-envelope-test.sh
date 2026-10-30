@@ -101,7 +101,7 @@ print_test_section "map: #1753 stop block"
 #   (c) runtime: with ZBUILD_RUN_FLAGGED=yes and _rc=0, _update_stage_status is not called
 
 # (a) ZBUILD_RUN_FLAGGED check precedes _update_stage_status
-spec4_pre_update=$(awk '/_update_stage_status.*_mg_id/{exit} {print}' <<< "$MAP_ARM")
+spec4_pre_update=$(awk '/_update_stage_status.*_mg_id.*complete/{exit} {print}' <<< "$MAP_ARM")
 spec4_flagged_cnt=$(grep -cF 'ZBUILD_RUN_FLAGGED:-' <<< "$spec4_pre_update") || spec4_flagged_cnt=0
 assert_eq "[#1753/SPEC-4] map arm: ZBUILD_RUN_FLAGGED check precedes _update_stage_status" "1" "$spec4_flagged_cnt"
 
@@ -122,10 +122,13 @@ assert_eq "[#1753/SPEC-4] map arm: return 1 inside ZBUILD_RUN_FLAGGED block" "1"
 #     created → assert_file_not_exists FAILS.
 #     After #1753 the stop block fires return 1 before _update_stage_status → marker
 #     absent → PASSES.
+# Starts at the group's own rc check, after its complete event — not the
+# orch_spawn check above it, whose code needs variables this harness lacks.
 _spec4_rc_onward=$(awk '
-    /if \[\[.*_rc.*-ne.*0/{start=1}
+    /parallel\.group\.complete/{seen=1}
+    seen && /if \[\[.*_rc.*-ne.*0/{start=1}
     start{print}
-    start && /_update_stage_status.*_mg_id/{exit}
+    start && /_update_stage_status.*_mg_id.*complete/{exit}
 ' <<< "$MAP_ARM")
 _spec4_marker="$TEST_TEMP_DIR/spec4_update_called"
 rm -f "$_spec4_marker"
@@ -135,7 +138,7 @@ _spec4_runtime() {
     eb_emit_event()                  { :; }
     _render_pipeline_end()           { :; }
     error()                          { :; }
-    _update_stage_status()           { touch "$_spec4_marker"; }
+    _update_stage_status()           { [[ "$3" == complete ]] && touch "$_spec4_marker"; return 0; }
     state_file="$TEST_TEMP_DIR/state.json"
     _mg_id="review_lenses"
     _runner_run_id="run-001"
@@ -151,8 +154,39 @@ set +e
 ( _spec4_runtime ) 2>/dev/null
 set -e
 assert_file_not_exists \
-    "[#1753/SPEC-4] map arm: _update_stage_status not called when ZBUILD_RUN_FLAGGED=yes" \
+    "[#1753/SPEC-4] map arm: the group is not recorded complete when ZBUILD_RUN_FLAGGED=yes" \
     "$_spec4_marker"
+
+# (d)–(f) #1753 lens review: the same code run both ways, recording what it does.
+#   (d) every member passed (ZBUILD_RUN_FLAGGED=no) → the group completes (R4)
+#   (e) a member did not pass → the group is recorded failed, and the stop
+#       message names the members that did not pass
+#   (f) the group's complete event takes its verdict from _map_group_verdict
+_spec4_log="$TEST_TEMP_DIR/spec4_calls"
+_spec4_run() {   # _spec4_run <flagged> <not_passed>
+    : > "$_spec4_log"
+    _spec4_body() {
+        _set_pipeline_status()           { :; }
+        _zbuild_state_set_stage_verdict() { printf 'verdict %s\n' "$3" >> "$_spec4_log"; }
+        eb_emit_event()                  { :; }
+        _render_pipeline_end()           { :; }
+        error()                          { printf 'error %s\n' "$*" >> "$_spec4_log"; }
+        _update_stage_status()           { printf 'status %s\n' "$3" >> "$_spec4_log"; }
+        state_file="$TEST_TEMP_DIR/state.json"; _mg_id="review_lenses"
+        _runner_run_id="run-001"; _runner_issue="1753"; _runner_ended=false
+        _ZB_MAP_UNFINISHED=""; _ZB_MAP_NOT_PASSED="$2"; _ZB_STRATEGY_OUTCOME="failed"; _rc=0
+        export ZBUILD_RUN_FLAGGED="$1"
+        eval "$_spec4_rc_onward"
+    }
+    ( _spec4_body "$@" ) || true
+}
+_spec4_run no ""
+assert_contains "[#1753/R4] every member passed → the group is recorded complete" "$(cat "$_spec4_log")" "status complete"
+_spec4_run yes "1 of 6 lenses did not pass: correctness (fail)"
+assert_contains "[#1753/R3] a member did not pass → the group is recorded failed" "$(cat "$_spec4_log")" "status failed"
+assert_contains "[#1753/R3] … and the stop message names it" "$(cat "$_spec4_log")" "1 of 6 lenses did not pass: correctness (fail)"
+assert_contains "[#1753/R3] the group's complete event reads its verdict from _map_group_verdict" \
+    "$(grep -A2 'parallel.group.complete' <<< "$MAP_ARM")" '_map_group_verdict'
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Part 2 — behavioral: state helpers write the expected values to a real JSON

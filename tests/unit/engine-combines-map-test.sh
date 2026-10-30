@@ -63,9 +63,18 @@ assert_contains "[M1] ...every one" "$(cat "$S" 2>/dev/null)" "- c: pass — not
 
 print_test_section "M2: the engine's word for later stages"
 assert_eq "[M2] an element failed → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+# #1753 (lens review): the run's stop message names every member that did not
+# pass, a conclusive fail as much as one that did not finish.
+assert_eq "[#1753/M3] the members that did not pass, for the runner" \
+    "1 of 3 lenses did not pass: b (fail)" "${_ZB_MAP_NOT_PASSED:-unset}"
+assert_eq "[#1753/M4] a group with a failed member reads fail" "fail" "$(_map_group_verdict)"
 rm -f "$ART"/lens-*.json
 _run_map a c
 assert_eq "[M2] none failed → ZBUILD_RUN_FLAGGED=no" "no" "${ZBUILD_RUN_FLAGGED:-unset}"
+assert_eq "[#1753/M3] every member passed → nothing to name" "" "${_ZB_MAP_NOT_PASSED-unset}"
+assert_eq "[#1753/M4] every member passed → the group reads pass" "pass" "$(_map_group_verdict)"
+assert_eq "[#1753/M4] a member that did not finish → the group reads incomplete" "incomplete" \
+    "$(_ZB_MAP_UNFINISHED="1 of 2 lenses did not finish: a (timed_out)" ZBUILD_RUN_FLAGGED=yes _map_group_verdict)"
 
 print_test_section "#1753/SPEC-1: any non-pass outcome sets ZBUILD_RUN_FLAGGED"
 # Requirement: _strategy_run_map exports ZBUILD_RUN_FLAGGED=yes when ANY member

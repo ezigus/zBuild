@@ -132,15 +132,17 @@ _map_unit_element() {
 # failed or did not finish (ZBUILD_RUN_FLAGGED=yes|no). Fail-open: a diagnostic never fails the group.
 # Its first line says whether every element finished — a pass or a fail is a
 # finish; anything else (timed_out, an error, no result) is not — and
-# _ZB_MAP_UNFINISHED keeps that line for the runner when one did not.
+# _ZB_MAP_UNFINISHED keeps that line for the runner when one did not, and
+# _ZB_MAP_NOT_PASSED names every member that did not pass, for the run's stop
+# message (#1753).
 # Each member's row on the status comment is closed with its own outcome and
 # what it reported (parallel.member.dispatch.complete under its seq).
 _map_write_summary() {
     local stage="$1" state_file="$2" env_target="$3" dimension="$4" n="$5"; shift 5
     local -a plugins=("${@:1:$n}") elems=("${@:$((n + 1)):$n}")
     local state_dir art i raw res line body="" flagged=no outcome reason sum
-    local -a unfinished=()
-    _ZB_MAP_UNFINISHED=""
+    local -a unfinished=() notpassed=()
+    _ZB_MAP_UNFINISHED=""; _ZB_MAP_NOT_PASSED=""
     state_dir="$(dirname "$state_file")"; art="${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}"
     declare -F _registry_output_path_rows >/dev/null 2>&1 \
         || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../plugin-registry" && pwd)/output-paths.sh" 2>/dev/null || true
@@ -154,7 +156,7 @@ _map_write_summary() {
             outcome="$(jq -r '.outcome // "missing"' "$res" 2>/dev/null || echo missing)"
             reason="$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$res" 2>/dev/null || true)"
         fi
-        [[ "$outcome" != pass ]] && flagged=yes
+        [[ "$outcome" != pass ]] && { flagged=yes; notpassed+=("${elems[$i]} (${outcome})"); }
         [[ "$outcome" == pass || "$outcome" == fail ]] || unfinished+=("${elems[$i]} (${outcome})")
         line="- ${elems[$i]}: $outcome${reason:+ — $reason}"
         body+="$line"$'\n'
@@ -176,10 +178,25 @@ _map_write_summary() {
     else
         head="all $n $noun finished"
     fi
+    if [[ ${#notpassed[@]} -gt 0 ]]; then
+        local p plist=""
+        for p in "${notpassed[@]}"; do plist+="${plist:+, }$p"; done
+        _ZB_MAP_NOT_PASSED="${#notpassed[@]} of $n $noun did not pass: $plist"
+    fi
     export ZBUILD_RUN_FLAGGED="$flagged"
     mkdir -p "$art" 2>/dev/null || true
     printf '## %s\n\n%s\n\n%s' "$stage" "$head" "$body" > "$art/${stage//[^A-Za-z0-9_.-]/_}-summary.md" 2>/dev/null || true
     return 0
+}
+
+# _map_group_verdict — the group's word on its complete event, after
+# _map_write_summary: incomplete when a member did not finish, fail when one
+# failed, else pass (#1753).
+_map_group_verdict() {
+    if [[ -n "${_ZB_MAP_UNFINISHED:-}" ]]; then printf 'incomplete'
+    elif [[ "${ZBUILD_RUN_FLAGGED:-}" == yes ]]; then printf 'fail'
+    else printf 'pass'
+    fi
 }
 
 # _map_member_path <raw> <env_target> <element> <state_dir> <art> — a member's

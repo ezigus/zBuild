@@ -474,12 +474,17 @@ Supersedes §4 and the #2301 amendment.
   review ran at all (fail-closed, ADR-001), now judged by the word being unset.
 - **When `ZBUILD_RUN_FLAGGED=yes`, runner.sh stops the run** at the map dispatch arm before dispatching
   further stages (#1753): no PR is opened and nothing merges unless every element finished and passed.
+  The group is recorded failed, its stop message names every element that did not pass and its
+  outcome, and its `parallel.group.complete` event reads `incomplete` when an element did not finish,
+  `fail` when one failed, `pass` otherwise.
 - **The PR body says what the PR is for:** the issue, the goal and the work items from the plan, the
   files changed since the default branch, and the test result. Review findings stay out of it.
 
 Enforced by: `tests/unit/engine-combines-map-test.sh` M1, M2, SPEC-1 (#1753 — any non-pass outcome sets
-`ZBUILD_RUN_FLAGGED=yes`); `tests/unit/runner-map-parallel-stage-envelope-test.sh` SPEC-4 (#1753 — runner.sh
-stops the run when `ZBUILD_RUN_FLAGGED=yes`); `plugins/tool/pr-open/tests/pr-open-body-test.sh`
+`ZBUILD_RUN_FLAGGED=yes`), M3 (the elements that did not pass are named), M4 (the group's verdict);
+`tests/unit/runner-map-parallel-stage-envelope-test.sh` SPEC-4 (#1753 — runner.sh stops the run when
+`ZBUILD_RUN_FLAGGED=yes`), R3 (the group is recorded failed; the stop message names the elements; the
+complete event's verdict), R4 (every element passed → the group completes); `plugins/tool/pr-open/tests/pr-open-body-test.sh`
 B1–B3; `tests/unit/pr-delivery-v2-result-test.sh` SPEC-3; `tests/integration/merge-policy-auto-unless-flagged-test.sh`
 SPEC-1–SPEC-6; `tests/unit/retired-impact-review-report-inputs-test.sh` RT2.
 
