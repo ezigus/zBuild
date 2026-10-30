@@ -11,5 +11,11 @@
   ],
   "wiring_files": [
     "tests/unit/event-schema-emitted-coverage-test.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/unit/event-schema-emitted-coverage-test.sh",
+      "tests/unit/lint-adr-enforced-by-test.sh"
+    ]
+  }
 }
