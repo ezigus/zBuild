@@ -67,7 +67,7 @@ _test_own_checks() {
                 # check that failed with no findings gets its reason as one.
                 if [[ "$(jq -r '(.data.findings // []) | length' "$f" 2>/dev/null)" == 0 ]]; then
                     local fj1 tmp1
-                    fj1="$(printf '%s failed: %s\n' "$name" "$(jq -r '.reason // ""' "$f" 2>/dev/null)" | stage_findings_json)"
+                    fj1="$(printf '%s failed: %s\n' "$name" "$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$f" 2>/dev/null)" | stage_findings_json)"
                     tmp1="$(jq --argjson f "${fj1:-[]}" '.data = ((.data // {}) + {findings: $f})' "$f" 2>/dev/null)" \
                         && printf '%s\n' "$tmp1" | atomic_write "$f"
                 fi ;;

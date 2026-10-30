@@ -108,6 +108,16 @@ assert_contains "[R6] design is shown the acceptance check's finding" "$_pwd" "a
 assert_eq "[R6] build is shown it as a finding once" "1" \
     "$(grep -E '^- [a-z-]+ finding [0-9]+ \(opened by test\): ' <<< "$_pwb" | grep -cF -- "${_ap:0:40}")"
 
+# ── R7 ───────────────────────────────────────────────────────────────────────
+# A check that fails with no findings and a reason over two lines gets ONE
+# finding: the reason is one item, not one per line (#2428 review).
+shape_floor_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/shape-floor-result.json" fail $'line one\nline two'; }
+acceptance_gate_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/acceptance-gate-result.json" pass ok; }
+_test_own_checks test "$S/pipeline-state.json" "$A/test-results.json" "$R" >/dev/null 2>&1
+assert_eq "[R7] a two-line reason is one finding" "1" \
+    "$(jq '(.data.findings // []) | length' "$A/shape-floor-result.json" 2>/dev/null)"
+assert_contains "[R7] ...holding both lines" "$(jq -r '.data.findings[0].text // ""' "$A/shape-floor-result.json")" "line one line two"
+
 # ── R5 ───────────────────────────────────────────────────────────────────────
 for _p in tool/shape-floor agent/spec-acceptance tool/assertion-integrity; do
     assert_eq "[R5] $_p is no longer a plugin" "absent" "$([[ -d "$REPO_ROOT/plugins/$_p" ]] && echo present || echo absent)"
