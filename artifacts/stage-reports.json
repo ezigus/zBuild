@@ -1,0 +1,26 @@
+{
+  "scope_files": [
+    "core/detect/platforms.sh",
+    "core/output/destinations.sh",
+    "core/pipeline/state_helpers.sh",
+    "package.json",
+    "plugins/agent/intake/plugin.sh",
+    "plugins/agent/intake/tests/intake-result-test.sh",
+    "plugins/agent/pr-delivery/plugin.sh",
+    "plugins/tool/merge/plugin.sh",
+    "plugins/tool/output-github-comment/plugin.sh",
+    "plugins/tool/pr-open/plugin.sh",
+    "plugins/tool/test/lib/acceptance-check.sh",
+    "plugins/tool/test/lib/acceptance-reason.sh",
+    "plugins/tool/test/plugin.sh",
+    "scripts/lib/lint-atomic-write-unchecked.sh",
+    "tests/unit/plugin-primary-output-atomic-test.sh",
+    "tests/unit/test-plugin-result-write-fallback-test.sh",
+    "tests/unit/test-result-reason-contract-test.sh"
+  ],
+  "wiring_files": [
+    "package.json",
+    "plugins/agent/intake/plugin.sh",
+    "plugins/tool/test/plugin.sh"
+  ]
+}
