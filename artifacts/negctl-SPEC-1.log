@@ -20,14 +20,33 @@
     [2mexpected: yes, got: no[0m
   [38;2;248;113;113m✗[0m [#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes
     [2mexpected: yes, got: no[0m
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] unusable outcome → ZBUILD_RUN_FLAGGED=yes
+    [2mexpected: yes, got: no[0m
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] throttled outcome → ZBUILD_RUN_FLAGGED=yes
+    [2mexpected: yes, got: no[0m
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] rate_limited outcome → ZBUILD_RUN_FLAGGED=yes
+    [2mexpected: yes, got: no[0m
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] unavailable outcome → ZBUILD_RUN_FLAGGED=yes
+    [2mexpected: yes, got: no[0m
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] misconfigured outcome → ZBUILD_RUN_FLAGGED=yes
+    [2mexpected: yes, got: no[0m
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] broken outcome → ZBUILD_RUN_FLAGGED=yes
+    [2mexpected: yes, got: no[0m
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] fail outcome → ZBUILD_RUN_FLAGGED=yes
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m3 of 8 tests failed[0m
+  [38;2;248;113;113m[1m9 of 15 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1753/SPEC-1] timed_out outcome → ZBUILD_RUN_FLAGGED=yes
   [38;2;248;113;113m✗[0m [#1753/SPEC-1] out_of_turns outcome → ZBUILD_RUN_FLAGGED=yes
   [38;2;248;113;113m✗[0m [#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] unusable outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] throttled outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] rate_limited outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] unavailable outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] misconfigured outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;248;113;113m✗[0m [#1753/SPEC-1] broken outcome → ZBUILD_RUN_FLAGGED=yes
 
 ### SPEC-1 head tests/unit/engine-combines-map-test.sh
 
@@ -48,8 +67,15 @@
   [38;2;74;222;128m✓[0m [#1753/SPEC-1] timed_out outcome → ZBUILD_RUN_FLAGGED=yes
   [38;2;74;222;128m✓[0m [#1753/SPEC-1] out_of_turns outcome → ZBUILD_RUN_FLAGGED=yes
   [38;2;74;222;128m✓[0m [#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] unusable outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] throttled outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] rate_limited outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] unavailable outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] misconfigured outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] broken outcome → ZBUILD_RUN_FLAGGED=yes
+  [38;2;74;222;128m✓[0m [#1753/SPEC-1] fail outcome → ZBUILD_RUN_FLAGGED=yes
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 8 tests passed[0m
+  [38;2;74;222;128m[1mAll 15 tests passed[0m
 
