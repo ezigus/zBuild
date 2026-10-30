@@ -33,6 +33,90 @@
     [2mno output on stderr/stdout for op=lte value=notanumber[0m
 [38;2;248;113;113m[1m✗[0m cycle 'spec7_cycle': no stages declared
   [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: gt non-numeric → rc=1
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: gt non-numeric emits error
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec7_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: gte non-numeric → rc=1
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: gte non-numeric emits error
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec7_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: lt non-numeric → rc=1
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: lt non-numeric emits error
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec7_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: lte non-numeric → rc=1
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: lte non-numeric emits error
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec7_aw': max_iterations required (integer 1..10)
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=max_iterations_missing_or_nonint value=<unset>
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: gt non-numeric → rc=1
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: gt non-numeric emits error
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec7_aw': max_iterations required (integer 1..10)
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=max_iterations_missing_or_nonint value=<unset>
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: gte non-numeric → rc=1
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: gte non-numeric emits error
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec7_aw': max_iterations required (integer 1..10)
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=max_iterations_missing_or_nonint value=<unset>
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: lt non-numeric → rc=1
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: lt non-numeric emits error
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec7_aw': max_iterations required (integer 1..10)
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=max_iterations_missing_or_nonint value=<unset>
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: lte non-numeric → rc=1
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: lte non-numeric emits error
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-8] _cycle_check_until: bogus_op → rc=1 (not silent skip)
+[38;2;248;113;113m[1m✗[0m cycle 'spec8_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec8_aw': max_iterations required (integer 1..10)
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=max_iterations_missing_or_nonint value=<unset>
+  [38;2;248;113;113m✗[0m [#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)
+    [2m_cycle_load_template failed (pre-#1760: function may not exist, rc=1)[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m22 of 41 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_until: gt non-numeric emits error message
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_until: gte non-numeric emits error message
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_until: lt non-numeric emits error message
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_until: lte non-numeric emits error message
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: gt non-numeric → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: gt non-numeric emits error
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: gte non-numeric → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: gte non-numeric emits error
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: lt non-numeric → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: lt non-numeric emits error
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: lte non-numeric → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_eval_one_condition: lte non-numeric emits error
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: gt non-numeric → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: gt non-numeric emits error
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: gte non-numeric → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: gte non-numeric emits error
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: lt non-numeric → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: lt non-numeric emits error
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: lte non-numeric → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_abort_when: lte non-numeric emits error
+  [38;2;248;113;113m✗[0m [#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)
+  [38;2;248;113;113m✗[0m [#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)
+
 ### SPEC-7 head tests/unit/core-pipeline-cycle-events-test.sh
 
 [38;2;0;212;255m[1m  cycle events — schema registrations (ADR-021)[0m

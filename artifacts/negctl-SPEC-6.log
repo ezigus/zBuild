@@ -4,11 +4,11 @@
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;74;222;128m✓[0m T1: template loads rc=0
-══ bt_cycle [cycle] seq=1 input ════════════════════════════════ 15:04:50 UTC ══
+══ bt_cycle [cycle] seq=1 input ════════════════════════════════ 16:16:11 UTC ══
 (no feedback — first iteration)
 
 
-══ bt_cycle [cycle] seq=1 output OK 0.3s ═══════════════════════ 15:04:50 UTC ══
+══ bt_cycle [cycle] seq=1 output OK 0.3s ═══════════════════════ 16:16:11 UTC ══
 abort_when stage=test field=verdict op=eq value=corrupt → MATCHED (got=corrupt)
 health: progress=0 (no progress) - defects=1 → score=-1
 ── end stage-io: bt_cycle ✓ ──
@@ -28,11 +28,11 @@ health: progress=0 (no progress) - defects=1 → score=-1
 [2m  ══════════════════════════════════════════[0m
 
   [38;2;74;222;128m✓[0m T1: template loads rc=0
-══ bt_cycle [cycle] seq=1 input ════════════════════════════════ 15:04:51 UTC ══
+══ bt_cycle [cycle] seq=1 input ════════════════════════════════ 16:16:12 UTC ══
 (no feedback — first iteration)
 
 
-══ bt_cycle [cycle] seq=1 output OK 0.3s ═══════════════════════ 15:04:51 UTC ══
+══ bt_cycle [cycle] seq=1 output OK 0.3s ═══════════════════════ 16:16:12 UTC ══
 abort_when stage=test field=verdict op=eq value=corrupt → MATCHED (got=corrupt)
 health: progress=0 (no progress) - defects=1 → score=-1
 ── end stage-io: bt_cycle ✓ ──

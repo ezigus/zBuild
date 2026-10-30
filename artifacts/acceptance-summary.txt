@@ -1,4 +1,3 @@
-the acceptance check failed — SPEC-5 (the file stopped after SPEC-4), SPEC-8 (the file stopped after SPEC-7): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code
 NEGCTL PASS SPEC-1
       design : abort_when.op outside the eight-op set is refused at template load with an error naming the loop, fi…
       asserts: assert_eq "[#1760/SPEC-1] abort_when bad op refused (rc!=0)" "1" "$bad_aw_rc"
@@ -11,16 +10,16 @@ NEGCTL PASS SPEC-3
 NEGCTL PASS SPEC-4
       design : the full eight-op set evaluates correctly in the exit_when single-condition evaluator (_cycle_check_…
       asserts: assert_eq "[#1760/SPEC-4] eq: match → rc=0" "0" "$rc"
-NEGCTL FAIL SPEC-5 unreached_at_base after=SPEC-4
+NEGCTL PASS SPEC-5
       design : the full eight-op set evaluates correctly in the exit_when multi-condition evaluator (_cycle_eval_on…
-      asserts: assert_eq "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" "0" "$rc"
+      asserts: assert_fail "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" \
 NEGCTL PASS SPEC-6
       design : the full eight-op set evaluates correctly in the abort_when evaluator (_cycle_check_abort_when)
       asserts: assert_eq "[#1760/SPEC-6] eq: verdict==block → rc=0 (abort matched)" "0" "$rc"
 NEGCTL PASS SPEC-7
       design : gt/gte/lt/lte with a non-numeric operand emits an error (not silent false) in each evaluator
       asserts: assert_eq "[#1760/SPEC-7] _cycle_check_until: ${_spec7_op} non-numeric → rc=1 (error, not silent fal…
-NEGCTL FAIL SPEC-8 unreached_at_base after=SPEC-7
+NEGCTL PASS SPEC-8
       design : each evaluator's *) branch returns 1 on an unrecognized op rather than silently skipping
       asserts: assert_eq "[#1760/SPEC-8] _cycle_check_until: bogus_op → rc=1 (not silent skip)" "1" "$rc"
 NEGCTL SKIP SPEC-9 no_code

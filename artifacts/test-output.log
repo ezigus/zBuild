@@ -2,38 +2,11 @@
 > zbuild@0.1.0 test
 > bash tests/run-all.sh
 
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.OMJN9k/tests/unit/core-pipeline-cycle-convergence-test.sh
-
-  cycle-orchestrator — convergence predicate (ADR-021)
-
-  ✓ eq match → rc=0 (converged)
-  ✓ eq mismatch → rc=1
-✗ cycle exit_when: unrecognized op 'ne'
-  ✗ ne with non-matching value → rc=0 (converged)
-    expected: 0, got: 1
-  ⚠ cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
-  ✓ field missing → rc=1 (treat as unconverged)
-  ⚠ cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
-  ✓ stage missing → rc=1
-  ⚠ cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
-  ✓ empty blob → rc=1
-  ✓ iter==max → terminate (rc=0)
-  ✓ iter<max → continue (rc=1)
-  ✓ iter>max → terminate (rc=0)
-  ⚠ cycle.metric.invalid — iter=abc max=3 reason=non_numeric
-  ✓ non-numeric iter → terminate (fail-closed)
-  ✓ status field eq match → converged
-
-
-  1 of 11 tests failed
-
-  ✗ ne with non-matching value → rc=0 (converged)
-
-unit: 533/534 passed (4 skipped)
+unit: 534/534 passed (4 skipped)
 integration: 260/260 passed
 e2e: 10/10 passed
 golden: 1/1 passed
 mutation: 25/25 passed
 lint: 1/1 passed
 
-total: 830/831 passed (4 skipped)
+total: 831/831 passed (4 skipped)

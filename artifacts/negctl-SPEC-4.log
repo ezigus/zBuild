@@ -3,10 +3,10 @@
 [38;2;0;212;255m[1m  cycle abort_when non-match converges (Wave 19-E #737)[0m
 [2m  ══════════════════════════════════════════[0m
 
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 15:04:45 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:16:05 UTC ══
 (no feedback — first iteration)
 
-══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 15:04:45 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:16:05 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──
@@ -22,19 +22,19 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m T8: exit_when match=true (predicate evaluated before abort_when crash)
 
   [38;2;0;212;255mnested-cycle production scenario (mirror dogfood 20260607140638-60666)[0m
-══ build_review_cycle [cycle] seq=1 input ══════════════════════ 15:04:45 UTC ══
+══ build_review_cycle [cycle] seq=1 input ══════════════════════ 16:16:06 UTC ══
 (no feedback — first iteration)
 
-══ build_test_cycle [cycle] seq=1 input ════════════════════════ 15:04:45 UTC ══
+══ build_test_cycle [cycle] seq=1 input ════════════════════════ 16:16:06 UTC ══
 (no feedback — first iteration)
 
 
-══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 15:04:46 UTC ══
+══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 16:16:06 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_test_cycle ✓ ──
 
-══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 15:04:46 UTC ══
+══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 16:16:06 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_review_cycle ✓ ──
@@ -44,10 +44,10 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m T14: outer's abort_when predicate event fired
 
   [38;2;0;212;255mregression guard: cycle without abort_when (unchanged path) still works[0m
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 15:04:46 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:16:07 UTC ══
 (no feedback — first iteration)
 
-══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 15:04:47 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:16:07 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──
@@ -82,15 +82,106 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;0;212;255mSPEC-5 — full eight-op set in multi-condition _cycle_eval_one_condition[0m
 [38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
   [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi eq: verdict==pass → rc=0
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi eq: verdict!=pass → rc=1
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi neq: pass!=fail → rc=0
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi neq: fail==fail → rc=1
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi gt: 10>5 → rc=0
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi gt: 3>5 → rc=1
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi gte: 5>=5 → rc=0
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi gte: 4>=5 → rc=1
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi lt: 3<5 → rc=0
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi lt: 9<5 → rc=1
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi lte: 5<=5 → rc=0
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi lte: 8<=5 → rc=1
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+[38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage= field=
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1
+    [2m_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=1)[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m23 of 46 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] neq: verdict!=fail → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] gt: 10>5 → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] gte: 5>=5 → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] lt: 3<5 → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] lte: 5<=5 → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] contains: 'all pass ok' contains 'pass' → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] matches: 'pass' =~ '^pass' → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi eq: verdict==pass → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi eq: verdict!=pass → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi neq: pass!=fail → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi neq: fail==fail → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi gt: 10>5 → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi gt: 3>5 → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi gte: 5>=5 → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi gte: 4>=5 → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi lt: 3<5 → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi lt: 9<5 → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi lte: 5<=5 → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi lte: 8<=5 → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0
+  [38;2;248;113;113m✗[0m [#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1
+
 ### SPEC-4 head tests/integration/cycle-abort-when-no-match-converges-test.sh
 
 [38;2;0;212;255m[1m  cycle abort_when non-match converges (Wave 19-E #737)[0m
 [2m  ══════════════════════════════════════════[0m
 
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 15:04:47 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:16:08 UTC ══
 (no feedback — first iteration)
 
-══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 15:04:48 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:16:08 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──
@@ -106,19 +197,19 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m T8: exit_when match=true (predicate evaluated before abort_when crash)
 
   [38;2;0;212;255mnested-cycle production scenario (mirror dogfood 20260607140638-60666)[0m
-══ build_review_cycle [cycle] seq=1 input ══════════════════════ 15:04:48 UTC ══
+══ build_review_cycle [cycle] seq=1 input ══════════════════════ 16:16:08 UTC ══
 (no feedback — first iteration)
 
-══ build_test_cycle [cycle] seq=1 input ════════════════════════ 15:04:48 UTC ══
+══ build_test_cycle [cycle] seq=1 input ════════════════════════ 16:16:08 UTC ══
 (no feedback — first iteration)
 
 
-══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 15:04:48 UTC ══
+══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 16:16:09 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_test_cycle ✓ ──
 
-══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 15:04:49 UTC ══
+══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 16:16:09 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_review_cycle ✓ ──
@@ -128,10 +219,10 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m T14: outer's abort_when predicate event fired
 
   [38;2;0;212;255mregression guard: cycle without abort_when (unchanged path) still works[0m
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 15:04:49 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:16:09 UTC ══
 (no feedback — first iteration)
 
-══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 15:04:49 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:16:10 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──

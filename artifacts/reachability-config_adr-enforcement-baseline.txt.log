@@ -25,7 +25,14 @@
   [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the loop
   [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the field
   [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the bad op
-  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the valid op set
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes eq
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes neq
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes gt
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes gte
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes lt
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes lte
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes contains
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes matches
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] single-condition bad op refused (rc!=0)
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the loop
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the bad op
@@ -38,11 +45,11 @@
   [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-orchestrator-abort-when-test.sh
   [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/unit/core-pipeline-cycle-events-test.sh
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ADR-027 is removed from adr-enforcement-baseline.txt
-    [2mentry still present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.OoBiLt/config/adr-enforcement-baseline.txt[0m
+    [2mentry still present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.aSNRyC/config/adr-enforcement-baseline.txt[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 35 tests failed[0m
+  [38;2;248;113;113m[1m1 of 42 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ADR-027 is removed from adr-enforcement-baseline.txt
 
@@ -73,7 +80,14 @@
   [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the loop
   [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the field
   [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the bad op
-  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the valid op set
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes eq
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes neq
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes gt
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes gte
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes lt
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes lte
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes contains
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes matches
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] single-condition bad op refused (rc!=0)
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the loop
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the bad op
@@ -89,5 +103,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 35 tests passed[0m
+  [38;2;74;222;128m[1mAll 42 tests passed[0m
 
