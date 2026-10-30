@@ -294,7 +294,7 @@ Outputs:
 Summary:
 ## test-author — pass
 
-- changed 3 test file(s); acceptance assertions for 6 SPEC(s) from the design contract
+- changed 0 test file(s); acceptance assertions for 6 SPEC(s) from the design contract
 
 - SPECs in the contract: 6
 - assertions are authored from the SPEC text, never from the implementation
@@ -305,86 +305,72 @@ Summary:
 - tests/unit/lint-adr-enforced-by-test.sh — SPEC-5
 - Each [code] requirement's test fails on the code as it is now, and passes once the code is written.
 
-### build (verdict: error) — your own
+### build (verdict: pass) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
-## build — unusable
-
-- changed 0 file(s) over 1 pass(es), 2 iteration(s)
-
-- lines: +0 / -0
-- terminated: no_progress
-- scope violation: false
-- needs files outside the contract's scope: plugins/agent/security-lens/tests/security-lens-test.sh, tests/unit/merge-v2-result-test.sh
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-1/build-summary.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-1/build-summary.md
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-1/diff.patch
-
-Summary of that output:
 ## build — pass
 
-- changed 5 file(s) over 1 pass(es), 1 iteration(s)
+- changed 0 file(s) over 1 pass(es), 1 iteration(s)
 
-- lines: +6 / -15
+- lines: +0 / -0
 - terminated: done_sentinel
 - scope violation: false
 
 Your notes so far:
-# Build notes for #1951 (iteration 2)
+# Build notes for #1951 (iteration 3)
 
-## Current state (iteration 2)
+## Final verified state
 
-All data changes were applied in the previous build (commit 20a236d3):
+All required changes are committed and all SPEC tests pass. No further changes needed.
+
+### Changes committed in previous iterations
+
+**Commit 20a236d3**: Data/config changes:
 1. config/event-schema.json: persist.* (6) and hydrate.* (5) entries removed
 2. plugins/agent/security-lens/manifest.yaml: plugin.result removed
-3. plugins/tool/merge/manifest.yaml: plugin.result removed (no events section)
+3. plugins/tool/merge/manifest.yaml: (already clean, no events section)
 4. docs/adr/ADR-001-plugin-contract.md: ## Enforced by section added
 5. config/adr-enforcement-baseline.txt: ADR-001-plugin-contract.md removed
 
-The second test-author (commit 280b8651) fixed the SPEC-1/SPEC-2 test logic:
-- SPEC-1: uses all-but-last namespace (plugin.pr_open.X → plugin.pr_open, not plugin)
-- SPEC-2: has pr-open exception for plugin.<name>.* events
+**Commits 95b7c526, 280b8651, 7fd1c7ca** (test-author): Test changes:
+- tests/unit/event-schema-emitted-coverage-test.sh: new dynamic SPEC-1/2/3/4/6 assertions,
+  _PLUGIN_NS_RE removed entirely
+- plugins/agent/security-lens/tests/security-lens-test.sh: SPEC-16 updated to check
+  security_lens.failed only (plugin.result sub-assertion removed)
+- tests/unit/merge-v2-result-test.sh: SPEC-1 updated to check result_contract/role only
+  (plugin.result sub-assertion removed)
 
-## VERIFIED (iteration 2): all SPECs pass
+### VERIFIED: All SPECs pass on current tree
 
-Ran tests/unit/event-schema-emitted-coverage-test.sh → All 14 tests passed
-- SPEC-1 ✓ (all-but-last namespace: plugin.pr_open not in engine ns check)
-- SPEC-2 ✓ (pr-open exception correctly applied)
-- SPEC-3 ✓ (persist/hydrate absent from event-schema.json)
-- SPEC-4 ✓ (plugin.result absent from both manifests)
+- tests/unit/event-schema-emitted-coverage-test.sh → All 16 tests passed (SPEC-1/2/3/4/6 ✓)
+- plugins/agent/security-lens/tests/security-lens-test.sh → All 93 tests passed ✓
+- tests/unit/merge-v2-result-test.sh → All 54 tests passed ✓
+- tests/unit/lint-adr-enforced-by-test.sh → All 27 tests passed (SPEC-5 ✓)
 
-Ran tests/unit/lint-adr-enforced-by-test.sh → All 27 tests passed
-- SPEC-5 ✓
+### Addressing previous stage findings
 
-## BLOCKED: pre-existing tests out of scope
+**issue-acceptance finding 1** (_PLUGIN_NS_RE not removed): RESOLVED. Grep confirms it
+is absent from event-schema-emitted-coverage-test.sh. The test-author commits already
+removed the SPEC-1717-2 block and replaced it with the dynamic manifest-derived guard.
 
-Two pre-existing tests now FAIL because they assert plugin.result IS present
-(the old state), but SPEC-4 correctly removed it:
+**issue-acceptance finding 2** (two pre-existing tests fail): RESOLVED. The test-author
+commits (7fd1c7ca) updated security-lens-test.sh and merge-v2-result-test.sh to remove
+the plugin.result sub-assertions. Both now check only what they're entitled to assert
+(security_lens.failed for SPEC-16; result_contract/role for SPEC-1). Both tests pass.
 
-1. plugins/agent/security-lens/tests/security-lens-test.sh [SPEC-16]
-   - Asserts "manifest provides.events contains plugin.result"
-   - NOT in plan.files[] - out of scope
+**test finding 10** (wiring check): event-schema-emitted-coverage-test.sh is a
+standalone test script run directly by the test harness. WIRING: none.
 
-2. tests/unit/merge-v2-result-test.sh [SPEC-1]
-   - Asserts "manifest provides.events includes plugin.result"
-   - NOT in plan.files[] - out of scope
+**test findings 1-9** (golden file/shape-floor warnings): Heuristic alerts, not actual
+failures. The parity golden file is unaffected — persist/hydrate events remain in the
+composed known set via plugin manifests; only the redundant engine-config leg was
+removed. All shape-floor and template tests pass (verified).
 
-These need scope expansion to fix. Cannot change without going out of scope.
-
-## Findings from previous test run (iteration 1)
-
-Finding 1: security-lens-test.sh [SPEC-16] → BLOCKED (out of scope)
-Finding 2: coverage-test SPEC-1 → NOT REPRODUCED (new test code 280b8651 fixes it)
-Finding 3: merge-v2-result-test.sh [SPEC-1] → BLOCKED (out of scope)
-Finding 4-5: golden files → unaffected (persist/hydrate events still known via manifests)
-Findings 6-12: shape-floor alerts → not actual failures, no updates needed
-Finding 13: SPEC-1/SPEC-2 don't pass → NOT REPRODUCED (new test code 280b8651 fixes it)
+## No further changes required — implementation complete
 
 ### test (verdict: fail)
 Outputs:
@@ -392,141 +378,38 @@ Outputs:
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 3 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 4 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 5 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 6 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 7 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 8 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 9 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 10 (opened by test): tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
+- test finding 1 (opened by test): tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
 
 Summary:
 # Test stage summary
 
-- verdict: fail
-- passed: 318
-- failed: 2
-- exit_code: 1
+- verdict: pass
+- passed: 830
+- failed: 0
+- exit_code: 0
 
-## Failing lines (extracted)
-
-```
-  ✗ [SPEC-16] manifest provides.events contains plugin.result
-  ✓ [SPEC-16] manifest provides.events contains security_lens.failed
-  ✗ [SPEC-19] canary: all preceding assertions passed (FAIL==0)
-    expected: 0, got: 1
-  ✗ [SPEC-1] manifest provides.events includes plugin.result
-    plugin.result absent
-unit: FAIL plugins/agent/security-lens/tests/security-lens-test.sh
-unit: FAIL tests/unit/merge-v2-result-test.sh
-  2 of 94 tests failed
-  ✓ [SPEC-30] push failure → unavailable
-  ✓ [SPEC-30] gh pr create failure → unavailable
-  ✓ [SPEC-30] gh pr merge failure → unavailable
-  1 of 55 tests failed
-```
+The suite ran to completion with no failing assertions.
 
 ## The checks of this run
-- the shape floor failed: missing_floor_files
 - the acceptance check failed: the acceptance check failed — tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
 
-Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-lete, reason[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] merge-result.json written on success
-  [38;2;74;222;128m✓[0m [SPEC-3] result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-3] outcome is pass
-  [38;2;74;222;128m✓[0m [SPEC-3] no verdict or disposition field
-  [38;2;74;222;128m✓[0m [SPEC-3] reason field is present
-
-  [38;2;0;212;255mSPEC-4: fallback paths — result_contract:3, verdict=pass, data.mode=pr_fallback[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: outcome is pass
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: data.mode is pr_fallback
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: outcome is pass
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: data.mode is pr_fallback
-
-  [38;2;0;212;255mSPEC-5: error paths — result_contract:3, verdict=error, disposition, reason[0m
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: not finished: neither pass nor fail
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: reason present
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: not finished: neither pass nor fail
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: reason present
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: not finished: neither pass nor fail
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: reason present
-
-  [38;2;0;212;255mSPEC-6: all exit paths return rc ∈ {0,1} — no rc=2[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] success path rc=0
-  [38;2;74;222;128m✓[0m [SPEC-6] gate-absent fallback rc=0
-  [38;2;74;222;128m✓[0m [SPEC-6] gate-fail fallback rc=0
-  [38;2;74;222;128m✓[0m [SPEC-6] branch-is-main error rc=1
-  [38;2;74;222;128m✓[0m [SPEC-6] push-failure error rc=1
-  [38;2;74;222;128m✓[0m [SPEC-6] gh-failure error rc=1
-
-  [38;2;0;212;255mSPEC-7: merge reads ZBUILD_RUN_LOOPS_PASSED, not another stage's result[0m
-  [38;2;74;222;128m✓[0m [SPEC-7] loops passed → merge path taken (not pr_fallback)
-  [38;2;74;222;128m✓[0m [SPEC-7] word not set → PR fallback
-  [38;2;74;222;128m✓[0m [SPEC-7] plugin.sh constructs no gate-aggregator-result.json path
-
-  [38;2;0;212;255m#2364: merge names its result file to its caller[0m
-  [38;2;74;222;128m✓[0m [#2364] MERGE_RESULT_FILE names the result merge wrote
-  [38;2;74;222;128m✓[0m [#2364] ...and that file is there
-
-  [38;2;0;212;255m#2364: merge auto-merges only when the engine says a review ran[0m
-  [38;2;74;222;128m✓[0m [#2364] no word that a review ran → PR fallback, whatever review.json says
-
-  [38;2;0;212;255mSPEC-29: a PR fallback that fails is reported as a failure[0m
-  [38;2;74;222;128m✓[0m [SPEC-29] rc=1
-  [38;2;74;222;128m✓[0m [SPEC-29] merge-result.json is not a pass
-  [38;2;74;222;128m✓[0m [SPEC-29] …carrying pr-open's own outcome
-
-  [38;2;0;212;255mSPEC-30: a failed outward action reports unavailable[0m
-  [38;2;74;222;128m✓[0m [SPEC-30] push failure → unavailable
-  [38;2;74;222;128m✓[0m [SPEC-30] gh pr create failure → unavailable
-  [38;2;74;222;128m✓[0m [SPEC-30] gh pr merge failure → unavailable
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 55 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.events includes plugin.result
-
-### issue-acceptance (verdict: fail)
+### issue-acceptance (verdict: pass)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
-Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R5: `_PLUGIN_NS_RE` is gone — the diff for `tests/unit/event-schema-emitted-coverage-test.sh` is a pure append starting at the original line 157; the earlier SPEC-1717-2 block that defines and uses `_PLUGIN_NS_RE` as a hardcoded plugin-namespace list falls entirely before that hunk and is untouched. The hardcoded enumeration the issue requires eliminated is still present in the file.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R4 (test suite passes): Removing `plugin.result` from the security-lens and merge manifests is correct, but two pre-existing tests that pin the old manifest state now fail — `plugins/agent/security-lens/tests/security-lens-test.sh` [SPEC-16] asserts that `plugin.result` *is* in the security-lens manifest, and `tests/unit/merge-v2-result-test.sh` [SPEC-1] asserts it is in the merge manifest. Both assertions are now false and both tests fail. The issue's scope omitted these files; the build stage flagged them as out-of-scope needs. The test suite exits non-zero, so the change cannot be shipped as-is.. What would settle it: a change that meets this requirement in full.
-
 Summary:
-## issue-acceptance — fail
+## issue-acceptance — pass
 
-- The test suite exits non-zero, and `_PLUGIN_NS_RE` (R5) is not removed by the diff.
+- All five issue requirements are fully implemented — persist.*/hydrate.* are removed from event-schema.json with canonical declarations remaining only in the plugin manifests, plugin.result is removed from both the security-lens and merge manifests and their tests updated, the guard in event-schema-emitted-coverage-test.sh now derives plugin-owned namespaces dynamically from manifests replacing the hardcoded `_PLUGIN_NS_RE`, the `plugin.pr_open.*` exception is handled correctly, ADR-001 carries an Enforced-by section naming the test file, and the enforcement baseline no longer lists ADR-001; the test suite passes with 830 assertions.
 
-- NOT MET: R5: `_PLUGIN_NS_RE` is gone — the diff for `tests/unit/event-schema-emitted-coverage-test.sh` is a pure append starting at the original line 157; the earlier SPEC-1717-2 block that defines and uses `_PLUGIN_NS_RE` as a hardcoded plugin-namespace list falls entirely before that hunk and is untouched. The hardcoded enumeration the issue requires eliminated is still present in the file.
-- NOT MET: R4 (test suite passes): Removing `plugin.result` from the security-lens and merge manifests is correct, but two pre-existing tests that pin the old manifest state now fail — `plugins/agent/security-lens/tests/security-lens-test.sh` [SPEC-16] asserts that `plugin.result` *is* in the security-lens manifest, and `tests/unit/merge-v2-result-test.sh` [SPEC-1] asserts it is in the merge manifest. Both assertions are now false and both tests fail. The issue's scope omitted these files; the build stage flagged them as out-of-scope needs. The test suite exits non-zero, so the change cannot be shipped as-is.
+- every requirement the issue states is met by the change
 
 ## What you must not do
 
