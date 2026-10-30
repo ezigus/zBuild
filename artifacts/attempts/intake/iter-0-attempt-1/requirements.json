@@ -1,0 +1,1 @@
+{"schema_version":1,"source":"title","requirements":[{"id":"R-1","text":"[bug] a failed result write never reads as a current result — the test stage and intake still ignore it: ## Goal"}]}
