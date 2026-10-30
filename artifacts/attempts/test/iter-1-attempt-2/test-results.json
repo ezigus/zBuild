@@ -1,0 +1,76 @@
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 533/533 passed (4 skipped)\nintegration: 260/260 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 830/830 passed (4 skipped)",
+  "run_mode": "targeted+full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 830,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 533/533 passed (4 skipped)\nintegration: 260/260 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 830/830 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "targeted+full",
+    "timing": {
+      "tiers": {
+        "lint": 147700,
+        "e2e": 43093,
+        "golden": 6330,
+        "unit": 309139,
+        "integration": 283322
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 60661
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 59633
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 37568
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 36820
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/e2e/fork-budget-test.sh",
+          "ms": 35867
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 34683
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 33619
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/unit/runner-cycle-rc-action-mapping-test.sh",
+          "ms": 32742
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/unit/router-prompt-size-test.sh",
+          "ms": 31430
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 31287
+        }
+      ]
+    },
+    "tree_sha": "d3b669bf9c7f55471d23184e8bbef6d4c16b66c1",
+    "targeted": {
+      "test_cmd": "bash scripts/run-tests.sh --files 'tests/unit/engine-combines-map-test.sh' 'tests/unit/runner-map-parallel-stage-envelope-test.sh'",
+      "verdict": "pass",
+      "passed": 2,
+      "failed": 0
+    },
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "830 of 830 tests passed"
+}

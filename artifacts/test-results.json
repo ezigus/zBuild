@@ -1,1 +1,76 @@
-{"test_output":"\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/unit/runner-map-parallel-stage-envelope-test.sh\n\n  runner — parallel:/map: stage envelope (ADR-039, ADR-047 §2)\n\n\n  1–5: parallel: arm envelope\n  ✓ [SPEC-1] parallel: dispatch arm emits stage.start\n  ✓ [SPEC-2] parallel: dispatch arm emits stage.complete\n  ✓ [SPEC-3] parallel: dispatch arm writes stage_statuses[id]=complete\n  ✓ [SPEC-4] parallel: dispatch arm writes stage_verdicts[id]=pass\n  ✓ [SPEC-5] parallel: dispatch arm exports ZBUILD_CURRENT_STAGE=id\n\n  6–10: map: arm envelope\n  ✓ [SPEC-6] map: dispatch arm emits stage.start\n  ✓ [SPEC-7] map: dispatch arm emits stage.complete\n  ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete\n    output missing: _update_stage_status\n  ✓ [SPEC-8] map: _update_stage_status targets _mg_id\n  ✓ [SPEC-9] map: dispatch arm writes stage_verdicts[id]=pass\n  ✓ [SPEC-10] map: dispatch arm exports ZBUILD_CURRENT_STAGE=id\n\n  B1: _update_stage_status writes stage_statuses[group]=complete\n  ✓ B1: state_statuses[review_group]=complete written to state file\n\n  B2: _zbuild_state_set_stage_verdict writes stage_verdicts[group]=pass\n  ✓ B2: stage_verdicts[review_group]=pass written to state file\n\n  B3: stage_statuses covers all units including map and parallel groups\n  ✓ B3: stage_statuses includes intake (covers all dispatch unit types)\n  ✓ B3: stage_statuses includes review_lenses (covers all dispatch unit types)\n  ✓ B3: stage_statuses includes feature_work (covers all dispatch unit types)\n\n\n  1 of 16 tests failed\n\n  ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete\n\nunit: 532/533 passed (4 skipped)\nintegration: 260/260 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 829/830 passed (4 skipped)","run_mode":"full","exit_code":1,"data":{"exit_code":1,"passed":829,"failed":1,"test_output":"\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/unit/runner-map-parallel-stage-envelope-test.sh\n\n  runner — parallel:/map: stage envelope (ADR-039, ADR-047 §2)\n\n\n  1–5: parallel: arm envelope\n  ✓ [SPEC-1] parallel: dispatch arm emits stage.start\n  ✓ [SPEC-2] parallel: dispatch arm emits stage.complete\n  ✓ [SPEC-3] parallel: dispatch arm writes stage_statuses[id]=complete\n  ✓ [SPEC-4] parallel: dispatch arm writes stage_verdicts[id]=pass\n  ✓ [SPEC-5] parallel: dispatch arm exports ZBUILD_CURRENT_STAGE=id\n\n  6–10: map: arm envelope\n  ✓ [SPEC-6] map: dispatch arm emits stage.start\n  ✓ [SPEC-7] map: dispatch arm emits stage.complete\n  ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete\n    output missing: _update_stage_status\n  ✓ [SPEC-8] map: _update_stage_status targets _mg_id\n  ✓ [SPEC-9] map: dispatch arm writes stage_verdicts[id]=pass\n  ✓ [SPEC-10] map: dispatch arm exports ZBUILD_CURRENT_STAGE=id\n\n  B1: _update_stage_status writes stage_statuses[group]=complete\n  ✓ B1: state_statuses[review_group]=complete written to state file\n\n  B2: _zbuild_state_set_stage_verdict writes stage_verdicts[group]=pass\n  ✓ B2: stage_verdicts[review_group]=pass written to state file\n\n  B3: stage_statuses covers all units including map and parallel groups\n  ✓ B3: stage_statuses includes intake (covers all dispatch unit types)\n  ✓ B3: stage_statuses includes review_lenses (covers all dispatch unit types)\n  ✓ B3: stage_statuses includes feature_work (covers all dispatch unit types)\n\n\n  1 of 16 tests failed\n\n  ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete\n\nunit: 532/533 passed (4 skipped)\nintegration: 260/260 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 829/830 passed (4 skipped)","diff_applied":false,"test_cmd":"npm test","run_mode":"full","timing":{"tiers":{"lint":152004,"e2e":42817,"golden":6007,"unit":310006,"integration":282933},"slowest_files":[{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/integration/cycle-acceptance-terminal-failure-test.sh","ms":60595},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/integration/core-pipeline-runner-test.sh","ms":59890},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/integration/leaf-verdict-halts-test.sh","ms":37603},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/integration/runner-release-exit-paths-test.sh","ms":36550},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/e2e/fork-budget-test.sh","ms":35904},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/unit/run-status-comment-pages-test.sh","ms":34593},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/e2e/parity-local-vs-ci-test.sh","ms":33711},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/unit/runner-cycle-rc-action-mapping-test.sh","ms":32814},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/unit/router-prompt-size-test.sh","ms":31413},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/integration/run-status-comment-runner-test.sh","ms":31240}]},"tree_sha":"f6c45e4d2c34c5135528c523cd0f57f8038fb3f2","failures":[{"file":"tests/unit/runner-map-parallel-stage-envelope-test.sh","reason":"✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete","points_at":[]}],"findings":[{"n":1,"text":"tests/unit/runner-map-parallel-stage-envelope-test.sh fails: ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete"},{"n":2,"text":"tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong"},{"n":3,"text":"tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong"},{"n":4,"text":"core/pipeline/runner.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none"}]},"result_contract":3,"outcome":"fail","reason":"1 of 830 tests failed; the shape floor failed: missing_floor_files;the acceptance check failed: the acceptance check failed — core/pipeline/runner.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none"}
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 533/533 passed (4 skipped)\nintegration: 260/260 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 830/830 passed (4 skipped)",
+  "run_mode": "targeted+full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 830,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 533/533 passed (4 skipped)\nintegration: 260/260 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 830/830 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "targeted+full",
+    "timing": {
+      "tiers": {
+        "lint": 147700,
+        "e2e": 43093,
+        "golden": 6330,
+        "unit": 309139,
+        "integration": 283322
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 60661
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 59633
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 37568
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 36820
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/e2e/fork-budget-test.sh",
+          "ms": 35867
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 34683
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 33619
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/unit/runner-cycle-rc-action-mapping-test.sh",
+          "ms": 32742
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/unit/router-prompt-size-test.sh",
+          "ms": 31430
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QKQ5EV/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 31287
+        }
+      ]
+    },
+    "tree_sha": "d3b669bf9c7f55471d23184e8bbef6d4c16b66c1",
+    "targeted": {
+      "test_cmd": "bash scripts/run-tests.sh --files 'tests/unit/engine-combines-map-test.sh' 'tests/unit/runner-map-parallel-stage-envelope-test.sh'",
+      "verdict": "pass",
+      "passed": 2,
+      "failed": 0
+    },
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "830 of 830 tests passed"
+}
