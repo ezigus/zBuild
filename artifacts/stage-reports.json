@@ -1,0 +1,15 @@
+{
+  "scope_files": [
+    "config/adr-enforcement-baseline.txt",
+    "config/event-schema.json",
+    "config/shape-change-paths.txt",
+    "docs/adr/ADR-001-plugin-contract.md",
+    "plugins/agent/security-lens/manifest.yaml",
+    "plugins/tool/merge/manifest.yaml",
+    "tests/golden/parity/event-sequence.golden",
+    "tests/unit/event-schema-emitted-coverage-test.sh"
+  ],
+  "wiring_files": [
+    "tests/unit/event-schema-emitted-coverage-test.sh"
+  ]
+}
