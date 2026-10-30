@@ -334,7 +334,7 @@ _review_lens_run_inner() {
     # ADR-060 §6: a reply that cannot be used is asked again once, at once,
     # with what was wrong and the reply. A failed call is not (ADR-040: a lens
     # that does not finish stops the run). Every reply is kept, in order.
-    local _rl_ask="$prompt" _rl_problem="" _rl_try json="" prose=""
+    local _rl_ask="$prompt" _rl_problem="" _rl_try json=""
     local _rl_replies="${out%.json}-reply.txt"
     : > "$_rl_replies" 2>/dev/null || true
     for _rl_try in 1 2; do

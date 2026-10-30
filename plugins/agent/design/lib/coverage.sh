@@ -100,10 +100,10 @@ _design_coverage() {
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
-    local raw="" rc=0 rc_file ask="$framed" try v="" u_line item
+    local raw="" rc=0 rc_file ask="$framed" _try v="" u_line item
     # ADR-060 §6: an answer with no verdict is asked again once, at once, with
     # what was wrong and the answer. A failed call is not asked again.
-    for try in 1 2; do
+    for _try in 1 2; do
         rc=0
         # Without a file to keep the call's exit code in, a failed call would read
         # as a verdict (review on PR #2393): the check cannot run.
