@@ -44,7 +44,7 @@ _gate $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[done]: a ev
 _fb3="$FB"; _v3="$VIOL"
 _all_fb="$_fb1"$'\n'"$_fb2"$'\n'"$_fb3"
 
-for _c in SCOPE_MISSING ACCEPTANCE_MISSING NO_STATUS UNKNOWN_STATUS DONE_NO_EVIDENCE DONE_BAD_EVIDENCE MISSING_TESTFILE_FOR_SPEC WIRING_MISSING merge-base classifier; do
+for _c in SCOPE_MISSING ACCEPTANCE_MISSING NO_STATUS UNKNOWN_STATUS DONE_NO_EVIDENCE DONE_BAD_EVIDENCE MISSING_TESTFILE_FOR_SPEC WIRING_MISSING WIRING_IS_TEST merge-base classifier; do
     if grep -qF -- "$_c" <<< "$_all_fb"; then
         assert_fail "[D1] the feedback does not say '$_c'" "found in what the model is told"
     else
@@ -63,6 +63,20 @@ assert_contains "[D2] evidence that does not exist is said plainly (#2304)" "$_f
 assert_contains "[D3] the codes still carry SCOPE_MISSING" "$_v1" "SCOPE_MISSING"
 assert_contains "[D3] the codes still carry NO_STATUS" "$_v2" "NO_STATUS SPEC-2"
 assert_contains "[D3] the codes still carry WIRING_MISSING" "$_v3" "WIRING_MISSING lib/gone.sh"
+
+# ── #2429: a WIRING file that is one of the design's own TESTFILES ───────────
+# A test checks the change; it is not what runs it. The reachability check
+# cannot prove a test file is load-bearing (#1951), so design is told at once.
+mkdir -p "$ROOT/lib"; : > "$ROOT/tests/w-test.sh"; : > "$ROOT/lib/w.sh"
+_gate $'# Design\n\n```scope\nlib/w.sh\ntests/w-test.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: tests/w-test.sh\nTESTFILES:\nSPEC-1: tests/w-test.sh\n```\n'
+assert_contains "[#2429-R1] a WIRING file listed under TESTFILES is a violation" "$VIOL" "WIRING_IS_TEST tests/w-test.sh"
+assert_contains "[#2429-R1] the words name the file and say a test is not what runs the change" "$FB" \
+    "the WIRING file tests/w-test.sh is one of your test files — a test is not what runs the change"
+assert_contains "[#2429-R1] the words say what to write instead" "$FB" "or write WIRING: none"
+_gate $'# Design\n\n```scope\nlib/w.sh\ntests/w-test.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: lib/w.sh\nTESTFILES:\nSPEC-1: tests/w-test.sh\n```\n'
+assert_eq "[#2429-R2] a WIRING file that is not a TESTFILE passes as before" "" "$(grep 'WIRING' <<<"$VIOL" || true)"
+_gate $'# Design\n\n```scope\nlib/w.sh\ntests/w-test.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: none\nTESTFILES:\nSPEC-1: tests/w-test.sh\n```\n'
+assert_eq "[#2429-R2] WIRING: none passes as before" "" "$(grep 'WIRING' <<<"$VIOL" || true)"
 
 cleanup_test_env
 print_test_results

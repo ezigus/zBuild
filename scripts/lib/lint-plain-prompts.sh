@@ -17,7 +17,7 @@
 #   - whole .md prompt files.
 # Logging (error/warn/info), events and jq programs are not model-facing.
 # It refuses engine-internal vocabulary and maintainer notes:
-#   - internal check names: NEGCTL, REACHABILITY, inert, tautolog*, WIRING_MISSING,
+#   - internal check names: NEGCTL, REACHABILITY, inert, tautolog*, WIRING_MISSING, WIRING_IS_TEST,
 #     UNCLASSIFIED, GUARD_REGRESSED, "negative control";
 #   - the retired [guard] tag (#2304, ADR-069 §8): a model offered it writes it
 #     back, and the design-gate refuses it;
@@ -41,7 +41,7 @@ LIST="$ROOT/config/model-facing-sources.txt"
 [[ -f "$LIST" ]] || { echo "lint-plain-prompts: no $LIST" >&2; exit 1; }
 
 # One extended regex; matched case-sensitively except where noted in the class.
-FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]|RESOLVE|\[guard\]'
+FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|WIRING_IS_TEST|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]|RESOLVE|\[guard\]'
 
 # Phrases that tell a stage to leave part of its own job undone.
 SKIP_JOB='[Nn]ever judge|proven by the pipeline|[Nn]ever a gap|not yours to|[Nn]ot your job|[Kk]eep every other|[Dd]o not re-verify|[Nn]ever change, move or remove|is checked later'

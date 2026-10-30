@@ -218,5 +218,34 @@ set +e; OUT_B5="$(acceptance_reachability_check "$REPO_B5/design.md" "$REPO_B5" 
 assert_eq "[#2109-B5] a tagged ✓→✗ flip is PASS even when an untagged line is ✗ in both runs" \
     "REACHABILITY PASS impl.sh" "$OUT_B5"
 
+# ── [#2429-R3] a target that is also a TESTFILE stays at the merge-base ───────
+# The TESTFILE overlay used to copy HEAD's version back over the reverted
+# target, so the "reverted" run ran the new file and could never flip (#1951).
+REPO_TT="$(setup_git_temp_repo reach-tt)"
+(
+    cd "$REPO_TT"
+    mkdir -p tests
+    printf '#!/usr/bin/env bash\necho "  ✓ [SPEC-1] marker OLD"\n' > tests/t-test.sh
+    chmod +x tests/t-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "base"
+    "$GIT" checkout -q -b feature
+    printf '#!/usr/bin/env bash\necho "  ✓ [SPEC-1] marker NEW"\n' > tests/t-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat"
+) >/dev/null 2>&1
+cat > "$REPO_TT/design.md" <<'EOF'
+```acceptance
+SPEC-1[code]: the marker is new
+WIRING:
+tests/t-test.sh
+TESTFILES:
+SPEC-1: tests/t-test.sh
+```
+EOF
+_tt_logs="$TEST_TEMP_DIR/reach-tt-logs"
+set +e; ZBUILD_NEGCTL_ARTIFACT_DIR="$_tt_logs" acceptance_reachability_check "$REPO_TT/design.md" "$REPO_TT" >/dev/null 2>&1; set -e
+_tt_rev="$(sed -n '/^### tests\/t-test.sh reverted/,/^### tests\/t-test.sh head/p' "$_tt_logs/reachability-tests_t-test.sh.log" 2>/dev/null)"
+assert_contains "[#2429-R3] the reverted run sees the target's merge-base content" "$_tt_rev" "marker OLD"
+assert_eq "[#2429-R3] the TESTFILE overlay does not undo the revert" "" "$(grep 'marker NEW' <<<"$_tt_rev" || true)"
+
 cleanup_test_env
 print_test_results
