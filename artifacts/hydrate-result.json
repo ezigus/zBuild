@@ -1,1 +1,1 @@
-{"result_contract":3,"outcome":"pass","reason":"no prior work for issue 1951 (first run)","data":{"status":"empty","restored":0,"source":null}}
+{"result_contract":3,"outcome":"pass","reason":"restored 174 artifact(s) from zbuild/state/issue-1951","data":{"status":"restored","restored":174,"source":"remote"}}
