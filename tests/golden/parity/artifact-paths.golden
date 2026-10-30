@@ -26,6 +26,7 @@
 ./artifacts/attempts/release/iter-0-attempt-1/teardown-result.json
 ./artifacts/attempts/release/iter-0-attempt-1/teardown-summary.md
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/attempt.json
+./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness-reply.txt
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness-summary.md
 ./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness.json
 ./artifacts/attempts/test/iter-0-attempt-1/acceptance-gate-result.json
@@ -44,6 +45,7 @@
 ./artifacts/hydrate-summary.md
 ./artifacts/intake-result.json
 ./artifacts/intake-summary.md
+./artifacts/lens-correctness-reply.txt
 ./artifacts/lens-correctness-summary.md
 ./artifacts/lens-correctness.json
 ./artifacts/persist-result.json

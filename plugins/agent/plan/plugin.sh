@@ -64,14 +64,40 @@ _plan_is_valid() {
         "$1" >/dev/null 2>&1
 }
 
-# _plan_prompt <goal> <plan-path> — plan's own three parts: What you own, What
-# you judge against, What you must not do.
+# _plan_problem <file> — which of _plan_is_valid's checks <file> fails, in
+# plain words (ADR-060 §7); nothing when it passes them all.
+_plan_problem() {
+    local err
+    if ! err="$(jq empty "$1" 2>&1 >/dev/null)"; then
+        printf 'it is not valid JSON: %s' "${err//$'\n'/ }"
+        return 0
+    fi
+    jq -r 'def strs: type == "array" and all(type == "string");
+        if type != "object" then "it is not one JSON object"
+        elif .schema_version != 1 then "schema_version is not 1"
+        elif (.steps | type != "array" or length == 0) then "steps is missing or empty: at least one work item is asked for"
+        else (first(.steps | to_entries[] | (.key + 1 | tostring) as $k | .value
+                | if type != "object" then "work item \($k) is not an object"
+                  elif (.id | type != "string" or length == 0) then "work item \($k) has no id"
+                  elif (.description | type != "string" or length == 0) then "work item \($k) has no description"
+                  elif ((.areas // []) | strs | not) then "work item \($k)'"'"'s areas is not a list of strings"
+                  else empty end)
+              // (if ((.open_questions // []) | strs | not) then "open_questions is not a list of strings" else empty end))
+        end' "$1" 2>/dev/null
+}
+
+# _plan_prompt <goal> <plan-path> [rejected-path] — plan's own three parts:
+# What you own, What you judge against, What you must not do. A rejected plan
+# still on disk is the last try, and the prompt says so (as design's does).
 _plan_prompt() {
-    local goal="$1" plan_path="$2"
+    local goal="$1" plan_path="$2" rejected="${3:-}" again=""
+    [[ -n "$rejected" && -s "$rejected" ]] && again="
+Your last plan was rejected: Previous work says why. It is kept at ${rejected}; fix what it names, and write the plan to the file below.
+"
     cat <<PLAN_PROMPT
 ## What you own
 Your job: split the issue into an ordered list of work items, the plan.json described below. Each item says what changes and why, in one or two sentences, and names the areas it touches. Do not say how: no function names, no code, no line counts. If your earlier plan is under Previous work, keep the items that still stand, and change or add an item for each open finding, in one sentence that names it. Do not read code to diagnose a finding.
-
+${again}
 Write the plan to this file, and update it as you go — a plan on disk when your
 time runs out still counts:
   ${plan_path}
@@ -144,7 +170,8 @@ _plan_run_inner() {
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. Plan's own latest plan reaches it under Previous work.
     local prompt
-    if ! prompt="$(stage_prompt_compose_parts "$(_plan_prompt "$goal_content" "$output_plan_json")")"; then
+    local rejected="$artifact_dir/plan-rejected.json"
+    if ! prompt="$(stage_prompt_compose_parts "$(_plan_prompt "$goal_content" "$output_plan_json" "$rejected")")"; then
         error "plan_run: the prompt could not be composed — the engine's blocks are missing"
         return 1
     fi
@@ -166,17 +193,25 @@ _plan_run_inner() {
     # A valid plan counts when the call ended normally, or when this call wrote
     # it before it was cut off (#2363: a valid output wins even on failure).
     if _plan_is_valid "$output_plan_json" && { [[ $router_rc -eq 0 ]] || (( wrote )); }; then
+        rm -f "$rejected" 2>/dev/null || true
         _plan_finish "$output_plan_json" "$artifact_dir"
         return
     fi
 
-    local _reason="no_plan_written" _disp="unusable"
+    # ADR-060 §6/§7: a rejected plan is kept and its result names the check it
+    # failed, so the next try fixes that instead of starting over blind.
+    local _reason="no_plan_written" _disp="unusable" _why=""
     if (( wrote )) || [[ $router_rc -eq 0 && "$after" != "absent" ]]; then
         _reason="schema_violation"
+        cp "$output_plan_json" "$rejected" 2>/dev/null || true
+        _why="The plan you wrote was rejected: $(_plan_problem "$output_plan_json"). It is kept at ${rejected}."
+    elif [[ $router_rc -eq 0 ]]; then
+        _why="Your last try wrote no plan to ${output_plan_json}."
     fi
-    if [[ $router_rc -ne 0 && "$_reason" == "no_plan_written" ]]; then
+    if [[ $router_rc -ne 0 ]]; then
         # A failed router CALL is named by the shared mapping, never by this
-        # plugin (#1835; #2225 "chosen once, not per plugin").
+        # plugin (#1835; #2225 "chosen once, not per plugin"). It is how the
+        # call ended even when it left a rejected plan (review on #2434).
         local _rc_verdict="" _rc_reason="" _rc_disp=""
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         _rc_disp="$(router_reason_disposition "${_rc_reason:-}")"
@@ -186,7 +221,9 @@ _plan_run_inner() {
             warn "plan: router_reason_disposition returned nothing for rc=$router_rc reason=${_rc_reason:-<none>} — recording 'unusable'"
         fi
     fi
-    _plan_write_outcome "$output_plan_json" "$_disp" "$_reason"
+    local _data=""
+    [[ -n "$_why" ]] && _data="$(jq -nc --arg t "$_why" '{findings: [{n: 1, text: $t}]}')"
+    _plan_write_outcome "$output_plan_json" "$_disp" "$_reason" "$_data"
     error "_plan_run_inner: no valid plan.json (reason=$_reason, router_rc=$router_rc)"
     stage_summary_write "$artifact_dir/plan-summary.md" "plan" "$_disp" \
         "no valid plan.json ($_reason)" \

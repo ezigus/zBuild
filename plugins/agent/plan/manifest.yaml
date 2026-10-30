@@ -72,6 +72,15 @@ outputs:
     format: markdown
     required: true
     summary: true
+  # ADR-060 §6: a plan that failed plan's checks, kept for the next try; a
+  # valid plan clears it.
+  - id: plan_rejected
+    topic: ask
+    description: "a plan that failed plan's checks, kept for its next try"
+    path: "${artifact_dir}/plan-rejected.json"
+    type: plan.json@1
+    format: json
+    required: false
 
 state:
   persisted: [last_plan_steps]

@@ -1,6 +1,6 @@
 # ADR-060: Stages return structure; the engine renders prose
 
-**Status:** Accepted (2026-08-28)
+**Status:** Accepted (2026-08-28); amended 2026-10-30 (§8)
 **Date:** 2026-08-28
 **Amends:** ADR-028 (§ output contract — the `--markdown-fields` escaping block and its retired ADR-022 citation)
 **Related:** ADR-001 (plugin contract — event namespacing, `provides.events`), ADR-015 (stage-io capture), ADR-018 (envelope parse, LAST-wins), ADR-020/ADR-055 (inter-stage data contract), ADR-054 (stage contract), ADR-021 (cycle semantics — the re-iterate path this reuses)
@@ -67,6 +67,17 @@ A malformed envelope is a transient failure of the same class as a router timeou
 `_llm_envelope_classify <json> [<gate>]` returns exactly one of `unparseable` | `schema` | `ok`, and `_llm_envelope_parse_error` surfaces jq's real complaint instead of discarding it through `2>/dev/null`.
 
 The pre-existing message printed a fixed list of five requirements and identified none of them. During a week of migrating a *different* version number (`result_contract: 1 → 2`, #1819), "requires schema_version=1" read as a contract-version mismatch. The two numbering systems are unrelated — `schema_version` is the impact envelope's own format and has been 1 since June — but nothing in the error said so. A diagnostic that cannot distinguish "this is not JSON" from "this JSON is wrong" costs more than the bug it reports.
+
+### 8. A re-ask says what was wrong and shows the reply (amended 2026-10-30)
+
+§6 said a malformed reply is re-run; it did not say the re-run is told why. Each stage was re-run blind: plan's rejected plan.json was overwritten by `{outcome: unusable, reason: schema_violation}`, and a review lens was not re-run at all. On #1760 the correctness lens's reply held five findings, one of them a real bug, and broke on one unescaped quote; the findings were lost and the run stopped.
+
+- **A reply that cannot be used is asked again once, at once, by the stage that rejected it.** The second ask is the same prompt, then what was wrong (§7's check, in plain words: jq's own complaint for a reply that is not JSON, the missing field or line otherwise), then the reply itself (`stage_prompt_reask`, `scripts/lib/stage-prompt.sh`). The model fixes what is named; it does not do the work again. This holds for every stage whose model answers in one reply: each review lens, issue-acceptance, monitor, design's coverage check and test-author's correspondence check.
+- **A stage whose model writes a file keeps a rejected file for the next try, and the next try is told so** — what design does with its working copy (ADR-068 §8). Plan keeps a plan that fails its checks as `plan-rejected.json`; its result carries a numbered finding naming the check that failed and where the plan is, which reaches the next try under Previous work; its prompt says its last plan was rejected. A valid plan clears it.
+- **A reply still unusable after the second ask makes the stage `unusable`**, and its result says what was wrong. A failed model call (time limit, turns, provider) is not asked again: those are the call's disposition, not the reply's form, and a review lens that does not finish stops the run (ADR-040, #1753).
+- **A review lens keeps every reply it got**, in order (`lens-<id>-reply.txt`). Each lens re-asks inside its own member of the map group, so the lenses re-ask in parallel and none waits for another; the engine sums the group up once every member has finished, and stops the run then when any lens did not pass (ADR-040, #1753).
+
+Enforced by: `tests/unit/stage-prompt-reask-test.sh` Q1–Q4 (the re-ask's content and order); `plugins/agent/review-lens/tests/review-lens-reask-test.sh` L1–L5 (a lens re-asks once with jq's complaint and its reply, a failed call is not re-asked, every reply is kept); `tests/unit/issue-acceptance-test.sh` SPEC-11; `tests/unit/monitor-v2-result-test.sh` RA; `tests/unit/design-coverage-test.sh` RA; `tests/unit/test-author-correspondence-test.sh` RA; `plugins/agent/plan/tests/plan-work-items-test.sh` W10 (the rejected plan is kept, its check named, the next try told, a valid plan clears it).
 
 ## Consequences
 

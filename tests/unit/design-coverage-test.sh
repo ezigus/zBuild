@@ -23,6 +23,8 @@
 #   E1/E2  every gap in one answer, not capped (#2245); E3 three gaps travel
 #   #2032  a failed call is classified, even after a verdict was printed
 #   #2366  an answer with no verdict is unusable
+#   RA     an answer with no verdict is asked again once, told what was wrong
+#          and shown the answer (ADR-060 §6); a failed call is not
 #   R1     a call whose exit code cannot be kept is not read as covered
 #          (review on PR #2393: mktemp failing left rc at 0)
 set -uo pipefail
@@ -111,6 +113,28 @@ assert_eq "[#2032] a verdict printed and then a timeout is still a timeout" "tim
 route_to_model() { printf 'I think it is mostly fine.\n'; return 0; }
 _cov
 assert_eq "[#2366] an answer with no verdict is unusable" "unusable" "$_DESIGN_COV_OUTCOME"
+
+# ── RA: asked again, with what was wrong ────────────────────────────────────
+_RA_N="$TEST_TEMP_DIR/ra-n"
+route_to_model() {
+    local n; n=$(( $(cat "$_RA_N") + 1 )); printf '%s' "$n" > "$_RA_N"
+    printf '%s' "$2" > "$_P_FILE.$n"
+    if [[ $n -eq 1 ]]; then printf 'I think it is mostly fine.\n'; else printf '%s' "$_RA_R2"; fi
+}
+printf '0' > "$_RA_N"; _RA_R2=$'VERDICT: covered\nREASON: fine\n'
+_cov
+assert_eq "[RA] asked twice" "2" "$(cat "$_RA_N")"
+assert_contains "[RA] the second ask says what was wrong" "$(cat "$_P_FILE.2" 2>/dev/null)" "it has no VERDICT: line"
+assert_contains "[RA] the second ask carries the first answer" "$(cat "$_P_FILE.2" 2>/dev/null)" "I think it is mostly fine."
+assert_eq "[RA] the second answer is the judgement" "" "$_DESIGN_COV_OUTCOME"
+printf '0' > "$_RA_N"; _RA_R2='still not sure'
+_cov
+assert_eq "[RA] asked twice, no more" "2" "$(cat "$_RA_N")"
+assert_eq "[RA] still no verdict: unusable" "unusable" "$_DESIGN_COV_OUTCOME"
+printf '0' > "$_RA_N"
+route_to_model() { local n; n=$(( $(cat "$_RA_N") + 1 )); printf '%s' "$n" > "$_RA_N"; return 124; }
+_cov
+assert_eq "[RA] a failed call is not asked again" "1" "$(cat "$_RA_N")"
 
 # ── R1 ───────────────────────────────────────────────────────────────────────
 route_to_model() { printf 'VERDICT: covered\nREASON: fine\n'; return 1; }

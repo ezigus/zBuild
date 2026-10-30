@@ -221,7 +221,7 @@ _topics_of() {
 assert_eq "[T7] intake: every output is ask" \
     "intake_result=ask scope_manifest=ask intake_goal=ask requirements=ask intake_summary=ask " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/intake/manifest.yaml")"
-assert_eq "[T7] plan: ask" "plan=ask plan-summary.md=ask " \
+assert_eq "[T7] plan: ask" "plan=ask plan-summary.md=ask plan_rejected=ask " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/plan/manifest.yaml")"
 assert_eq "[T7] design: the design is ask, its checks are requirement-findings" \
     "design=ask design_draft=ask design_result=requirement-findings design_summary=requirement-findings " \
@@ -237,7 +237,7 @@ assert_eq "[T7] test: the suite is code-findings, the acceptance check requireme
 assert_eq "[T7] issue-acceptance: requirement-findings" \
     "issue_acceptance_result=requirement-findings issue_acceptance_summary=requirement-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml")"
-assert_eq "[T7] review-lens: code-findings" "lens_result=code-findings review_lens_summary=code-findings " \
+assert_eq "[T7] review-lens: code-findings" "lens_result=code-findings review_lens_summary=code-findings review_lens_replies=code-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/review-lens/manifest.yaml")"
 assert_eq "[T7] security-lens: code-findings" "findings=code-findings security_lens_summary=code-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/security-lens/manifest.yaml")"

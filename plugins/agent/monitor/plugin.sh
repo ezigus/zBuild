@@ -210,8 +210,25 @@ _monitor_stage_run_inner() {
     local _mon_out_ref="$report_out" _mon_interrupted=0
     # The shared helper records a signal and puts the caller's own handlers
     # back afterwards (#2225; review #2221).
+    # ADR-060 §6: a reply that cannot be used is asked again once, at once,
+    # with what was wrong and the reply. A failed call is not asked again.
+    # shellcheck disable=SC2034  # prose is a required nameref out-param of _llm_envelope_parse
+    local report_json="" prose="" verr="" _mon_ask="$prompt" _mon_try
     stage_signal_begin _monitor_interrupt_handler
-    response="$(route_to_model "T1" "$prompt")" || rc=$?
+    for _mon_try in 1 2; do
+        response=""; report_json=""; verr=""
+        response="$(route_to_model "T1" "$_mon_ask")" || rc=$?
+        [[ "$rc" -eq 0 && "${_mon_interrupted:-0}" != "1" ]] || break
+        # Robust, schema-gated envelope extraction (ADR-028): handles multi-line
+        # JSON and defeats last-object self-report.
+        _llm_envelope_parse --schema-gate _monitor_envelope_schema_ok "$response" report_json prose
+        if [[ -n "$report_json" ]] && _llm_envelope_validate "$report_json" \
+                '.schema_version == 1 and (.verdict|type=="string") and (.summary|type=="string") and (.checks|type=="array")' verr; then
+            break
+        fi
+        verr="${verr:-it holds no JSON object}"
+        _mon_ask="$(stage_prompt_reask "$prompt" "$verr" "$response")"
+    done
     stage_signal_end
 
     # rc=130 (SIGTERM/SIGINT propagated through the router subshell): the trap
@@ -245,15 +262,8 @@ _monitor_stage_run_inner() {
         return 1
     fi
 
-    # Robust, schema-gated envelope extraction (ADR-028): handles multi-line JSON
-    # and defeats last-object self-report; fails closed to the degraded path.
-    # shellcheck disable=SC2034  # prose is a required nameref out-param of _llm_envelope_parse
-    local report_json prose
-    _llm_envelope_parse --schema-gate _monitor_envelope_schema_ok "$response" report_json prose
-
-    local verr=""
-    if [[ -z "$report_json" ]] || ! _llm_envelope_validate "$report_json" \
-            '.schema_version == 1 and (.verdict|type=="string") and (.summary|type=="string") and (.checks|type=="array")' verr; then
+    # Still unusable after the second ask: fails closed to the degraded path.
+    if [[ -n "$verr" ]]; then
         emit_event "monitor.alert" "plugin=monitor" "reason=unparseable_response" "detail=${verr:-empty}"
         _monitor_write_result "$report_out" unusable "${verr:-envelope_invalid}" "" "[]" \
             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
