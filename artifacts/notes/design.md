@@ -98,6 +98,16 @@ Additional files needed:
 
 ---
 
+## issue-acceptance finding and fix (2026-10-30)
+
+**Finding:** SPEC-2 was under-specified. Its description said only "refused at template load" — no requirement to name the field. The SPEC-2 test assertion checked `rc=1`, loop name, and bad op but never asserted the field was present in the error. R-1 explicitly requires "the stage or loop, the field, the bad op, and the valid set." The `until.op` error at `template.sh:1245` emits `"cycle '$cid': exit_when op '$uo' is not in the supported op set …"` — the field name is accessible (`_TPL_CYCLE_UNTIL_FIELD_${safe}`) but was not included. `abort_when` (SPEC-1) does include `for field '$aw_field'`, exposing the inconsistency.
+
+**Fix:** SPEC-2 updated to: "refused at template load **with an error naming the loop, field, bad op, and valid set**" — matching SPEC-1's language exactly. SPEC-3 given the same treatment for consistency. The SPEC-2 test implementation must now assert the field string appears in the error output, which would fail on the code that omits it.
+
+No scope changes. No TESTFILES changes. Design doc updated.
+
+---
+
 ## Design-judge verdict
 
 Read: ADR-027 §5 (eight ops: eq|neq|gt|gte|lt|lte|contains|matches), cycle-orchestrator.sh

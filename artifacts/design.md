@@ -50,8 +50,8 @@ tests/unit/core-pipeline-cycle-events-test.sh
 
 ```acceptance
 SPEC-1[code]: abort_when.op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set covers: R-1
-SPEC-2[code]: single-condition until.op outside the eight-op set is refused at template load covers: R-1
-SPEC-3[code]: multi-condition exit_when op outside the eight-op set is refused at template load covers: R-1
+SPEC-2[code]: single-condition until.op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set covers: R-1
+SPEC-3[code]: multi-condition exit_when op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set covers: R-1
 SPEC-4[code]: the full eight-op set evaluates correctly in the exit_when single-condition evaluator (_cycle_check_until) covers: R-1
 SPEC-5[code]: the full eight-op set evaluates correctly in the exit_when multi-condition evaluator (_cycle_eval_one_condition) covers: R-1
 SPEC-6[code]: the full eight-op set evaluates correctly in the abort_when evaluator (_cycle_check_abort_when) covers: R-1
@@ -74,6 +74,8 @@ SPEC-9: tests/unit/template-loader-recursive-flow-test.sh
 ```
 
 ## Findings
+
+**issue-acceptance finding 1 (SPEC-2 field omission).** The first design pass wrote SPEC-2 as "refused at template load" without requiring the error to name the field. R-1 explicitly prescribes "the stage or loop, the field, the bad op, and the valid set." The resulting test only checked `rc=1`, the loop name, and the bad op — a run that omitted the field would not turn it red. SPEC-1 and SPEC-3 already carry the full message prescription. SPEC-2 (and SPEC-3 for consistency) are strengthened here to match: "refused at template load with an error naming the loop, field, bad op, and valid set." The SPEC-2 test must now assert that the field name appears in the error output.
 
 **Plan scope is complete.** No files outside the seed scope pin the old op set.
 Existing tests all use `op: eq` (remains valid); the golden files reference

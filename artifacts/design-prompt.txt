@@ -114,7 +114,7 @@ orphan failures if present.
 
 Your job: write the design — the change's decisions, its acceptance contract and its scope — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts.
 
-There is no design yet. Write a first version in your first few turns, then improve it.
+The working copy already holds YOUR LATEST DESIGN (below). Change only what needs to change.
 
 Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract or its scope. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails.
 
@@ -256,6 +256,116 @@ Validate abort_when.op and single-condition until.op at template load against AD
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
+### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)
+Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.
+
+# Design — Issue #1760: Fix loop condition op validation to ADR-027's eight ops
+
+## Architectural decision summary
+
+**Goal.** Validate `abort_when.op`, single-condition `until.op`, and every
+condition's `op` in multi-condition `exit_when` at template load against the
+eight-op set ADR-027 §5 specifies — `eq | neq | gt | gte | lt | lte | contains |
+matches` — and implement all eight in every runtime evaluator with a refusing `*)`
+branch.
+
+**Context.** ADR-027 §5 declared the supported op set in June 2026. The engine
+was partially updated: `ne` (wrong spelling) and `in` (not in ADR-027) appear in
+the evaluators and load-time checks; `gt/gte/lt/lte/contains/matches` are absent.
+The bug: `abort_when` has no load-time op check at all in `template.sh`, so an
+unknown op silently never fires. The evaluators' missing `*)` branch means a
+typo evaluates as "never matches" — the cycle runs to max_iterations with no
+indication of why the predicate never fires.
+
+**Decision.**
+- **template.sh `_tpl_validate_cycles`**: add op validation for abort_when (read
+  from the AW| side-channel vars already populated); add op validation for
+  single-condition `until.op` (currently missing); widen multi-condition
+  exit_when from `eq|ne|in` to the full eight-op set. Each check emits an error
+  naming the loop, the field, the bad op, and the valid set, then returns 1.
+- **cycle-orchestrator.sh `_cycle_load_template`**: widen multi-condition
+  exit_when check from `eq|ne` to the eight-op set; widen single-condition until
+  check from `eq|ne` to the eight-op set; add abort_when op check (currently
+  absent).
+- **cycle-orchestrator.sh evaluators** (`_cycle_eval_one_condition`,
+  `_cycle_check_until`, `_cycle_check_abort_when`): rename `ne` to `neq`;
+  remove `in`; add `gt|gte|lt|lte|contains|matches` with numeric guards on the
+  numeric ops; add a `*)` branch that emits an error and returns 1.
+- **ADR-027**: add `## Enforced by` section naming the enforcement tests;
+  remove ADR-027 from `config/adr-enforcement-baseline.txt`.
+
+No new public surface is introduced. All changes are confined to two existing
+engine files. The valid op `eq` is unchanged everywhere; all existing templates
+and tests use only `eq` and are unaffected.
+
+```scope
+core/pipeline/template.sh
+core/pipeline/cycle-orchestrator.sh
+docs/adr/ADR-027-recursive-flow-template-format.md
+config/adr-enforcement-baseline.txt
+tests/unit/template-loader-recursive-flow-test.sh
+tests/integration/cycle-orchestrator-abort-when-test.sh
+tests/integration/cycle-abort-when-no-match-converges-test.sh
+tests/unit/core-pipeline-cycle-events-test.sh
+```
+
+```acceptance
+SPEC-1[code]: abort_when.op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set covers: R-1
+SPEC-2[code]: single-condition until.op outside the eight-op set is refused at template load covers: R-1
+SPEC-3[code]: multi-condition exit_when op outside the eight-op set is refused at template load covers: R-1
+SPEC-4[code]: the full eight-op set evaluates correctly in the exit_when single-condition evaluator (_cycle_check_until) covers: R-1
+SPEC-5[code]: the full eight-op set evaluates correctly in the exit_when multi-condition evaluator (_cycle_eval_one_condition) covers: R-1
+SPEC-6[code]: the full eight-op set evaluates correctly in the abort_when evaluator (_cycle_check_abort_when) covers: R-1
+SPEC-7[code]: gt/gte/lt/lte with a non-numeric operand emits an error (not silent false) in each evaluator covers: R-1
+SPEC-8[code]: each evaluator's *) branch returns 1 on an unrecognized op rather than silently skipping covers: R-1
+SPEC-9[no-code]: ADR-027 §5 gains an ## Enforced by section naming the test files that enforce the eight-op set; ADR-027 is removed from config/adr-enforcement-baseline.txt covers: R-1
+WIRING:
+core/pipeline/template.sh
+core/pipeline/cycle-orchestrator.sh
+TESTFILES:
+SPEC-1: tests/unit/template-loader-recursive-flow-test.sh
+SPEC-2: tests/unit/template-loader-recursive-flow-test.sh
+SPEC-3: tests/unit/template-loader-recursive-flow-test.sh
+SPEC-4: tests/integration/cycle-abort-when-no-match-converges-test.sh
+SPEC-5: tests/integration/cycle-abort-when-no-match-converges-test.sh
+SPEC-6: tests/integration/cycle-orchestrator-abort-when-test.sh
+SPEC-7: tests/unit/core-pipeline-cycle-events-test.sh
+SPEC-8: tests/unit/core-pipeline-cycle-events-test.sh
+SPEC-9: tests/unit/template-loader-recursive-flow-test.sh
+```
+
+## Findings
+
+**Plan scope is complete.** No files outside the seed scope pin the old op set.
+Existing tests all use `op: eq` (remains valid); the golden files reference
+`op=eq` (unchanged). `tests/unit/core-pipeline-template-cycles-test.sh` pins
+`until.op=eq` (line 65) — `eq` stays valid, so that test is unaffected and does
+not need to be in scope.
+
+**`ne` and `in` are removed.** Neither spelling appears in any shipped template
+(`config/templates/`). `ne` appears only in the evaluators and load-time checks
+in the two engine files; `in` appears only in those evaluators (added via #1987,
+never declared in ADR-027). No template or test fixture uses them.
+
+**abort_when load-time op check is entirely new.** The AW| row handler in
+`template.sh` stores the op into `_TPL_CYCLE_ABORT_WHEN_OP_<safe>` but
+`_tpl_validate_cycles` never reads it for validation. The fix adds a check there
+(after the exit_when/until validation block).
+
+**cycle-orchestrator.sh `_cycle_load_template` has no abort_when op check.** The
+`_cycle_load_template` function validates the abort_when stage membership
+implicitly (through _CYCLE_STAGES) but does not validate the op field. Adding it
+mirrors the exit_when pattern already in that function.
+
+**No event-schema changes.** The reason tokens (`until_op_invalid`,
+`exit_when_op_invalid`) are already in use; no new event types are needed. An
+`abort_when_op_invalid` reason token is a natural addition but requires no schema
+entry (the `cycle.config.invalid` event type is already registered).
+
+Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.
+
+If Previous work says a [code] requirement's test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.
+
 
 ## Previous work
 
@@ -290,6 +400,166 @@ Summary:
 
 - open questions: 0
 - artifact: plan.json
+
+### design (verdict: pass) — your own
+Outputs:
+- design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
+- design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
+- design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
+
+Summary:
+## design — pass
+
+- authored design.md — 8 file(s) in scope, 9 acceptance SPEC(s)
+
+- scope: core/pipeline/template.sh,core/pipeline/cycle-orchestrator.sh,docs/adr/ADR-027-recursive-flow-template-format.md,config/adr-enforcement-baseline.txt,tests/unit/template-loader-recursive-flow-test.sh,tests/integration/cycle-orchestrator-abort-when-test.sh,tests/integration/cycle-abort-when-no-match-converges-test.sh,tests/unit/core-pipeline-cycle-events-test.sh
+- artifact: design.md
+
+Your notes so far:
+# Design Notes — Issue #1760 (updated by design-judge pass)
+
+## What I read
+
+### ADR-027 §5
+The supported op set for `exit_when`/`abort_when`/`until` predicates is:
+`eq | neq | gt | gte | lt | lte | contains | matches`
+
+### Current state (mismatches with ADR-027):
+
+**template.sh `_tpl_validate_cycles`** (lines ~1210-1213):
+- Multi-condition exit_when validates `eq|ne|in` → should be full 8-op set
+- Single-condition until: validates only `until.stage` membership, NO op validation
+- AW| handler (lines ~509-523): no op validation for abort_when
+
+**cycle-orchestrator.sh `_cycle_load_template`** (lines ~383-430):
+- Multi-condition exit_when: validates `eq|ne` → should be 8 ops
+- Single-condition until: validates `eq|ne` → should be 8 ops
+- abort_when: NO op validation at all
+
+**cycle-orchestrator.sh evaluators** (all three):
+- `_cycle_eval_one_condition` (multi-condition): `eq|ne|in`, no `*)`
+- `_cycle_check_until` (single-condition): `eq|ne|in`, no `*)`
+- `_cycle_check_abort_when`: `eq|ne|in`, no `*)`
+
+All three places: `ne` should become `neq`, `in` should be removed, and
+`gt|gte|lt|lte|contains|matches` need to be added.
+
+### Key facts:
+- `neq` = rename from `ne`
+- `in` = removed (refuse at load)
+- New ops: `gt|gte|lt|lte|contains|matches`
+- Every evaluator case statement needs `*)` that emits error and returns 1
+
+### ADR-027 "Enforced by" section:
+- ADR-027 is in the enforcement baseline (config/adr-enforcement-baseline.txt)
+- The plan calls for adding an `## Enforced by` section and removing ADR-027 from the baseline
+
+### Existing tests that pin op values:
+
+**tests/unit/template-loader-recursive-flow-test.sh**:
+- T6: asserts `op=eq` (that's fine, eq stays valid)
+- No tests for invalid ops at load time
+
+**tests/integration/cycle-orchestrator-abort-when-test.sh**:
+- T1-T6: uses `op: eq` throughout (eq stays valid)
+- No tests for invalid ops or the full 8-op set
+
+**tests/integration/cycle-abort-when-no-match-converges-test.sh**:
+- Uses `op: eq` throughout — fine
+
+**tests/unit/core-pipeline-cycle-events-test.sh**:
+- Only checks event types, not op values
+
+### Template.sh multi-condition exit_when validation (line 1211):
+`eq|ne|in) : ;;` → changes to `eq|neq|gt|gte|lt|lte|contains|matches) : ;;`
+
+The existing `*) error` line (1212) pins the old set in its error message.
+Those lines need updating.
+
+### Wiring:
+The load-time validation is called from `load_template` → `_tpl_validate_cycles`.
+The runtime evaluation is called in `cycle_orchestrator_run`.
+
+## Final design written
+
+Design document at: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
+
+9 SPECs total: SPEC-1-3 load-time refusal, SPEC-4-6 evaluator correctness per evaluator, SPEC-7 numeric guard, SPEC-8 *) branch, SPEC-9 ADR update (no-code). WIRING: both template.sh (SPEC-1-3) and cycle-orchestrator.sh (SPEC-4-8).
+
+## Decisions
+
+1. **Load-time validation** goes in two places: `template.sh::_tpl_validate_cycles` (for EW multi-condition and single-condition until and abort_when AW|) and `cycle-orchestrator.sh::_cycle_load_template` (for both condition types and abort_when).
+
+2. The `*) error` branch in each evaluator `case` emits an error and returns 1 (refuses evaluation — cycle can't converge).
+
+3. `ne` → `neq` rename. `in` refused at load.
+
+4. Numeric ops (`gt|gte|lt|lte`) need non-numeric operand guards (emits an error rather than silent false).
+
+5. ADR-027 gets an `## Enforced by` section naming the test files. ADR-027 is removed from the enforcement baseline.
+
+## Existing assertions that will change meaning
+
+- `cycle-orchestrator-abort-when-test.sh` and `template-loader-recursive-flow-test.sh` use `op: eq` — that stays valid, so NONE of the existing assertions become wrong.
+- The `op must be eq|ne` error messages in `cycle-orchestrator.sh` lines 386, 427 will change to name the 8-op set.
+- The `op must be eq|ne|in` error message in `template.sh` line 1212 will change.
+
+None of these changes break existing passing assertions (the tests don't assert on the error message text, only on success rc=0 for valid ops).
+
+## Scope additions over plan seed
+
+The plan seed includes the 4 test files + 2 source files + ADR-027 + enforcement baseline.
+
+Additional files needed:
+- `tests/unit/core-pipeline-template-cycles-test.sh` — may pin the `eq|ne` op set for single-condition until or multi-condition exit_when; needs checking.
+- Search for `op.*must.*be\|eq.*ne\|ne.*eq` in tests/ to find any test asserting on old op error messages.
+
+---
+
+## Design-judge verdict
+
+Read: ADR-027 §5 (eight ops: eq|neq|gt|gte|lt|lte|contains|matches), cycle-orchestrator.sh
+(_cycle_load_template validates eq|ne only, abort_when has no load-time op validation,
+evaluators handle only eq|ne|in with no *) branch), template-loader-recursive-flow-test.sh
+(no op-validation tests), cycle-abort-when-no-match-converges-test.sh (no eight-op tests),
+cycle-orchestrator-abort-when-test.sh (no eight-op tests), core-pipeline-cycle-events-test.sh
+(no eight-op tests), config/adr-enforcement-baseline.txt (ADR-027 present, line 27).
+
+Bug confirmed tripartite:
+1. abort_when has NO op validation at template load.
+2. All three evaluators only handle eq/ne/in; six of the eight ADR-027 ops are absent.
+3. No *) fallback — unknown ops silently fall through, never matching.
+
+SPEC coverage:
+- SPEC-1: abort_when.op validated at load, error names loop/field/bad-op/valid-set → fixes main bug
+- SPEC-2: single-condition until.op validated at load against full eight-op set
+- SPEC-3: multi-condition exit_when op validated at load
+- SPEC-4-6: all eight ops evaluated correctly in each of the three evaluators
+- SPEC-7: gt/gte/lt/lte with non-numeric operand → error not silent false
+- SPEC-8: *) branch returns 1 in each evaluator → closes silent-skip path
+- SPEC-9: ADR-027 §5 gains Enforced by section; removed from baseline
+
+All facets of R-1 are covered. VERDICT: covered.
+
+### test (verdict: pass)
+Outputs:
+- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
+
+### issue-acceptance (verdict: fail)
+Outputs:
+- issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
+- issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
+
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (issue R1: "The message names the stage or loop, **the field**, the bad op, and the valid set"): the `until.op` validation added at `template.sh:1245` emits `"cycle '$cid': exit_when op '$uo' is not in the supported op set …"` — the until field variable (`_TPL_CYCLE_UNTIL_FIELD_${safe}`) is accessible at that point (read three lines above for `abort_when`) but is never included in the error. The SPEC-2 test (`template-loader-recursive-flow-test.sh:280-282`) checks only `rc=1`, the loop name, and the bad op; it never asserts the field is named. A run that omitted the field would not turn that test red. The `abort_when` error does include the field (`for field '$aw_field'`), so the inconsistency is visible in the same diff. Every other named element of R1's message prescription — loop id, bad op, valid set — is present for `until.op`; only the field is missing.. What would settle it: a change that meets this requirement in full.
+
+Summary:
+## issue-acceptance — fail
+
+- The single-condition `until.op` error message omits the field name, which R1 explicitly requires, and the SPEC-2 test does not assert the field is present, leaving that requirement permanently uncaught.
+
+- NOT MET: R-1 (issue R1: "The message names the stage or loop, **the field**, the bad op, and the valid set"): the `until.op` validation added at `template.sh:1245` emits `"cycle '$cid': exit_when op '$uo' is not in the supported op set …"` — the until field variable (`_TPL_CYCLE_UNTIL_FIELD_${safe}`) is accessible at that point (read three lines above for `abort_when`) but is never included in the error. The SPEC-2 test (`template-loader-recursive-flow-test.sh:280-282`) checks only `rc=1`, the loop name, and the bad op; it never asserts the field is named. A run that omitted the field would not turn that test red. The `abort_when` error does include the field (`for field '$aw_field'`), so the inconsistency is visible in the same diff. Every other named element of R1's message prescription — loop id, bad op, valid set — is present for `until.op`; only the field is missing.
 
 ## What you must not do
 
