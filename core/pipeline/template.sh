@@ -1281,7 +1281,8 @@ _tpl_predicate_problem() {
         gt|gte|lt|lte)
             [[ "$v" =~ ^-?[0-9]+$ ]] || printf "value '%s' must be a whole number for op '%s'" "$v" "$op" ;;
         matches)
-            [[ "" =~ $v ]] || rc=$?
+            # [[ =~ ]] returns 2 for a pattern that does not compile.
+            if [[ "" =~ $v ]]; then rc=0; else rc=$?; fi
             [[ $rc -eq 2 ]] && printf "value '%s' is not a valid pattern for op 'matches'" "$v" ;;
     esac
     return 0
