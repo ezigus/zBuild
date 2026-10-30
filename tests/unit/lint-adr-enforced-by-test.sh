@@ -149,6 +149,32 @@ _reset; _adr ADR-909-x "Superseded by ADR-903"; printf 'ADR-909-x.md\n' > "$R/co
 assert_eq "[A10] a superseded ADR left in the baseline fails" "1" "$rc"
 assert_contains "[A10] it says to remove the entry" "$out" "ADR-909-x.md"
 
+# ── [#1951/SPEC-5] ADR-001 carries an ## Enforced by section naming the coverage test,
+# and is removed from the enforcement baseline.
+# Must pass after the change; it is expected to fail before.
+ADR_001_PC="$REPO_ROOT/docs/adr/ADR-001-plugin-contract.md"
+if grep -q '## Enforced by' "$ADR_001_PC" 2>/dev/null; then
+    assert_pass "[#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section"
+else
+    assert_fail "[#1951/SPEC-5] ADR-001-plugin-contract.md must carry an ## Enforced by section" \
+        "no '## Enforced by' found in $ADR_001_PC"
+fi
+# Extract only the ## Enforced by section body; search within it so a mention
+# elsewhere in the document does not produce a false pass.
+_1951_adr001_enforced_body="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p{print}' "$ADR_001_PC" 2>/dev/null || true)"
+if grep -q 'event-schema-emitted-coverage-test.sh' <<< "$_1951_adr001_enforced_body"; then
+    assert_pass "[#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh"
+else
+    assert_fail "[#1951/SPEC-5] ADR-001 ## Enforced by must name tests/unit/event-schema-emitted-coverage-test.sh" \
+        "the coverage test is not referenced within the ## Enforced by section of $ADR_001_PC"
+fi
+if ! grep -q 'ADR-001' "$BASELINE" 2>/dev/null; then
+    assert_pass "[#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt"
+else
+    assert_fail "[#1951/SPEC-5] ADR-001-plugin-contract.md must be removed from config/adr-enforcement-baseline.txt" \
+        "ADR-001 still listed in $BASELINE; remove the entry once the ## Enforced by section is added"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -157,5 +157,141 @@ else
     assert_fail "[#2032] cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types"
 fi
 
+# ─── 5. [#1951/SPEC-1] event-schema.json must not carry plugin-namespace events ─
+# The namespace of every event a plugin declares in its manifest is a plugin-owned
+# namespace. If event-schema.json also carries events in that namespace, both sides
+# claim ownership — the split has rotted. This check derives the plugin namespaces
+# from the actual manifests, so it catches any namespace a manifest declares (not
+# just the hardcoded set in SPEC-1717-2).
+#
+# Fails before the change: security-lens + merge declare plugin.result → namespace
+# 'plugin' is a manifest namespace, and event-schema.json has plugin.* events.
+# Also persist.* and hydrate.* are in the schema AND in the persist/hydrate manifests.
+# Passes after SPEC-3 (persist/hydrate removed from schema) + SPEC-4 (plugin.result
+# removed from both manifests, leaving no manifest with a plugin.* event).
+_1951_mf=()
+while IFS= read -r _1951_m; do
+    [[ -n "$_1951_m" ]] && _1951_mf+=("$_1951_m")
+done < <(find "$REPO_ROOT/plugins" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null)
+
+_1951_all_plugin_ev=""
+[[ ${#_1951_mf[@]} -gt 0 ]] && _1951_all_plugin_ev="$(eb_manifest_events "${_1951_mf[@]}")"
+
+_1951_plugin_ns=""
+while IFS= read -r _1951_pev; do
+    [[ -z "$_1951_pev" ]] && continue
+    _1951_plugin_ns+="${_1951_pev%%.*}"$'\n'
+done <<< "$_1951_all_plugin_ev"
+# Deduplicate with here-string to avoid pipe (sigpipe-ok: sort reads all input, no early exit,
+# but use here-string to be fully safe).
+_1951_plugin_ns="$(sort -u <<< "$_1951_plugin_ns")"
+
+_1951_spec1_viol=()
+while IFS= read -r _1951_t; do
+    [[ -z "$_1951_t" ]] && continue
+    _1951_ns="${_1951_t%%.*}"
+    if grep -qxF "$_1951_ns" <<< "$_1951_plugin_ns"; then
+        _1951_spec1_viol+=("$_1951_t")
+    fi
+done <<< "$_engine_types"
+
+if [[ ${#_1951_spec1_viol[@]} -eq 0 ]]; then
+    assert_pass "[#1951/SPEC-1] event-schema.json carries no event in a plugin-owned namespace"
+else
+    for _1951_t in "${_1951_spec1_viol[@]}"; do
+        assert_fail "[#1951/SPEC-1] event-schema.json has '${_1951_t}' in a plugin-owned namespace" \
+            "namespace '${_1951_t%%.*}' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §\"Declared events\")"
+    done
+fi
+
+# ─── 6. [#1951/SPEC-2] plugin manifests must not declare engine-namespace events ─
+# ADR-001 §"Declared events" lists the namespaces owned by the engine. A plugin
+# that lists an engine-namespace event under provides.events steals ownership from
+# the engine — it is not entitled to that event name and the validator must reject it.
+#
+# Fails before the change: security-lens and merge both declare plugin.result;
+# 'plugin' is an engine-owned namespace.
+# Passes after SPEC-4: plugin.result is removed from both manifests.
+_ENGINE_OWNED_NS_RE='^(pipeline|stage|stage_io|plugin|cycle|router|loop|state|registry|parallel|redaction|template|strategy|artifact|model|cost|orch|memory|backend|detection|llm|selfhost)\.'
+_1951_spec2_viol=()
+while IFS= read -r _1951_pd; do
+    [[ -z "$_1951_pd" ]] && continue
+    _1951_mf2="$_1951_pd/manifest.yaml"
+    [[ -f "$_1951_mf2" ]] || continue
+    _1951_decl2="$(eb_manifest_events "$_1951_mf2")"
+    while IFS= read -r _1951_ev2; do
+        [[ -z "$_1951_ev2" ]] && continue
+        if grep -qE "$_ENGINE_OWNED_NS_RE" <<< "$_1951_ev2"; then
+            _1951_spec2_viol+=("${_1951_pd#"$REPO_ROOT/"} → $_1951_ev2")
+        fi
+    done <<< "$_1951_decl2"
+done <<< "$(find "$REPO_ROOT/plugins" -maxdepth 3 -name 'manifest.yaml' -type f -exec dirname {} \;)"
+
+if [[ ${#_1951_spec2_viol[@]} -eq 0 ]]; then
+    assert_pass "[#1951/SPEC-2] no plugin manifest declares an event in an engine-owned namespace"
+else
+    for _1951_v2 in "${_1951_spec2_viol[@]}"; do
+        assert_fail "[#1951/SPEC-2] plugin declares engine-namespace event: $_1951_v2" \
+            "engine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §\"Declared events\")"
+    done
+fi
+
+# ─── 7. [#1951/SPEC-3] persist.* and hydrate.* absent from event-schema.json ───
+# After the change, these namespaces are declared canonically in the plugin manifests
+# (plugins/tool/persist and plugins/tool/hydrate). The engine schema must not
+# duplicate them.
+_1951_persist="$(grep -E '^persist\.' <<< "$_engine_types" || true)"
+if [[ -z "$_1951_persist" ]]; then
+    assert_pass "[#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types"
+else
+    assert_fail "[#1951/SPEC-3] persist.* events must be absent from config/event-schema.json known_types" \
+        "still present: $(tr '\n' ' ' <<< "$_1951_persist")"
+fi
+_1951_hydrate="$(grep -E '^hydrate\.' <<< "$_engine_types" || true)"
+if [[ -z "$_1951_hydrate" ]]; then
+    assert_pass "[#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types"
+else
+    assert_fail "[#1951/SPEC-3] hydrate.* events must be absent from config/event-schema.json known_types" \
+        "still present: $(tr '\n' ' ' <<< "$_1951_hydrate")"
+fi
+
+# Canonical declarations must remain in the plugin manifests: at least one
+# persist.* event must be declared by the persist plugin, and at least one
+# hydrate.* event by the hydrate plugin.
+_1951_persist_mf_ev="$(eb_manifest_events "$REPO_ROOT/plugins/tool/persist/manifest.yaml")"
+_1951_persist_in_mf="$(grep -E '^persist\.' <<< "$_1951_persist_mf_ev" || true)"
+if [[ -n "$_1951_persist_in_mf" ]]; then
+    assert_pass "[#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)"
+else
+    assert_fail "[#1951/SPEC-3] persist plugin manifest must carry canonical persist.* declarations" \
+        "no persist.* events found in plugins/tool/persist/manifest.yaml provides.events"
+fi
+_1951_hydrate_mf_ev="$(eb_manifest_events "$REPO_ROOT/plugins/tool/hydrate/manifest.yaml")"
+_1951_hydrate_in_mf="$(grep -E '^hydrate\.' <<< "$_1951_hydrate_mf_ev" || true)"
+if [[ -n "$_1951_hydrate_in_mf" ]]; then
+    assert_pass "[#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)"
+else
+    assert_fail "[#1951/SPEC-3] hydrate plugin manifest must carry canonical hydrate.* declarations" \
+        "no hydrate.* events found in plugins/tool/hydrate/manifest.yaml provides.events"
+fi
+
+# ─── 8. [#1951/SPEC-4] plugin.result absent from security-lens and merge manifests ─
+# plugin.* is an engine-owned namespace (ADR-001 §"Declared events"). Neither
+# security-lens nor merge is entitled to declare plugin.result in their manifests.
+_1951_sl_ev="$(eb_manifest_events "$REPO_ROOT/plugins/agent/security-lens/manifest.yaml")"
+if grep -qxF "plugin.result" <<< "$_1951_sl_ev"; then
+    assert_fail "[#1951/SPEC-4] plugin.result must be absent from plugins/agent/security-lens/manifest.yaml provides.events" \
+        "plugin.result is an engine-owned event (plugin.* namespace); remove it from provides.events"
+else
+    assert_pass "[#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events"
+fi
+_1951_mg_ev="$(eb_manifest_events "$REPO_ROOT/plugins/tool/merge/manifest.yaml")"
+if grep -qxF "plugin.result" <<< "$_1951_mg_ev"; then
+    assert_fail "[#1951/SPEC-4] plugin.result must be absent from plugins/tool/merge/manifest.yaml provides.events" \
+        "plugin.result is an engine-owned event (plugin.* namespace); remove it from provides.events"
+else
+    assert_pass "[#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events"
+fi
+
 print_test_results
 exit $((FAIL > 0))
