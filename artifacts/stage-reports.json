@@ -5,9 +5,11 @@
     "config/shape-change-paths.txt",
     "docs/adr/ADR-001-plugin-contract.md",
     "plugins/agent/security-lens/manifest.yaml",
+    "plugins/agent/security-lens/tests/security-lens-test.sh",
     "plugins/tool/merge/manifest.yaml",
     "tests/golden/parity/event-sequence.golden",
-    "tests/unit/event-schema-emitted-coverage-test.sh"
+    "tests/unit/event-schema-emitted-coverage-test.sh",
+    "tests/unit/merge-v2-result-test.sh"
   ],
   "wiring_files": [
     "tests/unit/event-schema-emitted-coverage-test.sh"

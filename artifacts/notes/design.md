@@ -2,10 +2,10 @@
 
 ## What I read
 
-- `tests/unit/event-schema-emitted-coverage-test.sh` — the test with the bug
+- `tests/unit/event-schema-emitted-coverage-test.sh` — the test with the bug; `_PLUGIN_NS_RE` is at line 123, `[SPEC-1717-2]` block is lines 120-130
 - `config/event-schema.json` — contains persist.* (6 events) and hydrate.* (5 events) that are double-declared
 - `plugins/tool/persist/manifest.yaml` — correctly declares persist.* events; already the authoritative source
-- `plugins/tool/hydrate/manifest.yaml` — correctly declares hydrate.* events; note it also has `hydrate.adopt.failed` NOT in event-schema.json
+- `plugins/tool/hydrate/manifest.yaml` — correctly declares hydrate.* events
 - `plugins/agent/security-lens/manifest.yaml` — wrongly declares `plugin.result` in provides.events
 - `plugins/tool/merge/manifest.yaml` — wrongly declares `plugin.result` in provides.events
 - `plugins/tool/pr-open/manifest.yaml` — declares `plugin.pr_open.*` events (allowed exception)
@@ -13,7 +13,9 @@
 - `config/adr-enforcement-baseline.txt` — ADR-001 is in the baseline (no Enforced by section yet)
 - `tests/unit/lint-adr-enforced-by-test.sh` — A7 tests the real tree
 - `tests/unit/plugin-lifecycle-event-balance-test.sh` — SPEC-3 checks `plugin.result` IS in event-schema.json (not affected by our change)
-- `config/shape-change-paths.txt` — event-schema.json is in it; golden check applies
+- `config/shape-change-paths.txt` — event-schema.json is in it (line 14); golden check applies
+- `plugins/agent/security-lens/tests/security-lens-test.sh` — SPEC-16 (lines 553-565) checks `plugin.result` AND `security_lens.failed` are in manifest; will fail after SPEC-4
+- `tests/unit/merge-v2-result-test.sh` — SPEC-1 (lines 42-54) checks `plugin.result` is in merge manifest; will fail after SPEC-4
 
 ## The bug (line 123 of coverage test)
 
@@ -50,13 +52,28 @@ The validator flagged SPEC-3, SPEC-4, SPEC-5, SPEC-6 (all [code]) with "describe
 
 Evidence: old SPEC-7 ([no-code], ADR-001 Enforced by section) had the same "file contains" form and was NOT rejected. Confirms [no-code] accepts config/data descriptions.
 
-## SPEC numbering in revised design
+## Issue-acceptance findings addressed
 
-- SPEC-1 [code]: guard rewrite (manifest-derived)
+**Finding 1 (_PLUGIN_NS_RE not removed):**
+- Build stage appended new code after line 157 but never removed/replaced the old `[SPEC-1717-2]` block (lines 120-130)
+- Decision section now explicitly says "Replace" the block, not augment
+- Added SPEC-6[no-code] requiring `_PLUGIN_NS_RE` to be absent from the file after the change
+
+**Finding 2 (two pre-existing tests fail):**
+- `plugins/agent/security-lens/tests/security-lens-test.sh` [SPEC-16]: asserts plugin.result IS in manifest — will be wrong after SPEC-4
+- `tests/unit/merge-v2-result-test.sh` [SPEC-1]: asserts plugin.result IS in merge manifest — will be wrong after SPEC-4
+- Added both to scope
+- Added supersedes block documenting both assertions
+- Added both to SPEC-4's TESTFILES entry
+
+## SPEC numbering in final design
+
+- SPEC-1 [code]: guard rewrite (manifest-derived derivation of plugin namespaces)
 - SPEC-2 [code]: reverse direction check (no engine events in manifests)
 - SPEC-3 [no-code]: persist.*/hydrate.* removed from event-schema.json
-- SPEC-4 [no-code]: plugin.result removed from two plugin manifests
+- SPEC-4 [no-code]: plugin.result removed from two plugin manifests + two test updates
 - SPEC-5 [no-code]: ADR-001 Enforced by section + baseline removal
+- SPEC-6 [no-code]: _PLUGIN_NS_RE absent from coverage test file
 
 ## WIRING reasoning
 
