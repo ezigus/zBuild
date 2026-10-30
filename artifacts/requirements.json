@@ -1,0 +1,1 @@
+{"schema_version":1,"source":"title","requirements":[{"id":"R-1","text":"[bug] release: _release_prepend_changelog check-then-write race can duplicate (or drop) a CHANGELOG section: ## Goal"}]}
