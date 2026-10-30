@@ -60,10 +60,11 @@ source "$REPO_ROOT/plugins/agent/review-lens/lib/charters.sh"
 assert_eq "[RT3] no lens picks its own evidence by name" "" \
     "$(_code_refs '_review_lens_evidence_path|call-graph.json|coverage-map.json|reachability-ablation.json')"
 assert_eq "[RT3] no lens text table" "absent" "$(declare -F _rl_lens_charter >/dev/null 2>&1 && echo present || echo absent)"
-_p_sec="$(_rl_build_lens_prompt security "EVIDENCE" "CONTEXT" 2>/dev/null)"
+# red-team, not security: the shared severity scale says "a security hole" (#2433).
+_p_sec="$(_rl_build_lens_prompt red-team "EVIDENCE" "CONTEXT" 2>/dev/null)"
 _p_cor="$(_rl_build_lens_prompt correctness "EVIDENCE" "CONTEXT" 2>/dev/null)"
 assert_eq "[RT3] the lens prompt was built" "1" "$([[ -n "$_p_sec" ]] && echo 1 || echo 0)"
-assert_eq "[RT3] every lens gets the same job, but for its name" "${_p_sec//security/LENS}" "${_p_cor//correctness/LENS}"
+assert_eq "[RT3] every lens gets the same job, but for its name" "${_p_sec//red-team/LENS}" "${_p_cor//correctness/LENS}"
 _persp="$(awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*"?/, ""); print substr($0, 1, 40); exit }' \
     "$REPO_ROOT/plugins/persona/correctness/manifest.yaml")"
 if grep -qF -- "$_persp" <<< "$_p_cor"; then

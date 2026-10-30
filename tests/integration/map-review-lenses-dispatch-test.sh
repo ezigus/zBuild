@@ -49,14 +49,15 @@ set +e; load_template "$SIMPLE_TPL"; _load_rc=$?; set -e
 assert_eq "[SPEC-1] simple.yaml loads rc=0" "0" "$_load_rc"
 
 _has_map_unit=0
+# #2433: the lenses run inside delivery_loop — a map member of the loop, not a
+# top-level unit of their own.
 for _u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$_u" == "map:review_lenses" ]] && { _has_map_unit=1; break; }
 done
-if [[ $_has_map_unit -eq 1 ]]; then
-    assert_pass "[SPEC-1] map:review_lenses is in _TPL_DISPATCH_UNITS"
-else
-    assert_fail "[SPEC-1] map:review_lenses missing from dispatch units" "${_TPL_DISPATCH_UNITS[*]}"
-fi
+assert_eq "[SPEC-1] review_lenses is no top-level dispatch unit (#2433)" "0" "$_has_map_unit"
+assert_contains "[SPEC-1] review_lenses is a member of delivery_loop (#2433)" \
+    ",${_TPL_CYCLE_STAGES_delivery_loop:-}," ",review_lenses,"
+assert_eq "[SPEC-1] review_lenses is a map member" "map" "${_TPL_STAGE_TYPE_review_lenses:-}"
 
 assert_eq "[SPEC-1] _TPL_MAP_OVER_review_lenses == lenses" "lenses" "${_TPL_MAP_OVER_review_lenses:-MISSING}"
 assert_eq "[SPEC-1] _TPL_MAP_ELEMENTS_review_lenses has 6 elements" \

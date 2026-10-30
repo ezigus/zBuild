@@ -26,7 +26,7 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 print_test_section "F1: the template's list reaches the plugin"
 _got="$(bash -c 'source "$1/scripts/lib/helpers.sh"; source "$1/core/pipeline/template.sh"
     load_template "$1/config/templates/simple.yaml" >/dev/null 2>&1; printf "%s" "${_TPL_STAGE_FAIL_ON_review_lenses:-unset}"' _ "$REPO_ROOT")"
-assert_eq "[F1] simple.yaml's review_lenses fail_on reaches the plugin" "high critical" "$_got"
+assert_eq "[F1] simple.yaml's review_lenses fail_on reaches the plugin (#2433: medium and above)" "medium high critical" "$_got"
 
 print_test_section "F2: the lens fails only on what the template lists"
 # shellcheck source=../../core/plugin-registry/registry.sh
@@ -54,8 +54,8 @@ assert_eq "[F2] no fail_on: a high problem the change introduced passes" "pass" 
 
 print_test_section "F3: the shipped templates"
 for _t in simple deployed; do
-    assert_contains "[F3] $_t.yaml: a lens fails on high or critical" \
-        "$(awk '/^review_lenses:/{f=1} f&&/^[a-z_-]+:/&&!/^review_lenses:/{exit} f' "$REPO_ROOT/config/templates/$_t.yaml")" "fail_on: [high, critical]"
+    assert_contains "[F3] $_t.yaml: a lens fails on medium, high or critical (#2433)" \
+        "$(awk '/^review_lenses:/{f=1} f&&/^[a-z_-]+:/&&!/^review_lenses:/{exit} f' "$REPO_ROOT/config/templates/$_t.yaml")" "fail_on: [medium, high, critical]"
 done
 
 cleanup_test_env
