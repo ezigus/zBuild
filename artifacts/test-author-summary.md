@@ -1,6 +1,6 @@
 ## test-author — pass
 
-- changed 2 test file(s); acceptance assertions for 5 SPEC(s) from the design contract
+- changed 1 test file(s); acceptance assertions for 5 SPEC(s) from the design contract
 
 - SPECs in the contract: 5
 - assertions are authored from the SPEC text, never from the implementation

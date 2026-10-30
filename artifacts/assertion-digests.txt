@@ -1,6 +1,6 @@
 # authored_by: test-author
-5c6ce9302539b534eef892993ed440cbe532cc4f474d73aac0850c8473bb26b6  tests/unit/event-schema-emitted-coverage-test.sh
-5c6ce9302539b534eef892993ed440cbe532cc4f474d73aac0850c8473bb26b6  tests/unit/event-schema-emitted-coverage-test.sh
-5c6ce9302539b534eef892993ed440cbe532cc4f474d73aac0850c8473bb26b6  tests/unit/event-schema-emitted-coverage-test.sh
-5c6ce9302539b534eef892993ed440cbe532cc4f474d73aac0850c8473bb26b6  tests/unit/event-schema-emitted-coverage-test.sh
+2aa676ba09695a314176912b462fe1b767c782a600b20ee815785e0470d8dd81  tests/unit/event-schema-emitted-coverage-test.sh
+2aa676ba09695a314176912b462fe1b767c782a600b20ee815785e0470d8dd81  tests/unit/event-schema-emitted-coverage-test.sh
+2aa676ba09695a314176912b462fe1b767c782a600b20ee815785e0470d8dd81  tests/unit/event-schema-emitted-coverage-test.sh
+2aa676ba09695a314176912b462fe1b767c782a600b20ee815785e0470d8dd81  tests/unit/event-schema-emitted-coverage-test.sh
 2600079a7d13799984fbc872a647484f4883e268c032aac092155950ce420070  tests/unit/lint-adr-enforced-by-test.sh
