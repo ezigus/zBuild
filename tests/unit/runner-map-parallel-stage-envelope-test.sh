@@ -185,7 +185,8 @@ assert_contains "[#1753/R4] every member passed → the group is recorded comple
 _spec4_run yes "1 of 6 lenses did not pass: correctness (fail)"
 assert_contains "[#1753/R3] a member did not pass → the group is recorded failed" "$(cat "$_spec4_log")" "status failed"
 assert_contains "[#1753/R3] … and the stop message names it" "$(cat "$_spec4_log")" "1 of 6 lenses did not pass: correctness (fail)"
-assert_contains "[#1753/R3] the group's complete event reads its verdict from _map_group_verdict" \
+# Static: the source passes _map_group_verdict to the event; M4 tests what it returns.
+assert_contains "[#1753/R3] the group's complete event is emitted with _map_group_verdict (source check)" \
     "$(grep -A2 'parallel.group.complete' <<< "$MAP_ARM")" '_map_group_verdict'
 
 # ═══════════════════════════════════════════════════════════════════════════════
