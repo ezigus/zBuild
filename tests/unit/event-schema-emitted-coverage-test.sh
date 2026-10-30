@@ -117,19 +117,7 @@ else
     done
 fi
 
-# ─── 3. [SPEC-1717-2] the engine's file carries ONLY engine namespaces ───────
-# The whole point of the split: a plugin namespace back in config/event-schema.json
-# means a plugin has to edit engine config again to register an event.
-_PLUGIN_NS_RE='^(intake|plan|design|impact|build|acceptance|validate|deploy|monitor|review|review_lens|review_report|review_aggregator|test|test_assessment|shape_floor|coverage_gate|lint_gate|mutation_gate|secret_scan|design_gate|gate_aggregator|teardown|release|claim)\.'
-_leaked="$(grep -E "$_PLUGIN_NS_RE" <<< "$_engine_types" || true)"
-if [[ -z "$_leaked" ]]; then
-    assert_pass "[SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace"
-else
-    assert_fail "[SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace" \
-        "plugin-owned names still in engine config: $(tr '\n' ' ' <<< "$_leaked")"
-fi
-
-# ─── 4. [SPEC-1717-3] the #1711 casualty is declared and no longer warns ─────
+# ─── 3. [SPEC-1717-3] the #1711 casualty is declared and no longer warns ─────
 # `acceptance.gate.wiring_not_on_path` is the event the #1686 build un-registered
 # rather than edit an out-of-scope engine file — the incident that motivated
 # this issue. It must be known through spec-acceptance's OWN manifest.
@@ -312,6 +300,41 @@ if grep -qxF "plugin.result" <<< "$_1951_mg_ev"; then
         "plugin.result is an engine-owned event (plugin.* namespace); remove it from provides.events"
 else
     assert_pass "[#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events"
+fi
+# Also verify the pre-existing test sub-assertions for plugin.result have been removed.
+# The [SPEC-16] block in security-lens-test.sh previously asserted
+# "manifest provides.events contains plugin.result" — that sub-assertion must be gone.
+_1951_sl_testfile="$REPO_ROOT/plugins/agent/security-lens/tests/security-lens-test.sh"
+if grep -qF "manifest provides.events contains plugin.result" "$_1951_sl_testfile" 2>/dev/null; then
+    assert_fail "[#1951/SPEC-4] the [SPEC-16] plugin.result sub-assertion must be absent from security-lens-test.sh" \
+        "old sub-assertion 'manifest provides.events contains plugin.result' is still present in plugins/agent/security-lens/tests/security-lens-test.sh"
+else
+    assert_pass "[#1951/SPEC-4] the [SPEC-16] plugin.result sub-assertion is absent from security-lens-test.sh"
+fi
+# The [SPEC-1] block in merge-v2-result-test.sh previously asserted
+# "manifest provides.events includes plugin.result" — that sub-assertion must be gone.
+_1951_mg_testfile="$REPO_ROOT/tests/unit/merge-v2-result-test.sh"
+if grep -qF "manifest provides.events includes plugin.result" "$_1951_mg_testfile" 2>/dev/null; then
+    assert_fail "[#1951/SPEC-4] the [SPEC-1] plugin.result sub-assertion must be absent from merge-v2-result-test.sh" \
+        "old sub-assertion 'manifest provides.events includes plugin.result' is still present in tests/unit/merge-v2-result-test.sh"
+else
+    assert_pass "[#1951/SPEC-4] the [SPEC-1] plugin.result sub-assertion is absent from merge-v2-result-test.sh"
+fi
+
+# ─── 9. [#1951/SPEC-6] the old hardcoded plugin-namespace guard is gone ───────
+# After the change, the hardcoded plugin-namespace enumeration variable introduced
+# by SPEC-1717-2 must not appear anywhere in this file: the dynamic manifest-based
+# check (SPEC-1 above) fully replaces it.
+#
+# The variable name is assembled from two parts below so that this assertion
+# itself does not introduce the literal as a contiguous character sequence in the
+# file — a self-referential literal would make the check always fail.
+_1951_s6_ns_var='_PLUGIN_NS'"_RE"   # evaluates to the target name; never a literal occurrence
+if ! grep -qF "$_1951_s6_ns_var" "${BASH_SOURCE[0]}"; then
+    assert_pass "[#1951/SPEC-6] the hardcoded plugin-namespace guard variable is absent from this file"
+else
+    assert_fail "[#1951/SPEC-6] the hardcoded plugin-namespace guard variable must be absent from this file" \
+        "old SPEC-1717-2 hardcoded list is still present; the guard block was not removed"
 fi
 
 print_test_results
