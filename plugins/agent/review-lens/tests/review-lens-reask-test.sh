@@ -13,6 +13,8 @@
 #   L4 [guard] : a failed model call (time limit, turns, provider) is not asked
 #                again — a lens that does not finish stops the run (ADR-040)
 #   L5 [change]: every reply the lens got is kept, in the order it came
+#   L6 [guard] : a signal that lands after a call ends is not followed by a
+#                second ask: the lens is interrupted (review on #2434)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,6 +112,30 @@ else
     assert_fail "L5: in the order they came" "second before first"
 fi
 assert_contains "L5: the reply file is a declared output" "$(cat "$PLUGIN_DIR/manifest.yaml")" 'lens-${ZBUILD_REVIEW_LENS_ID}-reply.txt'
+
+# ─── L6 ──────────────────────────────────────────────────────────────────────
+# A real child process: the trap must fire in the shell running the lens. The
+# signal is sent while the call runs; bash runs the trap once the call returns
+# (with a reply that cannot be used), before the loop decides to ask again.
+_l6="$TEST_TEMP_DIR/l6.sh"; _l6n="$TEST_TEMP_DIR/l6-n"; printf '0' > "$_l6n"
+cat > "$_l6" <<'L6'
+set -uo pipefail
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+source "$REPO_ROOT/core/plugin-registry/registry.sh"
+source "$PLUGIN_DIR/plugin.sh"
+route_to_model() {
+    printf '%s' "$(( $(cat "$L6N") + 1 ))" > "$L6N"
+    kill -TERM $$
+    printf '%s' 'not json at all'
+}
+_review_lens_run_inner l6 "$L6_SCOPE" "$L6_EVIDENCE" "$L6_ART/lens-l6.json" "$L6_ART" >/dev/null 2>&1
+printf '%s' "$?"
+L6
+_l6rc="$(REPO_ROOT="$REPO_ROOT" PLUGIN_DIR="$PLUGIN_DIR" L6N="$_l6n" L6_SCOPE="$scope_manifest" \
+    L6_EVIDENCE="$evidence" L6_ART="$artifact_dir" bash "$_l6" 2>/dev/null)"
+assert_eq "L6: the lens is not asked again after a signal" "1" "$(cat "$_l6n")"
+assert_eq "L6: the lens is interrupted" "interrupted" "$(jq -r '.outcome // empty' "$artifact_dir/lens-l6.json" 2>/dev/null)"
+assert_eq "L6: the stage reports the signal" "130" "$_l6rc"
 
 cleanup_test_env
 print_test_results

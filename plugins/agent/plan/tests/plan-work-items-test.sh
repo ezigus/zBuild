@@ -187,6 +187,10 @@ assert_file_not_exists "[W10] ...and the rejected one is cleared" "$_REJ"
 _reset
 _run_plan "$STATE_FILE" >/dev/null 2>&1
 assert_contains "[W10] a call that wrote no plan says so" "$(jq -r '.data.findings[0].text // empty' "$_PJ" 2>/dev/null)" "wrote no plan to $_PJ"
+_reset; MOCK_WRITE='{"schema_version":1,"steps":[]}'; MOCK_RC=124
+_run_plan "$STATE_FILE" >/dev/null 2>&1
+assert_eq "[W10] a call that timed out keeps its own word, even with a bad plan (review on #2434)" "timed_out" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
+assert_file_exists "[W10] ...and its bad plan is still kept" "$_REJ"
 assert_contains "[W10] the manifest declares the rejected plan" "$(cat "$PLUGIN_DIR/manifest.yaml")" 'plan-rejected.json'
 
 cleanup_test_env

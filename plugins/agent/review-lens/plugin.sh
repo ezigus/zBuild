@@ -341,7 +341,8 @@ _review_lens_run_inner() {
         raw_response=""; router_rc=0; _rl_problem=""
         raw_response="$(route_to_model "$tier" "$_rl_ask")" || router_rc=$?
         printf -- '--- reply %s ---\n%s\n' "$_rl_try" "$raw_response" >> "$_rl_replies" 2>/dev/null || true
-        [[ $router_rc -eq 0 && -n "$raw_response" ]] || break
+        # A signal that landed during the call ends the lens here (review on #2434).
+        [[ $router_rc -eq 0 && -n "$raw_response" && "${_rl_interrupted:-0}" != "1" ]] || break
         _rl_reply_problem "$raw_response" json _rl_problem
         [[ -n "$_rl_problem" ]] || break
         _rl_ask="$(stage_prompt_reask "$prompt" "$_rl_problem" "$raw_response")"
@@ -359,7 +360,7 @@ _review_lens_run_inner() {
 
     # rc=130 (SIGINT propagated through subshell) — distinct from advisory rc=0
     # degrade paths; write interrupted disposition and propagate the signal code.
-    if [[ "$router_rc" -eq 130 ]]; then
+    if [[ "$router_rc" -eq 130 || "${_rl_interrupted:-0}" == "1" ]]; then
         stage_signal_end
         [[ "${_rl_interrupted:-0}" == "1" ]] \
             || _review_lens_write_result "$out" interrupted "signal_interrupt"

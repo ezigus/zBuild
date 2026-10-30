@@ -208,9 +208,10 @@ _plan_run_inner() {
     elif [[ $router_rc -eq 0 ]]; then
         _why="Your last try wrote no plan to ${output_plan_json}."
     fi
-    if [[ $router_rc -ne 0 && "$_reason" == "no_plan_written" ]]; then
+    if [[ $router_rc -ne 0 ]]; then
         # A failed router CALL is named by the shared mapping, never by this
-        # plugin (#1835; #2225 "chosen once, not per plugin").
+        # plugin (#1835; #2225 "chosen once, not per plugin"). It is how the
+        # call ended even when it left a rejected plan (review on #2434).
         local _rc_verdict="" _rc_reason="" _rc_disp=""
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         _rc_disp="$(router_reason_disposition "${_rc_reason:-}")"
