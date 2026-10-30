@@ -1,6 +1,6 @@
-## test-author — fail
+## test-author — pass
 
-- changed 4 test file(s); 1 assertion(s) still do not test what their SPEC says after 2 round(s)
+- changed 3 test file(s); acceptance assertions for 9 SPEC(s) from the design contract
 
 - SPECs in the contract: 9
 - assertions are authored from the SPEC text, never from the implementation

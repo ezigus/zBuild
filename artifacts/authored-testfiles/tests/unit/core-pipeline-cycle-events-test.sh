@@ -97,18 +97,26 @@ for _spec7_op in gt gte lt lte; do
     _TPL_CYCLE_EXIT_1_VALUE_spec7_cycle="5"
     _CYCLE_TRAP_CYCLE_ID="spec7_cycle"
     _CYCLE_TRAP_ITER=1
-    _cycle_load_template "spec7_cycle"
+    # Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
+    set +e; _cycle_load_template "spec7_cycle"; _s7_mc_rc=$?; set -e
     blob='{"s1":{"score":"notanumber","status":"complete"}}'
     set +e
     _spec7_err=$(2>&1 _cycle_check_until "$blob"); _spec7_rc=$?
     set -e
-    assert_eq "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric → rc=1" \
-        "1" "$_spec7_rc"
-    if [[ -n "$_spec7_err" ]]; then
-        assert_pass "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error"
-    else
+    if [[ "$_s7_mc_rc" -ne 0 ]]; then
+        assert_fail "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric → rc=1" \
+            "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_mc_rc)"
         assert_fail "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error" \
-            "no output for op=${_spec7_op} value=notanumber"
+            "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_mc_rc)"
+    else
+        assert_eq "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric → rc=1" \
+            "1" "$_spec7_rc"
+        if [[ -n "$_spec7_err" ]]; then
+            assert_pass "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error"
+        else
+            assert_fail "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error" \
+                "no output for op=${_spec7_op} value=notanumber"
+        fi
     fi
 done
 
@@ -125,18 +133,26 @@ for _spec7_op in gt gte lt lte; do
     _TPL_CYCLE_STAGES_spec7_aw="s1"
     _CYCLE_TRAP_CYCLE_ID="spec7_aw"
     _CYCLE_TRAP_ITER=1
-    _cycle_load_template "spec7_aw"
+    # Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
+    set +e; _cycle_load_template "spec7_aw"; _s7_aw_rc=$?; set -e
     blob='{"s1":{"score":"notanumber","status":"complete"}}'
     set +e
     _spec7_err=$(2>&1 _cycle_check_abort_when "$blob"); _spec7_rc=$?
     set -e
-    assert_eq "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
-        "1" "$_spec7_rc"
-    if [[ -n "$_spec7_err" ]]; then
-        assert_pass "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error"
-    else
+    if [[ "$_s7_aw_rc" -ne 0 ]]; then
+        assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
+            "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_aw_rc)"
         assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error" \
-            "no output for op=${_spec7_op} value=notanumber"
+            "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_aw_rc)"
+    else
+        assert_eq "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
+            "1" "$_spec7_rc"
+        if [[ -n "$_spec7_err" ]]; then
+            assert_pass "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error"
+        else
+            assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error" \
+                "no output for op=${_spec7_op} value=notanumber"
+        fi
     fi
 done
 
@@ -161,10 +177,16 @@ _TPL_CYCLE_EXIT_1_OP_spec8_cycle="bogus_op"
 _TPL_CYCLE_EXIT_1_VALUE_spec8_cycle="pass"
 _CYCLE_TRAP_CYCLE_ID="spec8_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "spec8_cycle"
+# Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
+set +e; _cycle_load_template "spec8_cycle"; _s8_mc_rc=$?; set -e
 blob='{"s1":{"verdict":"pass","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)" "1" "$rc"
+if [[ "$_s8_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)" \
+        "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s8_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)" "1" "$rc"
+fi
 
 # _cycle_check_abort_when: unrecognized op
 _TPL_CYCLE_ABORT_WHEN_STAGE_spec8_aw="s1"
@@ -178,9 +200,15 @@ _TPL_CYCLE_UNTIL_VALUE_spec8_aw="pass"
 _TPL_CYCLE_STAGES_spec8_aw="s1"
 _CYCLE_TRAP_CYCLE_ID="spec8_aw"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "spec8_aw"
+# Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
+set +e; _cycle_load_template "spec8_aw"; _s8_aw_rc=$?; set -e
 blob='{"s1":{"verdict":"pass","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" "1" "$rc"
+if [[ "$_s8_aw_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" \
+        "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s8_aw_rc)"
+else
+    assert_eq "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" "1" "$rc"
+fi
 
 print_test_results

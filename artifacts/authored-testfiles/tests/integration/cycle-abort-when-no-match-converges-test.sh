@@ -392,15 +392,26 @@ _TPL_CYCLE_EXIT_1_OP_mc_cycle="eq"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="pass"
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "mc_cycle"
+# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
+set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
 blob='{"s1":{"verdict":"pass","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" "0" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" "0" "$rc"
+fi
 
 blob='{"s1":{"verdict":"fail","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi eq: verdict!=pass → rc=1" "1" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi eq: verdict!=pass → rc=1" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi eq: verdict!=pass → rc=1" "1" "$rc"
+fi
 
 # neq in multi-condition
 _TPL_CYCLE_EXIT_COMBINATOR_mc_cycle="all"
@@ -411,15 +422,26 @@ _TPL_CYCLE_EXIT_1_OP_mc_cycle="neq"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="fail"
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "mc_cycle"
+# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
+set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
 blob='{"s1":{"verdict":"pass","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi neq: pass!=fail → rc=0" "0" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi neq: pass!=fail → rc=0" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi neq: pass!=fail → rc=0" "0" "$rc"
+fi
 
 blob='{"s1":{"verdict":"fail","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi neq: fail==fail → rc=1" "1" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi neq: fail==fail → rc=1" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi neq: fail==fail → rc=1" "1" "$rc"
+fi
 
 # gt in multi-condition
 _TPL_CYCLE_EXIT_COMBINATOR_mc_cycle="all"
@@ -430,60 +452,104 @@ _TPL_CYCLE_EXIT_1_OP_mc_cycle="gt"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "mc_cycle"
+# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
+set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
 blob='{"s1":{"score":"10","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi gt: 10>5 → rc=0" "0" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi gt: 10>5 → rc=0" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi gt: 10>5 → rc=0" "0" "$rc"
+fi
 
 blob='{"s1":{"score":"3","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi gt: 3>5 → rc=1" "1" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi gt: 3>5 → rc=1" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi gt: 3>5 → rc=1" "1" "$rc"
+fi
 
 # gte in multi-condition
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="gte"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "mc_cycle"
+# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
+set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
 blob='{"s1":{"score":"5","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" "0" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" "0" "$rc"
+fi
 
 blob='{"s1":{"score":"4","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi gte: 4>=5 → rc=1" "1" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi gte: 4>=5 → rc=1" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi gte: 4>=5 → rc=1" "1" "$rc"
+fi
 
 # lt in multi-condition
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="lt"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "mc_cycle"
+# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
+set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
 blob='{"s1":{"score":"3","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi lt: 3<5 → rc=0" "0" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi lt: 3<5 → rc=0" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi lt: 3<5 → rc=0" "0" "$rc"
+fi
 
 blob='{"s1":{"score":"9","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi lt: 9<5 → rc=1" "1" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi lt: 9<5 → rc=1" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi lt: 9<5 → rc=1" "1" "$rc"
+fi
 
 # lte in multi-condition
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="lte"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "mc_cycle"
+# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
+set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
 blob='{"s1":{"score":"5","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" "0" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" "0" "$rc"
+fi
 
 blob='{"s1":{"score":"8","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi lte: 8<=5 → rc=1" "1" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi lte: 8<=5 → rc=1" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi lte: 8<=5 → rc=1" "1" "$rc"
+fi
 
 # contains in multi-condition
 _TPL_CYCLE_EXIT_1_FIELD_mc_cycle="reason"
@@ -491,15 +557,26 @@ _TPL_CYCLE_EXIT_1_OP_mc_cycle="contains"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="pass"
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "mc_cycle"
+# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
+set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
 blob='{"s1":{"reason":"all pass ok","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" "0" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" "0" "$rc"
+fi
 
 blob='{"s1":{"reason":"failed","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1" "1" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1" "1" "$rc"
+fi
 
 # matches in multi-condition
 _TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
@@ -507,15 +584,26 @@ _TPL_CYCLE_EXIT_1_OP_mc_cycle="matches"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="^pass"
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
-_cycle_load_template "mc_cycle"
+# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
+set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
 blob='{"s1":{"verdict":"pass","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0" "0" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0" "0" "$rc"
+fi
 
 blob='{"s1":{"verdict":"failure","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "[#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1" "1" "$rc"
+if [[ "$_sp5_mc_rc" -ne 0 ]]; then
+    assert_fail "[#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1" \
+        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
+else
+    assert_eq "[#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1" "1" "$rc"
+fi
 
 print_test_results
 cleanup_test_env

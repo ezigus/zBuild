@@ -230,14 +230,18 @@ assert_eq "[#1760/SPEC-1] abort_when bad op refused (rc!=0)" "1" "$bad_aw_rc"
 assert_contains "[#1760/SPEC-1] error names the loop" "$bad_aw_err" "the_cycle"
 assert_contains "[#1760/SPEC-1] error names the field" "$bad_aw_err" "verdict"
 assert_contains "[#1760/SPEC-1] error names the bad op" "$bad_aw_err" "contains_all"
-# The valid set must appear (at minimum 'eq' and at least one other new op)
-if grep -qE 'eq.*neq|neq.*eq' <<< "$bad_aw_err" 2>/dev/null || \
-   grep -qE 'eq|neq|gt|gte|lt|lte|contains|matches' <<< "$bad_aw_err" 2>/dev/null; then
-    assert_pass "[#1760/SPEC-1] error names the valid op set"
-else
-    assert_fail "[#1760/SPEC-1] error names the valid op set" \
-        "expected valid set mention in: $bad_aw_err"
-fi
+# Verify the complete eight-op set (eq neq gt gte lt lte contains matches) is
+# named in the error. Each op is checked as a standalone token — word-boundary
+# on both sides — so 'eq' inside 'neq', 'gt' inside 'gte', 'lt' inside 'lte',
+# and 'contains' inside the bad op 'contains_all' do not satisfy the check.
+for _spec1_valid_op in eq neq gt gte lt lte contains matches; do
+    if grep -qE "(^|[^[:alnum:]_])${_spec1_valid_op}([^[:alnum:]_]|$)" <<< "$bad_aw_err" 2>/dev/null; then
+        assert_pass "[#1760/SPEC-1] error valid-set includes ${_spec1_valid_op}"
+    else
+        assert_fail "[#1760/SPEC-1] error valid-set includes ${_spec1_valid_op}" \
+            "op '${_spec1_valid_op}' not found as standalone token in: $bad_aw_err"
+    fi
+done
 
 # ── [#1760/SPEC-2] single-condition until.op outside eight-op set refused ──────
 # The single-condition exit_when op must also be validated at load time.
