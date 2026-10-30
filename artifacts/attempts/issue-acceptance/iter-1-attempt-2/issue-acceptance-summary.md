@@ -1,0 +1,5 @@
+## issue-acceptance — pass
+
+- All five issue requirements are fully implemented — persist.*/hydrate.* are removed from event-schema.json with canonical declarations remaining only in the plugin manifests, plugin.result is removed from both the security-lens and merge manifests and their tests updated, the guard in event-schema-emitted-coverage-test.sh now derives plugin-owned namespaces dynamically from manifests replacing the hardcoded `_PLUGIN_NS_RE`, the `plugin.pr_open.*` exception is handled correctly, ADR-001 carries an Enforced-by section naming the test file, and the enforcement baseline no longer lists ADR-001; the test suite passes with 830 assertions.
+
+- every requirement the issue states is met by the change
