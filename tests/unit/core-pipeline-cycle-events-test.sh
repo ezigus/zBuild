@@ -46,4 +46,141 @@ for ev in cycle.feedback.missing cycle.feedback.absent; do
     fi
 done
 
+print_test_section "SPEC-7 / SPEC-8 — evaluator op guards"
+# Source cycle-orchestrator to get the evaluator functions.
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
+# shellcheck source=../../core/pipeline/cycle-orchestrator.sh
+source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+
+# ── [#1760/SPEC-7] gt/gte/lt/lte with non-numeric operand emits error ──────────
+# Must NOT silently evaluate to false; must emit a diagnostic and return 1.
+# Tests FAIL before #1760 (numeric ops not yet present in evaluators).
+
+# Helper: call each evaluator with a non-numeric value for a numeric op,
+# capture stderr, verify rc=1 AND an error message appears.
+
+# --- _cycle_check_until (single-condition) ---
+_CYCLE_EXIT_COMBINATOR=""
+_CYCLE_UNTIL_STAGE="s1"; _CYCLE_UNTIL_FIELD="score"
+
+for _spec7_op in gt gte lt lte; do
+    _CYCLE_UNTIL_OP="$_spec7_op"; _CYCLE_UNTIL_VALUE="5"
+    blob='{"s1":{"score":"notanumber","status":"complete"}}'
+    set +e
+    _spec7_err=$(2>&1 _cycle_check_until "$blob"); _spec7_rc=$?
+    set -e
+    assert_eq "[#1760/SPEC-7] _cycle_check_until: ${_spec7_op} non-numeric → rc=1 (error, not silent false)" \
+        "1" "$_spec7_rc"
+    if [[ -n "$_spec7_err" ]]; then
+        assert_pass "[#1760/SPEC-7] _cycle_check_until: ${_spec7_op} non-numeric emits error message"
+    else
+        assert_fail "[#1760/SPEC-7] _cycle_check_until: ${_spec7_op} non-numeric emits error message" \
+            "no output on stderr/stdout for op=${_spec7_op} value=notanumber"
+    fi
+done
+
+# --- _cycle_eval_one_condition (multi-condition) ---
+# Set template vars for a single multi-condition entry using each numeric op,
+# then call _cycle_load_template and _cycle_check_until (which calls _cycle_eval_one_condition).
+# shellcheck source=../../core/pipeline/template.sh
+source "$REPO_ROOT/core/pipeline/template.sh"
+
+for _spec7_op in gt gte lt lte; do
+    _TPL_CYCLE_EXIT_COMBINATOR_spec7_cycle="all"
+    _TPL_CYCLE_EXIT_COUNT_spec7_cycle="1"
+    _TPL_CYCLE_EXIT_1_STAGE_spec7_cycle="s1"
+    _TPL_CYCLE_EXIT_1_FIELD_spec7_cycle="score"
+    _TPL_CYCLE_EXIT_1_OP_spec7_cycle="$_spec7_op"
+    _TPL_CYCLE_EXIT_1_VALUE_spec7_cycle="5"
+    _CYCLE_TRAP_CYCLE_ID="spec7_cycle"
+    _CYCLE_TRAP_ITER=1
+    _cycle_load_template "spec7_cycle"
+    blob='{"s1":{"score":"notanumber","status":"complete"}}'
+    set +e
+    _spec7_err=$(2>&1 _cycle_check_until "$blob"); _spec7_rc=$?
+    set -e
+    assert_eq "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric → rc=1" \
+        "1" "$_spec7_rc"
+    if [[ -n "$_spec7_err" ]]; then
+        assert_pass "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error"
+    else
+        assert_fail "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error" \
+            "no output for op=${_spec7_op} value=notanumber"
+    fi
+done
+
+# --- _cycle_check_abort_when ---
+for _spec7_op in gt gte lt lte; do
+    _TPL_CYCLE_ABORT_WHEN_STAGE_spec7_aw="s1"
+    _TPL_CYCLE_ABORT_WHEN_FIELD_spec7_aw="score"
+    _TPL_CYCLE_ABORT_WHEN_OP_spec7_aw="$_spec7_op"
+    _TPL_CYCLE_ABORT_WHEN_VALUE_spec7_aw="5"
+    _TPL_CYCLE_UNTIL_STAGE_spec7_aw="s1"
+    _TPL_CYCLE_UNTIL_FIELD_spec7_aw="verdict"
+    _TPL_CYCLE_UNTIL_OP_spec7_aw="eq"
+    _TPL_CYCLE_UNTIL_VALUE_spec7_aw="pass"
+    _TPL_CYCLE_STAGES_spec7_aw="s1"
+    _CYCLE_TRAP_CYCLE_ID="spec7_aw"
+    _CYCLE_TRAP_ITER=1
+    _cycle_load_template "spec7_aw"
+    blob='{"s1":{"score":"notanumber","status":"complete"}}'
+    set +e
+    _spec7_err=$(2>&1 _cycle_check_abort_when "$blob"); _spec7_rc=$?
+    set -e
+    assert_eq "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
+        "1" "$_spec7_rc"
+    if [[ -n "$_spec7_err" ]]; then
+        assert_pass "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error"
+    else
+        assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error" \
+            "no output for op=${_spec7_op} value=notanumber"
+    fi
+done
+
+# ── [#1760/SPEC-8] *) branch returns 1 on unrecognized op ──────────────────────
+# Each evaluator's *) / default branch must return 1 (not silently skip).
+# Tests FAIL before #1760 (no *) branch in any evaluator).
+
+# _cycle_check_until: unrecognized op
+_CYCLE_EXIT_COMBINATOR=""
+_CYCLE_UNTIL_STAGE="s1"; _CYCLE_UNTIL_FIELD="verdict"
+_CYCLE_UNTIL_OP="bogus_op"; _CYCLE_UNTIL_VALUE="pass"
+blob='{"s1":{"verdict":"pass","status":"complete"}}'
+set +e; _cycle_check_until "$blob"; rc=$?; set -e
+assert_eq "[#1760/SPEC-8] _cycle_check_until: bogus_op → rc=1 (not silent skip)" "1" "$rc"
+
+# _cycle_eval_one_condition: unrecognized op (via multi-condition mode)
+_TPL_CYCLE_EXIT_COMBINATOR_spec8_cycle="all"
+_TPL_CYCLE_EXIT_COUNT_spec8_cycle="1"
+_TPL_CYCLE_EXIT_1_STAGE_spec8_cycle="s1"
+_TPL_CYCLE_EXIT_1_FIELD_spec8_cycle="verdict"
+_TPL_CYCLE_EXIT_1_OP_spec8_cycle="bogus_op"
+_TPL_CYCLE_EXIT_1_VALUE_spec8_cycle="pass"
+_CYCLE_TRAP_CYCLE_ID="spec8_cycle"
+_CYCLE_TRAP_ITER=1
+_cycle_load_template "spec8_cycle"
+blob='{"s1":{"verdict":"pass","status":"complete"}}'
+set +e; _cycle_check_until "$blob"; rc=$?; set -e
+assert_eq "[#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)" "1" "$rc"
+
+# _cycle_check_abort_when: unrecognized op
+_TPL_CYCLE_ABORT_WHEN_STAGE_spec8_aw="s1"
+_TPL_CYCLE_ABORT_WHEN_FIELD_spec8_aw="verdict"
+_TPL_CYCLE_ABORT_WHEN_OP_spec8_aw="bogus_op"
+_TPL_CYCLE_ABORT_WHEN_VALUE_spec8_aw="pass"
+_TPL_CYCLE_UNTIL_STAGE_spec8_aw="s1"
+_TPL_CYCLE_UNTIL_FIELD_spec8_aw="verdict"
+_TPL_CYCLE_UNTIL_OP_spec8_aw="eq"
+_TPL_CYCLE_UNTIL_VALUE_spec8_aw="pass"
+_TPL_CYCLE_STAGES_spec8_aw="s1"
+_CYCLE_TRAP_CYCLE_ID="spec8_aw"
+_CYCLE_TRAP_ITER=1
+_cycle_load_template "spec8_aw"
+blob='{"s1":{"verdict":"pass","status":"complete"}}'
+set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
+assert_eq "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" "1" "$rc"
+
 print_test_results
