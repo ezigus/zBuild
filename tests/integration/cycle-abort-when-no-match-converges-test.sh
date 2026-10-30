@@ -355,13 +355,13 @@ set +e; _cycle_check_until "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-4] lte: 6<=5 → rc=1" "1" "$rc"
 
 # contains
-_CYCLE_UNTIL_FIELD="reason"
+_CYCLE_UNTIL_FIELD="status"
 _CYCLE_UNTIL_OP="contains"; _CYCLE_UNTIL_VALUE="pass"
-blob='{"s1":{"reason":"all pass ok","status":"complete"}}'
+blob='{"s1":{"verdict":"x","status":"all pass ok"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-4] contains: 'all pass ok' contains 'pass' → rc=0" "0" "$rc"
 
-blob='{"s1":{"reason":"failed","status":"complete"}}'
+blob='{"s1":{"verdict":"x","status":"failed"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-4] contains: 'failed' not contains 'pass' → rc=1" "1" "$rc"
 
@@ -390,6 +390,8 @@ _TPL_CYCLE_EXIT_1_STAGE_mc_cycle="s1"
 _TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="eq"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="pass"
+# a loop the loader accepts: stages and max_iterations; a condition reads verdict|status (#1760 review)
+_TPL_CYCLE_STAGES_mc_cycle="s1"; _TPL_CYCLE_MAX_mc_cycle=2
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
@@ -420,6 +422,8 @@ _TPL_CYCLE_EXIT_1_STAGE_mc_cycle="s1"
 _TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="neq"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="fail"
+# a loop the loader accepts: stages and max_iterations; a condition reads verdict|status (#1760 review)
+_TPL_CYCLE_STAGES_mc_cycle="s1"; _TPL_CYCLE_MAX_mc_cycle=2
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
@@ -447,15 +451,17 @@ fi
 _TPL_CYCLE_EXIT_COMBINATOR_mc_cycle="all"
 _TPL_CYCLE_EXIT_COUNT_mc_cycle="1"
 _TPL_CYCLE_EXIT_1_STAGE_mc_cycle="s1"
-_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="score"
+_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="gt"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
+# a loop the loader accepts: stages and max_iterations; a condition reads verdict|status (#1760 review)
+_TPL_CYCLE_STAGES_mc_cycle="s1"; _TPL_CYCLE_MAX_mc_cycle=2
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
 set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
-blob='{"s1":{"score":"10","status":"complete"}}'
+blob='{"s1":{"verdict":"10","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi gt: 10>5 → rc=0" \
@@ -464,7 +470,7 @@ else
     assert_eq "[#1760/SPEC-5] multi gt: 10>5 → rc=0" "0" "$rc"
 fi
 
-blob='{"s1":{"score":"3","status":"complete"}}'
+blob='{"s1":{"verdict":"3","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi gt: 3>5 → rc=1" \
@@ -476,12 +482,14 @@ fi
 # gte in multi-condition
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="gte"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
+# a loop the loader accepts: stages and max_iterations; a condition reads verdict|status (#1760 review)
+_TPL_CYCLE_STAGES_mc_cycle="s1"; _TPL_CYCLE_MAX_mc_cycle=2
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
 set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
-blob='{"s1":{"score":"5","status":"complete"}}'
+blob='{"s1":{"verdict":"5","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" \
@@ -490,7 +498,7 @@ else
     assert_eq "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" "0" "$rc"
 fi
 
-blob='{"s1":{"score":"4","status":"complete"}}'
+blob='{"s1":{"verdict":"4","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi gte: 4>=5 → rc=1" \
@@ -502,12 +510,14 @@ fi
 # lt in multi-condition
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="lt"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
+# a loop the loader accepts: stages and max_iterations; a condition reads verdict|status (#1760 review)
+_TPL_CYCLE_STAGES_mc_cycle="s1"; _TPL_CYCLE_MAX_mc_cycle=2
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
 set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
-blob='{"s1":{"score":"3","status":"complete"}}'
+blob='{"s1":{"verdict":"3","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi lt: 3<5 → rc=0" \
@@ -516,7 +526,7 @@ else
     assert_eq "[#1760/SPEC-5] multi lt: 3<5 → rc=0" "0" "$rc"
 fi
 
-blob='{"s1":{"score":"9","status":"complete"}}'
+blob='{"s1":{"verdict":"9","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi lt: 9<5 → rc=1" \
@@ -528,12 +538,14 @@ fi
 # lte in multi-condition
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="lte"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
+# a loop the loader accepts: stages and max_iterations; a condition reads verdict|status (#1760 review)
+_TPL_CYCLE_STAGES_mc_cycle="s1"; _TPL_CYCLE_MAX_mc_cycle=2
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
 set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
-blob='{"s1":{"score":"5","status":"complete"}}'
+blob='{"s1":{"verdict":"5","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" \
@@ -542,7 +554,7 @@ else
     assert_eq "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" "0" "$rc"
 fi
 
-blob='{"s1":{"score":"8","status":"complete"}}'
+blob='{"s1":{"verdict":"8","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi lte: 8<=5 → rc=1" \
@@ -552,15 +564,17 @@ else
 fi
 
 # contains in multi-condition
-_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="reason"
+_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="status"
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="contains"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="pass"
+# a loop the loader accepts: stages and max_iterations; a condition reads verdict|status (#1760 review)
+_TPL_CYCLE_STAGES_mc_cycle="s1"; _TPL_CYCLE_MAX_mc_cycle=2
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
 set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 
-blob='{"s1":{"reason":"all pass ok","status":"complete"}}'
+blob='{"s1":{"verdict":"x","status":"all pass ok"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" \
@@ -569,7 +583,7 @@ else
     assert_eq "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" "0" "$rc"
 fi
 
-blob='{"s1":{"reason":"failed","status":"complete"}}'
+blob='{"s1":{"verdict":"x","status":"failed"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_sp5_mc_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1" \
@@ -582,6 +596,8 @@ fi
 _TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
 _TPL_CYCLE_EXIT_1_OP_mc_cycle="matches"
 _TPL_CYCLE_EXIT_1_VALUE_mc_cycle="^pass"
+# a loop the loader accepts: stages and max_iterations; a condition reads verdict|status (#1760 review)
+_TPL_CYCLE_STAGES_mc_cycle="s1"; _TPL_CYCLE_MAX_mc_cycle=2
 _CYCLE_TRAP_CYCLE_ID="mc_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).

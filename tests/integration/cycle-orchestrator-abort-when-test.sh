@@ -152,6 +152,8 @@ _TPL_CYCLE_UNTIL_FIELD_aw_cycle="verdict"
 _TPL_CYCLE_UNTIL_OP_aw_cycle="eq"
 _TPL_CYCLE_UNTIL_VALUE_aw_cycle="pass"
 _TPL_CYCLE_STAGES_aw_cycle="s1"
+# a loop the loader accepts (#1760 review): max_iterations is required.
+_TPL_CYCLE_MAX_aw_cycle=2
 _TPL_STAGE_TYPE_s1="leaf"
 _CYCLE_TRAP_CYCLE_ID="aw_cycle"
 _CYCLE_TRAP_ITER=1
@@ -181,18 +183,18 @@ set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] neq: pass==pass → rc=1 (no match)" "1" "$rc"
 
 # gt
-_TPL_CYCLE_ABORT_WHEN_FIELD_aw_cycle="score"
+_TPL_CYCLE_ABORT_WHEN_FIELD_aw_cycle="verdict"
 _TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="gt"
 _TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="10"
 _CYCLE_TRAP_CYCLE_ID="aw_cycle"
 _CYCLE_TRAP_ITER=1
 _cycle_load_template "aw_cycle"
 
-blob='{"s1":{"score":"15","status":"complete"}}'
+blob='{"s1":{"verdict":"15","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] gt: 15>10 → rc=0 (abort matched)" "0" "$rc"
 
-blob='{"s1":{"score":"5","status":"complete"}}'
+blob='{"s1":{"verdict":"5","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] gt: 5>10 → rc=1 (no match)" "1" "$rc"
 
@@ -203,11 +205,11 @@ _CYCLE_TRAP_CYCLE_ID="aw_cycle"
 _CYCLE_TRAP_ITER=1
 _cycle_load_template "aw_cycle"
 
-blob='{"s1":{"score":"10","status":"complete"}}'
+blob='{"s1":{"verdict":"10","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] gte: 10>=10 → rc=0 (abort matched)" "0" "$rc"
 
-blob='{"s1":{"score":"9","status":"complete"}}'
+blob='{"s1":{"verdict":"9","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] gte: 9>=10 → rc=1 (no match)" "1" "$rc"
 
@@ -218,11 +220,11 @@ _CYCLE_TRAP_CYCLE_ID="aw_cycle"
 _CYCLE_TRAP_ITER=1
 _cycle_load_template "aw_cycle"
 
-blob='{"s1":{"score":"2","status":"complete"}}'
+blob='{"s1":{"verdict":"2","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] lt: 2<5 → rc=0 (abort matched)" "0" "$rc"
 
-blob='{"s1":{"score":"8","status":"complete"}}'
+blob='{"s1":{"verdict":"8","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] lt: 8<5 → rc=1 (no match)" "1" "$rc"
 
@@ -233,11 +235,11 @@ _CYCLE_TRAP_CYCLE_ID="aw_cycle"
 _CYCLE_TRAP_ITER=1
 _cycle_load_template "aw_cycle"
 
-blob='{"s1":{"score":"5","status":"complete"}}'
+blob='{"s1":{"verdict":"5","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] lte: 5<=5 → rc=0 (abort matched)" "0" "$rc"
 
-blob='{"s1":{"score":"6","status":"complete"}}'
+blob='{"s1":{"verdict":"6","status":"complete"}}'
 set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
 assert_eq "[#1760/SPEC-6] lte: 6<=5 → rc=1 (no match)" "1" "$rc"
 

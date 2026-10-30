@@ -64,11 +64,11 @@ source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 
 # --- _cycle_check_until (single-condition) ---
 _CYCLE_EXIT_COMBINATOR=""
-_CYCLE_UNTIL_STAGE="s1"; _CYCLE_UNTIL_FIELD="score"
+_CYCLE_UNTIL_STAGE="s1"; _CYCLE_UNTIL_FIELD="verdict"
 
 for _spec7_op in gt gte lt lte; do
     _CYCLE_UNTIL_OP="$_spec7_op"; _CYCLE_UNTIL_VALUE="5"
-    blob='{"s1":{"score":"notanumber","status":"complete"}}'
+    blob='{"s1":{"verdict":"notanumber","status":"complete"}}'
     set +e
     _spec7_err=$(2>&1 _cycle_check_until "$blob"); _spec7_rc=$?
     set -e
@@ -92,14 +92,15 @@ for _spec7_op in gt gte lt lte; do
     _TPL_CYCLE_EXIT_COMBINATOR_spec7_cycle="all"
     _TPL_CYCLE_EXIT_COUNT_spec7_cycle="1"
     _TPL_CYCLE_EXIT_1_STAGE_spec7_cycle="s1"
-    _TPL_CYCLE_EXIT_1_FIELD_spec7_cycle="score"
+    _TPL_CYCLE_EXIT_1_FIELD_spec7_cycle="verdict"
     _TPL_CYCLE_EXIT_1_OP_spec7_cycle="$_spec7_op"
     _TPL_CYCLE_EXIT_1_VALUE_spec7_cycle="5"
+    _TPL_CYCLE_STAGES_spec7_cycle="s1"; _TPL_CYCLE_MAX_spec7_cycle=2
     _CYCLE_TRAP_CYCLE_ID="spec7_cycle"
     _CYCLE_TRAP_ITER=1
     # Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
     set +e; _cycle_load_template "spec7_cycle"; _s7_mc_rc=$?; set -e
-    blob='{"s1":{"score":"notanumber","status":"complete"}}'
+    blob='{"s1":{"verdict":"notanumber","status":"complete"}}'
     set +e
     _spec7_err=$(2>&1 _cycle_check_until "$blob"); _spec7_rc=$?
     set -e
@@ -123,7 +124,7 @@ done
 # --- _cycle_check_abort_when ---
 for _spec7_op in gt gte lt lte; do
     _TPL_CYCLE_ABORT_WHEN_STAGE_spec7_aw="s1"
-    _TPL_CYCLE_ABORT_WHEN_FIELD_spec7_aw="score"
+    _TPL_CYCLE_ABORT_WHEN_FIELD_spec7_aw="verdict"
     _TPL_CYCLE_ABORT_WHEN_OP_spec7_aw="$_spec7_op"
     _TPL_CYCLE_ABORT_WHEN_VALUE_spec7_aw="5"
     _TPL_CYCLE_UNTIL_STAGE_spec7_aw="s1"
@@ -131,11 +132,12 @@ for _spec7_op in gt gte lt lte; do
     _TPL_CYCLE_UNTIL_OP_spec7_aw="eq"
     _TPL_CYCLE_UNTIL_VALUE_spec7_aw="pass"
     _TPL_CYCLE_STAGES_spec7_aw="s1"
+    _TPL_CYCLE_STAGES_spec7_aw="s1"; _TPL_CYCLE_MAX_spec7_aw=2
     _CYCLE_TRAP_CYCLE_ID="spec7_aw"
     _CYCLE_TRAP_ITER=1
     # Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
     set +e; _cycle_load_template "spec7_aw"; _s7_aw_rc=$?; set -e
-    blob='{"s1":{"score":"notanumber","status":"complete"}}'
+    blob='{"s1":{"verdict":"notanumber","status":"complete"}}'
     set +e
     _spec7_err=$(2>&1 _cycle_check_abort_when "$blob"); _spec7_rc=$?
     set -e
@@ -145,8 +147,8 @@ for _spec7_op in gt gte lt lte; do
         assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error" \
             "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_aw_rc)"
     else
-        assert_eq "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
-            "1" "$_spec7_rc"
+        assert_eq "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=0 (the safety switch fails closed)" \
+            "0" "$_spec7_rc"
         if [[ -n "$_spec7_err" ]]; then
             assert_pass "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error"
         else
@@ -173,12 +175,15 @@ _TPL_CYCLE_EXIT_COMBINATOR_spec8_cycle="all"
 _TPL_CYCLE_EXIT_COUNT_spec8_cycle="1"
 _TPL_CYCLE_EXIT_1_STAGE_spec8_cycle="s1"
 _TPL_CYCLE_EXIT_1_FIELD_spec8_cycle="verdict"
-_TPL_CYCLE_EXIT_1_OP_spec8_cycle="bogus_op"
+_TPL_CYCLE_EXIT_1_OP_spec8_cycle="eq"
 _TPL_CYCLE_EXIT_1_VALUE_spec8_cycle="pass"
+_TPL_CYCLE_STAGES_spec8_cycle="s1"; _TPL_CYCLE_MAX_spec8_cycle=2
 _CYCLE_TRAP_CYCLE_ID="spec8_cycle"
 _CYCLE_TRAP_ITER=1
 # Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
 set +e; _cycle_load_template "spec8_cycle"; _s8_mc_rc=$?; set -e
+# #1760 review: the loader refuses bogus_op itself; here one reaches evaluation anyway.
+_CYCLE_EXIT_CONDITIONS=("s1|verdict|bogus_op|pass")
 blob='{"s1":{"verdict":"pass","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 if [[ "$_s8_mc_rc" -ne 0 ]]; then
@@ -198,6 +203,7 @@ _TPL_CYCLE_UNTIL_FIELD_spec8_aw="verdict"
 _TPL_CYCLE_UNTIL_OP_spec8_aw="eq"
 _TPL_CYCLE_UNTIL_VALUE_spec8_aw="pass"
 _TPL_CYCLE_STAGES_spec8_aw="s1"
+_TPL_CYCLE_STAGES_spec8_aw="s1"; _TPL_CYCLE_MAX_spec8_aw=2
 _CYCLE_TRAP_CYCLE_ID="spec8_aw"
 _CYCLE_TRAP_ITER=1
 # Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
@@ -208,7 +214,7 @@ if [[ "$_s8_aw_rc" -ne 0 ]]; then
     assert_fail "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" \
         "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s8_aw_rc)"
 else
-    assert_eq "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" "1" "$rc"
+    assert_eq "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=0 (the safety switch fails closed)" "0" "$rc"
 fi
 
 print_test_results
