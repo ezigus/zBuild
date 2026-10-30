@@ -1,0 +1,1 @@
+{"schema_version":1,"source":"title","requirements":[{"id":"R-1","text":"[bug] loop conditions use ADR-027's eight ops, checked at template load — an unknown abort_when op silently never matches today: ## Decision"}]}
