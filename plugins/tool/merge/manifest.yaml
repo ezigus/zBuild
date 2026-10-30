@@ -26,8 +26,6 @@ requires:
 provides:
   result_contract: 3
   role: merge_executor
-  events:
-    - plugin.result
 
 config:
   tier_default: T0
