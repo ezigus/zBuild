@@ -88,3 +88,7 @@ For SPEC-5, the wiring is `config/adr-enforcement-baseline.txt` conceptually (re
 ## Test that might be fragile: plugin-lifecycle-event-balance-test.sh
 
 Line 205-206 checks `plugin.result` IS in event-schema.json. Our change does NOT remove plugin.result from event-schema.json (only from the plugin manifests). So this test is unaffected.
+
+## Test stage finding (inert_wiring) — resolved
+
+The acceptance gate reverted `tests/unit/event-schema-emitted-coverage-test.sh` to old version while keeping data changes in place, and found tests still passed. This is expected: the old guard (`_PLUGIN_NS_RE`) doesn't check `persist`/`hydrate`, but those are already gone from event-schema.json in the new data state, so the old guard finds nothing to catch. The negctl logs (`negctl-SPEC-1.log`, `negctl-SPEC-2.log`) confirm the NEW test correctly FAILS against OLD data (12 SPEC-1 failures, 2 SPEC-2 failures) — the tests are correctly structured as [code] requirements. The gate's finding says "write WIRING: none" which is already in the design. No change to SPEC-1 or SPEC-2 status needed. Added Finding 3 to the Findings section of the design document documenting this analysis.

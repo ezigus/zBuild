@@ -236,11 +236,14 @@ Fix enumerated guard in event-schema coverage test
 Replace the hardcoded _PLUGIN_NS_RE list with a manifest-derived guard, and remove the mis-filed events from event-schema.json and the plugin manifests.
 
 ### Seed scope (from plan.files[])
+- config/adr-enforcement-baseline.txt
 - config/event-schema.json
 - docs/adr/ADR-001-plugin-contract.md
 - plugins/agent/security-lens/manifest.yaml
+- plugins/agent/security-lens/tests/security-lens-test.sh
 - plugins/tool/merge/manifest.yaml
 - tests/unit/event-schema-emitted-coverage-test.sh
+- tests/unit/merge-v2-result-test.sh
 
 ### Tools
 - You MAY use the Read tool to inspect any file in the repository.
@@ -262,8 +265,8 @@ Every claim it makes about the repository — an ADR it relies on, a file it lis
 
 **Goal.** The guard in `tests/unit/event-schema-emitted-coverage-test.sh` that
 prevents plugin-owned namespaces from appearing in `config/event-schema.json` is
-itself a hardcoded enumerated list (`_PLUGIN_NS_RE`). It omitted `persist` and
-`hydrate`, so those plugins' events were double-declared in the engine config and
+itself a hardcoded enumerated list (`_PLUGIN_NS_RE`, line 123). It omitted `persist`
+and `hydrate`, so those plugins' events were double-declared in the engine config and
 the guard never caught them. Two plugins (`security-lens`, `merge`) also
 incorrectly claimed the engine event `plugin.result` in their manifests; the
 guard had no path to catch that direction at all.
@@ -276,38 +279,42 @@ manifest leg never overlap, enforced from the manifest data rather than a
 hand-maintained regex.
 
 **Decision.**
-1. Replace `_PLUGIN_NS_RE` in the coverage test with a runtime-derived set:
-   scan all `plugins/*/*/manifest.yaml` for `provides.events`, extract namespace
-   prefixes (part before the first `.`), then remove every prefix that ADR-001
-   names as engine-owned (`plugin`, `pipeline`, `stage`, `stage_io`, `cycle`,
-   `router`, `loop`, `state`, `registry`, `parallel`, `redaction`, `template`,
-   `strategy`, `artifact`, `model`, `cost`, `orch`, `memory`, `backend`,
-   `detection`, `llm`, `selfhost`). Filtering `plugin` out naturally handles the
-   documented `plugin.pr_open.*` exception. Assert that
-   `config/event-schema.json` has no `known_types` entry in any of the remaining
-   plugin-owned prefixes.
-2. Add a reverse assertion: for each manifest, every declared event's namespace
-   prefix must not be engine-owned. The single narrow exception (`plugin.pr_open.*`
-   from `plugins/tool/pr-open`) is handled by checking that `plugin.*` events
-   only appear in that one path.
+1. **Replace** the `[SPEC-1717-2]` block (lines 120–130 of the coverage test, which
+   define and use `_PLUGIN_NS_RE`) with a manifest-derived guard: scan all
+   `plugins/*/*/manifest.yaml` for `provides.events`, extract namespace prefixes
+   (part before the first `.`), then remove every prefix that ADR-001 names as
+   engine-owned (`plugin`, `pipeline`, `stage`, `stage_io`, `cycle`, `router`,
+   `loop`, `state`, `registry`, `parallel`, `redaction`, `template`, `strategy`,
+   `artifact`, `model`, `cost`, `orch`, `memory`, `backend`, `detection`, `llm`,
+   `selfhost`). Assert that `config/event-schema.json` has no `known_types` entry
+   whose namespace prefix is in the resulting manifest-derived set. The variable
+   `_PLUGIN_NS_RE` must not remain in the file. Filtering `plugin` out naturally
+   handles the `plugin.pr_open.*` exception.
+2. Add a reverse assertion: for each plugin manifest, every declared event's
+   namespace prefix must not be engine-owned. The single narrow exception
+   (`plugin.pr_open.*` from `plugins/tool/pr-open`) is handled by checking that
+   `plugin.*` events only appear in that one path.
 3. Remove the 11 `persist.*`/`hydrate.*` entries from `config/event-schema.json`
-   — already correctly declared in the respective plugin manifests and belonging
-   only there.
+   — already correctly declared in the respective plugin manifests.
 4. Remove `plugin.result` from `plugins/agent/security-lens/manifest.yaml` and
-   `plugins/tool/merge/manifest.yaml` — it is an engine event, not
-   plugin-declared.
+   `plugins/tool/merge/manifest.yaml` — it is an engine event, not plugin-declared.
+   Two tests that previously asserted `plugin.result` IS in those manifests must be
+   updated to remove that sub-assertion: `[SPEC-16]` in `security-lens-test.sh`
+   and `[SPEC-1]` in `merge-v2-result-test.sh`.
 5. Add `## Enforced by` to ADR-001 and remove it from
    `config/adr-enforcement-baseline.txt`.
 
 `tests/golden/parity/event-sequence.golden` is unaffected: persist.* and
 hydrate.* events remain known via the manifest leg of the composed set; only the
-redundant engine-config leg is removed. The sequence is identical.
+redundant engine-config leg is removed.
 
 ```scope
 tests/unit/event-schema-emitted-coverage-test.sh
 config/event-schema.json
 plugins/agent/security-lens/manifest.yaml
 plugins/tool/merge/manifest.yaml
+plugins/agent/security-lens/tests/security-lens-test.sh
+tests/unit/merge-v2-result-test.sh
 docs/adr/ADR-001-plugin-contract.md
 config/adr-enforcement-baseline.txt
 tests/golden/parity/event-sequence.golden
@@ -315,31 +322,47 @@ config/shape-change-paths.txt
 ```
 
 ```acceptance
-SPEC-1[code]: The event-schema coverage test exits non-zero when event-schema.json's known_types contains an event whose namespace prefix appears in any plugin manifest's provides.events (e.g., persist.start in event-schema.json) covers: R-1
+SPEC-1[code]: The event-schema coverage test derives plugin-owned namespace prefixes dynamically from plugins/*/*/manifest.yaml provides.events rather than a hardcoded variable, and exits non-zero when event-schema.json's known_types contains an event in any manifest-derived namespace (e.g., persist.start) covers: R-1
 SPEC-2[code]: The event-schema coverage test exits non-zero when any plugin manifest's provides.events contains an event whose namespace prefix is engine-owned per ADR-001 (e.g., plugin.result in the security-lens manifest) covers: R-1
 SPEC-3[no-code]: persist.* and hydrate.* entries are removed from config/event-schema.json known_types; their canonical declarations remain only in the plugin manifests covers: R-1
-SPEC-4[no-code]: plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manifest.yaml provides.events covers: R-1
+SPEC-4[no-code]: plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manifest.yaml provides.events, and the two tests that previously asserted plugin.result was present in those manifests are updated to remove that sub-assertion covers: R-1
 SPEC-5[no-code]: docs/adr/ADR-001-plugin-contract.md has an ## Enforced by section naming tests/unit/event-schema-emitted-coverage-test.sh, and config/adr-enforcement-baseline.txt no longer lists ADR-001-plugin-contract.md covers: R-1
-WIRING:
-tests/unit/event-schema-emitted-coverage-test.sh
+SPEC-6[no-code]: The hardcoded _PLUGIN_NS_RE variable and its associated guard block are absent from tests/unit/event-schema-emitted-coverage-test.sh after the change — no occurrence of _PLUGIN_NS_RE remains in the file covers: R-1
+WIRING: none
 TESTFILES:
 SPEC-1: tests/unit/event-schema-emitted-coverage-test.sh
 SPEC-2: tests/unit/event-schema-emitted-coverage-test.sh
 SPEC-3: tests/unit/event-schema-emitted-coverage-test.sh
-SPEC-4: tests/unit/event-schema-emitted-coverage-test.sh
+SPEC-4: tests/unit/event-schema-emitted-coverage-test.sh plugins/agent/security-lens/tests/security-lens-test.sh tests/unit/merge-v2-result-test.sh
 SPEC-5: tests/unit/lint-adr-enforced-by-test.sh
+SPEC-6: tests/unit/event-schema-emitted-coverage-test.sh
+```
+
+```supersedes
+plugins/agent/security-lens/tests/security-lens-test.sh [SPEC-16]: manifest no longer declares plugin.result in provides.events (it is an engine event); the sub-assertion "manifest provides.events contains plugin.result" is now false and must be removed
+tests/unit/merge-v2-result-test.sh [SPEC-1]: manifest no longer declares plugin.result in provides.events; the sub-assertion "manifest provides.events includes plugin.result" is now false and must be removed
 ```
 
 ## Findings
 
-**SPEC-3/4/5/6 [code] → [no-code].** The validator correctly rejected the four
-SPECs: removing entries from `event-schema.json` and plugin manifests is
-data/config cleanup, not executable code. The rule "not what a file contains"
-applies only to `[code]` requirements; `[no-code]` requirements describe docs,
-config, or refactor work, which these are. The previous SPEC-7 (`[no-code]` for
-ADR-001 Enforced by) was accepted with the same form — confirming the fix.
-Renumbered as SPEC-3 through SPEC-5 with SPEC-3+4 each consolidating two
-formerly separate entries that touched the same kind of change.
+**Issue-acceptance finding 1 (`_PLUGIN_NS_RE` not removed).** The previous
+build appended the new manifest-derived guard after the existing `_PLUGIN_NS_RE`
+block rather than replacing it, leaving the hardcoded enumeration intact.
+The design now explicitly states the `[SPEC-1717-2]` block (lines 120–130)
+must be replaced — not augmented — and adds SPEC-6[no-code] requiring
+`_PLUGIN_NS_RE` to be absent from the file after the change.
+
+**Issue-acceptance finding 2 (two pre-existing tests fail).** Removing
+`plugin.result` from the security-lens and merge manifests (SPEC-4) makes two
+existing assertions wrong:
+- `[SPEC-16]` in `plugins/agent/security-lens/tests/security-lens-test.sh`
+  asserts `plugin.result` IS in the manifest.
+- `[SPEC-1]` in `tests/unit/merge-v2-result-test.sh` asserts `plugin.result`
+  IS in the merge manifest.
+
+Both files are now in scope. Both are listed in the `supersedes` block. Both
+are listed in SPEC-4's TESTFILES entry so the pipeline verifies they pass after
+the sub-assertions are removed.
 
 **tests/golden/parity/event-sequence.golden.** No change: persist.*/hydrate.*
 events remain in the composed known set via plugin manifests; only their
@@ -348,6 +371,10 @@ redundant engine-config entry is removed.
 **tests/unit/plugin-lifecycle-event-balance-test.sh.** Unaffected: that test
 asserts `plugin.result` IS in `event-schema.json`. This change removes
 `plugin.result` only from two plugin manifests, not from the engine config.
+
+**SPEC-3/4/5/6 [no-code] rationale.** These require data/config/file changes
+(not new code behaviour), so [no-code] is correct. The rule "not what a file
+contains" applies only to [code] requirements.
 
 Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
@@ -397,9 +424,9 @@ Outputs:
 Summary:
 ## design — pass
 
-- authored design.md — 8 file(s) in scope, 5 acceptance SPEC(s)
+- authored design.md — 10 file(s) in scope, 6 acceptance SPEC(s)
 
-- scope: tests/unit/event-schema-emitted-coverage-test.sh,config/event-schema.json,plugins/agent/security-lens/manifest.yaml,plugins/tool/merge/manifest.yaml,docs/adr/ADR-001-plugin-contract.md,config/adr-enforcement-baseline.txt,tests/golden/parity/event-sequence.golden,config/shape-change-paths.txt
+- scope: tests/unit/event-schema-emitted-coverage-test.sh,config/event-schema.json,plugins/agent/security-lens/manifest.yaml,plugins/tool/merge/manifest.yaml,plugins/agent/security-lens/tests/security-lens-test.sh,tests/unit/merge-v2-result-test.sh,docs/adr/ADR-001-plugin-contract.md,config/adr-enforcement-baseline.txt,tests/golden/parity/event-sequence.golden,config/shape-change-paths.txt
 - artifact: design.md
 
 Your notes so far:
@@ -407,10 +434,10 @@ Your notes so far:
 
 ## What I read
 
-- `tests/unit/event-schema-emitted-coverage-test.sh` — the test with the bug
+- `tests/unit/event-schema-emitted-coverage-test.sh` — the test with the bug; `_PLUGIN_NS_RE` is at line 123, `[SPEC-1717-2]` block is lines 120-130
 - `config/event-schema.json` — contains persist.* (6 events) and hydrate.* (5 events) that are double-declared
 - `plugins/tool/persist/manifest.yaml` — correctly declares persist.* events; already the authoritative source
-- `plugins/tool/hydrate/manifest.yaml` — correctly declares hydrate.* events; note it also has `hydrate.adopt.failed` NOT in event-schema.json
+- `plugins/tool/hydrate/manifest.yaml` — correctly declares hydrate.* events
 - `plugins/agent/security-lens/manifest.yaml` — wrongly declares `plugin.result` in provides.events
 - `plugins/tool/merge/manifest.yaml` — wrongly declares `plugin.result` in provides.events
 - `plugins/tool/pr-open/manifest.yaml` — declares `plugin.pr_open.*` events (allowed exception)
@@ -418,7 +445,9 @@ Your notes so far:
 - `config/adr-enforcement-baseline.txt` — ADR-001 is in the baseline (no Enforced by section yet)
 - `tests/unit/lint-adr-enforced-by-test.sh` — A7 tests the real tree
 - `tests/unit/plugin-lifecycle-event-balance-test.sh` — SPEC-3 checks `plugin.result` IS in event-schema.json (not affected by our change)
-- `config/shape-change-paths.txt` — event-schema.json is in it; golden check applies
+- `config/shape-change-paths.txt` — event-schema.json is in it (line 14); golden check applies
+- `plugins/agent/security-lens/tests/security-lens-test.sh` — SPEC-16 (lines 553-565) checks `plugin.result` AND `security_lens.failed` are in manifest; will fail after SPEC-4
+- `tests/unit/merge-v2-result-test.sh` — SPEC-1 (lines 42-54) checks `plugin.result` is in merge manifest; will fail after SPEC-4
 
 ## The bug (line 123 of coverage test)
 
@@ -455,13 +484,28 @@ The validator flagged SPEC-3, SPEC-4, SPEC-5, SPEC-6 (all [code]) with "describe
 
 Evidence: old SPEC-7 ([no-code], ADR-001 Enforced by section) had the same "file contains" form and was NOT rejected. Confirms [no-code] accepts config/data descriptions.
 
-## SPEC numbering in revised design
+## Issue-acceptance findings addressed
 
-- SPEC-1 [code]: guard rewrite (manifest-derived)
+**Finding 1 (_PLUGIN_NS_RE not removed):**
+- Build stage appended new code after line 157 but never removed/replaced the old `[SPEC-1717-2]` block (lines 120-130)
+- Decision section now explicitly says "Replace" the block, not augment
+- Added SPEC-6[no-code] requiring `_PLUGIN_NS_RE` to be absent from the file after the change
+
+**Finding 2 (two pre-existing tests fail):**
+- `plugins/agent/security-lens/tests/security-lens-test.sh` [SPEC-16]: asserts plugin.result IS in manifest — will be wrong after SPEC-4
+- `tests/unit/merge-v2-result-test.sh` [SPEC-1]: asserts plugin.result IS in merge manifest — will be wrong after SPEC-4
+- Added both to scope
+- Added supersedes block documenting both assertions
+- Added both to SPEC-4's TESTFILES entry
+
+## SPEC numbering in final design
+
+- SPEC-1 [code]: guard rewrite (manifest-derived derivation of plugin namespaces)
 - SPEC-2 [code]: reverse direction check (no engine events in manifests)
 - SPEC-3 [no-code]: persist.*/hydrate.* removed from event-schema.json
-- SPEC-4 [no-code]: plugin.result removed from two plugin manifests
+- SPEC-4 [no-code]: plugin.result removed from two plugin manifests + two test updates
 - SPEC-5 [no-code]: ADR-001 Enforced by section + baseline removal
+- SPEC-6 [no-code]: _PLUGIN_NS_RE absent from coverage test file
 
 ## WIRING reasoning
 
@@ -477,27 +521,25 @@ For SPEC-5, the wiring is `config/adr-enforcement-baseline.txt` conceptually (re
 
 Line 205-206 checks `plugin.result` IS in event-schema.json. Our change does NOT remove plugin.result from event-schema.json (only from the plugin manifests). So this test is unaffected.
 
-### test (verdict: fail)
+### test (verdict: unknown)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 
-### issue-acceptance (verdict: fail)
+Findings:
+- acceptance-gate finding 1 (opened by test): tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
+
+### issue-acceptance (verdict: pass)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
-Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R5: `_PLUGIN_NS_RE` is gone — the diff for `tests/unit/event-schema-emitted-coverage-test.sh` is a pure append starting at the original line 157; the earlier SPEC-1717-2 block that defines and uses `_PLUGIN_NS_RE` as a hardcoded plugin-namespace list falls entirely before that hunk and is untouched. The hardcoded enumeration the issue requires eliminated is still present in the file.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R4 (test suite passes): Removing `plugin.result` from the security-lens and merge manifests is correct, but two pre-existing tests that pin the old manifest state now fail — `plugins/agent/security-lens/tests/security-lens-test.sh` [SPEC-16] asserts that `plugin.result` *is* in the security-lens manifest, and `tests/unit/merge-v2-result-test.sh` [SPEC-1] asserts it is in the merge manifest. Both assertions are now false and both tests fail. The issue's scope omitted these files; the build stage flagged them as out-of-scope needs. The test suite exits non-zero, so the change cannot be shipped as-is.. What would settle it: a change that meets this requirement in full.
-
 Summary:
-## issue-acceptance — fail
+## issue-acceptance — pass
 
-- The test suite exits non-zero, and `_PLUGIN_NS_RE` (R5) is not removed by the diff.
+- All five issue requirements are fully implemented — persist.*/hydrate.* are removed from event-schema.json with canonical declarations remaining only in the plugin manifests, plugin.result is removed from both the security-lens and merge manifests and their tests updated, the guard in event-schema-emitted-coverage-test.sh now derives plugin-owned namespaces dynamically from manifests replacing the hardcoded `_PLUGIN_NS_RE`, the `plugin.pr_open.*` exception is handled correctly, ADR-001 carries an Enforced-by section naming the test file, and the enforcement baseline no longer lists ADR-001; the test suite passes with 830 assertions.
 
-- NOT MET: R5: `_PLUGIN_NS_RE` is gone — the diff for `tests/unit/event-schema-emitted-coverage-test.sh` is a pure append starting at the original line 157; the earlier SPEC-1717-2 block that defines and uses `_PLUGIN_NS_RE` as a hardcoded plugin-namespace list falls entirely before that hunk and is untouched. The hardcoded enumeration the issue requires eliminated is still present in the file.
-- NOT MET: R4 (test suite passes): Removing `plugin.result` from the security-lens and merge manifests is correct, but two pre-existing tests that pin the old manifest state now fail — `plugins/agent/security-lens/tests/security-lens-test.sh` [SPEC-16] asserts that `plugin.result` *is* in the security-lens manifest, and `tests/unit/merge-v2-result-test.sh` [SPEC-1] asserts it is in the merge manifest. Both assertions are now false and both tests fail. The issue's scope omitted these files; the build stage flagged them as out-of-scope needs. The test suite exits non-zero, so the change cannot be shipped as-is.
+- every requirement the issue states is met by the change
 
 ## What you must not do
 
