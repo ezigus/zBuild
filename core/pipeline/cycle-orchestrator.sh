@@ -273,7 +273,7 @@ _cycle_member_is_blocking() {
 #   _CYCLE_ON_MAX       (continue|halt)
 #   _CYCLE_UNTIL_STAGE  (id within _CYCLE_STAGES)
 #   _CYCLE_UNTIL_FIELD  (verdict|status)
-#   _CYCLE_UNTIL_OP     (eq|ne)
+#   _CYCLE_UNTIL_OP     (one of _TPL_PREDICATE_OPS, ADR-027 §5)
 #   _CYCLE_UNTIL_VALUE  (string)
 #   _CYCLE_PLATEAU_WINDOW / _CYCLE_DIVERGENCE_WINDOW / _CYCLE_VELOCITY_PLATEAU_WINDOW
 # Returns: 0 valid; 1 invalid (emits cycle.config.invalid).
@@ -380,14 +380,13 @@ _cycle_load_template() {
                     return 1
                     ;;
             esac
-            case "$ew_o" in
-                eq|ne) ;;
-                *)
-                    error "cycle '$cycle_id': exit_when condition $ew_i: op must be eq|ne, got: $ew_o"
-                    _cycle_emit "cycle.config.invalid" "reason=exit_when_op_invalid" "value=$ew_o"
-                    return 1
-                    ;;
-            esac
+            # ADR-027 §5 (#1760): the same rule the template loader applies.
+            local _ew_pp; _ew_pp="$(_tpl_predicate_problem "$ew_o" "$ew_v")"
+            if [[ -n "$_ew_pp" ]]; then
+                error "cycle '$cycle_id': exit_when condition $ew_i (field '$ew_f'): $_ew_pp"
+                _cycle_emit "cycle.config.invalid" "reason=exit_when_op_invalid" "value=$ew_o"
+                return 1
+            fi
             local _cs_ok=0 _cs
             for _cs in "${_CYCLE_STAGES[@]}"; do
                 [[ "$_cs" == "$ew_s" ]] && _cs_ok=1 && break
@@ -421,15 +420,13 @@ _cycle_load_template() {
                 return 1
                 ;;
         esac
-        case "$_CYCLE_UNTIL_OP" in
-            eq|ne) ;;
-            *)
-                error "cycle '$cycle_id': until.op must be eq|ne, got: $_CYCLE_UNTIL_OP"
-                _cycle_emit "cycle.config.invalid" "reason=until_op_invalid" \
-                    "value=$_CYCLE_UNTIL_OP"
-                return 1
-                ;;
-        esac
+        local _u_pp; _u_pp="$(_tpl_predicate_problem "$_CYCLE_UNTIL_OP" "$_CYCLE_UNTIL_VALUE")"
+        if [[ -n "$_u_pp" ]]; then
+            error "cycle '$cycle_id': until (field '$_CYCLE_UNTIL_FIELD'): $_u_pp"
+            _cycle_emit "cycle.config.invalid" "reason=until_op_invalid" \
+                "value=$_CYCLE_UNTIL_OP"
+            return 1
+        fi
         # until.stage must be in cycle.stages
         local _us_ok=0 s
         for s in "${_CYCLE_STAGES[@]}"; do
@@ -480,6 +477,38 @@ _cycle_record_iter_outcome() {
     return 0
 }
 
+# _cycle_op_match <where> <op> <actual> <expected> — one condition, by ADR-027
+# §5's eight ops: rc 0 match, 1 no match. A condition that cannot be evaluated
+# (an op off the list, a number op on a word, a malformed pattern) is no match
+# and sets _CYCLE_OP_ERROR, said in the log and as an event — never a silent
+# no-match (#1760). The op and value are checked by the loader's own rule.
+_cycle_op_match() {
+    local where="$1" op="$2" actual="$3" expected="$4"
+    _CYCLE_OP_ERROR="$(_tpl_predicate_problem "$op" "$expected")"
+    if [[ -z "$_CYCLE_OP_ERROR" ]]; then
+        case "$op" in
+            gt|gte|lt|lte)
+                [[ "$actual" =~ ^-?[0-9]+$ ]] \
+                    || _CYCLE_OP_ERROR="op '$op' needs a whole number; the $where field is '$actual'" ;;
+        esac
+    fi
+    if [[ -n "$_CYCLE_OP_ERROR" ]]; then
+        error "cycle $where: $_CYCLE_OP_ERROR"
+        _cycle_emit "cycle.config.invalid" "reason=predicate_error" "where=$where" "op=$op" "detail=$_CYCLE_OP_ERROR"
+        return 1
+    fi
+    case "$op" in
+        eq)       [[ "$actual" == "$expected" ]] ;;
+        neq)      [[ "$actual" != "$expected" ]] ;;
+        gt)       (( actual >  expected )) ;;
+        gte)      (( actual >= expected )) ;;
+        lt)       (( actual <  expected )) ;;
+        lte)      (( actual <= expected )) ;;
+        contains) [[ "$actual" == *"$expected"* ]] ;;
+        matches)  [[ "$actual" =~ $expected ]] ;;
+    esac
+}
+
 # ─── _cycle_eval_one_condition <blob> <stage> <field> <op> <expected> ─────────
 # Evaluate a single predicate against the blob. Returns 0 (match) or 1 (no match).
 # Emits cycle.iteration.verdict_missing when the field is absent.
@@ -497,16 +526,8 @@ _cycle_eval_one_condition() {
     fi
     local _match="false"
     local _rc=1
-    case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
-        # #1987: `in` matches any member of a space-separated set. Added because
-        # a closed vocabulary makes one-of genuinely necessary — two fault
-        # classes can share a destination, and expressing that as two edges
-        # needs a list grammar this parser does not have. `eq`/`ne` are
-        # unchanged, so every existing predicate behaves identically.
-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
-    esac
+    _cycle_op_match exit_when "$op" "$actual" "$expected"; _rc=$?
+    [[ $_rc -eq 0 ]] && _match="true"
     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     return $_rc
 }
@@ -571,16 +592,8 @@ _cycle_check_until() {
     fi
     local _match="false"
     local _rc=1
-    case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
-        # #1987: `in` matches any member of a space-separated set. Added because
-        # a closed vocabulary makes one-of genuinely necessary — two fault
-        # classes can share a destination, and expressing that as two edges
-        # needs a list grammar this parser does not have. `eq`/`ne` are
-        # unchanged, so every existing predicate behaves identically.
-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
-    esac
+    _cycle_op_match until "$op" "$actual" "$expected"; _rc=$?
+    [[ $_rc -eq 0 ]] && _match="true"
     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     # #833: stash the just-evaluated predicate so _cycle_render_predicate_result
     # can restate it on the cycle OUTPUT banner.
@@ -803,16 +816,11 @@ _cycle_check_abort_when() {
     fi
     local _match="false"
     local _rc=1
-    case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
-        # #1987: `in` matches any member of a space-separated set. Added because
-        # a closed vocabulary makes one-of genuinely necessary — two fault
-        # classes can share a destination, and expressing that as two edges
-        # needs a list grammar this parser does not have. `eq`/`ne` are
-        # unchanged, so every existing predicate behaves identically.
-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
-    esac
+    _cycle_op_match abort_when "$op" "$actual" "$expected"; _rc=$?
+    # The safety switch fails closed: an abort_when that cannot be evaluated
+    # stops the loop (#1760), and _cycle_op_match has said why.
+    [[ -n "$_CYCLE_OP_ERROR" ]] && _rc=0
+    [[ $_rc -eq 0 ]] && _match="true"
     _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     # #833 NOTE #2: only let abort_when overwrite the OUTPUT-banner predicate
     # stash when it ACTUALLY matched (the terminating predicate). On a normal /

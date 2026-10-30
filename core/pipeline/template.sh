@@ -1207,10 +1207,10 @@ _tpl_validate_cycles() {
                     verdict|status) : ;;
                     *) error "cycle '$cid': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"; return 1 ;;
                 esac
-                case "$ew_o" in
-                    eq|ne|in) : ;;
-                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|ne|in, got: $ew_o"; return 1 ;;
-                esac
+                local _pp; _pp="$(_tpl_predicate_problem "$ew_o" "$ew_v")"
+                if [[ -n "$_pp" ]]; then
+                    error "cycle '$cid': exit_when condition $ew_i (field '$ew_f'): $_pp"; return 1
+                fi
                 local found=0
                 for s in "${cs[@]}"; do
                     [[ "$s" == "$ew_s" ]] && found=1 && break
@@ -1236,8 +1236,56 @@ _tpl_validate_cycles() {
                 error "cycle '$cid': until.stage '$us' is not in cycle stages (${cs[*]})"
                 return 1
             fi
+            # [#1760] ADR-027 §5: the until condition's op and value, at load.
+            local uo_var="_TPL_CYCLE_UNTIL_OP_${safe}" uf_var="_TPL_CYCLE_UNTIL_FIELD_${safe}"
+            local uv_var="_TPL_CYCLE_UNTIL_VALUE_${safe}" _up
+            _up="$(_tpl_predicate_problem "${!uo_var:-}" "${!uv_var:-}")"
+            if [[ -n "$_up" ]]; then
+                error "cycle '$cid': until (field '${!uf_var:-}'): $_up"; return 1
+            fi
+        fi
+
+        # [#1760] an abort_when that is declared at all is checked whole: a
+        # missing op once disabled the safety switch silently.
+        local aw_s_var="_TPL_CYCLE_ABORT_WHEN_STAGE_${safe}" aw_f_var="_TPL_CYCLE_ABORT_WHEN_FIELD_${safe}"
+        local aw_o_var="_TPL_CYCLE_ABORT_WHEN_OP_${safe}" aw_v_var="_TPL_CYCLE_ABORT_WHEN_VALUE_${safe}"
+        if [[ -n "${!aw_s_var:-}${!aw_f_var:-}${!aw_o_var:-}${!aw_v_var:-}" ]]; then
+            local _ap; _ap="$(_tpl_predicate_problem "${!aw_o_var:-}" "${!aw_v_var:-}")"
+            if [[ -z "${!aw_s_var:-}" || -z "${!aw_f_var:-}" || -z "${!aw_v_var:-}" ]]; then
+                error "cycle '$cid': abort_when: {stage,field,op,value} all required"; return 1
+            fi
+            if [[ -n "$_ap" ]]; then
+                error "cycle '$cid': abort_when (field '${!aw_f_var:-}'): $_ap"; return 1
+            fi
         fi
     done
+    return 0
+}
+
+# ADR-027 §5: the eight ops a loop condition may use, spelled as the ADR does.
+_TPL_PREDICATE_OPS="eq neq gt gte lt lte contains matches"
+
+# _tpl_predicate_problem <op> <value> — what is wrong with a loop condition's op
+# and value, in plain words; nothing when they are fine (#1760). Also used by
+# the loop's own check and its evaluators, so the rule is written once.
+_tpl_predicate_problem() {
+    local op="${1:-}" v="${2:-}" set="${_TPL_PREDICATE_OPS// /|}" rc=0
+    if [[ -z "$op" ]]; then
+        printf 'has no op: one of %s is required' "$set"; return 0
+    fi
+    case " $_TPL_PREDICATE_OPS " in
+        *" $op "*) ;;
+        *) printf "op '%s' is not one of %s" "$op" "$set"; return 0 ;;
+    esac
+    case "$op" in
+        gt|gte|lt|lte)
+            [[ "$v" =~ ^-?[0-9]+$ ]] || printf "value '%s' must be a whole number for op '%s'" "$v" "$op" ;;
+        matches)
+            # [[ =~ ]] returns 2 for a pattern that does not compile.
+            # shellcheck disable=SC2319  # that 2 is the condition's own status
+            if [[ "" =~ $v ]]; then rc=0; else rc=$?; fi
+            [[ $rc -eq 2 ]] && printf "value '%s' is not a valid pattern for op 'matches'" "$v" ;;
+    esac
     return 0
 }
 

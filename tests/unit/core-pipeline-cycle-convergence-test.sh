@@ -41,11 +41,11 @@ blob='{"test":{"verdict":"fail","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 assert_eq "eq mismatch → rc=1" "1" "$rc"
 
-# T3: ne match → 0
-_setup_pred test verdict ne fail
+# T3: neq match → 0 (ADR-027 §5 spells it neq; `ne` is refused, #1760)
+_setup_pred test verdict neq fail
 blob='{"test":{"verdict":"pass","status":"complete"}}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
-assert_eq "ne with non-matching value → rc=0 (converged)" "0" "$rc"
+assert_eq "neq with non-matching value → rc=0 (converged)" "0" "$rc"
 
 # T4: field missing → 1 (NEVER converge)
 _setup_pred test verdict eq pass

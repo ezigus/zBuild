@@ -443,3 +443,35 @@ unbounded behavior set `max_turns: 0`.
 ### Amendment (2026-10-04, #2271)
 
 The `route_back` acyclicity carve-out is gone (ADR-068): a template declaring `route_back` is refused at load. An outer loop's own stages may sit between its inner loops; the stage list follows flow order, and each loop's full expansion must be contiguous. Re-entering an inner loop resets its round counter. Tests: `tests/unit/no-fault-routing-test.sh` R1, `tests/unit/template-simple-yaml-test.sh` SPEC-2/SPEC-18, `tests/integration/nested-loop-rounds-test.sh`.
+
+### Amendment (2026-10-30, #1760) — the eight condition ops, checked at load
+
+A loop condition's `op` (in `until`/`exit_when`, each multi-condition `exit_when` entry, and `abort_when`) is one of §5's eight, spelled as §5 spells them: `eq | neq | gt | gte | lt | lte | contains | matches`. `ne` and `in` are refused. One rule (`_tpl_predicate_problem`, `core/pipeline/template.sh`) is applied at template load, again by the loop's own check (`_cycle_load_template`), and by every evaluator (`_cycle_op_match`):
+
+- the op is present and on the list — an `abort_when` that is declared at all is checked whole, so a missing op no longer disables the safety switch silently;
+- a number op (`gt|gte|lt|lte`) has a whole-number value; `matches` has a valid extended regular expression;
+- the loop's own check keeps its checks on stages, `max_iterations`, and each condition's field, op and stage.
+
+A condition that cannot be evaluated at run time (a number op on a word, or an op that reached evaluation anyway) is never a silent no-match: it is said in the log and as a `cycle.config.invalid` event (`reason=predicate_error`). An `exit_when` that cannot be evaluated does not converge; an `abort_when` that cannot be evaluated stops the loop (it fails closed). Evaluators keep rc 0/1 (ADR-054 §4); why rides `_CYCLE_OP_ERROR`.
+
+Enforced by: `tests/unit/cycle-predicate-ops-test.sh` P1–P7.
+
+## Enforced by
+
+§5 (supported op set: `eq|neq|gt|gte|lt|lte|contains|matches`, validated at template load and
+in every runtime evaluator) is enforced by:
+
+- `tests/unit/template-loader-recursive-flow-test.sh` — SPEC-1 (abort_when.op refused at load),
+  SPEC-2 (single-condition until.op refused at load), SPEC-3 (multi-condition exit_when op
+  refused at load), SPEC-9 (ADR enforcement metadata)
+- `tests/integration/cycle-abort-when-no-match-converges-test.sh` — SPEC-4 (eight ops in
+  _cycle_check_until single-condition), SPEC-5 (eight ops in _cycle_eval_one_condition
+  multi-condition)
+- `tests/integration/cycle-orchestrator-abort-when-test.sh` — SPEC-6 (eight ops in
+  _cycle_check_abort_when)
+- `tests/unit/core-pipeline-cycle-events-test.sh` — SPEC-7 (numeric ops reject non-numeric
+  operands with error), SPEC-8 (*) branch: an unrecognized op never matches an exit_when, and
+  stops the loop as an abort_when)
+- `tests/unit/cycle-predicate-ops-test.sh` — P1 (`ne` refused everywhere), P2 (a malformed
+  pattern), P3 (a declared until/abort_when with no op), P4 (a number op's value), P5 (abort_when
+  fails closed), P6 (the loop's own checks), P7 (until's errors say until)
