@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"performance","score":10,"findings":[],"result_contract":3,"outcome":"pass","reason":"the performance lens found no high or critical problem the change introduced that fails it"}
