@@ -48,12 +48,14 @@ _ZB_SP_JUDGE='## What you judge against'
 _ZB_SP_PREV='## Previous work'
 _ZB_SP_LIMITS='## What you must not do'
 _ZB_SP_RULES='## Rules for this stage'
+_ZB_SP_REASK='## Your last reply could not be used'
 
 # Per-output bounds on what is put in the prompt (ADR-029). There is no total
 # cap: dropping a whole stage to fit a total hid the findings it carried.
 _ZB_SP_SUMMARY_MAX_BYTES="${ZBUILD_SUMMARY_MAX_BYTES:-8192}"
 _ZB_SP_ERRORS_MAX_BYTES="${ZBUILD_ERRORS_MAX_BYTES:-4096}"
 _ZB_SP_NOTES_MAX_BYTES="${ZBUILD_NOTES_MAX_BYTES:-8192}"
+_ZB_SP_REPLY_MAX_BYTES="${ZBUILD_REPLY_MAX_BYTES:-65536}"
 _ZB_SP_DEFAULT_RULES="$_ZBUILD_SP_ROOT/config/prompts/default-rules.md"
 
 # _sp_safe <name> — a stage or element name made safe for a path.
@@ -339,6 +341,21 @@ stage_prompt_compose_parts() {
     [[ "$rc" -eq 0 ]] && cat "$t/out"
     rm -rf "${t:?}"
     return "$rc"
+}
+
+# stage_prompt_reask <prompt> <what-was-wrong> <reply> — the same prompt asked
+# again, with what was wrong with the reply and the reply itself (ADR-060 §6):
+# the model fixes what is named instead of starting over blind.
+stage_prompt_reask() {
+    local reply="$3"
+    if (( ${#reply} > _ZB_SP_REPLY_MAX_BYTES )); then
+        reply="${reply:0:_ZB_SP_REPLY_MAX_BYTES}"$'\n[… the rest of your reply is cut]'
+    fi
+    printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n' "$1" "$_ZB_SP_REASK" \
+        "Your reply could not be used: $2" \
+        "Answer again, in the form asked for above, and fix what is named. Do not do the work again: what your reply says stands, only its form was wrong." \
+        "Your reply was:" '<<<' "$reply"
+    printf '>>>\n'
 }
 
 # stage_prompt_check <file> — rc 0 when the six sections appear in the contract

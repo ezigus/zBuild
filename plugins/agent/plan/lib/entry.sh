@@ -7,15 +7,15 @@
 [[ -n "${_ZBUILD_PLAN_ENTRY_LOADED:-}" ]] && return 0
 _ZBUILD_PLAN_ENTRY_LOADED=1
 
-# _plan_write_outcome <out-path> <outcome> <reason>
+# _plan_write_outcome <out-path> <outcome> <reason> [data-json]
 # Writes a result with no plan in it — the failure paths — through the one
 # writer (#2366: one outcome from the engine's list).
 _plan_write_outcome() {
-    local _out="$1" _outcome="$2" _reason="$3"
+    local _out="$1" _outcome="$2" _reason="$3" _data="${4:-}"
     [[ -z "$_out" ]] && return 0
     # A result that cannot be written is reported, never skipped: a stage with
     # no result reads as one that explained nothing (#1837's rule, here too).
-    if stage_result_write "$_out" "$_outcome" "$_reason"; then
+    if stage_result_write "$_out" "$_outcome" "$_reason" "$_data"; then
         _PLAN_RESULT_WRITTEN=1
         return 0
     fi

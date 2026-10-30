@@ -100,35 +100,41 @@ _design_coverage() {
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
-    local raw="" rc=0 rc_file
-    # Without a file to keep the call's exit code in, a failed call would read
-    # as a verdict (review on PR #2393): the check cannot run.
-    if ! rc_file="$(mktemp)" || [[ -z "$rc_file" ]]; then
-        _DESIGN_COV_OUTCOME=broken
-        return 0
-    fi
-    # No 2>/dev/null on this call: the stage-io input banner writes to fd 2 and
-    # suppressing it breaks ADR-015 §v4's ordering (the #491 defect).
-    raw="$(route_to_model "$tier" "$framed"; printf '%s' "$?" > "$rc_file" || true)"
-    if [[ -n "$rc_file" && -f "$rc_file" ]]; then
-        rc="$(cat "$rc_file" 2>/dev/null || echo 0)"; rm -f "$rc_file" 2>/dev/null || true
-    fi
+    local raw="" rc=0 rc_file ask="$framed" try v="" u_line item
+    # ADR-060 §6: an answer with no verdict is asked again once, at once, with
+    # what was wrong and the answer. A failed call is not asked again.
+    for try in 1 2; do
+        rc=0
+        # Without a file to keep the call's exit code in, a failed call would read
+        # as a verdict (review on PR #2393): the check cannot run.
+        if ! rc_file="$(mktemp)" || [[ -z "$rc_file" ]]; then
+            _DESIGN_COV_OUTCOME=broken
+            return 0
+        fi
+        # No 2>/dev/null on this call: the stage-io input banner writes to fd 2 and
+        # suppressing it breaks ADR-015 §v4's ordering (the #491 defect).
+        raw="$(route_to_model "$tier" "$ask"; printf '%s' "$?" > "$rc_file" || true)"
+        if [[ -n "$rc_file" && -f "$rc_file" ]]; then
+            rc="$(cat "$rc_file" 2>/dev/null || echo 0)"; rm -f "$rc_file" 2>/dev/null || true
+        fi
 
-    # The call's rc is classified on every path: a call that printed a readable
-    # verdict and then failed still failed (review on PR #2262).
-    if [[ "$rc" -ne 0 ]]; then
-        local _rv _rr
-        _router_rc_classify "$rc" _rv _rr 2>/dev/null || true
-        # disposition-ok: the model router is not responding
-        _DESIGN_COV_OUTCOME="$(router_reason_disposition "${_rr:-}" 2>/dev/null || true)"
-        [[ -n "$_DESIGN_COV_OUTCOME" ]] || _DESIGN_COV_OUTCOME=unavailable
-        return 0
-    fi
+        # The call's rc is classified on every path: a call that printed a readable
+        # verdict and then failed still failed (review on PR #2262).
+        if [[ "$rc" -ne 0 ]]; then
+            local _rv _rr
+            _router_rc_classify "$rc" _rv _rr 2>/dev/null || true
+            # disposition-ok: the model router is not responding
+            _DESIGN_COV_OUTCOME="$(router_reason_disposition "${_rr:-}" 2>/dev/null || true)"
+            [[ -n "$_DESIGN_COV_OUTCOME" ]] || _DESIGN_COV_OUTCOME=unavailable
+            return 0
+        fi
 
-    # No `| head`: SIGPIPE kills the writer under errexit (#1886).
-    local v u_line item
-    v="$(grep -oE 'VERDICT:[[:space:]]*(covered|uncovered)' <<< "$raw" || true)"
-    v="${v%%$'\n'*}"; v="${v##*[[:space:]]}"
+        # No `| head`: SIGPIPE kills the writer under errexit (#1886).
+        v="$(grep -oE 'VERDICT:[[:space:]]*(covered|uncovered)' <<< "$raw" || true)"
+        v="${v%%$'\n'*}"; v="${v##*[[:space:]]}"
+        [[ -n "$v" ]] && break
+        ask="$(stage_prompt_reask "$framed" "it has no VERDICT: line saying covered or uncovered" "$raw")"
+    done
     if [[ -z "$v" ]]; then
         _DESIGN_COV_OUTCOME=unusable
         return 0

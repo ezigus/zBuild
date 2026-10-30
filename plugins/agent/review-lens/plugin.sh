@@ -97,6 +97,25 @@ _review_lens_envelope_schema_ok() {
     printf '%s' "$_json" | jq -e '(type == "object") and (.findings | type == "array")' >/dev/null 2>&1
 }
 
+# _rl_reply_problem <reply> <json-var> <problem-var> — the lens's JSON from its
+# reply, or what is wrong with the reply in plain words (ADR-060 §7: which
+# check failed — jq's own complaint for a reply that is not JSON).
+_rl_reply_problem() {
+    local -n _rp_json="$2" _rp_why="$3"
+    local _rp_prose=""
+    _rp_json=""; _rp_why=""
+    # ADR-028 §Migration (#2035): schema-gated envelope parser replaces bare
+    # extract_first_json_object so postamble sign-offs don't discard the real answer.
+    # shellcheck disable=SC2034  # review-lens emits no prose sidecar.
+    _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok "$1" _rp_json _rp_prose
+    case "$(_llm_envelope_classify "${_rp_json:-$1}" _review_lens_envelope_schema_ok)" in
+        ok) return 0 ;;
+        schema) _rp_why='it is JSON, but has no findings list: one object with a "findings" array is asked for' ;;
+        *) _rp_why="it is not valid JSON: $(_llm_envelope_parse_error "${_rp_json:-$1}")" ;;
+    esac
+    _rp_json=""
+}
+
 # ─── _review_lens_write_result <out> <verdict> <disposition> <reason> ────────
 # Write a v2-compliant lens result file atomically. The output path is derived
 # entirely from the $out parameter (no literal artifact filename strings inside).
@@ -312,7 +331,21 @@ _review_lens_run_inner() {
     _rl_out_ref="$out"
     _rl_interrupted=0
     stage_signal_begin _review_lens_interrupt_handler
-    raw_response="$(route_to_model "$tier" "$prompt")" || router_rc=$?
+    # ADR-060 §6: a reply that cannot be used is asked again once, at once,
+    # with what was wrong and the reply. A failed call is not (ADR-040: a lens
+    # that does not finish stops the run). Every reply is kept, in order.
+    local _rl_ask="$prompt" _rl_problem="" _rl_try json="" prose=""
+    local _rl_replies="${out%.json}-reply.txt"
+    : > "$_rl_replies" 2>/dev/null || true
+    for _rl_try in 1 2; do
+        raw_response=""; router_rc=0; _rl_problem=""
+        raw_response="$(route_to_model "$tier" "$_rl_ask")" || router_rc=$?
+        printf -- '--- reply %s ---\n%s\n' "$_rl_try" "$raw_response" >> "$_rl_replies" 2>/dev/null || true
+        [[ $router_rc -eq 0 && -n "$raw_response" ]] || break
+        _rl_reply_problem "$raw_response" json _rl_problem
+        [[ -n "$_rl_problem" ]] || break
+        _rl_ask="$(stage_prompt_reask "$prompt" "$_rl_problem" "$raw_response")"
+    done
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
@@ -371,18 +404,13 @@ _review_lens_run_inner() {
         return 0
     fi
 
-    # ADR-028 §Migration (#2035): schema-gated envelope parser replaces bare
-    # extract_first_json_object so postamble sign-offs don't discard the real answer.
-    # shellcheck disable=SC2034  # prose is a required output-param of _llm_envelope_parse;
-    # review-lens emits no prose sidecar.
-    local json prose
-    _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok "$raw_response" json prose
-    if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then
+    if [[ -n "$_rl_problem" ]]; then
         emit_event "review_lens.unparseable" "lens=$lens"
-        _review_lens_write_result "$out" unusable "unparseable_reply"
+        _review_lens_write_result "$out" unusable \
+            "the reply could not be used, even when asked again: $_rl_problem"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
-            "the model returned unparseable JSON, so this lens reviewed nothing" \
-            "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
+            "the reply could not be used, even when asked again ($_rl_problem), so this lens reviewed nothing" \
+            "No findings were produced. Absence here is not evidence of a clean change. Every reply it gave is in lens-${lens}-reply.txt."
         emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
     fi

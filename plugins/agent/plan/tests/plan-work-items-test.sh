@@ -21,6 +21,9 @@
 #   W6 [change] a plan.json that is not a plan is a schema_violation
 #   W7 [change] plan no longer reports scope_files; plan-context is retired;
 #               the DoD-phrase check is gone
+#   W10 [change] a rejected plan is kept, its result names the check that
+#               failed, and the next try is told so and where it is — as design
+#               is (ADR-060 §6/§7, ADR-068 §8); a valid plan clears it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,7 +56,7 @@ route_to_model() {
     printf 'done\n'
     return "$MOCK_RC"
 }
-_reset() { rm -f "$_PJ" "$ARTIFACTS_DIR/plan-summary.md" "$ARTIFACTS_DIR/plan-context.json"; MOCK_WRITE=""; MOCK_RC=0; }
+_reset() { rm -f "$_PJ" "$ARTIFACTS_DIR/plan-summary.md" "$ARTIFACTS_DIR/plan-context.json" "$ARTIFACTS_DIR/plan-rejected.json"; MOCK_WRITE=""; MOCK_RC=0; }
 
 print_test_section "W1: the job, and nothing that sends plan into the code"
 _reset; MOCK_WRITE="$_GOOD"
@@ -151,6 +154,40 @@ _w8="$( source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
         _build_load_context >/dev/null 2>&1
         printf '%s' "$plan_files_csv" )"
 assert_eq "[W8] build's scope holds the work item's areas" "core/plugin-registry/" "$_w8"
+
+print_test_section "W10: a rejected plan is kept and the next try is told why"
+_REJ="$ARTIFACTS_DIR/plan-rejected.json"
+_reset; MOCK_WRITE='{"schema_version":1,"title":"t","steps":[]}'
+_run_plan "$STATE_FILE" >/dev/null 2>&1
+assert_file_exists "[W10] the rejected plan is kept" "$_REJ"
+assert_eq "[W10] ...as the model wrote it" '{"schema_version":1,"title":"t","steps":[]}' "$(cat "$_REJ" 2>/dev/null)"
+_f="$(jq -r '.data.findings[0].text // empty' "$_PJ" 2>/dev/null)"
+assert_contains "[W10] the result names the check that failed" "$_f" "steps is missing or empty"
+assert_contains "[W10] ...and where the rejected plan is" "$_f" "$_REJ"
+assert_eq "[W10] the finding is numbered, so Previous work shows it" "1" "$(jq -r '.data.findings[0].n // empty' "$_PJ" 2>/dev/null)"
+for _case in '{"schema_version":2,"steps":[{"id":"step-1","description":"d"}]}|schema_version is not 1' \
+             '{"schema_version":1,"steps":[{"id":"step-1"}]}|work item 1 has no description' \
+             '{"schema_version":1,"steps":[{"id":"step-1","description":"d","areas":"core/"}]}|work item 1'"'"'s areas is not a list of strings' \
+             '{"schema_version":1,"steps":[{"id":"step-1","description":"d"}]|it is not valid JSON'; do
+    rm -f "$_PJ" "$_REJ"; MOCK_WRITE="${_case%%|*}"
+    _run_plan "$STATE_FILE" >/dev/null 2>&1
+    assert_contains "[W10] names: ${_case##*|}" "$(jq -r '.data.findings[0].text // empty' "$_PJ" 2>/dev/null)" "${_case##*|}"
+done
+MOCK_WRITE=""
+_run_plan "$STATE_FILE" >/dev/null 2>&1
+_P="$(cat "$_CAPTURED_PROMPT_FILE")"
+assert_contains "[W10] the next try is told its last plan was rejected" "$_P" "Your last plan was rejected"
+assert_contains "[W10] ...and where it is" "$_P" "$_REJ"
+_reset; MOCK_WRITE='{"schema_version":1,"steps":[]}'
+_run_plan "$STATE_FILE" >/dev/null 2>&1
+MOCK_WRITE="$_GOOD"
+_run_plan "$STATE_FILE" >/dev/null 2>&1
+assert_eq "[W10] a valid plan is the plan" "pass" "$(jq -r .outcome "$_PJ" 2>/dev/null)"
+assert_file_not_exists "[W10] ...and the rejected one is cleared" "$_REJ"
+_reset
+_run_plan "$STATE_FILE" >/dev/null 2>&1
+assert_contains "[W10] a call that wrote no plan says so" "$(jq -r '.data.findings[0].text // empty' "$_PJ" 2>/dev/null)" "wrote no plan to $_PJ"
+assert_contains "[W10] the manifest declares the rejected plan" "$(cat "$PLUGIN_DIR/manifest.yaml")" 'plan-rejected.json'
 
 cleanup_test_env
 print_test_results

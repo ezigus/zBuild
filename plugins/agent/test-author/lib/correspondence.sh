@@ -67,7 +67,8 @@ $2
 EOF
 }
 
-# _sc_call <tier> <task> [rc_file] — compose the task and route it. The persona
+# _sc_call <tier> <task> [rc_file] [what-was-wrong reply] — compose the task and
+# route it; with the last two, it is asked again with them (ADR-060 §6). The persona
 # (ADR-051) reaches the model through the provider, not this text.
 # rc_file: if given, the first non-zero router exit code is kept there (subshell boundary
 # prevents a nameref from crossing; a file survives it — same pattern as
@@ -88,6 +89,7 @@ _sc_call() {
         return 0
     fi
     _framed="$_composed"
+    [[ -n "${4:-}" ]] && _framed="$(stage_prompt_reask "$_framed" "$4" "${5:-}")"
     # No 2>/dev/null: the stage-io input banner writes to fd 2 (#491). stdin
     # is /dev/null: a model that drains stdin must not eat a caller's stream (#2108).
     if declare -f route_to_model >/dev/null 2>&1; then
@@ -204,11 +206,19 @@ _ta_correspondence() {
         _verdicts[_i]="$(_sc_parse_verdict "$_line")"
         _reasons[_i]="$(_sc_parse_reason "$_line")"
     done
-    local _one_raw
+    local _one_raw _one_task
     for (( _i=0; _i<n; _i++ )); do
         [[ -z "${_verdicts[_i]}" ]] || continue
-        _one_raw="$(_sc_call "$tier" "$(_sc_prompt "${_txts[_i]}" "${_srcs[_i]}")" "$_rc_file")"
+        _one_task="$(_sc_prompt "${_txts[_i]}" "${_srcs[_i]}")"
+        _one_raw="$(_sc_call "$tier" "$_one_task" "$_rc_file")"
         _verdicts[_i]="$(_sc_parse_verdict "$_one_raw")"
+        # ADR-060 §6: an answer with no verdict is asked again once, with what
+        # was wrong and the answer.
+        if [[ -z "${_verdicts[_i]}" && "$(cat "$_rc_file" 2>/dev/null || printf 0)" == 0 ]]; then
+            _one_raw="$(_sc_call "$tier" "$_one_task" "$_rc_file" \
+                "it has no VERDICT: line saying corresponds, partial, mismatch or uncheckable" "$_one_raw")"
+            _verdicts[_i]="$(_sc_parse_verdict "$_one_raw")"
+        fi
         _reasons[_i]="$(_sc_parse_reason "$_one_raw")"
     done
 

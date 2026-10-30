@@ -16,6 +16,8 @@
 #   #2108 a model that drains stdin still leaves every SPEC judged
 #   #2143 every SPEC is judged in ONE call when the reply answers each
 #   #2032 a failed call is classified; a later success never hides it
+#   RA    a one-SPEC answer with no verdict is asked again once, told what was
+#         wrong and shown the answer (ADR-060 §6)
 #   A SPEC with no tagged assertion is not judged (the acceptance check reports it)
 #   W1 the judge sees the whole test the assertion is in — its setup too, even
 #      when a blank line separates them — with the tagged lines marked (#1944
@@ -124,6 +126,30 @@ route_to_model() {
 }
 _judge
 assert_eq "[#2032] the batch timed out and the fallback succeeded: still timed_out" "timed_out" "$_TA_CORR_OUTCOME"
+
+# ── RA: a one-SPEC answer with no verdict is asked again ────────────────────
+_contract 1
+_RA_N="$TEST_TEMP_DIR/ra-n"
+route_to_model() {
+    cat >/dev/null
+    local n; n=$(( $(cat "$_RA_N") + 1 )); printf '%s' "$n" > "$_RA_N"
+    printf '%s' "$2" > "$_P_FILE.$n"
+    case $n in
+        1) printf 'no idea' ;;
+        2) printf 'hmm, looks about right' ;;
+        *) printf '%s' "$_RA_R3" ;;
+    esac
+}
+printf '0' > "$_RA_N"; _RA_R3=$'VERDICT: corresponds\nREASON: the property'
+_judge
+assert_eq "[RA] batch, one-SPEC call, and one more ask" "3" "$(cat "$_RA_N")"
+assert_contains "[RA] the second ask says what was wrong" "$(cat "$_P_FILE.3" 2>/dev/null)" "it has no VERDICT: line"
+assert_contains "[RA] the second ask carries the answer" "$(cat "$_P_FILE.3" 2>/dev/null)" "hmm, looks about right"
+assert_eq "[RA] the second answer is the judgement" "0|" "${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
+printf '0' > "$_RA_N"; _RA_R3='still unsure'
+_judge
+assert_eq "[RA] asked once more, no more" "3" "$(cat "$_RA_N")"
+assert_eq "[RA] still no verdict: unusable" "unusable" "$_TA_CORR_OUTCOME"
 
 # ── a SPEC with no tagged assertion is not judged (as before #2370) ─────────
 _contract 1; : > "$R/tests/acc-test.sh"

@@ -26,6 +26,10 @@
 #   SPEC-10 [change]: one finding per UNMET:/UNSURE: line, never split at a
 #                    semicolon — on #1944 a finding whose prose held a `;` came
 #                    out as fragments ("…", "set -e` mid-file)")
+#   SPEC-11 [change]: an answer with no verdict is asked again once, at once,
+#                    told what was wrong and shown the answer (ADR-060 §6); a
+#                    second answer with no verdict is `unusable`; a failed
+#                    call is not asked again
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -190,6 +194,37 @@ assert_eq "[SPEC-10] three findings in all" "3" "$(_res '.data.findings | length
 _p10="$(_ia_prompt "I" "S" "D" "pass")"
 assert_eq "[SPEC-10] the prompt no longer asks for a semicolon-separated list" \
     "0" "$(grep -c "semicolon" <<< "$_p10" || true)"
+
+print_test_section "SPEC-11: an answer with no verdict is asked again, with what was wrong"
+_IA_N="$TEST_TEMP_DIR/n11"
+_ia_two() {   # _ia_two <rc1> <answer1> <answer2>
+    printf '0' > "$_IA_N"; _IA_A1="$2"; _IA_A2="$3"; _IA_RC1="$1"
+    route_to_model() {
+        local n; n=$(( $(cat "$_IA_N") + 1 )); printf '%s' "$n" > "$_IA_N"
+        printf '%s' "$2" > "$_IA_PROMPT.$n"
+        if [[ $n -eq 1 ]]; then printf '%s\n' "$_IA_A1"; return "$_IA_RC1"; fi
+        printf '%s\n' "$_IA_A2"
+    }
+}
+_setup s11a
+_ia_two 0 "I think it mostly looks fine?" $'VERDICT: pass\nREASON: all met'
+_run
+assert_eq "[SPEC-11] asked twice" "2" "$(cat "$_IA_N")"
+_p11="$(cat "$_IA_PROMPT.2" 2>/dev/null)"
+assert_contains "[SPEC-11] the second ask says what was wrong" "$_p11" "it has no VERDICT: line"
+assert_contains "[SPEC-11] the second ask carries the first answer" "$_p11" "I think it mostly looks fine?"
+assert_eq "[SPEC-11] the second answer is the judgement" "pass" "$(_res .outcome)"
+_setup s11b
+_ia_two 0 "maybe?" "still maybe?"
+_run
+assert_eq "[SPEC-11] asked twice, no more" "2" "$(cat "$_IA_N")"
+assert_eq "[SPEC-11] still no verdict: unusable" "unusable" "$(_res .outcome)"
+assert_contains "[SPEC-11] ...saying what was wrong" "$(_res .reason)" "it has no VERDICT: line"
+_setup s11c
+_ia_two 1 "" $'VERDICT: pass\nREASON: all met'
+_run
+assert_eq "[SPEC-11] a failed call is not asked again" "1" "$(cat "$_IA_N")"
+route_to_model() { printf '%s' "$2" > "$_IA_PROMPT"; printf '%s\n' "$_IA_ANSWER"; return $_IA_RC; }
 
 print_test_section "#2366: contract 3 and no verdict words"
 _M="$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml"

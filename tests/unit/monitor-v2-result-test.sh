@@ -201,6 +201,42 @@ assert_file_exists "unparseable-reply path writes monitor-report.json" "$ARTIFAC
 assert_eq "unparseable-reply path: outcome is unusable" "unusable" \
     "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 
+# ─── RA: a reply that cannot be used is asked again (ADR-060 §6) ─────────────
+# Asked once more, at once, told what was wrong and shown the reply; the second
+# reply is the report. A second unusable reply is unusable.
+print_test_section "a reply that cannot be used is asked again, with what was wrong"
+_RA_N="$TEST_TEMP_DIR/ra-n"
+# shellcheck disable=SC2329
+route_to_model() {
+    local n; n=$(( $(cat "$_RA_N") + 1 )); printf '%s' "$n" > "$_RA_N"
+    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE.$n"
+    if [[ $n -eq 1 ]]; then printf '%s' "$_RA_R1"; else printf '%s' "$_RA_R2"; fi
+}
+printf '0' > "$_RA_N"; rm -f "$ARTIFACTS_DIR/monitor-report.json"
+_RA_R1='{"schema_version":1,"verdict":"pass","summary":"healthy "now" ok","checks":[]}'
+_RA_R2='{"schema_version":1,"verdict":"pass","summary":"healthy now","checks":[]}'
+set +e; monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1; set -e
+assert_eq "RA: asked twice" "2" "$(cat "$_RA_N")"
+_ra_p="$(cat "$_CAPTURED_PROMPT_FILE.2" 2>/dev/null || true)"
+assert_contains "RA: the second ask says what was wrong" "$_ra_p" "Your reply could not be used: parse: column"
+assert_contains "RA: the second ask carries the first reply" "$_ra_p" "$_RA_R1"
+assert_eq "RA: the second reply is the report" "pass" \
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+printf '0' > "$_RA_N"; rm -f "$ARTIFACTS_DIR/monitor-report.json"
+_RA_R2="$_RA_R1"
+set +e; monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1; set -e
+assert_eq "RA: asked twice, no more" "2" "$(cat "$_RA_N")"
+assert_eq "RA: still unusable: unusable" "unusable" \
+    "$(jq -r '.outcome // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+# shellcheck disable=SC2329
+route_to_model() {
+    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
+    if [[ "$MOCK_ROUTE_RC" -eq 0 ]]; then
+        printf '%s' "$MOCK_ROUTE_RESPONSE"
+    fi
+    return "$MOCK_ROUTE_RC"
+}
+
 # ─── SPEC-6/SPEC-21: SIGTERM/SIGINT during route_to_model writes disposition:interrupted, ─
 # reason:signal_interrupt, and monitor_stage_run returns rc=1 (NOT the raw signal rc=130) ─
 #

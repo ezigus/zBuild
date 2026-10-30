@@ -201,13 +201,22 @@ issue_acceptance_run() {
         return 1
     fi
     _framed="$_composed"
-    local _raw="" rc=0
-    # No 2>/dev/null: the stage-io banner writes to fd 2 (ADR-015 §v4).
-    if declare -f route_to_model >/dev/null 2>&1; then
-        _raw="$(route_to_model "$tier" "$_framed")" || rc=$?
-    else
-        rc=1
-    fi
+    local _raw="" rc=0 _ask="$_framed" _try _wrong=""
+    # ADR-060 §6: an answer with no verdict is asked again once, at once, with
+    # what was wrong and the answer. A failed call is not asked again.
+    for _try in 1 2; do
+        _raw=""; _wrong=""
+        # No 2>/dev/null: the stage-io banner writes to fd 2 (ADR-015 §v4).
+        if declare -f route_to_model >/dev/null 2>&1; then
+            _raw="$(route_to_model "$tier" "$_ask")" || rc=$?
+        else
+            rc=1
+        fi
+        [[ $rc -eq 0 ]] || break
+        grep -qE 'VERDICT:[[:space:]]*(pass|fail|unsure)' <<< "$_raw" && break
+        _wrong="it has no VERDICT: line saying pass, fail or unsure"
+        _ask="$(stage_prompt_reask "$_framed" "$_wrong" "$_raw")"
+    done
     if [[ $rc -ne 0 ]]; then
         local _v="" _reason="" _disp="broken"
         declare -f _llm_router_classify >/dev/null 2>&1 && _llm_router_classify "$rc" _v _reason 2>/dev/null
@@ -231,7 +240,7 @@ issue_acceptance_run() {
     if [[ -z "$_v" ]]; then
         # ADR-054 §6a: the stage ran but its output cannot be used — retry.
         _ia_write "$art" unusable \
-            "no parseable verdict from the model — the change was not judged"
+            "the answer could not be used, even when asked again: ${_wrong:-it has no verdict} — the change was not judged"
         return 0
     fi
 
