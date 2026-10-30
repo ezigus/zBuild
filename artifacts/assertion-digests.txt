@@ -1,2 +1,3 @@
 # authored_by: test-author
 ebe6fc8b97649044df2c9dc4ec0602cc7170139f9b8ddb7e8762a066ce74ec0c  tests/unit/engine-combines-map-test.sh
+4f2634db6713cc0bd52cd51448316c0300ab86807b93278021ac2f0fcb1e6aa9  tests/unit/runner-map-parallel-stage-envelope-test.sh

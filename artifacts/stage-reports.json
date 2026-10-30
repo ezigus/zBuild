@@ -20,7 +20,8 @@
   ],
   "owned_files": {
     "test-author": [
-      "tests/unit/engine-combines-map-test.sh"
+      "tests/unit/engine-combines-map-test.sh",
+      "tests/unit/runner-map-parallel-stage-envelope-test.sh"
     ]
   }
 }
