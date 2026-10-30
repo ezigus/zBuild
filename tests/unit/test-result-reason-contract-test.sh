@@ -260,4 +260,53 @@ jq 'del(.reason)' "$RESULT" > "$RESULT.stripped" && mv "$RESULT.stripped" "$RESU
 assert_eq "[SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)" \
     "0" "$(_blocked_rc_for "$(_classify)")"
 
+# ─── [#1754/SPEC-2] reader classifies broken after primary atomic_write fails ─
+# Before #1754: only PIPESTATUS[0] was captured in _test_write_result.  A
+# failed atomic_write left the prior-round file untouched and stage_result_add
+# merged the current outcome into it — so the reader saw "pass" (or whatever
+# the current call supplied), never "broken".
+# After #1754: the write exit is captured; a failed write triggers the fallback,
+# which writes outcome=broken, so runner_read_stage_verdict returns "error"
+# (the engine's classification for the broken outcome) — not the prior round's
+# outcome.
+print_test_section "[#1754/SPEC-2] reader sees broken after primary atomic_write failure"
+
+rm -f "$RESULT"
+# Write a prior-round pass result using the engine's own writer so the data
+# is exactly what the real write path produces (not hand-made).
+stage_result_write "$RESULT" "pass" "prior round passed" 2>/dev/null || true
+
+# Save the real atomic_write so the fallback write (call #2+) can succeed.
+eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s2 ()/')"
+
+_1754s2_aw_calls=0
+atomic_write() {
+    _1754s2_aw_calls=$(( _1754s2_aw_calls + 1 ))
+    if [[ "$_1754s2_aw_calls" -eq 1 ]]; then
+        # Primary path: drain stdin to prevent SIGPIPE on the jq producer, fail.
+        cat > /dev/null
+        return 1
+    fi
+    _aw_real_1754s2 "$@"
+}
+
+# Run the writer — same outcome as the prior round (pass) so the only thing
+# distinguishing a correct from incorrect result is whether the file reflects
+# the write FAILURE (broken) or the silently-merged stale content (pass).
+_test_write_result "$RESULT" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
+    2>/dev/null || true
+
+# Restore atomic_write before calling the reader, which may call it too.
+eval "$(declare -f _aw_real_1754s2 | sed 's/_aw_real_1754s2 ()/atomic_write ()/')"
+
+# The reader must return "error" (the engine's classification for the broken
+# outcome), NOT "pass" (which is what the prior-round stale file would give
+# before the fix, since stage_result_add merged "pass" into it).
+assert_eq "[#1754/SPEC-2] reader classifies primary-write failure as error (not prior pass)" \
+    "error" "$(_classify)"
+
+# Cross-check: the raw outcome in the file is "broken", not the prior round's.
+assert_eq "[#1754/SPEC-2] file carries broken outcome after primary write failure" "broken" \
+    "$(jq -r '.outcome // empty' "$RESULT" 2>/dev/null || true)"
+
 print_test_results
