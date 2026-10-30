@@ -1,0 +1,5 @@
+## issue-acceptance — fail
+
+- The single-condition `until.op` error message omits the field name, which R1 explicitly requires, and the SPEC-2 test does not assert the field is present, leaving that requirement permanently uncaught.
+
+- NOT MET: R-1 (issue R1: "The message names the stage or loop, **the field**, the bad op, and the valid set"): the `until.op` validation added at `template.sh:1245` emits `"cycle '$cid': exit_when op '$uo' is not in the supported op set …"` — the until field variable (`_TPL_CYCLE_UNTIL_FIELD_${safe}`) is accessible at that point (read three lines above for `abort_when`) but is never included in the error. The SPEC-2 test (`template-loader-recursive-flow-test.sh:280-282`) checks only `rc=1`, the loop name, and the bad op; it never asserts the field is named. A run that omitted the field would not turn that test red. The `abort_when` error does include the field (`for field '$aw_field'`), so the inconsistency is visible in the same diff. Every other named element of R1's message prescription — loop id, bad op, valid set — is present for `until.op`; only the field is missing.
