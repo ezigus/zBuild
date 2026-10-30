@@ -1,177 +1,4 @@
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bcQM3j/tests/unit/event-schema-emitted-coverage-test.sh
-
-[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
-  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
-  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
-  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
-  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
-  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
-    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
-    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
-  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
-    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
-  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
-  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
-  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
-  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
-  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
-  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m18 of 30 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
-  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
-  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
-
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bcQM3j/tests/unit/merge-v2-result-test.sh
-
-[38;2;0;212;255m[1m  merge plugin: v2 result contract (issue #1849)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mSPEC-1: manifest provides declares result_contract:3, role:merge_executor, events:[plugin.result][0m
-  [38;2;74;222;128m✓[0m [SPEC-1] manifest provides.result_contract is 3 (#2366)
-  [38;2;74;222;128m✓[0m [SPEC-1] manifest provides.role is merge_executor
-  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.events includes plugin.result
-    [2mplugin.result absent[0m
-
-  [38;2;0;212;255mSPEC-2: no valid_verdicts (#2366)[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] manifest declares no valid_verdicts
-
-  [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
-  [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
-  [38;2;74;222;128m✓[0m [SPEC-24] manifest has no router: block
-
-  [38;2;0;212;255mSPEC-25: outputs.merge_result retains primary: true[0m
-  [38;2;74;222;128m✓[0m [SPEC-25] manifest has primary: true on result output
-
-  [38;2;0;212;255mSPEC-28: hooks section has only run:, no cleanup:[0m
-  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has no cleanup:
-  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has run: merge_run
-
-  [38;2;0;212;255mSPEC-3: squash-merge success path — result_contract:3, verdict=pass, disposition=complete, reason[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] merge-result.json written on success
-  [38;2;74;222;128m✓[0m [SPEC-3] result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-3] outcome is pass
-  [38;2;74;222;128m✓[0m [SPEC-3] no verdict or disposition field
-  [38;2;74;222;128m✓[0m [SPEC-3] reason field is present
-
-  [38;2;0;212;255mSPEC-4: fallback paths — result_contract:3, verdict=pass, data.mode=pr_fallback[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: outcome is pass
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: data.mode is pr_fallback
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: outcome is pass
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: data.mode is pr_fallback
-
-  [38;2;0;212;255mSPEC-5: error paths — result_contract:3, verdict=error, disposition, reason[0m
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: not finished: neither pass nor fail
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: reason present
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: not finished: neither pass nor fail
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: reason present
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: result_contract is 3
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: not finished: neither pass nor fail
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: reason present
-
-  [38;2;0;212;255mSPEC-6: all exit paths return rc ∈ {0,1} — no rc=2[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] success path rc=0
-  [38;2;74;222;128m✓[0m [SPEC-6] gate-absent fallback rc=0
-  [38;2;74;222;128m✓[0m [SPEC-6] gate-fail fallback rc=0
-  [38;2;74;222;128m✓[0m [SPEC-6] branch-is-main error rc=1
-  [38;2;74;222;128m✓[0m [SPEC-6] push-failure error rc=1
-  [38;2;74;222;128m✓[0m [SPEC-6] gh-failure error rc=1
-
-  [38;2;0;212;255mSPEC-7: merge reads ZBUILD_RUN_LOOPS_PASSED, not another stage's result[0m
-  [38;2;74;222;128m✓[0m [SPEC-7] loops passed → merge path taken (not pr_fallback)
-  [38;2;74;222;128m✓[0m [SPEC-7] word not set → PR fallback
-  [38;2;74;222;128m✓[0m [SPEC-7] plugin.sh constructs no gate-aggregator-result.json path
-
-  [38;2;0;212;255m#2364: merge names its result file to its caller[0m
-  [38;2;74;222;128m✓[0m [#2364] MERGE_RESULT_FILE names the result merge wrote
-  [38;2;74;222;128m✓[0m [#2364] ...and that file is there
-
-  [38;2;0;212;255m#2364: merge auto-merges only when the engine says a review ran[0m
-  [38;2;74;222;128m✓[0m [#2364] no word that a review ran → PR fallback, whatever review.json says
-
-  [38;2;0;212;255mSPEC-29: a PR fallback that fails is reported as a failure[0m
-  [38;2;74;222;128m✓[0m [SPEC-29] rc=1
-  [38;2;74;222;128m✓[0m [SPEC-29] merge-result.json is not a pass
-  [38;2;74;222;128m✓[0m [SPEC-29] …carrying pr-open's own outcome
-
-  [38;2;0;212;255mSPEC-30: a failed outward action reports unavailable[0m
-  [38;2;74;222;128m✓[0m [SPEC-30] push failure → unavailable
-  [38;2;74;222;128m✓[0m [SPEC-30] gh pr create failure → unavailable
-  [38;2;74;222;128m✓[0m [SPEC-30] gh pr merge failure → unavailable
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 55 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.events includes plugin.result
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bcQM3j/plugins/agent/security-lens/tests/security-lens-test.sh
+unit: FAIL plugins/agent/security-lens/tests/security-lens-test.sh
 
 [38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -284,3 +111,99 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;248;113;113m✗[0m [SPEC-16] manifest provides.events contains plugin.result
   [38;2;248;113;113m✗[0m [SPEC-19] canary: all preceding assertions passed (FAIL==0)
+
+unit: FAIL tests/unit/merge-v2-result-test.sh
+
+[38;2;0;212;255m[1m  merge plugin: v2 result contract (issue #1849)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: manifest provides declares result_contract:3, role:merge_executor, events:[plugin.result][0m
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest provides.result_contract is 3 (#2366)
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest provides.role is merge_executor
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.events includes plugin.result
+    [2mplugin.result absent[0m
+
+  [38;2;0;212;255mSPEC-2: no valid_verdicts (#2366)[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] manifest declares no valid_verdicts
+
+  [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest has no router: block
+
+  [38;2;0;212;255mSPEC-25: outputs.merge_result retains primary: true[0m
+  [38;2;74;222;128m✓[0m [SPEC-25] manifest has primary: true on result output
+
+  [38;2;0;212;255mSPEC-28: hooks section has only run:, no cleanup:[0m
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has no cleanup:
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has run: merge_run
+
+  [38;2;0;212;255mSPEC-3: squash-merge success path — result_contract:3, verdict=pass, disposition=complete, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] merge-result.json written on success
+  [38;2;74;222;128m✓[0m [SPEC-3] result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-3] outcome is pass
+  [38;2;74;222;128m✓[0m [SPEC-3] no verdict or disposition field
+  [38;2;74;222;128m✓[0m [SPEC-3] reason field is present
+
+  [38;2;0;212;255mSPEC-4: fallback paths — result_contract:3, verdict=pass, data.mode=pr_fallback[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: outcome is pass
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: data.mode is pr_fallback
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: outcome is pass
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: data.mode is pr_fallback
+
+  [38;2;0;212;255mSPEC-5: error paths — result_contract:3, verdict=error, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: not finished: neither pass nor fail
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: reason present
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: not finished: neither pass nor fail
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: reason present
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: not finished: neither pass nor fail
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: reason present
+
+  [38;2;0;212;255mSPEC-6: all exit paths return rc ∈ {0,1} — no rc=2[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] success path rc=0
+  [38;2;74;222;128m✓[0m [SPEC-6] gate-absent fallback rc=0
+  [38;2;74;222;128m✓[0m [SPEC-6] gate-fail fallback rc=0
+  [38;2;74;222;128m✓[0m [SPEC-6] branch-is-main error rc=1
+  [38;2;74;222;128m✓[0m [SPEC-6] push-failure error rc=1
+  [38;2;74;222;128m✓[0m [SPEC-6] gh-failure error rc=1
+
+  [38;2;0;212;255mSPEC-7: merge reads ZBUILD_RUN_LOOPS_PASSED, not another stage's result[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] loops passed → merge path taken (not pr_fallback)
+  [38;2;74;222;128m✓[0m [SPEC-7] word not set → PR fallback
+  [38;2;74;222;128m✓[0m [SPEC-7] plugin.sh constructs no gate-aggregator-result.json path
+
+  [38;2;0;212;255m#2364: merge names its result file to its caller[0m
+  [38;2;74;222;128m✓[0m [#2364] MERGE_RESULT_FILE names the result merge wrote
+  [38;2;74;222;128m✓[0m [#2364] ...and that file is there
+
+  [38;2;0;212;255m#2364: merge auto-merges only when the engine says a review ran[0m
+  [38;2;74;222;128m✓[0m [#2364] no word that a review ran → PR fallback, whatever review.json says
+
+  [38;2;0;212;255mSPEC-29: a PR fallback that fails is reported as a failure[0m
+  [38;2;74;222;128m✓[0m [SPEC-29] rc=1
+  [38;2;74;222;128m✓[0m [SPEC-29] merge-result.json is not a pass
+  [38;2;74;222;128m✓[0m [SPEC-29] …carrying pr-open's own outcome
+
+  [38;2;0;212;255mSPEC-30: a failed outward action reports unavailable[0m
+  [38;2;74;222;128m✓[0m [SPEC-30] push failure → unavailable
+  [38;2;74;222;128m✓[0m [SPEC-30] gh pr create failure → unavailable
+  [38;2;74;222;128m✓[0m [SPEC-30] gh pr merge failure → unavailable
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 55 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.events includes plugin.result

@@ -1,0 +1,21 @@
+the acceptance check failed — tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
+NEGCTL PASS SPEC-1
+      design : The event-schema coverage test exits non-zero when event-schema.json's known_types contains an event…
+      asserts: assert_pass "[#1951/SPEC-1] event-schema.json carries no event in a plugin-owned namespace"
+NEGCTL PASS SPEC-2
+      design : The event-schema coverage test exits non-zero when any plugin manifest's provides.events contains an…
+      asserts: assert_pass "[#1951/SPEC-2] no plugin manifest declares an event in an engine-owned namespace"
+NEGCTL SKIP SPEC-3 no_code
+      design : persist.* and hydrate.* entries are removed from config/event-schema.json known_types; their canonic…
+      asserts: assert_pass "[#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types"
+NEGCTL SKIP SPEC-4 no_code
+      design : plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manif…
+      asserts: assert_fail "[#1951/SPEC-4] plugin.result must be absent from plugins/agent/security-lens/manifest.y…
+NEGCTL SKIP SPEC-5 no_code
+      design : docs/adr/ADR-001-plugin-contract.md has an ## Enforced by section naming tests/unit/event-schema-emi…
+      asserts: assert_pass "[#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section"
+REACHABILITY FAIL inert_wiring tests/unit/event-schema-emitted-coverage-test.sh
+REACHABILITY PASS change config/adr-enforcement-baseline.txt
+REACHABILITY PASS change config/event-schema.json
+REACHABILITY PASS change plugins/agent/security-lens/manifest.yaml
+REACHABILITY PASS change plugins/tool/merge/manifest.yaml
