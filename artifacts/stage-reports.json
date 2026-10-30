@@ -1,0 +1,16 @@
+{
+  "scope_files": [
+    "config/adr-enforcement-baseline.txt",
+    "core/pipeline/cycle-orchestrator.sh",
+    "core/pipeline/template.sh",
+    "docs/adr/ADR-027-recursive-flow-template-format.md",
+    "tests/integration/cycle-abort-when-no-match-converges-test.sh",
+    "tests/integration/cycle-orchestrator-abort-when-test.sh",
+    "tests/unit/core-pipeline-cycle-events-test.sh",
+    "tests/unit/template-loader-recursive-flow-test.sh"
+  ],
+  "wiring_files": [
+    "core/pipeline/cycle-orchestrator.sh",
+    "core/pipeline/template.sh"
+  ]
+}
