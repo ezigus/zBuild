@@ -1,6 +1,9 @@
 # authored_by: test-author
-2aa676ba09695a314176912b462fe1b767c782a600b20ee815785e0470d8dd81  tests/unit/event-schema-emitted-coverage-test.sh
-2aa676ba09695a314176912b462fe1b767c782a600b20ee815785e0470d8dd81  tests/unit/event-schema-emitted-coverage-test.sh
-2aa676ba09695a314176912b462fe1b767c782a600b20ee815785e0470d8dd81  tests/unit/event-schema-emitted-coverage-test.sh
-2aa676ba09695a314176912b462fe1b767c782a600b20ee815785e0470d8dd81  tests/unit/event-schema-emitted-coverage-test.sh
+63f23af4674805bb6fe5359de1cd2dc8c78054a58ee4275df7854a72eab757eb  tests/unit/event-schema-emitted-coverage-test.sh
+63f23af4674805bb6fe5359de1cd2dc8c78054a58ee4275df7854a72eab757eb  tests/unit/event-schema-emitted-coverage-test.sh
+63f23af4674805bb6fe5359de1cd2dc8c78054a58ee4275df7854a72eab757eb  tests/unit/event-schema-emitted-coverage-test.sh
+63f23af4674805bb6fe5359de1cd2dc8c78054a58ee4275df7854a72eab757eb  tests/unit/event-schema-emitted-coverage-test.sh
+c3d6ac97c940df6481f6245a2014f9e8f66e3da915a40db2563385803ca93da6  plugins/agent/security-lens/tests/security-lens-test.sh
+8f5a5a8191bba1fa8f6b682df7b30d0fb443ba605fe2d4922a05deddc758a6d9  tests/unit/merge-v2-result-test.sh
 2600079a7d13799984fbc872a647484f4883e268c032aac092155950ce420070  tests/unit/lint-adr-enforced-by-test.sh
+63f23af4674805bb6fe5359de1cd2dc8c78054a58ee4275df7854a72eab757eb  tests/unit/event-schema-emitted-coverage-test.sh
