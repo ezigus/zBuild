@@ -1,0 +1,1 @@
+{"schema_version":1,"source":"title","requirements":[{"id":"R-1","text":"[bug] a review lens that does not finish counts as a failure — the run stops; it may merge only when every lens finishes and passes: ## Decision"}]}
