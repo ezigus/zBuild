@@ -2,7 +2,7 @@
 # tests/unit/merge-v2-result-test.sh
 # Contract v2 result assertions for the merge plugin (issue #1849).
 # SPEC coverage:
-#   [SPEC-1]  manifest provides declares result_contract:3, role:merge_executor, events:[plugin.result]
+#   [SPEC-1]  manifest provides declares result_contract:3, role:merge_executor
 #   [SPEC-2]  merge/config valid_verdicts updated to [pass, error]
 #   [SPEC-3]  merge-result.json carries result_contract:3, verdict=pass, disposition:complete, reason
 #   [SPEC-4]  merge-result.json carries result_contract:3, verdict=pass, data.mode=pr_fallback on fallback paths
@@ -39,19 +39,16 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 MERGE_MANIFEST="$REPO_ROOT/plugins/tool/merge/manifest.yaml"
 
-# ─── SPEC-1: manifest provides declares result_contract:3, role, events ──────
-print_test_section "SPEC-1: manifest provides declares result_contract:3, role:merge_executor, events:[plugin.result]"
+# ─── SPEC-1: manifest provides declares result_contract:3, role ──────────────
+# plugin.result is an engine-owned event (ADR-001 §"Declared events"); the
+# manifest no longer declares it under provides.events (#1951/SPEC-4).
+print_test_section "SPEC-1: manifest provides declares result_contract:3, role:merge_executor"
 
 _prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$MERGE_MANIFEST" || echo '')"
 assert_eq "[SPEC-1] manifest provides.result_contract is 3 (#2366)" "3" "$_prov_rc"
 
 _prov_role="$(awk '/^provides:/{f=1} f && /^[[:space:]]*role:/{print $2; exit}' "$MERGE_MANIFEST" || echo '')"
 assert_eq "[SPEC-1] manifest provides.role is merge_executor" "merge_executor" "$_prov_role"
-
-_prov_ev="$(awk '/^provides:/{f=1} f && /plugin\.result/{print; exit}' "$MERGE_MANIFEST" || echo '')"
-[[ -n "$_prov_ev" ]] \
-    && assert_pass "[SPEC-1] manifest provides.events includes plugin.result" \
-    || assert_fail "[SPEC-1] manifest provides.events includes plugin.result" "plugin.result absent"
 
 # ─── SPEC-2: a contract-3 stage declares no verdict words (#2366) ───────────
 print_test_section "SPEC-2: no valid_verdicts (#2366)"

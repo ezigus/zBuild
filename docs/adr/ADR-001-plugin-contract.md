@@ -341,6 +341,12 @@ resolver and remains unlanded under #1321.
 - **Fail-closed artifact-presence scanner** referenced in this ADR is not yet implemented; tracked by **#288**. Plugins declaring `provides.artifact_type` whose `outputs[].path` is missing after a 0-exit run currently emit no synthetic blocking finding.
 - **Test coverage:** `tests/unit/core-plugin-registry-test.sh` and `tests/integration/core-plugin-registry-test.sh` cover the current 4-field validator. Coverage for the deferred items lives in the tracking issues above.
 
+## Enforced by
+
+- §"Declared events" — engine config carries only engine namespaces; plugin manifests carry plugin namespaces; no overlap — `tests/unit/event-schema-emitted-coverage-test.sh` [#1951/SPEC-1], [#1951/SPEC-2].
+- §"Declared events" — a plugin emitting an event without declaring it in its own manifest fails the build — `tests/unit/event-schema-emitted-coverage-test.sh` [SPEC-1717-1].
+- §"Declared events" — the composed known set is derived from engine config plus all manifest declarations — `tests/unit/event-schema-manifest-composition-test.sh` [SPEC-4], [SPEC-5].
+
 ## References
 
 - [KEEPERS.md](../KEEPERS.md) §A (stage dispatch), §F (personas as agent plugins).

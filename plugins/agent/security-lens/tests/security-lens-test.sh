@@ -550,14 +550,11 @@ else
     assert_fail "[SPEC-13] manifest declares primary: true on findings output"
 fi
 
-# ─── [SPEC-16]: manifest declares provides.events with both required event names ─
+# ─── [SPEC-16]: manifest declares provides.events with the required event name ──
+# plugin.result is an engine-owned event (ADR-001 §"Declared events"); the
+# manifest no longer declares it under provides.events (#1951/SPEC-4).
 _spec16_provides=$(awk '/^provides:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
 _spec16_events=$(awk '/^[[:space:]]+events:/{found=1;next} found && /^[[:space:]]+-/{print;next} found{exit}' <<< "$_spec16_provides" 2>/dev/null || true)
-if grep -q 'plugin\.result' <<< "$_spec16_events" 2>/dev/null; then
-    assert_pass "[SPEC-16] manifest provides.events contains plugin.result"
-else
-    assert_fail "[SPEC-16] manifest provides.events contains plugin.result"
-fi
 if grep -q 'security_lens\.failed' <<< "$_spec16_events" 2>/dev/null; then
     assert_pass "[SPEC-16] manifest provides.events contains security_lens.failed"
 else
