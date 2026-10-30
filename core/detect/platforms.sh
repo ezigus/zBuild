@@ -272,7 +272,7 @@ detect_platforms() {
                 detected: [$platform],
                 overrides: [],
                 updated_at: $now
-            }' | atomic_write "$platforms_file"
+            }' | atomic_write "$platforms_file" || true
         echo "$ZBUILD_PLATFORM_OVERRIDE"
         return 0
     fi
@@ -443,7 +443,7 @@ detect_platforms() {
             detected: $platforms,
             overrides: [],
             updated_at: $now
-        }' | atomic_write "$platforms_file"
+        }' | atomic_write "$platforms_file" || true
 
     printf '%s\n' "${detected_platforms[@]}"
 }

@@ -437,7 +437,7 @@ _pr_open_run_inner() {
     # Write canonical pr-url.txt (ADR-013 artifact) and richer pr-result.json.
     # #507: pr-url.txt is the manifest-declared primary output — written via
     # atomic_write to satisfy the primary-output atomicity guard test.
-    printf '%s\n' "$pr_url" | atomic_write "$(dirname "$output_pr_result_json")/pr-url.txt"
+    printf '%s\n' "$pr_url" | atomic_write "$(dirname "$output_pr_result_json")/pr-url.txt" || true
 
     stage_result_write "$output_pr_result_json" pass "PR $pr_status" \
         "$(jq -nc \
