@@ -1,76 +1,46 @@
-# test-author notes — sixth pass (final)
+# test-author notes — seventh pass (verification)
 
-## What the test stage found (inert_wiring finding)
+## Status: COMPLETE — no changes needed
 
-The acceptance gate's REACHABILITY check reported:
-  REACHABILITY FAIL inert_wiring tests/unit/event-schema-emitted-coverage-test.sh
+All test assertions were written in prior passes and are verified correct by this pass.
 
-The finding message: "tests/unit/event-schema-emitted-coverage-test.sh was put back to its
-old version and every test still passed, so it is not what runs the new behaviour —
-name the file whose code calls it, or write WIRING: none"
+## Per-SPEC final verification
 
-## Root cause analysis
+### SPEC-1 [#1951/SPEC-1] — event-schema-emitted-coverage-test.sh lines 148-200
+- Derives plugin-owned namespace prefixes dynamically from manifests using `${_1951_pev%.*}` (all-but-last component)
+- Collects manifests with `find "$REPO_ROOT/plugins" -maxdepth 3 -name 'manifest.yaml' -type f`
+- Checks every event in `_engine_types` (from event-schema.json) — if its namespace appears in the plugin namespace set, it's a violation
+- FAILS before SPEC-3 lands; PASSES after persist.*/hydrate.* removed from event-schema.json
 
-The design declared:
-  WIRING:
-  tests/unit/event-schema-emitted-coverage-test.sh
+### SPEC-2 [#1951/SPEC-2] — event-schema-emitted-coverage-test.sh lines 202-246
+- Uses `_ENGINE_OWNED_NS_RE` to check plugin manifests don't declare engine-namespace events
+- ADR-001 exception: allows `plugin.<plugin_name_dashes_to_underscores>.*` events
+- FAILS before SPEC-4 (plugin.result in security-lens/merge manifests); PASSES after
 
-The reachability check logic (_reachability_revert_one in acceptance-reachability.sh):
-1. Creates a worktree at the merge-base
-2. Overlays all changed files from HEAD, EXCEPT the WIRING target
-3. Overlays ALL testfiles from HEAD (unconditionally)
-4. Runs the testfiles and checks for a pass→fail flip
+### SPEC-3 [#1951/SPEC-3] — event-schema-emitted-coverage-test.sh lines 248-285
+- Four assertions: persist.* and hydrate.* absent from engine known_types; canonical in plugin manifests
+- [no-code]: passes after, need not fail before
 
-The TESTFILES section of design.md includes tests/unit/event-schema-emitted-coverage-test.sh
-for SPEC-1, SPEC-2, SPEC-3, SPEC-4, and SPEC-6. Since this file is both the WIRING target
-AND a testfile, step 3 unconditionally overlays it from HEAD — overwriting the reverted
-merge-base version. The test always runs at HEAD. Both "reverted" and "head" runs show
-all 16 assertions passing. No flip → inert_wiring.
+### SPEC-4 [#1951/SPEC-4] — event-schema-emitted-coverage-test.sh lines 287-322
+- Checks plugin.result absent from security-lens and merge manifests
+- Checks "manifest provides.events contains plugin.result" absent from security-lens-test.sh
+- Checks "manifest provides.events includes plugin.result" absent from merge-v2-result-test.sh
+- VERIFIED: both exact strings are ABSENT from their respective test files ✓
 
-This is confirmed by the reachability log: every "reverted" run output shows
-[#1951/SPEC-1] and [#1951/SPEC-2] PASSING, because the testfile-overlay step
-restored the HEAD version of the file before running it.
+### SPEC-5 [#1951/SPEC-5] — lint-adr-enforced-by-test.sh lines 152-176
+- Three checks: ADR-001 has ## Enforced by section; section body names coverage test; ADR-001 not in baseline
 
-## Fix applied this pass
+### SPEC-6 [#1951/SPEC-6] — event-schema-emitted-coverage-test.sh lines 324-338
+- Uses split-concatenation to avoid introducing the literal in the file
+- Python3 confirms: 0 occurrences of `_PLUGIN_NS_RE` as contiguous string in the file ✓
 
-Updated /home/runner/work/_temp/zbuild-state/artifacts/design.md via Python:
-  Changed WIRING block from:
-    WIRING:
-    tests/unit/event-schema-emitted-coverage-test.sh
-  To:
-    WIRING: none
+## Foreign tags confirmed absent
 
-This is correct because:
-- event-schema-emitted-coverage-test.sh is BOTH the implementation of the new check
-  AND the testfile for SPEC-1/SPEC-2. As a testfile it can never be a load-bearing
-  WIRING target (it always gets HEAD via testfile-overlay).
-- NEGCTL already correctly checks SPEC-1/SPEC-2: NEGCTL PASS SPEC-1 and NEGCTL PASS
-  SPEC-2 confirm the assertions DO fail on old code (config files at merge-base).
-- Part 2 of the reachability check already passes for all 4 changed production files:
-    REACHABILITY PASS change config/adr-enforcement-baseline.txt
-    REACHABILITY PASS change config/event-schema.json
-    REACHABILITY PASS change plugins/agent/security-lens/manifest.yaml
-    REACHABILITY PASS change plugins/tool/merge/manifest.yaml
-- tests/unit/event-schema-emitted-coverage-test.sh is a test path; _acceptance_is_production_path
-  returns false for it, so it is skipped in Part 2 anyway.
-- With WIRING: none, the acceptance check prints REACHABILITY EXEMPT none (Part 1 passes)
-  and Part 2 continues to check the 4 production files (all pass).
+- security-lens-test.sh [SPEC-16]: "manifest provides.events contains plugin.result" → ABSENT ✓
+- merge-v2-result-test.sh [SPEC-1]: "manifest provides.events includes plugin.result" → ABSENT ✓
 
-## Per-SPEC final status (all testfiles unchanged from prior passes)
+## Design.md WIRING (fixed in sixth pass)
 
-- SPEC-1: correct in event-schema-emitted-coverage-test.sh — derives plugin namespaces
-  dynamically via %.* pattern from manifests ✓
-- SPEC-2: correct in event-schema-emitted-coverage-test.sh — ADR-001 exception for
-  plugin.<name>.* events ✓
-- SPEC-3: correct in event-schema-emitted-coverage-test.sh — four checks: persist/hydrate
-  absent from schema, canonical in manifests ✓
-- SPEC-4: complete in event-schema-emitted-coverage-test.sh — manifest checks + test file
-  checks (verified sub-assertions removed from security-lens-test.sh and merge-v2-result-test.sh) ✓
-- SPEC-5: correct in lint-adr-enforced-by-test.sh — three checks ✓
-- SPEC-6: correct in event-schema-emitted-coverage-test.sh — _PLUGIN_NS_RE absent via
-  split-concatenation self-check ✓
-
-## Foreign tags updated (done in earlier passes)
-
-- security-lens-test.sh [SPEC-16]: plugin.result sub-assertion removed ✓
-- merge-v2-result-test.sh [SPEC-1]: plugin.result sub-assertion removed ✓
+WIRING: none — because the coverage test file is both the [code] change AND the testfile;
+the reachability check's testfile-overlay always restores HEAD before running it, so it
+cannot be a load-bearing WIRING target. NEGCTL confirms SPEC-1/SPEC-2 fail on old code.
