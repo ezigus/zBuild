@@ -443,3 +443,19 @@ unbounded behavior set `max_turns: 0`.
 ### Amendment (2026-10-04, #2271)
 
 The `route_back` acyclicity carve-out is gone (ADR-068): a template declaring `route_back` is refused at load. An outer loop's own stages may sit between its inner loops; the stage list follows flow order, and each loop's full expansion must be contiguous. Re-entering an inner loop resets its round counter. Tests: `tests/unit/no-fault-routing-test.sh` R1, `tests/unit/template-simple-yaml-test.sh` SPEC-2/SPEC-18, `tests/integration/nested-loop-rounds-test.sh`.
+
+## Enforced by
+
+§5 (supported op set: `eq|neq|gt|gte|lt|lte|contains|matches`, validated at template load and
+in every runtime evaluator) is enforced by:
+
+- `tests/unit/template-loader-recursive-flow-test.sh` — SPEC-1 (abort_when.op refused at load),
+  SPEC-2 (single-condition until.op refused at load), SPEC-3 (multi-condition exit_when op
+  refused at load), SPEC-9 (ADR enforcement metadata)
+- `tests/integration/cycle-abort-when-no-match-converges-test.sh` — SPEC-4 (eight ops in
+  _cycle_check_until single-condition), SPEC-5 (eight ops in _cycle_eval_one_condition
+  multi-condition)
+- `tests/integration/cycle-orchestrator-abort-when-test.sh` — SPEC-6 (eight ops in
+  _cycle_check_abort_when)
+- `tests/unit/core-pipeline-cycle-events-test.sh` — SPEC-7 (numeric ops reject non-numeric
+  operands with error), SPEC-8 (*) branch returns 1 on unrecognized op)

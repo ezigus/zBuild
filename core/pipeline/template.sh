@@ -1208,8 +1208,8 @@ _tpl_validate_cycles() {
                     *) error "cycle '$cid': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"; return 1 ;;
                 esac
                 case "$ew_o" in
-                    eq|ne|in) : ;;
-                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|ne|in, got: $ew_o"; return 1 ;;
+                    eq|neq|gt|gte|lt|lte|contains|matches) : ;;
+                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|neq|gt|gte|lt|lte|contains|matches, got: $ew_o"; return 1 ;;
                 esac
                 local found=0
                 for s in "${cs[@]}"; do
@@ -1236,6 +1236,27 @@ _tpl_validate_cycles() {
                 error "cycle '$cid': until.stage '$us' is not in cycle stages (${cs[*]})"
                 return 1
             fi
+            # [#1760] validate single-condition until.op against the eight-op set.
+            local uo_var="_TPL_CYCLE_UNTIL_OP_${safe}"
+            local uo="${!uo_var:-}"
+            if [[ -n "$uo" ]]; then
+                case "$uo" in
+                    eq|neq|gt|gte|lt|lte|contains|matches) : ;;
+                    *) error "cycle '$cid': exit_when op '$uo' is not in the supported op set (eq|neq|gt|gte|lt|lte|contains|matches)"; return 1 ;;
+                esac
+            fi
+        fi
+
+        # [#1760] validate abort_when.op against the eight-op set when present.
+        local aw_op_var="_TPL_CYCLE_ABORT_WHEN_OP_${safe}"
+        local aw_op="${!aw_op_var:-}"
+        if [[ -n "$aw_op" ]]; then
+            local aw_field_var="_TPL_CYCLE_ABORT_WHEN_FIELD_${safe}"
+            local aw_field="${!aw_field_var:-}"
+            case "$aw_op" in
+                eq|neq|gt|gte|lt|lte|contains|matches) : ;;
+                *) error "cycle '$cid': abort_when op '$aw_op' for field '$aw_field' is not in the supported op set (eq|neq|gt|gte|lt|lte|contains|matches)"; return 1 ;;
+            esac
         fi
     done
     return 0

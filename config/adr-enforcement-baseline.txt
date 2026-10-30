@@ -24,7 +24,6 @@ ADR-022-test-assessment-stage.md
 ADR-023-install-isolation.md
 ADR-024-subprocess-env-isolation.md
 ADR-026-review-remediation-cycle.md
-ADR-027-recursive-flow-template-format.md
 ADR-028-shared-llm-agent-framework.md
 ADR-029-context-budget-management.md
 ADR-030-scope-governance.md

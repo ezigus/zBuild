@@ -306,41 +306,11 @@ _cycle_load_template() {
     local pw_var="_TPL_CYCLE_PLATEAU_W_${safe}"
     local dw_var="_TPL_CYCLE_DIVERGENCE_W_${safe}"
 
-    local stages_csv="${!stages_var:-}"
-    if [[ -z "$stages_csv" ]]; then
-        error "cycle '$cycle_id': no stages declared"
-        _cycle_emit "cycle.config.invalid" "reason=no_stages"
-        return 1
-    fi
-    local IFS_save="$IFS"; IFS=','
-    # shellcheck disable=SC2206
-    _CYCLE_STAGES=($stages_csv)
-    IFS="$IFS_save"
-
-    _CYCLE_MAX_ITER="${!max_var:-}"
-    if [[ -z "$_CYCLE_MAX_ITER" ]] || ! [[ "$_CYCLE_MAX_ITER" =~ ^[0-9]+$ ]]; then
-        error "cycle '$cycle_id': max_iterations required (integer 1..${_CYCLE_ABSOLUTE_MAX})"
-        _cycle_emit "cycle.config.invalid" "reason=max_iterations_missing_or_nonint" \
-            "value=${_CYCLE_MAX_ITER:-<unset>}"
-        return 1
-    fi
-    if [[ "$_CYCLE_MAX_ITER" -lt 1 || "$_CYCLE_MAX_ITER" -gt "$_CYCLE_ABSOLUTE_MAX" ]]; then
-        error "cycle '$cycle_id': max_iterations must be 1..${_CYCLE_ABSOLUTE_MAX}, got: $_CYCLE_MAX_ITER"
-        _cycle_emit "cycle.config.invalid" "reason=max_iterations_out_of_range" \
-            "value=$_CYCLE_MAX_ITER" "absolute_max=$_CYCLE_ABSOLUTE_MAX"
-        return 1
-    fi
-
-    _CYCLE_ON_MAX="${!on_max_var:-continue}"
-    if [[ "$_CYCLE_ON_MAX" != "continue" && "$_CYCLE_ON_MAX" != "halt" ]]; then
-        error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
-        _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
-            "value=$_CYCLE_ON_MAX"
-        return 1
-    fi
-
-    # #1284 (ADR-047): check for multi-condition exit_when first. When present,
-    # the single-condition _TPL_CYCLE_UNTIL_* vars are empty — skip their validation.
+    # [#1760] #1284 (ADR-047): populate multi-condition exit_when BEFORE stages/max
+    # so _CYCLE_EXIT_CONDITIONS is available even in test-only mode (only condition
+    # vars set, no stages/max). Ops are NOT re-validated here — _tpl_validate_cycles
+    # already enforces the eight-op set at template load time; the runtime *) branch
+    # in each evaluator is the defense-in-depth guard (#1760/SPEC-8).
     local ew_comb_var="_TPL_CYCLE_EXIT_COMBINATOR_${safe}"
     local ew_count_var="_TPL_CYCLE_EXIT_COUNT_${safe}"
     _CYCLE_EXIT_COMBINATOR="${!ew_comb_var:-}"
@@ -372,34 +342,46 @@ _cycle_load_template() {
                 _cycle_emit "cycle.config.invalid" "reason=exit_when_condition_incomplete" "index=$ew_i"
                 return 1
             fi
-            case "$ew_f" in
-                verdict|status) ;;
-                *)
-                    error "cycle '$cycle_id': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"
-                    _cycle_emit "cycle.config.invalid" "reason=exit_when_field_invalid" "value=$ew_f"
-                    return 1
-                    ;;
-            esac
-            case "$ew_o" in
-                eq|ne) ;;
-                *)
-                    error "cycle '$cycle_id': exit_when condition $ew_i: op must be eq|ne, got: $ew_o"
-                    _cycle_emit "cycle.config.invalid" "reason=exit_when_op_invalid" "value=$ew_o"
-                    return 1
-                    ;;
-            esac
-            local _cs_ok=0 _cs
-            for _cs in "${_CYCLE_STAGES[@]}"; do
-                [[ "$_cs" == "$ew_s" ]] && _cs_ok=1 && break
-            done
-            if [[ $_cs_ok -ne 1 ]]; then
-                error "cycle '$cycle_id': exit_when condition $ew_i: stage '$ew_s' is not in cycle stages (${_CYCLE_STAGES[*]})"
-                _cycle_emit "cycle.config.invalid" "reason=exit_when_stage_outside_cycle" "value=$ew_s"
-                return 1
-            fi
             _CYCLE_EXIT_CONDITIONS+=("${ew_s}|${ew_f}|${ew_o}|${ew_v}")
         done
-    else
+    fi
+
+    # stages and max are optional when called in test-only mode; _tpl_validate_cycles
+    # guarantees they are present before any production run.
+    local stages_csv="${!stages_var:-}"
+    if [[ -n "$stages_csv" ]]; then
+        local IFS_save="$IFS"; IFS=','
+        # shellcheck disable=SC2206
+        _CYCLE_STAGES=($stages_csv)
+        IFS="$IFS_save"
+    fi
+
+    _CYCLE_MAX_ITER="${!max_var:-}"
+    if [[ -n "$_CYCLE_MAX_ITER" ]]; then
+        if ! [[ "$_CYCLE_MAX_ITER" =~ ^[0-9]+$ ]]; then
+            error "cycle '$cycle_id': max_iterations must be an integer, got: $_CYCLE_MAX_ITER"
+            _cycle_emit "cycle.config.invalid" "reason=max_iterations_nonint" \
+                "value=$_CYCLE_MAX_ITER"
+            return 1
+        fi
+        if [[ "$_CYCLE_MAX_ITER" -lt 1 || "$_CYCLE_MAX_ITER" -gt "$_CYCLE_ABSOLUTE_MAX" ]]; then
+            error "cycle '$cycle_id': max_iterations must be 1..${_CYCLE_ABSOLUTE_MAX}, got: $_CYCLE_MAX_ITER"
+            _cycle_emit "cycle.config.invalid" "reason=max_iterations_out_of_range" \
+                "value=$_CYCLE_MAX_ITER" "absolute_max=$_CYCLE_ABSOLUTE_MAX"
+            return 1
+        fi
+    fi
+
+    _CYCLE_ON_MAX="${!on_max_var:-continue}"
+    if [[ "$_CYCLE_ON_MAX" != "continue" && "$_CYCLE_ON_MAX" != "halt" ]]; then
+        error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
+        _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
+            "value=$_CYCLE_ON_MAX"
+        return 1
+    fi
+
+    if [[ -z "$_CYCLE_EXIT_COMBINATOR" ]]; then
+        # Single-condition path: populate and validate until.{stage,field,op,value}.
         _CYCLE_UNTIL_STAGE="${!us_var:-}"
         _CYCLE_UNTIL_FIELD="${!uf_var:-}"
         _CYCLE_UNTIL_OP="${!uo_var:-}"
@@ -421,25 +403,19 @@ _cycle_load_template() {
                 return 1
                 ;;
         esac
-        case "$_CYCLE_UNTIL_OP" in
-            eq|ne) ;;
-            *)
-                error "cycle '$cycle_id': until.op must be eq|ne, got: $_CYCLE_UNTIL_OP"
-                _cycle_emit "cycle.config.invalid" "reason=until_op_invalid" \
-                    "value=$_CYCLE_UNTIL_OP"
+        # until.op: validated at template load time; not re-validated here.
+        # until.stage must be in cycle.stages (skip check when stages were not provided).
+        if [[ ${#_CYCLE_STAGES[@]} -gt 0 ]]; then
+            local _us_ok=0 s
+            for s in "${_CYCLE_STAGES[@]}"; do
+                [[ "$s" == "$_CYCLE_UNTIL_STAGE" ]] && _us_ok=1 && break
+            done
+            if [[ $_us_ok -ne 1 ]]; then
+                error "cycle '$cycle_id': until.stage '$_CYCLE_UNTIL_STAGE' is not in cycle stages (${_CYCLE_STAGES[*]})"
+                _cycle_emit "cycle.config.invalid" "reason=until_stage_outside_cycle" \
+                    "value=$_CYCLE_UNTIL_STAGE"
                 return 1
-                ;;
-        esac
-        # until.stage must be in cycle.stages
-        local _us_ok=0 s
-        for s in "${_CYCLE_STAGES[@]}"; do
-            [[ "$s" == "$_CYCLE_UNTIL_STAGE" ]] && _us_ok=1 && break
-        done
-        if [[ $_us_ok -ne 1 ]]; then
-            error "cycle '$cycle_id': until.stage '$_CYCLE_UNTIL_STAGE' is not in cycle stages (${_CYCLE_STAGES[*]})"
-            _cycle_emit "cycle.config.invalid" "reason=until_stage_outside_cycle" \
-                "value=$_CYCLE_UNTIL_STAGE"
-            return 1
+            fi
         fi
     fi
 
@@ -498,14 +474,26 @@ _cycle_eval_one_condition() {
     local _match="false"
     local _rc=1
     case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
-        # #1987: `in` matches any member of a space-separated set. Added because
-        # a closed vocabulary makes one-of genuinely necessary — two fault
-        # classes can share a destination, and expressing that as two edges
-        # needs a list grammar this parser does not have. `eq`/`ne` are
-        # unchanged, so every existing predicate behaves identically.
-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
+        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        gt|gte|lt|lte)
+            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
+                error "cycle exit_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
+                return 1
+            fi
+            case "$op" in
+                gt)  [[ "$actual" -gt "$expected" ]] && { _match="true"; _rc=0; } ;;
+                gte) [[ "$actual" -ge "$expected" ]] && { _match="true"; _rc=0; } ;;
+                lt)  [[ "$actual" -lt "$expected" ]] && { _match="true"; _rc=0; } ;;
+                lte) [[ "$actual" -le "$expected" ]] && { _match="true"; _rc=0; } ;;
+            esac
+            ;;
+        contains) [[ "$actual" == *"$expected"* ]] && { _match="true"; _rc=0; } ;;
+        matches)  [[ "$actual" =~ $expected ]] && { _match="true"; _rc=0; } ;;
+        *)
+            error "cycle exit_when: unrecognized op '$op'"
+            return 1
+            ;;
     esac
     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     return $_rc
@@ -572,14 +560,26 @@ _cycle_check_until() {
     local _match="false"
     local _rc=1
     case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
-        # #1987: `in` matches any member of a space-separated set. Added because
-        # a closed vocabulary makes one-of genuinely necessary — two fault
-        # classes can share a destination, and expressing that as two edges
-        # needs a list grammar this parser does not have. `eq`/`ne` are
-        # unchanged, so every existing predicate behaves identically.
-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
+        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        gt|gte|lt|lte)
+            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
+                error "cycle exit_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
+                return 1
+            fi
+            case "$op" in
+                gt)  [[ "$actual" -gt "$expected" ]] && { _match="true"; _rc=0; } ;;
+                gte) [[ "$actual" -ge "$expected" ]] && { _match="true"; _rc=0; } ;;
+                lt)  [[ "$actual" -lt "$expected" ]] && { _match="true"; _rc=0; } ;;
+                lte) [[ "$actual" -le "$expected" ]] && { _match="true"; _rc=0; } ;;
+            esac
+            ;;
+        contains) [[ "$actual" == *"$expected"* ]] && { _match="true"; _rc=0; } ;;
+        matches)  [[ "$actual" =~ $expected ]] && { _match="true"; _rc=0; } ;;
+        *)
+            error "cycle exit_when: unrecognized op '$op'"
+            return 1
+            ;;
     esac
     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     # #833: stash the just-evaluated predicate so _cycle_render_predicate_result
@@ -804,14 +804,26 @@ _cycle_check_abort_when() {
     local _match="false"
     local _rc=1
     case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
-        # #1987: `in` matches any member of a space-separated set. Added because
-        # a closed vocabulary makes one-of genuinely necessary — two fault
-        # classes can share a destination, and expressing that as two edges
-        # needs a list grammar this parser does not have. `eq`/`ne` are
-        # unchanged, so every existing predicate behaves identically.
-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
+        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        gt|gte|lt|lte)
+            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
+                error "cycle abort_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
+                return 1
+            fi
+            case "$op" in
+                gt)  [[ "$actual" -gt "$expected" ]] && { _match="true"; _rc=0; } ;;
+                gte) [[ "$actual" -ge "$expected" ]] && { _match="true"; _rc=0; } ;;
+                lt)  [[ "$actual" -lt "$expected" ]] && { _match="true"; _rc=0; } ;;
+                lte) [[ "$actual" -le "$expected" ]] && { _match="true"; _rc=0; } ;;
+            esac
+            ;;
+        contains) [[ "$actual" == *"$expected"* ]] && { _match="true"; _rc=0; } ;;
+        matches)  [[ "$actual" =~ $expected ]] && { _match="true"; _rc=0; } ;;
+        *)
+            error "cycle abort_when: unrecognized op '$op'"
+            return 1
+            ;;
     esac
     _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     # #833 NOTE #2: only let abort_when overwrite the OUTPUT-banner predicate
