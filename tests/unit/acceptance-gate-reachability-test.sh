@@ -221,6 +221,8 @@ assert_eq "[#2109-B5] a tagged ✓→✗ flip is PASS even when an untagged line
 # ── [#2429-R3] a target that is also a TESTFILE stays at the merge-base ───────
 # The TESTFILE overlay used to copy HEAD's version back over the reverted
 # target, so the "reverted" run ran the new file and could never flip (#1951).
+# Design's checks now refuse this design (WIRING_IS_TEST); this checks the
+# reachability layer's own defence for a design that reaches it anyway.
 REPO_TT="$(setup_git_temp_repo reach-tt)"
 (
     cd "$REPO_TT"

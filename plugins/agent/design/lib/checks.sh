@@ -197,7 +197,7 @@ _design_checks() {
             _tfs="$(acceptance_list_testfiles "$design_md" 2>/dev/null || true)"
             while IFS= read -r _w; do
                 [[ -z "$_w" || "$_w" == "none" ]] && continue
-                [[ -e "$repo_root/$_w" ]] || violations+=("WIRING_MISSING $_w (declared wiring path absent on disk)")
+                [[ -e "$repo_root/$_w" ]] || { violations+=("WIRING_MISSING $_w (declared wiring path absent on disk)"); continue; }
                 # #2429: reachability cannot prove a test file load-bearing.
                 grep -qxF -- "$_w" <<< "$_tfs" && violations+=("WIRING_IS_TEST $_w (a TESTFILE named as WIRING)")
             done < <(acceptance_list_wiring "$design_md" 2>/dev/null || true)

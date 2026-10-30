@@ -77,6 +77,9 @@ _gate $'# Design\n\n```scope\nlib/w.sh\ntests/w-test.sh\n```\n\n```acceptance\nS
 assert_eq "[#2429-R2] a WIRING file that is not a TESTFILE passes as before" "" "$(grep 'WIRING' <<<"$VIOL" || true)"
 _gate $'# Design\n\n```scope\nlib/w.sh\ntests/w-test.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: none\nTESTFILES:\nSPEC-1: tests/w-test.sh\n```\n'
 assert_eq "[#2429-R2] WIRING: none passes as before" "" "$(grep 'WIRING' <<<"$VIOL" || true)"
+_gate $'# Design\n\n```scope\nlib/w.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: tests/gone-test.sh\nTESTFILES:\nSPEC-1: tests/gone-test.sh\n```\n'
+assert_eq "[#2429-R1] a missing WIRING file that is also a TESTFILE gets one message, not two" \
+    "WIRING_MISSING tests/gone-test.sh (declared wiring path absent on disk)" "$(grep 'WIRING' <<<"$VIOL" || true)"
 
 cleanup_test_env
 print_test_results
