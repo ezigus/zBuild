@@ -173,7 +173,7 @@ _1951_adr_ownership() {
             exc+=" $line"
         fi
     done < "$1"
-    [[ "$exc" =~ \`(plugin\.[a-z_]+)\.\*\` ]] && _1951_EXC_NS="${BASH_REMATCH[1]}"
+    [[ "$exc" =~ \`(plugin\.[a-z0-9_-]+)\.\*\` ]] && _1951_EXC_NS="${BASH_REMATCH[1]}"
     [[ "$exc" =~ belongs\ to[[:space:]]+\`([a-z0-9-]+)\` ]] && _1951_EXC_OWNER="${BASH_REMATCH[1]}"
     return 0
 }
@@ -357,6 +357,11 @@ assert_eq "[#1951/R2] pr-open keeps plugin.pr_open.*" "" "$(grep 'pr_open' <<< "
 assert_contains "[#1951/R3] the engine's namespaces are read from ADR-001, not a list in this test" \
     "$_1951_fx_v2" "plugins/tool/bar → newengine.tick"
 assert_contains "[#1951/R3] … including a namespace with a digit" "$_1951_fx_v2" "plugins/tool/baz → e2e.ran"
+
+sed 's/plugin\.pr_open\.\*/plugin.step2.*/; s/`pr-open`/`step2`/' "$_1951_fx/adr.md" > "$_1951_fx/adr2.md"
+_1951_fx_plugin "$_1951_fx/p3" tool/step2 plugin.step2.done
+assert_eq "[#1951/R2] an exception's namespace may carry a digit" "" \
+    "$(_1951_spec2_violations "$_1951_fx/p3" "$_1951_fx/adr2.md")"
 
 _1951_fx_plugin "$_1951_fx/p2" tool/widget widget.result.write_failed
 assert_contains "[#1951/R1] a namespace is an event's first part, so a three-part event still claims it" \
