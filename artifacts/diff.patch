@@ -1,3 +1,29 @@
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 83785198..bad73d54 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -3725,6 +3725,21 @@ main() {
+                         error "map group '$_mg_id' failed (${_ZB_STRATEGY_OUTCOME:-failed})"
+                         return 1
+                     fi
++                    # #1753 (ADR-040 §2368-part-2): any non-pass member outcome sets
++                    # ZBUILD_RUN_FLAGGED=yes — stop the run here, before pr-delivery,
++                    # so no PR is opened and nothing merges unless every member passed.
++                    if [[ "${ZBUILD_RUN_FLAGGED:-}" == yes ]]; then
++                        _set_pipeline_status "$state_file" "failed"
++                        _zbuild_state_set_stage_verdict "$state_file" "$_mg_id" "failed"
++                        eb_emit_event "pipeline.end" "status=failed" "map=$_mg_id" \
++                            "run_id=$_runner_run_id" "issue=$_runner_issue" \
++                            2>/dev/null || true
++                        _render_pipeline_end "failed"
++                        _runner_ended=true
++                        unset ZBUILD_CURRENT_STAGE
++                        error "map group '$_mg_id': run stopped — ${_ZB_MAP_UNFINISHED:-a member did not pass}"
++                        return 1
++                    fi
+                     _update_stage_status "$state_file" "$_mg_id" "complete"
+                     _zbuild_state_set_stage_verdict "$state_file" "$_mg_id" "pass"
+                     eb_emit_event "stage.complete" "stage=$_mg_id" "verdict=pass" \
 diff --git a/core/pipeline/strategies/map.sh b/core/pipeline/strategies/map.sh
 index 36bac7cc..0782fb0e 100644
 --- a/core/pipeline/strategies/map.sh

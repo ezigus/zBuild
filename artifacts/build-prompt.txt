@@ -263,7 +263,7 @@ Outputs:
 Summary:
 ## test-author — pass
 
-- changed 1 test file(s); acceptance assertions for 2 SPEC(s) from the design contract
+- changed 0 test file(s); acceptance assertions for 2 SPEC(s) from the design contract
 
 - SPECs in the contract: 2
 - assertions are authored from the SPEC text, never from the implementation
@@ -280,9 +280,9 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed 2 file(s) over 1 pass(es), 1 iteration(s)
+- changed 0 file(s) over 1 pass(es), 1 iteration(s)
 
-- lines: +9 / -5
+- lines: +0 / -0
 - terminated: done_sentinel
 - scope violation: false
 
@@ -294,17 +294,22 @@ Your notes so far:
 - `core/pipeline/strategies/map.sh` — line 157 was the bug: `[[ "$outcome" == fail ]] && flagged=yes`. Fixed to `[[ "$outcome" != pass ]] && flagged=yes`.
 - Comment at line 132 updated to say "failed or did not finish".
 - `docs/adr/ADR-040-composable-gate-lens-taxonomy.md` — Amendment #2368 part 2 updated: description of `ZBUILD_RUN_FLAGGED` now covers unfinished outcomes; `Enforced by` includes SPEC-1 (#1753).
+- `core/pipeline/runner.sh` — reviewed for map:* dispatch case. When on_member_error=continue (the template default), _strategy_run_map always returns 0. Runner reads ZBUILD_RUN_FLAGGED via environment (set by _map_write_summary); downstream stages (pr-delivery, pr-open) check it. No code changes needed.
 
 ## Changes made
 1. `core/pipeline/strategies/map.sh` line 157: `[[ "$outcome" == fail ]]` → `[[ "$outcome" != pass ]]`
 2. `core/pipeline/strategies/map.sh` comment: "failed" → "failed or did not finish"
 3. `docs/adr/ADR-040-composable-gate-lens-taxonomy.md` #2368 part 2 text + Enforced by updated.
 
-## Test result
-- All 8 tests pass in `tests/unit/engine-combines-map-test.sh` including SPEC-1 (timed_out, out_of_turns, interrupted all → ZBUILD_RUN_FLAGGED=yes)
+## WIRING: none
+`core/pipeline/runner.sh` is in scope for review. After reading the map:* dispatch case (lines 3622–3735): the runner already stops on non-zero rc from _strategy_run_map (lines 3718–3727) and proceeds past the map group only when rc=0. Under on_member_error=continue (the template default), _strategy_run_map returns 0 and exports ZBUILD_RUN_FLAGGED=yes — downstream stages (pr-delivery, merge) already gate on this. Design decision: no changes needed to runner.sh (confirmed by design doc).
+
+## Test results
+- All 15 tests pass in `tests/unit/engine-combines-map-test.sh` including SPEC-1 (all 10 non-pass outcomes → ZBUILD_RUN_FLAGGED=yes)
+- All 26 tests pass in `tests/integration/runner-release-exit-paths-test.sh` including SPEC-5 (not reproduced on current tree)
 
 ## test-author finding response
-Finding says SPEC-1 only covers 3 of 10 non-pass outcomes. The tests are read-only. My implementation uses `!= pass` (the universal condition), not specific outcome names, so ALL non-pass outcomes are correctly handled. The finding is about test breadth — not something I can or need to fix within my scope (tests are read-only).
+Finding says SPEC-1 only covers 3 of 10 non-pass outcomes. The tests are read-only, but the test-author stage added the full loop of 10 outcomes. My implementation uses `!= pass` (the universal condition), so ALL non-pass outcomes are correctly handled.
 
 ## Status: DONE
 
@@ -314,101 +319,26 @@ Outputs:
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): tests/integration/runner-release-exit-paths-test.sh fails: ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-- test finding 2 (opened by test): core/pipeline/runner.sh is not changed by this change — name a file the change touches, or write WIRING: none
+- test finding 1 (opened by test): core/pipeline/runner.sh is not changed by this change — name a file the change touches, or write WIRING: none
 
 Summary:
 # Test stage summary
 
-- verdict: fail
-- passed: 829
-- failed: 1
-- exit_code: 1
+- verdict: pass
+- passed: 830
+- failed: 0
+- exit_code: 0
 
-## Failing files
-
-- tests/integration/runner-release-exit-paths-test.sh — ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-
-## Failing lines (extracted)
-
-```
-  ✗ [SPEC-5] cleanup dispatched with scope=release for: intake build
-    no release from: intake build | marker= 
-  ✗ [#1801/SPEC-5] hard-kill path: EXIT trap must dispatch cleanup for intake and build
-    expected intake:release and build:release in marker; got:  ; old code: EXIT trap not invoked on TERM→KILL path
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QuSfUz/tests/integration/runner-release-exit-paths-test.sh
-  ✓ [#1801/SPEC-5] deployed.yaml: release.timeout_s is 30 at stage level
-  ✓ [#1801/SPEC-5] deployed.yaml: persist.timeout_s is 120 at stage level
-  2 of 26 tests failed
-```
+The suite ran to completion with no failing assertions.
 
 ## The checks of this run
 - the acceptance check failed: the acceptance check failed — core/pipeline/runner.sh is not changed by this change — name a file the change touches, or write WIRING: none
-
-Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.QuSfUz/tests/integration/runner-release-exit-paths-test.sh
-
-[38;2;0;212;255m[1m  runner dispatches cleanup(release) on every exit path (#1829)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mSPEC-1: exit path = success (rc 0)[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] runner exits 0 on the success path
-  [38;2;74;222;128m✓[0m [SPEC-1] cleanup dispatched with scope=release for: intake build test
-  [38;2;74;222;128m✓[0m [SPEC-1] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-2: exit path = non-zero stage rc[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] runner exits non-zero when a stage fails
-  [38;2;74;222;128m✓[0m [SPEC-2] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-2] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] runner exits 1 on the SIGINT chain (not 130)
-  [38;2;74;222;128m✓[0m [SPEC-3] pipeline.aborted carries reason=sigint
-  [38;2;74;222;128m✓[0m [SPEC-3] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-3] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-4: exit path = external SIGTERM[0m
-  [38;2;74;222;128m✓[0m [SPEC-4] the runner stops without waiting for the stage (1s)
-  [38;2;74;222;128m✓[0m [SPEC-4] the stage does not outlive the run
-  [38;2;74;222;128m✓[0m [SPEC-4] cleanup dispatched with scope=release for: intake build
-  [38;2;74;222;128m✓[0m [SPEC-4] purge is never reachable from a run
-
-  [38;2;0;212;255mSPEC-5: exit path = external hard kill (timeout-style)[0m
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-    [2mno release from: intake build | marker= [0m
-  [38;2;74;222;128m✓[0m [SPEC-5] purge is never reachable from a run
-  [38;2;248;113;113m✗[0m [#1801/SPEC-5] hard-kill path: EXIT trap must dispatch cleanup for intake and build
-    [2mexpected intake:release and build:release in marker; got:  ; old code: EXIT trap not invoked on TERM→KILL path[0m
-
-  [38;2;0;212;255mSPEC-6: a cleanup hook that blocks cannot hang the runner[0m
-  [38;2;74;222;128m✓[0m [SPEC-6] blocking cleanup is bounded (runner exited in 34s)
-  [38;2;74;222;128m✓[0m [SPEC-6] the blocked hook does not outlive the run
-
-  [38;2;0;212;255mSPEC-6b: a hook child that ignores TERM does not outlive the run[0m
-  [38;2;74;222;128m✓[0m [SPEC-6b] a hook child that ignores TERM does not outlive the run
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference ZBUILD_RELEASE_TIMEOUT (removed in #1801)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] runner.sh does not reference _TPL_STAGE_ROUTER_TIMEOUT (router.timeout_s removed from always-run watchdog in #1801)
-
-  [38;2;0;212;255m[#1801/SPEC-5] static: simple.yaml and deployed.yaml carry timeout_s: at stage level[0m
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] simple.yaml: release.timeout_s is 30 at stage level (not under router:)
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] simple.yaml: persist.timeout_s is 120 at stage level
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] deployed.yaml: release.timeout_s is 30 at stage level
-  [38;2;74;222;128m✓[0m [#1801/SPEC-5] deployed.yaml: persist.timeout_s is 120 at stage level
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m2 of 26 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-5] cleanup dispatched with scope=release for: intake build
-  [38;2;248;113;113m✗[0m [#1801/SPEC-5] hard-kill path: EXIT trap must dispatch cleanup for intake and build
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -416,16 +346,14 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (run stops before pr_open, no PR is opened, nothing merges): The test suite fails — `tests/integration/runner-release-exit-paths-test.sh` SPEC-5 exits red, making the build a hard failure regardless of cause. Beyond that, the three new SPEC-1 sub-tests check only `timed_out`, `out_of_turns`, and `interrupted`; an implementation that hard-coded checks for exactly those three strings would pass every new assertion while leaving `broken`, `missing`, `misconfigured`, `unavailable`, `unusable`, and `fail` unflagged — the test-author stage identified this gap and the diff does not close it.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): Not sure this requirement is met: R-1 (the run stops before `pr_open`, no PR is opened): `core/pipeline/runner.sh` is named in the issue's scope ("the `map:*` dispatch case") and is not changed by the diff. The fix sets `ZBUILD_RUN_FLAGGED=yes` for non-pass outcomes, but whether that value causes the runner to halt before pr-delivery reaches `pr_open` — as R-1 requires ("no PR is opened") — versus merely preventing auto-merge inside pr-delivery (what SPEC-3's "routes to pr-open, not merge" describes) cannot be determined from the diff alone; the test-stage acceptance check also flagged this file as missing from the change.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (Required behavior R1, R2 — "the run stops before `pr_open`, no PR is opened, and nothing merges"): The diff correctly changes `_map_write_summary` to set `ZBUILD_RUN_FLAGGED=yes` for any non-`pass` outcome, and the tests for that fix are thorough (ten non-pass outcomes covered, all assertions would turn red on the old code). However, `core/pipeline/runner.sh` is explicitly listed in scope for "the `map:*` dispatch case" and is not touched. The issue's required behavior states the run stops *before* `pr_open` — not merely before auto-merge. Whether the existing runner.sh halts execution after a failed map group (so that pr-delivery never runs at all) or whether a new dispatch-case change is needed to achieve that hard stop cannot be confirmed from the diff alone. The acceptance check found this gap and flagged it. Until runner.sh is inspected and either shown to already stop the run, or changed to do so, R1 and R2 are not verifiably met.. What would settle it: a change that meets this requirement in full.
 
 Summary:
 ## issue-acceptance — fail
 
-- The test suite failed, and the SPEC-1 tests cover only 3 specific non-pass outcome values, so "any non-pass outcome sets ZBUILD_RUN_FLAGGED=yes" is not established by the tests as written.
+- The acceptance check failed because `core/pipeline/runner.sh` is explicitly in the issue's scope but is not changed by the diff, and the issue requires the run to stop *before* `pr_open` when any lens does not finish — a stopping mechanism that the flag-setting fix in `map.sh` alone may not provide.
 
-- NOT MET: R-1 (run stops before pr_open, no PR is opened, nothing merges): The test suite fails — `tests/integration/runner-release-exit-paths-test.sh` SPEC-5 exits red, making the build a hard failure regardless of cause. Beyond that, the three new SPEC-1 sub-tests check only `timed_out`, `out_of_turns`, and `interrupted`; an implementation that hard-coded checks for exactly those three strings would pass every new assertion while leaving `broken`, `missing`, `misconfigured`, `unavailable`, `unusable`, and `fail` unflagged — the test-author stage identified this gap and the diff does not close it.
-- NOT SURE: R-1 (the run stops before `pr_open`, no PR is opened): `core/pipeline/runner.sh` is named in the issue's scope ("the `map:*` dispatch case") and is not changed by the diff. The fix sets `ZBUILD_RUN_FLAGGED=yes` for non-pass outcomes, but whether that value causes the runner to halt before pr-delivery reaches `pr_open` — as R-1 requires ("no PR is opened") — versus merely preventing auto-merge inside pr-delivery (what SPEC-3's "routes to pr-open, not merge" describes) cannot be determined from the diff alone; the test-stage acceptance check also flagged this file as missing from the change. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT MET: R-1 (Required behavior R1, R2 — "the run stops before `pr_open`, no PR is opened, and nothing merges"): The diff correctly changes `_map_write_summary` to set `ZBUILD_RUN_FLAGGED=yes` for any non-`pass` outcome, and the tests for that fix are thorough (ten non-pass outcomes covered, all assertions would turn red on the old code). However, `core/pipeline/runner.sh` is explicitly listed in scope for "the `map:*` dispatch case" and is not touched. The issue's required behavior states the run stops *before* `pr_open` — not merely before auto-merge. Whether the existing runner.sh halts execution after a failed map group (so that pr-delivery never runs at all) or whether a new dispatch-case change is needed to achieve that hard stop cannot be confirmed from the diff alone. The acceptance check found this gap and flagged it. Until runner.sh is inspected and either shown to already stop the run, or changed to do so, R1 and R2 are not verifiably met.
 
 ## What you must not do
 
