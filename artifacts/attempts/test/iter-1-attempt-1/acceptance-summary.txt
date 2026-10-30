@@ -1,0 +1,21 @@
+the acceptance check failed — SPEC-1/SPEC-2/tests/unit/event-schema-emitted-coverage-test.sh: its test does not pass on the new code — the code or the test is wrong
+NEGCTL FAIL SPEC-1 not_passing_at_head
+      design : The event-schema coverage test exits non-zero when event-schema.json's known_types contains an event…
+      asserts: assert_pass "[#1951/SPEC-1] event-schema.json carries no event in a plugin-owned namespace"
+NEGCTL FAIL SPEC-2 not_passing_at_head
+      design : The event-schema coverage test exits non-zero when any plugin manifest's provides.events contains an…
+      asserts: assert_pass "[#1951/SPEC-2] no plugin manifest declares an event in an engine-owned namespace"
+NEGCTL SKIP SPEC-3 no_code
+      design : persist.* and hydrate.* entries are removed from config/event-schema.json known_types; their canonic…
+      asserts: assert_pass "[#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types"
+NEGCTL SKIP SPEC-4 no_code
+      design : plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manif…
+      asserts: assert_fail "[#1951/SPEC-4] plugin.result must be absent from plugins/agent/security-lens/manifest.y…
+NEGCTL SKIP SPEC-5 no_code
+      design : docs/adr/ADR-001-plugin-contract.md has an ## Enforced by section naming tests/unit/event-schema-emi…
+      asserts: assert_pass "[#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section"
+REACHABILITY FAIL not_passing_at_head tests/unit/event-schema-emitted-coverage-test.sh tests/unit/event-schema-emitted-coverage-test.sh
+REACHABILITY PASS change config/adr-enforcement-baseline.txt
+REACHABILITY PASS change config/event-schema.json
+REACHABILITY PASS change plugins/agent/security-lens/manifest.yaml
+REACHABILITY PASS change plugins/tool/merge/manifest.yaml

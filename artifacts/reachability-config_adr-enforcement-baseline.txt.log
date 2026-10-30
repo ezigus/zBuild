@@ -1,0 +1,595 @@
+ 'plugin.cleanup.absent' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m18 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/event-schema-emitted-coverage-test.sh
+
+[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m18 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+
+### config/adr-enforcement-baseline.txt head tests/unit/event-schema-emitted-coverage-test.sh
+
+[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m18 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/event-schema-emitted-coverage-test.sh
+
+[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m18 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+
+### config/adr-enforcement-baseline.txt head tests/unit/event-schema-emitted-coverage-test.sh
+
+[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m18 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/event-schema-emitted-coverage-test.sh
+
+[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m18 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+
+### config/adr-enforcement-baseline.txt head tests/unit/event-schema-emitted-coverage-test.sh
+
+[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
+  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
+  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
+  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+    [2mnamespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+    [2mengine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")[0m
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m18 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
+  [38;2;248;113;113m✗[0m [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/lint-adr-enforced-by-test.sh
+
+[38;2;0;212;255m[1m  every ADR names the tests that enforce it (#2268)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [A1] a live ADR with no section fails
+  [38;2;74;222;128m✓[0m [A1] the failure names the ADR
+  [38;2;74;222;128m✓[0m [A2] a named test that does not exist fails
+  [38;2;74;222;128m✓[0m [A2] the failure names the missing file
+  [38;2;74;222;128m✓[0m [A3] a section naming existing tests passes
+  [38;2;74;222;128m✓[0m [A4] superseded and deprecated ADRs need no section
+  [38;2;74;222;128m✓[0m [A5] a baseline entry for an ADR that now has its section fails
+  [38;2;74;222;128m✓[0m [A5] it says to remove the entry
+  [38;2;74;222;128m✓[0m [A6] a baseline entry with no ADR fails
+  [38;2;74;222;128m✓[0m [A6] it names the stale entry
+  [38;2;248;113;113m✗[0m [A7] the real tree passes
+    [2mexpected: 0, got: 1[0m
+lint-adr-enforced-by: ADR-001-plugin-contract.md now has its '## Enforced by' section — remove it from config/adr-enforcement-baseline.txt
+lint-adr-enforced-by: 1 problem(s) among 69 live ADR(s)
+  [38;2;74;222;128m✓[0m [A8] the issue form requires the ADR § field
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 ## Enforced by: every § statement maps to a test file (4 statement(s))
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 ## Enforced by: every § statement maps to a test file (3 statement(s))
+  [38;2;74;222;128m✓[0m [A9] a section that names no test fails
+  [38;2;74;222;128m✓[0m [A9] it says the section names no test
+  [38;2;74;222;128m✓[0m [A11] a missing .github file named in the section fails
+  [38;2;74;222;128m✓[0m [A11] it names the missing file
+  [38;2;74;222;128m✓[0m [A10] a superseded ADR left in the baseline fails
+  [38;2;74;222;128m✓[0m [A10] it says to remove the entry
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh
+  [38;2;248;113;113m✗[0m [#1951/SPEC-5] ADR-001-plugin-contract.md must be removed from config/adr-enforcement-baseline.txt
+    [2mADR-001 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.OQLUEs/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 27 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [A7] the real tree passes
+  [38;2;248;113;113m✗[0m [#1951/SPEC-5] ADR-001-plugin-contract.md must be removed from config/adr-enforcement-baseline.txt
+
+### config/adr-enforcement-baseline.txt head tests/unit/lint-adr-enforced-by-test.sh
+
+[38;2;0;212;255m[1m  every ADR names the tests that enforce it (#2268)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [A1] a live ADR with no section fails
+  [38;2;74;222;128m✓[0m [A1] the failure names the ADR
+  [38;2;74;222;128m✓[0m [A2] a named test that does not exist fails
+  [38;2;74;222;128m✓[0m [A2] the failure names the missing file
+  [38;2;74;222;128m✓[0m [A3] a section naming existing tests passes
+  [38;2;74;222;128m✓[0m [A4] superseded and deprecated ADRs need no section
+  [38;2;74;222;128m✓[0m [A5] a baseline entry for an ADR that now has its section fails
+  [38;2;74;222;128m✓[0m [A5] it says to remove the entry
+  [38;2;74;222;128m✓[0m [A6] a baseline entry with no ADR fails
+  [38;2;74;222;128m✓[0m [A6] it names the stale entry
+  [38;2;74;222;128m✓[0m [A7] the real tree passes
+  [38;2;74;222;128m✓[0m [A8] the issue form requires the ADR § field
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 ## Enforced by: every § statement maps to a test file (4 statement(s))
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 ## Enforced by: every § statement maps to a test file (3 statement(s))
+  [38;2;74;222;128m✓[0m [A9] a section that names no test fails
+  [38;2;74;222;128m✓[0m [A9] it says the section names no test
+  [38;2;74;222;128m✓[0m [A11] a missing .github file named in the section fails
+  [38;2;74;222;128m✓[0m [A11] it names the missing file
+  [38;2;74;222;128m✓[0m [A10] a superseded ADR left in the baseline fails
+  [38;2;74;222;128m✓[0m [A10] it says to remove the entry
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 27 tests passed[0m
+

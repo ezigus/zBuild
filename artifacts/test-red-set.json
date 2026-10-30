@@ -1,0 +1,5 @@
+[
+  "plugins/agent/security-lens/tests/security-lens-test.sh",
+  "tests/unit/event-schema-emitted-coverage-test.sh",
+  "tests/unit/merge-v2-result-test.sh"
+]
