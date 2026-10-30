@@ -279,7 +279,20 @@ bad_until_err=$(load_template "$BAD_UNTIL_OP_TPL" 2>&1); bad_until_rc=$?
 set -e
 assert_eq "[#1760/SPEC-2] single-condition bad op refused (rc!=0)" "1" "$bad_until_rc"
 assert_contains "[#1760/SPEC-2] error names the loop" "$bad_until_err" "the_cycle"
+assert_contains "[#1760/SPEC-2] error names the field" "$bad_until_err" "verdict"
 assert_contains "[#1760/SPEC-2] error names the bad op" "$bad_until_err" "in"
+# Verify the complete eight-op set (eq neq gt gte lt lte contains matches) is
+# named in the error. Each op is checked as a standalone token — word-boundary
+# on both sides — so 'eq' inside 'neq', 'gt' inside 'gte', 'lt' inside 'lte',
+# and 'contains' inside a hypothetical 'contains_all' do not satisfy the check.
+for _spec2_valid_op in eq neq gt gte lt lte contains matches; do
+    if grep -qE "(^|[^[:alnum:]_])${_spec2_valid_op}([^[:alnum:]_]|$)" <<< "$bad_until_err" 2>/dev/null; then
+        assert_pass "[#1760/SPEC-2] error valid-set includes ${_spec2_valid_op}"
+    else
+        assert_fail "[#1760/SPEC-2] error valid-set includes ${_spec2_valid_op}" \
+            "op '${_spec2_valid_op}' not found as standalone token in: $bad_until_err"
+    fi
+done
 
 # ── [#1760/SPEC-3] multi-condition exit_when op outside eight-op set refused ──
 # Each condition's op in a multi-condition exit_when must be validated.
@@ -316,7 +329,20 @@ bad_multi_err=$(load_template "$BAD_MULTI_OP_TPL" 2>&1); bad_multi_rc=$?
 set -e
 assert_eq "[#1760/SPEC-3] multi-condition bad op refused (rc!=0)" "1" "$bad_multi_rc"
 assert_contains "[#1760/SPEC-3] error names the loop" "$bad_multi_err" "the_cycle"
+assert_contains "[#1760/SPEC-3] error names the field" "$bad_multi_err" "verdict"
 assert_contains "[#1760/SPEC-3] error names the bad op" "$bad_multi_err" "ne"
+# Verify the complete eight-op set (eq neq gt gte lt lte contains matches) is
+# named in the error. Each op is checked as a standalone token — word-boundary
+# on both sides — so 'eq' inside 'neq', 'gt' inside 'gte', 'lt' inside 'lte',
+# and 'contains' inside any compound op name do not satisfy the check.
+for _spec3_valid_op in eq neq gt gte lt lte contains matches; do
+    if grep -qE "(^|[^[:alnum:]_])${_spec3_valid_op}([^[:alnum:]_]|$)" <<< "$bad_multi_err" 2>/dev/null; then
+        assert_pass "[#1760/SPEC-3] error valid-set includes ${_spec3_valid_op}"
+    else
+        assert_fail "[#1760/SPEC-3] error valid-set includes ${_spec3_valid_op}" \
+            "op '${_spec3_valid_op}' not found as standalone token in: $bad_multi_err"
+    fi
+done
 
 # ── [#1760/SPEC-9] ADR-027 has ## Enforced by section; removed from baseline ──
 # Post-fix, ADR-027 gains its "## Enforced by" section naming the test files
