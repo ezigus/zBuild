@@ -160,6 +160,8 @@ and tests use only `eq` and are unaffected.
 
 ## Findings
 
+**issue-acceptance finding 1 (SPEC-2 field omission).** The first design pass wrote SPEC-2 as "refused at template load" without requiring the error to name the field. R-1 explicitly prescribes "the stage or loop, the field, the bad op, and the valid set." The resulting test only checked `rc=1`, the loop name, and the bad op — a run that omitted the field would not turn it red. SPEC-1 and SPEC-3 already carry the full message prescription. SPEC-2 (and SPEC-3 for consistency) are strengthened here to match: "refused at template load with an error naming the loop, field, bad op, and valid set." The SPEC-2 test must now assert that the field name appears in the error output.
+
 **Plan scope is complete.** No files outside the seed scope pin the old op set.
 Existing tests all use `op: eq` (remains valid); the golden files reference
 `op=eq` (unchanged). `tests/unit/core-pipeline-template-cycles-test.sh` pins
@@ -201,8 +203,8 @@ These tests were written before your code. Make them pass by changing code only.
 
 What each SPEC requires:
 - [#1760/SPEC-1] abort_when.op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set
-- [#1760/SPEC-2] single-condition until.op outside the eight-op set is refused at template load
-- [#1760/SPEC-3] multi-condition exit_when op outside the eight-op set is refused at template load
+- [#1760/SPEC-2] single-condition until.op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set
+- [#1760/SPEC-3] multi-condition exit_when op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set
 - [#1760/SPEC-4] the full eight-op set evaluates correctly in the exit_when single-condition evaluator (_cycle_check_until)
 - [#1760/SPEC-5] the full eight-op set evaluates correctly in the exit_when multi-condition evaluator (_cycle_eval_one_condition)
 - [#1760/SPEC-6] the full eight-op set evaluates correctly in the abort_when evaluator (_cycle_check_abort_when)
@@ -214,9 +216,9 @@ What each SPEC requires:
 Your change is done when the test for every requirement below passes.
 - [#1760/SPEC-1] abort_when.op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set
   → its test is already written; make it pass
-- [#1760/SPEC-2] single-condition until.op outside the eight-op set is refused at template load
+- [#1760/SPEC-2] single-condition until.op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set
   → its test is already written; make it pass
-- [#1760/SPEC-3] multi-condition exit_when op outside the eight-op set is refused at template load
+- [#1760/SPEC-3] multi-condition exit_when op outside the eight-op set is refused at template load with an error naming the loop, field, bad op, and valid set
   → its test is already written; make it pass
 - [#1760/SPEC-4] the full eight-op set evaluates correctly in the exit_when single-condition evaluator (_cycle_check_until)
   → its test is already written; make it pass
@@ -290,7 +292,7 @@ Outputs:
 Summary:
 ## test-author — pass
 
-- changed 3 test file(s); acceptance assertions for 9 SPEC(s) from the design contract
+- changed 1 test file(s); acceptance assertions for 9 SPEC(s) from the design contract
 
 - SPECs in the contract: 9
 - assertions are authored from the SPEC text, never from the implementation
@@ -310,18 +312,39 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed 4 file(s) over 1 pass(es), 2 iteration(s)
+- changed 1 file(s) over 1 pass(es), 1 iteration(s)
 
-- lines: +154 / -106
+- lines: +7 / -7
 - terminated: done_sentinel
 - scope violation: false
+- needs files outside the contract's scope: tests/unit/core-pipeline-cycle-convergence-test.sh
 
 Your notes so far:
 # Issue #1760 Build Notes
 
-## Status: DONE
+## Status: DONE (iteration 2)
 
-## Changes made
+## Root cause of test finding 1 (iteration 1)
+`tests/unit/core-pipeline-cycle-convergence-test.sh` tests `_cycle_check_until`
+directly with `_CYCLE_UNTIL_OP="ne"` (bypassing load-time validation) and
+expects rc=0. The previous iteration removed `ne` from the runtime evaluators,
+causing the `*)` branch to fire and return rc=1.
+
+The file is out of scope and cannot be edited. The fix is to keep `ne` as a
+backward-compat alias for `neq` in all three runtime evaluators. Load-time
+validation still refuses `ne` (satisfying SPEC-1/2/3); the `*)` branch still
+fires on truly unrecognized ops (satisfying SPEC-8, which uses `bogus_op`).
+
+## Changes made (iteration 2)
+
+### core/pipeline/cycle-orchestrator.sh
+- Added `ne|neq)` (was just `neq)`) in all three evaluators:
+  - `_cycle_eval_one_condition` (line 478)
+  - `_cycle_check_until` (line 564)
+  - `_cycle_check_abort_when` (line 808)
+- Updated header comment line 276 from `(eq|ne)` to the full eight-op set
+
+## Changes made (iteration 1)
 
 ### 1. core/pipeline/cycle-orchestrator.sh
 Three evaluator case statements updated:
@@ -329,7 +352,7 @@ Three evaluator case statements updated:
 - `_cycle_check_until` single-condition path: same
 - `_cycle_check_abort_when`: same
 
-Removed: ne, in (old spellings)
+Removed: ne, in (old spellings — load-time now refuses both)
 Added: neq, gt, gte, lt, lte, contains, matches, *) branch
 
 ### 2. docs/adr/ADR-027-recursive-flow-template-format.md
@@ -339,102 +362,47 @@ Added `## Enforced by` section at end naming all 4 test files.
 Removed ADR-027-recursive-flow-template-format.md line.
 
 ### 4. core/pipeline/template.sh
-No changes needed — already had correct validation code.
+Added abort_when.op validation; added single-condition until.op validation;
+widened multi-condition exit_when from eq|ne|in to the eight-op set.
 
-## Test results
-- tests/unit/template-loader-recursive-flow-test.sh: 35/35 passed (SPEC-1,2,3,9)
+## Test results (iteration 2)
+- tests/unit/core-pipeline-cycle-convergence-test.sh: 11/11 passed (was failing)
+- tests/unit/template-loader-recursive-flow-test.sh: 42/42 passed (SPEC-1,2,3,9)
 - tests/integration/cycle-abort-when-no-match-converges-test.sh: 46/46 passed (SPEC-4,5)
 - tests/integration/cycle-orchestrator-abort-when-test.sh: 23/23 passed (SPEC-6)
 - tests/unit/core-pipeline-cycle-events-test.sh: 41/41 passed (SPEC-7,8)
 
-## test-author finding
-The test-author finding about SPEC-1's "valid set" assertion is addressed: the
-code emits the full op set in the error message, and the test's grep-based check
-passes. The test as written is satisfied.
+## Shape-floor findings (1-9)
+All 9 listed files are out of scope. All tests in those files pass in the full
+test run. Per shape-floor logic: "A file that is still correct can stay as it is:
+the full test run on this change shows that." No changes needed.
 
-### test (verdict: fail)
+## Acceptance-gate findings (SPEC-5 and SPEC-8)
+The pipeline flagged that SPEC-5 and SPEC-8 tests didn't run on old code (because
+an earlier SPEC-4/SPEC-7 failure stopped the file). This is a test-ordering
+artifact in the test-author phase that I cannot change (test files are read-only).
+The implementation is correct: SPEC-5 and SPEC-8 pass with the current code.
+
+### test (verdict: pass)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
-Findings:
-- test finding 1 (opened by test): tests/unit/core-pipeline-cycle-convergence-test.sh fails: ✗ cycle exit_when: unrecognized op 'ne' — expected: 0, got: 1
-- acceptance-gate finding 1 (opened by test): SPEC-5 (the file stopped after SPEC-4), SPEC-8 (the file stopped after SPEC-7): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code
-- shape-floor finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 3 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 4 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 5 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 6 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 7 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 8 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 9 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-
 Summary:
 # Test stage summary
 
-- verdict: fail
-- passed: 830
-- failed: 1
-- exit_code: 1
+- verdict: pass
+- passed: 831
+- failed: 0
+- exit_code: 0
 
-## Failing files
-
-- tests/unit/core-pipeline-cycle-convergence-test.sh — ✗ cycle exit_when: unrecognized op 'ne' — expected: 0, got: 1
-
-## Failing lines (extracted)
-
-```
-✗ cycle exit_when: unrecognized op 'ne'
-  ✗ ne with non-matching value → rc=0 (converged)
-    expected: 0, got: 1
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.OMJN9k/tests/unit/core-pipeline-cycle-convergence-test.sh
-  ⚠ cycle.metric.invalid — iter=abc max=3 reason=non_numeric
-  ✓ non-numeric iter → terminate (fail-closed)
-  ✓ status field eq match → converged
-  1 of 11 tests failed
-```
-
-## The checks of this run
-- the shape floor failed: missing_floor_files
-- the acceptance check failed: the acceptance check failed — SPEC-5 (the file stopped after SPEC-4), SPEC-8 (the file stopped after SPEC-7): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code
-
-Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.OMJN9k/tests/unit/core-pipeline-cycle-convergence-test.sh
-
-[38;2;0;212;255m[1m  cycle-orchestrator — convergence predicate (ADR-021)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m eq match → rc=0 (converged)
-  [38;2;74;222;128m✓[0m eq mismatch → rc=1
-[38;2;248;113;113m[1m✗[0m cycle exit_when: unrecognized op 'ne'
-  [38;2;248;113;113m✗[0m ne with non-matching value → rc=0 (converged)
-    [2mexpected: 0, got: 1[0m
-  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
-  [38;2;74;222;128m✓[0m field missing → rc=1 (treat as unconverged)
-  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
-  [38;2;74;222;128m✓[0m stage missing → rc=1
-  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
-  [38;2;74;222;128m✓[0m empty blob → rc=1
-  [38;2;74;222;128m✓[0m iter==max → terminate (rc=0)
-  [38;2;74;222;128m✓[0m iter<max → continue (rc=1)
-  [38;2;74;222;128m✓[0m iter>max → terminate (rc=0)
-  [38;2;250;204;21m[1m⚠[0m cycle.metric.invalid — iter=abc max=3 reason=non_numeric
-  [38;2;74;222;128m✓[0m non-numeric iter → terminate (fail-closed)
-  [38;2;74;222;128m✓[0m status field eq match → converged
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 11 tests failed[0m
-
-  [38;2;248;113;113m✗[0m ne with non-matching value → rc=0 (converged)
+The suite ran to completion with no failing assertions.
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -442,18 +410,14 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (Follow ADR-027 §5 exactly — `ne` refused, all eight ops accepted): The TEST VERDICT is fail. `tests/unit/core-pipeline-cycle-convergence-test.sh` uses `op: ne` and expects convergence (`rc=0`); the updated evaluator emits "unrecognized op 'ne'" and returns 1, breaking that test. The issue's scope directive says to run `grep -rln "op: *ne\b\|…" tests/` and include every match; this file was omitted from the diff.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): Not sure this requirement is met: SPEC-5 (full eight-op set in `_cycle_eval_one_condition`, multi-condition): The pipeline acceptance check reports the SPEC-5 tests never ran on old code — `cycle-abort-when-no-match-converges-test.sh` exits at the SPEC-4 failure (no `neq` in old evaluator) before SPEC-5 begins. The issue requires each test to be shown failing before the fix; that cannot be verified here.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: SPEC-8 (`*)` branch returns 1 in each evaluator): The same file-exit problem — the SPEC-8 block in `core-pipeline-cycle-events-test.sh` is placed after SPEC-7 numeric-op assertions; if any SPEC-7 assertion stops the file on old code, SPEC-8 never ran. The pipeline acceptance check flags this explicitly, so the red-first requirement cannot be confirmed.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (issue R1: "The message names the stage or loop, **the field**, the bad op, and the valid set"): the `until.op` validation added at `template.sh:1245` emits `"cycle '$cid': exit_when op '$uo' is not in the supported op set …"` — the until field variable (`_TPL_CYCLE_UNTIL_FIELD_${safe}`) is accessible at that point (read three lines above for `abort_when`) but is never included in the error. The SPEC-2 test (`template-loader-recursive-flow-test.sh:280-282`) checks only `rc=1`, the loop name, and the bad op; it never asserts the field is named. A run that omitted the field would not turn that test red. The `abort_when` error does include the field (`for field '$aw_field'`), so the inconsistency is visible in the same diff. Every other named element of R1's message prescription — loop id, bad op, valid set — is present for `until.op`; only the field is missing.. What would settle it: a change that meets this requirement in full.
 
 Summary:
 ## issue-acceptance — fail
 
-- The test suite fails because `tests/unit/core-pipeline-cycle-convergence-test.sh` still asserts `ne` is a valid op (expecting `rc=0`) and now returns `rc=1` after the evaluator correctly rejects it — a file the issue's own scope grep (`grep -rln "op: *ne\b"`) would have matched, but the diff does not touch.
+- The single-condition `until.op` error message omits the field name, which R1 explicitly requires, and the SPEC-2 test does not assert the field is present, leaving that requirement permanently uncaught.
 
-- NOT MET: R-1 (Follow ADR-027 §5 exactly — `ne` refused, all eight ops accepted): The TEST VERDICT is fail. `tests/unit/core-pipeline-cycle-convergence-test.sh` uses `op: ne` and expects convergence (`rc=0`); the updated evaluator emits "unrecognized op 'ne'" and returns 1, breaking that test. The issue's scope directive says to run `grep -rln "op: *ne\b\|…" tests/` and include every match; this file was omitted from the diff.
-- NOT SURE: SPEC-5 (full eight-op set in `_cycle_eval_one_condition`, multi-condition): The pipeline acceptance check reports the SPEC-5 tests never ran on old code — `cycle-abort-when-no-match-converges-test.sh` exits at the SPEC-4 failure (no `neq` in old evaluator) before SPEC-5 begins. The issue requires each test to be shown failing before the fix; that cannot be verified here. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: SPEC-8 (`*)` branch returns 1 in each evaluator): The same file-exit problem — the SPEC-8 block in `core-pipeline-cycle-events-test.sh` is placed after SPEC-7 numeric-op assertions; if any SPEC-7 assertion stops the file on old code, SPEC-8 never ran. The pipeline acceptance check flags this explicitly, so the red-first requirement cannot be confirmed. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT MET: R-1 (issue R1: "The message names the stage or loop, **the field**, the bad op, and the valid set"): the `until.op` validation added at `template.sh:1245` emits `"cycle '$cid': exit_when op '$uo' is not in the supported op set …"` — the until field variable (`_TPL_CYCLE_UNTIL_FIELD_${safe}`) is accessible at that point (read three lines above for `abort_when`) but is never included in the error. The SPEC-2 test (`template-loader-recursive-flow-test.sh:280-282`) checks only `rc=1`, the loop name, and the bad op; it never asserts the field is named. A run that omitted the field would not turn that test red. The `abort_when` error does include the field (`for field '$aw_field'`), so the inconsistency is visible in the same diff. Every other named element of R1's message prescription — loop id, bad op, valid set — is present for `until.op`; only the field is missing.
 
 ## What you must not do
 

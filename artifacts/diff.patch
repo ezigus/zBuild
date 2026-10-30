@@ -287,7 +287,7 @@ index 60019b30..bb51943d 100644
      _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
      # #833 NOTE #2: only let abort_when overwrite the OUTPUT-banner predicate
 diff --git a/core/pipeline/template.sh b/core/pipeline/template.sh
-index 209614a7..6ed10aee 100644
+index 209614a7..93b95dd8 100644
 --- a/core/pipeline/template.sh
 +++ b/core/pipeline/template.sh
 @@ -1208,8 +1208,8 @@ _tpl_validate_cycles() {
@@ -297,11 +297,11 @@ index 209614a7..6ed10aee 100644
 -                    eq|ne|in) : ;;
 -                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|ne|in, got: $ew_o"; return 1 ;;
 +                    eq|neq|gt|gte|lt|lte|contains|matches) : ;;
-+                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|neq|gt|gte|lt|lte|contains|matches, got: $ew_o"; return 1 ;;
++                    *) error "cycle '$cid': exit_when condition $ew_i (field '$ew_f'): op must be eq|neq|gt|gte|lt|lte|contains|matches, got: $ew_o"; return 1 ;;
                  esac
                  local found=0
                  for s in "${cs[@]}"; do
-@@ -1236,6 +1236,27 @@ _tpl_validate_cycles() {
+@@ -1236,6 +1236,29 @@ _tpl_validate_cycles() {
                  error "cycle '$cid': until.stage '$us' is not in cycle stages (${cs[*]})"
                  return 1
              fi
@@ -309,9 +309,11 @@ index 209614a7..6ed10aee 100644
 +            local uo_var="_TPL_CYCLE_UNTIL_OP_${safe}"
 +            local uo="${!uo_var:-}"
 +            if [[ -n "$uo" ]]; then
++                local uf_var="_TPL_CYCLE_UNTIL_FIELD_${safe}"
++                local uf="${!uf_var:-}"
 +                case "$uo" in
 +                    eq|neq|gt|gte|lt|lte|contains|matches) : ;;
-+                    *) error "cycle '$cid': exit_when op '$uo' is not in the supported op set (eq|neq|gt|gte|lt|lte|contains|matches)"; return 1 ;;
++                    *) error "cycle '$cid': until op '$uo' for field '$uf' is not in the supported op set (eq|neq|gt|gte|lt|lte|contains|matches)"; return 1 ;;
 +                esac
 +            fi
 +        fi
@@ -1006,10 +1008,10 @@ index fe49eeca..bd16a418 100755
 +
  print_test_results
 diff --git a/tests/unit/template-loader-recursive-flow-test.sh b/tests/unit/template-loader-recursive-flow-test.sh
-index 9071339e..3ae42247 100755
+index 9071339e..71909e85 100755
 --- a/tests/unit/template-loader-recursive-flow-test.sh
 +++ b/tests/unit/template-loader-recursive-flow-test.sh
-@@ -186,4 +186,175 @@ set -e
+@@ -186,4 +186,201 @@ set -e
  assert_eq "T11: inline flow form loads rc=0" "0" "$rc"
  assert_eq "T11: stages from inline flow" "intake plan review" "${_TPL_STAGES[*]}"
  
@@ -1106,7 +1108,20 @@ index 9071339e..3ae42247 100755
 +set -e
 +assert_eq "[#1760/SPEC-2] single-condition bad op refused (rc!=0)" "1" "$bad_until_rc"
 +assert_contains "[#1760/SPEC-2] error names the loop" "$bad_until_err" "the_cycle"
++assert_contains "[#1760/SPEC-2] error names the field" "$bad_until_err" "verdict"
 +assert_contains "[#1760/SPEC-2] error names the bad op" "$bad_until_err" "in"
++# Verify the complete eight-op set (eq neq gt gte lt lte contains matches) is
++# named in the error. Each op is checked as a standalone token — word-boundary
++# on both sides — so 'eq' inside 'neq', 'gt' inside 'gte', 'lt' inside 'lte',
++# and 'contains' inside a hypothetical 'contains_all' do not satisfy the check.
++for _spec2_valid_op in eq neq gt gte lt lte contains matches; do
++    if grep -qE "(^|[^[:alnum:]_])${_spec2_valid_op}([^[:alnum:]_]|$)" <<< "$bad_until_err" 2>/dev/null; then
++        assert_pass "[#1760/SPEC-2] error valid-set includes ${_spec2_valid_op}"
++    else
++        assert_fail "[#1760/SPEC-2] error valid-set includes ${_spec2_valid_op}" \
++            "op '${_spec2_valid_op}' not found as standalone token in: $bad_until_err"
++    fi
++done
 +
 +# ── [#1760/SPEC-3] multi-condition exit_when op outside eight-op set refused ──
 +# Each condition's op in a multi-condition exit_when must be validated.
@@ -1143,7 +1158,20 @@ index 9071339e..3ae42247 100755
 +set -e
 +assert_eq "[#1760/SPEC-3] multi-condition bad op refused (rc!=0)" "1" "$bad_multi_rc"
 +assert_contains "[#1760/SPEC-3] error names the loop" "$bad_multi_err" "the_cycle"
++assert_contains "[#1760/SPEC-3] error names the field" "$bad_multi_err" "verdict"
 +assert_contains "[#1760/SPEC-3] error names the bad op" "$bad_multi_err" "ne"
++# Verify the complete eight-op set (eq neq gt gte lt lte contains matches) is
++# named in the error. Each op is checked as a standalone token — word-boundary
++# on both sides — so 'eq' inside 'neq', 'gt' inside 'gte', 'lt' inside 'lte',
++# and 'contains' inside any compound op name do not satisfy the check.
++for _spec3_valid_op in eq neq gt gte lt lte contains matches; do
++    if grep -qE "(^|[^[:alnum:]_])${_spec3_valid_op}([^[:alnum:]_]|$)" <<< "$bad_multi_err" 2>/dev/null; then
++        assert_pass "[#1760/SPEC-3] error valid-set includes ${_spec3_valid_op}"
++    else
++        assert_fail "[#1760/SPEC-3] error valid-set includes ${_spec3_valid_op}" \
++            "op '${_spec3_valid_op}' not found as standalone token in: $bad_multi_err"
++    fi
++done
 +
 +# ── [#1760/SPEC-9] ADR-027 has ## Enforced by section; removed from baseline ──
 +# Post-fix, ADR-027 gains its "## Enforced by" section naming the test files

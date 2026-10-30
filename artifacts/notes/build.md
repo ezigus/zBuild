@@ -1,6 +1,15 @@
 # Issue #1760 Build Notes
 
-## Status: DONE (iteration 2)
+## Status: DONE (iteration 3)
+
+## Issue-acceptance finding fixed (iteration 3)
+The `until.op` validation error omitted the field name. R-1 requires naming the field.
+- Fix 1: Read `_TPL_CYCLE_UNTIL_FIELD_${safe}` into `$uf`; changed error to include `"for field '$uf'"`
+- Fix 2: Multi-condition `exit_when` error at line 1212 also omitted the field (`$ew_f`); changed to include `"(field '$ew_f')"`
+
+Test results (iteration 3):
+- tests/unit/template-loader-recursive-flow-test.sh: 60/60 passed (up from 42)
+- All other acceptance tests: unchanged/passing
 
 ## Root cause of test finding 1 (iteration 1)
 `tests/unit/core-pipeline-cycle-convergence-test.sh` tests `_cycle_check_until`
