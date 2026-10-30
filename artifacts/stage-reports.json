@@ -16,5 +16,10 @@
   ],
   "wiring_files": [
     "core/pipeline/runner.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/unit/engine-combines-map-test.sh"
+    ]
+  }
 }
