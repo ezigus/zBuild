@@ -1,0 +1,1 @@
+{"schema_version":1,"source":"title","requirements":[{"id":"R-1","text":"[bug] the guard against enumerated event lists is itself an enumerated list — two plugins leaked back into engine config and it passed: ## Goal"}]}
