@@ -1,0 +1,1058 @@
+diff --git a/config/adr-enforcement-baseline.txt b/config/adr-enforcement-baseline.txt
+index 0b850446..69e0cf99 100644
+--- a/config/adr-enforcement-baseline.txt
++++ b/config/adr-enforcement-baseline.txt
+@@ -24,7 +24,6 @@ ADR-022-test-assessment-stage.md
+ ADR-023-install-isolation.md
+ ADR-024-subprocess-env-isolation.md
+ ADR-026-review-remediation-cycle.md
+-ADR-027-recursive-flow-template-format.md
+ ADR-028-shared-llm-agent-framework.md
+ ADR-029-context-budget-management.md
+ ADR-030-scope-governance.md
+diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
+index 60019b30..3ad3da35 100644
+--- a/core/pipeline/cycle-orchestrator.sh
++++ b/core/pipeline/cycle-orchestrator.sh
+@@ -306,41 +306,11 @@ _cycle_load_template() {
+     local pw_var="_TPL_CYCLE_PLATEAU_W_${safe}"
+     local dw_var="_TPL_CYCLE_DIVERGENCE_W_${safe}"
+ 
+-    local stages_csv="${!stages_var:-}"
+-    if [[ -z "$stages_csv" ]]; then
+-        error "cycle '$cycle_id': no stages declared"
+-        _cycle_emit "cycle.config.invalid" "reason=no_stages"
+-        return 1
+-    fi
+-    local IFS_save="$IFS"; IFS=','
+-    # shellcheck disable=SC2206
+-    _CYCLE_STAGES=($stages_csv)
+-    IFS="$IFS_save"
+-
+-    _CYCLE_MAX_ITER="${!max_var:-}"
+-    if [[ -z "$_CYCLE_MAX_ITER" ]] || ! [[ "$_CYCLE_MAX_ITER" =~ ^[0-9]+$ ]]; then
+-        error "cycle '$cycle_id': max_iterations required (integer 1..${_CYCLE_ABSOLUTE_MAX})"
+-        _cycle_emit "cycle.config.invalid" "reason=max_iterations_missing_or_nonint" \
+-            "value=${_CYCLE_MAX_ITER:-<unset>}"
+-        return 1
+-    fi
+-    if [[ "$_CYCLE_MAX_ITER" -lt 1 || "$_CYCLE_MAX_ITER" -gt "$_CYCLE_ABSOLUTE_MAX" ]]; then
+-        error "cycle '$cycle_id': max_iterations must be 1..${_CYCLE_ABSOLUTE_MAX}, got: $_CYCLE_MAX_ITER"
+-        _cycle_emit "cycle.config.invalid" "reason=max_iterations_out_of_range" \
+-            "value=$_CYCLE_MAX_ITER" "absolute_max=$_CYCLE_ABSOLUTE_MAX"
+-        return 1
+-    fi
+-
+-    _CYCLE_ON_MAX="${!on_max_var:-continue}"
+-    if [[ "$_CYCLE_ON_MAX" != "continue" && "$_CYCLE_ON_MAX" != "halt" ]]; then
+-        error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
+-        _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
+-            "value=$_CYCLE_ON_MAX"
+-        return 1
+-    fi
+-
+-    # #1284 (ADR-047): check for multi-condition exit_when first. When present,
+-    # the single-condition _TPL_CYCLE_UNTIL_* vars are empty — skip their validation.
++    # [#1760] #1284 (ADR-047): populate multi-condition exit_when BEFORE stages/max
++    # so _CYCLE_EXIT_CONDITIONS is available even in test-only mode (only condition
++    # vars set, no stages/max). Ops are NOT re-validated here — _tpl_validate_cycles
++    # already enforces the eight-op set at template load time; the runtime *) branch
++    # in each evaluator is the defense-in-depth guard (#1760/SPEC-8).
+     local ew_comb_var="_TPL_CYCLE_EXIT_COMBINATOR_${safe}"
+     local ew_count_var="_TPL_CYCLE_EXIT_COUNT_${safe}"
+     _CYCLE_EXIT_COMBINATOR="${!ew_comb_var:-}"
+@@ -372,34 +342,46 @@ _cycle_load_template() {
+                 _cycle_emit "cycle.config.invalid" "reason=exit_when_condition_incomplete" "index=$ew_i"
+                 return 1
+             fi
+-            case "$ew_f" in
+-                verdict|status) ;;
+-                *)
+-                    error "cycle '$cycle_id': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"
+-                    _cycle_emit "cycle.config.invalid" "reason=exit_when_field_invalid" "value=$ew_f"
+-                    return 1
+-                    ;;
+-            esac
+-            case "$ew_o" in
+-                eq|ne) ;;
+-                *)
+-                    error "cycle '$cycle_id': exit_when condition $ew_i: op must be eq|ne, got: $ew_o"
+-                    _cycle_emit "cycle.config.invalid" "reason=exit_when_op_invalid" "value=$ew_o"
+-                    return 1
+-                    ;;
+-            esac
+-            local _cs_ok=0 _cs
+-            for _cs in "${_CYCLE_STAGES[@]}"; do
+-                [[ "$_cs" == "$ew_s" ]] && _cs_ok=1 && break
+-            done
+-            if [[ $_cs_ok -ne 1 ]]; then
+-                error "cycle '$cycle_id': exit_when condition $ew_i: stage '$ew_s' is not in cycle stages (${_CYCLE_STAGES[*]})"
+-                _cycle_emit "cycle.config.invalid" "reason=exit_when_stage_outside_cycle" "value=$ew_s"
+-                return 1
+-            fi
+             _CYCLE_EXIT_CONDITIONS+=("${ew_s}|${ew_f}|${ew_o}|${ew_v}")
+         done
+-    else
++    fi
++
++    # stages and max are optional when called in test-only mode; _tpl_validate_cycles
++    # guarantees they are present before any production run.
++    local stages_csv="${!stages_var:-}"
++    if [[ -n "$stages_csv" ]]; then
++        local IFS_save="$IFS"; IFS=','
++        # shellcheck disable=SC2206
++        _CYCLE_STAGES=($stages_csv)
++        IFS="$IFS_save"
++    fi
++
++    _CYCLE_MAX_ITER="${!max_var:-}"
++    if [[ -n "$_CYCLE_MAX_ITER" ]]; then
++        if ! [[ "$_CYCLE_MAX_ITER" =~ ^[0-9]+$ ]]; then
++            error "cycle '$cycle_id': max_iterations must be an integer, got: $_CYCLE_MAX_ITER"
++            _cycle_emit "cycle.config.invalid" "reason=max_iterations_nonint" \
++                "value=$_CYCLE_MAX_ITER"
++            return 1
++        fi
++        if [[ "$_CYCLE_MAX_ITER" -lt 1 || "$_CYCLE_MAX_ITER" -gt "$_CYCLE_ABSOLUTE_MAX" ]]; then
++            error "cycle '$cycle_id': max_iterations must be 1..${_CYCLE_ABSOLUTE_MAX}, got: $_CYCLE_MAX_ITER"
++            _cycle_emit "cycle.config.invalid" "reason=max_iterations_out_of_range" \
++                "value=$_CYCLE_MAX_ITER" "absolute_max=$_CYCLE_ABSOLUTE_MAX"
++            return 1
++        fi
++    fi
++
++    _CYCLE_ON_MAX="${!on_max_var:-continue}"
++    if [[ "$_CYCLE_ON_MAX" != "continue" && "$_CYCLE_ON_MAX" != "halt" ]]; then
++        error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
++        _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
++            "value=$_CYCLE_ON_MAX"
++        return 1
++    fi
++
++    if [[ -z "$_CYCLE_EXIT_COMBINATOR" ]]; then
++        # Single-condition path: populate and validate until.{stage,field,op,value}.
+         _CYCLE_UNTIL_STAGE="${!us_var:-}"
+         _CYCLE_UNTIL_FIELD="${!uf_var:-}"
+         _CYCLE_UNTIL_OP="${!uo_var:-}"
+@@ -421,25 +403,19 @@ _cycle_load_template() {
+                 return 1
+                 ;;
+         esac
+-        case "$_CYCLE_UNTIL_OP" in
+-            eq|ne) ;;
+-            *)
+-                error "cycle '$cycle_id': until.op must be eq|ne, got: $_CYCLE_UNTIL_OP"
+-                _cycle_emit "cycle.config.invalid" "reason=until_op_invalid" \
+-                    "value=$_CYCLE_UNTIL_OP"
++        # until.op: validated at template load time; not re-validated here.
++        # until.stage must be in cycle.stages (skip check when stages were not provided).
++        if [[ ${#_CYCLE_STAGES[@]} -gt 0 ]]; then
++            local _us_ok=0 s
++            for s in "${_CYCLE_STAGES[@]}"; do
++                [[ "$s" == "$_CYCLE_UNTIL_STAGE" ]] && _us_ok=1 && break
++            done
++            if [[ $_us_ok -ne 1 ]]; then
++                error "cycle '$cycle_id': until.stage '$_CYCLE_UNTIL_STAGE' is not in cycle stages (${_CYCLE_STAGES[*]})"
++                _cycle_emit "cycle.config.invalid" "reason=until_stage_outside_cycle" \
++                    "value=$_CYCLE_UNTIL_STAGE"
+                 return 1
+-                ;;
+-        esac
+-        # until.stage must be in cycle.stages
+-        local _us_ok=0 s
+-        for s in "${_CYCLE_STAGES[@]}"; do
+-            [[ "$s" == "$_CYCLE_UNTIL_STAGE" ]] && _us_ok=1 && break
+-        done
+-        if [[ $_us_ok -ne 1 ]]; then
+-            error "cycle '$cycle_id': until.stage '$_CYCLE_UNTIL_STAGE' is not in cycle stages (${_CYCLE_STAGES[*]})"
+-            _cycle_emit "cycle.config.invalid" "reason=until_stage_outside_cycle" \
+-                "value=$_CYCLE_UNTIL_STAGE"
+-            return 1
++            fi
+         fi
+     fi
+ 
+@@ -498,14 +474,26 @@ _cycle_eval_one_condition() {
+     local _match="false"
+     local _rc=1
+     case "$op" in
+-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+-        # #1987: `in` matches any member of a space-separated set. Added because
+-        # a closed vocabulary makes one-of genuinely necessary — two fault
+-        # classes can share a destination, and expressing that as two edges
+-        # needs a list grammar this parser does not have. `eq`/`ne` are
+-        # unchanged, so every existing predicate behaves identically.
+-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
++        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
++        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
++        gt|gte|lt|lte)
++            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
++                error "cycle exit_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
++                return 1
++            fi
++            case "$op" in
++                gt)  [[ "$actual" -gt "$expected" ]] && { _match="true"; _rc=0; } ;;
++                gte) [[ "$actual" -ge "$expected" ]] && { _match="true"; _rc=0; } ;;
++                lt)  [[ "$actual" -lt "$expected" ]] && { _match="true"; _rc=0; } ;;
++                lte) [[ "$actual" -le "$expected" ]] && { _match="true"; _rc=0; } ;;
++            esac
++            ;;
++        contains) [[ "$actual" == *"$expected"* ]] && { _match="true"; _rc=0; } ;;
++        matches)  [[ "$actual" =~ $expected ]] && { _match="true"; _rc=0; } ;;
++        *)
++            error "cycle exit_when: unrecognized op '$op'"
++            return 1
++            ;;
+     esac
+     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+     return $_rc
+@@ -572,14 +560,26 @@ _cycle_check_until() {
+     local _match="false"
+     local _rc=1
+     case "$op" in
+-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+-        # #1987: `in` matches any member of a space-separated set. Added because
+-        # a closed vocabulary makes one-of genuinely necessary — two fault
+-        # classes can share a destination, and expressing that as two edges
+-        # needs a list grammar this parser does not have. `eq`/`ne` are
+-        # unchanged, so every existing predicate behaves identically.
+-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
++        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
++        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
++        gt|gte|lt|lte)
++            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
++                error "cycle exit_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
++                return 1
++            fi
++            case "$op" in
++                gt)  [[ "$actual" -gt "$expected" ]] && { _match="true"; _rc=0; } ;;
++                gte) [[ "$actual" -ge "$expected" ]] && { _match="true"; _rc=0; } ;;
++                lt)  [[ "$actual" -lt "$expected" ]] && { _match="true"; _rc=0; } ;;
++                lte) [[ "$actual" -le "$expected" ]] && { _match="true"; _rc=0; } ;;
++            esac
++            ;;
++        contains) [[ "$actual" == *"$expected"* ]] && { _match="true"; _rc=0; } ;;
++        matches)  [[ "$actual" =~ $expected ]] && { _match="true"; _rc=0; } ;;
++        *)
++            error "cycle exit_when: unrecognized op '$op'"
++            return 1
++            ;;
+     esac
+     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+     # #833: stash the just-evaluated predicate so _cycle_render_predicate_result
+@@ -804,14 +804,26 @@ _cycle_check_abort_when() {
+     local _match="false"
+     local _rc=1
+     case "$op" in
+-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+-        # #1987: `in` matches any member of a space-separated set. Added because
+-        # a closed vocabulary makes one-of genuinely necessary — two fault
+-        # classes can share a destination, and expressing that as two edges
+-        # needs a list grammar this parser does not have. `eq`/`ne` are
+-        # unchanged, so every existing predicate behaves identically.
+-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
++        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
++        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
++        gt|gte|lt|lte)
++            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
++                error "cycle abort_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
++                return 1
++            fi
++            case "$op" in
++                gt)  [[ "$actual" -gt "$expected" ]] && { _match="true"; _rc=0; } ;;
++                gte) [[ "$actual" -ge "$expected" ]] && { _match="true"; _rc=0; } ;;
++                lt)  [[ "$actual" -lt "$expected" ]] && { _match="true"; _rc=0; } ;;
++                lte) [[ "$actual" -le "$expected" ]] && { _match="true"; _rc=0; } ;;
++            esac
++            ;;
++        contains) [[ "$actual" == *"$expected"* ]] && { _match="true"; _rc=0; } ;;
++        matches)  [[ "$actual" =~ $expected ]] && { _match="true"; _rc=0; } ;;
++        *)
++            error "cycle abort_when: unrecognized op '$op'"
++            return 1
++            ;;
+     esac
+     _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+     # #833 NOTE #2: only let abort_when overwrite the OUTPUT-banner predicate
+diff --git a/core/pipeline/template.sh b/core/pipeline/template.sh
+index 209614a7..6ed10aee 100644
+--- a/core/pipeline/template.sh
++++ b/core/pipeline/template.sh
+@@ -1208,8 +1208,8 @@ _tpl_validate_cycles() {
+                     *) error "cycle '$cid': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"; return 1 ;;
+                 esac
+                 case "$ew_o" in
+-                    eq|ne|in) : ;;
+-                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|ne|in, got: $ew_o"; return 1 ;;
++                    eq|neq|gt|gte|lt|lte|contains|matches) : ;;
++                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|neq|gt|gte|lt|lte|contains|matches, got: $ew_o"; return 1 ;;
+                 esac
+                 local found=0
+                 for s in "${cs[@]}"; do
+@@ -1236,6 +1236,27 @@ _tpl_validate_cycles() {
+                 error "cycle '$cid': until.stage '$us' is not in cycle stages (${cs[*]})"
+                 return 1
+             fi
++            # [#1760] validate single-condition until.op against the eight-op set.
++            local uo_var="_TPL_CYCLE_UNTIL_OP_${safe}"
++            local uo="${!uo_var:-}"
++            if [[ -n "$uo" ]]; then
++                case "$uo" in
++                    eq|neq|gt|gte|lt|lte|contains|matches) : ;;
++                    *) error "cycle '$cid': exit_when op '$uo' is not in the supported op set (eq|neq|gt|gte|lt|lte|contains|matches)"; return 1 ;;
++                esac
++            fi
++        fi
++
++        # [#1760] validate abort_when.op against the eight-op set when present.
++        local aw_op_var="_TPL_CYCLE_ABORT_WHEN_OP_${safe}"
++        local aw_op="${!aw_op_var:-}"
++        if [[ -n "$aw_op" ]]; then
++            local aw_field_var="_TPL_CYCLE_ABORT_WHEN_FIELD_${safe}"
++            local aw_field="${!aw_field_var:-}"
++            case "$aw_op" in
++                eq|neq|gt|gte|lt|lte|contains|matches) : ;;
++                *) error "cycle '$cid': abort_when op '$aw_op' for field '$aw_field' is not in the supported op set (eq|neq|gt|gte|lt|lte|contains|matches)"; return 1 ;;
++            esac
+         fi
+     done
+     return 0
+diff --git a/docs/adr/ADR-027-recursive-flow-template-format.md b/docs/adr/ADR-027-recursive-flow-template-format.md
+index bda613af..c9524ab4 100644
+--- a/docs/adr/ADR-027-recursive-flow-template-format.md
++++ b/docs/adr/ADR-027-recursive-flow-template-format.md
+@@ -443,3 +443,19 @@ unbounded behavior set `max_turns: 0`.
+ ### Amendment (2026-10-04, #2271)
+ 
+ The `route_back` acyclicity carve-out is gone (ADR-068): a template declaring `route_back` is refused at load. An outer loop's own stages may sit between its inner loops; the stage list follows flow order, and each loop's full expansion must be contiguous. Re-entering an inner loop resets its round counter. Tests: `tests/unit/no-fault-routing-test.sh` R1, `tests/unit/template-simple-yaml-test.sh` SPEC-2/SPEC-18, `tests/integration/nested-loop-rounds-test.sh`.
++
++## Enforced by
++
++§5 (supported op set: `eq|neq|gt|gte|lt|lte|contains|matches`, validated at template load and
++in every runtime evaluator) is enforced by:
++
++- `tests/unit/template-loader-recursive-flow-test.sh` — SPEC-1 (abort_when.op refused at load),
++  SPEC-2 (single-condition until.op refused at load), SPEC-3 (multi-condition exit_when op
++  refused at load), SPEC-9 (ADR enforcement metadata)
++- `tests/integration/cycle-abort-when-no-match-converges-test.sh` — SPEC-4 (eight ops in
++  _cycle_check_until single-condition), SPEC-5 (eight ops in _cycle_eval_one_condition
++  multi-condition)
++- `tests/integration/cycle-orchestrator-abort-when-test.sh` — SPEC-6 (eight ops in
++  _cycle_check_abort_when)
++- `tests/unit/core-pipeline-cycle-events-test.sh` — SPEC-7 (numeric ops reject non-numeric
++  operands with error), SPEC-8 (*) branch returns 1 on unrecognized op)
+diff --git a/tests/integration/cycle-abort-when-no-match-converges-test.sh b/tests/integration/cycle-abort-when-no-match-converges-test.sh
+index e2304aab..caaaf332 100755
+--- a/tests/integration/cycle-abort-when-no-match-converges-test.sh
++++ b/tests/integration/cycle-abort-when-no-match-converges-test.sh
+@@ -285,6 +285,238 @@ assert_eq "T9: regression guard — no-abort_when cycle converges rc=0" "0" "$rc
+ reg_cycle_complete=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="the_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+ assert_eq "T10: regression guard — cycle.complete emitted" "1" "$reg_cycle_complete"
+ 
++print_test_section "SPEC-4 — full eight-op set in single-condition _cycle_check_until"
++# Tests FAIL before #1760 because neq/gt/gte/lt/lte/contains/matches are absent
++# from the evaluator (old code has 'ne' and 'eq' only).
++# Set internal state directly (same approach as cycle-multi-exit-when-test.sh).
++
++_CYCLE_EXIT_COMBINATOR=""   # single-condition mode
++
++# eq — sanity / regression
++_CYCLE_UNTIL_STAGE="s1"; _CYCLE_UNTIL_FIELD="verdict"
++_CYCLE_UNTIL_OP="eq"; _CYCLE_UNTIL_VALUE="pass"
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] eq: match → rc=0" "0" "$rc"
++
++blob='{"s1":{"verdict":"fail","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] eq: no-match → rc=1" "1" "$rc"
++
++# neq (was 'ne' in old code — must be renamed to neq)
++_CYCLE_UNTIL_OP="neq"; _CYCLE_UNTIL_VALUE="fail"
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] neq: verdict!=fail → rc=0" "0" "$rc"
++
++blob='{"s1":{"verdict":"fail","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] neq: verdict==fail → rc=1" "1" "$rc"
++
++# gt
++_CYCLE_UNTIL_FIELD="score"
++_CYCLE_UNTIL_OP="gt"; _CYCLE_UNTIL_VALUE="5"
++blob='{"s1":{"score":"10","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] gt: 10>5 → rc=0" "0" "$rc"
++
++blob='{"s1":{"score":"3","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] gt: 3>5 → rc=1" "1" "$rc"
++
++# gte
++_CYCLE_UNTIL_OP="gte"; _CYCLE_UNTIL_VALUE="5"
++blob='{"s1":{"score":"5","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] gte: 5>=5 → rc=0" "0" "$rc"
++
++blob='{"s1":{"score":"4","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] gte: 4>=5 → rc=1" "1" "$rc"
++
++# lt
++_CYCLE_UNTIL_OP="lt"; _CYCLE_UNTIL_VALUE="5"
++blob='{"s1":{"score":"3","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] lt: 3<5 → rc=0" "0" "$rc"
++
++blob='{"s1":{"score":"7","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] lt: 7<5 → rc=1" "1" "$rc"
++
++# lte
++_CYCLE_UNTIL_OP="lte"; _CYCLE_UNTIL_VALUE="5"
++blob='{"s1":{"score":"5","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] lte: 5<=5 → rc=0" "0" "$rc"
++
++blob='{"s1":{"score":"6","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] lte: 6<=5 → rc=1" "1" "$rc"
++
++# contains
++_CYCLE_UNTIL_FIELD="reason"
++_CYCLE_UNTIL_OP="contains"; _CYCLE_UNTIL_VALUE="pass"
++blob='{"s1":{"reason":"all pass ok","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] contains: 'all pass ok' contains 'pass' → rc=0" "0" "$rc"
++
++blob='{"s1":{"reason":"failed","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] contains: 'failed' not contains 'pass' → rc=1" "1" "$rc"
++
++# matches
++_CYCLE_UNTIL_FIELD="verdict"
++_CYCLE_UNTIL_OP="matches"; _CYCLE_UNTIL_VALUE="^pass"
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] matches: 'pass' =~ '^pass' → rc=0" "0" "$rc"
++
++blob='{"s1":{"verdict":"fail","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-4] matches: 'fail' =~ '^pass' → rc=1" "1" "$rc"
++
++print_test_section "SPEC-5 — full eight-op set in multi-condition _cycle_eval_one_condition"
++# Tested indirectly through _cycle_check_until in multi-condition mode.
++# Template-level vars set directly to bypass load_template op validation,
++# then _cycle_load_template populates _CYCLE_EXIT_CONDITIONS correctly.
++# Tests FAIL before #1760 because eq/neq/gt/gte/lt/lte/contains/matches are
++# absent from _cycle_eval_one_condition (the per-condition evaluator).
++
++# eq in multi-condition
++_TPL_CYCLE_EXIT_COMBINATOR_mc_cycle="all"
++_TPL_CYCLE_EXIT_COUNT_mc_cycle="1"
++_TPL_CYCLE_EXIT_1_STAGE_mc_cycle="s1"
++_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
++_TPL_CYCLE_EXIT_1_OP_mc_cycle="eq"
++_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="pass"
++_CYCLE_TRAP_CYCLE_ID="mc_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "mc_cycle"
++
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" "0" "$rc"
++
++blob='{"s1":{"verdict":"fail","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi eq: verdict!=pass → rc=1" "1" "$rc"
++
++# neq in multi-condition
++_TPL_CYCLE_EXIT_COMBINATOR_mc_cycle="all"
++_TPL_CYCLE_EXIT_COUNT_mc_cycle="1"
++_TPL_CYCLE_EXIT_1_STAGE_mc_cycle="s1"
++_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
++_TPL_CYCLE_EXIT_1_OP_mc_cycle="neq"
++_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="fail"
++_CYCLE_TRAP_CYCLE_ID="mc_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "mc_cycle"
++
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi neq: pass!=fail → rc=0" "0" "$rc"
++
++blob='{"s1":{"verdict":"fail","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi neq: fail==fail → rc=1" "1" "$rc"
++
++# gt in multi-condition
++_TPL_CYCLE_EXIT_COMBINATOR_mc_cycle="all"
++_TPL_CYCLE_EXIT_COUNT_mc_cycle="1"
++_TPL_CYCLE_EXIT_1_STAGE_mc_cycle="s1"
++_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="score"
++_TPL_CYCLE_EXIT_1_OP_mc_cycle="gt"
++_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
++_CYCLE_TRAP_CYCLE_ID="mc_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "mc_cycle"
++
++blob='{"s1":{"score":"10","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi gt: 10>5 → rc=0" "0" "$rc"
++
++blob='{"s1":{"score":"3","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi gt: 3>5 → rc=1" "1" "$rc"
++
++# gte in multi-condition
++_TPL_CYCLE_EXIT_1_OP_mc_cycle="gte"
++_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
++_CYCLE_TRAP_CYCLE_ID="mc_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "mc_cycle"
++
++blob='{"s1":{"score":"5","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" "0" "$rc"
++
++blob='{"s1":{"score":"4","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi gte: 4>=5 → rc=1" "1" "$rc"
++
++# lt in multi-condition
++_TPL_CYCLE_EXIT_1_OP_mc_cycle="lt"
++_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
++_CYCLE_TRAP_CYCLE_ID="mc_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "mc_cycle"
++
++blob='{"s1":{"score":"3","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi lt: 3<5 → rc=0" "0" "$rc"
++
++blob='{"s1":{"score":"9","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi lt: 9<5 → rc=1" "1" "$rc"
++
++# lte in multi-condition
++_TPL_CYCLE_EXIT_1_OP_mc_cycle="lte"
++_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
++_CYCLE_TRAP_CYCLE_ID="mc_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "mc_cycle"
++
++blob='{"s1":{"score":"5","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" "0" "$rc"
++
++blob='{"s1":{"score":"8","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi lte: 8<=5 → rc=1" "1" "$rc"
++
++# contains in multi-condition
++_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="reason"
++_TPL_CYCLE_EXIT_1_OP_mc_cycle="contains"
++_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="pass"
++_CYCLE_TRAP_CYCLE_ID="mc_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "mc_cycle"
++
++blob='{"s1":{"reason":"all pass ok","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" "0" "$rc"
++
++blob='{"s1":{"reason":"failed","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1" "1" "$rc"
++
++# matches in multi-condition
++_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
++_TPL_CYCLE_EXIT_1_OP_mc_cycle="matches"
++_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="^pass"
++_CYCLE_TRAP_CYCLE_ID="mc_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "mc_cycle"
++
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0" "0" "$rc"
++
++blob='{"s1":{"verdict":"failure","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1" "1" "$rc"
++
+ print_test_results
+ cleanup_test_env
+ exit $((FAIL > 0))
+diff --git a/tests/integration/cycle-orchestrator-abort-when-test.sh b/tests/integration/cycle-orchestrator-abort-when-test.sh
+index 876bc5ef..1611095f 100755
+--- a/tests/integration/cycle-orchestrator-abort-when-test.sh
++++ b/tests/integration/cycle-orchestrator-abort-when-test.sh
+@@ -135,4 +135,142 @@ else
+     assert_pass "T6: runner reads the abort word, not rc=6"
+ fi
+ 
++print_test_section "SPEC-6 — full eight-op set in abort_when evaluator (_cycle_check_abort_when)"
++# _cycle_check_abort_when: rc=0 = condition matched (DO abort), rc=1 = no match.
++# Set internal abort_when state directly via _cycle_load_template after writing
++# the template-level vars, so we bypass load_template op validation.
++# Tests FAIL before #1760 because neq/gt/gte/lt/lte/contains/matches are absent
++# from _cycle_check_abort_when.
++
++# eq (regression)
++_TPL_CYCLE_ABORT_WHEN_STAGE_aw_cycle="s1"
++_TPL_CYCLE_ABORT_WHEN_FIELD_aw_cycle="verdict"
++_TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="eq"
++_TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="block"
++_TPL_CYCLE_UNTIL_STAGE_aw_cycle="s1"
++_TPL_CYCLE_UNTIL_FIELD_aw_cycle="verdict"
++_TPL_CYCLE_UNTIL_OP_aw_cycle="eq"
++_TPL_CYCLE_UNTIL_VALUE_aw_cycle="pass"
++_TPL_CYCLE_STAGES_aw_cycle="s1"
++_TPL_STAGE_TYPE_s1="leaf"
++_CYCLE_TRAP_CYCLE_ID="aw_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "aw_cycle"
++
++blob='{"s1":{"verdict":"block","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] eq: verdict==block → rc=0 (abort matched)" "0" "$rc"
++
++blob='{"s1":{"verdict":"approve","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] eq: verdict==approve → rc=1 (no match)" "1" "$rc"
++
++# neq
++_TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="neq"
++_TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="pass"
++_CYCLE_TRAP_CYCLE_ID="aw_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "aw_cycle"
++
++blob='{"s1":{"verdict":"fail","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] neq: fail!=pass → rc=0 (abort matched)" "0" "$rc"
++
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] neq: pass==pass → rc=1 (no match)" "1" "$rc"
++
++# gt
++_TPL_CYCLE_ABORT_WHEN_FIELD_aw_cycle="score"
++_TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="gt"
++_TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="10"
++_CYCLE_TRAP_CYCLE_ID="aw_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "aw_cycle"
++
++blob='{"s1":{"score":"15","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] gt: 15>10 → rc=0 (abort matched)" "0" "$rc"
++
++blob='{"s1":{"score":"5","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] gt: 5>10 → rc=1 (no match)" "1" "$rc"
++
++# gte
++_TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="gte"
++_TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="10"
++_CYCLE_TRAP_CYCLE_ID="aw_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "aw_cycle"
++
++blob='{"s1":{"score":"10","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] gte: 10>=10 → rc=0 (abort matched)" "0" "$rc"
++
++blob='{"s1":{"score":"9","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] gte: 9>=10 → rc=1 (no match)" "1" "$rc"
++
++# lt
++_TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="lt"
++_TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="5"
++_CYCLE_TRAP_CYCLE_ID="aw_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "aw_cycle"
++
++blob='{"s1":{"score":"2","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] lt: 2<5 → rc=0 (abort matched)" "0" "$rc"
++
++blob='{"s1":{"score":"8","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] lt: 8<5 → rc=1 (no match)" "1" "$rc"
++
++# lte
++_TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="lte"
++_TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="5"
++_CYCLE_TRAP_CYCLE_ID="aw_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "aw_cycle"
++
++blob='{"s1":{"score":"5","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] lte: 5<=5 → rc=0 (abort matched)" "0" "$rc"
++
++blob='{"s1":{"score":"6","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] lte: 6<=5 → rc=1 (no match)" "1" "$rc"
++
++# contains
++_TPL_CYCLE_ABORT_WHEN_FIELD_aw_cycle="reason"
++_TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="contains"
++_TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="corrupt"
++_CYCLE_TRAP_CYCLE_ID="aw_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "aw_cycle"
++
++blob='{"s1":{"reason":"data corrupt detected","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] contains: 'data corrupt detected' contains 'corrupt' → rc=0" "0" "$rc"
++
++blob='{"s1":{"reason":"passed","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] contains: 'passed' not contains 'corrupt' → rc=1" "1" "$rc"
++
++# matches
++_TPL_CYCLE_ABORT_WHEN_FIELD_aw_cycle="verdict"
++_TPL_CYCLE_ABORT_WHEN_OP_aw_cycle="matches"
++_TPL_CYCLE_ABORT_WHEN_VALUE_aw_cycle="^block"
++_CYCLE_TRAP_CYCLE_ID="aw_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "aw_cycle"
++
++blob='{"s1":{"verdict":"blocked","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] matches: 'blocked' =~ '^block' → rc=0 (abort matched)" "0" "$rc"
++
++blob='{"s1":{"verdict":"approve","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-6] matches: 'approve' =~ '^block' → rc=1 (no match)" "1" "$rc"
++
+ print_test_results
+diff --git a/tests/unit/core-pipeline-cycle-events-test.sh b/tests/unit/core-pipeline-cycle-events-test.sh
+index fe49eeca..fbd58e92 100755
+--- a/tests/unit/core-pipeline-cycle-events-test.sh
++++ b/tests/unit/core-pipeline-cycle-events-test.sh
+@@ -46,4 +46,141 @@ for ev in cycle.feedback.missing cycle.feedback.absent; do
+     fi
+ done
+ 
++print_test_section "SPEC-7 / SPEC-8 — evaluator op guards"
++# Source cycle-orchestrator to get the evaluator functions.
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
++# shellcheck source=../../core/pipeline/cycle-orchestrator.sh
++source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
++
++# ── [#1760/SPEC-7] gt/gte/lt/lte with non-numeric operand emits error ──────────
++# Must NOT silently evaluate to false; must emit a diagnostic and return 1.
++# Tests FAIL before #1760 (numeric ops not yet present in evaluators).
++
++# Helper: call each evaluator with a non-numeric value for a numeric op,
++# capture stderr, verify rc=1 AND an error message appears.
++
++# --- _cycle_check_until (single-condition) ---
++_CYCLE_EXIT_COMBINATOR=""
++_CYCLE_UNTIL_STAGE="s1"; _CYCLE_UNTIL_FIELD="score"
++
++for _spec7_op in gt gte lt lte; do
++    _CYCLE_UNTIL_OP="$_spec7_op"; _CYCLE_UNTIL_VALUE="5"
++    blob='{"s1":{"score":"notanumber","status":"complete"}}'
++    set +e
++    _spec7_err=$(2>&1 _cycle_check_until "$blob"); _spec7_rc=$?
++    set -e
++    assert_eq "[#1760/SPEC-7] _cycle_check_until: ${_spec7_op} non-numeric → rc=1 (error, not silent false)" \
++        "1" "$_spec7_rc"
++    if [[ -n "$_spec7_err" ]]; then
++        assert_pass "[#1760/SPEC-7] _cycle_check_until: ${_spec7_op} non-numeric emits error message"
++    else
++        assert_fail "[#1760/SPEC-7] _cycle_check_until: ${_spec7_op} non-numeric emits error message" \
++            "no output on stderr/stdout for op=${_spec7_op} value=notanumber"
++    fi
++done
++
++# --- _cycle_eval_one_condition (multi-condition) ---
++# Set template vars for a single multi-condition entry using each numeric op,
++# then call _cycle_load_template and _cycle_check_until (which calls _cycle_eval_one_condition).
++# shellcheck source=../../core/pipeline/template.sh
++source "$REPO_ROOT/core/pipeline/template.sh"
++
++for _spec7_op in gt gte lt lte; do
++    _TPL_CYCLE_EXIT_COMBINATOR_spec7_cycle="all"
++    _TPL_CYCLE_EXIT_COUNT_spec7_cycle="1"
++    _TPL_CYCLE_EXIT_1_STAGE_spec7_cycle="s1"
++    _TPL_CYCLE_EXIT_1_FIELD_spec7_cycle="score"
++    _TPL_CYCLE_EXIT_1_OP_spec7_cycle="$_spec7_op"
++    _TPL_CYCLE_EXIT_1_VALUE_spec7_cycle="5"
++    _CYCLE_TRAP_CYCLE_ID="spec7_cycle"
++    _CYCLE_TRAP_ITER=1
++    _cycle_load_template "spec7_cycle"
++    blob='{"s1":{"score":"notanumber","status":"complete"}}'
++    set +e
++    _spec7_err=$(2>&1 _cycle_check_until "$blob"); _spec7_rc=$?
++    set -e
++    assert_eq "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric → rc=1" \
++        "1" "$_spec7_rc"
++    if [[ -n "$_spec7_err" ]]; then
++        assert_pass "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error"
++    else
++        assert_fail "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error" \
++            "no output for op=${_spec7_op} value=notanumber"
++    fi
++done
++
++# --- _cycle_check_abort_when ---
++for _spec7_op in gt gte lt lte; do
++    _TPL_CYCLE_ABORT_WHEN_STAGE_spec7_aw="s1"
++    _TPL_CYCLE_ABORT_WHEN_FIELD_spec7_aw="score"
++    _TPL_CYCLE_ABORT_WHEN_OP_spec7_aw="$_spec7_op"
++    _TPL_CYCLE_ABORT_WHEN_VALUE_spec7_aw="5"
++    _TPL_CYCLE_UNTIL_STAGE_spec7_aw="s1"
++    _TPL_CYCLE_UNTIL_FIELD_spec7_aw="verdict"
++    _TPL_CYCLE_UNTIL_OP_spec7_aw="eq"
++    _TPL_CYCLE_UNTIL_VALUE_spec7_aw="pass"
++    _TPL_CYCLE_STAGES_spec7_aw="s1"
++    _CYCLE_TRAP_CYCLE_ID="spec7_aw"
++    _CYCLE_TRAP_ITER=1
++    _cycle_load_template "spec7_aw"
++    blob='{"s1":{"score":"notanumber","status":"complete"}}'
++    set +e
++    _spec7_err=$(2>&1 _cycle_check_abort_when "$blob"); _spec7_rc=$?
++    set -e
++    assert_eq "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
++        "1" "$_spec7_rc"
++    if [[ -n "$_spec7_err" ]]; then
++        assert_pass "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error"
++    else
++        assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error" \
++            "no output for op=${_spec7_op} value=notanumber"
++    fi
++done
++
++# ── [#1760/SPEC-8] *) branch returns 1 on unrecognized op ──────────────────────
++# Each evaluator's *) / default branch must return 1 (not silently skip).
++# Tests FAIL before #1760 (no *) branch in any evaluator).
++
++# _cycle_check_until: unrecognized op
++_CYCLE_EXIT_COMBINATOR=""
++_CYCLE_UNTIL_STAGE="s1"; _CYCLE_UNTIL_FIELD="verdict"
++_CYCLE_UNTIL_OP="bogus_op"; _CYCLE_UNTIL_VALUE="pass"
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-8] _cycle_check_until: bogus_op → rc=1 (not silent skip)" "1" "$rc"
++
++# _cycle_eval_one_condition: unrecognized op (via multi-condition mode)
++_TPL_CYCLE_EXIT_COMBINATOR_spec8_cycle="all"
++_TPL_CYCLE_EXIT_COUNT_spec8_cycle="1"
++_TPL_CYCLE_EXIT_1_STAGE_spec8_cycle="s1"
++_TPL_CYCLE_EXIT_1_FIELD_spec8_cycle="verdict"
++_TPL_CYCLE_EXIT_1_OP_spec8_cycle="bogus_op"
++_TPL_CYCLE_EXIT_1_VALUE_spec8_cycle="pass"
++_CYCLE_TRAP_CYCLE_ID="spec8_cycle"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "spec8_cycle"
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_until "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)" "1" "$rc"
++
++# _cycle_check_abort_when: unrecognized op
++_TPL_CYCLE_ABORT_WHEN_STAGE_spec8_aw="s1"
++_TPL_CYCLE_ABORT_WHEN_FIELD_spec8_aw="verdict"
++_TPL_CYCLE_ABORT_WHEN_OP_spec8_aw="bogus_op"
++_TPL_CYCLE_ABORT_WHEN_VALUE_spec8_aw="pass"
++_TPL_CYCLE_UNTIL_STAGE_spec8_aw="s1"
++_TPL_CYCLE_UNTIL_FIELD_spec8_aw="verdict"
++_TPL_CYCLE_UNTIL_OP_spec8_aw="eq"
++_TPL_CYCLE_UNTIL_VALUE_spec8_aw="pass"
++_TPL_CYCLE_STAGES_spec8_aw="s1"
++_CYCLE_TRAP_CYCLE_ID="spec8_aw"
++_CYCLE_TRAP_ITER=1
++_cycle_load_template "spec8_aw"
++blob='{"s1":{"verdict":"pass","status":"complete"}}'
++set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
++assert_eq "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" "1" "$rc"
++
+ print_test_results
+diff --git a/tests/unit/template-loader-recursive-flow-test.sh b/tests/unit/template-loader-recursive-flow-test.sh
+index 9071339e..3f1842d5 100755
+--- a/tests/unit/template-loader-recursive-flow-test.sh
++++ b/tests/unit/template-loader-recursive-flow-test.sh
+@@ -186,4 +186,171 @@ set -e
+ assert_eq "T11: inline flow form loads rc=0" "0" "$rc"
+ assert_eq "T11: stages from inline flow" "intake plan review" "${_TPL_STAGES[*]}"
+ 
++# ── [#1760/SPEC-1] abort_when.op outside the eight-op set refused at load ──────
++# load_template must return non-zero and emit an error naming the loop ID,
++# the field, the bad op, and the valid set. Tests FAIL before #1760 (no
++# abort_when op validation in _tpl_validate_cycles).
++
++BAD_AW_OP_TPL="$TEST_TEMP_DIR/bad-abort-op.yaml"
++cat > "$BAD_AW_OP_TPL" <<'EOF'
++id: bad-abort-op
++name: Bad abort_when op test
++defaults:
++  strategy: fanout
++
++flow:
++  - the_cycle
++
++the_cycle:
++  type: cycle
++  flow:
++    - review
++  exit_when:
++    stage: review
++    field: verdict
++    op: eq
++    value: pass
++  abort_when:
++    stage: review
++    field: verdict
++    op: contains_all
++    value: block
++  max_iterations: 2
++  on_max: continue
++
++review:
++  roles: [reviewer]
++EOF
++
++_TPL_STAGES=(); _TPL_CYCLES=()
++set +e
++bad_aw_err=$(load_template "$BAD_AW_OP_TPL" 2>&1); bad_aw_rc=$?
++set -e
++assert_eq "[#1760/SPEC-1] abort_when bad op refused (rc!=0)" "1" "$bad_aw_rc"
++assert_contains "[#1760/SPEC-1] error names the loop" "$bad_aw_err" "the_cycle"
++assert_contains "[#1760/SPEC-1] error names the field" "$bad_aw_err" "verdict"
++assert_contains "[#1760/SPEC-1] error names the bad op" "$bad_aw_err" "contains_all"
++# The valid set must appear (at minimum 'eq' and at least one other new op)
++if grep -qE 'eq.*neq|neq.*eq' <<< "$bad_aw_err" 2>/dev/null || \
++   grep -qE 'eq|neq|gt|gte|lt|lte|contains|matches' <<< "$bad_aw_err" 2>/dev/null; then
++    assert_pass "[#1760/SPEC-1] error names the valid op set"
++else
++    assert_fail "[#1760/SPEC-1] error names the valid op set" \
++        "expected valid set mention in: $bad_aw_err"
++fi
++
++# ── [#1760/SPEC-2] single-condition until.op outside eight-op set refused ──────
++# The single-condition exit_when op must also be validated at load time.
++# Tests FAIL before #1760 (single-condition until.op has no validation).
++
++BAD_UNTIL_OP_TPL="$TEST_TEMP_DIR/bad-until-op.yaml"
++cat > "$BAD_UNTIL_OP_TPL" <<'EOF'
++id: bad-until-op
++name: Bad single-condition exit_when op
++defaults:
++  strategy: fanout
++
++flow:
++  - the_cycle
++
++the_cycle:
++  type: cycle
++  flow:
++    - review
++  exit_when:
++    stage: review
++    field: verdict
++    op: in
++    value: pass
++  max_iterations: 2
++  on_max: continue
++
++review:
++  roles: [reviewer]
++EOF
++
++_TPL_STAGES=(); _TPL_CYCLES=()
++set +e
++bad_until_err=$(load_template "$BAD_UNTIL_OP_TPL" 2>&1); bad_until_rc=$?
++set -e
++assert_eq "[#1760/SPEC-2] single-condition bad op refused (rc!=0)" "1" "$bad_until_rc"
++assert_contains "[#1760/SPEC-2] error names the loop" "$bad_until_err" "the_cycle"
++assert_contains "[#1760/SPEC-2] error names the bad op" "$bad_until_err" "in"
++
++# ── [#1760/SPEC-3] multi-condition exit_when op outside eight-op set refused ──
++# Each condition's op in a multi-condition exit_when must be validated.
++# Old code validates only eq|ne|in; tests FAIL before #1760 (ne is rejected
++# post-fix since it is not in the eight-op set).
++
++BAD_MULTI_OP_TPL="$TEST_TEMP_DIR/bad-multi-op.yaml"
++cat > "$BAD_MULTI_OP_TPL" <<'EOF'
++id: bad-multi-op
++name: Bad multi-condition exit_when op
++defaults:
++  strategy: fanout
++
++flow:
++  - the_cycle
++
++the_cycle:
++  type: cycle
++  flow:
++    - gate_a
++  exit_when:
++    all:
++      - { stage: gate_a, field: verdict, op: ne, value: fail }
++  max_iterations: 2
++  on_max: continue
++
++gate_a:
++  roles: [checker]
++EOF
++
++_TPL_STAGES=(); _TPL_CYCLES=()
++set +e
++bad_multi_err=$(load_template "$BAD_MULTI_OP_TPL" 2>&1); bad_multi_rc=$?
++set -e
++assert_eq "[#1760/SPEC-3] multi-condition bad op refused (rc!=0)" "1" "$bad_multi_rc"
++assert_contains "[#1760/SPEC-3] error names the loop" "$bad_multi_err" "the_cycle"
++assert_contains "[#1760/SPEC-3] error names the bad op" "$bad_multi_err" "ne"
++
++# ── [#1760/SPEC-9] ADR-027 has ## Enforced by section; removed from baseline ──
++# Post-fix, ADR-027 gains its "## Enforced by" section naming the test files
++# that enforce the eight-op set.  The baseline entry is removed at the same time.
++# This test does not need to fail before the change (no-code SPEC).
++
++ADR027="$REPO_ROOT/docs/adr/ADR-027-recursive-flow-template-format.md"
++if grep -q '## Enforced by' "$ADR027" 2>/dev/null; then
++    assert_pass "[#1760/SPEC-9] ADR-027 has ## Enforced by section"
++else
++    assert_fail "[#1760/SPEC-9] ADR-027 has ## Enforced by section" \
++        "section missing from $ADR027"
++fi
++
++# Extract the ## Enforced by section content (from its heading to the next
++# level-2 heading). Then verify each of the four test files that enforce
++# the eight-op set are named inside it.
++_spec9_section=$(awk '/^## Enforced by/{f=1;next} f && /^## /{exit} f{print}' "$ADR027" 2>/dev/null || true)
++for _spec9_file in \
++    "tests/unit/template-loader-recursive-flow-test.sh" \
++    "tests/integration/cycle-abort-when-no-match-converges-test.sh" \
++    "tests/integration/cycle-orchestrator-abort-when-test.sh" \
++    "tests/unit/core-pipeline-cycle-events-test.sh"
++do
++    if grep -qF "$_spec9_file" <<< "$_spec9_section" 2>/dev/null; then
++        assert_pass "[#1760/SPEC-9] ## Enforced by names $_spec9_file"
++    else
++        assert_fail "[#1760/SPEC-9] ## Enforced by names $_spec9_file" \
++            "not found in Enforced by section of $ADR027"
++    fi
++done
++
++BASELINE="$REPO_ROOT/config/adr-enforcement-baseline.txt"
++if grep -qF 'ADR-027-recursive-flow-template-format.md' "$BASELINE" 2>/dev/null; then
++    assert_fail "[#1760/SPEC-9] ADR-027 is removed from adr-enforcement-baseline.txt" \
++        "entry still present in $BASELINE"
++else
++    assert_pass "[#1760/SPEC-9] ADR-027 is removed from adr-enforcement-baseline.txt"
++fi
++
+ print_test_results
