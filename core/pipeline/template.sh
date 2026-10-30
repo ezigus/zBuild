@@ -678,8 +678,8 @@ load_template() {
     # does not exist is the failure this attribute was built to remove (#1878 —
     # "the snapshot was never called"), so a typo must refuse the template
     # rather than degrade to running nothing.
-    local _ar_line _ar_id _ar_roles _ar_to _ar_safe
-    while IFS='|' read -r _ar_id _ar_roles _ar_to; do
+    local _ar_line _ar_id _ar_roles _ar_to _ar_safe _ar_iod _ar_iot
+    while IFS='|' read -r _ar_id _ar_roles _ar_to _ar_iod _ar_iot; do
         [[ -z "$_ar_id" ]] && continue
         if [[ "$_ar_roles" == "__MISSING__" ]]; then
             error "load_template: always_run names '$_ar_id' but no top-level section defines it"
@@ -693,7 +693,12 @@ load_template() {
         _ar_safe="${_ar_id//-/_}"
         printf -v "_TPL_STAGE_ROLES_${_ar_safe}"          '%s' "$_ar_roles"
         printf -v "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}" '%s' "$_ar_to"
-        export "_TPL_STAGE_ROLES_${_ar_safe}" "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
+        # ADR-015: an always-run stage's io: block is read like a flow stage's;
+        # it was dropped, so release and persist recorded nothing.
+        printf -v "_TPL_STAGE_IO_DESTS_${_ar_safe}"       '%s' "$_ar_iod"
+        printf -v "_TPL_STAGE_IO_TAIL_${_ar_safe}"        '%s' "$_ar_iot"
+        export "_TPL_STAGE_ROLES_${_ar_safe}" "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}" \
+               "_TPL_STAGE_IO_DESTS_${_ar_safe}" "_TPL_STAGE_IO_TAIL_${_ar_safe}"
     done < <(_tpl_parse_always_run "$template_file")
 
     _tpl_validate_cycles || return 1
@@ -1660,7 +1665,7 @@ _tpl_parse_always_run() {
         }
         # Any other top-level key closes the list and opens a possible section.
         /^[a-zA-Z_]/ {
-            in_ar = 0; in_router = 0; in_roles = 0
+            in_ar = 0; in_router = 0; in_roles = 0; in_io = 0
             in_sec = $0; sub(/:.*$/, "", in_sec); in_sec = trim(in_sec)
             seen[in_sec] = 1
             next
@@ -1691,18 +1696,31 @@ _tpl_parse_always_run() {
             if (v != "") roles[in_sec] = (roles[in_sec] == "" ? v : roles[in_sec] "," v)
             next
         }
-        in_sec != "" && /^[[:space:]]+router:[[:space:]]*$/ { in_router = 1; in_roles = 0; next }
+        in_sec != "" && /^[[:space:]]+router:[[:space:]]*$/ { in_router = 1; in_roles = 0; in_io = 0; next }
+        # io.destinations and io.tail_lines, as a flow stage declares them
+        # (ADR-015): without them the stage records nothing.
+        in_sec != "" && /^[[:space:]]+io:[[:space:]]*$/ { in_io = 1; in_router = 0; in_roles = 0; next }
+        in_sec != "" && in_io && /^[[:space:]]+destinations:/ {
+            v = $0; sub(/^[[:space:]]+destinations:[[:space:]]*/, "", v)
+            gsub(/^\[|\][[:space:]]*$/, "", v); gsub(/[[:space:]]/, "", v); io_d[in_sec] = v
+            next
+        }
+        in_sec != "" && in_io && /^[[:space:]]+tail_lines:/ {
+            v = $0; sub(/^[[:space:]]+tail_lines:[[:space:]]*/, "", v); io_t[in_sec] = trim(v)
+            next
+        }
         in_sec != "" && in_router && /^[[:space:]]+timeout_s:/ {
             v = $0; sub(/^[[:space:]]+timeout_s:[[:space:]]*/, "", v); to[in_sec] = trim(v)
             next
         }
         # A key at section-attribute depth that is not router: closes the router block.
-        in_sec != "" && /^[[:space:]]+[a-zA-Z_]+:/ && !/^[[:space:]]+timeout_s:/ { in_router = 0; in_roles = 0 }
+        in_sec != "" && /^[[:space:]]+[a-zA-Z_]+:/ && !/^[[:space:]]+timeout_s:/ { in_router = 0; in_roles = 0; in_io = 0 }
         END {
             for (i = 1; i <= ar_n; i++) {
                 id = ar[i]
                 if (!(id in seen)) { printf "%s|__MISSING__|\n", id; continue }
-                printf "%s|%s|%s\n", id, (id in roles ? roles[id] : ""), (id in to ? to[id] : "")
+                printf "%s|%s|%s|%s|%s\n", id, (id in roles ? roles[id] : ""), (id in to ? to[id] : ""), \
+                    (id in io_d ? io_d[id] : ""), (id in io_t ? io_t[id] : "")
             }
         }
     ' "$file"

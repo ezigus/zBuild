@@ -109,6 +109,11 @@ test-author:
   # writes its own tests, the defect #2022 exists to prevent (#1849 run
   # 35949629759). Its failure is retried first (the stage's `retry:` budget).
   blocking: true
+  # ADR-015: every stage declares its capture; without it the stage records
+  # nothing (on #1754's run test-author left no trace in the log).
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
   router:
     # #2188: the same budget as build — authoring a 15–25 SPEC contract is
     # build-sized work (#1849: two 600s calls both timed out mid-write).
@@ -130,6 +135,11 @@ issue-acceptance:
   # Same question design's coverage check asks of the design — "was what was asked for
   # delivered?" — now asked of the code.
   persona: product-owner
+  # ADR-015: every stage declares its capture; without it the stage records
+  # nothing (on #1754's run test-author left no trace in the log).
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
   router:
     timeout_s: 600
 
