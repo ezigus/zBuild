@@ -5,7 +5,6 @@
 
   [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
   [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
-  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
   [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
   [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
   [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
@@ -22,10 +21,13 @@
   [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
   [38;2;248;113;113m✗[0m [#1951/SPEC-4] plugin.result must be absent from plugins/tool/merge/manifest.yaml provides.events
     [2mplugin.result is an engine-owned event (plugin.* namespace); remove it from provides.events[0m
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] the [SPEC-16] plugin.result sub-assertion is absent from security-lens-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] the [SPEC-1] plugin.result sub-assertion is absent from merge-v2-result-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-6] the hardcoded plugin-namespace guard variable is absent from this file
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m4 of 15 tests failed[0m
+  [38;2;248;113;113m[1m4 of 17 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
   [38;2;248;113;113m✗[0m [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
@@ -39,7 +41,6 @@
 
   [38;2;74;222;128m✓[0m all emitted plugin + core event types are in the composed known set
   [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
-  [38;2;74;222;128m✓[0m [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace
   [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
   [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
   [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
@@ -51,8 +52,11 @@
   [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
   [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events
   [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] the [SPEC-16] plugin.result sub-assertion is absent from security-lens-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-4] the [SPEC-1] plugin.result sub-assertion is absent from merge-v2-result-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-6] the hardcoded plugin-namespace guard variable is absent from this file
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 14 tests passed[0m
+  [38;2;74;222;128m[1mAll 16 tests passed[0m
 
