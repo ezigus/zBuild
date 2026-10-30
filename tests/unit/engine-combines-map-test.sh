@@ -63,9 +63,79 @@ assert_contains "[M1] ...every one" "$(cat "$S" 2>/dev/null)" "- c: pass — not
 
 print_test_section "M2: the engine's word for later stages"
 assert_eq "[M2] an element failed → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+# #1753 (lens review): the run's stop message names every member that did not
+# pass, a conclusive fail as much as one that did not finish.
+assert_eq "[#1753/M3] the members that did not pass, for the runner" \
+    "1 of 3 lenses did not pass: b (fail)" "${_ZB_MAP_NOT_PASSED:-unset}"
+assert_eq "[#1753/M4] a group with a failed member reads fail" "fail" "$(_map_group_verdict)"
 rm -f "$ART"/lens-*.json
 _run_map a c
 assert_eq "[M2] none failed → ZBUILD_RUN_FLAGGED=no" "no" "${ZBUILD_RUN_FLAGGED:-unset}"
+assert_eq "[#1753/M3] every member passed → nothing to name" "" "${_ZB_MAP_NOT_PASSED-unset}"
+assert_eq "[#1753/M4] every member passed → the group reads pass" "pass" "$(_map_group_verdict)"
+assert_eq "[#1753/M4] a member that did not finish → the group reads incomplete" "incomplete" \
+    "$(_ZB_MAP_UNFINISHED="1 of 2 lenses did not finish: a (timed_out)" ZBUILD_RUN_FLAGGED=yes _map_group_verdict)"
+
+print_test_section "#1753/SPEC-1: any non-pass outcome sets ZBUILD_RUN_FLAGGED"
+# Requirement: _strategy_run_map exports ZBUILD_RUN_FLAGGED=yes when ANY member
+# has an outcome that is not `pass`. The old code only checked `outcome == fail`;
+# unfinished outcomes (timed_out, out_of_turns, interrupted) were not flagged.
+# New code: `outcome != pass` → flagged=yes.
+#
+# Three distinct non-pass outcomes are tested so that an implementation
+# hard-coding one specific value (e.g. only timed_out) cannot pass all three.
+
+# sub-test: timed_out — lens ran out of time
+orch_dispatch() {
+    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
+    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" timed_out "lens ran out of time"
+    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
+    printf 'slot\n'
+}
+rm -f "$ART"/lens-*.json
+_run_map a b c
+assert_eq "[#1753/SPEC-1] timed_out outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+
+# sub-test: out_of_turns — lens exhausted its turn budget
+orch_dispatch() {
+    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
+    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" out_of_turns "lens exhausted turn budget"
+    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
+    printf 'slot\n'
+}
+rm -f "$ART"/lens-*.json
+_run_map a b c
+assert_eq "[#1753/SPEC-1] out_of_turns outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+
+# sub-test: interrupted — lens was stopped by an outside signal
+orch_dispatch() {
+    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
+    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" interrupted "lens was stopped by signal"
+    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
+    printf 'slot\n'
+}
+rm -f "$ART"/lens-*.json
+_run_map a b c
+assert_eq "[#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+
+# sub-tests: remaining non-pass outcomes — prove the requirement is "any non-pass",
+# not only the three unfinished cases already tested above. All 10 non-pass outcomes
+# from outcome_vocabulary() are covered by [#1753/SPEC-1]: the three above plus
+# fail, unusable, throttled, rate_limited, unavailable, misconfigured, broken here.
+# No implementation can pass all assertions by hard-coding only a subset.
+_spec1_outcome=""
+orch_dispatch() {
+    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
+    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" "$_spec1_outcome" "test: $_spec1_outcome"
+    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
+    printf 'slot\n'
+}
+for _spec1_outcome in unusable throttled rate_limited unavailable misconfigured broken fail; do
+    rm -f "$ART"/lens-*.json
+    _run_map a b c
+    assert_eq "[#1753/SPEC-1] $_spec1_outcome outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+done
+unset _spec1_outcome
 
 cleanup_test_env
 print_test_results

@@ -462,17 +462,29 @@ Supersedes §4 and the #2301 amendment.
 
 - **The engine sums up a map group.** After the group runs it writes `artifacts/<group>-summary.md`
   (every element, its outcome and its one-line reason, read from each element's own result) and tells
-  later stages whether any element failed: `ZBUILD_RUN_FLAGGED` is `yes` when a lens found a high or
-  critical problem the change introduced, `no` when none did, unset when no review group ran.
+  later stages whether any element failed or did not finish: `ZBUILD_RUN_FLAGGED` is `yes` when any
+  element's outcome is not `pass` — whether a conclusive `fail` or any unfinished outcome (`timed_out`,
+  `out_of_turns`, `interrupted`, `broken`, `missing`, `misconfigured`, `unavailable`, etc.) — `no`
+  when every element passed, unset when no review group ran. An element with no current result also
+  counts as not finished and sets `ZBUILD_RUN_FLAGGED=yes`.
   `review-aggregator` and its merged report (`review-report.json`) are retired: every later stage
   already sees each lens's own output.
 - **What uses the word:** pr-delivery merges under `auto_unless_flagged` only on
   `ZBUILD_RUN_LOOPS_PASSED=yes` and `ZBUILD_RUN_FLAGGED=no`; pr-open still refuses to open a PR when no
   review ran at all (fail-closed, ADR-001), now judged by the word being unset.
+- **When `ZBUILD_RUN_FLAGGED=yes`, runner.sh stops the run** at the map dispatch arm before dispatching
+  further stages (#1753): no PR is opened and nothing merges unless every element finished and passed.
+  The group is recorded failed, its stop message names every element that did not pass and its
+  outcome, and its `parallel.group.complete` event reads `incomplete` when an element did not finish,
+  `fail` when one failed, `pass` otherwise.
 - **The PR body says what the PR is for:** the issue, the goal and the work items from the plan, the
   files changed since the default branch, and the test result. Review findings stay out of it.
 
-Enforced by: `tests/unit/engine-combines-map-test.sh` M1, M2; `plugins/tool/pr-open/tests/pr-open-body-test.sh`
+Enforced by: `tests/unit/engine-combines-map-test.sh` M1, M2, SPEC-1 (#1753 — any non-pass outcome sets
+`ZBUILD_RUN_FLAGGED=yes`), M3 (the elements that did not pass are named), M4 (the group's verdict);
+`tests/unit/runner-map-parallel-stage-envelope-test.sh` SPEC-4 (#1753 — runner.sh stops the run when
+`ZBUILD_RUN_FLAGGED=yes`), R3 (the group is recorded failed; the stop message names the elements; the
+complete event's verdict), R4 (every element passed → the group completes); `plugins/tool/pr-open/tests/pr-open-body-test.sh`
 B1–B3; `tests/unit/pr-delivery-v2-result-test.sh` SPEC-3; `tests/integration/merge-policy-auto-unless-flagged-test.sh`
 SPEC-1–SPEC-6; `tests/unit/retired-impact-review-report-inputs-test.sh` RT2.
 

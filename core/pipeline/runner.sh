@@ -3712,7 +3712,7 @@ main() {
                     [[ -n "${_ZB_MAP_UNFINISHED:-}" ]] && warn "$_mg_id: ${_ZB_MAP_UNFINISHED}"
                     ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_cardinal" \
                         eb_emit_event "parallel.group.complete" "group=$_mg_id" \
-                        "verdict=$([[ -n "${_ZB_MAP_UNFINISHED:-}" ]] && echo incomplete || echo pass)" \
+                        "verdict=$(_map_group_verdict)" \
                         2>/dev/null || true
                     # #1850: an empty dimension returns 0 (outcome `empty`).
                     if [[ $_rc -ne 0 ]]; then
@@ -3723,6 +3723,21 @@ main() {
                         _runner_ended=true
                         unset ZBUILD_CURRENT_STAGE
                         error "map group '$_mg_id' failed (${_ZB_STRATEGY_OUTCOME:-failed})"
+                        return 1
+                    fi
+                    # #1753 (ADR-040 §2368-part-2): any non-pass member outcome sets
+                    # ZBUILD_RUN_FLAGGED=yes — stop the run here, before pr-delivery,
+                    # so no PR is opened and nothing merges unless every member passed.
+                    if [[ "${ZBUILD_RUN_FLAGGED:-}" == yes ]]; then
+                        _set_pipeline_status "$state_file" "failed"
+                        _update_stage_status "$state_file" "$_mg_id" "failed"
+                        _zbuild_state_set_stage_verdict "$state_file" "$_mg_id" "failed"
+                        eb_emit_event "pipeline.end" "status=failed" "map=$_mg_id" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue" || true
+                        _render_pipeline_end "failed"
+                        _runner_ended=true
+                        unset ZBUILD_CURRENT_STAGE
+                        error "map group '$_mg_id': run stopped — ${_ZB_MAP_NOT_PASSED:-a member did not pass}"
                         return 1
                     fi
                     _update_stage_status "$state_file" "$_mg_id" "complete"
