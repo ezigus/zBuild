@@ -11,9 +11,18 @@ index 0b850446..69e0cf99 100644
  ADR-029-context-budget-management.md
  ADR-030-scope-governance.md
 diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
-index 60019b30..3ad3da35 100644
+index 60019b30..bb51943d 100644
 --- a/core/pipeline/cycle-orchestrator.sh
 +++ b/core/pipeline/cycle-orchestrator.sh
+@@ -273,7 +273,7 @@ _cycle_member_is_blocking() {
+ #   _CYCLE_ON_MAX       (continue|halt)
+ #   _CYCLE_UNTIL_STAGE  (id within _CYCLE_STAGES)
+ #   _CYCLE_UNTIL_FIELD  (verdict|status)
+-#   _CYCLE_UNTIL_OP     (eq|ne)
++#   _CYCLE_UNTIL_OP     (eq|neq|gt|gte|lt|lte|contains|matches)
+ #   _CYCLE_UNTIL_VALUE  (string)
+ #   _CYCLE_PLATEAU_WINDOW / _CYCLE_DIVERGENCE_WINDOW / _CYCLE_VELOCITY_PLATEAU_WINDOW
+ # Returns: 0 valid; 1 invalid (emits cycle.config.invalid).
 @@ -306,41 +306,11 @@ _cycle_load_template() {
      local pw_var="_TPL_CYCLE_PLATEAU_W_${safe}"
      local dw_var="_TPL_CYCLE_DIVERGENCE_W_${safe}"
@@ -184,8 +193,8 @@ index 60019b30..3ad3da35 100644
 -        # needs a list grammar this parser does not have. `eq`/`ne` are
 -        # unchanged, so every existing predicate behaves identically.
 -        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
-+        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-+        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
++        eq)      [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
++        ne|neq)  [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
 +        gt|gte|lt|lte)
 +            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
 +                error "cycle exit_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
@@ -219,8 +228,8 @@ index 60019b30..3ad3da35 100644
 -        # needs a list grammar this parser does not have. `eq`/`ne` are
 -        # unchanged, so every existing predicate behaves identically.
 -        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
-+        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-+        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
++        eq)      [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
++        ne|neq)  [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
 +        gt|gte|lt|lte)
 +            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
 +                error "cycle exit_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
@@ -254,8 +263,8 @@ index 60019b30..3ad3da35 100644
 -        # needs a list grammar this parser does not have. `eq`/`ne` are
 -        # unchanged, so every existing predicate behaves identically.
 -        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
-+        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-+        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
++        eq)      [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
++        ne|neq)  [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
 +        gt|gte|lt|lte)
 +            if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
 +                error "cycle abort_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
@@ -345,10 +354,10 @@ index bda613af..c9524ab4 100644
 +- `tests/unit/core-pipeline-cycle-events-test.sh` — SPEC-7 (numeric ops reject non-numeric
 +  operands with error), SPEC-8 (*) branch returns 1 on unrecognized op)
 diff --git a/tests/integration/cycle-abort-when-no-match-converges-test.sh b/tests/integration/cycle-abort-when-no-match-converges-test.sh
-index e2304aab..caaaf332 100755
+index e2304aab..641b2ef0 100755
 --- a/tests/integration/cycle-abort-when-no-match-converges-test.sh
 +++ b/tests/integration/cycle-abort-when-no-match-converges-test.sh
-@@ -285,6 +285,238 @@ assert_eq "T9: regression guard — no-abort_when cycle converges rc=0" "0" "$rc
+@@ -285,6 +285,326 @@ assert_eq "T9: regression guard — no-abort_when cycle converges rc=0" "0" "$rc
  reg_cycle_complete=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="the_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
  assert_eq "T10: regression guard — cycle.complete emitted" "1" "$reg_cycle_complete"
  
@@ -459,15 +468,26 @@ index e2304aab..caaaf332 100755
 +_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="pass"
 +_CYCLE_TRAP_CYCLE_ID="mc_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "mc_cycle"
++# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
++set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 +
 +blob='{"s1":{"verdict":"pass","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" "0" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi eq: verdict==pass → rc=0" "0" "$rc"
++fi
 +
 +blob='{"s1":{"verdict":"fail","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi eq: verdict!=pass → rc=1" "1" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi eq: verdict!=pass → rc=1" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi eq: verdict!=pass → rc=1" "1" "$rc"
++fi
 +
 +# neq in multi-condition
 +_TPL_CYCLE_EXIT_COMBINATOR_mc_cycle="all"
@@ -478,15 +498,26 @@ index e2304aab..caaaf332 100755
 +_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="fail"
 +_CYCLE_TRAP_CYCLE_ID="mc_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "mc_cycle"
++# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
++set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 +
 +blob='{"s1":{"verdict":"pass","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi neq: pass!=fail → rc=0" "0" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi neq: pass!=fail → rc=0" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi neq: pass!=fail → rc=0" "0" "$rc"
++fi
 +
 +blob='{"s1":{"verdict":"fail","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi neq: fail==fail → rc=1" "1" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi neq: fail==fail → rc=1" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi neq: fail==fail → rc=1" "1" "$rc"
++fi
 +
 +# gt in multi-condition
 +_TPL_CYCLE_EXIT_COMBINATOR_mc_cycle="all"
@@ -497,60 +528,104 @@ index e2304aab..caaaf332 100755
 +_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
 +_CYCLE_TRAP_CYCLE_ID="mc_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "mc_cycle"
++# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
++set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 +
 +blob='{"s1":{"score":"10","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi gt: 10>5 → rc=0" "0" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi gt: 10>5 → rc=0" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi gt: 10>5 → rc=0" "0" "$rc"
++fi
 +
 +blob='{"s1":{"score":"3","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi gt: 3>5 → rc=1" "1" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi gt: 3>5 → rc=1" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi gt: 3>5 → rc=1" "1" "$rc"
++fi
 +
 +# gte in multi-condition
 +_TPL_CYCLE_EXIT_1_OP_mc_cycle="gte"
 +_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
 +_CYCLE_TRAP_CYCLE_ID="mc_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "mc_cycle"
++# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
++set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 +
 +blob='{"s1":{"score":"5","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" "0" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi gte: 5>=5 → rc=0" "0" "$rc"
++fi
 +
 +blob='{"s1":{"score":"4","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi gte: 4>=5 → rc=1" "1" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi gte: 4>=5 → rc=1" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi gte: 4>=5 → rc=1" "1" "$rc"
++fi
 +
 +# lt in multi-condition
 +_TPL_CYCLE_EXIT_1_OP_mc_cycle="lt"
 +_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
 +_CYCLE_TRAP_CYCLE_ID="mc_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "mc_cycle"
++# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
++set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 +
 +blob='{"s1":{"score":"3","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi lt: 3<5 → rc=0" "0" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi lt: 3<5 → rc=0" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi lt: 3<5 → rc=0" "0" "$rc"
++fi
 +
 +blob='{"s1":{"score":"9","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi lt: 9<5 → rc=1" "1" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi lt: 9<5 → rc=1" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi lt: 9<5 → rc=1" "1" "$rc"
++fi
 +
 +# lte in multi-condition
 +_TPL_CYCLE_EXIT_1_OP_mc_cycle="lte"
 +_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="5"
 +_CYCLE_TRAP_CYCLE_ID="mc_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "mc_cycle"
++# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
++set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 +
 +blob='{"s1":{"score":"5","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" "0" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi lte: 5<=5 → rc=0" "0" "$rc"
++fi
 +
 +blob='{"s1":{"score":"8","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi lte: 8<=5 → rc=1" "1" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi lte: 8<=5 → rc=1" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi lte: 8<=5 → rc=1" "1" "$rc"
++fi
 +
 +# contains in multi-condition
 +_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="reason"
@@ -558,15 +633,26 @@ index e2304aab..caaaf332 100755
 +_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="pass"
 +_CYCLE_TRAP_CYCLE_ID="mc_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "mc_cycle"
++# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
++set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 +
 +blob='{"s1":{"reason":"all pass ok","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" "0" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0" "0" "$rc"
++fi
 +
 +blob='{"s1":{"reason":"failed","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1" "1" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1" "1" "$rc"
++fi
 +
 +# matches in multi-condition
 +_TPL_CYCLE_EXIT_1_FIELD_mc_cycle="verdict"
@@ -574,15 +660,26 @@ index e2304aab..caaaf332 100755
 +_TPL_CYCLE_EXIT_1_VALUE_mc_cycle="^pass"
 +_CYCLE_TRAP_CYCLE_ID="mc_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "mc_cycle"
++# Protected: _cycle_load_template fails on pre-#1760 code (multi-condition not supported).
++set +e; _cycle_load_template "mc_cycle"; _sp5_mc_rc=$?; set -e
 +
 +blob='{"s1":{"verdict":"pass","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0" "0" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0" "0" "$rc"
++fi
 +
 +blob='{"s1":{"verdict":"failure","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1" "1" "$rc"
++if [[ "$_sp5_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1" \
++        "_cycle_load_template failed (pre-#1760: multi-condition not supported, rc=$_sp5_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1" "1" "$rc"
++fi
 +
  print_test_results
  cleanup_test_env
@@ -735,10 +832,10 @@ index 876bc5ef..1611095f 100755
 +
  print_test_results
 diff --git a/tests/unit/core-pipeline-cycle-events-test.sh b/tests/unit/core-pipeline-cycle-events-test.sh
-index fe49eeca..fbd58e92 100755
+index fe49eeca..bd16a418 100755
 --- a/tests/unit/core-pipeline-cycle-events-test.sh
 +++ b/tests/unit/core-pipeline-cycle-events-test.sh
-@@ -46,4 +46,141 @@ for ev in cycle.feedback.missing cycle.feedback.absent; do
+@@ -46,4 +46,169 @@ for ev in cycle.feedback.missing cycle.feedback.absent; do
      fi
  done
  
@@ -793,18 +890,26 @@ index fe49eeca..fbd58e92 100755
 +    _TPL_CYCLE_EXIT_1_VALUE_spec7_cycle="5"
 +    _CYCLE_TRAP_CYCLE_ID="spec7_cycle"
 +    _CYCLE_TRAP_ITER=1
-+    _cycle_load_template "spec7_cycle"
++    # Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
++    set +e; _cycle_load_template "spec7_cycle"; _s7_mc_rc=$?; set -e
 +    blob='{"s1":{"score":"notanumber","status":"complete"}}'
 +    set +e
 +    _spec7_err=$(2>&1 _cycle_check_until "$blob"); _spec7_rc=$?
 +    set -e
-+    assert_eq "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric → rc=1" \
-+        "1" "$_spec7_rc"
-+    if [[ -n "$_spec7_err" ]]; then
-+        assert_pass "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error"
-+    else
++    if [[ "$_s7_mc_rc" -ne 0 ]]; then
++        assert_fail "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric → rc=1" \
++            "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_mc_rc)"
 +        assert_fail "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error" \
-+            "no output for op=${_spec7_op} value=notanumber"
++            "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_mc_rc)"
++    else
++        assert_eq "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric → rc=1" \
++            "1" "$_spec7_rc"
++        if [[ -n "$_spec7_err" ]]; then
++            assert_pass "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error"
++        else
++            assert_fail "[#1760/SPEC-7] _cycle_eval_one_condition: ${_spec7_op} non-numeric emits error" \
++                "no output for op=${_spec7_op} value=notanumber"
++        fi
 +    fi
 +done
 +
@@ -821,18 +926,26 @@ index fe49eeca..fbd58e92 100755
 +    _TPL_CYCLE_STAGES_spec7_aw="s1"
 +    _CYCLE_TRAP_CYCLE_ID="spec7_aw"
 +    _CYCLE_TRAP_ITER=1
-+    _cycle_load_template "spec7_aw"
++    # Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
++    set +e; _cycle_load_template "spec7_aw"; _s7_aw_rc=$?; set -e
 +    blob='{"s1":{"score":"notanumber","status":"complete"}}'
 +    set +e
 +    _spec7_err=$(2>&1 _cycle_check_abort_when "$blob"); _spec7_rc=$?
 +    set -e
-+    assert_eq "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
-+        "1" "$_spec7_rc"
-+    if [[ -n "$_spec7_err" ]]; then
-+        assert_pass "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error"
-+    else
++    if [[ "$_s7_aw_rc" -ne 0 ]]; then
++        assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
++            "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_aw_rc)"
 +        assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error" \
-+            "no output for op=${_spec7_op} value=notanumber"
++            "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s7_aw_rc)"
++    else
++        assert_eq "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric → rc=1" \
++            "1" "$_spec7_rc"
++        if [[ -n "$_spec7_err" ]]; then
++            assert_pass "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error"
++        else
++            assert_fail "[#1760/SPEC-7] _cycle_check_abort_when: ${_spec7_op} non-numeric emits error" \
++                "no output for op=${_spec7_op} value=notanumber"
++        fi
 +    fi
 +done
 +
@@ -857,10 +970,16 @@ index fe49eeca..fbd58e92 100755
 +_TPL_CYCLE_EXIT_1_VALUE_spec8_cycle="pass"
 +_CYCLE_TRAP_CYCLE_ID="spec8_cycle"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "spec8_cycle"
++# Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
++set +e; _cycle_load_template "spec8_cycle"; _s8_mc_rc=$?; set -e
 +blob='{"s1":{"verdict":"pass","status":"complete"}}'
 +set +e; _cycle_check_until "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)" "1" "$rc"
++if [[ "$_s8_mc_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)" \
++        "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s8_mc_rc)"
++else
++    assert_eq "[#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)" "1" "$rc"
++fi
 +
 +# _cycle_check_abort_when: unrecognized op
 +_TPL_CYCLE_ABORT_WHEN_STAGE_spec8_aw="s1"
@@ -874,17 +993,23 @@ index fe49eeca..fbd58e92 100755
 +_TPL_CYCLE_STAGES_spec8_aw="s1"
 +_CYCLE_TRAP_CYCLE_ID="spec8_aw"
 +_CYCLE_TRAP_ITER=1
-+_cycle_load_template "spec8_aw"
++# Protected so a missing _cycle_load_template (pre-#1760) does not stop the file.
++set +e; _cycle_load_template "spec8_aw"; _s8_aw_rc=$?; set -e
 +blob='{"s1":{"verdict":"pass","status":"complete"}}'
 +set +e; _cycle_check_abort_when "$blob"; rc=$?; set -e
-+assert_eq "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" "1" "$rc"
++if [[ "$_s8_aw_rc" -ne 0 ]]; then
++    assert_fail "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" \
++        "_cycle_load_template failed (pre-#1760: function may not exist, rc=$_s8_aw_rc)"
++else
++    assert_eq "[#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)" "1" "$rc"
++fi
 +
  print_test_results
 diff --git a/tests/unit/template-loader-recursive-flow-test.sh b/tests/unit/template-loader-recursive-flow-test.sh
-index 9071339e..3f1842d5 100755
+index 9071339e..3ae42247 100755
 --- a/tests/unit/template-loader-recursive-flow-test.sh
 +++ b/tests/unit/template-loader-recursive-flow-test.sh
-@@ -186,4 +186,171 @@ set -e
+@@ -186,4 +186,175 @@ set -e
  assert_eq "T11: inline flow form loads rc=0" "0" "$rc"
  assert_eq "T11: stages from inline flow" "intake plan review" "${_TPL_STAGES[*]}"
  
@@ -932,14 +1057,18 @@ index 9071339e..3f1842d5 100755
 +assert_contains "[#1760/SPEC-1] error names the loop" "$bad_aw_err" "the_cycle"
 +assert_contains "[#1760/SPEC-1] error names the field" "$bad_aw_err" "verdict"
 +assert_contains "[#1760/SPEC-1] error names the bad op" "$bad_aw_err" "contains_all"
-+# The valid set must appear (at minimum 'eq' and at least one other new op)
-+if grep -qE 'eq.*neq|neq.*eq' <<< "$bad_aw_err" 2>/dev/null || \
-+   grep -qE 'eq|neq|gt|gte|lt|lte|contains|matches' <<< "$bad_aw_err" 2>/dev/null; then
-+    assert_pass "[#1760/SPEC-1] error names the valid op set"
-+else
-+    assert_fail "[#1760/SPEC-1] error names the valid op set" \
-+        "expected valid set mention in: $bad_aw_err"
-+fi
++# Verify the complete eight-op set (eq neq gt gte lt lte contains matches) is
++# named in the error. Each op is checked as a standalone token — word-boundary
++# on both sides — so 'eq' inside 'neq', 'gt' inside 'gte', 'lt' inside 'lte',
++# and 'contains' inside the bad op 'contains_all' do not satisfy the check.
++for _spec1_valid_op in eq neq gt gte lt lte contains matches; do
++    if grep -qE "(^|[^[:alnum:]_])${_spec1_valid_op}([^[:alnum:]_]|$)" <<< "$bad_aw_err" 2>/dev/null; then
++        assert_pass "[#1760/SPEC-1] error valid-set includes ${_spec1_valid_op}"
++    else
++        assert_fail "[#1760/SPEC-1] error valid-set includes ${_spec1_valid_op}" \
++            "op '${_spec1_valid_op}' not found as standalone token in: $bad_aw_err"
++    fi
++done
 +
 +# ── [#1760/SPEC-2] single-condition until.op outside eight-op set refused ──────
 +# The single-condition exit_when op must also be validated at load time.

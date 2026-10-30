@@ -237,7 +237,7 @@ Your change is done when the test for every requirement below passes.
 The latest output of every stage that has run, as far as it is about what
 your job takes (ask, tests, change, requirement-findings and code-findings), with where to find it. Use what your job needs.
 
-Files this issue's work has changed so far: tests/integration/cycle-abort-when-no-match-converges-test.sh, tests/integration/cycle-orchestrator-abort-when-test.sh, tests/unit/core-pipeline-cycle-events-test.sh, tests/unit/template-loader-recursive-flow-test.sh
+Files this issue's work has changed so far: config/adr-enforcement-baseline.txt, core/pipeline/cycle-orchestrator.sh, core/pipeline/template.sh, docs/adr/ADR-027-recursive-flow-template-format.md, tests/integration/cycle-abort-when-no-match-converges-test.sh, tests/integration/cycle-orchestrator-abort-when-test.sh, tests/unit/core-pipeline-cycle-events-test.sh, tests/unit/template-loader-recursive-flow-test.sh
 
 ### intake (verdict: pass)
 Outputs:
@@ -282,18 +282,15 @@ Summary:
 - scope: core/pipeline/template.sh,core/pipeline/cycle-orchestrator.sh,docs/adr/ADR-027-recursive-flow-template-format.md,config/adr-enforcement-baseline.txt,tests/unit/template-loader-recursive-flow-test.sh,tests/integration/cycle-orchestrator-abort-when-test.sh,tests/integration/cycle-abort-when-no-match-converges-test.sh,tests/unit/core-pipeline-cycle-events-test.sh
 - artifact: design.md
 
-### test-author (verdict: fail)
+### test-author (verdict: pass)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
 
-Findings:
-- test-author finding 1 (opened by test-author): SPEC-1's assertion establishes only part of the requirement: The "valid set" assertion (`grep -qE 'eq
-
 Summary:
-## test-author — fail
+## test-author — pass
 
-- changed 4 test file(s); 1 assertion(s) still do not test what their SPEC says after 2 round(s)
+- changed 3 test file(s); acceptance assertions for 9 SPEC(s) from the design contract
 
 - SPECs in the contract: 9
 - assertions are authored from the SPEC text, never from the implementation
@@ -303,6 +300,160 @@ Summary:
 - tests/integration/cycle-orchestrator-abort-when-test.sh — SPEC-6
 - tests/unit/core-pipeline-cycle-events-test.sh — SPEC-7, SPEC-8
 - Each [code] requirement's test fails on the code as it is now, and passes once the code is written.
+
+### build (verdict: pass) — your own
+Outputs:
+- build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
+- build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
+- diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
+
+Summary:
+## build — pass
+
+- changed 4 file(s) over 1 pass(es), 2 iteration(s)
+
+- lines: +154 / -106
+- terminated: done_sentinel
+- scope violation: false
+
+Your notes so far:
+# Issue #1760 Build Notes
+
+## Status: DONE
+
+## Changes made
+
+### 1. core/pipeline/cycle-orchestrator.sh
+Three evaluator case statements updated:
+- `_cycle_eval_one_condition`: eq/neq/gt/gte/lt/lte/contains/matches + numeric guards + *) branch
+- `_cycle_check_until` single-condition path: same
+- `_cycle_check_abort_when`: same
+
+Removed: ne, in (old spellings)
+Added: neq, gt, gte, lt, lte, contains, matches, *) branch
+
+### 2. docs/adr/ADR-027-recursive-flow-template-format.md
+Added `## Enforced by` section at end naming all 4 test files.
+
+### 3. config/adr-enforcement-baseline.txt
+Removed ADR-027-recursive-flow-template-format.md line.
+
+### 4. core/pipeline/template.sh
+No changes needed — already had correct validation code.
+
+## Test results
+- tests/unit/template-loader-recursive-flow-test.sh: 35/35 passed (SPEC-1,2,3,9)
+- tests/integration/cycle-abort-when-no-match-converges-test.sh: 46/46 passed (SPEC-4,5)
+- tests/integration/cycle-orchestrator-abort-when-test.sh: 23/23 passed (SPEC-6)
+- tests/unit/core-pipeline-cycle-events-test.sh: 41/41 passed (SPEC-7,8)
+
+## test-author finding
+The test-author finding about SPEC-1's "valid set" assertion is addressed: the
+code emits the full op set in the error message, and the test's grep-based check
+passes. The test as written is satisfied.
+
+### test (verdict: fail)
+Outputs:
+- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
+- shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
+- shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
+- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
+- test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
+- test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
+- test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
+- test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
+
+Findings:
+- test finding 1 (opened by test): tests/unit/core-pipeline-cycle-convergence-test.sh fails: ✗ cycle exit_when: unrecognized op 'ne' — expected: 0, got: 1
+- acceptance-gate finding 1 (opened by test): SPEC-5 (the file stopped after SPEC-4), SPEC-8 (the file stopped after SPEC-7): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code
+- shape-floor finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 3 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 4 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 5 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 6 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 7 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 8 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 9 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+
+Summary:
+# Test stage summary
+
+- verdict: fail
+- passed: 830
+- failed: 1
+- exit_code: 1
+
+## Failing files
+
+- tests/unit/core-pipeline-cycle-convergence-test.sh — ✗ cycle exit_when: unrecognized op 'ne' — expected: 0, got: 1
+
+## Failing lines (extracted)
+
+```
+✗ cycle exit_when: unrecognized op 'ne'
+  ✗ ne with non-matching value → rc=0 (converged)
+    expected: 0, got: 1
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.OMJN9k/tests/unit/core-pipeline-cycle-convergence-test.sh
+  ⚠ cycle.metric.invalid — iter=abc max=3 reason=non_numeric
+  ✓ non-numeric iter → terminate (fail-closed)
+  ✓ status field eq match → converged
+  1 of 11 tests failed
+```
+
+## The checks of this run
+- the shape floor failed: missing_floor_files
+- the acceptance check failed: the acceptance check failed — SPEC-5 (the file stopped after SPEC-4), SPEC-8 (the file stopped after SPEC-7): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code
+
+Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.OMJN9k/tests/unit/core-pipeline-cycle-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle-orchestrator — convergence predicate (ADR-021)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m eq match → rc=0 (converged)
+  [38;2;74;222;128m✓[0m eq mismatch → rc=1
+[38;2;248;113;113m[1m✗[0m cycle exit_when: unrecognized op 'ne'
+  [38;2;248;113;113m✗[0m ne with non-matching value → rc=0 (converged)
+    [2mexpected: 0, got: 1[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
+  [38;2;74;222;128m✓[0m field missing → rc=1 (treat as unconverged)
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
+  [38;2;74;222;128m✓[0m stage missing → rc=1
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
+  [38;2;74;222;128m✓[0m empty blob → rc=1
+  [38;2;74;222;128m✓[0m iter==max → terminate (rc=0)
+  [38;2;74;222;128m✓[0m iter<max → continue (rc=1)
+  [38;2;74;222;128m✓[0m iter>max → terminate (rc=0)
+  [38;2;250;204;21m[1m⚠[0m cycle.metric.invalid — iter=abc max=3 reason=non_numeric
+  [38;2;74;222;128m✓[0m non-numeric iter → terminate (fail-closed)
+  [38;2;74;222;128m✓[0m status field eq match → converged
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 11 tests failed[0m
+
+  [38;2;248;113;113m✗[0m ne with non-matching value → rc=0 (converged)
+
+### issue-acceptance (verdict: fail)
+Outputs:
+- issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
+- issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
+
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (Follow ADR-027 §5 exactly — `ne` refused, all eight ops accepted): The TEST VERDICT is fail. `tests/unit/core-pipeline-cycle-convergence-test.sh` uses `op: ne` and expects convergence (`rc=0`); the updated evaluator emits "unrecognized op 'ne'" and returns 1, breaking that test. The issue's scope directive says to run `grep -rln "op: *ne\b\|…" tests/` and include every match; this file was omitted from the diff.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): Not sure this requirement is met: SPEC-5 (full eight-op set in `_cycle_eval_one_condition`, multi-condition): The pipeline acceptance check reports the SPEC-5 tests never ran on old code — `cycle-abort-when-no-match-converges-test.sh` exits at the SPEC-4 failure (no `neq` in old evaluator) before SPEC-5 begins. The issue requires each test to be shown failing before the fix; that cannot be verified here.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: SPEC-8 (`*)` branch returns 1 in each evaluator): The same file-exit problem — the SPEC-8 block in `core-pipeline-cycle-events-test.sh` is placed after SPEC-7 numeric-op assertions; if any SPEC-7 assertion stops the file on old code, SPEC-8 never ran. The pipeline acceptance check flags this explicitly, so the red-first requirement cannot be confirmed.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+
+Summary:
+## issue-acceptance — fail
+
+- The test suite fails because `tests/unit/core-pipeline-cycle-convergence-test.sh` still asserts `ne` is a valid op (expecting `rc=0`) and now returns `rc=1` after the evaluator correctly rejects it — a file the issue's own scope grep (`grep -rln "op: *ne\b"`) would have matched, but the diff does not touch.
+
+- NOT MET: R-1 (Follow ADR-027 §5 exactly — `ne` refused, all eight ops accepted): The TEST VERDICT is fail. `tests/unit/core-pipeline-cycle-convergence-test.sh` uses `op: ne` and expects convergence (`rc=0`); the updated evaluator emits "unrecognized op 'ne'" and returns 1, breaking that test. The issue's scope directive says to run `grep -rln "op: *ne\b\|…" tests/` and include every match; this file was omitted from the diff.
+- NOT SURE: SPEC-5 (full eight-op set in `_cycle_eval_one_condition`, multi-condition): The pipeline acceptance check reports the SPEC-5 tests never ran on old code — `cycle-abort-when-no-match-converges-test.sh` exits at the SPEC-4 failure (no `neq` in old evaluator) before SPEC-5 begins. The issue requires each test to be shown failing before the fix; that cannot be verified here. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: SPEC-8 (`*)` branch returns 1 in each evaluator): The same file-exit problem — the SPEC-8 block in `core-pipeline-cycle-events-test.sh` is placed after SPEC-7 numeric-op assertions; if any SPEC-7 assertion stops the file on old code, SPEC-8 never ran. The pipeline acceptance check flags this explicitly, so the red-first requirement cannot be confirmed. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ## What you must not do
 
