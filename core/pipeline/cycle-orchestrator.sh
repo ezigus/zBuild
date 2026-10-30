@@ -1710,6 +1710,78 @@ _cycle_iter_dispatch() {
             _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
             continue
         fi
+        # #2433 (ADR-040): map-group-as-member — the review lenses inside the
+        # loop. Every element runs (map_group_run); the group passes when every
+        # element passed. A failed element sends the loop round again; one that
+        # did not finish (or found the issue itself wrong) stops the run at
+        # once — no stage can fix that by going round (#1753).
+        if [[ "$_member_type" == "map" ]]; then
+            if ! declare -F map_group_run >/dev/null 2>&1; then
+                error "cycle_orchestrator: map member '$s' but the map strategy is not loaded"
+                _cycle_emit "cycle.config.invalid" "iter=$iter" "stage=$s" \
+                    "reason=no_map_strategy"
+                [[ $_had_e -eq 1 ]] && set -e
+                _CYCLE_ITER_OUTCOME="error"
+                return 1
+            fi
+            set +e
+            local _prior_seq_prefix_set=0 _prior_seq_prefix=""
+            if [[ -n "${ZBUILD_SEQ_PREFIX+x}" ]]; then
+                _prior_seq_prefix_set=1
+                _prior_seq_prefix="$ZBUILD_SEQ_PREFIX"
+            fi
+            export ZBUILD_SEQ_PREFIX="$_member_label"
+            eb_emit_event "parallel.group.start" "group=$s" 2>/dev/null || true
+            map_group_run "$s" "$state_file" "${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT:-}/plugins}"
+            rc=$?
+            if [[ $_prior_seq_prefix_set -eq 1 ]]; then
+                export ZBUILD_SEQ_PREFIX="$_prior_seq_prefix"
+            else
+                unset ZBUILD_SEQ_PREFIX
+            fi
+            _cycle_install_traps
+            [[ $_had_e -eq 1 ]] && set -e
+            eb_emit_event "parallel.group.complete" "group=$s" \
+                "verdict=$(_map_group_verdict 2>/dev/null || printf 'fail')" 2>/dev/null || true
+            if ! _zbuild_propagate_abort "$rc"; then
+                _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
+                _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
+                _cycle_clear_traps
+                _CYCLE_ITER_OUTCOME="aborted"
+                return 1
+            fi
+            local _mg_stop=""
+            if [[ $rc -ne 0 ]]; then
+                _mg_stop="the group could not run (${_ZB_MAP_ERROR:-failed})"
+            elif [[ -n "${_ZB_MAP_UNFINISHED:-}" ]]; then
+                _mg_stop="${_ZB_MAP_NOT_PASSED:-$_ZB_MAP_UNFINISHED}"
+            fi
+            if [[ -z "$_mg_stop" && "${ZBUILD_RUN_FLAGGED:-}" != yes ]]; then
+                _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_VERDICT_RAW="pass"
+                _CYCLE_DISPATCH_STATUS="complete"
+            else
+                _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_VERDICT_RAW="fail"
+                _CYCLE_DISPATCH_STATUS="failed"
+                fail=$(( fail + 1 ))
+            fi
+            # A lens's verdict is this round's: the flag must not leak into the
+            # rest of the run (pr-delivery reads it).
+            [[ "$_CYCLE_DISPATCH_VERDICT" == pass ]] && export ZBUILD_RUN_FLAGGED=no
+            verdict="$_CYCLE_DISPATCH_VERDICT"
+            status="$_CYCLE_DISPATCH_STATUS"
+            blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
+                '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
+            _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
+            if [[ -n "$_mg_stop" ]]; then
+                error "cycle_orchestrator: '$s': run stopped — $_mg_stop"
+                _CYCLE_STOP_RUN_MEMBER="$s"
+                break
+            fi
+            [[ "${ZBUILD_RUN_FLAGGED:-}" == yes ]] \
+                && warn "cycle_orchestrator: '$s': ${_ZB_MAP_NOT_PASSED:-a member did not pass} — going round again"
+            continue
+        fi
         # ─── ADR-029 G3: per-stage max_turns escalation (#812) ───────────
         # If a previous iter recorded a router timeout for this stage,
         # capture the original (pre-bump) budget so escalation math stays

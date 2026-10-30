@@ -3621,72 +3621,13 @@ main() {
                     ;;
                 map:*)
                     # issue #1295 (ADR-047 §2): a map group occupies ONE cardinal
-                    # slot. Populate _MAP_DIM_<over> from _TPL_MAP_ELEMENTS_<gid>,
-                    # then dispatch via _strategy_run_map with the declared dimension.
+                    # slot; map_group_run dispatches its elements.
                     local _mg_id="${_unit#map:}"
                     local _mg_safe="${_mg_id//-/_}"
-                    local _mg_over_var="_TPL_MAP_OVER_${_mg_safe}"
-                    local _mg_over="${!_mg_over_var:-}"
                     local _mg_elems_var="_TPL_MAP_ELEMENTS_${_mg_safe}"
                     local _mg_elems_csv="${!_mg_elems_var:-}"
-                    local _mg_roles_var="_TPL_MAP_ROLES_${_mg_safe}"
-                    local _mg_roles="${!_mg_roles_var:-}"
-                    # issue #1295 (ADR-047 §2): optional `as:` env-target — the
-                    # template names the env var each work unit gets set to its
-                    # element (generic dimension→env mapping; empty when omitted).
-                    local _mg_as_var="_TPL_MAP_AS_${_mg_safe}"
-                    local _mg_as="${!_mg_as_var:-}"
-                    # Validate the over dimension is set.
-                    if [[ -z "$_mg_over" ]]; then
-                        _set_pipeline_status "$state_file" "failed"
-                        _render_pipeline_end "failed"
-                        _runner_ended=true
-                        error "map group '$_mg_id': missing 'over:' dimension"
-                        return 1
-                    fi
-                    # #1295 Copilot: the dimension names a bash array (_MAP_DIM_<over>)
-                    # and is passed to _strategy_run_map — an invalid token (e.g. with
-                    # '-') otherwise surfaces as an unactionable "rc=5". Fail closed with
-                    # a clear error naming the bad dimension BEFORE dispatch.
-                    if [[ ! "$_mg_over" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
-                        _set_pipeline_status "$state_file" "failed"
-                        _render_pipeline_end "failed"
-                        _runner_ended=true
-                        error "map group '$_mg_id': invalid 'over:' dimension: ${_mg_over} (expected ^[A-Za-z0-9_]{1,64}$)"
-                        return 1
-                    fi
-                    # Populate _MAP_DIM_<over> from the elements CSV so _strategy_run_map
-                    # can resolve it via the _MAP_DIM_<name> nameref convention (Bash 5+
-                    # nameref requires the target array to exist in the SAME shell; declare
-                    # -ga makes it global so the sourced map.sh nameref can reach it).
-                    local _mg_dim_safe; _mg_dim_safe="${_mg_over//-/_}"
-                    # declare -ga with a computed name: declare first, then read-split CSV.
-                    # Bash rejects `declare -ga "name"=(...)` when name is quoted;
-                    # read -ra with IFS=',' is the portable equivalent.
-                    local _mg_dim_arr_name="_MAP_DIM_${_mg_dim_safe}"
-                    declare -ga "$_mg_dim_arr_name"
-                    local _mg_IFS_save="$IFS"; IFS=','
-                    # shellcheck disable=SC2229
-                    # #1312: `read` returns non-zero on empty input under set -e;
-                    # guard with || true so an empty elements: degrades cleanly to the
-                    # rc=3 (empty dimension) no-op path instead of aborting.
-                    read -ra "$_mg_dim_arr_name" <<< "$_mg_elems_csv" || true
-                    IFS="$_mg_IFS_save"
-                    # roles_out: one role per line for _strategy_run_map.
-                    local _mg_roles_out; _mg_roles_out="$(printf '%s\n' "${_mg_roles//,/$'\n'}")"
-                    local pool_id; pool_id="map-${_mg_id}-$$"
-                    set +e; orch_spawn "$pool_id"; _rc=$?; set -e
-                    if [[ $_rc -ne 0 ]]; then
-                        _set_pipeline_status "$state_file" "failed"
-                        _render_pipeline_end "failed"
-                        _runner_ended=true
-                        error "map group '$_mg_id': orch_spawn failed"
-                        return 1
-                    fi
                     local _mg_max_var="_TPL_MAP_MAX_${_mg_safe}"
                     local _mg_max="${!_mg_max_var:-auto}"
-                    local _mg_on_err_var="_TPL_MAP_ON_ERR_${_mg_safe}"
-                    local _mg_on_err="${!_mg_on_err_var:-continue}"
                     eb_emit_event "stage.start" "stage=$_mg_id" \
                         || { _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
                     _RUNNER_STAGE_START_MS[$_mg_id]="$(_runner_now_ms)"
@@ -3697,13 +3638,10 @@ main() {
                     export ZBUILD_SEQ_PREFIX="$_runner_cardinal"
                     ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_cardinal" \
                         eb_emit_event "parallel.group.start" "group=$_mg_id" 2>/dev/null || true
+                    # One map group's run, shared with a group inside a loop
+                    # (#2433): every element, then the group summed up.
                     set +e
-                    # #1312: pass max_parallel and on_member_error so _strategy_run_map
-                    # can enforce the FIFO concurrency cap and error-continue policy
-                    # (mirrors parallel_group_run — ADR-039 FIFO pool semantics).
-                    _strategy_run_map "$pool_id" "$_mg_id" "$_mg_roles_out" \
-                        "$state_file" "$plugins_root" "$_mg_over" "$_mg_as" \
-                        "$_mg_max" "$_mg_on_err"
+                    map_group_run "$_mg_id" "$state_file" "$plugins_root"
                     _rc=$?
                     set -e
                     unset ZBUILD_SEQ_PREFIX
@@ -3722,7 +3660,7 @@ main() {
                         _render_pipeline_end "failed"
                         _runner_ended=true
                         unset ZBUILD_CURRENT_STAGE
-                        error "map group '$_mg_id' failed (${_ZB_STRATEGY_OUTCOME:-failed})"
+                        error "map group '$_mg_id' failed (${_ZB_MAP_ERROR:-${_ZB_STRATEGY_OUTCOME:-failed}})"
                         return 1
                     fi
                     # #1753 (ADR-040 §2368-part-2): any non-pass member outcome sets

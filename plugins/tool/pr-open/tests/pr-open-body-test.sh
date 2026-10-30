@@ -10,6 +10,9 @@
 #               changed and the test result
 #   B2 [change] it carries no review findings or advisory-review section
 #   B3 [guard]  values from the plan are escaped (no raw HTML)
+#   B4 [change] (#2433/R9) the review findings that did not send the change
+#               back — low ones and ones already there — are listed, each with
+#               its lens; with none, there is no such section
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,6 +45,24 @@ assert_not_contains "[B2] no review verdict" "$_body" "Review verdict"
 
 print_test_section "B3: escaped"
 assert_not_contains "[B3] no raw HTML from the plan" "$_body" "<b>"
+
+print_test_section "B4: findings that did not send the change back (#2433/R9)"
+L1="$TEST_TEMP_DIR/lens-correctness.json"; L2="$TEST_TEMP_DIR/lens-sre.json"; NOT="$TEST_TEMP_DIR/other.json"
+jq -n '{schema_version:1,name:"correctness",score:8,result_contract:3,outcome:"pass",reason:"r",
+        findings:[{file:"core/x.sh",line:3,severity:"low",introduced:true,fix:"code",category:"logic",message:"a <i>misleading</i> name"}]}' > "$L1"
+jq -n '{schema_version:1,name:"sre",score:7,result_contract:3,outcome:"pass",reason:"r",
+        findings:[{file:"core/y.sh",line:null,severity:"high",introduced:false,fix:"code",category:"ops",message:"no event on failure"}]}' > "$L2"
+jq -n '{steps:[]}' > "$NOT"
+jq -n --arg a "$L1" --arg b "$L2" --arg c "$NOT" '{inputs:{x:$a,y:$b,z:$c}}' > "$TEST_TEMP_DIR/inputs.json"
+_found="$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/inputs.json" earlier_review_findings 2>/dev/null | sort | tr '\n' ' ')"
+assert_eq "[B4] every lens result is found, and nothing else" "$L1 $L2 " "$_found"
+_lines="$(_pr_open_review_findings "$L1" "$L2")"
+_body4="$(_pr_open_compose_body 42 "$PLAN" pass "src/upload.sh" "" false "$_lines")"
+assert_contains "[B4] a section for them" "$_body4" "**Other review findings** (none of them sends the change back):"
+assert_contains "[B4] a low finding, with its lens" "$_body4" "- correctness lens, low: a \\<i\\>misleading\\</i\\> name (core/x.sh:3)"
+assert_contains "[B4] a finding that was already there, with its lens" "$_body4" "- sre lens, high, already there before the change: no event on failure (core/y.sh)"
+assert_not_contains "[B4] escaped" "$_body4" "<i>"
+assert_not_contains "[B4] with none, no section" "$_body" "Other review findings"
 
 cleanup_test_env
 print_test_results

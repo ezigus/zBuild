@@ -2248,6 +2248,12 @@ _tpl_translate_new_shape() {
                 # cycles) so a group never double-emits.
                 emitted[m] = 1
                 print "IP|" m "|" par_data[m]
+            } else if (sec_kind[m] == "map" && !emitted[m]) {
+                # #2433: a map group in a loop (the review lenses) is
+                # registered (IM| row) before the loop, like a parallel group,
+                # so it runs as a map member — not as one plain stage.
+                emitted[m] = 1
+                print "IM|" m "|" map_data[m] "|" sec_payload[m]
             }
         }
         d = cyc_data[k]

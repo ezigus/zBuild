@@ -189,6 +189,48 @@ _map_write_summary() {
     return 0
 }
 
+# map_group_run <gid> <state_file> <plugins_root> — one map group's run (ADR-047
+# §2): each element dispatched, then the group summed up by _map_write_summary
+# (ZBUILD_RUN_FLAGGED, _ZB_MAP_UNFINISHED, _ZB_MAP_NOT_PASSED). The runner calls
+# it for a group in the top-level flow, the loop for a group among its members
+# (#2433). rc 1, with _ZB_MAP_ERROR saying why, when the group could not run.
+map_group_run() {
+    local gid="$1" state_file="$2" plugins_root="$3" safe="${1//-/_}" v
+    local over elems roles as max onerr
+    _ZB_MAP_ERROR=""
+    v="_TPL_MAP_OVER_${safe}";     over="${!v:-}"
+    v="_TPL_MAP_ELEMENTS_${safe}"; elems="${!v:-}"
+    v="_TPL_MAP_ROLES_${safe}";    roles="${!v:-}"
+    v="_TPL_MAP_AS_${safe}";       as="${!v:-}"
+    v="_TPL_MAP_MAX_${safe}";      max="${!v:-auto}"
+    v="_TPL_MAP_ON_ERR_${safe}";   onerr="${!v:-continue}"
+    if [[ -z "$over" ]]; then
+        _ZB_MAP_ERROR="missing 'over:' dimension"; return 1
+    fi
+    # The dimension names a bash array (_MAP_DIM_<over>); a bad token would
+    # otherwise surface as an unactionable rc (#1295 Copilot).
+    if [[ ! "$over" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
+        _ZB_MAP_ERROR="invalid 'over:' dimension: ${over} (expected ^[A-Za-z0-9_]{1,64}\$)"; return 1
+    fi
+    # Global, so _strategy_run_map's nameref reaches it; an empty list degrades
+    # to the empty-dimension path (#1312).
+    local arr="_MAP_DIM_${over}" ifs_save="$IFS"
+    declare -ga "$arr"
+    IFS=','
+    # shellcheck disable=SC2229
+    read -ra "$arr" <<< "$elems" || true
+    IFS="$ifs_save"
+    local roles_out pool_id="map-${gid}-$$" rc=0
+    roles_out="$(printf '%s\n' "${roles//,/$'\n'}")"
+    if ! orch_spawn "$pool_id"; then
+        _ZB_MAP_ERROR="orch_spawn failed"; return 1
+    fi
+    _strategy_run_map "$pool_id" "$gid" "$roles_out" "$state_file" "$plugins_root" \
+        "$over" "$as" "$max" "$onerr" || rc=$?
+    [[ $rc -eq 0 ]] || _ZB_MAP_ERROR="${_ZB_STRATEGY_OUTCOME:-failed}"
+    return "$rc"
+}
+
 # _map_group_verdict — the group's word on its complete event, after
 # _map_write_summary: incomplete when a member did not finish, fail when one
 # failed, else pass (#1753).

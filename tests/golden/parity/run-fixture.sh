@@ -45,7 +45,7 @@ if grep -q "whether a finished CHANGE does what an ISSUE asked" <<< "$prompt"; t
     # issue-acceptance (#1849): the fixture's one-file change meets its issue.
     jq -n --arg r $'VERDICT: pass\nREASON: the fixture file the issue asks for is added' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
-elif grep -q 'An advisory report for the ' <<< "$prompt"; then
+elif grep -q 'A report for the ' <<< "$prompt"; then
     # a review lens (#1842): no concerns — a real lens result for the engine to
     # hand the aggregator, as in production.
     jq -n --arg r '{"score":9,"findings":[]}' \

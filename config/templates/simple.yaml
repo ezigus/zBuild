@@ -41,7 +41,6 @@ flow:
   - intake
   - plan
   - delivery_loop
-  - review_lenses
   - pr
 
 # ─── always_run (#1831) ──────────────────────────────────────────────────────
@@ -79,14 +78,19 @@ always_run:
 #     build never runs on it, and another round would only repeat those tries.
 delivery_loop:
   type: cycle
-  description: Design, then build, until both pass — going round when a finding needs design
+  description: Design, build, then the review lenses, until all pass — going round when a finding needs fixing
+  # #2433 (ADR-040): the lenses run inside the loop, after the build, so what
+  # they find goes back to the stages that can fix it. A lens that does not
+  # finish, or finds the issue itself wrong, stops the run at once.
   flow:
     - design
     - build_test_cycle
+    - review_lenses
   exit_when:
     all:
       - { stage: design, field: verdict, op: eq, value: pass }
       - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
+      - { stage: review_lenses, field: verdict, op: eq, value: pass }
   stop_run_on_fail: [design]
   max_iterations: 2
   on_max: halt
@@ -252,7 +256,7 @@ test:
     destinations: [file, stdout]
     tail_lines: 200
 
-# ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
+# ─── review_lenses (map group, inside delivery_loop, #2433) ──────────────────
 # issue #1295 (ADR-047 §2): converted from `type: parallel` to `type: map`.
 # Each element (security, performance, red-team, correctness, scope) becomes one
 # work unit dispatched to the review-lens plugin (provides.role: review_lens).
@@ -267,8 +271,9 @@ test:
 # the B5 (#1137) no-LLM-on-convergence-path invariant therefore holds.
 review_lenses:
   type: map
-  # #2368: a lens fails on a problem the change introduced of these severities.
-  fail_on: [high, critical]
+  # #2368: a lens fails on a problem the change introduced of these severities
+  # (#2433: medium and above — the scale is defined in the lens charter).
+  fail_on: [medium, high, critical]
   over: lenses
   # ADR-051 §2: each lens names the persona it runs as; none is inferred
   # from the lens's name.

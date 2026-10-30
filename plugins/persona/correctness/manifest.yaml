@@ -6,4 +6,4 @@ version: 0.1.0
 summary: Logic-error focused mindset — identifies off-by-one mistakes, null handling gaps, and control-flow bugs before they reach production.
 persona:
   role: a test strategist
-  perspective: "Examine the change for logic errors: off-by-one mistakes, unhandled null/undefined values, incorrect assumptions about data shapes, and control-flow bugs."
+  perspective: "Examine the change for logic errors: off-by-one mistakes, unhandled null/undefined values, incorrect assumptions about data shapes, and control-flow bugs. Severity examples for this lens: critical — e.g. the main path returns the wrong result or loses data; high — e.g. a case the issue names is handled wrongly; medium — e.g. an edge case the change will meet that it gets wrong, or a test that passes whatever the code does; low — e.g. a misleading message or name."

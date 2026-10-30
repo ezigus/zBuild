@@ -116,6 +116,15 @@ _rl_reply_problem() {
     _rp_json=""
 }
 
+# _rl_write_routed <path> <lines-json> <what> — one routed result (#2433): fail
+# with a numbered finding per line, or pass with none.
+_rl_write_routed() {
+    local o=pass r="$3: none"
+    [[ "$(jq 'length' <<< "$2" 2>/dev/null)" =~ ^[1-9] ]] && { o=fail; r="$3"; }
+    stage_result_write "$1" "$o" "$r" \
+        "$(jq -c 'if length > 0 then {findings: [to_entries[] | {n: (.key + 1), text: .value}]} else {} end' <<< "$2" 2>/dev/null)"
+}
+
 # ─── _review_lens_write_result <out> <verdict> <disposition> <reason> ────────
 # Write a v2-compliant lens result file atomically. The output path is derived
 # entirely from the $out parameter (no literal artifact filename strings inside).
@@ -290,6 +299,8 @@ _review_lens_run_inner() {
         return 2
     fi
     mkdir -p "$artifact_dir"
+    # A round's routed findings are this round's only (#2433).
+    rm -f "${out%.json}-code-result.json" "${out%.json}-design-result.json" 2>/dev/null || true
 
     # Resolve evidence. ADR-043: the router redacts the assembled prompt by
     # construction, so we pass RAW evidence and ALWAYS route (the former
@@ -437,10 +448,14 @@ _review_lens_run_inner() {
               message: (.message // (.|tostring)),
               # ADR-038 amendment: whether the change introduced it. Kept here —
               # dropping it made every finding count as new (review on #2215).
-              introduced: (if .introduced == false then false else true end)
+              introduced: (if .introduced == false then false else true end),
+              # #2433: what would fix it; a word off the list is a code fix.
+              fix: (if (.fix|tostring|ascii_downcase) as $f
+                    | ["code","test","design","issue"] | index($f)
+                    then (.fix|tostring|ascii_downcase) else "code" end)
             } else {
               file: "unknown", category: "general", severity: "low",
-              line: null, message: (.|tostring), introduced: true
+              line: null, message: (.|tostring), introduced: true, fix: "code"
             } end ]
         }' 2>/dev/null || true)"
     if [[ -z "$normalized" ]]; then
@@ -465,13 +480,30 @@ _review_lens_run_inner() {
     _rl_stage="${ZBUILD_CURRENT_STAGE:-}"; _rl_stage="${_rl_stage//[^A-Za-z0-9_]/_}"
     _rl_fail_var="_TPL_STAGE_FAIL_ON_${_rl_stage}"
     _rl_fail_on="${!_rl_fail_var:-}"
-    _rl_outcome="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " \
-        'if any(.findings[]; .severity as $s | .introduced and ($on | contains(" \($s) ")))
-         then "fail" else "pass" end' 2>/dev/null || printf 'pass')"
+    # #2433: a finding at a fail_on severity that the change introduced sends
+    # the run back; one saying the issue itself is wrong stops it (no stage can
+    # fix an issue's text: `misconfigured`, the operator's to fix).
+    local _rl_route
+    _rl_route="$(printf '%s' "$normalized" | jq -c --arg on " $_rl_fail_on " --arg n "$lens" '
+        def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
+        def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if .line then ":\(.line)" else "" end); fix: \(.fix))";
+        [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
+        | [.findings[] | select(.fix != "issue" and .introduced and at_fail_on)] as $back
+        | { outcome: (if ($issue | length) > 0 then "misconfigured" elif ($back | length) > 0 then "fail" else "pass" end),
+            issue: ($issue[0].message // ""),
+            code: [$back[] | select(.fix == "code" or .fix == "test") | line],
+            design: ([$back[] | select(.fix == "design") | line] + [$issue[] | line]) }' 2>/dev/null \
+        || printf '{"outcome":"pass","issue":"","code":[],"design":[]}')"
+    _rl_outcome="$(jq -r '.outcome' <<< "$_rl_route")"
     _rl_reason="the ${lens} lens found no ${_rl_fail_on:+${_rl_fail_on// / or } }problem the change introduced that fails it"
     [[ "$_rl_outcome" == fail ]] && _rl_reason="the ${lens} lens found a ${_rl_fail_on// / or } problem the change introduced"
+    [[ "$_rl_outcome" == misconfigured ]] && _rl_reason="the ${lens} lens found that the issue itself is wrong: $(jq -r '.issue' <<< "$_rl_route")"
     printf '%s' "$normalized" | atomic_write "$out" \
         && stage_result_add "$out" "$_rl_outcome" "$_rl_reason"
+    _rl_write_routed "${out%.json}-code-result.json" "$(jq -c '.code' <<< "$_rl_route")" \
+        "the ${lens} lens's findings the code or a test must fix"
+    _rl_write_routed "${out%.json}-design-result.json" "$(jq -c '.design' <<< "$_rl_route")" \
+        "the ${lens} lens's findings the design must fix"
     local score findings_count
     score="$(printf '%s' "$normalized" | jq -r '.score // 0' 2>/dev/null || echo 0)"
     findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"

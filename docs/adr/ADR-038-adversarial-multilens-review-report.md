@@ -221,3 +221,23 @@ are tests is the repository's list (`.zbuild/test-paths.txt`, else the engine's;
 On #1944 the test diffs were 68 KB of a 98 KB diff, read by every lens before it could start;
 five of six then ran out of time. Enforced by
 `plugins/agent/review-lens/tests/review-lens-evidence-test.sh`.
+
+## Amendment (2026-10-30, #2433): one severity scale; each finding says what would fix it
+
+Every lens grades each finding on one scale, defined once in the lens charter
+(`plugins/agent/review-lens/lib/charters.sh`), which every lens receives:
+
+- `critical`: the change makes the program unsafe or wrong for everyone: data loss, a security hole, or the run breaking on a normal path.
+- `high`: the change is wrong on a path the issue cares about, or breaks something it should not touch.
+- `medium`: the change works, but a realistic case gets it wrong, a test does not prove what it claims, or the design leaves a gap that will cause the next bug.
+- `low`: style, wording, a small inefficiency, or hardening against an unlikely case.
+
+Each lens's persona gives examples of each level for that lens; the definitions live only in the charter.
+Each finding also says what would fix it — `code`, `test`, `design`, or `issue` (the issue itself is
+wrong: it contradicts an ADR or asks for something that cannot be built as written) — never which stage.
+A word off that list is read as `code`. Scope is no longer warn-only: its findings send the change back
+like any lens's.
+
+Enforced by: `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1 (the four levels and the fix
+words are in every lens's prompt), R1b (each lens persona gives an example of each level; scope is no
+longer warn-only); `plugins/agent/review-lens/tests/review-lens-test.sh` #1140-12.

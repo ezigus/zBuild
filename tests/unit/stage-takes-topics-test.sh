@@ -237,7 +237,7 @@ assert_eq "[T7] test: the suite is code-findings, the acceptance check requireme
 assert_eq "[T7] issue-acceptance: requirement-findings" \
     "issue_acceptance_result=requirement-findings issue_acceptance_summary=requirement-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml")"
-assert_eq "[T7] review-lens: code-findings" "lens_result=code-findings review_lens_summary=code-findings review_lens_replies=code-findings " \
+assert_eq "[T7] review-lens: code-findings" "lens_result=code-findings review_lens_summary=code-findings review_lens_code=code-findings review_lens_design=requirement-findings review_lens_replies=code-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/review-lens/manifest.yaml")"
 assert_eq "[T7] security-lens: code-findings" "findings=code-findings security_lens_summary=code-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/security-lens/manifest.yaml")"
