@@ -95,6 +95,7 @@ _dck_plain() {
         TESTFILE_NOT_A_TEST*) local _tg; zb_test_path_globs_v _tg
             printf '%s is named as a test, but it is not in a test folder (%s) — name a test file in one of them, or leave it out: a document or a source file is not a test' "$id" "${_tg// /, }" ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
+        WIRING_IS_TEST*)     printf 'the WIRING file %s is one of your test files — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
 }
@@ -187,15 +188,18 @@ _design_checks() {
         done < <(jq -r '.requirements[]? | .id + "\u001f" + (.text | gsub("[[:cntrl:]]"; " "))' "$req_json" 2>/dev/null || true)
     fi
 
-    # ── C5 WIRING: section present ("none" ok); each concrete path exists ────
+    # ── C5 WIRING: section present ("none" ok); each concrete path exists and is no TESTFILE ─
     if [[ $_accept_ok -eq 1 ]]; then
         if ! acceptance_list_wiring "$design_md" >/dev/null 2>&1; then
             violations+=("WIRING_MISSING (design.md acceptance block has no WIRING: section)")
         else
-            local _w
+            local _w _tfs
+            _tfs="$(acceptance_list_testfiles "$design_md" 2>/dev/null || true)"
             while IFS= read -r _w; do
                 [[ -z "$_w" || "$_w" == "none" ]] && continue
-                [[ -e "$repo_root/$_w" ]] || violations+=("WIRING_MISSING $_w (declared wiring path absent on disk)")
+                [[ -e "$repo_root/$_w" ]] || { violations+=("WIRING_MISSING $_w (declared wiring path absent on disk)"); continue; }
+                # #2429: reachability cannot prove a test file load-bearing.
+                grep -qxF -- "$_w" <<< "$_tfs" && violations+=("WIRING_IS_TEST $_w (a TESTFILE named as WIRING)")
             done < <(acceptance_list_wiring "$design_md" 2>/dev/null || true)
         fi
     fi

@@ -4,7 +4,8 @@
 amended 2026-07-03 (#1218, ADR-046 — Level-1 SPEC-tag-presence shifts LEFT to a PRE-build
 `design-gate`; this post-build acceptance-gate retains Level-2 negative-control/tautology +
 Level-3 reachability, which cannot shift left — they need a built assertion + baseline-vs-HEAD);
-amended 2026-10-11 (Level 3 puts back every changed code file, not only the named WIRING file)
+amended 2026-10-11 (Level 3 puts back every changed code file, not only the named WIRING file);
+amended 2026-10-30 (#2429: a TESTFILE is never a WIRING file; the put-back target stays put back)
 **Related:** ADR-031 (behavioral acceptance contract), ADR-013 (canonical stage list),
 ADR-020 (inter-stage data contract / optional inputs), ADR-022 (test-assessment),
 ADR-030 (scope governance), ADR-042 (plug-and-play stage resolution),
@@ -1013,6 +1014,13 @@ Level 3 put back only the file the design named under `WIRING:`, and `WIRING: no
 - **`WIRING:` keeps its first job:** it names a file the change must reach the program through (the #845 case, a hook nobody wrote, is not in the diff and only a named file catches it). `WIRING: none` now only says no file is named; it exempts nothing. A block with no `WIRING:` section is checked the same way.
 - **One evidence rule.** A test file judged per `[SPEC-n]` line falls back to the file's exit code on a side that printed no line for that SPEC — negctl's rule (#1969) — so a file that dies before printing, because the file it needs was put back, counts as failed.
 
+## Amendment (2026-10-30, #2429) — a test file is never a WIRING file
+
+In #1951's run the design named its own test file under `WIRING:`. Level 3 put that file back to the merge-base, then copied every TESTFILE from HEAD into the same worktree — the file it had just put back among them — so the tests always ran the new version, never failed, and every round reported `inert_wiring` whatever the stages did.
+
+- **A file listed under `TESTFILES:` is never a WIRING file.** A test checks the change; it is not what runs it. Design's checks refuse it (`WIRING_IS_TEST <file>`, C5), and the words say to name the file whose code calls the new code, or to write `WIRING: none` when only the test harness runs it.
+- **The put-back target stays put back.** Level 3 copies the TESTFILES from HEAD except its target, so the run sees the target's merge-base content.
+
 ## Enforced by
 
 - §1 → `tests/unit/acceptance-block-test.sh` TC-7 (`acceptance_list_spec_ids` returns the ids); `tests/unit/acceptance-coverage-test.sh` C6 (bare legacy `SPEC:` lines carry no id and are not checked)
@@ -1049,3 +1057,4 @@ Level 3 put back only the file the design named under `WIRING:`, and `WIRING: no
 - Amendment (#2304 part B) → `tests/unit/acceptance-negctl-status-test.sh` N1–N5; `tests/unit/acceptance-coverage-test.sh` C7, C9; `tests/integration/acceptance-gate-test.sh` S6
 - Amendment (#1752 run 37920468204, the gate fails closed) → `tests/integration/acceptance-gate-fails-closed-test.sh` F1–F7; `tests/unit/runner-contract-lib-seam-test.sh` SPEC-6, SPEC-7
 - Amendment (#1752) → `scripts/lib/lint-bare-timeout.sh` (in `npm run lint`), proven by `tests/unit/lint-bare-timeout-test.sh` L1 (a planted bare call fails, in every command position), L2 (a hand-written probe outside the helper fails), L3–L5 (mentions, opt-outs with a reason, the test-helpers mock), L6 (the real tree passes; `npm run lint` runs it), L7 (`release.sh` is opted out with a reason); `tests/unit/timeout-cmd-test.sh` H1–H6 (the helper on a `gtimeout`-only host; `none`; the `-k` probe once per process; no binary → empty bound, rc 0), C1–C3 (the contract-lib closure and snapshot carry the helper; build's guard still loads `acceptance-block.sh`); `tests/unit/timeout-cmd-sites-test.sh` S1–S7 (each converted site bounds its command on a `gtimeout`-only host; a red acceptance testfile still yields `inert_build`)
+- Amendment (#2429) → `tests/unit/design-checks-plain-test.sh` #2429-R1 (a TESTFILE named as WIRING is refused, in plain words), #2429-R2 (a non-test WIRING file and `WIRING: none` pass); `tests/unit/acceptance-gate-reachability-test.sh` #2429-R3 (the target stays at the merge-base when it is also a TESTFILE)

@@ -147,8 +147,10 @@ _reachability_revert_one() {
     done
 
     # Ensure testfiles are overlaid from HEAD (may not be in changed_files if unchanged).
+    # Never the target: overlaying it would undo the revert under test (#2429).
     for tf in "${testfiles[@]:-}"; do
         [[ -z "$tf" ]] && continue
+        [[ "$tf" == "$target" ]] && continue
         mkdir -p "$wt_dir/$(dirname "$tf")"
         git -C "$repo_root" show "HEAD:$tf" > "$wt_dir/$tf" 2>/dev/null || true
         chmod +x "$wt_dir/$tf" 2>/dev/null || true
