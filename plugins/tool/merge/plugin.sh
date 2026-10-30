@@ -226,7 +226,7 @@ _merge_run_inner() {
 
     # Write pr-url.txt for downstream compatibility (ADR-013)
     local pr_url_out="$artifacts_dir/pr-url.txt"
-    printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
+    printf '%s\n' "$pr_url" | atomic_write "$pr_url_out" || true
 
     stage_result_write "$merge_result_out" pass "squash-merged via gh pr merge" \
         "$(jq -nc --arg pr_url "$pr_url" --argjson pr_number "${pr_number:-0}" \

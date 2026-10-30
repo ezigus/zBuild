@@ -271,7 +271,19 @@ _intake_run_inner() {
             fi
         done
     } | atomic_write "$state_dir/scope-manifest.md"
+    local _sm_aw_rc="${PIPESTATUS[1]}"
+    if (( _sm_aw_rc != 0 )); then
+        _intake_write_result "$_art" "broken" \
+            "failed to write scope-manifest.md" || true
+        return 1
+    fi
     printf '%s\n' "$sanitized"   | atomic_write "$state_dir/intake.md"
+    local _im_aw_rc="${PIPESTATUS[1]}"
+    if (( _im_aw_rc != 0 )); then
+        _intake_write_result "$_art" "broken" \
+            "failed to write intake.md" || true
+        return 1
+    fi
 
     local _title_line
     _title_line="${sanitized%%$'\n'*}"

@@ -1185,7 +1185,8 @@ _test_write_result() {
         }' \
         2>/dev/null \
       | atomic_write "$path"
-    local _jq_rc="${PIPESTATUS[0]}"
+    local _jq_rc="${PIPESTATUS[0]}" _aw_rc="${PIPESTATUS[1]}"
+    (( _aw_rc != 0 )) && _jq_rc="$_aw_rc"
     (( _jq_rc != 0 )) || stage_result_add "$path" "$outcome" "$reason" 2>/dev/null || _jq_rc=1
 
     if (( _jq_rc != 0 )); then
