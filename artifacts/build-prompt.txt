@@ -111,10 +111,10 @@ omit this line the pipeline falls back to the plan title.
    - Areas: `tests/unit/event-schema-emitted-coverage-test.sh`
 3. Remove all \`persist.*\` and \`hydrate.*\` event declarations from \`config/event-schema.json\` (R4, first part). The R1 assertions from step-1 must now go green.
    - Areas: `config/event-schema.json`
-4. Remove the \`plugin.result\` declaration from \`plugins/agent/security-lens/manifest.yaml\` and \`plugins/tool/merge/manifest.yaml\` (R4, second part). The R3 assertion from step-2 must now go green.
-   - Areas: `plugins/agent/security-lens/manifest.yaml`, `plugins/tool/merge/manifest.yaml`
-5. Add the event-schema-emitted-coverage test to the \`## Enforced by\` section of \`docs/adr/ADR-001-plugin-contract.md\` so the ADR's enforcement record names the file that now enforces R1–R3.
-   - Areas: `docs/adr/ADR-001-plugin-contract.md`
+4. Remove \`plugin.result\` from \`plugins/agent/security-lens/manifest.yaml\` and \`plugins/tool/merge/manifest.yaml\`, and in the same change remove the sub-assertions in \`plugins/agent/security-lens/tests/security-lens-test.sh\` [SPEC-16] and \`tests/unit/merge-v2-result-test.sh\` [SPEC-1] that assert plugin.result IS present in those manifests — those assertions become false and would leave the suite broken otherwise (R4, second part). The R3 assertion from step-2 must now go green.
+   - Areas: `plugins/agent/security-lens/manifest.yaml`, `plugins/tool/merge/manifest.yaml`, `plugins/agent/security-lens/tests/security-lens-test.sh`, `tests/unit/merge-v2-result-test.sh`
+5. Add an \`## Enforced by\` section to \`docs/adr/ADR-001-plugin-contract.md\` naming \`tests/unit/event-schema-emitted-coverage-test.sh\`, and remove \`ADR-001-plugin-contract.md\` from \`config/adr-enforcement-baseline.txt\` — the baseline only shrinks, and the lint script requires that ADRs with an Enforced-by section are absent from it.
+   - Areas: `docs/adr/ADR-001-plugin-contract.md`, `config/adr-enforcement-baseline.txt`
 
 ### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
 # Design — #1951: Fix enumerated guard in event-schema coverage test
@@ -201,6 +201,8 @@ asserts `plugin.result` IS in `event-schema.json`. This change removes
 **SPEC-3/4/5/6 [no-code] rationale.** These require data/config/file changes
 (not new code behaviour), so [no-code] is correct. The rule "not what a file
 contains" applies only to [code] requirements.
+
+**Test stage finding (`inert_wiring: tests/unit/event-schema-emitted-coverage-test.sh`).** The acceptance gate reverted `tests/unit/event-schema-emitted-coverage-test.sh` to its old version while keeping all data changes in place (persist.*/hydrate.* already removed from event-schema.json, plugin.result already removed from the two manifests), and found every test still passed. This is expected: with the violations already gone from the data, the old guard (using `_PLUGIN_NS_RE`) finds nothing to catch. The finding's recommended resolution is "write WIRING: none" — which the design already states. The inert_wiring result does not mean the [code] tests are wrong. The negctl control (`negctl-SPEC-1.log`, `negctl-SPEC-2.log`) confirms the correct direction: the new test file run against old data (violations still present) fails on all 12 SPEC-1 and 2 SPEC-2 assertions. SPEC-1 and SPEC-2 remain [code]: both tests fail on old code and pass on new code. WIRING: none is confirmed — the guard is entirely self-contained in the test file with no separate external caller.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
@@ -321,11 +323,11 @@ Summary:
 - scope violation: false
 
 Your notes so far:
-# Build notes for #1951 (iteration 3)
+# Build notes for #1951 (iteration 4)
 
-## Final verified state
+## Current state
 
-All required changes are committed and all SPEC tests pass. No further changes needed.
+All required changes are committed and all SPEC tests pass. No code changes needed this iteration.
 
 ### Changes committed in previous iterations
 
@@ -347,32 +349,29 @@ All required changes are committed and all SPEC tests pass. No further changes n
 ### VERIFIED: All SPECs pass on current tree
 
 - tests/unit/event-schema-emitted-coverage-test.sh → All 16 tests passed (SPEC-1/2/3/4/6 ✓)
-- plugins/agent/security-lens/tests/security-lens-test.sh → All 93 tests passed ✓
-- tests/unit/merge-v2-result-test.sh → All 54 tests passed ✓
+- plugins/agent/security-lens/tests/security-lens-test.sh → All 27 tests passed (SPEC-5 ✓)
 - tests/unit/lint-adr-enforced-by-test.sh → All 27 tests passed (SPEC-5 ✓)
 
-### Addressing previous stage findings
+### Addressing test finding 1 (wiring check)
 
-**issue-acceptance finding 1** (_PLUGIN_NS_RE not removed): RESOLVED. Grep confirms it
-is absent from event-schema-emitted-coverage-test.sh. The test-author commits already
-removed the SPEC-1717-2 block and replaced it with the dynamic manifest-derived guard.
+The acceptance gate shows:
+- NEGCTL PASS SPEC-1: reverting implementation causes SPEC-1 assertion to fail (correct)
+- NEGCTL PASS SPEC-2: reverting implementation causes SPEC-2 assertion to fail (correct)
+- REACHABILITY FAIL inert_wiring tests/unit/event-schema-emitted-coverage-test.sh
 
-**issue-acceptance finding 2** (two pre-existing tests fail): RESOLVED. The test-author
-commits (7fd1c7ca) updated security-lens-test.sh and merge-v2-result-test.sh to remove
-the plugin.result sub-assertions. Both now check only what they're entitled to assert
-(security_lens.failed for SPEC-16; result_contract/role for SPEC-1). Both tests pass.
+The REACHABILITY FAIL is because reverting the test file to its old version still allows
+all tests to pass (since the implementation changes are in place and the old assertions
+don't check for SPEC-1/2/3/4/6). This is a false positive from the wiring check.
 
-**test finding 10** (wiring check): event-schema-emitted-coverage-test.sh is a
-standalone test script run directly by the test harness. WIRING: none.
+event-schema-emitted-coverage-test.sh is a STANDALONE unit test. The test runner
+(scripts/run-tests.sh) discovers all `*-test.sh` files in `tests/unit/` and runs them
+directly. No other file calls this test file.
 
-**test findings 1-9** (golden file/shape-floor warnings): Heuristic alerts, not actual
-failures. The parity golden file is unaffected — persist/hydrate events remain in the
-composed known set via plugin manifests; only the redundant engine-config leg was
-removed. All shape-floor and template tests pass (verified).
+WIRING: none — the test is discovered and run directly by the test harness.
 
 ## No further changes required — implementation complete
 
-### test (verdict: fail)
+### test (verdict: pass)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
@@ -385,6 +384,7 @@ Outputs:
 
 Findings:
 - test finding 1 (opened by test): tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
+- acceptance-gate finding 1 (opened by test): tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
 
 Summary:
 # Test stage summary
@@ -427,6 +427,14 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - config/adr-enforcement-baseline.txt
   - tests/golden/parity/event-sequence.golden
   - config/shape-change-paths.txt
+  - tests/golden/full-pipeline/event-sequence.golden
+  - tests/unit/core-pipeline-template-test.sh
+  - tests/unit/shape-floor-content-stable-test.sh
+  - tests/unit/shape-floor-summary-plain-test.sh
+  - tests/unit/build-oos-pass-request-test.sh
+  - tests/unit/template-simple-yaml-test.sh
+  - tests/unit/template-resolvability-preflight-test.sh
+  - tests/unit/change-scope-floor-test.sh
 
 ### Rules
 - Touch only files in the scope list above.
