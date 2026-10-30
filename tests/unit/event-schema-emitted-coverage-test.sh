@@ -166,7 +166,7 @@ _1951_adr_ownership() {
         esac
         if [[ "$sec" == engine ]]; then
             t="$line"
-            while [[ "$t" =~ \`([a-z_]+)\.\*\`(.*) ]]; do
+            while [[ "$t" =~ \`([a-z0-9_-]+)\.\*\`(.*) ]]; do
                 _1951_ENGINE_NS+="${BASH_REMATCH[1]} "; t="${BASH_REMATCH[2]}"
             done
         elif [[ "$sec" == exception ]]; then
@@ -179,14 +179,28 @@ _1951_adr_ownership() {
 }
 
 # _1951_spec1_violations <engine_types> <plugins_root> <adr> — every engine-config
-# event outside the engine's namespaces, one per line. A namespace is an event's
-# first part; a plugin manifest that declares it owns it.
+# event outside the engine's namespaces, one per line, with why: a plugin
+# manifest declares its namespace (the namespaces are read from the manifests),
+# or ADR-001 does not give it to the engine. A namespace is an event's first part.
 _1951_spec1_violations() {
-    local types="$1" ev
+    local types="$1" root="$2" m ev ns
+    local -a mf=(); local -A pns=()
     _1951_adr_ownership "$3"
     [[ "$_1951_ENGINE_NS" != " " ]] || { printf 'ERROR: %s names no engine namespace\n' "$3"; return 0; }
+    while IFS= read -r m; do [[ -n "$m" ]] && mf+=("$m"); done \
+        < <(find "$root" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null)
+    if [[ ${#mf[@]} -gt 0 ]]; then
+        while IFS= read -r ev; do
+            ns="${ev%%.*}"
+            [[ -n "$ev" && "$_1951_ENGINE_NS" != *" $ns "* ]] && pns[$ns]=1
+        done < <(eb_manifest_events "${mf[@]}")
+    fi
     while IFS= read -r ev; do
-        [[ -n "$ev" && "$_1951_ENGINE_NS" != *" ${ev%%.*} "* ]] && printf '%s\n' "$ev"
+        [[ -n "$ev" ]] || continue
+        ns="${ev%%.*}"
+        if [[ -n "${pns[$ns]:-}" ]]; then printf '%s (a plugin manifest declares %s)\n' "$ev" "$ns"
+        elif [[ "$_1951_ENGINE_NS" != *" $ns "* ]]; then printf '%s (ADR-001 does not give %s to the engine)\n' "$ev" "$ns"
+        fi
     done <<< "$types"
     return 0
 }
@@ -196,7 +210,7 @@ if [[ -z "$_1951_spec1_viol" ]]; then
     assert_pass "[#1951/SPEC-1] event-schema.json carries no event in a plugin-owned namespace"
 else
     while IFS= read -r _1951_t; do
-        assert_fail "[#1951/SPEC-1] event-schema.json has '${_1951_t}' in a plugin-owned namespace" \
+        assert_fail "[#1951/SPEC-1] event-schema.json has ${_1951_t}" \
             "remove this entry from config/event-schema.json; the plugin that owns it declares it (ADR-001 §\"Declared events\")"
     done <<< "$_1951_spec1_viol"
 fi
@@ -313,7 +327,7 @@ else
     assert_pass "[#1951/SPEC-4] the [SPEC-1] plugin.result sub-assertion is absent from merge-v2-result-test.sh"
 fi
 
-# ─── 10. [#1951 lens review] the guard's rules, on fixtures ────────────────────
+# ─── 9. [#1951 lens review] the guard's rules, on fixtures ────────────────────
 # The real tree passes sections 5, 6 and 8 today, so their rules are checked on
 # fixtures here: each one is a leak the real tree does not happen to have.
 _1951_fx="$(mktemp -d "${TMPDIR:-/tmp}/zb-1951-fx.XXXXXX")"
@@ -327,7 +341,7 @@ cat > "$_1951_fx/adr.md" <<'ADR'
 **Ownership rule.**
 
 - **Engine** (`config/event-schema.json`): `pipeline.*`, `plugin.*`,
-  `newengine.*`.
+  `newengine.*`, `e2e.*`.
 - **Plugin** (its `provides.events`): every other namespace.
 - **Exception:** `plugin.pr_open.*` is engine-namespaced but names a single plugin, so it belongs to
   `pr-open`.
@@ -335,18 +349,22 @@ ADR
 _1951_fx_plugin "$_1951_fx/p1" tool/foo plugin.foo.started
 _1951_fx_plugin "$_1951_fx/p1" tool/pr-open plugin.pr_open.branch_fallback_used
 _1951_fx_plugin "$_1951_fx/p1" tool/bar newengine.tick
+_1951_fx_plugin "$_1951_fx/p1" tool/baz e2e.ran
 _1951_fx_v2="$(_1951_spec2_violations "$_1951_fx/p1" "$_1951_fx/adr.md")"
 assert_contains "[#1951/R2] plugin.<name>.* is the engine's for every plugin but pr-open" \
     "$_1951_fx_v2" "plugins/tool/foo → plugin.foo.started"
 assert_eq "[#1951/R2] pr-open keeps plugin.pr_open.*" "" "$(grep 'pr_open' <<< "$_1951_fx_v2" || true)"
 assert_contains "[#1951/R3] the engine's namespaces are read from ADR-001, not a list in this test" \
     "$_1951_fx_v2" "plugins/tool/bar → newengine.tick"
+assert_contains "[#1951/R3] … including a namespace with a digit" "$_1951_fx_v2" "plugins/tool/baz → e2e.ran"
 
 _1951_fx_plugin "$_1951_fx/p2" tool/widget widget.result.write_failed
 assert_contains "[#1951/R1] a namespace is an event's first part, so a three-part event still claims it" \
-    "$(_1951_spec1_violations $'widget.start\npipeline.start' "$_1951_fx/p2" "$_1951_fx/adr.md")" "widget.start"
+    "$(_1951_spec1_violations $'widget.start\npipeline.start' "$_1951_fx/p2" "$_1951_fx/adr.md")" \
+    "widget.start (a plugin manifest declares widget)"
 assert_contains "[#1951/R1] engine config carries only the namespaces ADR-001 gives the engine" \
-    "$(_1951_spec1_violations $'persistx.start\npipeline.start' "$_1951_fx/p2" "$_1951_fx/adr.md")" "persistx.start"
+    "$(_1951_spec1_violations $'persistx.start\npipeline.start' "$_1951_fx/p2" "$_1951_fx/adr.md")" \
+    "persistx.start (ADR-001 does not give persistx to the engine)"
 assert_eq "[#1951/R1] … and an engine namespace is not flagged" "" \
     "$(_1951_spec1_violations $'pipeline.start\nplugin.result' "$_1951_fx/p2" "$_1951_fx/adr.md")"
 
@@ -356,7 +374,7 @@ else
     assert_pass "[#1951/SPEC-4] a test file that is missing is not taken as clean"
 fi
 
-# ─── 9. [#1951/SPEC-6] the old hardcoded plugin-namespace guard is gone ───────
+# ─── 10. [#1951/SPEC-6] the old hardcoded plugin-namespace guard is gone ───────
 # After the change, the hardcoded plugin-namespace enumeration variable introduced
 # by SPEC-1717-2 must not appear anywhere in this file: the dynamic manifest-based
 # check (SPEC-1 above) fully replaces it.
