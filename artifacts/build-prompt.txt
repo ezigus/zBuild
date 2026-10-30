@@ -123,8 +123,8 @@ omit this line the pipeline falls back to the plan title.
 
 **Goal.** The guard in `tests/unit/event-schema-emitted-coverage-test.sh` that
 prevents plugin-owned namespaces from appearing in `config/event-schema.json` is
-itself a hardcoded enumerated list (`_PLUGIN_NS_RE`). It omitted `persist` and
-`hydrate`, so those plugins' events were double-declared in the engine config and
+itself a hardcoded enumerated list (`_PLUGIN_NS_RE`, line 123). It omitted `persist`
+and `hydrate`, so those plugins' events were double-declared in the engine config and
 the guard never caught them. Two plugins (`security-lens`, `merge`) also
 incorrectly claimed the engine event `plugin.result` in their manifests; the
 guard had no path to catch that direction at all.
@@ -137,45 +137,58 @@ manifest leg never overlap, enforced from the manifest data rather than a
 hand-maintained regex.
 
 **Decision.**
-1. Replace `_PLUGIN_NS_RE` in the coverage test with a runtime-derived set:
-   scan all `plugins/*/*/manifest.yaml` for `provides.events`, extract namespace
-   prefixes (part before the first `.`), then remove every prefix that ADR-001
-   names as engine-owned (`plugin`, `pipeline`, `stage`, `stage_io`, `cycle`,
-   `router`, `loop`, `state`, `registry`, `parallel`, `redaction`, `template`,
-   `strategy`, `artifact`, `model`, `cost`, `orch`, `memory`, `backend`,
-   `detection`, `llm`, `selfhost`). Filtering `plugin` out naturally handles the
-   documented `plugin.pr_open.*` exception. Assert that
-   `config/event-schema.json` has no `known_types` entry in any of the remaining
-   plugin-owned prefixes.
-2. Add a reverse assertion: for each manifest, every declared event's namespace
-   prefix must not be engine-owned. The single narrow exception (`plugin.pr_open.*`
-   from `plugins/tool/pr-open`) is handled by checking that `plugin.*` events
-   only appear in that one path.
+1. **Replace** the `[SPEC-1717-2]` block (lines 120–130 of the coverage test, which
+   define and use `_PLUGIN_NS_RE`) with a manifest-derived guard: scan all
+   `plugins/*/*/manifest.yaml` for `provides.events`, extract namespace prefixes
+   (part before the first `.`), then remove every prefix that ADR-001 names as
+   engine-owned (`plugin`, `pipeline`, `stage`, `stage_io`, `cycle`, `router`,
+   `loop`, `state`, `registry`, `parallel`, `redaction`, `template`, `strategy`,
+   `artifact`, `model`, `cost`, `orch`, `memory`, `backend`, `detection`, `llm`,
+   `selfhost`). Assert that `config/event-schema.json` has no `known_types` entry
+   whose namespace prefix is in the resulting manifest-derived set. The variable
+   `_PLUGIN_NS_RE` must not remain in the file. Filtering `plugin` out naturally
+   handles the `plugin.pr_open.*` exception.
+2. Add a reverse assertion: for each plugin manifest, every declared event's
+   namespace prefix must not be engine-owned. The single narrow exception
+   (`plugin.pr_open.*` from `plugins/tool/pr-open`) is handled by checking that
+   `plugin.*` events only appear in that one path.
 3. Remove the 11 `persist.*`/`hydrate.*` entries from `config/event-schema.json`
-   — already correctly declared in the respective plugin manifests and belonging
-   only there.
+   — already correctly declared in the respective plugin manifests.
 4. Remove `plugin.result` from `plugins/agent/security-lens/manifest.yaml` and
-   `plugins/tool/merge/manifest.yaml` — it is an engine event, not
-   plugin-declared.
+   `plugins/tool/merge/manifest.yaml` — it is an engine event, not plugin-declared.
+   Two tests that previously asserted `plugin.result` IS in those manifests must be
+   updated to remove that sub-assertion: `[SPEC-16]` in `security-lens-test.sh`
+   and `[SPEC-1]` in `merge-v2-result-test.sh`.
 5. Add `## Enforced by` to ADR-001 and remove it from
    `config/adr-enforcement-baseline.txt`.
 
 `tests/golden/parity/event-sequence.golden` is unaffected: persist.* and
 hydrate.* events remain known via the manifest leg of the composed set; only the
-redundant engine-config leg is removed. The sequence is identical.
+redundant engine-config leg is removed.
+
 
 
 
 ## Findings
 
-**SPEC-3/4/5/6 [code] → [no-code].** The validator correctly rejected the four
-SPECs: removing entries from `event-schema.json` and plugin manifests is
-data/config cleanup, not executable code. The rule "not what a file contains"
-applies only to `[code]` requirements; `[no-code]` requirements describe docs,
-config, or refactor work, which these are. The previous SPEC-7 (`[no-code]` for
-ADR-001 Enforced by) was accepted with the same form — confirming the fix.
-Renumbered as SPEC-3 through SPEC-5 with SPEC-3+4 each consolidating two
-formerly separate entries that touched the same kind of change.
+**Issue-acceptance finding 1 (`_PLUGIN_NS_RE` not removed).** The previous
+build appended the new manifest-derived guard after the existing `_PLUGIN_NS_RE`
+block rather than replacing it, leaving the hardcoded enumeration intact.
+The design now explicitly states the `[SPEC-1717-2]` block (lines 120–130)
+must be replaced — not augmented — and adds SPEC-6[no-code] requiring
+`_PLUGIN_NS_RE` to be absent from the file after the change.
+
+**Issue-acceptance finding 2 (two pre-existing tests fail).** Removing
+`plugin.result` from the security-lens and merge manifests (SPEC-4) makes two
+existing assertions wrong:
+- `[SPEC-16]` in `plugins/agent/security-lens/tests/security-lens-test.sh`
+  asserts `plugin.result` IS in the manifest.
+- `[SPEC-1]` in `tests/unit/merge-v2-result-test.sh` asserts `plugin.result`
+  IS in the merge manifest.
+
+Both files are now in scope. Both are listed in the `supersedes` block. Both
+are listed in SPEC-4's TESTFILES entry so the pipeline verifies they pass after
+the sub-assertions are removed.
 
 **tests/golden/parity/event-sequence.golden.** No change: persist.*/hydrate.*
 events remain in the composed known set via plugin manifests; only their
@@ -184,6 +197,10 @@ redundant engine-config entry is removed.
 **tests/unit/plugin-lifecycle-event-balance-test.sh.** Unaffected: that test
 asserts `plugin.result` IS in `event-schema.json`. This change removes
 `plugin.result` only from two plugin manifests, not from the engine config.
+
+**SPEC-3/4/5/6 [no-code] rationale.** These require data/config/file changes
+(not new code behaviour), so [no-code] is correct. The rule "not what a file
+contains" applies only to [code] requirements.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
@@ -191,27 +208,31 @@ These tests were written before your code. Make them pass by changing code only.
 - SPEC-1: tests/unit/event-schema-emitted-coverage-test.sh
 - SPEC-2: tests/unit/event-schema-emitted-coverage-test.sh
 - SPEC-3: tests/unit/event-schema-emitted-coverage-test.sh
-- SPEC-4: tests/unit/event-schema-emitted-coverage-test.sh
+- SPEC-4: tests/unit/event-schema-emitted-coverage-test.sh plugins/agent/security-lens/tests/security-lens-test.sh tests/unit/merge-v2-result-test.sh
 - SPEC-5: tests/unit/lint-adr-enforced-by-test.sh
+- SPEC-6: tests/unit/event-schema-emitted-coverage-test.sh
 
 What each SPEC requires:
-- [#1951/SPEC-1] The event-schema coverage test exits non-zero when event-schema.json's known_types contains an event whose namespace prefix appears in any plugin manifest's provides.events (e.g., persist.start in event-schema.json)
+- [#1951/SPEC-1] The event-schema coverage test derives plugin-owned namespace prefixes dynamically from plugins/*/*/manifest.yaml provides.events rather than a hardcoded variable, and exits non-zero when event-schema.json's known_types contains an event in any manifest-derived namespace (e.g., persist.start)
 - [#1951/SPEC-2] The event-schema coverage test exits non-zero when any plugin manifest's provides.events contains an event whose namespace prefix is engine-owned per ADR-001 (e.g., plugin.result in the security-lens manifest)
 - [#1951/SPEC-3] persist.* and hydrate.* entries are removed from config/event-schema.json known_types; their canonical declarations remain only in the plugin manifests
-- [#1951/SPEC-4] plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manifest.yaml provides.events
+- [#1951/SPEC-4] plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manifest.yaml provides.events, and the two tests that previously asserted plugin.result was present in those manifests are updated to remove that sub-assertion
 - [#1951/SPEC-5] docs/adr/ADR-001-plugin-contract.md has an ## Enforced by section naming tests/unit/event-schema-emitted-coverage-test.sh, and config/adr-enforcement-baseline.txt no longer lists ADR-001-plugin-contract.md
+- [#1951/SPEC-6] The hardcoded _PLUGIN_NS_RE variable and its associated guard block are absent from tests/unit/event-schema-emitted-coverage-test.sh after the change — no occurrence of _PLUGIN_NS_RE remains in the file
 
 ### REQUIREMENTS YOUR CODE MUST MEET
 Your change is done when the test for every requirement below passes.
-- [#1951/SPEC-1] The event-schema coverage test exits non-zero when event-schema.json's known_types contains an event whose namespace prefix appears in any plugin manifest's provides.events (e.g., persist.start in event-schema.json)
+- [#1951/SPEC-1] The event-schema coverage test derives plugin-owned namespace prefixes dynamically from plugins/*/*/manifest.yaml provides.events rather than a hardcoded variable, and exits non-zero when event-schema.json's known_types contains an event in any manifest-derived namespace (e.g., persist.start)
   → its test is already written; make it pass
 - [#1951/SPEC-2] The event-schema coverage test exits non-zero when any plugin manifest's provides.events contains an event whose namespace prefix is engine-owned per ADR-001 (e.g., plugin.result in the security-lens manifest)
   → its test is already written; make it pass
 - [#1951/SPEC-3] persist.* and hydrate.* entries are removed from config/event-schema.json known_types; their canonical declarations remain only in the plugin manifests
   → its test is already written; make it pass
-- [#1951/SPEC-4] plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manifest.yaml provides.events
+- [#1951/SPEC-4] plugin.result is removed from plugins/agent/security-lens/manifest.yaml and plugins/tool/merge/manifest.yaml provides.events, and the two tests that previously asserted plugin.result was present in those manifests are updated to remove that sub-assertion
   → its test is already written; make it pass
 - [#1951/SPEC-5] docs/adr/ADR-001-plugin-contract.md has an ## Enforced by section naming tests/unit/event-schema-emitted-coverage-test.sh, and config/adr-enforcement-baseline.txt no longer lists ADR-001-plugin-contract.md
+  → its test is already written; make it pass
+- [#1951/SPEC-6] The hardcoded _PLUGIN_NS_RE variable and its associated guard block are absent from tests/unit/event-schema-emitted-coverage-test.sh after the change — no occurrence of _PLUGIN_NS_RE remains in the file
   → its test is already written; make it pass
 
 
@@ -220,7 +241,7 @@ Your change is done when the test for every requirement below passes.
 The latest output of every stage that has run, as far as it is about what
 your job takes (ask, tests, change, requirement-findings and code-findings), with where to find it. Use what your job needs.
 
-Files this issue's work has changed so far: config/adr-enforcement-baseline.txt, config/event-schema.json, docs/adr/ADR-001-plugin-contract.md, plugins/agent/security-lens/manifest.yaml, plugins/tool/merge/manifest.yaml, tests/unit/event-schema-emitted-coverage-test.sh, tests/unit/lint-adr-enforced-by-test.sh
+Files this issue's work has changed so far: config/adr-enforcement-baseline.txt, config/event-schema.json, docs/adr/ADR-001-plugin-contract.md, plugins/agent/security-lens/manifest.yaml, plugins/agent/security-lens/tests/security-lens-test.sh, plugins/tool/merge/manifest.yaml, tests/unit/event-schema-emitted-coverage-test.sh, tests/unit/lint-adr-enforced-by-test.sh, tests/unit/merge-v2-result-test.sh
 
 ### intake (verdict: pass)
 Outputs:
@@ -260,9 +281,9 @@ Outputs:
 Summary:
 ## design — pass
 
-- authored design.md — 8 file(s) in scope, 5 acceptance SPEC(s)
+- authored design.md — 10 file(s) in scope, 6 acceptance SPEC(s)
 
-- scope: tests/unit/event-schema-emitted-coverage-test.sh,config/event-schema.json,plugins/agent/security-lens/manifest.yaml,plugins/tool/merge/manifest.yaml,docs/adr/ADR-001-plugin-contract.md,config/adr-enforcement-baseline.txt,tests/golden/parity/event-sequence.golden,config/shape-change-paths.txt
+- scope: tests/unit/event-schema-emitted-coverage-test.sh,config/event-schema.json,plugins/agent/security-lens/manifest.yaml,plugins/tool/merge/manifest.yaml,plugins/agent/security-lens/tests/security-lens-test.sh,tests/unit/merge-v2-result-test.sh,docs/adr/ADR-001-plugin-contract.md,config/adr-enforcement-baseline.txt,tests/golden/parity/event-sequence.golden,config/shape-change-paths.txt
 - artifact: design.md
 
 ### test-author (verdict: pass)
@@ -273,22 +294,39 @@ Outputs:
 Summary:
 ## test-author — pass
 
-- changed 1 test file(s); acceptance assertions for 5 SPEC(s) from the design contract
+- changed 3 test file(s); acceptance assertions for 6 SPEC(s) from the design contract
 
-- SPECs in the contract: 5
+- SPECs in the contract: 6
 - assertions are authored from the SPEC text, never from the implementation
 - the test files, and the requirements each covers:
-- tests/unit/event-schema-emitted-coverage-test.sh — SPEC-1, SPEC-2, SPEC-3, SPEC-4
+- tests/unit/event-schema-emitted-coverage-test.sh — SPEC-1, SPEC-2, SPEC-3, SPEC-4, SPEC-6
+- plugins/agent/security-lens/tests/security-lens-test.sh — SPEC-4
+- tests/unit/merge-v2-result-test.sh — SPEC-4
 - tests/unit/lint-adr-enforced-by-test.sh — SPEC-5
 - Each [code] requirement's test fails on the code as it is now, and passes once the code is written.
 
-### build (verdict: pass) — your own
+### build (verdict: error) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
+## build — unusable
+
+- changed 0 file(s) over 1 pass(es), 2 iteration(s)
+
+- lines: +0 / -0
+- terminated: no_progress
+- scope violation: false
+- needs files outside the contract's scope: plugins/agent/security-lens/tests/security-lens-test.sh, tests/unit/merge-v2-result-test.sh
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-1/build-summary.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-1/build-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-1/diff.patch
+
+Summary of that output:
 ## build — pass
 
 - changed 5 file(s) over 1 pass(es), 1 iteration(s)
@@ -298,81 +336,55 @@ Summary:
 - scope violation: false
 
 Your notes so far:
-# Build notes for #1951
+# Build notes for #1951 (iteration 2)
 
-## Files read
-- tests/unit/event-schema-emitted-coverage-test.sh (test, READ-ONLY)
-- tests/unit/lint-adr-enforced-by-test.sh (test, READ-ONLY)
-- config/event-schema.json (11 persist.*/hydrate.* entries to remove)
-- plugins/agent/security-lens/manifest.yaml (plugin.result in events to remove)
-- plugins/tool/merge/manifest.yaml (plugin.result in events to remove)
-- docs/adr/ADR-001-plugin-contract.md (need ## Enforced by section added)
-- config/adr-enforcement-baseline.txt (need ADR-001-plugin-contract.md removed)
-- plugins/tool/pr-open/manifest.yaml (has plugin.pr_open.* events - concern)
-- plugins/tool/persist/manifest.yaml (canonical persist.* declarations)
-- plugins/tool/hydrate/manifest.yaml (canonical hydrate.* declarations)
-- core/event-bus/known-types.sh (eb_manifest_events function)
-- scripts/lib/lint-adr-enforced-by.sh (format for ## Enforced by)
+## Current state (iteration 2)
 
-## Analysis
+All data changes were applied in the previous build (commit 20a236d3):
+1. config/event-schema.json: persist.* (6) and hydrate.* (5) entries removed
+2. plugins/agent/security-lens/manifest.yaml: plugin.result removed
+3. plugins/tool/merge/manifest.yaml: plugin.result removed (no events section)
+4. docs/adr/ADR-001-plugin-contract.md: ## Enforced by section added
+5. config/adr-enforcement-baseline.txt: ADR-001-plugin-contract.md removed
 
-### SPEC-3: Remove persist.* and hydrate.* from event-schema.json
-Straightforward: remove 11 entries.
+The second test-author (commit 280b8651) fixed the SPEC-1/SPEC-2 test logic:
+- SPEC-1: uses all-but-last namespace (plugin.pr_open.X → plugin.pr_open, not plugin)
+- SPEC-2: has pr-open exception for plugin.<name>.* events
 
-### SPEC-4: Remove plugin.result from security-lens and merge manifests
-Straightforward: remove the plugin.result line from both.
+## VERIFIED (iteration 2): all SPECs pass
 
-### SPEC-5: Add ## Enforced by to ADR-001, remove from baseline
-Need to add section naming tests/unit/event-schema-emitted-coverage-test.sh.
-The lint script (lint-adr-enforced-by.sh) requires backtick-wrapped paths.
-The SPEC-5 test checks that "event-schema-emitted-coverage-test.sh" appears
-in the section body.
+Ran tests/unit/event-schema-emitted-coverage-test.sh → All 14 tests passed
+- SPEC-1 ✓ (all-but-last namespace: plugin.pr_open not in engine ns check)
+- SPEC-2 ✓ (pr-open exception correctly applied)
+- SPEC-3 ✓ (persist/hydrate absent from event-schema.json)
+- SPEC-4 ✓ (plugin.result absent from both manifests)
 
-### CONCERN: pr-open and SPEC-1/SPEC-2
-The test for SPEC-1 collects ALL namespace prefixes from ALL plugin manifests'
-events, including pr-open which declares plugin.pr_open.* events. This adds
-'plugin' to the plugin namespace set. Then SPEC-1 checks if any engine event
-has a namespace prefix in that set - and plugin.* engine events would be flagged.
+Ran tests/unit/lint-adr-enforced-by-test.sh → All 27 tests passed
+- SPEC-5 ✓
 
-Similarly SPEC-2 checks if any plugin manifest event matches _ENGINE_OWNED_NS_RE
-(which includes 'plugin'), and pr-open's plugin.pr_open.* events match.
+## BLOCKED: pre-existing tests out of scope
 
-HOWEVER - the design decision says engine-owned namespaces should be filtered out
-of the plugin namespace set. Maybe the test author DID implement this filtering
-but I'm missing it. Let me just run the test after the changes.
+Two pre-existing tests now FAIL because they assert plugin.result IS present
+(the old state), but SPEC-4 correctly removed it:
 
-## Changes needed
-1. config/event-schema.json: remove hydrate.* (5 entries) and persist.* (6 entries)
-2. plugins/agent/security-lens/manifest.yaml: remove plugin.result from events
-3. plugins/tool/merge/manifest.yaml: remove plugin.result from events
-4. docs/adr/ADR-001-plugin-contract.md: add ## Enforced by section
-5. config/adr-enforcement-baseline.txt: remove ADR-001-plugin-contract.md line
-echo "Notes updated"
+1. plugins/agent/security-lens/tests/security-lens-test.sh [SPEC-16]
+   - Asserts "manifest provides.events contains plugin.result"
+   - NOT in plan.files[] - out of scope
 
-## Test results after changes
+2. tests/unit/merge-v2-result-test.sh [SPEC-1]
+   - Asserts "manifest provides.events includes plugin.result"
+   - NOT in plan.files[] - out of scope
 
-### SPEC-3: PASSES
-- persist.* removed from event-schema.json
-- hydrate.* removed from event-schema.json
+These need scope expansion to fix. Cannot change without going out of scope.
 
-### SPEC-4: PASSES
-- plugin.result removed from security-lens manifest
-- plugin.result removed from merge manifest
+## Findings from previous test run (iteration 1)
 
-### SPEC-5: PASSES
-- ADR-001 has ## Enforced by section
-- ADR-001-plugin-contract.md removed from baseline
-
-### SPEC-1 and SPEC-2: BLOCKED
-The test for SPEC-1 collects ALL namespace prefixes from ALL plugin manifests
-without filtering engine-owned ones. pr-open has plugin.pr_open.* events, 
-adding 'plugin' to the namespace set, causing all plugin.* engine events to
-be flagged.
-
-The test for SPEC-2 uses _ENGINE_OWNED_NS_RE which includes 'plugin'. This
-matches pr-open's events. No exception for pr-open in the test code.
-
-Fix requires changing plugins/tool/pr-open/manifest.yaml (OUT OF SCOPE).
+Finding 1: security-lens-test.sh [SPEC-16] → BLOCKED (out of scope)
+Finding 2: coverage-test SPEC-1 → NOT REPRODUCED (new test code 280b8651 fixes it)
+Finding 3: merge-v2-result-test.sh [SPEC-1] → BLOCKED (out of scope)
+Finding 4-5: golden files → unaffected (persist/hydrate events still known via manifests)
+Findings 6-12: shape-floor alerts → not actual failures, no updates needed
+Finding 13: SPEC-1/SPEC-2 don't pass → NOT REPRODUCED (new test code 280b8651 fixes it)
 
 ### test (verdict: fail)
 Outputs:
@@ -387,130 +399,117 @@ Outputs:
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): plugins/agent/security-lens/tests/security-lens-test.sh fails: ✗ [SPEC-16] manifest provides.events contains plugin.result
-- test finding 2 (opened by test): tests/unit/event-schema-emitted-coverage-test.sh fails: ✗ [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
-- test finding 3 (opened by test): tests/unit/merge-v2-result-test.sh fails: ✗ [SPEC-1] manifest provides.events includes plugin.result
-- test finding 4 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 5 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 6 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 7 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 8 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 9 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 10 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 11 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 12 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- test finding 13 (opened by test): SPEC-1/SPEC-2/tests/unit/event-schema-emitted-coverage-test.sh: its test does not pass on the new code — the code or the test is wrong
+- test finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 3 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 4 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 5 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 6 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 7 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 8 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 9 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 10 (opened by test): tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
 
 Summary:
 # Test stage summary
 
 - verdict: fail
-- passed: 827
-- failed: 3
+- passed: 318
+- failed: 2
 - exit_code: 1
-
-## Failing files
-
-- plugins/agent/security-lens/tests/security-lens-test.sh — ✗ [SPEC-16] manifest provides.events contains plugin.result
-- tests/unit/event-schema-emitted-coverage-test.sh — ✗ [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
-- tests/unit/merge-v2-result-test.sh — ✗ [SPEC-1] manifest provides.events includes plugin.result
 
 ## Failing lines (extracted)
 
 ```
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.run.start' in a plugin-owned namespace
-    namespace 'plugin' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §"Declared events")
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.run.complete' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.result' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.run.error' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.start' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.complete' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.error' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.cleanup.absent' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.run.refused' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.error' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.contract.violated' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.artifact.missing' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.artifact.empty' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_failed' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.run.artifact_check_skipped' in a plugin-owned namespace
-  ✗ [#1951/SPEC-1] event-schema.json has 'plugin.tamper.detected' in a plugin-owned namespace
-  ✗ [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.branch_fallback_used
-    engine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §"Declared events")
-  ✗ [#1951/SPEC-2] plugin declares engine-namespace event: plugins/tool/pr-open → plugin.pr_open.preflight_remote_has_work
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bcQM3j/tests/unit/event-schema-emitted-coverage-test.sh
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bcQM3j/tests/unit/merge-v2-result-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bcQM3j/plugins/agent/security-lens/tests/security-lens-test.sh
+  ✗ [SPEC-16] manifest provides.events contains plugin.result
+  ✓ [SPEC-16] manifest provides.events contains security_lens.failed
+  ✗ [SPEC-19] canary: all preceding assertions passed (FAIL==0)
+    expected: 0, got: 1
+  ✗ [SPEC-1] manifest provides.events includes plugin.result
+    plugin.result absent
+unit: FAIL plugins/agent/security-lens/tests/security-lens-test.sh
+unit: FAIL tests/unit/merge-v2-result-test.sh
+  2 of 94 tests failed
   ✓ [SPEC-30] push failure → unavailable
   ✓ [SPEC-30] gh pr create failure → unavailable
   ✓ [SPEC-30] gh pr merge failure → unavailable
   1 of 55 tests failed
-  ✗ [SPEC-1] manifest provides.events includes plugin.result
-  ✗ [SPEC-19] canary: all preceding assertions passed (FAIL==0)
-    expected: 0, got: 1
-  2 of 94 tests failed
-  ✗ [SPEC-16] manifest provides.events contains plugin.result
 ```
 
 ## The checks of this run
 - the shape floor failed: missing_floor_files
-- the acceptance check failed: the acceptance check failed — SPEC-1/SPEC-2/tests/unit/event-schema-emitted-coverage-test.sh: its test does not pass on the new code — the code or the test is wrong
+- the acceptance check failed: the acceptance check failed — tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-74;222;128m✓[0m R11: security-lens redacted_content ANSI bytes stripped before LLM prompt
-  [38;2;74;222;128m✓[0m R11: security-lens redacted_content genuine content survives sanitize
-  [38;2;74;222;128m✓[0m [SPEC-10] _security_lens_envelope_schema_ok exists and is callable
-  [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → rc=0
-  [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → findings.json written
-  [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → recovered findings (1 finding, not empty)
-  [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery is performed by _security_lens_envelope_schema_ok (disabling it yields 0 findings, not 1)
-  [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes result_contract:3
-  [38;2;74;222;128m✓[0m [SPEC-3] an unresolvable tier writes outcome=misconfigured (#2187)
-  [38;2;74;222;128m✓[0m [SPEC-4] no-state-file path returns rc=1 (not rc=2)
-  [38;2;74;222;128m✓[0m [SPEC-4] no-state-file path writes result_contract:3
-  [38;2;74;222;128m✓[0m [SPEC-5] security_lens_cleanup is declared in plugin.sh
-  [38;2;74;222;128m✓[0m [SPEC-5] security_lens_cleanup is declared and returns 0
-  [38;2;74;222;128m✓[0m [SPEC-5] manifest has NO cleanup: YAML key under hooks: (ADR-062 §3 retired)
-  [38;2;74;222;128m✓[0m [SPEC-6] manifest declares provides.result_contract: 3
-  [38;2;74;222;128m✓[0m [SPEC-7] manifest declares no valid_verdicts (one outcome, #2366)
-  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares config.router with timeout_s and max_turns
-  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares primary: true on findings output
-  [38;2;248;113;113m✗[0m [SPEC-16] manifest provides.events contains plugin.result
-  [38;2;74;222;128m✓[0m [SPEC-16] manifest provides.events contains security_lens.failed
-  [38;2;74;222;128m✓[0m [SPEC-17] manifest declares provides.role: security-auditor
-  [38;2;74;222;128m✓[0m [SPEC-12] manifest max_turns differs from override value (precedence testable)
-  [38;2;74;222;128m✓[0m [SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.max_turns
+lete, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] merge-result.json written on success
+  [38;2;74;222;128m✓[0m [SPEC-3] result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-3] outcome is pass
+  [38;2;74;222;128m✓[0m [SPEC-3] no verdict or disposition field
+  [38;2;74;222;128m✓[0m [SPEC-3] reason field is present
 
-  [38;2;0;212;255m[SPEC-21] every declared event has a call site[0m
-  [38;2;74;222;128m✓[0m [SPEC-21] every event the manifest declares has an emit site in plugin.sh
+  [38;2;0;212;255mSPEC-4: fallback paths — result_contract:3, verdict=pass, data.mode=pr_fallback[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: outcome is pass
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: data.mode is pr_fallback
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: outcome is pass
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: data.mode is pr_fallback
 
-  [38;2;0;212;255m[SPEC-22] stub is a boolean, not the string "false"[0m
-  [38;2;74;222;128m✓[0m [SPEC-22] top-level .stub is a boolean
-  [38;2;74;222;128m✓[0m [SPEC-22] .data.stub is a boolean too
+  [38;2;0;212;255mSPEC-5: error paths — result_contract:3, verdict=error, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: not finished: neither pass nor fail
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: reason present
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: not finished: neither pass nor fail
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: reason present
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: result_contract is 3
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: not finished: neither pass nor fail
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: reason present
 
-  [38;2;0;212;255m[SPEC-23] a signal seen during the call is not reported as a pass[0m
-  [38;2;74;222;128m✓[0m [SPEC-23] a signal during the call returns the interrupt rc, not success
-  [38;2;74;222;128m✓[0m [SPEC-23] …and the artifact says interrupted, not pass
-  [38;2;74;222;128m✓[0m [SPEC-23] …and the declared failure event fired
-  [38;2;74;222;128m✓[0m [SPEC-14] the plugin reads no earlier output by a stage's id for it
-  [38;2;74;222;128m✓[0m [SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames
-  [38;2;74;222;128m✓[0m [SPEC-18] interrupt: router rc=130 returns plugin rc=130
-  [38;2;74;222;128m✓[0m [SPEC-18a] interrupt artifact: outcome=interrupted
-  [38;2;74;222;128m✓[0m [SPEC-18a] interrupt artifact: result_contract=3
-  [38;2;74;222;128m✓[0m [SPEC-18b] _security_lens_interrupt_handler exists as callable function
-  [38;2;74;222;128m✓[0m [SPEC-18b] direct handler: outcome=interrupted
-  [38;2;74;222;128m✓[0m [SPEC-18c] kill -TERM: plugin rc=130
-  [38;2;74;222;128m✓[0m [SPEC-18c] kill -TERM artifact: outcome=interrupted
-  [38;2;74;222;128m✓[0m [SPEC-20] manifest input entries declare only id and required: (no from:/path:/type: keys)
-  [38;2;248;113;113m✗[0m [SPEC-19] canary: all preceding assertions passed (FAIL==0)
-    [2mexpected: 0, got: 1[0m
+  [38;2;0;212;255mSPEC-6: all exit paths return rc ∈ {0,1} — no rc=2[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] success path rc=0
+  [38;2;74;222;128m✓[0m [SPEC-6] gate-absent fallback rc=0
+  [38;2;74;222;128m✓[0m [SPEC-6] gate-fail fallback rc=0
+  [38;2;74;222;128m✓[0m [SPEC-6] branch-is-main error rc=1
+  [38;2;74;222;128m✓[0m [SPEC-6] push-failure error rc=1
+  [38;2;74;222;128m✓[0m [SPEC-6] gh-failure error rc=1
+
+  [38;2;0;212;255mSPEC-7: merge reads ZBUILD_RUN_LOOPS_PASSED, not another stage's result[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] loops passed → merge path taken (not pr_fallback)
+  [38;2;74;222;128m✓[0m [SPEC-7] word not set → PR fallback
+  [38;2;74;222;128m✓[0m [SPEC-7] plugin.sh constructs no gate-aggregator-result.json path
+
+  [38;2;0;212;255m#2364: merge names its result file to its caller[0m
+  [38;2;74;222;128m✓[0m [#2364] MERGE_RESULT_FILE names the result merge wrote
+  [38;2;74;222;128m✓[0m [#2364] ...and that file is there
+
+  [38;2;0;212;255m#2364: merge auto-merges only when the engine says a review ran[0m
+  [38;2;74;222;128m✓[0m [#2364] no word that a review ran → PR fallback, whatever review.json says
+
+  [38;2;0;212;255mSPEC-29: a PR fallback that fails is reported as a failure[0m
+  [38;2;74;222;128m✓[0m [SPEC-29] rc=1
+  [38;2;74;222;128m✓[0m [SPEC-29] merge-result.json is not a pass
+  [38;2;74;222;128m✓[0m [SPEC-29] …carrying pr-open's own outcome
+
+  [38;2;0;212;255mSPEC-30: a failed outward action reports unavailable[0m
+  [38;2;74;222;128m✓[0m [SPEC-30] push failure → unavailable
+  [38;2;74;222;128m✓[0m [SPEC-30] gh pr create failure → unavailable
+  [38;2;74;222;128m✓[0m [SPEC-30] gh pr merge failure → unavailable
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 94 tests failed[0m
+  [38;2;248;113;113m[1m1 of 55 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [SPEC-16] manifest provides.events contains plugin.result
-  [38;2;248;113;113m✗[0m [SPEC-19] canary: all preceding assertions passed (FAIL==0)
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.events includes plugin.result
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -518,16 +517,16 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R2: "A naive rule ('any namespace a manifest declares is plugin-owned') would wrongly mark all of `plugin.*`. The guard must not." — The SPEC-1 implementation collects prefix tokens from every manifest event verbatim. Because `plugins/tool/pr-open` declares `plugin.pr_open.branch_fallback_used` and `plugin.pr_open.preflight_remote_has_work`, the prefix `plugin` lands in the plugin-owned set. SPEC-1 then flags all 16 `plugin.*` entries in event-schema.json as violations and the check fails. The required exception (only the specific `plugin.pr_open.*` events from only `plugins/tool/pr-open` are permitted) is not implemented in the guard.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R4 (test completeness): Removing `plugin.result` from `plugins/agent/security-lens/manifest.yaml` and `plugins/tool/merge/manifest.yaml` is the correct data change, but pre-existing tests `plugins/agent/security-lens/tests/security-lens-test.sh [SPEC-16]` and `tests/unit/merge-v2-result-test.sh [SPEC-1]` both assert that `plugin.result` *is present* in those manifests. Neither test file appears in the diff. The issue requirement "putting the old code back turns the test red" cannot be satisfied for R4's removal because the only tests that would catch a revert are the SPEC-4 assertions added here — but those existing plugin-level tests now actively fail against the correct state, leaving the suite broken rather than green.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R5: `_PLUGIN_NS_RE` is gone — the diff for `tests/unit/event-schema-emitted-coverage-test.sh` is a pure append starting at the original line 157; the earlier SPEC-1717-2 block that defines and uses `_PLUGIN_NS_RE` as a hardcoded plugin-namespace list falls entirely before that hunk and is untouched. The hardcoded enumeration the issue requires eliminated is still present in the file.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R4 (test suite passes): Removing `plugin.result` from the security-lens and merge manifests is correct, but two pre-existing tests that pin the old manifest state now fail — `plugins/agent/security-lens/tests/security-lens-test.sh` [SPEC-16] asserts that `plugin.result` *is* in the security-lens manifest, and `tests/unit/merge-v2-result-test.sh` [SPEC-1] asserts it is in the merge manifest. Both assertions are now false and both tests fail. The issue's scope omitted these files; the build stage flagged them as out-of-scope needs. The test suite exits non-zero, so the change cannot be shipped as-is.. What would settle it: a change that meets this requirement in full.
 
 Summary:
 ## issue-acceptance — fail
 
-- The SPEC-1 guard naively derives plugin-owned namespaces from all manifest event declarations without exempting the `plugin.pr_open.*` ADR-001 exception, so `plugins/tool/pr-open` causes `plugin` to be treated as plugin-owned and every `plugin.*` engine event in event-schema.json is flagged as a violation; additionally, removing `plugin.result` from the security-lens and merge manifests (R4) broke pre-existing tests in those plugins' own suites that assert its presence, and neither test file was updated.
+- The test suite exits non-zero, and `_PLUGIN_NS_RE` (R5) is not removed by the diff.
 
-- NOT MET: R2: "A naive rule ('any namespace a manifest declares is plugin-owned') would wrongly mark all of `plugin.*`. The guard must not." — The SPEC-1 implementation collects prefix tokens from every manifest event verbatim. Because `plugins/tool/pr-open` declares `plugin.pr_open.branch_fallback_used` and `plugin.pr_open.preflight_remote_has_work`, the prefix `plugin` lands in the plugin-owned set. SPEC-1 then flags all 16 `plugin.*` entries in event-schema.json as violations and the check fails. The required exception (only the specific `plugin.pr_open.*` events from only `plugins/tool/pr-open` are permitted) is not implemented in the guard.
-- NOT MET: R4 (test completeness): Removing `plugin.result` from `plugins/agent/security-lens/manifest.yaml` and `plugins/tool/merge/manifest.yaml` is the correct data change, but pre-existing tests `plugins/agent/security-lens/tests/security-lens-test.sh [SPEC-16]` and `tests/unit/merge-v2-result-test.sh [SPEC-1]` both assert that `plugin.result` *is present* in those manifests. Neither test file appears in the diff. The issue requirement "putting the old code back turns the test red" cannot be satisfied for R4's removal because the only tests that would catch a revert are the SPEC-4 assertions added here — but those existing plugin-level tests now actively fail against the correct state, leaving the suite broken rather than green.
+- NOT MET: R5: `_PLUGIN_NS_RE` is gone — the diff for `tests/unit/event-schema-emitted-coverage-test.sh` is a pure append starting at the original line 157; the earlier SPEC-1717-2 block that defines and uses `_PLUGIN_NS_RE` as a hardcoded plugin-namespace list falls entirely before that hunk and is untouched. The hardcoded enumeration the issue requires eliminated is still present in the file.
+- NOT MET: R4 (test suite passes): Removing `plugin.result` from the security-lens and merge manifests is correct, but two pre-existing tests that pin the old manifest state now fail — `plugins/agent/security-lens/tests/security-lens-test.sh` [SPEC-16] asserts that `plugin.result` *is* in the security-lens manifest, and `tests/unit/merge-v2-result-test.sh` [SPEC-1] asserts it is in the merge manifest. Both assertions are now false and both tests fail. The issue's scope omitted these files; the build stage flagged them as out-of-scope needs. The test suite exits non-zero, so the change cannot be shipped as-is.
 
 ## What you must not do
 
@@ -539,6 +538,8 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - config/event-schema.json
   - plugins/agent/security-lens/manifest.yaml
   - plugins/tool/merge/manifest.yaml
+  - plugins/agent/security-lens/tests/security-lens-test.sh
+  - tests/unit/merge-v2-result-test.sh
   - docs/adr/ADR-001-plugin-contract.md
   - config/adr-enforcement-baseline.txt
   - tests/golden/parity/event-sequence.golden

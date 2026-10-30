@@ -1,49 +1,50 @@
-# Build notes for #1951 (iteration 2)
+# Build notes for #1951 (iteration 3)
 
-## Current state (iteration 2)
+## Final verified state
 
-All data changes were applied in the previous build (commit 20a236d3):
+All required changes are committed and all SPEC tests pass. No further changes needed.
+
+### Changes committed in previous iterations
+
+**Commit 20a236d3**: Data/config changes:
 1. config/event-schema.json: persist.* (6) and hydrate.* (5) entries removed
 2. plugins/agent/security-lens/manifest.yaml: plugin.result removed
-3. plugins/tool/merge/manifest.yaml: plugin.result removed (no events section)
+3. plugins/tool/merge/manifest.yaml: (already clean, no events section)
 4. docs/adr/ADR-001-plugin-contract.md: ## Enforced by section added
 5. config/adr-enforcement-baseline.txt: ADR-001-plugin-contract.md removed
 
-The second test-author (commit 280b8651) fixed the SPEC-1/SPEC-2 test logic:
-- SPEC-1: uses all-but-last namespace (plugin.pr_open.X → plugin.pr_open, not plugin)
-- SPEC-2: has pr-open exception for plugin.<name>.* events
+**Commits 95b7c526, 280b8651, 7fd1c7ca** (test-author): Test changes:
+- tests/unit/event-schema-emitted-coverage-test.sh: new dynamic SPEC-1/2/3/4/6 assertions,
+  _PLUGIN_NS_RE removed entirely
+- plugins/agent/security-lens/tests/security-lens-test.sh: SPEC-16 updated to check
+  security_lens.failed only (plugin.result sub-assertion removed)
+- tests/unit/merge-v2-result-test.sh: SPEC-1 updated to check result_contract/role only
+  (plugin.result sub-assertion removed)
 
-## VERIFIED (iteration 2): all SPECs pass
+### VERIFIED: All SPECs pass on current tree
 
-Ran tests/unit/event-schema-emitted-coverage-test.sh → All 14 tests passed
-- SPEC-1 ✓ (all-but-last namespace: plugin.pr_open not in engine ns check)
-- SPEC-2 ✓ (pr-open exception correctly applied)
-- SPEC-3 ✓ (persist/hydrate absent from event-schema.json)
-- SPEC-4 ✓ (plugin.result absent from both manifests)
+- tests/unit/event-schema-emitted-coverage-test.sh → All 16 tests passed (SPEC-1/2/3/4/6 ✓)
+- plugins/agent/security-lens/tests/security-lens-test.sh → All 93 tests passed ✓
+- tests/unit/merge-v2-result-test.sh → All 54 tests passed ✓
+- tests/unit/lint-adr-enforced-by-test.sh → All 27 tests passed (SPEC-5 ✓)
 
-Ran tests/unit/lint-adr-enforced-by-test.sh → All 27 tests passed
-- SPEC-5 ✓
+### Addressing previous stage findings
 
-## BLOCKED: pre-existing tests out of scope
+**issue-acceptance finding 1** (_PLUGIN_NS_RE not removed): RESOLVED. Grep confirms it
+is absent from event-schema-emitted-coverage-test.sh. The test-author commits already
+removed the SPEC-1717-2 block and replaced it with the dynamic manifest-derived guard.
 
-Two pre-existing tests now FAIL because they assert plugin.result IS present
-(the old state), but SPEC-4 correctly removed it:
+**issue-acceptance finding 2** (two pre-existing tests fail): RESOLVED. The test-author
+commits (7fd1c7ca) updated security-lens-test.sh and merge-v2-result-test.sh to remove
+the plugin.result sub-assertions. Both now check only what they're entitled to assert
+(security_lens.failed for SPEC-16; result_contract/role for SPEC-1). Both tests pass.
 
-1. plugins/agent/security-lens/tests/security-lens-test.sh [SPEC-16]
-   - Asserts "manifest provides.events contains plugin.result"
-   - NOT in plan.files[] - out of scope
+**test finding 10** (wiring check): event-schema-emitted-coverage-test.sh is a
+standalone test script run directly by the test harness. WIRING: none.
 
-2. tests/unit/merge-v2-result-test.sh [SPEC-1]
-   - Asserts "manifest provides.events includes plugin.result"
-   - NOT in plan.files[] - out of scope
+**test findings 1-9** (golden file/shape-floor warnings): Heuristic alerts, not actual
+failures. The parity golden file is unaffected — persist/hydrate events remain in the
+composed known set via plugin manifests; only the redundant engine-config leg was
+removed. All shape-floor and template tests pass (verified).
 
-These need scope expansion to fix. Cannot change without going out of scope.
-
-## Findings from previous test run (iteration 1)
-
-Finding 1: security-lens-test.sh [SPEC-16] → BLOCKED (out of scope)
-Finding 2: coverage-test SPEC-1 → NOT REPRODUCED (new test code 280b8651 fixes it)
-Finding 3: merge-v2-result-test.sh [SPEC-1] → BLOCKED (out of scope)
-Finding 4-5: golden files → unaffected (persist/hydrate events still known via manifests)
-Findings 6-12: shape-floor alerts → not actual failures, no updates needed
-Finding 13: SPEC-1/SPEC-2 don't pass → NOT REPRODUCED (new test code 280b8651 fixes it)
+## No further changes required — implementation complete
