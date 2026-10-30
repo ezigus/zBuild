@@ -273,7 +273,7 @@ _cycle_member_is_blocking() {
 #   _CYCLE_ON_MAX       (continue|halt)
 #   _CYCLE_UNTIL_STAGE  (id within _CYCLE_STAGES)
 #   _CYCLE_UNTIL_FIELD  (verdict|status)
-#   _CYCLE_UNTIL_OP     (eq|ne)
+#   _CYCLE_UNTIL_OP     (eq|neq|gt|gte|lt|lte|contains|matches)
 #   _CYCLE_UNTIL_VALUE  (string)
 #   _CYCLE_PLATEAU_WINDOW / _CYCLE_DIVERGENCE_WINDOW / _CYCLE_VELOCITY_PLATEAU_WINDOW
 # Returns: 0 valid; 1 invalid (emits cycle.config.invalid).
@@ -474,8 +474,8 @@ _cycle_eval_one_condition() {
     local _match="false"
     local _rc=1
     case "$op" in
-        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        eq)      [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        ne|neq)  [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
         gt|gte|lt|lte)
             if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
                 error "cycle exit_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
@@ -560,8 +560,8 @@ _cycle_check_until() {
     local _match="false"
     local _rc=1
     case "$op" in
-        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        eq)      [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        ne|neq)  [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
         gt|gte|lt|lte)
             if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
                 error "cycle exit_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
@@ -804,8 +804,8 @@ _cycle_check_abort_when() {
     local _match="false"
     local _rc=1
     case "$op" in
-        eq)  [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        neq) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        eq)      [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        ne|neq)  [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
         gt|gte|lt|lte)
             if ! [[ "$actual" =~ ^-?[0-9]+$ ]] || ! [[ "$expected" =~ ^-?[0-9]+$ ]]; then
                 error "cycle abort_when: op '$op' requires numeric operands; actual='$actual' expected='$expected'"
