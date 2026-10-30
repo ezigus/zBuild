@@ -1,0 +1,180 @@
+### SPEC-4 baseline tests/integration/cycle-abort-when-no-match-converges-test.sh
+
+[38;2;0;212;255m[1m  cycle abort_when non-match converges (Wave 19-E #737)[0m
+[2m  ══════════════════════════════════════════[0m
+
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 15:04:45 UTC ══
+(no feedback — first iteration)
+
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 15:04:45 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: the_cycle ✓ ──
+
+  [38;2;0;212;255mouter cycle converges via exit_when when abort_when is defined-but-not-matching[0m
+  [38;2;74;222;128m✓[0m T1: cycle_orchestrator_run returns rc=0 (exit_when match=true)
+  [38;2;74;222;128m✓[0m T2: cycle.iteration.complete fired (the bug skips this)
+  [38;2;74;222;128m✓[0m T3: cycle.complete fired
+  [38;2;74;222;128m✓[0m T4: cycle.complete reason=converged (NOT aborted)
+  [38;2;74;222;128m✓[0m T5: cycle.predicate.evaluated kind=abort_when fired (predicate function ran)
+  [38;2;74;222;128m✓[0m T6: abort_when match=false (verdict=approve, not block)
+  [38;2;74;222;128m✓[0m T7: _CYCLE_LAST_TERMINATED_REASON=converged
+  [38;2;74;222;128m✓[0m T8: exit_when match=true (predicate evaluated before abort_when crash)
+
+  [38;2;0;212;255mnested-cycle production scenario (mirror dogfood 20260607140638-60666)[0m
+══ build_review_cycle [cycle] seq=1 input ══════════════════════ 15:04:45 UTC ══
+(no feedback — first iteration)
+
+══ build_test_cycle [cycle] seq=1 input ════════════════════════ 15:04:45 UTC ══
+(no feedback — first iteration)
+
+
+══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 15:04:46 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build_test_cycle ✓ ──
+
+══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 15:04:46 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build_review_cycle ✓ ──
+  [38;2;74;222;128m✓[0m T11: nested build_review_cycle returns rc=0
+  [38;2;74;222;128m✓[0m T12: nested build_review_cycle's cycle.iteration.complete fired (dogfood-missing event)
+  [38;2;74;222;128m✓[0m T13: nested build_review_cycle cycle.complete reason=converged
+  [38;2;74;222;128m✓[0m T14: outer's abort_when predicate event fired
+
+  [38;2;0;212;255mregression guard: cycle without abort_when (unchanged path) still works[0m
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 15:04:46 UTC ══
+(no feedback — first iteration)
+
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 15:04:47 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: the_cycle ✓ ──
+  [38;2;74;222;128m✓[0m T9: regression guard — no-abort_when cycle converges rc=0
+  [38;2;74;222;128m✓[0m T10: regression guard — cycle.complete emitted
+
+  [38;2;0;212;255mSPEC-4 — full eight-op set in single-condition _cycle_check_until[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] eq: match → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] eq: no-match → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] neq: verdict!=fail → rc=0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] neq: verdict==fail → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] gt: 10>5 → rc=0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] gt: 3>5 → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] gte: 5>=5 → rc=0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] gte: 4>=5 → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] lt: 3<5 → rc=0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] lt: 7<5 → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] lte: 5<=5 → rc=0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] lte: 6<=5 → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] contains: 'all pass ok' contains 'pass' → rc=0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] contains: 'failed' not contains 'pass' → rc=1
+  [38;2;248;113;113m✗[0m [#1760/SPEC-4] matches: 'pass' =~ '^pass' → rc=0
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] matches: 'fail' =~ '^pass' → rc=1
+
+  [38;2;0;212;255mSPEC-5 — full eight-op set in multi-condition _cycle_eval_one_condition[0m
+[38;2;248;113;113m[1m✗[0m cycle 'mc_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+### SPEC-4 head tests/integration/cycle-abort-when-no-match-converges-test.sh
+
+[38;2;0;212;255m[1m  cycle abort_when non-match converges (Wave 19-E #737)[0m
+[2m  ══════════════════════════════════════════[0m
+
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 15:04:47 UTC ══
+(no feedback — first iteration)
+
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 15:04:48 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: the_cycle ✓ ──
+
+  [38;2;0;212;255mouter cycle converges via exit_when when abort_when is defined-but-not-matching[0m
+  [38;2;74;222;128m✓[0m T1: cycle_orchestrator_run returns rc=0 (exit_when match=true)
+  [38;2;74;222;128m✓[0m T2: cycle.iteration.complete fired (the bug skips this)
+  [38;2;74;222;128m✓[0m T3: cycle.complete fired
+  [38;2;74;222;128m✓[0m T4: cycle.complete reason=converged (NOT aborted)
+  [38;2;74;222;128m✓[0m T5: cycle.predicate.evaluated kind=abort_when fired (predicate function ran)
+  [38;2;74;222;128m✓[0m T6: abort_when match=false (verdict=approve, not block)
+  [38;2;74;222;128m✓[0m T7: _CYCLE_LAST_TERMINATED_REASON=converged
+  [38;2;74;222;128m✓[0m T8: exit_when match=true (predicate evaluated before abort_when crash)
+
+  [38;2;0;212;255mnested-cycle production scenario (mirror dogfood 20260607140638-60666)[0m
+══ build_review_cycle [cycle] seq=1 input ══════════════════════ 15:04:48 UTC ══
+(no feedback — first iteration)
+
+══ build_test_cycle [cycle] seq=1 input ════════════════════════ 15:04:48 UTC ══
+(no feedback — first iteration)
+
+
+══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 15:04:48 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build_test_cycle ✓ ──
+
+══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 15:04:49 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build_review_cycle ✓ ──
+  [38;2;74;222;128m✓[0m T11: nested build_review_cycle returns rc=0
+  [38;2;74;222;128m✓[0m T12: nested build_review_cycle's cycle.iteration.complete fired (dogfood-missing event)
+  [38;2;74;222;128m✓[0m T13: nested build_review_cycle cycle.complete reason=converged
+  [38;2;74;222;128m✓[0m T14: outer's abort_when predicate event fired
+
+  [38;2;0;212;255mregression guard: cycle without abort_when (unchanged path) still works[0m
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 15:04:49 UTC ══
+(no feedback — first iteration)
+
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 15:04:49 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: the_cycle ✓ ──
+  [38;2;74;222;128m✓[0m T9: regression guard — no-abort_when cycle converges rc=0
+  [38;2;74;222;128m✓[0m T10: regression guard — cycle.complete emitted
+
+  [38;2;0;212;255mSPEC-4 — full eight-op set in single-condition _cycle_check_until[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] eq: match → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] eq: no-match → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] neq: verdict!=fail → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] neq: verdict==fail → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] gt: 10>5 → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] gt: 3>5 → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] gte: 5>=5 → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] gte: 4>=5 → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] lt: 3<5 → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] lt: 7<5 → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] lte: 5<=5 → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] lte: 6<=5 → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] contains: 'all pass ok' contains 'pass' → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] contains: 'failed' not contains 'pass' → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] matches: 'pass' =~ '^pass' → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-4] matches: 'fail' =~ '^pass' → rc=1
+
+  [38;2;0;212;255mSPEC-5 — full eight-op set in multi-condition _cycle_eval_one_condition[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi eq: verdict==pass → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi eq: verdict!=pass → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi neq: pass!=fail → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi neq: fail==fail → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi gt: 10>5 → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi gt: 3>5 → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi gte: 5>=5 → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi gte: 4>=5 → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi lt: 3<5 → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi lt: 9<5 → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi lte: 5<=5 → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi lte: 8<=5 → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi contains: 'all pass ok' contains 'pass' → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi contains: 'failed' not contains 'pass' → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi matches: 'pass' =~ '^pass' → rc=0
+  [38;2;74;222;128m✓[0m [#1760/SPEC-5] multi matches: 'failure' =~ '^pass' → rc=1
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 46 tests passed[0m
+

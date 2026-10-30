@@ -1,0 +1,91 @@
+### SPEC-8 baseline tests/unit/core-pipeline-cycle-events-test.sh
+
+[38;2;0;212;255m[1m  cycle events — schema registrations (ADR-021)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m event registered: cycle.start
+  [38;2;74;222;128m✓[0m event registered: cycle.complete
+  [38;2;74;222;128m✓[0m event registered: cycle.plateau
+  [38;2;74;222;128m✓[0m event registered: cycle.divergence
+  [38;2;74;222;128m✓[0m event registered: cycle.iteration.complete
+  [38;2;74;222;128m✓[0m event registered: cycle.aborted
+  [38;2;74;222;128m✓[0m event registered: cycle.config.invalid
+  [38;2;74;222;128m✓[0m event registered: cycle.iteration.verdict_missing
+  [38;2;74;222;128m✓[0m event registered: cycle.history.lost
+  [38;2;74;222;128m✓[0m event registered: cycle.metric.invalid
+  [38;2;74;222;128m✓[0m event registered: cycle.plateau.skipped
+  [38;2;74;222;128m✓[0m event registered: cycle.iter.stale_artifact
+  [38;2;74;222;128m✓[0m [SPEC-3] retired cycle.feedback.missing is not registered
+  [38;2;74;222;128m✓[0m [SPEC-3] retired cycle.feedback.absent is not registered
+
+  [38;2;0;212;255mSPEC-7 / SPEC-8 — evaluator op guards[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: gt non-numeric → rc=1 (error, not silent false)
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_until: gt non-numeric emits error message
+    [2mno output on stderr/stdout for op=gt value=notanumber[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: gte non-numeric → rc=1 (error, not silent false)
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_until: gte non-numeric emits error message
+    [2mno output on stderr/stdout for op=gte value=notanumber[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: lt non-numeric → rc=1 (error, not silent false)
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_until: lt non-numeric emits error message
+    [2mno output on stderr/stdout for op=lt value=notanumber[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: lte non-numeric → rc=1 (error, not silent false)
+  [38;2;248;113;113m✗[0m [#1760/SPEC-7] _cycle_check_until: lte non-numeric emits error message
+    [2mno output on stderr/stdout for op=lte value=notanumber[0m
+[38;2;248;113;113m[1m✗[0m cycle 'spec7_cycle': no stages declared
+  [38;2;250;204;21m[1m⚠[0m cycle.config.invalid — reason=no_stages
+### SPEC-8 head tests/unit/core-pipeline-cycle-events-test.sh
+
+[38;2;0;212;255m[1m  cycle events — schema registrations (ADR-021)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m event registered: cycle.start
+  [38;2;74;222;128m✓[0m event registered: cycle.complete
+  [38;2;74;222;128m✓[0m event registered: cycle.plateau
+  [38;2;74;222;128m✓[0m event registered: cycle.divergence
+  [38;2;74;222;128m✓[0m event registered: cycle.iteration.complete
+  [38;2;74;222;128m✓[0m event registered: cycle.aborted
+  [38;2;74;222;128m✓[0m event registered: cycle.config.invalid
+  [38;2;74;222;128m✓[0m event registered: cycle.iteration.verdict_missing
+  [38;2;74;222;128m✓[0m event registered: cycle.history.lost
+  [38;2;74;222;128m✓[0m event registered: cycle.metric.invalid
+  [38;2;74;222;128m✓[0m event registered: cycle.plateau.skipped
+  [38;2;74;222;128m✓[0m event registered: cycle.iter.stale_artifact
+  [38;2;74;222;128m✓[0m [SPEC-3] retired cycle.feedback.missing is not registered
+  [38;2;74;222;128m✓[0m [SPEC-3] retired cycle.feedback.absent is not registered
+
+  [38;2;0;212;255mSPEC-7 / SPEC-8 — evaluator op guards[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: gt non-numeric → rc=1 (error, not silent false)
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: gt non-numeric emits error message
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: gte non-numeric → rc=1 (error, not silent false)
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: gte non-numeric emits error message
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: lt non-numeric → rc=1 (error, not silent false)
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: lt non-numeric emits error message
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: lte non-numeric → rc=1 (error, not silent false)
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_until: lte non-numeric emits error message
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_eval_one_condition: gt non-numeric → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_eval_one_condition: gt non-numeric emits error
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_eval_one_condition: gte non-numeric → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_eval_one_condition: gte non-numeric emits error
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_eval_one_condition: lt non-numeric → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_eval_one_condition: lt non-numeric emits error
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_eval_one_condition: lte non-numeric → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_eval_one_condition: lte non-numeric emits error
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_abort_when: gt non-numeric → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_abort_when: gt non-numeric emits error
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_abort_when: gte non-numeric → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_abort_when: gte non-numeric emits error
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_abort_when: lt non-numeric → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_abort_when: lt non-numeric emits error
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_abort_when: lte non-numeric → rc=1
+  [38;2;74;222;128m✓[0m [#1760/SPEC-7] _cycle_check_abort_when: lte non-numeric emits error
+[38;2;248;113;113m[1m✗[0m cycle exit_when: unrecognized op 'bogus_op'
+  [38;2;74;222;128m✓[0m [#1760/SPEC-8] _cycle_check_until: bogus_op → rc=1 (not silent skip)
+[38;2;248;113;113m[1m✗[0m cycle exit_when: unrecognized op 'bogus_op'
+  [38;2;74;222;128m✓[0m [#1760/SPEC-8] _cycle_eval_one_condition: bogus_op → rc=1 (not silent skip)
+[38;2;248;113;113m[1m✗[0m cycle abort_when: unrecognized op 'bogus_op'
+  [38;2;74;222;128m✓[0m [#1760/SPEC-8] _cycle_check_abort_when: bogus_op → rc=1 (not silent skip)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 41 tests passed[0m
+

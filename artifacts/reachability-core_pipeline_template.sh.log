@@ -1,0 +1,113 @@
+### core/pipeline/template.sh reverted tests/unit/template-loader-recursive-flow-test.sh
+
+[38;2;0;212;255m[1m  template loader — ADR-027 recursive flow (Wave 17-B)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m T1: load_template new shape rc=0
+  [38;2;74;222;128m✓[0m T2: _TPL_STAGES expanded flat from new flow
+  [38;2;74;222;128m✓[0m T3: defaults.strategy=fanout
+  [38;2;74;222;128m✓[0m T4: _TPL_CYCLES contains build_test_cycle
+  [38;2;74;222;128m✓[0m T5: build_test_cycle type=cycle
+  [38;2;74;222;128m✓[0m T5: intake type=leaf
+  [38;2;74;222;128m✓[0m T5: review type=leaf
+  [38;2;74;222;128m✓[0m T6: until stage=test_assessment
+  [38;2;74;222;128m✓[0m T6: until field=verdict
+  [38;2;74;222;128m✓[0m T6: until op=eq
+  [38;2;74;222;128m✓[0m T6: until value=pass
+  [38;2;74;222;128m✓[0m T7: cycle stages csv
+  [38;2;74;222;128m✓[0m T9: build roles
+  [38;2;74;222;128m✓[0m T9: test roles
+  [38;2;74;222;128m✓[0m T9: build router.timeout_s=900
+  [38;2;74;222;128m✓[0m T10: intake io dests
+  [38;2;74;222;128m✓[0m T11: inline flow form loads rc=0
+  [38;2;74;222;128m✓[0m T11: stages from inline flow
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] abort_when bad op refused (rc!=0)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the loop
+    [2moutput missing: the_cycle[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the field
+    [2moutput missing: verdict[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the bad op
+    [2moutput missing: contains_all[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the valid op set
+    [2mexpected valid set mention in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] single-condition bad op refused (rc!=0)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the loop
+    [2moutput missing: the_cycle[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the bad op
+    [2moutput missing: in[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] multi-condition bad op refused (rc!=0)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the loop
+    [2moutput missing: the_cycle[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the bad op
+    [2moutput missing: ne[0m
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ADR-027 has ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/unit/template-loader-recursive-flow-test.sh
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-abort-when-no-match-converges-test.sh
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-orchestrator-abort-when-test.sh
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/unit/core-pipeline-cycle-events-test.sh
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ADR-027 is removed from adr-enforcement-baseline.txt
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m11 of 35 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] abort_when bad op refused (rc!=0)
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the loop
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the field
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the bad op
+  [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the valid op set
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] single-condition bad op refused (rc!=0)
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the loop
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the bad op
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] multi-condition bad op refused (rc!=0)
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the loop
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the bad op
+
+### core/pipeline/template.sh head tests/unit/template-loader-recursive-flow-test.sh
+
+[38;2;0;212;255m[1m  template loader — ADR-027 recursive flow (Wave 17-B)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m T1: load_template new shape rc=0
+  [38;2;74;222;128m✓[0m T2: _TPL_STAGES expanded flat from new flow
+  [38;2;74;222;128m✓[0m T3: defaults.strategy=fanout
+  [38;2;74;222;128m✓[0m T4: _TPL_CYCLES contains build_test_cycle
+  [38;2;74;222;128m✓[0m T5: build_test_cycle type=cycle
+  [38;2;74;222;128m✓[0m T5: intake type=leaf
+  [38;2;74;222;128m✓[0m T5: review type=leaf
+  [38;2;74;222;128m✓[0m T6: until stage=test_assessment
+  [38;2;74;222;128m✓[0m T6: until field=verdict
+  [38;2;74;222;128m✓[0m T6: until op=eq
+  [38;2;74;222;128m✓[0m T6: until value=pass
+  [38;2;74;222;128m✓[0m T7: cycle stages csv
+  [38;2;74;222;128m✓[0m T9: build roles
+  [38;2;74;222;128m✓[0m T9: test roles
+  [38;2;74;222;128m✓[0m T9: build router.timeout_s=900
+  [38;2;74;222;128m✓[0m T10: intake io dests
+  [38;2;74;222;128m✓[0m T11: inline flow form loads rc=0
+  [38;2;74;222;128m✓[0m T11: stages from inline flow
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] abort_when bad op refused (rc!=0)
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the loop
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the field
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the bad op
+  [38;2;74;222;128m✓[0m [#1760/SPEC-1] error names the valid op set
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] single-condition bad op refused (rc!=0)
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the loop
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the bad op
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] multi-condition bad op refused (rc!=0)
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error names the loop
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error names the bad op
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ADR-027 has ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/unit/template-loader-recursive-flow-test.sh
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-abort-when-no-match-converges-test.sh
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-orchestrator-abort-when-test.sh
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/unit/core-pipeline-cycle-events-test.sh
+  [38;2;74;222;128m✓[0m [#1760/SPEC-9] ADR-027 is removed from adr-enforcement-baseline.txt
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 35 tests passed[0m
+

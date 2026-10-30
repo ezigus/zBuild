@@ -1,0 +1,28 @@
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.OMJN9k/tests/unit/core-pipeline-cycle-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle-orchestrator — convergence predicate (ADR-021)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m eq match → rc=0 (converged)
+  [38;2;74;222;128m✓[0m eq mismatch → rc=1
+[38;2;248;113;113m[1m✗[0m cycle exit_when: unrecognized op 'ne'
+  [38;2;248;113;113m✗[0m ne with non-matching value → rc=0 (converged)
+    [2mexpected: 0, got: 1[0m
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
+  [38;2;74;222;128m✓[0m field missing → rc=1 (treat as unconverged)
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
+  [38;2;74;222;128m✓[0m stage missing → rc=1
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=test field=verdict
+  [38;2;74;222;128m✓[0m empty blob → rc=1
+  [38;2;74;222;128m✓[0m iter==max → terminate (rc=0)
+  [38;2;74;222;128m✓[0m iter<max → continue (rc=1)
+  [38;2;74;222;128m✓[0m iter>max → terminate (rc=0)
+  [38;2;250;204;21m[1m⚠[0m cycle.metric.invalid — iter=abc max=3 reason=non_numeric
+  [38;2;74;222;128m✓[0m non-numeric iter → terminate (fail-closed)
+  [38;2;74;222;128m✓[0m status field eq match → converged
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 11 tests failed[0m
+
+  [38;2;248;113;113m✗[0m ne with non-matching value → rc=0 (converged)
