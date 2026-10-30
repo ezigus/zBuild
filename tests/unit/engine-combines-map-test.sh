@@ -109,6 +109,25 @@ rm -f "$ART"/lens-*.json
 _run_map a b c
 assert_eq "[#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
 
+# sub-tests: remaining non-pass outcomes — prove the requirement is "any non-pass",
+# not only the three unfinished cases already tested above. All 10 non-pass outcomes
+# from outcome_vocabulary() are covered by [#1753/SPEC-1]: the three above plus
+# fail, unusable, throttled, rate_limited, unavailable, misconfigured, broken here.
+# No implementation can pass all assertions by hard-coding only a subset.
+_spec1_outcome=""
+orch_dispatch() {
+    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
+    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" "$_spec1_outcome" "test: $_spec1_outcome"
+    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
+    printf 'slot\n'
+}
+for _spec1_outcome in unusable throttled rate_limited unavailable misconfigured broken fail; do
+    rm -f "$ART"/lens-*.json
+    _run_map a b c
+    assert_eq "[#1753/SPEC-1] $_spec1_outcome outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+done
+unset _spec1_outcome
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
