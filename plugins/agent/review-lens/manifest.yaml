@@ -86,6 +86,8 @@ outputs:
   # ADR-060 §6: every reply the lens got, in order — a reply that could not be
   # used is kept beside the one that was.
   - id: review_lens_replies
+    topic: code-findings
+    description: "every reply the lens got, in order, including any that could not be used"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-reply.txt"
     type: review-lens-reply.txt@1
     format: text
