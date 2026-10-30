@@ -1,0 +1,103 @@
+diff --git a/core/pipeline/strategies/map.sh b/core/pipeline/strategies/map.sh
+index 36bac7cc..0782fb0e 100644
+--- a/core/pipeline/strategies/map.sh
++++ b/core/pipeline/strategies/map.sh
+@@ -129,7 +129,7 @@ _map_unit_element() {
+ # #2368: the engine sums up a map group — every element, its outcome and its
+ # one-line reason, read from the element's own primary result — into
+ # artifacts/<stage>-summary.md, and tells later stages whether any element
+-# failed (ZBUILD_RUN_FLAGGED=yes|no). Fail-open: a diagnostic never fails the group.
++# failed or did not finish (ZBUILD_RUN_FLAGGED=yes|no). Fail-open: a diagnostic never fails the group.
+ # Its first line says whether every element finished — a pass or a fail is a
+ # finish; anything else (timed_out, an error, no result) is not — and
+ # _ZB_MAP_UNFINISHED keeps that line for the runner when one did not.
+@@ -154,7 +154,7 @@ _map_write_summary() {
+             outcome="$(jq -r '.outcome // "missing"' "$res" 2>/dev/null || echo missing)"
+             reason="$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$res" 2>/dev/null || true)"
+         fi
+-        [[ "$outcome" == fail ]] && flagged=yes
++        [[ "$outcome" != pass ]] && flagged=yes
+         [[ "$outcome" == pass || "$outcome" == fail ]] || unfinished+=("${elems[$i]} (${outcome})")
+         line="- ${elems[$i]}: $outcome${reason:+ — $reason}"
+         body+="$line"$'\n'
+diff --git a/docs/adr/ADR-040-composable-gate-lens-taxonomy.md b/docs/adr/ADR-040-composable-gate-lens-taxonomy.md
+index ef68b4a5..43701ca6 100644
+--- a/docs/adr/ADR-040-composable-gate-lens-taxonomy.md
++++ b/docs/adr/ADR-040-composable-gate-lens-taxonomy.md
+@@ -462,8 +462,11 @@ Supersedes §4 and the #2301 amendment.
+ 
+ - **The engine sums up a map group.** After the group runs it writes `artifacts/<group>-summary.md`
+   (every element, its outcome and its one-line reason, read from each element's own result) and tells
+-  later stages whether any element failed: `ZBUILD_RUN_FLAGGED` is `yes` when a lens found a high or
+-  critical problem the change introduced, `no` when none did, unset when no review group ran.
++  later stages whether any element failed or did not finish: `ZBUILD_RUN_FLAGGED` is `yes` when any
++  element's outcome is not `pass` — whether a conclusive `fail` or any unfinished outcome (`timed_out`,
++  `out_of_turns`, `interrupted`, `broken`, `missing`, `misconfigured`, `unavailable`, etc.) — `no`
++  when every element passed, unset when no review group ran. An element with no current result also
++  counts as not finished and sets `ZBUILD_RUN_FLAGGED=yes`.
+   `review-aggregator` and its merged report (`review-report.json`) are retired: every later stage
+   already sees each lens's own output.
+ - **What uses the word:** pr-delivery merges under `auto_unless_flagged` only on
+@@ -472,7 +475,8 @@ Supersedes §4 and the #2301 amendment.
+ - **The PR body says what the PR is for:** the issue, the goal and the work items from the plan, the
+   files changed since the default branch, and the test result. Review findings stay out of it.
+ 
+-Enforced by: `tests/unit/engine-combines-map-test.sh` M1, M2; `plugins/tool/pr-open/tests/pr-open-body-test.sh`
++Enforced by: `tests/unit/engine-combines-map-test.sh` M1, M2, SPEC-1 (#1753 — any non-pass outcome sets
++`ZBUILD_RUN_FLAGGED=yes`); `plugins/tool/pr-open/tests/pr-open-body-test.sh`
+ B1–B3; `tests/unit/pr-delivery-v2-result-test.sh` SPEC-3; `tests/integration/merge-policy-auto-unless-flagged-test.sh`
+ SPEC-1–SPEC-6; `tests/unit/retired-impact-review-report-inputs-test.sh` RT2.
+ 
+diff --git a/tests/unit/engine-combines-map-test.sh b/tests/unit/engine-combines-map-test.sh
+index af3394ad..c08f0f99 100755
+--- a/tests/unit/engine-combines-map-test.sh
++++ b/tests/unit/engine-combines-map-test.sh
+@@ -67,6 +67,48 @@ rm -f "$ART"/lens-*.json
+ _run_map a c
+ assert_eq "[M2] none failed → ZBUILD_RUN_FLAGGED=no" "no" "${ZBUILD_RUN_FLAGGED:-unset}"
+ 
++print_test_section "#1753/SPEC-1: any non-pass outcome sets ZBUILD_RUN_FLAGGED"
++# Requirement: _strategy_run_map exports ZBUILD_RUN_FLAGGED=yes when ANY member
++# has an outcome that is not `pass`. The old code only checked `outcome == fail`;
++# unfinished outcomes (timed_out, out_of_turns, interrupted) were not flagged.
++# New code: `outcome != pass` → flagged=yes.
++#
++# Three distinct non-pass outcomes are tested so that an implementation
++# hard-coding one specific value (e.g. only timed_out) cannot pass all three.
++
++# sub-test: timed_out — lens ran out of time
++orch_dispatch() {
++    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
++    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" timed_out "lens ran out of time"
++    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
++    printf 'slot\n'
++}
++rm -f "$ART"/lens-*.json
++_run_map a b c
++assert_eq "[#1753/SPEC-1] timed_out outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
++
++# sub-test: out_of_turns — lens exhausted its turn budget
++orch_dispatch() {
++    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
++    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" out_of_turns "lens exhausted turn budget"
++    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
++    printf 'slot\n'
++}
++rm -f "$ART"/lens-*.json
++_run_map a b c
++assert_eq "[#1753/SPEC-1] out_of_turns outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
++
++# sub-test: interrupted — lens was stopped by an outside signal
++orch_dispatch() {
++    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
++    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" interrupted "lens was stopped by signal"
++    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
++    printf 'slot\n'
++}
++rm -f "$ART"/lens-*.json
++_run_map a b c
++assert_eq "[#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
