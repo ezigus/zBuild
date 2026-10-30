@@ -75,10 +75,10 @@ index 3e223c80..d4ef9e27 100644
  config:
    tier_default: T0
 diff --git a/tests/unit/event-schema-emitted-coverage-test.sh b/tests/unit/event-schema-emitted-coverage-test.sh
-index 92ed232c..d5cf51d1 100755
+index 92ed232c..34ed2a9b 100755
 --- a/tests/unit/event-schema-emitted-coverage-test.sh
 +++ b/tests/unit/event-schema-emitted-coverage-test.sh
-@@ -157,5 +157,141 @@ else
+@@ -157,5 +157,162 @@ else
      assert_fail "[#2032] cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types"
  fi
  
@@ -89,11 +89,15 @@ index 92ed232c..d5cf51d1 100755
 +# from the actual manifests, so it catches any namespace a manifest declares (not
 +# just the hardcoded set in SPEC-1717-2).
 +#
-+# Fails before the change: security-lens + merge declare plugin.result → namespace
-+# 'plugin' is a manifest namespace, and event-schema.json has plugin.* events.
-+# Also persist.* and hydrate.* are in the schema AND in the persist/hydrate manifests.
-+# Passes after SPEC-3 (persist/hydrate removed from schema) + SPEC-4 (plugin.result
-+# removed from both manifests, leaving no manifest with a plugin.* event).
++# "Namespace" here means ALL components except the final event token (all-but-last).
++# `persist.start` → namespace `persist`; `plugin.pr_open.branch_fallback_used` →
++# namespace `plugin.pr_open`.  Using all-but-last rather than only the first token
++# prevents the ADR-001 `plugin.pr_open.*` exception (owned by plugins/tool/pr-open)
++# from polluting the top-level `plugin` namespace and falsely flagging engine events.
++#
++# Fails before the change: persist plugin provides persist.start (namespace 'persist')
++# and event-schema.json also carries persist.start; likewise hydrate.*.
++# Passes after SPEC-3 removes persist.*/hydrate.* from event-schema.json.
 +_1951_mf=()
 +while IFS= read -r _1951_m; do
 +    [[ -n "$_1951_m" ]] && _1951_mf+=("$_1951_m")
@@ -102,10 +106,12 @@ index 92ed232c..d5cf51d1 100755
 +_1951_all_plugin_ev=""
 +[[ ${#_1951_mf[@]} -gt 0 ]] && _1951_all_plugin_ev="$(eb_manifest_events "${_1951_mf[@]}")"
 +
++# Extract all-but-last-component as the namespace for each plugin-declared event.
++# %.*  removes the shortest suffix matching  .*  (i.e., dot + final token).
 +_1951_plugin_ns=""
 +while IFS= read -r _1951_pev; do
 +    [[ -z "$_1951_pev" ]] && continue
-+    _1951_plugin_ns+="${_1951_pev%%.*}"$'\n'
++    _1951_plugin_ns+="${_1951_pev%.*}"$'\n'
 +done <<< "$_1951_all_plugin_ev"
 +# Deduplicate with here-string to avoid pipe (sigpipe-ok: sort reads all input, no early exit,
 +# but use here-string to be fully safe).
@@ -114,7 +120,8 @@ index 92ed232c..d5cf51d1 100755
 +_1951_spec1_viol=()
 +while IFS= read -r _1951_t; do
 +    [[ -z "$_1951_t" ]] && continue
-+    _1951_ns="${_1951_t%%.*}"
++    # Compare full all-but-last namespace: persist.start → 'persist'; plugin.run.start → 'plugin.run'
++    _1951_ns="${_1951_t%.*}"
 +    if grep -qxF "$_1951_ns" <<< "$_1951_plugin_ns"; then
 +        _1951_spec1_viol+=("$_1951_t")
 +    fi
@@ -125,7 +132,7 @@ index 92ed232c..d5cf51d1 100755
 +else
 +    for _1951_t in "${_1951_spec1_viol[@]}"; do
 +        assert_fail "[#1951/SPEC-1] event-schema.json has '${_1951_t}' in a plugin-owned namespace" \
-+            "namespace '${_1951_t%%.*}' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §\"Declared events\")"
++            "namespace '${_1951_t%.*}' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §\"Declared events\")"
 +    done
 +fi
 +
@@ -134,8 +141,15 @@ index 92ed232c..d5cf51d1 100755
 +# that lists an engine-namespace event under provides.events steals ownership from
 +# the engine — it is not entitled to that event name and the validator must reject it.
 +#
++# ADR-001 exception: a plugin may declare events in the sub-namespace
++# `plugin.<plugin_name>.*` where <plugin_name> is derived from the plugin's own
++# directory basename (dashes → underscores).  For example, plugins/tool/pr-open may
++# declare `plugin.pr_open.*` events.  These are carved out before the engine-namespace
++# check so they do not produce false violations.
++#
 +# Fails before the change: security-lens and merge both declare plugin.result;
-+# 'plugin' is an engine-owned namespace.
++# 'plugin' is an engine-owned namespace and plugin.result is NOT a plugin.security_lens.*
++# or plugin.merge.* sub-namespace event, so the exception does not apply.
 +# Passes after SPEC-4: plugin.result is removed from both manifests.
 +_ENGINE_OWNED_NS_RE='^(pipeline|stage|stage_io|plugin|cycle|router|loop|state|registry|parallel|redaction|template|strategy|artifact|model|cost|orch|memory|backend|detection|llm|selfhost)\.'
 +_1951_spec2_viol=()
@@ -143,9 +157,16 @@ index 92ed232c..d5cf51d1 100755
 +    [[ -z "$_1951_pd" ]] && continue
 +    _1951_mf2="$_1951_pd/manifest.yaml"
 +    [[ -f "$_1951_mf2" ]] || continue
++    # ADR-001 exception: derive the allowed plugin.* sub-namespace from the directory name.
++    _1951_pname2="$(basename "$_1951_pd")"
++    _1951_pname2_ns="${_1951_pname2//-/_}"  # pr-open → pr_open
 +    _1951_decl2="$(eb_manifest_events "$_1951_mf2")"
 +    while IFS= read -r _1951_ev2; do
 +        [[ -z "$_1951_ev2" ]] && continue
++        # Skip events in the plugin's own plugin.* sub-namespace (ADR-001 §"Declared events" exception).
++        # The pattern requires a third component (must be plugin.<name>.<event>, not plugin.<name>),
++        # so a bare `plugin.name` (no sub-event) is still a violation.
++        [[ "$_1951_ev2" == "plugin.${_1951_pname2_ns}."* ]] && continue
 +        if grep -qE "$_ENGINE_OWNED_NS_RE" <<< "$_1951_ev2"; then
 +            _1951_spec2_viol+=("${_1951_pd#"$REPO_ROOT/"} → $_1951_ev2")
 +        fi
