@@ -1,4 +1,3 @@
-the acceptance check failed — tests/unit/event-schema-emitted-coverage-test.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
 NEGCTL PASS SPEC-1
       design : The event-schema coverage test derives plugin-owned namespace prefixes dynamically from plugins/*/*/…
       asserts: assert_pass "[#1951/SPEC-1] event-schema.json carries no event in a plugin-owned namespace"
@@ -17,7 +16,7 @@ NEGCTL SKIP SPEC-5 no_code
 NEGCTL SKIP SPEC-6 no_code
       design : The hardcoded _PLUGIN_NS_RE variable and its associated guard block are absent from tests/unit/event…
       asserts: assert_pass "[#1951/SPEC-6] the hardcoded plugin-namespace guard variable is absent from this file"
-REACHABILITY FAIL inert_wiring tests/unit/event-schema-emitted-coverage-test.sh
+REACHABILITY EXEMPT none
 REACHABILITY PASS change config/adr-enforcement-baseline.txt
 REACHABILITY PASS change config/event-schema.json
 REACHABILITY PASS change plugins/agent/security-lens/manifest.yaml

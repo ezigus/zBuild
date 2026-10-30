@@ -643,7 +643,7 @@ lint-adr-enforced-by: 1 problem(s) among 69 live ADR(s)
   [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section
   [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh
   [38;2;248;113;113m✗[0m [#1951/SPEC-5] ADR-001-plugin-contract.md must be removed from config/adr-enforcement-baseline.txt
-    [2mADR-001 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.6ArAW5/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
+    [2mADR-001 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.auvVV7/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
 
 [2m  ──────────────────────────────────────────[0m
 
