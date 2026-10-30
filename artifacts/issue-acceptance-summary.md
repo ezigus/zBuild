@@ -1,6 +1,5 @@
-## issue-acceptance — fail
+## issue-acceptance — pass
 
-- The test suite fails (SPEC-8 in `runner-map-parallel-stage-envelope-test.sh` is broken), and the acceptance check proved that reverting `runner.sh` to its old version leaves every remaining test green — meaning the run-stops behavior added there has no test that would catch it absent or wrong.
+- Every behavioral claim in the Decision block is implemented: `map.sh` now flags any non-pass outcome (`!= pass`), `runner.sh` stops the run at the map dispatch arm before `pr-delivery` when `ZBUILD_RUN_FLAGGED=yes`, the ADR amendment names both enforcing tests (which would catch reversions), `pr-delivery`'s `auto_unless_flagged` guard was already correct, and the full test suite passes with 830 assertions and 0 failures.
 
-- NOT MET: R-1 ("The review group fails, the run stops before `pr_open`, no PR is opened, and nothing merges") — the `map.sh` change is correct and its tests cover it, but the `runner.sh` block that actually stops the run before `pr_open` is untested: the acceptance check reverted `runner.sh` and every test still passed, which is the exact defect class the issue's rules prohibit. Additionally, the `runner.sh` change actively breaks a pre-existing test (SPEC-8: `map: dispatch arm writes stage_statuses[id]=complete`), showing the happy-path dispatch envelope is now broken. A requirement is not met when its enforcement is absent and a separate regression is introduced.
-- NOT MET: SPEC-2 ("ADR-040's `Enforced by` entry names the test") — the ADR now names `tests/unit/engine-combines-map-test.sh SPEC-1 (#1753)` as the enforcer of the new rule, but that test only covers `map.sh`'s flag-setting. The ADR's statement also covers "the run stops" (the runner.sh behavior), which the named test does not exercise; the `Enforced by` claim is therefore incomplete and would not catch the runner behavior being broken.
+- every requirement the issue states is met by the change
