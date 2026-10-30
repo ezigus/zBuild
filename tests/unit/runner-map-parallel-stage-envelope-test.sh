@@ -10,16 +10,17 @@
 # any pre-existing code, so all 10 fail at the merge-base baseline.
 #
 # SPECs (all CHANGE — absent at baseline):
-#   SPEC-1  parallel: arm emits stage.start
-#   SPEC-2  parallel: arm emits stage.complete
-#   SPEC-3  parallel: arm writes stage_statuses[id]=complete
-#   SPEC-4  parallel: arm writes stage_verdicts[id]=pass
-#   SPEC-5  parallel: arm exports ZBUILD_CURRENT_STAGE=id
-#   SPEC-6  map: arm emits stage.start
-#   SPEC-7  map: arm emits stage.complete
-#   SPEC-8  map: arm writes stage_statuses[id]=complete
-#   SPEC-9  map: arm writes stage_verdicts[id]=pass
-#   SPEC-10 map: arm exports ZBUILD_CURRENT_STAGE=id
+#   SPEC-1          parallel: arm emits stage.start
+#   SPEC-2          parallel: arm emits stage.complete
+#   SPEC-3          parallel: arm writes stage_statuses[id]=complete
+#   SPEC-4          parallel: arm writes stage_verdicts[id]=pass
+#   SPEC-5          parallel: arm exports ZBUILD_CURRENT_STAGE=id
+#   SPEC-6          map: arm emits stage.start
+#   SPEC-7          map: arm emits stage.complete
+#   SPEC-8          map: arm writes stage_statuses[id]=complete
+#   SPEC-9          map: arm writes stage_verdicts[id]=pass
+#   SPEC-10         map: arm exports ZBUILD_CURRENT_STAGE=id
+#   #1753/SPEC-4    map: arm checks ZBUILD_RUN_FLAGGED and returns 1 before _update_stage_status
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,8 +41,9 @@ setup_test_env "runner-map-parallel-stage-envelope"
 # pre-existing line can produce a false positive. All 10 fail at baseline.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Extract the map: dispatch arm from runner.sh (line 2715+, ~99 lines).
-MAP_ARM=$(awk '/[[:space:]]map:\*\)/{found=1; count=0} found{print; count++; if(count>=115){exit}}' \
+# Extract the map: dispatch arm from runner.sh (~128 lines; widened from 115 by #1753
+# which inserted a ~14-line ZBUILD_RUN_FLAGGED stop block before _update_stage_status).
+MAP_ARM=$(awk '/[[:space:]]map:\*\)/{found=1; count=0} found{print; count++; if(count>=128){exit}}' \
     "$RUNNER_SH" 2>/dev/null || true)
 
 print_test_section "1–5: parallel: arm envelope"
@@ -89,6 +91,68 @@ assert_contains "[SPEC-9] map: dispatch arm writes stage_verdicts[id]=pass" \
 # SPEC-10
 mg_stage_var_hit=$(grep -cF 'export ZBUILD_CURRENT_STAGE="$_mg_id"' "$RUNNER_SH" 2>/dev/null) || mg_stage_var_hit=0
 assert_eq "[SPEC-10] map: dispatch arm exports ZBUILD_CURRENT_STAGE=id" "1" "$mg_stage_var_hit"
+
+print_test_section "map: #1753 stop block"
+
+# [#1753/SPEC-4]: when ZBUILD_RUN_FLAGGED=yes after _strategy_run_map, the map arm
+# returns 1 before calling _update_stage_status for the group. Three assertions:
+#   (a) static: ZBUILD_RUN_FLAGGED check appears before _update_stage_status in source
+#   (b) static: return 1 is inside the ZBUILD_RUN_FLAGGED if-block
+#   (c) runtime: with ZBUILD_RUN_FLAGGED=yes and _rc=0, _update_stage_status is not called
+
+# (a) ZBUILD_RUN_FLAGGED check precedes _update_stage_status
+spec4_pre_update=$(awk '/_update_stage_status.*_mg_id/{exit} {print}' <<< "$MAP_ARM")
+spec4_flagged_cnt=$(grep -cF 'ZBUILD_RUN_FLAGGED:-' <<< "$spec4_pre_update") || spec4_flagged_cnt=0
+assert_eq "[#1753/SPEC-4] map arm: ZBUILD_RUN_FLAGGED check precedes _update_stage_status" "1" "$spec4_flagged_cnt"
+
+# (b) return 1 is inside the ZBUILD_RUN_FLAGGED if-block (not just anywhere in the arm)
+# At baseline the block does not exist → spec4_flagged_if empty → count=0 ≠ 1 → FAILS.
+# After #1753 the block is present with return 1 inside → count=1 → PASSES.
+spec4_flagged_if=$(awk '
+    /if \[\[.*ZBUILD_RUN_FLAGGED.*==.*yes/{p=1}
+    p{print}
+    p && /^[[:space:]]*fi/{p=0; exit}
+' <<< "$spec4_pre_update")
+spec4_return_in_if=$(grep -c 'return 1' <<< "$spec4_flagged_if") || spec4_return_in_if=0
+assert_eq "[#1753/SPEC-4] map arm: return 1 inside ZBUILD_RUN_FLAGGED block" "1" "$spec4_return_in_if"
+
+# (c) runtime: eval the code from "if [[ $_rc -ne 0 ]]" through _update_stage_status
+#     with _rc=0 (so the rc-failure branch is skipped) and ZBUILD_RUN_FLAGGED=yes.
+#     At baseline the arm has no stop block → reaches _update_stage_status → marker
+#     created → assert_file_not_exists FAILS.
+#     After #1753 the stop block fires return 1 before _update_stage_status → marker
+#     absent → PASSES.
+_spec4_rc_onward=$(awk '
+    /if \[\[.*_rc.*-ne.*0/{start=1}
+    start{print}
+    start && /_update_stage_status.*_mg_id/{exit}
+' <<< "$MAP_ARM")
+_spec4_marker="$TEST_TEMP_DIR/spec4_update_called"
+rm -f "$_spec4_marker"
+_spec4_runtime() {
+    _set_pipeline_status()           { :; }
+    _zbuild_state_set_stage_verdict() { :; }
+    eb_emit_event()                  { :; }
+    _render_pipeline_end()           { :; }
+    error()                          { :; }
+    _update_stage_status()           { touch "$_spec4_marker"; }
+    state_file="$TEST_TEMP_DIR/state.json"
+    _mg_id="review_lenses"
+    _runner_run_id="run-001"
+    _runner_issue="1753"
+    _runner_ended=false
+    _ZB_MAP_UNFINISHED=""
+    _ZB_STRATEGY_OUTCOME="failed"
+    _rc=0
+    export ZBUILD_RUN_FLAGGED=yes
+    eval "$_spec4_rc_onward"
+}
+set +e
+( _spec4_runtime ) 2>/dev/null
+set -e
+assert_file_not_exists \
+    "[#1753/SPEC-4] map arm: _update_stage_status not called when ZBUILD_RUN_FLAGGED=yes" \
+    "$_spec4_marker"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Part 2 — behavioral: state helpers write the expected values to a real JSON
