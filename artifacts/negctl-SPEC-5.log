@@ -3,10 +3,10 @@
 [38;2;0;212;255m[1m  cycle abort_when non-match converges (Wave 19-E #737)[0m
 [2m  ══════════════════════════════════════════[0m
 
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:16:05 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:45:25 UTC ══
 (no feedback — first iteration)
 
-══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:16:05 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:45:26 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──
@@ -22,19 +22,19 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m T8: exit_when match=true (predicate evaluated before abort_when crash)
 
   [38;2;0;212;255mnested-cycle production scenario (mirror dogfood 20260607140638-60666)[0m
-══ build_review_cycle [cycle] seq=1 input ══════════════════════ 16:16:06 UTC ══
+══ build_review_cycle [cycle] seq=1 input ══════════════════════ 16:45:26 UTC ══
 (no feedback — first iteration)
 
-══ build_test_cycle [cycle] seq=1 input ════════════════════════ 16:16:06 UTC ══
+══ build_test_cycle [cycle] seq=1 input ════════════════════════ 16:45:26 UTC ══
 (no feedback — first iteration)
 
 
-══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 16:16:06 UTC ══
+══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 16:45:26 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_test_cycle ✓ ──
 
-══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 16:16:06 UTC ══
+══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 16:45:27 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_review_cycle ✓ ──
@@ -44,10 +44,10 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m T14: outer's abort_when predicate event fired
 
   [38;2;0;212;255mregression guard: cycle without abort_when (unchanged path) still works[0m
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:16:07 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:45:27 UTC ══
 (no feedback — first iteration)
 
-══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:16:07 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:45:27 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──
@@ -178,10 +178,10 @@ health: progress=0 (no progress) - defects=0 → score=0
 [38;2;0;212;255m[1m  cycle abort_when non-match converges (Wave 19-E #737)[0m
 [2m  ══════════════════════════════════════════[0m
 
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:16:08 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:45:28 UTC ══
 (no feedback — first iteration)
 
-══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:16:08 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:45:29 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──
@@ -197,19 +197,19 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m T8: exit_when match=true (predicate evaluated before abort_when crash)
 
   [38;2;0;212;255mnested-cycle production scenario (mirror dogfood 20260607140638-60666)[0m
-══ build_review_cycle [cycle] seq=1 input ══════════════════════ 16:16:08 UTC ══
+══ build_review_cycle [cycle] seq=1 input ══════════════════════ 16:45:29 UTC ══
 (no feedback — first iteration)
 
-══ build_test_cycle [cycle] seq=1 input ════════════════════════ 16:16:08 UTC ══
+══ build_test_cycle [cycle] seq=1 input ════════════════════════ 16:45:29 UTC ══
 (no feedback — first iteration)
 
 
-══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 16:16:09 UTC ══
+══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 16:45:29 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_test_cycle ✓ ──
 
-══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 16:16:09 UTC ══
+══ build_review_cycle [cycle] seq=1 output OK 0.8s ═════════════ 16:45:29 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_review_cycle ✓ ──
@@ -219,10 +219,10 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m T14: outer's abort_when predicate event fired
 
   [38;2;0;212;255mregression guard: cycle without abort_when (unchanged path) still works[0m
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:16:09 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 16:45:30 UTC ══
 (no feedback — first iteration)
 
-══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:16:10 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 16:45:30 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──

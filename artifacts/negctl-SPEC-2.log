@@ -49,30 +49,66 @@
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the loop
     [2moutput missing: the_cycle[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the field
+    [2moutput missing: verdict[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the bad op
     [2moutput missing: in[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes eq
+    [2mop 'eq' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes neq
+    [2mop 'neq' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes gt
+    [2mop 'gt' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes gte
+    [2mop 'gte' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes lt
+    [2mop 'lt' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes lte
+    [2mop 'lte' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes contains
+    [2mop 'contains' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes matches
+    [2mop 'matches' not found as standalone token in: [0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-3] multi-condition bad op refused (rc!=0)
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the loop
     [2moutput missing: the_cycle[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the field
+    [2moutput missing: verdict[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the bad op
     [2moutput missing: ne[0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes eq
+    [2mop 'eq' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes neq
+    [2mop 'neq' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes gt
+    [2mop 'gt' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes gte
+    [2mop 'gte' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes lt
+    [2mop 'lt' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes lte
+    [2mop 'lte' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes contains
+    [2mop 'contains' not found as standalone token in: [0m
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes matches
+    [2mop 'matches' not found as standalone token in: [0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ADR-027 has ## Enforced by section
-    [2msection missing from /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.I66NaC/docs/adr/ADR-027-recursive-flow-template-format.md[0m
+    [2msection missing from /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hbZS4l/docs/adr/ADR-027-recursive-flow-template-format.md[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ## Enforced by names tests/unit/template-loader-recursive-flow-test.sh
-    [2mnot found in Enforced by section of /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.I66NaC/docs/adr/ADR-027-recursive-flow-template-format.md[0m
+    [2mnot found in Enforced by section of /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hbZS4l/docs/adr/ADR-027-recursive-flow-template-format.md[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-abort-when-no-match-converges-test.sh
-    [2mnot found in Enforced by section of /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.I66NaC/docs/adr/ADR-027-recursive-flow-template-format.md[0m
+    [2mnot found in Enforced by section of /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hbZS4l/docs/adr/ADR-027-recursive-flow-template-format.md[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-orchestrator-abort-when-test.sh
-    [2mnot found in Enforced by section of /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.I66NaC/docs/adr/ADR-027-recursive-flow-template-format.md[0m
+    [2mnot found in Enforced by section of /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hbZS4l/docs/adr/ADR-027-recursive-flow-template-format.md[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ## Enforced by names tests/unit/core-pipeline-cycle-events-test.sh
-    [2mnot found in Enforced by section of /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.I66NaC/docs/adr/ADR-027-recursive-flow-template-format.md[0m
+    [2mnot found in Enforced by section of /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hbZS4l/docs/adr/ADR-027-recursive-flow-template-format.md[0m
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ADR-027 is removed from adr-enforcement-baseline.txt
-    [2mentry still present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.I66NaC/config/adr-enforcement-baseline.txt[0m
+    [2mentry still present in /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hbZS4l/config/adr-enforcement-baseline.txt[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m24 of 42 tests failed[0m
+  [38;2;248;113;113m[1m42 of 60 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1760/SPEC-1] abort_when bad op refused (rc!=0)
   [38;2;248;113;113m✗[0m [#1760/SPEC-1] error names the loop
@@ -88,10 +124,28 @@
   [38;2;248;113;113m✗[0m [#1760/SPEC-1] error valid-set includes matches
   [38;2;248;113;113m✗[0m [#1760/SPEC-2] single-condition bad op refused (rc!=0)
   [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the loop
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the field
   [38;2;248;113;113m✗[0m [#1760/SPEC-2] error names the bad op
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes eq
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes neq
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes gt
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes gte
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes lt
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes lte
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes contains
+  [38;2;248;113;113m✗[0m [#1760/SPEC-2] error valid-set includes matches
   [38;2;248;113;113m✗[0m [#1760/SPEC-3] multi-condition bad op refused (rc!=0)
   [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the loop
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the field
   [38;2;248;113;113m✗[0m [#1760/SPEC-3] error names the bad op
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes eq
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes neq
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes gt
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes gte
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes lt
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes lte
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes contains
+  [38;2;248;113;113m✗[0m [#1760/SPEC-3] error valid-set includes matches
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ADR-027 has ## Enforced by section
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ## Enforced by names tests/unit/template-loader-recursive-flow-test.sh
   [38;2;248;113;113m✗[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-abort-when-no-match-converges-test.sh
@@ -136,10 +190,28 @@
   [38;2;74;222;128m✓[0m [#1760/SPEC-1] error valid-set includes matches
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] single-condition bad op refused (rc!=0)
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the loop
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the field
   [38;2;74;222;128m✓[0m [#1760/SPEC-2] error names the bad op
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error valid-set includes eq
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error valid-set includes neq
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error valid-set includes gt
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error valid-set includes gte
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error valid-set includes lt
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error valid-set includes lte
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error valid-set includes contains
+  [38;2;74;222;128m✓[0m [#1760/SPEC-2] error valid-set includes matches
   [38;2;74;222;128m✓[0m [#1760/SPEC-3] multi-condition bad op refused (rc!=0)
   [38;2;74;222;128m✓[0m [#1760/SPEC-3] error names the loop
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error names the field
   [38;2;74;222;128m✓[0m [#1760/SPEC-3] error names the bad op
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error valid-set includes eq
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error valid-set includes neq
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error valid-set includes gt
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error valid-set includes gte
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error valid-set includes lt
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error valid-set includes lte
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error valid-set includes contains
+  [38;2;74;222;128m✓[0m [#1760/SPEC-3] error valid-set includes matches
   [38;2;74;222;128m✓[0m [#1760/SPEC-9] ADR-027 has ## Enforced by section
   [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/unit/template-loader-recursive-flow-test.sh
   [38;2;74;222;128m✓[0m [#1760/SPEC-9] ## Enforced by names tests/integration/cycle-abort-when-no-match-converges-test.sh
@@ -149,5 +221,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 42 tests passed[0m
+  [38;2;74;222;128m[1mAll 60 tests passed[0m
 

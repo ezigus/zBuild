@@ -1,6 +1,6 @@
 {
   "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 534/534 passed (4 skipped)\nintegration: 260/260 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 831/831 passed (4 skipped)",
-  "run_mode": "targeted+full",
+  "run_mode": "full",
   "exit_code": 0,
   "data": {
     "exit_code": 0,
@@ -9,65 +9,59 @@
     "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 534/534 passed (4 skipped)\nintegration: 260/260 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 831/831 passed (4 skipped)",
     "diff_applied": false,
     "test_cmd": "npm test",
-    "run_mode": "targeted+full",
+    "run_mode": "full",
     "timing": {
       "tiers": {
-        "lint": 140019,
-        "e2e": 44244,
-        "golden": 6300,
-        "unit": 316279,
-        "integration": 291843
+        "lint": 140505,
+        "e2e": 44264,
+        "golden": 6315,
+        "unit": 314963,
+        "integration": 290429
       },
       "slowest_files": [
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/integration/cycle-acceptance-terminal-failure-test.sh",
-          "ms": 62718
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 60267
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/integration/core-pipeline-runner-test.sh",
-          "ms": 60727
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 59062
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/integration/leaf-verdict-halts-test.sh",
-          "ms": 38482
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/e2e/fork-budget-test.sh",
+          "ms": 37017
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/e2e/fork-budget-test.sh",
-          "ms": 37337
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 36832
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/integration/runner-release-exit-paths-test.sh",
-          "ms": 36990
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/integration/run-timed-out-test.sh",
+          "ms": 36800
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/unit/run-status-comment-pages-test.sh",
-          "ms": 35170
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 35613
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/e2e/parity-local-vs-ci-test.sh",
-          "ms": 35087
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 35129
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/unit/runner-cycle-rc-action-mapping-test.sh",
-          "ms": 33857
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 34415
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/integration/run-status-comment-runner-test.sh",
-          "ms": 31887
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 34287
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.FkJmap/tests/integration/cycle-on-max-pipeline-continues-test.sh",
-          "ms": 31510
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1Hu0b1/tests/unit/runner-cycle-rc-action-mapping-test.sh",
+          "ms": 33878
         }
       ]
     },
-    "tree_sha": "d54607dd39ad98249b857198805ced6f30c7a703",
-    "targeted": {
-      "test_cmd": "bash scripts/run-tests.sh --files 'plugins/agent/build/tests/build-test.sh' 'plugins/tool/pr-open/tests/pr-open-unsettled-test.sh' 'plugins/tool/test/tests/test-test.sh' 'tests/integration/acceptance-gate-quiet-test.sh' 'tests/integration/acceptance-gate-test.sh' 'tests/integration/acceptance-gate-v2-reader-test.sh' 'tests/integration/build-banner-llm-prompt-visible-test.sh' 'tests/integration/build-changed-files-summary-test.sh' 'tests/integration/build-created-oos-still-violation-test.sh' 'tests/integration/build-loop-banner-test.sh' 'tests/integration/build-no-stash-flow-test.sh' 'tests/integration/build-preexisting-untracked-not-violation-test.sh' 'tests/integration/build-test-cycle-fallthrough-to-review-test.sh' 'tests/integration/build-test-cycle-progress-test.sh' 'tests/integration/build-test-cycle-targeted-rerun-test.sh' 'tests/integration/core-pipeline-cycle-blocked-integration-test.sh' 'tests/integration/core-pipeline-cycle-build-test-wiring-test.sh' 'tests/integration/core-pipeline-cycle-orchestrator-test.sh' 'tests/integration/core-router-route-test.sh' 'tests/integration/cycle-abort-when-no-match-converges-test.sh' 'tests/integration/cycle-blocked-real-artifact-test.sh' 'tests/integration/cycle-commit-summary-fallback-test.sh' 'tests/integration/cycle-commits-per-iter-test.sh' 'tests/integration/cycle-exit-when-success-test.sh' 'tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh' 'tests/integration/cycle-iter-visual-spacing-test.sh' 'tests/integration/cycle-member-dispatch-events-test.sh' 'tests/integration/cycle-member-unfinished-no-convergence-test.sh' 'tests/integration/cycle-multi-exit-when-e2e-test.sh' 'tests/integration/cycle-multi-iter-cumulative-test.sh' 'tests/integration/cycle-nested-outer-converges-test.sh' 'tests/integration/cycle-no-committed-changes-fail-fast-test.sh' 'tests/integration/cycle-orchestrator-abort-when-test.sh' 'tests/integration/cycle-orchestrator-nested-cycle-test.sh' 'tests/integration/cycle-orchestrator-sigint-test.sh' 'tests/integration/cycle-parallel-member-test.sh' 'tests/integration/cycle-predicate-event-test.sh' 'tests/integration/cycle-scope-expansion-test.sh' 'tests/integration/cycle-scope-violation-no-commit-test.sh' 'tests/integration/cycle-seq-deep-nesting-test.sh' 'tests/integration/cycle-stage-seq-labels-test.sh' 'tests/integration/cycle-velocity-plateau-early-exit-test.sh' 'tests/integration/deployed-template-e2e-test.sh' 'tests/integration/dispatch-rc-signal-boundary-test.sh' 'tests/integration/engine-run-branch-test.sh' 'tests/integration/loop-already-done-emits-complete-test.sh' 'tests/integration/loop-auto-terminate-no-progress-test.sh' 'tests/integration/map-review-lenses-dispatch-test.sh' 'tests/integration/orch-timeout-applies-test.sh' 'tests/integration/parallel-orchestrator-test.sh' 'tests/integration/pipeline-test-stage-fresh-shell-test.sh' 'tests/integration/pr-pipeline-test.sh' 'tests/integration/preflight-contract-templates-test.sh' 'tests/integration/review-lenses-output-test.sh' 'tests/integration/route-loop-fd-isolation-test.sh' 'tests/integration/route-loop-tmpdir-cleanup-test.sh' 'tests/integration/router-claude-flags-test.sh' 'tests/integration/router-loop-preserves-error-artifacts-test.sh' 'tests/integration/router-loop-rate-limit-test.sh' 'tests/integration/router-loop-rc124-honors-sentinel-test.sh' 'tests/integration/router-loop-retries-test.sh' 'tests/integration/router-loop-stream-capture-test.sh' 'tests/integration/router-retries-test.sh' 'tests/integration/router-timeout-precedence-e2e-test.sh' 'tests/integration/simple-yaml-build-test-convergence-test.sh' 'tests/integration/stage-io-banner-split-test.sh' 'tests/integration/stage-io-capture-test.sh' 'tests/integration/stage-io-channel-split-test.sh' 'tests/integration/stage-io-command-capture-test.sh' 'tests/integration/stage-io-ordering-invariant-test.sh' 'tests/integration/stage-time-limit-test.sh' 'tests/integration/stop-run-on-fail-test.sh' 'tests/integration/template-constructs-test.sh' 'tests/integration/template-resolver-extends-test.sh' 'tests/integration/template-tier-override-test.sh' 'tests/lib/cycle-stall-break-fixture.sh' 'tests/lib/nested-loop-rounds-fixture.sh' 'tests/unit/build-checks-own-output-test.sh' 'tests/unit/build-discrepancy-warn-inside-banner-test.sh' 'tests/unit/build-oos-pass-request-test.sh' 'tests/unit/build-prompt-summary-marker-test.sh' 'tests/unit/build-timeout-banner-clean-iter-test.sh' 'tests/unit/clock-dirname-cost-test.sh' 'tests/unit/convergence-timeouts-never-fatal-1208-test.sh' 'tests/unit/core-pipeline-cycle-acceptance-terminal-test.sh' 'tests/unit/core-pipeline-cycle-blocked-test.sh' 'tests/unit/core-pipeline-cycle-convergence-test.sh' 'tests/unit/core-pipeline-cycle-divergence-test.sh' 'tests/unit/core-pipeline-cycle-events-test.sh' 'tests/unit/core-pipeline-cycle-final-gate-test.sh' 'tests/unit/core-pipeline-cycle-high-banner-integration-test.sh' 'tests/unit/core-pipeline-cycle-orchestrator-run-test.sh' 'tests/unit/core-pipeline-cycle-plateau-test.sh' 'tests/unit/core-pipeline-cycle-velocity-plateau-test.sh' 'tests/unit/core-pipeline-disposition-test.sh' 'tests/unit/core-pipeline-template-cycles-test.sh' 'tests/unit/core-pipeline-template-parallel-test.sh' 'tests/unit/core-pipeline-template-router-retries-test.sh' 'tests/unit/core-pipeline-template-router-tier-test.sh' 'tests/unit/core-pipeline-template-test.sh' 'tests/unit/core-router-loop-banner-test.sh' 'tests/unit/cycle-g2-cross-iter-timeout-test.sh' 'tests/unit/cycle-g2-timeout-abandon-test.sh' 'tests/unit/cycle-g3-maxturns-escalation-test.sh' 'tests/unit/cycle-history-multi-exit-test.sh' 'tests/unit/cycle-member-report-test.sh' 'tests/unit/cycle-multi-exit-when-test.sh' 'tests/unit/cycle-on-max-continue-pipeline-status-test.sh' 'tests/unit/cycle-orchestrator-capability-flags-test.sh' 'tests/unit/design-one-call-keeps-last-good-test.sh' 'tests/unit/design-timeout-exhaustion-halt-1261-test.sh' 'tests/unit/dispatch-identity-test.sh' 'tests/unit/dispatch-rc-guard-test.sh' 'tests/unit/disposition-vocabulary-test.sh' 'tests/unit/engine-combines-loop-test.sh' 'tests/unit/engine-keeps-only-stage-outputs-test.sh' 'tests/unit/env-scrub-test.sh' 'tests/unit/event-schema-emitted-coverage-test.sh' 'tests/unit/leaf-resolvability-prewarm-test.sh' 'tests/unit/lens-fail-rule-test.sh' 'tests/unit/lint-adr-enforced-by-test.sh' 'tests/unit/map-group-budget-test.sh' 'tests/unit/no-fault-routing-test.sh' 'tests/unit/persona-resolver-test.sh' 'tests/unit/result-outcome-readers-test.sh' 'tests/unit/retired-impact-review-report-inputs-test.sh' 'tests/unit/route-banner-cycle-context-test.sh' 'tests/unit/router-claude-flags-test.sh' 'tests/unit/router-loop-done-variants-test.sh' 'tests/unit/router-manifest-budget-test.sh' 'tests/unit/router-out-of-turns-crosses-subshell-test.sh' 'tests/unit/router-prompt-size-test.sh' 'tests/unit/router-provider-modules-test.sh' 'tests/unit/router-rate-limit-test.sh' 'tests/unit/router-rc124-propagation-test.sh' 'tests/unit/run-limit-precedence-test.sh' 'tests/unit/runner-cycle-iter-divider-hierarchical-test.sh' 'tests/unit/scope-governance-test.sh' 'tests/unit/shape-floor-content-stable-test.sh' 'tests/unit/shell-work-cost-test.sh' 'tests/unit/stage-housekeeping-cost-test.sh' 'tests/unit/stage-input-resolve-precedence-test.sh' 'tests/unit/stage-input-resolve-test.sh' 'tests/unit/stage-io-cycle-kind-test.sh' 'tests/unit/stage-latest-output-test.sh' 'tests/unit/stage-resolution-parity-test.sh' 'tests/unit/stage-stop-on-signal-test.sh' 'tests/unit/stage-summaries-test.sh' 'tests/unit/template-always-run-test.sh' 'tests/unit/template-blocking-reset-test.sh' 'tests/unit/template-cycle-description-test.sh' 'tests/unit/template-cycle-scope-policy-test.sh' 'tests/unit/template-loader-back-compat-test.sh' 'tests/unit/template-loader-recursive-flow-test.sh' 'tests/unit/template-merge-policy-test.sh' 'tests/unit/template-pr-draft-test.sh' 'tests/unit/template-resolvability-preflight-test.sh' 'tests/unit/template-resolver-new-shape-overlay-test.sh' 'tests/unit/template-simple-yaml-test.sh' 'tests/unit/test-author-checks-own-output-test.sh' 'tests/unit/test-author-loop-test.sh' 'tests/unit/test-author-test.sh' 'tests/unit/test-result-reason-contract-test.sh' 'tests/unit/test-stage-banner-golden-test.sh' 'tests/unit/tier-resolve-test.sh' 'tests/unit/timeout-cmd-sites-test.sh' 'tests/unit/worktree-location-test.sh'",
-      "verdict": "pass",
-      "passed": 165,
-      "failed": 0
-    },
+    "tree_sha": "ab9313c40adca88972599616d4be0de451c30f9b",
     "findings": []
   },
   "result_contract": 3,
