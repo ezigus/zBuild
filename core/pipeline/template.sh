@@ -1209,7 +1209,7 @@ _tpl_validate_cycles() {
                 esac
                 case "$ew_o" in
                     eq|neq|gt|gte|lt|lte|contains|matches) : ;;
-                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|neq|gt|gte|lt|lte|contains|matches, got: $ew_o"; return 1 ;;
+                    *) error "cycle '$cid': exit_when condition $ew_i (field '$ew_f'): op must be eq|neq|gt|gte|lt|lte|contains|matches, got: $ew_o"; return 1 ;;
                 esac
                 local found=0
                 for s in "${cs[@]}"; do
@@ -1240,9 +1240,11 @@ _tpl_validate_cycles() {
             local uo_var="_TPL_CYCLE_UNTIL_OP_${safe}"
             local uo="${!uo_var:-}"
             if [[ -n "$uo" ]]; then
+                local uf_var="_TPL_CYCLE_UNTIL_FIELD_${safe}"
+                local uf="${!uf_var:-}"
                 case "$uo" in
                     eq|neq|gt|gte|lt|lte|contains|matches) : ;;
-                    *) error "cycle '$cid': exit_when op '$uo' is not in the supported op set (eq|neq|gt|gte|lt|lte|contains|matches)"; return 1 ;;
+                    *) error "cycle '$cid': until op '$uo' for field '$uf' is not in the supported op set (eq|neq|gt|gte|lt|lte|contains|matches)"; return 1 ;;
                 esac
             fi
         fi
