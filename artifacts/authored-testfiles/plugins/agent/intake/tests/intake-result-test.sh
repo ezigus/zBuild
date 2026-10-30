@@ -1,0 +1,489 @@
+#!/usr/bin/env bash
+# Tests: plugins/agent/intake — the v2 result contract (#1837): manifest, the
+# result file on every exit path, and the one word each way of stopping earns.
+# Split from intake-test.sh (1,046 lines), which keeps goal capture, the gh
+# fetch and the closed-issue gate.
+#
+# D1 [change] closed issue → misconfigured (nothing was down; the operator
+#             chose a closed issue) — covered across a process boundary in
+#             tests/integration/intake-refuse-on-closed-subprocess-test.sh
+# D2 [change] a failed issue fetch with no --goal → unavailable: GitHub, a
+#             service zBuild depends on, is not responding
+# D3 [guard]  no goal and no issue → misconfigured
+# D4 [change] a goal that sanitizes to nothing → misconfigured (the input is
+#             empty; zBuild is not broken)
+# D5          moved to the engine (#2367): tests/integration/engine-run-branch-test.sh E6
+# D6 [change] the caller's own TERM handler is back after intake returns
+# D7 [change] a result file that cannot be written is reported: rc 1 and a
+#             message naming the file — never a silent pass with no result
+# D8 [change] no fallback path: with no ZBUILD_ARTIFACT_DIR intake writes no
+#             result beside the state file, and says the engine gave it none
+# D9 [change] intake's result writer takes the disposition as its THIRD
+#             argument, like every other stage's, so the disposition-word lint
+#             sees intake's words (it saw none)
+# D10 [change] a signal after intake wrote its result leaves that result alone
+#             (review: a graceful-drain TERM after the pass turned it into a failure)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+
+# shellcheck source=../../../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+
+print_test_header "plugin: intake — v2 result contract (#1837)"
+setup_test_env "plugin-intake-result"
+# shellcheck source=intake-test-lib.sh
+source "$SCRIPT_DIR/intake-test-lib.sh"
+# The gh mock is only for the issue tests; intake here runs goal-first.
+rm -f "$TEST_TEMP_DIR/bin/gh"
+
+# _disp — the outcome intake last wrote (#2366: contract 3 carries one word);
+# _reason — its reason.
+_disp()   { jq -r '.outcome // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true; }
+_reason() { jq -r '.reason // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true; }
+# _run_intake — runs intake with a clean result file; prints rc.
+_run_intake() {
+    rm -f "$ARTIFACT_DIR/intake-result.json"
+    local rc=0
+    intake_run "intake" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+    printf '%s' "$rc"
+}
+
+# ════════════════════════════════════════════════════════════════════════════
+# #1837: v2 contract — acceptance assertions
+# ════════════════════════════════════════════════════════════════════════════
+
+_mf="$PLUGIN_DIR/manifest.yaml"
+
+# ─── SPEC-4 [change]: manifest declares provides.result_contract: 3 (#2366) ─
+_s4_contract="$(yaml_get "$_mf" "provides.result_contract" 2>/dev/null || true)"
+assert_eq "[#1837/SPEC-4] manifest provides.result_contract == 3" "3" "$_s4_contract"
+
+# ─── SPEC-5 [change]: no per-stage verdict list (#2366) ──────────────────────
+if grep -q 'valid_verdicts' "$_mf" 2>/dev/null; then
+    assert_fail "[#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts" "found"
+else
+    assert_pass "[#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts"
+fi
+
+# ─── SPEC-6 [change]: intake-result.json primary:true IN outputs; scope_manifest not ─
+# Extract the outputs section first — the stanza must live under outputs, not elsewhere.
+_s6_outputs="$(awk '
+    /^outputs:/ { in_s=1; next }
+    in_s && /^[a-zA-Z_]/ && !/^outputs:/ { exit }
+    in_s { print }
+' "$_mf" 2>/dev/null || true)"
+
+_s6_ir_stanza="$(awk '
+    /intake.result|intake_result|intake-result/ { found=1 }
+    found && /^[[:space:]]*-[[:space:]]*id:/ && !/intake.result|intake_result|intake-result/ { exit }
+    found { print }
+' <<< "$_s6_outputs" 2>/dev/null || true)"
+if grep -q 'primary: true' <<< "$_s6_ir_stanza"; then
+    assert_pass "[#1837/SPEC-6] intake-result.json is in outputs section with primary: true"
+else
+    assert_fail "[#1837/SPEC-6] intake-result.json must declare primary: true within the outputs section" \
+        "${_s6_outputs:-(outputs section absent)}"
+fi
+
+_s6_sm_stanza="$(awk '
+    /scope.manifest|scope_manifest/ { found=1 }
+    found && /^[[:space:]]*-[[:space:]]*id:/ && !/scope.manifest|scope_manifest/ { exit }
+    found { print }
+' <<< "$_s6_outputs" 2>/dev/null || true)"
+if grep -q 'primary: true' <<< "$_s6_sm_stanza"; then
+    assert_fail "[#1837/SPEC-6] scope_manifest must NOT have primary: true after migration" "found"
+else
+    assert_pass "[#1837/SPEC-6] scope_manifest does not have primary: true"
+fi
+
+# ─── SPEC-7 [change]: manifest declares config.router.timeout_s and max_turns ─
+# manifest_router_knob is loaded via registry.sh → manifest-validation.sh
+_s7_timeout="$(manifest_router_knob "$_mf" timeout_s 2>/dev/null || true)"
+_s7_maxturns="$(manifest_router_knob "$_mf" max_turns 2>/dev/null || true)"
+if [[ -n "$_s7_timeout" ]]; then
+    assert_pass "[#1837/SPEC-7] manifest declares config.router.timeout_s"
+else
+    assert_fail "[#1837/SPEC-7] manifest must declare config.router.timeout_s" "absent"
+fi
+if [[ -n "$_s7_maxturns" ]]; then
+    assert_pass "[#1837/SPEC-7] manifest declares config.router.max_turns"
+else
+    assert_fail "[#1837/SPEC-7] manifest must declare config.router.max_turns" "absent"
+fi
+
+# ─── SPEC-8 [change]: scope-manifest.md and intake.md byte-identical to v1 golden ─
+_s8_scope_golden="$REPO_ROOT/tests/golden/intake-scope-manifest-v1.golden"
+_s8_goal_golden="$REPO_ROOT/tests/golden/intake-goal-v1.golden"
+if [[ -f "$_s8_scope_golden" && -f "$_s8_goal_golden" ]]; then
+    cat > "$STATE_DIR/platforms.json" <<'JSON'
+{"detected":["ios","node"],"repo_head_sha":"golden"}
+JSON
+    export ZBUILD_GOAL="golden-parity: verify v1 intake content is preserved"
+    rm -f "$STATE_DIR/scope-manifest.md" "$STATE_DIR/intake.md"
+    set +e
+    intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+    set -e
+    if cmp -s "$STATE_DIR/scope-manifest.md" "$_s8_scope_golden"; then
+        assert_pass "[#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden"
+    else
+        assert_fail "[#1837/SPEC-8] scope-manifest.md must match v1 golden fixture" \
+            "run: diff $STATE_DIR/scope-manifest.md $_s8_scope_golden"
+    fi
+    if cmp -s "$STATE_DIR/intake.md" "$_s8_goal_golden"; then
+        assert_pass "[#1837/SPEC-8] intake.md is byte-identical to v1 golden"
+    else
+        assert_fail "[#1837/SPEC-8] intake.md must match v1 golden fixture" \
+            "run: diff $STATE_DIR/intake.md $_s8_goal_golden"
+    fi
+else
+    assert_fail "[#1837/SPEC-8] v1 golden fixtures must exist before migration" \
+        "missing: intake-scope-manifest-v1.golden and/or intake-goal-v1.golden"
+fi
+rm -f "$STATE_DIR/platforms.json"
+
+# ─── SPEC-2 [change]: intake-result.json written on every exit path ──────────
+# Success path: run with a known goal and no issue
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-2 success verification"
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on success" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# No-goal failure path
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL=""
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on no-goal failure" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# Missing state_file path (SPEC-1 + SPEC-2)
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-1-2 missing-state-file check"
+export ZBUILD_ISSUE="0"
+set +e
+_s1_miss_rc=0
+intake_run "intake" "" >/dev/null 2>&1 || _s1_miss_rc=$?
+set -e
+assert_eq "[#1837/SPEC-1] missing state_file returns rc=1" "1" "$_s1_miss_rc"
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on missing state_file" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# Empty-after-sanitization path (SPEC-1 + SPEC-2)
+# A goal consisting only of a stripped sentinel sanitizes to the empty string.
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL=$'\n\nHUMAN FEEDBACK\ngoal that sanitizes to nothing'
+export ZBUILD_ISSUE="0"
+set +e
+_s1_empty_rc=0
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1 || _s1_empty_rc=$?
+set -e
+assert_eq "[#1837/SPEC-1] empty-after-sanitization returns rc=1" "1" "$_s1_empty_rc"
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# ─── SPEC-3 [change]: result file structure ──────────────────────────────────
+# Use the success-path file written above (if present) to verify v2 structure.
+# Re-run a clean success to get a predictable result.
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-3 result structure check"
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_s3_file="$ARTIFACT_DIR/intake-result.json"
+if [[ -f "$_s3_file" ]]; then
+    assert_eq "[#1837/SPEC-3] result_contract == 3" \
+        "3" "$(jq -r '.result_contract // empty' "$_s3_file" 2>/dev/null || true)"
+    assert_eq "[#1837/SPEC-3] one outcome: no verdict or disposition field" "false" \
+        "$(jq 'has("verdict") or has("disposition")' "$_s3_file" 2>/dev/null || true)"
+    _s3_disp="$(jq -r '.outcome // empty' "$_s3_file" 2>/dev/null || true)"
+    # The engine's closed list, not a hand-kept copy that drifts.
+    # shellcheck source=../../../../core/pipeline/disposition.sh
+    source "$REPO_ROOT/core/pipeline/disposition.sh"
+    if outcome_is_valid "$_s3_disp"; then
+        assert_pass "[#1837/SPEC-3] outcome is in the engine's list"
+    else
+        assert_fail "[#1837/SPEC-3] outcome must be in the engine's list" \
+            "got: ${_s3_disp:-empty}"
+    fi
+    _s3_reason="$(jq -r '.reason // ""' "$_s3_file" 2>/dev/null || true)"
+    if [[ -n "$_s3_reason" ]]; then
+        assert_pass "[#1837/SPEC-3] reason is non-empty"
+    else
+        assert_fail "[#1837/SPEC-3] reason must be non-empty" "empty"
+    fi
+else
+    assert_fail "[#1837/SPEC-3] intake-result.json must exist for structure check" "absent"
+fi
+
+# ─── SPEC-15 [change]: data.goal_len and data.platform_count on success ──────
+# Use a known goal (no sentinels → sanitized == goal, goal_len == ${#goal}) and a
+# platforms.json with a fixed count so both fields can be verified by exact value.
+rm -f "$ARTIFACT_DIR/intake-result.json"
+_s15_goal="spec-15 exact character count and platform count verification"
+_s15_expected_len="${#_s15_goal}"
+cat > "$STATE_DIR/platforms.json" <<'S15JSON'
+{"detected":["ios","android"],"repo_head_sha":"s15"}
+S15JSON
+_s15_expected_pc=2
+
+export ZBUILD_GOAL="$_s15_goal"
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+rm -f "$STATE_DIR/platforms.json"
+
+_s15_file="$ARTIFACT_DIR/intake-result.json"
+if [[ -f "$_s15_file" ]]; then
+    _s15_gl="$(jq -r '.data.goal_len // empty' "$_s15_file" 2>/dev/null || true)"
+    _s15_pc="$(jq -r '.data.platform_count // empty' "$_s15_file" 2>/dev/null || true)"
+    assert_eq "[#1837/SPEC-15] data.goal_len equals sanitized goal character count" \
+        "$_s15_expected_len" "$_s15_gl"
+    assert_eq "[#1837/SPEC-15] data.platform_count equals number of detected platforms" \
+        "$_s15_expected_pc" "$_s15_pc"
+else
+    assert_fail "[#1837/SPEC-15] intake-result.json must exist for data field check" "absent"
+fi
+
+# ─── SPEC-10 [guard]: plugin.sh references ZBUILD_ARTIFACT_DIR ───────────────
+if grep -q 'ZBUILD_ARTIFACT_DIR' "$PLUGIN_DIR/plugin.sh"; then
+    assert_pass "[#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR"
+else
+    assert_fail "[#1837/SPEC-10] plugin.sh must reference ZBUILD_ARTIFACT_DIR" "not found"
+fi
+
+# ─── SPEC-11 [change]: manifest hooks section has no-cleanup comment (ADR-054 §7) ─
+# Both halves of the ADR-054 §7 statement are required: "holds no live resources"
+# AND "declares no cleanup hook" — an OR would accept a partial comment.
+_s11_hooks_section="$(awk '
+    /^hooks:/ { found=1 }
+    found && /^[a-zA-Z_]/ && !/^hooks:/ { exit }
+    found { print }
+' "$_mf" 2>/dev/null || true)"
+_s11_has_no_live=0
+_s11_has_no_cleanup=0
+grep -qiE 'no.*live.*resource|holds no live' <<< "$_s11_hooks_section" \
+    && _s11_has_no_live=1 || true
+grep -qiE 'no.*cleanup.*hook|declares no cleanup' <<< "$_s11_hooks_section" \
+    && _s11_has_no_cleanup=1 || true
+if [[ "$_s11_has_no_live" -eq 1 && "$_s11_has_no_cleanup" -eq 1 ]]; then
+    assert_pass "[#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)"
+else
+    assert_fail "[#1837/SPEC-11] manifest hooks must note both: intake holds no live resources AND declares no cleanup hook" \
+        "${_s11_hooks_section:-absent}"
+fi
+
+# ─── SPEC-12 [guard]: manifest provides.role: intake ─────────────────────────
+_s12_role="$(yaml_get "$_mf" "provides.role" 2>/dev/null || true)"
+assert_eq "[#1837/SPEC-12] manifest provides.role == intake" "intake" "$_s12_role"
+
+# ─── SPEC-13 [guard]: manifest provides.events lists intake's own events ─────
+# #2367: the branch events moved to the engine (pipeline.branch.*).
+_s13_missing=()
+for _s13_ev in intake.override.closed_issue_allowed intake.refused.issue_closed; do
+    grep -q "^[[:space:]]*-[[:space:]]*${_s13_ev}[[:space:]]*$" "$_mf" || _s13_missing+=("$_s13_ev")
+done
+if [[ "${#_s13_missing[@]}" -eq 0 ]]; then
+    assert_pass "[#1837/SPEC-13] intake's own events are declared"
+else
+    assert_fail "[#1837/SPEC-13] intake's own events are declared" "missing: ${_s13_missing[*]}"
+fi
+
+# ─── SPEC-14 [change]: template_stage_router_timeout > manifest config.router.* ─
+# Requires route.sh for _route_resolve_timeout. Source it only if not already loaded.
+if ! declare -F _route_resolve_timeout >/dev/null 2>&1; then
+    # shellcheck source=../../../../core/router/route.sh
+    source "$REPO_ROOT/core/router/route.sh" 2>/dev/null || true
+fi
+if declare -F _route_resolve_timeout >/dev/null 2>&1; then
+    _s14_mf_timeout="$(manifest_router_knob "$_mf" timeout_s 2>/dev/null || true)"
+    if [[ -n "$_s14_mf_timeout" ]]; then
+        # In a subshell: the env and the template accessor die with it, so
+        # nothing needs saving and restoring by hand.
+        _s14_tpl_val=$(( _s14_mf_timeout + 100 ))
+        _s14_resolved="$(
+            export ZBUILD_PLUGIN_DIR="$PLUGIN_DIR" ZBUILD_CURRENT_STAGE="intake"
+            unset ZBUILD_ROUTER_TIMEOUT
+            # shellcheck disable=SC2317  # called indirectly via _route_resolve_timeout
+            template_stage_router_timeout() { printf '%s\n' "$_s14_tpl_val"; }
+            _route_resolve_timeout
+        )"
+        assert_eq "[#1837/SPEC-14] template value wins over manifest config.router.timeout_s" \
+            "$_s14_tpl_val" "$_s14_resolved"
+    else
+        assert_fail "[#1837/SPEC-14] manifest must declare config.router.timeout_s for template override test" \
+            "absent — SPEC-7 must pass first"
+    fi
+else
+    assert_fail "[#1837/SPEC-14] _route_resolve_timeout not available (route.sh failed to load)" "absent"
+fi
+
+# ─── SPEC-17 [guard]: no hardcoded input artifact path constructions ──────────
+# Check multiple bypass forms: variable/../ traversal (any var, not just state_dir)
+# and bare /artifacts/<name> references on non-ZBUILD_ARTIFACT_DIR / non-_intake_art
+# lines (comments are excluded).  Both patterns must return zero matches.
+_s17_traversal="$(grep -nE '\$\{?[a-zA-Z_][a-zA-Z_0-9]*\}?/\.\./' \
+    "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+_s17_bare_all="$(grep -nE '/artifacts/[a-z]' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+_s17_bare=""
+while IFS= read -r _s17_line; do
+    [[ -z "$_s17_line" ]] && continue
+    # Allow lines that reference ZBUILD_ARTIFACT_DIR or the internal _intake_art
+    # variable; reject comment-only lines carrying the string as documentation.
+    if ! grep -qE 'ZBUILD_ARTIFACT_DIR|_intake_art' <<< "$_s17_line" && \
+       ! grep -qE '^[0-9]+:[[:space:]]*#' <<< "$_s17_line"; then
+        _s17_bare+="${_s17_line}"$'\n'
+    fi
+done <<< "$_s17_bare_all"
+_s17_hits="${_s17_traversal}${_s17_bare}"
+if [[ -z "$_s17_hits" ]]; then
+    assert_pass "[#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions"
+else
+    assert_fail "[#1837/SPEC-17] plugin.sh must not construct artifact input paths without ZBUILD_ARTIFACT_DIR" \
+        "$_s17_hits"
+fi
+
+# ════════════════════════════════════════════════════════════════════════════
+# #1837 close-out: one word for each way of stopping
+# ════════════════════════════════════════════════════════════════════════════
+print_test_section "D2: a failed issue fetch with no goal"
+mock_binary "gh" 'exit 1'
+unset ZBUILD_GOAL 2>/dev/null || true
+export ZBUILD_ISSUE="$_ZB_ID"
+assert_eq "[D2] a failed fetch with no goal fails the stage" "1" "$(_run_intake)"
+assert_eq "[D2] ...as unavailable: GitHub is not responding" "unavailable" "$(_disp)"
+assert_contains "[D2] ...and the reason names GitHub" "$(_reason)" "GitHub"
+rm -f "$TEST_TEMP_DIR/bin/gh"
+
+print_test_section "D3/D4: the goal itself"
+export ZBUILD_ISSUE="0"
+export ZBUILD_GOAL=""
+_run_intake >/dev/null
+assert_eq "[D3] no goal and no issue → misconfigured" "misconfigured" "$(_disp)"
+export ZBUILD_GOAL=$'\n\nHUMAN FEEDBACK\ngoal that sanitizes to nothing'
+_run_intake >/dev/null
+assert_eq "[D4] a goal that sanitizes to nothing → misconfigured" "misconfigured" "$(_disp)"
+
+print_test_section "D6: the caller's TERM handler"
+_out6="$(
+    trap 'printf "CALLER\n"' TERM
+    ZBUILD_GOAL="trap restore check" ZBUILD_ISSUE=0 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1 || true
+    trap -p TERM
+)"
+assert_contains "[D6] the caller's TERM handler is back after intake returns" "$_out6" "CALLER"
+
+print_test_section "D7: a result that cannot be written"
+_blocker="$TEST_TEMP_DIR/not-a-dir"; : > "$_blocker"
+_err7="$( ZBUILD_ARTIFACT_DIR="$_blocker/artifacts" ZBUILD_GOAL="write failure check" ZBUILD_ISSUE=0 \
+    intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null )" && _rc7=0 || _rc7=$?
+assert_eq "[D7] a result that cannot be written fails the stage" "1" "$_rc7"
+assert_contains "[D7] ...and says which file" "$_err7" "intake-result.json"
+
+print_test_section "D8: no fallback path"
+# The fallback dir EXISTS (it is where a state-file-relative write would go), so
+# a write there is seen; removing it would make the check vacuous (review).
+rm -f "$ARTIFACT_DIR/intake-result.json"
+_err8="$( unset ZBUILD_ARTIFACT_DIR; ZBUILD_GOAL="no artifact dir check" ZBUILD_ISSUE=0 \
+    intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null )" || true
+assert_file_not_exists "[D8] no result is written beside the state file" "$STATE_DIR/artifacts/intake-result.json"
+assert_contains "[D8] ...and intake says the engine gave it no artifact dir" "$_err8" "ZBUILD_ARTIFACT_DIR"
+
+# D9 retired (#2366): intake writes one outcome through stage_result_write,
+# which refuses a word off the engine's list when the result is written.
+
+print_test_section "D10: a signal after the result is written"
+_d10="$(
+    ZBUILD_GOAL="late signal check" ZBUILD_ISSUE=0 _intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1
+    _intake_on_signal "$STAGE_SIGNAL_DISPOSITION" "$STAGE_SIGNAL_REASON" >/dev/null 2>&1
+)" || true
+assert_eq "[D10] the pass intake wrote is still the result" "pass" "$(_disp)"
+
+# ─── [#1754/SPEC-3] atomic_write fails writing scope-manifest.md ─────────────
+# Before #1754: the two | atomic_write calls in _intake_run_inner were bare with
+# no exit check.  A failing write was silently ignored and intake reported pass
+# while the downstream consumer (plan stage) read the prior round's stale file.
+# After #1754: each write's exit is checked; a failure calls _intake_write_result
+# with outcome=broken and a reason naming the file, then returns non-zero.
+print_test_section "[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero"
+
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-3 scope-manifest write failure"
+export ZBUILD_ISSUE="0"
+
+# Save the real atomic_write so the intake-result.json write can still succeed.
+eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
+
+# Override: fail only for the scope-manifest.md path; let all other writes
+# (including intake-result.json) go through the real implementation.
+atomic_write() {
+    local _aw_target="$1"
+    if [[ "$_aw_target" == *"scope-manifest.md" ]]; then
+        cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
+        return 1
+    fi
+    _aw_real_1754 "$@"
+}
+
+_s3_rc=0
+set +e
+_intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1 || _s3_rc=$?
+set -e
+
+# Restore atomic_write before running assertions that may need it.
+eval "$(declare -f _aw_real_1754 | sed 's/_aw_real_1754 ()/atomic_write ()/')"
+
+assert_eq "[#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure" \
+    "1" "$_s3_rc"
+assert_eq "[#1754/SPEC-3] intake-result.json carries outcome=broken" "broken" "$(_disp)"
+assert_contains "[#1754/SPEC-3] reason names scope-manifest.md" "$(_reason)" "scope-manifest.md"
+
+# ─── [#1754/SPEC-4] atomic_write fails writing intake.md ─────────────────────
+# Same class of bug as SPEC-3 but for the second | atomic_write call (intake.md).
+# The scope-manifest.md write succeeds; only the intake.md write fails.
+print_test_section "[#1754/SPEC-4] intake.md write failure → broken + non-zero"
+
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-4 intake md write failure"
+export ZBUILD_ISSUE="0"
+
+# Save the real atomic_write again (restored above, so we rename the current one).
+eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
+
+# Override: fail only for the intake.md path; scope-manifest.md and
+# intake-result.json writes go through the real implementation.
+atomic_write() {
+    local _aw_target="$1"
+    if [[ "$_aw_target" == *"intake.md" && "$_aw_target" != *"intake-result"* ]]; then
+        cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
+        return 1
+    fi
+    _aw_real_1754 "$@"
+}
+
+_s4_rc=0
+set +e
+_intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1 || _s4_rc=$?
+set -e
+
+# Restore atomic_write.
+eval "$(declare -f _aw_real_1754 | sed 's/_aw_real_1754 ()/atomic_write ()/')"
+
+assert_eq "[#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure" \
+    "1" "$_s4_rc"
+assert_eq "[#1754/SPEC-4] intake-result.json carries outcome=broken" "broken" "$(_disp)"
+assert_contains "[#1754/SPEC-4] reason names intake.md" "$(_reason)" "intake.md"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))
