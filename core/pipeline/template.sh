@@ -1282,6 +1282,7 @@ _tpl_predicate_problem() {
             [[ "$v" =~ ^-?[0-9]+$ ]] || printf "value '%s' must be a whole number for op '%s'" "$v" "$op" ;;
         matches)
             # [[ =~ ]] returns 2 for a pattern that does not compile.
+            # shellcheck disable=SC2319  # that 2 is the condition's own status
             if [[ "" =~ $v ]]; then rc=0; else rc=$?; fi
             [[ $rc -eq 2 ]] && printf "value '%s' is not a valid pattern for op 'matches'" "$v" ;;
     esac
