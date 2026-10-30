@@ -628,21 +628,41 @@ validate_manifest() {
     done <<< "$_rblock"
 
     # ─── ADR-071: outputs[].topic and takes: use the five words ─────────────
-    # Plain bash, no fork: this runs for every plugin at load (ADR-065).
-    local _tl _tw _tin=0 _tbad
+    # A take is { topic, for }; an output that names a topic has a description
+    # (#2428). Plain bash, no fork: this runs for every plugin at load (ADR-065).
+    local _tl _tw _tin=0 _tkin=0 _tbad _tk="" _tkfor=0 _oid="" _otopic=0 _odesc=0 _oitem=0
+    local -a _tgaps=()
     while IFS= read -r _tl || [[ -n "$_tl" ]]; do
-        [[ "$_tl" == outputs:* ]] && { _tin=1; continue; }
-        [[ "$_tl" =~ ^[a-zA-Z_] ]] && _tin=0
+        if [[ "$_tl" =~ ^[a-zA-Z_] ]]; then
+            [[ -n "$_tk" && $_tkfor -eq 0 ]] && _tgaps+=("take '$_tk' has no for:")
+            (( _oitem && _otopic && ! _odesc )) && _tgaps+=("output '$_oid' has a topic but no description:")
+            _tk=""; _tkfor=0; _oid=""; _otopic=0; _odesc=0; _oitem=0; _tin=0; _tkin=0
+        fi
+        [[ "$_tl" =~ ^outputs:[[:space:]]*$ ]] && { _tin=1; continue; }
+        if [[ "$_tl" =~ ^takes:[[:space:]]*$ ]]; then _tkin=1; continue; fi
         _tbad=""
-        if [[ "$_tl" =~ ^takes:[[:space:]]*\[(.*)\][[:space:]]*$ ]]; then
-            for _tw in ${BASH_REMATCH[1]//,/ }; do
-                [[ " ${ZBUILD_STAGE_TOPICS[*]} " == *" $_tw "* ]] || _tbad+="takes '$_tw' "
-            done
-        elif [[ "$_tl" =~ ^takes: ]]; then
-            error "validate_manifest($manifest): takes: must be a list on one line, e.g. takes: [ask, change] (ADR-071)"
+        if [[ "$_tl" =~ ^takes: ]]; then
+            error "validate_manifest($manifest): takes: is a list of { topic, for } entries (ADR-071), e.g.
+takes:
+  - topic: ask
+    for: the issue and requirements to work from"
             errors=$((errors + 1))
+        elif (( _tkin )) && [[ "$_tl" =~ ^[[:space:]]*-[[:space:]]+topic:[[:space:]]*([^[:space:]#]*) ]]; then
+            [[ -n "$_tk" && $_tkfor -eq 0 ]] && _tgaps+=("take '$_tk' has no for:")
+            _tk="${BASH_REMATCH[1]}"; _tkfor=0
+            [[ " ${ZBUILD_STAGE_TOPICS[*]} " == *" $_tk "* ]] || _tbad="takes '$_tk' "
+        elif (( _tkin )) && [[ "$_tl" =~ ^[[:space:]]+for:[[:space:]]*[^[:space:]] ]]; then
+            _tkfor=1
+        elif (( _tin )) && [[ "$_tl" =~ ^[[:space:]]*-[[:space:]] ]]; then
+            (( _oitem && _otopic && ! _odesc )) && _tgaps+=("output '$_oid' has a topic but no description:")
+            _oitem=1; _oid=""; _otopic=0; _odesc=0
+            [[ "$_tl" =~ ^[[:space:]]*-[[:space:]]+id:[[:space:]]*([^[:space:]#]*) ]] && _oid="${BASH_REMATCH[1]}"
+        elif (( _tin )) && [[ "$_tl" =~ ^[[:space:]]+id:[[:space:]]*([^[:space:]#]*) ]]; then
+            _oid="${BASH_REMATCH[1]}"
+        elif (( _tin )) && [[ "$_tl" =~ ^[[:space:]]+description:[[:space:]]*[^[:space:]] ]]; then
+            _odesc=1
         elif (( _tin )) && [[ "$_tl" =~ ^[[:space:]]+topic:[[:space:]]*([^[:space:]#]*) ]]; then
-            _tw="${BASH_REMATCH[1]}"
+            _tw="${BASH_REMATCH[1]}"; _otopic=1
             [[ " ${ZBUILD_STAGE_TOPICS[*]} " == *" $_tw "* ]] || _tbad="topic '$_tw' "
         fi
         if [[ -n "$_tbad" ]]; then
@@ -650,6 +670,12 @@ validate_manifest() {
             errors=$((errors + 1))
         fi
     done < "$manifest"
+    [[ -n "$_tk" && $_tkfor -eq 0 ]] && _tgaps+=("take '$_tk' has no for:")
+    (( _oitem && _otopic && ! _odesc )) && _tgaps+=("output '$_oid' has a topic but no description:")
+    for _tw in "${_tgaps[@]}"; do
+        error "validate_manifest($manifest): $_tw — a stage states what it takes and what each output holds (ADR-071)"
+        errors=$((errors + 1))
+    done
 
     return $((errors > 0))
 }

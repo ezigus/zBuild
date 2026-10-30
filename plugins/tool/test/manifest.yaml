@@ -108,6 +108,7 @@ outputs:
   # stage's verdict is a failure; the per-file output of a suite run that failed.
   - id: test_errors
     topic: code-findings
+    description: "what the suite's commands said when they failed"
     path: "${artifact_dir}/test-errors.log"
     type: test-errors.log@1
     format: text
@@ -115,6 +116,7 @@ outputs:
     errors: true
   - id: test_results
     topic: code-findings
+    description: "the suite's outcome; findings: each failing test file and why, and an assertion file changed after its tests were written; its reason names any of test's checks that failed"
     path: "${artifact_dir}/test-results.json"
     type: test-results.json@1
     format: json
@@ -130,6 +132,7 @@ outputs:
   # #511 F2 "missing == empty" semantics, under which a passing run left no file.
   - id: test_failures_summary
     topic: code-findings
+    description: "the suite's failing assertions, and which of test's checks failed"
     path: "${artifact_dir}/test-failures-summary.md"
     type: test-failures-summary.md@1
     format: markdown
@@ -147,12 +150,14 @@ outputs:
   # what a stage reads. Optional: a stage that died before spawning has none.
   - id: test_output_log
     topic: code-findings
+    description: "the suite's full output"
     path: "${artifact_dir}/test-output.log"
     type: test-output.log@1
     format: text
     required: false
   - id: test_timing
     topic: code-findings
+    description: "each test file's wall time"
     path: "${artifact_dir}/test-timing.log"
     type: test-timing.log@1
     format: text
@@ -162,30 +167,35 @@ outputs:
   # keep each check's detail.
   - id: shape_floor_result
     topic: code-findings
+    description: "the shape check; findings: a change to a file whose shape tests pin, without those tests in the change"
     path: "${artifact_dir}/shape-floor-result.json"
     type: shape-floor-result.json@1
     format: json
     required: false
   - id: shape_floor_detail
     topic: code-findings
+    description: "the shape check's detail"
     path: "${artifact_dir}/shape-floor-detail.md"
     type: shape-floor-detail.md@1
     format: markdown
     required: false
   - id: acceptance_result
     topic: requirement-findings
+    description: "whether each requirement's test proves it; findings: a requirement with no tagged assertion, a test that passes without the change or fails with it, a WIRING file the change does not run through or that is not what runs it, a changed file no test needs"
     path: "${artifact_dir}/acceptance-gate-result.json"
     type: acceptance-gate-result.json@1
     format: json
     required: false
   - id: acceptance_detail
     topic: requirement-findings
+    description: "the acceptance check's detail, per requirement and per file put back"
     path: "${artifact_dir}/acceptance-summary.txt"
     type: acceptance-summary.txt@1
     format: text
     required: false
   - id: acceptance_errors
     topic: requirement-findings
+    description: "what the acceptance check's commands said when they failed"
     path: "${artifact_dir}/acceptance-gate-errors.log"
     type: acceptance-gate-errors.log@1
     format: text

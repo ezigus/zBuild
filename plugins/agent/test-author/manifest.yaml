@@ -3,7 +3,15 @@ name: Test Author
 kind: agent
 version: 0.1.0
 # ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
-takes: [ask, tests, requirement-findings, code-findings]
+takes:
+  - topic: ask
+    for: "the design's requirements and test files, to write tests for"
+  - topic: tests
+    for: "the tests written so far, and what each covers"
+  - topic: requirement-findings
+    for: "findings that a test misses or misstates a requirement"
+  - topic: code-findings
+    for: "failing tests and test checks, to fix the tests it owns"
 description: |
   Authors the acceptance assertions from the design's SPEC sentences, in the
   target's own language, BEFORE build implements against them.
@@ -56,6 +64,7 @@ capabilities:
 outputs:
   - id: test_author_result
     topic: code-findings
+    description: "the tests written for each requirement, with each file's fingerprint; findings: an assertion that does not test what its requirement says"
     path: "${artifact_dir}/test-author-result.json"
     type: test-author-result.json@1
     format: json
@@ -64,6 +73,7 @@ outputs:
   # ADR-055 §9: this stage's statement of what it DID.
   - id: test_author_summary
     topic: tests
+    description: "which test covers which requirement"
     path: "${artifact_dir}/test-author-summary.md"
     type: test-author-summary.md@1
     format: markdown
