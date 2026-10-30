@@ -125,83 +125,102 @@ omit this line the pipeline falls back to the plan title.
 
 ## Architectural Decision Summary
 
-**Goal.** A review lens that does not finish must count as a failure, setting
-`ZBUILD_RUN_FLAGGED=yes` and blocking auto-merge. Currently any map-member outcome other than
-`fail` (e.g. `timed_out`, `out_of_turns`, `broken`, `missing`) leaves `ZBUILD_RUN_FLAGGED=no`,
-allowing the `auto_unless_flagged` delivery policy to proceed to merge as if the lens had passed.
+**Goal.** A review lens that does not finish must count as a failure: `ZBUILD_RUN_FLAGGED=yes` is set
+and the pipeline stops before any further stage runs, so no PR is opened and nothing merges unless
+every lens finishes and passes.
 
-**Context.** `_map_write_summary` in `core/pipeline/strategies/map.sh` computes `ZBUILD_RUN_FLAGGED`
-after the map group runs. It currently sets `flagged=yes` only when `outcome == fail` (line 157).
-Any other non-pass outcome populates `_ZB_MAP_UNFINISHED` (used for the group banner) but leaves
-`flagged=no`. Downstream, `plugins/agent/pr-delivery/plugin.sh:161` already blocks merge under
-`auto_unless_flagged` when `ZBUILD_RUN_FLAGGED=yes`; the delivery path is correct. The gap is
-exclusively in map.sh's `flagged` computation.
+**Context.** Two separate gaps existed:
 
-**Decision.** Change `map.sh:157` from:
+1. `_map_write_summary` in `core/pipeline/strategies/map.sh` set `ZBUILD_RUN_FLAGGED=yes` only when
+   `outcome == fail` (line 157). Unfinished outcomes (`timed_out`, `out_of_turns`, `interrupted`,
+   `broken`, `missing`, etc.) left `flagged=no`, so delivery proceeded to merge as if the lens had
+   passed.
 
+2. Even after setting `ZBUILD_RUN_FLAGGED=yes`, runner.sh had no guard to stop the run: later stages
+   (pr_open, pr-delivery, merge) could still be dispatched. R-1 requires "the run stops" — not merely
+   that delivery blocks at its own gate.
 
+**Decision.**
+
+*map.sh (already implemented):* Change line 157 from:
 to:
+Any outcome that is not `pass` — conclusive `fail` or any unfinished outcome — sets
+`ZBUILD_RUN_FLAGGED=yes`.
 
+*runner.sh (already implemented):* After `_strategy_run_map` returns, a new guard at line 3731 checks
+`ZBUILD_RUN_FLAGGED=yes`. If set, it writes `pipeline_status=failed`, sets the group's verdict to
+`failed`, emits `pipeline.end`, and returns 1 — stopping the run before `_update_stage_status` is
+reached. No further stage is dispatched.
 
-Any outcome that is not `pass` — conclusive `fail` or any unfinished outcome (`timed_out`,
-`out_of_turns`, `interrupted`, `broken`, `missing`, `misconfigured`, `unavailable`, etc.) — sets
-`ZBUILD_RUN_FLAGGED=yes`. No changes are needed to `runner.sh`, `pr-delivery/plugin.sh`, or
-`merge/plugin.sh`: those files already handle `ZBUILD_RUN_FLAGGED=yes` correctly.
+The previous design claimed runner.sh needed no code change because delivery-level blocking existed.
+That was wrong: "the run stops" (R-1) means the pipeline returns before the next stage; blocking
+inside pr-delivery is insufficient. The implementation correctly added the stop block.
 
-The comment on `map.sh:132` also describes `ZBUILD_RUN_FLAGGED` as set when an element "failed"
-— it must be updated to say "failed or did not finish."
+*Correction on SPEC-8 regression:* The runner.sh stop block inserts ~14 lines at arm-position ~109
+(before `_update_stage_status` at arm-position ~121). The existing `runner-map-parallel-stage-envelope-test.sh`
+extracts the map arm with `awk … count>=115`, which now falls 6 lines short of `_update_stage_status`.
+SPEC-8 gives a false negative. The awk window must be widened to ≥128 — which also enables SPEC-4's
+new assertion over the full arm.
 
-**ADR-040 §2368 part 2** currently states `ZBUILD_RUN_FLAGGED` is `yes` "when a lens found a
-high or critical problem the change introduced." That description is now incomplete: the variable
-is also `yes` when any element did not finish. A new amendment records this. Per CLAUDE.md, the
-amendment must add or update the `## Enforced by` section entry for the new statement.
+*ADR-040 amendment (§2368 part 2):* The existing `Enforced by` names only `engine-combines-map-test.sh`
+SPEC-1 for flag-setting. The amended statement now also covers "runner.sh stops the run" — the ADR
+text must add this sentence and its `Enforced by` must name SPEC-4's test.
 
-**No supersedes.** No existing test assertion pins the bug behavior (`timed_out → ZBUILD_RUN_FLAGGED=no`).
-The fix is purely additive to the contract `engine-combines-map-test.sh` already describes.
 
 
 
 ## Findings
 
-**Finding from previous run: ADR doc named as test file.** The previous design listed
-`docs/adr/ADR-040-composable-gate-lens-taxonomy.md` under TESTFILES for SPEC-2. That file is not
-a test; it is the document being amended. SPEC-2 is `[no-code]` and requires no TESTFILES entry
-per the format spec ("Write one `SPEC-n: path` line per [code] requirement"). Fixed by removing
-that line from TESTFILES.
+**Finding: previous design claimed runner.sh needs no code change — wrong.**
+The design said "Runner.sh does not condition on `_ZB_MAP_UNFINISHED` for run-stopping; no code
+changes are needed." This was incorrect. R-1 requires "the run stops" — `ZBUILD_RUN_FLAGGED=yes`
+alone does not stop the run; it is only a signal to downstream consumers. The implementation
+correctly added the stop block (lines 3728–3742). The design now reflects this.
 
-**Plan scope items not requiring code changes.** The plan listed `plugins/agent/pr-delivery/plugin.sh`,
-`plugins/tool/merge/plugin.sh`, `core/pipeline/runner.sh`, and several pr-open tests in scope (steps 5–6).
-After reading each file: pr-delivery's `auto_unless_flagged` gate (`plugin.sh:161`) and merge's guard
-already behave correctly when `ZBUILD_RUN_FLAGGED=yes`. Runner.sh does not condition on `_ZB_MAP_UNFINISHED`
-for run-stopping; it reads it only for warning banners. No code changes are needed in those files; they
-are in the scope block for review verification.
+**Finding: SPEC-8 regression.**
+The awk window (115 lines) in `runner-map-parallel-stage-envelope-test.sh` no longer captures
+`_update_stage_status` because the stop block was inserted before it. SPEC-8 gives a false
+negative — the behavior (success path writes stage_statuses) is unchanged; the test implementation
+is broken. Added to supersedes; the implementer widens the count to ≥128.
 
-**Plan step-2 test files.** The plan named `pr-delivery-v2-result-test.sh`, `merge-v2-result-test.sh`,
-`pr-open-v2-result-test.sh`, `pr-open-v2-inputs-test.sh`, and `pr-open-test.sh`. These tests set
-`ZBUILD_RUN_FLAGGED` externally to probe the delivery plugins' own behavior; they do not exercise map.sh.
-They are included in scope for verification that the fix does not break them, but require no new
-assertions: the delivery behavior they test is unchanged.
+**Finding: SPEC-4 test absent, WIRING check failed.**
+The acceptance checker reverted `runner.sh` and all tests still passed, so the stop block was
+untested. SPEC-4 is a new [code] requirement. Its test in `runner-map-parallel-stage-envelope-test.sh`
+(consistent with that file's code-presence approach) greps the map arm for the `ZBUILD_RUN_FLAGGED`
+guard. Reverting runner.sh removes the guard → SPEC-4 fails → WIRING check passes.
 
-**`map-members-reported-test.sh`.** MR4/MR5 exercise the `timed_out` scenario through `_strategy_run_map`
-and check the group banner. After the fix, `ZBUILD_RUN_FLAGGED=yes` will be set in this scenario.
-Adding an MR7 assertion there would be additional coverage, but SPEC-1's primary test
-(`engine-combines-map-test.sh`) already covers the same code path. The integration test is in scope
-for verification; an MR7 assertion is optional for the implementer.
+**Finding: SPEC-2 Enforced by incomplete.**
+The ADR's `Enforced by` named only `engine-combines-map-test.sh` SPEC-1, which covers flag-setting
+but not run-stopping. SPEC-2[no-code] is updated to require the ADR to also add the run-stops
+sentence and name SPEC-4's test file in `Enforced by`.
+
+**Plan scope items not requiring code changes.**
+`plugins/agent/pr-delivery/plugin.sh`, `plugins/tool/merge/plugin.sh`, and several pr-open tests
+are in scope for verification only — their behavior is unchanged. The pr-delivery gate (`plugin.sh:161`)
+and merge guard already handle `ZBUILD_RUN_FLAGGED=yes` correctly; this remains [done] as SPEC-3.
+
+**`map-members-reported-test.sh` and other integration tests.**
+These are in scope for regression verification. No new assertions are required there; SPEC-1 and
+SPEC-4 cover the code paths they would exercise.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
 These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#1753/SPEC-1]).
 - SPEC-1: tests/unit/engine-combines-map-test.sh
+- SPEC-4: tests/unit/runner-map-parallel-stage-envelope-test.sh
 
 What each SPEC requires:
 - [#1753/SPEC-1] When any map member's outcome is not `pass`, `_strategy_run_map` exports `ZBUILD_RUN_FLAGGED=yes`.
-- [#1753/SPEC-2] ADR-040 is amended to state that an element with outcome ≠ `pass` (whether `fail` or unfinished) sets `ZBUILD_RUN_FLAGGED=yes`, and its `Enforced by` entry names the test.
+- [#1753/SPEC-2] ADR-040 §2368 part 2 is amended to add that when `ZBUILD_RUN_FLAGGED=yes` runner.sh stops the run at the map dispatch arm before dispatching further stages, and its `Enforced by` entry names both SPEC-1 (flag-setting) and SPEC-4 (run-stops) tests.
+- [#1753/SPEC-4] When `ZBUILD_RUN_FLAGGED=yes` after `_strategy_run_map`, runner.sh's map dispatch arm returns 1 before calling `_update_stage_status` for the group.
 
 ### REQUIREMENTS YOUR CODE MUST MEET
 Your change is done when the test for every requirement below passes.
 - [#1753/SPEC-1] When any map member's outcome is not `pass`, `_strategy_run_map` exports `ZBUILD_RUN_FLAGGED=yes`.
   → its test is already written; make it pass
-- [#1753/SPEC-2] ADR-040 is amended to state that an element with outcome ≠ `pass` (whether `fail` or unfinished) sets `ZBUILD_RUN_FLAGGED=yes`, and its `Enforced by` entry names the test.
+- [#1753/SPEC-2] ADR-040 §2368 part 2 is amended to add that when `ZBUILD_RUN_FLAGGED=yes` runner.sh stops the run at the map dispatch arm before dispatching further stages, and its `Enforced by` entry names both SPEC-1 (flag-setting) and SPEC-4 (run-stops) tests.
+  → its test is already written; make it pass
+- [#1753/SPEC-4] When `ZBUILD_RUN_FLAGGED=yes` after `_strategy_run_map`, runner.sh's map dispatch arm returns 1 before calling `_update_stage_status` for the group.
   → its test is already written; make it pass
 
 
@@ -210,7 +229,7 @@ Your change is done when the test for every requirement below passes.
 The latest output of every stage that has run, as far as it is about what
 your job takes (ask, tests, change, requirement-findings and code-findings), with where to find it. Use what your job needs.
 
-Files this issue's work has changed so far: core/pipeline/strategies/map.sh, docs/adr/ADR-040-composable-gate-lens-taxonomy.md, tests/unit/engine-combines-map-test.sh
+Files this issue's work has changed so far: core/pipeline/runner.sh, core/pipeline/strategies/map.sh, docs/adr/ADR-040-composable-gate-lens-taxonomy.md, tests/unit/engine-combines-map-test.sh, tests/unit/runner-map-parallel-stage-envelope-test.sh
 
 ### intake (verdict: pass)
 Outputs:
@@ -250,9 +269,9 @@ Outputs:
 Summary:
 ## design — pass
 
-- authored design.md — 13 file(s) in scope, 3 acceptance SPEC(s)
+- authored design.md — 14 file(s) in scope, 4 acceptance SPEC(s)
 
-- scope: core/pipeline/strategies/map.sh,docs/adr/ADR-040-composable-gate-lens-taxonomy.md,tests/unit/engine-combines-map-test.sh,tests/integration/map-members-reported-test.sh,tests/integration/merge-policy-auto-unless-flagged-test.sh,tests/unit/merge-v2-result-test.sh,tests/unit/pr-delivery-v2-result-test.sh,tests/unit/pr-open-v2-inputs-test.sh,tests/unit/pr-open-v2-result-test.sh,plugins/agent/pr-delivery/plugin.sh,plugins/tool/merge/plugin.sh,plugins/tool/pr-open/tests/pr-open-test.sh,core/pipeline/runner.sh
+- scope: core/pipeline/strategies/map.sh,core/pipeline/runner.sh,docs/adr/ADR-040-composable-gate-lens-taxonomy.md,tests/unit/engine-combines-map-test.sh,tests/unit/runner-map-parallel-stage-envelope-test.sh,tests/integration/map-members-reported-test.sh,tests/integration/merge-policy-auto-unless-flagged-test.sh,tests/unit/merge-v2-result-test.sh,tests/unit/pr-delivery-v2-result-test.sh,tests/unit/pr-open-v2-inputs-test.sh,tests/unit/pr-open-v2-result-test.sh,plugins/agent/pr-delivery/plugin.sh,plugins/tool/merge/plugin.sh,plugins/tool/pr-open/tests/pr-open-test.sh
 - artifact: design.md
 
 ### test-author (verdict: pass)
@@ -263,12 +282,13 @@ Outputs:
 Summary:
 ## test-author — pass
 
-- changed 0 test file(s); acceptance assertions for 2 SPEC(s) from the design contract
+- changed 1 test file(s); acceptance assertions for 3 SPEC(s) from the design contract
 
-- SPECs in the contract: 2
+- SPECs in the contract: 3
 - assertions are authored from the SPEC text, never from the implementation
 - the test files, and the requirements each covers:
 - tests/unit/engine-combines-map-test.sh — SPEC-1
+- tests/unit/runner-map-parallel-stage-envelope-test.sh — SPEC-4
 - Each [code] requirement's test fails on the code as it is now, and passes once the code is written.
 
 ### build (verdict: pass) — your own
@@ -280,9 +300,9 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed 0 file(s) over 1 pass(es), 1 iteration(s)
+- changed 1 file(s) over 1 pass(es), 1 iteration(s)
 
-- lines: +0 / -0
+- lines: +15 / -0
 - terminated: done_sentinel
 - scope violation: false
 
@@ -290,26 +310,25 @@ Your notes so far:
 # Build notes — issue #1753
 
 ## What I read
-- `tests/unit/engine-combines-map-test.sh` — acceptance test (READ-ONLY). Has M1/M2 and SPEC-1 assertions. SPEC-1 tests `timed_out`, `out_of_turns`, and `interrupted` outcomes mapping to `ZBUILD_RUN_FLAGGED=yes`. All three currently fail because map.sh only sets flagged=yes on `outcome == fail`.
+- `tests/unit/engine-combines-map-test.sh` — acceptance test (READ-ONLY). Has M1/M2 and SPEC-1 assertions. SPEC-1 tests non-pass outcomes mapping to `ZBUILD_RUN_FLAGGED=yes`. All pass.
 - `core/pipeline/strategies/map.sh` — line 157 was the bug: `[[ "$outcome" == fail ]] && flagged=yes`. Fixed to `[[ "$outcome" != pass ]] && flagged=yes`.
 - Comment at line 132 updated to say "failed or did not finish".
 - `docs/adr/ADR-040-composable-gate-lens-taxonomy.md` — Amendment #2368 part 2 updated: description of `ZBUILD_RUN_FLAGGED` now covers unfinished outcomes; `Enforced by` includes SPEC-1 (#1753).
-- `core/pipeline/runner.sh` — reviewed for map:* dispatch case. When on_member_error=continue (the template default), _strategy_run_map always returns 0. Runner reads ZBUILD_RUN_FLAGGED via environment (set by _map_write_summary); downstream stages (pr-delivery, pr-open) check it. No code changes needed.
+- `core/pipeline/runner.sh` — read the map:* dispatch case (lines 3622–3750). Under on_member_error=continue, `_strategy_run_map` returns 0 even with failed/unfinished members. The existing rc!=0 check stopped the run for hard failures. Added new check: after the rc check, if ZBUILD_RUN_FLAGGED=yes (any non-pass member), fail the pipeline and return 1 before pr-delivery runs — satisfying R1 and R2 (run stops before pr_open; no PR is opened; nothing merges).
 
 ## Changes made
 1. `core/pipeline/strategies/map.sh` line 157: `[[ "$outcome" == fail ]]` → `[[ "$outcome" != pass ]]`
 2. `core/pipeline/strategies/map.sh` comment: "failed" → "failed or did not finish"
 3. `docs/adr/ADR-040-composable-gate-lens-taxonomy.md` #2368 part 2 text + Enforced by updated.
-
-## WIRING: none
-`core/pipeline/runner.sh` is in scope for review. After reading the map:* dispatch case (lines 3622–3735): the runner already stops on non-zero rc from _strategy_run_map (lines 3718–3727) and proceeds past the map group only when rc=0. Under on_member_error=continue (the template default), _strategy_run_map returns 0 and exports ZBUILD_RUN_FLAGGED=yes — downstream stages (pr-delivery, merge) already gate on this. Design decision: no changes needed to runner.sh (confirmed by design doc).
+4. `core/pipeline/runner.sh` map:* case: added ZBUILD_RUN_FLAGGED=yes check after rc check to stop the run with "failed" verdict before pr-delivery, so no PR is opened and nothing merges unless every member passed.
 
 ## Test results
 - All 15 tests pass in `tests/unit/engine-combines-map-test.sh` including SPEC-1 (all 10 non-pass outcomes → ZBUILD_RUN_FLAGGED=yes)
-- All 26 tests pass in `tests/integration/runner-release-exit-paths-test.sh` including SPEC-5 (not reproduced on current tree)
+- All 11 tests pass in `tests/integration/map-members-reported-test.sh` (MR1-MR6 including timed_out and fail cases)
 
-## test-author finding response
-Finding says SPEC-1 only covers 3 of 10 non-pass outcomes. The tests are read-only, but the test-author stage added the full loop of 10 outcomes. My implementation uses `!= pass` (the universal condition), so ALL non-pass outcomes are correctly handled.
+## Findings addressed
+- test finding 1: runner.sh IS changed — added ZBUILD_RUN_FLAGGED check that stops the run before pr-delivery
+- issue-acceptance R-1: the run now stops in runner.sh before pr-delivery (which contains pr_open) when ZBUILD_RUN_FLAGGED=yes; no PR is opened; nothing merges unless every map member passed
 
 ## Status: DONE
 
@@ -319,26 +338,85 @@ Outputs:
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
+- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): core/pipeline/runner.sh is not changed by this change — name a file the change touches, or write WIRING: none
+- test finding 1 (opened by test): tests/unit/runner-map-parallel-stage-envelope-test.sh fails: ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete
+- test finding 2 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 3 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- test finding 4 (opened by test): core/pipeline/runner.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
 
 Summary:
 # Test stage summary
 
-- verdict: pass
-- passed: 830
-- failed: 0
-- exit_code: 0
+- verdict: fail
+- passed: 829
+- failed: 1
+- exit_code: 1
 
-The suite ran to completion with no failing assertions.
+## Failing files
+
+- tests/unit/runner-map-parallel-stage-envelope-test.sh — ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete
+
+## Failing lines (extracted)
+
+```
+  ✗ [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete
+    output missing: _update_stage_status
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/unit/runner-map-parallel-stage-envelope-test.sh
+  ✓ B3: stage_statuses includes intake (covers all dispatch unit types)
+  ✓ B3: stage_statuses includes review_lenses (covers all dispatch unit types)
+  ✓ B3: stage_statuses includes feature_work (covers all dispatch unit types)
+  1 of 16 tests failed
+```
 
 ## The checks of this run
-- the acceptance check failed: the acceptance check failed — core/pipeline/runner.sh is not changed by this change — name a file the change touches, or write WIRING: none
+- the shape floor failed: missing_floor_files
+- the acceptance check failed: the acceptance check failed — core/pipeline/runner.sh was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none
+
+Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gfLPCs/tests/unit/runner-map-parallel-stage-envelope-test.sh
+
+[38;2;0;212;255m[1m  runner — parallel:/map: stage envelope (ADR-039, ADR-047 §2)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1–5: parallel: arm envelope[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] parallel: dispatch arm emits stage.start
+  [38;2;74;222;128m✓[0m [SPEC-2] parallel: dispatch arm emits stage.complete
+  [38;2;74;222;128m✓[0m [SPEC-3] parallel: dispatch arm writes stage_statuses[id]=complete
+  [38;2;74;222;128m✓[0m [SPEC-4] parallel: dispatch arm writes stage_verdicts[id]=pass
+  [38;2;74;222;128m✓[0m [SPEC-5] parallel: dispatch arm exports ZBUILD_CURRENT_STAGE=id
+
+  [38;2;0;212;255m6–10: map: arm envelope[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] map: dispatch arm emits stage.start
+  [38;2;74;222;128m✓[0m [SPEC-7] map: dispatch arm emits stage.complete
+  [38;2;248;113;113m✗[0m [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete
+    [2moutput missing: _update_stage_status[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] map: _update_stage_status targets _mg_id
+  [38;2;74;222;128m✓[0m [SPEC-9] map: dispatch arm writes stage_verdicts[id]=pass
+  [38;2;74;222;128m✓[0m [SPEC-10] map: dispatch arm exports ZBUILD_CURRENT_STAGE=id
+
+  [38;2;0;212;255mB1: _update_stage_status writes stage_statuses[group]=complete[0m
+  [38;2;74;222;128m✓[0m B1: state_statuses[review_group]=complete written to state file
+
+  [38;2;0;212;255mB2: _zbuild_state_set_stage_verdict writes stage_verdicts[group]=pass[0m
+  [38;2;74;222;128m✓[0m B2: stage_verdicts[review_group]=pass written to state file
+
+  [38;2;0;212;255mB3: stage_statuses covers all units including map and parallel groups[0m
+  [38;2;74;222;128m✓[0m B3: stage_statuses includes intake (covers all dispatch unit types)
+  [38;2;74;222;128m✓[0m B3: stage_statuses includes review_lenses (covers all dispatch unit types)
+  [38;2;74;222;128m✓[0m B3: stage_statuses includes feature_work (covers all dispatch unit types)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 16 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-8] map: dispatch arm writes stage_statuses[id]=complete
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -346,14 +424,16 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (Required behavior R1, R2 — "the run stops before `pr_open`, no PR is opened, and nothing merges"): The diff correctly changes `_map_write_summary` to set `ZBUILD_RUN_FLAGGED=yes` for any non-`pass` outcome, and the tests for that fix are thorough (ten non-pass outcomes covered, all assertions would turn red on the old code). However, `core/pipeline/runner.sh` is explicitly listed in scope for "the `map:*` dispatch case" and is not touched. The issue's required behavior states the run stops *before* `pr_open` — not merely before auto-merge. Whether the existing runner.sh halts execution after a failed map group (so that pr-delivery never runs at all) or whether a new dispatch-case change is needed to achieve that hard stop cannot be confirmed from the diff alone. The acceptance check found this gap and flagged it. Until runner.sh is inspected and either shown to already stop the run, or changed to do so, R1 and R2 are not verifiably met.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 ("The review group fails, the run stops before `pr_open`, no PR is opened, and nothing merges") — the `map.sh` change is correct and its tests cover it, but the `runner.sh` block that actually stops the run before `pr_open` is untested: the acceptance check reverted `runner.sh` and every test still passed, which is the exact defect class the issue's rules prohibit. Additionally, the `runner.sh` change actively breaks a pre-existing test (SPEC-8: `map: dispatch arm writes stage_statuses[id]=complete`), showing the happy-path dispatch envelope is now broken. A requirement is not met when its enforcement is absent and a separate regression is introduced.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: SPEC-2 ("ADR-040's `Enforced by` entry names the test") — the ADR now names `tests/unit/engine-combines-map-test.sh SPEC-1 (#1753)` as the enforcer of the new rule, but that test only covers `map.sh`'s flag-setting. The ADR's statement also covers "the run stops" (the runner.sh behavior), which the named test does not exercise; the `Enforced by` claim is therefore incomplete and would not catch the runner behavior being broken.. What would settle it: a change that meets this requirement in full.
 
 Summary:
 ## issue-acceptance — fail
 
-- The acceptance check failed because `core/pipeline/runner.sh` is explicitly in the issue's scope but is not changed by the diff, and the issue requires the run to stop *before* `pr_open` when any lens does not finish — a stopping mechanism that the flag-setting fix in `map.sh` alone may not provide.
+- The test suite fails (SPEC-8 in `runner-map-parallel-stage-envelope-test.sh` is broken), and the acceptance check proved that reverting `runner.sh` to its old version leaves every remaining test green — meaning the run-stops behavior added there has no test that would catch it absent or wrong.
 
-- NOT MET: R-1 (Required behavior R1, R2 — "the run stops before `pr_open`, no PR is opened, and nothing merges"): The diff correctly changes `_map_write_summary` to set `ZBUILD_RUN_FLAGGED=yes` for any non-`pass` outcome, and the tests for that fix are thorough (ten non-pass outcomes covered, all assertions would turn red on the old code). However, `core/pipeline/runner.sh` is explicitly listed in scope for "the `map:*` dispatch case" and is not touched. The issue's required behavior states the run stops *before* `pr_open` — not merely before auto-merge. Whether the existing runner.sh halts execution after a failed map group (so that pr-delivery never runs at all) or whether a new dispatch-case change is needed to achieve that hard stop cannot be confirmed from the diff alone. The acceptance check found this gap and flagged it. Until runner.sh is inspected and either shown to already stop the run, or changed to do so, R1 and R2 are not verifiably met.
+- NOT MET: R-1 ("The review group fails, the run stops before `pr_open`, no PR is opened, and nothing merges") — the `map.sh` change is correct and its tests cover it, but the `runner.sh` block that actually stops the run before `pr_open` is untested: the acceptance check reverted `runner.sh` and every test still passed, which is the exact defect class the issue's rules prohibit. Additionally, the `runner.sh` change actively breaks a pre-existing test (SPEC-8: `map: dispatch arm writes stage_statuses[id]=complete`), showing the happy-path dispatch envelope is now broken. A requirement is not met when its enforcement is absent and a separate regression is introduced.
+- NOT MET: SPEC-2 ("ADR-040's `Enforced by` entry names the test") — the ADR now names `tests/unit/engine-combines-map-test.sh SPEC-1 (#1753)` as the enforcer of the new rule, but that test only covers `map.sh`'s flag-setting. The ADR's statement also covers "the run stops" (the runner.sh behavior), which the named test does not exercise; the `Enforced by` claim is therefore incomplete and would not catch the runner behavior being broken.
 
 ## What you must not do
 
@@ -362,8 +442,10 @@ The acceptance testfiles listed above are read-only for this stage: the engine d
 ### Scope (plan.files[])
 You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - core/pipeline/strategies/map.sh
+  - core/pipeline/runner.sh
   - docs/adr/ADR-040-composable-gate-lens-taxonomy.md
   - tests/unit/engine-combines-map-test.sh
+  - tests/unit/runner-map-parallel-stage-envelope-test.sh
   - tests/integration/map-members-reported-test.sh
   - tests/integration/merge-policy-auto-unless-flagged-test.sh
   - tests/unit/merge-v2-result-test.sh
@@ -373,7 +455,6 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - plugins/agent/pr-delivery/plugin.sh
   - plugins/tool/merge/plugin.sh
   - plugins/tool/pr-open/tests/pr-open-test.sh
-  - core/pipeline/runner.sh
 
 ### Rules
 - Touch only files in the scope list above.
