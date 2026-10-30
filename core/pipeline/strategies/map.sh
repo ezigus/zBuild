@@ -129,7 +129,7 @@ _map_unit_element() {
 # #2368: the engine sums up a map group — every element, its outcome and its
 # one-line reason, read from the element's own primary result — into
 # artifacts/<stage>-summary.md, and tells later stages whether any element
-# failed (ZBUILD_RUN_FLAGGED=yes|no). Fail-open: a diagnostic never fails the group.
+# failed or did not finish (ZBUILD_RUN_FLAGGED=yes|no). Fail-open: a diagnostic never fails the group.
 # Its first line says whether every element finished — a pass or a fail is a
 # finish; anything else (timed_out, an error, no result) is not — and
 # _ZB_MAP_UNFINISHED keeps that line for the runner when one did not.
@@ -154,7 +154,7 @@ _map_write_summary() {
             outcome="$(jq -r '.outcome // "missing"' "$res" 2>/dev/null || echo missing)"
             reason="$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$res" 2>/dev/null || true)"
         fi
-        [[ "$outcome" == fail ]] && flagged=yes
+        [[ "$outcome" != pass ]] && flagged=yes
         [[ "$outcome" == pass || "$outcome" == fail ]] || unfinished+=("${elems[$i]} (${outcome})")
         line="- ${elems[$i]}: $outcome${reason:+ — $reason}"
         body+="$line"$'\n'
