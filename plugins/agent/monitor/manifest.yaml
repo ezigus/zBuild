@@ -3,7 +3,11 @@ name: Monitor Stage
 kind: agent
 version: 0.1.0
 # ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
-takes: [ask, change]
+takes:
+  - topic: ask
+    for: "what the change is meant to do"
+  - topic: change
+    for: "the change to watch"
 description: |
   Monitor agent (kind:agent, T1). One-shot LLM health assessment (ADR-018 Pattern 1)
   over deploy artifacts already in state/artifacts/. Reads deploy-result.json (optional)

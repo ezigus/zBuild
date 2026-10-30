@@ -3,7 +3,11 @@ name: Design Stage
 kind: agent
 version: 0.1.0
 # ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
-takes: [ask, requirement-findings]
+takes:
+  - topic: ask
+    for: "the issue, its requirements and the plan, to design against"
+  - topic: requirement-findings
+    for: "findings against the requirements or the design: what its acceptance contract, scope or WIRING gets wrong"
 description: |
   Design stage agent. Reads plan.json produced by the plan stage and invokes
   the LLM (T2) to produce an ADR-style design.md containing a fenced ```scope
@@ -41,6 +45,7 @@ config:
 outputs:
   - id: design
     topic: ask
+    description: "the design: its decisions, its acceptance contract (requirements, WIRING, test files) and its scope"
     path: "${artifact_dir}/design.md"
     type: design.md@1
     format: markdown
@@ -50,6 +55,7 @@ outputs:
   # the next run starts from it.
   - id: design_draft
     topic: ask
+    description: "design's working copy, before its checks pass"
     path: "${artifact_dir}/design-draft.md"
     type: design.md@1
     format: markdown
@@ -60,6 +66,7 @@ outputs:
   # the model call (plugin.sh), so it is never stale.
   - id: design_result
     topic: requirement-findings
+    description: "design's checks on the design; findings: a missing scope or acceptance block, a requirement with no status or test file, a WIRING file that is missing or is one of the test files, an issue requirement no SPEC covers"
     path: "${artifact_dir}/design-verdict.json"
     type: design-verdict.json@1
     format: json
@@ -69,6 +76,7 @@ outputs:
   # written on every terminal verdict, so absence means something went wrong.
   - id: design_summary
     topic: requirement-findings
+    description: "design's summary of the round, and what it did about each finding"
     path: "${artifact_dir}/design-summary.md"
     type: design-summary.md@1
     format: markdown

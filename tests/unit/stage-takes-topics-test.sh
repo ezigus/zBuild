@@ -83,13 +83,16 @@ _producer() {
     _zbuild_state_set_stage_verdict "$STATE/pipeline-state.json" "$s" fail
 }
 
-# _consumer <name> <takes-line|""> — a model stage; "" declares no takes:.
+# _takes <topic>... — a takes: block, each take with its for: (#2428).
+_takes() { local t; printf 'takes:\n'; for t in "$@"; do printf '  - topic: %s\n    for: x\n' "$t"; done; }
+
+# _consumer <name> <takes-block|""> — a model stage; "" declares no takes:.
 _consumer() {
     local s="$1" takes="$2" u="${1//-/_}"
     mkdir -p "$PROOT/agent/$s"
     {
         printf 'id: %s\nname: %s\nkind: agent\nversion: 0.0.1\n' "$s" "$s"
-        [[ -n "$takes" ]] && printf '%s\n' "$takes"
+        [[ -n "$takes" ]] && printf '%s' "$takes"
         printf 'hooks:\n  run: x_run\noutputs:\n'
         printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    topic: ask\n' "$u" "$s"
     } > "$PROOT/agent/$s/manifest.yaml"
@@ -102,7 +105,7 @@ _producer tt-accept requirement-findings
 _producer tt-test code-findings
 _producer tt-build change
 _producer tt-plumb ""
-_consumer tt-design "takes: [ask, requirement-findings]"
+_consumer tt-design "$(_takes ask requirement-findings)"$'\n'
 _consumer tt-any ""
 _TPL_STAGES=(tt-plan tt-accept tt-test tt-build tt-plumb tt-design tt-any)
 
@@ -154,7 +157,7 @@ pw3="$(_stage_block_previous_work tt-any "$STATE" "$PROOT" "$idx2" "$TGT")"
 assert_contains "[T3] with no manifest passed, the stage's own is looked up (no takes: → all)" "$pw3" "FINDING-OF-tt-test"
 
 print_test_section "T4: a stage that takes change sees the line"
-_consumer tt-builder "takes: [change]"
+_consumer tt-builder "$(_takes change)"$'\n'
 _TPL_STAGES+=(tt-builder)
 _IR_INDEX_KEY=""; _IR_SCAN_KEY=""
 idx4="$(_inputs_resolve_stage tt-builder "$PROOT" "$STATE")"
@@ -181,24 +184,24 @@ _valid() {
         printf 'id: v\nname: v\nkind: tool\nversion: 0.0.1\n'
         [[ -n "$2" ]] && printf '%s\n' "$2"
         printf 'provides:\n  result_contract: 3\nhooks:\n  run: x_run\noutputs:\n'
-        printf '  - id: v_result\n    path: ${artifact_dir}/v-result.json\n    type: json\n    required: true\n    primary: true\n    topic: %s\n' "$3"
+        printf '  - id: v_result\n    path: ${artifact_dir}/v-result.json\n    type: json\n    required: true\n    primary: true\n    topic: %s\n    description: x\n' "$3"
     } > "$1/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$1/plugin.sh"
 }
-_valid "$TEST_TEMP_DIR/v-ok" "takes: [ask, tests, change, requirement-findings, code-findings]" ask
+_valid "$TEST_TEMP_DIR/v-ok" "$(_takes ask tests change requirement-findings code-findings)" ask
 out="$(validate_manifest "$TEST_TEMP_DIR/v-ok/manifest.yaml" 2>&1)"; rc=$?
 assert_eq "[T6] the five words are accepted" "0" "$rc"
 _valid "$TEST_TEMP_DIR/v-topic" "" everything
 out="$(validate_manifest "$TEST_TEMP_DIR/v-topic/manifest.yaml" 2>&1)"; rc=$?
 assert_eq "[T6] an unknown topic is refused" "1" "$rc"
 assert_contains "[T6] … naming it" "$out" "topic 'everything'"
-_valid "$TEST_TEMP_DIR/v-take" "takes: [ask, test-logs]" ask
+_valid "$TEST_TEMP_DIR/v-take" "$(_takes ask test-logs)" ask
 out="$(validate_manifest "$TEST_TEMP_DIR/v-take/manifest.yaml" 2>&1)"; rc=$?
 assert_eq "[T6] an unknown take is refused" "1" "$rc"
 assert_contains "[T6] … naming it" "$out" "takes 'test-logs'"
 
 print_test_section "T7: the shipped stages"
-_takes_of() { sed -n 's/^takes:[[:space:]]*\[\(.*\)\][[:space:]]*$/\1/p' "$REPO_ROOT/plugins/agent/$1/manifest.yaml" | tr -d ' '; }
+_takes_of() { local t; _sp_takes_v t "$REPO_ROOT/plugins/agent/$1/manifest.yaml"; t="${t# }"; t="${t% }"; printf '%s' "${t// /,}"; }
 assert_eq "[T7] plan takes" "ask" "$(_takes_of plan)"
 assert_eq "[T7] design takes" "ask,requirement-findings" "$(_takes_of design)"
 assert_eq "[T7] test-author takes (never change; requirement findings, e.g. a test that misses a requirement)" "ask,tests,requirement-findings,code-findings" "$(_takes_of test-author)"

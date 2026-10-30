@@ -13,7 +13,10 @@
 # R2 [guard]  unchanged since fingerprinted: no finding from that check
 # R3 [change] no earlier output carries fingerprints: a warning, never a failure
 # R4 [change] the acceptance check runs inside test: an untagged requirement
-#             fails test, with the finding in test's result
+#             fails test; the finding lives only in the check's own result
+#             (#2428), and test's reason names the check
+# R6 [change] design's Previous work shows the acceptance check's finding, and
+#             build's shows it once (#2428, ADR-071 §2)
 # R5 [change] shape-floor, acceptance-gate and assertion-integrity are no
 #             longer stages; test declares the checks' outputs
 set -uo pipefail
@@ -80,7 +83,40 @@ SPEC-1: tests/a-test.sh
 ```
 ' ""
 assert_eq "[R4] an untagged requirement fails test" "fail" "$OUTCOME"
-assert_contains "[R4] ...with the acceptance finding in test's result" "$FINDINGS" "SPEC-1"
+assert_contains "[R4] ...with the finding in the acceptance check's own result" \
+    "$(jq -r '.data.findings[]?.text // empty' "$A/acceptance-gate-result.json" 2>/dev/null)" "SPEC-1"
+assert_eq "[R4] ...and not copied into test's result (#2428)" "" "$(grep 'SPEC-1' <<< "$FINDINGS" || true)"
+assert_contains "[R4] ...whose reason names the check" "$(jq -r '.reason // ""' "$A/test-results.json")" "the acceptance check failed"
+
+# ── R6 ───────────────────────────────────────────────────────────────────────
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
+# shellcheck source=../../core/pipeline/state_helpers.sh
+source "$REPO_ROOT/core/pipeline/state_helpers.sh"
+unset ZBUILD_STAGE_INPUTS
+init_state "$S/pipeline-state.json" run-1 1 >/dev/null 2>&1
+_update_stage_status "$S/pipeline-state.json" test complete
+_zbuild_state_set_stage_verdict "$S/pipeline-state.json" test fail
+_TPL_STAGES=(test design build)
+_ap="$(jq -r '.data.findings[0].text // empty' "$A/acceptance-gate-result.json" 2>/dev/null)"
+_pw6() { local idx; idx="$(_inputs_resolve_stage "$1" "$REPO_ROOT/plugins" "$S" 2>/dev/null)"
+         _stage_block_previous_work "$1" "$S" "$REPO_ROOT/plugins" "$idx" "$R" "$REPO_ROOT/plugins/agent/$1/manifest.yaml" 2>/dev/null; }
+_pwd="$(_pw6 design)"; _pwb="$(_pw6 build)"
+assert_contains "[R6] design is shown the acceptance check's finding" "$_pwd" "acceptance-gate finding 1 (opened by test): ${_ap:0:40}"
+assert_eq "[R6] build is shown it as a finding once" "1" \
+    "$(grep -E '^- [a-z-]+ finding [0-9]+ \(opened by test\): ' <<< "$_pwb" | grep -cF -- "${_ap:0:40}")"
+
+# ── R7 ───────────────────────────────────────────────────────────────────────
+# A check that fails with no findings and a reason over two lines gets ONE
+# finding: the reason is one item, not one per line (#2428 review).
+shape_floor_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/shape-floor-result.json" fail $'line one\nline two'; }
+acceptance_gate_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/acceptance-gate-result.json" pass ok; }
+_test_own_checks test "$S/pipeline-state.json" "$A/test-results.json" "$R" >/dev/null 2>&1
+assert_eq "[R7] a two-line reason is one finding" "1" \
+    "$(jq '(.data.findings // []) | length' "$A/shape-floor-result.json" 2>/dev/null)"
+assert_contains "[R7] ...holding both lines" "$(jq -r '.data.findings[0].text // ""' "$A/shape-floor-result.json")" "line one line two"
 
 # ── R5 ───────────────────────────────────────────────────────────────────────
 for _p in tool/shape-floor agent/spec-acceptance tool/assertion-integrity; do

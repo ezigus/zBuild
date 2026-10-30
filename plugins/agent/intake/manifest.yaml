@@ -30,6 +30,7 @@ outputs:
   # ADR-055 v2: JSON result file — verdict-bearing primary output.
   - id: intake_result
     topic: ask
+    description: "intake's result: the goal it took in"
     path: "${artifact_dir}/intake-result.json"
     type: intake-result.json@1
     format: json
@@ -37,6 +38,7 @@ outputs:
     primary: true
   - id: scope_manifest
     topic: ask
+    description: "the files the issue names, as a starting scope"
     path: ${state_dir}/scope-manifest.md
     type: scope-manifest.md@1
     format: markdown
@@ -45,6 +47,7 @@ outputs:
     # is intake-result.json; scope_manifest is the downstream-consumed artifact.
   - id: intake_goal
     topic: ask
+    description: "the issue's goal, as written"
     path: ${state_dir}/intake.md
     type: intake.md@1
     format: markdown
@@ -55,6 +58,7 @@ outputs:
   # read it as their `requirements` input.
   - id: requirements
     topic: ask
+    description: "the issue's numbered requirements (R-1, R-2, …)"
     path: "${artifact_dir}/requirements.json"
     type: requirements.json@1
     format: json
@@ -64,6 +68,7 @@ outputs:
   # written on every terminal verdict, so absence means something went wrong.
   - id: intake_summary
     topic: ask
+    description: "intake's summary"
     path: "${artifact_dir}/intake-summary.md"
     type: intake-summary.md@1
     format: markdown

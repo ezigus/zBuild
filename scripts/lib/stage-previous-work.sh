@@ -133,20 +133,21 @@ _sp_manifest_roles_v() {
 
 # _sp_takes_v <var> <manifest> — the topics the stage's `takes:` names, as
 # " ask change " (spaces around each), or "" when it declares none: a stage
-# with no takes: is shown every stage's output (ADR-071).
+# with no takes: is shown every stage's output (ADR-071). Each take is
+# `- topic: <word>` with its `for:` (#2428); only the topic is read here.
 _sp_takes_v() {
     local -n _stv="$1"
-    local line
+    local line in=0
     _stv=""
     [[ -n "${2:-}" && -r "$2" ]] || return 0
     while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$line" =~ ^takes:[[:space:]]*\[(.*)\] ]]; then
-            line="${BASH_REMATCH[1]//,/ }"
-            local -a _sp_tw; read -ra _sp_tw <<< "$line"
-            _stv=" ${_sp_tw[*]} "
-            return 0
-        fi
+        if [[ "$line" =~ ^takes:[[:space:]]*$ ]]; then in=1; continue; fi
+        (( in )) || continue
+        [[ "$line" =~ ^[a-zA-Z_] ]] && break
+        [[ "$line" =~ ^[[:space:]]*-[[:space:]]+topic:[[:space:]]*([^[:space:]#]+) ]] && _stv+=" ${BASH_REMATCH[1]}"
     done < "$2"
+    [[ -n "$_stv" ]] && _stv+=" "
+    return 0
 }
 
 # _sp_read <file> <max> — the first <max> bytes of a file, without a fork.
@@ -182,7 +183,7 @@ _stage_block_previous_work() {
     # Everything read once: the stages in the order they first completed with
     # their verdicts, then every output in the index.
     local -a order=()
-    local -A verdicts=() outs=() seen=() outtext=()
+    local -A verdicts=() outs=() seen=() outtext=() outpath=()
     local line k v id
     while IFS=$'\t' read -r k v; do
         [[ -n "$k" && -z "${seen[$k]:-}" ]] || continue
@@ -203,6 +204,7 @@ _stage_block_previous_work() {
                 local m; while IFS= read -r m; do [[ -n "$m" ]] && outtext[$id]+="    - $m"$'\n'; done <<< "${v//$'\x1f'/$'\n'}"
             else
                 outtext[$id]="- $id: $v"$'\n'
+                outpath[$id]="$v"
             fi
         done < <(jq -r '(.inputs // {}) | to_entries[]
                         | "\(.key)\t\(if (.value|type) == "array" then (.value | join("\u001f")) + "\u001f" else .value end)"' \
@@ -239,9 +241,11 @@ _stage_block_previous_work() {
                 P) [[ -z "$res" ]] && _verdict_resolve_path_v res "$raw" "$state_dir" ;;
             esac
         done <<< "$roles"
-        listed=""
+        listed=""; local -a found=()
         for id in ${outs[$s]:-}; do
-            [[ -z "$takes" || "$takes" == *" ${topic_of["id:$id"]:-none} "* ]] && listed+="${outtext[$id]}"
+            [[ -z "$takes" || "$takes" == *" ${topic_of["id:$id"]:-none} "* ]] || continue
+            listed+="${outtext[$id]}"
+            [[ "${outpath[$id]:-}" == *.json ]] && found+=("${outpath[$id]}")
         done
         [[ -n "$listed" || -n "$summ" || -n "$errp" || -n "$res" || ( "$s" == "$stage" && -n "$notes" ) ]] || continue
         any=1
@@ -255,12 +259,25 @@ _stage_block_previous_work() {
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
         [[ -n "$listed" ]] && printf 'Outputs:\n%s' "$listed"
 
+        body=""
         if [[ "$content" == *'"findings"'* ]]; then
             body="$(jq -r --arg s "$s" '(.data.findings // [])[]?
                     | select(type == "object" and (.n|type) == "number")
                     | "- \($s) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' "$res" 2>/dev/null || true)"
-            [[ -n "$body" ]] && printf '\nFindings:\n%s\n' "$body"
         fi
+        # #2428 (ADR-071 §2): the findings of every other output it takes,
+        # labelled by the output's file — the name open_items_json gives them.
+        local fp lbl more
+        for fp in ${found[@]+"${found[@]}"}; do
+            [[ "${fp##*/}" != "${res##*/}" && -s "$fp" ]] || continue
+            [[ "$(<"$fp")" == *'"findings"'* ]] || continue
+            lbl="${fp##*/}"; lbl="${lbl%.json}"; lbl="${lbl%-result}"
+            more="$(jq -r --arg s "$s" --arg l "$lbl" '(.data.findings // [])[]?
+                    | select(type == "object" and (.n|type) == "number")
+                    | "- \($l) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' "$fp" 2>/dev/null || true)"
+            [[ -n "$more" ]] && body+="${body:+$'\n'}$more"
+        done
+        [[ -n "$body" ]] && printf '\nFindings:\n%s\n' "$body"
         if [[ -n "$summ" && -s "$summ" ]]; then
             body="$(<"$summ")"
             local full=${#body}

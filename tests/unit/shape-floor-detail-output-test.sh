@@ -63,7 +63,7 @@ _verdict_of() { jq -r '.outcome // ""' "$RESULT" 2>/dev/null || true; }
 # asserting a contract that no longer exists.
 print_test_section "SPEC-1 (guard) — shape_floor_detail is declared required"
 
-_decl="$(grep -A5 'id: shape_floor_detail' "$SF_MANIFEST" 2>/dev/null || true)"
+_decl="$(awk '/- id: shape_floor_detail/{f=1;print;next} f&&/^  - id:/{exit} f' "$SF_MANIFEST" 2>/dev/null || true)"
 assert_contains "[SPEC-1 guard] the manifest declares shape-floor-detail.md" \
     "$_decl" 'shape-floor-detail.md'
 # #2372: the check runs inside test, which declares the detail (optional: a

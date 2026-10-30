@@ -3,7 +3,11 @@ name: Security Audit Lens
 kind: agent
 version: 0.1.0
 # ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
-takes: [ask, change]
+takes:
+  - topic: ask
+    for: "what the change is meant to do"
+  - topic: change
+    for: "the change to review"
 description: |
   Security audit lens. One of the 7 compound-audit personas. Detects command
   injection, credential/secret exposure, auth/authz bypass paths, and OWASP
@@ -48,6 +52,7 @@ config:
 outputs:
   - id: findings
     topic: code-findings
+    description: "the security review of the change; findings: each security problem found in the code"
     path: ${artifact_dir}/security-findings.json
     type: findings.json@1
     format: json
@@ -60,6 +65,7 @@ outputs:
   # written on every terminal verdict, so absence means something went wrong.
   - id: security_lens_summary
     topic: code-findings
+    description: "the security review's summary"
     path: "${artifact_dir}/security-lens-summary.md"
     type: security-lens-summary.md@1
     format: markdown

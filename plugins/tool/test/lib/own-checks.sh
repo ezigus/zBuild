@@ -6,8 +6,8 @@
 # shape floor (lib/shape-floor-check.sh), the acceptance contract
 # (lib/acceptance-check.sh), and that the assertion files are the ones their
 # author wrote. test has no model to go back to: its one outcome is fail when any
-# check fails, with every failure as a numbered finding, and the build loop goes
-# round.
+# check fails, and the build loop goes round. Each check's numbered findings stay
+# in that check's own result (#2428); test's result names the check in its reason.
 #
 # Sourced by plugin.sh after its bootstrap. Sourced library: no set -euo.
 
@@ -62,10 +62,15 @@ _test_own_checks() {
             fail)
                 [[ "$outcome" == pass || "$outcome" == fail ]] && outcome=fail
                 why+=("$name failed: $(jq -r '.reason // ""' "$f" 2>/dev/null)")
-                local n=0
-                while IFS= read -r t; do [[ -n "$t" ]] && { texts+=("$t"); n=$((n + 1)); }; done \
-                    < <(jq -r '.data.findings[]?.text // empty' "$f" 2>/dev/null || true)
-                [[ $n -gt 0 ]] || texts+=("$name failed: $(jq -r '.reason // ""' "$f" 2>/dev/null)") ;;
+                # #2428 (ADR-071 §2): a finding lives in one output — the
+                # check's own result, whose topic decides who reads it. A
+                # check that failed with no findings gets its reason as one.
+                if [[ "$(jq -r '(.data.findings // []) | length' "$f" 2>/dev/null)" == 0 ]]; then
+                    local fj1 tmp1
+                    fj1="$(printf '%s failed: %s\n' "$name" "$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$f" 2>/dev/null)" | stage_findings_json)"
+                    tmp1="$(jq --argjson f "${fj1:-[]}" '.data = ((.data // {}) + {findings: $f})' "$f" 2>/dev/null)" \
+                        && printf '%s\n' "$tmp1" | atomic_write "$f"
+                fi ;;
             "") outcome=broken; why+=("$name wrote no result") ;;
             *)  # A check that could not run says how; it is never a pass.
                 [[ "$outcome" == pass || "$outcome" == fail ]] && outcome="$o"
