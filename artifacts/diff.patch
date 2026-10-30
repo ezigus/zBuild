@@ -1,0 +1,259 @@
+diff --git a/config/adr-enforcement-baseline.txt b/config/adr-enforcement-baseline.txt
+index 0b850446..8c3e48fd 100644
+--- a/config/adr-enforcement-baseline.txt
++++ b/config/adr-enforcement-baseline.txt
+@@ -3,7 +3,6 @@
+ # section (naming the tests that enforce its statements), remove its line —
+ # scripts/lib/lint-adr-enforced-by.sh fails until you do. Never add a line:
+ # a new ADR ships with its section. Gaps are tracked from #2268.
+-ADR-001-plugin-contract.md
+ ADR-003-models-as-data.md
+ ADR-005-claim-coordinator.md
+ ADR-006-resume-contract.md
+diff --git a/config/event-schema.json b/config/event-schema.json
+index a438b802..968c2fcf 100644
+--- a/config/event-schema.json
++++ b/config/event-schema.json
+@@ -16,17 +16,6 @@
+     "stage.always_run.unresolved",
+     "pipeline.refused.issue_locked",
+     "pipeline.refused.run_cap",
+-    "hydrate.start",
+-    "hydrate.complete",
+-    "hydrate.fetch.failed",
+-    "hydrate.restore.failed",
+-    "hydrate.result.write_failed",
+-    "persist.start",
+-    "persist.complete",
+-    "persist.push.failed",
+-    "persist.push.refused",
+-    "persist.snapshot.failed",
+-    "persist.result.write_failed",
+     "stage.verdict.missing",
+     "stage.verdict.contract_violation",
+     "stage.verdict.stale_artifact",
+diff --git a/docs/adr/ADR-001-plugin-contract.md b/docs/adr/ADR-001-plugin-contract.md
+index a8168044..398fb91a 100644
+--- a/docs/adr/ADR-001-plugin-contract.md
++++ b/docs/adr/ADR-001-plugin-contract.md
+@@ -341,6 +341,12 @@ resolver and remains unlanded under #1321.
+ - **Fail-closed artifact-presence scanner** referenced in this ADR is not yet implemented; tracked by **#288**. Plugins declaring `provides.artifact_type` whose `outputs[].path` is missing after a 0-exit run currently emit no synthetic blocking finding.
+ - **Test coverage:** `tests/unit/core-plugin-registry-test.sh` and `tests/integration/core-plugin-registry-test.sh` cover the current 4-field validator. Coverage for the deferred items lives in the tracking issues above.
+ 
++## Enforced by
++
++- §"Declared events" — engine config carries only engine namespaces; plugin manifests carry plugin namespaces; no overlap — `tests/unit/event-schema-emitted-coverage-test.sh` [#1951/SPEC-1], [#1951/SPEC-2].
++- §"Declared events" — a plugin emitting an event without declaring it in its own manifest fails the build — `tests/unit/event-schema-emitted-coverage-test.sh` [SPEC-1717-1].
++- §"Declared events" — the composed known set is derived from engine config plus all manifest declarations — `tests/unit/event-schema-manifest-composition-test.sh` [SPEC-4], [SPEC-5].
++
+ ## References
+ 
+ - [KEEPERS.md](../KEEPERS.md) §A (stage dispatch), §F (personas as agent plugins).
+diff --git a/plugins/agent/security-lens/manifest.yaml b/plugins/agent/security-lens/manifest.yaml
+index 4c2b6eaa..a8a2858e 100644
+--- a/plugins/agent/security-lens/manifest.yaml
++++ b/plugins/agent/security-lens/manifest.yaml
+@@ -32,7 +32,6 @@ provides:
+   result_contract: 3
+   # ADR-001 §"Declared events" (#1717) — this plugin's own events.
+   events:
+-    - plugin.result
+     - security_lens.failed
+ 
+ config:
+diff --git a/plugins/tool/merge/manifest.yaml b/plugins/tool/merge/manifest.yaml
+index 3e223c80..d4ef9e27 100644
+--- a/plugins/tool/merge/manifest.yaml
++++ b/plugins/tool/merge/manifest.yaml
+@@ -26,8 +26,6 @@ requires:
+ provides:
+   result_contract: 3
+   role: merge_executor
+-  events:
+-    - plugin.result
+ 
+ config:
+   tier_default: T0
+diff --git a/tests/unit/event-schema-emitted-coverage-test.sh b/tests/unit/event-schema-emitted-coverage-test.sh
+index 92ed232c..d5cf51d1 100755
+--- a/tests/unit/event-schema-emitted-coverage-test.sh
++++ b/tests/unit/event-schema-emitted-coverage-test.sh
+@@ -157,5 +157,141 @@ else
+     assert_fail "[#2032] cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types"
+ fi
+ 
++# ─── 5. [#1951/SPEC-1] event-schema.json must not carry plugin-namespace events ─
++# The namespace of every event a plugin declares in its manifest is a plugin-owned
++# namespace. If event-schema.json also carries events in that namespace, both sides
++# claim ownership — the split has rotted. This check derives the plugin namespaces
++# from the actual manifests, so it catches any namespace a manifest declares (not
++# just the hardcoded set in SPEC-1717-2).
++#
++# Fails before the change: security-lens + merge declare plugin.result → namespace
++# 'plugin' is a manifest namespace, and event-schema.json has plugin.* events.
++# Also persist.* and hydrate.* are in the schema AND in the persist/hydrate manifests.
++# Passes after SPEC-3 (persist/hydrate removed from schema) + SPEC-4 (plugin.result
++# removed from both manifests, leaving no manifest with a plugin.* event).
++_1951_mf=()
++while IFS= read -r _1951_m; do
++    [[ -n "$_1951_m" ]] && _1951_mf+=("$_1951_m")
++done < <(find "$REPO_ROOT/plugins" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null)
++
++_1951_all_plugin_ev=""
++[[ ${#_1951_mf[@]} -gt 0 ]] && _1951_all_plugin_ev="$(eb_manifest_events "${_1951_mf[@]}")"
++
++_1951_plugin_ns=""
++while IFS= read -r _1951_pev; do
++    [[ -z "$_1951_pev" ]] && continue
++    _1951_plugin_ns+="${_1951_pev%%.*}"$'\n'
++done <<< "$_1951_all_plugin_ev"
++# Deduplicate with here-string to avoid pipe (sigpipe-ok: sort reads all input, no early exit,
++# but use here-string to be fully safe).
++_1951_plugin_ns="$(sort -u <<< "$_1951_plugin_ns")"
++
++_1951_spec1_viol=()
++while IFS= read -r _1951_t; do
++    [[ -z "$_1951_t" ]] && continue
++    _1951_ns="${_1951_t%%.*}"
++    if grep -qxF "$_1951_ns" <<< "$_1951_plugin_ns"; then
++        _1951_spec1_viol+=("$_1951_t")
++    fi
++done <<< "$_engine_types"
++
++if [[ ${#_1951_spec1_viol[@]} -eq 0 ]]; then
++    assert_pass "[#1951/SPEC-1] event-schema.json carries no event in a plugin-owned namespace"
++else
++    for _1951_t in "${_1951_spec1_viol[@]}"; do
++        assert_fail "[#1951/SPEC-1] event-schema.json has '${_1951_t}' in a plugin-owned namespace" \
++            "namespace '${_1951_t%%.*}' is declared by a plugin manifest; remove this entry from config/event-schema.json (ADR-001 §\"Declared events\")"
++    done
++fi
++
++# ─── 6. [#1951/SPEC-2] plugin manifests must not declare engine-namespace events ─
++# ADR-001 §"Declared events" lists the namespaces owned by the engine. A plugin
++# that lists an engine-namespace event under provides.events steals ownership from
++# the engine — it is not entitled to that event name and the validator must reject it.
++#
++# Fails before the change: security-lens and merge both declare plugin.result;
++# 'plugin' is an engine-owned namespace.
++# Passes after SPEC-4: plugin.result is removed from both manifests.
++_ENGINE_OWNED_NS_RE='^(pipeline|stage|stage_io|plugin|cycle|router|loop|state|registry|parallel|redaction|template|strategy|artifact|model|cost|orch|memory|backend|detection|llm|selfhost)\.'
++_1951_spec2_viol=()
++while IFS= read -r _1951_pd; do
++    [[ -z "$_1951_pd" ]] && continue
++    _1951_mf2="$_1951_pd/manifest.yaml"
++    [[ -f "$_1951_mf2" ]] || continue
++    _1951_decl2="$(eb_manifest_events "$_1951_mf2")"
++    while IFS= read -r _1951_ev2; do
++        [[ -z "$_1951_ev2" ]] && continue
++        if grep -qE "$_ENGINE_OWNED_NS_RE" <<< "$_1951_ev2"; then
++            _1951_spec2_viol+=("${_1951_pd#"$REPO_ROOT/"} → $_1951_ev2")
++        fi
++    done <<< "$_1951_decl2"
++done <<< "$(find "$REPO_ROOT/plugins" -maxdepth 3 -name 'manifest.yaml' -type f -exec dirname {} \;)"
++
++if [[ ${#_1951_spec2_viol[@]} -eq 0 ]]; then
++    assert_pass "[#1951/SPEC-2] no plugin manifest declares an event in an engine-owned namespace"
++else
++    for _1951_v2 in "${_1951_spec2_viol[@]}"; do
++        assert_fail "[#1951/SPEC-2] plugin declares engine-namespace event: $_1951_v2" \
++            "engine namespaces (pipeline, stage, plugin, cycle, ...) are owned by the engine; remove this from the plugin's provides.events (ADR-001 §\"Declared events\")"
++    done
++fi
++
++# ─── 7. [#1951/SPEC-3] persist.* and hydrate.* absent from event-schema.json ───
++# After the change, these namespaces are declared canonically in the plugin manifests
++# (plugins/tool/persist and plugins/tool/hydrate). The engine schema must not
++# duplicate them.
++_1951_persist="$(grep -E '^persist\.' <<< "$_engine_types" || true)"
++if [[ -z "$_1951_persist" ]]; then
++    assert_pass "[#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types"
++else
++    assert_fail "[#1951/SPEC-3] persist.* events must be absent from config/event-schema.json known_types" \
++        "still present: $(tr '\n' ' ' <<< "$_1951_persist")"
++fi
++_1951_hydrate="$(grep -E '^hydrate\.' <<< "$_engine_types" || true)"
++if [[ -z "$_1951_hydrate" ]]; then
++    assert_pass "[#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types"
++else
++    assert_fail "[#1951/SPEC-3] hydrate.* events must be absent from config/event-schema.json known_types" \
++        "still present: $(tr '\n' ' ' <<< "$_1951_hydrate")"
++fi
++
++# Canonical declarations must remain in the plugin manifests: at least one
++# persist.* event must be declared by the persist plugin, and at least one
++# hydrate.* event by the hydrate plugin.
++_1951_persist_mf_ev="$(eb_manifest_events "$REPO_ROOT/plugins/tool/persist/manifest.yaml")"
++_1951_persist_in_mf="$(grep -E '^persist\.' <<< "$_1951_persist_mf_ev" || true)"
++if [[ -n "$_1951_persist_in_mf" ]]; then
++    assert_pass "[#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)"
++else
++    assert_fail "[#1951/SPEC-3] persist plugin manifest must carry canonical persist.* declarations" \
++        "no persist.* events found in plugins/tool/persist/manifest.yaml provides.events"
++fi
++_1951_hydrate_mf_ev="$(eb_manifest_events "$REPO_ROOT/plugins/tool/hydrate/manifest.yaml")"
++_1951_hydrate_in_mf="$(grep -E '^hydrate\.' <<< "$_1951_hydrate_mf_ev" || true)"
++if [[ -n "$_1951_hydrate_in_mf" ]]; then
++    assert_pass "[#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)"
++else
++    assert_fail "[#1951/SPEC-3] hydrate plugin manifest must carry canonical hydrate.* declarations" \
++        "no hydrate.* events found in plugins/tool/hydrate/manifest.yaml provides.events"
++fi
++
++# ─── 8. [#1951/SPEC-4] plugin.result absent from security-lens and merge manifests ─
++# plugin.* is an engine-owned namespace (ADR-001 §"Declared events"). Neither
++# security-lens nor merge is entitled to declare plugin.result in their manifests.
++_1951_sl_ev="$(eb_manifest_events "$REPO_ROOT/plugins/agent/security-lens/manifest.yaml")"
++if grep -qxF "plugin.result" <<< "$_1951_sl_ev"; then
++    assert_fail "[#1951/SPEC-4] plugin.result must be absent from plugins/agent/security-lens/manifest.yaml provides.events" \
++        "plugin.result is an engine-owned event (plugin.* namespace); remove it from provides.events"
++else
++    assert_pass "[#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events"
++fi
++_1951_mg_ev="$(eb_manifest_events "$REPO_ROOT/plugins/tool/merge/manifest.yaml")"
++if grep -qxF "plugin.result" <<< "$_1951_mg_ev"; then
++    assert_fail "[#1951/SPEC-4] plugin.result must be absent from plugins/tool/merge/manifest.yaml provides.events" \
++        "plugin.result is an engine-owned event (plugin.* namespace); remove it from provides.events"
++else
++    assert_pass "[#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events"
++fi
++
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/lint-adr-enforced-by-test.sh b/tests/unit/lint-adr-enforced-by-test.sh
+index 4cf4c328..5cb4f7cb 100644
+--- a/tests/unit/lint-adr-enforced-by-test.sh
++++ b/tests/unit/lint-adr-enforced-by-test.sh
+@@ -149,6 +149,32 @@ _reset; _adr ADR-909-x "Superseded by ADR-903"; printf 'ADR-909-x.md\n' > "$R/co
+ assert_eq "[A10] a superseded ADR left in the baseline fails" "1" "$rc"
+ assert_contains "[A10] it says to remove the entry" "$out" "ADR-909-x.md"
+ 
++# ── [#1951/SPEC-5] ADR-001 carries an ## Enforced by section naming the coverage test,
++# and is removed from the enforcement baseline.
++# Must pass after the change; it is expected to fail before.
++ADR_001_PC="$REPO_ROOT/docs/adr/ADR-001-plugin-contract.md"
++if grep -q '## Enforced by' "$ADR_001_PC" 2>/dev/null; then
++    assert_pass "[#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section"
++else
++    assert_fail "[#1951/SPEC-5] ADR-001-plugin-contract.md must carry an ## Enforced by section" \
++        "no '## Enforced by' found in $ADR_001_PC"
++fi
++# Extract only the ## Enforced by section body; search within it so a mention
++# elsewhere in the document does not produce a false pass.
++_1951_adr001_enforced_body="$(awk '/^## Enforced by/{p=1; next} /^## /{p=0} p{print}' "$ADR_001_PC" 2>/dev/null || true)"
++if grep -q 'event-schema-emitted-coverage-test.sh' <<< "$_1951_adr001_enforced_body"; then
++    assert_pass "[#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh"
++else
++    assert_fail "[#1951/SPEC-5] ADR-001 ## Enforced by must name tests/unit/event-schema-emitted-coverage-test.sh" \
++        "the coverage test is not referenced within the ## Enforced by section of $ADR_001_PC"
++fi
++if ! grep -q 'ADR-001' "$BASELINE" 2>/dev/null; then
++    assert_pass "[#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt"
++else
++    assert_fail "[#1951/SPEC-5] ADR-001-plugin-contract.md must be removed from config/adr-enforcement-baseline.txt" \
++        "ADR-001 still listed in $BASELINE; remove the entry once the ## Enforced by section is added"
++fi
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
