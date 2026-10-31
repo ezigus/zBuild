@@ -266,9 +266,8 @@ assert_eq "[SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
 # merged the current outcome into it — so the reader saw "pass" (or whatever
 # the current call supplied), never "broken".
 # After #1754: the write exit is captured; a failed write triggers the fallback,
-# which writes outcome=broken, so runner_read_stage_verdict returns "error"
-# (the engine's classification for the broken outcome) — not the prior round's
-# outcome.
+# which writes outcome=broken, so runner_read_stage_verdict returns "broken"
+# — not the prior round's outcome.
 print_test_section "[#1754/SPEC-2] reader sees broken after primary atomic_write failure"
 
 rm -f "$RESULT"
@@ -299,11 +298,11 @@ _test_write_result "$RESULT" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "
 # Restore atomic_write before calling the reader, which may call it too.
 eval "$(declare -f _aw_real_1754s2 | sed 's/_aw_real_1754s2 ()/atomic_write ()/')"
 
-# The reader must return "error" (the engine's classification for the broken
-# outcome), NOT "pass" (which is what the prior-round stale file would give
-# before the fix, since stage_result_add merged "pass" into it).
-assert_eq "[#1754/SPEC-2] reader classifies primary-write failure as error (not prior pass)" \
-    "error" "$(_classify)"
+# The reader must return "broken", NOT "pass" (which is what the prior-round
+# stale file would give before the fix, since stage_result_add merged "pass"
+# into it without detecting the write failure).
+assert_eq "[#1754/SPEC-2] reader classifies primary-write failure as broken (not prior pass)" \
+    "broken" "$(_classify)"
 
 # Cross-check: the raw outcome in the file is "broken", not the prior round's.
 assert_eq "[#1754/SPEC-2] file carries broken outcome after primary write failure" "broken" \

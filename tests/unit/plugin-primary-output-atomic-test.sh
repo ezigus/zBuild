@@ -109,13 +109,17 @@ else
         "exit code was 0; output: $_spec5_out"
 fi
 
-# The output must name the violating line by number (e.g. :4 or file:4:text).
-# Matching the filename alone is not sufficient — the line itself must be identified.
-if grep -qE ':[0-9]+' <<< "$_spec5_out"; then
+# The output must name the violating line as file:lineno.  The fixture has
+# exactly one atomic_write call, on line 4 of the file.  Checking for the
+# fixture basename followed by ":4" (fixed-string, so the "." in the filename
+# is not a wildcard) proves the lint reported the specific line that contains
+# the violation, not merely that the filename appeared somewhere in the output.
+_spec5_fixture_base="$(basename "$_SPEC5_FIXTURE")"
+if grep -qF "${_spec5_fixture_base}:4" <<< "$_spec5_out"; then
     assert_pass "[#1754/SPEC-5] lint names the violating line in its output"
 else
     assert_fail "[#1754/SPEC-5] lint names the violating line in its output" \
-        "output: $_spec5_out"
+        "expected ${_spec5_fixture_base}:4 in output; got: $_spec5_out"
 fi
 
 # ─── [#1754/SPEC-6] lint exits 0 for properly-checked atomic_write calls ──────
@@ -206,12 +210,13 @@ while IFS= read -r _s8_entry; do
         _s8_violations+=("${_s8_f}:${_s8_lno}")
 done < "$_s8_grep_out"
 
-# The calls must still exist in the codebase — they must be annotated, not removed.
-if [[ "$_s8_call_count" -gt 0 ]]; then
+# The requirement says "all 13 pre-existing calls".  Checking >= 13 proves
+# that calls were annotated, not silently removed to satisfy the lint.
+if [[ "$_s8_call_count" -ge 13 ]]; then
     assert_pass "[#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)"
 else
     assert_fail "[#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)" \
-        "found 0 calls in core/plugins/scripts outside exclusions"
+        "found only $_s8_call_count call(s) (expected >= 13) in core/plugins/scripts outside exclusions"
 fi
 
 # Every remaining call must carry || true — the specified annotation mechanism.
