@@ -113,6 +113,7 @@ intake_run() {
 }
 
 _intake_run_inner() {
+    printf "DEBUG_ENTER _intake_run_inner goal=%s\n" "${ZBUILD_GOAL:-}" >> /tmp/intake_debug.txt
     _INTAKE_RESULT_VERDICT=""
     # ADR-055 §9: resolved up-front, because the closed-issue refusal below
     # returns long before state_dir is derived and must still say why.
@@ -278,7 +279,9 @@ _intake_run_inner() {
         return 1
     fi
     printf '%s\n' "$sanitized"   | atomic_write "$state_dir/intake.md"
+    printf "DEBUG_PIPE PIPESTATUS_BEFORE_LOCAL=(%s)\n" "${PIPESTATUS[*]:-}" >> /tmp/intake_debug.txt
     local _im_aw_rc="${PIPESTATUS[1]}"
+    printf "DEBUG_LOCAL _im_aw_rc=%s\n" "$_im_aw_rc" >> /tmp/intake_debug.txt
     if (( _im_aw_rc != 0 )); then
         _intake_write_result "$_art" "broken" \
             "failed to write intake.md" || true
