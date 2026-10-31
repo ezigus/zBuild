@@ -20,27 +20,35 @@
 
 - `package.json` lint target: long chain of `&&` calls; new lint script appended at the end
 
-- Design stage finding: 9 additional files with 13 unchecked `| atomic_write` calls that write diagnostic/auxiliary data
-  - core/detect/platforms.sh
-  - core/pipeline/state_helpers.sh
-  - core/output/destinations.sh
-  - plugins/agent/pr-delivery/plugin.sh
-  - plugins/tool/merge/plugin.sh
-  - plugins/tool/output-github-comment/plugin.sh
-  - plugins/tool/pr-open/plugin.sh
-  - plugins/tool/test/lib/acceptance-reason.sh
-  - plugins/tool/test/lib/acceptance-check.sh
-  These need `|| true` annotation (making best-effort intent explicit) before the lint can be wired into CI.
+- Design stage findings (updated from initial notes):
+  - 11 files (not 9) with unchecked `| atomic_write` calls that need `|| true`:
+    - core/detect/platforms.sh
+    - core/pipeline/state_helpers.sh
+    - core/output/destinations.sh
+    - plugins/agent/pr-delivery/plugin.sh
+    - plugins/tool/merge/plugin.sh
+    - plugins/tool/output-github-comment/plugin.sh
+    - plugins/tool/pr-open/plugin.sh
+    - plugins/tool/test/lib/acceptance-reason.sh
+    - plugins/tool/test/lib/acceptance-check.sh
+    - plugins/agent/build/lib/secrets.sh (NEW — was missing from initial plan)
+    - plugins/tool/test/lib/own-checks.sh (NEW — was missing from initial plan)
+  - Total 17 unchecked sites (not 13) → SPEC-8 count threshold is ≥17
+  - Two files already correctly handled — must NOT get `|| true`:
+    - `core/state/resume.sh:80` — PIPESTATUS[1] captured on subsequent local statement; `|| true` would hide write failures
+    - `core/output/stage-io.sh:637` — `if ! … | atomic_write …` pattern; `|| true` would always trigger the error branch
+
+- Design also added constraint: the `_test_write_result` fallback block must NOT use the literal token `stage_result_add` in any comment — lint-disposition-words scans comments too.
 
 ## Key decisions
 
-- R1 fix: capture `PIPESTATUS` as an array immediately after the pipe; check index 1 (write) as well as index 0 (jq); trigger the broken fallback when either fails
-- R2 fix: after each `| atomic_write` call, add `|| { error "intake: failed to write $state_dir/<file>"; _intake_write_result … broken "write failed: <file>"; return 1; }`
-- R3 lint: a new `scripts/lib/lint-atomic-write-unchecked.sh` that greps for `| atomic_write` in `core/`, `plugins/`, `scripts/` and checks the line (and the line immediately after, for `PIPESTATUS` on the next line) for a checked exit
-- Pre-existing safe uses: annotate with `|| true` so lint passes on full codebase; step-7 covers this before step-8 wires the lint into package.json
+- R1 fix: capture `PIPESTATUS` as an array immediately after the pipe on a single `local` declaration; check index 1 (write) as well as index 0 (jq); trigger the broken fallback when either fails; no comment containing `stage_result_add` in the fallback block
+- R2 fix: after each `| atomic_write` call, capture PIPESTATUS[1]; on failure call `_intake_write_result` with outcome `broken` and a reason naming the file; return non-zero ensuring no later code overwrites result to `pass`
+- R3 lint: a new `scripts/lib/lint-atomic-write-unchecked.sh` that greps for `| atomic_write` in `core/`, `plugins/`, `scripts/` and checks the same line and next non-blank non-comment line for checked exit
+- Pre-existing safe uses: annotate 17 sites across 11 files with `|| true`; SPEC-8 test excludes `core/state/resume.sh` and `core/output/stage-io.sh`
 
 ## Open questions
 
 None — issue is fully specified.
 
-## Step count: 8 (was 7; design added step for annotating pre-existing safe writes)
+## Step count: 8 (design expanded scope: 2 more files, 4 more sites; SPEC-8 threshold updated to ≥17)
