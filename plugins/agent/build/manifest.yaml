@@ -92,6 +92,16 @@ outputs:
     # ADR-020 amendment (#507): primary output; .verdict (pass|scope_violation)
     # drives indicator. Added in build-summary schema_version=3.
     primary: true
+  # #2441 (ADR-068 §6, ADR-071 §1): build's answers that a test is wrong — on
+  # code-findings, which the stage that owns the tests takes; build's code stays
+  # on change, which it does not.
+  - id: build_tests
+    topic: code-findings
+    description: "tests build says are wrong and cannot pass, each with the file and why"
+    path: "${artifact_dir}/build-tests-result.json"
+    type: build-tests.json@1
+    format: json
+    required: false
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: build_stage_summary

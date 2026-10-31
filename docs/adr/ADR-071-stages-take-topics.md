@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it)
+**Status:** Accepted (2026-10-27); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -58,8 +58,18 @@ The prompt was not enough. A stage should not be handed what its job does not us
 - `plugins/tool/test/lib/own-checks.sh`: the shape check's and the acceptance check's findings stay in their own results; test's result names a failed check in its reason.
 - `scripts/lib/stage-previous-work.sh`: `_sp_manifest_roles_v` reads each output's topic; `_sp_takes_v` reads the stage's `takes:`; `_stage_block_previous_work` (given the stage's manifest by `stage_blocks_write_v`) shows only what the stage takes.
 
+## Amendment 2026-10-31 (#2441) — §1: build's "test is wrong" answers are code-findings
+
+Build's outputs were all `change`, which test-author does not take (it stays blind to the implementation,
+#2022), so an answer from build about a test could not reach the stage that owns it. Build now declares
+one more output, `build-tests-result.json` (`build_tests`, topic `code-findings`: what the code or a test
+must fix), holding only build's answers that a test is wrong, each naming the test file and why, written
+on every try. It follows the review lenses' `lens-<id>-code-result.json`. Test-author takes
+`code-findings`, so it is shown them as `build-tests finding <n>`; build's diff and summary stay on `change`.
+
 ## Enforced by
 
+- §1 amendment 2026-10-31 (#2441: build's "test is wrong" answers are code-findings) → `tests/unit/build-test-is-wrong-test.sh` W2–W3; `tests/unit/stage-takes-topics-test.sh` T7
 - §1 → `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R3 (a lens's findings in one output per topic, by what fixes them); `tests/unit/stage-takes-topics-test.sh` T6 (an unknown topic or take is refused, naming it), T7 (every output of the shipped stages names its topic); `tests/unit/stage-contract-card-test.sh` C2 (an output with a topic and no description is refused), C5 (every shipped output with a topic has a description); `tests/integration/test-checks-own-run-test.sh` R4 (the acceptance check's finding lives only in its own result), R7 (a check that failed with no findings gets its reason as one finding)
 - §2 → `tests/unit/stage-takes-topics-test.sh` T1 (only the topics taken: paths, summaries, findings, errors), T2 (no topic → no stage with `takes:`), T3 (no `takes:` → everything), T4 (the changed-files line is a `change`), T5 (own notes), T8 (the dispatch passes the stage's own manifest); `tests/unit/stage-contract-card-test.sh` C1 (a take is `{ topic, for }`; no `for:`, an unknown topic and the one-line form are refused), C3 (Previous work reads the topics), C4 (every taken output's findings, labelled by their output; an untaken output's never), C5 (every shipped take has a `for:`); `tests/integration/test-checks-own-run-test.sh` R6 (design is shown the acceptance check's finding; build is shown it once)
 - §3 → `tests/unit/stage-takes-topics-test.sh` T7 (each shipped stage's `takes:`; every stage that composes a model prompt declares one)

@@ -1,6 +1,6 @@
 # ADR-068 — Nested loops and finding answers: the engine never decides who owns a finding
 
-**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop); amended 2026-10-11 (§6–§8: the engine keeps only stage outputs; §8: only each stage's latest output is passed on); amended 2026-10-12 (§8: every stage's latest output, from any run and the stage's own included, goes to every later stage — ADR-067 §8, ADR-050 §9; §1: impact retired from zBuild; §8: loop `feedback:` edges retired); amended 2026-10-18 (§1 §2 §3 §10: design makes one model call per run and keeps its last good design; a design that still fails ends the run — #1944 run 38883031887); amended 2026-10-27 (§6 §8: a stage is given, and answers, only the topics it takes — ADR-071, #1944 run 40393999128); amended 2026-10-28 (§5: a finding is never split); amended 2026-10-31 (§1 §2 §3: design runs in every round of the build loop; only the lenses send the change round again; §6: test-author answers the findings about its tests — #1754 run 41138244027)
+**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop); amended 2026-10-11 (§6–§8: the engine keeps only stage outputs; §8: only each stage's latest output is passed on); amended 2026-10-12 (§8: every stage's latest output, from any run and the stage's own included, goes to every later stage — ADR-067 §8, ADR-050 §9; §1: impact retired from zBuild; §8: loop `feedback:` edges retired); amended 2026-10-18 (§1 §2 §3 §10: design makes one model call per run and keeps its last good design; a design that still fails ends the run — #1944 run 38883031887); amended 2026-10-27 (§6 §8: a stage is given, and answers, only the topics it takes — ADR-071, #1944 run 40393999128); amended 2026-10-28 (§5: a finding is never split); amended 2026-10-31 (§1 §2 §3: design runs in every round of the build loop; only the lenses send the change round again; §6: test-author answers the findings about its tests — #1754 run 41138244027); amended 2026-10-31 (#2441, §6: build may answer that a test is wrong; that answer is a finding for test-author — #1754 run 41208786459)
 **Issue:** #2271; §8 amended by #2330 (2026-10-06); §1 §8 amended by #1668 (2026-10-10); §6–§8 amended 2026-10-11 (after the #1668 and #1932 runs)
 **Supersedes:** ADR-045 (bounded typed backward-route), ADR-061 (fault-class vocabulary)
 **Amends:** ADR-021, ADR-027, ADR-040, ADR-046, ADR-047, ADR-054 §4, ADR-055 (finding-owner amendment)
@@ -79,8 +79,20 @@ would only run again after the build loop's 3 rounds — about 9 hours at that r
 - `core/pipeline/template.sh`: the `unowned:` and `route_back` refusals (`UO` / `RB` rows), the flow-ordered stage list, and the loop validator over each loop's full expansion.
 - An inner loop that is blocked (rc 5) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted`)** or whose model call is unavailable or rate-limited (rc 9) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=aborted`, abort word `llm_unavailable` / `llm_rate_limited`)** stops the run rather than going round; going round would only repeat it.
 
+## Amendment 2026-10-31 (#2441) — §6: build can say a test is wrong
+
+On #1754 (run 41208786459) the SPEC-4 test could never pass: its fake skipped every path holding
+"intake-result", and the test ran in a folder named `plugin-intake-result.*`. Build saw it fail on code
+that did what the requirement said, may not edit a test, and had no answer for it — it spent 12 model
+calls debugging it. Now build answers such a finding `ANSWER <stage> finding <n>: nothing to do — the test
+is wrong: <test file>: <why>` and stops working on that test. Those answers are findings, in build's own
+output `build-tests-result.json` on topic `code-findings` (ADR-071 §1), which test-author takes; fixing or
+answering a finding about its tests is test-author's job (§6, amended 2026-10-31). Test-author is never
+shown build's code: that stays on `change`.
+
 ## Enforced by
 
+- §6 amendment 2026-10-31 (#2441: build can say a test is wrong) → `tests/unit/build-test-is-wrong-test.sh` W1–W3; `plugins/agent/build/tests/build-test-is-wrong-run-test.sh`; `tests/unit/test-author-checks-own-output-test.sh` A10
 - §1 (impact retired from zBuild) → `tests/unit/retired-impact-review-report-inputs-test.sh` RT1
 - §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it); `tests/unit/template-simple-yaml-test.sh` SPEC-18 (delivery_loop flow is build_test_cycle,review_lenses), SPEC-14 (build_test_cycle starts with design); `tests/integration/deployed-template-e2e-test.sh` (deployed.yaml's loops)
 - Amendment 2026-10-31 §1, §2, §3 → `tests/unit/template-simple-yaml-test.sh` SPEC-14, SPEC-15, SPEC-18 and the deployed.yaml block (ADR-068 §1–§3); `tests/integration/stop-run-on-fail-test.sh` R5 (a design that fails inside the build loop ends the run), R6 (a build loop that does not pass ends the run after 3 rounds, with no review), R7 (the lenses send the change round once more), R8 (and the run stops when they fail again)

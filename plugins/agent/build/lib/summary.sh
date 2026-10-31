@@ -181,6 +181,39 @@ _build_not_reproduced() {
     eval "$restore"
 }
 
+# _build_test_wrong <response_text> — build's answers that a test is wrong, one
+# per line, each `<stage> finding <n>: <test file>: <why>` (#2441). Read from
+# `ANSWER <stage> finding <n>: nothing to do — the test is wrong: <file>: <why>`.
+# Read by the shell: it runs on every try (ADR-065).
+_build_test_wrong() {
+    local line re had=0
+    re='^[[:space:]>*`_-]*answer[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+)[[:space:]]*:.*the[[:space:]]+test[[:space:]]+is[[:space:]]+wrong[[:space:]]*:[[:space:]]*(.+)$'
+    shopt -q nocasematch && had=1
+    shopt -s nocasematch
+    while IFS= read -r line; do
+        [[ "$line" =~ $re ]] || continue
+        printf '%s: %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
+    done <<< "${1:-}"
+    (( had )) || shopt -u nocasematch
+}
+
+# _build_write_test_findings <artifact_dir> — build-tests-result.json (ADR-068
+# §6, ADR-071 §1, #2441): build's answers that a test is wrong, as findings on
+# topic code-findings, so the stage that owns the tests is given them. Nothing
+# else of build's is in it: build's code stays on change. A try with no such
+# answer leaves no file, so no earlier try's answers are passed on.
+_build_write_test_findings() {
+    local out="${1%/}/build-tests-result.json" lines n=0 l
+    lines="$(_build_test_wrong "${_ROUTE_LOOP_LAST_RESPONSE:-}")"
+    if [[ -z "$lines" ]]; then
+        [[ -e "$out" ]] && rm -f "$out"
+        return 0
+    fi
+    while IFS= read -r l; do [[ -n "$l" ]] && n=$((n + 1)); done <<< "$lines"
+    stage_result_write "$out" fail "build says $n test(s) are wrong and cannot pass" \
+        "{\"findings\":$(printf '%s\n' "$lines" | stage_findings_json)}" 2>/dev/null || true
+}
+
 _build_write_build_summary() {
     local _sum_violations_json="[]"
     local _sum_build_reason=""

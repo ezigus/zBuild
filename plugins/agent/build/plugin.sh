@@ -249,6 +249,9 @@ _build_stage_run_inner() {
         --defer-final-banner-close || router_rc=$?
 
 
+    # #2441: build's answers that a test is wrong reach the stage that owns it.
+    _build_write_test_findings "$artifact_dir"
+
     local iterations="${_ROUTE_LOOP_ITERATIONS:-0}"
     local terminated_reason="${_ROUTE_LOOP_TERMINATED_REASON:-error}"
     local loop_input_tokens="${_ROUTE_LOOP_INPUT_TOKENS:-0}"

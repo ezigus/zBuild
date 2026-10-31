@@ -61,6 +61,17 @@ one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
 stage that raised the finding to check. Do not keep searching for the cause of
 a failure you cannot produce, and do not change code to chase one.
 
+### When a test is wrong
+If a test fails on code that already does what its requirement says — the test
+itself cannot pass — do not change the code to chase it; you may not change the
+test. Answer that finding, on its own line before the sentinel, and
+stop working on that test:
+
+    ANSWER <stage> finding <n>: nothing to do — the test is wrong: <test file>: <why>
+
+Say exactly why it cannot pass. The stage that owns the tests is given this
+answer, and fixes the test.
+
 ### Running tests
 - Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline
   runs them and their results are under Previous work.

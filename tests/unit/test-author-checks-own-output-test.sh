@@ -25,9 +25,11 @@
 # A9 [change] the summary later stages read lists each test file and the
 #             requirements it covers, and says they fail on today's code
 #             (#1801 run 40390919951: build ran them to find out)
-# A8 [change] the author is told to run nothing, and to read the existing tests
-#             and test helpers, not the code the change is about (#1944 run
-#             40329284881: it ran the suite and lint, and read core/)
+# A8 [change] the author runs its own test files and nothing else — never the
+#             suite or lint (#1944 run 40329284881: it ran the suite and lint,
+#             and read core/; #2441: told to run nothing, it could not see that
+#             #1754's SPEC-4 test could never fail its fake) — and reads the
+#             existing tests and test helpers, not the code the change is about
 # A10 [change] findings from other stages about its tests are its to fix or
 #             answer (ADR-068 §6; #1754 run: the test stage said two tests
 #             already passed on the old code and one failed on the new, and
@@ -137,8 +139,10 @@ assert_eq "[A6] ...and corresponding then passes" "pass" "$OUTCOME"
 JUDGE=("$CORRESP"); JUDGE_RC=0
 _run
 _AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
-assert_contains "[A8] the author is told to run nothing" "$_AP" "Do not run anything"
-assert_contains "[A8] ...naming tests, lint and the suite" "$_AP" "no tests, no lint, no test suite"
+assert_contains "[A8] the author runs its own test files" "$_AP" "Run the test files you write"
+assert_contains "[A8] ...to see each new assertion fail for the reason it intends" "$_AP" "fails for the reason you intend"
+assert_contains "[A8] ...and nothing else: not the suite, not lint" "$_AP" "Run nothing else: not the test suite, not lint"
+assert_eq "[A8] it is no longer told to run nothing" "0" "$(grep -c 'Do not run anything' <<< "$_AP" || true)"
 assert_contains "[A8] it may read the existing tests and test helpers" "$_AP" \
     "You may read the existing tests and the repository's test helpers"
 assert_contains "[A8] ...not the code the change is about" "$_AP" "do not read the code this change is about"
@@ -165,11 +169,13 @@ assert_contains "[A10] ...a test that fails on the new code" "$_AP" "a test that
 assert_contains "[A10] ...a test that flags code that already meets its requirement" "$_AP" \
     "a test that flags code that already meets its requirement"
 assert_contains "[A10] ...and a test file far slower than the rest" "$_AP" "a test file far slower than the rest"
+assert_contains "[A10] ...and a test build says is wrong, with its reason (#2441)" "$_AP" \
+    "a test build says is wrong (build-tests findings), with its reason"
 assert_contains "[A10] it answers each one on its own line" "$_AP" "ANSWER <stage> finding <n>:"
 assert_eq "[A11] it is not told its assertions fail on the code as it is today" "0" \
     "$(grep -c 'expected to fail on the code as it is today' <<< "$_AP" || true)"
 assert_contains "[A11] ...but on the code from before this change" "$_AP" \
-    "an assertion is expected to fail on the code from before this change"
+    "fails for the reason you intend on the code from before this change"
 
 # ── A12 ──────────────────────────────────────────────────────────────────────
 JUDGE=("$CORRESP"); JUDGE_RC=0
