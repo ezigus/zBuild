@@ -71,3 +71,72 @@ For lint: `package.json` is the wiring — putting it back removes the lint from
 ## Supersedes
 
 No existing assertions change meaning. New test cases are additive.
+
+---
+
+## Revision 2 — changes from previous round
+
+### Four missing files discovered (issue-acceptance finding 2)
+
+The SPEC-8 test at `tests/unit/plugin-primary-output-atomic-test.sh` lines
+187-228 checks ALL `| atomic_write` calls outside the two bug-fix files and test
+directories. It requires `|| true` on the same line (or continuation line). It
+flagged six sites not in scope:
+
+1. `core/state/resume.sh:80` — `}' | atomic_write --bak "$state_file"`
+   - ALREADY correctly handled: lines 81-90 are comments, line 91 is
+     `local _jq_rc="${PIPESTATUS[0]}" _write_rc="${PIPESTATUS[1]}"`
+   - Adding `|| true` would overwrite PIPESTATUS → `_write_rc` always 0 → write
+     failures hidden. CANNOT add `|| true` here.
+   - Fix: SPEC-8 test must EXCLUDE this file from the `|| true` check.
+
+2. `core/output/stage-io.sh:637` — `if ! printf '%s\n' "$record" | atomic_write "$path"; then`
+   - ALREADY correctly handled by `if !` on the same line.
+   - Adding `|| true` would make the condition always true → always error-branches.
+   - Fix: SPEC-8 test must EXCLUDE this file from the `|| true` check.
+
+3. `plugins/agent/build/lib/secrets.sh:172` — `&& printf '%s\n' "$_tmp" | atomic_write "$summary_json"`
+   - No exit check. Best-effort write. Add `|| true`.
+
+4. `plugins/tool/test/lib/own-checks.sh:72,96,101` — `&& printf '%s\n' "$tmp1" | atomic_write "$f"` etc.
+   - No exit check. Best-effort writes. Each needs `|| true`.
+
+Added all 4 files to scope. Updated SPEC-8 description and count (17, not 13).
+SPEC-8 test must add exclusions for resume.sh and stage-io.sh, raise count threshold to >= 17.
+
+### Lint-disposition-words regression (issue-acceptance finding 3)
+
+`lint-disposition-words.sh` uses awk to scan for `stage_result_(write|add)` calls.
+The regex matches `stage_result_(write|add)[[:space:]]+<arg1>[[:space:]]+<arg2>`.
+A comment like `# no second stage_result_add call is needed.` triggers this:
+- `stage_result_add` (writer), `call` (arg1), `is` (arg2 = outcome)
+`is` is not a valid outcome → lint fails.
+
+Constraint added to design: the fallback comment in `plugins/tool/test/plugin.sh`
+must not contain the literal token `stage_result_add`.
+
+### SPEC-4 code defect (issue-acceptance finding 1)
+
+The code at `intake/plugin.sh:280-286` looks correct (PIPESTATUS[1] captured,
+`if (( _im_aw_rc != 0 ))` checked, `return 1` called). The issue-acceptance says
+the function still returns 0. This is a code-level defect the implementer must
+debug. Not a design issue.
+
+### SPEC-1/SPEC-2 test-first uncertainty
+
+The acceptance-gate timeout made the before-test result unreliable. Analysis
+confirms SPEC-1/SPEC-2 tests SHOULD fail on old code:
+- Old code: `_jq_rc = PIPESTATUS[0] = 0` when jq succeeds + atomic_write fails
+- `stage_result_add` called on stale file → prior round's outcome remains
+- SPEC-1/SPEC-2 assert `outcome=broken` → FAIL on old code ✓
+
+### Lint script pattern verification
+
+`scripts/lib/lint-atomic-write-unchecked.sh` recognizes (verified from source):
+1. Same-line `&&`, `||`, or `if[[:space:]]+!` → safe
+2. Continuation `\\` + next line has `&&` or `||` → safe
+3. Next non-blank, non-comment line has `PIPESTATUS[` → safe
+
+So resume.sh:80 and stage-io.sh:637 are NOT flagged by the lint. But the SPEC-8
+TEST independently greps for `|| true` on the same line and DOES flag them. The
+test must exclude these two files explicitly.
