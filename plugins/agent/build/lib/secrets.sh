@@ -169,7 +169,7 @@ _build_stage_run_checked() {
             local _fj _tmp
             _fj="$(printf '%s\n' "${_BUILD_SECRET_FINDINGS[@]}" | stage_findings_json)"
             _tmp="$(jq --argjson f "${_fj:-[]}" '.data = ((.data // {}) + {findings: $f})' "$summary_json" 2>/dev/null)" \
-                && printf '%s\n' "$_tmp" | atomic_write "$summary_json"
+                && printf '%s\n' "$_tmp" | atomic_write "$summary_json" || true
             stage_result_add "$summary_json" fail \
                 "the change still holds ${#_BUILD_SECRET_FINDINGS[@]} secret(s) after $_rounds rounds" 2>/dev/null || true
             stage_summary_write "$(dirname "$summary_json")/build-summary.md" "build" "fail" \

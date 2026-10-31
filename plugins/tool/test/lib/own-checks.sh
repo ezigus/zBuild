@@ -69,7 +69,7 @@ _test_own_checks() {
                     local fj1 tmp1
                     fj1="$(printf '%s failed: %s\n' "$name" "$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$f" 2>/dev/null)" | stage_findings_json)"
                     tmp1="$(jq --argjson f "${fj1:-[]}" '.data = ((.data // {}) + {findings: $f})' "$f" 2>/dev/null)" \
-                        && printf '%s\n' "$tmp1" | atomic_write "$f"
+                        && printf '%s\n' "$tmp1" | atomic_write "$f" || true
                 fi ;;
             "") outcome=broken; why+=("$name wrote no result") ;;
             *)  # A check that could not run says how; it is never a pass.
@@ -93,12 +93,12 @@ _test_own_checks() {
     local fj tmp reason
     fj="$( { [[ ${#texts[@]} -gt 0 ]] && printf '%s\n' "${texts[@]}"; } | stage_findings_json)"
     tmp="$(jq --argjson f "${fj:-[]}" '.data = ((.data // {}) + {findings: $f})' "$out" 2>/dev/null)" \
-        && printf '%s\n' "$tmp" | atomic_write "$out"
+        && printf '%s\n' "$tmp" | atomic_write "$out" || true
     # A check's failure the loop cannot fix (a malformed contract) still ends
     # the run: the engine reads `severity: terminal` on a member's result, so
     # test carries it from the acceptance check.
     if [[ "$outcome" == fail && "$(jq -r '.severity // empty' "$art/acceptance-gate-result.json" 2>/dev/null)" == terminal ]]; then
-        tmp="$(jq '. + {severity: "terminal"}' "$out" 2>/dev/null)" && printf '%s\n' "$tmp" | atomic_write "$out"
+        tmp="$(jq '. + {severity: "terminal"}' "$out" 2>/dev/null)" && printf '%s\n' "$tmp" | atomic_write "$out" || true
     fi
     if [[ "$outcome" != "$own" || ${#why[@]} -gt 0 ]]; then
         reason="$(jq -r '.reason // ""' "$out" 2>/dev/null)"
