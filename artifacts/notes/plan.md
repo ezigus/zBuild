@@ -15,19 +15,32 @@
 - Existing test files already loaded in scope:
   - `test-plugin-result-write-fallback-test.sh`: already tests jq failure → broken (section 8); NEW test needed for atomic_write failure (jq ok, write fails) with a prior round file present
   - `test-result-reason-contract-test.sh`: already tests reader path; NEW SPEC needed to confirm the reader sees `broken` not the prior round's data when the write fails
-  - `plugin-primary-output-atomic-test.sh`: static grep check for primary outputs; NEW section needed for the lint-script test
+  - `plugin-primary-output-atomic-test.sh`: static grep check for primary outputs; NEW section needed for the lint-script test (including SPEC-8: lint passes on full codebase)
   - `intake-result-test.sh`: covers v2 result contract; NEW test section for write-failure on both scope-manifest.md and intake.md
 
 - `package.json` lint target: long chain of `&&` calls; new lint script appended at the end
+
+- Design stage finding: 9 additional files with 13 unchecked `| atomic_write` calls that write diagnostic/auxiliary data
+  - core/detect/platforms.sh
+  - core/pipeline/state_helpers.sh
+  - core/output/destinations.sh
+  - plugins/agent/pr-delivery/plugin.sh
+  - plugins/tool/merge/plugin.sh
+  - plugins/tool/output-github-comment/plugin.sh
+  - plugins/tool/pr-open/plugin.sh
+  - plugins/tool/test/lib/acceptance-reason.sh
+  - plugins/tool/test/lib/acceptance-check.sh
+  These need `|| true` annotation (making best-effort intent explicit) before the lint can be wired into CI.
 
 ## Key decisions
 
 - R1 fix: capture `PIPESTATUS` as an array immediately after the pipe; check index 1 (write) as well as index 0 (jq); trigger the broken fallback when either fails
 - R2 fix: after each `| atomic_write` call, add `|| { error "intake: failed to write $state_dir/<file>"; _intake_write_result … broken "write failed: <file>"; return 1; }`
 - R3 lint: a new `scripts/lib/lint-atomic-write-unchecked.sh` that greps for `| atomic_write` in `core/`, `plugins/`, `scripts/` and checks the line (and the line immediately after, for `PIPESTATUS` on the next line) for a checked exit
+- Pre-existing safe uses: annotate with `|| true` so lint passes on full codebase; step-7 covers this before step-8 wires the lint into package.json
 
 ## Open questions
 
 None — issue is fully specified.
 
-## Step count: 7
+## Step count: 8 (was 7; design added step for annotating pre-existing safe writes)
