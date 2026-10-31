@@ -281,8 +281,10 @@ _intake_run_inner() {
             "failed to write scope-manifest.md" || true
         return 1
     fi
-    printf '%s\n' "$sanitized" | atomic_write "$state_dir/intake.md"
-    local _im_aw_rc="${PIPESTATUS[1]}"
+    declare -f atomic_write >> /tmp/spec4_funcdef.txt
+    printf '%s\n' "$sanitized" | atomic_write "$state_dir/intake.md"; local _im_ps=("${PIPESTATUS[@]}")
+    local _im_aw_rc="${_im_ps[1]}"
+    printf 'DBG im_ps=[%s] im_aw_rc=%s target=%s\n' "${_im_ps[*]}" "$_im_aw_rc" "$state_dir/intake.md" >> /tmp/spec4_plugin_dbg.txt
     if (( _im_aw_rc != 0 )); then
         _intake_write_result "$_art" "broken" \
             "failed to write intake.md" || true
