@@ -1,0 +1,655 @@
+diff --git a/core/detect/platforms.sh b/core/detect/platforms.sh
+index f65c37ff..8b711516 100755
+--- a/core/detect/platforms.sh
++++ b/core/detect/platforms.sh
+@@ -272,7 +272,7 @@ detect_platforms() {
+                 detected: [$platform],
+                 overrides: [],
+                 updated_at: $now
+-            }' | atomic_write "$platforms_file"
++            }' | atomic_write "$platforms_file" || true
+         echo "$ZBUILD_PLATFORM_OVERRIDE"
+         return 0
+     fi
+@@ -443,7 +443,7 @@ detect_platforms() {
+             detected: $platforms,
+             overrides: [],
+             updated_at: $now
+-        }' | atomic_write "$platforms_file"
++        }' | atomic_write "$platforms_file" || true
+ 
+     printf '%s\n' "${detected_platforms[@]}"
+ }
+diff --git a/core/output/destinations.sh b/core/output/destinations.sh
+index 70b40808..d81589e1 100644
+--- a/core/output/destinations.sh
++++ b/core/output/destinations.sh
+@@ -36,7 +36,7 @@ _dest_local_report() {
+     local toggle="${ZBUILD_OUTPUT_LOCAL_REPORT:-1}"
+     [[ "$toggle" == "0" ]] && return 0
+     local report_path="$state_dir/report-${run_id}.md"
+-    printf '%s\n' "$content" | atomic_write "$report_path"
++    printf '%s\n' "$content" | atomic_write "$report_path" || true
+ }
+ 
+ # ─── gh-pr-comment destination ────────────────────────────────────────────────
+diff --git a/core/pipeline/state_helpers.sh b/core/pipeline/state_helpers.sh
+index a3f752dd..2ac201c0 100644
+--- a/core/pipeline/state_helpers.sh
++++ b/core/pipeline/state_helpers.sh
+@@ -40,7 +40,7 @@ write_scope_override() {
+             [[ -z "$scope_path" ]] && continue
+             printf '+ %s\n' "$scope_path"
+         done <<< "$ZBUILD_SCOPE_PATHS"
+-    } | atomic_write "$scope_override"
++    } | atomic_write "$scope_override" || true
+ }
+ 
+ # _update_stage_status <state_file> <stage_id> <status>
+diff --git a/package.json b/package.json
+index c155a23a..d6c3151b 100644
+--- a/package.json
++++ b/package.json
+@@ -19,7 +19,7 @@
+     "test:e2e": "bash scripts/run-tests.sh --tier e2e",
+     "test:golden": "bash scripts/run-tests.sh --tier golden",
+     "test:mutation": "bash scripts/run-tests.sh --tier mutation",
+-    "lint": "bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh"
++    "lint": "bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh && bash scripts/lib/lint-atomic-write-unchecked.sh"
+   },
+   "engines": {
+     "bash": ">=5.0.0",
+diff --git a/plugins/agent/intake/plugin.sh b/plugins/agent/intake/plugin.sh
+index f162fed0..27c64f0d 100644
+--- a/plugins/agent/intake/plugin.sh
++++ b/plugins/agent/intake/plugin.sh
+@@ -271,7 +271,19 @@ _intake_run_inner() {
+             fi
+         done
+     } | atomic_write "$state_dir/scope-manifest.md"
++    local _sm_aw_rc="${PIPESTATUS[1]}"
++    if (( _sm_aw_rc != 0 )); then
++        _intake_write_result "$_art" "broken" \
++            "failed to write scope-manifest.md" || true
++        return 1
++    fi
+     printf '%s\n' "$sanitized"   | atomic_write "$state_dir/intake.md"
++    local _im_aw_rc="${PIPESTATUS[1]}"
++    if (( _im_aw_rc != 0 )); then
++        _intake_write_result "$_art" "broken" \
++            "failed to write intake.md" || true
++        return 1
++    fi
+ 
+     local _title_line
+     _title_line="${sanitized%%$'\n'*}"
+diff --git a/plugins/agent/intake/tests/intake-result-test.sh b/plugins/agent/intake/tests/intake-result-test.sh
+index f4268997..a931baea 100755
+--- a/plugins/agent/intake/tests/intake-result-test.sh
++++ b/plugins/agent/intake/tests/intake-result-test.sh
+@@ -409,6 +409,81 @@ _d10="$(
+ )" || true
+ assert_eq "[D10] the pass intake wrote is still the result" "pass" "$(_disp)"
+ 
++# ─── [#1754/SPEC-3] atomic_write fails writing scope-manifest.md ─────────────
++# Before #1754: the two | atomic_write calls in _intake_run_inner were bare with
++# no exit check.  A failing write was silently ignored and intake reported pass
++# while the downstream consumer (plan stage) read the prior round's stale file.
++# After #1754: each write's exit is checked; a failure calls _intake_write_result
++# with outcome=broken and a reason naming the file, then returns non-zero.
++print_test_section "[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero"
++
++rm -f "$ARTIFACT_DIR/intake-result.json"
++export ZBUILD_GOAL="spec-3 scope-manifest write failure"
++export ZBUILD_ISSUE="0"
++
++# Save the real atomic_write so the intake-result.json write can still succeed.
++eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
++
++# Override: fail only for the scope-manifest.md path; let all other writes
++# (including intake-result.json) go through the real implementation.
++atomic_write() {
++    local _aw_target="$1"
++    if [[ "$_aw_target" == *"scope-manifest.md" ]]; then
++        cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
++        return 1
++    fi
++    _aw_real_1754 "$@"
++}
++
++_s3_rc=0
++set +e
++_intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1 || _s3_rc=$?
++set -e
++
++# Restore atomic_write before running assertions that may need it.
++eval "$(declare -f _aw_real_1754 | sed 's/_aw_real_1754 ()/atomic_write ()/')"
++
++assert_eq "[#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure" \
++    "1" "$_s3_rc"
++assert_eq "[#1754/SPEC-3] intake-result.json carries outcome=broken" "broken" "$(_disp)"
++assert_contains "[#1754/SPEC-3] reason names scope-manifest.md" "$(_reason)" "scope-manifest.md"
++
++# ─── [#1754/SPEC-4] atomic_write fails writing intake.md ─────────────────────
++# Same class of bug as SPEC-3 but for the second | atomic_write call (intake.md).
++# The scope-manifest.md write succeeds; only the intake.md write fails.
++print_test_section "[#1754/SPEC-4] intake.md write failure → broken + non-zero"
++
++rm -f "$ARTIFACT_DIR/intake-result.json"
++export ZBUILD_GOAL="spec-4 intake md write failure"
++export ZBUILD_ISSUE="0"
++
++# Save the real atomic_write again (restored above, so we rename the current one).
++eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
++
++# Override: fail only for the intake.md path; scope-manifest.md and
++# intake-result.json writes go through the real implementation.
++atomic_write() {
++    local _aw_target="$1"
++    if [[ "$_aw_target" == *"intake.md" && "$_aw_target" != *"intake-result"* ]]; then
++        cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
++        return 1
++    fi
++    _aw_real_1754 "$@"
++}
++
++_s4_rc=0
++set +e
++_intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1 || _s4_rc=$?
++set -e
++
++# Restore atomic_write.
++eval "$(declare -f _aw_real_1754 | sed 's/_aw_real_1754 ()/atomic_write ()/')"
++
++assert_eq "[#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure" \
++    "1" "$_s4_rc"
++assert_eq "[#1754/SPEC-4] intake-result.json carries outcome=broken" "broken" "$(_disp)"
++assert_contains "[#1754/SPEC-4] reason names intake.md" "$(_reason)" "intake.md"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/plugins/agent/pr-delivery/plugin.sh b/plugins/agent/pr-delivery/plugin.sh
+index fbfa7e58..0606199d 100644
+--- a/plugins/agent/pr-delivery/plugin.sh
++++ b/plugins/agent/pr-delivery/plugin.sh
+@@ -114,7 +114,7 @@ _pr_stage_run_inner() {
+ 
+     # Dry-run mode: write sentinel artifacts without calling gh
+     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
+-        printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out"
++        printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out" || true
+         stage_signal_end
+         _pr_delivery_write_result "$artifacts_dir" pass "dry run: no PR opened, gh not called"
+         emit_event "pr.delivery.dry_run" "plugin=pr-delivery"
+@@ -250,7 +250,7 @@ _pr_stage_run_inner() {
+     local pr_url _fb_err="$artifacts_dir/.gh-pr-create.err"
+     if pr_url="$(gh pr create "${_fb_gh_args[@]}" 2>"$_fb_err")"; then
+         rm -f "$_fb_err"
+-        printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
++        printf '%s\n' "$pr_url" | atomic_write "$pr_url_out" || true
+         stage_signal_end
+         _pr_delivery_write_result "$artifacts_dir" pass "PR opened directly with gh: $pr_url" "$pr_url"
+         emit_event "pr.delivery.opened" "plugin=pr-delivery" "via=gh"
+diff --git a/plugins/tool/merge/plugin.sh b/plugins/tool/merge/plugin.sh
+index f5ac6378..75ba7531 100644
+--- a/plugins/tool/merge/plugin.sh
++++ b/plugins/tool/merge/plugin.sh
+@@ -226,7 +226,7 @@ _merge_run_inner() {
+ 
+     # Write pr-url.txt for downstream compatibility (ADR-013)
+     local pr_url_out="$artifacts_dir/pr-url.txt"
+-    printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
++    printf '%s\n' "$pr_url" | atomic_write "$pr_url_out" || true
+ 
+     stage_result_write "$merge_result_out" pass "squash-merged via gh pr merge" \
+         "$(jq -nc --arg pr_url "$pr_url" --argjson pr_number "${pr_number:-0}" \
+diff --git a/plugins/tool/output-github-comment/plugin.sh b/plugins/tool/output-github-comment/plugin.sh
+index ae7406df..35aab9db 100644
+--- a/plugins/tool/output-github-comment/plugin.sh
++++ b/plugins/tool/output-github-comment/plugin.sh
+@@ -100,7 +100,7 @@ output_run() {
+     body="${body}"$'\n'"_${count} finding(s) · generated by zBuild · run ${ZBUILD_RUN_ID:-unknown}_"
+ 
+     # Write rendered body atomically for downstream consumers
+-    printf '%s\n' "$body" | atomic_write "$state_dir/output-body.md"
++    printf '%s\n' "$body" | atomic_write "$state_dir/output-body.md" || true
+ 
+     # Destination dispatch via core/output/destinations.sh (issue #213)
+     local emit_rc=0
+diff --git a/plugins/tool/pr-open/plugin.sh b/plugins/tool/pr-open/plugin.sh
+index b78633a6..80453001 100755
+--- a/plugins/tool/pr-open/plugin.sh
++++ b/plugins/tool/pr-open/plugin.sh
+@@ -437,7 +437,7 @@ _pr_open_run_inner() {
+     # Write canonical pr-url.txt (ADR-013 artifact) and richer pr-result.json.
+     # #507: pr-url.txt is the manifest-declared primary output — written via
+     # atomic_write to satisfy the primary-output atomicity guard test.
+-    printf '%s\n' "$pr_url" | atomic_write "$(dirname "$output_pr_result_json")/pr-url.txt"
++    printf '%s\n' "$pr_url" | atomic_write "$(dirname "$output_pr_result_json")/pr-url.txt" || true
+ 
+     stage_result_write "$output_pr_result_json" pass "PR $pr_status" \
+         "$(jq -nc \
+diff --git a/plugins/tool/test/lib/acceptance-check.sh b/plugins/tool/test/lib/acceptance-check.sh
+index f38e98c2..994eb9f2 100644
+--- a/plugins/tool/test/lib/acceptance-check.sh
++++ b/plugins/tool/test/lib/acceptance-check.sh
+@@ -134,7 +134,7 @@ acceptance_gate_run() {
+         _ag_write_result "$result_file" fail "malformed_acceptance_block" \
+             '{"severity":"terminal","failures":["malformed_acceptance_block"]}'
+         printf 'verdict=fail\nreason=malformed_acceptance_block\n' \
+-            | atomic_write "$artifact_dir/acceptance-summary.txt"
++            | atomic_write "$artifact_dir/acceptance-summary.txt" || true
+         eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
+         eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
+         return 1
+@@ -458,7 +458,7 @@ acceptance_gate_run() {
+         # the design-vs-assertion pairing is visible to nobody after the run ends.
+         mkdir -p "$state_dir/artifacts" 2>/dev/null || true
+         printf '%s\n' "${summary_lines[@]}" \
+-            | atomic_write "$state_dir/artifacts/acceptance-summary.txt"
++            | atomic_write "$state_dir/artifacts/acceptance-summary.txt" || true
+         _ag_emit_operator_summary "${_stage_id:-acceptance-gate}" "${summary_lines[@]}"
+     fi
+ 
+diff --git a/plugins/tool/test/lib/acceptance-reason.sh b/plugins/tool/test/lib/acceptance-reason.sh
+index a92a2653..0ec241b0 100644
+--- a/plugins/tool/test/lib/acceptance-reason.sh
++++ b/plugins/tool/test/lib/acceptance-reason.sh
+@@ -204,7 +204,7 @@ _ag_fail_load() {
+         "$(jq -cn --argjson f "$failures_json" --argjson fnd "${fnd:-[]}" \
+             '{severity:"terminal",failures:$f,data:{findings:$fnd}}')"
+     printf 'verdict=fail\nreason=%s\n' "$reason" \
+-        | atomic_write "$(dirname "$result_file")/acceptance-summary.txt"
++        | atomic_write "$(dirname "$result_file")/acceptance-summary.txt" || true
+     eb_emit_event "acceptance.gate.load_failed" "stage=acceptance-gate" "missing=$problems"
+     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
+ }
+@@ -231,7 +231,7 @@ _ag_noop_precondition_unmet() {
+         "$(jq -cn --arg pc "$pc" '{precondition:$pc,severity:"none",failures:[]}')"
+     local _summary_dir; _summary_dir="$(dirname "$result_file")"
+     printf 'verdict=pass\nreason=precondition_unmet\nprecondition=%s\n' "$pc" \
+-        | atomic_write "${_summary_dir}/acceptance-summary.txt"
++        | atomic_write "${_summary_dir}/acceptance-summary.txt" || true
+     eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=precondition_unmet" "precondition=$pc"
+     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
+ }
+diff --git a/plugins/tool/test/plugin.sh b/plugins/tool/test/plugin.sh
+index 92003f2a..13a89521 100644
+--- a/plugins/tool/test/plugin.sh
++++ b/plugins/tool/test/plugin.sh
+@@ -1185,7 +1185,8 @@ _test_write_result() {
+         }' \
+         2>/dev/null \
+       | atomic_write "$path"
+-    local _jq_rc="${PIPESTATUS[0]}"
++    local _jq_rc="${PIPESTATUS[0]}" _aw_rc="${PIPESTATUS[1]}"
++    (( _aw_rc != 0 )) && _jq_rc="$_aw_rc"
+     (( _jq_rc != 0 )) || stage_result_add "$path" "$outcome" "$reason" 2>/dev/null || _jq_rc=1
+ 
+     if (( _jq_rc != 0 )); then
+diff --git a/scripts/lib/lint-atomic-write-unchecked.sh b/scripts/lib/lint-atomic-write-unchecked.sh
+new file mode 100644
+index 00000000..26d54f78
+--- /dev/null
++++ b/scripts/lib/lint-atomic-write-unchecked.sh
+@@ -0,0 +1,89 @@
++#!/usr/bin/env bash
++# scripts/lib/lint-atomic-write-unchecked.sh — detect unchecked | atomic_write calls.
++#
++# A bare pipe to atomic_write whose exit is not checked lets a failed write
++# pass silently, leaving the prior round's file looking current. This lint
++# flags each violation: the same line or the immediately following executable
++# line (blank and comment-only lines are skipped because comments do not reset
++# PIPESTATUS in bash) must check the write exit via &&, ||, if !, or a
++# PIPESTATUS capture that includes the write index.
++#
++# A shell-continuation line (ending with \) is checked together with its
++# immediately following physical line for || or &&.
++#
++# Usage: bash scripts/lib/lint-atomic-write-unchecked.sh [file...]
++#   No args: scans core/ plugins/ scripts/ under the repo root.
++# Exit 0: no violations. Exit 1: violations emitted as file:line: text.
++
++set -uo pipefail
++
++_law_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++_law_root="$(cd "$_law_dir/../.." && pwd)"
++
++# Collect files to scan
++_law_files=()
++if [[ $# -gt 0 ]]; then
++    _law_files=("$@")
++else
++    while IFS= read -r _law_f; do
++        [[ -n "$_law_f" ]] && _law_files+=("$_law_f")
++    done < <(find "$_law_root/core" "$_law_root/plugins" "$_law_root/scripts" \
++        -name '*.sh' -type f 2>/dev/null | sort)
++fi
++
++_law_violations=0
++# The pipe-to-write pattern, split across two variables so this script does
++# not match its own patterns when scanned as part of the full codebase.
++_law_pipe='|'
++_law_fn='atomic_write'
++
++for _law_file in "${_law_files[@]}"; do
++    [[ -f "$_law_file" ]] || continue
++    # Skip this lint script itself (it references the pattern in variable form)
++    [[ "$_law_file" == */lint-atomic-write-unchecked.sh ]] && continue
++
++    mapfile -t _law_lines < "$_law_file"
++    _law_n="${#_law_lines[@]}"
++
++    for (( _law_i=0; _law_i<_law_n; _law_i++ )); do
++        _law_line="${_law_lines[$_law_i]}"
++        _law_lno=$(( _law_i + 1 ))
++
++        # Fast path: skip lines that do not contain the pipe-to-write token
++        grep -qF "${_law_pipe} ${_law_fn}" <<< "$_law_line" || continue
++
++        # 1. Same-line check: &&, ||, or if ! on the same line as the write
++        grep -qE '(&&|\|\||if[[:space:]]+!)' <<< "$_law_line" && continue
++
++        # 2. Continuation (\): current line ends with \; check next physical
++        #    line for || or && (e.g. "... | atomic_write ... \ \n    || true")
++        if grep -qE '\\[[:space:]]*$' <<< "$_law_line"; then
++            _law_next_phys="${_law_lines[$(( _law_i + 1 ))]:-}"
++            grep -qE '(\|\||&&)' <<< "$_law_next_phys" && continue
++        fi
++
++        # 3. Next executable line check: skip blank and comment-only lines
++        #    (they do not reset PIPESTATUS), then look for a PIPESTATUS capture
++        #    that includes the write index (e.g. PIPESTATUS[1]).
++        _law_j=$(( _law_i + 1 ))
++        _law_pstat=0
++        while [[ "$_law_j" -lt "$_law_n" ]]; do
++            _law_nxt="${_law_lines[$_law_j]}"
++            # Blank or comment-only line: skip (does not reset PIPESTATUS)
++            if grep -qE '^[[:space:]]*(#.*)?$' <<< "$_law_nxt"; then
++                _law_j=$(( _law_j + 1 ))
++                continue
++            fi
++            # First executable line: check for PIPESTATUS capture
++            grep -qE 'PIPESTATUS\[' <<< "$_law_nxt" && _law_pstat=1
++            break
++        done
++        [[ "$_law_pstat" -eq 1 ]] && continue
++
++        # No exit check found: violation
++        printf '%s:%d: %s\n' "$_law_file" "$_law_lno" "$_law_line"
++        _law_violations=$(( _law_violations + 1 ))
++    done
++done
++
++[[ "$_law_violations" -eq 0 ]]
+diff --git a/tests/unit/plugin-primary-output-atomic-test.sh b/tests/unit/plugin-primary-output-atomic-test.sh
+index 4304e206..1037e677 100755
+--- a/tests/unit/plugin-primary-output-atomic-test.sh
++++ b/tests/unit/plugin-primary-output-atomic-test.sh
+@@ -83,6 +83,145 @@ if [[ $checked -eq 0 ]]; then
+     assert_fail "no primary outputs found across plugins" "manifest scan returned 0"
+ fi
+ 
++# ─── [#1754/SPEC-5] lint-atomic-write-unchecked detects a bare | atomic_write ─
++# Before #1754: scripts/lib/lint-atomic-write-unchecked.sh does not exist.
++# After #1754: it exists and exits non-zero with the violating line in its output
++# when given a .sh file that pipes to atomic_write without an error check.
++print_test_section "[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call"
++
++_LINT_SCRIPT="$REPO_ROOT/scripts/lib/lint-atomic-write-unchecked.sh"
++_SPEC5_FIXTURE="$TEST_TEMP_DIR/spec5-unchecked.sh"
++cat > "$_SPEC5_FIXTURE" <<'FIXTURE'
++#!/usr/bin/env bash
++set -euo pipefail
++_write_it() {
++    printf '%s\n' "hello" | atomic_write "/some/output/path"
++}
++FIXTURE
++
++_spec5_rc=0
++_spec5_out="$(bash "$_LINT_SCRIPT" "$_SPEC5_FIXTURE" 2>&1)" || _spec5_rc=$?
++
++if [[ "$_spec5_rc" -ne 0 ]]; then
++    assert_pass "[#1754/SPEC-5] lint exits non-zero for unchecked atomic_write"
++else
++    assert_fail "[#1754/SPEC-5] lint exits non-zero for unchecked atomic_write" \
++        "exit code was 0; output: $_spec5_out"
++fi
++
++# The output must name the violating line by number (e.g. :4 or file:4:text).
++# Matching the filename alone is not sufficient — the line itself must be identified.
++if grep -qE ':[0-9]+' <<< "$_spec5_out"; then
++    assert_pass "[#1754/SPEC-5] lint names the violating line in its output"
++else
++    assert_fail "[#1754/SPEC-5] lint names the violating line in its output" \
++        "output: $_spec5_out"
++fi
++
++# ─── [#1754/SPEC-6] lint exits 0 for properly-checked atomic_write calls ──────
++# The lint script must not flag calls whose exit is checked on the same or next
++# physical line via &&, ||, if !, or PIPESTATUS that includes the write index.
++print_test_section "[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked"
++
++_SPEC6_FIXTURE="$TEST_TEMP_DIR/spec6-checked.sh"
++cat > "$_SPEC6_FIXTURE" <<'FIXTURE'
++#!/usr/bin/env bash
++set -euo pipefail
++# Same-line || check.
++printf '%s\n' "hello" | atomic_write "/path/a" || exit 1
++# Same-line && check.
++printf '%s\n' "world" | atomic_write "/path/b" && echo ok
++# Next-line || true annotation.
++printf '%s\n' "aux" | atomic_write "/path/c" \
++    || true
++# PIPESTATUS capturing the write index.
++printf '%s\n' "data" | atomic_write "/path/d"
++local _aw_rc="${PIPESTATUS[1]}"
++# if ! check.
++if ! printf '%s\n' "val" | atomic_write "/path/e"; then echo "failed"; fi
++FIXTURE
++
++_spec6_rc=0
++_spec6_out="$(bash "$_LINT_SCRIPT" "$_SPEC6_FIXTURE" 2>&1)" || _spec6_rc=$?
++
++assert_eq "[#1754/SPEC-6] lint exits 0 for properly-checked calls" "0" "$_spec6_rc"
++
++# ─── [#1754/SPEC-7] package.json lint target invokes lint-atomic-write-unchecked ─
++# The lint script is wired into `npm run lint` so CI enforces it on every PR.
++print_test_section "[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked"
++
++_PACKAGE_JSON="$REPO_ROOT/package.json"
++if grep -q 'bash scripts/lib/lint-atomic-write-unchecked.sh' "$_PACKAGE_JSON" 2>/dev/null; then
++    assert_pass "[#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh"
++else
++    assert_fail "[#1754/SPEC-7] package.json lint target must contain bash scripts/lib/lint-atomic-write-unchecked.sh" \
++        "not found in $REPO_ROOT/package.json"
++fi
++
++# ─── [#1754/SPEC-8] lint exits 0 on the full codebase ─────────────────────────
++# All 13 pre-existing unchecked | atomic_write sites outside the two bugs carry
++# || true, so the lint passes on the real code tree.  This spec need not fail
++# before the change; it must pass after.
++print_test_section "[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase"
++
++_spec8_rc=0
++_spec8_out="$(bash "$_LINT_SCRIPT" 2>&1)" || _spec8_rc=$?
++
++if [[ "$_spec8_rc" -eq 0 ]]; then
++    assert_pass "[#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/"
++else
++    assert_fail "[#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/" \
++        "exit $_spec8_rc; output: ${_spec8_out:0:400}"
++fi
++
++# Verify the || true mechanism: outside the two bug-fix files that receive proper
++# error handling, every | atomic_write call in core/ plugins/ scripts/ must carry
++# || true on the same line (or be a shell continuation line whose next physical
++# line carries || true).  This distinguishes "annotated" from "removed" or
++# "silenced by a different mechanism".
++_s8_grep_out="$TEST_TEMP_DIR/s8-grep.txt"
++grep -rn '| atomic_write' \
++    "$REPO_ROOT/core" "$REPO_ROOT/plugins" "$REPO_ROOT/scripts" \
++    --include='*.sh' 2>/dev/null > "$_s8_grep_out" || true
++
++_s8_call_count=0
++_s8_violations=()
++
++while IFS= read -r _s8_entry; do
++    _s8_f="${_s8_entry%%:*}"
++    _s8_rest="${_s8_entry#*:}"
++    _s8_lno="${_s8_rest%%:*}"
++    _s8_text="${_s8_rest#*:}"
++    # Exclude the two files fixed by #1754 (they get proper PIPESTATUS handling)
++    [[ "$_s8_f" == */plugins/tool/test/plugin.sh ]] && continue
++    [[ "$_s8_f" == */plugins/agent/intake/plugin.sh ]] && continue
++    # Exclude test directories (unit, integration, plugin-local)
++    [[ "$_s8_f" == */tests/* ]] && continue
++    # Exclude the lint script itself (it contains | atomic_write as a grep pattern)
++    [[ "$_s8_f" == */lint-atomic-write-unchecked.sh ]] && continue
++    # A continuation line (ends with \) carries || true on the next physical line — OK
++    grep -qE '\\[[:space:]]*$' <<< "$_s8_text" && continue
++    _s8_call_count=$((_s8_call_count + 1))
++    grep -qE '\|\|[[:space:]]*true' <<< "$_s8_text" || \
++        _s8_violations+=("${_s8_f}:${_s8_lno}")
++done < "$_s8_grep_out"
++
++# The calls must still exist in the codebase — they must be annotated, not removed.
++if [[ "$_s8_call_count" -gt 0 ]]; then
++    assert_pass "[#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)"
++else
++    assert_fail "[#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)" \
++        "found 0 calls in core/plugins/scripts outside exclusions"
++fi
++
++# Every remaining call must carry || true — the specified annotation mechanism.
++if [[ "${#_s8_violations[@]}" -eq 0 ]]; then
++    assert_pass "[#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true"
++else
++    assert_fail "[#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true" \
++        "missing || true at: ${_s8_violations[*]}"
++fi
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/test-plugin-result-write-fallback-test.sh b/tests/unit/test-plugin-result-write-fallback-test.sh
+index efa4eefc..383c4a65 100755
+--- a/tests/unit/test-plugin-result-write-fallback-test.sh
++++ b/tests/unit/test-plugin-result-write-fallback-test.sh
+@@ -234,5 +234,57 @@ else
+         "composition (engine config + manifests) did not yield it"
+ fi
+ 
++# ─── [#1754/SPEC-1] jq succeeds but primary atomic_write fails ───────────────
++# Before #1754 only PIPESTATUS[0] (jq's exit) was captured.  When jq succeeded
++# but atomic_write failed, _jq_rc stayed 0, stage_result_add silently merged
++# the new outcome into the stale prior-round file, and the result came out as
++# the (now-wrong) current outcome — the broken fallback never fired.
++# After #1754 PIPESTATUS[1] (atomic_write) is captured too; a failed write sets
++# _jq_rc non-zero and the broken fallback fires, writing outcome=broken +
++# reason=result_write_failed, regardless of any prior-round file at the path.
++print_test_section "[#1754/SPEC-1] jq succeeds, primary atomic_write fails → broken fallback"
++
++OUT_1754S1="$ARTIFACT_DIR/results-aw-fail-1754spec1.json"
++
++# Write a prior-round pass result so stage_result_add has something to merge
++# with before the fix — this confirms the bug was real (a stale file existed)
++# and not a vacuous empty-file case.
++stage_result_write "$OUT_1754S1" "pass" "prior round passed" 2>/dev/null || true
++
++# Save the real atomic_write so the fallback path (calls #2, #3) can still
++# succeed after the primary write is intercepted.
++eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s1 ()/')"
++
++_1754s1_aw_calls=0
++atomic_write() {
++    _1754s1_aw_calls=$(( _1754s1_aw_calls + 1 ))
++    if [[ "$_1754s1_aw_calls" -eq 1 ]]; then
++        # Primary write: drain stdin (prevents SIGPIPE on the jq producer), fail.
++        cat > /dev/null
++        return 1
++    fi
++    _aw_real_1754s1 "$@"
++}
++
++_test_write_result "$OUT_1754S1" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
++    2>/dev/null || true
++
++# Restore atomic_write so subsequent sections are unaffected.
++eval "$(declare -f _aw_real_1754s1 | sed 's/_aw_real_1754s1 ()/atomic_write ()/')"
++
++assert_file_exists "[#1754/SPEC-1] result file exists after fallback write" "$OUT_1754S1"
++
++if jq empty "$OUT_1754S1" >/dev/null 2>&1; then
++    assert_pass "[#1754/SPEC-1] fallback result is valid JSON"
++else
++    assert_fail "[#1754/SPEC-1] fallback result is valid JSON" \
++        "content: $(head -c 200 "$OUT_1754S1" 2>/dev/null || echo MISSING)"
++fi
++
++assert_eq "[#1754/SPEC-1] primary write failure writes outcome=broken" "broken" \
++    "$(jq -r '.outcome // empty' "$OUT_1754S1" 2>/dev/null || true)"
++assert_eq "[#1754/SPEC-1] primary write failure writes reason=result_write_failed" "result_write_failed" \
++    "$(jq -r '.reason // empty' "$OUT_1754S1" 2>/dev/null || true)"
++
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/test-result-reason-contract-test.sh b/tests/unit/test-result-reason-contract-test.sh
+index c872638b..3e23aef5 100755
+--- a/tests/unit/test-result-reason-contract-test.sh
++++ b/tests/unit/test-result-reason-contract-test.sh
+@@ -260,4 +260,53 @@ jq 'del(.reason)' "$RESULT" > "$RESULT.stripped" && mv "$RESULT.stripped" "$RESU
+ assert_eq "[SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)" \
+     "0" "$(_blocked_rc_for "$(_classify)")"
+ 
++# ─── [#1754/SPEC-2] reader classifies broken after primary atomic_write fails ─
++# Before #1754: only PIPESTATUS[0] was captured in _test_write_result.  A
++# failed atomic_write left the prior-round file untouched and stage_result_add
++# merged the current outcome into it — so the reader saw "pass" (or whatever
++# the current call supplied), never "broken".
++# After #1754: the write exit is captured; a failed write triggers the fallback,
++# which writes outcome=broken, so runner_read_stage_verdict returns "error"
++# (the engine's classification for the broken outcome) — not the prior round's
++# outcome.
++print_test_section "[#1754/SPEC-2] reader sees broken after primary atomic_write failure"
++
++rm -f "$RESULT"
++# Write a prior-round pass result using the engine's own writer so the data
++# is exactly what the real write path produces (not hand-made).
++stage_result_write "$RESULT" "pass" "prior round passed" 2>/dev/null || true
++
++# Save the real atomic_write so the fallback write (call #2+) can succeed.
++eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s2 ()/')"
++
++_1754s2_aw_calls=0
++atomic_write() {
++    _1754s2_aw_calls=$(( _1754s2_aw_calls + 1 ))
++    if [[ "$_1754s2_aw_calls" -eq 1 ]]; then
++        # Primary path: drain stdin to prevent SIGPIPE on the jq producer, fail.
++        cat > /dev/null
++        return 1
++    fi
++    _aw_real_1754s2 "$@"
++}
++
++# Run the writer — same outcome as the prior round (pass) so the only thing
++# distinguishing a correct from incorrect result is whether the file reflects
++# the write FAILURE (broken) or the silently-merged stale content (pass).
++_test_write_result "$RESULT" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
++    2>/dev/null || true
++
++# Restore atomic_write before calling the reader, which may call it too.
++eval "$(declare -f _aw_real_1754s2 | sed 's/_aw_real_1754s2 ()/atomic_write ()/')"
++
++# The reader must return "error" (the engine's classification for the broken
++# outcome), NOT "pass" (which is what the prior-round stale file would give
++# before the fix, since stage_result_add merged "pass" into it).
++assert_eq "[#1754/SPEC-2] reader classifies primary-write failure as error (not prior pass)" \
++    "error" "$(_classify)"
++
++# Cross-check: the raw outcome in the file is "broken", not the prior round's.
++assert_eq "[#1754/SPEC-2] file carries broken outcome after primary write failure" "broken" \
++    "$(jq -r '.outcome // empty' "$RESULT" 2>/dev/null || true)"
++
+ print_test_results
