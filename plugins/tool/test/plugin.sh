@@ -1205,8 +1205,7 @@ _test_write_result() {
         # if atomic_write itself failed on the primary path, a second pipeline
         # call would also be intercepted by any test shim on atomic_write, so
         # use a direct redirect that cannot be blocked that way. All required
-        # fields — result_contract, outcome, reason — are included inline so
-        # no second stage_result_add call is needed.
+        # fields — result_contract, outcome, reason — are all included inline.
         printf '{"result_contract":3,"outcome":"broken","reason":"result_write_failed","test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
             "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" > "$path" 2>/dev/null || true
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
