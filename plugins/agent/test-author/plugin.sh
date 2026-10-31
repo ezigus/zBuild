@@ -121,9 +121,14 @@ _ta_write_result() {
         [[ -n "$_tfh" ]] || _tfh="{}"
     fi
     local _data
-    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" --argjson f "$fnd" \
+    # ADR-068 §6: what it did about each finding it received, from its model's
+    # ANSWER lines (_ta_collect_answers).
+    local _ans; _ans="$(printf '%s\n' "${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || true)"
+    [[ -n "$_ans" ]] || _ans="[]"
+    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" --argjson f "$fnd" --argjson a "$_ans" \
         '{specs_covered: $n, owned_files: $o, testfiles: $t}
-         + (if ($f | length) > 0 then {findings: $f} else {} end)')"
+         + (if ($f | length) > 0 then {findings: $f} else {} end)
+         + (if ($a | length) > 0 then {answers: $a} else {} end)')"
     if ! stage_result_write "$dir/test-author-result.json" "$o" "$r" "$_data"; then
         _ta_emit "test_author.result.write_failed" "dir=$dir"
     fi
@@ -148,9 +153,25 @@ _ta_write_result() {
     printf -v _sum_body -- '- SPECs in the contract: %s\n- assertions are authored from the SPEC text, never from the implementation' "${n:-0}"
     if [[ -n "$_tf_lines" ]]; then
         _sum_body+=$'\n'"- the test files, and the requirements each covers:${_tf_lines}"
-        _sum_body+=$'\n'"- Each [code] requirement's test fails on the code as it is now, and passes once the code is written."
+        _sum_body+=$'\n'"- Each [code] requirement's test must fail on the code from before this change, and pass once the code is written."
     fi
+    local _a
+    for _a in ${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}; do _sum_body+=$'\n'"- answered: ${_a}"; done
     stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$r" "$_sum_body"
+}
+
+# _ta_collect_answers <reply> — the model's `ANSWER <stage> finding <n>: …`
+# lines, added to _TA_ANSWERS without the word ANSWER (ADR-068 §6).
+_TA_ANSWERS=()
+_ta_collect_answers() {
+    local line a re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*:.*)$'
+    while IFS= read -r line; do
+        [[ "$line" =~ $re ]] || continue
+        a="${BASH_REMATCH[1]}"
+        while [[ "$a" == *[[:space:]] ]]; do a="${a%[[:space:]]}"; done
+        _TA_ANSWERS+=("$a")
+    done <<< "${1:-}"
+    return 0
 }
 
 # ─── test_author_run <stage_id> <state_file> [resolved_inputs] ───────────────
@@ -283,6 +304,10 @@ Tag each assertion with the tag shown for its SPEC, exactly as shown, in the ass
 
 Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
+Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest. Fix the test from its requirement, or say why the test is right. Answer each such finding on its own line, before LOOP_COMPLETE:
+ANSWER <stage> finding <n>: done — <what you changed>
+ANSWER <stage> finding <n>: nothing to do — <why the test is right>
+
 Work one testfile at a time: read only what that file's SPECs need, write it to disk, and only then move on — write each file before you plan the next. Do not plan every SPEC up front. Your call has a time limit; a file already written survives it and is continued by the next attempt, and a plan that was never written is lost.
 
 You will be called again until you are done: what you wrote stays on disk and the next call picks up from it. When EVERY SPEC below has its assertion written to disk, end your reply with a line containing only:
@@ -295,7 +320,7 @@ REQUIREMENTS:
 ${spec_block}${sup_section}
 ## What you must not do
 - You cannot see the implementation, and you must not guess at it. You may read the existing tests and the repository's test helpers; do not read the code this change is about.
-- Do not run anything: no tests, no lint, no test suite. You write the assertions; the test stage runs them, and an assertion is expected to fail on the code as it is today.
+- Do not run anything: no tests, no lint, no test suite. You write the assertions; the test stage runs them, and an assertion is expected to fail on the code from before this change.
 - Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
 - A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
 EOF
@@ -308,6 +333,7 @@ EOF
     local _rounds; _rounds="$(yaml_get "$(dirname "${BASH_SOURCE[0]}")/manifest.yaml" config.check_rounds 2>/dev/null || true)"
     [[ "$_rounds" =~ ^[1-9][0-9]*$ ]] || _rounds=2
     local _round=1 _found=""
+    _TA_ANSWERS=()
 
     local tier="T2" rc=0
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
@@ -354,6 +380,7 @@ ${_ta_limits}")"; then
     route_to_model_loop "$tier" "$prompt_file" "$repo" "$_calls_left" \
         --context-paths "${_ctx:-.zbuild-no-testfiles}" || rc=$?
     rm -f "$prompt_file"
+    _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}"
     [[ "${_ROUTE_LOOP_ITERATIONS:-0}" =~ ^[0-9]+$ ]] || _ROUTE_LOOP_ITERATIONS=1
     _calls_left=$(( _calls_left - (_ROUTE_LOOP_ITERATIONS > 0 ? _ROUTE_LOOP_ITERATIONS : 1) ))
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"

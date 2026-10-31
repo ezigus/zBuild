@@ -1,6 +1,6 @@
 # ADR-068 — Nested loops and finding answers: the engine never decides who owns a finding
 
-**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop); amended 2026-10-11 (§6–§8: the engine keeps only stage outputs; §8: only each stage's latest output is passed on); amended 2026-10-12 (§8: every stage's latest output, from any run and the stage's own included, goes to every later stage — ADR-067 §8, ADR-050 §9; §1: impact retired from zBuild; §8: loop `feedback:` edges retired); amended 2026-10-18 (§1 §2 §3 §10: design makes one model call per run and keeps its last good design; a design that still fails ends the run — #1944 run 38883031887); amended 2026-10-27 (§6 §8: a stage is given, and answers, only the topics it takes — ADR-071, #1944 run 40393999128); amended 2026-10-28 (§5: a finding is never split)
+**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop); amended 2026-10-11 (§6–§8: the engine keeps only stage outputs; §8: only each stage's latest output is passed on); amended 2026-10-12 (§8: every stage's latest output, from any run and the stage's own included, goes to every later stage — ADR-067 §8, ADR-050 §9; §1: impact retired from zBuild; §8: loop `feedback:` edges retired); amended 2026-10-18 (§1 §2 §3 §10: design makes one model call per run and keeps its last good design; a design that still fails ends the run — #1944 run 38883031887); amended 2026-10-27 (§6 §8: a stage is given, and answers, only the topics it takes — ADR-071, #1944 run 40393999128); amended 2026-10-28 (§5: a finding is never split); amended 2026-10-31 (§1 §2 §3: design runs in every round of the build loop; only the lenses send the change round again; §6: test-author answers the findings about its tests — #1754 run 41138244027)
 **Issue:** #2271; §8 amended by #2330 (2026-10-06); §1 §8 amended by #1668 (2026-10-10); §6–§8 amended 2026-10-11 (after the #1668 and #1932 runs)
 **Supersedes:** ADR-045 (bounded typed backward-route), ADR-061 (fault-class vocabulary)
 **Amends:** ADR-021, ADR-027, ADR-040, ADR-046, ADR-047, ADR-054 §4, ADR-055 (finding-owner amendment)
@@ -38,6 +38,31 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
    - **Any failure is run again.** A design that fails its checks is `unusable`, as a call that ran out of time is `timed_out`; both are run again. The engine's own rule still applies: it runs a stage again only while the last try changed something (ADR-054 §6), so a try that wrote nothing at all is not repeated.
    - **Only findings design can fix.** Design answers a finding only if changing the design (its acceptance contract or its scope) would fix it. It leaves the rest — a bug in the code, a test that does not run — and does not investigate them, and says in its design which it left and why.
 
+### Amendment (2026-10-31) — design runs in every round of the build loop
+
+#1754's run (41138244027) showed the nested shape never reached design: a finding only design could fix
+(six files the requirement needs, outside its scope) went to build, which could not fix it, and design
+would only run again after the build loop's 3 rounds — about 9 hours at that run's pace, past the job's
+6. The engine still never decides who owns a finding (§8); design is simply in every round.
+
+- **§1, amended:** the build loop is **design, build, test** — `build_test_cycle` runs design first, then
+  the stages that write and check the change (simple.yaml: design, test-author, build, test,
+  issue-acceptance; deployed.yaml: design, build, test). `delivery_loop` holds `build_test_cycle`, then
+  the review lenses. Each round design is shown every finding on the topics it takes and answers only
+  those a change to the design would fix (§10).
+- **§2, amended:** budgets: the build loop 3 rounds; `delivery_loop` 2, so the lenses can send the change
+  round once more (the build loop starts again at round 1, as before).
+- **§3, amended:** a member a loop names in `stop_run_on_fail:` ends the **run** — an inner loop as much
+  as a stage. `build_test_cycle` names design (a design that still fails ends the run, as before), and
+  `delivery_loop` names `build_test_cycle`: a build loop that ends without passing ends the run; only the
+  lenses send the change round again. The run's reason names the member that stopped it; when an inner
+  loop stopped on a member it names, that member.
+- **§6, amended:** test-author is told that findings from other stages about its tests are its own — a
+  test that already passes on the code from before the change, a test that fails on the new code, a test
+  that flags code that already meets its requirement, a test file far slower than the rest — and answers
+  each on its own line (`ANSWER <stage> finding <n>: …`). Its answers are in its result (`data.answers`)
+  and its summary. On #1754's run it was shown the test stage's findings and fixed only its own check's.
+
 ## Consequences
 
 - The engine loses the fault vocabulary (`core/pipeline/fault.sh`), the ownership resolver (`core/pipeline/finding-owner.sh`), the `route_back` parser, validator and runner rewind, the cycle's early-rewind and fallback logic, and the acceptance check's iteration-numbered escalation.
@@ -57,7 +82,9 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 ## Enforced by
 
 - §1 (impact retired from zBuild) → `tests/unit/retired-impact-review-report-inputs-test.sh` RT1
-- §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it); `tests/unit/template-simple-yaml-test.sh` SPEC-18 (delivery_loop flow is design,build_test_cycle); `tests/integration/deployed-template-e2e-test.sh` (delivery_loop flow in deployed.yaml is design,build_test_cycle)
+- §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it); `tests/unit/template-simple-yaml-test.sh` SPEC-18 (delivery_loop flow is build_test_cycle,review_lenses), SPEC-14 (build_test_cycle starts with design); `tests/integration/deployed-template-e2e-test.sh` (deployed.yaml's loops)
+- Amendment 2026-10-31 §1, §2, §3 → `tests/unit/template-simple-yaml-test.sh` SPEC-14, SPEC-15, SPEC-18 and the deployed.yaml block (ADR-068 §1–§3); `tests/integration/stop-run-on-fail-test.sh` R5 (a design that fails inside the build loop ends the run), R6 (a build loop that does not pass ends the run after 3 rounds, with no review), R7 (the lenses send the change round once more), R8 (and the run stops when they fail again)
+- Amendment 2026-10-31 §6 → `tests/unit/test-author-checks-own-output-test.sh` A10 (findings about its tests are its own), A11 (expected to fail on the code from before the change), A12 (its answers are in its result and summary)
 - §1, §2 (design checks its own design, #2369; no round inside the stage, 2026-10-18) → `tests/unit/design-checks-own-output-test.sh` C1–C5
 - §3 (`stop_run_on_fail:`, #2369, 2026-10-18) → `tests/integration/stop-run-on-fail-test.sh` R1–R4
 - §2, §3, §4 → `tests/integration/nested-loop-rounds-test.sh` L1, L2, L4, L5; `tests/integration/nested-loop-rounds-build-test.sh` L3, L6, L7 (a member that halts the run inside the build loop stops it, naming what the member said); `tests/integration/cycle-member-dispatch-events-test.sh` §3 (rc 8 still halts on the last outer round); `tests/integration/cycle-rate-limit-aborts-run-test.sh` (rc 9 from an inner loop ends the run)

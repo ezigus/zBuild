@@ -293,8 +293,10 @@ print_test_section "[SPEC-11][change] the workflow's run step execs the runner"
 _run_line="$(grep -vE '^\s*#' "$REPO_ROOT/.github/workflows/zbuild-pipeline.yml" 2>/dev/null \
              | grep -E 'zbuild" pipeline start' || true)"
 assert_eq "[SPEC-11] exactly one pipeline-start line" "1" "$(printf '%s\n' "$_run_line" | grep -c . || true)"
+# ADR-064 (amended 2026-10-31): `exec timeout … zbuild` — timeout replaces the
+# step shell and passes a cancel's signal on to the runner.
 case "$_run_line" in
-    *'exec "$HOME/.local/bin/zbuild" pipeline start'*)
+    *'exec "$HOME/.local/bin/zbuild" pipeline start'* | *'exec timeout '*' "$HOME/.local/bin/zbuild" pipeline start'*)
         assert_pass "[SPEC-11] the runner replaces the step shell (exec)" ;;
     *)  assert_fail "[SPEC-11] the runner replaces the step shell (exec)" "got: ${_run_line:-<none>}" ;;
 esac

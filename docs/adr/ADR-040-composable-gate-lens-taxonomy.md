@@ -629,3 +629,26 @@ converged), M3 (R7, R8: a lens that did not finish stops at once), M4 (the group
 `tests/unit/template-simple-yaml-test.sh` SPEC-11, SPEC-18, #2433/R4, #2433/R2;
 `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R2, R3 (findings routed by what fixes them),
 R7 (the issue being wrong → `misconfigured`); `plugins/tool/pr-open/tests/pr-open-body-test.sh` B4 (R9).
+
+### Amendment (2026-10-31) — a test file far slower than the rest fails test; a timeout of the change's own test file is the change's
+
+On #1754's run (41138244027) a new test file took 210 s against 72 s for the slowest file the change did
+not touch — the lint it ran forked two greps per line of the codebase. Nothing failed for it, and every
+re-run of it by the acceptance check went past its limit and was reported as "a problem in the pipeline,
+not in your change", so no stage took it as its own.
+
+- **test fails a test file the change made far slower.** Among test's own checks: a test file this change
+  added or changed (against the merge-base, uncommitted files included) that takes more than twice the
+  slowest test file the change did not touch, and over a minute, is a numbered finding naming both files
+  and both times (`_test_slow_files`, `plugins/tool/test/lib/own-checks.sh`). Both are measured in the
+  same run, so a slow runner slows both. With no untouched file measured (a targeted re-run) there is
+  nothing to compare.
+- **A timed-out run of the change's own test file is the change's.** The acceptance check's finding for
+  a run that went past its limit names the test file, the time the test run measured for it and the
+  limit, and says to make it, or the code it runs, faster. Other errors in its runs (a worktree that
+  could not be made) are still the pipeline's.
+- **The loops (ADR-068, amended 2026-10-31):** `build_test_cycle` runs design first; `delivery_loop` holds
+  it and then the lenses, which send the change round once more.
+
+Enforced by: `tests/unit/test-slow-file-check-test.sh` T1–T6; `tests/unit/acceptance-feedback-plain-test.sh`
+F5–F7.

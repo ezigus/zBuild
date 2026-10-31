@@ -26,8 +26,8 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "design cycle: no build from a design its gate rejected (#2176)"
 setup_test_env "design-cycle-on-max-abort"
 _on_max() { awk -v id="$1" '$0 ~ "^"id":" {f=1; next} /^[a-z_-]+:/ {f=0} f && /^[[:space:]]+on_max:/ {print $2}' "$REPO_ROOT/config/templates/simple.yaml"; }
-assert_contains "[SPEC-1] delivery_loop ends the run when design fails" \
-    "$(awk '/^delivery_loop:/ {f=1; next} /^[a-z_-]+:/ {f=0} f' "$REPO_ROOT/config/templates/simple.yaml")" \
+assert_contains "[SPEC-1] build_test_cycle ends the run when design fails (design runs in it, ADR-068 §1, 2026-10-31)" \
+    "$(awk '/^build_test_cycle:/ {f=1; next} /^[a-z_-]+:/ {f=0} f' "$REPO_ROOT/config/templates/simple.yaml")" \
     "stop_run_on_fail: [design]"
 assert_eq "[SPEC-2] build_test_cycle on_max stays continue" "continue" "$(_on_max build_test_cycle)"
 assert_contains "[SPEC-3] ADR-019 records the design-cycle reversal" \

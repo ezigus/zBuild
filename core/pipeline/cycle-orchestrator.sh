@@ -1645,6 +1645,15 @@ _cycle_iter_dispatch() {
             # mapped from how the nested cycle ended.
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
             _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
+            # ADR-068 §3: a member the template names ends the run when it does
+            # not pass — an inner loop as much as a stage. An inner loop that
+            # itself stopped on a member it names keeps that member's name.
+            local _sr_nvar="_TPL_CYCLE_STOP_RUN_${_CYCLE_TRAP_CYCLE_ID//-/_}"
+            if [[ " ${!_sr_nvar:-} " == *" $s "* && "$verdict" != "pass" ]]; then
+                _CYCLE_STOP_RUN_MEMBER="$s"
+                [[ "$_inner_reason" == out_of_tries:?* ]] && _CYCLE_STOP_RUN_MEMBER="${_inner_reason#out_of_tries:}"
+                break
+            fi
             if [[ $_end_round -eq 1 ]]; then
                 _cycle_emit "cycle.round.ended_early" "iter=$iter" "stage=$s" \
                     "reason=inner_loop_unconverged" 2>/dev/null || true

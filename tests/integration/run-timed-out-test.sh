@@ -267,7 +267,14 @@ else
     assert_fail "[#1944/SPEC-1] P2: pipeline-state.json written" "state file not found"
 fi
 
-# Ends near the limit (global timer), not 12s after fast-two started.
+# Ends near the limit (global timer), not 12s after fast-two started. Measured
+# from the run's own pipeline.start (the watchdog is armed right after it) to
+# its pipeline.end: the shell's clock also counts the runner's startup, which
+# took ~10s on a loaded CI runner (PR #2438 and main run 41133901321: 23-24s,
+# against 13s with ~0.3s startup locally).
+_p2_ev_s() { jq -r --arg t "$1" 'select(.type == $t) | .ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601' "$EVENTS_JSONL" 2>/dev/null | head -n1; }
+_p2_t0="$(_p2_ev_s pipeline.start)"; _p2_t1="$(_p2_ev_s pipeline.end)"
+[[ "$_p2_t0" =~ ^[0-9]+$ && "$_p2_t1" =~ ^[0-9]+$ ]] && _p2_elapsed=$(( _p2_t1 - _p2_t0 ))
 if [[ "$_p2_elapsed" -le 17 ]]; then
     assert_pass "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset (elapsed ${_p2_elapsed}s)"
 else
