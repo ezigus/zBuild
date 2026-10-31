@@ -191,6 +191,10 @@ _run
 assert_contains "[A12] the answer is in test-author's result" \
     "$(jq -r '.data.answers[]? // empty' "$A/test-author-result.json" 2>/dev/null)" "test finding 2: done"
 assert_contains "[A12] ...and in its summary" "$(cat "$A/test-author-summary.md" 2>/dev/null)" "test finding 2: done"
+ANSWERS="ANSWER test finding 3: nothing to do — the test is right   "
+_run
+assert_eq "[A12] an answer keeps no trailing spaces (review on PR #2438)" \
+    "test finding 3: nothing to do — the test is right" "$(jq -r '.data.answers[0] // empty' "$A/test-author-result.json" 2>/dev/null)"
 ANSWERS=""
 
 # ── A5 ───────────────────────────────────────────────────────────────────────

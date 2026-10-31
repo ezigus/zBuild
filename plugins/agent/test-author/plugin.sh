@@ -164,9 +164,12 @@ _ta_write_result() {
 # lines, added to _TA_ANSWERS without the word ANSWER (ADR-068 §6).
 _TA_ANSWERS=()
 _ta_collect_answers() {
-    local line re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*:.*)$'
+    local line a re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*:.*)$'
     while IFS= read -r line; do
-        [[ "$line" =~ $re ]] && _TA_ANSWERS+=("${BASH_REMATCH[1]%%[[:space:]]}")
+        [[ "$line" =~ $re ]] || continue
+        a="${BASH_REMATCH[1]}"
+        while [[ "$a" == *[[:space:]] ]]; do a="${a%[[:space:]]}"; done
+        _TA_ANSWERS+=("$a")
     done <<< "${1:-}"
     return 0
 }
