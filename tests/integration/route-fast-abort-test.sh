@@ -131,7 +131,7 @@ _route_lookup_model() { _ROUTE_MODEL_ID="stub-model"; return 0; }
 _route_resolve_timeout() { echo 30; }
 _route_resolve_max_turns() { echo 5; }
 # Drive the loop.
-route_to_model_loop T2 "$PF" "$REPO" 5
+route_to_model_loop T2 "$PF" "$REPO"
 echo "rc=\$?" > "$TEST_TEMP_DIR/loop.rc"
 DRV
 chmod +x "$DRIVER"

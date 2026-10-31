@@ -75,7 +75,7 @@ assert_eq "[SPEC-1] claude received the whole prompt" "$(printf '%s' "$(cat "$BI
 print_test_section "SPEC-2: route_to_model_loop"
 : > "$TEST_TEMP_DIR/received"
 (
-    route_to_model_loop T2 "$BIG" "$TEST_TEMP_DIR" 1 >/dev/null 2>"$TEST_TEMP_DIR/loop.err"
+    route_to_model_loop T2 "$BIG" "$TEST_TEMP_DIR" >/dev/null 2>"$TEST_TEMP_DIR/loop.err"
 )
 # The loop sends the stage's prompt as composed (ADR-067 §8): the first and last
 # lines both arrive and nothing is cut. Only the file's trailing newline is not

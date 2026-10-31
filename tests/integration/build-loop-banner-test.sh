@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Integration test (#482): route_to_model_loop (Pattern 2) emits stage_io
-# begin/end per iteration so build's LLM calls are observable like plan/review.
+# begin/end for its call so build's LLM calls are observable like plan/review.
+# #2439: one call per try, so one banner pair.
 #
 # Mirrors stage-io-banner-split-test.sh's approach but exercises the loop
 # rather than route_to_model. Uses a real subprocess + mock claude that writes
@@ -101,10 +102,8 @@ YAML
 DRIVER="$TEST_TEMP_DIR/driver.sh"
 BANNER_FD3="$TEST_TEMP_DIR/banner-fd3.txt"
 PROMPT_FILE="$TEST_TEMP_DIR/prompt.txt"
-# #505: prompt must exceed ZBUILD_LOOP_BANNER_DEDUPE_MIN_CHARS (500) so the
-# loop's iter≥2 banner-dedupe pathway actually fires — the new assertion
-# below asserts that artifact .input still holds the full static prompt
-# (persist-input regression guard).
+# #505: a prompt of some size; the assertion below holds artifact .input to the
+# full static prompt (persist-input regression guard).
 {
     echo "build static prompt — REGRESSION_FULL_PROMPT_SENTINEL"
     for i in $(seq 1 20); do
@@ -133,7 +132,7 @@ export MARK_FILE="$MARK_FILE"
 
 load_template "$TEST_TEMP_DIR/template.yaml"
 export ZBUILD_CURRENT_STAGE=build
-route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 5
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO"
 EOF
 
 ZBUILD_STAGE_IO_FD=3 bash "$DRIVER" >/dev/null 2>/dev/null 3>"$BANNER_FD3" || true
@@ -141,81 +140,55 @@ ZBUILD_STAGE_IO_FD=3 bash "$DRIVER" >/dev/null 2>/dev/null 3>"$BANNER_FD3" || tr
 # ─── Assertions ──────────────────────────────────────────────────────────────
 banner="$(cat "$BANNER_FD3" 2>/dev/null || echo '')"
 
-# (1) Three iterations → three input/output pairs.
+# (1) One call per try (#2439) → one input/output pair, though the mock would
+# say done only on its third call.
 # #499: I/O banner header dividers switched from ── (U+2500) to ══ (U+2550).
 in_count="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* input ══' || true)"
 out_count="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* output ' || true)"
-assert_eq "3 input banners (one per iteration)"  "3" "$in_count"
-assert_eq "3 output banners (one per iteration)" "3" "$out_count"
+assert_eq "1 input banner"  "1" "$in_count"
+assert_eq "1 output banner" "1" "$out_count"
 
-# (2) Subprocess-boundary: each input banner emits BEFORE its claude MARK,
-# and each output banner emits AFTER. We test iter=1 as proof of ordering.
+# (2) Subprocess-boundary: the input banner emits BEFORE the claude MARK, and
+# the output banner AFTER (#491).
 in_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 input ══' | head -1 | cut -d: -f1)"
 out_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 output ' | head -1 | cut -d: -f1)"
 if [[ -n "$in_line_1" && -n "$out_line_1" && "$in_line_1" -lt "$out_line_1" ]]; then
-    assert_pass "iter=1 input < output ordering on fd 3"
+    assert_pass "input < output ordering on fd 3"
 else
-    assert_fail "iter=1 input < output ordering" \
+    assert_fail "input < output ordering" \
         "in=$in_line_1 out=$out_line_1; banner head: $(printf '%s' "$banner" | head -c 400)"
 fi
 
-# (2b) #491: per-iteration ordering on iter=2 and iter=3 too. Each input
-# banner MUST precede its same-seq output banner. The pre-#491 bug only
-# emitted ONE banner per pair (output) when the caller used 2>/dev/null —
-# this loop check catches a regression where iter>1 inputs are missing.
-for s in 2 3; do
-    in_l="$(printf '%s\n' "$banner" | grep -n "seq=${s} input ══"  | head -1 | cut -d: -f1)"
-    out_l="$(printf '%s\n' "$banner" | grep -n "seq=${s} output "  | head -1 | cut -d: -f1)"
-    if [[ -n "$in_l" && -n "$out_l" && "$in_l" -lt "$out_l" ]]; then
-        assert_pass "iter=${s} input < output ordering on fd 3"
-    else
-        assert_fail "iter=${s} input < output ordering" \
-            "in=$in_l out=$out_l"
-    fi
-done
-
-# (3) Mock claude was invoked 3 times (3 MARK lines).
+# (3) Mock claude was invoked once.
 mark_count="$(wc -l < "$MARK_FILE" | tr -d ' ')"
-assert_eq "mock claude invoked 3 times" "3" "$mark_count"
+assert_eq "mock claude invoked once" "1" "$mark_count"
 
-# (4) File artifacts: build-1.json, build-2.json, build-3.json with metadata.iter.
-for s in 1 2 3; do
-    art="$ZBUILD_STATE_DIR/artifacts/stage-io/build-${s}.json"
-    assert_file_exists "build-${s}.json artifact written" "$art"
-    if [[ -f "$art" ]]; then
-        rec="$(cat "$art")"
-        assert_json_key "build-${s}.json metadata.iter == $s" "$rec" ".metadata.iter" "$s"
+# (4) The file artifact build-1.json, with metadata.iter, and the full static
+# prompt in .input (persist-input, #505).
+art="$ZBUILD_STATE_DIR/artifacts/stage-io/build-1.json"
+assert_file_exists "build-1.json artifact written" "$art"
+if [[ -f "$art" ]]; then
+    assert_json_key "build-1.json metadata.iter == 1" "$(cat "$art")" ".metadata.iter" "1"
+    in_field="$(jq -r '.input' "$art" 2>/dev/null || true)"
+    if [[ "$in_field" == *"REGRESSION_FULL_PROMPT_SENTINEL"* ]]; then
+        assert_pass "build-1.json .input contains full static prompt (persist-input regression guard)"
+    else
+        assert_fail "build-1.json .input contains full static prompt (persist-input regression guard)" \
+            "in_head=$(printf '%s' "$in_field" | head -c 160)"
     fi
-done
+fi
 
-# (4b) #505 regression guard: iter≥2 artifact .input MUST contain the full
-# static prompt (via stage_io_begin --persist-input), even though the
-# scrollback banner for iter≥2 is deduped down to a pointer. Banner-vs-payload
-# divergence is intentional (ADR-018 §Pattern 2.5); artifact fidelity is not.
-for s in 2 3; do
-    art="$ZBUILD_STATE_DIR/artifacts/stage-io/build-${s}.json"
-    if [[ -f "$art" ]]; then
-        in_field="$(jq -r '.input' "$art" 2>/dev/null || true)"
-        if [[ "$in_field" == *"REGRESSION_FULL_PROMPT_SENTINEL"* ]]; then
-            assert_pass "build-${s}.json .input contains full static prompt (persist-input regression guard)"
-        else
-            assert_fail "build-${s}.json .input contains full static prompt (persist-input regression guard)" \
-                "in_head=$(printf '%s' "$in_field" | head -c 160)"
-        fi
-    fi
-done
-
-# (5) Exactly 3 stage.io.captured events (one per iteration), all stage=build.
+# (5) Exactly 1 stage.io.captured event, stage=build.
 captured_count="$(jq -c --arg t "stage.io.captured" 'select(.type==$t and .data.stage=="build")' \
     "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "3 stage.io.captured events for build" "3" "$captured_count"
+assert_eq "1 stage.io.captured event for build" "1" "$captured_count"
 
 # (6) No orphan begins (every begin paired with an end).
 orphan_count="$(jq -c --arg t "stage.io.error" 'select(.type==$t and .data.reason=="output_never_emitted")' \
     "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "no orphan begins" "0" "$orphan_count"
 
-# (7) #587: regression — the per-iteration [llm] banners MUST NOT be
+# (7) #587: regression — the [llm] banners MUST NOT be
 # coupled to a [computed] banner. Prior to #587 the build plugin emitted a
 # post-loop [computed] banner pair (added in #498); #566 made the [llm]
 # banners visible and exposed the duplication, so #587 removed the

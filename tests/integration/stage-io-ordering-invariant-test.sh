@@ -186,7 +186,7 @@ drv_route_to_model_loop() {
     # The slow mock returns plain JSON without LOOP_COMPLETE — the loop will
     # exit after max_iter rather than via sentinel; either path emits 1 pair.
     write_driver "$driver_path" "$stage_id" \
-        "route_to_model_loop T2 '$prompt_file' '$repo' 1 || true"
+        "route_to_model_loop T2 '$prompt_file' '$repo' || true"
 }
 
 drv_run_captured_command() {

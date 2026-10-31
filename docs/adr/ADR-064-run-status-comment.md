@@ -2,6 +2,7 @@
 
 **Status:** Proposed (2026-09-18)
 **Amended:** 2026-10-14 (#2378) — the open items list only results this run wrote. Hydrate restores an earlier run's results with their saved times; one older than this run's start belongs to a stage that did not run this time, and is left out.
+**Amended:** 2026-10-31 (#2439) — each try of a stage the engine runs again has its own row (see the amendment below).
 **Amended:** 2026-10-28 — nothing a stage reported is cut, and a run that outgrows one comment continues in the next (§4, §6; see the amendment below).
 **Issue:** #2131
 **Keeper:** e-1 (KEEPERS §E — live-updating GitHub comment, PATCH, atomic id)
@@ -227,6 +228,16 @@ be killed. The step's own limit (`timeout-minutes: 340`) is only a backstop, and
 push the work branch, upload the artifacts, finish the comment — then have 20 minutes, on `always()`. The
 comment's ceiling is when zbuild stops (`ZBUILD_STATUS_CEILING_MIN: "315"` on the job).
 
+## Amendment 2026-10-31 (#2439) — one row per try
+
+On #1754 (run 41208786459) build was run 4 times in 3 hours and the comment showed one row the whole time:
+`build · iter 1 · running`. A retry used to emit only an event the comment ignored, so the row was never
+closed and reopened; an earlier rule also folded a retry into the same row, showing only the latest try.
+Now the engine announces every retry (`stage.retry`, ADR-054 §6a) and the comment closes the try's row
+on the outcome it ended on (`timed_out`, `unusable`, …). The next try opens its own row, and each row of a
+retried stage says which try it is, of how many (`try 2 of 3`). What closes the stage closes its latest
+try's row.
+
 ## Enforced by
 
 - Amendment 2026-10-28 → `tests/unit/run-status-comment-pages-test.sh` P1–P2 (the whole line, the rest folded), P3 (the snapshot keeps it whole), P4–P6 (parts, not omissions; the newest has the header; earlier parts do not change), P7 (one comment per part); `tests/unit/run-status-comment-render-test.sh` SPEC-4 (never cut), SPEC-6 (no omission); `tests/unit/test-author-loop-test.sh` A9 (test-author counts the test files it changed); `tests/unit/test-author-test.sh` SPEC-14 (a retryable outcome carries no count)
@@ -244,4 +255,5 @@ comment's ceiling is when zbuild stops (`ZBUILD_STATUS_CEILING_MIN: "315"` on th
 - Amendment #2145 → `tests/unit/run-status-comment-render-test.sh`
 - Amendment #2154 → `tests/unit/run-status-comment-render-test.sh` SPEC-9
 - Amendment 2026-10-31 (the run stops before GitHub does) → `tests/unit/ci-stop-before-github-test.sh` C1–C4
+- Amendment 2026-10-31 (#2439: one row per try) → `tests/unit/run-status-retry-row-test.sh` T4–T7
 - Amendment 2026-10-29 (a map member has its own row) → `tests/integration/map-members-reported-test.sh` MR1–MR4, MR6

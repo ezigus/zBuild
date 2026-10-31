@@ -543,39 +543,9 @@ _route_lookup_model() {
 }
 
 # The limits a stage's model calls run under (_route_manifest_knob,
-# _route_resolve_knob, _route_resolve_timeout, _route_resolve_max_turns,
-# _route_resolve_max_iterations, _route_resolve_retries) live in
+# _route_resolve_knob, _route_resolve_timeout, _route_resolve_max_turns) live in
 # scripts/lib/stage-limits.sh, sourced above, so the engine states to every
 # stage the same numbers this router enforces (ADR-067 §8).
-
-# #1879: the count of retry-on-BUDGET-EXHAUSTION attempts. Deliberately its own
-# knob rather than a widening of `retries` (which is rc=124/timeout-only): the one
-# stage that sets `retries` relies on its timeout-only meaning, and quietly changing what that means
-# for it would be an unrequested behaviour change. Default 0 — opt in per stage.
-_route_resolve_exhaustion_retries() {
-    local v; v="$(_route_resolve_knob template_stage_router_retry_on_exhaustion \
-        ZBUILD_ROUTER_RETRY_ON_EXHAUSTION 0 \
-        router.retry_on_exhaustion.override_ignored retry_on_exhaustion)"
-    if [[ "$v" =~ ^[0-9]+$ ]] && [[ "$v" -ge 0 ]] && [[ "$v" -le 5 ]]; then
-        printf '%s' "$v"
-    else
-        printf '0'
-    fi
-}
-
-# ADR-029 (#1230): escalate a base timeout for retry attempt k (1-based).
-# secs = min(base * 1.5^k, 2*base) — ties the +50%/cap-2× rule ADR-029 already
-# uses for max_turns escalation. Guarantees strictly-increasing budgets that
-# plateau at 2× so a retried timeout gets more headroom without unbounded waits.
-_route_escalate_timeout() {
-    local base="$1" k="$2"
-    awk -v b="$base" -v k="$k" 'BEGIN{
-        v = b * (1.5 ^ k); cap = 2 * b;
-        if (v > cap) v = cap;
-        if (v < 1) v = 1;
-        printf "%d", int(v + 0.5);
-    }'
-}
 
 # ─── _route_emit_model_route <tier> <timeout_s> ──────────────────────────────
 _route_emit_model_route() {
@@ -687,25 +657,12 @@ _route_call_claude() {
     # wall clock still returns the steps it made, not nothing.
     _claude_args+=(--output-format stream-json --verbose)
 
-    # ADR-029 (#1230): retry-on-timeout. On rc=124 (gtimeout SIGTERM) and while
-    # attempts remain, re-spawn with an escalated LOCAL timeout before falling
-    # through to the verbatim-124 path (impact's #937 verdict=incomplete fallback
-    # is unchanged). Default 0 → single attempt (legacy behavior). The retry loop
-    # is the lowest shared layer for the SINGLE-SHOT leaf path; the agentic loop
-    # (route_to_model_loop) implements its own intra-iteration retry.
-    local _retries; _retries="$(_route_resolve_retries)"
-    local _exhaust_retries; _exhaust_retries="$(_route_resolve_exhaustion_retries)"
-    # PR #1881 review: cap against the ORIGINAL budget, not the current one —
-    # capping against `max_turns` compounds across retries and diverges from the
-    # 2x-base ceiling _route_escalate_timeout enforces for seconds.
-    local _exhaust_base_turns="$max_turns"
-    local _attempt=0 _local_secs="$secs"
-    local stderr_file rc response
-    while :; do
-    rc=0
+    # #2439 (ADR-054 §6a): one call. A timed-out or out-of-turns call is not
+    # repeated here; the stage says how it ended and the engine decides.
+    local stderr_file rc=0 response
     # TERM-only (`none`), as this bound has always been: a -k here would turn
-    # a hang into rc=137, which the retry-on-timeout path does not treat as 124.
-    _acceptance_timeout_prefix "$_local_secs" none
+    # a hang into rc=137, which reads as an out-of-memory kill, not a timeout.
+    _acceptance_timeout_prefix "$secs" none
     local -a _tout_cmd=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
     if ! stderr_file="$(mktemp "$(zbuild_engine_tmpdir)/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
         error "router: mktemp failed"
@@ -757,75 +714,6 @@ _route_call_claude() {
     # the envelope, exactly as it did when the CLI printed only that.
     local _sync_stream="$response"
     response="$(_route_stream_envelope_text <<< "$_sync_stream")"
-
-    # ADR-029 (#1230): retry a bare router timeout (rc=124) with an escalated
-    # local budget BEFORE the verbatim-124 fallback + diagnostic path. Only
-    # rc=124 retries; every other rc falls through unchanged.
-    if [[ $rc -eq 124 && $_attempt -lt $_retries ]]; then
-        _attempt=$(( _attempt + 1 ))
-        local _next_secs; _next_secs="$(_route_escalate_timeout "$secs" "$_attempt")"
-        # #1241: a bare event made a multi-minute retry look like a silent hang.
-        # Surface it on the operator terminal (warn → fd 2) so the retry is
-        # visible mid-run. Output-only; the retry control-flow is unchanged.
-        warn "router: ${ZBUILD_CURRENT_STAGE:-stage} timed out (rc=124) — retry ${_attempt}/${_retries}, escalating timeout ${_local_secs}s → ${_next_secs}s"
-        eb_emit_event "router.timeout.retry" \
-            "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
-            "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
-            "path=single_shot" \
-            "attempt=$_attempt" "retries=$_retries" \
-            "from_secs=$_local_secs" "to_secs=$_next_secs" 2>/dev/null || true
-        _local_secs="$_next_secs"
-        rm -f "$stderr_file" "$_prompt_in"
-        continue
-    fi
-
-    # #1879: retry a BUDGET EXHAUSTION (subtype error_max_turns), which surfaces
-    # as rc=1 and so is invisible to the rc=124-only retry above. This is what
-    # killed the #1708 plan stage: 46 turns, no plan, no retry, pipeline aborted.
-    #
-    # A SEPARATE opt-in knob, not a widening of `retries`: a stage may already set
-    # retries: 1 for timeouts, and silently changing what that means for it would
-    # be a behaviour change nobody asked for.
-    #
-    # The retry is only worth taking because the stage wrote its notes file as
-    # it worked (ADR-067 §8) — the prompt names that file, so attempt 2
-    # continues from the exploration instead of re-deriving it on an empty
-    # context. Without the checkpoint this would just burn the budget twice
-    # (the argument #1727 makes against a naive retry).
-    if [[ $rc -ne 0 && $_attempt -lt $_exhaust_retries ]] \
-        && declare -F _router_is_budget_exhausted >/dev/null 2>&1 \
-        && _router_is_budget_exhausted "$response"; then
-        _attempt=$(( _attempt + 1 ))
-        local _next_turns=$(( max_turns > 0 ? max_turns + max_turns / 2 : 0 ))
-        warn "router: ${ZBUILD_CURRENT_STAGE:-stage} exhausted its turn budget — retry ${_attempt}/${_exhaust_retries}, resuming from its checkpoint"
-        eb_emit_event "router.budget_exhausted.retry" \
-            "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
-            "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
-            "path=single_shot" \
-            "attempt=$_attempt" "retries=$_exhaust_retries" \
-            "from_turns=$max_turns" "to_turns=$_next_turns" 2>/dev/null || true
-        # ADR-029's +50%/cap-2x escalation shape, applied to turns rather than
-        # seconds. 0 means "unbounded" and must stay 0.
-        #
-        # PR #1881 review, CRITICAL: `_claude_args` is built ONCE, above this loop.
-        # Updating `max_turns` alone left the retry invoking claude with the exact
-        # budget that had just been exhausted — the escalation was inert and the
-        # retry was near-pointless. The argv element must be rewritten too.
-        if [[ "$max_turns" -gt 0 ]]; then
-            local _turn_cap=$(( _exhaust_base_turns * 2 ))
-            [[ "$_next_turns" -gt "$_turn_cap" ]] && _next_turns="$_turn_cap"
-            max_turns="$_next_turns"
-            local _ai
-            for _ai in "${!_claude_args[@]}"; do
-                if [[ "${_claude_args[$_ai]}" == "--max-turns" ]]; then
-                    _claude_args[$((_ai + 1))]="$max_turns"
-                    break
-                fi
-            done
-        fi
-        rm -f "$stderr_file" "$_prompt_in"
-        continue
-    fi
 
     if [[ $rc -ne 0 ]]; then
         # Wave 19-K (#748) + #762: mirror Wave 19-I Fix B for the SYNC path.
@@ -984,9 +872,6 @@ _route_call_claude() {
 
     _ROUTE_RESPONSE="$response"
     return 0
-    # ADR-029 (#1230): closes the retry-on-timeout `while`. Every path above
-    # either returns or `continue`s, so this is reached only structurally.
-    done
 }
 
 # ─── _route_emit_outcome <tier> <timeout_s> ──────────────────────────────────
@@ -1069,39 +954,36 @@ _route_update_ledger() {
 }
 
 # ─── route_to_model_loop — ADR-018 Pattern 2 (Issue #467) ────────────────────
-# Multi-turn agent loop. Each iteration invokes claude in $cwd; the pipeline
-# captures `git diff HEAD` between turns and appends to the next prompt.
-# Terminates on `LOOP_COMPLETE` sentinel from .result, or max-iterations cap.
-# The LLM never emits a diff string; the caller reads `git diff HEAD` after
-# the loop returns.
+# One agentic model call in $cwd: the model edits the working tree itself, and
+# says `LOOP_COMPLETE` in its .result when the work is done. The LLM never
+# emits a diff string; the caller reads `git diff HEAD` after the call returns.
+# #2439 (ADR-054 §6a): ONE call per try. A call that does not finish ends the
+# try with its reason; the engine runs the stage again (stage_retry_next).
 #
 # Usage:
-#   route_to_model_loop <tier> <prompt_file> <cwd> <max_iterations> \
+#   route_to_model_loop <tier> <prompt_file> <cwd> \
 #       [--max-turns-per-call N] [--done-sentinel TOKEN] \
-#       [--inter-turn-hook FN] [--model ID] [--scope-allowlist CSV]
+#       [--inter-turn-hook FN] [--model ID] [--scope-allowlist CSV] \
+#       [--defer-final-banner-close]
 #
 # Globals set:
-#   _ROUTE_LOOP_ITERATIONS         — count of iterations actually run
-#   _ROUTE_LOOP_TERMINATED_REASON  — done_sentinel | max_iterations | signal |
-#                                    hook_failed | error
-#   _ROUTE_LOOP_INPUT_TOKENS       — cumulative .usage.input_tokens
-#   _ROUTE_LOOP_OUTPUT_TOKENS      — cumulative .usage.output_tokens
-#   _ROUTE_LOOP_LAST_RESPONSE      — (#608) result_text of the FINAL iteration.
-#                                    Since #1329 this is the LEGACY / single-iteration
-#                                    FALLBACK for the build commit parser; the PRIMARY
-#                                    path is _ROUTE_LOOP_ITER_SUMMARIES (below). Empty
-#                                    when no iteration ran.
-#   _ROUTE_LOOP_ITER_SUMMARIES     — (#1329) newline-separated accumulation of the
-#                                    per-iteration COMMIT_SUMMARY value, parsed +
-#                                    sanitized AT THE SOURCE (one line per iteration
-#                                    that emitted a marker). Consumed by the build
-#                                    plugin for cumulative commit-message composition.
-#                                    Storing only the parsed one-line summaries (not
-#                                    raw result_text) keeps this bounded and prevents
-#                                    adversarial control bytes in the LLM output from
-#                                    being read as record boundaries (#1329 review).
+#   _ROUTE_LOOP_ITERATIONS         — 1 once the call is made
+#   _ROUTE_LOOP_TERMINATED_REASON  — done_sentinel | no_done_sentinel |
+#                                    router_timeout | router_rate_limited |
+#                                    signal | a _router_rc_classify reason
+#   _ROUTE_LOOP_INPUT_TOKENS       — .usage.input_tokens
+#   _ROUTE_LOOP_OUTPUT_TOKENS      — .usage.output_tokens
+#   _ROUTE_LOOP_LAST_RESPONSE      — (#608) the call's result_text; the
+#                                    FALLBACK for the build commit parser.
+#   _ROUTE_LOOP_ITER_SUMMARIES     — (#1329) the call's COMMIT_SUMMARY value,
+#                                    parsed + sanitized AT THE SOURCE. Storing
+#                                    only the parsed one-line summary (not raw
+#                                    result_text) prevents adversarial control
+#                                    bytes in the LLM output from being read as
+#                                    record boundaries (#1329 review).
 #
-# Returns: 0 on DONE-sentinel, 1 on max-iter no-DONE, 2 on fatal.
+# Returns: 0 on DONE-sentinel or a timeout (non-fatal, #1208), 1 when the call
+# did not finish otherwise, 2 on a setup error, 130 on a signal.
 _ROUTE_LOOP_ITERATIONS=0
 _ROUTE_LOOP_TERMINATED_REASON=""
 # #2111: the operator line the rate limit produced ("resets 3pm (UTC)"), for
@@ -1117,9 +999,9 @@ _ROUTE_LOOP_CHILD_PID=""
 # Signal handler kills the whole group; falls back to the PID when empty.
 _ROUTE_LOOP_CHILD_PGID=""
 # #646: deferred-final-banner-close handshake. Only populated when the
-# caller passed --defer-final-banner-close AND the loop reached the
-# DONE-sentinel exit path on a successful iteration (other exit reasons —
-# no_progress, max_iterations, error, signal — keep the legacy immediate
+# caller passed --defer-final-banner-close AND the call reached the
+# DONE-sentinel exit path (other exit reasons — no_done_sentinel, a failed
+# call, signal — keep the legacy immediate
 # stage_io_end behavior and leave these globals empty). Caller MUST invoke
 # _route_loop_close_final_banner after emitting any post-loop operator
 # output that needs to land inside the iter banner pair; it is a safe
@@ -1281,25 +1163,20 @@ route_to_model_loop() {
     # Reset before ANY return: an early exit must not leave the previous loop's
     # reason (a stale done_sentinel reads as success to the caller) — #2225.
     _ROUTE_LOOP_TERMINATED_REASON=""
-    if [[ $# -lt 4 ]]; then
-        error "route_to_model_loop requires <tier> <prompt_file> <cwd> <max_iterations>"
+    if [[ $# -lt 3 ]]; then
+        error "route_to_model_loop requires <tier> <prompt_file> <cwd>"
         return 2
     fi
-    local tier="$1" prompt_file="$2" cwd="$3" max_iterations="$4"; shift 4
+    local tier="$1" prompt_file="$2" cwd="$3"; shift 3
 
     local max_turns_per_call=""
     local done_sentinel="LOOP_COMPLETE"
     local inter_turn_hook="_route_loop_default_hook"
     local model_override=""
     local scope_allowlist=""
-    # #2225 (review #2229): --context-paths <csv> limits what the loop shows the
-    # model between calls — the cumulative diff and the branch state — and what
-    # it counts as progress, to those paths. test-author passes its testfiles:
-    # it must see its own progress and never the implementation (#2022).
-    local context_paths=""
-    # #646: when set, route_to_model_loop returns WITHOUT closing the final
-    # iter's stage-io banner ONLY on the DONE-sentinel exit path. Other exit
-    # paths (no_progress, max_iterations, error rc≥2, SIGINT) keep the
+    # #646: when set, route_to_model_loop returns WITHOUT closing the call's
+    # stage-io banner ONLY on the DONE-sentinel exit path. Other exit
+    # paths (no_done_sentinel, error rc≥2, SIGINT) keep the
     # legacy immediate stage_io_end behavior — the build-plugin discrepancy
     # warn this flag exists to wrap only fires on done_sentinel, so the
     # narrow scope is sufficient. Caller is responsible for emitting any
@@ -1315,7 +1192,6 @@ route_to_model_loop() {
             --inter-turn-hook)    inter_turn_hook="$2";     shift 2 ;;
             --model)              model_override="$2";      shift 2 ;;
             --scope-allowlist)    scope_allowlist="$2";     shift 2 ;;
-            --context-paths)      context_paths="$2";       shift 2 ;;
             --defer-final-banner-close) defer_final_banner_close="true"; shift ;;
             *) error "route_to_model_loop: unknown flag '$1'"; return 2 ;;
         esac
@@ -1331,10 +1207,6 @@ route_to_model_loop() {
     fi
     if [[ -z "$cwd" || ! -d "$cwd" ]]; then
         error "route_to_model_loop: cwd '$cwd' missing or not a directory"
-        return 2
-    fi
-    if ! [[ "$max_iterations" =~ ^[0-9]+$ ]] || [[ "$max_iterations" -lt 1 ]]; then
-        error "route_to_model_loop: max_iterations must be positive integer, got: $max_iterations"
         return 2
     fi
 
@@ -1367,8 +1239,6 @@ route_to_model_loop() {
         mt="$max_turns_per_call"
     fi
 
-    # ADR-029 (#1230): $secs is the base timeout; the per-iteration `_tout_cmd`
-    # is (re)built inside the spawn loop from the escalated `_iter_local_secs`.
     local secs; secs="$(_route_resolve_timeout)"
 
     _ROUTE_LOOP_ITERATIONS=0
@@ -1391,13 +1261,11 @@ route_to_model_loop() {
 
     _route_loop_install_traps
 
-    # Per-iteration temp dir outside the caller's artifacts dir so the parity
-    # goldens that snapshot artifact filenames are not polluted by iter files.
+    # A temp dir outside the caller's artifacts dir so the parity goldens that
+    # snapshot artifact filenames are not polluted by the call's files.
     local _loop_tmp; _loop_tmp="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-loop-iters.XXXXXX")"
     # #628: function-scoped RETURN trap self-cleans on every exit path
-    # (SIGINT propagation, 3-consecutive-timeout fatal, capture_diff error,
-    # done_sentinel, no_progress, max_iterations). Previously two of those
-    # paths skipped cleanup. RETURN fires per-function-frame; does not
+    # (SIGINT propagation, timeout, done_sentinel, no_done_sentinel). RETURN fires per-function-frame; does not
     # conflict with the runner's SCRIPT-level EXIT trap or the loop's
     # INT/TERM signal traps installed by _route_loop_install_traps.
     # Single-quoted body: $_loop_tmp is expanded NOW and frozen into the
@@ -1405,692 +1273,542 @@ route_to_model_loop() {
     # shellcheck disable=SC2064
     trap "rm -rf '$_loop_tmp' 2>/dev/null || true" RETURN
 
-    local static_prompt prev_diff="" timeout_recur=0
+    local static_prompt
     static_prompt="$(cat "$prompt_file")"
-    # #505: snapshot of prev_diff at start of THIS iteration, used to detect
-    # an unchanged diff between iterations for the operator banner pointer.
-    local _prev_diff_for_banner=""
+    # #2439 (ADR-054 §6a, ADR-018 amended 2026-10-31): ONE model call per try.
+    # A call that does not finish ends the try with its reason, and the engine
+    # runs the stage again when the outcome says so and the template's retry:
+    # allows (stage_retry_next). Nothing here repeats the call.
+    local iter=1
+    # The spending cap is checked before the call.
+    _route_check_budget "$tier" || {
+        # #2225: named, so the stage can say why it stopped (misconfigured —
+        # the operator's cap), instead of an empty reason.
+        _ROUTE_LOOP_TERMINATED_REASON="router_budget_exceeded"
+        _route_loop_clear_traps; return 1; }
+    _ROUTE_LOOP_ITERATIONS=1
 
-    local diff_cap="${ZBUILD_LOOP_DIFF_CAP_CHARS:-20000}"
-    # Wave 8 #613: track consecutive empty-diff iters as a no-progress safety net.
-    local empty_iter_count=0
-    local iter
-    for (( iter=1; iter <= max_iterations; iter++ )); do
-        # The spending cap is checked before every call, the loop's included.
-        _route_check_budget "$tier" || {
-            # #2225: named, so the stage can say why it stopped (misconfigured —
-            # the operator's cap), instead of an empty reason.
-            _ROUTE_LOOP_TERMINATED_REASON="router_budget_exceeded"
-            _route_loop_clear_traps; return 1; }
-        _ROUTE_LOOP_ITERATIONS=$iter
+    # The call gets the stage's prompt as the stage composed it (ADR-067
+    # §8). No header, diff or branch summary is added: the code is in the
+    # worktree, and the stage's notes file and Previous work carry what
+    # earlier tries did.
+    local iter_prompt="$static_prompt"
 
-        # Every call gets the stage's prompt as the stage composed it (ADR-067
-        # §8). No per-call header, diff or branch summary is added: the code is
-        # in the worktree, and the stage's notes file and Previous work carry
-        # what earlier calls did.
-        local iter_prompt="$static_prompt"
+    # Redaction by construction (ADR-043). Shared with single-shot
+    # route_to_model via _route_redact_prompt: emits the canonical
+    # redaction.applied (or fail-closed refused). The call stays fail-OPEN
+    # on a redaction error (|| cp) — it does not gate on C6.
+    local iter_prompt_file="${_loop_tmp}/iter-${iter}.txt"
+    local iter_redacted_file="${_loop_tmp}/iter-${iter}.redacted.txt"
+    printf '%s\n' "$iter_prompt" > "$iter_prompt_file"
 
-        # Per-iteration redaction by construction (ADR-043). Shared with
-        # single-shot route_to_model via _route_redact_prompt: emits the
-        # canonical redaction.applied (or fail-closed refused). The loop stays
-        # fail-OPEN on a redaction error (|| cp) — it does not gate on C6 and a
-        # per-iteration refusal must not silently drop the turn.
-        local iter_prompt_file="${_loop_tmp}/iter-${iter}.txt"
-        local iter_redacted_file="${_loop_tmp}/iter-${iter}.redacted.txt"
-        printf '%s\n' "$iter_prompt" > "$iter_prompt_file"
-
-        if ! _route_redact_prompt "$iter_prompt_file" "$iter_redacted_file" "$iter" "$scope_allowlist"; then
-            # A stage prompt out of the contract order is never sent (ADR-067
-            # §8): the stage's prompt is the same on every call, so no later
-            # call would be different. Misconfigured, not a model failure.
-            if [[ "${_ROUTE_PROMPT_REFUSED:-0}" == "1" ]]; then
-                _ROUTE_LOOP_TERMINATED_REASON="router_config_error"
-                _route_loop_clear_traps; return 1
-            fi
-            cp "$iter_prompt_file" "$iter_redacted_file"
+    if ! _route_redact_prompt "$iter_prompt_file" "$iter_redacted_file" "$iter" "$scope_allowlist"; then
+        # A stage prompt out of the contract order is never sent (ADR-067
+        # §8). Misconfigured, not a model failure.
+        if [[ "${_ROUTE_PROMPT_REFUSED:-0}" == "1" ]]; then
+            _ROUTE_LOOP_TERMINATED_REASON="router_config_error"
+            _route_loop_clear_traps; return 1
         fi
+        cp "$iter_prompt_file" "$iter_redacted_file"
+    fi
 
-        local final_prompt; final_prompt="$(cat "$iter_redacted_file")"
+    local final_prompt; final_prompt="$(cat "$iter_redacted_file")"
 
-        eb_emit_event "loop.iteration" \
-            "tier=$tier" "iteration=$iter" "max_iterations=$max_iterations" \
-            "model_id=$_ROUTE_MODEL_ID" "cwd=$cwd" 2>/dev/null || true
-        _route_emit_model_route "$tier" "$secs"
+    eb_emit_event "loop.iteration" \
+        "tier=$tier" "iteration=$iter" \
+        "model_id=$_ROUTE_MODEL_ID" "cwd=$cwd" 2>/dev/null || true
+    _route_emit_model_route "$tier" "$secs"
 
-        # #505: build operator-facing banner_input that DEDUPES the static
-        # prompt + REPLACES the cumulative diff section with a pointer once
-        # we are past iter 1. The LLM still gets the full final_prompt; only
-        # the scrollback banner is trimmed. See ADR-018 §Pattern 2.5.
-        #
-        # Dedupe minimum (chars): below this, the full prompt is fine.
-        local _banner_dedupe_min="${ZBUILD_LOOP_BANNER_DEDUPE_MIN_CHARS:-500}"
-        local banner_input="$final_prompt"
-        if (( iter >= 2 )) && (( ${#static_prompt} >= _banner_dedupe_min )); then
-            # sha = first 8 hex chars of sha256(static_prompt) — detects
-            # mid-loop static-prompt mutation across iterations.
-            local _sha8="" _static_lines
-            _static_lines="$(printf '%s' "$static_prompt" | wc -l | tr -d ' ')"
-            if command -v shasum >/dev/null 2>&1; then
-                _sha8="$(printf '%s' "$static_prompt" | shasum -a 256 | cut -c1-8)"
-            elif command -v sha256sum >/dev/null 2>&1; then
-                _sha8="$(printf '%s' "$static_prompt" | sha256sum | cut -c1-8)"
-            else
-                _sha8="nohash"
-            fi
+    local banner_input="$final_prompt"
 
-            # Classify the diff pointer: cap-exceeded (stat-only marker from
-            # _route_loop_capture_diff), unchanged across iters, or normal.
-            local _diff_pointer
-            if [[ "$prev_diff" == "(diff exceeded cap of "* ]]; then
-                _diff_pointer="[diff: stat-only, see ── changed-files ──]"
-            elif [[ -n "${_prev_diff_for_banner:-}" && "$_prev_diff_for_banner" == "$prev_diff" ]]; then
-                _diff_pointer="[diff: unchanged from iter $((iter - 1))]"
-            else
-                local _diff_lines _diff_chars
-                _diff_lines="$(printf '%s' "$prev_diff" | wc -l | tr -d ' ')"
-                _diff_chars="${#prev_diff}"
-                _diff_pointer="[diff: see ── changed-files ── summary below (${_diff_lines} lines, ${_diff_chars}c)]"
-            fi
+    # #482: per-iteration stage_io banner (Pattern 2). Mirrors #481's
+    # split begin/end emit around the LLM call so build's loop is
+    # observable like plan/review. Fails soft — capture never blocks
+    # the loop. Uses ZBUILD_CURRENT_STAGE (preferred) or ZBUILD_PLUGIN.
+    local _iter_stage_io_seq=""
+    local _iter_stage_id="${ZBUILD_CURRENT_STAGE:-${ZBUILD_PLUGIN:-}}"
+    if [[ -n "$_iter_stage_id" ]]; then
+        # #505: --persist-input writes final_prompt (full payload) into
+        # the artifact .input field, while --input drives only the
+        # (possibly deduped) scrollback banner. Default behavior — for
+        # callers that don't pass --persist-input — is unchanged.
+        stage_io_begin \
+            --stage "$_iter_stage_id" \
+            --kind llm \
+            --input "$banner_input" \
+            --persist-input "$iter_redacted_file" \
+            --metadata "tier=$tier" \
+            --metadata "iter=$iter" \
+            --metadata "model_id=$_ROUTE_MODEL_ID" \
+            >/dev/null 2>&1 || true
+        _iter_stage_io_seq="${_STAGE_IO_LAST_SEQ:-}"
+    fi
 
-            banner_input="[static prompt: same as iter 1, ${_static_lines} lines, sha=${_sha8}]
+    local stderr_file rc=0 json_file
+    # ZBUILD_STAGE_SCRATCH first (ADR-058 §2): the dispatch seam redirects
+    # TMPDIR to it, but this loop also runs where that redirect is not in
+    # scope, and `${TMPDIR:-/tmp}` then resolves to /tmp — outside every
+    # ADR-058 area. Naming the area directly does not depend on inheritance.
+    local _rt_tmp; _rt_tmp="$(zbuild_engine_tmpdir)"
+    stderr_file="$(mktemp "${_rt_tmp}/zb-loop-stderr.XXXXXX")"
+    json_file="$(mktemp "${_rt_tmp}/zb-loop-json.XXXXXX")"
 
-## Iteration ${iter}/${max_iterations}
+    # The prompt goes on stdin, never argv (MAX_ARG_STRLEN — see route_to_model).
+    # In $_loop_tmp, so the RETURN trap removes it on every exit path.
+    local _prompt_in="${_loop_tmp}/iter-${iter}.prompt"
+    local _stream_file="${_loop_tmp}/iter-${iter}.stream.jsonl"
+    printf '%s' "$final_prompt" > "$_prompt_in"
+    local -a _claude_args=(--print --model "$_ROUTE_MODEL_ID")
+    # ADR-018 Amendment N (#762): omit --max-turns when sentinel mt=0.
+    if [[ "$mt" -gt 0 ]]; then
+        _claude_args+=(--max-turns "$mt")
+    else
+        eb_emit_event "router.max_turns.flag_omitted" \
+            "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+            "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
+    fi
+    _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+    # ADR-051: the stage's persona, as the provider takes it.
+    _route_persona_prepare
+    _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")
+    : "${ZBUILD_STAGE_SCRATCH:="$_rt_tmp"}"
+    # #1919 (C10): abort iteration on settings build failure (SPEC-3).
+    _zbuild_build_permissions_settings || {
+        _ROUTE_LOOP_TERMINATED_REASON="router_config_error"
+        rm -f "$stderr_file" "$json_file"
+        _route_loop_clear_traps; return 1; }
+    # mapfile, not $( ) word-splitting — see the single-shot site above.
+    local -a _perm_args=()
+    mapfile -t _perm_args < <(_zbuild_permission_args)
+    _claude_args+=("${_perm_args[@]}")
+    # #2139: stream-json (needs --verbose under --print) — every step lands
+    # on disk as it happens, so a killed call still leaves its record.
+    _claude_args+=(--output-format stream-json --verbose)
 
-${_diff_pointer}"
-        fi
-        # Track prev_diff snapshot for next-iter "unchanged" detection.
-        _prev_diff_for_banner="$prev_diff"
+    rc=0
+    # TERM-only, as in _route_call_claude (#1752).
+    _acceptance_timeout_prefix "$secs" none
+    local -a _tout_cmd=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
 
-        # #482: per-iteration stage_io banner (Pattern 2). Mirrors #481's
-        # split begin/end emit around the LLM call so build's loop is
-        # observable like plan/review. Fails soft — capture never blocks
-        # the loop. Uses ZBUILD_CURRENT_STAGE (preferred) or ZBUILD_PLUGIN.
-        local _iter_stage_io_seq=""
-        local _iter_stage_id="${ZBUILD_CURRENT_STAGE:-${ZBUILD_PLUGIN:-}}"
-        if [[ -n "$_iter_stage_id" ]]; then
-            # #505: --persist-input writes final_prompt (full payload) into
-            # the artifact .input field, while --input drives only the
-            # (possibly deduped) scrollback banner. Default behavior — for
-            # callers that don't pass --persist-input — is unchanged.
-            stage_io_begin \
-                --stage "$_iter_stage_id" \
-                --kind llm \
-                --input "$banner_input" \
-                --persist-input "$iter_redacted_file" \
-                --metadata "tier=$tier" \
-                --metadata "iter=$iter" \
-                --metadata "model_id=$_ROUTE_MODEL_ID" \
-                >/dev/null 2>&1 || true
-            _iter_stage_io_seq="${_STAGE_IO_LAST_SEQ:-}"
-        fi
+    # Run claude in $cwd as background child so signal trap can kill it.
+    # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class
+    # subprocess. _zbuild_make_fresh_shell scrubs ZBUILD_* + closes fd 3.
+    # Supersedes Wave 11C (#647)'s narrow per-var unset; the build
+    # plugin (the loop's primary caller) inherits this protection.
+    # Copilot P1 on #673: guard cd BEFORE the helper, because the
+    # helper disables errexit (fresh-user-shell posture). A failed
+    # cd here would otherwise silently spawn claude from the
+    # runner's cwd instead of $cwd.
+    #
+    # Wave 15-G (#687): the claude tree lives in its own process group, so
+    # _route_loop_on_signal TERM/KILLs the whole group rather than the
+    # top-level PID. That is what lets the loop pre-abort in <2.5s even when
+    # claude, or any child it spawned, ignores or delays SIGTERM.
+    #
+    # #2056: `set -m` — bash job control — puts the backgrounded job in its
+    # OWN PROCESS GROUP, so PGID == $!. `kill -- -$!` then reaches the whole
+    # claude tree, and `exec` keeps $! pointing at the real process rather
+    # than a wrapping subshell.
+    #
+    # This replaced `setsid -w`, which was wrong here in two ways.
+    #
+    # It does not exist on macOS. The prefix went empty, no group was made,
+    # and the abort degraded to killing one PID while every descendant
+    # survived — so Wave 15-G's "an abort leaves nothing running" held on
+    # Linux only. Nothing reported that, because the test covering it is
+    # `skip_unless_platform linux`.
+    #
+    # And `-w` defeated the `exec` above. setsid only execs in place when it
+    # need not survive; with `-w` it MUST fork, because it waits for the
+    # child and returns its exit status. So $! was the setsid wrapper, still
+    # in the runner's group, while the new session belonged to a process one
+    # fork below — precisely the failure the old comment here described and
+    # believed `exec` had prevented.
+    #
+    # Job control is POSIX and behaves identically on macOS and Linux, needs
+    # no external binary, and gives PGID == PID deterministically. It is
+    # already used for exactly this in core/pipeline/runner.sh,
+    # plugins/tool/test/plugin.sh and three integration tests.
+    #
+    # Opened and closed tightly: `set -m` also turns on job-control messages
+    # on stderr, which is noise anywhere but the spawn itself.
+    set -m
+    if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
+        (
+            cd "$cwd" || exit 99
+            _zbuild_make_fresh_shell
+            # stdin AFTER the fresh shell: it points stdin at /dev/null (#2108).
+            exec "${_tout_cmd[@]}" claude "${_claude_args[@]}" <"$_prompt_in"
+        ) >"$_stream_file" 2>"$stderr_file" &
+    else
+        (
+            cd "$cwd" || exit 99
+            _zbuild_make_fresh_shell
+            exec claude "${_claude_args[@]}" <"$_prompt_in"
+        ) >"$_stream_file" 2>"$stderr_file" &
+    fi
+    _ROUTE_LOOP_CHILD_PID=$!
+    set +m
+    # Wave 15-G (#687), extracted in #1748. Empty means the group is not
+    # provably distinct from the runner's own, so the handler falls back to
+    # the per-PID kill (Wave 8 #612) rather than `kill -- -PGID`-ing itself.
+    _ROUTE_LOOP_CHILD_PGID="$(zbuild_pg_resolve "$_ROUTE_LOOP_CHILD_PID")"
+    # #2024: register it, so the group survives this shell. The in-memory
+    # variable above is enough for the signal handler, which runs while the
+    # runner is alive — but a SIGKILLed runner leaves nothing behind, and a
+    # model spawn is the longest-lived child a stage has. On disk it is
+    # reachable by `zbuild cleanup --pgroups` afterwards (#2018).
+    zbuild_pg_register "$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true
+    wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
+    _ROUTE_LOOP_CHILD_PID=""
+    _ROUTE_LOOP_CHILD_PGID=""
+    # #2139: the envelope everything below reads is the stream's result line.
+    _route_stream_envelope "$_stream_file" "$json_file"
 
-        local stderr_file rc=0 json_file
-        # ZBUILD_STAGE_SCRATCH first (ADR-058 §2): the dispatch seam redirects
-        # TMPDIR to it, but this loop also runs where that redirect is not in
-        # scope, and `${TMPDIR:-/tmp}` then resolves to /tmp — outside every
-        # ADR-058 area. Naming the area directly does not depend on inheritance.
-        local _rt_tmp; _rt_tmp="$(zbuild_engine_tmpdir)"
-        stderr_file="$(mktemp "${_rt_tmp}/zb-loop-stderr.XXXXXX")"
-        json_file="$(mktemp "${_rt_tmp}/zb-loop-json.XXXXXX")"
-
-        # The prompt goes on stdin, never argv (MAX_ARG_STRLEN — see route_to_model).
-        # In $_loop_tmp, so the RETURN trap removes it on every exit path.
-        local _prompt_in="${_loop_tmp}/iter-${iter}.prompt"
-        local _stream_file="${_loop_tmp}/iter-${iter}.stream.jsonl"
-        printf '%s' "$final_prompt" > "$_prompt_in"
-        local -a _claude_args=(--print --model "$_ROUTE_MODEL_ID")
-        # ADR-018 Amendment N (#762): omit --max-turns when sentinel mt=0.
-        if [[ "$mt" -gt 0 ]]; then
-            _claude_args+=(--max-turns "$mt")
-        elif [[ "$iter" -eq 1 ]]; then
-            # Emit sentinel-resolution telemetry once per loop run (iter 1).
-            eb_emit_event "router.max_turns.flag_omitted" \
-                "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
-                "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
-        fi
-        _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
-        # ADR-051: the stage's persona, as the provider takes it.
-        _route_persona_prepare
-        _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")
-        : "${ZBUILD_STAGE_SCRATCH:="$_rt_tmp"}"
-        # #1919 (C10): abort iteration on settings build failure (SPEC-3).
-        _zbuild_build_permissions_settings || { rc=2; break; }
-        # mapfile, not $( ) word-splitting — see the single-shot site above.
-        local -a _perm_args=()
-        mapfile -t _perm_args < <(_zbuild_permission_args)
-        _claude_args+=("${_perm_args[@]}")
-        # #2139: stream-json (needs --verbose under --print) — every step lands
-        # on disk as it happens, so a killed call still leaves its record.
-        _claude_args+=(--output-format stream-json --verbose)
-
-        # ADR-029 (#1230): intra-iteration retry-on-timeout. router.retries is the
-        # count of per-iteration CALL retries with an escalated LOCAL timeout,
-        # layered BEFORE the cross-iteration timeout_recur breaker (#1208). An
-        # iteration bumps timeout_recur only AFTER exhausting the N inner retries
-        # (router.retries = intra-iteration call retries; timeout_recur =
-        # cross-iteration breaker — no double-count). #1208 "timeouts never fatal"
-        # is preserved: once inner retries are spent, control falls through to the
-        # unchanged rc=124 path (sentinel-honor + timeout_recur + non-fatal yield).
-        local _iter_retries; _iter_retries="$(_route_resolve_retries)"
-        local _iter_attempt=0 _iter_local_secs="$secs"
-        while :; do
-        rc=0
-        # TERM-only, as in _route_call_claude (#1752).
-        _acceptance_timeout_prefix "$_iter_local_secs" none
-        local -a _tout_cmd=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
-
-        # Run claude in $cwd as background child so signal trap can kill it.
-        # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class
-        # subprocess. _zbuild_make_fresh_shell scrubs ZBUILD_* + closes fd 3.
-        # Supersedes Wave 11C (#647)'s narrow per-var unset; the build
-        # plugin (the loop's primary caller) inherits this protection.
-        # Copilot P1 on #673: guard cd BEFORE the helper, because the
-        # helper disables errexit (fresh-user-shell posture). A failed
-        # cd here would otherwise silently spawn claude from the
-        # runner's cwd instead of $cwd.
-        #
-        # Wave 15-G (#687): the claude tree lives in its own process group, so
-        # _route_loop_on_signal TERM/KILLs the whole group rather than the
-        # top-level PID. That is what lets the loop pre-abort in <2.5s even when
-        # claude, or any child it spawned, ignores or delays SIGTERM.
-        #
-        # #2056: `set -m` — bash job control — puts the backgrounded job in its
-        # OWN PROCESS GROUP, so PGID == $!. `kill -- -$!` then reaches the whole
-        # claude tree, and `exec` keeps $! pointing at the real process rather
-        # than a wrapping subshell.
-        #
-        # This replaced `setsid -w`, which was wrong here in two ways.
-        #
-        # It does not exist on macOS. The prefix went empty, no group was made,
-        # and the abort degraded to killing one PID while every descendant
-        # survived — so Wave 15-G's "an abort leaves nothing running" held on
-        # Linux only. Nothing reported that, because the test covering it is
-        # `skip_unless_platform linux`.
-        #
-        # And `-w` defeated the `exec` above. setsid only execs in place when it
-        # need not survive; with `-w` it MUST fork, because it waits for the
-        # child and returns its exit status. So $! was the setsid wrapper, still
-        # in the runner's group, while the new session belonged to a process one
-        # fork below — precisely the failure the old comment here described and
-        # believed `exec` had prevented.
-        #
-        # Job control is POSIX and behaves identically on macOS and Linux, needs
-        # no external binary, and gives PGID == PID deterministically. It is
-        # already used for exactly this in core/pipeline/runner.sh,
-        # plugins/tool/test/plugin.sh and three integration tests.
-        #
-        # Opened and closed tightly: `set -m` also turns on job-control messages
-        # on stderr, which is noise anywhere but the spawn itself.
-        set -m
-        if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
-            (
-                cd "$cwd" || exit 99
-                _zbuild_make_fresh_shell
-                # stdin AFTER the fresh shell: it points stdin at /dev/null (#2108).
-                exec "${_tout_cmd[@]}" claude "${_claude_args[@]}" <"$_prompt_in"
-            ) >"$_stream_file" 2>"$stderr_file" &
-        else
-            (
-                cd "$cwd" || exit 99
-                _zbuild_make_fresh_shell
-                exec claude "${_claude_args[@]}" <"$_prompt_in"
-            ) >"$_stream_file" 2>"$stderr_file" &
-        fi
-        _ROUTE_LOOP_CHILD_PID=$!
-        set +m
-        # Wave 15-G (#687), extracted in #1748. Empty means the group is not
-        # provably distinct from the runner's own, so the handler falls back to
-        # the per-PID kill (Wave 8 #612) rather than `kill -- -PGID`-ing itself.
-        _ROUTE_LOOP_CHILD_PGID="$(zbuild_pg_resolve "$_ROUTE_LOOP_CHILD_PID")"
-        # #2024: register it, so the group survives this shell. The in-memory
-        # variable above is enough for the signal handler, which runs while the
-        # runner is alive — but a SIGKILLed runner leaves nothing behind, and a
-        # model spawn is the longest-lived child a stage has. On disk it is
-        # reachable by `zbuild cleanup --pgroups` afterwards (#2018).
-        zbuild_pg_register "$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true
-        wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
-        _ROUTE_LOOP_CHILD_PID=""
-        _ROUTE_LOOP_CHILD_PGID=""
-        # #2139: the envelope everything below reads is the stream's result line.
-        _route_stream_envelope "$_stream_file" "$json_file"
-
-        # #612: rc=130 means the child claude was interrupted by SIGINT (either
-        # delivered to the foreground process group by the operator's Ctrl-C, or
-        # by _route_loop_on_signal's `kill`). It is NOT a transient error —
-        # falling through to the generic `continue` below absorbs the signal and
-        # spawns another claude on the next iteration, making the pipeline
-        # impossible to interrupt. Short-circuit here: emit a terminal signal
-        # event, set the reason, clear traps, return 130 so callers (build
-        # plugin, runner) can propagate the abort.
-        #
-        # Wave 15-G (#687): also short-circuit on rc=143 (SIGTERM) and any
-        # rc when _route_loop_on_signal already marked the reason as "signal".
-        # The PG-kill path can produce 143 (TERM landed cleanly) or 137 (KILL
-        # backstop fired) instead of 130 — all three are signal-class exits
-        # and must NOT be swallowed by the loop's generic-error continue.
-        if [[ $rc -eq 130 || $rc -eq 143 || $rc -eq 137 \
-              || "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "signal" ]]; then
-            warn "route_to_model_loop: claude interrupted (rc=$rc) iter=$iter — propagating signal"
-            _ROUTE_LOOP_TERMINATED_REASON="signal"
-            eb_emit_event "loop.terminated.signal" \
-                "iterations=$iter" "child_rc=$rc" \
-                "model_id=$_ROUTE_MODEL_ID" 2>/dev/null || true
-            # Close the per-iteration stage_io banner on the signal path so
-            # we don't orphan it into the EXIT trap.
-            if [[ -n "$_iter_stage_io_seq" ]]; then
-                stage_io_end \
-                    --stage "$_iter_stage_id" \
-                    --kind llm \
-                    --seq "$_iter_stage_io_seq" \
-                    --output "" \
-                    --exit-code 130 \
-                    --metadata "iter=$iter" \
-                    --metadata "signal=true" \
-                    >/dev/null 2>&1 || true
-            fi
-            rm -f "$stderr_file" "$json_file"
-            _route_loop_clear_traps
-            # #628: $_loop_tmp cleanup handled by RETURN trap above.
-            return 130
-        fi
-
-        # ADR-029 (#1230): intra-iteration retry on a bare timeout (rc=124) while
-        # attempts remain. Honor LOOP_COMPLETE-on-timeout first — if the work is
-        # already done we do NOT retry (let the sentinel path below terminate the
-        # loop cleanly). Otherwise emit router.timeout.retry, escalate the LOCAL
-        # timeout, and re-spawn within THIS iteration (timeout_recur unchanged).
-        if [[ $rc -eq 124 && $_iter_attempt -lt $_iter_retries ]]; then
-            local _rr_done="false" _rr_limited="false"
-            if [[ -s "$json_file" ]]; then
-                local _rr_res; _rr_res="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
-                if _route_has_done_sentinel "$done_sentinel" "$_rr_res"; then
-                    _rr_done="true"
-                fi
-                # #1237 covered the sync path; this is the loop path, which build
-                # and design use. A rate/session limit is reported in well under a
-                # second and then the CLI hangs, so gtimeout returns 124 with the
-                # 429 envelope ALREADY on disk. Retrying re-asks a question whose
-                # answer is known and cannot change until the limit resets — run
-                # 33474879520 spent 10 x 900s doing exactly that and hit GitHub's
-                # 6h ceiling with nothing to show. Read the envelope we already
-                # have and stop.
-                if _router_is_rate_limit "$(cat "$json_file" 2>/dev/null || true)"; then
-                    _rr_limited="true"
-                fi
-            fi
-            if [[ "$_rr_limited" == "true" ]]; then
-                warn "router: ${_iter_stage_id:-stage} rate-limited — not retrying (the limit will not clear inside this run)"
-                eb_emit_event "router.timeout.rate_limited" \
-                    "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
-                    "stage=${_iter_stage_id:-unknown}" "path=loop" \
-                    "iteration=$iter" "attempt=$_iter_attempt" 2>/dev/null || true
-            elif [[ "$_rr_done" != "true" ]]; then
-                _iter_attempt=$(( _iter_attempt + 1 ))
-                local _rr_next; _rr_next="$(_route_escalate_timeout "$secs" "$_iter_attempt")"
-                # #1241: surface the loop-path retry on the operator terminal too
-                # (mirror the single-shot branch) so it is not a silent hang.
-                warn "router: ${_iter_stage_id:-stage} timed out (rc=124) — iter=$iter retry ${_iter_attempt}/${_iter_retries}, escalating timeout ${_iter_local_secs}s → ${_rr_next}s"
-                eb_emit_event "router.timeout.retry" \
-                    "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
-                    "stage=${_iter_stage_id:-unknown}" "path=loop" \
-                    "iteration=$iter" "attempt=$_iter_attempt" "retries=$_iter_retries" \
-                    "from_secs=$_iter_local_secs" "to_secs=$_rr_next" 2>/dev/null || true
-                _iter_local_secs="$_rr_next"
-                continue
-            fi
-        fi
-        break
-        done
-
-        if [[ $rc -ne 0 ]]; then
-            # Wave 19-I Fix A (#743): if rc=124 (gtimeout SIGTERM) AND the
-            # captured .result already contains LOOP_COMPLETE on its own
-            # line, claude finished the work but the wrapper killed it
-            # during final CLI exit. Honor the sentinel and terminate the
-            # loop with done_sentinel reason rather than discarding the
-            # work-done signal and retrying. Dogfood 20260607181657-82646
-            # iter 4 exhibited this: 900s wall time + LOOP_COMPLETE in
-            # output + rc=124 → loop wasted iter 5 on already-complete code.
-            if [[ $rc -eq 124 && -s "$json_file" ]]; then
-                local _rc124_result
-                _rc124_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
-                if _route_has_done_sentinel "$done_sentinel" "$_rc124_result"; then
-                    _route_loop_report_call "$tier" "$secs" "$(<"$json_file")"
-                    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-                    _ROUTE_LOOP_ITERATIONS=$iter
-                    eb_emit_event "router.loop.iter.timeout_with_sentinel" \
-                        "iteration=$iter" "rc=$rc" \
-                        "stage=${_iter_stage_id:-unknown}" \
-                        "model_id=$_ROUTE_MODEL_ID" \
-                        "reason=gtimeout_after_loop_complete" \
-                        2>/dev/null || true
-                    if [[ -n "$_iter_stage_io_seq" ]]; then
-                        stage_io_end \
-                            --stage "$_iter_stage_id" \
-                            --kind llm \
-                            --seq "$_iter_stage_io_seq" \
-                            --output "$_rc124_result" \
-                            --exit-code 0 \
-                            --metadata "iter=$iter" \
-                            --metadata "terminated=gtimeout_after_sentinel" \
-                            >/dev/null 2>&1 || true
-                    fi
-                    eb_emit_event "loop.complete" \
-                        "iterations=$iter" \
-                        "model_id=$_ROUTE_MODEL_ID" \
-                        "reason=done_sentinel" 2>/dev/null || true
-                    rm -f "$stderr_file" "$json_file"
-                    _route_loop_clear_traps
-                    return 0
-                fi
-            fi
-            # Wave 19-I Fix B (#743) + #762: preserve diagnostic artifacts
-            # BEFORE the warn/error log so the human-readable message can
-            # cite the path and parsed fields (including subtype for #762).
-            local _diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}/stage-io"
-            mkdir -p "$_diag_dir" 2>/dev/null || true
-            local _diag_base="${_iter_stage_id:-loop}-iter${iter}-error"
-            local _diag_json_path=""
-            local _diag_stderr_path=""
-            if [[ -f "$json_file" ]]; then
-                _diag_json_path="$_diag_dir/${_diag_base}.raw-claude-output.json"
-                # #2139: no envelope (killed before its result) → keep the step
-                # stream itself, which is the only record of what the call did.
-                if [[ ! -s "$json_file" && -s "${_stream_file:-}" ]]; then
-                    cp "$_stream_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
-                else
-                    cp "$json_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
-                fi
-            fi
-            if [[ -f "$stderr_file" ]]; then
-                _diag_stderr_path="$_diag_dir/${_diag_base}.raw-claude-stderr.txt"
-                cp "$stderr_file" "$_diag_stderr_path" 2>/dev/null || _diag_stderr_path=""
-            fi
-            # Parse envelope fields once; #762 adds subtype/cost.
-            local _diag_is_error="" _diag_err_text="" _diag_num_turns="" _diag_out_tokens="" _diag_subtype="" _diag_cost=""
-            local _diag_last_tool=""
-            if [[ ! -s "$json_file" && -s "${_stream_file:-}" ]]; then
-                # Killed before its result: count the turns the stream recorded.
-                local _diag_prog; _diag_prog="$(_route_stream_progress "$_stream_file")"
-                _diag_num_turns="${_diag_prog%% *}"; _diag_last_tool="${_diag_prog#* }"
-                [[ "$_diag_num_turns" == "0" ]] && _diag_num_turns=""
-            elif [[ -n "$_diag_json_path" ]]; then
-                _diag_is_error="$(jq -r '.is_error // empty' "$_diag_json_path" 2>/dev/null || true)"
-                if _diag_err_text="$(jq -r '.error // empty' "$_diag_json_path" 2>/dev/null)"; then
-                    _diag_err_text="${_diag_err_text:0:200}"
-                else
-                    _diag_err_text="<unreadable>"
-                fi
-                _diag_num_turns="$(jq -r '.num_turns // empty' "$_diag_json_path" 2>/dev/null || true)"
-                _diag_out_tokens="$(jq -r '.usage.output_tokens // empty' "$_diag_json_path" 2>/dev/null || true)"
-                _diag_subtype="$(jq -r '.subtype // empty' "$_diag_json_path" 2>/dev/null || true)"
-                _diag_cost="$(jq -r '.total_cost_usd // empty' "$_diag_json_path" 2>/dev/null || true)"
-            fi
-            # #1823 (absorbs #1723): the rate-limit detector's SECOND caller.
-            # `_route_call_claude` has detected a 429/529 envelope since #1237,
-            # but this loop does not go through `_route_call_claude` — it spawns
-            # claude directly — so the one path that could name the failure never
-            # saw it. A rate limit surfaced here as `reason=claude_rc_nonzero` and
-            # then `continue`d, re-spawning against the same limit until
-            # max_iterations returned 1 at zero output. That is the whole of
-            # #1723: iterations burned to learn nothing.
-            #
-            # Detect on the envelope COPY (`_diag_json_path`), because the
-            # original `$json_file` is removed on every error path below.
-            # Read the envelope ONCE. Two `$(cat ...)` substitutions would fork
-            # twice per failing iteration for the same bytes (review finding).
-            local _loop_rate_limited=0 _loop_rl_msg="" _loop_envelope=""
-            if [[ -n "$_diag_json_path" ]]; then
-                _loop_envelope="$(cat "$_diag_json_path" 2>/dev/null || true)"
-            fi
-            # A failed iteration can still have been billed; the provider says.
-            _route_loop_report_call "$tier" "$secs" "$_loop_envelope"
-            if [[ -n "$_loop_envelope" ]] && _router_is_rate_limit "$_loop_envelope"; then
-                _loop_rate_limited=1
-                _loop_rl_msg="$(_router_rate_limit_message "$_loop_envelope")"
-            fi
-            # #762: surface error_max_turns subtype with a human-readable line.
-            # Falls back to the legacy stderr-snip warning otherwise.
-            local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
-            if [[ "$_loop_rate_limited" == "1" ]]; then
-                error "$_loop_rl_msg (model=$_ROUTE_MODEL_ID iter=$iter) — diagnostic: ${_diag_json_path:-absent}"
-            elif [[ "$_diag_subtype" == "error_max_turns" ]]; then
-                error "claude max_turns reached (turns=${_diag_num_turns:-?}, output_tokens=${_diag_out_tokens:-?}, cost=\$${_diag_cost:-?}) — diagnostic: ${_diag_json_path:-absent}"
-            else
-                warn "route_to_model_loop: claude rc=$rc iter=$iter${snip:+: $snip}"
-            fi
-            eb_emit_event "loop.iteration.error" \
-                "iteration=$iter" "rc=$rc" \
-                "model_id=$_ROUTE_MODEL_ID" \
-                "reason=$([[ "$_loop_rate_limited" == "1" ]] && printf 'router_rate_limited' || printf 'claude_rc_nonzero')" 2>/dev/null || true
-            if [[ "$_loop_rate_limited" == "1" ]]; then
-                eb_emit_event "router.rate_limited" \
-                    "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
-                    "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
-                    "iteration=$iter" \
-                    "message=$_loop_rl_msg" 2>/dev/null || true
-            fi
-            # #2183: the diagnostic reaches the OTHER stages, not only the
-            # event log. One seam covers every router-backed stage — build,
-            # design, plan, test-author, the judges and the lenses.
-            if declare -F stage_errors_append >/dev/null 2>&1; then
-                stage_errors_append "${_iter_stage_id:-${ZBUILD_CURRENT_STAGE:-}}" \
-                    "model call iter=$iter rc=$rc${_diag_subtype:+ subtype=$_diag_subtype}${_diag_num_turns:+ turns=$_diag_num_turns}${_diag_err_text:+: $_diag_err_text}"
-                stage_errors_append_file "${_iter_stage_id:-${ZBUILD_CURRENT_STAGE:-}}" \
-                    "${_diag_stderr_path:-}" "model call iter=$iter stderr"
-            fi
-            eb_emit_event "router.loop.iter.error.diagnostic" \
-                "iteration=$iter" "rc=$rc" \
-                "stage=${_iter_stage_id:-unknown}" \
-                "raw_json_path=${_diag_json_path:-absent}" \
-                "raw_stderr_path=${_diag_stderr_path:-absent}" \
-                "is_error=${_diag_is_error:-absent}" \
-                "error_text=${_diag_err_text:-absent}" \
-                "num_turns=${_diag_num_turns:-absent}" \
-                "last_tool=${_diag_last_tool:-absent}" \
-                "output_tokens=${_diag_out_tokens:-absent}" \
-                "subtype=${_diag_subtype:-absent}" \
-                2>/dev/null || true
-            # #482: close the per-iteration banner on the error path so we
-            # don't orphan it into the EXIT trap. Output is whatever (if
-            # anything) ended up in json_file before the failure.
-            if [[ -n "$_iter_stage_io_seq" ]]; then
-                local _err_result=""
-                _err_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
-                stage_io_end \
-                    --stage "$_iter_stage_id" \
-                    --kind llm \
-                    --seq "$_iter_stage_io_seq" \
-                    --output "$_err_result" \
-                    --exit-code "$rc" \
-                    --metadata "iter=$iter" \
-                    --metadata "error=true" \
-                    >/dev/null 2>&1 || true
-            fi
-            # #1823: a rate limit ENDS the loop rather than iterating into it.
-            # Retrying against a limit that has not reset yet cannot change the
-            # outcome — every further iteration spends budget to be refused
-            # again. The marker is armed so the engine's fallback classification
-            # can resolve this dispatch to `throttled` (wait, then retry) instead
-            # of `broken` (halt), which is the difference between a run that
-            # resumes when the limit resets and one that is dead.
-            if [[ "$_loop_rate_limited" == "1" ]]; then
-                _ROUTE_LOOP_TERMINATED_REASON="router_rate_limited"
-                _ROUTE_LOOP_RATE_LIMIT_MESSAGE="$_loop_rl_msg"
-                _router_arm_throttle_marker "$_loop_rl_msg"
-                rm -f "$stderr_file" "$json_file"
-                _route_loop_clear_traps
-                return 1
-            fi
-            if [[ $rc -eq 124 ]]; then
-                timeout_recur=$(( timeout_recur + 1 ))
-                if [[ $timeout_recur -ge 3 ]]; then
-                    # Issue #1208 / ADR-013 (router-loop): a per-turn timeout is
-                    # NEVER fatal. Repeated timeouts end THIS build attempt and
-                    # YIELD control back to the cycle (non-fatal return 0), which
-                    # always runs the test stage to verify the actual state and
-                    # iterates. The caller (build plugin) reads
-                    # _ROUTE_LOOP_TERMINATED_REASON=router_timeout to mark the
-                    # attempt did-not-finish (mid-flight, not a clean resting
-                    # point) so the iteration cannot ratify convergence — but the
-                    # committed partial work is preserved (#602). warn, not error.
-                    warn "route_to_model_loop: 3 consecutive timeouts — yielding to cycle (non-fatal)"
-                    _ROUTE_LOOP_TERMINATED_REASON="router_timeout"
-                    eb_emit_event "loop.timeout_yield" \
-                        "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
-                        "consecutive=$timeout_recur" \
-                        "reason=router_timeout" 2>/dev/null || true
-                    rm -f "$stderr_file" "$json_file"
-                    _route_loop_clear_traps
-                    return 0
-                fi
-            fi
-            rm -f "$stderr_file" "$json_file"
-            # Capture diff after error iteration too so progress isn't lost.
-            _ROUTE_LOOP_CONTEXT_PATHS="$context_paths" _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
-                _ROUTE_LOOP_TERMINATED_REASON="error"
-                _route_loop_clear_traps
-                return 2
-            }
-            continue
-        fi
-        timeout_recur=0
-        rm -f "$stderr_file"
-
-        # Extract .result and token usage from claude JSON output.
-        local result_text="" in_tok=0 out_tok=0
-        result_text="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
-        in_tok="$(jq -r '.usage.input_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
-        out_tok="$(jq -r '.usage.output_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
-        _ROUTE_LOOP_INPUT_TOKENS=$(( _ROUTE_LOOP_INPUT_TOKENS + in_tok ))
-        _ROUTE_LOOP_OUTPUT_TOKENS=$(( _ROUTE_LOOP_OUTPUT_TOKENS + out_tok ))
-        # ADR-003 amendment: the iteration's cost, as the provider reports it.
-        _route_loop_report_call "$tier" "$secs" "$(<"$json_file")"
-        # #608: expose the most recent iteration's LLM text so the build plugin
-        # can parse the COMMIT_SUMMARY marker after the loop returns.
-        _ROUTE_LOOP_LAST_RESPONSE="$result_text"
-        # #1329: parse THIS iteration's COMMIT_SUMMARY at the source and keep only
-        # the sanitized one-line value (newline-separated). Storing the parsed
-        # summary — not the raw result_text — keeps the accumulator bounded and
-        # means no adversarial control byte in the LLM output can be read as a
-        # record boundary (summaries-only; the build plugin composes the message).
-        local _iter_summary
-        _iter_summary="$(_route_parse_commit_summary_line "$result_text")"
-        if [[ -n "$_iter_summary" ]]; then
-            if [[ -z "$_ROUTE_LOOP_ITER_SUMMARIES" ]]; then
-                _ROUTE_LOOP_ITER_SUMMARIES="$_iter_summary"
-            else
-                _ROUTE_LOOP_ITER_SUMMARIES="${_ROUTE_LOOP_ITER_SUMMARIES}"$'\n'"${_iter_summary}"
-            fi
-        fi
-
-        # Inter-turn hook (best-effort; failure does not abort the loop).
-        # #646: moved AHEAD of the per-iter stage_io_end so any operator
-        # output the hook emits (e.g., build's post-loop discrepancy warn,
-        # when wired via --defer-final-banner-close) lands inside the open
-        # banner pair rather than in the inter-stage gap.
-        if declare -F "$inter_turn_hook" >/dev/null 2>&1; then
-            "$inter_turn_hook" "$iter" "$cwd" "$json_file" "$result_text" || \
-                warn "route_to_model_loop: hook '$inter_turn_hook' rc=$? iter=$iter"
-        fi
-
-        # #646: DONE-sentinel detection moved AHEAD of stage_io_end so that
-        # callers using --defer-final-banner-close can decide whether to
-        # leave the banner open for post-loop output. Line-anchored grep
-        # against the result text; matches whitespace + sentinel + whitespace.
-        local _iter_done_sentinel="false"
-        if _route_has_done_sentinel "$done_sentinel" "$result_text"; then
-            _iter_done_sentinel="true"
-        fi
-
-        # #646: If this iter triggers a success-exit AND the caller asked us
-        # to defer the final banner close, stash the close-banner parameters
-        # in module-level state and skip stage_io_end. The caller MUST flush
-        # via _route_loop_close_final_banner before returning to the runner.
-        # Non-sentinel iters AND callers that did NOT opt in to defer keep
-        # the legacy behavior — close immediately on success.
-        local _iter_banner_closed="false"
-        if [[ "$_iter_done_sentinel" == "true" && "$defer_final_banner_close" == "true" && -n "$_iter_stage_io_seq" ]]; then
-            _ROUTE_LOOP_FINAL_STAGE_ID="$_iter_stage_id"
-            _ROUTE_LOOP_FINAL_KIND="llm"
-            _ROUTE_LOOP_FINAL_SEQ="$_iter_stage_io_seq"
-            _ROUTE_LOOP_FINAL_OUTPUT="$result_text"
-            _ROUTE_LOOP_FINAL_EXIT_CODE="0"
-            _ROUTE_LOOP_FINAL_ITER="$iter"
-            _ROUTE_LOOP_FINAL_TOKENS_IN="$in_tok"
-            _ROUTE_LOOP_FINAL_TOKENS_OUT="$out_tok"
-            _ROUTE_LOOP_FINAL_PENDING="true"
-            _iter_banner_closed="true"  # deferred — caller will close
-        fi
-
-        # #482: close the per-iteration banner on the success path. Output
-        # is the LLM's result text (matches Pattern 1's banner shape).
-        # #646: skipped when deferred above.
-        if [[ "$_iter_banner_closed" != "true" && -n "$_iter_stage_io_seq" ]]; then
+    # #612: rc=130 means the child claude was interrupted by SIGINT (either
+    # delivered to the foreground process group by the operator's Ctrl-C, or
+    # by _route_loop_on_signal's `kill`). It is NOT a transient error —
+    # falling through to the generic `continue` below absorbs the signal and
+    # spawns another claude on the next iteration, making the pipeline
+    # impossible to interrupt. Short-circuit here: emit a terminal signal
+    # event, set the reason, clear traps, return 130 so callers (build
+    # plugin, runner) can propagate the abort.
+    #
+    # Wave 15-G (#687): also short-circuit on rc=143 (SIGTERM) and any
+    # rc when _route_loop_on_signal already marked the reason as "signal".
+    # The PG-kill path can produce 143 (TERM landed cleanly) or 137 (KILL
+    # backstop fired) instead of 130 — all three are signal-class exits
+    # and must NOT be swallowed by the loop's generic-error continue.
+    if [[ $rc -eq 130 || $rc -eq 143 || $rc -eq 137 \
+          || "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "signal" ]]; then
+        warn "route_to_model_loop: claude interrupted (rc=$rc) iter=$iter — propagating signal"
+        _ROUTE_LOOP_TERMINATED_REASON="signal"
+        eb_emit_event "loop.terminated.signal" \
+            "iterations=$iter" "child_rc=$rc" \
+            "model_id=$_ROUTE_MODEL_ID" 2>/dev/null || true
+        # Close the per-iteration stage_io banner on the signal path so
+        # we don't orphan it into the EXIT trap.
+        if [[ -n "$_iter_stage_io_seq" ]]; then
             stage_io_end \
                 --stage "$_iter_stage_id" \
                 --kind llm \
                 --seq "$_iter_stage_io_seq" \
-                --output "$result_text" \
-                --exit-code 0 \
+                --output "" \
+                --exit-code 130 \
                 --metadata "iter=$iter" \
-                --metadata "tokens_in=$in_tok" \
-                --metadata "tokens_out=$out_tok" \
+                --metadata "signal=true" \
                 >/dev/null 2>&1 || true
         fi
+        rm -f "$stderr_file" "$json_file"
+        _route_loop_clear_traps
+        # #628: $_loop_tmp cleanup handled by RETURN trap above.
+        return 130
+    fi
 
-        if [[ "$_iter_done_sentinel" == "true" ]]; then
-            _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
-            eb_emit_event "loop.complete" \
-                "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
-                "input_tokens=$_ROUTE_LOOP_INPUT_TOKENS" \
-                "output_tokens=$_ROUTE_LOOP_OUTPUT_TOKENS" \
-                "reason=done_sentinel" 2>/dev/null || true
-            rm -f "$json_file"
-            _route_loop_clear_traps
-            # #628: $_loop_tmp cleanup handled by RETURN trap above.
-            return 0
+    if [[ $rc -ne 0 ]]; then
+        # Wave 19-I Fix A (#743): if rc=124 (gtimeout SIGTERM) AND the
+        # captured .result already contains LOOP_COMPLETE on its own
+        # line, claude finished the work but the wrapper killed it
+        # during final CLI exit. Honor the sentinel and end the try with
+        # done_sentinel rather than discarding the work-done signal. Dogfood 20260607181657-82646
+        # iter 4 exhibited this: 900s wall time + LOOP_COMPLETE in
+        # output + rc=124 → loop wasted iter 5 on already-complete code.
+        if [[ $rc -eq 124 && -s "$json_file" ]]; then
+            local _rc124_result
+            _rc124_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
+            if _route_has_done_sentinel "$done_sentinel" "$_rc124_result"; then
+                _route_loop_report_call "$tier" "$secs" "$(<"$json_file")"
+                _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+                _ROUTE_LOOP_ITERATIONS=$iter
+                eb_emit_event "router.loop.iter.timeout_with_sentinel" \
+                    "iteration=$iter" "rc=$rc" \
+                    "stage=${_iter_stage_id:-unknown}" \
+                    "model_id=$_ROUTE_MODEL_ID" \
+                    "reason=gtimeout_after_loop_complete" \
+                    2>/dev/null || true
+                if [[ -n "$_iter_stage_io_seq" ]]; then
+                    stage_io_end \
+                        --stage "$_iter_stage_id" \
+                        --kind llm \
+                        --seq "$_iter_stage_io_seq" \
+                        --output "$_rc124_result" \
+                        --exit-code 0 \
+                        --metadata "iter=$iter" \
+                        --metadata "terminated=gtimeout_after_sentinel" \
+                        >/dev/null 2>&1 || true
+                fi
+                eb_emit_event "loop.complete" \
+                    "iterations=$iter" \
+                    "model_id=$_ROUTE_MODEL_ID" \
+                    "reason=done_sentinel" 2>/dev/null || true
+                rm -f "$stderr_file" "$json_file"
+                _route_loop_clear_traps
+                return 0
+            fi
         fi
-        rm -f "$json_file"
-
-        # Capture diff for next iteration's prompt.
-        _ROUTE_LOOP_CONTEXT_PATHS="$context_paths" _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
-            _ROUTE_LOOP_TERMINATED_REASON="error"
-            _route_loop_clear_traps
-            # #628: $_loop_tmp cleanup handled by RETURN trap above.
-            return 2
-        }
-
-        # Wave 8 #613: auto-terminate after N consecutive truly-empty diff iters.
-        # Safety net for when the LLM forgets to emit LOOP_COMPLETE (e.g., it
-        # observes the work is already done but responds without the sentinel).
-        # Codex P1 on #615: DO NOT count capped-diff sentinel as empty —
-        # the LLM may legitimately be producing large patches each iter
-        # that exceed ZBUILD_LOOP_DIFF_CAP_CHARS. Only truly empty diff
-        # (zero changes) counts toward the no-progress streak.
-        if [[ -z "$prev_diff" ]]; then
-            empty_iter_count=$(( empty_iter_count + 1 ))
+        # Wave 19-I Fix B (#743) + #762: preserve diagnostic artifacts
+        # BEFORE the warn/error log so the human-readable message can
+        # cite the path and parsed fields (including subtype for #762).
+        local _diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}/stage-io"
+        mkdir -p "$_diag_dir" 2>/dev/null || true
+        local _diag_base="${_iter_stage_id:-loop}-iter${iter}-error"
+        local _diag_json_path=""
+        local _diag_stderr_path=""
+        if [[ -f "$json_file" ]]; then
+            _diag_json_path="$_diag_dir/${_diag_base}.raw-claude-output.json"
+            # #2139: no envelope (killed before its result) → keep the step
+            # stream itself, which is the only record of what the call did.
+            if [[ ! -s "$json_file" && -s "${_stream_file:-}" ]]; then
+                cp "$_stream_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
+            else
+                cp "$json_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
+            fi
+        fi
+        if [[ -f "$stderr_file" ]]; then
+            _diag_stderr_path="$_diag_dir/${_diag_base}.raw-claude-stderr.txt"
+            cp "$stderr_file" "$_diag_stderr_path" 2>/dev/null || _diag_stderr_path=""
+        fi
+        # Parse envelope fields once; #762 adds subtype/cost.
+        local _diag_is_error="" _diag_err_text="" _diag_num_turns="" _diag_out_tokens="" _diag_subtype="" _diag_cost=""
+        local _diag_last_tool=""
+        if [[ ! -s "$json_file" && -s "${_stream_file:-}" ]]; then
+            # Killed before its result: count the turns the stream recorded.
+            local _diag_prog; _diag_prog="$(_route_stream_progress "$_stream_file")"
+            _diag_num_turns="${_diag_prog%% *}"; _diag_last_tool="${_diag_prog#* }"
+            [[ "$_diag_num_turns" == "0" ]] && _diag_num_turns=""
+        elif [[ -n "$_diag_json_path" ]]; then
+            _diag_is_error="$(jq -r '.is_error // empty' "$_diag_json_path" 2>/dev/null || true)"
+            if _diag_err_text="$(jq -r '.error // empty' "$_diag_json_path" 2>/dev/null)"; then
+                _diag_err_text="${_diag_err_text:0:200}"
+            else
+                _diag_err_text="<unreadable>"
+            fi
+            _diag_num_turns="$(jq -r '.num_turns // empty' "$_diag_json_path" 2>/dev/null || true)"
+            _diag_out_tokens="$(jq -r '.usage.output_tokens // empty' "$_diag_json_path" 2>/dev/null || true)"
+            _diag_subtype="$(jq -r '.subtype // empty' "$_diag_json_path" 2>/dev/null || true)"
+            _diag_cost="$(jq -r '.total_cost_usd // empty' "$_diag_json_path" 2>/dev/null || true)"
+        fi
+        # #1823 (absorbs #1723): the rate-limit detector's SECOND caller.
+        # `_route_call_claude` has detected a 429/529 envelope since #1237,
+        # but this loop does not go through `_route_call_claude` — it spawns
+        # claude directly — so the one path that could name the failure never
+        # saw it. A rate limit surfaced here as `reason=claude_rc_nonzero` and
+        # was then called again, against the same limit, until the call limit
+        # ran out at zero output (#1723).
+        #
+        # Detect on the envelope COPY (`_diag_json_path`), because the
+        # original `$json_file` is removed on every error path below.
+        # Read the envelope ONCE. Two `$(cat ...)` substitutions would fork
+        # twice per failing iteration for the same bytes (review finding).
+        local _loop_rate_limited=0 _loop_rl_msg="" _loop_envelope=""
+        if [[ -n "$_diag_json_path" ]]; then
+            _loop_envelope="$(cat "$_diag_json_path" 2>/dev/null || true)"
+        fi
+        # A failed iteration can still have been billed; the provider says.
+        _route_loop_report_call "$tier" "$secs" "$_loop_envelope"
+        if [[ -n "$_loop_envelope" ]] && _router_is_rate_limit "$_loop_envelope"; then
+            _loop_rate_limited=1
+            _loop_rl_msg="$(_router_rate_limit_message "$_loop_envelope")"
+        fi
+        # #762: surface error_max_turns subtype with a human-readable line.
+        # Falls back to the legacy stderr-snip warning otherwise.
+        local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
+        if [[ "$_loop_rate_limited" == "1" ]]; then
+            error "$_loop_rl_msg (model=$_ROUTE_MODEL_ID iter=$iter) — diagnostic: ${_diag_json_path:-absent}"
+        elif [[ "$_diag_subtype" == "error_max_turns" ]]; then
+            error "claude max_turns reached (turns=${_diag_num_turns:-?}, output_tokens=${_diag_out_tokens:-?}, cost=\$${_diag_cost:-?}) — diagnostic: ${_diag_json_path:-absent}"
         else
-            empty_iter_count=0
+            warn "route_to_model_loop: claude rc=$rc iter=$iter${snip:+: $snip}"
         fi
-        if [[ $empty_iter_count -ge 2 ]]; then
-            _ROUTE_LOOP_TERMINATED_REASON="no_progress"
-            eb_emit_event "loop.no_progress" \
-                "iterations=$iter" \
-                "empty_iter_streak=$empty_iter_count" 2>/dev/null || true
+        eb_emit_event "loop.iteration.error" \
+            "iteration=$iter" "rc=$rc" \
+            "model_id=$_ROUTE_MODEL_ID" \
+            "reason=$([[ "$_loop_rate_limited" == "1" ]] && printf 'router_rate_limited' || printf 'claude_rc_nonzero')" 2>/dev/null || true
+        if [[ "$_loop_rate_limited" == "1" ]]; then
+            eb_emit_event "router.rate_limited" \
+                "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
+                "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
+                "iteration=$iter" \
+                "message=$_loop_rl_msg" 2>/dev/null || true
+        fi
+        # #2183: the diagnostic reaches the OTHER stages, not only the
+        # event log. One seam covers every router-backed stage — build,
+        # design, plan, test-author, the judges and the lenses.
+        if declare -F stage_errors_append >/dev/null 2>&1; then
+            stage_errors_append "${_iter_stage_id:-${ZBUILD_CURRENT_STAGE:-}}" \
+                "model call iter=$iter rc=$rc${_diag_subtype:+ subtype=$_diag_subtype}${_diag_num_turns:+ turns=$_diag_num_turns}${_diag_err_text:+: $_diag_err_text}"
+            stage_errors_append_file "${_iter_stage_id:-${ZBUILD_CURRENT_STAGE:-}}" \
+                "${_diag_stderr_path:-}" "model call iter=$iter stderr"
+        fi
+        eb_emit_event "router.loop.iter.error.diagnostic" \
+            "iteration=$iter" "rc=$rc" \
+            "stage=${_iter_stage_id:-unknown}" \
+            "raw_json_path=${_diag_json_path:-absent}" \
+            "raw_stderr_path=${_diag_stderr_path:-absent}" \
+            "is_error=${_diag_is_error:-absent}" \
+            "error_text=${_diag_err_text:-absent}" \
+            "num_turns=${_diag_num_turns:-absent}" \
+            "last_tool=${_diag_last_tool:-absent}" \
+            "output_tokens=${_diag_out_tokens:-absent}" \
+            "subtype=${_diag_subtype:-absent}" \
+            2>/dev/null || true
+        # #482: close the per-iteration banner on the error path so we
+        # don't orphan it into the EXIT trap. Output is whatever (if
+        # anything) ended up in json_file before the failure.
+        if [[ -n "$_iter_stage_io_seq" ]]; then
+            local _err_result=""
+            _err_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
+            stage_io_end \
+                --stage "$_iter_stage_id" \
+                --kind llm \
+                --seq "$_iter_stage_io_seq" \
+                --output "$_err_result" \
+                --exit-code "$rc" \
+                --metadata "iter=$iter" \
+                --metadata "error=true" \
+                >/dev/null 2>&1 || true
+        fi
+        # #1823: a rate limit ENDS the loop rather than iterating into it.
+        # Retrying against a limit that has not reset yet cannot change the
+        # outcome — every further iteration spends budget to be refused
+        # again. The marker is armed so the engine's fallback classification
+        # can resolve this dispatch to `throttled` (wait, then retry) instead
+        # of `broken` (halt), which is the difference between a run that
+        # resumes when the limit resets and one that is dead.
+        if [[ "$_loop_rate_limited" == "1" ]]; then
+            _ROUTE_LOOP_TERMINATED_REASON="router_rate_limited"
+            _ROUTE_LOOP_RATE_LIMIT_MESSAGE="$_loop_rl_msg"
+            _router_arm_throttle_marker "$_loop_rl_msg"
+            rm -f "$stderr_file" "$json_file"
             _route_loop_clear_traps
-            # #628: $_loop_tmp cleanup handled by RETURN trap above.
+            return 1
+        fi
+        rm -f "$stderr_file" "$json_file"
+        if [[ $rc -eq 124 ]]; then
+            # Issue #1208 / ADR-013: a timeout is never fatal. It ends THIS
+            # try (non-fatal return 0) as router_timeout → timed_out, and the
+            # engine decides whether there is another try (#2439). The
+            # committed partial work is preserved (#602). warn, not error.
+            warn "route_to_model_loop: the model call timed out — the try ends timed_out"
+            _ROUTE_LOOP_TERMINATED_REASON="router_timeout"
+            eb_emit_event "loop.timeout_yield" \
+                "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
+                "reason=router_timeout" 2>/dev/null || true
+            _route_loop_clear_traps
             return 0
         fi
-    done
+        # Any other failure is named as a single-call stage names it.
+        [[ "$_diag_subtype" == "error_max_turns" ]] && _ROUTE_LAST_BUDGET_EXHAUSTED=1
+        local _fail_v="" _fail_reason=""
+        _router_rc_classify "$rc" _fail_v _fail_reason 2>/dev/null || _fail_reason="router_rc_nonzero"
+        _ROUTE_LOOP_TERMINATED_REASON="${_fail_reason:-router_rc_nonzero}"
+        _route_loop_clear_traps
+        return 1
+    fi
+    rm -f "$stderr_file"
 
-    _ROUTE_LOOP_TERMINATED_REASON="max_iterations"
-    eb_emit_event "loop.max_iterations" \
-        "iterations=$max_iterations" "model_id=$_ROUTE_MODEL_ID" \
-        "input_tokens=$_ROUTE_LOOP_INPUT_TOKENS" \
-        "output_tokens=$_ROUTE_LOOP_OUTPUT_TOKENS" 2>/dev/null || true
+    # Extract .result and token usage from claude JSON output.
+    local result_text="" in_tok=0 out_tok=0
+    result_text="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
+    in_tok="$(jq -r '.usage.input_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
+    out_tok="$(jq -r '.usage.output_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
+    _ROUTE_LOOP_INPUT_TOKENS=$(( _ROUTE_LOOP_INPUT_TOKENS + in_tok ))
+    _ROUTE_LOOP_OUTPUT_TOKENS=$(( _ROUTE_LOOP_OUTPUT_TOKENS + out_tok ))
+    # ADR-003 amendment: the iteration's cost, as the provider reports it.
+    _route_loop_report_call "$tier" "$secs" "$(<"$json_file")"
+    # #608: expose the most recent iteration's LLM text so the build plugin
+    # can parse the COMMIT_SUMMARY marker after the loop returns.
+    _ROUTE_LOOP_LAST_RESPONSE="$result_text"
+    # #1329: parse THIS iteration's COMMIT_SUMMARY at the source and keep only
+    # the sanitized one-line value (newline-separated). Storing the parsed
+    # summary — not the raw result_text — keeps the accumulator bounded and
+    # means no adversarial control byte in the LLM output can be read as a
+    # record boundary (summaries-only; the build plugin composes the message).
+    local _iter_summary
+    _iter_summary="$(_route_parse_commit_summary_line "$result_text")"
+    if [[ -n "$_iter_summary" ]]; then
+        if [[ -z "$_ROUTE_LOOP_ITER_SUMMARIES" ]]; then
+            _ROUTE_LOOP_ITER_SUMMARIES="$_iter_summary"
+        else
+            _ROUTE_LOOP_ITER_SUMMARIES="${_ROUTE_LOOP_ITER_SUMMARIES}"$'\n'"${_iter_summary}"
+        fi
+    fi
+
+    # Inter-turn hook (best-effort; failure does not abort the loop).
+    # #646: moved AHEAD of the per-iter stage_io_end so any operator
+    # output the hook emits (e.g., build's post-loop discrepancy warn,
+    # when wired via --defer-final-banner-close) lands inside the open
+    # banner pair rather than in the inter-stage gap.
+    if declare -F "$inter_turn_hook" >/dev/null 2>&1; then
+        "$inter_turn_hook" "$iter" "$cwd" "$json_file" "$result_text" || \
+            warn "route_to_model_loop: hook '$inter_turn_hook' rc=$? iter=$iter"
+    fi
+
+    # #646: DONE-sentinel detection moved AHEAD of stage_io_end so that
+    # callers using --defer-final-banner-close can decide whether to
+    # leave the banner open for post-loop output. Line-anchored grep
+    # against the result text; matches whitespace + sentinel + whitespace.
+    local _iter_done_sentinel="false"
+    if _route_has_done_sentinel "$done_sentinel" "$result_text"; then
+        _iter_done_sentinel="true"
+    fi
+
+    # #646: If this iter triggers a success-exit AND the caller asked us
+    # to defer the final banner close, stash the close-banner parameters
+    # in module-level state and skip stage_io_end. The caller MUST flush
+    # via _route_loop_close_final_banner before returning to the runner.
+    # Non-sentinel iters AND callers that did NOT opt in to defer keep
+    # the legacy behavior — close immediately on success.
+    local _iter_banner_closed="false"
+    if [[ "$_iter_done_sentinel" == "true" && "$defer_final_banner_close" == "true" && -n "$_iter_stage_io_seq" ]]; then
+        _ROUTE_LOOP_FINAL_STAGE_ID="$_iter_stage_id"
+        _ROUTE_LOOP_FINAL_KIND="llm"
+        _ROUTE_LOOP_FINAL_SEQ="$_iter_stage_io_seq"
+        _ROUTE_LOOP_FINAL_OUTPUT="$result_text"
+        _ROUTE_LOOP_FINAL_EXIT_CODE="0"
+        _ROUTE_LOOP_FINAL_ITER="$iter"
+        _ROUTE_LOOP_FINAL_TOKENS_IN="$in_tok"
+        _ROUTE_LOOP_FINAL_TOKENS_OUT="$out_tok"
+        _ROUTE_LOOP_FINAL_PENDING="true"
+        _iter_banner_closed="true"  # deferred — caller will close
+    fi
+
+    # #482: close the per-iteration banner on the success path. Output
+    # is the LLM's result text (matches Pattern 1's banner shape).
+    # #646: skipped when deferred above.
+    if [[ "$_iter_banner_closed" != "true" && -n "$_iter_stage_io_seq" ]]; then
+        stage_io_end \
+            --stage "$_iter_stage_id" \
+            --kind llm \
+            --seq "$_iter_stage_io_seq" \
+            --output "$result_text" \
+            --exit-code 0 \
+            --metadata "iter=$iter" \
+            --metadata "tokens_in=$in_tok" \
+            --metadata "tokens_out=$out_tok" \
+            >/dev/null 2>&1 || true
+    fi
+
+    if [[ "$_iter_done_sentinel" == "true" ]]; then
+        _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+        eb_emit_event "loop.complete" \
+            "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
+            "input_tokens=$_ROUTE_LOOP_INPUT_TOKENS" \
+            "output_tokens=$_ROUTE_LOOP_OUTPUT_TOKENS" \
+            "reason=done_sentinel" 2>/dev/null || true
+        rm -f "$json_file"
+        _route_loop_clear_traps
+        # #628: $_loop_tmp cleanup handled by RETURN trap above.
+        return 0
+    fi
+    rm -f "$json_file"
+    # The call ended without saying it is done: its output cannot be used
+    # as a finished try (unusable). The engine decides whether to try again.
+    _ROUTE_LOOP_TERMINATED_REASON="no_done_sentinel"
+    eb_emit_event "loop.unfinished" \
+        "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
+        "reason=no_done_sentinel" 2>/dev/null || true
     _route_loop_clear_traps
-    # #628: $_loop_tmp cleanup handled by RETURN trap above.
     return 1
 }
 
@@ -2100,7 +1818,7 @@ ${_diff_pointer}"
 # No-op when:
 #   - the caller did not pass --defer-final-banner-close, OR
 #   - the loop exited via a path that did not stash a deferred close
-#     (no_progress, max_iterations, error, signal — those paths keep legacy
+#     (no_done_sentinel, a failed call, signal — those paths keep legacy
 #     banner-close semantics for now), OR
 #   - the deferred-close state was already flushed.
 # Safe to call unconditionally from the build plugin after every loop return.
@@ -2135,60 +1853,5 @@ _route_loop_close_final_banner() {
     _ROUTE_LOOP_FINAL_TOKENS_IN=""
     _ROUTE_LOOP_FINAL_TOKENS_OUT=""
     _ROUTE_LOOP_FINAL_PENDING="false"
-    return 0
-}
-
-# _route_loop_capture_diff <cwd> <cap_chars> <prev_diff_var_name>
-# Captures `git -C <cwd> diff HEAD` into the named variable.
-#
-# #530: bash `$()` strips trailing newlines, leaving the captured diff 1 byte
-# short of the raw `git diff HEAD` output → downstream `git apply --check`
-# fails with "corrupt patch at line N". Fix: stream `git diff HEAD` to a
-# tempfile (no command-substitution trimming), then read it back via the
-# `printf x; %x` trick to round-trip the trailing newline through a bash
-# variable losslessly.
-#
-# On overflow: replaces with `git diff --stat` + truncation notice.
-# On git failure: emits loop.git_diff_failed and returns 1.
-_route_loop_capture_diff() {
-    local cwd="$1" cap="$2" var_name="$3"
-    # intent-to-add so new untracked files appear in `git diff HEAD`
-    git -C "$cwd" add -N . 2>/dev/null || true
-
-    # Stream directly to disk; do not let `$()` touch the byte stream.
-    local _diff_tmp; _diff_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-loop-diff.XXXXXX")"
-    local diff_rc=0
-    local -a _ctx=()
-    [[ -n "${_ROUTE_LOOP_CONTEXT_PATHS:-}" ]] && IFS=',' read -r -a _ctx <<< "$_ROUTE_LOOP_CONTEXT_PATHS"
-    if [[ ${#_ctx[@]} -gt 0 ]]; then
-        git -C "$cwd" diff HEAD -- "${_ctx[@]}" > "$_diff_tmp" 2>/dev/null || diff_rc=$?
-    else
-        git -C "$cwd" diff HEAD > "$_diff_tmp" 2>/dev/null || diff_rc=$?
-    fi
-    if [[ $diff_rc -ne 0 ]]; then
-        rm -f "$_diff_tmp"
-        # Best-effort: clear `-N` intent-to-add entries so a later iteration's
-        # diff isn't polluted by an aborted capture.
-        git -C "$cwd" reset -q 2>/dev/null || true
-        eb_emit_event "loop.git_diff_failed" \
-            "cwd=$cwd" "rc=$diff_rc" 2>/dev/null || true
-        return 1
-    fi
-
-    # Lossless readback: `cat file; printf x` then strip the final 'x'.
-    local diff_out
-    diff_out="$(cat "$_diff_tmp"; printf x)"
-    diff_out="${diff_out%x}"
-    rm -f "$_diff_tmp"
-
-    if [[ ${#diff_out} -gt $cap ]]; then
-        local stat_out
-        stat_out="$(git -C "$cwd" diff --stat HEAD 2>/dev/null || echo "(diff too large)")"
-        diff_out="(diff exceeded cap of ${cap} chars; showing stats only)
-${stat_out}"
-        eb_emit_event "loop.diff_capture_warning" \
-            "cwd=$cwd" "reason=cap_exceeded" "cap=$cap" 2>/dev/null || true
-    fi
-    printf -v "$var_name" '%s' "$diff_out"
     return 0
 }

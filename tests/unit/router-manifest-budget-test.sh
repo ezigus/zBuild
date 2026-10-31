@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # tests/unit/router-manifest-budget-test.sh — #1816 (ADR-017 Amendment §11)
 #
-# A plugin may declare its own budget. `config.router.{timeout_s,max_turns,
-# retries}` in the plugin's OWN manifest resolves as the DEFAULT — below the
+# A plugin may declare its own budget. `config.router.{timeout_s,max_turns}`
+# (#2439: `retries` is gone) in the plugin's OWN manifest resolves as the DEFAULT — below the
 # template accessor and the operator env knob, above the compile-time constant:
 #
 #   template accessor  >  env var  >  manifest config.router.*  >  constant
@@ -30,7 +30,7 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 # shellcheck source=../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh"
 
-print_test_header "router manifest budget — plugin-declared timeout_s/max_turns/retries (#1816)"
+print_test_header "router manifest budget — plugin-declared timeout_s/max_turns (#1816)"
 
 setup_test_env "router-manifest-budget"
 
@@ -55,7 +55,6 @@ config:
   router:
     timeout_s: 600
     max_turns: 45
-    retries: 1
 EOF
 
 # Declares NO router block. This is the regression guard: every knob must
@@ -85,7 +84,6 @@ config:
   router:
     timeout_s: soon
     max_turns: 9999
-    retries: -3
 EOF
 
 # A `router:` key that is NOT under `config:` must not be read — the block is
@@ -130,7 +128,6 @@ config:
 # a left-aligned comment, indent 0 — shallower than `router:`
   # and one at the same indent as `router:` itself
     max_turns: 45
-    retries: 2
 EOF
 
 # ─── SPEC-0 the reader arrives with the router ───────────────────────────────
@@ -150,8 +147,6 @@ assert_eq "timeout_s falls to the 300s constant" \
     "300" "$(ZBUILD_PLUGIN_DIR="$_FIX/silent" _route_resolve_timeout)"
 assert_eq "max_turns falls to the 25 constant" \
     "25" "$(ZBUILD_PLUGIN_DIR="$_FIX/silent" _route_resolve_max_turns)"
-assert_eq "retries falls to the 0 constant (opt-in, unchanged)" \
-    "0" "$(ZBUILD_PLUGIN_DIR="$_FIX/silent" _route_resolve_retries)"
 
 # The no-dispatch case: nothing set ZBUILD_PLUGIN_DIR at all (direct router
 # use, a test, a non-plugin caller). Same constants, no error.
@@ -159,8 +154,6 @@ assert_eq "no ZBUILD_PLUGIN_DIR at all → 300s constant" \
     "300" "$(_route_resolve_timeout)"
 assert_eq "no ZBUILD_PLUGIN_DIR at all → 25 constant" \
     "25" "$(_route_resolve_max_turns)"
-assert_eq "no ZBUILD_PLUGIN_DIR at all → 0 constant" \
-    "0" "$(_route_resolve_retries)"
 
 # A ZBUILD_PLUGIN_DIR that exists but holds no manifest must not error either.
 assert_eq "ZBUILD_PLUGIN_DIR without a manifest.yaml → constant, no failure" \
@@ -173,15 +166,12 @@ assert_eq "manifest timeout_s beats the 300s constant" \
     "600" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" _route_resolve_timeout)"
 assert_eq "manifest max_turns beats the 25 constant" \
     "45" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" _route_resolve_max_turns)"
-assert_eq "manifest retries beats the 0 constant" \
-    "1" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" _route_resolve_retries)"
 
 assert_eq "a partial declaration leaves the undeclared knobs on the constant" \
-    "900|25|0" \
-    "$(printf '%s|%s|%s' \
+    "900|25" \
+    "$(printf '%s|%s' \
         "$(ZBUILD_PLUGIN_DIR="$_FIX/partial" _route_resolve_timeout)" \
-        "$(ZBUILD_PLUGIN_DIR="$_FIX/partial" _route_resolve_max_turns)" \
-        "$(ZBUILD_PLUGIN_DIR="$_FIX/partial" _route_resolve_retries)")"
+        "$(ZBUILD_PLUGIN_DIR="$_FIX/partial" _route_resolve_max_turns)")"
 
 assert_eq "a top-level router: block is NOT the plugin's declaration" \
     "300" "$(ZBUILD_PLUGIN_DIR="$_FIX/nested" _route_resolve_timeout)"
@@ -190,15 +180,12 @@ assert_eq "comments on config:/router:/the value do not hide the declaration" \
     "600" "$(ZBUILD_PLUGIN_DIR="$_FIX/commented" _route_resolve_timeout)"
 assert_eq "a later top-level key closes the block (provides.timeout_s is not it)" \
     "45" "$(ZBUILD_PLUGIN_DIR="$_FIX/commented" _route_resolve_max_turns)"
-assert_eq "an undeclared knob in a commented block still falls to the constant" \
-    "0" "$(ZBUILD_PLUGIN_DIR="$_FIX/commented" _route_resolve_retries)"
 
 assert_eq "a comment BETWEEN knobs does not drop the ones after it" \
-    "600|45|2" \
-    "$(printf '%s|%s|%s' \
+    "600|45" \
+    "$(printf '%s|%s' \
         "$(ZBUILD_PLUGIN_DIR="$_FIX/interleaved" _route_resolve_timeout)" \
-        "$(ZBUILD_PLUGIN_DIR="$_FIX/interleaved" _route_resolve_max_turns)" \
-        "$(ZBUILD_PLUGIN_DIR="$_FIX/interleaved" _route_resolve_retries)")"
+        "$(ZBUILD_PLUGIN_DIR="$_FIX/interleaved" _route_resolve_max_turns)")"
 
 # ─── SPEC-3 env beats the manifest ───────────────────────────────────────────
 print_test_section "[SPEC-3] the operator env knob still wins over the manifest"
@@ -207,8 +194,6 @@ assert_eq "ZBUILD_ROUTER_TIMEOUT beats manifest timeout_s" \
     "42" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" ZBUILD_ROUTER_TIMEOUT=42 _route_resolve_timeout)"
 assert_eq "ZBUILD_ROUTER_MAX_TURNS beats manifest max_turns" \
     "7" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" ZBUILD_ROUTER_MAX_TURNS=7 _route_resolve_max_turns)"
-assert_eq "ZBUILD_ROUTER_RETRIES beats manifest retries" \
-    "3" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" ZBUILD_ROUTER_RETRIES=3 _route_resolve_retries)"
 
 # ─── SPEC-4 template beats the manifest ──────────────────────────────────────
 print_test_section "[SPEC-4] the template accessor still wins over the manifest"
@@ -217,14 +202,11 @@ print_test_section "[SPEC-4] the template accessor still wins over the manifest"
 # function name it is handed, exactly as the real accessors are called.
 template_stage_router_timeout()   { printf '111\n'; }
 template_stage_router_max_turns() { printf '12\n'; }
-template_stage_router_retries()   { printf '5\n'; }
 
 assert_eq "template timeout_s wins over manifest timeout_s" \
     "111" "$(ZBUILD_CURRENT_STAGE=fixture ZBUILD_PLUGIN_DIR="$_FIX/declares" _route_resolve_timeout)"
 assert_eq "template max_turns wins over manifest max_turns" \
     "12" "$(ZBUILD_CURRENT_STAGE=fixture ZBUILD_PLUGIN_DIR="$_FIX/declares" _route_resolve_max_turns)"
-assert_eq "template retries wins over manifest retries" \
-    "5" "$(ZBUILD_CURRENT_STAGE=fixture ZBUILD_PLUGIN_DIR="$_FIX/declares" _route_resolve_retries)"
 
 # ─── SPEC-5 the env-vs-template audit event is unchanged ─────────────────────
 print_test_section "[SPEC-5] router.*.override_ignored still fires for env-vs-template"
@@ -247,8 +229,7 @@ ZBUILD_PLUGIN_DIR="$_FIX/declares" ZBUILD_ROUTER_TIMEOUT=999 _route_resolve_time
 assert_eq "manifest-loses-to-env emits no override_ignored event" \
     "" "$(cat "$_EV_LOG")"
 
-unset -f template_stage_router_timeout template_stage_router_max_turns \
-    template_stage_router_retries eb_emit_event
+unset -f template_stage_router_timeout template_stage_router_max_turns eb_emit_event
 
 # ─── SPEC-6 a malformed declaration never reaches the router ─────────────────
 print_test_section "[SPEC-6] malformed manifest values fall back, never propagate"
@@ -257,8 +238,6 @@ assert_eq "non-numeric timeout_s falls to the constant" \
     "300" "$(ZBUILD_PLUGIN_DIR="$_FIX/malformed" _route_resolve_timeout)"
 assert_eq "out-of-range max_turns falls to the constant" \
     "25" "$(ZBUILD_PLUGIN_DIR="$_FIX/malformed" _route_resolve_max_turns)"
-assert_eq "negative retries falls to the constant" \
-    "0" "$(ZBUILD_PLUGIN_DIR="$_FIX/malformed" _route_resolve_retries)"
 
 # ─── SPEC-7 the ADR-029 escalation override still outranks everything ────────
 print_test_section "[SPEC-7] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE still outranks all layers"
@@ -312,9 +291,9 @@ _v8b="$(PATH="$_SHIM:$PATH" manifest_router_knob "$_FIX/declares/manifest.yaml" 
 assert_eq "[SPEC-8b] the value is read" "45" "$_v8b"
 assert_eq "[SPEC-8b] …by the shell, with no awk" "0" "$(grep -c . "$_AWK_LOG" || true)"
 mkdir -p "$_FIX/twice"
-printf 'id: twice\nkind: agent\nconfig:\n  router:\n    retries: 2\n    retries: 3\n' > "$_FIX/twice/manifest.yaml"
+printf 'id: twice\nkind: agent\nconfig:\n  router:\n    timeout_s: 200\n    timeout_s: 300\n' > "$_FIX/twice/manifest.yaml"
 assert_eq "[SPEC-8b] a key declared twice reads its first value" \
-    "2" "$(manifest_router_knob "$_FIX/twice/manifest.yaml" retries)"
+    "200" "$(manifest_router_knob "$_FIX/twice/manifest.yaml" timeout_s)"
 
 # ─── SPEC-9 validate_manifest is the loud gate ───────────────────────────────
 print_test_section "[SPEC-9] validate_manifest accepts a well-formed block, rejects a malformed one"
@@ -350,7 +329,6 @@ _expect_invalid() {  # <desc> <router-block-body>
 
 _expect_valid "accepts a well-formed config.router block" '    timeout_s: 600
     max_turns: 45
-    retries: 1
 '
 _expect_invalid "rejects a non-numeric timeout_s" '    timeout_s: soon
 '
@@ -360,10 +338,11 @@ _expect_invalid "rejects timeout_s: 0 (matches the template range 1..3600)" '   
 '
 _expect_invalid "rejects an out-of-range max_turns (>200)" '    max_turns: 9999
 '
-_expect_invalid "rejects an out-of-range retries (>10)" '    retries: 11
+_expect_invalid "rejects retries: a model call is not repeated inside a stage (#2439)" '    retries: 1
 '
-_expect_valid "accepts the 0 sentinels the template already accepts" '    max_turns: 0
-    retries: 0
+_expect_invalid "rejects retry_on_exhaustion (#2439)" '    retry_on_exhaustion: 1
+'
+_expect_valid "accepts the 0 sentinel the template already accepts" '    max_turns: 0
 '
 _expect_invalid "rejects an unknown key inside config.router (a typo is inert, not silent)" '    timeout: 600
 '

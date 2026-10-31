@@ -28,26 +28,12 @@ provides:
   result_contract: 3
 
 config:
-  # #1879: retry ONCE when the model runs out of turns. Worth taking only because
-  # the notes file every stage keeps means attempt 2 resumes from what attempt 1 explored
-  # — a retry on an empty context would just burn the budget twice (#1727).
-  # Distinct from `retries`, which is timeout/rc=124-only and never fires here:
-  # exhaustion surfaces as rc=1, which is why the #1708 run was never retried.
-  # #1727: retry ONCE on a wall-clock timeout (rc=124) too. Same justification as
-  # retry_on_exhaustion above and the same reason it is safe now but was not
-  # before: the notes file means attempt 2 resumes from what attempt 1 wrote,
-  # so the retry is not the naive re-derivation #1727 argued against. route.sh
-  # escalates the timeout for the retry (+50%, capped at 2x base) and re-injects
-  # the checkpoint, so the second attempt gets both more clock and prior context.
-  #
-  # Measured on runs 20260817184959-54622 and 20260817192215-57314 (issue #1832):
-  # plan was killed at 300s mid-tool-use — 35 turns, $1.03, 1.2M cache-read
-  # tokens — with no retry, and the run aborted. That is rc=124, which
-  # retry_on_exhaustion cannot see: exhaustion is subtype error_max_turns and
-  # surfaces as rc=1.
+  # #2439 (ADR-054 §6a): plan no longer repeats its own model call. A plan that
+  # times out or runs out of turns says so, and the engine runs it again (the
+  # template's `retry:`, else 1), resuming from the notes file every stage keeps
+  # (#1727, #1879). Measured on runs 20260817184959-54622 and
+  # 20260817192215-57314 (issue #1832): plan was killed at 300s mid-tool-use.
   router:
-    retries: 1
-    retry_on_exhaustion: 1
     timeout_s: 300
     max_turns: 45
   tier_default: T2

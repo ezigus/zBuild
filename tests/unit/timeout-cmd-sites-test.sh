@@ -155,7 +155,7 @@ _s4="$TEST_TEMP_DIR/s4"; mkdir -p "$_s4/events" "$_s4/state/artifacts/stage-io";
     source "$REPO_ROOT/core/output/stage-io.sh"
     source "$REPO_ROOT/core/router/route.sh"
     load_template "$TEST_TEMP_DIR/template.yaml" >/dev/null 2>&1
-    route_to_model_loop T2 "$TEST_TEMP_DIR/prompt.txt" "$REPO" 1
+    route_to_model_loop T2 "$TEST_TEMP_DIR/prompt.txt" "$REPO"
 ) >"$TEST_TEMP_DIR/s4.out" 2>&1 || true
 assert_eq "[S4] each loop call runs under gtimeout <secs>, TERM-only as before" "1" \
     "$(_logged '^[0-9]+ claude ')"

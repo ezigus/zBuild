@@ -2,7 +2,7 @@
 # tests/unit/core-pipeline-template-router-tier-test.sh — #1252
 #
 # S1: per-stage `router.tier` override, exposed via template_stage_router_tier.
-# Unlike the timeout/max_turns/retries knobs, this one is read LAZILY from the
+# Unlike the timeout/max_turns knobs, this one is read LAZILY from the
 # loaded template source (_TPL_SOURCE_FILE) — the same style as
 # template_stage_negctl_timeout — so it needs no parser-array / row-shape change.
 # The accessor validates the value as a tier ORDINAL (^T[0-4]$, ADR-003) at read
@@ -137,13 +137,11 @@ stage_definitions:
     router:
       timeout_s: 300
       max_turns: 10
-      retries: 1
   design:
     roles: [designer]
     router:
       timeout_s: 600
       max_turns: 20
-      retries: 2
       tier: T2
 EOF
 load_template "$FIX_SD"
@@ -200,14 +198,12 @@ stage_definitions:
     router:
       timeout_s: 300
       max_turns: 10
-      retries: 1
   review:
     roles: [reviewer]
     negctl_timeout_s: 120
     router:
       timeout_s: 600
       max_turns: 20
-      retries: 2
       tier: T2
 EOF
 load_template "$FIX_FULL"
@@ -216,7 +212,7 @@ assert_eq "[SPEC-4] stage_definitions: negctl_timeout_s resolves for review stag
 assert_eq "[SPEC-5] stage_definitions: negctl_timeout_s returns empty when absent" \
     "" "$(template_stage_negctl_timeout build)"
 # SPEC-6: comprehensive — tier lazy accessor + row-based knobs from same fixture.
-# The last three assertions (timeout_s/max_turns/retries) exercise the
+# The last two assertions (timeout_s/max_turns) exercise the
 # pre-existing _tpl_parse_stage_definitions + cycle-member row-based path in
 # load_template, not the new lazy readers — kept here as regression coverage
 # proving both paths agree on the same stage_definitions fixture.
@@ -226,8 +222,7 @@ assert_eq "[SPEC-6b] stage_definitions: review router timeout_s via row-based ac
     "600" "${_TPL_STAGE_ROUTER_TIMEOUT_review:-}"
 assert_eq "[SPEC-6c] stage_definitions: review router max_turns via row-based accessor" \
     "20" "${_TPL_STAGE_ROUTER_MAX_TURNS_review:-}"
-assert_eq "[SPEC-6d] stage_definitions: review router retries via row-based accessor" \
-    "2" "${_TPL_STAGE_ROUTER_RETRIES_review:-}"
+# SPEC-6d (router.retries) retired with the knob (#2439): retired-retry-settings-test.sh T2.
 
 cleanup_test_env
 print_test_results

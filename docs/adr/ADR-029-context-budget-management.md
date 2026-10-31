@@ -132,3 +132,9 @@ honor + `timeout_recur` + non-fatal yield). Default 0 → legacy behavior.
 The single-shot leaf (`_route_call_claude`, used by impact/plan/review/…) gets
 the same retry loop internally, so every leaf node honors the knob wherever it
 sits (top-level OR cycle/parallel member; containers never call models).
+
+## Amendment 2026-10-31 (#2439) — `router.retries` is removed
+
+The leaf-level retry-on-timeout (`router.retries`) and its escalation are removed, with the `timeout_recur`
+breaker it was layered under: a stage makes one model call per try, and the engine's per-stage `retry:`
+(ADR-054 §6a) is the only retry. Enforced by `tests/unit/retired-retry-settings-test.sh` T1–T4, T6.

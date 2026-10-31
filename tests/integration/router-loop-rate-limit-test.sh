@@ -18,7 +18,8 @@
 #   3. it names the failure `router_rate_limited`, not `claude_rc_nonzero`
 #   4. it arms the durable marker so the engine can resolve the dispatch to
 #      `throttled` (wait, then retry) rather than `broken` (halt)
-#   5. a genuine non-limit failure is unaffected — still iterates, still opaque
+#   5. a genuine non-limit failure is unaffected — named as a failed call, not a
+#      rate limit (#2439: one call per try, so neither one is called again)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -106,7 +107,7 @@ _install_json_mock 1 "$RL_JSON"
 # claude five times. That count IS the #1723 defect, so it is asserted directly
 # rather than inferred from the return code.
 set +e
-route_to_model_loop "T2" "$_PROMPT" "$_WORK" 5 >/dev/null 2>&1
+route_to_model_loop "T2" "$_PROMPT" "$_WORK" >/dev/null 2>&1
 _loop_rc=$?
 set -e
 
@@ -163,15 +164,15 @@ _router_clear_throttle_marker
 _install_json_mock 1 '{"type":"result","subtype":"error","is_error":true,"result":"tool failed"}'
 
 set +e
-route_to_model_loop "T2" "$_PROMPT" "$_WORK" 3 >/dev/null 2>&1
+route_to_model_loop "T2" "$_PROMPT" "$_WORK" >/dev/null 2>&1
 _neg_rc=$?
 set -e
 
 _neg_calls="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null || printf '0')"
-assert_eq "[SPEC-4] a genuine failure still ITERATES to max_iterations" "3" "$_neg_calls"
-assert_eq "[SPEC-4] and exhausts the loop" "1" "$_neg_rc"
-assert_eq "[SPEC-4] its reason is max_iterations, not a rate limit" \
-    "max_iterations" "$_ROUTE_LOOP_TERMINATED_REASON"
+assert_eq "[SPEC-4] a genuine failure is one call (one call per try, #2439)" "1" "$_neg_calls"
+assert_eq "[SPEC-4] and ends the try" "1" "$_neg_rc"
+assert_eq "[SPEC-4] its reason is a failed call, not a rate limit" \
+    "router_rc_nonzero" "$_ROUTE_LOOP_TERMINATED_REASON"
 assert_eq "[SPEC-4] no throttle marker is armed" \
     "1" "$( _rc=0; _router_throttle_observed || _rc=$?; printf '%s' "$_rc" )"
 if grep -q 'router.rate_limited' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then

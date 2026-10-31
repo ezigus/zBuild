@@ -343,18 +343,9 @@ EOF
             "no router available to author assertions" "$n"
         return 1
     fi
-    # #2225: like build, the author works in a loop until it says it is done —
-    # each call with its own time limit, each starting from the testfiles the
-    # earlier calls left on disk; they are committed when the loop ends, done
-    # or not. (Not between calls: the loop measures progress against the last
-    # commit, so a mid-loop commit reads as "no progress".) One call for the
-    # whole contract overran on every 15–25 SPEC contract (#1846, #1837).
-    local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || printf '10')"
-    [[ "$max_iter" =~ ^[0-9]+$ && "$max_iter" -gt 0 ]] || max_iter=10
-    [[ -n "${ZBUILD_CYCLE_ITER:-}" && "$max_iter" -gt 15 ]] && max_iter=15
-    # The rounds share these calls: the stage's time limit is sized for them,
-    # not for a fresh set each round (#1801 run 40329281392 was killed in round 2).
-    local _calls_left="$max_iter"
+    # #2439 (ADR-054 §6a): one model call per round. A call that does not
+    # finish ends the try with its reason, and what it wrote is committed for
+    # the engine's next try (the template's retry:).
     while :; do
     # ADR-067 §8: the stage's three parts and the engine's blocks — its budget
     # and notes file among the engine's rules — in the one prompt order.
@@ -372,28 +363,20 @@ ${_ta_limits}")"; then
         return 1
     }
     printf '%s' "$prompt" > "$prompt_file"
-    # The loop shows the model only its own testfiles' progress — never the
-    # implementation, which this stage must not see (#2022; review #2229).
-    local _ctx; _ctx="$( { acceptance_list_testfiles "$design"; acceptance_list_supersedes "$design" | cut -f1; } 2>/dev/null \
-        | awk 'NF && !seen[$0]++' | paste -sd, - || true)"
-    _ROUTE_LOOP_ITERATIONS=0
-    route_to_model_loop "$tier" "$prompt_file" "$repo" "$_calls_left" \
-        --context-paths "${_ctx:-.zbuild-no-testfiles}" || rc=$?
+    route_to_model_loop "$tier" "$prompt_file" "$repo" || rc=$?
     rm -f "$prompt_file"
     _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}"
-    [[ "${_ROUTE_LOOP_ITERATIONS:-0}" =~ ^[0-9]+$ ]] || _ROUTE_LOOP_ITERATIONS=1
-    _calls_left=$(( _calls_left - (_ROUTE_LOOP_ITERATIONS > 0 ? _ROUTE_LOOP_ITERATIONS : 1) ))
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"
 
     if [[ "$_end" != "done_sentinel" ]]; then
         # ADR-054 §6: this stage only says HOW it stopped; the one mapping from
-        # a router or loop reason to its word decides which (#2187). A loop that
-        # used every call without finishing is `out_of_turns`.
+        # a router reason to its word decides which (#2187). A call that ended
+        # without saying it is done is `unusable`.
         local _reason="$_end" _disp="" _v=""
         if [[ "$rc" -eq 130 ]]; then
             _reason="signal"
         elif [[ -z "$_end" ]]; then
-            # The loop never got going (no model CLI, a bad tier): classify its
+            # The call never got going (no model CLI, a bad tier): classify its
             # rc the way single-shot calls are (review #2229).
             _router_rc_classify "$rc" _v _reason 2>/dev/null || _reason="router_rc_nonzero"
         fi
@@ -427,7 +410,7 @@ ${_ta_limits}")"; then
     fi
     [[ ${#_TA_CORR_FINDINGS[@]} -eq 0 ]] && break
     _ta_emit "test_author.checks.failed" "round=$_round" "rounds=$_rounds" "findings=${#_TA_CORR_FINDINGS[@]}"
-    if (( _round >= _rounds || _calls_left < 1 )); then
+    if (( _round >= _rounds )); then
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), still failing their check"
         _ta_write_result "$art" "fail" \

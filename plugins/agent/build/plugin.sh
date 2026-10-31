@@ -186,15 +186,10 @@ _build_stage_run_inner() {
         plan_payload="$(render_artifact plan "$plan_json" 2>/dev/null || echo "$plan_json")"
     fi
 
-    # Resolve banner iter/max — iter from cycle context (defaults to 1),
-    # max from router resolver. Banner is operator-visible after #566.
+    # The banner names the loop's round (defaults to 1); operator-visible after #566.
     local _iter_n="${ZBUILD_CYCLE_ITER:-1}"
-    local _iter_max
-    _iter_max="$(_route_resolve_max_iterations 2>/dev/null || echo 10)"
-    [[ "$_iter_max" =~ ^[0-9]+$ ]] || _iter_max=10
-
     local _task_header
-    _task_header="$(_build_render_task_header "$_iter_n" "$_iter_max")"
+    _task_header="$(_build_render_task_header "$_iter_n")"
 
     local _build_instructions
     _build_instructions="$(_build_compose_instructions "$plan_files_csv")"
@@ -228,25 +223,11 @@ _build_stage_run_inner() {
     fi
     printf '%s\n' "$_bp_composed" > "$prompt_input_file"
 
-    # ─── Route through agent loop (ADR-018 Pattern 2) ────────────────────────
+    # ─── One model call (ADR-018 Pattern 2; #2439: one call per try) ─────────
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
     local tier; tier="$(resolve_tier build "$_BUILD_DIR")" || return 1
-    local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || echo 10)"
-    [[ "$max_iter" =~ ^[0-9]+$ ]] || max_iter=10
     # #2323: before this pass writes anything — a re-dispatch continues the round.
     _build_round_open "$output_summary_json" "$repo_root"
-    # ─── #511 F2: cycle-budget clamp ─────────────────────────────────────────
-    # When running INSIDE a cycle iter (ZBUILD_CYCLE_ITER set by orchestrator),
-    # clamp the inner agent-loop max_iterations to 15 to bound worst-case cost
-    # (cycle.max_iter × stage_count × inner.max_iter). Default upper bound is
-    # 25 (per ADR-018), so we cap to 15 only when it would exceed.
-    if [[ -n "${ZBUILD_CYCLE_ITER:-}" && "$max_iter" -gt 15 ]]; then
-        local _orig="$max_iter"
-        max_iter=15
-        emit_event "build.cycle.max_turns_clamped" "plugin=build" \
-            "iter=${ZBUILD_CYCLE_ITER}" "orig=$_orig" "clamped=$max_iter" \
-            >/dev/null 2>&1 || true
-    fi
 
     # #2163: read-only testfiles are restored before the model runs.
     local _restored; _restored="$(_build_restore_authored_testfiles "$artifact_dir" "$repo_root" 2>/dev/null || printf '0')"
@@ -263,7 +244,7 @@ _build_stage_run_inner() {
     # of leaking into the inter-stage gap. We flush the deferred close via
     # _route_loop_close_final_banner after _build_emit_changed_files_summary
     # below (or unconditionally on the early-exit paths).
-    route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" "$max_iter" \
+    route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" \
         --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Integration test (#602): a 2-iter build cycle makes real progress between
-# iterations because the LLM's edits survive into the next iter (no stash
-# hides them). Asserts that iter 1 produces non-zero numstat — the canonical
+# Integration test (#602): build makes real progress between tries because
+# the LLM's edits survive into the next try (no stash hides them). #2439: one
+# call per try — the first try does not finish (unusable), and the engine's
+# retry, the second try, continues from its edits. Asserts that iter 1 produces non-zero numstat — the canonical
 # signal that build is no longer 0/0/0.
 set -euo pipefail
 
@@ -147,13 +148,14 @@ export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
 
 load_template "$TEST_TEMP_DIR/template.yaml"
 export ZBUILD_CURRENT_STAGE=build
-build_stage_run "ignored" "$STATE_FILE"
+build_stage_run "ignored" "$STATE_FILE" || true   # try 1: does not finish
+build_stage_run "ignored" "$STATE_FILE"            # try 2: the engine's retry
 EOF
 
 bash "$DRIVER" >/dev/null 2>/dev/null || true
 
 # Build-summary.json should record > 0 lines added — proof that progress
-# survived across the 2-iter loop.
+# survived across the two tries.
 SUMMARY="$STATE_DIR/artifacts/build-summary.json"
 if [[ ! -f "$SUMMARY" ]]; then
     assert_fail "build-summary.json present" "missing"
@@ -165,11 +167,11 @@ lines_added="$(jq -r '.lines_added' "$SUMMARY" 2>/dev/null || echo 0)"
 files_changed_count="$(jq -r '.files_changed | length' "$SUMMARY" 2>/dev/null || echo 0)"
 verdict="$(jq -r '.outcome' "$SUMMARY" 2>/dev/null || echo error)"
 
-# lines_added must be >= 2 (one line per iter, 2 iters)
+# lines_added must be >= 2 (one line per try, 2 tries)
 if [[ "$lines_added" =~ ^[0-9]+$ && "$lines_added" -ge 2 ]]; then
-    assert_pass "build-summary.lines_added >= 2 (2-iter cycle, was: $lines_added)"
+    assert_pass "build-summary.lines_added >= 2 (2 tries, was: $lines_added)"
 else
-    assert_fail "build-summary.lines_added >= 2 (2-iter cycle)" \
+    assert_fail "build-summary.lines_added >= 2 (2 tries)" \
         "got: $lines_added — work likely stashed and not popped"
 fi
 

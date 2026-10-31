@@ -29,6 +29,8 @@ source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scri
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-summary.sh"
 # shellcheck source=../../scripts/lib/stage-time-limit.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-time-limit.sh"
+# shellcheck source=../../scripts/lib/stage-retry.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-retry.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -268,7 +270,29 @@ plugin_stop_running() {
 # ─── plugin_hook_call ───────────────────────────────────────────────────────
 # Source the plugin's plugin.sh and call a lifecycle hook by name.
 # Plugin functions are isolated by sub-shell to prevent namespace pollution.
+#
+# #2439 (ADR-054 §6a): a flow stage's run — one with a stage name and a job
+# folder — is run again while its outcome says retry and the template's
+# `retry:` allows (stage_retry_next). Every dispatch arm ends here, the map
+# arm's generated script included, so every stage gets the same retry. A stage
+# dispatched from inside a stage runs once: the outer stage's retry covers it.
 plugin_hook_call() {
+    if [[ "${2:-}" != "run" || -z "${3:-}" || "${4:-}" != /* || -n "${_ZB_LC_RETRYING:-}" ]]; then
+        _plugin_hook_call_once "$@"
+        return
+    fi
+    local -x _ZB_LC_RETRYING=1
+    local _ph_budget _ph_tries=0 _ph_rc
+    stage_retry_budget_v _ph_budget "$3"
+    while :; do
+        _ph_rc=0; _plugin_hook_call_once "$@" || _ph_rc=$?
+        _ph_tries=$(( _ph_tries + 1 ))
+        stage_retry_next "$1" "$3" "$4" "$_ph_rc" "$_ph_tries" "$_ph_budget" || break
+    done
+    return "$_ph_rc"
+}
+
+_plugin_hook_call_once() {
     local plugin_dir="$1"
     local hook_name="$2"   # run | cleanup (or kind-specific)
     shift 2

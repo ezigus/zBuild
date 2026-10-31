@@ -207,7 +207,7 @@ _build_write_build_summary() {
     elif [[ "${terminated_reason:-}" == "done_sentinel" ]]; then
         build_reason="build_complete"
     else
-        # Any other terminated_reason (max_iterations, etc.): did not finish.
+        # Any other terminated_reason (no_done_sentinel, a failed call): did not finish.
         build_verdict="$(router_reason_disposition "${terminated_reason:-unknown}")"
         build_reason="${terminated_reason:-unknown}"
     fi

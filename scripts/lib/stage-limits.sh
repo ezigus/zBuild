@@ -138,28 +138,6 @@ _route_classify_max_turns_source() {
     fi
 }
 
-# ADR-018 (#467): per-stage router.max_iterations > $ZBUILD_ROUTER_MAX_ITERATIONS > 10 default.
-_route_resolve_max_iterations() {
-    _route_resolve_knob template_stage_router_max_iterations ZBUILD_ROUTER_MAX_ITERATIONS 10 \
-        router.max_iterations.override_ignored
-}
-
-# ADR-029 (#1230): per-stage router.retries > $ZBUILD_ROUTER_RETRIES > 0 default.
-# The count of retry-on-timeout (rc=124) attempts BEFORE the verbatim-124
-# fallback. Default 0 (opt-in). Honored by BOTH leaf paths — single-shot
-# (_route_call_claude) and agentic-loop (route_to_model_loop) — so every leaf
-# node respects the knob wherever it sits. Out-of-range values (validator
-# already bounds template 0..10; env is unbounded) clamp to 0 fail-safe.
-_route_resolve_retries() {
-    local v; v="$(_route_resolve_knob template_stage_router_retries ZBUILD_ROUTER_RETRIES 0 \
-        router.retries.override_ignored retries)"
-    if [[ "$v" =~ ^[0-9]+$ ]] && [[ "$v" -ge 0 ]] && [[ "$v" -le 10 ]]; then
-        printf '%s' "$v"
-    else
-        printf '0'
-    fi
-}
-
 # ADR-054 §11 (#1944): per-run wall-clock limit.
 # Priority: template max_run_s > ZBUILD_MAX_RUN_S > 20700 s default.
 # A non-integer or non-positive value in either source is refused (rc=1).

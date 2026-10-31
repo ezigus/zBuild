@@ -86,7 +86,7 @@ MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
 MOCK_LOOP_EXTRA_FILES=""
 route_to_model_loop() {
-    # Args: tier prompt_file cwd max_iterations [flags...]
+    # Args: tier prompt_file cwd [flags...]
     local _prompt_file="$2"
     local _cwd="$3"
     [[ -f "$_prompt_file" ]] && cp "$_prompt_file" "$_CAPTURED_PROMPT_FILE"
@@ -190,8 +190,8 @@ REPO_PROSE="$(setup_build_repo "repo_prose")"
 export ZBUILD_REPO_ROOT="$REPO_PROSE"
 MOCK_LOOP_EDIT_FILE=""
 MOCK_LOOP_EDIT_CONTENT=""
-MOCK_LOOP_REASON="max_iterations"
-MOCK_LOOP_ITERATIONS=10
+MOCK_LOOP_REASON="no_done_sentinel"
+MOCK_LOOP_ITERATIONS=1
 MOCK_LOOP_RC=1
 
 set +e
@@ -214,11 +214,11 @@ else
 fi
 assert_event_emitted "build.empty_diff event fired" "$ZBUILD_EVENTS_JSONL" "build.empty_diff"
 # #2124: the summary the engine ships downstream is headed by the verdict the
-# stage actually reached — max_iterations here is out_of_turns (#2366: the
-# outcome), and a heading that says `pass` tells the next prompt the opposite
-# of build-summary.json.
+# stage actually reached — a call that never said it was done is unusable
+# (#2366: the outcome; #2439: one call per try), and a heading that says `pass`
+# tells the next prompt the opposite of build-summary.json.
 assert_eq "[#2124] build-summary.md heading carries the real outcome" \
-    "## build — out_of_turns" "$(head -1 "$ARTIFACT_DIR_PROSE/build-summary.md" 2>/dev/null)"
+    "## build — unusable" "$(head -1 "$ARTIFACT_DIR_PROSE/build-summary.md" 2>/dev/null)"
 
 # Reset mock to default success
 MOCK_LOOP_RC=0

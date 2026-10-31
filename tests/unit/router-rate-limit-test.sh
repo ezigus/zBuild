@@ -128,7 +128,7 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 export ZBUILD_ROUTER_TIMEOUT=1     # force the timeout fast
 export ZBUILD_ROUTER_RETRIES=2     # retries available, so a retry WOULD happen
 set +e
-( cd "$_LOOP_REPO" && route_to_model_loop T2 "$_LOOP_PROMPT" "$_LOOP_REPO" 1 ) >/dev/null 2>&1
+( cd "$_LOOP_REPO" && route_to_model_loop T2 "$_LOOP_PROMPT" "$_LOOP_REPO" ) >/dev/null 2>&1
 set -e
 unset ZBUILD_ROUTER_TIMEOUT ZBUILD_ROUTER_RETRIES
 

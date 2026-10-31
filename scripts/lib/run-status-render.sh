@@ -32,14 +32,19 @@ rsc_byte_len() {
 # only records an end time. Nested plugin_hook_calls re-emit `plugin.run.start`
 # for the same seq; only the first opens a row. Reused members collapse to one
 # row per (cycle, iteration), keyed under the cycle's cardinal.
+# #2439 (ADR-064, amended 2026-10-31): a stage the engine runs again
+# (`stage.retry`) gets one row per try. The retry closes the try's row on the
+# outcome it ended on; the next start opens `<seq>~<try>`, and `.cur[<seq>]`
+# names the row that the seq's closers now reach.
 rsc_rows_json() {
     local events="$1"
     [[ -s "$events" ]] || { printf '{"header":{},"rows":{},"order":[],"terminal":{},"pr":{}}'; return 0; }
     jq -cs '
       def open_for($st; $s): [$st.order[] | select($st.rows[.].stage == $s and $st.rows[.].verdict == null)] | last;
+      def cur($st; $q): ($st.cur[$q] // $q);
       def close($k; $e; $f): if $k == null then . else .rows[$k] |= (. + {ended_ts: $e.ts} + $f) end;
       reduce (.[] | select(type == "object")) as $e (
-        {header:{}, rows:{}, order:[], terminal:{}, pr:{}, cardinal:""};
+        {header:{}, rows:{}, order:[], terminal:{}, pr:{}, cardinal:"", cur:{}, next_try:{}};
         ($e.type // "") as $t
         | ($e.seq // "") as $seq
         | ($e.data // {}) as $d
@@ -50,43 +55,61 @@ rsc_rows_json() {
                         started: (.header.started // $e.ts)}
           elif ($t == "plugin.run.start" or $t == "parallel.group.start") and $seq != "" then
             (if $t == "parallel.group.start" then .groups[$seq] = true else . end)
-            | if .rows[$seq] == null then
+            | cur(.; $seq) as $ck
+            | if .next_try[$seq] != null and .rows[$ck].verdict != null then
+              # The engine ran the stage again: this try has its own row.
+              .next_try[$seq] as $nt
+              | ($seq + "~" + $nt.try) as $nk
+              | .rows[$nk] = (.rows[$ck] + {key:$nk, started_ts:$e.ts, ended_ts:null, verdict:null, rc:null,
+                                            reason:null, summaries:null, resolve:null, try:$nt.try, of:$nt.of})
+              | .order += [$nk] | .cur[$seq] = $nk | del(.next_try[$seq])
+            elif .rows[$seq] == null then
               .rows[$seq] = {key:$seq, seq:$seq, stage:($e.stage // ""), kind:($d.kind // ""), started_ts:$e.ts,
                              ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null,
                              # A map member (<group>.<n>) is not a loop iteration.
                              member: (.groups[$seq | split(".")[:-1] | join(".")] // false)}
               | .order += [$seq]
               | (if ($seq|contains(".")) then .cardinal = ($seq|split(".")[0]) else . end)
-            elif .rows[$seq].verdict != null then
-              # A retry under the same row (the first try already ended): the
-              # row shows the latest try.
-              .rows[$seq] += {started_ts:$e.ts, ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null}
+            elif .rows[$ck].verdict != null then
+              # A start the engine did not announce as a retry, after the row
+              # ended: the row shows the latest start.
+              .rows[$ck] += {started_ts:$e.ts, ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null}
             else . end
+          elif $t == "stage.retry" then
+            (if $seq != "" and .rows[cur(.; $seq)] != null then cur(.; $seq) else open_for(.; ($d.stage // $e.stage // "")) end) as $k
+            | if $k == null then . else
+                ((($d.try // "2") | tostring | tonumber? // 2) - 1 | tostring) as $prev
+                | .rows[$k] |= (. + {ended_ts: $e.ts, verdict: ($d.outcome // "retry"), rc: null,
+                                     try: (.try // $prev), of: ($d.of // null)})
+                | (if $seq != "" then .next_try[$seq] = {try: ($d.try // "2"), of: ($d.of // null)} else . end)
+              end
           elif $t == "stage.previous_work.written" then
             open_for(.; ($d.stage // $e.stage // "")) as $k
             | if $k == null then . else .rows[$k] += {summaries: $d.stages, resolve: $d.failing} end
           elif $t == "cycle.member.dispatch.complete" then
-            (if $seq != "" and .rows[$seq] != null then $seq else open_for(.; ($d.member // "")) end) as $k
+            (if $seq != "" and .rows[cur(.; $seq)] != null then cur(.; $seq) else open_for(.; ($d.member // "")) end) as $k
             | close($k; $e; {verdict: ($d.verdict // "unknown"), rc: $d.rc, status: $d.status, disposition: $d.disposition})
           elif $t == "parallel.group.complete" and $seq != "" and .rows[$seq] != null then
             close($seq; $e; {verdict: ($d.verdict // "pass")})
-          elif $t == "parallel.member.dispatch.complete" and $seq != "" and .rows[$seq] != null then
+          elif $t == "parallel.member.dispatch.complete" and $seq != "" and .rows[cur(.; $seq)] != null then
             # A map member: its own name, outcome and summary (ADR-064 §4). It
             # ended when its run did, not when the group was summed up.
-            .rows[$seq] += {stage: ($d.member // .rows[$seq].stage), verdict: ($d.verdict // "unknown"),
+            cur(.; $seq) as $k
+            | .rows[$k] += {stage: ($d.member // .rows[$k].stage), verdict: ($d.verdict // "unknown"),
                             reason: $d.reason, summary_path: $d.summary_path,
-                            ended_ts: (.rows[$seq].ended_ts // $e.ts)}
+                            ended_ts: (.rows[$k].ended_ts // $e.ts)}
           elif $t == "stage.complete" then
-            (if $seq != "" and .rows[$seq] != null then $seq else open_for(.; ($d.stage // "")) end) as $k
+            (if $seq != "" and .rows[cur(.; $seq)] != null then cur(.; $seq) else open_for(.; ($d.stage // "")) end) as $k
             | close($k; $e; {verdict: ($d.verdict // "pass")})
           elif $t == "stage.fail" then
-            (if $seq != "" and .rows[$seq] != null then $seq else open_for(.; ($d.stage // "")) end) as $k
+            (if $seq != "" and .rows[cur(.; $seq)] != null then cur(.; $seq) else open_for(.; ($d.stage // "")) end) as $k
             | close($k; $e; {verdict: "fail", rc: $d.rc, reason: $d.reason})
           elif $t == "plugin.run.error" then
-            (if $seq != "" and .rows[$seq] != null then $seq else open_for(.; ($e.stage // "")) end) as $k
+            (if $seq != "" and .rows[cur(.; $seq)] != null then cur(.; $seq) else open_for(.; ($e.stage // "")) end) as $k
             | close($k; $e; {verdict: "error", rc: $d.rc, reason: $d.reason})
-          elif $t == "plugin.run.complete" and $seq != "" and .rows[$seq] != null then
-            if .rows[$seq].ended_ts == null then .rows[$seq].ended_ts = $e.ts else . end
+          elif $t == "plugin.run.complete" and $seq != "" and .rows[cur(.; $seq)] != null then
+            cur(.; $seq) as $k
+            | if .rows[$k].ended_ts == null then .rows[$k].ended_ts = $e.ts else . end
           elif $t == "cycle.iteration.reused" then
             ("reused:" + ($d.cycle_id // "") + ":" + ($d.iter // "")) as $k
             | if .rows[$k] == null then
@@ -296,11 +319,14 @@ rsc_render_row() {
     local members from reason it _f
     _f="$(jq -r '[.kind, .seq, .started_ts, .stage, .ended_ts, .verdict, .rc, .summaries,
                   (.resolve // "0"), ((.members // []) | map(tostring) | join(", ")), .from_iter, .reason, .iter,
-                  .summary_path, (.member // false)]
+                  .summary_path, (.member // false), (.key // .seq), .try, .of]
                  | map(. // "" | tostring) | join("\u001f")' <<< "$row")"
-    local spath member
-    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member <<< "$_f" || true
-    member="${member%$'\n'}"
+    local spath member key try of
+    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try of <<< "$_f" || true
+    of="${of%$'\n'}"
+    # #2439: a try the engine ran again says which, of how many.
+    local tries=""
+    [[ -n "$try" ]] && tries=" · try ${try}${of:+ of ${of}}"
     if [[ "$kind" == "reused" ]]; then
         printf '**%s** · **%s reused** · iter %s · %s from iter %s (%s)' \
             "$(_rsc_clock "$started")" "$seq" "$it" "$members" "$from" "$reason"
@@ -317,26 +343,29 @@ rsc_render_row() {
         local _c1; _rsc_clock_v _c1 "$started"
         line="**${_c1} → running** · **${seq} ${stage}**"
         [[ -n "$iter" ]] && line+=" · iter ${iter}"
+        line+="$tries"
         [[ -n "$summaries" ]] && line+=" · previous work from ${summaries} stage(s) (${resolve} failing)"
     else
         [[ -z "$ended" ]] && ended="$started"
         local _c1 _c2 _du; _rsc_clock_v _c1 "$started"; _rsc_clock_v _c2 "$ended"; rsc_duration_v _du "$started" "$ended"
         line="**${_c1} → ${_c2} (${_du})** · **${seq} ${stage}**"
         [[ -n "$iter" ]] && line+=" · iter ${iter}"
+        line+="$tries"
         local v="$verdict"
         [[ "$v" != "pass" && -n "$rc" && "$rc" != "0" ]] && v+=" rc=${rc}"
         line+=" · **${v}**"
         local summary
         # Frozen for THIS close: a retry closes again with a new ended_ts and
         # the line re-freezes from the live file (#2166).
-        if [[ -n "${_RSC_SNAP[$seq]+x}" && ( -z "${_RSC_SNAP_END[$seq]+x}" || "${_RSC_SNAP_END[$seq]}" == "$ended" ) ]]; then
-            summary="${_RSC_SNAP[$seq]}"
+        # Keyed by the row (#2439: two tries share a seq).
+        if [[ -n "${_RSC_SNAP[$key]+x}" && ( -z "${_RSC_SNAP_END[$key]+x}" || "${_RSC_SNAP_END[$key]}" == "$ended" ) ]]; then
+            summary="${_RSC_SNAP[$key]}"
         else
             # A map member names its own summary file; any other row's is its stage's.
             if [[ -n "$spath" && -s "$spath" ]]; then _rsc_first_line_v summary "$spath"
             else rsc_row_summary_line_v summary "$state_dir" "$stage"; fi
             if [[ -n "$summary" && -n "$_RSC_SNAP_RUN" ]]; then
-                _RSC_SNAP["$seq"]="$summary"; _RSC_SNAP_END["$seq"]="$ended"; _RSC_SNAP_DIRTY=1
+                _RSC_SNAP["$key"]="$summary"; _RSC_SNAP_END["$key"]="$ended"; _RSC_SNAP_DIRTY=1
             fi
         fi
         if [[ -n "$summary" ]]; then

@@ -2,7 +2,7 @@
 # core/plugin-registry/manifest-router-budget.sh — a plugin's own declared
 # router budget (ADR-017 §11, #1816).
 #
-# `timeout_s`, `max_turns` and `retries` used to resolve only from the template,
+# `timeout_s` and `max_turns` used to resolve only from the template,
 # so a stage's budget was a property of whichever flow ran it rather than of the
 # work it does. This file is the manifest half of the fix: the reader for
 # `config.router.*` and the ranges that make a declaration valid.
@@ -22,7 +22,9 @@ _ZBUILD_MANIFEST_ROUTER_BUDGET_LOADED=1
 # The knob set is closed and mirrors the template's: anything else under
 # `config.router` is a typo, and a typo'd budget is inert rather than merely
 # wrong — so validate_manifest refuses it.
-_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns retries retry_on_exhaustion"
+# #2439 (ADR-054 §6a): `retries` and `retry_on_exhaustion` are gone — a stage
+# never repeats a model call; the template's per-stage `retry:` is the one retry.
+_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns"
 
 # _manifest_router_range <knob> → "<min> <max>", empty for an unknown knob.
 # The ranges are the template's ranges (_tpl_validate_io_knobs), deliberately:
@@ -31,13 +33,6 @@ _manifest_router_range() {
     case "$1" in
         timeout_s) echo "1 3600" ;;   # ADR-017 (#455)
         max_turns) echo "0 200" ;;    # ADR-018 (#466); 0 = omit --max-turns (#762)
-        retries)   echo "0 10" ;;     # ADR-029 (#1230); 0 = opt-out
-        # #1879: retry-on-budget-exhaustion. Its own knob, NOT a widening of
-        # `retries` (which is timeout/rc=124-only) — a stage that sets `retries`
-        # relies on that meaning. Capped low: a
-        # retry is only useful because the stage resumes from its checkpoint, and
-        # more than a couple of attempts means the issue is too large to plan.
-        retry_on_exhaustion) echo "0 5" ;;
         *)         echo "" ;;
     esac
 }

@@ -114,7 +114,6 @@
 10	tests/integration/cycle-scope-expansion-test.sh
 10	tests/integration/leaf-dispatch-role-bound-verdict-test.sh
 10	tests/integration/mutation-teardown-ownership-test.sh
-10	tests/integration/router-retries-test.sh
 10	tests/unit/attempt-progress-test.sh
 10	tests/unit/lint-test-engine-state-test.sh
 10	tests/unit/run-tests-timeout-report-test.sh
@@ -166,7 +165,6 @@
 7	tests/integration/mutation-infra-nonfatal-test.sh
 7	tests/integration/preflight-contract-templates-test.sh
 7	tests/integration/review-lenses-output-test.sh
-7	tests/integration/router-loop-retries-test.sh
 7	tests/integration/write-boundary-dispatch-test.sh
 7	tests/unit/build-timeout-scope-violation-preserves-inscope-test.sh
 7	tests/unit/core-output-stage-io-blank-line-spacing-test.sh
@@ -269,7 +267,6 @@
 4	tests/integration/cycle-commit-summary-fallback-test.sh
 4	tests/integration/deferred-backfill-integration-test.sh
 4	tests/integration/install-copy-flow-test.sh
-4	tests/integration/loop-auto-terminate-no-progress-test.sh
 4	tests/integration/release-orchestrates-docs-test.sh
 4	tests/integration/release-sh-major-guardrails-test.sh
 4	tests/integration/release-sh-ship-test.sh
@@ -324,7 +321,6 @@
 3	tests/unit/attempt-archive-test.sh
 3	tests/unit/build-design-decisions-test.sh
 3	tests/unit/build-discrepancy-warn-inside-banner-test.sh
-3	tests/unit/build-timeout-banner-clean-iter-test.sh
 3	tests/unit/core-output-stage-io-split-test.sh
 3	tests/unit/core-pipeline-cycle-final-gate-test.sh
 3	tests/unit/core-pipeline-verdict-test.sh
@@ -416,7 +412,6 @@
 2	tests/unit/core-pipeline-disposition-test.sh
 2	tests/unit/core-pipeline-strategy-test.sh
 2	tests/unit/core-pipeline-template-cycles-test.sh
-2	tests/unit/core-pipeline-template-router-retries-test.sh
 2	tests/unit/cycle-multi-exit-when-test.sh
 2	tests/unit/deploy-release-v2-result-test.sh
 2	tests/unit/design-coverage-test.sh
@@ -599,7 +594,6 @@
 1	tests/unit/write-boundary-git-internals-test.sh
 1	tests/unit/yaml-get-cache-test.sh
 0	core/cache/tests/cache-contract-unit-test.sh
-0	core/router/tests/route-loop-capture-diff-test.sh
 0	plugins/agent/intake/tests/intake-lib-extraction-test.sh
 0	plugins/tool/cache-gh-actions/tests/cache-gh-actions-test.sh
 0	plugins/tool/cache-gh-actions/tests/cache-gh-actions-unit-test.sh

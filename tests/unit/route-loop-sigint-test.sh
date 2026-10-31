@@ -91,7 +91,7 @@ export HOME="$HOME"
 export ZBUILD_SCOPE_OVERRIDE=1
 export PATH="$PATH"
 
-route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 5
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO"
 rc=\$?
 printf '%s' "\$rc" > "$RC_FILE"
 printf '%s' "\${_ROUTE_LOOP_TERMINATED_REASON:-EMPTY}" > "$REASON_FILE"

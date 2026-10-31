@@ -106,7 +106,8 @@ config:
   router:               # ADR-017 §11: my own budget defaults (a template still wins)
     timeout_s: 600      # 1..3600   (constant: 300)
     max_turns: 45       # 0..200    (constant: 25)
-    retries: 1          # 0..10     (constant: 0)
+                        # no retries here: the template's per-stage retry:
+                        # is the one retry (ADR-054 §6a, #2439)
 
 # I/O contract (ADR-055). A stage declares only what it writes; it declares no
 # inputs — every stage gets every stage's latest output, by id, in its index.

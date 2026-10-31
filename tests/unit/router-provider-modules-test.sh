@@ -119,7 +119,7 @@ print_test_section "SPEC-8: the loop path records each iteration's cost"
 : > "$ZBUILD_COST_LEDGER"; rm -f "$ZBUILD_STATE_DIR/runtime/cost-unknown"
 printf 'do the thing\n' > "$TEST_TEMP_DIR/loop-prompt.txt"
 mkdir -p "$TEST_TEMP_DIR/cwd"
-( MOCK_MODE=json route_to_model_loop T2 "$TEST_TEMP_DIR/loop-prompt.txt" "$TEST_TEMP_DIR/cwd" 1 >/dev/null 2>&1 )
+( MOCK_MODE=json route_to_model_loop T2 "$TEST_TEMP_DIR/loop-prompt.txt" "$TEST_TEMP_DIR/cwd" >/dev/null 2>&1 )
 assert_eq "[SPEC-8] the loop iteration's cost is in the ledger" "0.123000" "$(tail -1 "$ZBUILD_COST_LEDGER" 2>/dev/null)"
 
 print_test_section "SPEC-10: a failed call that was billed reaches the ledger"

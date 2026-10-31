@@ -1044,3 +1044,12 @@ tracked as a follow-up.
 from `[SPEC-2]` to an untagged regression guard — it exercised the shared parser
 on a postamble with no balanced object, so it passed at baseline and could not
 satisfy the ADR-036 fail-first requirement.
+
+## Amendment 2026-10-31 (#2439) — Pattern 2 is one call per try
+
+The multi-turn loop (up to `router.max_iterations` calls, 10 by default) is removed. A Pattern 2 stage
+(build, test-author) makes ONE agentic model call per try: the model edits the working tree and says
+`LOOP_COMPLETE` when the work is done. A call that ends without it ends the try `unusable`
+(`no_done_sentinel`); a timeout ends it `timed_out`. Whether there is another try is the engine's, from the
+template's `retry:` (ADR-054 §6a). The "3 consecutive timeouts → fatal/yield" and "2 empty-diff iterations
+→ no_progress" rules went with the loop. Enforced by `tests/unit/route-one-call-per-try-test.sh` O1–O6.

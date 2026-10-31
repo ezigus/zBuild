@@ -97,8 +97,9 @@ delivery_loop:
 test-author:
   gate: auto
   roles: [test_author]
-  # The whole stage, every call and check inside it (4 model calls of 15 minutes, plus a few minutes); the engine
-  # stops it here. The default for a stage is 900 (15 minutes).
+  # The whole stage, every call and check inside it (one 15-minute model call per
+  # round of its own check, plus the checks); the engine stops it here. The
+  # default for a stage is 900 (15 minutes).
   timeout_s: 3780
   # #2188: no authored assertions → the cycle stops before build. Otherwise build
   # writes its own tests, the defect #2022 exists to prevent (#1849 run
@@ -112,13 +113,10 @@ test-author:
   router:
     # #2188: the same budget as build — authoring a 15–25 SPEC contract is
     # build-sized work (#1849: two 600s calls both timed out mid-write).
-    # #2225: per CALL now — test-author loops until it says it is done, like
-    # build, so a big contract takes more calls instead of overrunning one.
-    # At most 4 calls: timeouts that are not back-to-back let the loop go on,
-    # so the ceiling is calls × timeout — 60 min here (review #2229).
+    # #2439: one call per try; a call that does not finish is run again by the
+    # engine (retry:, else 1), continuing from the testfiles it wrote.
     timeout_s: 900
     max_turns: 0
-    max_iterations: 4
 
 # ─── issue-acceptance (leaf, gate) ───────────────────────────────────────────
 # #1849: the finished change against the ISSUE. A model call on the convergence
@@ -232,9 +230,14 @@ design:
 build:
   gate: auto
   roles: [builder]
-  # The whole stage, every call and check inside it (3 rounds of 15-minute model calls, and more); the engine
-  # stops it here. The default for a stage is 900 (15 minutes).
+  # The whole stage, every call and check inside it (one 15-minute model call per
+  # try, and build's own scans for secrets); the engine stops it here. The
+  # default for a stage is 900 (15 minutes).
   timeout_s: 3600
+  # #2439 (ADR-054 §6a): a build that does not finish its one call (timed out,
+  # or ended without saying it is done) is run again, continuing from its saved
+  # work — 3 tries in all. The default for a stage is 1.
+  retry: 2
   # ADR-051: the provider runs the stage as this persona (--agent).
   persona: developer
   io:

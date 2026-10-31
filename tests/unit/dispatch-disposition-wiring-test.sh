@@ -22,11 +22,17 @@ print_test_header "dispatch wiring — the disposition table decides (#1887)"
 setup_test_env "dispatch-disposition-wiring"
 
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
+# #2439 (ADR-054 §6a): the retry moved to the one place every dispatch reaches —
+# plugin_hook_call asks scripts/lib/stage-retry.sh — so the callers are read
+# from both files.
+RETRY="$REPO_ROOT/scripts/lib/stage-retry.sh"
+LIFECYCLE="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
 
 # ─── SPEC-1: the table has production callers on the dispatch path ───────────
 # Derived from the source, because the defect WAS "defined but never called" —
 # a test that only exercised the table would have passed throughout #1887's life.
 print_test_section "SPEC-1: disposition_halts / _retryable / _wait_s are called in dispatch"
+# disposition_halts: runner.sh; disposition_retryable / _wait_s: stage-retry.sh.
 
 for _fn in disposition_halts disposition_retryable disposition_wait_s; do
     # Count real call sites: the function name followed by a quoted argument,
@@ -37,34 +43,33 @@ for _fn in disposition_halts disposition_retryable disposition_wait_s; do
     # 1, pipefail propagated it, and `set -e` aborted the test before it could
     # report — so the ablation printed nothing instead of failing. That is the
     # #1886 class biting the test that was meant to catch a different one.
-    _hits="$(grep -nE "^[^#]*\b${_fn} \"" "$RUNNER" 2>/dev/null || true)"
+    _hits="$(grep -nE "^[^#]*\b${_fn} \"" "$RUNNER" "$RETRY" 2>/dev/null || true)"
     _calls=0
     if [[ -n "$_hits" ]]; then
         _real=()
         while IFS= read -r _line; do
-            [[ "$_line" =~ ^[0-9]+:[[:space:]]*# ]] && continue
+            [[ "$_line" =~ ^[^:]*:[0-9]+:[[:space:]]*# ]] && continue
             _real+=("$_line")
         done <<< "$_hits"
         _calls="${#_real[@]}"
     fi
     if [[ "${_calls:-0}" -ge 1 ]]; then
-        assert_pass "[SPEC-1] $_fn has a production caller in runner.sh"
+        assert_pass "[SPEC-1] $_fn has a production caller on the dispatch path"
     else
-        assert_fail "[SPEC-1] $_fn has a production caller in runner.sh" \
+        assert_fail "[SPEC-1] $_fn has a production caller on the dispatch path" \
             "0 call sites — the table is defined and never consulted (#1887)"
     fi
 done
 
 # ─── SPEC-2: the re-dispatch budget ──────────────────────────────────────────
-# #2187 moved it to a top-level _runner_retry_budget whose source is the
-# template's per-stage `retry:`; its values are asserted in
-# disposition-vocabulary-test.sh. Here: the loop reads it, not a constant.
-print_test_section "SPEC-2: the loop's budget comes from _runner_retry_budget"
-if grep -qE '^[^#]*_cd_redispatch_max="\$\(_runner_retry_budget "\$_cd_stage"\)"' "$RUNNER"; then
+# The template's per-stage `retry:` (stage_retry_budget_v; values asserted in
+# disposition-vocabulary-test.sh). Here: plugin_hook_call reads it, not a constant.
+print_test_section "SPEC-2: the retry's budget comes from stage_retry_budget_v"
+if grep -qE '^[^#]*stage_retry_budget_v _ph_budget "\$3"' "$LIFECYCLE"; then
     assert_pass "[SPEC-2] the re-dispatch budget is the stage's retry budget"
 else
     assert_fail "[SPEC-2] the re-dispatch budget is the stage's retry budget" \
-        "the loop does not take its budget from _runner_retry_budget"
+        "plugin_hook_call does not take its budget from stage_retry_budget_v"
 fi
 
 # ─── SPEC-3: retryable and halting are disjoint, and the wiring relies on it ─
@@ -125,13 +130,13 @@ fi
 # ─── SPEC-5: the wiring emits an operator-visible decision ───────────────────
 print_test_section "SPEC-5: the decision is announced, not inferred from an rc"
 
-for _ev in cycle.member.disposition.redispatch cycle.member.disposition.halt; do
+for _ev in stage.retry cycle.member.disposition.halt; do
     if grep -q "\"$_ev\"" "$REPO_ROOT/config/event-schema.json"; then
         assert_pass "[SPEC-5] $_ev is registered in the engine schema"
     else
         assert_fail "[SPEC-5] $_ev is registered in the engine schema" "unregistered event"
     fi
-    if grep -q "$_ev" "$RUNNER"; then
+    if grep -q "$_ev" "$RUNNER" "$RETRY"; then
         assert_pass "[SPEC-5] $_ev is emitted by the dispatch path"
     else
         assert_fail "[SPEC-5] $_ev is emitted by the dispatch path" "no emitter"

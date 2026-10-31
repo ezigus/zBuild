@@ -53,7 +53,7 @@ SYNTH_LOOP="$TEST_TEMP_DIR/synth-loop.sh"
 cat > "$SYNTH_LOOP" <<'LOOP'
 #!/usr/bin/env bash
 build_run() {
-    route_to_model_loop T2 "$f" "$repo" 5 --scope-allowlist "x" 2>/dev/null || rc=$?
+    route_to_model_loop T2 "$f" "$repo" --scope-allowlist "x" 2>/dev/null || rc=$?
 }
 LOOP
 set +e

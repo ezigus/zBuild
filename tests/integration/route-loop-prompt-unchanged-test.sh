@@ -8,7 +8,8 @@
 # intake" summary — none of them in the stage's prompt order. The code is in the
 # worktree; the stage's notes file and Previous work carry what earlier calls did.
 #
-#   LP1 [change]: a later call in the loop sends exactly the stage's prompt
+#   LP1 [change]: a later try's call sends exactly the stage's prompt (#2439:
+#                 one call per try — the later call is the engine's retry)
 #   LP2 [change]: no call carries an Iteration header or a BRANCH STATE block
 set -uo pipefail
 
@@ -100,14 +101,15 @@ PROMPT_FILE="$TEST_TEMP_DIR/prompt.txt"
 printf 'the stage prompt, as composed\n' > "$PROMPT_FILE"
 
 set +e
-route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 3 >/dev/null 2>&1
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO" >/dev/null 2>&1   # try 1
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO" >/dev/null 2>&1   # try 2
 set +e
 
 assert_file_exists "the first call was made" "$PROMPT_DIR/call-1.txt"
-assert_file_exists "a second call was made" "$PROMPT_DIR/call-2.txt"
+assert_file_exists "a second try's call was made" "$PROMPT_DIR/call-2.txt"
 assert_eq "[LP1] the first call sends the stage prompt exactly" \
     "$(cat "$PROMPT_FILE")" "$(cat "$PROMPT_DIR/call-1.txt" 2>/dev/null)"
-assert_eq "[LP1] a later call sends the stage prompt exactly" \
+assert_eq "[LP1] a later try's call sends the stage prompt exactly" \
     "$(cat "$PROMPT_FILE")" "$(cat "$PROMPT_DIR/call-2.txt" 2>/dev/null)"
 all="$(cat "$PROMPT_DIR"/*.txt 2>/dev/null)"
 if [[ "$all" == *"## Iteration"* || "$all" == *"BRANCH STATE"* || "$all" == *"Cumulative diff"* ]]; then

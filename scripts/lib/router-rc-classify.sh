@@ -281,11 +281,11 @@ router_reason_disposition() {
     case "${1-}" in
         "")                                  return 0 ;;
         router_timeout)                      printf 'timed_out' ;;
-        router_out_of_turns|max_iterations)  printf 'out_of_turns' ;;
+        router_out_of_turns)                 printf 'out_of_turns' ;;
         router_rate_limited)                 printf 'rate_limited' ;;
         router_oom_kill|signal|sigint)       printf 'interrupted' ;;
         router_config_error|router_budget_exceeded) printf 'misconfigured' ;;
-        no_progress)                         printf 'unusable' ;;
+        no_done_sentinel)                    printf 'unusable' ;;
         *)                                   printf 'unavailable' ;;
     esac
 }

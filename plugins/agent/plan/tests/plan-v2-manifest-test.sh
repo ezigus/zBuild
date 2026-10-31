@@ -325,27 +325,10 @@ else
     assert_pass "[#1835/SPEC-16] runner.sh leaf-path 'plan turn budget exhausted' block is absent"
 fi
 
-# ─── [#1835/SPEC-17][guard] manifest router retains retries=1 and retry_on_exhaustion=1 ─
-print_test_section "[#1835/SPEC-17] manifest router retains retries=1 and retry_on_exhaustion=1 (guard)"
-# Narrow to the config.router: sub-block so a match elsewhere in the manifest
-# cannot produce a false pass (same extraction as SPEC-9).
-_s17_router="$(awk '
-    /^config:/{in_c=1;next}
-    in_c && /^  router:/{in_r=1;next}
-    in_r && /^    /{print;next}
-    in_r && /^  [a-zA-Z]/{exit}
-    in_c && /^[a-zA-Z]/{exit}
-' "$_MANIFEST_FILE" 2>/dev/null || true)"
-if grep -qE 'retries:[[:space:]]*1' <<< "$_s17_router"; then
-    assert_pass "[#1835/SPEC-17] manifest config.router.retries: 1 retained"
-else
-    assert_fail "[#1835/SPEC-17] manifest config.router.retries: 1 retained"
-fi
-if grep -qE 'retry_on_exhaustion:[[:space:]]*1' <<< "$_s17_router"; then
-    assert_pass "[#1835/SPEC-17] manifest config.router.retry_on_exhaustion: 1 retained"
-else
-    assert_fail "[#1835/SPEC-17] manifest config.router.retry_on_exhaustion: 1 retained"
-fi
+# #1835/SPEC-17 (plan's manifest kept router.retries: 1 and
+# retry_on_exhaustion: 1) is superseded by #2439 (ADR-054 §6a, amended
+# 2026-10-31): plan no longer repeats its own call; the engine runs it again.
+# tests/unit/retired-retry-settings-test.sh T3–T4 hold the manifest to that.
 
 # ─── [#1835/SPEC-18][guard] template override beats manifest budget defaults ───
 # After the manifest gains explicit max_turns:45 / timeout_s:300, a template that

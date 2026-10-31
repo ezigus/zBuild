@@ -31,7 +31,6 @@ while read -r _r _want; do
 done <<'TABLE'
 router_timeout timed_out
 router_out_of_turns out_of_turns
-max_iterations out_of_turns
 router_rate_limited rate_limited
 router_oom_kill interrupted
 signal interrupted
@@ -39,7 +38,7 @@ sigint interrupted
 router_rc_nonzero unavailable
 error unavailable
 router_config_error misconfigured
-no_progress unusable
+no_done_sentinel unusable
 TABLE
 assert_eq "[SPEC-1] no failure → no word" "" "$(router_reason_disposition "" 2>/dev/null)"
 

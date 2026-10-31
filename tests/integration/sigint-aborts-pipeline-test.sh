@@ -115,7 +115,7 @@ intake_run() {
     local pf="${TEST_TEMP_DIR}/route-prompt.txt"
     # A stage composes its prompt in the contract order (ADR-067 §8).
     stage_prompt_compose_parts "\$(printf '## What you own\\nsigint propagation test prompt\\n## What you judge against\\nnothing\\n## What you must not do\\nnothing\\n')" > "\$pf"
-    route_to_model_loop T2 "\$pf" "${REPO}" 5
+    route_to_model_loop T2 "\$pf" "${REPO}"
     return \$?
 }
 PLUG

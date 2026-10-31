@@ -175,7 +175,7 @@ _reset_cap
 printf '%s\n' "$PROMPT" > "$TEST_TEMP_DIR/loop-prompt.txt"
 ( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent \
          ZBUILD_PA_AGENT_PERSONA=architect
-  route_to_model_loop T2 "$TEST_TEMP_DIR/loop-prompt.txt" "$TGT" 2 >/dev/null 2>&1 )
+  route_to_model_loop T2 "$TEST_TEMP_DIR/loop-prompt.txt" "$TGT" >/dev/null 2>&1 )
 assert_eq "[PA7] the loop's call names the agent" "architect" "$(_agent_of "$(cat "$CAP"/args-1 2>/dev/null)")"
 
 # ─── PA8: a map element runs as the persona the template names for it ────────

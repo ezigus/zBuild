@@ -14,18 +14,16 @@ _bp_spec_tag() {
 
 _ZBUILD_BUILD_PROMPT_LOADED=1
 
-# _build_render_task_header <iter> <max_iter>
-# Emits the stable banner that prefixes every build prompt.
+# _build_render_task_header <round>
+# Emits the stable banner that prefixes every build prompt: the loop's round.
 _build_render_task_header() {
-    local iter="${1:-1}"
-    local max_iter="${2:-1}"
-    printf '============== ZBUILD BUILD — iter %s/%s ==============\n' \
-        "$iter" "$max_iter"
+    local round="${1:-1}"
+    printf '============== ZBUILD BUILD — round %s ==============\n' "$round"
 }
 
 # _build_compose_instructions <plan_files_csv>
 # Emits the INSTRUCTIONS section of the framed prompt — stable scope/loop/
-# sentinel/rules text, identical across iterations.
+# sentinel/rules text, identical across tries.
 _build_compose_instructions() {
     : "${1:-}"   # plan files: the scope list is part of the limits (_build_compose_limits)
     # The persona (ADR-051) reaches the model through the provider, not this
@@ -35,10 +33,10 @@ below. You have Read, Edit, Write, and Bash tools available."
     cat <<BUILD_PROMPT
 ${_framing}
 
-### How the loop works
-- Each call you may make code changes via Edit/Write/Bash. What you change
-  stays in the working tree for the next call; your notes file (in the rules
-  below) carries what you learned.
+### How your work is kept
+- You make code changes via Edit/Write/Bash. What you change stays in the
+  working tree: if you do not finish, the next try continues from it, and your
+  notes file (in the rules below) carries what you learned.
 - Do NOT emit a unified diff in your response — the pipeline derives the
   canonical \`diff.patch\` artifact from \`git diff HEAD\` automatically.
 

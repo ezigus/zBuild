@@ -103,11 +103,13 @@ ${body}
 PEOF
 }
 
+# One try (_plugin_hook_call_once): the boundary is judged per try; the
+# engine's retry of an offending stage is write-boundary-revert-test.sh D7.
 _run() {  # <fixture_dir> <stage> → sets RC, clears markers first
     rm -f "$JOB/runtime/write-boundary-violated"
     _EV=()
     RC=0
-    plugin_hook_call "$1" run "$2" "$SF" 2>"$TEST_TEMP_DIR/stderr.txt" || RC=$?
+    _plugin_hook_call_once "$1" run "$2" "$SF" 2>"$TEST_TEMP_DIR/stderr.txt" || RC=$?
 }
 _ev_has() { local e; for e in "${_EV[@]}"; do [[ "$e" == *"$1"* ]] && return 0; done; return 1; }
 
