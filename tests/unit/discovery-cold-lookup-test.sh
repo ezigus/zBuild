@@ -15,6 +15,10 @@ source "$REPO_ROOT/core/plugin-registry/registry.sh"
 
 print_test_header "discovery — cold lookups do not pay the full walk (#2105)"
 setup_test_env "discovery-cold-lookup"
+# This file counts cold walks of the real plugins root. run-tests.sh shares one
+# discovery memo folder across the whole parallel run, so another test could
+# refill it between a flush here and the lookup — a cold walk read as a memo hit.
+export ZBUILD_DISCOVERY_MEMO_DIR="$TEST_TEMP_DIR/discovery-memo"
 
 WALKS="$TEST_TEMP_DIR/walks.count"
 : > "$WALKS"

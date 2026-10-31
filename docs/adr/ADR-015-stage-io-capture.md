@@ -1161,3 +1161,19 @@ OS caps an argument (128 KB on Linux; 1 MB for all of them on macOS), and on #18
 ~115 KB review-lens prompt failed with "jq: Argument list too long", so its record was lost and
 nothing said so. The partial record of a stage cut off before its end is built the same way.
 Enforced by `tests/unit/stage-io-large-capture-test.sh`.
+
+## Amendment (2026-10-30) — every stage declares its capture
+
+A stage with no `io:` block has its capture switched off: no stage-io record, nothing in the run log
+(`template_stage_io_dests` returns nothing, and the caller treats that as "capture disabled"). On
+#1754's run, test-author worked for 28 minutes and left no trace in the log, while design and build,
+which declare `io:`, did. Two causes, both fixed:
+
+- **test-author and issue-acceptance declared no `io:`** in simple.yaml. They now declare
+  `destinations: [file, stdout]` and `tail_lines: 200`, as plan, design and build do.
+- **An always-run stage's `io:` was dropped by the loader.** `_tpl_parse_always_run` read only `roles:`
+  and `router.timeout_s`, so release's and persist's declared capture never took effect. It now reads
+  `io.destinations` and `io.tail_lines` too, and the loader registers them as it does for a flow stage.
+
+Every stage, map group and always-run stage in a shipped template, as loaded (inherited stages too),
+declares `io.destinations`, in inline or block form. Enforced by: `tests/unit/template-every-stage-io-test.sh` S1, S2.
