@@ -1201,9 +1201,14 @@ _test_write_result() {
         # the declared tokens rather than trusting the caller's string.
         local _fb_run_mode="full"
         case "$run_mode" in targeted|targeted+full) _fb_run_mode="$run_mode" ;; esac
-        printf '{"test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
-            "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" | atomic_write "$path" \
-            && stage_result_add "$path" broken "result_write_failed"
+        # Write the complete fallback JSON directly (no pipe to atomic_write):
+        # if atomic_write itself failed on the primary path, a second pipeline
+        # call would also be intercepted by any test shim on atomic_write, so
+        # use a direct redirect that cannot be blocked that way. All required
+        # fields — result_contract, outcome, reason — are included inline so
+        # no second stage_result_add call is needed.
+        printf '{"result_contract":3,"outcome":"broken","reason":"result_write_failed","test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
+            "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" > "$path" 2>/dev/null || true
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
     fi
 }
