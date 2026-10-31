@@ -76,6 +76,9 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ZBUILD_WORKSPACE_BRANCH: zbuild/issue-${{ inputs.issue_number }}-ci
+      # ADR-064 (amended 2026-10-31): the run stops at the Run pipeline step's
+      # own limit, not GitHub's 360; the status comment shows that time.
+      ZBUILD_STATUS_CEILING_MIN: "330"
       # Model selection is governed by config/models.json + core/router — never hardcoded here.
 
     steps:
@@ -196,6 +199,12 @@ jobs:
       # call this workflow. tests/unit/write-boundary-diagnostic-wired-test.sh
       # SPEC-6 pins it.
       - name: Run pipeline
+        # ADR-064 (amended 2026-10-31): stop 30 minutes before GitHub's 360-minute
+        # job limit. A job GitHub kills keeps no log and runs none of the steps
+        # below, so the run's files and events were lost (#1754 run 41138244027).
+        # At this limit the runner is signalled, saves its state (its EXIT trap),
+        # and the always() steps below push, upload and report.
+        timeout-minutes: 330
         # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
         # fast with a clear error when the secret is missing.
         env:
@@ -489,9 +498,8 @@ jobs:
           # -type f excludes symlinks, so a planted link can't pull an arbitrary
           # file into the upload. Session dirs are mirrored (not flattened) so
           # two projects' identically-named sessions can't clobber each other.
-          # The 7h window covers any possible run: this job sets no
-          # timeout-minutes, so GitHub's 360-minute default is the hard ceiling,
-          # plus setup; mtime is a session's LAST write, so a 6h window would
+          # The 7h window covers any possible run: GitHub's 360-minute job limit
+          # is the hard ceiling (the Run pipeline step stops at 330), plus setup; mtime is a session's LAST write, so a 6h window would
           # drop the first stages of a run that hit the ceiling.
           # GitHub runs `run:` under `bash -e`; one unreadable transcript must not
           # abort the loop and drop every later one, so each copy is soft-failed

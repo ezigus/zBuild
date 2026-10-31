@@ -57,8 +57,8 @@ for u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$u" == "cycle:delivery_loop" ]] && has_outer=1
 done
 assert_eq "T1: dispatch units include cycle:delivery_loop" "1" "$has_outer"
-assert_eq "T1: [#1668/SPEC-3] delivery_loop runs design, build_test_cycle, then the lenses (#2369, #2433)" \
-    "design,build_test_cycle,review_lenses" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "T1: [#1668/SPEC-3] delivery_loop runs build_test_cycle (design first in it), then the lenses (ADR-068 §1, 2026-10-31)" \
+    "build_test_cycle,review_lenses" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
 # ADR-040 (#1138): the inner cycle's feedback edge is now the consolidated
 # gate-aggregator payload (gate-aggregator:gate_feedback → build:gate_feedback)
 # — the composable-gate successor to standard's test_assessment feedback.

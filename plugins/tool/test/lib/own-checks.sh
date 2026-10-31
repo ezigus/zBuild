@@ -37,6 +37,52 @@ _test_assertion_fingerprints() {
     return 0
 }
 
+# _test_slow_files <repo_root> <timing_log>
+# A test file this change added or changed that takes more than twice the
+# slowest file the change did not touch, and over a minute, is a finding: on
+# #1754's run a new file took 210 s against 72 s, and every re-run of it by the
+# acceptance check went past its limit. The two are measured in the same run,
+# so a slow runner slows both. The timing log (`file <ms> <path>`) names files
+# under the run's staging copy, so files match on their repo-relative suffix.
+# No untouched file measured (a targeted re-run): nothing to compare. Sets
+# _TEST_SLOW_FINDINGS. rc 0.
+_test_slow_files() {
+    local repo="$1" log="$2" base kind ms path f
+    _TEST_SLOW_FINDINGS=()
+    [[ -s "$log" ]] || return 0
+    local factor="${ZBUILD_TEST_SLOW_FACTOR:-2}" floor_s="${ZBUILD_TEST_SLOW_FLOOR_S:-60}"
+    [[ "$factor" =~ ^[1-9][0-9]*$ ]] || factor=2
+    [[ "$floor_s" =~ ^[0-9]+$ ]] || floor_s=60
+    base="$(zbuild_resolve_merge_base "$repo" 2>/dev/null || true)"
+    [[ -n "$base" ]] || return 0
+    local -A changed=()
+    while IFS= read -r f; do [[ -n "$f" ]] && changed[$f]=1; done \
+        < <(git -C "$repo" diff --name-only "$base" -- 2>/dev/null; git -C "$repo" ls-files --others --exclude-standard 2>/dev/null)
+    local -a mine=()
+    local top_ms=0 top_path=""
+    while read -r kind ms path; do
+        [[ "$kind" == file && "$ms" =~ ^[0-9]+$ && -n "$path" ]] || continue
+        local rel="" c
+        for c in "${!changed[@]}"; do [[ "$path" == "$c" || "$path" == */"$c" ]] && { rel="$c"; break; }; done
+        if [[ -n "$rel" ]]; then
+            mine+=("$ms $rel")
+        elif (( ms > top_ms )); then
+            top_ms=$ms; top_path="$path"
+        fi
+    done < "$log"
+    (( top_ms > 0 )) || return 0
+    local top_rel="$top_path" top_s=$(( (top_ms + 500) / 1000 )) m_s
+    [[ "$top_path" =~ ^/.*/((tests|plugins|scripts|core)/.*)$ ]] && top_rel="${BASH_REMATCH[1]}"
+    local entry
+    for entry in ${mine[@]+"${mine[@]}"}; do
+        ms="${entry%% *}"; path="${entry#* }"
+        (( ms > top_ms * factor && ms > floor_s * 1000 )) || continue
+        m_s=$(( (ms + 500) / 1000 ))
+        _TEST_SLOW_FINDINGS+=("$path took ${m_s} s — more than ${factor} times the slowest test file this change did not touch ($top_rel, ${top_s} s): make it, or the code it runs, faster")
+    done
+    return 0
+}
+
 # _test_own_checks <stage> <state_file> <output_json> <repo_root>
 # Runs the checks and folds them into test's one result (<output_json>). A run
 # that did not finish keeps its own word; a check that could not run says how.
@@ -81,6 +127,12 @@ _test_own_checks() {
         [[ "$outcome" == pass || "$outcome" == fail ]] && outcome=fail
         why+=("assertion files were changed after their tests were written")
         texts+=("${_TEST_FP_FINDINGS[@]}")
+    fi
+    _test_slow_files "$repo" "$art/test-timing.log"
+    if [[ ${#_TEST_SLOW_FINDINGS[@]} -gt 0 ]]; then
+        [[ "$outcome" == pass || "$outcome" == fail ]] && outcome=fail
+        why+=("a test file this change added or changed is far slower than the rest of the suite")
+        texts+=("${_TEST_SLOW_FINDINGS[@]}")
     fi
 
     # No fingerprints given: nothing to compare — a warning, never a failure.

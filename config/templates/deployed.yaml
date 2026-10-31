@@ -52,41 +52,45 @@ always_run:
   - persist
 
 # ─── delivery_loop (cycle) — #2271, ADR-068; mirrors simple.yaml ────────────
-# #2369: design checks its own design.md; a design that still fails ends the
-# round, so build does not run on it.
+# The design-build-test loop, then the review lenses. The loop ends the run when
+# it does not pass; only the lenses send the change round again, once.
 delivery_loop:
   type: cycle
-  description: Design, build, then the review lenses, until all pass — going round when a finding needs fixing
-  # #2433 (ADR-040): the lenses run inside the loop, after the build, so what
-  # they find goes back to the stages that can fix it. A lens that does not
-  # finish, or finds the issue itself wrong, stops the run at once.
+  description: The design-build-test loop, then the review lenses, until both pass — the lenses send the change round once more
+  # #2433 (ADR-040): the lenses run after the build, so what they find goes back
+  # to the stages that can fix it. A lens that does not finish, or finds the
+  # issue itself wrong, stops the run at once.
   flow:
-    - design
     - build_test_cycle
     - review_lenses
   exit_when:
     all:
-      - { stage: design, field: verdict, op: eq, value: pass }
       - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
       - { stage: review_lenses, field: verdict, op: eq, value: pass }
-  stop_run_on_fail: [design]
+  stop_run_on_fail: [build_test_cycle]
   max_iterations: 2
   on_max: halt
 
-# ─── build_test_cycle (cycle) ────────────────────────────────────────────────
+# ─── build_test_cycle (cycle) — design, build, test ─────────────────────────
+# Each round runs design first, so a finding only design can fix reaches it in
+# the next round (ADR-068 §1). #2369: design checks its own design.md; a design
+# that still fails ends the run, so build does not run on it.
 build_test_cycle:
   type: cycle
-  description: Build, test, and run the mechanical gates until every one passes
+  description: Design, build and test until every one passes
   flow:
+    - design
     # #2371: build scans its own change for secrets (was a stage of its own).
     - build
     - test
   exit_when:
     all:
+      - { stage: design, field: verdict, op: eq, value: pass }
       # #2371: build must pass — it scans its own change for secrets, and a
       # build that broke scope or did not finish is not done either.
       - { stage: build, field: verdict, op: eq, value: pass }
       - { stage: test, field: verdict, op: eq, value: pass }
+  stop_run_on_fail: [design]
   max_iterations: 3
   on_max: continue
 

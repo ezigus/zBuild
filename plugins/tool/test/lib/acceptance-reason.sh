@@ -90,6 +90,43 @@ _ag_unreached_where() {
     printf '%s' "$_where"
 }
 
+# _ag_slow_testfiles <spec|all> <spec ids> — the test files a timed-out run
+# ran, each with the time the test run measured for it and the limit its
+# re-run had: "tests/x.sh (210 s in the test run, limit 480 s)". Reads
+# design_md from acceptance_gate_run (dynamic scope), and the timing log and
+# limit the gate exported.
+_ag_slow_testfiles() {
+    local which="$1" ids="$2" sid tf kind ms path best out="" log="${ZBUILD_NEGCTL_TIMING_LOG:-}"
+    local -a tfs=()
+    if [[ "$which" == spec ]]; then
+        for sid in $ids; do
+            while IFS= read -r tf; do [[ -n "$tf" ]] && tfs+=("$tf"); done \
+                < <(acceptance_list_testfiles_for_spec "${design_md:-}" "$sid" 2>/dev/null || true)
+        done
+    else
+        while IFS= read -r tf; do [[ -n "$tf" ]] && tfs+=("$tf"); done \
+            < <(acceptance_list_testfiles "${design_md:-}" 2>/dev/null || true)
+    fi
+    local -A seen=()
+    for tf in ${tfs[@]+"${tfs[@]}"}; do
+        [[ -z "${seen[$tf]:-}" ]] || continue; seen[$tf]=1
+        best=0
+        if [[ -n "$log" && -f "$log" ]]; then
+            while read -r kind ms path; do
+                [[ "$kind" == file && "$ms" =~ ^[0-9]+$ ]] || continue
+                [[ "$path" == "$tf" || "$path" == */"$tf" ]] && (( ms > best )) && best=$ms
+            done < "$log"
+        fi
+        local lim; lim="$(_acceptance_file_timeout "$tf" "${ZBUILD_NEGCTL_TIMEOUT:-60}" 2>/dev/null || printf '%s' "${ZBUILD_NEGCTL_TIMEOUT:-60}")"
+        if (( best > 0 )); then
+            out="${out:+$out, }$tf ($(( (best + 500) / 1000 )) s in the test run, limit $lim s)"
+        else
+            out="${out:+$out, }$tf (limit $lim s)"
+        fi
+    done
+    printf '%s' "${out:-its test files}"
+}
+
 # _ag_build_reason <failure...> — compose the human-readable operator reason
 # (#1220) that NAMES the offending SPEC ids grouped by violation class, so the
 # operator sees the FULL scope in one message instead of the opaque
@@ -149,13 +186,20 @@ _ag_build_reason() {
     [[ -n "$sig"      ]] && clauses+=("$(_ag_join_ids "$sig"): its test file died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
     [[ "$malformed" -eq 1 ]] && clauses+=("the acceptance block could not be read")
     if [[ -n "$infra" ]]; then
-        local _i _ib="" _ir=""
+        local _i _ib="" _ir="" _tb="" _tr=""
         for _i in $infra; do
             case "$_i" in
-                negctl_error:*)       _ib="$_ib ${_i#negctl_error:}" ;;
-                reachability_error:*) _ir="$_ir ${_i#reachability_error:}" ;;
+                negctl_error:timeout:*)       _tb="$_tb ${_i#negctl_error:timeout:}" ;;
+                reachability_error:timeout:*) _tr="$_tr ${_i#reachability_error:timeout:}" ;;
+                negctl_error:*)               _ib="$_ib ${_i#negctl_error:}" ;;
+                reachability_error:*)         _ir="$_ir ${_i#reachability_error:}" ;;
             esac
         done
+        # ADR-040 (amended 2026-10-31): a run of the change's own test file that
+        # goes past its limit is the change's to fix: say which file, how long
+        # the test run measured it, and the limit.
+        [[ -n "$_tb" ]] && clauses+=("$(_ag_join_ids "$_tb"): its test file ran past its time limit on the code from before this change — $(_ag_slow_testfiles spec "$_tb"); a test file this slow cannot be checked: make it, or the code it runs, faster")
+        [[ -n "$_tr" ]] && clauses+=("putting $(_ag_join_ids "$_tr") back to its old version, the tests ran past their time limit — $(_ag_slow_testfiles all ""); a test file this slow cannot be checked: make it, or the code it runs, faster")
         [[ -n "$_ib" ]] && clauses+=("the run of $(_ag_join_ids "$_ib")'s test on the code from before this change could not be done (a problem in the pipeline, not in your change)")
         [[ -n "$_ir" ]] && clauses+=("putting $(_ag_join_ids "$_ir") back to its old version could not be done (a problem in the pipeline, not in your change)")
     fi

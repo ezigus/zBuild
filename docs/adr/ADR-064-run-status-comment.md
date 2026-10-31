@@ -216,6 +216,16 @@ own outcome and its own summary, and is not shown as a loop iteration. The group
 whose summary says whether every member finished (ADR-047 amendment 2026-10-29). On #1801 and
 #1944 no lens had a row: a member's events carried no seq.
 
+## Amendment 2026-10-31 — the run stops before GitHub does
+
+#1754's run (41138244027) was killed at GitHub's 360-minute job limit. A killed job keeps no log and runs
+none of its later steps, so its files and events were lost and the comment could not say how it ended.
+The Run pipeline step now has its own limit, 330 minutes (`timeout-minutes`), and the comment's ceiling is
+that limit (`ZBUILD_STATUS_CEILING_MIN: "330"` on the job). At the limit GitHub signals the runner, which
+saves what it can, and the steps after it — push the work branch, upload the artifacts, finish the comment
+— run on `always()`. GitHub gives a stopped step about 10 seconds before it kills it, so the runner's own
+save may be cut short; the upload still carries the state directory, events included.
+
 ## Enforced by
 
 - Amendment 2026-10-28 → `tests/unit/run-status-comment-pages-test.sh` P1–P2 (the whole line, the rest folded), P3 (the snapshot keeps it whole), P4–P6 (parts, not omissions; the newest has the header; earlier parts do not change), P7 (one comment per part); `tests/unit/run-status-comment-render-test.sh` SPEC-4 (never cut), SPEC-6 (no omission); `tests/unit/test-author-loop-test.sh` A9 (test-author counts the test files it changed); `tests/unit/test-author-test.sh` SPEC-14 (a retryable outcome carries no count)
@@ -232,4 +242,5 @@ whose summary says whether every member finished (ADR-047 amendment 2026-10-29).
 - §7 → `tests/unit/run-status-comment-gh-test.sh`; `tests/unit/cli-status-comment-test.sh`
 - Amendment #2145 → `tests/unit/run-status-comment-render-test.sh`
 - Amendment #2154 → `tests/unit/run-status-comment-render-test.sh` SPEC-9
+- Amendment 2026-10-31 (the run stops before GitHub does) → `tests/unit/ci-stop-before-github-test.sh` C1–C3
 - Amendment 2026-10-29 (a map member has its own row) → `tests/integration/map-members-reported-test.sh` MR1–MR4, MR6

@@ -47,14 +47,14 @@ ARTIFACTS_DIR="$ZBUILD_STATE_DIR/artifacts"
 # ─── SPEC-1: exit_when names every must-pass gate ────────────────────────────
 print_test_section "SPEC-1: build_test_cycle exit_when names its must-pass gates"
 assert_eq "[SPEC-1] exit_when combines with all" "all" "${_TPL_CYCLE_EXIT_COMBINATOR_build_test_cycle:-}"
-assert_eq "[SPEC-1] ...over four must-pass members (#2372)" "4" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
+assert_eq "[SPEC-1] ...over five must-pass members, design first (ADR-068 §1, 2026-10-31)" "5" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
 
 # ─── SPEC-2: decomposed gate roster ──────────────────────────────────────────
 print_test_section "SPEC-2: cycle roster is the decomposed mechanical gate set"
 
 # #1129 Change C (ADR-012): lint/coverage/mutation dropped as cycle members.
-assert_eq "[SPEC-2] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "test-author,build,test,issue-acceptance" \
+assert_eq "[SPEC-2] _TPL_CYCLE_STAGES_build_test_cycle (design runs every round, ADR-068 §1)" \
+    "design,test-author,build,test,issue-acceptance" \
     "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
 
 # ─── SPEC-3: fail→pass convergence at iter 2 ─────────────────────────────────

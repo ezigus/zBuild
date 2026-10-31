@@ -103,10 +103,12 @@ assert_eq "[SPEC-1] deployed.yaml loads without error (exit 0)" "0" "$_load_rc"
 # design_verify_cycle,impact,build_test_cycle. After #1668 impact is absent.
 # This assertion fails on main (three members) and passes once the template is
 # updated (two members). The template is already loaded above by SPEC-1.
-assert_eq "[#1668/SPEC-7] deployed.yaml delivery_loop flow is design,build_test_cycle,review_lenses (impact absent; #2369, #2433)" \
-    "design,build_test_cycle,review_lenses" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[#1668/SPEC-7] deployed.yaml delivery_loop flow is build_test_cycle,review_lenses (impact absent; ADR-068 §1, 2026-10-31)" \
+    "build_test_cycle,review_lenses" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
 assert_eq "[#2369] deployed.yaml ends the run when design fails (ADR-068 §3)" \
-    "design" "${_TPL_CYCLE_STOP_RUN_delivery_loop:-}"
+    "design" "${_TPL_CYCLE_STOP_RUN_build_test_cycle:-}"
+assert_eq "[ADR-068 §3] deployed.yaml ends the run when the build loop does not pass" \
+    "build_test_cycle" "${_TPL_CYCLE_STOP_RUN_delivery_loop:-}"
 
 # ─── SPEC-10: review_lenses map group includes 'sre' (issue #1517) ───────────
 # CHANGE: at merge-base deployed.yaml's review_lenses elements list did not

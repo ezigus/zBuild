@@ -29,6 +29,14 @@
 # A8 [change] the author is told to run nothing, and to read the existing tests
 #             and test helpers, not the code the change is about (#1944 run
 #             40329284881: it ran the suite and lint, and read core/)
+# A10 [change] findings from other stages about its tests are its to fix or
+#             answer (ADR-068 §6; #1754 run: the test stage said two tests
+#             already passed on the old code and one failed on the new, and
+#             test-author fixed only its own check's findings)
+# A11 [change] it is not told its assertions are expected to fail on today's
+#             code: after round 1 today's code holds the change
+# A12 [change] what it did about each finding is recorded in its result and
+#             summary (ADR-068 §6)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,6 +64,7 @@ route_to_model_loop() {
     _ROUTE_LOOP_ITERATIONS="$USED"
     printf 'assert_eq "%s an empty input returns rc 1" "1" "$rc"\n' "$TAG" > "$R/tests/acc-test.sh"
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+    _ROUTE_LOOP_LAST_RESPONSE="${ANSWERS:-}"$'\n'"LOOP_COMPLETE"
     return 0
 }
 # The check's model: answer n is ${JUDGE[n-1]} (the last repeats); JUDGE_RC its rc.
@@ -154,8 +163,35 @@ JUDGE=("$CORRESP"); JUDGE_RC=0
 _run
 _SUM="$(tr -s '[:space:]' ' ' < "$A/test-author-summary.md" 2>/dev/null)"
 assert_contains "[A9] the summary lists each test file with its requirements" "$_SUM" "tests/acc-test.sh — SPEC-1"
-assert_contains "[A9] ...and says they fail on today's code" "$_SUM" \
-    "Each [code] requirement's test fails on the code as it is now, and passes once the code is written"
+assert_contains "[A9] ...and says each must fail on the code from before this change (A11)" "$_SUM" \
+    "Each [code] requirement's test must fail on the code from before this change, and pass once the code is written"
+
+# ── A10 / A11 ────────────────────────────────────────────────────────────────
+JUDGE=("$CORRESP"); JUDGE_RC=0
+_run
+_AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
+assert_contains "[A10] findings from other stages about its tests are its own" "$_AP" \
+    "Findings from other stages about your tests are yours"
+assert_contains "[A10] ...naming a test that already passes on the old code" "$_AP" \
+    "a test that already passes on the code from before this change"
+assert_contains "[A10] ...a test that fails on the new code" "$_AP" "a test that fails on the new code"
+assert_contains "[A10] ...a test that flags code that already meets its requirement" "$_AP" \
+    "a test that flags code that already meets its requirement"
+assert_contains "[A10] ...and a test file far slower than the rest" "$_AP" "a test file far slower than the rest"
+assert_contains "[A10] it answers each one on its own line" "$_AP" "ANSWER <stage> finding <n>:"
+assert_eq "[A11] it is not told its assertions fail on the code as it is today" "0" \
+    "$(grep -c 'expected to fail on the code as it is today' <<< "$_AP" || true)"
+assert_contains "[A11] ...but on the code from before this change" "$_AP" \
+    "an assertion is expected to fail on the code from before this change"
+
+# ── A12 ──────────────────────────────────────────────────────────────────────
+JUDGE=("$CORRESP"); JUDGE_RC=0
+ANSWERS="ANSWER test finding 2: done — SPEC-1's assertion now checks the reason the old code never writes"
+_run
+assert_contains "[A12] the answer is in test-author's result" \
+    "$(jq -r '.data.answers[]? // empty' "$A/test-author-result.json" 2>/dev/null)" "test finding 2: done"
+assert_contains "[A12] ...and in its summary" "$(cat "$A/test-author-summary.md" 2>/dev/null)" "test finding 2: done"
+ANSWERS=""
 
 # ── A5 ───────────────────────────────────────────────────────────────────────
 # shellcheck source=../../core/pipeline/template.sh

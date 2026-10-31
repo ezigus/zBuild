@@ -53,6 +53,39 @@ for _id in SPEC-1 SPEC-2 SPEC-3 SPEC-4 lib/a.sh config/x.json lib/b.sh scripts/x
     assert_contains "[F4] the feedback names $_id" "$_all" "$_id"
 done
 
+# F5–F7 (ADR-040, amended 2026-10-31): a run of the change's own test file that
+# goes past its limit is the change's to fix, not the pipeline's. On #1754's run
+# a new test file took 210 s; every re-run went past its 480 s limit and was
+# reported as "a problem in the pipeline, not in your change".
+design_md="$TEST_TEMP_DIR/design.md"
+cat > "$design_md" <<'EOF'
+# Design
+```acceptance
+SPEC-5[code]: the lint flags an unchecked write
+WIRING: none
+TESTFILES:
+SPEC-5: tests/unit/x-test.sh
+```
+EOF
+printf 'file 210229 /tmp/zbuild-test-stage.X/tests/unit/x-test.sh\n' > "$TEST_TEMP_DIR/timing.log"
+export ZBUILD_NEGCTL_TIMING_LOG="$TEST_TEMP_DIR/timing.log" ZBUILD_NEGCTL_TIMEOUT=60
+_slow="$(_ag_build_reason negctl_error:timeout:SPEC-5 reachability_error:timeout:lib/c.sh 2>/dev/null)"
+for _w in "problem in the pipeline" "timeout:"; do
+    if grep -qF -- "$_w" <<< "$_slow"; then
+        assert_fail "[F5] a timeout of the change's own test file does not say '$_w'" "in: ${_slow:0:300}"
+    else
+        assert_pass "[F5] a timeout of the change's own test file does not say '$_w'"
+    fi
+done
+assert_contains "[F5] it names the test file" "$_slow" "tests/unit/x-test.sh"
+assert_contains "[F5] ...the time the test run measured for it" "$_slow" "210 s"
+assert_contains "[F5] ...and the limit it went past" "$_slow" "480 s"
+assert_contains "[F5] ...and says what to change" "$_slow" "faster"
+assert_contains "[F6] putting a file back that timed out names it too" "$_slow" "lib/c.sh"
+_infra="$(_ag_build_reason negctl_error:worktree_failed 2>/dev/null)"
+assert_contains "[F7] an error that is not a timeout is still the pipeline's" "$_infra" "problem in the pipeline"
+unset design_md ZBUILD_NEGCTL_TIMING_LOG ZBUILD_NEGCTL_TIMEOUT
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

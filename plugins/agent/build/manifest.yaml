@@ -67,8 +67,9 @@ config:
   tier_default: T2
   # ADR-017 §11 (#1816): build's own budget, previously written only in the
   # template. `max_turns: 0` omits --max-turns — the build loop bounds itself by
-  # iteration, not by turn. No `retries`: build is a cycle member, so a timeout is
-  # re-driven by the cycle rather than by the router.
+  # iteration, not by turn. A build that times out is run again by the engine
+  # (ADR-054 §6a: `timed_out` → retry, the template's `retry:` or 3), continuing
+  # from its saved work, while each try changes its outputs.
   router:
     timeout_s: 900
     max_turns: 0

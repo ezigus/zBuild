@@ -68,30 +68,25 @@ always_run:
   - persist
 
 # ─── delivery_loop (cycle) — #2271, ADR-068 ─────────────────────────────────
-# One outer loop holds design and the build loop. Every stage sees every
-# finding and says in its own result what it did about each; the engine never
-# decides who owns a finding, and nothing jumps backwards.
-#   - design makes one model call per run and checks the design it wrote. One
-#     that fails is `unusable`: the engine runs design again (its retry:), and
-#     each run starts from the last good design and the last try's failures
-#     (ADR-068 §8). A design that still fails ends the run — stop_run_on_fail:
-#     build never runs on it, and another round would only repeat those tries.
+# The outer loop holds the design-build-test loop, then the review lenses.
+# Every stage sees every finding and says in its own result what it did about
+# each; the engine never decides who owns a finding, and nothing jumps
+# backwards. The design-build-test loop ends the run when it does not pass
+# (stop_run_on_fail): only the lenses send the change round again, once.
 delivery_loop:
   type: cycle
-  description: Design, build, then the review lenses, until all pass — going round when a finding needs fixing
-  # #2433 (ADR-040): the lenses run inside the loop, after the build, so what
-  # they find goes back to the stages that can fix it. A lens that does not
-  # finish, or finds the issue itself wrong, stops the run at once.
+  description: The design-build-test loop, then the review lenses, until both pass — the lenses send the change round once more
+  # #2433 (ADR-040): the lenses run after the build, so what they find goes back
+  # to the stages that can fix it. A lens that does not finish, or finds the
+  # issue itself wrong, stops the run at once.
   flow:
-    - design
     - build_test_cycle
     - review_lenses
   exit_when:
     all:
-      - { stage: design, field: verdict, op: eq, value: pass }
       - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
       - { stage: review_lenses, field: verdict, op: eq, value: pass }
-  stop_run_on_fail: [design]
+  stop_run_on_fail: [build_test_cycle]
   max_iterations: 2
   on_max: halt
 
@@ -143,31 +138,27 @@ issue-acceptance:
   router:
     timeout_s: 600
 
-# ─── build_test_cycle (cycle) ────────────────────────────────────────────────
-# B6 (#1138, ADR-040 §2/§5): the cycle re-runs build/test then the decomposed
-# mechanical gates. #2368: the engine combines them — exit_when names every
-# member that must pass this round; one with no outcome this round counts as
-# failed (the ADR-019 fail-closed contract). gate-aggregator is retired.
-# (#1129 Change C, ADR-012: the lint/coverage/mutation read-out gates were
-# DROPPED as cycle members — they were redundant. mutation and lint both run in
-# the test suite (run-tests.sh --tier all / npm test, which the `test` cycle
-# member runs), so a lint or mutation regression fails the `test` gate directly.
-# coverage is NOT folded into the suite — it stays enforced by the dedicated CI
-# `coverage` job (re-running it inside --tier all would trip the #983 re-entrancy
-# guard; see ADR-012 "Coverage gating"). The lint-gate/coverage-gate/mutation-gate
-# plugins remain canonical (ADR-013) but dormant for future reuse.)
-# The individual gates are NON-blocking (no blocking:true):
-# they emit verdict-in-artifact (ADR-004) and the cycle iterates-to-fix; the loop
-# converges via exit_when, never via per-gate hard-blocks. max_iterations: 3.
-# Nested in delivery_loop (#2271): running out of rounds hands back to that loop,
-# which goes round from design.
+# ─── build_test_cycle (cycle) — design, build, test ─────────────────────────
+# Each round runs design, then the stages that write and check the change, so a
+# finding only design can fix reaches design in the next round (ADR-068 §1).
+#   - design makes one model call per run and checks the design it wrote. One
+#     that fails is `unusable`: the engine runs design again (its retry:), and
+#     each run starts from the last good design and the last try's failures
+#     (ADR-068 §8). A design that still fails ends the run — stop_run_on_fail:
+#     build never runs on it.
+# #2368: the engine combines the members — exit_when names every member that
+# must pass this round; one with no outcome this round counts as failed (the
+# ADR-019 fail-closed contract). lint and mutation run in the test suite, so a
+# regression there fails `test`; coverage stays with the CI `coverage` job
+# (ADR-012). max_iterations: 3.
 build_test_cycle:
   type: cycle
-  description: Build, test, and run the mechanical gates until every one passes
+  description: Design, write the tests, build, test and check against the issue until every one passes
   flow:
-    # #2022: test-author runs FIRST. It authors the acceptance assertions from
-    # the design's SPEC sentences before build implements against them, so the
-    # code and the assertion are two independent readings rather than two
+    - design
+    # #2022: test-author runs before build. It authors the acceptance assertions
+    # from the design's SPEC sentences before build implements against them, so
+    # the code and the assertion are two independent readings rather than two
     # artifacts of one. It never sees the diff. #2370: it then checks each
     # assertion tests what its SPEC says (was spec-correspondence), and the loop
     # requires it to pass — the SPEC is design's, which it cannot re-author.
@@ -181,14 +172,17 @@ build_test_cycle:
     - issue-acceptance
   exit_when:
     all:
+      - { stage: design, field: verdict, op: eq, value: pass }
       - { stage: test-author, field: verdict, op: eq, value: pass }
       # #2371: build must pass — it scans its own change for secrets, and a
       # build that broke scope or did not finish is not done either.
       - { stage: build, field: verdict, op: eq, value: pass }
       - { stage: test, field: verdict, op: eq, value: pass }
       - { stage: issue-acceptance, field: verdict, op: eq, value: pass }
+  stop_run_on_fail: [design]
   max_iterations: 3
   on_max: continue
+
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:
   gate: auto

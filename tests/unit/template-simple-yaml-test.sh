@@ -216,15 +216,17 @@ assert_eq "[SPEC-11] dispatch[3] cycle:delivery_loop"  "cycle:delivery_loop"  "$
 assert_eq "[SPEC-11] dispatch[4] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[4]}"
 
 # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
-assert_eq "[SPEC-18] [#2433/R4] delivery_loop holds design, the build loop, then the lenses" \
-    "design,build_test_cycle,review_lenses" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
-assert_eq "[#2433/R4] delivery_loop exits only when design, the build loop and the lenses pass" \
-    "all:design=pass,build_test_cycle=pass,review_lenses=pass" \
+assert_eq "[SPEC-18] [#2433/R4] delivery_loop holds the design-build-test loop, then the lenses (ADR-068 §1)" \
+    "build_test_cycle,review_lenses" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[#2433/R4] delivery_loop exits only when the design-build-test loop and the lenses pass" \
+    "all:build_test_cycle=pass,review_lenses=pass" \
     "$(_c=delivery_loop; n="_TPL_CYCLE_EXIT_COUNT_$_c"; out="all:"; for (( i=1; i<=${!n:-0}; i++ )); do s="_TPL_CYCLE_EXIT_${i}_STAGE_$_c"; v="_TPL_CYCLE_EXIT_${i}_VALUE_$_c"; out+="${!s}=${!v},"; done; c="_TPL_CYCLE_EXIT_COMBINATOR_$_c"; [[ "${!c:-}" == all ]] || out="not-all:"; printf '%s' "${out%,}")"
 assert_eq "[#2433/R2] the lenses fail on a medium or worse problem the change introduced" \
     "medium high critical" "${_TPL_STAGE_FAIL_ON_review_lenses:-}"
+assert_eq "[SPEC-18] a design-build-test loop that does not pass ends the run: only the lenses send it round (ADR-068 §3)" \
+    "build_test_cycle" "${_TPL_CYCLE_STOP_RUN_delivery_loop:-}"
 assert_eq "[SPEC-18] a design that still fails ends the run (#2369, ADR-068 §3)" \
-    "design" "${_TPL_CYCLE_STOP_RUN_delivery_loop:-}"
+    "design" "${_TPL_CYCLE_STOP_RUN_build_test_cycle:-}"
 assert_eq "[SPEC-18] delivery_loop runs at most 2 rounds" "2" "${_TPL_CYCLE_MAX_delivery_loop:-}"
 assert_eq "[SPEC-18] delivery_loop halts when its rounds are spent" "halt" "${_TPL_CYCLE_ON_MAX_delivery_loop:-}"
 # ADR-068 §8 (amended 2026-10-11): the template declares no `unowned:` — a
@@ -247,8 +249,8 @@ assert_eq "[SPEC-16] _TPL_CYCLES has no design_verify_cycle (#2369)" "0" "$_dvc_
 _btc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
 assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles"
-assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "test-author,build,test,issue-acceptance" \
+assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle: design runs every round (ADR-068 §1)" \
+    "design,test-author,build,test,issue-acceptance" \
     "$_TPL_CYCLE_STAGES_build_test_cycle"
 assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)" \
     "3" "$_TPL_CYCLE_MAX_build_test_cycle"
@@ -260,7 +262,7 @@ assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)" \
 # #2368: exit_when names every must-pass gate (all:), not one aggregator.
 assert_eq "[SPEC-15] build_test_cycle exit_when combines with all" \
     "all" "${_TPL_CYCLE_EXIT_COMBINATOR_build_test_cycle:-}"
-assert_eq "[SPEC-15] ...over its four must-pass members (#2372: test checks its own run)" "4" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
+assert_eq "[SPEC-15] ...over its five must-pass members, design first (ADR-068 §1)" "5" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
 
 # ─── SPEC-12: shape-floor is at index 7 in _TPL_STAGES (after build/test) ─────
 # CHANGE (#1218, ADR-046): design-gate + impact inserted at indices 3,4 shift the
@@ -309,6 +311,18 @@ set -e
 assert_eq "[SPEC-6] deployed.yaml loads without error" "0" "$_dep_load_rc"
 assert_eq "[SPEC-6] deployed.yaml plan max_turns matches simple.yaml (45 not 25)" \
     "45" "${_TPL_STAGE_ROUTER_MAX_TURNS_plan:-}"
+
+# ─── deployed.yaml has simple.yaml's loop shape (ADR-068 §1) ─────────────────
+assert_eq "[ADR-068 §1] deployed.yaml: delivery_loop holds the design-build-test loop, then the lenses" \
+    "build_test_cycle,review_lenses" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[ADR-068 §1] deployed.yaml: design runs every round of the build loop" \
+    "design" "$(cut -d, -f1 <<< "${_TPL_CYCLE_STAGES_build_test_cycle:-}")"
+assert_eq "[ADR-068 §3] deployed.yaml: a design that still fails ends the run" \
+    "design" "${_TPL_CYCLE_STOP_RUN_build_test_cycle:-}"
+assert_eq "[ADR-068 §3] deployed.yaml: a build loop that does not pass ends the run" \
+    "build_test_cycle" "${_TPL_CYCLE_STOP_RUN_delivery_loop:-}"
+assert_eq "[ADR-068 §2] deployed.yaml: the build loop runs at most 3 rounds" \
+    "3" "${_TPL_CYCLE_MAX_build_test_cycle:-}"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 

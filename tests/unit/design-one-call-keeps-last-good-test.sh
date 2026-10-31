@@ -172,7 +172,7 @@ for _tpl in simple deployed; do
     load_template "$REPO_ROOT/config/templates/$_tpl.yaml" >/dev/null 2>&1
     assert_eq "[D10] $_tpl: the engine re-runs design twice (3 runs in all)" "2" "$(template_stage_retry design)"
     assert_eq "[D10] $_tpl: a design that still fails ends the run" "design" \
-        "$(printenv _TPL_CYCLE_STOP_RUN_delivery_loop || true)"
+        "$(printenv _TPL_CYCLE_STOP_RUN_build_test_cycle || true)"
 done
 
 cleanup_test_env

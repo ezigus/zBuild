@@ -134,6 +134,95 @@ else
 fi
 assert_contains "[R4] ...and the error names it" "$(cat "$TEST_TEMP_DIR/typo.err")" "desgin"
 
+# ── R5–R8: design inside the inner loop (simple.yaml's shape) ────────────────
+# The inner loop is design, build, test; the review runs after it in the outer
+# loop. A member the inner loop names ends the run, not only the round; an
+# inner loop the outer loop names ends the run when it does not pass; only the
+# review sends the change round again.
+TPL_NESTED="$TEST_TEMP_DIR/nested.yaml"
+cat > "$TPL_NESTED" <<'EOF'
+id: nested-stop
+name: Design inside the inner loop
+defaults:
+  strategy: fanout
+
+flow:
+  - outer_loop
+
+outer_loop:
+  type: cycle
+  flow:
+    - build_loop
+    - review
+  exit_when:
+    all:
+      - { stage: build_loop, field: verdict, op: eq, value: pass }
+      - { stage: review, field: verdict, op: eq, value: pass }
+  stop_run_on_fail: [build_loop]
+  max_iterations: 2
+  on_max: halt
+
+build_loop:
+  type: cycle
+  flow:
+    - design
+    - build
+    - test
+  exit_when:
+    all:
+      - { stage: design, field: verdict, op: eq, value: pass }
+      - { stage: build, field: verdict, op: eq, value: pass }
+      - { stage: test, field: verdict, op: eq, value: pass }
+  stop_run_on_fail: [design]
+  max_iterations: 3
+  on_max: continue
+
+design:
+  roles: [designer]
+build:
+  roles: [builder]
+test:
+  roles: [tester]
+review:
+  roles: [review_lens]
+EOF
+# shellcheck disable=SC2329  # called by the orchestrator
+cycle_dispatch_stage() {
+    local stage="$1" iter="$2" n
+    printf '%s|iter=%s\n' "$stage" "$iter" >> "$LOG"
+    _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"; _CYCLE_DISPATCH_REPORT="{}"
+    n="$(grep -c "^$stage|" "$LOG")"
+    case "$stage" in
+        design) [[ "${DESIGN:-pass}" == fail ]] && _CYCLE_DISPATCH_VERDICT="fail" ;;
+        test)   [[ "${TEST:-pass}" == fail ]] && _CYCLE_DISPATCH_VERDICT="fail" ;;
+        review) [[ "$(cut -d, -f"$n" <<< "${REVIEW:-pass,pass}")" == fail ]] && _CYCLE_DISPATCH_VERDICT="fail" ;;
+    esac
+    return 0
+}
+
+DESIGN=fail _run "$TPL_NESTED"
+assert_eq "[R5] design fails in the inner loop: it runs once" "1" "$(_count design)"
+assert_eq "[R5] ...build does not run" "0" "$(_count build)"
+assert_eq "[R5] ...the outer loop does not go round: no review" "0" "$(_count review)"
+assert_eq "[R5] ...the run ends failed" "1" "$RUN_RC"
+assert_contains "[R5] ...the reason names design" "${_CYCLE_LAST_TERMINATED_REASON:-}" "design"
+
+TEST=fail _run "$TPL_NESTED"
+assert_eq "[R6] tests fail every round: 3 rounds, not 6" "3" "$(_count test)"
+assert_eq "[R6] ...design runs every round" "3" "$(_count design)"
+assert_eq "[R6] ...no review on a change whose tests fail" "0" "$(_count review)"
+assert_eq "[R6] ...the run ends failed" "1" "$RUN_RC"
+assert_contains "[R6] ...the reason names the inner loop" "${_CYCLE_LAST_TERMINATED_REASON:-}" "build_loop"
+
+REVIEW=fail,pass _run "$TPL_NESTED"
+assert_eq "[R7] the review fails once: it sends the change round one more time" "2" "$(_count review)"
+assert_eq "[R7] ...design runs again for that round" "2" "$(_count design)"
+assert_eq "[R7] ...the run converges" "0" "$RUN_RC"
+
+REVIEW=fail,fail _run "$TPL_NESTED"
+assert_eq "[R8] the review fails twice: the run stops after the second" "2" "$(_count review)"
+assert_eq "[R8] ...the run ends failed" "1" "$RUN_RC"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
