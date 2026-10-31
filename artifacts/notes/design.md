@@ -140,3 +140,104 @@ confirms SPEC-1/SPEC-2 tests SHOULD fail on old code:
 So resume.sh:80 and stage-io.sh:637 are NOT flagged by the lint. But the SPEC-8
 TEST independently greps for `|| true` on the same line and DOES flag them. The
 test must exclude these two files explicitly.
+
+---
+
+## Revision 4 — design-judge verdict pass
+
+### Analysis of issue-acceptance findings vs design coverage
+
+The question is whether the SPECs cover R-1, not whether the code delivers what
+the SPECs demand. Each issue-acceptance finding is classified below:
+
+**Finding 1 — SPEC-4 (intake.md path returns 0):**
+SPEC-4 correctly demands: _intake_run_inner writes broken and returns non-zero
+when atomic_write for intake.md fails. The design specifies the correct fix (capture
+PIPESTATUS[1] immediately after the pipe on the same local declaration, check non-zero,
+write broken, return 1). The design's findings block explicitly calls this "a code-level
+defect the implementer must debug — not a design issue."
+→ SPEC covers the requirement. Code has a bug. No design gap.
+
+**Finding 2 — SPEC-8 (six sites still lack || true):**
+SPEC-8 explicitly names secrets.sh:172 and own-checks.sh:72,96,101 as needing
+`|| true`. Both files are in scope. The SPEC-8 test must exclude resume.sh and
+stage-io.sh (design finding block §1 and §2). The code was not changed to annotate
+those sites, and the test was not updated to exclude the correctly-handled files.
+→ SPEC covers the requirement. Implementation didn't deliver it. No design gap.
+
+**Finding 3 — lint-disposition-words regression (comment in plugin.sh):**
+Design finding block explicitly identifies this: "the fallback block's comment text
+in plugins/tool/test/plugin.sh must not include the token stage_result_add."
+The constraint is in the design. The implementer violated it.
+→ Design covers this. No SPEC gap.
+
+**Finding 4 — SPEC-1/SPEC-2 test-first validity:**
+Before-test timed out; report is unreliable. Design analysis correctly shows
+old code would produce outcome=pass (not broken), so SPEC-1/SPEC-2 tests FAIL
+on old code. No design gap.
+
+### Coverage map for R-1
+
+- Test stage atomic_write failure → SPEC-1 (outcome=broken on disk) + SPEC-2 (reader sees broken) ✓
+- Intake scope-manifest.md write failure → SPEC-3 ✓
+- Intake intake.md write failure → SPEC-4 ✓
+- Lint to detect future unchecked | atomic_write → SPEC-5 (non-zero on violation) + SPEC-6 (zero when handled) + SPEC-7 (wired in package.json) ✓
+- Existing unchecked sites annotated → SPEC-8 (17 sites, excludes resume.sh + stage-io.sh) ✓
+
+Every behavioral aspect of R-1 is addressed by at least one SPEC.
+All three NOT MET findings are code implementation failures, not missing SPEC coverage.
+
+### Verdict: COVERED
+
+---
+
+## Revision 3 — final verification pass
+
+### Files examined in this pass
+
+- `tests/unit/test-plugin-result-write-fallback-test.sh` (SPEC-1 test, lines 237-288)
+- `tests/unit/test-result-reason-contract-test.sh` (SPEC-2 test, lines 263-309)
+- `plugins/agent/intake/plugin.sh:273-285` (SPEC-3/SPEC-4 implementation)
+- `tests/unit/plugin-primary-output-atomic-test.sh` (SPEC-5/6/7/8 test)
+- `scripts/lib/lint-atomic-write-unchecked.sh` (full lint script)
+- All `| atomic_write` sites in core/plugins/scripts
+
+### SPEC-1/SPEC-2 test-first analysis (acceptance-gate finding 1)
+
+The acceptance-gate finding that "SPEC-1/SPEC-2 pass on old code" is contradicted
+by the issue-acceptance timeout on those same SPECs. Code analysis:
+
+- SPEC-1 test: sets up prior-round pass file, mocks atomic_write to fail on call
+  #1 only, calls _test_write_result, asserts outcome=broken.
+  OLD CODE: _jq_rc=PIPESTATUS[0]=0 (jq ok), stage_result_add merges prior-round
+  pass into file → outcome=pass → test FAILS on old code ✓
+
+- SPEC-2 test: same mock, asserts runner_read_stage_verdict returns "broken".
+  OLD CODE: stale file gives "pass" to reader → FAILS on old code ✓
+
+SPECs kept as [code]. Acceptance-gate finding treated as unreliable.
+
+### Current worktree state
+
+- `plugins/agent/intake/plugin.sh:280-285`: PIPESTATUS[1] captured, return 1 on
+  failure. LOOKS CORRECT for SPEC-4.
+- `plugins/agent/build/lib/secrets.sh:172`: `|| true` PRESENT ✓
+- `plugins/tool/test/lib/own-checks.sh:72,96,101`: `|| true` PRESENT ✓
+- `tests/unit/plugin-primary-output-atomic-test.sh:207-208`: resume.sh and 
+  stage-io.sh already excluded from || true check ✓
+- SPEC-8 count: 18 non-continuation-line sites (includes contract-validator.sh
+  which was already annotated). Threshold >= 17 passes.
+- `scripts/lib/lint-atomic-write-unchecked.sh`: EXISTS ✓
+- `package.json`: contains `bash scripts/lib/lint-atomic-write-unchecked.sh` ✓
+
+### Key design changes in revision 3
+
+1. SPEC-1/SPEC-2: More precise language about prior-round stale file scenario
+   to make discriminating assertion explicit.
+2. SPEC-6: Added continuation line handling (ending with \) to match what the
+   lint script actually implements.
+3. Decision §3: Added continuation line case to lint description.
+4. Findings section: Expanded SPEC-1/SPEC-2 analysis; SPEC-4 updated to note
+   current worktree looks correct but prior iteration had defect; SPEC-8 updated
+   to reflect 18-site count and note contract-validator.sh was already annotated.
+5. Added contract-validator.sh to "not in scope" explanation.
