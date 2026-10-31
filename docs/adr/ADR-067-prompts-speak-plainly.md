@@ -1,6 +1,6 @@
 # ADR-067 — Model-facing text speaks plainly
 
-**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8), 2026-10-07 (#1799, §8), 2026-10-11 (§8 findings wording, §9), 2026-10-12 (§8: the engine/stage prompt contract — three parts from the stage, three blocks from the engine, one order), 2026-10-13 (#2363, §8: the engine's blocks hold only what every stage shares; §9: plan does not read code), 2026-10-14 (#2376, §8: design's job comes first, it writes design.md as it goes, finds its scope by searching, and may write its notes), 2026-10-27 (ADR-071, §8: Previous work holds only the topics the stage takes)
+**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8), 2026-10-07 (#1799, §8), 2026-10-11 (§8 findings wording, §9), 2026-10-12 (§8: the engine/stage prompt contract — three parts from the stage, three blocks from the engine, one order), 2026-10-13 (#2363, §8: the engine's blocks hold only what every stage shares; §9: plan does not read code), 2026-10-14 (#2376, §8: design's job comes first, it writes design.md as it goes, finds its scope by searching, and may write its notes), 2026-10-27 (ADR-071, §8: Previous work holds only the topics the stage takes), 2026-10-31 (#2441, §8: test-author runs its own test files and nothing else)
 **Issue:** #2269, #2308
 **Related:** ADR-066 (every ADR statement has a test), ADR-055 §9 (stage summaries are read by every later stage), ADR-036 (the acceptance check whose vocabulary leaked), ADR-050 §9 and ADR-068 §8 (each stage's latest output, any run), ADR-063 §1 (the budget is stated from the value that enforces it)
 
@@ -52,8 +52,17 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 when a stage's own code needs it (to paste into its prompt, or for a scripted check), it finds it by what
 it contains. The repository's rules (`.zbuild/prompts/rules.md`) say so.
 
+## Amendment 2026-10-31 (#2441) — §8: test-author runs its own test files
+
+The 2026-10-26 amendment told test-author to run nothing, because #1944's spent its calls running the
+suite and lint. On #1754 that meant it could not see that its SPEC-4 test could never fail its own fake,
+and it answered that the test was right. Test-author now runs the test files it writes, and only those, to
+see each new assertion fail for the reason it intends on the code from before the change — never the
+suite, never lint. Running a test shows it no implementation (#2022).
+
 ## Enforced by
 
+- §8 amendment 2026-10-31 (#2441: test-author runs its own test files and nothing else) → `tests/unit/test-author-checks-own-output-test.sh` A8, A11
 - §1, §5 → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P1–P7
 - §1, §3 (design) → `tests/unit/design-wiring-guidance-test.sh` G1–G4
 - §2 (acceptance check) → `tests/unit/acceptance-feedback-plain-test.sh` F1–F4

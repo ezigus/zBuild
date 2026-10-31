@@ -229,7 +229,7 @@ assert_eq "[T7] design: the design is ask, its checks are requirement-findings" 
 assert_eq "[T7] test-author: its checker is code-findings, its list of tests is tests" \
     "test_author_result=code-findings test_author_summary=tests " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/test-author/manifest.yaml")"
-assert_eq "[T7] build: change" "diff_patch=change build_summary=change build_stage_summary=change " \
+assert_eq "[T7] build: change; its answers that a test is wrong are code-findings (#2441)" "diff_patch=change build_summary=change build_tests=code-findings build_stage_summary=change " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/build/manifest.yaml")"
 assert_eq "[T7] test: the suite is code-findings, the acceptance check requirement-findings" \
     "test_errors=code-findings test_results=code-findings test_failures_summary=code-findings test_output_log=code-findings test_timing=code-findings shape_floor_result=code-findings shape_floor_detail=code-findings acceptance_result=requirement-findings acceptance_detail=requirement-findings acceptance_errors=requirement-findings " \

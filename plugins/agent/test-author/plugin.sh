@@ -304,7 +304,7 @@ Tag each assertion with the tag shown for its SPEC, exactly as shown, in the ass
 
 Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
-Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest. Fix the test from its requirement, or say why the test is right. Answer each such finding on its own line, before LOOP_COMPLETE:
+Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest, a test build says is wrong (build-tests findings), with its reason. Fix the test from its requirement, or say why the test is right. Answer each such finding on its own line, before LOOP_COMPLETE:
 ANSWER <stage> finding <n>: done — <what you changed>
 ANSWER <stage> finding <n>: nothing to do — <why the test is right>
 
@@ -320,7 +320,7 @@ REQUIREMENTS:
 ${spec_block}${sup_section}
 ## What you must not do
 - You cannot see the implementation, and you must not guess at it. You may read the existing tests and the repository's test helpers; do not read the code this change is about.
-- Do not run anything: no tests, no lint, no test suite. You write the assertions; the test stage runs them, and an assertion is expected to fail on the code from before this change.
+- Run the test files you write, and only those (bash, then the test file's path), to see that each new assertion fails for the reason you intend on the code from before this change — not because of a mistake in the test. Run nothing else: not the test suite, not lint; the test stage runs those.
 - Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
 - A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
 EOF
