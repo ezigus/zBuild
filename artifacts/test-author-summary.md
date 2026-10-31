@@ -1,6 +1,6 @@
 ## test-author — fail
 
-- changed 4 test file(s); 3 assertion(s) still do not test what their SPEC says after 2 round(s)
+- changed 2 test file(s); 1 assertion(s) still do not test what their SPEC says after 2 round(s)
 
 - SPECs in the contract: 8
 - assertions are authored from the SPEC text, never from the implementation
