@@ -49,8 +49,23 @@ for _law_file in "${_law_files[@]}"; do
         _law_line="${_law_lines[$_law_i]}"
         _law_lno=$(( _law_i + 1 ))
 
+        # Skip comment-only lines (leading whitespace then #): they are not code
+        grep -qE '^[[:space:]]*#' <<< "$_law_line" && continue
+
         # Fast path: skip lines that do not contain the pipe-to-write token
         grep -qF "${_law_pipe} ${_law_fn}" <<< "$_law_line" || continue
+
+        # Skip lines where the token appears only inside a single-quoted string
+        # (e.g. assert_fail "... '| atomic_write' ..."): not executable code.
+        # Strip every '...' span and check whether the token survives.
+        _law_stripped="${_law_line}"
+        while grep -qE "'" <<< "$_law_stripped"; do
+            _before="${_law_stripped%%\'*}"
+            _after="${_law_stripped#*\'}"
+            _after="${_after#*\'}"
+            _law_stripped="${_before}${_after}"
+        done
+        grep -qF "${_law_pipe} ${_law_fn}" <<< "$_law_stripped" || continue
 
         # 1. Same-line check: &&, ||, or if ! on the same line as the write
         grep -qE '(&&|\|\||if[[:space:]]+!)' <<< "$_law_line" && continue
