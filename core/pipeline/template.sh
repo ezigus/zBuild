@@ -1628,8 +1628,8 @@ _tpl_validate_io_dests() {
 # ─── ADR-027 helpers (Wave 17-B #703) ─────────────────────────────────────────
 #
 # ─── _tpl_parse_always_run <file> (#1831) ────────────────────────────────────
-# Emit one `<id>|<roles>|<timeout_s>` line per entry in the template's top-level
-# `always_run:` list, in declared order.
+# Emit one `<id>|<roles>|<timeout_s>|<io_dests>|<io_tail>` line per entry in the
+# template's top-level `always_run:` list, in declared order.
 #
 # SHAPE-INDEPENDENT on purpose. `always_run:` is a top-level key and its members
 # are top-level sections in BOTH the ADR-027 shape and the legacy one, so this
@@ -1665,7 +1665,7 @@ _tpl_parse_always_run() {
         }
         # Any other top-level key closes the list and opens a possible section.
         /^[a-zA-Z_]/ {
-            in_ar = 0; in_router = 0; in_roles = 0; in_io = 0
+            in_ar = 0; in_router = 0; in_roles = 0; in_io = 0; in_io_dests = 0
             in_sec = $0; sub(/:.*$/, "", in_sec); in_sec = trim(in_sec)
             seen[in_sec] = 1
             next
@@ -1703,9 +1703,17 @@ _tpl_parse_always_run() {
         in_sec != "" && in_io && /^[[:space:]]+destinations:/ {
             v = $0; sub(/^[[:space:]]+destinations:[[:space:]]*/, "", v)
             gsub(/^\[|\][[:space:]]*$/, "", v); gsub(/[[:space:]]/, "", v); io_d[in_sec] = v
+            # Block form: the items are the indented `- x` lines below.
+            in_io_dests = (v == "")
+            next
+        }
+        in_sec != "" && in_io_dests && /^[[:space:]]+-[[:space:]]/ {
+            v = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", v); v = trim(v)
+            if (v != "") io_d[in_sec] = (io_d[in_sec] == "" ? v : io_d[in_sec] "," v)
             next
         }
         in_sec != "" && in_io && /^[[:space:]]+tail_lines:/ {
+            in_io_dests = 0
             v = $0; sub(/^[[:space:]]+tail_lines:[[:space:]]*/, "", v); io_t[in_sec] = trim(v)
             next
         }
@@ -1714,7 +1722,7 @@ _tpl_parse_always_run() {
             next
         }
         # A key at section-attribute depth that is not router: closes the router block.
-        in_sec != "" && /^[[:space:]]+[a-zA-Z_]+:/ && !/^[[:space:]]+timeout_s:/ { in_router = 0; in_roles = 0; in_io = 0 }
+        in_sec != "" && /^[[:space:]]+[a-zA-Z_]+:/ && !/^[[:space:]]+timeout_s:/ { in_router = 0; in_roles = 0; in_io = 0; in_io_dests = 0 }
         END {
             for (i = 1; i <= ar_n; i++) {
                 id = ar[i]

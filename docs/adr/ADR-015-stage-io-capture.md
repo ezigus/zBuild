@@ -1176,4 +1176,4 @@ which declare `io:`, did. Two causes, both fixed:
   `io.destinations` and `io.tail_lines` too, and the loader registers them as it does for a flow stage.
 
 Every stage, map group and always-run stage in a shipped template, as loaded (inherited stages too),
-declares `io.destinations`. Enforced by: `tests/unit/template-every-stage-io-test.sh` S1.
+declares `io.destinations`, in inline or block form. Enforced by: `tests/unit/template-every-stage-io-test.sh` S1, S2.
