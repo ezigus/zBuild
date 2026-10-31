@@ -76,7 +76,7 @@ _drive() {
         export ZBUILD_SCOPE_OVERRIDE=1 ZBUILD_ROUTER_TIMEOUT=2 ZBUILD_ROUTER_RETRIES=0
         load_template "$TEST_TEMP_DIR/template.yaml" >/dev/null 2>&1
         export ZBUILD_CURRENT_STAGE=build
-        route_to_model_loop T2 "$TEST_TEMP_DIR/prompt.txt" "$REPO" 1
+        route_to_model_loop T2 "$TEST_TEMP_DIR/prompt.txt" "$REPO"
     ) >/dev/null 2>&1
 }
 

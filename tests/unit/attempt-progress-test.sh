@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/unit/attempt-progress-test.sh — "did this attempt make progress?" counts
-# the stage's work, not its report of the work (#2252 D1).
+# the stage's work, not its summary of the work (#2252 D1; #2439).
 #
 # Why: a timed-out stage is retried only while its last attempt made progress
 # (#2187). The check counted ANY changed output — and a stage's own report
@@ -8,10 +8,13 @@
 # describes that attempt. #1844 run 36969128968: build attempt 1 committed its
 # work and timed out; attempts 2 and 3 changed nothing (diff.patch "unchanged")
 # but rewrote their reports, so each counted as progress — ~60 more minutes of
-# model calls before the cycle moved on.
+# model calls before the cycle moved on. #2439 (ADR-054 §6a, amended
+# 2026-10-31): one rule for every stage — the code AND the declared outputs
+# count; only the narrative summary does not. A try is now one model call and
+# the template's retry: bounds the tries.
 #
-# P1 [change] a repository-writing stage whose attempt changed only its report
-#             made no progress
+# P1 [change] a repository-writing stage whose attempt changed its result made
+#             progress; one that changed only its summary did not
 # P2 [guard]  ...one whose attempt committed a change made progress
 # P3 [guard]  ...one whose attempt only left an uncommitted edit — no output
 #             changed — made progress (isolated per review on #2253)
@@ -26,8 +29,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-# shellcheck source=../../core/pipeline/runner.sh
-source "$REPO_ROOT/core/pipeline/runner.sh"
 # shellcheck source=../../core/plugin-registry/attempt-archive.sh
 source "$REPO_ROOT/core/plugin-registry/attempt-archive.sh"
 
@@ -58,15 +59,17 @@ _attempt() {
     eval "$3"
     attempt_archive_outputs "$1" "$S/pipeline-state.json" "$2" 0 "$before" >/dev/null 2>&1
 }
-_progress() { _runner_attempt_made_progress "$ART" "$1" 1 && echo yes || echo no; }
+_progress() { [[ "${_ATTEMPT_LAST_PROGRESS:-}" == "true" ]] && echo yes || echo no; }
 export ZBUILD_CYCLE_ITER=1
 
 print_test_section "P1-P3: a repository-writing stage"
 P="$TEST_TEMP_DIR/plugins/builder"; _plugin "$P" true
 _attempt "$P" builder 'printf "{\"n\":1}" > "$ART/builder-result.json"; printf "a1" > "$ART/builder-summary.md"'
 _attempt "$P" builder 'printf "{\"n\":2}" > "$ART/builder-result.json"; printf "a2" > "$ART/builder-summary.md"'
-assert_eq "[P1] only its report changed → no progress" "no" "$(_progress builder)"
-_attempt "$P" builder 'printf x > "$REPO/f.txt"; "$GIT" -C "$REPO" add f.txt; "$GIT" -C "$REPO" commit -qm c; printf "{\"n\":3}" > "$ART/builder-result.json"'
+assert_eq "[P1] its result changed → progress" "yes" "$(_progress builder)"
+_attempt "$P" builder 'printf "a3" > "$ART/builder-summary.md"'
+assert_eq "[P1] only its summary changed → no progress" "no" "$(_progress builder)"
+_attempt "$P" builder 'printf x > "$REPO/f.txt"; "$GIT" -C "$REPO" add f.txt; "$GIT" -C "$REPO" commit -qm c'
 assert_eq "[P2] it committed a change → progress" "yes" "$(_progress builder)"
 _attempt "$P" builder 'printf y > "$REPO/g.txt"'
 assert_eq "[P3] an uncommitted edit alone (no output changed) → progress" "yes" "$(_progress builder)"

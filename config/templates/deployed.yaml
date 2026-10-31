@@ -141,9 +141,14 @@ design:
 build:
   gate: auto
   roles: [builder]
-  # The whole stage, every call and check inside it (3 rounds of 15-minute model calls, and more); the engine
-  # stops it here. The default for a stage is 900 (15 minutes).
+  # The whole stage, every call and check inside it (one 15-minute model call per
+  # try, and build's own scans for secrets); the engine stops it here. The
+  # default for a stage is 900 (15 minutes).
   timeout_s: 3600
+  # #2439 (ADR-054 §6a): a build that does not finish its one call (timed out,
+  # or ended without saying it is done) is run again, continuing from its saved
+  # work — 3 tries in all. The default for a stage is 1.
+  retry: 2
   # ADR-051: the provider runs the stage as this persona (--agent).
   persona: developer
   io:

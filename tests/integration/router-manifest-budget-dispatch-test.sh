@@ -59,7 +59,6 @@ rmb_run() {
     {
         printf 'timeout=%s\n'   "$(_route_resolve_timeout)"
         printf 'max_turns=%s\n' "$(_route_resolve_max_turns)"
-        printf 'retries=%s\n'   "$(_route_resolve_retries)"
         printf 'dir=%s\n'       "${ZBUILD_PLUGIN_DIR-<unset>}"
     } > "$_RMB_OUT"
     return 0
@@ -72,7 +71,6 @@ FIXTURE
 _DECLARES="$(_mk_fixture rmb-declares '  router:
     timeout_s: 777
     max_turns: 3
-    retries: 2
 ')"
 _SILENT="$(_mk_fixture rmb-silent '')"
 
@@ -103,8 +101,6 @@ assert_eq "[SPEC-1] router.timeout_s comes from the manifest, not the 300s const
     "777" "$(_seen rmb-declares timeout)"
 assert_eq "[SPEC-1] router.max_turns comes from the manifest, not the 25 constant" \
     "3" "$(_seen rmb-declares max_turns)"
-assert_eq "[SPEC-1] router.retries comes from the manifest, not the 0 constant" \
-    "2" "$(_seen rmb-declares retries)"
 
 # ─── SPEC-2: a plugin that declares nothing is unchanged ────────────────────
 print_test_section "[SPEC-2] a plugin declaring no budget resolves exactly as before"
@@ -113,7 +109,6 @@ _dispatch "$_SILENT" budget_fixture_stage
 assert_eq "[SETUP] silent fixture dispatched cleanly" "0" "$?"
 assert_eq "[SPEC-2] timeout_s is the 300s constant" "300" "$(_seen rmb-silent timeout)"
 assert_eq "[SPEC-2] max_turns is the 25 constant" "25" "$(_seen rmb-silent max_turns)"
-assert_eq "[SPEC-2] retries is the 0 constant" "0" "$(_seen rmb-silent retries)"
 
 # ─── SPEC-3: identity does not leak into the NEXT dispatch ──────────────────
 # plugin_hook_call uses `local -x`, so stage N's manifest cannot be read by

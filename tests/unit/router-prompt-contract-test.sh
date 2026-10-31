@@ -135,7 +135,7 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 printf 'just a task, no sections\n' > "$TEST_TEMP_DIR/loop-bad.txt"
 rc=0
 ( export PATH="$TEST_TEMP_DIR/bin:$PATH" ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=rc-agent
-  route_to_model_loop T2 "$TEST_TEMP_DIR/loop-bad.txt" "$TEST_TEMP_DIR" 2 >/dev/null 2>&1 ) || rc=$?
+  route_to_model_loop T2 "$TEST_TEMP_DIR/loop-bad.txt" "$TEST_TEMP_DIR" >/dev/null 2>&1 ) || rc=$?
 assert_eq "[RC5] the loop refuses an out-of-order stage prompt" "1" "$([[ "$rc" -ne 0 ]] && echo 1 || echo 0)"
 assert_eq "[RC5] …and the model is never called" "0" \
     "$(wc -l < "$TEST_TEMP_DIR/claude-calls" 2>/dev/null | tr -d ' ' || echo 0)"

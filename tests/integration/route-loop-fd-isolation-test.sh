@@ -130,7 +130,7 @@ exec 3>"$SENTINEL"
 export ZBUILD_STAGE_IO_FD=3
 
 set +e
-route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 1 >/dev/null 2>&1
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO" >/dev/null 2>&1
 rc=\$?
 set -e
 exec 3>&-

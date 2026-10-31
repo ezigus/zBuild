@@ -169,23 +169,6 @@ _RUNNER_MAX_RUN_S=""
 # reported once rather than once per stage boundary.
 _RUNNER_LAST_SNAPSHOT_FAIL_REASON=""
 
-# ─── _runner_retry_budget <stage> (#2187, was #1887's redispatch budget) ─────
-# How many times a stage whose disposition says `retry` is re-dispatched. The
-# word never carries a count: the template's per-stage `retry:` wins, then the
-# ZBUILD_DISPOSITION_REDISPATCH knob, then the engine default 3. Capped at 5 —
-# the cycle re-runs its members anyway, so this is not a budget for grinding.
-# A value above the cap clamps to the cap; a non-number is ignored.
-_runner_retry_budget() {
-    local v=""
-    if declare -F template_stage_retry >/dev/null 2>&1; then
-        v="$(template_stage_retry "${1:-}" 2>/dev/null || true)"
-    fi
-    [[ "$v" =~ ^[0-9]+$ ]] || v="${ZBUILD_DISPOSITION_REDISPATCH:-}"
-    [[ "$v" =~ ^[0-9]+$ ]] || v=3
-    (( v > 5 )) && v=5
-    printf '%s' "$v"
-}
-
 # ─── _runner_leaf_contract_halt <state_file> <stage> <reason> ───────────────
 # A leaf stage whose v2 result the engine rejected ends the run; rc 0 when it
 # did. A cycle already halts on this (#550); a leaf recorded `error` and went on,
@@ -236,32 +219,6 @@ _runner_leaf_verdict_halt() {
     _runner_ended=true
     error "Stage $st reported $raw — the run stops here"
     return 0
-}
-
-# ─── _runner_attempt_made_progress <artifact_dir> <stage> <iter> (#2187) ─────
-# Attempts are numbered from 1 (attempt-archive.sh writes n+1).
-# rc 0 when the stage's LATEST attempt in this iteration changed any of its
-# declared outputs (the #2186 attempt record), or when there is no record to
-# judge by; rc 1 when every output it recorded came back unchanged or absent —
-# retrying the same work would hit the same wall.
-_runner_attempt_made_progress() {
-    local base="${1:-}/attempts/${2//[^A-Za-z0-9_-]/_}" iter="${3:-0}"
-    [[ -d "$base" ]] || return 0
-    local latest="" n=0 d k
-    for d in "$base"/iter-"$iter"-attempt-*; do
-        [[ -f "$d/attempt.json" ]] || continue
-        k="${d##*-attempt-}"
-        [[ "$k" =~ ^[0-9]+$ ]] || continue
-        (( k > n )) && { n="$k"; latest="$d/attempt.json"; }
-    done
-    [[ -n "$latest" ]] || return 0
-    # #2252: the archive's own judgement of the WORK, when it made one.
-    if jq -e 'has("progress")' "$latest" >/dev/null 2>&1; then
-        jq -e '.progress == true' "$latest" >/dev/null 2>&1
-        return
-    fi
-    jq -e 'has("outputs") | not' "$latest" >/dev/null 2>&1 && return 0
-    jq -e '[.outputs[]] | any(. == "changed")' "$latest" >/dev/null 2>&1
 }
 
 # ─── _runner_note_push_failure <stage> (#2187) ───────────────────────────────
@@ -3085,149 +3042,103 @@ main() {
         # earlier stage would classify this member's unexplained failure as
         # `throttled`, and `throttled` retries — one rate limit would become a
         # retry loop on an unrelated defect.
-        # #1887 (ADR-054 §6): retry is a property of the DISPOSITION, not of the
-        # stage. #1822 built the response table and #1823 made every dispatch
-        # resolve a disposition — but nothing consulted the table, so
-        # `disposition_retryable` had no production caller and recoverability
-        # was still decided by each stage's own `router.retries` knob. That is
-        # the per-stage divergence #1749 was closed to end, and it is why #1727
-        # had to add `router.retries: 1` to plan's manifest by hand.
-        #
-        # The re-dispatch lives HERE, at the dispatch boundary, because this is
-        # the first point at which a disposition EXISTS: the router's own retry
-        # (route.sh) runs inside a single call, before the plugin has written a
-        # result to have a disposition in.
-        local _cd_attempt=0 _cd_redispatch_max
-        # Declared outside the loop: bash function-scopes locals, so re-declaring
-        # them per iteration is harmless but reads as an intent to reset (#1887
-        # review). Hoisting makes the scope unambiguous.
-        local _cd_manifest _cd_observation _cd_rate_limited _cd_wait
-        _cd_redispatch_max="$(_runner_retry_budget "$_cd_stage")"
-        while :; do
-            _router_clear_throttle_marker
-            # #2265: restore the CALLER's errexit, never force it on. A forced
-            # `set -e` here undid the unit loop's `set +e`, so this function's
-            # `return 1` ended the runner on the spot — every top-level stage
-            # that failed died with no stage.fail and no pipeline.end (#1844 run
-            # 37066147994's pr stage).
-            local _cd_had_e=0; case $- in *e*) _cd_had_e=1 ;; esac
-            # ADR-025 pre-flight at the hook call itself, so a retry after a
-            # wait never starts once an abort is recorded (#1850 review).
-            if ! _zbuild_check_abort; then
-                _CYCLE_DISPATCH_STATUS="failed"
-                return 1
-            fi
-            set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
-            [[ $_cd_had_e -eq 1 ]] && set -e
-            _cd_manifest="$_cd_plugin_dir/manifest.yaml"
-            # #1823: read the RAW wait status once, here. The observation is the one
-            # fact worth keeping across the narrowing — it separates a stage that was
-            # killed from one that is defective, and it is knowable only here.
-            dispatch_rc_observation_v _cd_observation "$_cd_rc"
-            # An `if`, not `[[ ... ]] && ...`: under errexit a failing && list is the
-            # last command in the list and DOES trip it. (#1822 review finding.)
-            _cd_rate_limited=0
-            if _router_throttle_observed; then _cd_rate_limited=1; fi
-            # The readers below take the RAW rc. That is not an oversight: every one
-            # of them only ever tests `rc -ne 0`, which is identical for a raw 10 and
-            # a narrowed 1, so narrowing before them would change nothing. The only
-            # consumer of the distinction is this function's RETURN value, so the
-            # narrowing happens there — after the readers, at the bottom.
-            # _CYCLE_DISPATCH_VERDICT holds the CLASSIFIED verdict (pass|warn|fail|
-            # unknown + structural-failure pass-through) — used for .stage_verdicts
-            # persistence (state_helpers.sh: verdict_class contract) and the
-            # `stage.complete verdict=...` event emitted at runner.sh:1309 in the
-            # `stage:*` dispatch branch. Mutating this to raw values like "approve"
-            # would silently break the indicator-glyph + stage.verdicts contract.
-            # The readers run in this shell and share one parse of the result
-            # (ADR-065 §5, round 9: each was its own $( ) before).
-            runner_read_stage_verdict_v _CYCLE_DISPATCH_VERDICT "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
-                || _CYCLE_DISPATCH_VERDICT="missing"
-            # Wave 19-A (#717): _CYCLE_DISPATCH_VERDICT_RAW is the parallel RAW
-            # verdict (e.g. "approve", "request_changes", "block") consumed by the
-            # cycle orchestrator's exit_when / abort_when / until predicates which
-            # compare against the RAW template-declared value. Without this
-            # separate channel, exit_when on review.verdict==approve never matches
-            # (the classifier collapses approve→pass) and build_review_cycle runs to
-            # max_iterations instead of converging cleanly (dogfood
-            # 20260605055348-2232 symptom: pipeline ran ~10m, review approved,
-            # then external interruption — but the cycle was structurally
-            # unconvergeable regardless of the interrupt). Diagnostic events
-            # (stage.verdict.missing, pipeline.indicator.unknown_verdict) are
-            # emitted by the CLASSIFIED runner_read_stage_verdict call above —
-            # the raw call here is side-effect-free and won't duplicate them.
-            runner_read_stage_verdict_raw_v _CYCLE_DISPATCH_VERDICT_RAW "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
-                || _CYCLE_DISPATCH_VERDICT_RAW="missing"
-            [[ -z "$_CYCLE_DISPATCH_VERDICT_RAW" ]] && _CYCLE_DISPATCH_VERDICT_RAW="missing"
-            # ADR-029 G2 (#810): expose the .reason channel when verdict=error so
-            # the cycle orchestrator can distinguish router_timeout / router_oom_kill
-            # (infra-failure → counts toward fast-abandon threshold) from other
-            # error reasons (don't burn the abandon budget).
-            runner_read_stage_reason_v _CYCLE_DISPATCH_REASON "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
-                || _CYCLE_DISPATCH_REASON=""
-            # #1822 (ADR-054 §6): the recoverability channel. Empty for a v1 stage
-            # (which declares no disposition), the declared word for a v2 one, and
-            # `broken` when this dispatch died leaving nothing to read. Consumed by
-            # the dispatch event; the response table that interprets it lives in
-            # core/pipeline/disposition.sh, never in a plugin.
-            runner_read_stage_disposition_v _CYCLE_DISPATCH_DISPOSITION "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null \
-                || _CYCLE_DISPATCH_DISPOSITION=""
-            # #2189: what this member reported for the cycle to act on — read
-            # off the member itself, never a stage's artifact by name.
-            runner_read_stage_report_v _CYCLE_DISPATCH_REPORT "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
-                || _CYCLE_DISPATCH_REPORT='{}'
-            _runner_record_report "$state_dir" "$_cd_stage" "$_CYCLE_DISPATCH_REPORT"
-            # ADR-054: read the data.build_kind field from the primary artifact so the
-            # cycle orchestrator can distinguish the empty_diff resting point from a
-            # true pass without reading the string "empty_diff" from the verdict channel.
-            # Inside the re-dispatch loop (#1887): a retried attempt writes a fresh
-            # artifact, so a kind read once before the loop would describe the
-            # attempt that was discarded.
-            runner_read_stage_data_kind_v _CYCLE_DISPATCH_DATA_KIND "$state_dir" "$_cd_manifest" "$_cd_stage" || _CYCLE_DISPATCH_DATA_KIND=""
-            # The table decides. `interrupted` re-dispatches at once; `throttled`
-            # waits first, because re-dispatching a throttled stage immediately is
-            # simply throttled again — a retry loop that burns budget to learn
-            # nothing. `rate_limited`, `unavailable`, `misconfigured` and `broken` are not retryable and
-            # fall straight through; `complete` never reaches the test.
-            # A halting disposition is announced rather than inferred. The table
-            # guarantees nothing both halts and retries, so this cannot change which
-            # branch is taken — its job is that an operator reading the log sees the
-            # engine DECIDED to stop, and on which word, instead of reconstructing it
-            # from an rc. It is also what gives `disposition_halts` a caller on the
-            # dispatch path, which is the gap #1887 exists to close.
-            # A word off the list also "halts" (it fails closed, #1850) but is
-            # reported as a contract violation, not announced as a decision here.
-            if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
-               && disposition_is_valid "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null \
-               && disposition_halts "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
-                eb_emit_event "cycle.member.disposition.halt" \
-                    "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "member=$_cd_stage" \
-                    "disposition=$_CYCLE_DISPATCH_DISPOSITION" "rc=$_cd_rc" \
-                    2>/dev/null || true
-            fi
-            # #2187: a retry continues from the saved work, so it is only worth
-            # taking while the last attempt changed something — except after an
-            # outside signal or a short rate limit, which say nothing about the
-            # work.
-            if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
-               && (( _cd_attempt < _cd_redispatch_max )) \
-               && disposition_retryable "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null \
-               && { [[ "$_CYCLE_DISPATCH_DISPOSITION" == interrupted || "$_CYCLE_DISPATCH_DISPOSITION" == throttled ]] \
-                    || _runner_attempt_made_progress "${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}" "$_cd_stage" "${ZBUILD_CYCLE_ITER:-0}"; }; then
-                _cd_wait="$(disposition_wait_s "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null || printf '0')"
-                _cd_attempt=$(( _cd_attempt + 1 ))
-                eb_emit_event "cycle.member.disposition.redispatch" \
-                    "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "member=$_cd_stage" \
-                    "disposition=$_CYCLE_DISPATCH_DISPOSITION" "attempt=$_cd_attempt" \
-                    "of=$_cd_redispatch_max" "wait_s=${_cd_wait:-0}" "prior_rc=$_cd_rc" \
-                    2>/dev/null || true
-                if [[ "${_cd_wait:-0}" =~ ^[0-9]+$ ]] && (( _cd_wait > 0 )); then
-                    sleep "$_cd_wait"
-                fi
-                continue
-            fi
-            break
-        done
+        # #2439 (ADR-054 §6a): a stage whose outcome says retry is run again
+        # inside plugin_hook_call, the one place every dispatch arm reaches;
+        # what is read below is its last try.
+        local _cd_manifest _cd_observation _cd_rate_limited
+        _router_clear_throttle_marker
+        # #2265: restore the CALLER's errexit, never force it on. A forced
+        # `set -e` here undid the unit loop's `set +e`, so this function's
+        # `return 1` ended the runner on the spot — every top-level stage
+        # that failed died with no stage.fail and no pipeline.end (#1844 run
+        # 37066147994's pr stage).
+        local _cd_had_e=0; case $- in *e*) _cd_had_e=1 ;; esac
+        # ADR-025 pre-flight at the hook call itself: a member that starts
+        # after an abort is recorded does not make its model call (#1850 review).
+        if ! _zbuild_check_abort; then
+            _CYCLE_DISPATCH_STATUS="failed"
+            return 1
+        fi
+        set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
+        [[ $_cd_had_e -eq 1 ]] && set -e
+        _cd_manifest="$_cd_plugin_dir/manifest.yaml"
+        # #1823: read the RAW wait status once, here. The observation is the one
+        # fact worth keeping across the narrowing — it separates a stage that was
+        # killed from one that is defective, and it is knowable only here.
+        dispatch_rc_observation_v _cd_observation "$_cd_rc"
+        # An `if`, not `[[ ... ]] && ...`: under errexit a failing && list is the
+        # last command in the list and DOES trip it. (#1822 review finding.)
+        _cd_rate_limited=0
+        if _router_throttle_observed; then _cd_rate_limited=1; fi
+        # The readers below take the RAW rc. That is not an oversight: every one
+        # of them only ever tests `rc -ne 0`, which is identical for a raw 10 and
+        # a narrowed 1, so narrowing before them would change nothing. The only
+        # consumer of the distinction is this function's RETURN value, so the
+        # narrowing happens there — after the readers, at the bottom.
+        # _CYCLE_DISPATCH_VERDICT holds the CLASSIFIED verdict (pass|warn|fail|
+        # unknown + structural-failure pass-through) — used for .stage_verdicts
+        # persistence (state_helpers.sh: verdict_class contract) and the
+        # `stage.complete verdict=...` event emitted at runner.sh:1309 in the
+        # `stage:*` dispatch branch. Mutating this to raw values like "approve"
+        # would silently break the indicator-glyph + stage.verdicts contract.
+        # The readers run in this shell and share one parse of the result
+        # (ADR-065 §5, round 9: each was its own $( ) before).
+        runner_read_stage_verdict_v _CYCLE_DISPATCH_VERDICT "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
+            || _CYCLE_DISPATCH_VERDICT="missing"
+        # Wave 19-A (#717): _CYCLE_DISPATCH_VERDICT_RAW is the parallel RAW
+        # verdict (e.g. "approve", "request_changes", "block") consumed by the
+        # cycle orchestrator's exit_when / abort_when / until predicates which
+        # compare against the RAW template-declared value. Without this
+        # separate channel, exit_when on review.verdict==approve never matches
+        # (the classifier collapses approve→pass) and build_review_cycle runs to
+        # max_iterations instead of converging cleanly (dogfood
+        # 20260605055348-2232 symptom: pipeline ran ~10m, review approved,
+        # then external interruption — but the cycle was structurally
+        # unconvergeable regardless of the interrupt). Diagnostic events
+        # (stage.verdict.missing, pipeline.indicator.unknown_verdict) are
+        # emitted by the CLASSIFIED runner_read_stage_verdict call above —
+        # the raw call here is side-effect-free and won't duplicate them.
+        runner_read_stage_verdict_raw_v _CYCLE_DISPATCH_VERDICT_RAW "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
+            || _CYCLE_DISPATCH_VERDICT_RAW="missing"
+        [[ -z "$_CYCLE_DISPATCH_VERDICT_RAW" ]] && _CYCLE_DISPATCH_VERDICT_RAW="missing"
+        # ADR-029 G2 (#810): expose the .reason channel when verdict=error so
+        # the cycle orchestrator can distinguish router_timeout / router_oom_kill
+        # (infra-failure → counts toward fast-abandon threshold) from other
+        # error reasons (don't burn the abandon budget).
+        runner_read_stage_reason_v _CYCLE_DISPATCH_REASON "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
+            || _CYCLE_DISPATCH_REASON=""
+        # #1822 (ADR-054 §6): the recoverability channel. Empty for a v1 stage
+        # (which declares no disposition), the declared word for a v2 one, and
+        # `broken` when this dispatch died leaving nothing to read. Consumed by
+        # the dispatch event; the response table that interprets it lives in
+        # core/pipeline/disposition.sh, never in a plugin.
+        runner_read_stage_disposition_v _CYCLE_DISPATCH_DISPOSITION "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null \
+            || _CYCLE_DISPATCH_DISPOSITION=""
+        # #2189: what this member reported for the cycle to act on — read
+        # off the member itself, never a stage's artifact by name.
+        runner_read_stage_report_v _CYCLE_DISPATCH_REPORT "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null \
+            || _CYCLE_DISPATCH_REPORT='{}'
+        _runner_record_report "$state_dir" "$_cd_stage" "$_CYCLE_DISPATCH_REPORT"
+        # ADR-054: read the data.build_kind field from the primary artifact so the
+        # cycle orchestrator can distinguish the empty_diff resting point from a
+        # true pass without reading the string "empty_diff" from the verdict channel.
+        runner_read_stage_data_kind_v _CYCLE_DISPATCH_DATA_KIND "$state_dir" "$_cd_manifest" "$_cd_stage" || _CYCLE_DISPATCH_DATA_KIND=""
+        # A halting disposition is announced rather than inferred. The table
+        # guarantees nothing both halts and retries, so this cannot change which
+        # branch is taken — its job is that an operator reading the log sees the
+        # engine DECIDED to stop, and on which word, instead of reconstructing it
+        # from an rc. It is also what gives `disposition_halts` a caller on the
+        # dispatch path, which is the gap #1887 exists to close.
+        # A word off the list also "halts" (it fails closed, #1850) but is
+        # reported as a contract violation, not announced as a decision here.
+        if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
+           && disposition_is_valid "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null \
+           && disposition_halts "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
+            eb_emit_event "cycle.member.disposition.halt" \
+                "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "member=$_cd_stage" \
+                "disposition=$_CYCLE_DISPATCH_DISPOSITION" "rc=$_cd_rc" \
+                2>/dev/null || true
+        fi
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else
@@ -3333,13 +3244,8 @@ main() {
         # group-verdict collapse), so nothing here reads the word a v2 stage
         # declared.
         #
-        # #1887 deliberately does NOT add the cycle path's disposition-driven
-        # re-dispatch here, and the asymmetry is not an oversight: there is no
-        # disposition on this channel to act on. Wiring retry would first mean
-        # RESOLVING one per parallel member, which is the group-verdict collapse
-        # ADR-039 §4 owns — a different change with its own blast radius. Until
-        # then a parallel member is not re-dispatched on `interrupted` or
-        # `throttled`, which is worth knowing rather than discovering.
+        # #2439 (ADR-054 §6a): a member whose outcome says retry was already run
+        # again inside plugin_hook_call, like every other stage.
         #
         # The narrowing below is still correct: every stage speaks v2 (#1850), so
         # it HAS somewhere else to say what its rc was carrying.

@@ -15,7 +15,10 @@
 # L2 [change] markdown-wrapped (`**LOOP_COMPLETE**`, `` `LOOP_COMPLETE` ``) ends it
 # L3 [change] the two words spaced or lower-cased (`Loop complete!`, `LOOP COMPLETE`) end it
 # L4 [guard]  the bare sentinel still ends it
-# L5 [guard]  a sentence that mentions the sentinel does not — the loop runs to its cap
+# L5 [guard]  a sentence that mentions the sentinel does not — the try ends
+#             unusable (no_done_sentinel), #2439
+#
+# #2439: one call per try, so each case reads how the try ended, not a count.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,21 +82,22 @@ _calls() {
         source "$REPO_ROOT/core/output/stage-io.sh"
         source "$REPO_ROOT/core/router/route.sh"
         load_template "$TEST_TEMP_DIR/template.yaml" >/dev/null 2>&1
-        route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 4
+        route_to_model_loop T2 "$PROMPT_FILE" "$REPO"
+        printf '%s' "${_ROUTE_LOOP_TERMINATED_REASON:-}" > "$d/reason"
     ) >/dev/null 2>&1 || true
-    wc -l < "$d/counter" | tr -d ' '
+    printf '%s:%s' "$(wc -l < "$d/counter" | tr -d ' ')" "$(cat "$d/reason" 2>/dev/null)"
 }
 
 print_test_section "L1–L4: variants that end the loop"
-assert_eq "[L1] 'LOOP_COMPLETE.' ends it at once" "1" "$(_calls 'LOOP_COMPLETE.')"
-assert_eq "[L2] '**LOOP_COMPLETE**' ends it at once" "1" "$(_calls '**LOOP_COMPLETE**')"
-assert_eq "[L2] backticked LOOP_COMPLETE ends it at once" "1" "$(_calls '`LOOP_COMPLETE`')"
-assert_eq "[L3] 'Loop complete!' ends it at once" "1" "$(_calls 'Loop complete!')"
-assert_eq "[L3] 'LOOP COMPLETE' ends it at once" "1" "$(_calls 'LOOP COMPLETE')"
-assert_eq "[L4] the bare sentinel ends it at once" "1" "$(_calls 'LOOP_COMPLETE')"
+assert_eq "[L1] 'LOOP_COMPLETE.' is done" "1:done_sentinel" "$(_calls 'LOOP_COMPLETE.')"
+assert_eq "[L2] '**LOOP_COMPLETE**' is done" "1:done_sentinel" "$(_calls '**LOOP_COMPLETE**')"
+assert_eq "[L2] backticked LOOP_COMPLETE is done" "1:done_sentinel" "$(_calls '`LOOP_COMPLETE`')"
+assert_eq "[L3] 'Loop complete!' is done" "1:done_sentinel" "$(_calls 'Loop complete!')"
+assert_eq "[L3] 'LOOP COMPLETE' is done" "1:done_sentinel" "$(_calls 'LOOP COMPLETE')"
+assert_eq "[L4] the bare sentinel is done" "1:done_sentinel" "$(_calls 'LOOP_COMPLETE')"
 
 print_test_section "L5: a mention is not a signal"
-assert_eq "[L5] a sentence mentioning it runs to the cap" "4" \
+assert_eq "[L5] a sentence mentioning it is not done" "1:no_done_sentinel" \
     "$(_calls 'Next I will verify before emitting LOOP_COMPLETE')"
 
 cleanup_test_env

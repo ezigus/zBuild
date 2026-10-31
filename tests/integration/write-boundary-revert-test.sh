@@ -19,6 +19,11 @@
 # D6 [change] the halt's reason names the stage and the files it changed, not
 #             the stage's own result (ADR-058 C12, amended 2026-10-26; #1801 run
 #             40390919951 halted saying "21 of 818 tests failed")
+# D7 [change] through the engine's retry (#2439, ADR-054 §6a): a stage that
+#             offends is undone and run again once; when the retry offends too,
+#             that second offence halts
+#
+# D1–D6 look at one try each (_plugin_hook_call_once); D7 at the whole dispatch.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,9 +76,9 @@ $3
 }
 PEOF
 }
-_run() {  # <fixture_dir> <stage>
+_run() {  # <fixture_dir> <stage> — one try
     RC=0; _EV=()
-    plugin_hook_call "$1" run "$2" "$SF" 2>"$TEST_TEMP_DIR/stderr.txt" || RC=$?
+    _plugin_hook_call_once "$1" run "$2" "$SF" 2>"$TEST_TEMP_DIR/stderr.txt" || RC=$?
 }
 _disp() { runner_read_stage_disposition "$JOB" "$1/manifest.yaml" "$2" "$RC" "" 0 2>/dev/null; }
 
@@ -125,6 +130,16 @@ _fixture "$FXO" wb-other "    printf 'x\\n' > '$WT/edited.txt'"
 _run "$FXO" other-judge
 assert_eq "[D4] another stage's first offence is retried" "unusable" "$(_disp "$FXO" other-judge)"
 assert_eq "[D4] and put back" "original" "$(cat "$WT/edited.txt")"
+
+print_test_section "D7: the engine retries the first offence; the retry's offence halts"
+rm -f "$JOB/runtime/write-boundary-violated" "$JOB"/runtime/write-boundary-reverted.* "$JOB"/runtime/write-boundary-offences* 2>/dev/null
+FXR="$TEST_TEMP_DIR/plugins/wb-again"
+_fixture "$FXR" wb-again "    printf 'x\\n' > '$WT/edited.txt'"
+RC=0; _EV=()
+plugin_hook_call "$FXR" run again-judge "$SF" 2>"$TEST_TEMP_DIR/stderr.txt" || RC=$?
+assert_contains "[D7] the first offence was retried" "${_EV[*]}" "stage.retry stage=again-judge outcome=unusable"
+assert_eq "[D7] the retry's offence halts" "broken" "$(_disp "$FXR" again-judge)"
+assert_eq "[D7] the files are put back" "original" "$(cat "$WT/edited.txt")"
 
 cleanup_test_env
 print_test_results

@@ -569,3 +569,9 @@ failure, and builds all result JSON via `jq -n` (injection-safe). The unused `ro
 `requires.core` entry was dropped from both agent manifests (no `route_to_model` call).
 
 **Amendment (2026-09-25, #2188) — `test-author` is blocking.** `test-author` (#2022, not a canonical stage id) is blocking since #2188: when it authors no assertions (after its `retry:` budget), the cycle stops before `build`, which would otherwise write its own acceptance tests — the correlated-error defect #2022 exists to remove. Blocking is not convergence: it is not an `exit_when` gate, so ADR-040 §5 is unaffected. Its testfiles are committed after every attempt, partial ones included, so a retry continues from them.
+
+## Amendment (2026-10-31, issue #2439) — a timeout ends the try
+
+The #1208 amendment's "repeated timeout" yield is now a single timeout: build and test-author make one model
+call per try, and a call that times out ends the try non-fatally as `timed_out` (`loop.timeout_yield`). The
+engine runs the stage again when the template's `retry:` allows (ADR-054 §6a, amended 2026-10-31).

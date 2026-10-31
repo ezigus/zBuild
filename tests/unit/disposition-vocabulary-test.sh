@@ -13,13 +13,13 @@
 #   misconfigured→halt_misconfigured; broken→halt_broken.
 # SPEC-2 [change]: `exhausted` is accepted as a temporary alias and RETRIES
 #   (it was `escalate`, which had no handler) until the stages migrate.
-# SPEC-3 [change]: the retry budget is the template's per-stage `retry:`, over the
-#   env knob, over the engine default 3; capped at 5.
-# SPEC-4 [change]: an attempt whose declared outputs all came back unchanged made
-#   no progress, so it is not retried; a changed output, or no record, allows it.
-# SPEC-5 [change]: the dispatch loop consults the budget and the progress check,
-#   and a halting word stops the cycle through the existing member-terminal path —
-#   decided from the word, with no new exit code.
+# SPEC-3 [change]: the retry budget is the template's per-stage `retry:`, else
+#   the engine default 1 (#2439; was an env knob, then 3); capped at 5.
+# SPEC-4: retired with the on-disk progress lookup (#2439) — the engine reads the
+#   try it just made: stage-retry-test.sh R4/R10, attempt-progress-test.sh.
+# SPEC-5 [change]: every dispatch consults the budget and the retry decision
+#   (plugin_hook_call, #2439), and a halting word stops the cycle through the
+#   existing member-terminal path — decided from the word, with no new exit code.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,9 +86,8 @@ assert_eq "[ADR-063 §4] unavailable ends the run (halt_unavailable), so no cycl
 
 # ─── SPEC-3 ──────────────────────────────────────────────────────────────────
 print_test_section "SPEC-3: the template owns the retry budget"
-# shellcheck source=../../core/pipeline/runner.sh
-source "$REPO_ROOT/core/pipeline/runner.sh"
-set +e   # runner.sh turns errexit on; every assertion must run
+# shellcheck source=../../scripts/lib/stage-retry.sh
+source "$REPO_ROOT/scripts/lib/stage-retry.sh"
 TPL="$TEST_TEMP_DIR/tpl.yaml"
 cat > "$TPL" <<'YAML'
 id: t
@@ -99,58 +98,31 @@ build:
   retry: 2
 design:
   gate: auto
+huge:
+  retry: 99
+none:
+  retry: 0
+word:
+  retry: lots
 YAML
 export _TPL_SOURCE_FILE="$TPL"
-assert_eq "[SPEC-3] the template's retry: wins" "2" \
-    "$(ZBUILD_DISPOSITION_REDISPATCH=4 _runner_retry_budget build 2>/dev/null)"
-assert_eq "[SPEC-3] no template value → the env knob" "4" \
-    "$(ZBUILD_DISPOSITION_REDISPATCH=4 _runner_retry_budget design 2>/dev/null)"
-assert_eq "[SPEC-3] neither → the engine default 3" "3" \
-    "$(unset ZBUILD_DISPOSITION_REDISPATCH; _runner_retry_budget design 2>/dev/null)"
-assert_eq "[SPEC-3] above the cap clamps to 5" "5" \
-    "$(ZBUILD_DISPOSITION_REDISPATCH=99 _runner_retry_budget design 2>/dev/null)"
-assert_eq "[SPEC-3] an explicit 0 opts out" "0" \
-    "$(ZBUILD_DISPOSITION_REDISPATCH=0 _runner_retry_budget design 2>/dev/null)"
-assert_eq "[SPEC-3] a non-number falls back to the default" "3" \
-    "$(ZBUILD_DISPOSITION_REDISPATCH=lots _runner_retry_budget design 2>/dev/null)"
-assert_eq "[SPEC-3] a negative value is not a number here and falls back" "3" \
-    "$(ZBUILD_DISPOSITION_REDISPATCH=-2 _runner_retry_budget design 2>/dev/null)"
-
-# ─── SPEC-4 ──────────────────────────────────────────────────────────────────
-print_test_section "SPEC-4: an attempt that changed nothing made no progress"
-ART="$TEST_TEMP_DIR/art"
-_attempt() {   # <n> <outputs-json>
-    mkdir -p "$ART/attempts/build/iter-1-attempt-$1"
-    printf '{"stage":"build","cycle_iter":1,"attempt":%s,"outputs":%s}\n' "$1" "$2" \
-        > "$ART/attempts/build/iter-1-attempt-$1/attempt.json"
-}
-if _runner_attempt_made_progress "$ART" build 1 2>/dev/null; then
-    assert_pass "[SPEC-4] no attempt record → progress is assumed (retry allowed)"
-else
-    assert_fail "[SPEC-4] no attempt record → progress is assumed"
-fi
-_attempt 1 '{"build-summary.json":"changed"}'
-if _runner_attempt_made_progress "$ART" build 1 2>/dev/null; then
-    assert_pass "[SPEC-4] a changed output is progress"
-else
-    assert_fail "[SPEC-4] a changed output is progress"
-fi
-_attempt 2 '{"build-summary.json":"unchanged","build-summary.md":"absent"}'
-if _runner_attempt_made_progress "$ART" build 1 2>/dev/null; then
-    assert_fail "[SPEC-4] the LATEST attempt changed nothing → no progress" "reported progress"
-else
-    assert_pass "[SPEC-4] the LATEST attempt changed nothing → no progress"
-fi
+_budget() { local b; stage_retry_budget_v b "$1"; printf '%s' "$b"; }
+assert_eq "[SPEC-3] the template's retry: wins" "2" "$(ZBUILD_DISPOSITION_REDISPATCH=4 _budget build)"
+assert_eq "[SPEC-3] no template value → the engine default 1 (the env knob is gone)" "1" \
+    "$(ZBUILD_DISPOSITION_REDISPATCH=4 _budget design)"
+assert_eq "[SPEC-3] above the cap clamps to 5" "5" "$(_budget huge)"
+assert_eq "[SPEC-3] an explicit 0 opts out" "0" "$(_budget none)"
+assert_eq "[SPEC-3] a non-number falls back to the default" "1" "$(_budget word)"
 
 # ─── SPEC-5 ──────────────────────────────────────────────────────────────────
-print_test_section "SPEC-5: the dispatch loop is wired to the budget, the progress check and the halt"
-RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
-for _fn in _runner_retry_budget _runner_attempt_made_progress; do
-    _hits="$(grep -nE "^[^#]*\b${_fn} \"" "$RUNNER" 2>/dev/null || true)"
+print_test_section "SPEC-5: every dispatch is wired to the budget, the retry decision and the halt"
+LIFECYCLE="$REPO_ROOT/core/plugin-registry/lifecycle.sh"
+for _fn in stage_retry_budget_v stage_retry_next; do
+    _hits="$(grep -nE "^[^#]*\b${_fn} " "$LIFECYCLE" 2>/dev/null || true)"
     if [[ -n "$_hits" ]]; then
-        assert_pass "[SPEC-5] the dispatch loop calls $_fn"
+        assert_pass "[SPEC-5] plugin_hook_call calls $_fn"
     else
-        assert_fail "[SPEC-5] the dispatch loop calls $_fn" "no call site in runner.sh"
+        assert_fail "[SPEC-5] plugin_hook_call calls $_fn" "no call site in lifecycle.sh"
     fi
 done
 # No new exit code: the halt is decided from the WORD, in the cycle, and ends

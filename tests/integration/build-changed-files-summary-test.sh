@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration test (#498): build plugin emits a stage-level [computed]
 # summary banner via `git diff HEAD --numstat` AFTER route_to_model_loop
-# completes. Per-iteration [llm] banners (#482) MUST remain unchanged and
+# completes. The call's [llm] banners (#482; #2439: one call per try) MUST remain unchanged and
 # MUST precede the new [computed] banner in fd-3 output order (#491
 # ordering contract).
 set -euo pipefail
@@ -45,7 +45,7 @@ mkdir -p "$REPO/tests/fixtures"
     && git add tests/fixtures/seed.txt \
     && git commit -q -m "fixture-seed" ) >/dev/null
 
-# ── Mock claude: 2 iters then DONE; edits a fixture each iteration ────────
+# ── Mock claude: edits a fixture and says DONE (one call per try, #2439) ───
 MARK_FILE="$TEST_TEMP_DIR/llm-call.mark"
 if [[ -n "$MARK_FILE" ]]; then
     assert_pass "[SPEC-1] MARK_FILE non-empty at setup"
@@ -62,7 +62,7 @@ echo "MARK_iter_\${n}" >> "\$mark"
 # Edit in-scope fixture file each iteration so numstat has content.
 mkdir -p "\$PWD/tests/fixtures"
 printf 'iter-%d\n' "\$n" >> "\$PWD/tests/fixtures/build-test-498.txt"
-if [[ "\$n" -ge 2 ]]; then
+if [[ "\$n" -ge 1 ]]; then
     jq -n --arg r \$'done\nLOOP_COMPLETE' \
         '{result:\$r, usage:{input_tokens:7, output_tokens:4}}'
 else
@@ -165,11 +165,11 @@ ZBUILD_STAGE_IO_FD=3 bash "$DRIVER" >/dev/null 2>/dev/null 3>"$BANNER" || true
 
 banner="$(cat "$BANNER" 2>/dev/null || echo '')"
 
-# ─── (1) Per-iteration [llm] banners preserved (#482 unchanged) ───────────
+# ─── (1) The call's [llm] banners preserved (#482 unchanged) ──────────────
 in_llm="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* input ══' || true)"
 out_llm="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* output ' || true)"
-assert_eq "2 [llm] input banners (one per iter)"  "2" "$in_llm"
-assert_eq "2 [llm] output banners (one per iter)" "2" "$out_llm"
+assert_eq "1 [llm] input banner (one call)"  "1" "$in_llm"
+assert_eq "1 [llm] output banner (one call)" "1" "$out_llm"
 
 # ─── (2) ZERO [computed] banners (#587: kill duplicate post-loop banner) ──
 in_computed="$(printf '%s\n' "$banner" | grep -cE '══ build \[computed\] seq=.* input ══' || true)"

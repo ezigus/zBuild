@@ -2,6 +2,7 @@
 
 **Status:** Accepted (2026-05-29)
 **Date:** 2026-05-29
+**Amended:** 2026-10-31 (#2439, ADR-054 §6a) — `router.retries`, `router.retry_on_exhaustion` and `router.max_iterations` are removed: a stage makes one model call per try, and the template's per-stage `retry:` is the only retry (amendment at the end).
 **Amended:** 2026-08-09 (#1820, ADR-054) — noting that #1816 inserts the manifest layer into ADR-017's resolution chain; per-stage router config is now resolved through the manifest-declared data path before falling through to the template/global config tiers documented here.
 
 ## Context
@@ -428,8 +429,19 @@ plugin noisy on every dispatch. The one record that did change is
 classifies as `manifest` rather than `default`, which is the one source it is
 not.
 
+## Amendment 2026-10-31 (#2439) — the call-retry and call-limit knobs are removed
+
+`router.retries` (#1230), `router.retry_on_exhaustion` (#1879) and `router.max_iterations` (#467) each
+repeated a model call inside a stage, below the engine's own retry (ADR-054 §6a), so a timed-out stage was
+retried at two or three levels at once. They are removed: a template stage that sets `router.retries` or
+`router.max_iterations` is refused at load with a message pointing at `retry:`; a manifest's
+`config.router` accepts only `timeout_s` and `max_turns`; `ZBUILD_ROUTER_RETRIES`,
+`ZBUILD_ROUTER_RETRY_ON_EXHAUSTION` and `ZBUILD_ROUTER_MAX_ITERATIONS` are gone. The precedence rows for
+these knobs in the amendments above no longer apply.
+
 ## Enforced by
 
+- Amendment 2026-10-31 (#2439: the call-retry and call-limit knobs are removed) → `tests/unit/retired-retry-settings-test.sh` T1–T4, T6; `tests/unit/route-one-call-per-try-test.sh` O4, O6
 - §Per-stage `timeout_s:` (top-level stage block) is used by fanout, map, and sequential strategies via `template_stage_time_limit`; `ZBUILD_ORCH_TIMEOUT` flat deadline removed — `tests/integration/orch-timeout-applies-test.sh` [#1801/SPEC-1].
 - §`_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit` (`timeout_s:` in the stage block); `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` no longer read for this purpose — `tests/integration/runner-release-exit-paths-test.sh` [#1801/SPEC-5].
 - §Override precedence (`per-stage template > env var > compile-time default`) — `tests/integration/router-timeout-precedence-e2e-test.sh`.

@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# Unit test (#505): route_to_model_loop banner dedupe + --persist-input
-# divergence.
+# Unit test (#505): route_to_model_loop --persist-input.
 #
 # Locks the contract from ADR-018 §Pattern 2.5:
-#   - The prompt the LLM receives (on stdin since #1849) MUST contain the FULL static prompt
-#     on every iteration (no dedupe applied to the actual model payload).
-#   - The stage_io BANNER input on iter ≥2 MUST be the deduped pointer form
-#     ("[static prompt: same as iter 1, ...] ... [diff: see ── changed-files ──
-#      summary below ...]") — operator scrollback noise reduction only.
-#   - The artifact `.input` field MUST contain the FULL static prompt on every
-#     iteration (via the new stage_io_begin --persist-input <path> flag), so
-#     postmortem fidelity is preserved.
+#   - The prompt the LLM receives (on stdin since #1849) MUST contain the FULL
+#     static prompt.
+#   - The artifact `.input` field MUST contain the FULL static prompt (via
+#     stage_io_begin --persist-input <path>), so postmortem fidelity is preserved.
+# #2439: one call per try, so the banner dedupe for a second call is gone.
 #
 set -euo pipefail
 
@@ -149,87 +145,39 @@ export COUNTER="$COUNTER"
 
 load_template "$TEST_TEMP_DIR/template.yaml"
 export ZBUILD_CURRENT_STAGE=build
-route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 5
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO"
 EOF
 
 ZBUILD_STAGE_IO_FD=3 bash "$DRIVER" >/dev/null 2>/dev/null 3>"$BANNER_FD3" || true
 
 # ─── Assertions ──────────────────────────────────────────────────────────────
 
-# (0) Sanity: mock invoked 3 times.
+# (0) Sanity: one call per try (#2439), though the mock would say done only on its 3rd.
 call_count="$(wc -l < "$COUNTER" | tr -d ' ')"
-assert_eq "mock claude invoked exactly 3 times" "3" "$call_count"
+assert_eq "mock claude invoked exactly once" "1" "$call_count"
 
-# Helper: read -p prompt for a given call number from PROMPT_DIR.
-_read_prompt() { cat "$PROMPT_DIR/call-$1.prompt" 2>/dev/null || true; }
+# (1) The LLM payload contains the full static prompt sentinel.
+p="$(cat "$PROMPT_DIR/call-1.prompt" 2>/dev/null || true)"
+if [[ "$p" == *"ZB505_STATIC_BODY_SENTINEL"* ]]; then
+    assert_pass "call 1: claude prompt contains full static body sentinel"
+else
+    assert_fail "call 1: claude prompt contains full static body sentinel" \
+        "head=$(printf '%s' "$p" | head -c 120)"
+fi
 
-# (1) LLM payload on EVERY iteration contains the full static prompt sentinel.
-#     (Dedupe must NOT touch what claude actually receives.)
-for n in 1 2 3; do
-    p="$(_read_prompt "$n")"
-    if [[ "$p" == *"ZB505_STATIC_BODY_SENTINEL"* ]]; then
-        assert_pass "call $n: claude -p prompt contains full static body sentinel"
+# (2) The artifact file `.input` contains the full static prompt sentinel —
+#     postmortem fidelity guarded by --persist-input.
+art="$ZBUILD_STATE_DIR/artifacts/stage-io/build-1.json"
+assert_file_exists "build-1.json artifact written" "$art"
+if [[ -f "$art" ]]; then
+    in_field="$(jq -r '.input' "$art" 2>/dev/null || true)"
+    if [[ "$in_field" == *"ZB505_STATIC_BODY_SENTINEL"* ]]; then
+        assert_pass "build-1.json .input contains full static prompt (persist-input)"
     else
-        assert_fail "call $n: claude -p prompt contains full static body sentinel" \
-            "head=$(printf '%s' "$p" | head -c 120)"
+        assert_fail "build-1.json .input contains full static prompt (persist-input)" \
+            "in_head=$(printf '%s' "$in_field" | head -c 120)"
     fi
-done
-
-# (2) Iter ≥2 banner input MUST be the deduped pointer form. Use the file
-#     artifact's "head" snippet rendered into the banner; the begin banner
-#     includes a head of the input on stdout. We grep fd 3 for the marker.
-banner="$(cat "$BANNER_FD3" 2>/dev/null || echo '')"
-
-# Extract just the banner block for seq=2 input through seq=2 output.
-_extract_seq_input_block() {
-    local s="$1"
-    awk -v s="$s" '
-        $0 ~ ("seq="s" input")  { capture=1 }
-        capture { print }
-        $0 ~ ("seq="s" output") { if (capture) exit }
-    ' <<< "$banner"
-}
-
-for s in 2 3; do
-    blk="$(_extract_seq_input_block "$s")"
-    if [[ "$blk" == *"[static prompt: same as iter 1"* ]]; then
-        assert_pass "seq=$s banner input contains '[static prompt: same as iter 1' pointer"
-    else
-        assert_fail "seq=$s banner input contains '[static prompt: same as iter 1' pointer" \
-            "blk_head=$(printf '%s' "$blk" | head -c 200)"
-    fi
-
-    if [[ "$blk" == *"[diff: "* ]]; then
-        assert_pass "seq=$s banner input contains '[diff: ...]' pointer"
-    else
-        assert_fail "seq=$s banner input contains '[diff: ...]' pointer" \
-            "blk_head=$(printf '%s' "$blk" | head -c 200)"
-    fi
-
-    # Negative: the full static body sentinel MUST NOT appear in iter ≥2 banner.
-    if [[ "$blk" == *"ZB505_STATIC_BODY_SENTINEL"* ]]; then
-        assert_fail "seq=$s banner input is deduped (no full static body)" \
-            "blk_head=$(printf '%s' "$blk" | head -c 200)"
-    else
-        assert_pass "seq=$s banner input is deduped (no full static body)"
-    fi
-done
-
-# (3) Artifact file `.input` on EVERY iteration MUST contain the full static
-#     prompt sentinel — postmortem fidelity guarded by --persist-input.
-for s in 1 2 3; do
-    art="$ZBUILD_STATE_DIR/artifacts/stage-io/build-${s}.json"
-    assert_file_exists "build-${s}.json artifact written" "$art"
-    if [[ -f "$art" ]]; then
-        in_field="$(jq -r '.input' "$art" 2>/dev/null || true)"
-        if [[ "$in_field" == *"ZB505_STATIC_BODY_SENTINEL"* ]]; then
-            assert_pass "build-${s}.json .input contains full static prompt (persist-input)"
-        else
-            assert_fail "build-${s}.json .input contains full static prompt (persist-input)" \
-                "in_head=$(printf '%s' "$in_field" | head -c 120)"
-        fi
-    fi
-done
+fi
 
 cleanup_test_env
 print_test_results

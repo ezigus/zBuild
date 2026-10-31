@@ -146,11 +146,12 @@ assert_contains "F8: iter 2 states build's job" "$iter2_prompt" \
 
 # F9–F11 (#2124): retired with the readers they exercised — see the guard below.
 
-# ─── F12: _build_render_task_header emits banner with iter N/MAX ────────────
+# ─── F12: _build_render_task_header emits banner with the loop's round ──────
+# #2439: one model call per try, so there is no call count to show.
 if declare -F _build_render_task_header >/dev/null 2>&1; then
-    hdr="$(_build_render_task_header 2 5)"
+    hdr="$(_build_render_task_header 2)"
     assert_contains "F12: header banner contains 'ZBUILD BUILD'" "$hdr" "ZBUILD BUILD"
-    assert_contains "F12: header banner contains 'iter 2/5'" "$hdr" "iter 2/5"
+    assert_contains "F12: header banner contains 'round 2'" "$hdr" "round 2"
 else
     assert_fail "F12: _build_render_task_header helper must exist" "missing"
 fi

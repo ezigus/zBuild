@@ -141,7 +141,7 @@ export ZBUILD_CURRENT_STAGE=build
 
 # Run the loop with the new defer flag. Mock claude returns LOOP_COMPLETE on
 # call 1 so we exit via done_sentinel and the final banner is deferred.
-route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 3 --defer-final-banner-close
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO" --defer-final-banner-close
 
 # This is the moment plugin.sh now exercises: post-loop summary + warn,
 # THEN the deferred banner close. The warn MUST appear between the banner's

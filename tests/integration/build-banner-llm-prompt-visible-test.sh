@@ -133,7 +133,7 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_VERDICT=""
     _CYCLE_DISPATCH_STATUS=""
     set +e
-    route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 5
+    route_to_model_loop T2 "$PROMPT_FILE" "$REPO"
     local _rc=\$?
     set -e
     if [[ \$_rc -eq 0 ]]; then

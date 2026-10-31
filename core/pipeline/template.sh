@@ -636,9 +636,9 @@ load_template() {
     _tpl_order_by_flow stage_data_rows
 
     # Populate per-stage state (flat _TPL_STAGES[] + per-id env vars).
-    local stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations router_retries
+    local stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns
     for row in "${stage_data_rows[@]}"; do
-        IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations router_retries <<< "$row"
+        IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns _ _ <<< "$row"
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
         local safe_id="${stage_id//-/_}"
@@ -649,17 +649,13 @@ load_template() {
         printf -v "_TPL_STAGE_IO_REDACT_${safe_id}" '%s' "$io_redact"
         printf -v "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}" '%s' "$router_timeout"
         printf -v "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" '%s' "$router_max_turns"
-        printf -v "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}" '%s' "$router_max_iterations"
-        printf -v "_TPL_STAGE_ROUTER_RETRIES_${safe_id}" '%s' "$router_retries"
         export "_TPL_STAGE_ROLES_${safe_id}" \
                "_TPL_STAGE_STRATEGY_${safe_id}" \
                "_TPL_STAGE_IO_DESTS_${safe_id}" \
                "_TPL_STAGE_IO_TAIL_${safe_id}" \
                "_TPL_STAGE_IO_REDACT_${safe_id}" \
                "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}" \
-               "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" \
-               "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}" \
-               "_TPL_STAGE_ROUTER_RETRIES_${safe_id}"
+               "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}"
     done
 
     # ── #1831: always-run stages ──────────────────────────────────────────────
@@ -1522,8 +1518,8 @@ _tpl_build_dispatch_units() {
 # ADR-015 v3 (#440): validate tail_lines (integer 1..10000) and redact (true|false)
 # ADR-017 (#455): also validate router.timeout_s (integer 1..3600)
 # ADR-018 (#466): also validate router.max_turns (integer 1..200)
-# ADR-018 (#467): also validate router.max_iterations (integer 1..50)
-# ADR-029 (#1230): also validate router.retries (integer 0..10; 0 = opt-out).
+# #2439 (ADR-054 §6a): router.max_iterations and router.retries are refused —
+# a stage makes one model call per try, and `retry:` says how many tries.
 # Uses Bash 5+ namerefs for safer array-by-name passing (no eval indirection).
 _tpl_validate_io_knobs() {
     local -n ids_ref="$1"
@@ -1570,17 +1566,12 @@ _tpl_validate_io_knobs() {
             fi
         fi
         if [[ -n "$rmi" ]]; then
-            if ! [[ "$rmi" =~ ^[0-9]+$ ]] || [[ "$rmi" -lt 1 ]] || [[ "$rmi" -gt 50 ]]; then
-                error "template: router.max_iterations for stage '$stage' must be integer in 1..50, got: $rmi"
-                return 1
-            fi
+            error "template: router.max_iterations for stage '$stage' was removed (#2439): a stage makes one model call per try; the stage's retry: says how many tries"
+            return 1
         fi
         if [[ -n "$rre" ]]; then
-            # ADR-029 (#1230): retries=0 is the explicit opt-out and valid.
-            if ! [[ "$rre" =~ ^[0-9]+$ ]] || [[ "$rre" -gt 10 ]]; then
-                error "template: router.retries for stage '$stage' must be integer in 0..10, got: $rre"
-                return 1
-            fi
+            error "template: router.retries for stage '$stage' was removed (#2439): a model call is not repeated inside a stage; the stage's retry: says how many tries"
+            return 1
         fi
     done
     return 0
@@ -2546,28 +2537,6 @@ template_stage_router_max_turns() {
     echo "${!var:-}"
 }
 
-# ADR-018 (#467): per-stage router.max_iterations (empty when unset → caller default 10).
-# Consumer chokepoint: _route_resolve_max_iterations in core/router/route.sh applies
-# the precedence rule (per-stage > env > compile-time default).
-template_stage_router_max_iterations() {
-    local stage_id="$1"
-    local safe_id="${stage_id//-/_}"
-    local var="_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}"
-    echo "${!var:-}"
-}
-
-# ADR-029 (#1230): per-stage router.retries (empty when unset → caller default 0).
-# Consumer chokepoint: _route_resolve_retries in core/router/route.sh applies the
-# precedence rule (per-stage > env > compile-time default 0). Honored by BOTH the
-# single-shot (_route_call_claude) and the agentic-loop (route_to_model_loop) leaf
-# paths, so every leaf node respects it wherever it sits.
-template_stage_router_retries() {
-    local stage_id="$1"
-    local safe_id="${stage_id//-/_}"
-    local var="_TPL_STAGE_ROUTER_RETRIES_${safe_id}"
-    echo "${!var:-}"
-}
-
 # ADR-013 (CQ-3 / issue #863): per-stage blocking attribute (true/empty).
 # Returns "true" when the stage is declared blocking, "false" when it is declared
 # advisory (#1798: a leaf's failing verdict then does not end the run), empty
@@ -2622,29 +2591,10 @@ template_stage_negctl_timeout() {
 # shellcheck source=../../scripts/lib/stage-time-limit.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-time-limit.sh"
 
-# #2187: per-stage `retry:` — how many times the engine re-dispatches a stage
-# whose disposition says retry. Read LAZILY from the template source, like
-# template_stage_negctl_timeout; prints nothing when unset.
-template_stage_retry() {
-    local stage_id="$1"
-    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
-    awk -v stage="$stage_id" '
-        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
-        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; block_ind = 0; in_defs = 0; next }
-        /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
-        in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
-        in_defs && !in_block && $0 ~ "^  "stage":[[:space:]]*$" { in_block = 1; block_ind = 2; next }
-        in_block {
-            ind = indent($0)
-            if ($0 ~ /[^[:space:]]/ && ind <= block_ind) { in_block = 0 }
-        }
-        in_block && indent($0) == block_ind + 2 && $0 ~ "^[[:space:]]+retry:" {
-            sub(/^[[:space:]]+retry:[[:space:]]*/, "")
-            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
-            print; exit
-        }
-    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
-}
+# #2187 / #2439: per-stage `retry:` — template_stage_retry in
+# scripts/lib/stage-retry.sh, which plugin_hook_call loads too.
+# shellcheck source=../../scripts/lib/stage-retry.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-retry.sh"
 
 # ADR-017 §8 (#1252): per-stage `router.tier` OVERRIDE — pins a tier ORDINAL
 # (T0-T4, ADR-003; never a model name) for one stage. Read LAZILY from the loaded

@@ -123,7 +123,7 @@ load_template "$TEST_TEMP_DIR/template.yaml"
 export ZBUILD_CURRENT_STAGE=build
 
 set +e
-route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 10
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO"
 rc=\$?
 set -e
 printf '%s' "\$rc"                              > "$RC_OUT"

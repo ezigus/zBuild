@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
-**Amended:** 2026-10-24 — §7: a signal stops the running stage instead of waiting for it to end. Previously amended 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
+**Amended:** 2026-10-31 (#2439) — §6a: the engine runs ANY stage again, from plugin_hook_call; the default `retry:` is 1; a stage never repeats a model call itself (Amendment at the end). Previously amended 2026-10-24 — §7: a signal stops the running stage instead of waiting for it to end. Previously amended 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
 **Amended:** 2026-09-16 (#2111) — §6: a rate limit observed by the router resolves to `unavailable`, not `throttled`. The engine now enforces `halt_unavailable` on the cycle dispatch path (it was announced only): the run ends `aborted` with `reason=llm_rate_limited` and the reset text under `.rate_limit.message`, state persisted for ADR-050 resume. `throttled` stays in the closed set with no rate-limit emitter. Waiting and retrying re-entered the same limit for five iterations on #1840/#1841, re-verifying an unchanged tree each time.
 **Amended:** 2026-08-23 (#141) — §7: the three-actor table is run-keyed in every row; the **issue** is a second scope, and `release` gains the `always-run` attribute plus a `persist` sibling (ADR-059).
 **Amended:** 2026-08-23 (#1920) — §7: the `release` "deletes nothing" promise scoped to the run's own lifecycle; operator-invoked reclamation (`zbuild cleanup --state-dirs`) named as a third actor with its own clock and guards.
@@ -254,7 +254,7 @@ The rule above — "each word exists only because the engine acts differently on
 | `misconfigured` | the setup is wrong — the operator fixes it | halt |
 | `broken` | a defect in zBuild — file a bug | halt |
 
-- **The word never carries a retry count.** The template's per-stage `retry:` sets it (then `ZBUILD_DISPOSITION_REDISPATCH`, then the engine default 3; capped at 5).
+- **The word never carries a retry count.** The template's per-stage `retry:` sets it (then `ZBUILD_DISPOSITION_REDISPATCH`, then the engine default 3; capped at 5). **(2026-10-31, #2439: the template's `retry:`, else 1; the environment override is gone; see the amendment below.)**
 - **A retry continues from the saved work** (each attempt's outputs are archived, #2183) and is taken only while the last attempt changed one of its declared outputs (#2186's per-attempt record). `interrupted` and `throttled` are exempt: an outside signal or a short rate limit says nothing about the work. When the budget is spent the stage is a failed member and the cycle handles it as before.
 - **A halting word stops the cycle through the existing member-terminal path**, naming the word and the stage's reason. No new exit code: rc stays ∈ {0,1} (§4).
 - A retryable word observed alongside a rate limit on the wire reads as `rate_limited` (#2111).
@@ -496,6 +496,17 @@ Verification: `tests/integration/leaf-verdict-halts-test.sh` (SPEC-1–4, both l
 
 Verification: `tests/unit/v1-retired-test.sh` R1–R7 and `tests/unit/dispatched-stage-plugins-v2-test.sh` G1/G2 (the contract); `tests/integration/leaf-verdict-halts-test.sh` SPEC-5 (a leaf that writes nothing ends the run); `tests/unit/dispatch-rc-guard-test.sh` SPEC-1/SPEC-16 (every guarded engine file at zero — returns and reads); `tests/unit/core-pipeline-cycle-orchestrator-run-test.sh` and `tests/unit/runner-cycle-rc-action-mapping-test.sh` (outcome words and what the runner does with each, `cycle_abort` distinct from `config_invalid`); `tests/unit/abort-propagation-test.sh` (the abort word); `tests/unit/map-strategy-test.sh` (strategy outcomes); `tests/integration/core-orch-contract-test.sh`, `plugins/tool/orch-sequential/tests/orch-sequential-test.sh`, `plugins/tool/orch-mock/tests/orch-mock-test.sh` (`partial`); `tests/unit/contract-validator-enforce-mode-test.sh`, `tests/integration/preflight-contract-templates-test.sh`, `tests/unit/stage-scratch-test.sh` SPEC-1, `tests/unit/core-pipeline-disposition-test.sh` (the helpers).
 
+### Amendment (2026-10-31, #2439) — §6a: the engine owns every retry, for every stage
+
+On #1754 (run 41208786459) build ran 4 times in a row for about 3 hours. Two retries were stacked: inside one build run, the model loop called the model up to 10 times and gave up only after 3 timeouts in a row; then the engine ran the whole stage again, 3 more times. Retries also lived in three places (code defaults, the template, plan's manifest), and only the stages inside a loop were run again at all — `retry:` on plan, intake, pr, the review lenses, release or persist did nothing.
+
+- **One retry, in the engine, for every stage.** Every stage is run through `plugin_hook_call` — in a loop, on its own, side by side, or from the map arm's generated work unit — and that is where the engine runs it again (`stage_retry_next`, `scripts/lib/stage-retry.sh`). A stage dispatched from inside a stage runs once; the outer stage's retry covers it. Each retry is announced as `stage.retry` (the outcome, which try comes next, of how many).
+- **The count is the template's per-stage `retry:`, else 1** (was 3), capped at 5. A number other than 1 is written in the template (simple.yaml and deployed.yaml: design `retry: 2`, build `retry: 2`). `ZBUILD_DISPOSITION_REDISPATCH` is gone.
+- **A stage never repeats a model call itself.** A try is one model call: build and test-author lose their loop of calls (up to 10 and 4), and with it the "3 timeouts in a row" and "2 calls that change nothing" rules. A call that times out ends the try `timed_out`; one that ends without saying it is done ends it `unusable` (reason `no_done_sentinel`). `router.retries`, `router.retry_on_exhaustion` and `router.max_iterations` are refused (template) or unknown (manifest), and their environment overrides are gone.
+- **Progress is one rule for every stage:** a try made progress when the code changed or any declared output other than its narrative summary changed. The engine reads it from the try just made (`_ATTEMPT_LAST_PROGRESS`, `attempt_archive_outputs`), so two members running side by side never read each other's record. A try that changed nothing is not run again, except after `interrupted` or `throttled`.
+
+**Enforced by** `tests/unit/stage-retry-test.sh` R1–R10; `tests/unit/route-one-call-per-try-test.sh` O1–O6; `tests/unit/retired-retry-settings-test.sh` T1–T6; `tests/unit/attempt-progress-test.sh` P1–P5.
+
 ### Amendment (2026-10-13, #2366) — one outcome from one closed list
 
 Every stage gives the engine the same interface. Splitting *what happened* from *what to do about it* was right; letting each stage invent its own verdict words was not. By 2026-10 the manifests declared about 30 verdict words, translated by `verdict_classify` into pass/warn/fail and read raw in several places, and most of them only repeated the disposition (`degraded`, `error`, `unjudged`, design's `incomplete` were always written next to `out_of_turns`, `unusable` or `timed_out`).
@@ -547,6 +558,7 @@ engine must enforce its own ceiling.
 
 ## Enforced by
 
+- §6a amendment 2026-10-31 (#2439: the engine owns every retry, for every stage) → `tests/unit/stage-retry-test.sh` R1–R10; `tests/unit/route-one-call-per-try-test.sh` O1–O6; `tests/unit/retired-retry-settings-test.sh` T1–T6; `tests/unit/attempt-progress-test.sh` P1–P5
 - §7: a second signal during teardown does not cut it short; release finishes and persist
   still runs → `tests/integration/teardown-repeat-signal-test.sh`
 - §11: limit resolution precedence (template > env > 20700), misconfigured validation →

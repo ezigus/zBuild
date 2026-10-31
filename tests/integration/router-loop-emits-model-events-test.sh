@@ -78,7 +78,7 @@ export ZBUILD_SCOPE_OVERRIDE=1
 export PATH="$PATH"
 export ZBUILD_ROUTER_MAX_TURNS=0
 set +e
-route_to_model_loop T2 "$PROMPT1" "$REPO" 5
+route_to_model_loop T2 "$PROMPT1" "$REPO"
 rc=\$?
 set -e
 printf '%s' "\$rc" > "$RC1_OUT"
@@ -140,9 +140,10 @@ assert_eq "[#1730/SPEC-2] model.outcome.cache_creation_input_tokens=10" "10" "$t
 tc1_cost="$(jq -r 'select(.type=="model.outcome") | .data.cost_usd // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1 || true)"
 assert_eq "[#1730/SPEC-2] model.outcome.cost_usd is the provider-reported 0.0012" "0.0012" "$tc1_cost"
 
-# ─── TC-2: 3-iteration loop ─ exactly 3 model.route and 3 model.outcome events ─
-# Stub claude: counts calls via a shared file. Writes a distinct file each
-# iteration (non-empty git diff). Emits LOOP_COMPLETE only on the third call.
+# ─── TC-2: 3 tries ─ exactly 3 model.route and 3 model.outcome events ────────
+# #2439: one call per try, so three calls are three tries (the engine's
+# retries). Stub claude: counts calls via a shared file. Writes a distinct file
+# each call (non-empty git diff). Emits LOOP_COMPLETE only on the third call.
 COUNT2="$TEST_TEMP_DIR/tc2-count"
 : > "$COUNT2"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK2
@@ -183,7 +184,9 @@ export ZBUILD_SCOPE_OVERRIDE=1
 export PATH="$PATH"
 export ZBUILD_ROUTER_MAX_TURNS=0
 set +e
-route_to_model_loop T2 "$PROMPT2" "$REPO" 10
+route_to_model_loop T2 "$PROMPT2" "$REPO"
+route_to_model_loop T2 "$PROMPT2" "$REPO"
+route_to_model_loop T2 "$PROMPT2" "$REPO"
 rc=\$?
 set -e
 printf '%s' "\$rc" > "$RC2_OUT"
@@ -191,20 +194,20 @@ EOF
 bash "$DRIVER2" >/dev/null 2>/dev/null || true
 
 rc2="$(cat "$RC2_OUT" 2>/dev/null || printf 'missing')"
-assert_eq "TC-2: 3-iter loop driver exits 0 (sentinel on iter 3)" "0" "$rc2"
+assert_eq "TC-2: the third try exits 0 (sentinel on call 3)" "0" "$rc2"
 
 iter_count="$(wc -l < "$COUNT2" 2>/dev/null | tr -d ' ' || printf '0')"
 assert_eq "TC-2: stub invoked exactly 3 times" "3" "$iter_count"
 
-print_test_section "SPEC-3: 3-iteration loop emits exactly 3 model.route and 3 model.outcome events"
+print_test_section "SPEC-3: 3 calls emit exactly 3 model.route and 3 model.outcome events"
 
 # [#1730/SPEC-3] Exactly 3 model.route events.
 tc2_route_count="$(jq -c 'select(.type=="model.route")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "[#1730/SPEC-3] exactly 3 model.route events for 3-iteration loop" "3" "$tc2_route_count"
+assert_eq "[#1730/SPEC-3] exactly 3 model.route events for 3 calls" "3" "$tc2_route_count"
 
 # [#1730/SPEC-3] Exactly 3 model.outcome events.
 tc2_outcome_count="$(jq -c 'select(.type=="model.outcome")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "[#1730/SPEC-3] exactly 3 model.outcome events for 3-iteration loop" "3" "$tc2_outcome_count"
+assert_eq "[#1730/SPEC-3] exactly 3 model.outcome events for 3 calls" "3" "$tc2_outcome_count"
 
 # [#1730/SPEC-3] model.outcome count matches cost-ledger row count (3 rows from 3 iterations).
 tc2_ledger_rows="$(wc -l < "$LEDGER2" 2>/dev/null | tr -d ' ' || printf '0')"
@@ -238,7 +241,7 @@ if [[ "$mode" == "sync" ]]; then
     printf '%s' "\$ZBUILD_RUN_ID" > "\$HOME/.zbuild/scope-override-token"
     route_to_model T2 "\$(<"$prompt")" --skip-precondition >/dev/null
 else
-    route_to_model_loop T2 "$prompt" "$REPO" "$max"
+    route_to_model_loop T2 "$prompt" "$REPO"
 fi
 rc=\$?
 set -e
@@ -251,8 +254,8 @@ _count() { jq -c --arg t "$1" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" 2>/dev/
 _rows() { if [[ -f "$1" ]]; then wc -l < "$1" | tr -d ' '; else printf '0'; fi; }
 
 # ─── TC-3: a failed iteration is billed, so it is reported like any other ─────
-# Iteration 1 fails (rc=1) with an envelope that still carries a cost; the
-# router writes a ledger row for it. Iteration 2 succeeds with LOOP_COMPLETE.
+# Try 1's call fails (rc=1) with an envelope that still carries a cost; the
+# router writes a ledger row for it. Try 2's call succeeds with LOOP_COMPLETE.
 COUNT3="$TEST_TEMP_DIR/tc3-count"
 : > "$COUNT3"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK3
@@ -271,6 +274,7 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 : > "$ZBUILD_EVENTS_JSONL"
 PROMPT3="$TEST_TEMP_DIR/tc3-prompt.txt"; printf 'build\n' > "$PROMPT3"
 LEDGER3="$TEST_TEMP_DIR/tc3-ledger.jsonl"
+_drive loop "$PROMPT3" "$LEDGER3" "$TEST_TEMP_DIR/tc3-rc.txt" 5
 _drive loop "$PROMPT3" "$LEDGER3" "$TEST_TEMP_DIR/tc3-rc.txt" 5
 
 print_test_section "SPEC-3: a failed iteration gets its model.outcome, matching its ledger row"

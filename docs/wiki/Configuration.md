@@ -18,7 +18,7 @@ When zBuild calls an AI model, it never asks for a model by name (like "claude-s
 
 Each entry in `config/models.json` declares: `id`, `provider`, `context_window`, input/output and cache pricing, `cache_eligible`, and a routing `weight`.
 
-A template (explained below) can pin a specific tier and per-stage settings like `router.timeout_s`, `router.max_turns`, and `router.retries` for each stage.
+A template (explained below) can pin a specific tier and per-stage settings like `router.timeout_s`, `router.max_turns`, and `retry:` (how many times the engine runs a stage again when it does not finish; 1 when unset) for each stage.
 
 See [[mechanics/router-models-as-data]] for the full routing logic.
 

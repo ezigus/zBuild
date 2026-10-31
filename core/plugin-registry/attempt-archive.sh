@@ -170,7 +170,11 @@ attempt_outputs_fingerprint_v() {
 
 # ─── attempt_archive_outputs <plugin_dir> <state_file> <stage> [rc] [before] ─
 # [before] is attempt_outputs_fingerprint taken before the run hook (#2186).
+# Leaves whether this attempt changed its work in _ATTEMPT_LAST_PROGRESS
+# (true|false; empty when there was nothing to compare): the engine's retry
+# reads it in the same shell (stage_retry_next, #2439).
 attempt_archive_outputs() {
+    _ATTEMPT_LAST_PROGRESS=""
     local plugin_dir="${1:-}" state_file="${2:-}" stage="${3:-}" rc="${4:-}" before="${5:-}"
     [[ -n "$plugin_dir" && -n "$stage" ]] || return 0
     declare -F _registry_resolve_output_path >/dev/null 2>&1 || return 0
@@ -236,11 +240,9 @@ attempt_archive_outputs() {
     local -a _outputs=()
     local _unchanged="" _name _was _now _state _progress="" _after _bn _bs
     if [[ -n "$before" ]]; then
-        # #2252: progress is a change to the WORK. For a repository-writing
-        # stage that is the tree (__repository__); otherwise any declared output
-        # except a narrative summary. A report rewritten every attempt is not it.
-        local _repo_stage=0
-        [[ $'\n'"$before" == *$'\n__repository__\t'* ]] && _repo_stage=1
+        # #2252 / #2439 (ADR-054 §6a): progress is a change to the code
+        # (__repository__) or to any declared output except a narrative
+        # summary, the same for every stage.
         _progress=false
         attempt_outputs_fingerprint_v _after "$plugin_dir" "$state_file" "$before"
         while IFS=$'\t' read -r _name _now; do
@@ -252,16 +254,13 @@ attempt_archive_outputs() {
             if [[ "$_now" == "absent" ]]; then _state="absent"
             elif [[ "$_now" == "$_was" ]]; then _state="unchanged"; _unchanged+="${_unchanged:+,}$_name"
             else _state="changed"; fi
-            if [[ "$_state" == "changed" ]]; then
-                if (( _repo_stage )); then
-                    [[ "$_name" == "__repository__" ]] && _progress=true
-                elif [[ $'\n'"$_summ" != *$'\n'"$_name"$'\n'* ]]; then
-                    _progress=true
-                fi
+            if [[ "$_state" == "changed" && $'\n'"$_summ" != *$'\n'"$_name"$'\n'* ]]; then
+                _progress=true
             fi
             _outputs+=("$_name" "$_state")
         done <<< "$_after"
     fi
+    _ATTEMPT_LAST_PROGRESS="$_progress"
     # One jq for the whole record: the outputs go in as name/state pairs, and
     # the time is jq's own, in UTC as `date -u` gave it.
     jq -n --arg s "$stage" --argjson i "$_iter" --argjson a "$(( _n + 1 ))" \

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# tests/unit/test-author-loop-test.sh — test-author works until it is done, like
-# build (#2225 §3).
+# tests/unit/test-author-loop-test.sh — test-author's model call, like build's
+# (#2225 §3; #2439: one call per try).
 #
 # Why: test-author made ONE model call for the whole contract, and a 15–25 SPEC
 # contract regularly overran it (#1846 twice, #1837 twice on 2026-09-28/29 —
@@ -8,17 +8,17 @@
 # problem: route_to_model_loop keeps calling until the model says it is done,
 # each call with its own time limit, the work committed as it goes.
 #
+# #2439 (ADR-054 §6a): one model call per try; a try that does not finish is
+# run again by the engine (the template's retry:), from the work it committed.
+#
 # Drives the REAL route_to_model_loop with a fake model on PATH that writes one
 # assertion per call.
 #
-# A1 [change] test-author keeps calling until the model says done — a contract
-#             that needs three calls gets three calls, and completes
-# A2 [change] each call starts from what the earlier calls wrote (the work stays
-#             on disk between calls, as build's does — committing between calls
-#             would read as "no progress" to the loop, which measures change
-#             against the last commit)
-# A3 [change] a contract not finished within the loop's calls ends
-#             out_of_turns (from the shared mapping), rc=1, its work committed
+# A1 [change] a call that says it is done is the only call, and the stage passes
+# A2 retired (#2439): there is no second call inside a try to build on the first
+# A3 [change] a call that does not say it is done is the only call: the try
+#             ends unusable (no_done_sentinel, the shared mapping), rc=1, its
+#             work committed for the engine's next try
 # A4 [change] the prompt tells the model to say it is done once every SPEC has
 #             its assertion
 # A6 [change] a loop that cannot start (no model CLI) is misconfigured — not
@@ -90,7 +90,7 @@ jq -n --arg r "$(printf 'done some\n%s' "$last")" '{type:"result",result:$r,usag
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
-# _run <name> <done_at> <max_iterations> — one test-author run in a subshell;
+# _run <name> <done_at> — one test-author run in a subshell;
 # prints the rc. Leaves the state, repo and fake-model records under $TEST_TEMP_DIR/<name>.
 _run() {
     local d="$TEST_TEMP_DIR/$1"
@@ -128,7 +128,7 @@ EOF
         export FAKE_DIR="$d/fake" FAKE_REPO="$d/repo" FAKE_DONE_AT="$2"
         export ZBUILD_STATE_DIR="$d/state" ZBUILD_ARTIFACT_DIR="$d/state/artifacts" ZBUILD_REPO_ROOT="$d/repo"
         export ZBUILD_EVENTS_DIR="$d/events" ZBUILD_EVENTS_JSONL="$d/events/events.jsonl"
-        export ZBUILD_RUN_ID="ta-loop-$$" ZBUILD_CURRENT_STAGE=test-author ZBUILD_ROUTER_MAX_ITERATIONS="$3"
+        export ZBUILD_RUN_ID="ta-loop-$$" ZBUILD_CURRENT_STAGE=test-author
         unset ZBUILD_ISSUE
         source "$REPO_ROOT/core/event-bus/event-bus.sh"
         source "$REPO_ROOT/core/pipeline/template.sh"
@@ -142,14 +142,11 @@ EOF
 _calls() { wc -l < "$TEST_TEMP_DIR/$1/fake/calls" | tr -d ' '; }
 _res() { jq -r "$2 // empty" "$TEST_TEMP_DIR/$1/state/artifacts/test-author-result.json" 2>/dev/null || true; }
 
-print_test_section "A1/A2/A4: a contract that needs three calls"
-_rc1="$(_run a1 3 6)"
-assert_eq "[A1] three calls were made" "3" "$(_calls a1)"
+print_test_section "A1/A4: a call that says it is done"
+_rc1="$(_run a1 1)"
+assert_eq "[A1] one call was made" "1" "$(_calls a1)"
 assert_eq "[A1] ...and the stage passed" "pass" "$(_res a1 .outcome)"
 assert_eq "[A1] rc=0" "0" "$_rc1"
-_seen="$(tr '\n' ' ' < "$TEST_TEMP_DIR/a1/fake/commits-seen")"
-assert_eq "[A2] the work accumulates across calls — after each call the file holds every assertion so far (counts: $_seen)" \
-    "1 2 3 " "$_seen"
 assert_contains "[A4] the prompt says how to finish" "$(cat "$TEST_TEMP_DIR/a1/fake/prompt.1" 2>/dev/null)" "LOOP_COMPLETE"
 
 print_test_section "A5: the author stays blind to the implementation"
@@ -162,22 +159,22 @@ fi
 # A later call sees its own progress in the testfile on disk and in its notes
 # file; the loop adds nothing to the prompt (ADR-067 §8).
 
-print_test_section "A3: not finished within the loop"
-_rc3="$(_run a3 0 2)"
-assert_eq "[A3] the loop's calls were all made" "2" "$(_calls a3)"
+print_test_section "A3: a call that does not say it is done"
+_rc3="$(_run a3 0)"
+assert_eq "[A3] one call was made — not another inside the try" "1" "$(_calls a3)"
 assert_eq "[A3] rc=1" "1" "$_rc3"
-assert_eq "[A3] outcome out_of_turns (the shared mapping)" "out_of_turns" "$(_res a3 .outcome)"
+assert_eq "[A3] outcome unusable (the shared mapping)" "unusable" "$(_res a3 .outcome)"
 assert_eq "[A3] the work is committed" "" "$(git -C "$TEST_TEMP_DIR/a3/repo" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
 
 print_test_section "A9: the reason counts the test files changed"
 assert_contains "[A9] an attempt that wrote its testfile says 1" "$(_res a1 .reason)" "changed 1 test file(s)"
-_rc9="$(ZB_SEEDED=1 FAKE_NOWRITE=1 _run a9 1 3)"
+_rc9="$(ZB_SEEDED=1 FAKE_NOWRITE=1 _run a9 1)"
 assert_eq "[A9] fixture: the rerun passed" "pass" "$(_res a9 .outcome)"
 assert_contains "[A9] a rerun that rewrote nothing says 0" "$(_res a9 .reason)" "changed 0 test file(s)"
 
 print_test_section "A6: a loop that cannot start"
 mkdir -p "$TEST_TEMP_DIR/nobin"
-_rc6="$(ZB_HIDE_CLAUDE=1 _run a6 1 3)"
+_rc6="$(ZB_HIDE_CLAUDE=1 _run a6 1)"
 assert_eq "[A6] no model CLI → rc=1" "1" "$_rc6"
 assert_eq "[A6] ...outcome misconfigured, not unavailable" "misconfigured" "$(_res a6 .outcome)"
 
@@ -194,12 +191,12 @@ _a78="$(
     source "$REPO_ROOT/core/output/stage-io.sh"; source "$REPO_ROOT/core/router/route.sh"
     load_template "$TEST_TEMP_DIR/template.yaml" >/dev/null 2>&1
     P="$TEST_TEMP_DIR/a78-prompt.txt"; printf 'go\n' > "$P"
-    route_to_model_loop T2 "$P" "$FAKE_REPO" 2 >/dev/null 2>&1
+    route_to_model_loop T2 "$P" "$FAKE_REPO" >/dev/null 2>&1
     printf 'first=%s ' "${_ROUTE_LOOP_TERMINATED_REASON:-}"
-    route_to_model_loop T9 "$P" "$FAKE_REPO" 2 >/dev/null 2>&1
+    route_to_model_loop T9 "$P" "$FAKE_REPO" >/dev/null 2>&1
     printf 'badtier=%s ' "${_ROUTE_LOOP_TERMINATED_REASON:-}"
     _route_check_budget() { return 1; }
-    route_to_model_loop T2 "$P" "$FAKE_REPO" 2 >/dev/null 2>&1
+    route_to_model_loop T2 "$P" "$FAKE_REPO" >/dev/null 2>&1
     printf 'budget=%s' "${_ROUTE_LOOP_TERMINATED_REASON:-}"
 )"
 assert_contains "[A8] fixture: the first loop ended done" "$_a78" "first=done_sentinel"

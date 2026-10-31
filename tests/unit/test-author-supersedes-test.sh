@@ -18,8 +18,9 @@
 # S1 [change] acceptance_list_supersedes reads the block: path, tag, why;
 #             absolute and ../ paths are refused; no block → nothing
 # S2 [change] test-author's prompt lists those checks and says to update them
-# S3 [change] ...and may write the files that hold them (they reach the loop's
-#             context paths)
+# S3 retired (#2439): the loop's context paths went with the loop of calls —
+#             they only scoped what a later call was shown; one call per try
+#             has no later call
 # S4 [guard]  with no block, the prompt carries no such section and the
 #             "another tag: never change" rule stands
 # S5 [change] design is told it can declare the block
@@ -96,7 +97,6 @@ _p="$(cat "$TEST_TEMP_DIR/prompt.txt" 2>/dev/null)"
 assert_contains "[S2] the prompt lists the check this change makes wrong" "$_p" "tests/old-test.sh [SPEC-3]"
 assert_contains "[S2] ...with why" "$_p" "is now the v2 result's status key"
 assert_contains "[S2] ...and says to update it to the new behaviour" "$_p" "EXISTING CHECKS THIS CHANGE MAKES WRONG"
-assert_contains "[S3] the file holding it reaches the loop's context paths" "$(cat "$TEST_TEMP_DIR/args.txt" 2>/dev/null)" "tests/old-test.sh"
 if grep -qF '/etc/passwd' <<< "$_p"; then
     assert_fail "[S1] a refused path does not reach the prompt" "$_p"
 else
