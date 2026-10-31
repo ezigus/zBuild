@@ -1,0 +1,6 @@
+[
+  "plugins/agent/intake/tests/intake-result-test.sh",
+  "tests/unit/lint-disposition-words-test.sh",
+  "tests/unit/plugin-primary-output-atomic-test.sh",
+  "tests/unit/stage-signal-test.sh"
+]

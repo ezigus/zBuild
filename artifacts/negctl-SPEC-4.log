@@ -1,0 +1,158 @@
+### SPEC-4 baseline plugins/agent/intake/tests/intake-result-test.sh
+
+[38;2;0;212;255m[1m  plugin: intake — v2 result contract (#1837)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1837/SPEC-4] manifest provides.result_contract == 3
+  [38;2;74;222;128m✓[0m [#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] intake-result.json is in outputs section with primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] scope_manifest does not have primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.timeout_s
+  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.max_turns
+  [38;2;74;222;128m✓[0m [#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden
+  [38;2;74;222;128m✓[0m [#1837/SPEC-8] intake.md is byte-identical to v1 golden
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on success
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] missing state_file returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on missing state_file
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] result_contract == 3
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] one outcome: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] outcome is in the engine's list
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] reason is non-empty
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len equals sanitized goal character count
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count equals number of detected platforms
+  [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
+  [38;2;74;222;128m✓[0m [#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)
+  [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
+  [38;2;74;222;128m✓[0m [#1837/SPEC-13] intake's own events are declared
+  [38;2;74;222;128m✓[0m [#1837/SPEC-14] template value wins over manifest config.router.timeout_s
+  [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
+
+  [38;2;0;212;255mD2: a failed issue fetch with no goal[0m
+  [38;2;74;222;128m✓[0m [D2] a failed fetch with no goal fails the stage
+  [38;2;74;222;128m✓[0m [D2] ...as unavailable: GitHub is not responding
+  [38;2;74;222;128m✓[0m [D2] ...and the reason names GitHub
+
+  [38;2;0;212;255mD3/D4: the goal itself[0m
+  [38;2;74;222;128m✓[0m [D3] no goal and no issue → misconfigured
+  [38;2;74;222;128m✓[0m [D4] a goal that sanitizes to nothing → misconfigured
+
+  [38;2;0;212;255mD6: the caller's TERM handler[0m
+  [38;2;74;222;128m✓[0m [D6] the caller's TERM handler is back after intake returns
+
+  [38;2;0;212;255mD7: a result that cannot be written[0m
+  [38;2;74;222;128m✓[0m [D7] a result that cannot be written fails the stage
+  [38;2;74;222;128m✓[0m [D7] ...and says which file
+
+  [38;2;0;212;255mD8: no fallback path[0m
+  [38;2;74;222;128m✓[0m [D8] no result is written beside the state file
+  [38;2;74;222;128m✓[0m [D8] ...and intake says the engine gave it no artifact dir
+
+  [38;2;0;212;255mD10: a signal after the result is written[0m
+  [38;2;74;222;128m✓[0m [D10] the pass intake wrote is still the result
+
+  [38;2;0;212;255m[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-3] intake-result.json carries outcome=broken
+    [2mexpected: broken, got: pass[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-3] reason names scope-manifest.md
+    [2moutput missing: scope-manifest.md[0m
+
+  [38;2;0;212;255m[#1754/SPEC-4] intake.md write failure → broken + non-zero[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+    [2mexpected: broken, got: pass[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+    [2moutput missing: intake.md[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m6 of 43 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
+  [38;2;248;113;113m✗[0m [#1754/SPEC-3] intake-result.json carries outcome=broken
+  [38;2;248;113;113m✗[0m [#1754/SPEC-3] reason names scope-manifest.md
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+
+### SPEC-4 head plugins/agent/intake/tests/intake-result-test.sh
+
+[38;2;0;212;255m[1m  plugin: intake — v2 result contract (#1837)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1837/SPEC-4] manifest provides.result_contract == 3
+  [38;2;74;222;128m✓[0m [#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] intake-result.json is in outputs section with primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] scope_manifest does not have primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.timeout_s
+  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.max_turns
+  [38;2;74;222;128m✓[0m [#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden
+  [38;2;74;222;128m✓[0m [#1837/SPEC-8] intake.md is byte-identical to v1 golden
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on success
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] missing state_file returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on missing state_file
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] result_contract == 3
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] one outcome: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] outcome is in the engine's list
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] reason is non-empty
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len equals sanitized goal character count
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count equals number of detected platforms
+  [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
+  [38;2;74;222;128m✓[0m [#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)
+  [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
+  [38;2;74;222;128m✓[0m [#1837/SPEC-13] intake's own events are declared
+  [38;2;74;222;128m✓[0m [#1837/SPEC-14] template value wins over manifest config.router.timeout_s
+  [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
+
+  [38;2;0;212;255mD2: a failed issue fetch with no goal[0m
+  [38;2;74;222;128m✓[0m [D2] a failed fetch with no goal fails the stage
+  [38;2;74;222;128m✓[0m [D2] ...as unavailable: GitHub is not responding
+  [38;2;74;222;128m✓[0m [D2] ...and the reason names GitHub
+
+  [38;2;0;212;255mD3/D4: the goal itself[0m
+  [38;2;74;222;128m✓[0m [D3] no goal and no issue → misconfigured
+  [38;2;74;222;128m✓[0m [D4] a goal that sanitizes to nothing → misconfigured
+
+  [38;2;0;212;255mD6: the caller's TERM handler[0m
+  [38;2;74;222;128m✓[0m [D6] the caller's TERM handler is back after intake returns
+
+  [38;2;0;212;255mD7: a result that cannot be written[0m
+  [38;2;74;222;128m✓[0m [D7] a result that cannot be written fails the stage
+  [38;2;74;222;128m✓[0m [D7] ...and says which file
+
+  [38;2;0;212;255mD8: no fallback path[0m
+  [38;2;74;222;128m✓[0m [D8] no result is written beside the state file
+  [38;2;74;222;128m✓[0m [D8] ...and intake says the engine gave it no artifact dir
+
+  [38;2;0;212;255mD10: a signal after the result is written[0m
+  [38;2;74;222;128m✓[0m [D10] the pass intake wrote is still the result
+
+  [38;2;0;212;255m[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] intake-result.json carries outcome=broken
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] reason names scope-manifest.md
+
+  [38;2;0;212;255m[#1754/SPEC-4] intake.md write failure → broken + non-zero[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+    [2mexpected: broken, got: pass[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+    [2moutput missing: intake.md[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 43 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+

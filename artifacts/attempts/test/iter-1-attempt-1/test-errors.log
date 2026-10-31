@@ -1,0 +1,222 @@
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/lint-disposition-words-test.sh
+
+[38;2;0;212;255m[1m  lint-disposition-words — stages write only words the engine knows (#2187)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: an off-set word in a JSON literal[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] lint exits 1
+  [38;2;74;222;128m✓[0m [SPEC-1] it names the word
+  [38;2;74;222;128m✓[0m [SPEC-1] it names file:line
+
+  [38;2;0;212;255mSPEC-2: an off-set word passed to a result-writer[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] lint exits 1
+  [38;2;74;222;128m✓[0m [SPEC-2] it names the word
+
+  [38;2;0;212;255mSPEC-2b: an assignment at the start of a line is read, a longer name is not[0m
+  [38;2;74;222;128m✓[0m [SPEC-2b] lint exits 1 on the line-start assignment
+  [38;2;74;222;128m✓[0m [SPEC-2b] it names that word
+  [38;2;74;222;128m✓[0m [SPEC-2b] a variable that merely contains the name is not read
+
+  [38;2;0;212;255mSPEC-3: set words and computed values pass[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] lint exits 0
+
+  [38;2;0;212;255mSPEC-6 (#2366): a contract-3 outcome passed to the writer[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] a word off the outcome list fails the lint
+  [38;2;74;222;128m✓[0m [SPEC-6] it names the word
+  [38;2;74;222;128m✓[0m [SPEC-6] pass, fail, a disposition word and a computed value pass
+
+  [38;2;0;212;255mSPEC-4: the shipped tree[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] the shipped plugins/ tree passes
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] …having found literal words to check (non-vacuous)
+
+  [38;2;0;212;255mSPEC-5: wiring[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] npm run lint runs it
+  [38;2;74;222;128m✓[0m [SPEC-5] the CI Lint job runs it
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 16 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-4] the shipped plugins/ tree passes
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/plugin-primary-output-atomic-test.sh
+
+[38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
+
+  [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
+  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint names the violating line in its output
+
+  [38;2;0;212;255m[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
+
+  [38;2;0;212;255m[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
+
+  [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+    [2mmissing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/core/state/resume.sh:80 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/core/output/stage-io.sh:637 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/build/lib/secrets.sh:172 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:72 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:96 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:101[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 29 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/stage-signal-test.sh
+
+[38;2;0;212;255m[1m  stop-reason words chosen once: the signal helper and its lints (#2225 §2)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mG1/G2: the helper[0m
+  [38;2;74;222;128m✓[0m [G1] a TERM runs the callback with interrupted / signal_interrupt
+  [38;2;74;222;128m✓[0m [G2] the caller's own TERM handler is back afterwards
+
+  [38;2;0;212;255mG6: no nesting[0m
+  [38;2;74;222;128m✓[0m [G6] a nested begin is refused
+  [38;2;74;222;128m✓[0m [G6] ...and the caller's handler is still restored
+
+  [38;2;0;212;255mG3: lint-stage-signals[0m
+  [38;2;74;222;128m✓[0m [G3] a raw TERM/INT trap in a plugin is refused
+  [38;2;74;222;128m✓[0m [G3] the helper passes
+  [38;2;74;222;128m✓[0m [G3] an annotated trap passes
+
+  [38;2;0;212;255mG4: lint-disposition-words and unavailable[0m
+  [38;2;74;222;128m✓[0m [G4] an unexplained unavailable is refused
+  [38;2;74;222;128m✓[0m [G4] an annotated unavailable passes
+
+  [38;2;0;212;255mG5: the real tree[0m
+  [38;2;74;222;128m✓[0m [G5] every plugin's signal handling uses the helper
+  [38;2;248;113;113m✗[0m [G5] every literal unavailable names its service
+    [2mexpected: 0, got: 1[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 11 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [G5] every literal unavailable names its service
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/intake/tests/intake-result-test.sh
+
+[38;2;0;212;255m[1m  plugin: intake — v2 result contract (#1837)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1837/SPEC-4] manifest provides.result_contract == 3
+  [38;2;74;222;128m✓[0m [#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] intake-result.json is in outputs section with primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] scope_manifest does not have primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.timeout_s
+  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.max_turns
+  [38;2;74;222;128m✓[0m [#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden
+  [38;2;74;222;128m✓[0m [#1837/SPEC-8] intake.md is byte-identical to v1 golden
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on success
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] missing state_file returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on missing state_file
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] result_contract == 3
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] one outcome: no verdict or disposition field
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] outcome is in the engine's list
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] reason is non-empty
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len equals sanitized goal character count
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count equals number of detected platforms
+  [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
+  [38;2;74;222;128m✓[0m [#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)
+  [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
+  [38;2;74;222;128m✓[0m [#1837/SPEC-13] intake's own events are declared
+  [38;2;74;222;128m✓[0m [#1837/SPEC-14] template value wins over manifest config.router.timeout_s
+  [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
+
+  [38;2;0;212;255mD2: a failed issue fetch with no goal[0m
+  [38;2;74;222;128m✓[0m [D2] a failed fetch with no goal fails the stage
+  [38;2;74;222;128m✓[0m [D2] ...as unavailable: GitHub is not responding
+  [38;2;74;222;128m✓[0m [D2] ...and the reason names GitHub
+
+  [38;2;0;212;255mD3/D4: the goal itself[0m
+  [38;2;74;222;128m✓[0m [D3] no goal and no issue → misconfigured
+  [38;2;74;222;128m✓[0m [D4] a goal that sanitizes to nothing → misconfigured
+
+  [38;2;0;212;255mD6: the caller's TERM handler[0m
+  [38;2;74;222;128m✓[0m [D6] the caller's TERM handler is back after intake returns
+
+  [38;2;0;212;255mD7: a result that cannot be written[0m
+  [38;2;74;222;128m✓[0m [D7] a result that cannot be written fails the stage
+  [38;2;74;222;128m✓[0m [D7] ...and says which file
+
+  [38;2;0;212;255mD8: no fallback path[0m
+  [38;2;74;222;128m✓[0m [D8] no result is written beside the state file
+  [38;2;74;222;128m✓[0m [D8] ...and intake says the engine gave it no artifact dir
+
+  [38;2;0;212;255mD10: a signal after the result is written[0m
+  [38;2;74;222;128m✓[0m [D10] the pass intake wrote is still the result
+
+  [38;2;0;212;255m[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] intake-result.json carries outcome=broken
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] reason names scope-manifest.md
+
+  [38;2;0;212;255m[#1754/SPEC-4] intake.md write failure → broken + non-zero[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+    [2mexpected: broken, got: pass[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+    [2moutput missing: intake.md[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 43 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh && bash scripts/lib/lint-atomic-write-unchecked.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 44 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: OK — no grep -c || echo occurrences in scripts/ core/ plugins/ tests/
+lint-test-identity: OK — no real issue number used as test identity
+lint-llm-envelope: OK — 57 plugin source(s) checked, no markdown-document envelope fields
+lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
+lint-silenced-redirect: clean
+lint-test-errexit: clean
+lint-disposition-words: tool/test/plugin.sh:1209 writes outcome 'is', which the engine does not know
+lint-disposition-words: 1 problem(s) among 41 literal disposition(s) — an off-set word, or an unexplained 'unavailable'; the set is: complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken
