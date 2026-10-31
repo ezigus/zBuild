@@ -1240,7 +1240,8 @@ setup_git_master_origin() {
 #
 # Usage: install_template_overlay <repo> <id> [<id> ...]
 # install_simple_loop_continue <repo> — overlay template `simple-loop-continue`:
-# the shipped simple.yaml with delivery_loop set to on_max: continue.
+# the shipped simple.yaml with delivery_loop set to on_max: continue, and without
+# its stop_run_on_fail (which ends the run when the build loop does not pass).
 # #2241: simple.yaml's outer loop is on_max: halt, and the runner honours it.
 # Tests whose subject is the CONTINUE path past an exhausted loop (#766, #1217)
 # drive this instead — generated from the real template at test time, so it
@@ -1254,6 +1255,7 @@ install_simple_loop_continue() {
         /^delivery_loop:/ { in_dl = 1; print; next }
         in_dl && /^[a-z_-]+:/ { in_dl = 0 }
         in_dl && /^  on_max: halt$/ { print "  on_max: continue"; next }
+        in_dl && /^  stop_run_on_fail:/ { next }
         { print }
     ' "$_src_root/config/templates/simple.yaml" > "$_repo/.zbuild/templates/simple-loop-continue.yaml"
     grep -q '^id: simple-loop-continue$' "$_repo/.zbuild/templates/simple-loop-continue.yaml" || return 1
