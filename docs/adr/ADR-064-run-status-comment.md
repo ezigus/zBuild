@@ -220,11 +220,12 @@ whose summary says whether every member finished (ADR-047 amendment 2026-10-29).
 
 #1754's run (41138244027) was killed at GitHub's 360-minute job limit. A killed job keeps no log and runs
 none of its later steps, so its files and events were lost and the comment could not say how it ended.
-The Run pipeline step now has its own limit, 330 minutes (`timeout-minutes`), and the comment's ceiling is
-that limit (`ZBUILD_STATUS_CEILING_MIN: "330"` on the job). At the limit GitHub signals the runner, which
-saves what it can, and the steps after it — push the work branch, upload the artifacts, finish the comment
-— run on `always()`. GitHub gives a stopped step about 10 seconds before it kills it, so the runner's own
-save may be cut short; the upload still carries the state directory, events included.
+zbuild now stops itself well before GitHub does: the Run pipeline step runs it under
+`timeout --signal=TERM --kill-after=15m 315m`, so at 315 minutes it takes its interrupted path — the one a
+cancel takes — and saves its state, events and status comment, with up to 15 more minutes before it can
+be killed. The step's own limit (`timeout-minutes: 340`) is only a backstop, and the steps after it —
+push the work branch, upload the artifacts, finish the comment — then have 20 minutes, on `always()`. The
+comment's ceiling is when zbuild stops (`ZBUILD_STATUS_CEILING_MIN: "315"` on the job).
 
 ## Enforced by
 
@@ -242,5 +243,5 @@ save may be cut short; the upload still carries the state directory, events incl
 - §7 → `tests/unit/run-status-comment-gh-test.sh`; `tests/unit/cli-status-comment-test.sh`
 - Amendment #2145 → `tests/unit/run-status-comment-render-test.sh`
 - Amendment #2154 → `tests/unit/run-status-comment-render-test.sh` SPEC-9
-- Amendment 2026-10-31 (the run stops before GitHub does) → `tests/unit/ci-stop-before-github-test.sh` C1–C3
+- Amendment 2026-10-31 (the run stops before GitHub does) → `tests/unit/ci-stop-before-github-test.sh` C1–C4
 - Amendment 2026-10-29 (a map member has its own row) → `tests/integration/map-members-reported-test.sh` MR1–MR4, MR6
