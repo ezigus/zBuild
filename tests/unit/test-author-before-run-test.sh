@@ -23,6 +23,10 @@
 #             requirements whose tag it already holds
 # B7 [change] the prompt says that when every requirement already has its test
 #             and no finding is open, it confirms them and finishes
+# B8 [change] a test path that leaves the repository (absolute, or with ..) is
+#             never copied or run (review on #2446)
+# B9 [guard]  a changed [no-code] test that passes on the old code is no
+#             finding: it need not fail there (review on #2446)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -129,6 +133,34 @@ assert_contains "[B4] a file that stops before its assertion runs is a finding" 
 # touch it; a-test.sh is unchanged by the call (seeded empty, "same").
 WRITE=(same); _run
 assert_eq "[B5] files the call left as they were are not run: no finding" "pass" "$OUTCOME"
+
+# ── B9 ───────────────────────────────────────────────────────────────────────
+# The call changes b-test.sh, a [no-code] requirement's test that passes on the
+# old code, as it may; a-test.sh fails there, as it must.
+route_to_model_loop() {
+    local n; n=$(( $(cat "$TEST_TEMP_DIR/author-calls" 2>/dev/null || echo 0) + 1 ))
+    printf '%s' "$n" > "$TEST_TEMP_DIR/author-calls"
+    _body fails "$T1" > "$R/tests/a-test.sh"
+    { _body passes "$T2"; printf '# changed\n'; } > "$R/tests/b-test.sh"
+    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"; _ROUTE_LOOP_LAST_RESPONSE="LOOP_COMPLETE"; return 0
+}
+_run
+assert_eq "[B9] a changed [no-code] test passing on the old code is no finding" "pass" "$OUTCOME"
+
+# ── B8 ───────────────────────────────────────────────────────────────────────
+OUTSIDE="$TEST_TEMP_DIR/outside-test.sh"
+printf '#!/usr/bin/env bash\ntouch "%s.ran"\n' "$OUTSIDE" > "$OUTSIDE"
+_d8="$TEST_TEMP_DIR/b8"; mkdir -p "$_d8/repo"
+( cd "$_d8/repo" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
+    && : > seed && git add -A && git commit -q -m seed ) >/dev/null 2>&1
+cp "$OUTSIDE" "$_d8/outside-test.sh"
+printf '```acceptance\nSPEC-1[code]: x\nTESTFILES:\nSPEC-1: ../outside-test.sh\n```\n' > "$_d8/design.md"
+(
+    acceptance_list_testfiles() { printf '../outside-test.sh\n'; }
+    acceptance_list_testfiles_for_spec() { printf '../outside-test.sh\n'; }
+    _ta_before_run "$_d8/design.md" "$_d8/repo" ""
+) >/dev/null 2>&1
+assert_file_not_exists "[B8] a test path outside the repository is never run" "$OUTSIDE.ran"
 
 cleanup_test_env
 print_test_results

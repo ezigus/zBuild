@@ -21,7 +21,8 @@
 #             cannot open the code
 # I6 [change] a call that fails ends intake with that call's outcome, so the
 #             engine can run it again; no list is written
-# I7 [change] checkbox scraping is gone: no code reads `- [ ]` lines any more
+# I7 [change] checkbox scraping is gone: an issue of checkboxes gets exactly the
+#             model's list
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,11 +95,13 @@ assert_eq "[I6] a call that times out ends intake timed_out" "timed_out" "$OUTCO
 assert_file_not_exists "[I6] ...and no list is written" "$_REQ"
 
 # ── I7 ───────────────────────────────────────────────────────────────────────
-if grep -rqE '\\\[\[ xX\]\\\]|\[ xX\]' "$REPO_ROOT/plugins/agent/intake/lib/requirements.sh" 2>/dev/null; then
-    assert_fail "[I7] no code reads checkbox lines any more" "requirements.sh still matches checkboxes"
-else
-    assert_pass "[I7] no code reads checkbox lines any more"
-fi
+# Behaviour, not text: an issue made only of checkboxes gets exactly the list
+# the model wrote — nothing scraped from the body joins it (review on #2446).
+_set_gh_mock "Checkbox issue" $'- [ ] first box\n- [x] second box' 0
+WRITE_REPLY='REQUIREMENT: what the model read'; CHECK_REPLY='MISSING: none'
+_intake
+assert_eq "[I7] the list is the model's alone; no checkbox is scraped into it" "what the model read" \
+    "$(jq -r '[.requirements[].text] | join("|")' "$_REQ" 2>/dev/null || echo MISSING)"
 
 cleanup_test_env
 print_test_results

@@ -26,7 +26,9 @@ _ta_testfile_sums_v() {
     local -n _tts="$1"; _tts=""
     local tf sum
     while IFS= read -r tf; do
-        [[ -n "$tf" ]] || continue
+        # Only a path inside the repository is ever summed, copied or run
+        # (review on #2446): the same rule design's checks apply.
+        [[ -n "$tf" && "$tf" != /* && "/$tf/" != *"/../"* ]] || continue
         if [[ -f "$3/$tf" ]]; then sum="$(cksum 2>/dev/null < "$3/$tf" || printf 'absent')"; else sum="absent"; fi
         _tts+="$tf"$'\t'"$sum"$'\n'
     done < <(acceptance_list_testfiles "$2" 2>/dev/null || true)
