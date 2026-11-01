@@ -2,6 +2,59 @@
 
 ---
 
+## Round 13 — final validation (current run)
+
+### Test file state confirmed by live runs
+
+| File | Result |
+|------|--------|
+| tests/unit/test-plugin-result-write-fallback-test.sh | 45/45 pass (SPEC-1 ✓) |
+| tests/unit/test-result-reason-contract-test.sh | 22/22 pass (SPEC-2 ✓) |
+| plugins/agent/intake/tests/intake-result-test.sh | 40/43 pass; SPEC-3 ✓; SPEC-4 fails 3 assertions — test-first |
+| tests/unit/plugin-primary-output-atomic-test.sh | 33/33 pass (SPEC-5,6,7,8 ✓) |
+
+### Finding answers
+
+**test-author finding 1** (SPEC-5 fixture has no shebang):
+The current file has `#!/usr/bin/env bash` as line 1 of the fixture heredoc, placing
+atomic_write on fixture line 4. The assertion checks `:4`. Fixed in a prior round; nothing
+to change.
+
+**test finding 1** (SPEC-4 returns 0):
+Test-first. The implementation hasn't added PIPESTATUS checking for intake.md. The test
+correctly fails for the right reason and will pass once the code is written.
+
+**acceptance-gate finding 1** (SPEC-1/SPEC-2 pass on old code):
+Likely a pipeline artifact: finding 4 confirms the revert of plugins/tool/test/plugin.sh
+(the implementation file both SPECs depend on) timed out. If the revert didn't complete,
+the acceptance-gate tested the new code as "old code". The test logic is sound:
+- SPEC-1: old code → stage_result_add merges "pass" → outcome=pass → assertion expects
+  "broken" → FAILS on old code ✓
+- SPEC-2: old code → stale "pass" file left intact → disposition returns "complete" →
+  assertion expects "broken" → FAILS on old code ✓
+Nothing to change.
+
+**acceptance-gate finding 2** (SPEC-4 fails on new code):
+Test-first. Correct.
+
+**acceptance-gate finding 3** (SPEC-5/6/7 timeout):
+Pipeline issue. Nothing to change.
+
+**acceptance-gate finding 4** (file revert timeout):
+Pipeline issue. Explains why finding 1 is unreliable. Nothing to change.
+
+**issue-acceptance finding 1** (SPEC-4 implementation not done):
+Implementation is not my responsibility. SPEC-4 test is correctly written and fails for
+the right reason.
+
+**issue-acceptance finding 2** (SPEC-2 uses disposition not verdict):
+The requirement text for SPEC-2 explicitly says "runner_read_stage_disposition returns
+broken (not complete)". The issue-acceptance finding incorrectly identifies the function
+as `runner_read_stage_verdict`. The test uses `runner_read_stage_disposition` and asserts
+"broken" — exactly what the SPEC requires. Nothing to change.
+
+---
+
 ## Round 12 — SPEC-2 disposition assertion (current run)
 
 ### Checker finding addressed
