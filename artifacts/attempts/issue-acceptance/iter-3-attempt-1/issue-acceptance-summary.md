@@ -1,0 +1,5 @@
+## issue-acceptance — pass
+
+- All three behavioral requirements—R1 (test-plugin fallback writes `outcome=broken`), R2 (intake exits non-zero and names the failing file), and R3 (lint catches unchecked `| atomic_write`)—are verified by 836 passing assertions with zero failures; the test-stage verdict of fail is caused solely by `plugin-primary-output-atomic-test.sh` taking 150–210 s (more than 2× the 72 s baseline), which is a pipeline-level performance finding that no stated issue requirement covers.
+
+- every requirement the issue states is met by the change
