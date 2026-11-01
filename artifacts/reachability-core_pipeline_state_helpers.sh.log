@@ -1,140 +1,252 @@
-### core/pipeline/state_helpers.sh reverted plugins/agent/intake/tests/intake-result-test.sh
+### core/pipeline/state_helpers.sh reverted tests/unit/test-plugin-result-write-fallback-test.sh
 
-[38;2;0;212;255m[1m  plugin: intake — v2 result contract (#1837)[0m
+[38;2;0;212;255m[1m  test-plugin _test_write_result defensive fallback (#626)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m [#1837/SPEC-4] manifest provides.result_contract == 3
-  [38;2;74;222;128m✓[0m [#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts
-  [38;2;74;222;128m✓[0m [#1837/SPEC-6] intake-result.json is in outputs section with primary: true
-  [38;2;74;222;128m✓[0m [#1837/SPEC-6] scope_manifest does not have primary: true
-  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.timeout_s
-  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.max_turns
-  [38;2;74;222;128m✓[0m [#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden
-  [38;2;74;222;128m✓[0m [#1837/SPEC-8] intake.md is byte-identical to v1 golden
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on success
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
-  [38;2;74;222;128m✓[0m [#1837/SPEC-1] missing state_file returns rc=1
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on missing state_file
-  [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] result_contract == 3
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] one outcome: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] outcome is in the engine's list
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] reason is non-empty
-  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len equals sanitized goal character count
-  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count equals number of detected platforms
-  [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
-  [38;2;74;222;128m✓[0m [#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)
-  [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
-  [38;2;74;222;128m✓[0m [#1837/SPEC-13] intake's own events are declared
-  [38;2;74;222;128m✓[0m [#1837/SPEC-14] template value wins over manifest config.router.timeout_s
-  [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
 
-  [38;2;0;212;255mD2: a failed issue fetch with no goal[0m
-  [38;2;74;222;128m✓[0m [D2] a failed fetch with no goal fails the stage
-  [38;2;74;222;128m✓[0m [D2] ...as unavailable: GitHub is not responding
-  [38;2;74;222;128m✓[0m [D2] ...and the reason names GitHub
+  [38;2;0;212;255m1. whitespace in passed slot triggers fallback[0m
+  [38;2;74;222;128m✓[0m ws-passed: results file written
+  [38;2;74;222;128m✓[0m ws-passed: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-passed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-passed: .data.passed sanitized to null
 
-  [38;2;0;212;255mD3/D4: the goal itself[0m
-  [38;2;74;222;128m✓[0m [D3] no goal and no issue → misconfigured
-  [38;2;74;222;128m✓[0m [D4] a goal that sanitizes to nothing → misconfigured
+  [38;2;0;212;255m2. non-numeric failed slot triggers sanitizer[0m
+  [38;2;74;222;128m✓[0m abc-failed: results file written
+  [38;2;74;222;128m✓[0m abc-failed: results file is valid JSON
+  [38;2;74;222;128m✓[0m abc-failed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m abc-failed: .data.failed sanitized to null
 
-  [38;2;0;212;255mD6: the caller's TERM handler[0m
-  [38;2;74;222;128m✓[0m [D6] the caller's TERM handler is back after intake returns
+  [38;2;0;212;255m3. control-char test_output is accepted, JSON still valid[0m
+  [38;2;74;222;128m✓[0m ctl-output: results file written
+  [38;2;74;222;128m✓[0m ctl-output: results file is valid JSON
+  [38;2;74;222;128m✓[0m ctl-output: no jq error leaked to stderr
 
-  [38;2;0;212;255mD7: a result that cannot be written[0m
-  [38;2;74;222;128m✓[0m [D7] a result that cannot be written fails the stage
-  [38;2;74;222;128m✓[0m [D7] ...and says which file
+  [38;2;0;212;255m4. embedded quotes/backticks in test_cmd survive[0m
+  [38;2;74;222;128m✓[0m quotes: results file written
+  [38;2;74;222;128m✓[0m quotes: results file is valid JSON
+  [38;2;74;222;128m✓[0m quotes: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m quotes: .test_cmd round-trips
 
-  [38;2;0;212;255mD8: no fallback path[0m
-  [38;2;74;222;128m✓[0m [D8] no result is written beside the state file
-  [38;2;74;222;128m✓[0m [D8] ...and intake says the engine gave it no artifact dir
+  [38;2;0;212;255m5. non-bool diff_applied is sanitized to false[0m
+  [38;2;74;222;128m✓[0m bad-bool: results file written
+  [38;2;74;222;128m✓[0m bad-bool: results file is valid JSON
+  [38;2;74;222;128m✓[0m bad-bool: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m bad-bool: .data.diff_applied sanitized to false
 
-  [38;2;0;212;255mD10: a signal after the result is written[0m
-  [38;2;74;222;128m✓[0m [D10] the pass intake wrote is still the result
+  [38;2;0;212;255m6. whitespace exit_code is sanitized to null[0m
+  [38;2;74;222;128m✓[0m ws-exit: results file written
+  [38;2;74;222;128m✓[0m ws-exit: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-exit: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-exit: .data.exit_code sanitized to null
 
-  [38;2;0;212;255m[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] intake-result.json carries outcome=broken
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] reason names scope-manifest.md
+  [38;2;0;212;255m7. happy path (no regression)[0m
+  [38;2;74;222;128m✓[0m happy: results file written
+  [38;2;74;222;128m✓[0m happy: results file is valid JSON
+  [38;2;74;222;128m✓[0m happy: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m happy: .verdict
+  [38;2;74;222;128m✓[0m happy: .data.exit_code
+  [38;2;74;222;128m✓[0m happy: .data.passed
+  [38;2;74;222;128m✓[0m happy: .data.diff_applied
+  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level, agreeing with data.run_mode
 
-  [38;2;0;212;255m[#1754/SPEC-4] intake.md write failure → broken + non-zero[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
-  [38;2;74;222;128m✓[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
-  [38;2;74;222;128m✓[0m [#1754/SPEC-4] reason names intake.md
+  [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
+  [38;2;74;222;128m✓[0m forced-fail: results file written
+  [38;2;74;222;128m✓[0m forced-fail: fallback JSON is parseable
+  [38;2;74;222;128m✓[0m forced-fail: .reason=result_write_failed
+  [38;2;74;222;128m✓[0m forced-fail: .outcome=broken (#2366)
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback: .result_contract=3
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback: .outcome=broken
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback carries the same top-level mirrors as the normal path
+  [38;2;74;222;128m✓[0m forced-fail: test.result_write.fallback event emitted
+
+  [38;2;0;212;255m9. test.result_write.fallback declared by the test plugin's manifest[0m
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback declared in provides.events
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback is in the composed known set
+
+  [38;2;0;212;255m[#1754/SPEC-1] jq succeeds, primary atomic_write fails → broken fallback[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] result file exists after fallback write
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] fallback result is valid JSON
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes outcome=broken
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes reason=result_write_failed
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 43 tests passed[0m
+  [38;2;74;222;128m[1mAll 45 tests passed[0m
 
-### core/pipeline/state_helpers.sh head plugins/agent/intake/tests/intake-result-test.sh
+### core/pipeline/state_helpers.sh head tests/unit/test-plugin-result-write-fallback-test.sh
 
-[38;2;0;212;255m[1m  plugin: intake — v2 result contract (#1837)[0m
+[38;2;0;212;255m[1m  test-plugin _test_write_result defensive fallback (#626)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m [#1837/SPEC-4] manifest provides.result_contract == 3
-  [38;2;74;222;128m✓[0m [#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts
-  [38;2;74;222;128m✓[0m [#1837/SPEC-6] intake-result.json is in outputs section with primary: true
-  [38;2;74;222;128m✓[0m [#1837/SPEC-6] scope_manifest does not have primary: true
-  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.timeout_s
-  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.max_turns
-  [38;2;74;222;128m✓[0m [#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden
-  [38;2;74;222;128m✓[0m [#1837/SPEC-8] intake.md is byte-identical to v1 golden
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on success
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
-  [38;2;74;222;128m✓[0m [#1837/SPEC-1] missing state_file returns rc=1
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on missing state_file
-  [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] result_contract == 3
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] one outcome: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] outcome is in the engine's list
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] reason is non-empty
-  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len equals sanitized goal character count
-  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count equals number of detected platforms
-  [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
-  [38;2;74;222;128m✓[0m [#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)
-  [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
-  [38;2;74;222;128m✓[0m [#1837/SPEC-13] intake's own events are declared
-  [38;2;74;222;128m✓[0m [#1837/SPEC-14] template value wins over manifest config.router.timeout_s
-  [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
 
-  [38;2;0;212;255mD2: a failed issue fetch with no goal[0m
-  [38;2;74;222;128m✓[0m [D2] a failed fetch with no goal fails the stage
-  [38;2;74;222;128m✓[0m [D2] ...as unavailable: GitHub is not responding
-  [38;2;74;222;128m✓[0m [D2] ...and the reason names GitHub
+  [38;2;0;212;255m1. whitespace in passed slot triggers fallback[0m
+  [38;2;74;222;128m✓[0m ws-passed: results file written
+  [38;2;74;222;128m✓[0m ws-passed: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-passed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-passed: .data.passed sanitized to null
 
-  [38;2;0;212;255mD3/D4: the goal itself[0m
-  [38;2;74;222;128m✓[0m [D3] no goal and no issue → misconfigured
-  [38;2;74;222;128m✓[0m [D4] a goal that sanitizes to nothing → misconfigured
+  [38;2;0;212;255m2. non-numeric failed slot triggers sanitizer[0m
+  [38;2;74;222;128m✓[0m abc-failed: results file written
+  [38;2;74;222;128m✓[0m abc-failed: results file is valid JSON
+  [38;2;74;222;128m✓[0m abc-failed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m abc-failed: .data.failed sanitized to null
 
-  [38;2;0;212;255mD6: the caller's TERM handler[0m
-  [38;2;74;222;128m✓[0m [D6] the caller's TERM handler is back after intake returns
+  [38;2;0;212;255m3. control-char test_output is accepted, JSON still valid[0m
+  [38;2;74;222;128m✓[0m ctl-output: results file written
+  [38;2;74;222;128m✓[0m ctl-output: results file is valid JSON
+  [38;2;74;222;128m✓[0m ctl-output: no jq error leaked to stderr
 
-  [38;2;0;212;255mD7: a result that cannot be written[0m
-  [38;2;74;222;128m✓[0m [D7] a result that cannot be written fails the stage
-  [38;2;74;222;128m✓[0m [D7] ...and says which file
+  [38;2;0;212;255m4. embedded quotes/backticks in test_cmd survive[0m
+  [38;2;74;222;128m✓[0m quotes: results file written
+  [38;2;74;222;128m✓[0m quotes: results file is valid JSON
+  [38;2;74;222;128m✓[0m quotes: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m quotes: .test_cmd round-trips
 
-  [38;2;0;212;255mD8: no fallback path[0m
-  [38;2;74;222;128m✓[0m [D8] no result is written beside the state file
-  [38;2;74;222;128m✓[0m [D8] ...and intake says the engine gave it no artifact dir
+  [38;2;0;212;255m5. non-bool diff_applied is sanitized to false[0m
+  [38;2;74;222;128m✓[0m bad-bool: results file written
+  [38;2;74;222;128m✓[0m bad-bool: results file is valid JSON
+  [38;2;74;222;128m✓[0m bad-bool: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m bad-bool: .data.diff_applied sanitized to false
 
-  [38;2;0;212;255mD10: a signal after the result is written[0m
-  [38;2;74;222;128m✓[0m [D10] the pass intake wrote is still the result
+  [38;2;0;212;255m6. whitespace exit_code is sanitized to null[0m
+  [38;2;74;222;128m✓[0m ws-exit: results file written
+  [38;2;74;222;128m✓[0m ws-exit: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-exit: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-exit: .data.exit_code sanitized to null
 
-  [38;2;0;212;255m[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] intake-result.json carries outcome=broken
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] reason names scope-manifest.md
+  [38;2;0;212;255m7. happy path (no regression)[0m
+  [38;2;74;222;128m✓[0m happy: results file written
+  [38;2;74;222;128m✓[0m happy: results file is valid JSON
+  [38;2;74;222;128m✓[0m happy: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m happy: .verdict
+  [38;2;74;222;128m✓[0m happy: .data.exit_code
+  [38;2;74;222;128m✓[0m happy: .data.passed
+  [38;2;74;222;128m✓[0m happy: .data.diff_applied
+  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level, agreeing with data.run_mode
 
-  [38;2;0;212;255m[#1754/SPEC-4] intake.md write failure → broken + non-zero[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
-  [38;2;74;222;128m✓[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
-  [38;2;74;222;128m✓[0m [#1754/SPEC-4] reason names intake.md
+  [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
+  [38;2;74;222;128m✓[0m forced-fail: results file written
+  [38;2;74;222;128m✓[0m forced-fail: fallback JSON is parseable
+  [38;2;74;222;128m✓[0m forced-fail: .reason=result_write_failed
+  [38;2;74;222;128m✓[0m forced-fail: .outcome=broken (#2366)
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback: .result_contract=3
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback: .outcome=broken
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback carries the same top-level mirrors as the normal path
+  [38;2;74;222;128m✓[0m forced-fail: test.result_write.fallback event emitted
+
+  [38;2;0;212;255m9. test.result_write.fallback declared by the test plugin's manifest[0m
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback declared in provides.events
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback is in the composed known set
+
+  [38;2;0;212;255m[#1754/SPEC-1] jq succeeds, primary atomic_write fails → broken fallback[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] result file exists after fallback write
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] fallback result is valid JSON
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes outcome=broken
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes reason=result_write_failed
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 43 tests passed[0m
+  [38;2;74;222;128m[1mAll 45 tests passed[0m
+
+### core/pipeline/state_helpers.sh reverted tests/unit/test-result-reason-contract-test.sh
+
+[38;2;0;212;255m[1m  test plugin — mandatory v2 reason (#2050)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 — a red suite is a failing stage, not a broken one[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] failing suite writes a non-empty reason (got: 1 of 671 tests failed)
+  [38;2;74;222;128m✓[0m [SPEC-1] the reader classifies a red suite as fail, not error
+  [38;2;74;222;128m✓[0m [SPEC-1] no contract violation is emitted for a red suite
+
+  [38;2;0;212;255mSPEC-2 — a green suite is a passing stage[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] passing suite writes a non-empty reason (got: 671 of 671 tests passed)
+  [38;2;74;222;128m✓[0m [SPEC-2] the reader classifies a green suite as pass
+  [38;2;74;222;128m✓[0m [SPEC-2] no contract violation is emitted for a green suite
+
+  [38;2;0;212;255mSPEC-3 — the derived reason carries the counts[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] a red suite's reason names failed-of-total
+  [38;2;74;222;128m✓[0m [SPEC-3] a green suite's reason names passed-of-total
+
+  [38;2;0;212;255mSPEC-7 — stripping the reason reproduces the halt[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a result with no reason is classified error
+  [38;2;74;222;128m✓[0m [SPEC-7] a result with no reason emits one contract violation
+  [38;2;74;222;128m✓[0m [SPEC-7] an empty-string reason is classified error too
+
+  [38;2;0;212;255mSPEC-4 (guard) — an explicit reason still wins[0m
+  [38;2;74;222;128m✓[0m [SPEC-4 guard] explicit reason 'silent_failure' is preserved verbatim
+  [38;2;74;222;128m✓[0m [SPEC-4 guard] explicit reason 'summary_unavailable' is preserved verbatim
+
+  [38;2;0;212;255mSPEC-5 — a sanitized write still carries a reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] the result is valid JSON under adversarial input
+  [38;2;74;222;128m✓[0m [SPEC-5] a sanitized write carries a non-empty reason
+
+  [38;2;0;212;255mSPEC-6 (guard) — every mandatory field is present (#2366: contract 3)[0m
+  [38;2;74;222;128m✓[0m [SPEC-6 guard] 'outcome' is present and non-empty
+  [38;2;74;222;128m✓[0m [SPEC-6 guard] 'reason' is present and non-empty
+  [38;2;74;222;128m✓[0m [SPEC-6 guard] result_contract is 3 (#2366)
+
+  [38;2;0;212;255mSPEC-8 — a red suite lets the cycle iterate[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] a red suite does NOT block the cycle (rc=1, keep iterating)
+  [38;2;74;222;128m✓[0m [SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
+
+  [38;2;0;212;255m[#1754/SPEC-2] reader sees broken after primary atomic_write failure[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 22 tests passed[0m
+
+### core/pipeline/state_helpers.sh head tests/unit/test-result-reason-contract-test.sh
+
+[38;2;0;212;255m[1m  test plugin — mandatory v2 reason (#2050)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 — a red suite is a failing stage, not a broken one[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] failing suite writes a non-empty reason (got: 1 of 671 tests failed)
+  [38;2;74;222;128m✓[0m [SPEC-1] the reader classifies a red suite as fail, not error
+  [38;2;74;222;128m✓[0m [SPEC-1] no contract violation is emitted for a red suite
+
+  [38;2;0;212;255mSPEC-2 — a green suite is a passing stage[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] passing suite writes a non-empty reason (got: 671 of 671 tests passed)
+  [38;2;74;222;128m✓[0m [SPEC-2] the reader classifies a green suite as pass
+  [38;2;74;222;128m✓[0m [SPEC-2] no contract violation is emitted for a green suite
+
+  [38;2;0;212;255mSPEC-3 — the derived reason carries the counts[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] a red suite's reason names failed-of-total
+  [38;2;74;222;128m✓[0m [SPEC-3] a green suite's reason names passed-of-total
+
+  [38;2;0;212;255mSPEC-7 — stripping the reason reproduces the halt[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a result with no reason is classified error
+  [38;2;74;222;128m✓[0m [SPEC-7] a result with no reason emits one contract violation
+  [38;2;74;222;128m✓[0m [SPEC-7] an empty-string reason is classified error too
+
+  [38;2;0;212;255mSPEC-4 (guard) — an explicit reason still wins[0m
+  [38;2;74;222;128m✓[0m [SPEC-4 guard] explicit reason 'silent_failure' is preserved verbatim
+  [38;2;74;222;128m✓[0m [SPEC-4 guard] explicit reason 'summary_unavailable' is preserved verbatim
+
+  [38;2;0;212;255mSPEC-5 — a sanitized write still carries a reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] the result is valid JSON under adversarial input
+  [38;2;74;222;128m✓[0m [SPEC-5] a sanitized write carries a non-empty reason
+
+  [38;2;0;212;255mSPEC-6 (guard) — every mandatory field is present (#2366: contract 3)[0m
+  [38;2;74;222;128m✓[0m [SPEC-6 guard] 'outcome' is present and non-empty
+  [38;2;74;222;128m✓[0m [SPEC-6 guard] 'reason' is present and non-empty
+  [38;2;74;222;128m✓[0m [SPEC-6 guard] result_contract is 3 (#2366)
+
+  [38;2;0;212;255mSPEC-8 — a red suite lets the cycle iterate[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] a red suite does NOT block the cycle (rc=1, keep iterating)
+  [38;2;74;222;128m✓[0m [SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
+
+  [38;2;0;212;255m[#1754/SPEC-2] reader sees broken after primary atomic_write failure[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 22 tests passed[0m
 
 ### core/pipeline/state_helpers.sh reverted plugins/agent/intake/tests/intake-result-test.sh
 
@@ -279,28 +391,28 @@
 [38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
 
   [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
@@ -315,7 +427,7 @@
   [38;2;0;212;255m[#1754/SPEC-8] 17 | atomic_write sites outside bug-fix files carry || true[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
   [38;2;248;113;113m✗[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
-    [2mmissing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.otaBgi/core/pipeline/state_helpers.sh:43[0m
+    [2mmissing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RvLJ7a/core/pipeline/state_helpers.sh:43[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] secrets.sh named site carries || true
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/state/resume.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)

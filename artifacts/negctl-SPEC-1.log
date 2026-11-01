@@ -66,12 +66,17 @@
   [38;2;0;212;255m[#1754/SPEC-1] jq succeeds, primary atomic_write fails → broken fallback[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-1] result file exists after fallback write
   [38;2;74;222;128m✓[0m [#1754/SPEC-1] fallback result is valid JSON
-  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes outcome=broken
-  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes reason=result_write_failed
+  [38;2;248;113;113m✗[0m [#1754/SPEC-1] primary write failure writes outcome=broken
+    [2mexpected: broken, got: pass[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-1] primary write failure writes reason=result_write_failed
+    [2mexpected: result_write_failed, got: prior round passed[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 45 tests passed[0m
+  [38;2;248;113;113m[1m2 of 45 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1754/SPEC-1] primary write failure writes outcome=broken
+  [38;2;248;113;113m✗[0m [#1754/SPEC-1] primary write failure writes reason=result_write_failed
 
 ### SPEC-1 head tests/unit/test-plugin-result-write-fallback-test.sh
 

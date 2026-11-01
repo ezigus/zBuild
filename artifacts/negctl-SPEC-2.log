@@ -41,12 +41,17 @@
   [38;2;74;222;128m✓[0m [SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
 
   [38;2;0;212;255m[#1754/SPEC-2] reader sees broken after primary atomic_write failure[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
-  [38;2;74;222;128m✓[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
+  [38;2;248;113;113m✗[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
+    [2mexpected: broken, got: complete[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
+    [2mexpected: broken, got: pass[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 22 tests passed[0m
+  [38;2;248;113;113m[1m2 of 22 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
+  [38;2;248;113;113m✗[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
 
 ### SPEC-2 head tests/unit/test-result-reason-contract-test.sh
 
