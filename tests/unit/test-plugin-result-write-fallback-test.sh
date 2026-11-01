@@ -251,19 +251,17 @@ OUT_1754S1="$ARTIFACT_DIR/results-aw-fail-1754spec1.json"
 # and not a vacuous empty-file case.
 stage_result_write "$OUT_1754S1" "pass" "prior round passed" 2>/dev/null || true
 
-# Save the real atomic_write so the fallback path (calls #2, #3) can still
-# succeed after the primary write is intercepted.
+# Save the real atomic_write so it can be restored after this section.
 eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s1 ()/')"
 
-_1754s1_aw_calls=0
+# Mock: ALL atomic_write calls fail — forces the new direct-redirect fallback (> not | atomic_write).
+# On old code: the fallback also uses | atomic_write → intercepted → && short-circuits →
+# stage_result_add not called → prior-round pass survives → assertion fails.
+# On new code: the fallback uses > (direct redirect, no atomic_write) → not intercepted →
+# outcome=broken is written.
 atomic_write() {
-    _1754s1_aw_calls=$(( _1754s1_aw_calls + 1 ))
-    if [[ "$_1754s1_aw_calls" -eq 1 ]]; then
-        # Primary write: drain stdin (prevents SIGPIPE on the jq producer), fail.
-        cat > /dev/null
-        return 1
-    fi
-    _aw_real_1754s1 "$@"
+    cat > /dev/null   # drain stdin to prevent SIGPIPE on the jq producer
+    return 1
 }
 
 _test_write_result "$OUT_1754S1" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
