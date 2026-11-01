@@ -241,3 +241,63 @@ SPECs kept as [code]. Acceptance-gate finding treated as unreliable.
    current worktree looks correct but prior iteration had defect; SPEC-8 updated
    to reflect 18-site count and note contract-validator.sh was already annotated.
 5. Added contract-validator.sh to "not in scope" explanation.
+
+### Final design-judge round (this run)
+
+**SPEC-2 discrepancy confirmed and resolved.**
+
+- design.md line 92 (SPEC-2): names `runner_read_stage_verdict`
+- ACCEPTANCE (what I judge against): names `runner_read_stage_disposition`
+- test-result-reason-contract-test.sh:307: calls `runner_read_stage_disposition`
+- Notes (Revision 5 lines 252–265): confirms `runner_read_stage_verdict` cannot
+  return "broken" (maps to "error"); `runner_read_stage_disposition` CAN return
+  "broken" via _verdict_read_result outcome→disposition mapping
+
+The ACCEPTANCE (runner_read_stage_disposition) is what I judge against. The test
+matches the ACCEPTANCE. design.md SPEC-2 text is stale — documentation defect,
+not a coverage gap.
+
+**issue-acceptance finding 1 (SPEC-4):** Implementation still returns 0. SPEC-4
+correctly demands broken+non-zero. Code defect, not design gap.
+
+**issue-acceptance finding 2 (SPEC-2):** Uncertainty arises from reading design.md
+(runner_read_stage_verdict) vs the test (runner_read_stage_disposition). Resolved:
+the ACCEPTANCE names the right function; the test is correct; runner_read_stage_disposition
+returns "broken" for outcome=broken. No design gap.
+
+**R-1 coverage is complete across all SPECs. VERDICT: covered.**
+
+---
+
+### Key design changes in revision 5 (archived)
+
+**SPEC-2 description corrected (issue-acceptance finding 2).**
+
+The issue-acceptance correctly identified that SPEC-2 named `runner_read_stage_verdict`
+but the test (test-result-reason-contract-test.sh:307) calls `runner_read_stage_disposition`.
+
+Root cause of the error: `runner_read_stage_verdict` returns "error" for outcome=broken
+(because _verdict_read_result maps all non-pass/fail outcomes to _verdict="error",
+and runner_read_stage_verdict_v passes "error" through unchanged at verdict.sh:414).
+It never returns "broken". `runner_read_stage_disposition` returns the disposition
+field verbatim; for outcome=broken, _verdict_read_result sets _disp="broken" (the
+`*) printf -v "${p}_disp" '%s' "$_rr_outcome"` case). So the test is correct and
+the SPEC text was wrong.
+
+SPEC-2 now reads:
+  "runner_read_stage_disposition returns broken (not complete)"
+
+"not complete" because the prior-round stale file has outcome=pass, which
+_verdict_read_result maps to _disp="complete". So runner_read_stage_disposition
+returns "complete" on old code — the test asserts "broken" → FAILS on old code ✓.
+
+SPEC-2 analysis in Findings section updated to reflect this correction.
+
+**SPEC-4 pipeline state explanation (issue-acceptance finding 1).**
+
+The worktree code is correct (plugins/agent/intake/plugin.sh:273-286 captures
+PIPESTATUS[1] and calls return 1). The issue-acceptance finding that "the diff
+doesn't change intake/plugin.sh" is a pipeline state issue: the fix was applied
+in an earlier run but not included in the latest submitted diff. Findings section
+updated to clarify: the implementer must include both intake/plugin.sh AND
+intake-result-test.sh in the submitted change.

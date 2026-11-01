@@ -1,6 +1,7 @@
 ## build_test_cycle — round 1
 
-- test-author: fail — changed 4 test file(s); 3 assertion(s) still do not test what their SPEC says after 2 round(s)
+- design: pass — design_produced
+- test-author: fail — changed 1 test file(s); 1 assertion(s) still do not test what their SPEC says after 2 round(s)
 - build: error — router_timeout
-- test: fail — 5 of 836 tests failed; the acceptance check failed: the acceptance check failed — SPEC-1/SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong; SPEC-4: its test does not pass on the new code — the code or the test is wrong; the run of timeout:SPEC-5/timeout:SPEC-6/timeout:SPEC-7's test on the code from before this change could not be done (a problem in the pipeline, not in your change); putting timeout:plugins/tool/test/plugin.sh/timeout:package.json/timeout:core/detect/platforms.sh/timeout:core/output/destinations.sh/timeout:core/pipeline/state_helpers.sh/timeout:plugins/agent/pr-delivery/plugin.sh/timeout:plugins/tool/merge/plugin.sh/timeout:plugins/tool/output-github-comment/plugin.sh/timeout:plugins/tool/pr-open/plugin.sh/timeout:plugins/tool/test/lib/acceptance-check.sh/timeout:plugins/tool/test/lib/acceptance-reason.sh/timeout:scripts/lib/lint-atomic-write-unchecked.sh back to its old version could not be done (a problem in the pipeline, not in your change)
-- issue-acceptance: fail — Two of the four concrete sub-requirements the issue names are demonstrably unmet: the intake.md write-failure path still returns 0 with outcome=pass (SPEC-4), and six pre-existing `| atomic_write` calls outside the two bug-fix files lack `|| true`, causing the full-codebase lint to fail (SPEC-8); additionally, new comment text at `plugin.sh:1209` introduces a lint-disposition-words violation that breaks `npm run lint`.
+- test: fail — 1 of 836 tests failed
+- issue-acceptance: fail — The test suite confirms SPEC-4 is unresolved — `_intake_run_inner` still returns 0 and writes `outcome=pass` when `atomic_write` fails for `intake.md`, so intake silently reports success on a write it could not complete.

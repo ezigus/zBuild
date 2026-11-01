@@ -89,7 +89,7 @@ core/output/stage-io.sh
 
 ```acceptance
 SPEC-1[code]: when jq exits 0 but atomic_write fails for the primary result path in _test_write_result — with a prior-round pass result already at that path so stage_result_add on old code would merge the stale outcome — the result file carries outcome=broken and reason=result_write_failed, not the prior-round outcome covers: R-1
-SPEC-2[code]: after a primary atomic_write failure in _test_write_result with a prior-round pass result at the path, runner_read_stage_verdict returns broken (not pass), proving the fallback write is what the reader classifies rather than the stale prior-round file covers: R-1
+SPEC-2[code]: after a primary atomic_write failure in _test_write_result with a prior-round pass result at the path, runner_read_stage_disposition returns broken (not complete), proving the fallback write is what the disposition reader classifies rather than the stale prior-round file covers: R-1
 SPEC-3[code]: _intake_run_inner writes a broken result whose reason names scope-manifest.md and returns non-zero when atomic_write for that file fails covers: R-1
 SPEC-4[code]: _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atomic_write for that file fails, tested with a targeted mock that lets scope-manifest.md succeed but fails only intake.md covers: R-1
 SPEC-5[code]: scripts/lib/lint-atomic-write-unchecked.sh exits non-zero and names the violating line (file:lineno) when given a .sh file containing a bare unchecked pipe to atomic_write covers: R-1
@@ -134,20 +134,37 @@ Code-level analysis confirms the tests ARE correctly discriminating:
   `outcome=broken` → **fails on old code**. ✓
 
 - The SPEC-2 test (`test-result-reason-contract-test.sh:263-309`) uses the same
-  mock and prior-round setup, then calls `runner_read_stage_verdict`. On old
-  code, the reader sees the prior-round stale file (outcome=pass). The test
-  asserts the reader returns "broken" → **fails on old code**. ✓
+  mock and prior-round setup, then calls `runner_read_stage_disposition`. On old
+  code, `stage_result_add` merges the new outcome ("pass") into the stale
+  prior-round file; `_verdict_read_result` maps `outcome=pass` to
+  `_disp="complete"`, so `runner_read_stage_disposition` returns "complete". The
+  test asserts the reader returns "broken" → **fails on old code**. ✓
+  (Note: SPEC-2 formerly named `runner_read_stage_verdict`. That was wrong:
+  for `outcome=broken`, `runner_read_stage_verdict` returns "error" — not
+  "broken" — because `_verdict_read_result` maps every non-pass/fail outcome to
+  `_verdict="error"`. The test was always written correctly; the SPEC text has now
+  been corrected to name `runner_read_stage_disposition`, which returns the
+  `disposition` field value verbatim, i.e. "broken" for `outcome=broken`. The
+  prior-round stale disposition is "complete" because its outcome is "pass".)
 
-The SPECs are correctly stated as [code] requirements. No rewrite needed.
+The SPECs are correctly stated as [code] requirements. SPEC-2 text corrected
+above (issue-acceptance finding 2).
 
-**SPEC-4 (acceptance-gate finding 2, issue-acceptance finding 1).** The prior
-iteration of the implementation had a code defect where `_intake_run_inner`
-returned 0 despite `_im_aw_rc != 0`. The current worktree code at
-`plugins/agent/intake/plugin.sh:280-285` correctly captures `PIPESTATUS[1]` and
-calls `return 1` when the intake.md write fails. The design specification is
-correct. The earlier finding was from a prior implementation iteration; if the
-test still fails, the implementer must identify and fix the execution path that
-bypasses `return 1`. This is not a design issue.
+**SPEC-4 (acceptance-gate finding 2, issue-acceptance finding 1).** The
+issue-acceptance reported that "the diff only modifies the SPEC-2 assertion in
+`test-result-reason-contract-test.sh`; it neither changes
+`plugins/agent/intake/plugin.sh` nor the SPEC-4 test." This is a pipeline state
+issue: the fix to `intake/plugin.sh` was applied in an earlier implementation run
+but not included in the most recent submitted diff. The current worktree code at
+`plugins/agent/intake/plugin.sh:273-286` is correct — `PIPESTATUS[1]` is captured
+on the line immediately following each `| atomic_write` pipe, and `return 1` is
+called when non-zero. The SPEC-4 test at `intake-result-test.sh:451-485` is also
+correct — the mock fails only the `*intake.md` path and lets `*intake-result*`
+writes succeed, so `_intake_write_result "broken"` can write its result, and
+`return 1` is then checked via `|| _s4_rc=$?`. The design specification is
+correct. The implementer must ensure that both `plugins/agent/intake/plugin.sh`
+and `plugins/agent/intake/tests/intake-result-test.sh` are included in the change
+submitted to the acceptance stage. This is not a design issue.
 
 **SPEC-8 scope expansion (issue-acceptance finding 2).** Four files were missing
 from scope in an earlier design iteration. All four are now in scope. The current
