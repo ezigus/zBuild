@@ -1,75 +1,12 @@
-unit: FAIL plugins/agent/intake/tests/intake-result-test.sh
 
-  plugin: intake — v2 result contract (#1837)
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
 
-  ✓ [#1837/SPEC-4] manifest provides.result_contract == 3
-  ✓ [#1837/SPEC-5] a contract-3 manifest declares no valid_verdicts
-  ✓ [#1837/SPEC-6] intake-result.json is in outputs section with primary: true
-  ✓ [#1837/SPEC-6] scope_manifest does not have primary: true
-  ✓ [#1837/SPEC-7] manifest declares config.router.timeout_s
-  ✓ [#1837/SPEC-7] manifest declares config.router.max_turns
-  ✓ [#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden
-  ✓ [#1837/SPEC-8] intake.md is byte-identical to v1 golden
-  ✓ [#1837/SPEC-2] intake-result.json written on success
-  ✓ [#1837/SPEC-2] intake-result.json written on no-goal failure
-  ✓ [#1837/SPEC-1] missing state_file returns rc=1
-  ✓ [#1837/SPEC-2] intake-result.json written on missing state_file
-  ✓ [#1837/SPEC-1] empty-after-sanitization returns rc=1
-  ✓ [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
-  ✓ [#1837/SPEC-3] result_contract == 3
-  ✓ [#1837/SPEC-3] one outcome: no verdict or disposition field
-  ✓ [#1837/SPEC-3] outcome is in the engine's list
-  ✓ [#1837/SPEC-3] reason is non-empty
-  ✓ [#1837/SPEC-15] data.goal_len equals sanitized goal character count
-  ✓ [#1837/SPEC-15] data.platform_count equals number of detected platforms
-  ✓ [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
-  ✓ [#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)
-  ✓ [#1837/SPEC-12] manifest provides.role == intake
-  ✓ [#1837/SPEC-13] intake's own events are declared
-  ✓ [#1837/SPEC-14] template value wins over manifest config.router.timeout_s
-  ✓ [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
+unit: 536/536 passed (4 skipped)
+integration: 263/263 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
 
-  D2: a failed issue fetch with no goal
-  ✓ [D2] a failed fetch with no goal fails the stage
-  ✓ [D2] ...as unavailable: GitHub is not responding
-  ✓ [D2] ...and the reason names GitHub
-
-  D3/D4: the goal itself
-  ✓ [D3] no goal and no issue → misconfigured
-  ✓ [D4] a goal that sanitizes to nothing → misconfigured
-
-  D6: the caller's TERM handler
-  ✓ [D6] the caller's TERM handler is back after intake returns
-
-  D7: a result that cannot be written
-  ✓ [D7] a result that cannot be written fails the stage
-  ✓ [D7] ...and says which file
-
-  D8: no fallback path
-  ✓ [D8] no result is written beside the state file
-  ✓ [D8] ...and intake says the engine gave it no artifact dir
-
-  D10: a signal after the result is written
-  ✓ [D10] the pass intake wrote is still the result
-
-  [#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero
-  ✓ [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
-  ✓ [#1754/SPEC-3] intake-result.json carries outcome=broken
-  ✓ [#1754/SPEC-3] reason names scope-manifest.md
-
-  [#1754/SPEC-4] intake.md write failure → broken + non-zero
-  ✗ [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
-    expected: 1, got: 0
-  ✗ [#1754/SPEC-4] intake-result.json carries outcome=broken
-    expected: broken, got: pass
-  ✗ [#1754/SPEC-4] reason names intake.md
-    output missing: intake.md
-
-
-  3 of 43 tests failed
-
-  ✗ [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
-  ✗ [#1754/SPEC-4] intake-result.json carries outcome=broken
-  ✗ [#1754/SPEC-4] reason names intake.md
-
-unit: 3/4 passed
+total: 836/836 passed (4 skipped)

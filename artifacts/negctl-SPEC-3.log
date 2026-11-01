@@ -141,18 +141,11 @@
   [38;2;74;222;128m✓[0m [#1754/SPEC-3] reason names scope-manifest.md
 
   [38;2;0;212;255m[#1754/SPEC-4] intake.md write failure → broken + non-zero[0m
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
-    [2mexpected: 1, got: 0[0m
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
-    [2mexpected: broken, got: pass[0m
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
-    [2moutput missing: intake.md[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+  [38;2;74;222;128m✓[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+  [38;2;74;222;128m✓[0m [#1754/SPEC-4] reason names intake.md
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m3 of 43 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+  [38;2;74;222;128m[1mAll 43 tests passed[0m
 

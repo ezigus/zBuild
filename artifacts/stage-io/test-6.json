@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "run_id": "20261101131901-2257",
+  "stage": "test",
+  "kind": "computed",
+  "seq": 6,
+  "input": "contract summary (24 checks)",
+  "output": "contract summary: 24 checks",
+  "exit_code": 0,
+  "duration_ms": 13,
+  "metadata": {},
+  "ts": "2026-11-01T14:14:27Z"
+}

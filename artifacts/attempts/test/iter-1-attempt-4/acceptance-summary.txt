@@ -1,0 +1,40 @@
+the acceptance check failed — plugins/tool/test/plugin.sh was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
+NEGCTL SKIP SPEC-1 already_done
+      design : when jq exits 0 but atomic_write fails for the primary result path in _test_write_result — with a pr…
+      asserts: <none found>
+NEGCTL SKIP SPEC-2 already_done
+      design : after a primary atomic_write failure in _test_write_result with a prior-round pass result at the pat…
+      asserts: <none found>
+NEGCTL PASS SPEC-3
+      design : _intake_run_inner writes a broken result whose reason names scope-manifest.md and returns non-zero w…
+      asserts: assert_eq "[#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure" \
+NEGCTL PASS SPEC-4
+      design : _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atom…
+      asserts: assert_eq "[#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure" \
+NEGCTL PASS SPEC-5
+      design : scripts/lib/lint-atomic-write-unchecked.sh exits non-zero and names the violating line (file:lineno)…
+      asserts: assert_pass "[#1754/SPEC-5] lint exits non-zero for unchecked atomic_write"
+NEGCTL PASS SPEC-6
+      design : scripts/lib/lint-atomic-write-unchecked.sh exits 0 when every pipe to atomic_write in a .sh file is …
+      asserts: assert_eq "[#1754/SPEC-6] lint exits 0 for properly-checked calls" "0" "$_spec6_rc"
+NEGCTL PASS SPEC-7
+      design : package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
+      asserts: assert_pass "[#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unc…
+NEGCTL SKIP SPEC-8 no_code
+      design : the 17 newly-annotated | atomic_write sites (13 original sites in 9 files plus secrets.sh:172 and ow…
+      asserts: assert_pass "[#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)"
+REACHABILITY PASS plugins/agent/intake/plugin.sh
+REACHABILITY PASS package.json
+REACHABILITY PASS change core/detect/platforms.sh
+REACHABILITY PASS change core/output/destinations.sh
+REACHABILITY PASS change core/pipeline/state_helpers.sh
+REACHABILITY PASS change plugins/agent/build/lib/secrets.sh
+REACHABILITY PASS change plugins/agent/pr-delivery/plugin.sh
+REACHABILITY PASS change plugins/tool/merge/plugin.sh
+REACHABILITY PASS change plugins/tool/output-github-comment/plugin.sh
+REACHABILITY PASS change plugins/tool/pr-open/plugin.sh
+REACHABILITY PASS change plugins/tool/test/lib/acceptance-check.sh
+REACHABILITY PASS change plugins/tool/test/lib/acceptance-reason.sh
+REACHABILITY PASS change plugins/tool/test/lib/own-checks.sh
+REACHABILITY FAIL untested_change plugins/tool/test/plugin.sh
+REACHABILITY PASS change scripts/lib/lint-atomic-write-unchecked.sh
