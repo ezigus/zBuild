@@ -462,9 +462,11 @@ eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
 
 # Override: fail only for the intake.md path; scope-manifest.md and
 # intake-result.json writes go through the real implementation.
+# Match only the FILENAME (not the full path) via "${_aw_target##*/}" == "intake.md"
+# so the test temp dir plugin-intake-result.XXXXXX does not suppress the failure.
 atomic_write() {
     local _aw_target="$1"
-    if [[ "$_aw_target" == *"intake.md" && "$_aw_target" != *"intake-result"* ]]; then
+    if [[ "${_aw_target##*/}" == "intake.md" ]]; then
         cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
         return 1
     fi
