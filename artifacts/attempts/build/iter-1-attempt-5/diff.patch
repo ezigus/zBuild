@@ -1,0 +1,34 @@
+diff --git a/tests/unit/test-result-reason-contract-test.sh b/tests/unit/test-result-reason-contract-test.sh
+index 7b0b0300..8bdb7cd6 100755
+--- a/tests/unit/test-result-reason-contract-test.sh
++++ b/tests/unit/test-result-reason-contract-test.sh
+@@ -266,8 +266,8 @@ assert_eq "[SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
+ # merged the current outcome into it — so the reader saw "pass" (or whatever
+ # the current call supplied), never "broken".
+ # After #1754: the write exit is captured; a failed write triggers the fallback,
+-# which writes outcome=broken, so runner_read_stage_verdict returns "broken"
+-# — not the prior round's outcome.
++# which writes outcome=broken, so runner_read_stage_disposition returns "broken"
++# — not the prior round's disposition ("complete").
+ print_test_section "[#1754/SPEC-2] reader sees broken after primary atomic_write failure"
+ 
+ rm -f "$RESULT"
+@@ -298,11 +298,13 @@ _test_write_result "$RESULT" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "
+ # Restore atomic_write before calling the reader, which may call it too.
+ eval "$(declare -f _aw_real_1754s2 | sed 's/_aw_real_1754s2 ()/atomic_write ()/')"
+ 
+-# The reader must return "broken", NOT "pass" (which is what the prior-round
+-# stale file would give before the fix, since stage_result_add merged "pass"
+-# into it without detecting the write failure).
+-assert_eq "[#1754/SPEC-2] reader classifies primary-write failure as broken (not prior pass)" \
+-    "broken" "$(_classify)"
++# After the fix, the fallback write puts outcome=broken in the file.
++# runner_read_stage_disposition returns "broken" for outcome=broken — the direct
++# proof that the reader sees the fallback-written result, not the stale pass.
++# On old code (no PIPESTATUS[1] check), stage_result_add merges "pass" into the
++# stale file; runner_read_stage_disposition then returns "complete" (not "broken").
++assert_eq "[#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)" \
++    "broken" "$(runner_read_stage_disposition "$STATE_DIR" "$TEST_MANIFEST" "test" 0)"
+ 
+ # Cross-check: the raw outcome in the file is "broken", not the prior round's.
+ assert_eq "[#1754/SPEC-2] file carries broken outcome after primary write failure" "broken" \

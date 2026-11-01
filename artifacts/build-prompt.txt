@@ -43,10 +43,10 @@ breaks one is wrong, whoever wrote it.
 Your job is to edit the working tree to implement the ORIGINAL TASK
 below. You have Read, Edit, Write, and Bash tools available.
 
-### How the loop works
-- Each call you may make code changes via Edit/Write/Bash. What you change
-  stays in the working tree for the next call; your notes file (in the rules
-  below) carries what you learned.
+### How your work is kept
+- You make code changes via Edit/Write/Bash. What you change stays in the
+  working tree: if you do not finish, the next try continues from it, and your
+  notes file (in the rules below) carries what you learned.
 - Do NOT emit a unified diff in your response — the pipeline derives the
   canonical `diff.patch` artifact from `git diff HEAD` automatically.
 
@@ -70,6 +70,17 @@ tree, say so and stop. Answer that finding, on its own line before the sentinel:
 one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
 stage that raised the finding to check. Do not keep searching for the cause of
 a failure you cannot produce, and do not change code to chase one.
+
+### When a test is wrong
+If a test fails on code that already does what its requirement says — the test
+itself cannot pass — do not change the code to chase it; you may not change the
+test. Answer that finding, on its own line before the sentinel, and
+stop working on that test:
+
+    ANSWER <stage> finding <n>: nothing to do — the test is wrong: <test file>: <why>
+
+Say exactly why it cannot pass. The stage that owns the tests is given this
+answer, and fixes the test.
 
 ### Running tests
 - Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline
@@ -107,17 +118,19 @@ omit this line the pipeline falls back to the plan title.
 ## Steps
 1. Write failing tests for R1 in \`tests/unit/test-plugin-result-write-fallback-test.sh\` and \`tests/unit/test-result-reason-contract-test.sh\`: simulate \`atomic_write\` succeeding on jq output but failing at the write layer while a prior round's result file is present; assert the result is either absent or \`broken\` with reason \`result_write_failed\` and that the live reader (\`runner_read_stage_verdict\`) classifies it as \`broken\`, never as the prior round's outcome.
    - Areas: `tests/unit/test-plugin-result-write-fallback-test.sh`, `tests/unit/test-result-reason-contract-test.sh`
-2. Fix \`_test_write_result\` in \`plugins/tool/test/plugin.sh\`: capture the full PIPESTATUS array after \`jq … | atomic_write\`; treat a non-zero write exit (index 1) the same as a non-zero jq exit (index 0), so a failed write triggers the broken fallback even when jq succeeded.
+2. Fix \`_test_write_result\` in \`plugins/tool/test/plugin.sh\`: capture the full PIPESTATUS array after \`jq … | atomic_write\` on a single \`local\` statement; treat a non-zero write exit (index 1) the same as a non-zero jq exit (index 0) and trigger the existing broken fallback — without using the literal token \`stage_result_add\` in any new comment in that block (lint-disposition-words scans comments).
    - Areas: `plugins/tool/test/plugin.sh`
-3. Write failing tests for R2 in \`plugins/agent/intake/tests/intake-result-test.sh\`: simulate \`atomic_write\` failing for \`scope-manifest.md\` and for \`intake.md\` in turn; assert intake exits non-zero in each case and that the reason names the failing file.
+3. Write failing tests for R2 in \`plugins/agent/intake/tests/intake-result-test.sh\`: simulate \`atomic_write\` failing for \`scope-manifest.md\` and for \`intake.md\` in turn (the latter with a targeted mock that lets scope-manifest.md succeed); assert intake exits non-zero in each case and that the reason names the failing file.
    - Areas: `plugins/agent/intake/tests/intake-result-test.sh`
-4. Fix \`_intake_run_inner\` in \`plugins/agent/intake/plugin.sh\`: check the exit status of both \`atomic_write\` calls (\`scope-manifest.md\` and \`intake.md\`); on write failure, call \`_intake_write_result\` with outcome \`broken\` and a reason that names the file, then return non-zero.
+4. Fix \`_intake_run_inner\` in \`plugins/agent/intake/plugin.sh\`: capture \`PIPESTATUS[1]\` immediately after each \`| atomic_write\` call (scope-manifest.md and intake.md); on write failure call \`_intake_write_result\` with outcome \`broken\` and a reason naming the file, then return non-zero — ensuring no later code path resets the result to \`pass\`.
    - Areas: `plugins/agent/intake/plugin.sh`
-5. Write a failing test for R3 in \`tests/unit/plugin-primary-output-atomic-test.sh\`: invoke the (not-yet-added) lint script against a synthetic fixture containing an unchecked \`| atomic_write\` and assert the lint fails on it; also assert the lint passes on a fixture where the write exit is checked with \`&&\`.
+5. Write failing tests for R3 in \`tests/unit/plugin-primary-output-atomic-test.sh\`: invoke the lint script against a synthetic fixture with an unchecked \`| atomic_write\` and assert it exits non-zero naming the line; assert it exits 0 on a checked fixture; assert it exits 0 when run against the real codebase (SPEC-8 — this assertion fails until step-7 applies the annotations); the SPEC-8 assertion must count ≥17 \`|| true\`-annotated sites and must explicitly exclude \`core/state/resume.sh\` and \`core/output/stage-io.sh\` from the \`|| true\` requirement (those files are already correctly handled).
    - Areas: `tests/unit/plugin-primary-output-atomic-test.sh`
-6. Add \`scripts/lib/lint-atomic-write-unchecked.sh\`: scan every \`.sh\` file under \`core/\`, \`plugins/\`, and \`scripts/\` for \`| atomic_write\` whose exit status is not checked on the same or immediately following line via \`&&\`, \`||\`, \`if !\`, or a PIPESTATUS index capturing the write; fail with a file-and-line message for each violation so the existing safe uses all pass.
+6. Add \`scripts/lib/lint-atomic-write-unchecked.sh\`: scan every \`.sh\` file under \`core/\`, \`plugins/\`, and \`scripts/\` for \`| atomic_write\` whose exit status is not checked on the same line via \`&&\`, \`||\`, or \`if !\`, or on the next non-blank non-comment line via a \`PIPESTATUS[\` capture; emit a file-and-line message per violation and exit non-zero.
    - Areas: `scripts/lib/lint-atomic-write-unchecked.sh`
-7. Wire the new lint script into \`npm run lint\` in \`package.json\` by appending \`&& bash scripts/lib/lint-atomic-write-unchecked.sh\` to the lint target, so R3 runs on every \`npm run lint\` invocation.
+7. Annotate the 17 pre-existing best-effort \`| atomic_write\` calls with \`|| true\` across 11 files (\`core/detect/platforms.sh\`, \`core/pipeline/state_helpers.sh\`, \`core/output/destinations.sh\`, \`plugins/agent/pr-delivery/plugin.sh\`, \`plugins/tool/merge/plugin.sh\`, \`plugins/tool/output-github-comment/plugin.sh\`, \`plugins/tool/pr-open/plugin.sh\`, \`plugins/tool/test/lib/acceptance-reason.sh\`, \`plugins/tool/test/lib/acceptance-check.sh\`, \`plugins/agent/build/lib/secrets.sh\`, \`plugins/tool/test/lib/own-checks.sh\`); do NOT add \`|| true\` to \`core/state/resume.sh\` or \`core/output/stage-io.sh\` — those already have correct exit handling and \`|| true\` would break them.
+   - Areas: `core/detect/platforms.sh`, `core/pipeline/state_helpers.sh`, `core/output/destinations.sh`, `plugins/agent/pr-delivery/plugin.sh`, `plugins/tool/merge/plugin.sh`, `plugins/tool/output-github-comment/plugin.sh`, `plugins/tool/pr-open/plugin.sh`, `plugins/tool/test/lib/acceptance-reason.sh`, `plugins/tool/test/lib/acceptance-check.sh`, `plugins/agent/build/lib/secrets.sh`, `plugins/tool/test/lib/own-checks.sh`
+8. Wire the new lint script into \`npm run lint\` in \`package.json\` by appending \`&& bash scripts/lib/lint-atomic-write-unchecked.sh\` to the lint target, so R3 runs on every \`npm run lint\` invocation.
    - Areas: `package.json`
 
 ### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
@@ -131,76 +144,116 @@ structural lint rule prevents the same class of defect from reappearing.
 
 **Context.**
 `_test_write_result` in `plugins/tool/test/plugin.sh` pipes `jq … | atomic_write
-"$path"` and then captures only `PIPESTATUS[0]` (jq's exit). When jq succeeds
-but `atomic_write` fails, `_jq_rc=0`, so `stage_result_add` runs against a path
-that was never written. If a prior round's file exists there, `stage_result_add`
-reads and merges the stale data, producing a hybrid that neither reflects the
-current run nor triggers the broken fallback. The fallback is only entered when
-`_jq_rc != 0` — which a failed write never sets.
+"$path"` and then captured only `PIPESTATUS[0]` (jq's exit) before this fix.
+When jq succeeds but `atomic_write` fails, the old `_jq_rc=0` path called
+`stage_result_add "$path"` against the prior-round file at that path. Because a
+prior-round file is present (not a missing-file case), `stage_result_add` reads
+and merges the stale data — producing a result with the prior round's outcome
+(e.g. "pass"), not "broken". The fallback only fires when `_jq_rc != 0`, which a
+successful jq + failed write never sets.
 
 `_intake_run_inner` in `plugins/agent/intake/plugin.sh` writes `scope-manifest.md`
-and `intake.md` with two bare `| atomic_write` calls and no exit check. Both
-files are read by the plan stage on every iteration. A write failure leaves the
-prior round's content in place while intake continues to report `pass`.
+and `intake.md` with two `| atomic_write` calls. A write failure left the prior
+round's content in place while intake reported `pass`.
 
-`core/state/resume.sh` already shows the correct pattern for this situation:
-capture both `PIPESTATUS[0]` (jq's exit) and `PIPESTATUS[1]` (atomic_write's
-exit) on a single `local` statement, before any other command resets PIPESTATUS,
-then fail closed on either non-zero value.
+`core/state/resume.sh` shows the correct pattern: capture both `PIPESTATUS[0]`
+(jq's exit) and `PIPESTATUS[1]` (atomic_write's exit) on a single `local`
+statement before any other command resets PIPESTATUS, then fail closed on either.
 
 **Decision.**
 1. Fix `_test_write_result`: capture `PIPESTATUS[1]` on the same `local`
    declaration as `PIPESTATUS[0]`. Treat a non-zero write exit the same as a
-   non-zero jq exit — trigger the existing broken fallback.
-2. Fix `_intake_run_inner`: check each `atomic_write` exit; on failure call
+   non-zero jq exit — trigger the existing broken fallback. The fallback comment
+   block must NOT contain the literal token `stage_result_add` (the
+   `lint-disposition-words` awk scanner matches that token in comments as if it
+   were a live writer call, treating the following words as outcome arguments).
+2. Fix `_intake_run_inner`: check each `atomic_write` exit via `local
+   _*_aw_rc="${PIPESTATUS[1]}"` immediately after the pipe; on failure call
    `_intake_write_result` with outcome `broken` and a reason naming the file,
-   then return 1.
+   then `return 1`.
 3. Add `scripts/lib/lint-atomic-write-unchecked.sh`: scan `.sh` files under
    `core/`, `plugins/`, and `scripts/` for `| atomic_write` whose exit is not
-   handled on the same or immediately following physical line via `&&`, `||`,
-   `if !`, or a PIPESTATUS capture that includes the write index. Emit a
-   file-and-line message per violation and exit non-zero.
+   handled. "Handled" means: `&&`, `||`, or `if !` on the same line; OR a shell
+   continuation line (ending with `\`) whose immediately following physical line
+   contains `||` or `&&`; OR a PIPESTATUS capture (`PIPESTATUS[`) on the next
+   non-blank, non-comment executable line (blank and comment-only lines do not
+   reset PIPESTATUS in bash). Emit file:line per violation and exit non-zero.
 4. Wire the lint into `package.json`'s `lint` target.
-5. Annotate every pre-existing unchecked `| atomic_write` site outside the two
-   bugs with `|| true` (13 locations in 9 files). These write diagnostic or
-   auxiliary data; `|| true` makes the best-effort intent explicit and lets the
-   lint pass on the full codebase.
+5. Annotate every pre-existing `| atomic_write` site outside the two bugs that
+   lacks an existing explicit exit check with `|| true` (17 newly-annotated
+   locations in 11 files). These write diagnostic or auxiliary data; `|| true`
+   makes the best-effort intent explicit and passes the broad lint rule.
+   Two pre-existing sites already have explicit exit checks and must NOT receive
+   `|| true` (which would break them):
+   - `core/state/resume.sh:80` — `PIPESTATUS[1]` captured on the next non-blank
+     executable line (after comment-only lines); adding `|| true` would overwrite
+     PIPESTATUS and hide write failures.
+   - `core/output/stage-io.sh:637` — `if ! printf … | atomic_write …; then`
+     on the same line; adding `|| true` would make the condition always true,
+     silently always running the error branch.
+   The SPEC-8 test must exclude these two files from its `|| true` check,
+   asserted non-vacuously (each file contains `| atomic_write`).
 
-**Divergence from plan.** The plan's 7-item scope omits the 9 additional files
-with unchecked `| atomic_write` calls. A broad lint rule flags them all; those
-sites must carry `|| true` for `npm run lint` to pass. All 9 files are added to
-scope.
+**Divergence from plan.** The plan's scope omits 11 additional files with
+unchecked `| atomic_write` calls. The broad lint flags them all. 9 of the 11
+files get `|| true`. 2 (`core/state/resume.sh`, `core/output/stage-io.sh`) are
+already correctly handled and the SPEC-8 test excludes them instead.
 
 
 
 ## Findings
 
-**Scope expansion (plan vs. design).** The plan lists 7 items across 8 files.
-The broad lint rule adds 9 more files: `core/detect/platforms.sh`,
-`core/pipeline/state_helpers.sh`, `core/output/destinations.sh`,
-`plugins/agent/pr-delivery/plugin.sh`, `plugins/tool/merge/plugin.sh`,
-`plugins/tool/output-github-comment/plugin.sh`, `plugins/tool/pr-open/plugin.sh`,
-`plugins/tool/test/lib/acceptance-reason.sh`,
-`plugins/tool/test/lib/acceptance-check.sh`. Each carries between 1 and 2
-unchecked `| atomic_write` calls that would fail the lint. All write
-diagnostic/auxiliary artifacts; `|| true` is the correct annotation. Not
-addressing them would ship a lint that immediately fails CI.
+**SPEC-1/SPEC-2 test-first validity (acceptance-gate finding 1, issue-acceptance
+finding 4).** The acceptance-gate reported that SPEC-1 and SPEC-2 tests "already
+pass on the code from before this change." The issue-acceptance simultaneously
+reported the before-test check for these same SPECs **timed out**, making the
+acceptance-gate finding unreliable. A timed-out run cannot produce a valid
+"passes" verdict.
 
-**`core/state/resume.sh` is already correct.** Lines 80–91 pipe to `atomic_write`
-and then capture both `PIPESTATUS[0]` and `PIPESTATUS[1]` on a single `local`
-statement, failing closed on either. This is the reference pattern for the
-test-plugin fix.
+Code-level analysis confirms the tests ARE correctly discriminating:
 
-**`scripts/lib/stage-result.sh` is not in scope.** Its `atomic_write` calls use
-here-strings (`<<< "$json"`), not pipes, so the `| atomic_write` lint does not
-apply. The function's return value is atomic_write's exit code; callers that
-invoke `stage_result_write` check it.
+- The SPEC-1 test (`test-plugin-result-write-fallback-test.sh:245-288`) writes a
+  prior-round "pass" result at the output path via `stage_result_write`, then
+  mocks `atomic_write` to fail only on the first call (the primary jq→write
+  pipeline; second and later calls pass through to the real implementation). It
+  calls `_test_write_result` with `outcome=pass`, then asserts `outcome=broken`.
+  On **old code**: `_jq_rc = PIPESTATUS[0] = 0` (jq succeeded); the condition
+  `(( _jq_rc != 0 ))` is false; `stage_result_add` is called on the prior-round
+  file. `stage_result_add`'s own `atomic_write` call is the second call in the
+  mock (succeeds), so the merged result has `outcome=pass`. The test asserts
+  `outcome=broken` → **fails on old code**. ✓
 
-**SPEC-2 belongs in `test-result-reason-contract-test.sh`** because that file
-already sources both the test plugin's writer and `runner_read_stage_verdict`.
-The test requires a prior-round file to be present on disk before the write
-failure, so the assertion is not just "fallback is written" but "the reader
-sees broken and not the stale prior value."
+- The SPEC-2 test (`test-result-reason-contract-test.sh:263-309`) uses the same
+  mock and prior-round setup, then calls `runner_read_stage_verdict`. On old
+  code, the reader sees the prior-round stale file (outcome=pass). The test
+  asserts the reader returns "broken" → **fails on old code**. ✓
+
+The SPECs are correctly stated as [code] requirements. No rewrite needed.
+
+**SPEC-4 (acceptance-gate finding 2, issue-acceptance finding 1).** The prior
+iteration of the implementation had a code defect where `_intake_run_inner`
+returned 0 despite `_im_aw_rc != 0`. The current worktree code at
+`plugins/agent/intake/plugin.sh:280-285` correctly captures `PIPESTATUS[1]` and
+calls `return 1` when the intake.md write fails. The design specification is
+correct. The earlier finding was from a prior implementation iteration; if the
+test still fails, the implementer must identify and fix the execution path that
+bypasses `return 1`. This is not a design issue.
+
+**SPEC-8 scope expansion (issue-acceptance finding 2).** Four files were missing
+from scope in an earlier design iteration. All four are now in scope. The current
+worktree correctly has:
+- `core/state/resume.sh:80` — excluded from `|| true` requirement; PIPESTATUS[1]
+  captured after comment-only lines (bash does not reset PIPESTATUS on comments).
+- `core/output/stage-io.sh:637` — excluded; handled by `if !` on the same line.
+- `plugins/agent/build/lib/secrets.sh:172` — `|| true` present. ✓
+- `plugins/tool/test/lib/own-checks.sh:72,96,101` — `|| true` present on all
+  three lines. ✓
+The SPEC-8 test already excludes `resume.sh` and `stage-io.sh` and checks >= 17
+total non-continuation-line sites (actual count in the worktree: 18, which
+includes `core/pipeline/contract-validator.sh:304` that carried `|| true` before
+this change). The threshold >= 17 is satisfied. No design change needed.
+
+**Lint-disposition-words regression (issue-acceptance finding 3).** A comment in
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
@@ -215,32 +268,32 @@ These tests were written before your code. Make them pass by changing code only.
 - SPEC-8: tests/unit/plugin-primary-output-atomic-test.sh
 
 What each SPEC requires:
-- [#1754/SPEC-1] when jq succeeds but atomic_write fails in _test_write_result, the broken fallback is written with outcome=broken and reason=result_write_failed
-- [#1754/SPEC-2] runner_read_stage_verdict classifies the result on disk after a primary-path atomic_write failure as broken, not as the prior round's outcome
+- [#1754/SPEC-1] when jq exits 0 but atomic_write fails for the primary result path in _test_write_result — with a prior-round pass result already at that path so stage_result_add on old code would merge the stale outcome — the result file carries outcome=broken and reason=result_write_failed, not the prior-round outcome
+- [#1754/SPEC-2] after a primary atomic_write failure in _test_write_result with a prior-round pass result at the path, runner_read_stage_verdict returns broken (not pass), proving the fallback write is what the reader classifies rather than the stale prior-round file
 - [#1754/SPEC-3] _intake_run_inner writes a broken result whose reason names scope-manifest.md and returns non-zero when atomic_write for that file fails
-- [#1754/SPEC-4] _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atomic_write for that file fails
-- [#1754/SPEC-5] scripts/lib/lint-atomic-write-unchecked.sh exits non-zero and names the violating line when given a .sh file containing a bare unchecked pipe to atomic_write
-- [#1754/SPEC-6] scripts/lib/lint-atomic-write-unchecked.sh exits 0 when every pipe to atomic_write in a .sh file is followed on the same or next physical line by &&, ||, if !, or PIPESTATUS that includes the write index
+- [#1754/SPEC-4] _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atomic_write for that file fails, tested with a targeted mock that lets scope-manifest.md succeed but fails only intake.md
+- [#1754/SPEC-5] scripts/lib/lint-atomic-write-unchecked.sh exits non-zero and names the violating line (file:lineno) when given a .sh file containing a bare unchecked pipe to atomic_write
+- [#1754/SPEC-6] scripts/lib/lint-atomic-write-unchecked.sh exits 0 when every pipe to atomic_write in a .sh file is handled via: same-line &&, || or if !; OR a continuation line (ending with \) whose next physical line has || or &&; OR a PIPESTATUS[ capture on the next non-blank non-comment executable line
 - [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
-- [#1754/SPEC-8] all 13 pre-existing unchecked | atomic_write calls in core/ plugins/ scripts/ outside the two bugs carry || true so scripts/lib/lint-atomic-write-unchecked.sh exits 0 on the full codebase
+- [#1754/SPEC-8] the 17 newly-annotated | atomic_write sites (13 original sites in 9 files plus secrets.sh:172 and own-checks.sh:72,96,101) carry || true; the SPEC-8 test excludes core/state/resume.sh and core/output/stage-io.sh from the || true requirement, asserts non-vacuously that each contains | atomic_write calls, and checks a total call count of >= 17 across all non-excluded non-continuation-line sites
 
 ### REQUIREMENTS YOUR CODE MUST MEET
 Your change is done when the test for every requirement below passes.
-- [#1754/SPEC-1] when jq succeeds but atomic_write fails in _test_write_result, the broken fallback is written with outcome=broken and reason=result_write_failed
+- [#1754/SPEC-1] when jq exits 0 but atomic_write fails for the primary result path in _test_write_result — with a prior-round pass result already at that path so stage_result_add on old code would merge the stale outcome — the result file carries outcome=broken and reason=result_write_failed, not the prior-round outcome
   → its test is already written; make it pass
-- [#1754/SPEC-2] runner_read_stage_verdict classifies the result on disk after a primary-path atomic_write failure as broken, not as the prior round's outcome
+- [#1754/SPEC-2] after a primary atomic_write failure in _test_write_result with a prior-round pass result at the path, runner_read_stage_verdict returns broken (not pass), proving the fallback write is what the reader classifies rather than the stale prior-round file
   → its test is already written; make it pass
 - [#1754/SPEC-3] _intake_run_inner writes a broken result whose reason names scope-manifest.md and returns non-zero when atomic_write for that file fails
   → its test is already written; make it pass
-- [#1754/SPEC-4] _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atomic_write for that file fails
+- [#1754/SPEC-4] _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atomic_write for that file fails, tested with a targeted mock that lets scope-manifest.md succeed but fails only intake.md
   → its test is already written; make it pass
-- [#1754/SPEC-5] scripts/lib/lint-atomic-write-unchecked.sh exits non-zero and names the violating line when given a .sh file containing a bare unchecked pipe to atomic_write
+- [#1754/SPEC-5] scripts/lib/lint-atomic-write-unchecked.sh exits non-zero and names the violating line (file:lineno) when given a .sh file containing a bare unchecked pipe to atomic_write
   → its test is already written; make it pass
-- [#1754/SPEC-6] scripts/lib/lint-atomic-write-unchecked.sh exits 0 when every pipe to atomic_write in a .sh file is followed on the same or next physical line by &&, ||, if !, or PIPESTATUS that includes the write index
+- [#1754/SPEC-6] scripts/lib/lint-atomic-write-unchecked.sh exits 0 when every pipe to atomic_write in a .sh file is handled via: same-line &&, || or if !; OR a continuation line (ending with \) whose next physical line has || or &&; OR a PIPESTATUS[ capture on the next non-blank non-comment executable line
   → its test is already written; make it pass
 - [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
   → its test is already written; make it pass
-- [#1754/SPEC-8] all 13 pre-existing unchecked | atomic_write calls in core/ plugins/ scripts/ outside the two bugs carry || true so scripts/lib/lint-atomic-write-unchecked.sh exits 0 on the full codebase
+- [#1754/SPEC-8] the 17 newly-annotated | atomic_write sites (13 original sites in 9 files plus secrets.sh:172 and own-checks.sh:72,96,101) carry || true; the SPEC-8 test excludes core/state/resume.sh and core/output/stage-io.sh from the || true requirement, asserts non-vacuously that each contains | atomic_write calls, and checks a total call count of >= 17 across all non-excluded non-continuation-line sites
   → its test is already written; make it pass
 
 
@@ -249,7 +302,7 @@ Your change is done when the test for every requirement below passes.
 The latest output of every stage that has run, as far as it is about what
 your job takes (ask, tests, change, requirement-findings and code-findings), with where to find it. Use what your job needs.
 
-Files this issue's work has changed so far: core/detect/platforms.sh, core/output/destinations.sh, core/pipeline/state_helpers.sh, package.json, plugins/agent/intake/plugin.sh, plugins/agent/intake/tests/intake-result-test.sh, plugins/agent/pr-delivery/plugin.sh, plugins/tool/merge/plugin.sh, plugins/tool/output-github-comment/plugin.sh, plugins/tool/pr-open/plugin.sh, plugins/tool/test/lib/acceptance-check.sh, plugins/tool/test/lib/acceptance-reason.sh, plugins/tool/test/plugin.sh, scripts/lib/lint-atomic-write-unchecked.sh, tests/unit/plugin-primary-output-atomic-test.sh, tests/unit/test-plugin-result-write-fallback-test.sh, tests/unit/test-result-reason-contract-test.sh
+Files this issue's work has changed so far: core/detect/platforms.sh, core/output/destinations.sh, core/pipeline/state_helpers.sh, package.json, plugins/agent/build/lib/secrets.sh, plugins/agent/intake/plugin.sh, plugins/agent/intake/tests/intake-result-test.sh, plugins/agent/pr-delivery/plugin.sh, plugins/tool/merge/plugin.sh, plugins/tool/output-github-comment/plugin.sh, plugins/tool/pr-open/plugin.sh, plugins/tool/test/lib/acceptance-check.sh, plugins/tool/test/lib/acceptance-reason.sh, plugins/tool/test/lib/own-checks.sh, plugins/tool/test/plugin.sh, scripts/lib/lint-atomic-write-unchecked.sh, tests/unit/plugin-primary-output-atomic-test.sh, tests/unit/test-plugin-result-write-fallback-test.sh, tests/unit/test-result-reason-contract-test.sh
 
 ### intake (verdict: pass)
 Outputs:
@@ -275,7 +328,7 @@ Outputs:
 Summary:
 ## plan — pass
 
-- split the issue into 7 work item(s)
+- split the issue into 8 work item(s)
 
 - open questions: 0
 - artifact: plan.json
@@ -289,9 +342,9 @@ Outputs:
 Summary:
 ## design — pass
 
-- authored design.md — 17 file(s) in scope, 8 acceptance SPEC(s)
+- authored design.md — 21 file(s) in scope, 8 acceptance SPEC(s)
 
-- scope: plugins/tool/test/plugin.sh,plugins/agent/intake/plugin.sh,scripts/lib/lint-atomic-write-unchecked.sh,package.json,tests/unit/test-plugin-result-write-fallback-test.sh,tests/unit/test-result-reason-contract-test.sh,plugins/agent/intake/tests/intake-result-test.sh,tests/unit/plugin-primary-output-atomic-test.sh,core/detect/platforms.sh,core/pipeline/state_helpers.sh,core/output/destinations.sh,plugins/agent/pr-delivery/plugin.sh,plugins/tool/merge/plugin.sh,plugins/tool/output-github-comment/plugin.sh,plugins/tool/pr-open/plugin.sh,plugins/tool/test/lib/acceptance-reason.sh,plugins/tool/test/lib/acceptance-check.sh
+- scope: plugins/tool/test/plugin.sh,plugins/agent/intake/plugin.sh,scripts/lib/lint-atomic-write-unchecked.sh,package.json,tests/unit/test-plugin-result-write-fallback-test.sh,tests/unit/test-result-reason-contract-test.sh,plugins/agent/intake/tests/intake-result-test.sh,tests/unit/plugin-primary-output-atomic-test.sh,core/detect/platforms.sh,core/pipeline/state_helpers.sh,core/output/destinations.sh,plugins/agent/pr-delivery/plugin.sh,plugins/tool/merge/plugin.sh,plugins/tool/output-github-comment/plugin.sh,plugins/tool/pr-open/plugin.sh,plugins/tool/test/lib/acceptance-reason.sh,plugins/tool/test/lib/acceptance-check.sh,plugins/agent/build/lib/secrets.sh,plugins/tool/test/lib/own-checks.sh,core/state/resume.sh,core/output/stage-io.sh
 - artifact: design.md
 
 ### test-author (verdict: fail)
@@ -300,14 +353,12 @@ Outputs:
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
 
 Findings:
-- test-author finding 1 (opened by test-author): SPEC-2's assertion establishes only part of the requirement: The assertion confirms the file carries outcome=broken and that the reader does not return the prior "pass" verdict, but it checks `_classify` returns "error" rather than "broken" as the requirement states, so only part of the requirement—that the prior outcome is not reflected—is established.
-- test-author finding 2 (opened by test-author): SPEC-5's assertion establishes only part of the requirement: The exit-non-zero half is tested directly, but "names the violating line" is checked only via `grep -qE ':[0-9]+'`, which is a weak proxy that could match non-line-number output and does not verify the number refers to the atomic_write violation.
-- test-author finding 3 (opened by test-author): SPEC-8's assertion establishes only part of the requirement: The lint-exits-0 and no-violations checks cover the core behavior, but `_s8_call_count > 0` only guarantees at least one call survives—it does not verify all 13 pre-existing calls remain and carry `
+- test-author finding 1 (opened by test-author): SPEC-5's assertion does not test what the requirement says: The fixture heredoc as shown contains no shebang, placing `set -euo pipefail` on line 1, `_write_it() {` on line 2, and the `
 
 Summary:
 ## test-author — fail
 
-- changed 4 test file(s); 3 assertion(s) still do not test what their SPEC says after 2 round(s)
+- changed 1 test file(s); 1 assertion(s) still do not test what their SPEC says after 2 round(s)
 
 - SPECs in the contract: 8
 - assertions are authored from the SPEC text, never from the implementation
@@ -316,7 +367,8 @@ Summary:
 - tests/unit/test-result-reason-contract-test.sh — SPEC-2
 - plugins/agent/intake/tests/intake-result-test.sh — SPEC-3, SPEC-4
 - tests/unit/plugin-primary-output-atomic-test.sh — SPEC-5, SPEC-6, SPEC-7, SPEC-8
-- Each [code] requirement's test fails on the code as it is now, and passes once the code is written.
+- Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
+- answered: round-2-checker finding 1: done — changed SPEC-2's primary assertion from `_classify` returning "error" to `runner_read_stage_disposition` returning "broken"; `runner_read_stage_disposition` in verdict.sh returns the string "broken" when the result file carries `outcome=broken`, directly establishing the requirement's claim "returns broken"; confirmed the test fails on unfixed code (via git stash) and passes on the fixed codebase.
 
 ### build (verdict: timed_out) — your own
 Outputs:
@@ -327,9 +379,9 @@ Outputs:
 Summary:
 ## build — timed_out
 
-- changed 13 file(s) over 3 pass(es), 9 iteration(s)
+- changed 0 file(s) over 2 pass(es), 2 iteration(s)
 
-- lines: +129 / -22
+- lines: +0 / -0
 - terminated: router_timeout
 - scope violation: false
 
@@ -383,6 +435,158 @@ Your notes so far:
 - [ ] package.json — wire lint
 - [ ] 13 files — add || true annotations
 
+### test (verdict: fail)
+Outputs:
+- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
+- shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
+- shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
+- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
+- test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
+- test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
+- test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
+- test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
+
+Findings:
+- test finding 1 (opened by test): plugins/agent/intake/tests/intake-result-test.sh fails: ✗ [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure — expected: 1, got: 0
+- test finding 2 (opened by test): tests/unit/lint-disposition-words-test.sh fails: ✗ [SPEC-4] the shipped plugins/ tree passes — expected: 0, got: 1
+- test finding 3 (opened by test): tests/unit/plugin-primary-output-atomic-test.sh fails: ✗ [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+- test finding 4 (opened by test): tests/unit/stage-signal-test.sh fails: ✗ [G5] every literal unavailable names its service — expected: 0, got: 1
+- acceptance-gate finding 1 (opened by test): SPEC-1/SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong
+- acceptance-gate finding 2 (opened by test): SPEC-4: its test does not pass on the new code — the code or the test is wrong
+- acceptance-gate finding 3 (opened by test): the run of timeout:SPEC-5/timeout:SPEC-6/timeout:SPEC-7's test on the code from before this change could not be done (a problem in the pipeline, not in your change)
+- acceptance-gate finding 4 (opened by test): putting timeout:plugins/tool/test/plugin.sh/timeout:package.json/timeout:core/detect/platforms.sh/timeout:core/output/destinations.sh/timeout:core/pipeline/state_helpers.sh/timeout:plugins/agent/pr-delivery/plugin.sh/timeout:plugins/tool/merge/plugin.sh/timeout:plugins/tool/output-github-comment/plugin.sh/timeout:plugins/tool/pr-open/plugin.sh/timeout:plugins/tool/test/lib/acceptance-check.sh/timeout:plugins/tool/test/lib/acceptance-reason.sh/timeout:scripts/lib/lint-atomic-write-unchecked.sh back to its old version could not be done (a problem in the pipeline, not in your change)
+
+Summary:
+# Test stage summary
+
+- verdict: fail
+- passed: 831
+- failed: 5
+- exit_code: 1
+
+## Failing files
+
+- plugins/agent/intake/tests/intake-result-test.sh — ✗ [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure — expected: 1, got: 0
+- tests/unit/lint-disposition-words-test.sh — ✗ [SPEC-4] the shipped plugins/ tree passes — expected: 0, got: 1
+- tests/unit/plugin-primary-output-atomic-test.sh — ✗ [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+- tests/unit/stage-signal-test.sh — ✗ [G5] every literal unavailable names its service — expected: 0, got: 1
+
+## Failing lines (extracted)
+
+```
+  ✗ [SPEC-4] the shipped plugins/ tree passes
+    expected: 0, got: 1
+  ✗ [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+    missing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/core/state/resume.sh:80 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/core/output/stage-io.sh:637 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/build/lib/secrets.sh:172 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:72 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:96 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:101
+  ✗ [G5] every literal unavailable names its service
+  ✗ [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+    expected: 1, got: 0
+  ✗ [#1754/SPEC-4] intake-result.json carries outcome=broken
+    expected: broken, got: pass
+  ✗ [#1754/SPEC-4] reason names intake.md
+    output missing: intake.md
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/lint-disposition-words-test.sh
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/plugin-primary-output-atomic-test.sh
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/stage-signal-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/intake/tests/intake-result-test.sh
+lint: FAIL (npm run lint)
+  SPEC-5: wiring
+  ✓ [SPEC-5] npm run lint runs it
+  ✓ [SPEC-5] the CI Lint job runs it
+  1 of 16 tests failed
+  ✓ [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
+  1 of 29 tests failed
+  ✓ [G5] every plugin's signal handling uses the helper
+  1 of 11 tests failed
+  3 of 43 tests failed
+lint-llm-envelope: OK — 57 plugin source(s) checked, no markdown-document envelope fields
+lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
+lint-silenced-redirect: clean
+lint-test-errexit: clean
+lint-disposition-words: tool/test/plugin.sh:1209 writes outcome 'is', which the engine does not know
+lint-disposition-words: 1 problem(s) among 41 literal disposition(s) — an off-set word, or an unexplained 'unavailable'; the set is: complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken
+```
+
+## The checks of this run
+- the acceptance check failed: the acceptance check failed — SPEC-1/SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong; SPEC-4: its test does not pass on the new code — the code or the test is wrong; the run of timeout:SPEC-5/timeout:SPEC-6/timeout:SPEC-7's test on the code from before this change could not be done (a problem in the pipeline, not in your change); putting timeout:plugins/tool/test/plugin.sh/timeout:package.json/timeout:core/detect/platforms.sh/timeout:core/output/destinations.sh/timeout:core/pipeline/state_helpers.sh/timeout:plugins/agent/pr-delivery/plugin.sh/timeout:plugins/tool/merge/plugin.sh/timeout:plugins/tool/output-github-comment/plugin.sh/timeout:plugins/tool/pr-open/plugin.sh/timeout:plugins/tool/test/lib/acceptance-check.sh/timeout:plugins/tool/test/lib/acceptance-reason.sh/timeout:scripts/lib/lint-atomic-write-unchecked.sh back to its old version could not be done (a problem in the pipeline, not in your change)
+
+Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
+r's TERM handler is back after intake returns
+
+  [38;2;0;212;255mD7: a result that cannot be written[0m
+  [38;2;74;222;128m✓[0m [D7] a result that cannot be written fails the stage
+  [38;2;74;222;128m✓[0m [D7] ...and says which file
+
+  [38;2;0;212;255mD8: no fallback path[0m
+  [38;2;74;222;128m✓[0m [D8] no result is written beside the state file
+  [38;2;74;222;128m✓[0m [D8] ...and intake says the engine gave it no artifact dir
+
+  [38;2;0;212;255mD10: a signal after the result is written[0m
+  [38;2;74;222;128m✓[0m [D10] the pass intake wrote is still the result
+
+  [38;2;0;212;255m[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] intake-result.json carries outcome=broken
+  [38;2;74;222;128m✓[0m [#1754/SPEC-3] reason names scope-manifest.md
+
+  [38;2;0;212;255m[#1754/SPEC-4] intake.md write failure → broken + non-zero[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+    [2mexpected: broken, got: pass[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+    [2moutput missing: intake.md[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 43 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
+  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
+
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh && bash scripts/lib/lint-atomic-write-unchecked.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 44 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: OK — no grep -c || echo occurrences in scripts/ core/ plugins/ tests/
+lint-test-identity: OK — no real issue number used as test identity
+lint-llm-envelope: OK — 57 plugin source(s) checked, no markdown-document envelope fields
+lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
+lint-silenced-redirect: clean
+lint-test-errexit: clean
+lint-disposition-words: tool/test/plugin.sh:1209 writes outcome 'is', which the engine does not know
+lint-disposition-words: 1 problem(s) among 41 literal disposition(s) — an off-set word, or an unexplained 'unavailable'; the set is: complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken
+
+### issue-acceptance (verdict: fail)
+Outputs:
+- issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
+- issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
+
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (intake.md, SPEC-4): The test at `plugins/agent/intake/tests/intake-result-test.sh` fails with "expected: 1, got: 0" and "expected: broken, got: pass". Although the code in `plugins/agent/intake/plugin.sh` does capture `PIPESTATUS[1]` after the `intake.md` write and checks `_im_aw_rc != 0`, the test run shows `_intake_run_inner` returns 0 and the result remains "pass" when that write fails — the fix is present in the diff but does not work in practice for this path.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (R3/SPEC-8): The test at `tests/unit/plugin-primary-output-atomic-test.sh` fails with "missing || true at: core/state/resume.sh:80 core/output/stage-io.sh:637 plugins/agent/build/lib/secrets.sh:172 plugins/tool/test/lib/own-checks.sh:72,96,101". None of these six files appear in the diff — they were not changed — so the pre-existing unchecked calls were not annotated. SPEC-8 requires all 13 pre-existing calls to carry `|| true`; six do not, and `npm run lint` (via the newly wired `lint-atomic-write-unchecked.sh`) would therefore fail on the real codebase.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1 (lint, disposition-words regression): `npm run lint` fails with `lint-disposition-words: tool/test/plugin.sh:1209 writes outcome 'is'`. The new multi-line comment block added to the fallback path in `plugins/tool/test/plugin.sh` (the line `# no second stage_result_add call is needed.`) is parsed by `lint-disposition-words` as a `stage_result_add` invocation with disposition word `is`. This is a regression introduced by the diff that blocks lint from passing.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 4 (opened by issue-acceptance): Not sure this requirement is met: R-1 (SPEC-1/SPEC-2, test-first validity): The acceptance-check stage reported that SPEC-1 and SPEC-2's tests "already pass on the code from before this change," meaning the tests may not catch reversion of the fix. The REQUIREMENTS stage claims the opposite ("its test failed on the old code and passes now"), and my reading of the old code logic supports the REQUIREMENTS assessment, but the before-test check timed out so neither stage can be fully trusted. I cannot determine with certainty whether SPEC-1/SPEC-2's tests are falsifiable against the old code.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+
+Summary:
+## issue-acceptance — fail
+
+- Two of the four concrete sub-requirements the issue names are demonstrably unmet: the intake.md write-failure path still returns 0 with outcome=pass (SPEC-4), and six pre-existing `| atomic_write` calls outside the two bug-fix files lack `|| true`, causing the full-codebase lint to fail (SPEC-8); additionally, new comment text at `plugin.sh:1209` introduces a lint-disposition-words violation that breaks `npm run lint`.
+
+- NOT MET: R-1 (intake.md, SPEC-4): The test at `plugins/agent/intake/tests/intake-result-test.sh` fails with "expected: 1, got: 0" and "expected: broken, got: pass". Although the code in `plugins/agent/intake/plugin.sh` does capture `PIPESTATUS[1]` after the `intake.md` write and checks `_im_aw_rc != 0`, the test run shows `_intake_run_inner` returns 0 and the result remains "pass" when that write fails — the fix is present in the diff but does not work in practice for this path.
+- NOT MET: R-1 (R3/SPEC-8): The test at `tests/unit/plugin-primary-output-atomic-test.sh` fails with "missing || true at: core/state/resume.sh:80 core/output/stage-io.sh:637 plugins/agent/build/lib/secrets.sh:172 plugins/tool/test/lib/own-checks.sh:72,96,101". None of these six files appear in the diff — they were not changed — so the pre-existing unchecked calls were not annotated. SPEC-8 requires all 13 pre-existing calls to carry `|| true`; six do not, and `npm run lint` (via the newly wired `lint-atomic-write-unchecked.sh`) would therefore fail on the real codebase.
+- NOT MET: R-1 (lint, disposition-words regression): `npm run lint` fails with `lint-disposition-words: tool/test/plugin.sh:1209 writes outcome 'is'`. The new multi-line comment block added to the fallback path in `plugins/tool/test/plugin.sh` (the line `# no second stage_result_add call is needed.`) is parsed by `lint-disposition-words` as a `stage_result_add` invocation with disposition word `is`. This is a regression introduced by the diff that blocks lint from passing.
+- NOT SURE: R-1 (SPEC-1/SPEC-2, test-first validity): The acceptance-check stage reported that SPEC-1 and SPEC-2's tests "already pass on the code from before this change," meaning the tests may not catch reversion of the fix. The REQUIREMENTS stage claims the opposite ("its test failed on the old code and passes now"), and my reading of the old code logic supports the REQUIREMENTS assessment, but the before-test check timed out so neither stage can be fully trusted. I cannot determine with certainty whether SPEC-1/SPEC-2's tests are falsifiable against the old code. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+
 ## What you must not do
 
 The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and do not edit it.
@@ -406,6 +610,10 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - plugins/tool/pr-open/plugin.sh
   - plugins/tool/test/lib/acceptance-reason.sh
   - plugins/tool/test/lib/acceptance-check.sh
+  - plugins/agent/build/lib/secrets.sh
+  - plugins/tool/test/lib/own-checks.sh
+  - core/state/resume.sh
+  - core/output/stage-io.sh
 
 ### Rules
 - Touch only files in the scope list above.
