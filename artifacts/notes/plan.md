@@ -52,3 +52,15 @@
 None — issue is fully specified.
 
 ## Step count: 8 (design expanded scope: 2 more files, 4 more sites; SPEC-8 threshold updated to ≥17)
+
+## Design findings incorporated into plan update
+
+**SPEC-4 mock bug (design finding 2):** Step 3 updated to specify the correct mock pattern.
+The original plan said "a targeted mock that lets scope-manifest.md succeed" without naming
+the broken exclusion pattern. The design found that `*"intake.md" && != *"intake-result"*`
+silently passes because the temp dir `plugin-intake-result.XXXXXX` contains "intake-result"
+as a substring, making the mock never fire. Step 3 now specifies `"${_aw_target##*/}" == "intake.md"`.
+
+**SPEC-1/SPEC-2 diff completeness (design finding 1):** No plan change needed. The tests are
+correctly discriminating. The implementer must include `plugins/tool/test/plugin.sh` in the
+submitted diff — it is already in WIRING and step-2's areas.
