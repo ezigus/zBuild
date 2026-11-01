@@ -275,18 +275,16 @@ rm -f "$RESULT"
 # is exactly what the real write path produces (not hand-made).
 stage_result_write "$RESULT" "pass" "prior round passed" 2>/dev/null || true
 
-# Save the real atomic_write so the fallback write (call #2+) can succeed.
+# Save the real atomic_write so it can be restored before the reader call.
 eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s2 ()/')"
 
-_1754s2_aw_calls=0
+# Mock: ALL atomic_write calls fail — forces the new direct-redirect fallback (> not | atomic_write).
+# On old code: fallback | atomic_write intercepted → && short-circuits → stage_result_add
+# not called → prior-round pass survives → disposition is "complete" not "broken".
+# On new code: fallback > (direct redirect) not intercepted → broken result written.
 atomic_write() {
-    _1754s2_aw_calls=$(( _1754s2_aw_calls + 1 ))
-    if [[ "$_1754s2_aw_calls" -eq 1 ]]; then
-        # Primary path: drain stdin to prevent SIGPIPE on the jq producer, fail.
-        cat > /dev/null
-        return 1
-    fi
-    _aw_real_1754s2 "$@"
+    cat > /dev/null   # drain stdin to prevent SIGPIPE on the jq producer
+    return 1
 }
 
 # Run the writer — same outcome as the prior round (pass) so the only thing
