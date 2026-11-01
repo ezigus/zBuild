@@ -185,6 +185,52 @@ _spec5b_out="$(bash "$_LINT_SCRIPT" "$_SPEC5B_FIXTURE" 2>&1)" || _spec5b_rc=$?
 assert_eq "[#1754/SPEC-5b] lint exits non-zero for a PIPESTATUS[0]-only capture" "1" "$_spec5b_rc"
 assert_contains "[#1754/SPEC-5b] lint names that line" "$_spec5b_out" "spec5b-producer-only.sh:3"
 
+# ─── [#1754/SPEC-5c] the read must be at the write's own index ──────────────
+# Each fixture holds one write the lint must flag, on line 2.
+print_test_section "[#1754/SPEC-5c] lint flags a read at another stage, and hidden unchecked writes"
+
+_s5c_flag() {  # <name> <line 2> [line 3]
+    local f="$TEST_TEMP_DIR/spec5c-$1.sh" rc=0 out
+    printf '_w() {\n%s\n%s\n}\n' "$2" "${3:-:}" > "$f"
+    out="$(bash "$_LINT_SCRIPT" "$f" 2>&1)" || rc=$?
+    assert_eq "[#1754/SPEC-5c] $1: flagged (out: $out)" "1" "$rc"
+}
+_s5c_flag three-stage-reads-sed \
+    "    jq -n '{}' | sed 's/x/y/' | atomic_write \"\$p\"" '    local rc="${PIPESTATUS[1]}"'
+_s5c_flag all-statuses "    printf x | atomic_write \"\$p\"" '    local all=("${PIPESTATUS[@]}")'
+_s5c_flag no-space "    printf x |atomic_write \"\$p\""
+_s5c_flag or-in-comment "    printf x | atomic_write \"\$p\"  # a || b"
+_s5c_flag apostrophe-in-double "    printf \"it's\" | atomic_write \"\$p\" # don't"
+
+# A write after a multi-line '...' (a jq filter), with a heredoc holding an
+# apostrophe before it: quotes carry across lines, a heredoc body is not code.
+_S5C_ML="$TEST_TEMP_DIR/spec5c-multiline.sh"
+cat > "$_S5C_ML" <<'FIXTURE'
+_w() {
+    cat <<EOF
+it's text
+EOF
+    jq -n '{
+        a: 1
+    }' | atomic_write "$p"
+}
+FIXTURE
+_s5c_rc=0; _s5c_out="$(bash "$_LINT_SCRIPT" "$_S5C_ML" 2>&1)" || _s5c_rc=$?
+assert_contains "[#1754/SPEC-5c] a write after a multi-line string is flagged" "$_s5c_out" "spec5c-multiline.sh:7"
+
+_S5C_OK="$TEST_TEMP_DIR/spec5c-ok.sh"
+cat > "$_S5C_OK" <<'FIXTURE'
+_w() {
+    jq -n '{}' | sed 's/x/y/' | atomic_write "$p"
+    local rc="${PIPESTATUS[2]}"
+    printf x | atomic_write "$p"
+    local rc2="${PIPESTATUS[-1]}"
+    printf 'a | b' | atomic_write "$p" || return 1
+}
+FIXTURE
+_s5c_rc=0; _s5c_out="$(bash "$_LINT_SCRIPT" "$_S5C_OK" 2>&1)" || _s5c_rc=$?
+assert_eq "[#1754/SPEC-5c] reads at the write's index pass (out: $_s5c_out)" "0" "$_s5c_rc"
+
 # ─── [#1754/SPEC-8] the real tree passes the lint ────────────────────────────
 # R3: "Existing safe uses pass." Every | atomic_write in core/, plugins/ and
 # scripts/ checks its write, so the lint over the whole tree exits 0.
