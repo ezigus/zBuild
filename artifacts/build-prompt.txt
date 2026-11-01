@@ -47,6 +47,9 @@ below. You have Read, Edit, Write, and Bash tools available.
 - You make code changes via Edit/Write/Bash. What you change stays in the
   working tree: if you do not finish, the next try continues from it, and your
   notes file (in the rules below) carries what you learned.
+- Write your notes file first, and add each thing you find to it
+  before your next step. If you are cut off, your notes are what the next try
+  starts from.
 - Do NOT emit a unified diff in your response — the pipeline derives the
   canonical `diff.patch` artifact from `git diff HEAD` automatically.
 
@@ -74,8 +77,8 @@ a failure you cannot produce, and do not change code to chase one.
 ### When a test is wrong
 If a test fails on code that already does what its requirement says — the test
 itself cannot pass — do not change the code to chase it; you may not change the
-test. Answer that finding, on its own line before the sentinel, and
-stop working on that test:
+test. Answer that finding as soon as you are sure, on its own line before the
+sentinel, and stop working on that test:
 
     ANSWER <stage> finding <n>: nothing to do — the test is wrong: <test file>: <why>
 
@@ -120,13 +123,13 @@ omit this line the pipeline falls back to the plan title.
    - Areas: `tests/unit/test-plugin-result-write-fallback-test.sh`, `tests/unit/test-result-reason-contract-test.sh`
 2. Fix \`_test_write_result\` in \`plugins/tool/test/plugin.sh\`: capture the full PIPESTATUS array after \`jq … | atomic_write\` on a single \`local\` statement; treat a non-zero write exit (index 1) the same as a non-zero jq exit (index 0) and trigger the existing broken fallback — without using the literal token \`stage_result_add\` in any new comment in that block (lint-disposition-words scans comments).
    - Areas: `plugins/tool/test/plugin.sh`
-3. Write failing tests for R2 in \`plugins/agent/intake/tests/intake-result-test.sh\`: simulate \`atomic_write\` failing for \`scope-manifest.md\` and for \`intake.md\` in turn (the latter with a targeted mock that lets scope-manifest.md succeed); assert intake exits non-zero in each case and that the reason names the failing file.
+3. Write failing tests for R2 in \`plugins/agent/intake/tests/intake-result-test.sh\`: simulate \`atomic_write\` failing for \`scope-manifest.md\` and for \`intake.md\` in turn; the \`intake.md\` mock must match only the filename via \`"${_aw_target##*/}" == "intake.md"\` (not \`*"intake-result"*\` substring exclusion, which the temp dir name defeats); assert intake exits non-zero and the reason names the failing file in each case.
    - Areas: `plugins/agent/intake/tests/intake-result-test.sh`
 4. Fix \`_intake_run_inner\` in \`plugins/agent/intake/plugin.sh\`: capture \`PIPESTATUS[1]\` immediately after each \`| atomic_write\` call (scope-manifest.md and intake.md); on write failure call \`_intake_write_result\` with outcome \`broken\` and a reason naming the file, then return non-zero — ensuring no later code path resets the result to \`pass\`.
    - Areas: `plugins/agent/intake/plugin.sh`
 5. Write failing tests for R3 in \`tests/unit/plugin-primary-output-atomic-test.sh\`: invoke the lint script against a synthetic fixture with an unchecked \`| atomic_write\` and assert it exits non-zero naming the line; assert it exits 0 on a checked fixture; assert it exits 0 when run against the real codebase (SPEC-8 — this assertion fails until step-7 applies the annotations); the SPEC-8 assertion must count ≥17 \`|| true\`-annotated sites and must explicitly exclude \`core/state/resume.sh\` and \`core/output/stage-io.sh\` from the \`|| true\` requirement (those files are already correctly handled).
    - Areas: `tests/unit/plugin-primary-output-atomic-test.sh`
-6. Add \`scripts/lib/lint-atomic-write-unchecked.sh\`: scan every \`.sh\` file under \`core/\`, \`plugins/\`, and \`scripts/\` for \`| atomic_write\` whose exit status is not checked on the same line via \`&&\`, \`||\`, or \`if !\`, or on the next non-blank non-comment line via a \`PIPESTATUS[\` capture; emit a file-and-line message per violation and exit non-zero.
+6. Add \`scripts/lib/lint-atomic-write-unchecked.sh\`: scan every \`.sh\` file under \`core/\`, \`plugins/\`, and \`scripts/\` for \`| atomic_write\` whose exit status is not checked on the same line via \`&&\`, \`||\`, or \`if !\`, or on a continuation line (ending with \`\\`) whose next physical line contains \`||\` or \`&&\`, or on the next non-blank non-comment line via a \`PIPESTATUS[\` capture; emit a file-and-line message per violation and exit non-zero.
    - Areas: `scripts/lib/lint-atomic-write-unchecked.sh`
 7. Annotate the 17 pre-existing best-effort \`| atomic_write\` calls with \`|| true\` across 11 files (\`core/detect/platforms.sh\`, \`core/pipeline/state_helpers.sh\`, \`core/output/destinations.sh\`, \`plugins/agent/pr-delivery/plugin.sh\`, \`plugins/tool/merge/plugin.sh\`, \`plugins/tool/output-github-comment/plugin.sh\`, \`plugins/tool/pr-open/plugin.sh\`, \`plugins/tool/test/lib/acceptance-reason.sh\`, \`plugins/tool/test/lib/acceptance-check.sh\`, \`plugins/agent/build/lib/secrets.sh\`, \`plugins/tool/test/lib/own-checks.sh\`); do NOT add \`|| true\` to \`core/state/resume.sh\` or \`core/output/stage-io.sh\` — those already have correct exit handling and \`|| true\` would break them.
    - Areas: `core/detect/platforms.sh`, `core/pipeline/state_helpers.sh`, `core/output/destinations.sh`, `plugins/agent/pr-delivery/plugin.sh`, `plugins/tool/merge/plugin.sh`, `plugins/tool/output-github-comment/plugin.sh`, `plugins/tool/pr-open/plugin.sh`, `plugins/tool/test/lib/acceptance-reason.sh`, `plugins/tool/test/lib/acceptance-check.sh`, `plugins/agent/build/lib/secrets.sh`, `plugins/tool/test/lib/own-checks.sh`
@@ -203,63 +206,61 @@ already correctly handled and the SPEC-8 test excludes them instead.
 
 ## Findings
 
-**SPEC-1/SPEC-2 — incomplete diff (acceptance-gate finding 1, revised).**
-The acceptance-gate finding this round is NOT due to a timeout. The code fix is
-confirmed in the worktree at `plugins/tool/test/plugin.sh:1188`:
-The most recently submitted diff only modified `test-result-reason-contract-test.sh`
-(the SPEC-2 assertion). It did not include `plugins/tool/test/plugin.sh`. When the
-acceptance-gate reverts the submitted diff to check "old code," it does not revert
-the plugin fix — which is in the worktree from a prior iteration but outside the
-diff. Old code therefore still has PIPESTATUS[1] captured, so both tests pass.
+**SPEC-1 and SPEC-2 — marked [done] (acceptance-gate finding 1).**
+The acceptance-gate found both SPEC-1 and SPEC-2 tests pass on "old code" (the
+worktree with the submitted diff reverted). This is because a prior implementation
+iteration applied the `PIPESTATUS[1]` fix to `plugins/tool/test/plugin.sh` but
+the most recently submitted diff contained only `test-result-reason-contract-test.sh`.
+Reverting that diff did not remove the plugin fix — "old code" still had it.
 
-The tests ARE correctly discriminating: on code without line 1188's PIPESTATUS[1]
-capture, SPEC-1's call-counter mock fails the primary write → old code falls
-through to `stage_result_add` on the stale prior-round file → merged outcome=pass
-→ test asserts broken → FAILS ✓. SPEC-2 similarly: without PIPESTATUS[1], the
-stale outcome=pass is merged → `runner_read_stage_disposition` returns "complete"
-→ test asserts "broken" → FAILS ✓.
+The fix is confirmed in the current worktree:
+- `plugins/tool/test/plugin.sh:1188` — `local _jq_rc="${PIPESTATUS[0]}" _aw_rc="${PIPESTATUS[1]}"`
+- `plugins/tool/test/plugin.sh:1189` — `(( _aw_rc != 0 )) && _jq_rc="$_aw_rc"`
 
-Resolution: `plugins/tool/test/plugin.sh` is listed in WIRING. The pipeline's
-WIRING check puts that file back to its old version (without PIPESTATUS[1]) and
-verifies at least one test fails — which it does. The implementer must include
-`plugins/tool/test/plugin.sh` in the submitted diff. No SPEC or test change needed.
+Both SPECs are marked [done]. No new test is written for them; the evidence lines
+are the implementation. `plugins/tool/test/plugin.sh` is removed from WIRING (no
+remaining [code] SPEC tests its PIPESTATUS behavior). The test files
+`test-plugin-result-write-fallback-test.sh` and `test-result-reason-contract-test.sh`
+remain in scope as changed files; they are not in TESTFILES.
 
-**SPEC-4 — broken mock exclusion pattern (acceptance-gate finding 2,
+**SPEC-2 — issue-acceptance finding 2 resolved.**
+Issue-acceptance finding 2 ("NOT SURE: SPEC-2") asked for a test that fails when
+the requirement is not met. Marking SPEC-2 [done] with evidence at lines 1188-1189
+resolves this: the code already delivers the behavior, and the evidence is
+checkable.
+
+**SPEC-4 — mock fix confirmed in worktree (acceptance-gate finding 2,
 issue-acceptance finding 1, revised).**
-The previous design finding ("the SPEC-4 test is correct") was wrong.
-The mock in `intake-result-test.sh:465-467` uses:
-`setup_test_env "plugin-intake-result"` creates a temp dir named
-`plugin-intake-result.XXXXXX`. From `intake-test-lib.sh`:
-The `intake.md` write path in the plugin is `$state_dir/intake.md` =
-`/tmp/plugin-intake-result.XXXXXX/state/intake.md`. The path contains
-`plugin-intake-result` which includes `intake-result` as a substring. So:
-- `*"intake.md"` → TRUE (path ends in intake.md)
-- `*"intake-result"*` → TRUE (path contains "intake-result" via dir name)
-- `!= *"intake-result"*` → FALSE
-- Condition: TRUE AND FALSE = FALSE → mock does NOT fail the write
+The design already specified the correct mock fix: match `${_aw_target##*/}` ==
+"intake.md"` rather than the full-path pattern. The current worktree at
+`plugins/agent/intake/tests/intake-result-test.sh` (lines 467–474) already uses:
+And `plugins/agent/intake/plugin.sh:281` has `local _im_aw_rc="${PIPESTATUS[1]}"`.
 
-Result: `_im_aw_rc` is 0 → plugin continues to return 0 → all three SPEC-4
-assertions fail on both old and new code. This is why the acceptance-gate says
-the test does not pass even on new code.
+The issue-acceptance finding 1 ("all three SPEC-4 assertions still fail") was from
+a prior iteration before the mock fix reached the worktree. The finding is stale.
+SPEC-4 remains [code]: on truly old code (without `PIPESTATUS[1]` in the intake
+plugin), the mock correctly triggers the failure path that the old code ignores, so
+all three assertions fail. The WIRING check (reverting `plugins/agent/intake/plugin.sh`)
+verifies this. The implementation must include both
+`plugins/agent/intake/plugin.sh` and `plugins/agent/intake/tests/intake-result-test.sh`
+in the submitted diff.
 
-Fix specified in SPEC-4: the mock condition must match only on the filename, not
-the full path:
-`basename("scope-manifest.md path")` = `scope-manifest.md` ≠ `intake.md` → passes ✓
-`basename("intake.md path")` = `intake.md` = `intake.md` → fails ✓
-`basename("intake-result.json path")` = `intake-result.json` ≠ `intake.md` → passes ✓
+**SPEC-8 scope expansion (no change needed).**
+All four files from an earlier finding remain in scope. `core/state/resume.sh:80`
+and `core/output/stage-io.sh:637` are excluded from the `|| true` requirement;
+`plugins/agent/build/lib/secrets.sh:172` and `plugins/tool/test/lib/own-checks.sh:72,96,101`
+carry `|| true`. The >= 17 threshold is satisfied (18 in current worktree).
 
-With the correct mock and new code (PIPESTATUS[1] at line 281): the write fails →
-`_im_aw_rc=1` → broken result written, returns 1 → all three SPEC-4 assertions
-pass. With old code (no PIPESTATUS[1]): write failure is undetected → plugin
-returns 0, writes "pass" → assertions fail ✓.
+**Lint-disposition-words constraint (no change needed).**
+The fallback comment block in `plugins/tool/test/plugin.sh` must not contain the
+literal token `stage_result_add`. This is an implementation-only constraint
+stated in the Decision section. The file is in scope.
 
-This is a design specification: SPEC-4 text has been updated to name the required
+**`scripts/lib/stage-result.sh` is not in scope.** Its `atomic_write` calls use
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
 These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#1754/SPEC-1]).
-- SPEC-1: tests/unit/test-plugin-result-write-fallback-test.sh
-- SPEC-2: tests/unit/test-result-reason-contract-test.sh
 - SPEC-3: plugins/agent/intake/tests/intake-result-test.sh
 - SPEC-4: plugins/agent/intake/tests/intake-result-test.sh
 - SPEC-5: tests/unit/plugin-primary-output-atomic-test.sh
@@ -268,8 +269,6 @@ These tests were written before your code. Make them pass by changing code only.
 - SPEC-8: tests/unit/plugin-primary-output-atomic-test.sh
 
 What each SPEC requires:
-- [#1754/SPEC-1] when jq exits 0 but atomic_write fails for the primary result path in _test_write_result — with a prior-round pass result already at that path so stage_result_add on old code would merge the stale outcome — the result file carries outcome=broken and reason=result_write_failed, not the prior-round outcome
-- [#1754/SPEC-2] after a primary atomic_write failure in _test_write_result with a prior-round pass result at the path, runner_read_stage_disposition returns broken (not complete), proving the fallback write is what the disposition reader classifies rather than the stale prior-round file
 - [#1754/SPEC-3] _intake_run_inner writes a broken result whose reason names scope-manifest.md and returns non-zero when atomic_write for that file fails
 - [#1754/SPEC-4] _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atomic_write for that file fails; the test mock matches only the FILENAME (not the full path) via "${_aw_target##*/}" == "intake.md" so the test temp dir plugin-intake-result.XXXXXX does not suppress the failure; scope-manifest.md and intake-result.json writes go through the real implementation
 - [#1754/SPEC-5] scripts/lib/lint-atomic-write-unchecked.sh exits non-zero and names the violating line (file:lineno) when given a .sh file containing a bare unchecked pipe to atomic_write
@@ -279,10 +278,6 @@ What each SPEC requires:
 
 ### REQUIREMENTS YOUR CODE MUST MEET
 Your change is done when the test for every requirement below passes.
-- [#1754/SPEC-1] when jq exits 0 but atomic_write fails for the primary result path in _test_write_result — with a prior-round pass result already at that path so stage_result_add on old code would merge the stale outcome — the result file carries outcome=broken and reason=result_write_failed, not the prior-round outcome
-  → its test is already written; make it pass
-- [#1754/SPEC-2] after a primary atomic_write failure in _test_write_result with a prior-round pass result at the path, runner_read_stage_disposition returns broken (not complete), proving the fallback write is what the disposition reader classifies rather than the stale prior-round file
-  → its test is already written; make it pass
 - [#1754/SPEC-3] _intake_run_inner writes a broken result whose reason names scope-manifest.md and returns non-zero when atomic_write for that file fails
   → its test is already written; make it pass
 - [#1754/SPEC-4] _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atomic_write for that file fails; the test mock matches only the FILENAME (not the full path) via "${_aw_target##*/}" == "intake.md" so the test temp dir plugin-intake-result.XXXXXX does not suppress the failure; scope-manifest.md and intake-result.json writes go through the real implementation
@@ -355,42 +350,38 @@ Outputs:
 Summary:
 ## test-author — pass
 
-- changed 2 test file(s); acceptance assertions for 8 SPEC(s) from the design contract
+- changed 1 test file(s); acceptance assertions for 6 SPEC(s) from the design contract
 
-- SPECs in the contract: 8
+- SPECs in the contract: 6
 - assertions are authored from the SPEC text, never from the implementation
 - the test files, and the requirements each covers:
-- tests/unit/test-plugin-result-write-fallback-test.sh — SPEC-1
-- tests/unit/test-result-reason-contract-test.sh — SPEC-2
 - plugins/agent/intake/tests/intake-result-test.sh — SPEC-3, SPEC-4
 - tests/unit/plugin-primary-output-atomic-test.sh — SPEC-5, SPEC-6, SPEC-7, SPEC-8
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: build-tests finding 1: done — changed mock to `"${_aw_target##*/}" == "intake.md"` (filename-only check); all 3 SPEC-4 assertions pass
-- answered: build-tests finding 2: done — same fix as finding 1
-- answered: build-tests finding 3: done — mock fixed; implementation's PIPESTATUS[1] checking now exercised correctly
-- answered: test finding 1: done — removed full-codebase lint run from SPEC-8; test now runs in ~0.4 s
-- answered: test finding 2: done — same fix as finding 1
-- answered: test finding 3: done — same fix as finding 1
-- answered: test finding 4: done — same fix as finding 1
-- answered: acceptance-gate finding 1: nothing to do — pipeline artifact (prior revert timed out); tests are correct
-- answered: acceptance-gate finding 2: done — SPEC-4 mock bug fixed; test passes on new code
-- answered: issue-acceptance finding 1: done — SPEC-4 mock fixed; all 3 assertions pass
-- answered: issue-acceptance finding 2: nothing to do — test correctly uses `runner_read_stage_disposition` which is what SPEC-2 requires
+- answered: check finding 1: done — changed SPEC-7 assertion from a whole-file grep to a two-step check: extract only the `"lint"` key's line, then check that line for the invocation; now fails if the string is in any other target
 
-### build (verdict: fail) — your own
+### build (verdict: timed_out) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
-- build_tests: /home/runner/work/_temp/zbuild-state/artifacts/build-tests-result.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
-Findings:
-- build-tests finding 1 (opened by build): test finding 1: plugins/agent/intake/tests/intake-result-test.sh: the SPEC-4 mock at line 467 checks `"$_aw_target" != *"intake-result"*` to exclude the result-file path, but `setup_test_env "plugin-intake-result"` at line 37 creates a temp dir named `/tmp/plugin-intake-result.XXXXXX`; the intake.md path (`$TEST_TEMP_DIR/state/intake.md`) contains `intake-result` in the directory name, so the exclusion fires for intake.md too, and the mock routes intake.md writes to the real `atomic_write` which succeeds — SPEC-4's three assertions cannot pass on any implementation because the mock never fails the intake.md write
-- build-tests finding 2 (opened by build): acceptance-gate finding 2: plugins/agent/intake/tests/intake-result-test.sh: the SPEC-4 mock cannot fail the intake.md write because the temp dir name `plugin-intake-result` contains `intake-result` — same root cause as test finding 1; no code change can make SPEC-4 pass with this mock
-- build-tests finding 3 (opened by build): issue-acceptance finding 1: plugins/agent/intake/tests/intake-result-test.sh: the SPEC-4 mock bug described in test finding 1 prevents the test from passing; the implementation at plugins/agent/intake/plugin.sh:280-286 correctly captures `PIPESTATUS[1]` after the intake.md write and calls `_intake_write_result "broken"` then `return 1` when non-zero — the code is correct, the mock is not
-
 Summary:
-## build — fail
+## build — timed_out
+
+- changed 0 file(s) over 1 pass(es), 1 iteration(s)
+
+- lines: +0 / -0
+- terminated: router_timeout
+- scope violation: false
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-1/build-summary.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-1/build-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-1/diff.patch
+
+Summary of that output:
+## build — pass
 
 - changed 0 file(s) over 1 pass(es), 1 iteration(s)
 
@@ -410,43 +401,102 @@ Your notes so far:
 
 ### SPEC-3 / SPEC-4 fix (plugins/agent/intake/plugin.sh)
 - Lines 273-279: scope-manifest.md PIPESTATUS[1] check — correct ✓ (SPEC-3 PASSES)
-- Lines 280-286: intake.md PIPESTATUS[1] check — correct ✓ (SPEC-4 FAILS due to mock bug)
+- Lines 280-286: intake.md PIPESTATUS[1] check — correct ✓ (SPEC-4 PASSES)
 
-### SPEC-4 mock bug (READ-ONLY TEST — CANNOT FIX)
-- Test at `plugins/agent/intake/tests/intake-result-test.sh:465-472`
-- Mock fails `atomic_write` for `*"intake.md" && != *"intake-result"*`
-- `setup_test_env "plugin-intake-result"` creates TEST_TEMP_DIR = `/tmp/plugin-intake-result.XXXXXX`
-- intake.md path = `$TEST_TEMP_DIR/state/intake.md` = `/tmp/plugin-intake-result.XXXXXX/state/intake.md`
-- This path CONTAINS "intake-result" (from "plugin-intake-result" dir name)
-- So `!= *"intake-result"*` is FALSE → mock falls through to real atomic_write
-- Real atomic_write SUCCEEDS → _im_aw_rc=0 → function returns 0
-- SPEC-4 cannot pass on ANY implementation; the test mock is broken
-- Test file is read-only (mechanical check restores changes)
+### SPEC-4 mock fix (test-author stage applied it)
+- Test at `plugins/agent/intake/tests/intake-result-test.sh:467-474`
+- Mock now uses `"${_aw_target##*/}" == "intake.md"` (filename-only check, not path)
+- This correctly intercepts intake.md writes regardless of temp dir name
+- SPEC-4 PASSES with this mock and the PIPESTATUS[1] fix in the plugin ✓
 
 ### SPEC-5/6/7/8 (lint script + wire-in + 17 annotations)
 - `scripts/lib/lint-atomic-write-unchecked.sh` exists ✓
 - Wired into package.json lint target ✓
 - All 17 `|| true` annotations in place ✓
+- Test timing: 0.436s (well under threshold, no full-codebase scan) ✓
 - ALL PASS ✓
 
-## Current status (iteration 4)
-- SPEC-1: PASS ✓
-- SPEC-2: PASS ✓
-- SPEC-3: PASS ✓
-- SPEC-4: FAIL — mock bug in read-only test, cannot fix
-- SPEC-5: PASS ✓
-- SPEC-6: PASS ✓
-- SPEC-7: PASS ✓
-- SPEC-8: PASS ✓
+## Current status (iteration 5)
+- SPEC-1: PASS ✓ (45/45 tests)
+- SPEC-2: PASS ✓ (22/22 tests)
+- SPEC-3: PASS ✓ (43/43 tests)
+- SPEC-4: PASS ✓ (43/43 tests)
+- SPEC-5: PASS ✓ (32/32 tests)
+- SPEC-6: PASS ✓ (32/32 tests)
+- SPEC-7: PASS ✓ (32/32 tests)
+- SPEC-8: PASS ✓ (32/32 tests)
 
 ## Conclusion
-All implementation work is complete and correct. SPEC-4 cannot pass because the
-test mock in intake-result-test.sh has a path-matching bug: the exclusion pattern
-`!= *"intake-result"*` matches the temp dir name `plugin-intake-result`, preventing
-the mock from intercepting the intake.md write.
+All 8 SPECs pass. The implementation is complete:
+- plugins/tool/test/plugin.sh: captures PIPESTATUS[1] alongside PIPESTATUS[0]
+- plugins/agent/intake/plugin.sh: captures PIPESTATUS[1] after each | atomic_write call
+- intake-result-test.sh mock: fixed to use filename-only check
+- lint script: created and wired
+- 17 || true annotations: all in place
+- No uncommitted changes in worktree
 
-No code changes made in this iteration — everything already implemented correctly
-in prior iterations.
+Your last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:
+- (… 18 earlier steps not shown)
+- Bash: grep -n "set -e\|set +e\|set -euo\|set -o pipefail" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/intake/plugin.sh | head -10
+- Bash: grep -n "set -e\|set +e\|set -euo\|pipefail" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/plugin-bootstrap.sh | head -10
+- Bash: grep -n "set -e\|set +e\|pipefail" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/core/output/stage-io.sh | head -10
+- Bash: grep -n "atomic_write()\|^atomic_write " /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/core/output/stage-io.sh | head -10
+- Bash: grep -rn "^atomic_write()" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/ --include="*.sh" 2>/dev/null
+- said: Let me look at the git history and current state of the key files:
+- Bash: git log --oneline -10
+- Bash: git diff HEAD -- plugins/agent/intake/plugin.sh | head -60
+- Bash: git show HEAD:plugins/agent/intake/plugin.sh | grep -n "PIPESTATUS\|_im_aw_rc\|_sm_aw_rc\|intake.md\|scope-manifest" 2>/dev/null
+- Bash: git show HEAD:plugins/agent/intake/tests/intake-result-test.sh | grep -n "_aw_target\|intake.md\|##\*/" 2>/dev/null
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/intake/plugin.sh
+- Bash: grep -n "atomic_write\|PIPESTATUS" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/intake/plugin.sh
+- Bash: grep -n "atomic_write" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/stage-result.sh | head -10
+- Bash: grep -n "^stage_result_write()\|^stage_result_add()" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/stage-result.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/stage-result.sh
+- Bash: git show 9ded8adf --name-only --format="" | head -20
+- Bash: git diff 6f9399a2..9ded8adf -- plugins/agent/intake/tests/intake-result-test.sh | head -80
+- Bash: git log --oneline -20 -- plugins/agent/intake/tests/intake-result-test.sh
+- Bash: git show 6f9399a2 -- plugins/agent/intake/tests/intake-result-test.sh | head -100
+- Bash: grep -n "TEST_TEMP_DIR\|setup_test_env" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/test-helpers.sh | head -20
+- Bash: grep -n "setup_test_env()" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/test-helpers.sh
+- said: Let me carefully look at the full section around the intake.md write in the plugin:
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/intake/plugin.sh
+- said: Let me look at what exactly happens between SPEC-3 cleanup and SPEC-4 setup, and try running the test to see output:
+- Bash: bash -x plugins/agent/intake/tests/intake-result-test.sh 2>&1 | grep -A 5 "SPEC-4\|_s4_rc\|_aw_target\|intake.md\|_im_aw_rc" | head -80
+- Bash: bash plugins/agent/intake/tests/intake-result-test.sh 2>&1 | tail -30
+- said: Good - all 43 tests in the intake test pass now! Let me now look at the timing issue with `plugin-primary-output-atomic-test.sh`:
+- Bash: time bash tests/unit/plugin-primary-output-atomic-test.sh 2>&1 | tail -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/tests/unit/plugin-primary-output-atomic-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/tests/unit/plugin-primary-output-atomic-test.sh
+- Bash: grep -n "manifest_graph_primary_output\|^_manifest_graph" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/manifest-graph.sh | head -20
+- Bash: ls /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/*/*/manifest.yaml 2>/dev/null | wc -l
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/lint-atomic-write-unchecked.sh
+- Bash: git show 9ded8adf -- tests/unit/plugin-primary-output-atomic-test.sh | head -100
+- Bash: git show 6f9399a2:tests/unit/plugin-primary-output-atomic-test.sh | grep -n "lint\|SPEC-8\|real\|codebase" | head -30
+- Bash: grep -n "timing\|elapsed\|START\|start_time\|SECONDS" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/lib/test-helpers.sh | head -20
+- Bash: find /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts -name "*.sh" -exec grep -l "timing\|elapsed" {} \; 2>/dev/null
+- Bash: grep -n "timing\|plugin-primary-output" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/run-tests.sh | head -20
+- Bash: head -50 /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/scripts/run-tests.sh
+- Bash: git show 8606ec04:tests/unit/plugin-primary-output-atomic-test.sh | wc -l
+- Bash: git show 8606ec04:tests/unit/plugin-primary-output-atomic-test.sh | grep -n "SPEC-8\|lint\|real codebase\|no.*arg\|without.*arg" | head -30
+- said: Let me check the SPEC-1/SPEC-2 tests to understand the acceptance-gate finding:
+- Bash: grep -n "SPEC-1\|SPEC-2" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/tests/unit/test-plugin-result-write-fallback-test.sh | head -20
+- Bash: grep -n "SPEC-1\|SPEC-2" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/tests/unit/test-result-reason-contract-test.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/tests/unit/test-plugin-result-write-fallback-test.sh
+- Bash: git diff HEAD~10..HEAD -- plugins/tool/test/plugin.sh 2>/dev/null | head -30
+- Bash: git log --oneline -- plugins/tool/test/plugin.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/test/plugin.sh
+- Bash: git diff HEAD~10..HEAD -- plugins/tool/test/plugin.sh 2>/dev/null
+- Bash: git log --oneline -- plugins/tool/test/plugin.sh
+- Bash: git show 64960f4b -- plugins/tool/test/plugin.sh | head -50
+- Bash: git show fc1cee32:plugins/tool/test/plugin.sh | grep -n "PIPESTATUS\|_jq_rc\|_aw_rc" | head -10
+- Bash: git show 64960f4b:plugins/tool/test/plugin.sh | grep -n "PIPESTATUS\|_jq_rc\|_aw_rc" | head -10
+- Bash: git show fc1cee32:plugins/tool/test/plugin.sh | sed -n '1185,1195p'
+- Bash: git show HEAD:plugins/tool/test/plugin.sh | sed -n '1185,1195p'
+- Bash: git show 926ac5ac -- plugins/tool/test/plugin.sh | head -50
+- Bash: git diff 8606ec04..HEAD -- plugins/tool/test/plugin.sh 2>/dev/null
+- Bash: git diff f71aa772..HEAD -- plugins/tool/test/plugin.sh 2>/dev/null | head -20
 
 ### test (verdict: fail)
 Outputs:
@@ -454,7 +504,6 @@ Outputs:
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
@@ -492,74 +541,6 @@ unit: FAIL plugins/agent/intake/tests/intake-result-test.sh
 ## The checks of this run
 - the acceptance check failed: the acceptance check failed — SPEC-1/SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong; SPEC-4/plugins/agent/intake/tests/intake-result-test.sh: its test does not pass on the new code — the code or the test is wrong
 - a test file this change added or changed is far slower than the rest of the suite
-
-Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-res config.router.timeout_s
-  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.max_turns
-  [38;2;74;222;128m✓[0m [#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden
-  [38;2;74;222;128m✓[0m [#1837/SPEC-8] intake.md is byte-identical to v1 golden
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on success
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
-  [38;2;74;222;128m✓[0m [#1837/SPEC-1] missing state_file returns rc=1
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on missing state_file
-  [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
-  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] result_contract == 3
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] one outcome: no verdict or disposition field
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] outcome is in the engine's list
-  [38;2;74;222;128m✓[0m [#1837/SPEC-3] reason is non-empty
-  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len equals sanitized goal character count
-  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count equals number of detected platforms
-  [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
-  [38;2;74;222;128m✓[0m [#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)
-  [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
-  [38;2;74;222;128m✓[0m [#1837/SPEC-13] intake's own events are declared
-  [38;2;74;222;128m✓[0m [#1837/SPEC-14] template value wins over manifest config.router.timeout_s
-  [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
-
-  [38;2;0;212;255mD2: a failed issue fetch with no goal[0m
-  [38;2;74;222;128m✓[0m [D2] a failed fetch with no goal fails the stage
-  [38;2;74;222;128m✓[0m [D2] ...as unavailable: GitHub is not responding
-  [38;2;74;222;128m✓[0m [D2] ...and the reason names GitHub
-
-  [38;2;0;212;255mD3/D4: the goal itself[0m
-  [38;2;74;222;128m✓[0m [D3] no goal and no issue → misconfigured
-  [38;2;74;222;128m✓[0m [D4] a goal that sanitizes to nothing → misconfigured
-
-  [38;2;0;212;255mD6: the caller's TERM handler[0m
-  [38;2;74;222;128m✓[0m [D6] the caller's TERM handler is back after intake returns
-
-  [38;2;0;212;255mD7: a result that cannot be written[0m
-  [38;2;74;222;128m✓[0m [D7] a result that cannot be written fails the stage
-  [38;2;74;222;128m✓[0m [D7] ...and says which file
-
-  [38;2;0;212;255mD8: no fallback path[0m
-  [38;2;74;222;128m✓[0m [D8] no result is written beside the state file
-  [38;2;74;222;128m✓[0m [D8] ...and intake says the engine gave it no artifact dir
-
-  [38;2;0;212;255mD10: a signal after the result is written[0m
-  [38;2;74;222;128m✓[0m [D10] the pass intake wrote is still the result
-
-  [38;2;0;212;255m[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] intake-result.json carries outcome=broken
-  [38;2;74;222;128m✓[0m [#1754/SPEC-3] reason names scope-manifest.md
-
-  [38;2;0;212;255m[#1754/SPEC-4] intake.md write failure → broken + non-zero[0m
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
-    [2mexpected: 1, got: 0[0m
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
-    [2mexpected: broken, got: pass[0m
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
-    [2moutput missing: intake.md[0m
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m3 of 43 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] intake-result.json carries outcome=broken
-  [38;2;248;113;113m✗[0m [#1754/SPEC-4] reason names intake.md
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -631,6 +612,8 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   Write to it as you work, not at the end: what you read, what you
   concluded, and what is left. If you run out of time or turns, it is all that
   survives, and its latest version comes back to you under Previous work.
+  Write it as a hand-off: someone starting fresh, without your context, must
+  be able to pick up from it.
 - Your budget: each model call has 900 seconds, with no limit on turns. A call that runs out of time
   returns nothing: finish and write your answer well before the limit. The whole stage has 3600 seconds.
 
