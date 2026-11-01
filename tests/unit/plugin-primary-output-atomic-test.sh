@@ -202,6 +202,7 @@ _s5c_flag three-stage-reads-sed \
 _s5c_flag all-statuses "    printf x | atomic_write \"\$p\"" '    local all=("${PIPESTATUS[@]}")'
 _s5c_flag no-space "    printf x |atomic_write \"\$p\""
 _s5c_flag or-in-comment "    printf x | atomic_write \"\$p\"  # a || b"
+_s5c_flag pipestatus-in-comment "    printf x | atomic_write \"\$p\"" '    : # ${PIPESTATUS[1]}'
 _s5c_flag apostrophe-in-double "    printf \"it's\" | atomic_write \"\$p\" # don't"
 
 # A write after a multi-line '...' (a jq filter), with a heredoc holding an

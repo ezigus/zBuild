@@ -114,7 +114,10 @@ for _law_file in "${_law_files[@]}"; do
         _law_ok=0
         for (( _law_j = _law_i + 1; _law_j < _law_n; _law_j++ )); do
             [[ "${_law_codes[_law_j]}" =~ $_law_re_skip ]] && continue
-            [[ "${_law_lines[_law_j]}" =~ PIPESTATUS\[($_law_idx|-1)\] ]] && _law_ok=1
+            # The raw line up to where its comment starts: the read sits in
+            # "${...}", which the code form blanks, and blanking keeps length.
+            _law_raw="${_law_lines[_law_j]}"
+            [[ "${_law_raw:0:${#_law_codes[_law_j]}}" =~ PIPESTATUS\[($_law_idx|-1)\] ]] && _law_ok=1
             break
         done
         (( _law_ok )) && continue
