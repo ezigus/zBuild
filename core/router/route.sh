@@ -135,7 +135,13 @@ fi
 # #1706: map members run concurrently under one stage name; naming the record
 # by the unit keeps one member's failure from overwriting another's.
 _route_sync_diag_base() {
-    printf '%s-sync-error' "${ZBUILD_UNIT:-${ZBUILD_CURRENT_STAGE:-router}}"
+    printf '%s%s-sync-error' "${ZBUILD_UNIT:-${ZBUILD_CURRENT_STAGE:-router}}" "$(_route_try_suffix)"
+}
+
+# #2443: when the engine numbers the try, each try's record is its own file.
+_route_try_suffix() {
+    [[ -n "${ZBUILD_STAGE_TRY:-}" ]] && printf -- '-round%s-try%s' "${ZBUILD_CYCLE_ITER:-0}" "$ZBUILD_STAGE_TRY"
+    return 0
 }
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
@@ -699,6 +705,7 @@ _route_call_claude() {
     # eventually fires. The loop sites get setsid because the loop's
     # trap manually re-delivers the signal to the captured PGID.
     # (Copilot review #696 caught this; see PR description.)
+    declare -F stage_cutoff_clear >/dev/null 2>&1 && stage_cutoff_clear
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$(
             _zbuild_make_fresh_shell
@@ -731,6 +738,8 @@ _route_call_claude() {
         else
             printf '%s' "$response" > "$_sync_json_path" 2>/dev/null || _sync_json_path=""
         fi
+        [[ $rc -eq 124 && -n "$_sync_json_path" ]] && declare -F stage_cutoff_write >/dev/null 2>&1 \
+            && stage_cutoff_write "$_sync_json_path"
         if [[ -f "$stderr_file" ]]; then
             cp "$stderr_file" "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
         else
@@ -1358,6 +1367,8 @@ route_to_model_loop() {
     local _prompt_in="${_loop_tmp}/iter-${iter}.prompt"
     local _stream_file="${_loop_tmp}/iter-${iter}.stream.jsonl"
     printf '%s' "$final_prompt" > "$_prompt_in"
+    # #2443: the list of a cut-off call is only ever about the call just before.
+    declare -F stage_cutoff_clear >/dev/null 2>&1 && stage_cutoff_clear
     local -a _claude_args=(--print --model "$_ROUTE_MODEL_ID")
     # ADR-018 Amendment N (#762): omit --max-turns when sentinel mt=0.
     if [[ "$mt" -gt 0 ]]; then
@@ -1551,7 +1562,8 @@ route_to_model_loop() {
         # cite the path and parsed fields (including subtype for #762).
         local _diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}/stage-io"
         mkdir -p "$_diag_dir" 2>/dev/null || true
-        local _diag_base="${_iter_stage_id:-loop}-iter${iter}-error"
+        local _diag_try; _diag_try="$(_route_try_suffix)"
+        local _diag_base="${_iter_stage_id:-loop}${_diag_try:--iter${iter}}-error"
         local _diag_json_path=""
         local _diag_stderr_path=""
         if [[ -f "$json_file" ]]; then
@@ -1564,6 +1576,9 @@ route_to_model_loop() {
                 cp "$json_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
             fi
         fi
+        # #2443: a call cut off at its limit leaves its steps for the next try.
+        [[ $rc -eq 124 && -n "$_diag_json_path" ]] && declare -F stage_cutoff_write >/dev/null 2>&1 \
+            && stage_cutoff_write "$_diag_json_path"
         if [[ -f "$stderr_file" ]]; then
             _diag_stderr_path="$_diag_dir/${_diag_base}.raw-claude-stderr.txt"
             cp "$stderr_file" "$_diag_stderr_path" 2>/dev/null || _diag_stderr_path=""

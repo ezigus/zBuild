@@ -336,3 +336,24 @@ A lens cut off by its time limit says it ran out of time — not that the model 
 its summary carries what it noted so far, marked partial (§6: the summary is what later stages
 and the status comment read). Enforced by
 `plugins/agent/review-lens/tests/review-lens-partial-notes-test.sh` N6, N7.
+
+## Amendment (2026-11-01, #2443): notes are a hand-off; a cut-off call's steps reach the next try
+
+On #1754 (run 41249802310) build's 3 tries were each cut off at 15 minutes. Each started over, read the
+same files again and wrote no notes, so the next try was given nothing of what the last had found — though
+the engine had kept every step the call made (#2139).
+
+- Every stage's notes rule now says to write them as a hand-off: someone starting fresh, without the
+  stage's context, must be able to pick up from them.
+- When a model call is cut off at its time limit, the engine lists the steps it recorded — each file read,
+  command run and sentence said, the newest that fit what the prompt shows of it (at most 60) — in `artifacts/notes/<stage>.cut-off.md`, beside the
+  notes. The stage's own Previous work gives the list to its next try, saying the call was cut off; no
+  other stage is given it. A call that is not cut off removes the list, so it is only ever about the call
+  just before. This is the notes channel (§6), not a second one, and the list is not the stage's notes:
+  writing it is not progress (ADR-054 §6a).
+- Each try's raw record of a failed call is its own file, named by round and try
+  (`<stage>-round<r>-try<n>-error.raw-claude-output.json`), not overwritten by the next try.
+- Build's prompt says to write its notes first and add each finding before its next step.
+
+Enforced by `tests/unit/cut-off-hand-off-test.sh` H1–H4; `tests/integration/cut-off-steps-test.sh` C1–C4;
+`tests/unit/build-test-is-wrong-test.sh` W5.

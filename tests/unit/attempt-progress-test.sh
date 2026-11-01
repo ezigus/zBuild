@@ -20,7 +20,9 @@
 #             changed — made progress (isolated per review on #2253)
 # P4 [change] any other stage: a change to only its narrative summary is no
 #             progress
-# P5 [guard]  ...a change to its primary output is progress
+# P5 [change] ...a change to only its result file (primary) is no progress
+# P6 [change] a change to the stage's notes is progress
+# P7 [guard]  a change to any other declared output is progress
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,6 +33,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 # shellcheck source=../../core/plugin-registry/attempt-archive.sh
 source "$REPO_ROOT/core/plugin-registry/attempt-archive.sh"
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
 
 print_test_header "attempt progress counts the work, not the report (#2252 D1)"
 setup_test_env "attempt-progress"
@@ -51,10 +55,12 @@ _plugin() {
         printf 'outputs:\n'
         printf '  - id: result\n    path: "${artifact_dir}/%s-result.json"\n    primary: true\n' "$(basename "$1")"
         printf '  - id: summary\n    path: "${artifact_dir}/%s-summary.md"\n    summary: true\n' "$(basename "$1")"
+        printf '  - id: work\n    path: "${artifact_dir}/%s-work.md"\n' "$(basename "$1")"
     } > "$1/manifest.yaml"
 }
 # _attempt <plugin_dir> <stage> <cmds> — fingerprint, run <cmds>, archive.
 _attempt() {
+    local -x ZBUILD_CURRENT_STAGE="$2"
     local before; before="$(attempt_outputs_fingerprint "$1" "$S/pipeline-state.json")"
     eval "$3"
     attempt_archive_outputs "$1" "$S/pipeline-state.json" "$2" 0 "$before" >/dev/null 2>&1
@@ -66,7 +72,7 @@ print_test_section "P1-P3: a repository-writing stage"
 P="$TEST_TEMP_DIR/plugins/builder"; _plugin "$P" true
 _attempt "$P" builder 'printf "{\"n\":1}" > "$ART/builder-result.json"; printf "a1" > "$ART/builder-summary.md"'
 _attempt "$P" builder 'printf "{\"n\":2}" > "$ART/builder-result.json"; printf "a2" > "$ART/builder-summary.md"'
-assert_eq "[P1] its result changed → progress" "yes" "$(_progress builder)"
+assert_eq "[P1] only its result and its summary changed → no progress" "no" "$(_progress builder)"
 _attempt "$P" builder 'printf "a3" > "$ART/builder-summary.md"'
 assert_eq "[P1] only its summary changed → no progress" "no" "$(_progress builder)"
 _attempt "$P" builder 'printf x > "$REPO/f.txt"; "$GIT" -C "$REPO" add f.txt; "$GIT" -C "$REPO" commit -qm c'
@@ -80,7 +86,16 @@ _attempt "$Q" designer 'printf "d1" > "$ART/designer-result.json"; printf "s1" >
 _attempt "$Q" designer 'printf "s2" > "$ART/designer-summary.md"'
 assert_eq "[P4] only its summary changed → no progress" "no" "$(_progress designer)"
 _attempt "$Q" designer 'printf "d2" > "$ART/designer-result.json"'
-assert_eq "[P5] its primary output changed → progress" "yes" "$(_progress designer)"
+assert_eq "[P5] only its result file changed → no progress" "no" "$(_progress designer)"
+
+print_test_section "P6-P7: notes and other outputs"
+mkdir -p "$ART/notes"
+_attempt "$Q" designer 'printf "found X" > "$ART/notes/designer.md"'
+assert_eq "[P6] its notes changed → progress" "yes" "$(_progress designer)"
+_attempt "$Q" designer 'printf "d4" > "$ART/designer-result.json"'
+assert_eq "[P6] ...its notes unchanged, only its result → no progress" "no" "$(_progress designer)"
+_attempt "$Q" designer 'printf "w1" > "$ART/designer-work.md"'
+assert_eq "[P7] another declared output changed → progress" "yes" "$(_progress designer)"
 
 cleanup_test_env
 print_test_results

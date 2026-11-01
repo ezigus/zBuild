@@ -61,7 +61,7 @@ _stage_retry_load() {
 # rc 0 when the stage is to run again: its outcome is a retry word, a retry is
 # left, no abort is recorded, and the try just made changed something (ADR-054
 # §6a; `interrupted` and `throttled` say nothing about the work, so they need
-# no change). Announces the retry (stage.retry) and waits when the word says to.
+# no change, and a try the write boundary undid changed what was undone). Announces the retry (stage.retry) and waits when the word says to.
 # _ATTEMPT_LAST_PROGRESS is the record of the try just made (attempt-archive.sh);
 # a try that left no record counts as having changed something.
 stage_retry_next() {
@@ -78,7 +78,11 @@ stage_retry_next() {
     runner_read_stage_disposition_v outcome "$state_dir" "$plugin_dir/manifest.yaml" "$stage" "$rc" \
         "$obs" "$limited" 2>/dev/null || outcome=""
     [[ -n "$outcome" ]] && disposition_retryable "$outcome" 2>/dev/null || return 1
+    # ADR-058 C12: a try whose repository writes the engine put back did change
+    # something — the engine undid it — and is run again once (#2443).
+    local _wb_key="${stage//[^A-Za-z0-9._-]/_}"   # zbuild_stage_key
     if [[ "$outcome" != interrupted && "$outcome" != throttled \
+          && ! -f "$state_dir/runtime/write-boundary-reverted.$_wb_key" \
           && "${_ATTEMPT_LAST_PROGRESS:-}" == "false" ]]; then
         return 1
     fi

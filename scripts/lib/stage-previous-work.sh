@@ -211,16 +211,21 @@ _stage_block_previous_work() {
                         "$index" 2>/dev/null | LC_ALL=C sort)
     fi
 
-    local s manifest roles summ errp res req notes verdict own body any=0 raw content
+    local s manifest roles summ errp res req notes cutoff verdict own body any=0 raw content
     local listed t_topic t_id t_path
     local -A topic_of=()
     for s in "${order[@]}"; do
         # Only a stage's own notes come back to it (ADR-067 §8); another
         # stage's notes are its working file, not its output.
-        notes=""
-        [[ "$s" == "$stage" ]] && stage_notes_path_v notes "$state_dir" "$s"
+        notes=""; cutoff=""
+        if [[ "$s" == "$stage" ]]; then
+            stage_notes_path_v notes "$state_dir" "$s"
+            # #2443: the steps of its last call, if that call was cut off.
+            stage_cutoff_path_v cutoff "$state_dir" "$s" 2>/dev/null || cutoff=""
+        fi
         [[ -n "$notes" && -s "$notes" ]] || notes=""
-        [[ -n "${outs[$s]:-}" || -n "$notes" ]] || continue
+        [[ -n "$cutoff" && -s "$cutoff" ]] || cutoff=""
+        [[ -n "${outs[$s]:-}" || -n "$notes" || -n "$cutoff" ]] || continue
         _inputs_stage_manifest_v manifest "$s" "$plugins_root" 2>/dev/null || true
         summ=""; errp=""; res=""; req=""; roles=""
         topic_of=()
@@ -247,7 +252,7 @@ _stage_block_previous_work() {
             listed+="${outtext[$id]}"
             [[ "${outpath[$id]:-}" == *.json ]] && found+=("${outpath[$id]}")
         done
-        [[ -n "$listed" || -n "$summ" || -n "$errp" || -n "$res" || ( "$s" == "$stage" && -n "$notes" ) ]] || continue
+        [[ -n "$listed" || -n "$summ" || -n "$errp" || -n "$res" || ( "$s" == "$stage" && -n "$notes$cutoff" ) ]] || continue
         any=1
         [[ "$res" == *.json && -s "$res" ]] || res=""
         verdict="${verdicts[$s]:-}"
@@ -316,6 +321,10 @@ _stage_block_previous_work() {
         fi
         if [[ -n "$own" && -n "$notes" ]]; then
             printf '\nYour notes so far:\n%s\n' "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
+        fi
+        if [[ -n "$own" && -n "$cutoff" ]]; then
+            printf '\nYour last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:\n%s\n' \
+                "$(_sp_read "$cutoff" "$_ZB_SP_NOTES_MAX_BYTES")"
         fi
     done
     [[ "$any" -eq 1 ]] || printf '\nNo stage has run before this one.\n'

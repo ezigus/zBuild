@@ -17,6 +17,10 @@
 # W3 [change] test-author's Previous work shows build's "test is wrong"
 #             findings, and nothing of build's code: not its diff, not its
 #             summary
+# W4 [change] build gives that answer as soon as it is sure, not after more
+#             work on the test (#2443: #1754 build ran out of time first)
+# W5 [change] build writes its notes first, and each finding before its next
+#             step (#2443)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,6 +62,9 @@ assert_contains "[W1] build is told how to answer a test that is wrong" "$_instr
     "nothing to do — the test is wrong:"
 assert_contains "[W1] ...naming the test file and why" "$_instr" "<test file>: <why>"
 assert_contains "[W1] ...and to stop working on it" "$_instr" "stop working on that test"
+assert_contains "[W4] build answers as soon as it is sure" "$_instr" "as soon as you are sure"
+assert_contains "[W5] build writes its notes first" "$_instr" "Write your notes file first"
+assert_contains "[W5] ...and each finding before its next step" "$_instr" "before your next step"
 
 # ── W2 ───────────────────────────────────────────────────────────────────────
 BM="$REPO_ROOT/plugins/agent/build/manifest.yaml"

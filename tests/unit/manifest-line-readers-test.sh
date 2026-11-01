@@ -210,10 +210,11 @@ _old_yaml_get_uncached() {
     fi
 }
 
-# core/plugin-registry/attempt-archive.sh _attempt_manifest_facts_v's awk at main e77c1653, verbatim
+# core/plugin-registry/attempt-archive.sh _attempt_manifest_facts_v's awk at main e77c1653, verbatim,
+# plus #2443's X line (the result file, `primary: true`) in the same form as S
 _old_attempt_facts() {
     awk '
-        function flush() { if (p != "") { print "P\t" p; if (s) { b = p; sub(/.*\//, "", b); print "S\t" b } } p = ""; s = 0 }
+        function flush() { if (p != "") { print "P\t" p; b = p; sub(/.*\//, "", b); if (s) print "S\t" b; if (x) print "X\t" b } p = ""; s = 0; x = 0 }
         /^outputs:[[:space:]]*$/      { in_out = 1; in_cap = 0; next }
         /^capabilities:[[:space:]]*$/ { flush(); in_cap = 1; in_out = 0; next }
         /^[a-zA-Z_]/                  { flush(); in_out = 0; in_cap = 0 }
@@ -227,6 +228,7 @@ _old_attempt_facts() {
             p = line
         }
         in_out && /^[[:space:]]+summary:[[:space:]]*true/ { s = 1 }
+        in_out && /^[[:space:]]+primary:[[:space:]]*true/ { x = 1 }
         END { flush() }
     ' "$1" 2>/dev/null
 }

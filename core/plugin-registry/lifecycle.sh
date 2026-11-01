@@ -281,10 +281,12 @@ plugin_hook_call() {
         _plugin_hook_call_once "$@"
         return
     fi
-    local -x _ZB_LC_RETRYING=1
+    local -x _ZB_LC_RETRYING=1 ZBUILD_STAGE_TRY=1
     local _ph_budget _ph_tries=0 _ph_rc
     stage_retry_budget_v _ph_budget "$3"
     while :; do
+        # #2443: each try knows its number, so its records are its own.
+        ZBUILD_STAGE_TRY=$(( _ph_tries + 1 ))
         _ph_rc=0; _plugin_hook_call_once "$@" || _ph_rc=$?
         _ph_tries=$(( _ph_tries + 1 ))
         stage_retry_next "$1" "$3" "$4" "$_ph_rc" "$_ph_tries" "$_ph_budget" || break

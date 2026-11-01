@@ -238,8 +238,18 @@ on the outcome it ended on (`timed_out`, `unusable`, …). The next try opens it
 retried stage says which try it is, of how many (`try 2 of 3`). What closes the stage closes its latest
 try's row.
 
+## Amendment 2026-11-01 (#2443) — the run stops at 345 minutes
+
+On #1754 (run 41249802310) zbuild stopped 11 seconds after it was sent TERM at 315 minutes, and the steps
+after it took 5 seconds: the 45 minutes held back for them were never used, and the run ended in the test
+stage, short of review. zbuild now stops at 345 minutes (`timeout --signal=TERM --kill-after=5m 345m`),
+the step's backstop is 352 minutes, and the `always()` steps have the 8 minutes left before GitHub's 360.
+The comment's ceiling is 345 (`ZBUILD_STATUS_CEILING_MIN`). Enforced by
+`tests/unit/ci-stop-before-github-test.sh` C1–C3.
+
 ## Enforced by
 
+- Amendment 2026-11-01 (#2443: stop at 345 minutes) → `tests/unit/ci-stop-before-github-test.sh` C1–C3
 - Amendment 2026-10-28 → `tests/unit/run-status-comment-pages-test.sh` P1–P2 (the whole line, the rest folded), P3 (the snapshot keeps it whole), P4–P6 (parts, not omissions; the newest has the header; earlier parts do not change), P7 (one comment per part); `tests/unit/run-status-comment-render-test.sh` SPEC-4 (never cut), SPEC-6 (no omission); `tests/unit/test-author-loop-test.sh` A9 (test-author counts the test files it changed); `tests/unit/test-author-test.sh` SPEC-14 (a retryable outcome carries no count)
 
 - Open items list only results this run wrote (#2378) → `tests/unit/run-open-items-test.sh` O10
