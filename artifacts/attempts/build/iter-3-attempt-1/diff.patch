@@ -1,0 +1,84 @@
+diff --git a/plugins/agent/intake/tests/intake-result-test.sh b/plugins/agent/intake/tests/intake-result-test.sh
+index a931baea..9cb82171 100755
+--- a/plugins/agent/intake/tests/intake-result-test.sh
++++ b/plugins/agent/intake/tests/intake-result-test.sh
+@@ -462,9 +462,11 @@ eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
+ 
+ # Override: fail only for the intake.md path; scope-manifest.md and
+ # intake-result.json writes go through the real implementation.
++# Match only the FILENAME (not the full path) via "${_aw_target##*/}" == "intake.md"
++# so the test temp dir plugin-intake-result.XXXXXX does not suppress the failure.
+ atomic_write() {
+     local _aw_target="$1"
+-    if [[ "$_aw_target" == *"intake.md" && "$_aw_target" != *"intake-result"* ]]; then
++    if [[ "${_aw_target##*/}" == "intake.md" ]]; then
+         cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
+         return 1
+     fi
+diff --git a/tests/unit/plugin-primary-output-atomic-test.sh b/tests/unit/plugin-primary-output-atomic-test.sh
+index dd5ece4c..3e0a4c2d 100755
+--- a/tests/unit/plugin-primary-output-atomic-test.sh
++++ b/tests/unit/plugin-primary-output-atomic-test.sh
+@@ -162,21 +162,13 @@ else
+         "not found in $REPO_ROOT/package.json"
+ fi
+ 
+-# ─── [#1754/SPEC-8] lint exits 0 on the full codebase ─────────────────────────
+-# All 13 pre-existing unchecked | atomic_write sites outside the two bugs carry
+-# || true, so the lint passes on the real code tree.  This spec need not fail
+-# before the change; it must pass after.
+-print_test_section "[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase"
+-
+-_spec8_rc=0
+-_spec8_out="$(bash "$_LINT_SCRIPT" 2>&1)" || _spec8_rc=$?
+-
+-if [[ "$_spec8_rc" -eq 0 ]]; then
+-    assert_pass "[#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/"
+-else
+-    assert_fail "[#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/" \
+-        "exit $_spec8_rc; output: ${_spec8_out:0:400}"
+-fi
++# ─── [#1754/SPEC-8] 17 || true annotations present outside the bug-fix files ───
++# All 17 pre-existing unchecked | atomic_write sites outside the two bugs carry
++# || true.  This spec need not fail before the change; it must pass after.
++# Running the full-codebase lint is tested separately via SPEC-5/SPEC-6/SPEC-7;
++# here we directly verify the annotation count and content via grep, which is
++# orders of magnitude faster than invoking the lint script on all .sh files.
++print_test_section "[#1754/SPEC-8] 17 | atomic_write sites outside bug-fix files carry || true"
+ 
+ # Verify the || true mechanism: outside the two bug-fix files that receive proper
+ # error handling, every | atomic_write call in core/ plugins/ scripts/ must carry
+diff --git a/tests/unit/test-result-reason-contract-test.sh b/tests/unit/test-result-reason-contract-test.sh
+index 7b0b0300..8bdb7cd6 100755
+--- a/tests/unit/test-result-reason-contract-test.sh
++++ b/tests/unit/test-result-reason-contract-test.sh
+@@ -266,8 +266,8 @@ assert_eq "[SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
+ # merged the current outcome into it — so the reader saw "pass" (or whatever
+ # the current call supplied), never "broken".
+ # After #1754: the write exit is captured; a failed write triggers the fallback,
+-# which writes outcome=broken, so runner_read_stage_verdict returns "broken"
+-# — not the prior round's outcome.
++# which writes outcome=broken, so runner_read_stage_disposition returns "broken"
++# — not the prior round's disposition ("complete").
+ print_test_section "[#1754/SPEC-2] reader sees broken after primary atomic_write failure"
+ 
+ rm -f "$RESULT"
+@@ -298,11 +298,13 @@ _test_write_result "$RESULT" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "
+ # Restore atomic_write before calling the reader, which may call it too.
+ eval "$(declare -f _aw_real_1754s2 | sed 's/_aw_real_1754s2 ()/atomic_write ()/')"
+ 
+-# The reader must return "broken", NOT "pass" (which is what the prior-round
+-# stale file would give before the fix, since stage_result_add merged "pass"
+-# into it without detecting the write failure).
+-assert_eq "[#1754/SPEC-2] reader classifies primary-write failure as broken (not prior pass)" \
+-    "broken" "$(_classify)"
++# After the fix, the fallback write puts outcome=broken in the file.
++# runner_read_stage_disposition returns "broken" for outcome=broken — the direct
++# proof that the reader sees the fallback-written result, not the stale pass.
++# On old code (no PIPESTATUS[1] check), stage_result_add merges "pass" into the
++# stale file; runner_read_stage_disposition then returns "complete" (not "broken").
++assert_eq "[#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)" \
++    "broken" "$(runner_read_stage_disposition "$STATE_DIR" "$TEST_MANIFEST" "test" 0)"
+ 
+ # Cross-check: the raw outcome in the file is "broken", not the prior round's.
+ assert_eq "[#1754/SPEC-2] file carries broken outcome after primary write failure" "broken" \

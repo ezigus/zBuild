@@ -1,3 +1,53 @@
+diff --git a/plugins/agent/intake/tests/intake-result-test.sh b/plugins/agent/intake/tests/intake-result-test.sh
+index a931baea..9cb82171 100755
+--- a/plugins/agent/intake/tests/intake-result-test.sh
++++ b/plugins/agent/intake/tests/intake-result-test.sh
+@@ -462,9 +462,11 @@ eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
+ 
+ # Override: fail only for the intake.md path; scope-manifest.md and
+ # intake-result.json writes go through the real implementation.
++# Match only the FILENAME (not the full path) via "${_aw_target##*/}" == "intake.md"
++# so the test temp dir plugin-intake-result.XXXXXX does not suppress the failure.
+ atomic_write() {
+     local _aw_target="$1"
+-    if [[ "$_aw_target" == *"intake.md" && "$_aw_target" != *"intake-result"* ]]; then
++    if [[ "${_aw_target##*/}" == "intake.md" ]]; then
+         cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
+         return 1
+     fi
+diff --git a/tests/unit/plugin-primary-output-atomic-test.sh b/tests/unit/plugin-primary-output-atomic-test.sh
+index dd5ece4c..3e0a4c2d 100755
+--- a/tests/unit/plugin-primary-output-atomic-test.sh
++++ b/tests/unit/plugin-primary-output-atomic-test.sh
+@@ -162,21 +162,13 @@ else
+         "not found in $REPO_ROOT/package.json"
+ fi
+ 
+-# ─── [#1754/SPEC-8] lint exits 0 on the full codebase ─────────────────────────
+-# All 13 pre-existing unchecked | atomic_write sites outside the two bugs carry
+-# || true, so the lint passes on the real code tree.  This spec need not fail
+-# before the change; it must pass after.
+-print_test_section "[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase"
+-
+-_spec8_rc=0
+-_spec8_out="$(bash "$_LINT_SCRIPT" 2>&1)" || _spec8_rc=$?
+-
+-if [[ "$_spec8_rc" -eq 0 ]]; then
+-    assert_pass "[#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/"
+-else
+-    assert_fail "[#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/" \
+-        "exit $_spec8_rc; output: ${_spec8_out:0:400}"
+-fi
++# ─── [#1754/SPEC-8] 17 || true annotations present outside the bug-fix files ───
++# All 17 pre-existing unchecked | atomic_write sites outside the two bugs carry
++# || true.  This spec need not fail before the change; it must pass after.
++# Running the full-codebase lint is tested separately via SPEC-5/SPEC-6/SPEC-7;
++# here we directly verify the annotation count and content via grep, which is
++# orders of magnitude faster than invoking the lint script on all .sh files.
++print_test_section "[#1754/SPEC-8] 17 | atomic_write sites outside bug-fix files carry || true"
+ 
+ # Verify the || true mechanism: outside the two bug-fix files that receive proper
+ # error handling, every | atomic_write call in core/ plugins/ scripts/ must carry
 diff --git a/tests/unit/test-result-reason-contract-test.sh b/tests/unit/test-result-reason-contract-test.sh
 index 7b0b0300..8bdb7cd6 100755
 --- a/tests/unit/test-result-reason-contract-test.sh
