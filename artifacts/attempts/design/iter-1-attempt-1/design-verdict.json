@@ -1,0 +1,1 @@
+{"result_contract":3,"outcome":"unusable","reason":"the design fails 1 of its checks","data":{"authored_at":"2026-11-01T21:47:27Z","authored_at_commit":"f04058d978a4396be69721923f8eadf3ca0dd42f","wiring_files":[],"findings":[{"n":1,"text":"design.md has no readable ```acceptance block — add one with a line per requirement"}]}}

@@ -1,0 +1,21 @@
+{
+  "scope_files": [
+    "core/pipeline/cycle-orchestrator.sh",
+    "core/pipeline/runner.sh",
+    "core/state/artifact-persist.sh",
+    "docs/adr/ADR-006-resume-contract.md",
+    "docs/adr/ADR-050-prior-work-reuse-contract.md",
+    "plugins/tool/hydrate/plugin.sh",
+    "tests/integration/from-stage-rehydrate-test.sh",
+    "tests/integration/pipeline-resume-test.sh",
+    "tests/integration/resume-after-sigint-test.sh",
+    "tests/integration/resume-entry-points-test.sh",
+    "tests/integration/resume-loop-state-test.sh",
+    "tests/integration/resume-rehydrate-test.sh",
+    "tests/unit/hydrate-stage-test.sh"
+  ],
+  "wiring_files": [
+    "core/pipeline/cycle-orchestrator.sh",
+    "core/pipeline/runner.sh"
+  ]
+}
