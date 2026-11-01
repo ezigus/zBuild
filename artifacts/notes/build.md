@@ -3,46 +3,46 @@
 ## What I found
 
 ### SPEC-1 / SPEC-2 fix (plugins/tool/test/plugin.sh)
-- Line 1187: `| atomic_write "$path"` — primary write
-- Line 1188: `local _jq_rc="${PIPESTATUS[0]}"` — only captures jq exit, not write exit
-- Fix: capture both PIPESTATUS[0] and PIPESTATUS[1] in one `local` statement,
-  then force `_jq_rc` non-zero when `_aw_rc != 0`.
+- Line 1188: `local _jq_rc="${PIPESTATUS[0]}" _aw_rc="${PIPESTATUS[1]}"` — correct, both captured
+- Line 1189: `(( _aw_rc != 0 )) && _jq_rc="$_aw_rc"` — write failure triggers broken fallback
+- BOTH SPECs PASS in the test suite ✓
 
 ### SPEC-3 / SPEC-4 fix (plugins/agent/intake/plugin.sh)
-- Lines 273-274: two bare `| atomic_write` calls with no exit check
-- Fix: capture PIPESTATUS[1] after each; on failure call `_intake_write_result`
-  with outcome=broken, reason naming the file, then return 1.
+- Lines 273-279: scope-manifest.md PIPESTATUS[1] check — correct ✓ (SPEC-3 PASSES)
+- Lines 280-286: intake.md PIPESTATUS[1] check — correct ✓ (SPEC-4 FAILS due to mock bug)
 
-### SPEC-5/6/7/8 (lint script + wire-in + 13 annotations)
-- Create `scripts/lib/lint-atomic-write-unchecked.sh`:
-  - No-arg mode: scans core/ plugins/ scripts/
-  - File-arg mode: scans given files (for SPEC-5/6 fixture tests)
-  - Checks: same-line &&/||/if !, continuation \+next-||/&&, next-exec-line PIPESTATUS[
-  - Skip self (filename match)
-  - SPEC-5: bare unchecked → non-zero exit + file:line output
-  - SPEC-6: all 5 patterns → exit 0
-- Wire into package.json lint target
-- 13 pre-existing calls in 9 files get `|| true`:
-  1. core/detect/platforms.sh:275,446
-  2. core/pipeline/state_helpers.sh:43
-  3. core/output/destinations.sh:39
-  4. plugins/agent/pr-delivery/plugin.sh:117,253
-  5. plugins/tool/merge/plugin.sh:229
-  6. plugins/tool/output-github-comment/plugin.sh:103
-  7. plugins/tool/test/lib/acceptance-check.sh:137,461
-  8. plugins/tool/test/lib/acceptance-reason.sh:207,234
-  9. plugins/tool/pr-open/plugin.sh:440
-  (acceptance-reason.sh:218 already has \ + && on next line → skip)
+### SPEC-4 mock bug (READ-ONLY TEST — CANNOT FIX)
+- Test at `plugins/agent/intake/tests/intake-result-test.sh:465-472`
+- Mock fails `atomic_write` for `*"intake.md" && != *"intake-result"*`
+- `setup_test_env "plugin-intake-result"` creates TEST_TEMP_DIR = `/tmp/plugin-intake-result.XXXXXX`
+- intake.md path = `$TEST_TEMP_DIR/state/intake.md` = `/tmp/plugin-intake-result.XXXXXX/state/intake.md`
+- This path CONTAINS "intake-result" (from "plugin-intake-result" dir name)
+- So `!= *"intake-result"*` is FALSE → mock falls through to real atomic_write
+- Real atomic_write SUCCEEDS → _im_aw_rc=0 → function returns 0
+- SPEC-4 cannot pass on ANY implementation; the test mock is broken
+- Test file is read-only (mechanical check restores changes)
 
-### core/state/resume.sh — already correct
-- Line 80: `| atomic_write --bak "$state_file"`
-- Lines 81-90: ALL comments (no executable code)
-- Line 91: `local _jq_rc="${PIPESTATUS[0]}" _write_rc="${PIPESTATUS[1]}"`
-- Lint must skip blank/comment lines to find this PIPESTATUS → handled by design
+### SPEC-5/6/7/8 (lint script + wire-in + 17 annotations)
+- `scripts/lib/lint-atomic-write-unchecked.sh` exists ✓
+- Wired into package.json lint target ✓
+- All 17 `|| true` annotations in place ✓
+- ALL PASS ✓
 
-## Status
-- [ ] plugins/tool/test/plugin.sh — PIPESTATUS fix
-- [ ] plugins/agent/intake/plugin.sh — atomic_write error checks
-- [ ] scripts/lib/lint-atomic-write-unchecked.sh — create
-- [ ] package.json — wire lint
-- [ ] 13 files — add || true annotations
+## Current status (iteration 4)
+- SPEC-1: PASS ✓
+- SPEC-2: PASS ✓
+- SPEC-3: PASS ✓
+- SPEC-4: FAIL — mock bug in read-only test, cannot fix
+- SPEC-5: PASS ✓
+- SPEC-6: PASS ✓
+- SPEC-7: PASS ✓
+- SPEC-8: PASS ✓
+
+## Conclusion
+All implementation work is complete and correct. SPEC-4 cannot pass because the
+test mock in intake-result-test.sh has a path-matching bug: the exclusion pattern
+`!= *"intake-result"*` matches the temp dir name `plugin-intake-result`, preventing
+the mock from intercepting the intake.md write.
+
+No code changes made in this iteration — everything already implemented correctly
+in prior iterations.
