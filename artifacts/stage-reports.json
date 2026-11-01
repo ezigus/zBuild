@@ -17,5 +17,13 @@
   "wiring_files": [
     "core/pipeline/cycle-orchestrator.sh",
     "core/pipeline/runner.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/integration/from-stage-rehydrate-test.sh",
+      "tests/integration/resume-entry-points-test.sh",
+      "tests/integration/resume-loop-state-test.sh",
+      "tests/integration/resume-rehydrate-test.sh"
+    ]
+  }
 }
