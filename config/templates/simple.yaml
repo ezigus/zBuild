@@ -13,8 +13,8 @@ defaults:
   strategy: map
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
-# Simplified pipeline (ADR-037 EPIC #966 / ADR-040 EPIC #1129): 7 top-level flow
-# units — intake, plan, design, build_test_cycle, review_lenses,
+# Simplified pipeline (ADR-037 EPIC #966 / ADR-040 EPIC #1129): the top-level flow
+# units — intake, design, build_test_cycle, review_lenses,
 # pr — where build_test_cycle groups the build/test leaves plus the decomposed
 # mechanical gate stages, and review_lenses is the advisory lens group.
 #
@@ -39,7 +39,6 @@ defaults:
 flow:
   - hydrate
   - intake
-  - plan
   - delivery_loop
   - pr
 
@@ -188,22 +187,6 @@ intake:
   io:
     destinations: [file, stdout]
     tail_lines: 200
-
-# ─── plan (leaf) ─────────────────────────────────────────────────────────────
-plan:
-  gate: auto
-  roles: [planner]
-  # ADR-051: the provider runs the stage as this persona (--agent).
-  persona: product-owner
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    timeout_s: 300
-    # 45 (raised from the 25 default, #1442): scope exploration needs
-    # headroom. The planner is
-    # also told this budget in its prompt and biased to converge before it runs out.
-    max_turns: 45
 
 # ─── design (leaf, delivery_loop member) ───────────────────────────────
 design:

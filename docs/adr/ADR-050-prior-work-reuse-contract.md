@@ -450,7 +450,7 @@ no model ever reads that line.
 - §9 (no earlier-run label; one wording for design's latest design whichever run wrote it) → `tests/unit/stage-prompt-contract-test.sh` P2; `tests/unit/design-prior-hypothesis-test.sh` SPEC-5
 - §9 (what the issue's work has changed, said once at the top against the default branch; no per-stage line or record) → `tests/unit/engine-blocks-shared-only-test.sh` B2, B2b; `tests/unit/stage-blocks-dispatch-test.sh` D2
 - §11 (an attempt that ended in error shows the stage's last good output and its summary; the failure is still shown; an attempt missing a required output is not good) → `tests/unit/engine-blocks-shared-only-test.sh` B3, B3b
-- §11 (a valid output the attempt wrote counts even when its call was cut off; one it did not write does not) → `plugins/agent/plan/tests/plan-work-items-test.sh` W3–W5; `plugins/agent/plan/tests/plan-integration-test.sh` I2, I3; design: `tests/unit/design-writes-as-it-goes-test.sh` D4
+- §11 (a valid output the attempt wrote counts even when its call was cut off; one it did not write does not) → design: `tests/unit/design-writes-as-it-goes-test.sh` D4 (plan's W3–W5, I2, I3 went with the plan stage, #2445)
 - #2111 (a run aborted with `llm_rate_limited` persists — persist pushes the state branch; the daemon's completion comment names the reset time and says to re-add the label) → `tests/unit/prior-work-reuse-contract-test.sh` C6
 
 ## References

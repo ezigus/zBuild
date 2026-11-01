@@ -60,9 +60,20 @@ and it answered that the test was right. Test-author now runs the test files it 
 see each new assertion fail for the reason it intends on the code from before the change — never the
 suite, never lint. Running a test shows it no implementation (#2022).
 
+## Amendment 2026-11-01 (#2445) — §8: work already done is confirmed, not redone; test-author runs nothing
+
+On #1754 (run 41249802310) design and test-author each spent 10–15 minutes a round re-proving work that was
+already done, while build — told "if it is already done, say so at once" — took 4. The rules the engine
+gives every stage now say: if what you are asked to produce is already there and right, and no finding under
+Previous work is open for you, confirm it and finish, in your answer's usual form, without redoing the work.
+#2441's "test-author runs its own test files" is withdrawn: test-author's model runs nothing, and its own
+script runs the test files the call created or changed (ADR-068 §6, amended 2026-11-01).
+
 ## Enforced by
 
-- §8 amendment 2026-10-31 (#2441: test-author runs its own test files and nothing else) → `tests/unit/test-author-checks-own-output-test.sh` A8, A11
+- §8 amendment 2026-11-01 (#2445: every stage confirms work already done; test-author runs nothing) → `tests/unit/already-done-test.sh` A1; `tests/unit/test-author-before-run-test.sh` B1; `tests/unit/test-author-checks-own-output-test.sh` A8, A11
+
+- §8 amendment 2026-10-31 (#2441: test-author runs its own test files and nothing else; withdrawn 2026-11-01, #2445) → superseded by the line above
 - §1, §5 → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P1–P7
 - §1, §3 (design) → `tests/unit/design-wiring-guidance-test.sh` G1–G4
 - §2 (acceptance check) → `tests/unit/acceptance-feedback-plain-test.sh` F1–F4
@@ -94,5 +105,5 @@ suite, never lint. Running a test shows it no implementation (#2022).
 - §8 (no text tells a stage to skip part of its job) → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P10–P11
 - §8 (spec-coverage's reworded exemption) → `tests/unit/design-coverage-test.sh` SPEC-7, SPEC-9
 - §8 (design's What you own opens with its job — decisions, contract, scope — written as it goes; a finding is answered in the design; design does not debug code; the scope is found by searching, not an exhaustive read; design may write its notes; nothing in its prompt calls it read-only) → `tests/unit/design-writes-as-it-goes-test.sh` D1–D3; `tests/unit/design-prompt-scope-charter-test.sh` T7
-- §9 → `plugins/agent/plan/tests/plan-test.sh` (Test 3c2, plan); `plugins/agent/plan/tests/plan-work-items-test.sh` W1 (plan does not read code); `tests/unit/resume-default-test.sh` (the ADR-067 §9 assertions on design's prompt)
+- §9 → `tests/unit/resume-default-test.sh` (the ADR-067 §9 assertions on design's prompt; plan's went with the plan stage, #2445); intake reads no code: `tests/unit/intake-requirements-model-test.sh` I3, I5
 - §8 (#2364: a stage's code finds earlier work by content, never by another stage's output name or file) → `tests/unit/earlier-output-by-content-test.sh` C1–C6

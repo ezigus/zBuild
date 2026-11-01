@@ -302,7 +302,24 @@ write_boundary_sweep() {
 
 # ─── write_boundary_classify <candidate> <state_dir> <plugin_dir> ────────────
 # Print: declared | allowed | violation
-write_boundary_classify() {
+write_boundary_classify() { local _wbc; write_boundary_classify_v _wbc "$@"; printf '%s' "$_wbc"; }
+
+# _wb_canon_v <var> <dir> — <dir> with every symlink resolved (pwd -P), or empty
+# when it cannot be entered. Remembered for one check (write_boundary_check
+# clears it): the same few directories are asked about for every file a stage
+# wrote and every output it declares, each a `$( )` copy of the engine shell.
+declare -gA _WB_CANON=()
+_wb_canon_v() {
+    if [[ -z "${_WB_CANON[$2]+x}" ]]; then
+        _WB_CANON[$2]="$(cd "$2" 2>/dev/null && pwd -P)" || _WB_CANON[$2]=""
+    fi
+    printf -v "$1" '%s' "${_WB_CANON[$2]}"
+}
+
+# write_boundary_classify_v <var> <candidate> <state_dir> <plugin_dir> [allow]
+# — the same, into <var>, with no subshell for the check's loop.
+write_boundary_classify_v() {
+    local -n _wbcv="$1"; shift
     local _cand="$1" _sd="${2:-}" _pd="${3:-}" _allow="${4:-}"
 
     # Resolve candidate to a canonical absolute path.
@@ -311,8 +328,11 @@ write_boundary_classify() {
     # returns /private/...). Bare pwd returns the LOGICAL path, so the candidate
     # and the root disagree and every in-place dispatch reports a false
     # violation. cleanup.sh:534-537 paid for this once already.
-    local _cd; _cd="$(cd "$(dirname "$_cand")" 2>/dev/null && pwd -P)/$(basename "$_cand")" \
-        || _cd="$_cand"
+    # The directory and name by expansion, not dirname/basename: this runs for
+    # every file a stage wrote and every output it declares (ADR-065 §5).
+    local _cdir="${_cand%/*}" _cdc; [[ "$_cdir" == "$_cand" ]] && _cdir="."; _cdir="${_cdir:-/}"
+    _wb_canon_v _cdc "$_cdir"
+    local _cd="$_cand"; [[ -n "$_cdc" ]] && _cd="$_cdc/${_cand##*/}"
 
     # 1. Check declared outputs from plugin manifest.
     if [[ -n "$_pd" && -f "$_pd/manifest.yaml" ]]; then
@@ -321,11 +341,12 @@ write_boundary_classify() {
         while IFS=$'\t' read -r _rp _; do
             [[ -z "$_rp" ]] && continue
             _registry_resolve_output_path_v _res "$_rp" "$_sd" "$_art"
-            local _cr; _cr="$(cd "$(dirname "$_res")" 2>/dev/null && pwd -P)/$(basename "$_res")" \
-                || _cr="$_res"
-            local _dd; _dd="$(dirname "$_cr")"
+            local _rdir="${_res%/*}" _rdc; [[ "$_rdir" == "$_res" ]] && _rdir="."; _rdir="${_rdir:-/}"
+            _wb_canon_v _rdc "$_rdir"
+            local _cr="$_res"; [[ -n "$_rdc" ]] && _cr="$_rdc/${_res##*/}"
+            local _dd="${_cr%/*}"; _dd="${_dd:-/}"
             if [[ "$_cd" == "$_cr" || "$_cd" == "${_dd}/"* ]]; then
-                printf 'declared'; return 0
+                _wbcv=declared; return 0
             fi
         done < <(_registry_output_path_rows "$_pd/manifest.yaml")
     fi
@@ -350,7 +371,7 @@ write_boundary_classify() {
         if [[ "$_ar" == *[*?]* ]]; then
             local _gd="${_ar%/*}" _gp="${_ar##*/}" _gc
             if [[ "$_gd" != "$_ar" && "$_gd" != *[*?]* ]]; then
-                _gc="$(cd "$_gd" 2>/dev/null && pwd -P)" || _gc="$_gd"
+                _wb_canon_v _gc "$_gd"; _gc="${_gc:-$_gd}"
                 _ar="${_gc}/${_gp}"
             fi
             # The pattern must match the candidate ITSELF, and only within one
@@ -364,11 +385,11 @@ write_boundary_classify() {
             # closed — the safe direction for a fence.
             # shellcheck disable=SC2053  # the RHS glob is the point of this arm
             if [[ "$_cd" == $_ar && "${_cd%/*}" == "${_ar%/*}" ]]; then
-                printf 'allowed'; return 0
+                _wbcv=allowed; return 0
             fi
             continue
         fi
-        _ca="$(cd "$_ar" 2>/dev/null && pwd -P)" || _ca="$_ar"
+        _wb_canon_v _ca "$_ar"; _ca="${_ca:-$_ar}"
         # Candidate under an allowed root, OR the candidate is a strict ANCESTOR
         # of one. The ancestor arm is not a loophole: `find` reports directories,
         # and a directory's mtime changes when a child is created inside it — so
@@ -379,11 +400,11 @@ write_boundary_classify() {
         # genuinely stray directory (/tmp/newdir holding no allowed root) still
         # classifies as a violation.
         if [[ "$_cd" == "$_ca" || "$_cd" == "${_ca}/"* || "$_ca" == "${_cd}/"* ]]; then
-            printf 'allowed'; return 0
+            _wbcv=allowed; return 0
         fi
     done <<< "$_allow"
 
-    printf 'violation'
+    _wbcv=violation
 }
 
 # ─── write_boundary_violation_recorded <state_dir> <stage> ──────────────────
@@ -472,9 +493,10 @@ write_boundary_check() {
     # 1. Observe: shared places are recorded, never judged.
     local _allow; _allow="$(write_boundary_allow_list "$_sd")"
     local _cand _cls
+    _WB_CANON=()
     while IFS= read -r _cand; do
         [[ -z "$_cand" ]] && continue
-        _cls="$(write_boundary_classify "$_cand" "$_sd" "$_pd" "$_allow")"
+        write_boundary_classify_v _cls "$_cand" "$_sd" "$_pd" "$_allow"
         [[ "$_cls" == "violation" ]] && _wb_unattributable_recorded "$_sd" "$_stage" "$_cand" "shared_location"
     done <<< "$(write_boundary_sweep "$_marker")"
 

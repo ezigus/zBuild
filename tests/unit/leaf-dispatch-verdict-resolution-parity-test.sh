@@ -144,7 +144,7 @@ print_test_section "[SPEC-3] same-id leaf stages resolve correctly (regression g
 # the change to resolve_stage_plugin is backward-compat for these.
 unset -f template_stage_roles resolve_plugin_for_role
 
-for _stage in intake plan pr deploy validate monitor; do
+for _stage in intake pr deploy validate monitor; do
     _resolved_dir="$(resolve_stage_plugin "$_stage" "$REAL_PLUGINS_ROOT" 2>/dev/null || true)"
     # Guard the empty case FIRST. Without it an empty resolution builds the path
     # "/manifest.yaml" and the assertion silently interrogates the filesystem

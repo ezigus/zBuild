@@ -218,7 +218,7 @@ assert_eq "[PA8] an element named like a persona but naming none runs as generic
 # ─── PA9: the templates pin what the stages used to hardcode ─────────────────
 print_test_section "PA9: the shipped templates pin each stage's persona"
 for _tpl in simple deployed; do
-    for _pair in plan:product-owner design:architect build:developer; do
+    for _pair in design:architect build:developer; do
         _got="$( _TPL_SOURCE_FILE="$REPO_ROOT/config/templates/$_tpl.yaml" template_stage_router_persona "${_pair%%:*}" 2>/dev/null )"
         assert_eq "[PA9] $_tpl.yaml pins ${_pair%%:*} to ${_pair#*:}" "${_pair#*:}" "$_got"
     done

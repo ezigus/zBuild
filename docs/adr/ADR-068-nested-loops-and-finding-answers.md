@@ -94,7 +94,21 @@ shown build's code: that stays on `change`.
 test. On #1754 (run 41249802310) round 1's build spent 3 tries of 15 minutes on the test without ever
 answering; round 2's build answered, and test-author fixed the test in round 3.
 
+## Amendment 2026-11-01 (#2445) — §6: test-author's tests are run by its script, not its model
+
+#2441 had test-author's model run its own test files — a model judging for itself whether its tests fail,
+which nothing checked. Now the model writes tests and runs nothing. After the call, test-author's own script
+runs the test files that call created or changed — and any file the last round found something in — on the
+code from before this change (the merge-base, with the test files laid over it). A test for a `[code]`
+requirement that passes there, a file that stops before a requirement's assertion runs, and a requirement
+whose testfile holds no assertion that ran are findings; they go back to the model with its check's
+findings, within its rounds. The prompt lists, found by script, each testfile and the requirements whose tag
+it already holds, and says that when every requirement has its test and nothing is open for it, it confirms
+them and ends.
+
 ## Enforced by
+
+- §6 amendment 2026-11-01 (#2445: test-author's tests run by script on the old code; the written-tests list) → `tests/unit/test-author-before-run-test.sh` B1–B7; `tests/unit/test-author-loop-test.sh` A1
 
 - §6 amendment 2026-10-31 (#2441: build can say a test is wrong) → `tests/unit/build-test-is-wrong-test.sh` W1–W3; `plugins/agent/build/tests/build-test-is-wrong-run-test.sh`; `tests/unit/test-author-checks-own-output-test.sh` A10
 - §6 amendment 2026-11-01 (#2443: build answers as soon as it is sure) → `tests/unit/build-test-is-wrong-test.sh` W4

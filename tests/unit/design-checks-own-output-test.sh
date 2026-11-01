@@ -90,7 +90,7 @@ _run() {
     printf 'scope: all\n' > "$d/state/scope-manifest.md"
     printf '{"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["foo.sh"]}]}\n' > "$_F_ART/plan.json"
     printf '{"requirements":[{"id":"R-1","text":"the docs say so"}]}\n' > "$_F_ART/requirements.json"
-    _design_stage_run_inner "$d/state/scope-manifest.md" "$_F_ART/plan.json" "$_F_DESIGN" "$_F_ART" >/dev/null 2>&1
+    _design_stage_run_inner "$d/state/scope-manifest.md" "$_F_DESIGN" "$_F_ART" >/dev/null 2>&1
     RC=$?
     OUTCOME="$(jq -r '.outcome // "MISSING"' "$_F_ART/design-verdict.json" 2>/dev/null || echo MISSING)"
     FINDINGS="$(jq -r '.data.findings[]?.text // empty' "$_F_ART/design-verdict.json" 2>/dev/null || true)"

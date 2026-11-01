@@ -575,3 +575,13 @@ failure, and builds all result JSON via `jq -n` (injection-safe). The unused `ro
 The #1208 amendment's "repeated timeout" yield is now a single timeout: build and test-author make one model
 call per try, and a call that times out ends the try non-fatally as `timed_out` (`loop.timeout_yield`). The
 engine runs the stage again when the template's `retry:` allows (ADR-054 §6a, amended 2026-10-31).
+
+## Amendment (2026-11-01, issue #2445) — the plan stage is removed; design writes the work steps
+
+Plan and design both listed the files to change, and design's scope was the one enforced; what plan added
+was an ordered list of work items. The plan stage and its plugin are removed from every template. Design
+writes the ordered work items in a ```steps block of design.md (`- <what to do> | areas: <files>`), and
+design turns it into `design-steps.json` (`{title, steps:[{id, description, areas}]}`), which every reader
+already finds as the work plan by what it contains (`earlier_work_plan`, a `steps` list) — build and pr-open
+read it unchanged. Build no longer refuses to run without a work plan: its scope is the design's.
+Enforced by `tests/unit/design-writes-steps-test.sh` S1–S5.

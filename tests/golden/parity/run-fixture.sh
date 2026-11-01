@@ -2,7 +2,8 @@
 # Fixture helper for parity-local-vs-ci-test.sh
 # NOT a test itself — runs runner.sh with mocked binaries and fixed env vars.
 #
-# Issue #359: drives a multi-stage pipeline (intake -> plan -> build -> test -> pr)
+# Issue #359: drives a multi-stage pipeline (intake -> design -> build -> test -> pr;
+# #2445 removed plan, so design, which build takes its scope from, runs instead)
 # so the parity check exercises the same engine paths that run in production CI.
 # (#979: the old `review` stage was retired with the compound-quality lattice.)
 #
@@ -50,6 +51,28 @@ elif grep -q 'A report for the ' <<< "$prompt"; then
     # hand the aggregator, as in production.
     jq -n --arg r '{"score":9,"findings":[]}' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+elif grep -q "whether a DESIGN covers what an ISSUE asked for" <<< "$prompt"; then
+    # design's coverage check (#2445: design is in the fixture now that plan is
+    # gone — it is where build's scope comes from).
+    jq -n --arg r $'VERDICT: covered\nREASON: the one requirement has its SPEC' \
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+elif grep -q "EXACT absolute path:" <<< "$prompt"; then
+    # design: the model writes its working copy at the path its prompt names.
+    design_out="$(awk '/EXACT absolute path:/ { getline; sub(/^[[:space:]]+/, ""); gsub(/<\/?out-of-scope-context>/, ""); print; exit }' <<< "$prompt")"
+    if [[ -n "$design_out" ]]; then
+        mkdir -p "$(dirname "$design_out")"
+        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nSPEC-1[no-code]: the parity fixture file exists covers: R-1\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
+    fi
+    jq -n --arg r 'wrote the design' \
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+elif grep -q "check a list of requirements" <<< "$prompt"; then
+    # intake's check of its requirement list (#2445): nothing is missing.
+    jq -n --arg r 'MISSING: none' \
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+elif grep -q "list every requirement this issue states" <<< "$prompt"; then
+    # intake writes the issue's requirement list (#2445).
+    jq -n --arg r 'REQUIREMENT: Add the parity fixture file.' \
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     # build stage (#467 Pattern 2) — edit the fixture file directly in $PWD
     # (route_to_model_loop runs claude with cwd=$ZBUILD_REPO_ROOT) and emit a
@@ -60,11 +83,8 @@ elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     jq -n --arg r $'Created fixture file.\nLOOP_COMPLETE' \
        '{result:$r, total_cost_usd:0.001, usage:{input_tokens:5, output_tokens:3}}'
 else
-    # plan stage (default): the model writes plan.json at the path its prompt
-    # names and answers with one line (#2363). Redaction may wrap the path.
-    plan_out="$(awk '/^Write the plan to this file/{f=1; next} f && /^  [^ ]/{sub(/^  /, ""); gsub(/<\/?out-of-scope-context>/, ""); print; exit}' <<< "$prompt")"
-    [[ -n "$plan_out" ]] && printf '%s\n' '{"schema_version":1,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"Add the parity fixture file.","areas":["tests/fixtures/"]}],"open_questions":[]}' > "$plan_out"
-    jq -n --arg r '1 work item' \
+    # any other call: a short answer.
+    jq -n --arg r 'done' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 fi
 exit 0
@@ -197,7 +217,7 @@ defaults:
 flow:
   - hydrate
   - intake
-  - plan
+  - design
   - build
   - test
   - review_lenses

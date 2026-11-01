@@ -64,7 +64,7 @@ EOF2
 
 print_test_section "SPEC-1: the result is stamped with when and against what it was authored"
 export MOCK_DESIGN_WRITE_PATH="$AD/design.md"
-( cd "$FIX" && _design_stage_run_inner "$FIX/state/scope-manifest.md" "$AD/plan.json" "$AD/design.md" "$AD" >/dev/null 2>&1 ) || true
+( cd "$FIX" && _design_stage_run_inner "$FIX/state/scope-manifest.md" "$AD/design.md" "$AD" >/dev/null 2>&1 ) || true
 _at="$(jq -r '.data.authored_at // empty' "$AD/design-verdict.json" 2>/dev/null)"
 _sha="$(jq -r '.data.authored_at_commit // empty' "$AD/design-verdict.json" 2>/dev/null)"
 if [[ "$_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
@@ -81,8 +81,7 @@ for _case in 2 5 5b; do
     printf '# Design\n\nLATEST-DESIGN-%s\n\n```scope\nfoo.sh\n```\n' "$_case" > "$ADc/design.md"
     export MOCK_DESIGN_WRITE_PATH="$ADc/design.md"
     _iter=1; [[ "$_case" == 5 ]] && _iter=2
-    ( cd "$FIX" && ZBUILD_CYCLE_ITER=$_iter _design_stage_run_inner "$FIX/state$_case/scope-manifest.md" \
-        "$ADc/plan.json" "$ADc/design.md" "$ADc" >/dev/null 2>&1 ) || true
+    ( cd "$FIX" && ZBUILD_CYCLE_ITER=$_iter _design_stage_run_inner "$FIX/state$_case/scope-manifest.md" "$ADc/design.md" "$ADc" >/dev/null 2>&1 ) || true
     Pc="$(cat "$ADc/design-prompt.txt" 2>/dev/null)"
     assert_contains "[SPEC-2] ($_case) the latest design is carried into the prompt" "$Pc" "LATEST-DESIGN-$_case"
     assert_contains "[SPEC-2] ($_case) as YOUR LATEST DESIGN" "$Pc" "### YOUR LATEST DESIGN"

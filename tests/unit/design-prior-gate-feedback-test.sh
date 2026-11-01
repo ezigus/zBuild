@@ -56,7 +56,7 @@ cat > "$AD1/design-feedback.md" <<'EOF'
 SPEC-7 is tautological (pass at baseline) — re-author the assertion.
 EOF
 export MOCK_DESIGN_WRITE_PATH="$AD1/design.md"
-_design_stage_run_inner "$(dirname "$AD1")/scope-manifest.md" "$AD1/plan.json" "$AD1/design.md" "$AD1" >/dev/null 2>&1 || true
+_design_stage_run_inner "$(dirname "$AD1")/scope-manifest.md" "$AD1/design.md" "$AD1" >/dev/null 2>&1 || true
 PROMPT1="$AD1/design-prompt.txt"
 assert_file_exists "T1: design prompt written" "$PROMPT1"
 # #1988: design no longer splices design-feedback.md — the aggregator stopped
@@ -76,7 +76,7 @@ fi
 AD1B="$(_setup_fixture)"
 printf '# Design (earlier)\n\n```scope\nfoo.sh\n```\n' > "$AD1B/design.md"
 export MOCK_DESIGN_WRITE_PATH="$AD1B/design.md"
-_design_stage_run_inner "$(dirname "$AD1B")/scope-manifest.md" "$AD1B/plan.json" \
+_design_stage_run_inner "$(dirname "$AD1B")/scope-manifest.md" \
     "$AD1B/design.md" "$AD1B" >/dev/null 2>&1 || true
 # #2269: the same instructions, in plain words.
 _t1b="$(cat "$AD1B/design-prompt.txt" 2>/dev/null)"
@@ -98,7 +98,7 @@ assert_contains "T1 [#2157]: the status rule tells design to look at the code be
 # ── T2: design-feedback.md absent → prompt has NO gate-feedback section (no-op) ─
 AD2="$(_setup_fixture)"
 export MOCK_DESIGN_WRITE_PATH="$AD2/design.md"
-_design_stage_run_inner "$(dirname "$AD2")/scope-manifest.md" "$AD2/plan.json" "$AD2/design.md" "$AD2" >/dev/null 2>&1 || true
+_design_stage_run_inner "$(dirname "$AD2")/scope-manifest.md" "$AD2/design.md" "$AD2" >/dev/null 2>&1 || true
 PROMPT2="$AD2/design-prompt.txt"
 assert_file_exists "T2: design prompt written (no feedback)" "$PROMPT2"
 if grep -qi 'PRIOR GATE FEEDBACK' "$PROMPT2"; then
@@ -118,7 +118,7 @@ cat > "$AD3/design-gate-feedback.md" <<'EOF'
 Scope block missing tests/unit/foo-test.sh for changed enum.
 EOF
 export MOCK_DESIGN_WRITE_PATH="$AD3/design.md"
-_design_stage_run_inner "$(dirname "$AD3")/scope-manifest.md" "$AD3/plan.json" "$AD3/design.md" "$AD3" >/dev/null 2>&1 || true
+_design_stage_run_inner "$(dirname "$AD3")/scope-manifest.md" "$AD3/design.md" "$AD3" >/dev/null 2>&1 || true
 PROMPT3="$AD3/design-prompt.txt"
 assert_file_exists "T3: design prompt written (design-gate-feedback)" "$PROMPT3"
 # #1979: design no longer splices this itself — the content reaches the prompt
@@ -138,7 +138,7 @@ fi
 # ── T4: design-gate-feedback.md absent → no section in prompt (no-op) ─
 AD4="$(_setup_fixture)"
 export MOCK_DESIGN_WRITE_PATH="$AD4/design.md"
-_design_stage_run_inner "$(dirname "$AD4")/scope-manifest.md" "$AD4/plan.json" "$AD4/design.md" "$AD4" >/dev/null 2>&1 || true
+_design_stage_run_inner "$(dirname "$AD4")/scope-manifest.md" "$AD4/design.md" "$AD4" >/dev/null 2>&1 || true
 PROMPT4="$AD4/design-prompt.txt"
 assert_file_exists "T4: design prompt written (no design-gate-feedback)" "$PROMPT4"
 # Unchanged in meaning by #1979: design emits no gate-feedback section of its

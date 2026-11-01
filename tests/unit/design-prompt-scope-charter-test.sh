@@ -49,7 +49,7 @@ OUTPUT_MD="$ARTIFACT_DIR/design.md"
 export ZBUILD_REPO_ROOT="$FIX"
 export MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
 
 PROMPT="$ARTIFACT_DIR/design-prompt.txt"
 assert_file_exists "design prompt written" "$PROMPT"

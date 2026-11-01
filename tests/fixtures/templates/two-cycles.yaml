@@ -5,13 +5,12 @@ extends: null
 # route_back). Tests that fully stub cycle_orchestrator_run/cycle_dispatch_stage
 # key the mock on the dispatch-unit names — `design_impact_cycle` and a second
 # cycle — so the template only needs to declare these two cycle dispatch units
-# in order, after a leaf.
+# in order, after a leaf (intake; #2445 removed plan).
 defaults:
   strategy: fanout
 
 flow:
   - intake
-  - plan
   - design_impact_cycle
   - build_review_cycle
   - pr
@@ -19,8 +18,6 @@ flow:
 intake:
   roles: [intake]
 
-plan:
-  roles: [planner]
 
 design_impact_cycle:
   type: cycle

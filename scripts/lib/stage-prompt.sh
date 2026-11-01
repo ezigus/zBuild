@@ -211,6 +211,11 @@ _stage_block_rules() {
     printf '  survives, and its latest version comes back to you under Previous work.\n'
     printf '  Write it as a hand-off: someone starting fresh, without your context, must\n'
     printf '  be able to pick up from it.\n'
+    # #2445: every stage, as build always was — work already done is confirmed,
+    # not done again.
+    printf -- '- If what you are asked to produce is already there and right, and no\n'
+    printf '  finding under Previous work is open for you, confirm it and finish: say so\n'
+    printf '  in your answer, in its usual form, and do not redo the work.\n'
 
     # The limits every model call runs under, the same for every stage: the
     # engine needs no word from the stage about whether or how it calls one.
@@ -290,7 +295,8 @@ stage_prompt_compose() {
         fi
     done
     for f in "$own" "$judge" "$limits"; do
-        if [[ ! -s "$f" ]] || [[ -z "$(tr -d '[:space:]' 2>/dev/null < "$f")" ]]; then
+        local _part=""; [[ -s "$f" ]] && _part="$(<"$f")"
+        if [[ -z "${_part//[[:space:]]/}" ]]; then
             printf 'stage_prompt_compose: the stage part %s is empty\n' "$f" >&2
             return 1
         fi

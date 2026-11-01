@@ -102,7 +102,7 @@ _fresh() {
 _run() {
     rm -f "$TEST_TEMP_DIR"/design-calls "$TEST_TEMP_DIR"/design-prompt-* "$TEST_TEMP_DIR"/design-target-* \
         "$TEST_TEMP_DIR"/design-start-* "$TEST_TEMP_DIR"/result-at-call-* "$TEST_TEMP_DIR"/draft-at-call-*
-    _design_stage_run_inner "$TEST_TEMP_DIR/run/state/scope-manifest.md" "$_F_ART/plan.json" "$_F_DESIGN" "$_F_ART" >/dev/null 2>&1
+    _design_stage_run_inner "$TEST_TEMP_DIR/run/state/scope-manifest.md" "$_F_DESIGN" "$_F_ART" >/dev/null 2>&1
     STAGE_RC=$?
     OUTCOME="$(jq -r '.outcome // "MISSING"' "$_F_ART/design-verdict.json" 2>/dev/null || echo MISSING)"
     FINDINGS="$(jq -r '.data.findings[]?.text // empty' "$_F_ART/design-verdict.json" 2>/dev/null || true)"

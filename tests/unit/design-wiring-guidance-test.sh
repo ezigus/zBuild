@@ -70,7 +70,7 @@ export ZBUILD_EVENTS_DIR="$FIX/state"
 : > "$ZBUILD_EVENTS_JSONL"
 _MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
 
 PROMPT="$ARTIFACT_DIR/design-prompt.txt"
 _wiring="$(awk '/^WIRING:/{f=1} f&&/^Existing checks this change makes wrong/{exit} f' "$PROMPT" 2>/dev/null)"

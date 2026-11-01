@@ -204,13 +204,13 @@ assert_eq "[SPEC-5] hash sidecar is a valid 64-char hex SHA-256" "1" "$hex_ok"
 # child's _doc_generate_ensure_router short-circuit the real router load.
 # ZBUILD_WIKI_ROOT redirects output to the temp dir so the real docs/ is untouched.
 export ZBUILD_WIKI_ROOT="$WIKI_ROOT"
-_CLI_MOCK_RESPONSE="# plan
+_CLI_MOCK_RESPONSE="# intake
 
-Plan plugin wiki page.
+Intake plugin wiki page.
 
 ## How to use
 
-Start a plan.
+Start an intake.
 
 ## Reference
 
@@ -228,7 +228,7 @@ route_to_model_cli() {
 export -f route_to_model_cli
 
 cli_rc=0
-bash "$REPO_ROOT/scripts/zbuild" docs generate plugin:plan >/dev/null 2>&1 || cli_rc=$?
+bash "$REPO_ROOT/scripts/zbuild" docs generate plugin:intake >/dev/null 2>&1 || cli_rc=$?
 assert_eq "[SPEC-6] zbuild docs generate plugin exits 0" "0" "$cli_rc"
 
 unset ZBUILD_WIKI_ROOT

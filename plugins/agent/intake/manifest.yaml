@@ -6,14 +6,17 @@ description: |
   First stage of every pipeline run. Captures the goal, strips synthesized
   pipeline context (sentinel-based sanitization), reads state/platforms.json
   for platform-aware scope defaults, and writes state/scope-manifest.md +
-  state/intake.md. Phase 0.5 stub: no LLM call. Real planning prompt deferred.
+  state/intake.md. For an issue run it writes the issue's requirement list
+  with a model call and checks it with a second (#2445, ADR-070 §1).
 
-  Note on `requires.core: [redaction]`: declared because intake is a
-  `kind: agent` plugin and the deferred planning prompt will emit through
-  the chokepoint. Registry enforces this declaration on every `kind: agent`
-  plugin per ADR-004; do not remove it without also reclassifying the
-  plugin. Today intake produces the scope manifest that drives redaction
-  downstream but does not call `apply_scope_redaction` itself.
+  Note on `requires.core: [redaction]`: its requirement-list calls go
+  through the router, which redacts every prompt (ADR-043).
+
+# ADR-071: intake is the first stage that calls a model; it reads the issue it
+# fetches itself, and takes only what its own run left (#2445).
+takes:
+  - topic: ask
+    for: "its own latest output, when it runs again"
 
 hooks:
   run: intake_run
@@ -22,6 +25,7 @@ hooks:
 
 requires:
   core:
+    - router
     - redaction
     - event-bus
     - state
@@ -92,8 +96,9 @@ capabilities:
 
 config:
   tier_default: T1
-  # ADR-017 §11 (#1816): declared so the template override wins. intake makes
-  # no LLM calls; max_turns: 0 omits --max-turns.
+  # ADR-017 §11 (#1816): declared so the template override wins. #2445: each
+  # of intake's two model calls has one turn — it answers from the issue it is
+  # given, and cannot open the code.
   router:
     timeout_s: 120
-    max_turns: 0
+    max_turns: 1

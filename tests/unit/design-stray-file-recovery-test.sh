@@ -109,7 +109,7 @@ _setup_test_fixture t1
 fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"; output_md="$OUTPUT_MD"; artifact_dir="$ARTIFACT_DIR"
 MOCK_DESIGN_WRITE_PATH="$fixture/design.md"   # LLM writes to repo root, not declared path
 set +e
-_design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir"
+_design_stage_run_inner "$scope_manifest" "$output_md" "$artifact_dir"
 rc=$?
 set +e
 assert_eq "T1: recovery branch returns rc=0" "0" "$rc"
@@ -138,7 +138,7 @@ _bt='```'
 MOCK_DESIGN_BODY="$(printf '# Overwritten by LLM\n%sscope\nfoo.sh\n%s\n' "$_bt" "$_bt")"
 unset _bt
 set +e
-_design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir"
+_design_stage_run_inner "$scope_manifest" "$output_md" "$artifact_dir"
 rc=$?
 set +e
 assert_eq "T2: tracked-conflict branch returns rc=1" "1" "$rc"
@@ -161,7 +161,7 @@ _setup_test_fixture t3
 fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"; output_md="$OUTPUT_MD"; artifact_dir="$ARTIFACT_DIR"
 MOCK_DESIGN_WRITE_PATH=PROMPT   # LLM does the right thing
 set +e
-_design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir"
+_design_stage_run_inner "$scope_manifest" "$output_md" "$artifact_dir"
 rc=$?
 set +e
 assert_eq "T3: happy-path rc=0" "0" "$rc"
@@ -182,7 +182,7 @@ fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"
 printf 'someone else'"'"'s notes\n' > "$fixture/design.md"
 MOCK_DESIGN_WRITE_PATH=PROMPT
 set +e
-_design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir" >/dev/null 2>&1
+_design_stage_run_inner "$scope_manifest" "$output_md" "$artifact_dir" >/dev/null 2>&1
 set +e
 assert_contains "T6: design.md is the design the call wrote" "$(cat "$output_md" 2>/dev/null)" "SPEC-1[no-code]: foo works"
 assert_eq "T6: the root design.md is left alone" "someone else's notes" "$(cat "$fixture/design.md" 2>/dev/null)"
@@ -197,7 +197,7 @@ MOCK_DESIGN_WRITE_PATH="$fixture/design.md"   # LLM writes to repo root
 _T7_STRAY="$fixture/design.md"
 mv() { [[ "${1:-}" == "$_T7_STRAY" ]] && return 1; command mv "$@"; }
 set +e
-_design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir" >/dev/null 2>&1
+_design_stage_run_inner "$scope_manifest" "$output_md" "$artifact_dir" >/dev/null 2>&1
 _t7_rc=$?
 set +e
 unset -f mv
@@ -213,7 +213,7 @@ _setup_test_fixture t4
 fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"; output_md="$OUTPUT_MD"; artifact_dir="$ARTIFACT_DIR"
 MOCK_DESIGN_WRITE_PATH=PROMPT
 set +e
-_design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir" >/dev/null 2>&1
+_design_stage_run_inner "$scope_manifest" "$output_md" "$artifact_dir" >/dev/null 2>&1
 set +e
 # ADR-068 §8: the model writes the working copy beside design.md.
 if grep -qF "$artifact_dir/design-draft.md" "$_MOCK_ROUTE_PROMPT_CAPTURE" 2>/dev/null; then

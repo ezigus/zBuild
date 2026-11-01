@@ -93,20 +93,21 @@ EOF
 # One composer per model-calling stage. Each runs in a subshell, sources the
 # real plugin, stubs only the model call, and writes the prompt the plugin
 # built to $RAW/<stage>.txt.
-_c_plan() { ( ad="$(_fixture plan)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
-    source "$REPO_ROOT/plugins/agent/plan/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf '%s' "$2" > "$RAW/plan.txt"; printf '%s' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'; }
-    _plan_run_inner "${ad%/artifacts}/scope-manifest.md" "Fix a typo in README.md" "$ad/plan.json" "$ad" ) >/dev/null 2>&1; }
+# #2445: intake's model calls write and check the issue's requirement list.
+_c_intake() { ( ad="$(_fixture intake)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
+    source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
+    route_to_model() { [[ -s "$RAW/intake.txt" ]] || printf '%s' "$2" > "$RAW/intake.txt"; printf 'REQUIREMENT: fix the typo\nMISSING: none\n'; }
+    local _j; _intake_requirements_json_v _j '{"title":"Fix a typo","body":"1. Fix the typo in README.md"}' ) >/dev/null 2>&1; }
 _c_design() { ( ad="$(_fixture design)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
     route_to_model() { printf '%s' "$2" > "$RAW/design.txt"; return 1; }
-    _design_stage_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/plan.json" "$ad/design-out.md" "$ad" ) >/dev/null 2>&1; }
+    _design_stage_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/design-out.md" "$ad" ) >/dev/null 2>&1; }
 _c_build() { ( ad="$(_fixture build)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
     route_to_model_loop() { cp "$2" "$RAW/build.txt"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 1; }
     _route_resolve_max_iterations() { echo 1; }
     _route_loop_close_final_banner() { :; }
-    _build_stage_run_inner "${ad%/artifacts}/scope-manifest.md" "$ad/plan.json" "$ad/diff.patch" "$ad/build-summary.json" "$ad" ) >/dev/null 2>&1; }
+    _build_stage_run_inner "${ad%/artifacts}/scope-manifest.md" "" "$ad/diff.patch" "$ad/build-summary.json" "$ad" ) >/dev/null 2>&1; }
 _c_test_author() { ( ad="$(_fixture test-author)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}" ZBUILD_ARTIFACT_DIR="$ad"
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
     route_to_model_loop() { cp "$2" "$RAW/test-author.txt"; _ROUTE_LOOP_TERMINATED_REASON=router_timeout; return 1; }

@@ -20,7 +20,6 @@ defaults:
 flow:
   - hydrate
   - intake
-  - plan
   - delivery_loop
   - pr
   - deploy
@@ -101,21 +100,6 @@ intake:
   io:
     destinations: [file, stdout]
     tail_lines: 200
-
-# ─── plan (leaf) ─────────────────────────────────────────────────────────────
-plan:
-  gate: auto
-  roles: [planner]
-  # ADR-051: the provider runs the stage as this persona (--agent).
-  persona: product-owner
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    timeout_s: 300
-    # 45 (raised from the 25 default to match simple.yaml, #1550 / #1442):
-    # deployed.yaml fully overrides the plan section so it missed the #1442 bump.
-    max_turns: 45
 
 # ─── design (leaf, delivery_loop member) ───────────────────────────────
 design:

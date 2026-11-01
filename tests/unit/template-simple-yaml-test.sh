@@ -87,9 +87,10 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # 14 -> 13: #2371 — build scans its own change for secrets; secret-scan is retired.
 # 13 -> 10: #2372 — test checks its own run; shape-floor, acceptance-gate and
 # assertion-integrity are retired.
-assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 10" "10" "${#_TPL_STAGES[@]}"
+# 10 -> 9: #2445 — plan is removed; design writes the work steps.
+assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 9" "9" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design test-author build test issue-acceptance review_lenses pr)
+_expected_stages=(hydrate intake design test-author build test issue-acceptance review_lenses pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -117,11 +118,6 @@ assert_eq "[SPEC-2] merge_policy is not parsed as a stage" "0" "$_mp_is_stage"
 assert_eq "[SPEC-3] intake roles"    "intake"       "$_TPL_STAGE_ROLES_intake"
 assert_eq "[SPEC-3] intake io_dests" "file,stdout"  "$_TPL_STAGE_IO_DESTS_intake"
 
-# plan
-assert_eq "[SPEC-3] plan roles"             "planner"     "$_TPL_STAGE_ROLES_plan"
-assert_eq "[SPEC-3] plan io_dests"          "file,stdout" "$_TPL_STAGE_IO_DESTS_plan"
-assert_eq "[SPEC-3] plan router timeout"    "300"         "$_TPL_STAGE_ROUTER_TIMEOUT_plan"
-assert_eq "[SPEC-3] plan router max_turns"  "45"          "$_TPL_STAGE_ROUTER_MAX_TURNS_plan"
 
 # decomposed mechanical gates (B6 #1138, ADR-040) — bound by role, not stage id.
 # shape-floor / secret-scan are T0 tools (no router section);
@@ -207,13 +203,12 @@ assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
 # ─── SPEC-11: dispatch units (cycles + map groups each fold to one) ───────────
 # #2271 (ADR-068): design, impact and build_test_cycle fold into
 # ONE outer loop, delivery_loop. #2433: the review lenses run inside it, so
-# the count is 5: hydrate, intake, plan, cycle:delivery_loop, pr.
-assert_eq "[SPEC-11] dispatch units count is 5 (#2433)" "5" "${#_TPL_DISPATCH_UNITS[@]}"
+# the count is 4 (#2445: plan is removed): hydrate, intake, cycle:delivery_loop, pr.
+assert_eq "[SPEC-11] dispatch units count is 4 (#2445)" "4" "${#_TPL_DISPATCH_UNITS[@]}"
 assert_eq "[SPEC-11] dispatch[0] stage:hydrate"        "stage:hydrate"        "${_TPL_DISPATCH_UNITS[0]}"
 assert_eq "[SPEC-11] dispatch[1] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[1]}"
-assert_eq "[SPEC-11] dispatch[2] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[2]}"
-assert_eq "[SPEC-11] dispatch[3] cycle:delivery_loop"  "cycle:delivery_loop"  "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "[SPEC-11] dispatch[4] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[4]}"
+assert_eq "[SPEC-11] dispatch[2] cycle:delivery_loop"  "cycle:delivery_loop"  "${_TPL_DISPATCH_UNITS[2]}"
+assert_eq "[SPEC-11] dispatch[3] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[3]}"
 
 # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
 assert_eq "[SPEC-18] [#2433/R4] delivery_loop holds the design-build-test loop, then the lenses (ADR-068 §1)" \
@@ -270,13 +265,13 @@ assert_eq "[SPEC-15] ...over its five must-pass members, design first (ADR-068 �
 # gate-aggregator from 8 to 10 (design=2,design-gate=3,impact=4,build=5,test=6,
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
-assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[6] == test (#2372)" "test" "${_TPL_STAGES[6]}"
-assert_eq "[SPEC-12] _TPL_STAGES[7] == issue-acceptance (the loop's last member, #2368)" \
-    "issue-acceptance" "${_TPL_STAGES[7]}"
+assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[5] == test (#2372; #2445: plan removed)" "test" "${_TPL_STAGES[5]}"
+assert_eq "[SPEC-12] _TPL_STAGES[6] == issue-acceptance (the loop's last member, #2368)" \
+    "issue-acceptance" "${_TPL_STAGES[6]}"
 
 # ─── SPEC-13: design is at index 3; test-author follows at 4 (#2369) ─────────
-assert_eq "[SPEC-13] _TPL_STAGES[3] == design" "design" "${_TPL_STAGES[3]}"
-assert_eq "[SPEC-13] _TPL_STAGES[4] == test-author (#2369)" "test-author" "${_TPL_STAGES[4]}"
+assert_eq "[SPEC-13] _TPL_STAGES[2] == design" "design" "${_TPL_STAGES[2]}"
+assert_eq "[SPEC-13] _TPL_STAGES[3] == test-author (#2369)" "test-author" "${_TPL_STAGES[3]}"
 
 # ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
 # GUARD: simple.yaml's pr stage declares roles: [pr]. Since #1704 that role is
@@ -298,19 +293,13 @@ assert_eq "[SPEC-7] template_merge_policy() == auto_unless_flagged" \
 # gate roster (test_assessment absent) and SPEC-15 pins the exit_when source to
 # gate-aggregator. No separate assertion is added here to avoid duplicating those checks.
 
-# ─── SPEC-6: deployed.yaml plan max_turns raised to 45 (matched to simple.yaml) ─
-# CHANGE (#1550): deployed.yaml carried max_turns: 25 (the pre-#1442 default);
-# simple.yaml was raised to 45 in #1442 but deployed.yaml, which fully overrides
-# the plan section, missed that bump. This assertion FAILS at baseline
-# (deployed.yaml shows 25) and passes after the fix.
+# SPEC-6 (deployed.yaml's plan max_turns) went with the plan stage (#2445).
 DEPLOYED_TPL="$REPO_ROOT/config/templates/deployed.yaml"
 set +e
 load_template "$DEPLOYED_TPL"
 _dep_load_rc=$?
 set -e
 assert_eq "[SPEC-6] deployed.yaml loads without error" "0" "$_dep_load_rc"
-assert_eq "[SPEC-6] deployed.yaml plan max_turns matches simple.yaml (45 not 25)" \
-    "45" "${_TPL_STAGE_ROUTER_MAX_TURNS_plan:-}"
 
 # ─── deployed.yaml has simple.yaml's loop shape (ADR-068 §1) ─────────────────
 assert_eq "[ADR-068 §1] deployed.yaml: delivery_loop holds the design-build-test loop, then the lenses" \

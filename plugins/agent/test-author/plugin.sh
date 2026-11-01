@@ -44,6 +44,13 @@ source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/record.sh"
 source "$_TA_ROOT/scripts/lib/acceptance-coverage.sh"
 # shellcheck source=./lib/correspondence.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/correspondence.sh"
+# #2445: the script that runs the changed test files on the old code.
+# shellcheck source=../../../scripts/lib/acceptance-negctl.sh
+declare -F _negctl_run >/dev/null 2>&1 || source "$_TA_ROOT/scripts/lib/acceptance-negctl.sh"
+# shellcheck source=../../../scripts/lib/merge-base.sh
+declare -F zbuild_resolve_merge_base >/dev/null 2>&1 || source "$_TA_ROOT/scripts/lib/merge-base.sh"
+# shellcheck source=./lib/before-run.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/before-run.sh"
 
 _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
@@ -287,6 +294,9 @@ EXISTING CHECKS THIS CHANGE MAKES WRONG — these assertions exist already and a
 ${sup_block}"
     fi
 
+    # #2445: what is already written, found by script, not re-read by the model.
+    local written_block; written_block="$(_ta_written_list "$design" "$repo")"
+
     # #2308: the stage's own text in three parts (ADR-067 §8).
     local _spec_tag1; _spec_tag1="$(acceptance_spec_tag SPEC-1)"
     local prompt
@@ -304,6 +314,10 @@ Tag each assertion with the tag shown for its SPEC, exactly as shown, in the ass
 
 Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
+Already written (found by script: each testfile, and the requirements whose tag it already holds):
+${written_block}
+If every requirement below already has its test and no finding is open for you, do not rewrite them: confirm they test what their requirement demands and end with LOOP_COMPLETE.
+
 Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest, a test build says is wrong (build-tests findings), with its reason. Fix the test from its requirement, or say why the test is right. Answer each such finding on its own line, before LOOP_COMPLETE:
 ANSWER <stage> finding <n>: done — <what you changed>
 ANSWER <stage> finding <n>: nothing to do — <why the test is right>
@@ -320,7 +334,7 @@ REQUIREMENTS:
 ${spec_block}${sup_section}
 ## What you must not do
 - You cannot see the implementation, and you must not guess at it. You may read the existing tests and the repository's test helpers; do not read the code this change is about.
-- Run the test files you write, and only those (bash, then the test file's path), to see that each new assertion fails for the reason you intend on the code from before this change — not because of a mistake in the test. Run nothing else: not the test suite, not lint; the test stage runs those.
+- Run nothing: when you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.
 - Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
 - A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
 EOF
@@ -333,7 +347,7 @@ EOF
     local _rounds; _rounds="$(yaml_get "$(dirname "${BASH_SOURCE[0]}")/manifest.yaml" config.check_rounds 2>/dev/null || true)"
     [[ "$_rounds" =~ ^[1-9][0-9]*$ ]] || _rounds=2
     local _round=1 _found=""
-    _TA_ANSWERS=()
+    _TA_ANSWERS=(); _TA_BEFORE_OPEN=""
 
     local tier="T2" rc=0
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
@@ -363,6 +377,7 @@ ${_ta_limits}")"; then
         return 1
     }
     printf '%s' "$prompt" > "$prompt_file"
+    local _ta_sums_before; _ta_testfile_sums_v _ta_sums_before "$design" "$repo"
     route_to_model_loop "$tier" "$prompt_file" "$repo" || rc=$?
     rm -f "$prompt_file"
     _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}"
@@ -400,6 +415,9 @@ ${_ta_limits}")"; then
     # does each one test what its SPEC says? What does not goes back to its
     # model, within its rounds.
     _ta_drop_stale_tags "$design" "$repo"
+    # #2445: the changed test files, run by script on the code from before this
+    # change; what it finds goes back to the model with the check's findings.
+    _ta_before_run "$design" "$repo" "$_ta_sums_before"
     _ta_correspondence "$design" "$repo" "$tier"
     if [[ -n "$_TA_CORR_OUTCOME" ]]; then
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
@@ -408,18 +426,19 @@ ${_ta_limits}")"; then
             "the check that each assertion tests its SPEC could not be run ($_TA_CORR_OUTCOME)" "$n"
         return 0
     fi
+    _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})
     [[ ${#_TA_CORR_FINDINGS[@]} -eq 0 ]] && break
     _ta_emit "test_author.checks.failed" "round=$_round" "rounds=$_rounds" "findings=${#_TA_CORR_FINDINGS[@]}"
     if (( _round >= _rounds )); then
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), still failing their check"
         _ta_write_result "$art" "fail" \
-            "changed $_TA_CHANGED test file(s); ${#_TA_CORR_FINDINGS[@]} assertion(s) still do not test what their SPEC says after $_round round(s)" "$n" \
+            "changed $_TA_CHANGED test file(s); ${#_TA_CORR_FINDINGS[@]} finding(s) about its assertions still open after $_round round(s)" "$n" \
             "$(printf '%s\n' "${_TA_CORR_FINDINGS[@]}" | stage_findings_json)"
         return 0
     fi
     _round=$(( _round + 1 ))
-    _found="$(printf '\n### What the check of your assertions found (round %s of %s)\nYour assertions were checked against their requirements, and these do not hold. Fix each one in its testfile; keep what already holds.\n' "$_round" "$_rounds"; printf -- '- %s\n' "${_TA_CORR_FINDINGS[@]}")"
+    _found="$(printf '\n### What the check of your assertions found (round %s of %s)\nYour assertions were checked against their requirements, and your new and changed test files were run on the code from before this change. These do not hold. Fix each one in its testfile; keep what already holds.\n' "$_round" "$_rounds"; printf -- '- %s\n' "${_TA_CORR_FINDINGS[@]}")"
     done
 
     # The digests are recorded HERE, by the author, immediately after authoring.

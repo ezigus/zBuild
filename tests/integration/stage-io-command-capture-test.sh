@@ -82,6 +82,12 @@ chmod +x "$TEST_TEMP_DIR/bin/gh"
 # ─── Source intake plugin ─────────────────────────────────────────────────────
 # shellcheck source=../../plugins/agent/intake/plugin.sh
 source "$REPO_ROOT/plugins/agent/intake/plugin.sh"
+# #2445: intake writes the issue's requirements with a model call and checks
+# them with a second; this test is about the gh call's capture, so the model
+# answers at once.
+route_to_model() {
+    if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'; else printf 'REQUIREMENT: the goal\n'; fi
+}
 
 STATE_DIR="$TEST_TEMP_DIR/intake-state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"

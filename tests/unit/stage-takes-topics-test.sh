@@ -202,7 +202,6 @@ assert_contains "[T6] … naming it" "$out" "takes 'test-logs'"
 
 print_test_section "T7: the shipped stages"
 _takes_of() { local t; _sp_takes_v t "$REPO_ROOT/plugins/agent/$1/manifest.yaml"; t="${t# }"; t="${t% }"; printf '%s' "${t// /,}"; }
-assert_eq "[T7] plan takes" "ask" "$(_takes_of plan)"
 assert_eq "[T7] design takes" "ask,requirement-findings" "$(_takes_of design)"
 assert_eq "[T7] test-author takes (never change; requirement findings, e.g. a test that misses a requirement)" "ask,tests,requirement-findings,code-findings" "$(_takes_of test-author)"
 assert_eq "[T7] build takes" "ask,tests,change,requirement-findings,code-findings" "$(_takes_of build)"
@@ -221,10 +220,8 @@ _topics_of() {
 assert_eq "[T7] intake: every output is ask" \
     "intake_result=ask scope_manifest=ask intake_goal=ask requirements=ask intake_summary=ask " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/intake/manifest.yaml")"
-assert_eq "[T7] plan: ask" "plan=ask plan-summary.md=ask plan_rejected=ask " \
-    "$(_topics_of "$REPO_ROOT/plugins/agent/plan/manifest.yaml")"
 assert_eq "[T7] design: the design is ask, its checks are requirement-findings" \
-    "design=ask design_draft=ask design_result=requirement-findings design_summary=requirement-findings " \
+    "design=ask work_steps=ask design_draft=ask design_result=requirement-findings design_summary=requirement-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/design/manifest.yaml")"
 assert_eq "[T7] test-author: its checker is code-findings, its list of tests is tests" \
     "test_author_result=code-findings test_author_summary=tests " \

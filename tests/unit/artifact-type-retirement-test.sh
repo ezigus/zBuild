@@ -85,7 +85,6 @@ fi
 print_test_section "SPEC-5. the unchanged majority keep the same filename"
 declare -A _expect=(
     [plugins/agent/build/manifest.yaml]=build-summary.json
-    [plugins/agent/plan/manifest.yaml]=plan.json
     # #1844 (ADR-054 §5): design's primary is now its v2 result, not design.md.
     [plugins/agent/design/manifest.yaml]=design-verdict.json
     [plugins/tool/test/manifest.yaml]=test-results.json

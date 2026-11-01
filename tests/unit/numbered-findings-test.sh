@@ -51,7 +51,7 @@ _dg() {   # _dg <dir> <design.md>
     mkdir -p "$1/artifacts"; _DG_OUT="$1/artifacts/design.md"; _DESIGN_BODY="$2"
     printf '{"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["lib/a.sh"]}]}\n' > "$1/artifacts/plan.json"
     printf 'scope\n' > "$1/scope-manifest.md"
-    _design_stage_run_inner "$1/scope-manifest.md" "$1/artifacts/plan.json" "$_DG_OUT" "$1/artifacts" >/dev/null 2>&1 || true
+    _design_stage_run_inner "$1/scope-manifest.md" "$_DG_OUT" "$1/artifacts" >/dev/null 2>&1 || true
 }
 D1="$TEST_TEMP_DIR/dg1"
 _dg "$D1" $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[code]: a\nSPEC-2: b\nTESTFILES:\n```\n'

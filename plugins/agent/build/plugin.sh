@@ -113,6 +113,7 @@ build_stage_run() {
         error "build_stage_run: ZBUILD_STAGE_INPUTS is unset or empty — the engine must resolve and export the input index (ADR-055 §1)"
     fi
     # #2364: the scope manifest and the work plan, found by what they contain.
+    # #2445: the work plan is design's steps (design-steps.json); none is fine.
     scope_manifest="$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     plan_json_path="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
@@ -127,7 +128,7 @@ build_stage_run() {
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
-#   $2 = plan_json_path
+#   $2 = plan_json_path — design's work steps (#2445); may be empty
 #   $3 = output_diff_patch path
 #   $4 = output_summary_json path
 #   $5 = artifact_dir for intermediate files
@@ -138,7 +139,7 @@ _build_stage_run_inner() {
     local output_summary_json="$4"
     local artifact_dir="${5:-$(dirname "$output_summary_json")}"
 
-    if [[ -z "$scope_manifest" || -z "$plan_json_path" || -z "$output_diff_patch" || -z "$output_summary_json" ]]; then
+    if [[ -z "$scope_manifest" || -z "$output_diff_patch" || -z "$output_summary_json" ]]; then
         error "_build_stage_run_inner: requires <scope_manifest> <plan_json_path> <output_diff_patch> <output_summary_json> [artifact_dir]"
         # ADR-054 §4b: an exit path like any other. Reachable in production when
         # ZBUILD_STAGE_INPUTS named no scope_manifest/plan (guarded above), where
@@ -154,19 +155,10 @@ _build_stage_run_inner() {
 
     mkdir -p "$artifact_dir"
 
-    if [[ ! -f "$plan_json_path" ]]; then
-        error "_build_stage_run_inner: no work plan found (looked for: ${plan_json_path:-nothing given})"
-        stage_summary_write "$artifact_dir/build-summary.md" "build" "error" \
-            "no work plan to build from" \
-            "The plan stage produced nothing to implement; no code was written."
-        emit_event "plugin.result" "outcome=broken" "plugin=build" "reason=missing_plan_json"
-        # ADR-054 §4b: rc∈{0,1}; a result on this exit path too.
-        stage_result_write "$output_summary_json" broken "missing_plan_json" 2>/dev/null || true
-        return 1
-    fi
-
-    local plan_json
-    plan_json="$(cat "$plan_json_path")"
+    # #2445: the work steps design wrote, when it wrote any; scope comes from
+    # the design either way (_build_load_context).
+    local plan_json="{}"
+    [[ -n "$plan_json_path" && -s "$plan_json_path" ]] && plan_json="$(cat "$plan_json_path")"
 
     local plan_files_csv="" _acceptance_testfiles="" _acceptance_spec_ids="" _design_decisions=""
     _build_load_context

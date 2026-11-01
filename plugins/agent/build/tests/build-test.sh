@@ -225,8 +225,11 @@ MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
 
-# ─── Test 2: missing plan.json returns rc=1 (SPEC-5) ─────────────────────────
-print_test_section "T2: missing plan.json returns rc=1 (SPEC-5)"
+# ─── Test 2: no work-steps file does not stop build (SPEC-5, #2445) ──────────
+# The plan stage is gone; the work steps are design's, and a design may write
+# none. Build's scope is the design's, so it runs without them (was: rc=1,
+# broken, missing_plan_json).
+print_test_section "T2: no work-steps file does not stop build (SPEC-5, #2445)"
 
 ARTIFACT_DIR_T2="$TEST_TEMP_DIR/artifacts_t2"
 mkdir -p "$ARTIFACT_DIR_T2"
@@ -244,11 +247,14 @@ _build_stage_run_inner \
 rc_t2=$?
 set -e
 
-assert_exit_code "[SPEC-5] missing plan.json yields rc=1 (not rc=2)" "1" "$rc_t2"
-assert_file_not_exists "no diff.patch written when plan.json missing" "$OUT_DIFF_T2"
-assert_file_exists "[SPEC-5] build-summary.json written with v2 result when plan.json missing" "$OUT_SUMMARY_T2"
-_t2_disp="$(jq -r '.outcome // ""' "$OUT_SUMMARY_T2" 2>/dev/null || echo "")"
-assert_eq "[SPEC-5] plan-missing summary has outcome:broken" "broken" "$_t2_disp"
+: "$rc_t2"
+assert_file_exists "[SPEC-5] build writes its result with no work-steps file" "$OUT_SUMMARY_T2"
+_t2_reason="$(jq -r '.reason // ""' "$OUT_SUMMARY_T2" 2>/dev/null || echo "")"
+if [[ "$_t2_reason" == *missing_plan* ]]; then
+    assert_fail "[SPEC-5] ...and is not stopped for want of a plan" "reason: $_t2_reason"
+else
+    assert_pass "[SPEC-5] ...and is not stopped for want of a plan"
+fi
 
 # ─── Test 3: produces diff.patch + build-summary.json via mocked loop ────────
 print_test_section "T3: produces diff.patch and build-summary.json with mocked loop"

@@ -130,7 +130,7 @@ unset -f template_stage_router_tier
 # ─── behavior-identical: the shipped agent plugins resolve their manifest tier ──
 # (#979: test_assessment + the old `review` stage were retired with the
 # compound-quality lattice; review-report and impact were retired 2026-10-12 —
-# all drop out of this list.)
+# all drop out of this list; plan was removed and intake added, #2445.)
 print_test_section "the shipped agent plugins resolve their manifest tier"
 _expect_tier() {  # <plugin> <expected>
     local p="$1" want="$2" dir="$REPO_ROOT/plugins/agent/$1"
@@ -138,7 +138,7 @@ _expect_tier() {  # <plugin> <expected>
         "$want" "$(resolve_tier "$p" "$dir")"
 }
 _expect_tier design T2
-_expect_tier plan T2
+_expect_tier intake T1
 _expect_tier security-lens T3
 _expect_tier review-lens T2
 _expect_tier build T2

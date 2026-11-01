@@ -35,6 +35,14 @@ export ZBUILD_ARTIFACT_DIR="$ARTIFACT_DIR"
 # shellcheck source=../../../../plugins/agent/intake/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
+# #2445: intake writes an issue's requirements with a model call and checks them
+# with a second. The default model here lists the issue's title as its one
+# requirement and finds nothing missing; a test about the list sets its own.
+route_to_model() {
+    if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
+    else printf 'REQUIREMENT: %s\n' "${MOCK_GH_ISSUE_TITLE:-the goal}"; fi
+}
+
 # ─── gh mock for --issue tests ───────────────────────────────────────────────
 # Use the shared mock_binary helper (no string interpolation into the mock
 # script — title/body/rc/state/stateReason/repo are read at runtime from env

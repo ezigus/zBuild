@@ -281,7 +281,7 @@ _extract_scope_from_design() {
         # Tolerate trailing whitespace on the fence lines — legacy used
         # /^```scope[[:space:]]*$/, and build's guard (grep -q '^```scope')
         # matches a whitespace-padded fence, so an exact match here would
-        # silently drop the scope and fall back to plan.json (#25 review).
+        # silently drop the scope (#25 review).
         if [[ "$line" =~ ^'```scope'[[:space:]]*$ ]]; then
             in_block=1
             continue

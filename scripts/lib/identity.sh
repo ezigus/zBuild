@@ -128,7 +128,8 @@ zbuild_goal_hash() {
 
 # ─── zbuild_scope_key <issue> <fallback> ─────────────────────────────────────
 # What this run is FOR: the issue number when there is one, else the caller's
-# fallback (the plan stage passes its scope-manifest hash). Echoes the key.
+# fallback (the plan stage, removed in #2445, passed its scope-manifest hash;
+# nothing calls it now). Echoes the key.
 #
 # WHY a function and not an inline expression: this was `${ZBUILD_ISSUE_NUMBER:-$ref}`
 # written once in plugins/agent/plan/plugin.sh and threaded through eleven call

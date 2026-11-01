@@ -25,11 +25,11 @@
 # A9 [change] the summary later stages read lists each test file and the
 #             requirements it covers, and says they fail on today's code
 #             (#1801 run 40390919951: build ran them to find out)
-# A8 [change] the author runs its own test files and nothing else — never the
-#             suite or lint (#1944 run 40329284881: it ran the suite and lint,
-#             and read core/; #2441: told to run nothing, it could not see that
-#             #1754's SPEC-4 test could never fail its fake) — and reads the
-#             existing tests and test helpers, not the code the change is about
+# A8 [change] the author runs nothing — its new and changed test files are run
+#             by test-author's own script on the old code (#2445; was #2441's
+#             "run your own test files", a model judging its own tests) — and
+#             reads the existing tests and test helpers, not the code the change
+#             is about
 # A10 [change] findings from other stages about its tests are its to fix or
 #             answer (ADR-068 §6; #1754 run: the test stage said two tests
 #             already passed on the old code and one failed on the new, and
@@ -60,7 +60,14 @@ route_to_model_loop() {
     cp "$2" "$TEST_TEMP_DIR/author-prompt-$n"
     printf '%s' "$#" > "$TEST_TEMP_DIR/author-argc-$n"
     _ROUTE_LOOP_ITERATIONS=1
-    printf 'assert_eq "%s an empty input returns rc 1" "1" "$rc"\n' "$TAG" > "$R/tests/acc-test.sh"
+    # A test that runs on its own and fails on the old code, as a [code] test
+    # must: test-author's script runs it there (#2445).
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'assert_eq() { if [[ "$2" == "$3" ]]; then printf "  ✓ %%s\\n" "$1"; else printf "  ✗ %%s\\n" "$1"; return 1; fi; }\n'
+        printf 'rc=0\n'
+        printf 'assert_eq "%s an empty input returns rc 1" "1" "$rc" || exit 1\n' "$TAG"
+    } > "$R/tests/acc-test.sh"
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
     _ROUTE_LOOP_LAST_RESPONSE="${ANSWERS:-}"$'\n'"LOOP_COMPLETE"
     return 0
@@ -139,9 +146,9 @@ assert_eq "[A6] ...and corresponding then passes" "pass" "$OUTCOME"
 JUDGE=("$CORRESP"); JUDGE_RC=0
 _run
 _AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
-assert_contains "[A8] the author runs its own test files" "$_AP" "Run the test files you write"
-assert_contains "[A8] ...to see each new assertion fail for the reason it intends" "$_AP" "fails for the reason you intend"
-assert_contains "[A8] ...and nothing else: not the suite, not lint" "$_AP" "Run nothing else: not the test suite, not lint"
+assert_contains "[A8] the author runs nothing; its test files are run for it on the old code" "$_AP" \
+    "Run nothing: when you finish, the test files you create or change are run on the code from before this change"
+assert_contains "[A8] ...where each must fail for the reason it intends" "$_AP" "must fail there for the reason you intend"
 assert_eq "[A8] it is no longer told to run nothing" "0" "$(grep -c 'Do not run anything' <<< "$_AP" || true)"
 assert_contains "[A8] it may read the existing tests and test helpers" "$_AP" \
     "You may read the existing tests and the repository's test helpers"
@@ -175,7 +182,7 @@ assert_contains "[A10] it answers each one on its own line" "$_AP" "ANSWER <stag
 assert_eq "[A11] it is not told its assertions fail on the code as it is today" "0" \
     "$(grep -c 'expected to fail on the code as it is today' <<< "$_AP" || true)"
 assert_contains "[A11] ...but on the code from before this change" "$_AP" \
-    "fails for the reason you intend on the code from before this change"
+    "are run on the code from before this change"
 
 # ── A12 ──────────────────────────────────────────────────────────────────────
 JUDGE=("$CORRESP"); JUDGE_RC=0

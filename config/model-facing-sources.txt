@@ -3,7 +3,7 @@
 # them for engine-internal words (#2269, ADR-067). Add a file when it starts
 # building model-facing text.
 plugins/agent/design/plugin.sh printf
-plugins/agent/plan/plugin.sh
+plugins/agent/intake/lib/requirements.sh
 plugins/agent/test-author/plugin.sh
 plugins/agent/build/lib/prompt.sh printf
 plugins/agent/issue-acceptance/plugin.sh
