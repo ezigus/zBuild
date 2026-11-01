@@ -1,0 +1,40 @@
+the acceptance check failed — SPEC-1/SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong; SPEC-4/plugins/agent/intake/tests/intake-result-test.sh: its test does not pass on the new code — the code or the test is wrong
+NEGCTL FAIL SPEC-1 tautology
+      design : when jq exits 0 but atomic_write fails for the primary result path in _test_write_result — with a pr…
+      asserts: assert_file_exists "[#1754/SPEC-1] result file exists after fallback write" "$OUT_1754S1"
+NEGCTL FAIL SPEC-2 tautology
+      design : after a primary atomic_write failure in _test_write_result with a prior-round pass result at the pat…
+      asserts: assert_eq "[#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)" \
+NEGCTL PASS SPEC-3
+      design : _intake_run_inner writes a broken result whose reason names scope-manifest.md and returns non-zero w…
+      asserts: assert_eq "[#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure" \
+NEGCTL FAIL SPEC-4 not_passing_at_head
+      design : _intake_run_inner writes a broken result whose reason names intake.md and returns non-zero when atom…
+      asserts: assert_eq "[#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure" \
+NEGCTL PASS SPEC-5
+      design : scripts/lib/lint-atomic-write-unchecked.sh exits non-zero and names the violating line (file:lineno)…
+      asserts: assert_pass "[#1754/SPEC-5] lint exits non-zero for unchecked atomic_write"
+NEGCTL PASS SPEC-6
+      design : scripts/lib/lint-atomic-write-unchecked.sh exits 0 when every pipe to atomic_write in a .sh file is …
+      asserts: assert_eq "[#1754/SPEC-6] lint exits 0 for properly-checked calls" "0" "$_spec6_rc"
+NEGCTL PASS SPEC-7
+      design : package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
+      asserts: assert_pass "[#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unc…
+NEGCTL SKIP SPEC-8 no_code
+      design : the 17 newly-annotated | atomic_write sites (13 original sites in 9 files plus secrets.sh:172 and ow…
+      asserts: assert_pass "[#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/"
+REACHABILITY FAIL not_passing_at_head plugins/tool/test/plugin.sh plugins/agent/intake/tests/intake-result-test.sh
+REACHABILITY PASS plugins/agent/intake/plugin.sh
+REACHABILITY PASS package.json
+REACHABILITY PASS change core/detect/platforms.sh
+REACHABILITY PASS change core/output/destinations.sh
+REACHABILITY PASS change core/pipeline/state_helpers.sh
+REACHABILITY PASS change plugins/agent/build/lib/secrets.sh
+REACHABILITY PASS change plugins/agent/pr-delivery/plugin.sh
+REACHABILITY PASS change plugins/tool/merge/plugin.sh
+REACHABILITY PASS change plugins/tool/output-github-comment/plugin.sh
+REACHABILITY PASS change plugins/tool/pr-open/plugin.sh
+REACHABILITY PASS change plugins/tool/test/lib/acceptance-check.sh
+REACHABILITY PASS change plugins/tool/test/lib/acceptance-reason.sh
+REACHABILITY PASS change plugins/tool/test/lib/own-checks.sh
+REACHABILITY PASS change scripts/lib/lint-atomic-write-unchecked.sh

@@ -1,4 +1,184 @@
-m [SPEC-5] the result is valid JSON under adversarial input
+### plugins/tool/test/lib/acceptance-reason.sh reverted tests/unit/test-plugin-result-write-fallback-test.sh
+
+[38;2;0;212;255m[1m  test-plugin _test_write_result defensive fallback (#626)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. whitespace in passed slot triggers fallback[0m
+  [38;2;74;222;128m✓[0m ws-passed: results file written
+  [38;2;74;222;128m✓[0m ws-passed: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-passed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-passed: .data.passed sanitized to null
+
+  [38;2;0;212;255m2. non-numeric failed slot triggers sanitizer[0m
+  [38;2;74;222;128m✓[0m abc-failed: results file written
+  [38;2;74;222;128m✓[0m abc-failed: results file is valid JSON
+  [38;2;74;222;128m✓[0m abc-failed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m abc-failed: .data.failed sanitized to null
+
+  [38;2;0;212;255m3. control-char test_output is accepted, JSON still valid[0m
+  [38;2;74;222;128m✓[0m ctl-output: results file written
+  [38;2;74;222;128m✓[0m ctl-output: results file is valid JSON
+  [38;2;74;222;128m✓[0m ctl-output: no jq error leaked to stderr
+
+  [38;2;0;212;255m4. embedded quotes/backticks in test_cmd survive[0m
+  [38;2;74;222;128m✓[0m quotes: results file written
+  [38;2;74;222;128m✓[0m quotes: results file is valid JSON
+  [38;2;74;222;128m✓[0m quotes: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m quotes: .test_cmd round-trips
+
+  [38;2;0;212;255m5. non-bool diff_applied is sanitized to false[0m
+  [38;2;74;222;128m✓[0m bad-bool: results file written
+  [38;2;74;222;128m✓[0m bad-bool: results file is valid JSON
+  [38;2;74;222;128m✓[0m bad-bool: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m bad-bool: .data.diff_applied sanitized to false
+
+  [38;2;0;212;255m6. whitespace exit_code is sanitized to null[0m
+  [38;2;74;222;128m✓[0m ws-exit: results file written
+  [38;2;74;222;128m✓[0m ws-exit: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-exit: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-exit: .data.exit_code sanitized to null
+
+  [38;2;0;212;255m7. happy path (no regression)[0m
+  [38;2;74;222;128m✓[0m happy: results file written
+  [38;2;74;222;128m✓[0m happy: results file is valid JSON
+  [38;2;74;222;128m✓[0m happy: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m happy: .verdict
+  [38;2;74;222;128m✓[0m happy: .data.exit_code
+  [38;2;74;222;128m✓[0m happy: .data.passed
+  [38;2;74;222;128m✓[0m happy: .data.diff_applied
+  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level, agreeing with data.run_mode
+
+  [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
+  [38;2;74;222;128m✓[0m forced-fail: results file written
+  [38;2;74;222;128m✓[0m forced-fail: fallback JSON is parseable
+  [38;2;74;222;128m✓[0m forced-fail: .reason=result_write_failed
+  [38;2;74;222;128m✓[0m forced-fail: .outcome=broken (#2366)
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback: .result_contract=3
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback: .outcome=broken
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback carries the same top-level mirrors as the normal path
+  [38;2;74;222;128m✓[0m forced-fail: test.result_write.fallback event emitted
+
+  [38;2;0;212;255m9. test.result_write.fallback declared by the test plugin's manifest[0m
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback declared in provides.events
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback is in the composed known set
+
+  [38;2;0;212;255m[#1754/SPEC-1] jq succeeds, primary atomic_write fails → broken fallback[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] result file exists after fallback write
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] fallback result is valid JSON
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes outcome=broken
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes reason=result_write_failed
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 45 tests passed[0m
+
+### plugins/tool/test/lib/acceptance-reason.sh head tests/unit/test-plugin-result-write-fallback-test.sh
+
+[38;2;0;212;255m[1m  test-plugin _test_write_result defensive fallback (#626)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. whitespace in passed slot triggers fallback[0m
+  [38;2;74;222;128m✓[0m ws-passed: results file written
+  [38;2;74;222;128m✓[0m ws-passed: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-passed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-passed: .data.passed sanitized to null
+
+  [38;2;0;212;255m2. non-numeric failed slot triggers sanitizer[0m
+  [38;2;74;222;128m✓[0m abc-failed: results file written
+  [38;2;74;222;128m✓[0m abc-failed: results file is valid JSON
+  [38;2;74;222;128m✓[0m abc-failed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m abc-failed: .data.failed sanitized to null
+
+  [38;2;0;212;255m3. control-char test_output is accepted, JSON still valid[0m
+  [38;2;74;222;128m✓[0m ctl-output: results file written
+  [38;2;74;222;128m✓[0m ctl-output: results file is valid JSON
+  [38;2;74;222;128m✓[0m ctl-output: no jq error leaked to stderr
+
+  [38;2;0;212;255m4. embedded quotes/backticks in test_cmd survive[0m
+  [38;2;74;222;128m✓[0m quotes: results file written
+  [38;2;74;222;128m✓[0m quotes: results file is valid JSON
+  [38;2;74;222;128m✓[0m quotes: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m quotes: .test_cmd round-trips
+
+  [38;2;0;212;255m5. non-bool diff_applied is sanitized to false[0m
+  [38;2;74;222;128m✓[0m bad-bool: results file written
+  [38;2;74;222;128m✓[0m bad-bool: results file is valid JSON
+  [38;2;74;222;128m✓[0m bad-bool: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m bad-bool: .data.diff_applied sanitized to false
+
+  [38;2;0;212;255m6. whitespace exit_code is sanitized to null[0m
+  [38;2;74;222;128m✓[0m ws-exit: results file written
+  [38;2;74;222;128m✓[0m ws-exit: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-exit: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-exit: .data.exit_code sanitized to null
+
+  [38;2;0;212;255m7. happy path (no regression)[0m
+  [38;2;74;222;128m✓[0m happy: results file written
+  [38;2;74;222;128m✓[0m happy: results file is valid JSON
+  [38;2;74;222;128m✓[0m happy: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m happy: .verdict
+  [38;2;74;222;128m✓[0m happy: .data.exit_code
+  [38;2;74;222;128m✓[0m happy: .data.passed
+  [38;2;74;222;128m✓[0m happy: .data.diff_applied
+  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level, agreeing with data.run_mode
+
+  [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
+  [38;2;74;222;128m✓[0m forced-fail: results file written
+  [38;2;74;222;128m✓[0m forced-fail: fallback JSON is parseable
+  [38;2;74;222;128m✓[0m forced-fail: .reason=result_write_failed
+  [38;2;74;222;128m✓[0m forced-fail: .outcome=broken (#2366)
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback: .result_contract=3
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback: .outcome=broken
+  [38;2;74;222;128m✓[0m [SPEC-13] fallback carries the same top-level mirrors as the normal path
+  [38;2;74;222;128m✓[0m forced-fail: test.result_write.fallback event emitted
+
+  [38;2;0;212;255m9. test.result_write.fallback declared by the test plugin's manifest[0m
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback declared in provides.events
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback is in the composed known set
+
+  [38;2;0;212;255m[#1754/SPEC-1] jq succeeds, primary atomic_write fails → broken fallback[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] result file exists after fallback write
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] fallback result is valid JSON
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes outcome=broken
+  [38;2;74;222;128m✓[0m [#1754/SPEC-1] primary write failure writes reason=result_write_failed
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 45 tests passed[0m
+
+### plugins/tool/test/lib/acceptance-reason.sh reverted tests/unit/test-result-reason-contract-test.sh
+
+[38;2;0;212;255m[1m  test plugin — mandatory v2 reason (#2050)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1 — a red suite is a failing stage, not a broken one[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] failing suite writes a non-empty reason (got: 1 of 671 tests failed)
+  [38;2;74;222;128m✓[0m [SPEC-1] the reader classifies a red suite as fail, not error
+  [38;2;74;222;128m✓[0m [SPEC-1] no contract violation is emitted for a red suite
+
+  [38;2;0;212;255mSPEC-2 — a green suite is a passing stage[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] passing suite writes a non-empty reason (got: 671 of 671 tests passed)
+  [38;2;74;222;128m✓[0m [SPEC-2] the reader classifies a green suite as pass
+  [38;2;74;222;128m✓[0m [SPEC-2] no contract violation is emitted for a green suite
+
+  [38;2;0;212;255mSPEC-3 — the derived reason carries the counts[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] a red suite's reason names failed-of-total
+  [38;2;74;222;128m✓[0m [SPEC-3] a green suite's reason names passed-of-total
+
+  [38;2;0;212;255mSPEC-7 — stripping the reason reproduces the halt[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a result with no reason is classified error
+  [38;2;74;222;128m✓[0m [SPEC-7] a result with no reason emits one contract violation
+  [38;2;74;222;128m✓[0m [SPEC-7] an empty-string reason is classified error too
+
+  [38;2;0;212;255mSPEC-4 (guard) — an explicit reason still wins[0m
+  [38;2;74;222;128m✓[0m [SPEC-4 guard] explicit reason 'silent_failure' is preserved verbatim
+  [38;2;74;222;128m✓[0m [SPEC-4 guard] explicit reason 'summary_unavailable' is preserved verbatim
+
+  [38;2;0;212;255mSPEC-5 — a sanitized write still carries a reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] the result is valid JSON under adversarial input
   [38;2;74;222;128m✓[0m [SPEC-5] a sanitized write carries a non-empty reason
 
   [38;2;0;212;255mSPEC-6 (guard) — every mandatory field is present (#2366: contract 3)[0m
@@ -11,7 +191,7 @@ m [SPEC-5] the result is valid JSON under adversarial input
   [38;2;74;222;128m✓[0m [SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
 
   [38;2;0;212;255m[#1754/SPEC-2] reader sees broken after primary atomic_write failure[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies primary-write failure as error (not prior pass)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
   [38;2;74;222;128m✓[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
 
 [2m  ──────────────────────────────────────────[0m
@@ -61,7 +241,7 @@ m [SPEC-5] the result is valid JSON under adversarial input
   [38;2;74;222;128m✓[0m [SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
 
   [38;2;0;212;255m[#1754/SPEC-2] reader sees broken after primary atomic_write failure[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies primary-write failure as error (not prior pass)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
   [38;2;74;222;128m✓[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
 
 [2m  ──────────────────────────────────────────[0m
@@ -377,28 +557,28 @@ m [SPEC-5] the result is valid JSON under adversarial input
 [38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
 
   [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
@@ -411,6 +591,24 @@ m [SPEC-5] the result is valid JSON under adversarial input
   [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
 
   [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/
+    [2mexit 1; output: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/test/lib/acceptance-reason.sh:207:         | atomic_write "$(dirname "$result_file")/acceptance-summary.txt"
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/test/lib/acceptance-reason.sh:234:         | atomic_write "${_summary_dir}/acceptance-summary.txt"[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+    [2mmissing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/test/lib/acceptance-reason.sh:207 /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.U90eNI/plugins/tool/test/lib/acceptance-reason.sh:234[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] secrets.sh named site carries || true
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/state/resume.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/output/stage-io.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 33 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+
 ### plugins/tool/test/lib/acceptance-reason.sh head tests/unit/plugin-primary-output-atomic-test.sh
 
 [38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
@@ -450,237 +648,15 @@ m [SPEC-5] the result is valid JSON under adversarial input
   [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
 
   [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
-### plugins/tool/test/lib/acceptance-reason.sh reverted tests/unit/plugin-primary-output-atomic-test.sh
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] secrets.sh named site carries || true
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/state/resume.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/output/stage-io.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
 
-[38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
-[2m  ══════════════════════════════════════════[0m
+[2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
+  [38;2;74;222;128m[1mAll 33 tests passed[0m
 
-  [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint names the violating line in its output
-
-  [38;2;0;212;255m[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
-
-  [38;2;0;212;255m[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
-
-  [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
-### plugins/tool/test/lib/acceptance-reason.sh head tests/unit/plugin-primary-output-atomic-test.sh
-
-[38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
-
-  [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint names the violating line in its output
-
-  [38;2;0;212;255m[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
-
-  [38;2;0;212;255m[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
-
-  [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
-### plugins/tool/test/lib/acceptance-reason.sh reverted tests/unit/plugin-primary-output-atomic-test.sh
-
-[38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
-
-  [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint names the violating line in its output
-
-  [38;2;0;212;255m[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
-
-  [38;2;0;212;255m[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
-
-  [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
-### plugins/tool/test/lib/acceptance-reason.sh head tests/unit/plugin-primary-output-atomic-test.sh
-
-[38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
-
-  [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint names the violating line in its output
-
-  [38;2;0;212;255m[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
-
-  [38;2;0;212;255m[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
-
-  [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
-### plugins/tool/test/lib/acceptance-reason.sh reverted tests/unit/plugin-primary-output-atomic-test.sh
-
-[38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2y94go/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
-
-  [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint names the violating line in its output
-
-  [38;2;0;212;255m[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
-
-  [38;2;0;212;255m[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
-
-  [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
-### plugins/tool/test/lib/acceptance-reason.sh head tests/unit/plugin-primary-output-atomic-test.sh
-
-[38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/.zbuild/repos/ezigus/zBuild/issues/1754/worktree/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
-
-  [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
-  [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint names the violating line in its output
-
-  [38;2;0;212;255m[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
-
-  [38;2;0;212;255m[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
-
-  [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m

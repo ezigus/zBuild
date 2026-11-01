@@ -6639,3 +6639,12 @@ cpu 147 160 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.
 file 274 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Od7SYF/tests/golden/golden-contracts-test.sh
 tier 326 golden
 tier 266899 lint
+run 4 targeted
+cpu 407 427 tests/unit/test-plugin-result-write-fallback-test.sh
+file 860 tests/unit/test-plugin-result-write-fallback-test.sh
+cpu 489 507 tests/unit/test-result-reason-contract-test.sh
+file 1009 tests/unit/test-result-reason-contract-test.sh
+cpu 538 629 plugins/agent/intake/tests/intake-result-test.sh
+file 1117 plugins/agent/intake/tests/intake-result-test.sh
+cpu 45116 121448 tests/unit/plugin-primary-output-atomic-test.sh
+file 150494 tests/unit/plugin-primary-output-atomic-test.sh

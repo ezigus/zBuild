@@ -1,4 +1,4 @@
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Od7SYF/plugins/agent/intake/tests/intake-result-test.sh
+unit: FAIL plugins/agent/intake/tests/intake-result-test.sh
 
 [38;2;0;212;255m[1m  plugin: intake — v2 result contract (#1837)[0m
 [2m  ══════════════════════════════════════════[0m
