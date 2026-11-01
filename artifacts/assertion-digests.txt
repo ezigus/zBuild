@@ -1,9 +1,7 @@
 # authored_by: test-author
-ccc1d2646684b375056fc8aa161da68ab6f3c4bb6c501b4ddcf081a3d6ac3608  tests/unit/test-plugin-result-write-fallback-test.sh
-097a5c2b9e8bb94e5c1c37aead74af720ae48cf9b25df9e66314c307eccc48fb  tests/unit/test-result-reason-contract-test.sh
 026144487d9b3651e4ddd33c8eb3abf76f5bb14c4cbe63e11c40e486999dca5d  plugins/agent/intake/tests/intake-result-test.sh
 026144487d9b3651e4ddd33c8eb3abf76f5bb14c4cbe63e11c40e486999dca5d  plugins/agent/intake/tests/intake-result-test.sh
-9e0fb661aeccfc1844c20d3b52047781dbe2688e083fbb02a963848aad66ed05  tests/unit/plugin-primary-output-atomic-test.sh
-9e0fb661aeccfc1844c20d3b52047781dbe2688e083fbb02a963848aad66ed05  tests/unit/plugin-primary-output-atomic-test.sh
-9e0fb661aeccfc1844c20d3b52047781dbe2688e083fbb02a963848aad66ed05  tests/unit/plugin-primary-output-atomic-test.sh
-9e0fb661aeccfc1844c20d3b52047781dbe2688e083fbb02a963848aad66ed05  tests/unit/plugin-primary-output-atomic-test.sh
+b2a1de649d7f54b89d3057ef2cadc97bc2af0bb991c60f7be51bbff0e8248f80  tests/unit/plugin-primary-output-atomic-test.sh
+b2a1de649d7f54b89d3057ef2cadc97bc2af0bb991c60f7be51bbff0e8248f80  tests/unit/plugin-primary-output-atomic-test.sh
+b2a1de649d7f54b89d3057ef2cadc97bc2af0bb991c60f7be51bbff0e8248f80  tests/unit/plugin-primary-output-atomic-test.sh
+b2a1de649d7f54b89d3057ef2cadc97bc2af0bb991c60f7be51bbff0e8248f80  tests/unit/plugin-primary-output-atomic-test.sh
