@@ -2,6 +2,43 @@
 
 ---
 
+## Round 22 — Final SPEC correspondence judgements (this run)
+
+Each SPEC reviewed against the REQUIREMENT and the tagged ASSERTION lines.
+
+| SPEC | Verdict | Reason |
+|------|---------|--------|
+| SPEC-1 | corresponds | All-fail mock intercepts every atomic_write; four assertions (file exists, valid JSON, outcome=broken, reason=result_write_failed) establish the full requirement; on old code fallback \| atomic_write is also intercepted → prior pass survives → assertion fails |
+| SPEC-2 | corresponds | Same all-fail mock; runner_read_stage_disposition (the exact function the requirement names) asserted to return "broken"; jq check confirms file itself carries outcome=broken; on old code prior pass survives → disposition is not broken → assertion fails |
+| SPEC-4 | corresponds | Mock uses `"${_aw_target##*/}" == "intake.md"` (filename-only per requirement text); all three required behaviors asserted (RC=1, outcome=broken, reason contains "intake.md"); other writes pass through real impl |
+| SPEC-5 | corresponds | Lint exits non-zero AND output contains `${_spec5_fixture_base}:4`; shebang on line 1 puts atomic_write at line 4; both required behaviors (non-zero exit, named violating line) are asserted |
+| SPEC-6 | corresponds | Fixture covers all required checked patterns (same-line \|\|/&&, continuation-line \|\|, PIPESTATUS, if !); single exit-0 assertion establishes requirement |
+| SPEC-7 | corresponds | Two-step check extracts only the `"lint"` key line then greps that line for the exact invocation; cannot pass if string is in any other npm script target |
+| SPEC-8 | corresponds | Count >=17, all carry \|\| true, secrets.sh >=1 annotated call, own-checks.sh >=3 annotated calls, non-vacuous exclusion checks on both resume.sh and stage-io.sh establish every part of the requirement |
+
+---
+
+## Round 21 — Performance findings answered; all tests pass
+
+All four test files run under 1 second each (verified this round):
+- tests/unit/plugin-primary-output-atomic-test.sh: 0.447s (32 pass)
+- tests/unit/test-plugin-result-write-fallback-test.sh: 0.535s (45 pass)
+- tests/unit/test-result-reason-contract-test.sh: 0.671s (22 pass)
+- plugins/agent/intake/tests/intake-result-test.sh: 0.761s (43 pass)
+
+The test-stage findings 1-4 (150-210s) are stale — from before Round 14's SPEC-8 performance fix
+(which removed the `bash "$_LINT_SCRIPT"` no-args invocation from the SPEC-8 section).
+The current test file uses grep directly for SPEC-8 (no lint script invocation).
+
+### Finding answers
+
+ANSWER test finding 1: done — fixed in Round 14 (removed full-codebase bash "$_LINT_SCRIPT" call from SPEC-8; now uses direct grep). File now runs in 0.447s.
+ANSWER test finding 2: done — same fix as finding 1; stale result from the same pre-Round-14 run.
+ANSWER test finding 3: done — same fix as finding 1; stale result from the same pre-Round-14 run.
+ANSWER test finding 4: done — same fix as finding 1; stale result from the same pre-Round-14 run.
+
+---
+
 ## Round 20 — Final SPEC correspondence verdicts (this run)
 
 ### Verdicts
