@@ -76,10 +76,10 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ZBUILD_WORKSPACE_BRANCH: zbuild/issue-${{ inputs.issue_number }}-ci
-      # ADR-064 (amended 2026-10-31): zbuild stops itself at 315 minutes (the
+      # ADR-064 (amended 2026-10-31, #2443): zbuild stops itself at 345 minutes (the
       # Run pipeline step's `timeout`), not at GitHub's 360; the status comment
       # shows that time.
-      ZBUILD_STATUS_CEILING_MIN: "315"
+      ZBUILD_STATUS_CEILING_MIN: "345"
       # Model selection is governed by config/models.json + core/router — never hardcoded here.
 
     steps:
@@ -203,11 +203,12 @@ jobs:
         # ADR-064 (amended 2026-10-31): a job GitHub kills at 360 minutes keeps no
         # log and runs none of the steps below, so the run's files and events
         # were lost (#1754 run 41138244027). zbuild stops itself well before:
-        # `timeout` sends it TERM at 315 minutes — its interrupted path, which
-        # saves its state, events and status comment — and allows it 15 more
+        # `timeout` sends it TERM at 345 minutes — its interrupted path, which
+        # saves its state, events and status comment — and allows it 5 more
         # minutes before a kill. This step limit is only the backstop, and the
-        # always() steps below then have 20 minutes to push, upload and report.
-        timeout-minutes: 340
+        # always() steps below then have 8 minutes to push, upload and report
+        # (#2443: on #1754 run 41249802310 stopping took 11 s, those steps 5 s).
+        timeout-minutes: 352
         # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
         # fast with a clear error when the secret is missing.
         env:
@@ -251,7 +252,7 @@ jobs:
           # died, the runner was SIGKILLed with the tree, and its EXIT trap
           # (the always-run persist) never fired on any cancelled run.
           # `timeout` passes a cancel's signal on to zbuild (#2178 still holds).
-          exec timeout --signal=TERM --kill-after=15m 315m "$HOME/.local/bin/zbuild" pipeline start "${args[@]}"
+          exec timeout --signal=TERM --kill-after=5m 345m "$HOME/.local/bin/zbuild" pipeline start "${args[@]}"
 
       - name: Push work branch (preserve work on pass OR fail)
         # CI-7 (#999): push the pipeline's work branch to origin no matter the
@@ -503,7 +504,7 @@ jobs:
           # file into the upload. Session dirs are mirrored (not flattened) so
           # two projects' identically-named sessions can't clobber each other.
           # The 7h window covers any possible run: GitHub's 360-minute job limit
-          # is the hard ceiling (zbuild stops itself at 315), plus setup; mtime is a session's LAST write, so a 6h window would
+          # is the hard ceiling (zbuild stops itself at 345), plus setup; mtime is a session's LAST write, so a 6h window would
           # drop the first stages of a run that hit the ceiling.
           # GitHub runs `run:` under `bash -e`; one unreadable transcript must not
           # abort the loop and drop every later one, so each copy is soft-failed

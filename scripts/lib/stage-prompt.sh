@@ -37,6 +37,8 @@ _ZBUILD_SP_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && 
 
 # shellcheck source=./prompt-overrides.sh
 declare -F load_repo_rules >/dev/null 2>&1 || source "$_ZBUILD_SP_ROOT/scripts/lib/prompt-overrides.sh"
+# shellcheck source=./stage-cutoff.sh
+declare -F stage_cutoff_path_v >/dev/null 2>&1 || source "$_ZBUILD_SP_ROOT/scripts/lib/stage-cutoff.sh"
 # shellcheck source=./vision.sh
 declare -F load_vision_doc >/dev/null 2>&1 || source "$_ZBUILD_SP_ROOT/scripts/lib/vision.sh"
 # shellcheck source=./stage-limits.sh
@@ -207,6 +209,8 @@ _stage_block_rules() {
     printf '  Write to it as you work, not at the end: what you read, what you\n'
     printf '  concluded, and what is left. If you run out of time or turns, it is all that\n'
     printf '  survives, and its latest version comes back to you under Previous work.\n'
+    printf '  Write it as a hand-off: someone starting fresh, without your context, must\n'
+    printf '  be able to pick up from it.\n'
 
     # The limits every model call runs under, the same for every stage: the
     # engine needs no word from the stage about whether or how it calls one.

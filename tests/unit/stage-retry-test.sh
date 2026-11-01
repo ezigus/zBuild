@@ -22,7 +22,10 @@
 # R9 [guard]  a stage dispatched from inside a stage is not retried on its own:
 #             the outer stage's retry covers it
 # R10 [change] for a stage that writes code, a change to a declared output
-#             other than its summary is progress, as a change to the code is
+#             other than its summary and its result file is progress, as a
+#             change to the code is (#2443: the result changes every try)
+# R11 [change] the engine tells each try its number (ZBUILD_STAGE_TRY), so a
+#             try's records are its own (#2443)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,6 +104,7 @@ flaky_run() {
     local art; art="$(dirname "$2")/artifacts"; mkdir -p "$art"
     local n=0; [[ -f "$art/runs.$1" ]] && n="$(cat "$art/runs.$1")"
     n=$(( n + 1 )); printf '%s' "$n" > "$art/runs.$1"
+    printf '%s ' "${ZBUILD_STAGE_TRY:-none}" >> "$art/tries.$1"
     local -a w=(${OUTCOMES:-pass}); local i=$(( n - 1 ))
     (( i >= ${#w[@]} )) && i=$(( ${#w[@]} - 1 ))
     if [[ "${SAME:-0}" == "1" ]]; then printf 'same' > "$art/flaky-work.txt"
@@ -205,6 +209,8 @@ outputs:
   - id: summary
     path: "${artifact_dir}/coder-summary.md"
     summary: true
+  - id: answers
+    path: "${artifact_dir}/coder-answers.json"
 MF
 REPO="$(setup_git_temp_repo "stage-retry-coder")"
 export ZBUILD_REPO_ROOT="$REPO"
@@ -216,11 +222,17 @@ _coder_try() {
 _fresh
 _coder_try 'printf "{\"n\":1}" > "$S/artifacts/coder-result.json"'
 _coder_try 'printf "{\"n\":2}" > "$S/artifacts/coder-result.json"'
-assert_eq "[R10] a code-writing stage whose result changed made progress" "true" "${_ATTEMPT_LAST_PROGRESS:-unset}"
+assert_eq "[R10] a code-writing stage whose result alone changed made no progress" "false" "${_ATTEMPT_LAST_PROGRESS:-unset}"
+_coder_try 'printf "a1" > "$S/artifacts/coder-answers.json"'
+assert_eq "[R10] ...one whose other output changed did" "true" "${_ATTEMPT_LAST_PROGRESS:-unset}"
 _coder_try 'printf "s2" > "$S/artifacts/coder-summary.md"'
 assert_eq "[R10] ...one whose summary alone changed did not" "false" "${_ATTEMPT_LAST_PROGRESS:-unset}"
 _coder_try 'printf x > "$REPO/f.txt"'
 assert_eq "[R10] ...one whose code changed did" "true" "${_ATTEMPT_LAST_PROGRESS:-unset}"
+
+# ── R11 ──────────────────────────────────────────────────────────────────────
+_fresh; OUTCOMES="timed_out timed_out pass" _dispatch twice
+assert_eq "[R11] each try is told its number" "1 2 3 " "$(cat "$S/artifacts/tries.twice" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

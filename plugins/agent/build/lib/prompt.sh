@@ -37,6 +37,9 @@ ${_framing}
 - You make code changes via Edit/Write/Bash. What you change stays in the
   working tree: if you do not finish, the next try continues from it, and your
   notes file (in the rules below) carries what you learned.
+- Write your notes file first, and add each thing you find to it
+  before your next step. If you are cut off, your notes are what the next try
+  starts from.
 - Do NOT emit a unified diff in your response — the pipeline derives the
   canonical \`diff.patch\` artifact from \`git diff HEAD\` automatically.
 
@@ -64,8 +67,8 @@ a failure you cannot produce, and do not change code to chase one.
 ### When a test is wrong
 If a test fails on code that already does what its requirement says — the test
 itself cannot pass — do not change the code to chase it; you may not change the
-test. Answer that finding, on its own line before the sentinel, and
-stop working on that test:
+test. Answer that finding as soon as you are sure, on its own line before the
+sentinel, and stop working on that test:
 
     ANSWER <stage> finding <n>: nothing to do — the test is wrong: <test file>: <why>
 

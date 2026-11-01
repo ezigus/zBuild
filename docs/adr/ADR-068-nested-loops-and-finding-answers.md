@@ -90,9 +90,14 @@ output `build-tests-result.json` on topic `code-findings` (ADR-071 §1), which t
 answering a finding about its tests is test-author's job (§6, amended 2026-10-31). Test-author is never
 shown build's code: that stays on `change`.
 
+**Amended 2026-11-01 (#2443):** build gives that answer as soon as it is sure, not after more work on the
+test. On #1754 (run 41249802310) round 1's build spent 3 tries of 15 minutes on the test without ever
+answering; round 2's build answered, and test-author fixed the test in round 3.
+
 ## Enforced by
 
 - §6 amendment 2026-10-31 (#2441: build can say a test is wrong) → `tests/unit/build-test-is-wrong-test.sh` W1–W3; `plugins/agent/build/tests/build-test-is-wrong-run-test.sh`; `tests/unit/test-author-checks-own-output-test.sh` A10
+- §6 amendment 2026-11-01 (#2443: build answers as soon as it is sure) → `tests/unit/build-test-is-wrong-test.sh` W4
 - §1 (impact retired from zBuild) → `tests/unit/retired-impact-review-report-inputs-test.sh` RT1
 - §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it); `tests/unit/template-simple-yaml-test.sh` SPEC-18 (delivery_loop flow is build_test_cycle,review_lenses), SPEC-14 (build_test_cycle starts with design); `tests/integration/deployed-template-e2e-test.sh` (deployed.yaml's loops)
 - Amendment 2026-10-31 §1, §2, §3 → `tests/unit/template-simple-yaml-test.sh` SPEC-14, SPEC-15, SPEC-18 and the deployed.yaml block (ADR-068 §1–§3); `tests/integration/stop-run-on-fail-test.sh` R5 (a design that fails inside the build loop ends the run), R6 (a build loop that does not pass ends the run after 3 rounds, with no review), R7 (the lenses send the change round once more), R8 (and the run stops when they fail again)

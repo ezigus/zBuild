@@ -60,6 +60,7 @@ attempt_latest_copy() {
 # into <var>:
 #   P<TAB><raw path>   every declared output path, unresolved
 #   S<TAB><basename>   an output marked `summary: true` — narrative, never work
+#   X<TAB><basename>   the result file (`primary: true`) — what the try did
 #   R                  capabilities.writes_repository: true
 # A dispatch asks three times (fingerprint before, fingerprint after, archive),
 # so the last manifest's answer is kept; manifests do not change during a run.
@@ -69,21 +70,21 @@ _ATT_FACTS=""
 # in the stage's own process, three times a dispatch.
 _attempt_manifest_facts_read_v() {
     local -n _amf="$1"
-    local line l in_out=0 in_cap=0 p="" s=0 out=""
+    local line l in_out=0 in_cap=0 p="" s=0 x=0 out=""
     [[ -f "$2" && -r "$2" ]] || { _amf=""; return 0; }
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ ^outputs:[[:space:]]*$ ]]; then in_out=1; in_cap=0; continue; fi
         if [[ "$line" =~ ^capabilities:[[:space:]]*$ || "$line" =~ ^[a-zA-Z_] ]]; then
-            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; fi
-            p=""; s=0
+            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; fi
+            p=""; s=0; x=0
             if [[ "$line" =~ ^capabilities:[[:space:]]*$ ]]; then in_cap=1; in_out=0; continue; fi
             in_out=0; in_cap=0
         fi
         (( in_cap )) && [[ "$line" =~ ^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$ ]] && out+="R"$'\n'
         (( in_out )) || continue
         if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+id: ]]; then
-            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; fi
-            p=""; s=0
+            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; fi
+            p=""; s=0; x=0
         fi
         if [[ "$line" =~ ^[[:space:]]+path:[[:space:]]* ]]; then
             l="${line:${#BASH_REMATCH[0]}}"
@@ -91,8 +92,9 @@ _attempt_manifest_facts_read_v() {
             l="${l#[\"\']}"; p="${l%[\"\']}"
         fi
         [[ "$line" =~ ^[[:space:]]+summary:[[:space:]]*true ]] && s=1
+        [[ "$line" =~ ^[[:space:]]+primary:[[:space:]]*true ]] && x=1
     done < "$2"
-    if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; fi
+    if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; fi
     while [[ "$out" == *$'\n' ]]; do out="${out%$'\n'}"; done
     _amf="$out"
 }
@@ -165,6 +167,13 @@ attempt_outputs_fingerprint_v() {
             _fp_var+="__repository__"$'\t'"$(cksum <<< "$head"$'\n'"$st"$'\n'"$df")"$'\n'
         fi
     fi
+    # #2443: the stage's notes are what its next try reads, so a try that
+    # wrote them left something; the engine names the file (ADR-063).
+    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F stage_notes_path_v >/dev/null 2>&1; then
+        local _fp_notes; stage_notes_path_v _fp_notes "$_fp_sd" "$ZBUILD_CURRENT_STAGE"
+        if [[ -e "$_fp_notes" ]]; then sum="$(cksum 2>/dev/null < "$_fp_notes" || printf 'absent')"; else sum="absent"; fi
+        _fp_var+="__notes__"$'\t'"$sum"$'\n'
+    fi
     _fp_var="${_fp_var%$'\n'}"
 }
 
@@ -208,10 +217,10 @@ attempt_archive_outputs() {
     # an old attempt wants. _registry_output_path_rows drops those by design (it
     # serves the fail-closed presence scan), so this reads the block itself —
     # one awk per dispatch, no shared index state to be warm or cold.
-    local _facts _paths="" _summ="" _fk _fv
+    local _facts _paths="" _notwork="" _fk _fv
     _attempt_manifest_facts_v _facts "$manifest"
     while IFS=$'\t' read -r _fk _fv; do
-        case "$_fk" in P) _paths+="$_fv"$'\n' ;; S) _summ+="$_fv"$'\n' ;; esac
+        case "$_fk" in P) _paths+="$_fv"$'\n' ;; S|X) _notwork+="$_fv"$'\n' ;; esac
     done <<< "$_facts"
     [[ -n "$_paths" ]] || { rmdir "$_dest" 2>/dev/null || true; return 0; }
 
@@ -240,9 +249,10 @@ attempt_archive_outputs() {
     local -a _outputs=()
     local _unchanged="" _name _was _now _state _progress="" _after _bn _bs
     if [[ -n "$before" ]]; then
-        # #2252 / #2439 (ADR-054 §6a): progress is a change to the code
-        # (__repository__) or to any declared output except a narrative
-        # summary, the same for every stage.
+        # #2252 / #2439 / #2443 (ADR-054 §6a): progress is a change to the
+        # code (__repository__), to the stage's notes (__notes__), or to any
+        # declared output except its summary and its result file — those
+        # describe the try, so they change on every one. One rule, every stage.
         _progress=false
         attempt_outputs_fingerprint_v _after "$plugin_dir" "$state_file" "$before"
         while IFS=$'\t' read -r _name _now; do
@@ -254,7 +264,7 @@ attempt_archive_outputs() {
             if [[ "$_now" == "absent" ]]; then _state="absent"
             elif [[ "$_now" == "$_was" ]]; then _state="unchanged"; _unchanged+="${_unchanged:+,}$_name"
             else _state="changed"; fi
-            if [[ "$_state" == "changed" && $'\n'"$_summ" != *$'\n'"$_name"$'\n'* ]]; then
+            if [[ "$_state" == "changed" && $'\n'"$_notwork" != *$'\n'"$_name"$'\n'* ]]; then
                 _progress=true
             fi
             _outputs+=("$_name" "$_state")
