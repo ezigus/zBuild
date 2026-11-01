@@ -39,7 +39,7 @@ _ta_testfile_sums_v() {
 _ta_written_list() {
     local design="$1" repo="$2" tf sid have
     while IFS= read -r tf; do
-        [[ -n "$tf" ]] || continue
+        [[ -n "$tf" && "$tf" != /* && "/$tf/" != *"/../"* ]] || continue
         have=""
         if [[ -f "$repo/$tf" ]]; then
             while IFS= read -r sid; do

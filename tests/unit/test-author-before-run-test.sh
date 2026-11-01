@@ -24,7 +24,7 @@
 # B7 [change] the prompt says that when every requirement already has its test
 #             and no finding is open, it confirms them and finishes
 # B8 [change] a test path that leaves the repository (absolute, or with ..) is
-#             never copied or run (review on #2446)
+#             never copied or run, nor listed in the prompt (review on #2446)
 # B9 [guard]  a changed [no-code] test that passes on the old code is no
 #             finding: it need not fail there (review on #2446)
 set -uo pipefail
@@ -161,6 +161,14 @@ printf '```acceptance\nSPEC-1[code]: x\nTESTFILES:\nSPEC-1: ../outside-test.sh\n
     _ta_before_run "$_d8/design.md" "$_d8/repo" ""
 ) >/dev/null 2>&1
 assert_file_not_exists "[B8] a test path outside the repository is never run" "$OUTSIDE.ran"
+_wl="$( acceptance_list_testfiles() { printf '../outside-test.sh\ntests/a-test.sh\n'; }
+        acceptance_list_spec_ids() { :; }
+        _ta_written_list "$_d8/design.md" "$_d8/repo" )"
+if grep -qF 'outside-test.sh' <<< "$_wl"; then
+    assert_fail "[B8] ...nor listed in the prompt" "$_wl"
+else
+    assert_pass "[B8] ...nor listed in the prompt"
+fi
 
 cleanup_test_env
 print_test_results
