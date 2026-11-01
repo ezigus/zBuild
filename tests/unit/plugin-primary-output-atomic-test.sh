@@ -155,11 +155,16 @@ assert_eq "[#1754/SPEC-6] lint exits 0 for properly-checked calls" "0" "$_spec6_
 print_test_section "[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked"
 
 _PACKAGE_JSON="$REPO_ROOT/package.json"
-if grep -q 'bash scripts/lib/lint-atomic-write-unchecked.sh' "$_PACKAGE_JSON" 2>/dev/null; then
+# Extract only the line containing the "lint" key, then check that line
+# contains the invocation.  If the invocation were in a different target
+# (test, build, etc.) the "lint" line would not contain it and the
+# assertion would correctly fail.
+_s7_lint_line="$(grep '"lint"' "$_PACKAGE_JSON" 2>/dev/null || true)"
+if grep -qF 'bash scripts/lib/lint-atomic-write-unchecked.sh' <<< "$_s7_lint_line"; then
     assert_pass "[#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh"
 else
     assert_fail "[#1754/SPEC-7] package.json lint target must contain bash scripts/lib/lint-atomic-write-unchecked.sh" \
-        "not found in $REPO_ROOT/package.json"
+        "not found in the lint target of $REPO_ROOT/package.json"
 fi
 
 # ─── [#1754/SPEC-8] 17 || true annotations present outside the bug-fix files ───
