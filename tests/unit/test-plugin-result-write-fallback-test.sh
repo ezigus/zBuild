@@ -249,6 +249,7 @@ _s1_outcome() {
 eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s1 ()/')"
 
 # (a) Every write fails: nothing can be written, so the stale file must go.
+: > "$ZBUILD_EVENTS_JSONL"
 stage_result_write "$OUT_1754S1" "pass" "prior round passed" 2>/dev/null || true
 atomic_write() { cat > /dev/null; return 1; }
 _test_write_result "$OUT_1754S1" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
@@ -259,6 +260,9 @@ case "$_s1a" in
     absent|broken) assert_pass "[#1754/SPEC-1a] every write fails: result is $_s1a, not the earlier round's" ;;
     *) assert_fail "[#1754/SPEC-1a] every write fails: result is absent or broken" "got: $_s1a" ;;
 esac
+# The fallback event says which: a result is there (broken) or none is (absent).
+assert_eq "[#1754/SPEC-1a] the fallback event says result=$_s1a" "$_s1a" \
+    "$(jq -r 'select(.type=="test.result_write.fallback") | .result // .data.result // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
 
 # (b) Only the first (primary) write fails: the fallback records broken.
 stage_result_write "$OUT_1754S1" "pass" "prior round passed" '{"passed":7,"failed":0}' 2>/dev/null || true

@@ -110,16 +110,17 @@ else
 fi
 
 # The output must name the violating line as file:lineno.  The fixture has
-# exactly one atomic_write call, on line 4 of the file.  Checking for the
+# exactly one atomic_write call; its line is read from the fixture.  Checking for the
 # fixture basename followed by ":4" (fixed-string, so the "." in the filename
 # is not a wildcard) proves the lint reported the specific line that contains
 # the violation, not merely that the filename appeared somewhere in the output.
 _spec5_fixture_base="$(basename "$_SPEC5_FIXTURE")"
-if grep -qF "${_spec5_fixture_base}:4" <<< "$_spec5_out"; then
+_spec5_lno="$(grep -n 'atomic_write' "$_SPEC5_FIXTURE" | cut -d: -f1)"
+if grep -qF "${_spec5_fixture_base}:${_spec5_lno}" <<< "$_spec5_out"; then
     assert_pass "[#1754/SPEC-5] lint names the violating line in its output"
 else
     assert_fail "[#1754/SPEC-5] lint names the violating line in its output" \
-        "expected ${_spec5_fixture_base}:4 in output; got: $_spec5_out"
+        "expected ${_spec5_fixture_base}:${_spec5_lno} in output; got: $_spec5_out"
 fi
 
 # ─── [#1754/SPEC-6] lint exits 0 for properly-checked atomic_write calls ──────
@@ -183,7 +184,8 @@ FIXTURE
 _spec5b_rc=0
 _spec5b_out="$(bash "$_LINT_SCRIPT" "$_SPEC5B_FIXTURE" 2>&1)" || _spec5b_rc=$?
 assert_eq "[#1754/SPEC-5b] lint exits non-zero for a PIPESTATUS[0]-only capture" "1" "$_spec5b_rc"
-assert_contains "[#1754/SPEC-5b] lint names that line" "$_spec5b_out" "spec5b-producer-only.sh:3"
+assert_contains "[#1754/SPEC-5b] lint names that line" "$_spec5b_out" \
+    "spec5b-producer-only.sh:$(grep -n 'atomic_write' "$_SPEC5B_FIXTURE" | cut -d: -f1)"
 
 # ─── [#1754/SPEC-5c] the read must be at the write's own index ──────────────
 # Each fixture holds one write the lint must flag, on line 2.
@@ -216,7 +218,8 @@ EOF
 }
 FIXTURE
 _s5c_rc=0; _s5c_out="$(bash "$_LINT_SCRIPT" "$_S5C_ML" 2>&1)" || _s5c_rc=$?
-assert_contains "[#1754/SPEC-5c] a write after a multi-line string is flagged" "$_s5c_out" "spec5c-multiline.sh:7"
+assert_contains "[#1754/SPEC-5c] a write after a multi-line string is flagged" "$_s5c_out" \
+    "spec5c-multiline.sh:$(grep -n 'atomic_write' "$_S5C_ML" | cut -d: -f1)"
 
 _S5C_OK="$TEST_TEMP_DIR/spec5c-ok.sh"
 cat > "$_S5C_OK" <<'FIXTURE'

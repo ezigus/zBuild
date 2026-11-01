@@ -106,6 +106,7 @@ for _law_file in "${_law_files[@]}"; do
             [[ "${_law_lines[_law_k]}" =~ $_law_re_cont ]] || break
             _law_cmd="${_law_codes[_law_k]} $_law_cmd"
         done
+        # `||` is not a pipe; `&&` holds no `|`, so it needs no blanking.
         _law_cmd="${_law_cmd//||/  }"
         _law_pipes="${_law_cmd//[^|]/}"
         _law_idx="${#_law_pipes}"

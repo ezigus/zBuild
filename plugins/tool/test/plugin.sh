@@ -1208,7 +1208,8 @@ _test_write_result() {
             "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" | atomic_write "$path" \
             && stage_result_add "$path" broken "result_write_failed" 2>/dev/null \
             || rm -f "$path" 2>/dev/null || true
-        emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
+        local _fb_result=broken; [[ -f "$path" ]] || _fb_result=absent
+        emit_event "test.result_write.fallback" "path=$path" "result=$_fb_result" 2>/dev/null || true
     fi
 }
 
