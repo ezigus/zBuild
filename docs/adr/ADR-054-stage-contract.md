@@ -568,8 +568,17 @@ engine must enforce its own ceiling.
   original run's elapsed time is not carried forward. `get_resume_recommendation`
   returns `manual_resume_only` for `timed_out` state.
 
+### Amendment (2026-11-01, #1754) — §5: a failed result write leaves no result
+
+A result write that fails never leaves an earlier round's file reading as this round's (ADR-068 §8: a stale result counts as absent).
+
+- The test stage reads its write's own exit, not its producer's. When the write, or `stage_result_add`, fails, it removes the file at the path and writes a `broken` result (`result_write_failed`) through `atomic_write`; if that also fails, no result is left.
+- Intake ends non-zero, with a `broken` result whose reason names the file, when `scope-manifest.md` or `intake.md` cannot be written.
+- Every `| atomic_write` in `core/`, `plugins/` and `scripts/` checks its write: `&&` or `||` after it, an `if !` test, or a `PIPESTATUS` read at the write's index (never index 0, the producer). `scripts/lib/lint-atomic-write-unchecked.sh` in `npm run lint` fails one that does not.
+
 ## Enforced by
 
+- §5 amendment 2026-11-01 (#1754: a failed result write leaves no result) → `tests/unit/test-plugin-result-write-fallback-test.sh` SPEC-1; `tests/unit/test-result-reason-contract-test.sh` SPEC-2; `plugins/agent/intake/tests/intake-result-test.sh` SPEC-3, SPEC-4; `tests/unit/plugin-primary-output-atomic-test.sh` SPEC-5–SPEC-8; `scripts/lib/lint-atomic-write-unchecked.sh`
 - §6a amendment 2026-10-31 (#2439: the engine owns every retry, for every stage) → `tests/unit/stage-retry-test.sh` R1–R10; `tests/unit/route-one-call-per-try-test.sh` O1–O6; `tests/unit/retired-retry-settings-test.sh` T1–T6; `tests/unit/attempt-progress-test.sh` P1–P5
 - §6a amendment 2026-11-01 (#2443: the result file is not progress; the notes are; each try knows its number) → `tests/unit/attempt-progress-test.sh` P1, P5–P7; `tests/unit/stage-retry-test.sh` R10, R11; `tests/integration/write-boundary-revert-test.sh` D7
 - §7: a second signal during teardown does not cut it short; release finishes and persist

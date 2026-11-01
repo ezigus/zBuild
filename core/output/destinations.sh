@@ -36,7 +36,7 @@ _dest_local_report() {
     local toggle="${ZBUILD_OUTPUT_LOCAL_REPORT:-1}"
     [[ "$toggle" == "0" ]] && return 0
     local report_path="$state_dir/report-${run_id}.md"
-    printf '%s\n' "$content" | atomic_write "$report_path" || true
+    printf '%s\n' "$content" | atomic_write "$report_path" || return 1
 }
 
 # ─── gh-pr-comment destination ────────────────────────────────────────────────

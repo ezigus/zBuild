@@ -167,119 +167,32 @@ else
         "not found in the lint target of $REPO_ROOT/package.json"
 fi
 
-# ─── [#1754/SPEC-8] 17 || true annotations present outside the bug-fix files ───
-# All 17 pre-existing unchecked | atomic_write sites outside the two bugs carry
-# || true.  This spec need not fail before the change; it must pass after.
-# Running the full-codebase lint is tested separately via SPEC-5/SPEC-6/SPEC-7;
-# here we directly verify the annotation count and content via grep, which is
-# orders of magnitude faster than invoking the lint script on all .sh files.
-print_test_section "[#1754/SPEC-8] 17 | atomic_write sites outside bug-fix files carry || true"
+# ─── [#1754/SPEC-5b] a PIPESTATUS capture of only the producer is no check ──
+# The test stage's bug was exactly this: it read PIPESTATUS[0] (jq) and never
+# the write's index, so a failed write passed. The lint must flag it.
+print_test_section "[#1754/SPEC-5b] lint flags a PIPESTATUS capture that misses the write"
 
-# Verify the || true mechanism: outside the two bug-fix files that receive proper
-# error handling, every | atomic_write call in core/ plugins/ scripts/ must carry
-# || true on the same line (or be a shell continuation line whose next physical
-# line carries || true).  This distinguishes "annotated" from "removed" or
-# "silenced by a different mechanism".
-_s8_grep_out="$TEST_TEMP_DIR/s8-grep.txt"
-grep -rn '| atomic_write' \
-    "$REPO_ROOT/core" "$REPO_ROOT/plugins" "$REPO_ROOT/scripts" \
-    --include='*.sh' 2>/dev/null > "$_s8_grep_out" || true
+_SPEC5B_FIXTURE="$TEST_TEMP_DIR/spec5b-producer-only.sh"
+cat > "$_SPEC5B_FIXTURE" <<'FIXTURE'
+_write_it() {
+    jq -n '{}' \
+      | atomic_write "/some/output/path"
+    local _rc="${PIPESTATUS[0]}"
+}
+FIXTURE
+_spec5b_rc=0
+_spec5b_out="$(bash "$_LINT_SCRIPT" "$_SPEC5B_FIXTURE" 2>&1)" || _spec5b_rc=$?
+assert_eq "[#1754/SPEC-5b] lint exits non-zero for a PIPESTATUS[0]-only capture" "1" "$_spec5b_rc"
+assert_contains "[#1754/SPEC-5b] lint names that line" "$_spec5b_out" "spec5b-producer-only.sh:3"
 
-_s8_call_count=0
-_s8_violations=()
+# ─── [#1754/SPEC-8] the real tree passes the lint ────────────────────────────
+# R3: "Existing safe uses pass." Every | atomic_write in core/, plugins/ and
+# scripts/ checks its write, so the lint over the whole tree exits 0.
+print_test_section "[#1754/SPEC-8] the lint passes on core/, plugins/ and scripts/"
 
-while IFS= read -r _s8_entry; do
-    _s8_f="${_s8_entry%%:*}"
-    _s8_rest="${_s8_entry#*:}"
-    _s8_lno="${_s8_rest%%:*}"
-    _s8_text="${_s8_rest#*:}"
-    # Exclude the two files fixed by #1754 (they get proper PIPESTATUS handling)
-    [[ "$_s8_f" == */plugins/tool/test/plugin.sh ]] && continue
-    [[ "$_s8_f" == */plugins/agent/intake/plugin.sh ]] && continue
-    # Exclude test directories (unit, integration, plugin-local)
-    [[ "$_s8_f" == */tests/* ]] && continue
-    # Exclude the lint script itself (it contains | atomic_write as a grep pattern)
-    [[ "$_s8_f" == */lint-atomic-write-unchecked.sh ]] && continue
-    # Exclude files already handled with proper PIPESTATUS checking (not || true)
-    [[ "$_s8_f" == */core/state/resume.sh ]] && continue
-    [[ "$_s8_f" == */core/output/stage-io.sh ]] && continue
-    # A continuation line (ends with \) carries || true on the next physical line — OK
-    grep -qE '\\[[:space:]]*$' <<< "$_s8_text" && continue
-    _s8_call_count=$((_s8_call_count + 1))
-    grep -qE '\|\|[[:space:]]*true' <<< "$_s8_text" || \
-        _s8_violations+=("${_s8_f}:${_s8_lno}")
-done < "$_s8_grep_out"
-
-# The requirement says "all 17 pre-existing calls" (13 original sites + secrets.sh:172
-# + own-checks.sh:72,96,101).  Checking >= 17 proves all calls were annotated, not
-# silently removed or replaced with fewer new ones to satisfy the lint.
-if [[ "$_s8_call_count" -ge 17 ]]; then
-    assert_pass "[#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)"
-else
-    assert_fail "[#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)" \
-        "found only $_s8_call_count call(s) (expected >= 17) in core/plugins/scripts outside exclusions"
-fi
-
-# Every remaining call must carry || true — the specified annotation mechanism.
-if [[ "${#_s8_violations[@]}" -eq 0 ]]; then
-    assert_pass "[#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true"
-else
-    assert_fail "[#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true" \
-        "missing || true at: ${_s8_violations[*]}"
-fi
-
-# Verify the two explicitly named sites from the SPEC still exist AND carry || true.
-# The >= 17 count above proves nothing was wholesale removed, but it cannot rule out
-# some original calls being removed while new ones are added.  Checking the named
-# files by path closes that gap: a call removed from secrets.sh or own-checks.sh
-# would make these assertions fail even if the total count stays >= 17.
-_s8_secrets_annotated=0
-while IFS= read -r _s8_sec_line; do
-    grep -qE '\|\|[[:space:]]*true' <<< "$_s8_sec_line" && \
-        _s8_secrets_annotated=$((_s8_secrets_annotated + 1)) || true
-done < <(grep -n '| atomic_write' \
-    "$REPO_ROOT/plugins/agent/build/lib/secrets.sh" 2>/dev/null || true)
-
-if [[ "$_s8_secrets_annotated" -ge 1 ]]; then
-    assert_pass "[#1754/SPEC-8] secrets.sh named site carries || true"
-else
-    assert_fail "[#1754/SPEC-8] secrets.sh named site carries || true" \
-        "expected >= 1 annotated | atomic_write call in plugins/agent/build/lib/secrets.sh; found 0"
-fi
-
-_s8_own_annotated=0
-while IFS= read -r _s8_own_line; do
-    grep -qE '\|\|[[:space:]]*true' <<< "$_s8_own_line" && \
-        _s8_own_annotated=$((_s8_own_annotated + 1)) || true
-done < <(grep -n '| atomic_write' \
-    "$REPO_ROOT/plugins/tool/test/lib/own-checks.sh" 2>/dev/null || true)
-
-if [[ "$_s8_own_annotated" -ge 3 ]]; then
-    assert_pass "[#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true"
-else
-    assert_fail "[#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true" \
-        "expected >= 3 annotated | atomic_write calls in plugins/tool/test/lib/own-checks.sh; found $_s8_own_annotated"
-fi
-
-# Explicitly establish that core/state/resume.sh and core/output/stage-io.sh are
-# excluded from the || true requirement.  The SPEC names them as "already handled"
-# because they use PIPESTATUS-based exit checking instead of || true.  Asserting
-# that each file has | atomic_write calls makes the exclusion non-vacuous: if those
-# calls did not exist the continue clauses in the loop above would be dead code and
-# could not establish that the files are excluded from the requirement.
-if grep -q '| atomic_write' "$REPO_ROOT/core/state/resume.sh" 2>/dev/null; then
-    assert_pass "[#1754/SPEC-8] core/state/resume.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)"
-else
-    assert_fail "[#1754/SPEC-8] core/state/resume.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)" \
-        "expected >= 1 | atomic_write in core/state/resume.sh; found 0 — exclusion is vacuous"
-fi
-
-if grep -q '| atomic_write' "$REPO_ROOT/core/output/stage-io.sh" 2>/dev/null; then
-    assert_pass "[#1754/SPEC-8] core/output/stage-io.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)"
-else
-    assert_fail "[#1754/SPEC-8] core/output/stage-io.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)" \
-        "expected >= 1 | atomic_write in core/output/stage-io.sh; found 0 — exclusion is vacuous"
-fi
+_spec8_rc=0
+_spec8_out="$(bash "$_LINT_SCRIPT" 2>&1)" || _spec8_rc=$?
+assert_eq "[#1754/SPEC-8] lint exits 0 on the real tree (output: ${_spec8_out:0:400})" "0" "$_spec8_rc"
 
 cleanup_test_env
 print_test_results

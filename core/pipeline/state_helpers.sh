@@ -40,7 +40,7 @@ write_scope_override() {
             [[ -z "$scope_path" ]] && continue
             printf '+ %s\n' "$scope_path"
         done <<< "$ZBUILD_SCOPE_PATHS"
-    } | atomic_write "$scope_override" || true
+    } | atomic_write "$scope_override" || return 1
 }
 
 # _update_stage_status <state_file> <stage_id> <status>

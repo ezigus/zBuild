@@ -412,7 +412,7 @@ assert_eq "[D10] the pass intake wrote is still the result" "pass" "$(_disp)"
 # ─── [#1754/SPEC-3] atomic_write fails writing scope-manifest.md ─────────────
 # Before #1754: the two | atomic_write calls in _intake_run_inner were bare with
 # no exit check.  A failing write was silently ignored and intake reported pass
-# while the downstream consumer (plan stage) read the prior round's stale file.
+# while the stages after it read the prior round's stale file.
 # After #1754: each write's exit is checked; a failure calls _intake_write_result
 # with outcome=broken and a reason naming the file, then returns non-zero.
 print_test_section "[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero"

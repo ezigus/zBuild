@@ -1,104 +1,75 @@
 #!/usr/bin/env bash
-# scripts/lib/lint-atomic-write-unchecked.sh — detect unchecked | atomic_write calls.
+# scripts/lib/lint-atomic-write-unchecked.sh — every `| atomic_write` checks its write (#1754).
 #
-# A bare pipe to atomic_write whose exit is not checked lets a failed write
-# pass silently, leaving the prior round's file looking current. This lint
-# flags each violation: the same line or the immediately following executable
-# line (blank and comment-only lines are skipped because comments do not reset
-# PIPESTATUS in bash) must check the write exit via &&, ||, if !, or a
-# PIPESTATUS capture that includes the write index.
-#
-# A shell-continuation line (ending with \) is checked together with its
-# immediately following physical line for || or &&.
+# A pipe to atomic_write whose exit is not checked lets a failed write pass
+# silently, leaving the prior round's file looking current. A write counts as
+# checked when, after it:
+#   - the same line carries `&&` or `||` (or the line is an `if !` test);
+#   - the line ends in `\` and the next line carries `&&` or `||`;
+#   - the next code line (blank and comment lines skipped) reads PIPESTATUS at
+#     the write's place: any index but 0, which is the producer, never the write.
 #
 # Usage: bash scripts/lib/lint-atomic-write-unchecked.sh [file...]
 #   No args: scans core/ plugins/ scripts/ under the repo root.
-# Exit 0: no violations. Exit 1: violations emitted as file:line: text.
+# Exit 0: no violations. Exit 1: violations printed as file:line: text.
 
 set -uo pipefail
 
-_law_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_law_root="$(cd "$_law_dir/../.." && pwd)"
+_law_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The token is split so this file does not match itself.
+_law_tok='| '"atomic_write"
 
-# Collect files to scan
 _law_files=()
 if [[ $# -gt 0 ]]; then
     _law_files=("$@")
 else
-    while IFS= read -r _law_f; do
-        [[ -n "$_law_f" ]] && _law_files+=("$_law_f")
-    done < <(find "$_law_root/core" "$_law_root/plugins" "$_law_root/scripts" \
-        -name '*.sh' -type f 2>/dev/null | sort)
+    # One grep finds the few files that hold the token; the rest are never read.
+    mapfile -t _law_files < <(grep -rlF --include='*.sh' -- "$_law_tok" \
+        "$_law_root/core" "$_law_root/plugins" "$_law_root/scripts" 2>/dev/null | sort)
 fi
 
+_law_re_check='(&&|\|\|)'
+_law_re_cont='\\[[:space:]]*$'
+_law_re_skip='^[[:space:]]*(#.*)?$'
+_law_re_pstat='PIPESTATUS\[([1-9][0-9]*|-1|@|\*)\]'
 _law_violations=0
-# The pipe-to-write pattern, split across two variables so this script does
-# not match its own patterns when scanned as part of the full codebase.
-_law_pipe='|'
-_law_fn='atomic_write'
 
 for _law_file in "${_law_files[@]}"; do
     [[ -f "$_law_file" ]] || continue
-    # Skip this lint script itself (it references the pattern in variable form)
-    [[ "$_law_file" == */lint-atomic-write-unchecked.sh ]] && continue
-
     mapfile -t _law_lines < "$_law_file"
     _law_n="${#_law_lines[@]}"
-
-    for (( _law_i=0; _law_i<_law_n; _law_i++ )); do
-        _law_line="${_law_lines[$_law_i]}"
-        _law_lno=$(( _law_i + 1 ))
-
-        # Skip comment-only lines (leading whitespace then #): they are not code
-        grep -qE '^[[:space:]]*#' <<< "$_law_line" && continue
-
-        # Fast path: skip lines that do not contain the pipe-to-write token
-        grep -qF "${_law_pipe} ${_law_fn}" <<< "$_law_line" || continue
-
-        # Skip lines where the token appears only inside a single-quoted string
-        # (e.g. assert_fail "... '| atomic_write' ..."): not executable code.
-        # Strip every '...' span and check whether the token survives.
-        _law_stripped="${_law_line}"
-        while grep -qE "'" <<< "$_law_stripped"; do
-            _before="${_law_stripped%%\'*}"
-            _after="${_law_stripped#*\'}"
-            _after="${_after#*\'}"
-            _law_stripped="${_before}${_after}"
+    for (( _law_i = 0; _law_i < _law_n; _law_i++ )); do
+        _law_line="${_law_lines[_law_i]}"
+        [[ "$_law_line" == *"$_law_tok"* ]] || continue
+        [[ "$_law_line" =~ ^[[:space:]]*# ]] && continue
+        # A token only inside a '...' string is text, not a write.
+        _law_code="$_law_line"
+        while [[ "$_law_code" == *\'*\'* ]]; do
+            _law_pre="${_law_code%%\'*}"
+            _law_post="${_law_code#*\'}"
+            _law_code="$_law_pre${_law_post#*\'}"
         done
-        grep -qF "${_law_pipe} ${_law_fn}" <<< "$_law_stripped" || continue
+        [[ "$_law_code" == *"$_law_tok"* ]] || continue
 
-        # 1. Same-line check: &&, ||, or if ! on the same line as the write
-        grep -qE '(&&|\|\||if[[:space:]]+!)' <<< "$_law_line" && continue
+        _law_after="${_law_code#*"$_law_tok"}"
+        [[ "$_law_after" =~ $_law_re_check ]] && continue
+        [[ "$_law_code" =~ (^|[[:space:]])if[[:space:]]+! ]] && continue
 
-        # 2. Continuation (\): current line ends with \; check next physical
-        #    line for || or && (e.g. "... | atomic_write ... \ \n    || true")
-        if grep -qE '\\[[:space:]]*$' <<< "$_law_line"; then
-            _law_next_phys="${_law_lines[$(( _law_i + 1 ))]:-}"
-            grep -qE '(\|\||&&)' <<< "$_law_next_phys" && continue
+        if [[ "$_law_line" =~ $_law_re_cont ]]; then
+            [[ "${_law_lines[_law_i + 1]:-}" =~ $_law_re_check ]] && continue
         fi
 
-        # 3. Next executable line check: skip blank and comment-only lines
-        #    (they do not reset PIPESTATUS), then look for a PIPESTATUS capture
-        #    that includes the write index (e.g. PIPESTATUS[1]).
-        _law_j=$(( _law_i + 1 ))
-        _law_pstat=0
-        while [[ "$_law_j" -lt "$_law_n" ]]; do
-            _law_nxt="${_law_lines[$_law_j]}"
-            # Blank or comment-only line: skip (does not reset PIPESTATUS)
-            if grep -qE '^[[:space:]]*(#.*)?$' <<< "$_law_nxt"; then
-                _law_j=$(( _law_j + 1 ))
-                continue
-            fi
-            # First executable line: check for PIPESTATUS capture
-            grep -qE 'PIPESTATUS\[' <<< "$_law_nxt" && _law_pstat=1
+        _law_ok=0
+        for (( _law_j = _law_i + 1; _law_j < _law_n; _law_j++ )); do
+            [[ "${_law_lines[_law_j]}" =~ $_law_re_skip ]] && continue
+            [[ "${_law_lines[_law_j]}" =~ $_law_re_pstat ]] && _law_ok=1
             break
         done
-        [[ "$_law_pstat" -eq 1 ]] && continue
+        (( _law_ok )) && continue
 
-        # No exit check found: violation
-        printf '%s:%d: %s\n' "$_law_file" "$_law_lno" "$_law_line"
+        printf '%s:%d: %s\n' "$_law_file" "$(( _law_i + 1 ))" "$_law_line"
         _law_violations=$(( _law_violations + 1 ))
     done
 done
 
-[[ "$_law_violations" -eq 0 ]]
+(( _law_violations == 0 ))

@@ -234,55 +234,49 @@ else
         "composition (engine config + manifests) did not yield it"
 fi
 
-# ─── [#1754/SPEC-1] jq succeeds but primary atomic_write fails ───────────────
-# Before #1754 only PIPESTATUS[0] (jq's exit) was captured.  When jq succeeded
-# but atomic_write failed, _jq_rc stayed 0, stage_result_add silently merged
-# the new outcome into the stale prior-round file, and the result came out as
-# the (now-wrong) current outcome — the broken fallback never fired.
-# After #1754 PIPESTATUS[1] (atomic_write) is captured too; a failed write sets
-# _jq_rc non-zero and the broken fallback fires, writing outcome=broken +
-# reason=result_write_failed, regardless of any prior-round file at the path.
-print_test_section "[#1754/SPEC-1] jq succeeds, primary atomic_write fails → broken fallback"
+# ─── [#1754/SPEC-1] the result write fails over an earlier round's file ──────
+# R1: the result is then absent or broken (result_write_failed) — never this
+# round's outcome on top of the earlier round's counts. Before #1754 only jq's
+# exit (PIPESTATUS[0]) was read, so stage_result_add stamped "pass" into the
+# stale file.
+print_test_section "[#1754/SPEC-1] a failed result write leaves no stale result"
 
 OUT_1754S1="$ARTIFACT_DIR/results-aw-fail-1754spec1.json"
-
-# Write a prior-round pass result so stage_result_add has something to merge
-# with before the fix — this confirms the bug was real (a stale file existed)
-# and not a vacuous empty-file case.
-stage_result_write "$OUT_1754S1" "pass" "prior round passed" 2>/dev/null || true
-
-# Save the real atomic_write so it can be restored after this section.
+_s1_outcome() {
+    if [[ -f "$OUT_1754S1" ]]; then jq -r '.outcome // "unreadable"' "$OUT_1754S1" 2>/dev/null || echo unreadable
+    else echo absent; fi
+}
 eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s1 ()/')"
 
-# Mock: ALL atomic_write calls fail — forces the new direct-redirect fallback (> not | atomic_write).
-# On old code: the fallback also uses | atomic_write → intercepted → && short-circuits →
-# stage_result_add not called → prior-round pass survives → assertion fails.
-# On new code: the fallback uses > (direct redirect, no atomic_write) → not intercepted →
-# outcome=broken is written.
-atomic_write() {
-    cat > /dev/null   # drain stdin to prevent SIGPIPE on the jq producer
-    return 1
-}
-
+# (a) Every write fails: nothing can be written, so the stale file must go.
+stage_result_write "$OUT_1754S1" "pass" "prior round passed" 2>/dev/null || true
+atomic_write() { cat > /dev/null; return 1; }
 _test_write_result "$OUT_1754S1" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
     2>/dev/null || true
-
-# Restore atomic_write so subsequent sections are unaffected.
 eval "$(declare -f _aw_real_1754s1 | sed 's/_aw_real_1754s1 ()/atomic_write ()/')"
+_s1a="$(_s1_outcome)"
+case "$_s1a" in
+    absent|broken) assert_pass "[#1754/SPEC-1a] every write fails: result is $_s1a, not the earlier round's" ;;
+    *) assert_fail "[#1754/SPEC-1a] every write fails: result is absent or broken" "got: $_s1a" ;;
+esac
 
-assert_file_exists "[#1754/SPEC-1] result file exists after fallback write" "$OUT_1754S1"
-
-if jq empty "$OUT_1754S1" >/dev/null 2>&1; then
-    assert_pass "[#1754/SPEC-1] fallback result is valid JSON"
-else
-    assert_fail "[#1754/SPEC-1] fallback result is valid JSON" \
-        "content: $(head -c 200 "$OUT_1754S1" 2>/dev/null || echo MISSING)"
-fi
-
-assert_eq "[#1754/SPEC-1] primary write failure writes outcome=broken" "broken" \
-    "$(jq -r '.outcome // empty' "$OUT_1754S1" 2>/dev/null || true)"
-assert_eq "[#1754/SPEC-1] primary write failure writes reason=result_write_failed" "result_write_failed" \
+# (b) Only the first (primary) write fails: the fallback records broken.
+stage_result_write "$OUT_1754S1" "pass" "prior round passed" '{"passed":7,"failed":0}' 2>/dev/null || true
+# A pipeline runs atomic_write in a subshell, so the count lives in a file.
+_s1_calls="$ARTIFACT_DIR/.aw-calls-1754s1"; rm -f "$_s1_calls"
+atomic_write() {
+    printf 'x\n' >> "$_s1_calls"
+    if [[ "$(wc -l < "$_s1_calls")" -eq 1 && "$1" == "$OUT_1754S1" ]]; then cat > /dev/null; return 1; fi
+    _aw_real_1754s1 "$@"
+}
+_test_write_result "$OUT_1754S1" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
+    2>/dev/null || true
+eval "$(declare -f _aw_real_1754s1 | sed 's/_aw_real_1754s1 ()/atomic_write ()/')"
+assert_eq "[#1754/SPEC-1b] primary write fails: outcome=broken" "broken" "$(_s1_outcome)"
+assert_eq "[#1754/SPEC-1b] reason=result_write_failed" "result_write_failed" \
     "$(jq -r '.reason // empty' "$OUT_1754S1" 2>/dev/null || true)"
+assert_eq "[#1754/SPEC-1b] the earlier round's counts are not carried" "null" \
+    "$(jq -r '.data.passed' "$OUT_1754S1" 2>/dev/null || true)"
 
 print_test_results
 exit $((FAIL > 0))

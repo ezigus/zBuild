@@ -260,52 +260,31 @@ jq 'del(.reason)' "$RESULT" > "$RESULT.stripped" && mv "$RESULT.stripped" "$RESU
 assert_eq "[SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)" \
     "0" "$(_blocked_rc_for "$(_classify)")"
 
-# ─── [#1754/SPEC-2] reader classifies broken after primary atomic_write fails ─
-# Before #1754: only PIPESTATUS[0] was captured in _test_write_result.  A
-# failed atomic_write left the prior-round file untouched and stage_result_add
-# merged the current outcome into it — so the reader saw "pass" (or whatever
-# the current call supplied), never "broken".
-# After #1754: the write exit is captured; a failed write triggers the fallback,
-# which writes outcome=broken, so runner_read_stage_disposition returns "broken"
-# — not the prior round's disposition ("complete").
-print_test_section "[#1754/SPEC-2] reader sees broken after primary atomic_write failure"
+# ─── [#1754/SPEC-2] the reader never sees the earlier round's result ────────
+# R1 seen from the reader: after a failed result write over an earlier round's
+# pass, the test stage does not read as complete. Before #1754 the stale file
+# got this round's "pass" stamped into it, and read as complete.
+print_test_section "[#1754/SPEC-2] reader does not see a stale pass after a failed write"
 
 rm -f "$RESULT"
-# Write a prior-round pass result using the engine's own writer so the data
-# is exactly what the real write path produces (not hand-made).
 stage_result_write "$RESULT" "pass" "prior round passed" 2>/dev/null || true
-
-# Save the real atomic_write so it can be restored before the reader call.
 eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s2 ()/')"
-
-# Mock: ALL atomic_write calls fail — forces the new direct-redirect fallback (> not | atomic_write).
-# On old code: fallback | atomic_write intercepted → && short-circuits → stage_result_add
-# not called → prior-round pass survives → disposition is "complete" not "broken".
-# On new code: fallback > (direct redirect) not intercepted → broken result written.
-atomic_write() {
-    cat > /dev/null   # drain stdin to prevent SIGPIPE on the jq producer
-    return 1
-}
-
-# Run the writer — same outcome as the prior round (pass) so the only thing
-# distinguishing a correct from incorrect result is whether the file reflects
-# the write FAILURE (broken) or the silently-merged stale content (pass).
+atomic_write() { cat > /dev/null; return 1; }
 _test_write_result "$RESULT" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
     2>/dev/null || true
-
-# Restore atomic_write before calling the reader, which may call it too.
 eval "$(declare -f _aw_real_1754s2 | sed 's/_aw_real_1754s2 ()/atomic_write ()/')"
 
-# After the fix, the fallback write puts outcome=broken in the file.
-# runner_read_stage_disposition returns "broken" for outcome=broken — the direct
-# proof that the reader sees the fallback-written result, not the stale pass.
-# On old code (no PIPESTATUS[1] check), stage_result_add merges "pass" into the
-# stale file; runner_read_stage_disposition then returns "complete" (not "broken").
-assert_eq "[#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)" \
-    "broken" "$(runner_read_stage_disposition "$STATE_DIR" "$TEST_MANIFEST" "test" 0)"
-
-# Cross-check: the raw outcome in the file is "broken", not the prior round's.
-assert_eq "[#1754/SPEC-2] file carries broken outcome after primary write failure" "broken" \
-    "$(jq -r '.outcome // empty' "$RESULT" 2>/dev/null || true)"
+_s2_disp="$(runner_read_stage_disposition "$STATE_DIR" "$TEST_MANIFEST" "test" 0 2>/dev/null || true)"
+if [[ "$_s2_disp" != "complete" ]]; then
+    assert_pass "[#1754/SPEC-2] the test stage does not read as complete ($_s2_disp)"
+else
+    assert_fail "[#1754/SPEC-2] the test stage does not read as complete" "got: complete"
+fi
+_s2_verdict="$(_classify 2>/dev/null || true)"
+if [[ "$_s2_verdict" != "pass" ]]; then
+    assert_pass "[#1754/SPEC-2] runner_read_stage_verdict is not pass ($_s2_verdict)"
+else
+    assert_fail "[#1754/SPEC-2] runner_read_stage_verdict is not pass" "got: pass"
+fi
 
 print_test_results
