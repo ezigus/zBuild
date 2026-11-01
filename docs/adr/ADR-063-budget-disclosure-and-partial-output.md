@@ -346,7 +346,7 @@ the engine had kept every step the call made (#2139).
 - Every stage's notes rule now says to write them as a hand-off: someone starting fresh, without the
   stage's context, must be able to pick up from them.
 - When a model call is cut off at its time limit, the engine lists the steps it recorded — each file read,
-  command run and sentence said, the latest 60 — in `artifacts/notes/<stage>.cut-off.md`, beside the
+  command run and sentence said, the newest that fit what the prompt shows of it (at most 60) — in `artifacts/notes/<stage>.cut-off.md`, beside the
   notes. The stage's own Previous work gives the list to its next try, saying the call was cut off; no
   other stage is given it. A call that is not cut off removes the list, so it is only ever about the call
   just before. This is the notes channel (§6), not a second one, and the list is not the stage's notes:
@@ -355,5 +355,5 @@ the engine had kept every step the call made (#2139).
   (`<stage>-round<r>-try<n>-error.raw-claude-output.json`), not overwritten by the next try.
 - Build's prompt says to write its notes first and add each finding before its next step.
 
-Enforced by `tests/unit/cut-off-hand-off-test.sh` H1–H3; `tests/integration/cut-off-steps-test.sh` C1–C4;
+Enforced by `tests/unit/cut-off-hand-off-test.sh` H1–H4; `tests/integration/cut-off-steps-test.sh` C1–C4;
 `tests/unit/build-test-is-wrong-test.sh` W5.

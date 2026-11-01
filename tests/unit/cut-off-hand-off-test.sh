@@ -12,6 +12,8 @@
 # H2 [change] the stage's own Previous work shows the steps of its last
 #             cut-off call, saying the call was cut off
 # H3 [guard]  another stage's Previous work does not show them
+# H4 [change] a long call's list keeps its newest steps and fits what the
+#             prompt shows of it, so nothing is cut silently (review on #2444)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,6 +62,21 @@ if grep -qF "read /w/intake-result-test.sh" <<< "$_later"; then
 else
     assert_pass "[H3] another stage does not get them"
 fi
+
+print_test_section "H4: a long call"
+_rec="$TEST_TEMP_DIR/long.jsonl"; : > "$_rec"
+for _i in $(seq 1 59); do
+    jq -cn --arg c "step $_i $(printf 'x%.0s' $(seq 1 280))" \
+        '{type:"assistant",message:{content:[{type:"tool_use",name:"Bash",input:{command:$c}}]}}' >> "$_rec"
+done
+jq -cn '{type:"assistant",message:{content:[{type:"text",text:"NEWEST STEP"}]}}' >> "$_rec"
+rm -f "${_n%.md}.cut-off.md"
+ZBUILD_STATE_DIR="$S" ZBUILD_CURRENT_STAGE=cut stage_cutoff_write "$_rec"
+_list="$(cat "${_n%.md}.cut-off.md" 2>/dev/null || true)"
+assert_contains "[H4] the newest step is kept" "$_list" "NEWEST STEP"
+_bytes="$(LC_ALL=C; printf '%s' "$_list" | wc -c | tr -d ' ')"
+assert_eq "[H4] ...and the list fits what the prompt shows ($_bytes ≤ $_ZB_SP_NOTES_MAX_BYTES bytes)" "yes" \
+    "$( (( _bytes > 0 && _bytes <= _ZB_SP_NOTES_MAX_BYTES )) && echo yes || echo no)"
 
 cleanup_test_env
 print_test_results

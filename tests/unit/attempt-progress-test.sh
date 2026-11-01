@@ -72,7 +72,7 @@ print_test_section "P1-P3: a repository-writing stage"
 P="$TEST_TEMP_DIR/plugins/builder"; _plugin "$P" true
 _attempt "$P" builder 'printf "{\"n\":1}" > "$ART/builder-result.json"; printf "a1" > "$ART/builder-summary.md"'
 _attempt "$P" builder 'printf "{\"n\":2}" > "$ART/builder-result.json"; printf "a2" > "$ART/builder-summary.md"'
-assert_eq "[P1] only its result changed → no progress" "no" "$(_progress builder)"
+assert_eq "[P1] only its result and its summary changed → no progress" "no" "$(_progress builder)"
 _attempt "$P" builder 'printf "a3" > "$ART/builder-summary.md"'
 assert_eq "[P1] only its summary changed → no progress" "no" "$(_progress builder)"
 _attempt "$P" builder 'printf x > "$REPO/f.txt"; "$GIT" -C "$REPO" add f.txt; "$GIT" -C "$REPO" commit -qm c'

@@ -46,17 +46,26 @@ stage_cutoff_write() {
     _stage_cutoff_current_v dest || return 0
     [[ -n "$dest" ]] || return 0
     mkdir -p "${dest%/*}" 2>/dev/null || return 0
-    jq -rs --argjson max "$_ZB_CUTOFF_MAX_STEPS" '
+    # Kept to what Previous work shows of it, newest first, so nothing the next
+    # try needs is cut silently (review on #2444).
+    local max_bytes="${ZBUILD_CUTOFF_MAX_BYTES:-$(( ${_ZB_SP_NOTES_MAX_BYTES:-8192} - 256 ))}"
+    jq -rs --argjson max "$_ZB_CUTOFF_MAX_STEPS" --argjson maxb "$max_bytes" '
         def cut: gsub("\\s+"; " ") | if length > 300 then .[0:300] + "…" else . end;
         [ .[] | select(type == "object" and .type == "assistant") | .message.content[]?
           | if .type == "text" then "- said: " + (.text | cut)
             elif .type == "tool_use" then
               "- " + .name + ": " + ((.input.file_path // .input.command // .input.pattern
                                       // .input.path // (.input | tostring)) | tostring | cut)
-            else empty end ]
-        | if length == 0 then empty
-          else (if length > $max then ["- (… " + ((length - $max) | tostring) + " earlier steps)"] + .[-$max:] else . end)
-               | join("\n") end
+            else empty end ] as $all
+        | ($all | .[-$max:] | reverse
+           | reduce .[] as $l ({b: 0, k: [], full: false};
+               if .full or .b + ($l | utf8bytelength) + 1 > $maxb then .full = true
+               else .b += ($l | utf8bytelength) + 1 | .k += [$l] end)
+           | .k | reverse) as $kept
+        | if ($kept | length) == 0 then empty
+          else (if ($all | length) > ($kept | length)
+                then ["- (… " + ((($all | length) - ($kept | length)) | tostring) + " earlier steps not shown)"] + $kept
+                else $kept end) | join("\n") end
     ' "$record" > "$dest.tmp" 2>/dev/null || { rm -f "$dest.tmp"; return 0; }
     if [[ -s "$dest.tmp" ]]; then mv -f "$dest.tmp" "$dest"; else rm -f "$dest.tmp"; fi
     return 0
