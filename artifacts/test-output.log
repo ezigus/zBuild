@@ -2,129 +2,8 @@
 > zbuild@0.1.0 test
 > bash tests/run-all.sh
 
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/lint-disposition-words-test.sh
-
-  lint-disposition-words — stages write only words the engine knows (#2187)
-
-
-  SPEC-1: an off-set word in a JSON literal
-  ✓ [SPEC-1] lint exits 1
-  ✓ [SPEC-1] it names the word
-  ✓ [SPEC-1] it names file:line
-
-  SPEC-2: an off-set word passed to a result-writer
-  ✓ [SPEC-2] lint exits 1
-  ✓ [SPEC-2] it names the word
-
-  SPEC-2b: an assignment at the start of a line is read, a longer name is not
-  ✓ [SPEC-2b] lint exits 1 on the line-start assignment
-  ✓ [SPEC-2b] it names that word
-  ✓ [SPEC-2b] a variable that merely contains the name is not read
-
-  SPEC-3: set words and computed values pass
-  ✓ [SPEC-3] lint exits 0
-
-  SPEC-6 (#2366): a contract-3 outcome passed to the writer
-  ✓ [SPEC-6] a word off the outcome list fails the lint
-  ✓ [SPEC-6] it names the word
-  ✓ [SPEC-6] pass, fail, a disposition word and a computed value pass
-
-  SPEC-4: the shipped tree
-  ✗ [SPEC-4] the shipped plugins/ tree passes
-    expected: 0, got: 1
-  ✓ [SPEC-4] …having found literal words to check (non-vacuous)
-
-  SPEC-5: wiring
-  ✓ [SPEC-5] npm run lint runs it
-  ✓ [SPEC-5] the CI Lint job runs it
-
-
-  1 of 16 tests failed
-
-  ✗ [SPEC-4] the shipped plugins/ tree passes
-
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/plugin-primary-output-atomic-test.sh
-
-  primary-output atomicity guard (#507)
-
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  ✓ /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
-
-  [#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call
-  ✓ [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
-  ✓ [#1754/SPEC-5] lint names the violating line in its output
-
-  [#1754/SPEC-6] lint exits 0 when every atomic_write call is checked
-  ✓ [#1754/SPEC-6] lint exits 0 for properly-checked calls
-
-  [#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked
-  ✓ [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
-
-  [#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase
-  ✓ [#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/
-  ✓ [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
-  ✗ [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
-    missing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/core/state/resume.sh:80 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/core/output/stage-io.sh:637 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/build/lib/secrets.sh:172 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:72 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:96 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/tool/test/lib/own-checks.sh:101
-
-
-  1 of 29 tests failed
-
-  ✗ [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
-
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/tests/unit/stage-signal-test.sh
-
-  stop-reason words chosen once: the signal helper and its lints (#2225 §2)
-
-
-  G1/G2: the helper
-  ✓ [G1] a TERM runs the callback with interrupted / signal_interrupt
-  ✓ [G2] the caller's own TERM handler is back afterwards
-
-  G6: no nesting
-  ✓ [G6] a nested begin is refused
-  ✓ [G6] ...and the caller's handler is still restored
-
-  G3: lint-stage-signals
-  ✓ [G3] a raw TERM/INT trap in a plugin is refused
-  ✓ [G3] the helper passes
-  ✓ [G3] an annotated trap passes
-
-  G4: lint-disposition-words and unavailable
-  ✓ [G4] an unexplained unavailable is refused
-  ✓ [G4] an annotated unavailable passes
-
-  G5: the real tree
-  ✓ [G5] every plugin's signal handling uses the helper
-  ✗ [G5] every literal unavailable names its service
-    expected: 0, got: 1
-
-
-  1 of 11 tests failed
-
-  ✗ [G5] every literal unavailable names its service
-
-unit: 533/536 passed (4 skipped)
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.NwBX0g/plugins/agent/intake/tests/intake-result-test.sh
+unit: 536/536 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Od7SYF/plugins/agent/intake/tests/intake-result-test.sh
 
   plugin: intake — v2 result contract (#1837)
 
@@ -202,25 +81,6 @@ integration: 262/263 passed
 e2e: 10/10 passed
 golden: 1/1 passed
 mutation: 25/25 passed
-lint: FAIL (npm run lint)
+lint: 1/1 passed
 
-> zbuild@0.1.0 lint
-> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh && bash scripts/lib/lint-atomic-write-unchecked.sh
-
-lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
-lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
-lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
-validate-mechanics-yaml: OK — 18 mechanics validated
-lint-doc-freshness: OK — 44 plugin(s), 18 mechanic(s) — all checks passed.
-lint-action-versions: OK — no action version drift detected.
-lint-grep-c: OK — no grep -c || echo occurrences in scripts/ core/ plugins/ tests/
-lint-test-identity: OK — no real issue number used as test identity
-lint-llm-envelope: OK — 57 plugin source(s) checked, no markdown-document envelope fields
-lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
-lint-silenced-redirect: clean
-lint-test-errexit: clean
-lint-disposition-words: tool/test/plugin.sh:1209 writes outcome 'is', which the engine does not know
-lint-disposition-words: 1 problem(s) among 41 literal disposition(s) — an off-set word, or an unexplained 'unavailable'; the set is: complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken
-lint: 0/1 passed
-
-total: 831/836 passed (4 skipped)
+total: 835/836 passed (4 skipped)

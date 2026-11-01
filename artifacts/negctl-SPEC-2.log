@@ -41,7 +41,7 @@
   [38;2;74;222;128m✓[0m [SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
 
   [38;2;0;212;255m[#1754/SPEC-2] reader sees broken after primary atomic_write failure[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies primary-write failure as error (not prior pass)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
   [38;2;74;222;128m✓[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
 
 [2m  ──────────────────────────────────────────[0m
@@ -91,7 +91,7 @@
   [38;2;74;222;128m✓[0m [SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)
 
   [38;2;0;212;255m[#1754/SPEC-2] reader sees broken after primary atomic_write failure[0m
-  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies primary-write failure as error (not prior pass)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-2] reader classifies broken outcome as broken (not prior-round pass)
   [38;2;74;222;128m✓[0m [#1754/SPEC-2] file carries broken outcome after primary write failure
 
 [2m  ──────────────────────────────────────────[0m

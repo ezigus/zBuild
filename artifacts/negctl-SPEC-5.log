@@ -3,33 +3,33 @@
 [38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
 
   [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
   [38;2;248;113;113m✗[0m [#1754/SPEC-5] lint names the violating line in its output
-    [2moutput: bash: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/scripts/lib/lint-atomic-write-unchecked.sh: No such file or directory[0m
+    [2mexpected spec5-unchecked.sh:4 in output; got: bash: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/scripts/lib/lint-atomic-write-unchecked.sh: No such file or directory[0m
 
   [38;2;0;212;255m[#1754/SPEC-6] lint exits 0 when every atomic_write call is checked[0m
   [38;2;248;113;113m✗[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
@@ -37,24 +37,32 @@
 
   [38;2;0;212;255m[#1754/SPEC-7] package.json lint target contains lint-atomic-write-unchecked[0m
   [38;2;248;113;113m✗[0m [#1754/SPEC-7] package.json lint target must contain bash scripts/lib/lint-atomic-write-unchecked.sh
-    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/package.json[0m
+    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/package.json[0m
 
   [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
   [38;2;248;113;113m✗[0m [#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/
-    [2mexit 127; output: bash: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/scripts/lib/lint-atomic-write-unchecked.sh: No such file or directory[0m
+    [2mexit 127; output: bash: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/scripts/lib/lint-atomic-write-unchecked.sh: No such file or directory[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
   [38;2;248;113;113m✗[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
-    [2mmissing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/core/detect/platforms.sh:275 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/core/detect/platforms.sh:446 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/core/pipeline/state_helpers.sh:43 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/core/state/resume.sh:80 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/core/output/destinations.sh:39 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/core/output/stage-io.sh:637 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/pr-delivery/plugin.sh:117 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/pr-delivery/plugin.sh:253 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/agent/build/lib/secrets.sh:172 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/merge/plugin.sh:229 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/output-github-comment/plugin.sh:103 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/test/lib/acceptance-reason.sh:207 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/test/lib/acceptance-reason.sh:234 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/test/lib/acceptance-check.sh:137 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/test/lib/acceptance-check.sh:461 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/test/lib/own-checks.sh:72 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/test/lib/own-checks.sh:96 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/test/lib/own-checks.sh:101 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.hb3Kt8/plugins/tool/pr-open/plugin.sh:440[0m
+    [2mmissing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/core/detect/platforms.sh:275 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/core/detect/platforms.sh:446 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/core/pipeline/state_helpers.sh:43 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/core/output/destinations.sh:39 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/pr-delivery/plugin.sh:117 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/pr-delivery/plugin.sh:253 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/agent/build/lib/secrets.sh:172 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/merge/plugin.sh:229 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/output-github-comment/plugin.sh:103 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/test/lib/acceptance-reason.sh:207 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/test/lib/acceptance-reason.sh:234 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/test/lib/acceptance-check.sh:137 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/test/lib/acceptance-check.sh:461 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/test/lib/own-checks.sh:72 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/test/lib/own-checks.sh:96 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/test/lib/own-checks.sh:101 /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.3h0EWB/plugins/tool/pr-open/plugin.sh:440[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] secrets.sh named site carries || true
+    [2mexpected >= 1 annotated | atomic_write call in plugins/agent/build/lib/secrets.sh; found 0[0m
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true
+    [2mexpected >= 3 annotated | atomic_write calls in plugins/tool/test/lib/own-checks.sh; found 0[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/state/resume.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/output/stage-io.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m5 of 29 tests failed[0m
+  [38;2;248;113;113m[1m7 of 33 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1754/SPEC-5] lint names the violating line in its output
   [38;2;248;113;113m✗[0m [#1754/SPEC-6] lint exits 0 for properly-checked calls
   [38;2;248;113;113m✗[0m [#1754/SPEC-7] package.json lint target must contain bash scripts/lib/lint-atomic-write-unchecked.sh
   [38;2;248;113;113m✗[0m [#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/
   [38;2;248;113;113m✗[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] secrets.sh named site carries || true
+  [38;2;248;113;113m✗[0m [#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true
 
 ### SPEC-5 head tests/unit/plugin-primary-output-atomic-test.sh
 
@@ -95,3 +103,15 @@
   [38;2;74;222;128m✓[0m [#1754/SPEC-7] package.json lint target contains bash scripts/lib/lint-atomic-write-unchecked.sh
 
   [38;2;0;212;255m[#1754/SPEC-8] lint-atomic-write-unchecked exits 0 on the full codebase[0m
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] lint exits 0 on core/ plugins/ scripts/
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] secrets.sh named site carries || true
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/state/resume.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
+  [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/output/stage-io.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 33 tests passed[0m
+
