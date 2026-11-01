@@ -391,28 +391,28 @@
 [38;2;0;212;255m[1m  primary-output atomicity guard (#507)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
-  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/build: primary build-summary.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/deploy: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/design: primary design-verdict.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/intake: primary intake-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/issue-acceptance: primary issue-acceptance-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/monitor: primary monitor-report.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/plan: primary plan.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/pr-delivery: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/review-lens: primary lens-${ZBUILD_REVIEW_LENS_ID}.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/security-lens: primary security-findings.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/test-author: primary test-author-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/agent/validate: primary validate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/coverage-gate: primary coverage-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/deploy-release: primary deploy-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/hydrate: primary hydrate-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/lint-gate: primary lint-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/merge: primary merge-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/mutation-gate: primary mutation-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/persist: primary persist-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/pr-open: primary pr-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/teardown: primary teardown-result.json written via stage_result_write (atomic)
+  [38;2;74;222;128m✓[0m /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/test: primary test-results.json written via stage_result_write (atomic)
 
   [38;2;0;212;255m[#1754/SPEC-5] lint-atomic-write-unchecked exits non-zero for unchecked call[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-5] lint exits non-zero for unchecked atomic_write
@@ -427,7 +427,7 @@
   [38;2;0;212;255m[#1754/SPEC-8] 17 | atomic_write sites outside bug-fix files carry || true[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] | atomic_write calls still present outside bug-fix files (not removed)
   [38;2;248;113;113m✗[0m [#1754/SPEC-8] all pre-existing | atomic_write calls outside bug-fix files carry || true
-    [2mmissing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/test/lib/acceptance-reason.sh:207 /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.oYO4Xr/plugins/tool/test/lib/acceptance-reason.sh:234[0m
+    [2mmissing || true at: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/test/lib/acceptance-reason.sh:207 /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.NftVEO/plugins/tool/test/lib/acceptance-reason.sh:234[0m
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] secrets.sh named site carries || true
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] own-checks.sh named sites (>= 3) all carry || true
   [38;2;74;222;128m✓[0m [#1754/SPEC-8] core/state/resume.sh excluded from || true requirement (has | atomic_write — uses PIPESTATUS)
