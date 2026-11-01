@@ -409,6 +409,83 @@ _d10="$(
 )" || true
 assert_eq "[D10] the pass intake wrote is still the result" "pass" "$(_disp)"
 
+# ─── [#1754/SPEC-3] atomic_write fails writing scope-manifest.md ─────────────
+# Before #1754: the two | atomic_write calls in _intake_run_inner were bare with
+# no exit check.  A failing write was silently ignored and intake reported pass
+# while the stages after it read the prior round's stale file.
+# After #1754: each write's exit is checked; a failure calls _intake_write_result
+# with outcome=broken and a reason naming the file, then returns non-zero.
+print_test_section "[#1754/SPEC-3] scope-manifest.md write failure → broken + non-zero"
+
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-3 scope-manifest write failure"
+export ZBUILD_ISSUE="0"
+
+# Save the real atomic_write so the intake-result.json write can still succeed.
+eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
+
+# Override: fail only for the scope-manifest.md path; let all other writes
+# (including intake-result.json) go through the real implementation.
+atomic_write() {
+    local _aw_target="$1"
+    if [[ "$_aw_target" == *"scope-manifest.md" ]]; then
+        cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
+        return 1
+    fi
+    _aw_real_1754 "$@"
+}
+
+_s3_rc=0
+set +e
+_intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1 || _s3_rc=$?
+set -e
+
+# Restore atomic_write before running assertions that may need it.
+eval "$(declare -f _aw_real_1754 | sed 's/_aw_real_1754 ()/atomic_write ()/')"
+
+assert_eq "[#1754/SPEC-3] _intake_run_inner returns non-zero on scope-manifest.md failure" \
+    "1" "$_s3_rc"
+assert_eq "[#1754/SPEC-3] intake-result.json carries outcome=broken" "broken" "$(_disp)"
+assert_contains "[#1754/SPEC-3] reason names scope-manifest.md" "$(_reason)" "scope-manifest.md"
+
+# ─── [#1754/SPEC-4] atomic_write fails writing intake.md ─────────────────────
+# Same class of bug as SPEC-3 but for the second | atomic_write call (intake.md).
+# The scope-manifest.md write succeeds; only the intake.md write fails.
+print_test_section "[#1754/SPEC-4] intake.md write failure → broken + non-zero"
+
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-4 intake md write failure"
+export ZBUILD_ISSUE="0"
+
+# Save the real atomic_write again (restored above, so we rename the current one).
+eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754 ()/')"
+
+# Override: fail only for the intake.md path; scope-manifest.md and
+# intake-result.json writes go through the real implementation.
+# Match only the FILENAME (not the full path) via "${_aw_target##*/}" == "intake.md"
+# so the test temp dir plugin-intake-result.XXXXXX does not suppress the failure.
+atomic_write() {
+    local _aw_target="$1"
+    if [[ "${_aw_target##*/}" == "intake.md" ]]; then
+        cat > /dev/null   # drain stdin to prevent SIGPIPE on the producer
+        return 1
+    fi
+    _aw_real_1754 "$@"
+}
+
+_s4_rc=0
+set +e
+_intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1 || _s4_rc=$?
+set -e
+
+# Restore atomic_write.
+eval "$(declare -f _aw_real_1754 | sed 's/_aw_real_1754 ()/atomic_write ()/')"
+
+assert_eq "[#1754/SPEC-4] _intake_run_inner returns non-zero on intake.md failure" \
+    "1" "$_s4_rc"
+assert_eq "[#1754/SPEC-4] intake-result.json carries outcome=broken" "broken" "$(_disp)"
+assert_contains "[#1754/SPEC-4] reason names intake.md" "$(_reason)" "intake.md"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

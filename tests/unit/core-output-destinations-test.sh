@@ -177,6 +177,27 @@ else
     assert_fail "stdout disabled by ZBUILD_OUTPUT_STDOUT=0" "$(cat "$TEST_TEMP_DIR/t8_out")"
 fi
 
+# ─── Test 2b: a failed local-report write is reported (#1754) ────────────────
+# emit_output folds each destination's rc into its own; the write's failure
+# must reach it, not be swallowed.
+_t2b_rc=0
+(
+    unset _ZBUILD_OUTPUT_DESTINATIONS_LOADED 2>/dev/null || true
+    source "$REPO_ROOT/core/output/destinations.sh"
+    atomic_write() { cat >/dev/null; return 1; }
+    _dest_local_report "$CONTENT" "t2b" "$STATE_DIR"
+) || _t2b_rc=$?
+assert_eq "[#1754] local-report returns non-zero when its write fails" "1" "$_t2b_rc"
+
+# ─── Test 2c: write_scope_override reports a failed write (#1754) ────────────
+_t2c_rc=0
+(
+    source "$REPO_ROOT/core/pipeline/state_helpers.sh"
+    atomic_write() { cat >/dev/null; return 1; }
+    ZBUILD_SCOPE_PATHS="core/x.sh" write_scope_override "$STATE_DIR" t2c
+) || _t2c_rc=$?
+assert_eq "[#1754] write_scope_override returns non-zero when its write fails" "1" "$_t2c_rc"
+
 # ─── Test 9: local-report disabled by ZBUILD_OUTPUT_LOCAL_REPORT=0 ───────────
 REPORT2="$STATE_DIR/report-nodest.md"
 (

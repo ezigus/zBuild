@@ -248,7 +248,7 @@ _ag_fail_load() {
         "$(jq -cn --argjson f "$failures_json" --argjson fnd "${fnd:-[]}" \
             '{severity:"terminal",failures:$f,data:{findings:$fnd}}')"
     printf 'verdict=fail\nreason=%s\n' "$reason" \
-        | atomic_write "$(dirname "$result_file")/acceptance-summary.txt"
+        | atomic_write "$(dirname "$result_file")/acceptance-summary.txt" || true
     eb_emit_event "acceptance.gate.load_failed" "stage=acceptance-gate" "missing=$problems"
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
 }
@@ -275,7 +275,7 @@ _ag_noop_precondition_unmet() {
         "$(jq -cn --arg pc "$pc" '{precondition:$pc,severity:"none",failures:[]}')"
     local _summary_dir; _summary_dir="$(dirname "$result_file")"
     printf 'verdict=pass\nreason=precondition_unmet\nprecondition=%s\n' "$pc" \
-        | atomic_write "${_summary_dir}/acceptance-summary.txt"
+        | atomic_write "${_summary_dir}/acceptance-summary.txt" || true
     eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=precondition_unmet" "precondition=$pc"
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
 }

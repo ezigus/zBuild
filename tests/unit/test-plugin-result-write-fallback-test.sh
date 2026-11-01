@@ -234,5 +234,53 @@ else
         "composition (engine config + manifests) did not yield it"
 fi
 
+# ─── [#1754/SPEC-1] the result write fails over an earlier round's file ──────
+# R1: the result is then absent or broken (result_write_failed) — never this
+# round's outcome on top of the earlier round's counts. Before #1754 only jq's
+# exit (PIPESTATUS[0]) was read, so stage_result_add stamped "pass" into the
+# stale file.
+print_test_section "[#1754/SPEC-1] a failed result write leaves no stale result"
+
+OUT_1754S1="$ARTIFACT_DIR/results-aw-fail-1754spec1.json"
+_s1_outcome() {
+    if [[ -f "$OUT_1754S1" ]]; then jq -r '.outcome // "unreadable"' "$OUT_1754S1" 2>/dev/null || echo unreadable
+    else echo absent; fi
+}
+eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s1 ()/')"
+
+# (a) Every write fails: nothing can be written, so the stale file must go.
+: > "$ZBUILD_EVENTS_JSONL"
+stage_result_write "$OUT_1754S1" "pass" "prior round passed" 2>/dev/null || true
+atomic_write() { cat > /dev/null; return 1; }
+_test_write_result "$OUT_1754S1" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
+    2>/dev/null || true
+eval "$(declare -f _aw_real_1754s1 | sed 's/_aw_real_1754s1 ()/atomic_write ()/')"
+_s1a="$(_s1_outcome)"
+case "$_s1a" in
+    absent|broken) assert_pass "[#1754/SPEC-1a] every write fails: result is $_s1a, not the earlier round's" ;;
+    *) assert_fail "[#1754/SPEC-1a] every write fails: result is absent or broken" "got: $_s1a" ;;
+esac
+# The fallback event says which: a result is there (broken) or none is (absent).
+assert_eq "[#1754/SPEC-1a] the fallback event says result=$_s1a" "$_s1a" \
+    "$(jq -r 'select(.type=="test.result_write.fallback") | .result // .data.result // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
+
+# (b) Only the first (primary) write fails: the fallback records broken.
+stage_result_write "$OUT_1754S1" "pass" "prior round passed" '{"passed":7,"failed":0}' 2>/dev/null || true
+# A pipeline runs atomic_write in a subshell, so the count lives in a file.
+_s1_calls="$ARTIFACT_DIR/.aw-calls-1754s1"; rm -f "$_s1_calls"
+atomic_write() {
+    printf 'x\n' >> "$_s1_calls"
+    if [[ "$(wc -l < "$_s1_calls")" -eq 1 && "$1" == "$OUT_1754S1" ]]; then cat > /dev/null; return 1; fi
+    _aw_real_1754s1 "$@"
+}
+_test_write_result "$OUT_1754S1" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
+    2>/dev/null || true
+eval "$(declare -f _aw_real_1754s1 | sed 's/_aw_real_1754s1 ()/atomic_write ()/')"
+assert_eq "[#1754/SPEC-1b] primary write fails: outcome=broken" "broken" "$(_s1_outcome)"
+assert_eq "[#1754/SPEC-1b] reason=result_write_failed" "result_write_failed" \
+    "$(jq -r '.reason // empty' "$OUT_1754S1" 2>/dev/null || true)"
+assert_eq "[#1754/SPEC-1b] the earlier round's counts are not carried" "null" \
+    "$(jq -r '.data.passed' "$OUT_1754S1" 2>/dev/null || true)"
+
 print_test_results
 exit $((FAIL > 0))

@@ -260,4 +260,31 @@ jq 'del(.reason)' "$RESULT" > "$RESULT.stripped" && mv "$RESULT.stripped" "$RESU
 assert_eq "[SPEC-8] with no reason the same chain blocks (rc=0, run 33720837199)" \
     "0" "$(_blocked_rc_for "$(_classify)")"
 
+# ─── [#1754/SPEC-2] the reader never sees the earlier round's result ────────
+# R1 seen from the reader: after a failed result write over an earlier round's
+# pass, the test stage does not read as complete. Before #1754 the stale file
+# got this round's "pass" stamped into it, and read as complete.
+print_test_section "[#1754/SPEC-2] reader does not see a stale pass after a failed write"
+
+rm -f "$RESULT"
+stage_result_write "$RESULT" "pass" "prior round passed" 2>/dev/null || true
+eval "$(declare -f atomic_write | sed 's/atomic_write ()/_aw_real_1754s2 ()/')"
+atomic_write() { cat > /dev/null; return 1; }
+_test_write_result "$RESULT" "pass" "complete" 0 5 0 "ok" "true" "npm test" "" "full" \
+    2>/dev/null || true
+eval "$(declare -f _aw_real_1754s2 | sed 's/_aw_real_1754s2 ()/atomic_write ()/')"
+
+_s2_disp="$(runner_read_stage_disposition "$STATE_DIR" "$TEST_MANIFEST" "test" 0 2>/dev/null || true)"
+if [[ "$_s2_disp" != "complete" ]]; then
+    assert_pass "[#1754/SPEC-2] the test stage does not read as complete ($_s2_disp)"
+else
+    assert_fail "[#1754/SPEC-2] the test stage does not read as complete" "got: complete"
+fi
+_s2_verdict="$(_classify 2>/dev/null || true)"
+if [[ "$_s2_verdict" != "pass" ]]; then
+    assert_pass "[#1754/SPEC-2] runner_read_stage_verdict is not pass ($_s2_verdict)"
+else
+    assert_fail "[#1754/SPEC-2] runner_read_stage_verdict is not pass" "got: pass"
+fi
+
 print_test_results

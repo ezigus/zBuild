@@ -114,7 +114,7 @@ _pr_stage_run_inner() {
 
     # Dry-run mode: write sentinel artifacts without calling gh
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
-        printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out"
+        printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out" || true
         stage_signal_end
         _pr_delivery_write_result "$artifacts_dir" pass "dry run: no PR opened, gh not called"
         emit_event "pr.delivery.dry_run" "plugin=pr-delivery"
@@ -250,7 +250,7 @@ _pr_stage_run_inner() {
     local pr_url _fb_err="$artifacts_dir/.gh-pr-create.err"
     if pr_url="$(gh pr create "${_fb_gh_args[@]}" 2>"$_fb_err")"; then
         rm -f "$_fb_err"
-        printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
+        printf '%s\n' "$pr_url" | atomic_write "$pr_url_out" || true
         stage_signal_end
         _pr_delivery_write_result "$artifacts_dir" pass "PR opened directly with gh: $pr_url" "$pr_url"
         emit_event "pr.delivery.opened" "plugin=pr-delivery" "via=gh"

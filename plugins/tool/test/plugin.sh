@@ -1185,10 +1185,14 @@ _test_write_result() {
         }' \
         2>/dev/null \
       | atomic_write "$path"
-    local _jq_rc="${PIPESTATUS[0]}"
+    local _jq_rc="${PIPESTATUS[0]}" _aw_rc="${PIPESTATUS[1]}"
+    (( _aw_rc != 0 )) && _jq_rc="$_aw_rc"
     (( _jq_rc != 0 )) || stage_result_add "$path" "$outcome" "$reason" 2>/dev/null || _jq_rc=1
 
     if (( _jq_rc != 0 )); then
+        # #1754: a file still at the path is an earlier round's; it goes first,
+        # so a fallback that cannot be written leaves no result, never a stale one.
+        rm -f "$path" 2>/dev/null || true
         # Fail-closed: overwrite with a degenerate-but-valid JSON object so
         # the primary output always parses. Sanitizers already constrained
         # exit_code_json to {integer, "null"} so %s interpolation is safe.
@@ -1202,8 +1206,10 @@ _test_write_result() {
         case "$run_mode" in targeted|targeted+full) _fb_run_mode="$run_mode" ;; esac
         printf '{"test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
             "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" | atomic_write "$path" \
-            && stage_result_add "$path" broken "result_write_failed"
-        emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
+            && stage_result_add "$path" broken "result_write_failed" 2>/dev/null \
+            || rm -f "$path" 2>/dev/null || true
+        local _fb_result=broken; [[ -f "$path" ]] || _fb_result=absent
+        emit_event "test.result_write.fallback" "path=$path" "result=$_fb_result" 2>/dev/null || true
     fi
 }
 

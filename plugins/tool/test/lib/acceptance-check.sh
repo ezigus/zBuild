@@ -134,7 +134,7 @@ acceptance_gate_run() {
         _ag_write_result "$result_file" fail "malformed_acceptance_block" \
             '{"severity":"terminal","failures":["malformed_acceptance_block"]}'
         printf 'verdict=fail\nreason=malformed_acceptance_block\n' \
-            | atomic_write "$artifact_dir/acceptance-summary.txt"
+            | atomic_write "$artifact_dir/acceptance-summary.txt" || true
         eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
         eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
         return 1
@@ -458,7 +458,7 @@ acceptance_gate_run() {
         # the design-vs-assertion pairing is visible to nobody after the run ends.
         mkdir -p "$state_dir/artifacts" 2>/dev/null || true
         printf '%s\n' "${summary_lines[@]}" \
-            | atomic_write "$state_dir/artifacts/acceptance-summary.txt"
+            | atomic_write "$state_dir/artifacts/acceptance-summary.txt" || true
         _ag_emit_operator_summary "${_stage_id:-acceptance-gate}" "${summary_lines[@]}"
     fi
 
