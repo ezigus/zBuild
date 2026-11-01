@@ -1,4 +1,4 @@
-# Design notes — issue #1754
+# Design notes — issue #1754 (revision 5 — current)
 
 ## What I read
 
