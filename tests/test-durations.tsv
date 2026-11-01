@@ -26,7 +26,6 @@
 41	tests/e2e/plugin-event-balance-full-run-test.sh
 39	tests/integration/state-root-isolation-test.sh
 37	tests/integration/cycle-gate-unavailable-aborts-run-test.sh
-32	plugins/agent/plan/tests/plan-v2-exit-test.sh
 32	tests/unit/discover-plugins-memo-test.sh
 32	tests/unit/discovery-cold-lookup-test.sh
 31	tests/integration/core-pipeline-cycle-blocked-integration-test.sh
@@ -298,10 +297,6 @@
 4	tests/unit/test-stage-timing-history-test.sh
 3	core/state/tests/state_helpers-unit-test.sh
 3	plugins/agent/monitor/tests/monitor-test.sh
-3	plugins/agent/plan/tests/plan-integration-test.sh
-3	plugins/agent/plan/tests/plan-test.sh
-3	plugins/agent/plan/tests/plan-v2-router-test.sh
-3	plugins/agent/plan/tests/plan-work-items-test.sh
 3	plugins/agent/review-lens/tests/review-lens-v2-result-test.sh
 3	tests/integration/core-state-resume-exec-test.sh
 3	tests/integration/cycle-exit-when-success-test.sh
@@ -465,8 +460,6 @@
 1	core/state/tests/resume-unit-test.sh
 1	plugins/agent/deploy/tests/deploy-release-interface-test.sh
 1	plugins/agent/deploy/tests/deploy-test.sh
-1	plugins/agent/plan/tests/plan-v2-manifest-test.sh
-1	plugins/agent/plan/tests/plan-v2-result-test.sh
 1	plugins/agent/review-lens/tests/review-lens-partial-notes-test.sh
 1	plugins/agent/validate/tests/validate-close-unit-test.sh
 1	plugins/tool/memory-ruflo/tests/memory-ruflo-adversarial-a-unit-test.sh

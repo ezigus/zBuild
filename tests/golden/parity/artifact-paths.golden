@@ -4,6 +4,11 @@
 ./artifacts/attempts/build/iter-0-attempt-1/build-summary.json
 ./artifacts/attempts/build/iter-0-attempt-1/build-summary.md
 ./artifacts/attempts/build/iter-0-attempt-1/diff.patch
+./artifacts/attempts/design/iter-0-attempt-1/attempt.json
+./artifacts/attempts/design/iter-0-attempt-1/design-steps.json
+./artifacts/attempts/design/iter-0-attempt-1/design-summary.md
+./artifacts/attempts/design/iter-0-attempt-1/design-verdict.json
+./artifacts/attempts/design/iter-0-attempt-1/design.md
 ./artifacts/attempts/hydrate/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/hydrate/iter-0-attempt-1/hydrate-result.json
 ./artifacts/attempts/hydrate/iter-0-attempt-1/hydrate-summary.md
@@ -15,9 +20,6 @@
 ./artifacts/attempts/persist/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/persist/iter-0-attempt-1/persist-result.json
 ./artifacts/attempts/persist/iter-0-attempt-1/persist-summary.md
-./artifacts/attempts/plan/iter-0-attempt-1/attempt.json
-./artifacts/attempts/plan/iter-0-attempt-1/plan-summary.md
-./artifacts/attempts/plan/iter-0-attempt-1/plan.json
 ./artifacts/attempts/pr/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/pr/iter-0-attempt-1/pr-delivery-summary.md
 ./artifacts/attempts/pr/iter-0-attempt-1/pr-result.json
@@ -42,6 +44,11 @@
 ./artifacts/build-prompt.txt
 ./artifacts/build-summary.json
 ./artifacts/build-summary.md
+./artifacts/design-prompt.txt
+./artifacts/design-steps.json
+./artifacts/design-summary.md
+./artifacts/design-verdict.json
+./artifacts/design.md
 ./artifacts/diff.patch
 ./artifacts/hydrate-result.json
 ./artifacts/hydrate-summary.md
@@ -54,8 +61,6 @@
 ./artifacts/lens-correctness.json
 ./artifacts/persist-result.json
 ./artifacts/persist-summary.md
-./artifacts/plan-summary.md
-./artifacts/plan.json
 ./artifacts/pr-delivery-summary.md
 ./artifacts/pr-open-summary.md
 ./artifacts/pr-result.json
@@ -64,6 +69,7 @@
 ./artifacts/shape-floor-detail.md
 ./artifacts/shape-floor-result.json
 ./artifacts/stage-io/review_lenses-1.json
+./artifacts/stage-reports.json
 ./artifacts/teardown-result.json
 ./artifacts/teardown-summary.md
 ./artifacts/test-failures-summary.md
@@ -76,10 +82,10 @@
 ./platforms.json
 ./scope-manifest.md
 ./stage-inputs/build.json
+./stage-inputs/design.json
 ./stage-inputs/hydrate.json
 ./stage-inputs/intake.json
 ./stage-inputs/persist.json
-./stage-inputs/plan.json
 ./stage-inputs/pr.json
 ./stage-inputs/release.json
 ./stage-inputs/review_lenses.json

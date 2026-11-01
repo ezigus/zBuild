@@ -139,7 +139,7 @@ _design_case() {
     : > "$MODEL_CALLS"; : > "$DESIGN_EVENTS"
     ( cd "$FIX" && ZBUILD_STATE_DIR="$d/state" ZBUILD_RESUME="$resume" \
         MOCK_DESIGN_WRITE_PATH="$ad/design.md" MOCK_PROMPT_COPY="$d/prompt-seen.txt" \
-        _design_stage_run_inner "$d/state/scope-manifest.md" "$ad/plan.json" "$ad/design.md" "$ad" ) >/dev/null 2>&1
+        _design_stage_run_inner "$d/state/scope-manifest.md" "$ad/design.md" "$ad" ) >/dev/null 2>&1
     echo "$?" > "$d/stage-rc"
     wc -l < "$MODEL_CALLS" | tr -d ' '
 }

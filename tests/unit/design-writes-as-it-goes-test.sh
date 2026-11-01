@@ -50,7 +50,7 @@ printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1
 OUTPUT_MD="$ARTIFACT_DIR/design.md"
 export ZBUILD_REPO_ROOT="$FIX"
 
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
 P="$(cat "$ARTIFACT_DIR/design-prompt.txt" 2>/dev/null)"
 FLAT="$(tr '\n' ' ' <<< "$P" | tr -s ' ')"
 
@@ -80,7 +80,7 @@ assert_contains "[D3] the only files are its design and the notes file" "$FLAT" 
 
 print_test_section "D4: a design written before a timeout is kept"
 rm -f "$OUTPUT_MD" "$ARTIFACT_DIR/design-draft.md"; MOCK_RC=124
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
 # It has no acceptance block, so it fails its checks: it stays as the working
 # copy for the next run rather than being thrown away.
 assert_contains "[D4] the design written before the timeout is kept" \

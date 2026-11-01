@@ -166,8 +166,9 @@ _normalize_for_sha() {
     if [[ "$f" == *.json ]]; then
         # created_at is a legitimate per-run wall
         # clock — normalize it alongside the other ephemeral timestamp fields.
-        # duration_ms (a stage-io record's wall-clock timing, #1842) likewise.
-        body="$(jq -S 'del(.updated_at, .generated_at, .ts, .created_at, .duration_ms)' "$f" 2>/dev/null)" \
+        # duration_ms (a stage-io record's wall-clock timing, #1842) likewise,
+        # and design's data.authored_at (#2445: design runs in the fixture).
+        body="$(jq -S 'del(.updated_at, .generated_at, .ts, .created_at, .duration_ms, .data.authored_at?)' "$f" 2>/dev/null)" \
             || body="$(cat "$f")"
     else
         # Non-JSON artifacts may embed `created_at:` as a

@@ -22,6 +22,10 @@ source "$_INTAKE_ROOT/core/output/stage-io.sh"
 source "$_INTAKE_DIR/lib/sanitize.sh"
 # shellcheck source=lib/issue-state.sh
 source "$_INTAKE_DIR/lib/issue-state.sh"
+# #2445: intake writes the requirement list with a model call (its prompt
+# composed and redacted by the engine's router, like every stage's).
+# shellcheck source=../../../core/router/route.sh
+source "$_INTAKE_ROOT/core/router/route.sh"
 # shellcheck source=lib/requirements.sh
 source "$_INTAKE_DIR/lib/requirements.sh"
 # shellcheck source=../../../scripts/lib/stage-result.sh
@@ -277,7 +281,17 @@ _intake_run_inner() {
     _title_line="${sanitized%%$'\n'*}"
 
     # #2306 (ADR-070 §1): the issue's requirements, numbered by the engine.
+    # #2445: a model call writes it and a second checks it; a call that fails
+    # ends intake with that call's outcome, so the engine can run it again.
     if [[ -n "$fetched_ok" && -n "$_art" ]] && ! _intake_write_requirements "$_art" "$_raw_json"; then
+        if [[ -n "${_INTAKE_REQ_OUTCOME:-}" ]]; then
+            rm -f "$_art/requirements.json" 2>/dev/null || true
+            _intake_write_result "$_art" "$_INTAKE_REQ_OUTCOME" \
+                "the issue's requirements could not be written: a model call ended $_INTAKE_REQ_OUTCOME" "{}" || true
+            stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "error" \
+                "the issue's requirements could not be written ($_INTAKE_REQ_OUTCOME)" ""
+            return 1
+        fi
         warn "intake_run: could not write $_art/requirements.json — later stages judge the issue text alone"
     fi
 

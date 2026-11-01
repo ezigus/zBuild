@@ -81,7 +81,7 @@ _setup_fixture t1
 MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 MOCK_DESIGN_BODY="$(_make_design_body_with_acceptance 'tests/unit/stub-a-test.sh' 'tests/unit/stub-b-test.sh')"
 set +e
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR"
 rc=$?
 set +e
 assert_eq "T1: design with acceptance block returns rc=0" "0" "$rc"
@@ -106,7 +106,7 @@ MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 local_bt='```'
 MOCK_DESIGN_BODY="$(printf '# Design\n\n%sscope\nfoo.sh\n%s\n' "$local_bt" "$local_bt")"
 set +e
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR"
 rc=$?
 set +e
 assert_eq "T2: missing acceptance block: the stage returns rc=1" "1" "$rc"
@@ -127,7 +127,7 @@ MOCK_DESIGN_BODY="$(_make_design_body_with_acceptance 'tests/unit/existing-test.
 mkdir -p "$FIXTURE_DIR/tests/unit"
 printf '#!/usr/bin/env bash\necho "existing content"\n' > "$FIXTURE_DIR/tests/unit/existing-test.sh"
 set +e
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR"
 rc=$?
 set +e
 assert_eq "T3: existing file scenario returns rc=0" "0" "$rc"

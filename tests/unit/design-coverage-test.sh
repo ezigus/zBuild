@@ -27,6 +27,15 @@
 #          and shown the answer (ADR-060 §6); a failed call is not
 #   R1     a call whose exit code cannot be kept is not read as covered
 #          (review on PR #2393: mktemp failing left rc at 0)
+#   X1     the check also looks the other way: what the design commits to that
+#          the issue does not ask for, or gets wrong (#2445)
+#   X2     each such item is one entry, and becomes a finding design must fix,
+#          whatever the coverage verdict
+#   X3     the check is shown the design's scope (#2445)
+#   X4     for a SPEC marked [done], the check is shown the lines its evidence
+#          points at, and asked whether that code does what the SPEC says (#2445)
+#   X5     each [done] SPEC it says the code does not do is one entry, and a
+#          finding
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -142,6 +151,46 @@ mktemp() { [[ "${1:-}" == -d ]] && { command mktemp "$@"; return; }; return 1; }
 _cov
 unset -f mktemp
 assert_eq "[R1] mktemp failed: the call is not read as covered" "broken" "$_DESIGN_COV_OUTCOME"
+
+# ── X1–X5 (#2445) ────────────────────────────────────────────────────────────
+route_to_model() { printf '%s' "$2" > "$_P_FILE"; printf '%s' "$_REPLY"; return 0; }
+XR="$TEST_TEMP_DIR/xrepo"; mkdir -p "$XR/scripts"
+printf 'line one\nline two\nrefuse_missing_config() { [[ -f "$1" ]] || return 2; }\nline four\n' > "$XR/scripts/cfg.sh"
+DX="$TEST_TEMP_DIR/design-x.md"
+cat > "$DX" <<'MD'
+# Design
+```acceptance
+SPEC-1[code]: a --dry-run flag is accepted covers: R-1
+SPEC-2[done]: a missing config is refused covers: R-2 evidence: scripts/cfg.sh:3
+TESTFILES:
+SPEC-1: tests/acc-test.sh
+WIRING: scripts/thing.sh
+```
+```scope
+scripts/thing.sh
+scripts/telemetry.sh
+```
+MD
+_REPLY='VERDICT: covered
+REASON: ok'
+ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
+_P="$(cat "$_P_FILE")"
+assert_contains "[X1] the check looks the other way too" "$_P" "OUTSIDE:"
+assert_contains "[X1] ...for what the design commits to that the issue does not ask for, or gets wrong" "$_P" \
+    "that the issue does not ask for, or that contradicts it"
+assert_contains "[X3] the check is shown the design's scope" "$_P" "scripts/telemetry.sh"
+assert_contains "[X4] the check is shown the code a [done] SPEC's evidence points at" "$_P" "refuse_missing_config()"
+assert_contains "[X4] ...and asked whether it does what the SPEC says" "$_P" "DONE_WRONG:"
+_REPLY='VERDICT: covered
+REASON: every requirement maps to a SPEC
+OUTSIDE: scripts/telemetry.sh: the issue asks for no telemetry; SPEC-1: also renames the flag
+DONE_WRONG: SPEC-2: the cited line returns 2 only when the file is absent, not when it is unreadable'
+ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
+assert_eq "[X2] each item outside the issue is one entry, whatever the coverage verdict" "2" "${#_DESIGN_OUTSIDE[@]}"
+assert_eq "[X5] each [done] SPEC the code does not do is one entry" "1" "${#_DESIGN_DONE_WRONG[@]}"
+_fx="$(_design_coverage_findings)"
+assert_contains "[X2] ...and a finding design must fix" "$_fx" "the issue does not ask for this, or the design gets it wrong: scripts/telemetry.sh"
+assert_contains "[X5] ...and a finding too" "$_fx" "marked [done], but the code its evidence points at does not do it: SPEC-2"
 
 cleanup_test_env
 print_test_results

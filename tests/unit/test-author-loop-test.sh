@@ -96,7 +96,9 @@ _run() {
     local d="$TEST_TEMP_DIR/$1"
     mkdir -p "$d/state/artifacts/stage-io" "$d/repo/tests" "$d/fake" "$d/events"
     : > "$d/fake/calls"; : > "$d/fake/commits-seen"; : > "$d/events/events.jsonl"
-    printf '#!/usr/bin/env bash\n' > "$d/repo/tests/acc-test.sh"
+    # Runnable on its own: test-author's script runs it on the old code (#2445),
+    # where each assertion fails ($v is never 1 there).
+    printf '#!/usr/bin/env bash\nassert_eq() { if [[ "$2" == "$3" ]]; then printf "  ✓ %%s\\n" "$1"; else printf "  ✗ %%s\\n" "$1"; fi; }\n' > "$d/repo/tests/acc-test.sh"
     # A9: a testfile an earlier attempt already wrote in full.
     [[ "${ZB_SEEDED:-0}" == "1" ]] && printf 'assert_eq "[SPEC-%s] assertion %s" "1" "$v"\n' 1 1 2 2 3 3 >> "$d/repo/tests/acc-test.sh"
     ( cd "$d/repo" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
@@ -143,7 +145,9 @@ _calls() { wc -l < "$TEST_TEMP_DIR/$1/fake/calls" | tr -d ' '; }
 _res() { jq -r "$2 // empty" "$TEST_TEMP_DIR/$1/state/artifacts/test-author-result.json" 2>/dev/null || true; }
 
 print_test_section "A1/A4: a call that says it is done"
-_rc1="$(_run a1 1)"
+# Its "done" is true: an earlier attempt wrote the other assertions, so every
+# SPEC has one (#2445: test-author's script finds a SPEC left without one).
+_rc1="$(ZB_SEEDED=1 _run a1 1)"
 assert_eq "[A1] one call was made" "1" "$(_calls a1)"
 assert_eq "[A1] ...and the stage passed" "pass" "$(_res a1 .outcome)"
 assert_eq "[A1] rc=0" "0" "$_rc1"

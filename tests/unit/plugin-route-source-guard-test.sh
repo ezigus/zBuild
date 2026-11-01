@@ -257,7 +257,6 @@ _KNOWN_CALLERS=(
     plugins/agent/build/plugin.sh
     plugins/agent/design/plugin.sh
     plugins/agent/monitor/plugin.sh
-    plugins/agent/plan/plugin.sh
     plugins/agent/review-lens/plugin.sh
     plugins/agent/security-lens/plugin.sh
 )

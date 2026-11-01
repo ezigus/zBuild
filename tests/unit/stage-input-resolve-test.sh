@@ -319,8 +319,8 @@ if load_template "$REPO_ROOT/config/templates/simple.yaml" >/dev/null 2>&1; then
     assert_eq "[SPEC-7] pr resolves to pr-delivery, not pr-open"     "pr-delivery"     "$(_m pr)"
     # [guard] the id-matching majority is unchanged.
     assert_eq "[SPEC-7-guard] intake still resolves to intake" "intake" "$(_m intake)"
-    assert_eq "[SPEC-7-guard] plan still resolves to plan" \
-        "plan" "$(_m plan)"
+    assert_eq "[SPEC-7-guard] design still resolves to design" \
+        "design" "$(_m design)"
 else
     assert_fail "[SPEC-7] simple.yaml loads" "load_template failed"
 fi

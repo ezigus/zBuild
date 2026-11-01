@@ -13,18 +13,18 @@
   "self_heal_count": {},
   "stage_statuses": {
     "build": "complete",
+    "design": "complete",
     "hydrate": "complete",
     "intake": "complete",
-    "plan": "complete",
     "pr": "complete",
     "review_lenses": "complete",
     "test": "complete"
   },
   "stage_verdicts": {
     "build": "pass",
+    "design": "pass",
     "hydrate": "pass",
     "intake": "pass",
-    "plan": "pass",
     "pr": "pass",
     "review_lenses": "pass",
     "test": "pass"

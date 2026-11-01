@@ -106,7 +106,7 @@ the last good design'
 printf '%s\n' "$LAST_GOOD" > "$_F_DESIGN"
 _MOCK_ROUTER_RC=124; _MOCK_WRITE=0
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 
@@ -160,7 +160,7 @@ assert_eq "[SPEC-11b] ...with reason router_timeout" \
 _setup_fixture t2
 _MOCK_ROUTER_RC=137; _MOCK_WRITE=0
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 assert_eq "[SPEC-5] rc=137 → returns rc=1" "1" "$_rc"
@@ -178,7 +178,7 @@ fi
 _setup_fixture t3
 _MOCK_ROUTER_RC=0; _MOCK_WRITE=1
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 assert_eq "[SPEC-8] rc=0 with a valid design → returns rc=0" "0" "$_rc"
@@ -189,7 +189,7 @@ _setup_fixture t5
 printf '%s\n' "$LAST_GOOD" > "$_F_DESIGN"
 _MOCK_ROUTER_RC=124; _MOCK_WRITE=1     # the model wrote its design, then was cut off
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 assert_eq "[SPEC-12] timeout after a new design → returns rc=0" "0" "$_rc"

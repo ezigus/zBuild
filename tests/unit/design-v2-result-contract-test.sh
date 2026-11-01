@@ -2,7 +2,8 @@
 # Tests: design plugin result contract (issue #1834; contract 3 since #2366).
 # SPEC-1 [change]: success path writes design-verdict.json with result_contract:3,
 #                  outcome=pass BEFORE atomic_write of design.md
-# SPEC-2 [change]: error path (missing plan.json) writes design-verdict.json with
+# SPEC-2 [change]: error path (the model writes no design; #2445 — was a missing
+#   plan.json) writes design-verdict.json with
 #                  result_contract:3, outcome=broken
 # SPEC-3 [guard]:  timeout path writes the disposition as the outcome
 # SPEC-4 [change]: manifest declares provides.result_contract:3 and no
@@ -93,7 +94,7 @@ _setup_fixture t1
 _MOCK_ROUTER_RC=0
 _MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 
@@ -107,13 +108,13 @@ assert_eq "[SPEC-1] success → design-verdict.json has no verdict field (#2366)
 assert_eq "[SPEC-1] success → design-verdict.json outcome=pass" "pass" "$_sc1_disp"
 assert_eq "[SPEC-1] sidecar written before atomic_write of design.md" "PRESENT" "$_SIDECAR_AT_ATOMIC_WRITE"
 
-# ─── SPEC-2: missing plan.json → sidecar verdict=error, disposition=broken ────
+# ─── SPEC-2: the model writes no design → a v2 result, outcome unusable ────────
+# (#2445: was a missing plan.json; there is no plan stage any more.)
 _setup_fixture t2
-rm -f "$_F_PLAN"
 _MOCK_ROUTER_RC=0
 _MOCK_DESIGN_WRITE_PATH=""
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 
@@ -121,17 +122,17 @@ _sc2_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || e
 _sc2_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 _sc2_disp="$(jq -r '.outcome // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 
-assert_eq "[SPEC-2] missing plan → rc=1" "1" "$_rc"
-assert_eq "[SPEC-2] missing plan → design-verdict.json result_contract=3" "3" "$_sc2_rc2"
-assert_eq "[SPEC-2] missing plan → design-verdict.json has no verdict field (#2366)" "MISSING" "$_sc2_verdict"
-assert_eq "[SPEC-2] missing plan → design-verdict.json outcome=broken" "broken" "$_sc2_disp"
+assert_eq "[SPEC-2] no design written → rc=1" "1" "$_rc"
+assert_eq "[SPEC-2] no design written → design-verdict.json result_contract=3" "3" "$_sc2_rc2"
+assert_eq "[SPEC-2] no design written → design-verdict.json has no verdict field (#2366)" "MISSING" "$_sc2_verdict"
+assert_eq "[SPEC-2] no design written → design-verdict.json outcome=unusable" "unusable" "$_sc2_disp"
 
 # ─── SPEC-3 [guard]: timeout path writes verdict=incomplete, disposition=interrupted
 _setup_fixture t3
 _MOCK_ROUTER_RC=124
 _MOCK_DESIGN_WRITE_PATH=""
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 
@@ -191,7 +192,7 @@ assert_eq "[SPEC-5] design_stage_run uses plan from ZBUILD_STAGE_INPUTS (rc=0)" 
     || assert_fail "[SPEC-5] design.md missing — ZBUILD_STAGE_INPUTS paths not used"
 
 # ─── SPEC-6..9: the remaining four error paths ───────────────────────────────
-# SPEC-2 covered missing_plan_json as the representative error path. The issue's
+# SPEC-2 covers missing_design_md as the representative error path. The issue's
 # acceptance says "a conformant v2 result on EVERY exit path", and four paths
 # that call _design_write_outcome had no assertion, so the claim was not
 # machine-verifiable. One SPEC each, driving the real _design_stage_run_inner.
@@ -245,7 +246,7 @@ _setup_fixture t6
 _MOCK_ROUTER_RC=0
 _MOCK_DESIGN_WRITE_PATH=""
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 _assert_error_path "SPEC-6" "no design.md produced" "missing_design_md"
@@ -257,7 +258,7 @@ _MOCK_DESIGN_WRITE_PATH=""
 _MOCK_DESIGN_WRITE_PATH=1
 _MOCK_DESIGN_TEXT="$(printf '# Design\n\n## Decision\nNo scope block here.\n')"
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 _assert_checks_fail "SPEC-7" "design.md without a scope block" "has no scope block"
@@ -267,7 +268,7 @@ _setup_fixture t8
 _MOCK_DESIGN_WRITE_PATH=1
 _MOCK_DESIGN_TEXT="$(printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n' '```' '```')"
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 _assert_checks_fail "SPEC-8" "design.md without an acceptance block" "acceptance block"
@@ -284,7 +285,7 @@ git -C "$_F_DIR" commit -m "operator design" --quiet >/dev/null 2>&1
 # for its stray write).
 _MOCK_DESIGN_WRITE_PATH=""; _MOCK_DESIGN_TEXT=""
 set +e
-_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 _assert_error_path "SPEC-9" "tracked design.md at repo root" "stray_conflict"

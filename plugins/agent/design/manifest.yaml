@@ -5,14 +5,14 @@ version: 0.1.0
 # ADR-071: the topics of earlier stages' output its prompt's Previous work holds.
 takes:
   - topic: ask
-    for: "the issue, its requirements and the plan, to design against"
+    for: "the issue and its requirements, to design against"
   - topic: requirement-findings
     for: "findings against the requirements or the design: what its acceptance contract, scope or WIRING gets wrong"
 description: |
-  Design stage agent. Reads plan.json produced by the plan stage and invokes
-  the LLM (T2) to produce an ADR-style design.md containing a fenced ```scope
-  block whose entries are a superset of plan.json's files[]. The scope block
-  becomes the authoritative scope source consumed by the build stage.
+  Design stage agent. Invokes the LLM (T2) to produce an ADR-style design.md
+  with a fenced ```scope block (the authoritative scope the build stage works
+  to), a ```steps block of ordered work items (#2445: the plan stage is gone)
+  and the acceptance contract.
   # legacy-citation: pipeline-stages-intake.sh:1004 (stage_design)
   # legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design)
 
@@ -50,6 +50,15 @@ outputs:
     type: design.md@1
     format: markdown
     required: true
+  # #2445: the design's ordered work steps, from its ```steps block — the work
+  # plan build and pr-open find by what it contains (a `steps` list).
+  - id: work_steps
+    topic: ask
+    description: "the ordered work items that deliver the change, each with the files it touches"
+    path: "${artifact_dir}/design-steps.json"
+    type: design-steps.json@1
+    format: json
+    required: false
   # ADR-068 §8: the working copy the model writes. It becomes design.md when it
   # passes design's checks; one still on disk is a try that did not pass, and
   # the next run starts from it.

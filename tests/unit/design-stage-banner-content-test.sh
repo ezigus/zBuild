@@ -96,7 +96,7 @@ MOCK_DESIGN_BODY="$(printf '# Design Doc T1\n\n## Decision\nUse pattern X for th
 unset _bt
 MOCK_LLM_STDOUT_SUMMARY="Design document written to $OUTPUT_MD. It covers Decision/Scope."
 set +e
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
 set +e
 assert_eq "T1: happy path rc=0" "0" "$rc"
@@ -125,7 +125,7 @@ MOCK_DESIGN_BODY="$(printf '# Design Doc T2 (recovered)\n\n## Decision\nrecovere
 unset _bt
 MOCK_LLM_STDOUT_SUMMARY="Design document written. LOOP_COMPLETE"
 set +e
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
 set +e
 assert_eq "T2: recovery path rc=0" "0" "$rc"
@@ -144,7 +144,7 @@ MOCK_DESIGN_WRITE_PATH=PROMPT
 MOCK_DESIGN_BODY="$(printf '# No scope block here\n\nJust prose, no fence.\n')"
 MOCK_LLM_STDOUT_SUMMARY="I failed to include the scope block — sorry."
 set +e
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
 set +e
 assert_eq "T3: a design that fails its checks returns rc=1" "1" "$rc"
@@ -175,7 +175,7 @@ MOCK_DESIGN_WRITE_PATH=PROMPT
 MOCK_DESIGN_BODY="$(cat "$_T4_TMP")"
 MOCK_LLM_STDOUT_SUMMARY="ignore me"
 set +e
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
+_design_stage_run_inner "$SCOPE_MANIFEST" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
 set +e
 assert_eq "T4: large file rc=0" "0" "$rc"

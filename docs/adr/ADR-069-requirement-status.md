@@ -58,7 +58,15 @@ ADR-037 already planned to remove the classification. This ADR says what replace
 - `scripts/lib/acceptance-negctl.sh`: `acceptance_unclaimed_code_check`, with `_acceptance_is_test_path` (the test-path rule from #2300, now shared with the `no_prod_delta` skip) and `_acceptance_is_production_path`.
 - `plugins/agent/spec-acceptance/plugin.sh`: the check runs first (Level 0) and is reported in the same pass as the other levels. The manifest declares the event and the failure class; `scripts/lib/acceptance-disposition.sh` maps the class to recoverable.
 
+## Amendment 2026-11-01 (#2445) — §2: a [done] claim is judged against its code
+
+The scripted check confirms that a `[done]` requirement's evidence exists. Design's coverage check is now
+also shown the lines that evidence points at and judges whether that code does what the requirement says
+(ADR-070 §4, amended 2026-11-01), so a wrong "already done" is caught in the round that wrote it.
+
 ## Enforced by
+
+- §2 amendment 2026-11-01 (#2445) → `tests/unit/design-coverage-test.sh` X4, X5
 
 - §1 → `tests/unit/requirement-status-test.sh` S1 (a `[no-code]` requirement is listed), S2 (the status of each tag, including `[change]` → code and `[guard]` → done), S3 (evidence is split from the requirement text)
 - §5 → `tests/unit/acceptance-unclaimed-code-test.sh` U1–U4 (U4 runs the gate's own entry); `tests/unit/acceptance-disposition-classify-test.sh` (`unclaimed_code` is recoverable)

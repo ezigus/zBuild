@@ -30,9 +30,27 @@ Identifiers taken from prose are not deterministic. The engine has to number the
 - `scripts/lib/acceptance-block.sh`: `_acceptance_spec_line` sets `_ACC_SPEC_COVERS`; `acceptance_spec_covers`; `acceptance_requirements_list` renders the list for prompts.
 - `plugins/tool/design-gate/plugin.sh`: C7 collects the covers ids while reading each SPEC's status (no extra fork per SPEC).
 
+## Amendment 2026-11-01 (#2445) — §1: a model writes the list, a second checks it; §4: the design check looks both ways
+
+**§1.** Intake took only checkbox lines, so an issue that wrote its requirements as a numbered list or as
+prose became one requirement (#2443's five changes reached every check as a single R-1). Intake now writes
+the list with a model call given only the issue — its requirements in the issue's words, one per line — and
+a second call, given the issue and the list, names what the list misses; that is added. Each call has one
+turn (`config.router.max_turns: 1`), so neither can open the code. The engine still numbers the list R-1,
+R-2, … and `"source"` is `"model"`. A call that fails ends intake with that call's outcome, so the engine can
+run it again, and no list is written. The checkbox scraping is gone.
+
+**§4.** Design's coverage check also looks the other way: every SPEC or scope entry that commits to
+something the issue does not ask for, or contradicts it (`OUTSIDE:`). It is always shown the design's scope,
+and for each `[done]` SPEC the lines its evidence points at, and names each one whose code does not do what
+it says (`DONE_WRONG:`, ADR-069 §2). Each item is a finding design must fix, whatever the coverage verdict.
+
 ## Enforced by
 
-- §1 → `tests/unit/requirements-list-test.sh` Q1 (sequential ids from checkboxes, ticked and nested ones included, fenced ones left out, words kept; the title fallback)
+- §1 amendment 2026-11-01 (#2445: a model writes and checks the list) → `tests/unit/intake-requirements-model-test.sh` I1–I7; `tests/unit/requirements-list-test.sh` Q1
+- §4 amendment 2026-11-01 (#2445: the check looks both ways; scope and [done] evidence shown) → `tests/unit/design-coverage-test.sh` X1–X5
+
+- §1 → `tests/unit/requirements-list-test.sh` Q1 (sequential ids, assigned by the engine; words kept)
 - §2 → `tests/unit/requirements-list-test.sh` Q1 (the manifests declare the output and the four inputs; a goal run leaves no list)
 - §3 → `tests/unit/requirements-list-test.sh` Q2 (covers split from the text and evidence, either order), Q3 (an uncovered R fails, named with its words; all covered — one by `[done]` — passes; no list skips), Q4 (the design prompt shows the list and the covers syntax)
 - §4 → `tests/unit/requirements-list-test.sh` Q5 (spec-coverage prompt), Q6 (issue-acceptance prompt)

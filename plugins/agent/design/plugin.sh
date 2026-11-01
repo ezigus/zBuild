@@ -88,8 +88,8 @@ _design_write_outcome() {
         _wiring="$(jq -Rnc '[inputs | select(length > 0 and . != "none")] | unique' <<< "$_wl" 2>/dev/null || true)"
         [[ -n "$_wiring" ]] || _wiring="[]"
     fi
-    # #1874: and the files it scoped the change to — so the engine's one scope
-    # list is the one build works to, not plan's alone.
+    # #1874: and the files it scoped the change to — the engine's one scope
+    # list, the one build works to.
     local _scope="[]"
     if [[ "$outcome" == pass && -s "$design" ]] && declare -F acceptance_list_scope >/dev/null 2>&1; then
         local _sl; _sl="$(acceptance_list_scope "$design" 2>/dev/null || true)"
@@ -129,15 +129,13 @@ design_stage_run() {
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    # #2364: the scope manifest and the work plan, found by what they contain
-    # among every earlier output (ADR-055 §1).
-    local scope_manifest plan_json_path
+    # #2364: the scope manifest, found by what it contains among every earlier
+    # output (ADR-055 §1). #2445: there is no plan stage; design writes the steps.
+    local scope_manifest
     scope_manifest="$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
-    plan_json_path="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     _design_stage_run_inner \
         "$scope_manifest" \
-        "$plan_json_path" \
         "$artifacts_dir/design.md" \
         "$artifacts_dir"
 }
@@ -161,17 +159,15 @@ _design_read_prior_design() {
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
-#   $2 = plan_json_path
-#   $3 = output_design_md path
-#   $4 = artifact_dir
+#   $2 = output_design_md path
+#   $3 = artifact_dir
 _design_stage_run_inner() {
     local scope_manifest="$1"
-    local plan_json_path="$2"
-    local output_design_md="$3"
-    local artifact_dir="${4:-$(dirname "$output_design_md")}"
+    local output_design_md="$2"
+    local artifact_dir="${3:-$(dirname "$output_design_md")}"
 
-    if [[ -z "$scope_manifest" || -z "$plan_json_path" || -z "$output_design_md" ]]; then
-        error "_design_stage_run_inner: requires <scope_manifest> <plan_json_path> <output_design_md> [artifact_dir]"
+    if [[ -z "$scope_manifest" || -z "$output_design_md" ]]; then
+        error "_design_stage_run_inner: requires <scope_manifest> <output_design_md> [artifact_dir]"
         return 1
     fi
 
@@ -196,31 +192,6 @@ _design_stage_run_inner() {
     # #2299 (ADR-050 §6): design always runs. A restored prior design reaches
     # the prompt below as a reference to check — never this run's design as is.
     # #2035 run 37289704344 kept an untested design in 1 second.
-
-    if [[ ! -f "$plan_json_path" ]]; then
-        error "_design_stage_run_inner: no work plan found (looked for: ${plan_json_path:-nothing given})"
-        _design_write_outcome "$artifact_dir" "broken" "missing_plan_json"
-        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
-            "no work plan to design against" \
-            "The plan stage produced nothing this stage could read; no design was authored."
-        emit_event "plugin.result" "outcome=broken" "plugin=design" "reason=missing_plan_json"
-        return 1
-    fi
-
-    local plan_json
-    plan_json="$(cat "$plan_json_path")"
-
-    # plan.files[] and the work items' areas (#2363): the seed scope for
-    # design.md's scope block.
-    local plan_files_csv=""
-    plan_files_csv="$(printf '%s' "$plan_json" | \
-        jq -r '[(.files // []), ([.steps[]?.files[]?] // []), ([.steps[]?.areas[]?] // [])] | flatten | unique | join(",")' \
-        2>/dev/null || echo "")"
-
-    local scope_list=""
-    if [[ -n "$plan_files_csv" ]]; then
-        scope_list="$(printf '%s' "$plan_files_csv" | tr ',' '\n' | sed 's/^/- /')"
-    fi
 
     local prompt_input_file="$artifact_dir/design-prompt.txt"
 
@@ -261,8 +232,7 @@ The design document MUST include:
      - the config, schema and golden files that encode a shape you change;
      - the docs and ADRs that describe the contract you change;
      - the source files that use a name you add, remove or rename.
-   The seed below is a starting point. The files you list are the files the
-   change may touch.
+   The files you list are the files the change may touch.
 
 The \`\`\`scope block format (one repo-relative path per line):
 \`\`\`scope
@@ -270,7 +240,14 @@ path/to/file1
 path/to/file2
 \`\`\`
 
-3. A \`\`\`acceptance block listing what this change must deliver. Each line is
+3. A \`\`\`steps block: the ordered work items that deliver the change, one per
+   line, each with the files it touches (all of them in the scope block):
+\`\`\`steps
+- <what to do, in one sentence> | areas: path/to/file1, path/to/file2
+\`\`\`
+   The build follows them in order.
+
+4. A \`\`\`acceptance block listing what this change must deliver. Each line is
    one requirement: a permanent number (SPEC-1, SPEC-2, …), a status, and ONE
    behaviour someone could observe and test.
    A requirement that asks for several things gets one SPEC per thing, each
@@ -348,20 +325,12 @@ Keep the prose focused and under 200 lines (the scope block and acceptance
 block may be as long as completeness requires).
 
 ## What you judge against
-The issue, and the plan drawn from it, may describe a solution as well as the
+The issue may describe a solution as well as the
 problem. A section that records a decision (for example "Decision:") is binding: follow it.
-Anything else they propose — an approach, a file list, a scope, a claim that
+Anything else it proposes — an approach, a file list, a scope, a claim that
 some files or tests are unaffected — is a starting point, not the answer: check
 it against the code yourself and come up with your own design. Where yours
 differs, say why.
-
-### Plan
-$(printf '%s' "$plan_json" | jq -r '.title // "Untitled"' 2>/dev/null)
-
-$(printf '%s' "$plan_json" | jq -r '.description // .goal // ""' 2>/dev/null)
-
-### Seed scope (from plan.files[])
-${scope_list}
 
 ### Tools
 - You MAY use the Read tool to inspect any file in the repository.
@@ -521,7 +490,7 @@ ${_dp_limits}")"; then
             emit_event "plugin.result" "outcome=$_DESIGN_COV_OUTCOME" "plugin=design" "reason=coverage_check_failed"
             return 1
         fi
-        for _u in "${_DESIGN_UNCOVERED[@]}"; do _fnd+=("The issue asks for this and no SPEC covers it: $_u"); done
+        while IFS= read -r _u; do [[ -n "$_u" ]] && _fnd+=("$_u"); done < <(_design_coverage_findings)
     fi
 
     # A design that fails its checks cannot be used: `unusable`, so the engine
@@ -547,6 +516,9 @@ ${_dp_limits}")"; then
         return 1
     fi
     rm -f "$output_draft"
+    # #2445: the design's work steps, as the file every reader finds as the
+    # work plan (a `steps` list, earlier_work_plan).
+    _design_write_steps "$output_design_md" "$artifact_dir/design-steps.json"
 
     # ADR-055 §9: state the SHAPE of the design a later stage is held to —
     # the boundary it may touch and the SPECs it must satisfy.
@@ -561,6 +533,28 @@ ${_dp_limits}")"; then
         "plugin=design" \
         "artifact=design.md"
 
+    return 0
+}
+
+# _design_write_steps <design_md> <out_json> — the ```steps block as
+# {title, steps:[{id, description, areas}]}. A design with no steps writes none
+# (and removes an earlier one, so a stale list is never read as this design's).
+_design_write_steps() {
+    local design="$1" out="$2" line in_block=0 title
+    local -a lines=()
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^'```steps'[[:space:]]*$ ]]; then in_block=1; continue; fi
+        if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then break; fi
+        [[ $in_block -eq 1 && "$line" =~ ^[[:space:]]*[-*0-9.]+[[:space:]]+(.*[^[:space:]]) ]] && lines+=("${BASH_REMATCH[1]}")
+    done < "$design"
+    if [[ ${#lines[@]} -eq 0 ]]; then rm -f "$out" 2>/dev/null; return 0; fi
+    title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"
+    printf '%s\n' "${lines[@]}" | jq -Rsc --arg t "$title" '
+        split("\n") | map(select(length > 0))
+        | {title: $t, steps: [to_entries[] | (.value | split(" | areas:")) as $p
+            | {id: "step-\(.key + 1)", description: ($p[0] | gsub("^\\s+|\\s+$"; "")),
+               areas: (($p[1] // "") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))}]}' \
+        | atomic_write "$out" || rm -f "$out" 2>/dev/null
     return 0
 }
 
@@ -615,7 +609,7 @@ _extract_scope_from_design() {
         # Tolerate trailing whitespace on the fence lines — legacy used
         # /^```scope[[:space:]]*$/, and build's guard (grep -q '^```scope')
         # matches a whitespace-padded fence, so an exact match here would
-        # silently drop the scope and fall back to plan.json (#25 review).
+        # silently drop the scope (#25 review).
         if [[ "$line" =~ ^'```scope'[[:space:]]*$ ]]; then
             in_block=1
             continue

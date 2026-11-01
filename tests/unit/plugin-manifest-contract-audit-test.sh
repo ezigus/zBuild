@@ -23,7 +23,6 @@ print_test_header "plugin manifest contract audit — ADR-020 (#496)"
 # manifest was removed with #979 when the review stage was retired.)
 STAGE_MANIFESTS=(
     "plugins/agent/intake/manifest.yaml"
-    "plugins/agent/plan/manifest.yaml"
     "plugins/agent/build/manifest.yaml"
     "plugins/agent/security-lens/manifest.yaml"
     "plugins/tool/test/manifest.yaml"

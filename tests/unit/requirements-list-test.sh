@@ -8,10 +8,9 @@
 # SPEC numbers and matched on names instead of content. Identifiers taken from
 # prose are not deterministic, so the engine numbers the requirements itself.
 #
-# Q1 [code] intake writes artifacts/requirements.json from the issue body's
-#           checkboxes (under any heading, not inside a code fence), numbered
-#           R-1, R-2, … in order by the engine; the text is kept as written. With
-#           no checkboxes, R-1 is the title and first paragraph. A goal run writes
+# Q1 [code] intake writes artifacts/requirements.json, numbered R-1, R-2, … in
+#           order by the engine (#2445: a model writes the list from the issue —
+#           tests/unit/intake-requirements-model-test.sh). A goal run writes
 #           none (and leaves no stale list). Intake's manifest declares the list
 #           as an output; design and issue-acceptance declare no inputs and
 #           find it among the earlier outputs by what it is (#2364).
@@ -40,52 +39,31 @@ _test_cleanup_hook() { cleanup_test_env; }
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
 # ─── Q1: intake writes the list ──────────────────────────────────────────────
-print_test_section "Q1: intake numbers the issue's checkboxes"
+print_test_section "Q1: intake writes the numbered list"
 # shellcheck source=../../plugins/agent/intake/tests/intake-test-lib.sh
 source "$REPO_ROOT/plugins/agent/intake/tests/intake-test-lib.sh"
 set +e
 _REQ="$ARTIFACT_DIR/requirements.json"
-_q1_body='Some context that is not a requirement.
-
-## What
-- [ ] Test: intake writes the list. Fails on main.
-- a plain bullet, not a checkbox
-
-```markdown
-- [ ] a checkbox inside a code fence is an example, not a requirement
-```
-
-## Acceptance (red first)
-- [x] already ticked: the SPEC-2 label in tests/x-test.sh still passes
-  * [ ] nested checkbox for #2035/SPEC-3'
-_set_gh_mock "One list of requirements" "$_q1_body" 0
+# #2445: a model writes the list (tests/unit/intake-requirements-model-test.sh
+# covers how); here, its two requirements are numbered by the engine.
+route_to_model() {
+    if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
+    else printf 'REQUIREMENT: Test: intake writes the list. Fails on main.\nREQUIREMENT: the SPEC-2 label in tests/x-test.sh still passes\n'; fi
+}
+_set_gh_mock "One list of requirements" "1. Test: intake writes the list. Fails on main.
+2. the SPEC-2 label in tests/x-test.sh still passes" 0
 unset ZBUILD_GOAL 2>/dev/null || true
 export ZBUILD_ISSUE="$_ZB_ID"
 rm -f "$_REQ"
 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
-assert_eq "[Q1] intake passes on an issue with checkboxes" "pass" \
+assert_eq "[Q1] intake passes on an issue" "pass" \
     "$(jq -r '.outcome' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[Q1] requirements.json carries schema_version 1" "1" "$(jq -r '.schema_version' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[Q1] the source is the checkboxes" "checkboxes" "$(jq -r '.source' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[Q1] ids are R-1.. in order, assigned by the engine" "R-1 R-2 R-3" \
+assert_eq "[Q1] ids are R-1.. in order, assigned by the engine" "R-1 R-2" \
     "$(jq -r '[.requirements[].id] | join(" ")' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[Q1] R-1 is the first checkbox's text" "Test: intake writes the list. Fails on main." \
-    "$(jq -r '.requirements[0].text' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[Q1] a ticked checkbox is a requirement too; its words are kept as written" \
-    "already ticked: the SPEC-2 label in tests/x-test.sh still passes" \
+assert_eq "[Q1] an identifier in a requirement's words is text, never an id" \
+    "the SPEC-2 label in tests/x-test.sh still passes" \
     "$(jq -r '.requirements[1].text' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[Q1] a nested checkbox counts" "nested checkbox for #2035/SPEC-3" \
-    "$(jq -r '.requirements[2].text' "$_REQ" 2>/dev/null || echo MISSING)"
-
-_set_gh_mock "Make the gate quieter" $'The gate prints every line twice.\nIt should print each once.\n\nMore detail here.' 0
-rm -f "$_REQ"
-intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
-assert_eq "[Q1] with no checkboxes the source is the title" "title" "$(jq -r '.source' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[Q1] with no checkboxes there is one requirement, R-1" "R-1" \
-    "$(jq -r '[.requirements[].id] | join(" ")' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[Q1] R-1 is the title and the first paragraph" \
-    "Make the gate quieter: The gate prints every line twice. It should print each once." \
-    "$(jq -r '.requirements[0].text' "$_REQ" 2>/dev/null || echo MISSING)"
 
 # A goal run has no issue to number; a list left by an earlier run is removed.
 printf '{"schema_version":1,"requirements":[{"id":"R-1","text":"stale"}]}\n' > "$_REQ"
@@ -200,7 +178,7 @@ printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"s1","d
 printf '%s\n' '{"schema_version":1,"source":"checkboxes","requirements":[{"id":"R-1","text":"fail on a missing file"},{"id":"R-2","text":"name the missing file"}]}' > "$_Q4A/requirements.json"
 _Q4_OUT="$_Q4A/design.md"
 ZBUILD_REPO_ROOT="$_Q4" ZBUILD_EVENTS_JSONL="$_Q4/events.jsonl" \
-    _design_stage_run_inner "$_Q4/state/scope-manifest.md" "$_Q4A/plan.json" "$_Q4_OUT" "$_Q4A" >/dev/null 2>&1
+    _design_stage_run_inner "$_Q4/state/scope-manifest.md" "$_Q4_OUT" "$_Q4A" >/dev/null 2>&1
 _P4="$(cat "$_Q4A/design-prompt.txt" 2>/dev/null || true)"
 assert_contains "[Q4] the design prompt lists R-1 with its text" "$_P4" "- R-1: fail on a missing file"
 assert_contains "[Q4] and R-2" "$_P4" "- R-2: name the missing file"

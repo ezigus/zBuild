@@ -22,8 +22,9 @@ setup_test_env "stage-io-negative"
 LINT="$REPO_ROOT/scripts/lib/lint-stage-io.sh"
 
 # ── (1) Mutation: inject 2>/dev/null into a synthetic plugin ────────────────
-# Copy the real plan plugin into TEST_TEMP_DIR, mutate it, point lint at the copy.
-PLAN_REAL="$REPO_ROOT/plugins/agent/plan/plugin.sh"
+# Copy a real plugin into TEST_TEMP_DIR, mutate it, point lint at the copy
+# (security-lens since #2445 removed plan, the plugin this used before).
+PLAN_REAL="$REPO_ROOT/plugins/agent/security-lens/plugin.sh"
 PLAN_COPY="$TEST_TEMP_DIR/plan-copy.sh"
 cp "$PLAN_REAL" "$PLAN_COPY"
 
@@ -36,7 +37,7 @@ assert_eq "(1a) unmutated copy passes lint" "0" "$rc_pre"
 
 # Mutate: re-introduce the bug by appending 2>/dev/null on the route_to_model line.
 # Use sed to add ` 2>/dev/null` before the closing `)` of the $() capture.
-sed -i.bak 's|_reply="$(route_to_model "$tier" "$prompt")"|_reply="$(route_to_model "$tier" "$prompt" 2>/dev/null)"|' "$PLAN_COPY"
+sed -i.bak 's|raw_response="$(route_to_model "$tier" "$prompt")"|raw_response="$(route_to_model "$tier" "$prompt" 2>/dev/null)"|' "$PLAN_COPY"
 # The mutation must have happened, or (1b) would pass on an unchanged copy.
 assert_eq "(1b) the copy was mutated" "1" "$(grep -c 'route_to_model "$tier" "$prompt" 2>/dev/null)' "$PLAN_COPY")"
 

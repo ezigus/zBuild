@@ -31,6 +31,7 @@ artifact.snapshot.saved
 stage.start
 stage.previous_work.written
 plugin.run.start
+build.scope_injected
 redaction.applied
 redaction.applied
 loop.iteration
