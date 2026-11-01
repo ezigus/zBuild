@@ -1,5 +1,6 @@
 # authored_by: test-author
-026144487d9b3651e4ddd33c8eb3abf76f5bb14c4cbe63e11c40e486999dca5d  plugins/agent/intake/tests/intake-result-test.sh
+8538d543bbaa5ebf5bfa353a131d3fb114e665497d853f7a2c1096c8810cdece  tests/unit/test-plugin-result-write-fallback-test.sh
+8cae1a4a617ab6c193849388cd076865e9fa279d74db443bb40f96081b7d2e5e  tests/unit/test-result-reason-contract-test.sh
 026144487d9b3651e4ddd33c8eb3abf76f5bb14c4cbe63e11c40e486999dca5d  plugins/agent/intake/tests/intake-result-test.sh
 b2a1de649d7f54b89d3057ef2cadc97bc2af0bb991c60f7be51bbff0e8248f80  tests/unit/plugin-primary-output-atomic-test.sh
 b2a1de649d7f54b89d3057ef2cadc97bc2af0bb991c60f7be51bbff0e8248f80  tests/unit/plugin-primary-output-atomic-test.sh
