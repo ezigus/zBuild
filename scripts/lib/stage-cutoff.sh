@@ -34,7 +34,7 @@ _stage_cutoff_current_v() {
 # stage_cutoff_clear — the call was not cut off: no list.
 stage_cutoff_clear() {
     local _scc; _stage_cutoff_current_v _scc || return 0
-    [[ -n "$_scc" ]] && rm -f "$_scc" 2>/dev/null
+    [[ -n "$_scc" && -e "$_scc" ]] && rm -f "$_scc" 2>/dev/null
     return 0
 }
 

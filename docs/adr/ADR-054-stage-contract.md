@@ -514,8 +514,10 @@ changed nothing: every stage rewrites its result file (`primary: true` — `buil
 Progress is now: the code changed, the stage's notes changed (`artifacts/notes/<stage>.md`, which its next
 try reads), or a declared output other than its summary and its result file changed. A retry exists to
 continue from what the last try left; a result file is not something to continue from. Each try is told
-its number (`ZBUILD_STAGE_TRY`), so its records are its own. **Enforced by**
-`tests/unit/attempt-progress-test.sh` P1, P5–P7; `tests/unit/stage-retry-test.sh` R10, R11.
+its number (`ZBUILD_STAGE_TRY`), so its records are its own. A try whose repository writes the write
+boundary put back (ADR-058 C12) changed what was put back, and is still run again once. **Enforced by**
+`tests/unit/attempt-progress-test.sh` P1, P5–P7; `tests/unit/stage-retry-test.sh` R10, R11;
+`tests/integration/write-boundary-revert-test.sh` D7.
 
 ### Amendment (2026-10-13, #2366) — one outcome from one closed list
 
@@ -569,7 +571,7 @@ engine must enforce its own ceiling.
 ## Enforced by
 
 - §6a amendment 2026-10-31 (#2439: the engine owns every retry, for every stage) → `tests/unit/stage-retry-test.sh` R1–R10; `tests/unit/route-one-call-per-try-test.sh` O1–O6; `tests/unit/retired-retry-settings-test.sh` T1–T6; `tests/unit/attempt-progress-test.sh` P1–P5
-- §6a amendment 2026-11-01 (#2443: the result file is not progress; the notes are; each try knows its number) → `tests/unit/attempt-progress-test.sh` P1, P5–P7; `tests/unit/stage-retry-test.sh` R10, R11
+- §6a amendment 2026-11-01 (#2443: the result file is not progress; the notes are; each try knows its number) → `tests/unit/attempt-progress-test.sh` P1, P5–P7; `tests/unit/stage-retry-test.sh` R10, R11; `tests/integration/write-boundary-revert-test.sh` D7
 - §7: a second signal during teardown does not cut it short; release finishes and persist
   still runs → `tests/integration/teardown-repeat-signal-test.sh`
 - §11: limit resolution precedence (template > env > 20700), misconfigured validation →
