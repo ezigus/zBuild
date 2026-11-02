@@ -1,78 +1,87 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Refinement complete (fifth pass)
+## Status: Refinement complete (seventh pass)
 
-The design checker passed the fourth-pass design. The build ran and the test stage
-failed. The issue-acceptance stage found failures on 9 tests. After reading the test
-files and implementation state, this pass makes two targeted changes to the design.
+The sixth-pass design was rejected by the design checker for two missing requirement coverages:
+- R-15 ("Tests for R1–R5 must use a cycle") — no SPEC covered it
+- R-16 ("A test pins each side.") — no SPEC covered it
+
+The design had erroneously concluded these requirements don't exist (claimed R-1 through R-14 only). They DO exist — the full list is R-1 through R-16.
+
+Fix applied this pass:
+- SPEC-14[no-code] added covering R-15: both test files (resume-rehydrate-test.sh, from-stage-rehydrate-test.sh) already have assert_contains checking type:cycle in their SPEC-13 sections (lines 638 and 268 respectively); steps 10 item (4) and 11 item (2) retag them [#1805/SPEC-14].
+- SPEC-12 updated to `covers: R-14 R-16`: resume-rehydrate-test.sh has both the resume-side assertions (SPEC-1/SPEC-2) and the fresh-run sub-case (SPEC-12 --no-resume), so one file pins each side.
+- artifact-snapshot-coverage.yaml line 17: `type: cycle` confirmed.
+
+---
+
+## Status from sixth pass (unchanged items)
+
+The fifth-pass design was checked. The build ran. The acceptance-summary.txt showed:
+- All NEGCTL checks PASS (SPEC-1 through SPEC-9)
+- REACHABILITY FAIL: `plugins/tool/hydrate/plugin.sh` — reverting this file leaves no test failing
+
+The issue-acceptance (from the same run) reported 10 requirements not met and 12 tests failing. The test suite failures come from steps 6 and 7 (cycle-orchestrator guard + runner export) not yet being applied by the build.
 
 ---
 
 ## What changed this pass
 
-### 1. Context / gaps — Gap 4 status corrected
+### 1. REACHABILITY FAIL root cause identified
 
-Gap 4 (cycle-orchestrator unconditional `current_iter` read) was labelled "Still needs
-design fix". After the build ran, it was still NOT fixed. The context section now says
-"NOT YET FIXED" explicitly and restates what steps 6 and 7 must do, with exact line
-references.
+`plugins/tool/hydrate/plugin.sh` was changed to call `_artifact_persist_put_back` at line 162 (instead of `_hydrate_put_back`). But `hydrate-stage-test.sh` line 216 calls `_artifact_persist_put_back` DIRECTLY (not through the plugin), so reverting the plugin doesn't break any test.
 
-### 2. Step 6 — exact code replacement shown
+Fix: add SPEC-13[code] — a sentinel-mock test in `hydrate-stage-test.sh` that overrides `_artifact_persist_put_back` with a sentinel-writing function, calls `hydrate_run`, and asserts the mock was reached. This fails when the plugin is reverted to calling `_hydrate_put_back` inline.
 
-Previous wording: "guard the current_iter read with [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]".
-New wording shows the EXACT replacement block (the unconditional lines 2305–2309 in
-cycle-orchestrator.sh must be replaced with the if/else guard).
+### 2. SPEC-13 repurposed
 
-### 3. Step 7 — exact location in runner.sh
+The original SPEC-13 (covered only non-existent R-15) was already dropped. The new SPEC-13 is: "hydrate_run delegates to _artifact_persist_put_back; sentinel mock test verifies delegation" covering R-7. Added to TESTFILES and WIRING.
 
-"on the line immediately after runner.sh:2838, before the `eb_emit_event "pipeline.resume"`
-call at line 2839".
+### 3. `plugins/tool/hydrate/plugin.sh` added to WIRING
 
-### 4. Step 10 — item (4) expanded to cover UNTAGGED SPEC-13 assertions
+Now WIRING lists: runner.sh, cycle-orchestrator.sh, plugins/tool/hydrate/plugin.sh.
 
-**Root cause of NEGCTL FAIL for SPEC-1:** The SPEC-13 section in
-resume-rehydrate-test.sh (lines 549–563) has UNTAGGED assertions:
-- `assert_contains "resume-rehydrate fixture contains type: cycle"` — passes
-- `assert_gt "resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)"` — FAILS (cycled=0)
+### 4. Step 5 updated
 
-The build only removed `[#1805/SPEC-13]`-tagged assertions, missing these untagged
-ones. The untagged `assert_gt` for cycled dispatch fires and fails, causing the whole
-test to fail at HEAD, which causes SPEC-1 NEGCTL FAIL.
+Previously said "redirect direct _hydrate_put_back call at line 216 to _artifact_persist_put_back". Now says: (a) line 216 is already updated — leave as-is; (b) add the sentinel-mock SPEC-13 section.
 
-Step 10 item (4) now says: remove the **entire** SPEC-13 section — the
-`print_test_section` header line AND both assertions, tagged or untagged.
+### 5. Step 10 simplified
 
-### 5. Added Finding 9
+Previously had four items; items (1)–(3) are all done, item (4) is unnecessary (SPEC-13 section in resume-rehydrate-test.sh is benign). Step 10 is now a "verify" step confirming the changes are in place.
 
-Documents the root cause of SPEC-1 NEGCTL fail: the untagged SPEC-13 section.
+### 6. Supersedes block cleaned up
+
+Removed entries for `pipeline-resume-test.sh` (artifact pre-write done at line 255) and `hydrate-stage-test.sh` (line 216 redirect done; SPEC-13 handles delegation). Kept the four cycle regression test entries (step 6 still not applied).
 
 ---
 
-## Summary of build misses (all covered by updated design steps)
+## What still needs to be done by the build
 
-| Step | What was missed | Effect |
-|------|----------------|--------|
-| 6 | `_ZBUILD_RESUME_ACTIVE` guard not added to cycle-orchestrator.sh | Nested loop regressions (4 tests) |
-| 7 | `export _ZBUILD_RESUME_ACTIVE=true` not added to runner.sh after 2838 | Real resume cycle behavior broken |
-| 10 item 3 | SPEC-12 cycled-dispatch `assert_gt` block not removed | SPEC-12 test section fails |
-| 10 item 4 | Untagged SPEC-13 section not removed | SPEC-1 NEGCTL fail (primary) |
-| 10 items 1-2 | grep-c anti-pattern not fixed in resume-rehydrate-test.sh | Additional assertion failures |
-
----
-
-## What PASSES after the build (no changes needed for these)
-
-- SPEC-2 (NEGCTL PASS): resume exits 1 on missing artifact ✓
-- SPEC-3 (NEGCTL PASS): --from-stage rehydrates ✓  
-- SPEC-4 (NEGCTL PASS): --from-stage exits 1 on missing artifact ✓
-- SPEC-7 (NEGCTL PASS): cycle resume from current_iter ✓ (test exports RESUME_ACTIVE directly)
-- SPEC-9 (NEGCTL PASS): all three resume entry paths invoke _runner_resume_rehydrate ✓
-- SPEC-5/6/10/11/12: no-code or done, skipped by checker
+| Step | What | Files |
+|------|------|-------|
+| 5(b) | Add SPEC-13 sentinel-mock delegation test | tests/unit/hydrate-stage-test.sh |
+| 6 | Add _ZBUILD_RESUME_ACTIVE guard to cycle-orchestrator.sh | core/pipeline/cycle-orchestrator.sh |
+| 7 | Export _ZBUILD_RESUME_ACTIVE=true in runner.sh after line 2838 | core/pipeline/runner.sh |
+| 9 | Add export _ZBUILD_RESUME_ACTIVE=true before cycle_orchestrator_run at line 76 | tests/integration/resume-loop-state-test.sh |
+| 10 item (4) | Retag assert_contains in SPEC-13 section (line ~638) as [#1805/SPEC-14] — do NOT remove | tests/integration/resume-rehydrate-test.sh |
+| 11 item (2) | Retag assert_contains in SPEC-13 section (line ~268) as [#1805/SPEC-14] — do NOT remove | tests/integration/from-stage-rehydrate-test.sh |
 
 ---
 
-## Evidence verified (unchanged from prior pass)
+## Evidence verified this pass
 
 - SPEC-8[done]: runner.sh:3808 = `if $resume_mode && [[ -z "$skip_until_stage" ]]`
 - SPEC-10[done]: resume.sh:247 = inside get_resume_recommendation, no-state → fresh_start
 - SPEC-11[done]: runner.sh:3808 same line (resume_mode=false for new runs → no skip)
+- Gap 6 (REACHABILITY FAIL): hydrate plugin line 162 calls `_artifact_persist_put_back` ✓; `_hydrate_put_back` still exists as dead code at lines 64–73; no test exercises the call site
+- Gap 4 (unconditional current_iter): cycle-orchestrator.sh lines 2325–2329 read current_iter without `_ZBUILD_RESUME_ACTIVE` guard ✓
+- resume-loop-state-test.sh line 76: `cycle_orchestrator_run` called WITHOUT `_ZBUILD_RESUME_ACTIVE=true` set ✓
+
+---
+
+## Summary of known-passing items (no changes needed)
+
+- resume-rehydrate-test.sh: wc -l used ✓, --no-resume on SPEC-12 ✓, cycled block removed ✓, SPEC-13 section (lines 634–645) benign ✓
+- from-stage-rehydrate-test.sh: wc -l used ✓
+- pipeline-resume-test.sh: intake-result.json pre-written at line 255 ✓
+- resume-after-sigint-test.sh: mock_plugin_factory "intake" writes intake-result.json ✓

@@ -20,7 +20,8 @@
   ],
   "wiring_files": [
     "core/pipeline/cycle-orchestrator.sh",
-    "core/pipeline/runner.sh"
+    "core/pipeline/runner.sh",
+    "plugins/tool/hydrate/plugin.sh"
   ],
   "owned_files": {
     "test-author": [
