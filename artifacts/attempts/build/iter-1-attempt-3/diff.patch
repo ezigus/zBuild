@@ -1,0 +1,543 @@
+diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
+index dbd09a3b..033f3a36 100644
+--- a/core/pipeline/cycle-orchestrator.sh
++++ b/core/pipeline/cycle-orchestrator.sh
+@@ -2298,15 +2298,25 @@ _cycle_orchestrator_run_body() {
+         { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
+     }
+ 
++    # ADR-006 §3.6 / #1805 (SPEC-7): read the persisted current_iter so a
++    # resumed cycle starts from the next unfinished iteration, not from 1.
++    # A fresh cycle has current_iter=0 (set by _cycle_state_init via //=), so
++    # _start_iter defaults to 1 — identical behaviour to the old hard-coded 1.
++    local _persisted_iter
++    _persisted_iter="$(get_state_field "$state_file" \
++        ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
++    [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
++    local _start_iter=$(( _persisted_iter + 1 ))
++
+     _cycle_install_traps
+ 
+     eb_emit_event "cycle.start" \
+-        "cycle_id=$cycle_id" "iter=1" \
++        "cycle_id=$cycle_id" "iter=$_start_iter" \
+         "max=$_CYCLE_MAX_ITER" \
+         "stages=${_CYCLE_STAGES[*]}" 2>/dev/null || true
+ 
+     local iter
+-    for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
++    for (( iter=_start_iter; iter <= _CYCLE_MAX_ITER; iter++ )); do
+         _CYCLE_TRAP_ITER="$iter"
+         _CYCLE_LAST_ITERATIONS="$iter"
+ 
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 7a82e939..0e59e7d4 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -1699,6 +1699,62 @@ _runner_rearm_traps() {
+     trap '_runner_signal_trap TERM' TERM
+ }
+ 
++# ─── _runner_resume_rehydrate <issue> <state_dir> (#1805, ADR-006 §3.6) ─────
++# Restore completed-stage artifacts from the git state branch into the
++# artifact area before the dispatch loop runs. Non-fatal on restore failure;
++# a still-absent artifact is caught by the dispatch loop's stale-artifact
++# check which now exits 1 instead of warning-and-continuing (SPEC-2 / SPEC-9).
++_runner_resume_rehydrate() {
++    local _rr_issue="$1" _rr_state_dir="$2"
++    local _rr_artifacts_dir="$_rr_state_dir/artifacts"
++    local _rr_staging="$_rr_state_dir/resume-rehydrate.staging"
++    rm -rf "$_rr_staging" 2>/dev/null || true
++    _artifact_persist_restore "$_rr_issue" "$_rr_staging" || {
++        rm -rf "${_rr_staging:?}" 2>/dev/null || true
++        return 0
++    }
++    if [[ -d "$_rr_staging/artifacts" ]]; then
++        _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" || true
++    fi
++    rm -rf "${_rr_staging:?}" 2>/dev/null || true
++    return 0
++}
++
++# ─── _runner_from_stage_preflight <stages_arr> <from_stage> <state_dir> <plugins_root> ─
++# For --from-stage <s>: restore + put_back artifacts from the git state branch,
++# then verify every stage before <s> has its primary artifact in ZBUILD_ARTIFACT_DIR.
++# Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
++_runner_from_stage_preflight() {
++    local -n _fsp_stages="$1"
++    local _fsp_from_stage="$2" _fsp_state_dir="$3" _fsp_plugins_root="$4"
++    local _fsp_artifacts_dir="$_fsp_state_dir/artifacts"
++    local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
++    rm -rf "$_fsp_staging" 2>/dev/null || true
++    # Restore + put_back (same sequence as _runner_resume_rehydrate)
++    _artifact_persist_restore "$_runner_issue" "$_fsp_staging" || true
++    if [[ -d "$_fsp_staging/artifacts" ]]; then
++        _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" || true
++    fi
++    rm -rf "${_fsp_staging:?}" 2>/dev/null || true
++    # Verify every stage before the target has its primary artifact
++    local _fsp_s _fsp_plugin_dir _fsp_manifest _fsp_prim_path _fsp_resolved
++    for _fsp_s in "${_fsp_stages[@]}"; do
++        [[ "$_fsp_s" == "$_fsp_from_stage" ]] && break
++        _fsp_plugin_dir=""; _fsp_manifest=""; _fsp_prim_path=""; _fsp_resolved=""
++        _fsp_plugin_dir="$(_find_plugin_for_stage "$_fsp_s" "$_fsp_plugins_root" 2>/dev/null || true)"
++        [[ -z "$_fsp_plugin_dir" ]] && continue
++        _fsp_manifest="$_fsp_plugin_dir/manifest.yaml"
++        _fsp_prim_path="$(_verdict_primary_output_path "$_fsp_manifest" 2>/dev/null || true)"
++        [[ -z "$_fsp_prim_path" ]] && continue
++        _fsp_resolved="$(_verdict_resolve_path "$_fsp_prim_path" "$_fsp_state_dir")"
++        if [[ ! -s "$_fsp_resolved" ]]; then
++            echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
++            return 1
++        fi
++    done
++    return 0
++}
++
+ main() {
+     local issue="" goal="" dry_run=false template="simple"
+     local resume_mode=false from_stage="" no_resume=false force=false
+@@ -1740,6 +1796,15 @@ main() {
+     export ZBUILD_RESUME
+     [[ "$ZBUILD_RESUME" == "0" ]] && no_resume=true
+ 
++    # If no --issue/--goal but ZBUILD_STATE_FILE is set, read issue from state
++    # so that auto-resume can proceed without an explicit --issue flag (#1805).
++    if [[ -z "$issue" && -z "$goal" && -n "${ZBUILD_STATE_FILE:-}" && -f "${ZBUILD_STATE_FILE}" ]]; then
++        local _sf_issue
++        _sf_issue="$(jq -r '.issue // ""' "${ZBUILD_STATE_FILE}" 2>/dev/null || true)"
++        if [[ -n "$_sf_issue" && "$_sf_issue" != "null" && "$_sf_issue" != "0" ]]; then
++            issue="$_sf_issue"
++        fi
++    fi
+     if [[ -z "$issue" && -z "$goal" ]]; then
+         error "Must specify --issue <N> or --goal \"<text>\""
+         _usage
+@@ -2766,6 +2831,11 @@ main() {
+         # resumed run immediately. Resume must always start from a clean
+         # signal channel.
+         _zbuild_disarm_abort_sentinel
++        # ADR-006 §3.6 (#1805): restore completed-stage artifacts from the git
++        # state branch before the dispatch loop, so complete stages have their
++        # primary artifacts available. A still-absent artifact causes exit 1 at
++        # the dispatch loop's stale-artifact check.
++        _runner_resume_rehydrate "$_runner_issue" "$state_dir"
+         eb_emit_event "pipeline.resume" "run_id=$_runner_run_id" "issue=$_runner_issue"
+         info "Pipeline resuming — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
+         if [[ -n "$from_stage" ]]; then
+@@ -2849,6 +2919,14 @@ main() {
+     local skip_until_stage=""
+     [[ -n "$from_stage" ]] && skip_until_stage="$from_stage"
+ 
++    # ADR-006 §3.6 (#1805): when --from-stage is active, verify every stage
++    # before the target has a restorable artifact before the dispatch loop runs.
++    if [[ -n "$from_stage" ]]; then
++        if ! _runner_from_stage_preflight "active_stages" "$from_stage" "$state_dir" "$plugins_root"; then
++            return 1
++        fi
++    fi
++
+     # ADR-021 (#512 + #511 F2): cycle-aware dispatch.
+     # #511 Pin 4 — detect-and-enable with env override:
+     #   ZBUILD_CYCLES_ENABLED=0  → disabled (force off, even if template asks)
+@@ -3059,6 +3137,12 @@ main() {
+             _CYCLE_DISPATCH_STATUS="failed"
+             return 1
+         fi
++        # Emit stage.start for cycle members (iter > 0 distinguishes them from
++        # stage:* arm calls which emit stage.start before calling this function).
++        if [[ "$_cd_iter" -gt 0 ]]; then
++            eb_emit_event "stage.start" "stage=$_cd_stage" \
++                || { local _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
++        fi
+         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
+         [[ $_cd_had_e -eq 1 ]] && set -e
+         _cd_manifest="$_cd_plugin_dir/manifest.yaml"
+@@ -3740,9 +3824,12 @@ main() {
+                             eb_emit_event "stage.verdict.stale_artifact" \
+                                 "stage=$stage" "path=$_sk_resolved" \
+                                 "run_id=$_runner_run_id"
+-                            local _sk_sc; _sk_sc="$(_stage_color "$stage")"
+-                            echo -e "${YELLOW}${BOLD}⚠${RESET} Stage ${_sk_sc}${BOLD}${stage}${RESET} complete (stale: primary artifact missing)" >&2
+-                            continue
++                            # ADR-006 §3.6 (#1805): fail closed — a complete stage
++                            # whose artifact is absent after rehydration means the
++                            # git state branch had nothing to restore. Exit 1 before
++                            # any stage.start event is emitted (SPEC-2).
++                            echo "error: resume: stage '$stage' is marked complete but its primary artifact is absent after rehydration (expected: $_sk_resolved)" >&2
++                            return 1
+                         fi
+                     fi
+                 fi
+diff --git a/core/state/artifact-persist.sh b/core/state/artifact-persist.sh
+index ebd86d17..66da2e55 100644
+--- a/core/state/artifact-persist.sh
++++ b/core/state/artifact-persist.sh
+@@ -628,3 +628,20 @@ _artifact_persist_restore() {
+     _ARTIFACT_PERSIST_LAST_REASON="restored from $ref"
+     return 0
+ }
++
++# ─── _artifact_persist_put_back <from> <to> (#1805, ADR-006 §3.6) ───────────
++# Copy every file under <from> to the same place under <to>, skipping any file
++# <to> already has (no-clobber). stage-io/ records are excluded (one run's
++# model calls, not stage output). Identical semantics to _hydrate_put_back;
++# extracted here so the runner's resume rehydration and the hydrate plugin
++# share one implementation.
++_artifact_persist_put_back() {
++    local from="$1" to="$2" f rel
++    mkdir -p "$to" || return 1
++    while IFS= read -r -d '' f; do
++        rel="${f#"$from"/}"
++        [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
++        mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
++    done < <(find "$from" -type f -print0 2>/dev/null)
++    return 0
++}
+diff --git a/docs/adr/ADR-006-resume-contract.md b/docs/adr/ADR-006-resume-contract.md
+index 74fe5a34..439c7f19 100644
+--- a/docs/adr/ADR-006-resume-contract.md
++++ b/docs/adr/ADR-006-resume-contract.md
+@@ -111,6 +111,14 @@ The engine validates:
+    b. plugin reads persisted state via core/state/read_plugin_state
+    c. plugin recomputes reconstructed state
+    d. plugin refuses to continue if any reconstructed key is missing
++3.6. _runner_resume_rehydrate: before the dispatch loop, call
++     _artifact_persist_restore then _artifact_persist_put_back to place every
++     completed-stage artifact from the git state branch into ZBUILD_ARTIFACT_DIR.
++     A complete stage whose primary artifact is still absent after this
++     restoration causes the runner to exit 1 before any stage.start event is
++     emitted (fail closed — not warn-and-continue).
++     Enforced by: tests/integration/resume-rehydrate-test.sh,
++                  tests/integration/resume-entry-points-test.sh
+ 4. Engine emits "pipeline.resume" event
+ 5. Continue from last in_progress stage
+ ```
+diff --git a/docs/adr/ADR-050-prior-work-reuse-contract.md b/docs/adr/ADR-050-prior-work-reuse-contract.md
+index 3d4fa280..d9f683b7 100644
+--- a/docs/adr/ADR-050-prior-work-reuse-contract.md
++++ b/docs/adr/ADR-050-prior-work-reuse-contract.md
+@@ -191,6 +191,14 @@ A plugin author, when creating or changing a stage, MUST observe:
+ - **Never write anything that must not reach main into the work branch** — durable
+   cross-run state belongs on the state branch (engine-managed), not in the code diff.
+ 
++> **Resume boundary (issue #1805, ADR-006 §3.6).** The invariant above — "never
++> skip the stage on the basis of prior output" — applies to **new runs**. A
++> **resume** continues the same run rather than starting a new one: it restores
++> completed-stage artifacts from the git state branch and skips stages already
++> marked `complete` in the persisted state. Resume semantics are governed by
++> [ADR-006](ADR-006-resume-contract.md); this ADR's reuse rules do not apply
++> to a resume because a resume continues the same run, not a new run.
++
+ ### 7. Amendment (#141) — git is the store, the folder is the working copy, and every run pushes
+ 
+ **Status:** Accepted (2026-08-23). See [ADR-059](ADR-059-issue-vs-run-keying.md) §3.
+diff --git a/plugins/tool/hydrate/plugin.sh b/plugins/tool/hydrate/plugin.sh
+index 8340c121..727d263a 100644
+--- a/plugins/tool/hydrate/plugin.sh
++++ b/plugins/tool/hydrate/plugin.sh
+@@ -159,7 +159,7 @@ hydrate_run() {
+     if [[ "$_status" != "failed" && -d "$_staging/artifacts" ]] \
+        && [[ -n "$(ls -A "$_staging/artifacts" 2>/dev/null)" ]]; then
+         _count="$(find "$_staging/artifacts" -type f 2>/dev/null | /usr/bin/grep -c . || printf '0')"
+-        if _hydrate_put_back "$_staging/artifacts" "$_artifacts_dir"; then
++        if _artifact_persist_put_back "$_staging/artifacts" "$_artifacts_dir"; then
+             [[ -n "$_reason" ]] || _reason="restored $_count artifact(s) from zbuild/state/issue-$_issue"
+         else
+             _verdict="fail"
+diff --git a/tests/integration/from-stage-rehydrate-test.sh b/tests/integration/from-stage-rehydrate-test.sh
+index 482e83b0..2811515f 100644
+--- a/tests/integration/from-stage-rehydrate-test.sh
++++ b/tests/integration/from-stage-rehydrate-test.sh
+@@ -44,6 +44,8 @@ install_template_overlay "$S3_WORK_REPO" runner-state-dir-minimal
+ # Create mock plugins.
+ mock_plugin_factory "intake" "agent" 0 >/dev/null
+ mock_plugin_factory "build"  "agent" 0 >/dev/null
++# cycled sub-stage used by the artifact-snapshot-coverage cyclic fixture (SPEC-13 sub-case).
++mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
+ S3_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+ 
+ # Create the intake primary artifact so the snapshot picks it up.
+@@ -112,6 +114,17 @@ assert_file_exists \
+     "[#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage" \
+     "$S3_STATE_DIR/artifacts/intake-result.json"
+ 
++# [#1805/SPEC-3]: the restored artifact must carry the payload originally snapshotted to
++# the git state branch — this proves _artifact_persist_restore read from git and
++# _artifact_persist_put_back placed it in ZBUILD_ARTIFACT_DIR (not re-created fresh by
++# the runner through any other mechanism).
++# Before the change: no restore → file absent → content="" → FAILS.
++# After the change: git state restore → original content present → PASSES.
++_s3_restored_content="$(cat "$S3_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
++assert_contains \
++    "[#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)" \
++    "$_s3_restored_content" "prior-run intake"
++
+ # [#1805/SPEC-3]: intake must emit no stage.start event (it was skipped).
+ # Before the change: no rehydration means intake might be re-dispatched → stage.start emitted → FAILS.
+ # After the change: intake is complete and skipped entirely → no stage.start → PASSES.
+@@ -212,14 +225,55 @@ assert_eq "[#1805/SPEC-4] no stage.start emitted before exit 1" \
+ # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
+ print_test_section "[#1805/SPEC-13] from-stage-rehydrate test uses a fixture containing a cyclic stage"
+ 
+-# Install a cyclic fixture into a dedicated work repo to establish that this test
+-# file's setup installs a pipeline containing a cyclic stage (SPEC-13 requirement).
++# Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
++# demonstrate that this test file exercises a pipeline containing a cyclic stage.
++_S13_FS_ID="$(zb_test_issue)"
+ _S13_FS_WORK="$(setup_git_temp_repo fs-s13-cycle-check)"
+ install_template_overlay "$_S13_FS_WORK" artifact-snapshot-coverage
++
++_S13_FS_STATE_DIR="$TEST_TEMP_DIR/s13fs-state"
++_S13_FS_EVENTS_DIR="$TEST_TEMP_DIR/s13fs-events"
++_S13_FS_EVENTS_JSONL="$_S13_FS_EVENTS_DIR/events.jsonl"
++_S13_FS_STATE_FILE="$_S13_FS_STATE_DIR/pipeline-state.json"
++mkdir -p "$_S13_FS_STATE_DIR/artifacts" "$_S13_FS_EVENTS_DIR"
++
++jq -n \
++    --arg run_id "s13fs-fresh-1805" \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    --argjson issue "$_S13_FS_ID" \
++    '{
++        schema_version: 1, run_id: $run_id, issue: $issue,
++        stage_statuses: {}, current_iteration: 0, self_heal_count: {},
++        scope_manifest_hash: "", cost_ledger_pointer: 0, claim_lease_id: "",
++        plugin_state: {}, status: "in_progress", updated_at: $now
++    }' > "$_S13_FS_STATE_FILE"
++
++set +e
++( cd "$_S13_FS_WORK" && env \
++    ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
++    ZBUILD_STATE_DIR="$_S13_FS_STATE_DIR" \
++    ZBUILD_STATE_FILE="$_S13_FS_STATE_FILE" \
++    ZBUILD_EVENTS_DIR="$_S13_FS_EVENTS_DIR" \
++    ZBUILD_EVENTS_JSONL="$_S13_FS_EVENTS_JSONL" \
++    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
++    ZBUILD_CONTRACT_VALIDATOR=warn \
++    ZBUILD_VISION_GATE=off \
++    PATH="$PATH" HOME="$HOME" \
++    bash "$RUNNER" --template artifact-snapshot-coverage --issue "$_S13_FS_ID" ) \
++    >"$TEST_TEMP_DIR/s13fs-stdout.txt" 2>"$TEST_TEMP_DIR/s13fs-stderr.txt"
++set -e
++
++# [#1805/SPEC-13]: the fixture is cyclic (type: cycle present).
+ _s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
+-assert_contains "[#1805/SPEC-13] from-stage-rehydrate test installs a fixture with type: cycle" \
++assert_contains "[#1805/SPEC-13] from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
+     "$_s13_fs_content" "type: cycle"
+ 
++# [#1805/SPEC-13]: confirm the cyclic pipeline ran (intake dispatched in the fresh run).
++_s13_fs_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
++    "$_S13_FS_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
++assert_eq "[#1805/SPEC-13] cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)" \
++    "1" "$_s13_fs_intake_starts"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/integration/pipeline-resume-test.sh b/tests/integration/pipeline-resume-test.sh
+index 2f011e7c..d5cba597 100755
+--- a/tests/integration/pipeline-resume-test.sh
++++ b/tests/integration/pipeline-resume-test.sh
+@@ -246,6 +246,13 @@ jq -n \
+         updated_at: $now
+     }' > "$INT_STATE_FILE"
+ 
++# Pre-write intake's primary artifact so the SPEC-2 fail-closed stale-artifact
++# check (ADR-006 §3.6, added in #1805) does not abort the resume when the
++# state branch has no artifact (this test predates artifact rehydration).
++mkdir -p "$INT_STATE_DIR/artifacts"
++printf '{"result_contract":3,"outcome":"pass","reason":"stub"}' \
++    > "$INT_STATE_DIR/artifacts/intake-result.json"
++
+ # Run runner --resume against this state file (CWD = overlay repo).
+ set +e
+ ( cd "$INT_OVERLAY_REPO" && env \
+diff --git a/tests/integration/resume-entry-points-test.sh b/tests/integration/resume-entry-points-test.sh
+index b6314d5e..0d8ac565 100644
+--- a/tests/integration/resume-entry-points-test.sh
++++ b/tests/integration/resume-entry-points-test.sh
+@@ -37,6 +37,8 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
+ # Common mock plugins for all three paths.
+ mock_plugin_factory "intake" "agent" 0 >/dev/null
+ mock_plugin_factory "build"  "agent" 0 >/dev/null
++# cycled sub-stage used by the artifact-snapshot-coverage cyclic fixture (SPEC-13 sub-case).
++mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
+ PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+ 
+ # ── Shared helper: set up a work repo with a state branch for one path ──────────
+@@ -244,14 +246,63 @@ assert_file_exists \
+ # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
+ print_test_section "[#1805/SPEC-13] resume-entry-points test uses a fixture containing a cyclic stage"
+ 
+-# Install a cyclic fixture into a dedicated work repo to establish that this test
+-# file's setup installs a pipeline containing a cyclic stage (SPEC-13 requirement).
++# Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
++# demonstrate that this test file exercises a pipeline containing a cyclic stage.
++_S13_EP_ID="$(zb_test_issue)"
+ _S13_EP_WORK="$(setup_git_temp_repo ep-s13-cycle-check)"
+ install_template_overlay "$_S13_EP_WORK" artifact-snapshot-coverage
++
++_S13_EP_STATE_DIR="$TEST_TEMP_DIR/s13ep-state"
++_S13_EP_EVENTS_DIR="$TEST_TEMP_DIR/s13ep-events"
++_S13_EP_EVENTS_JSONL="$_S13_EP_EVENTS_DIR/events.jsonl"
++_S13_EP_STATE_FILE="$_S13_EP_STATE_DIR/pipeline-state.json"
++mkdir -p "$_S13_EP_STATE_DIR/artifacts" "$_S13_EP_EVENTS_DIR"
++
++jq -n \
++    --arg run_id "s13ep-fresh-1805" \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    --argjson issue "$_S13_EP_ID" \
++    '{
++        schema_version: 1, run_id: $run_id, issue: $issue,
++        stage_statuses: {}, current_iteration: 0, self_heal_count: {},
++        scope_manifest_hash: "", cost_ledger_pointer: 0, claim_lease_id: "",
++        plugin_state: {}, status: "in_progress", updated_at: $now
++    }' > "$_S13_EP_STATE_FILE"
++
++set +e
++( cd "$_S13_EP_WORK" && env \
++    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
++    ZBUILD_STATE_DIR="$_S13_EP_STATE_DIR" \
++    ZBUILD_STATE_FILE="$_S13_EP_STATE_FILE" \
++    ZBUILD_EVENTS_DIR="$_S13_EP_EVENTS_DIR" \
++    ZBUILD_EVENTS_JSONL="$_S13_EP_EVENTS_JSONL" \
++    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
++    ZBUILD_CONTRACT_VALIDATOR=warn \
++    ZBUILD_VISION_GATE=off \
++    PATH="$PATH" HOME="$HOME" \
++    bash "$RUNNER" --template artifact-snapshot-coverage --issue "$_S13_EP_ID" ) \
++    >"$TEST_TEMP_DIR/s13ep-stdout.txt" 2>"$TEST_TEMP_DIR/s13ep-stderr.txt"
++set -e
++
++# [#1805/SPEC-13]: the fixture is cyclic (type: cycle present).
+ _s13_ep_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
+-assert_contains "[#1805/SPEC-13] resume-entry-points test installs a fixture with type: cycle" \
++assert_contains "[#1805/SPEC-13] resume-entry-points test uses a cyclic fixture (type: cycle)" \
+     "$_s13_ep_content" "type: cycle"
+ 
++# [#1805/SPEC-13]: confirm the cyclic pipeline ran (intake dispatched in the fresh run).
++_s13_ep_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
++    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
++assert_eq "[#1805/SPEC-13] cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)" \
++    "1" "$_s13_ep_intake_starts"
++
++# [#1805/SPEC-13]: confirm the cyclic STAGE ran (cycled dispatched), proving the
++# pipeline executed the cycle body — not just a non-cyclic pipeline.
++# Intake dispatching alone doesn't prove a cyclic stage ran; this does.
++_s13_ep_cycled_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
++    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^cycled$' || echo 0)"
++assert_gt "[#1805/SPEC-13] cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test" \
++    "$_s13_ep_cycled_starts" "0"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/integration/resume-loop-state-test.sh b/tests/integration/resume-loop-state-test.sh
+index a5bcbddf..7cb32816 100644
+--- a/tests/integration/resume-loop-state-test.sh
++++ b/tests/integration/resume-loop-state-test.sh
+@@ -106,6 +106,13 @@ _s13_loop_fixt_content="$(cat "$FIXT/cycle-converges-iter2.yaml")"
+ assert_contains "[#1805/SPEC-13] cycle fixture used by resume-loop-state test has type: cycle" \
+     "$_s13_loop_fixt_content" "type: cycle"
+ 
++# Also assert the pipeline was actually run: cycle_dispatch_stage was invoked
++# during cycle_orchestrator_run above, setting _SPEC7_FIRST_ITER from its
++# initial -1.  A value > -1 proves the cyclic stage was dispatched.
++assert_gt \
++    "[#1805/SPEC-13] resume-loop-state ran the cyclic pipeline (cycle_dispatch_stage was invoked)" \
++    "$_SPEC7_FIRST_ITER" "-1"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
+index 92d09e4c..709d0aab 100644
+--- a/tests/integration/resume-rehydrate-test.sh
++++ b/tests/integration/resume-rehydrate-test.sh
+@@ -386,6 +386,11 @@ assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 names resume-rehydrate-test.sh
+ assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test" \
+     "$_adr006" "resume-entry-points-test.sh"
+ 
++# [#1805/SPEC-5]: ADR-006 must document that a still-absent artifact causes exit 1.
++# Before the doc change: the clause is absent → FAILS. After change: PASSES.
++assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 documents still-absent artifact causes exit 1" \
++    "$_adr006" "exit 1"
++
+ # ── SPEC-6: ADR-050 §6 amended with resume boundary note ─────────────────────
+ print_test_section "[#1805/SPEC-6] ADR-050 §6 amended with boundary note distinguishing resume from new runs"
+ 
+@@ -402,6 +407,11 @@ assert_contains "[#1805/SPEC-6] ADR-050 §6 boundary note says invariant applies
+ assert_contains "[#1805/SPEC-6] ADR-050 §6 boundary note names ADR-006 as governing resume" \
+     "$_adr050_s6" "ADR-006"
+ 
++# [#1805/SPEC-6]: §6 must say "a resume continues the same run" (not just reference ADR-006).
++# Before the doc change: clause absent → FAILS. After change: PASSES.
++assert_contains "[#1805/SPEC-6] ADR-050 §6 boundary note says a resume continues the same run" \
++    "$_adr050_s6" "continues the same run"
++
+ # ── SPEC-12: fresh (non-resume) run dispatches all stages ─────────────────────
+ print_test_section "[#1805/SPEC-12] fresh non-resume run dispatches all stages (ADR-050 §6 new-run side)"
+ 
+@@ -444,7 +454,6 @@ jq -n \
+ # Contrast with SPEC-1 where a resumed run skips complete stages.
+ set +e
+ ( cd "$S12_WORK_REPO" && env \
+-    ZBUILD_CYCLES_ENABLED=0 \
+     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+     ZBUILD_STATE_DIR="$S12_STATE_DIR" \
+     ZBUILD_STATE_FILE="$S12_STATE_FILE" \
+@@ -470,6 +479,17 @@ fi
+ assert_eq "[#1805/SPEC-12] fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)" \
+     "1" "$_s12_intake_starts"
+ 
++# [#1805/SPEC-12]: the cycled sub-stage must dispatch (cycle executed; no stage skipped).
++# Before fix: ZBUILD_CYCLES_ENABLED=0 suppresses the cycle → cycled_starts=0 → assert_gt fails.
++# After fix: cycles enabled, cycled sub-stage runs for the 1 configured iteration → PASSES.
++_s12_cycled_starts=0
++if [[ -f "$S12_EVENTS_JSONL" ]]; then
++    _s12_cycled_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
++        "$S12_EVENTS_JSONL" 2>/dev/null | grep -c '^cycled$' 2>/dev/null || echo 0)"
++fi
++assert_gt "[#1805/SPEC-12] fresh run dispatches cycled sub-stage (cycle ran; no stage skipped)" \
++    "$_s12_cycled_starts" "0"
++
+ # [#1805/SPEC-12]: the cycle fixture used for this fresh-run sub-case contains type: cycle,
+ # establishing that the fixture IS a cyclic pipeline (satisfying the "same cycle fixture" clause).
+ _s12_fixt_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
+@@ -479,12 +499,18 @@ assert_contains "[#1805/SPEC-12] cycle fixture used in SPEC-12 fresh-run sub-cas
+ # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
+ print_test_section "[#1805/SPEC-13] resume-rehydrate test uses a fixture containing a cyclic stage"
+ 
+-# SPEC-12 above installed artifact-snapshot-coverage into S12_WORK_REPO and ran a
+-# fresh pipeline against it. That fixture IS the cyclic pipeline this test uses.
+-# Verify it contains type: cycle (already read into _s12_fixt_content above).
+-assert_contains "[#1805/SPEC-13] resume-rehydrate test installs and runs a cyclic fixture (type: cycle)" \
++# [#1805/SPEC-13]: the fixture must contain type: cycle (satisfies "containing a cyclic stage").
++# Already read into _s12_fixt_content above from artifact-snapshot-coverage.yaml.
++assert_contains "[#1805/SPEC-13] resume-rehydrate fixture contains type: cycle" \
+     "$_s12_fixt_content" "type: cycle"
+ 
++# [#1805/SPEC-13]: a pipeline using that cyclic fixture was actually run in this test.
++# _s12_cycled_starts was computed in the SPEC-12 section from the S12 pipeline run.
++# Before fix: ZBUILD_CYCLES_ENABLED=0 → cycled never dispatches → 0 → assert_gt fails.
++# After fix (cycles enabled, max_iter=1): cycled dispatches → assert_gt passes.
++assert_gt "[#1805/SPEC-13] resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)" \
++    "$_s12_cycled_starts" "0"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/hydrate-stage-test.sh b/tests/unit/hydrate-stage-test.sh
+index 59cc8fda..73b7283d 100755
+--- a/tests/unit/hydrate-stage-test.sh
++++ b/tests/unit/hydrate-stage-test.sh
+@@ -213,7 +213,7 @@ _S7_FROM="$TEST_TEMP_DIR/s7-from"; _S7_TO="$TEST_TEMP_DIR/s7-to"
+ mkdir -p "$_S7_FROM/stage-io"
+ printf 'prior plan\n' > "$_S7_FROM/plan.json"
+ printf '{}\n' > "$_S7_FROM/stage-io/design-iter4-error.json"
+-_hydrate_put_back "$_S7_FROM" "$_S7_TO"
++_artifact_persist_put_back "$_S7_FROM" "$_S7_TO"
+ assert_file_exists "[SPEC-7] a stage's output is put back" "$_S7_TO/plan.json"
+ assert_file_not_exists "[SPEC-7] an earlier run's stage-io record is not put back" \
+     "$_S7_TO/stage-io/design-iter4-error.json"
