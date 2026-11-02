@@ -236,7 +236,7 @@ fi
 # every local run.
 _u9b_hits=""
 while IFS= read -r _u9b_f; do
-    grep -vE '^[[:space:]]*#' "$_u9b_f" 2>/dev/null | grep -qE 'command -v setsid|^[[:space:]]*setsid ' \
+    grep -qE 'command -v setsid|^[[:space:]]*setsid ' < <(grep -vE '^[[:space:]]*#' "$_u9b_f" 2>/dev/null) \
         && _u9b_hits+="${_u9b_f#"$REPO_ROOT/"} "
 done < <(find "$REPO_ROOT/tests" -name '*.sh' -type f ! -name proc-group-test.sh)
 assert_eq "U9b: no test starts the runner under setsid" "" "$_u9b_hits"
