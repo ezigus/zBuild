@@ -1798,6 +1798,15 @@ main() {
     export ZBUILD_RESUME
     [[ "$ZBUILD_RESUME" == "0" ]] && no_resume=true
 
+    # If no --issue/--goal but ZBUILD_STATE_FILE is set, read issue from state
+    # so that auto-resume can proceed without an explicit --issue flag (#1805).
+    if [[ -z "$issue" && -z "$goal" && -n "${ZBUILD_STATE_FILE:-}" && -f "${ZBUILD_STATE_FILE}" ]]; then
+        local _sf_issue
+        _sf_issue="$(jq -r '.issue // ""' "${ZBUILD_STATE_FILE}" 2>/dev/null || true)"
+        if [[ -n "$_sf_issue" && "$_sf_issue" != "null" && "$_sf_issue" != "0" ]]; then
+            issue="$_sf_issue"
+        fi
+    fi
     if [[ -z "$issue" && -z "$goal" ]]; then
         error "Must specify --issue <N> or --goal \"<text>\""
         _usage
@@ -3136,6 +3145,12 @@ main() {
         if ! _zbuild_check_abort; then
             _CYCLE_DISPATCH_STATUS="failed"
             return 1
+        fi
+        # Emit stage.start for cycle members (iter > 0 distinguishes them from
+        # stage:* arm calls which emit stage.start before calling this function).
+        if [[ "$_cd_iter" -gt 0 ]]; then
+            eb_emit_event "stage.start" "stage=$_cd_stage" \
+                || { local _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
         fi
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
         [[ $_cd_had_e -eq 1 ]] && set -e
