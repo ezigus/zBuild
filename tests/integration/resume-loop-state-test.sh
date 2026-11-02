@@ -106,6 +106,13 @@ _s13_loop_fixt_content="$(cat "$FIXT/cycle-converges-iter2.yaml")"
 assert_contains "[#1805/SPEC-13] cycle fixture used by resume-loop-state test has type: cycle" \
     "$_s13_loop_fixt_content" "type: cycle"
 
+# Also assert the pipeline was actually run: cycle_dispatch_stage was invoked
+# during cycle_orchestrator_run above, setting _SPEC7_FIRST_ITER from its
+# initial -1.  A value > -1 proves the cyclic stage was dispatched.
+assert_gt \
+    "[#1805/SPEC-13] resume-loop-state ran the cyclic pipeline (cycle_dispatch_stage was invoked)" \
+    "$_SPEC7_FIRST_ITER" "-1"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
