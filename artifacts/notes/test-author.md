@@ -1,55 +1,73 @@
-# test-author notes — issue #1805 (round 2 fix: from-stage-rehydrate-test.sh)
+# test-author notes — issue #1805 (round 5: from-stage-rehydrate-test.sh confirmation)
 
-## Status: COMPLETE — from-stage-rehydrate-test.sh bug fixed
+## Status: CONFIRMED — from-stage-rehydrate-test.sh already correct; no changes needed
 
-## Round-2 checker findings for from-stage-rehydrate-test.sh
+## Round-2 checker findings addressed in this call
 
-### Finding 1: SPEC-3 — artifact placement assertions were non-tagged
+### Finding 1: SPEC-3 artifact placement assertions not tagged
 
-**Original finding:** "`assert_file_exists` and `assert_contains` calls that check
-'places their artifacts in ZBUILD_ARTIFACT_DIR' are not tagged with `[#1805/SPEC-3]`"
+**Checker claim:** "`assert_file_exists` and `assert_contains` for 'places their artifacts
+in ZBUILD_ARTIFACT_DIR' carry no [#1805/SPEC-3] tag."
 
-**Status in current file:** Already resolved by a previous test-author call. Lines 113-126
-carry `[#1805/SPEC-3]` tags on both the `assert_file_exists` and `assert_contains` calls.
+**Verification:** Read the current file. Lines 113–115 and 124–126 both carry
+`[#1805/SPEC-3]` in their labels:
+- Line 114: `"[#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage"`
+- Line 125: `"[#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)"`
 
-### Finding 2: SPEC-4 — stderr-naming assertion was non-tagged
+**Status:** Already resolved by a prior test-author call. No change needed.
 
-**Original finding:** "`assert_contains "$_s4_stderr" "intake"` is not tagged with `[#1805/SPEC-4]`"
+### Finding 2: SPEC-4 stderr-naming assertion not tagged
 
-**Status in current file:** Already resolved by a previous test-author call. Line 211-214
-carries `[#1805/SPEC-4] stderr names the missing stage (intake)`.
+**Checker claim:** "`assert_contains "$_s4_stderr" "intake"` is not tagged with [#1805/SPEC-4]."
 
-## Test failure (round 2): SPEC-3 no-stage.start assertion fails with "expected: 0, got: 0"
+**Verification:** Read the current file. Lines 212–214 carry `[#1805/SPEC-4]` in the label:
+- Line 213: `"[#1805/SPEC-4] stderr names the missing stage (intake)"`
 
-**Root cause:** Lines 131-135 used `| grep -c '^intake$' 2>/dev/null || echo 0`.
-When `grep -c` finds 0 matches:
-1. `grep -c` outputs `"0"` to stdout and exits with code 1
-2. `|| echo 0` fires (because grep exited 1) and outputs another `"0"` to stdout
-3. Command substitution captures `"0\n0"` — two zeros, not one
-4. `"0\n0"` != `"0"` → assert_eq fails, showing "expected: 0, got: 0" (the second 0
-   appears on the next display line, making it look like both are 0)
+**Status:** Already resolved by a prior test-author call. No change needed.
 
-**Fix applied (this call):** Replaced the buggy `grep -c ... || echo 0` with:
-```bash
-_s3_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
-    "$S3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-```
-- Uses jq to filter to only `stage.start` events for `intake`, outputs `.type` per match
-- `wc -l` always exits 0 and outputs a count (no double-output problem)
-- `tr -d ' '` strips whitespace from `wc -l` output (mac compat)
-- No `|| echo 0` needed — `wc -l` never outputs a non-number
+## Full SPEC-3 assertion coverage (from-stage-rehydrate-test.sh)
 
-This mirrors the pattern used in SPEC-4 (lines 218-221 use `wc -l | tr -d ' '`).
+All 4 assertions that together cover the full SPEC-3 requirement are tagged:
+1. `assert_file_exists "[#1805/SPEC-3] intake-result.json rehydrated..."` (line 113-115)
+   — proves "places their artifacts in ZBUILD_ARTIFACT_DIR"
+2. `assert_contains "[#1805/SPEC-3] restored artifact contains original payload..."` (line 124-126)
+   — proves `_artifact_persist_restore` + `_artifact_persist_put_back` used git state branch
+3. `assert_eq "[#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage"` (line 136-137)
+   — proves "emits no stage.start for any earlier stage"
+4. `assert_eq "[#1805/SPEC-3] build is the first dispatched stage..."` (line 149-150)
+   — proves "dispatches <s> as the first stage"
 
-## SPEC coverage summary for from-stage-rehydrate-test.sh
+## Full SPEC-4 assertion coverage (from-stage-rehydrate-test.sh)
 
-- SPEC-3: assert_file_exists [tagged] + assert_contains content [tagged] +
-          no-intake-stage.start [tagged, fixed count] + build-is-first [tagged]
-- SPEC-4: exit 1 [tagged] + no-stage.start [tagged] + stderr names stage [tagged]
-- SPEC-13: type:cycle in fixture + intake dispatched in fresh run
+All 3 assertions that together cover the full SPEC-4 requirement are tagged:
+1. `assert_eq "[#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact"` (line 207-208)
+   — proves "exits 1"
+2. `assert_contains "[#1805/SPEC-4] stderr names the missing stage (intake)"` (line 212-214)
+   — proves "names the missing stage in stderr"
+3. `assert_eq "[#1805/SPEC-4] no stage.start emitted before exit 1"` (line 222-223)
+   — proves "before dispatching anything"
 
-## Other test files (fixed in prior calls)
+## SPEC coverage summary (all test files — unchanged since round 4)
 
-- resume-rehydrate-test.sh — SPEC-1, SPEC-2, SPEC-5, SPEC-6, SPEC-12
-- resume-loop-state-test.sh — SPEC-7
-- resume-entry-points-test.sh — SPEC-9
+### resume-rehydrate-test.sh — SPEC-1, SPEC-2, SPEC-5, SPEC-6, SPEC-12
+
+**SPEC-1:**
+- Path 1: assert_file_exists + assert_contains content + assert_eq build==1 +
+          pipeline.resume ordering + assert_eq intake==0
+- Path 2: assert_file_exists + assert_contains content + assert_eq build==1 +
+          pipeline.resume ordering + assert_eq intake==0
+- Path 3: assert_file_exists + assert_contains content + assert_eq build==1 +
+          pipeline.resume ordering + assert_eq intake==0
+
+**SPEC-2:** assert_eq rc==1 + assert_eq any_starts==0
+
+**SPEC-5:** assert_contains in ADR-006 for step 3.6, _runner_resume_rehydrate, test names,
+          exit 1, "before the dispatch loop", "git state branch"
+
+**SPEC-6:** assert_contains in ADR-050 §6 for "new run", "ADR-006", "continues the same run"
+
+**SPEC-12:** assert_eq intake==1 + assert_contains type:cycle
+
+### from-stage-rehydrate-test.sh — SPEC-3, SPEC-4 (all assertions tagged; no change this round)
+### resume-loop-state-test.sh — SPEC-7 (unchanged)
+### resume-entry-points-test.sh — SPEC-9 (unchanged)
