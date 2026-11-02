@@ -1,7 +1,7 @@
-## build_test_cycle — round 1
+## build_test_cycle — round 2
 
 - design: pass — design_produced
-- test-author: fail — changed 4 test file(s); 2 finding(s) about its assertions still open after 2 round(s)
-- build: error — router_timeout
-- test: fail — 9 of 841 tests failed; the shape floor failed: missing_floor_files;the acceptance check failed: the acceptance check failed — SPEC-1/tests/integration/resume-rehydrate-test.sh: its test does not pass on the new code — the code or the test is wrong
-- issue-acceptance: fail — The test suite fails on 9 tests, including tests that directly cover R-1, R-2, R-3, R-4, R-8, R-9, R-10, and R-12; the core contract — that a resume skips completed stages and rehydrates their artifacts — is not proven working, and the cycle-orchestrator change introduces regressions in unrelated cycle tests.
+- test-author: fail — changed 2 test file(s); 3 finding(s) about its assertions still open after 2 round(s)
+- build: error — router_out_of_turns
+- test: fail — 7 of 11 tests failed; the shape floor failed: missing_floor_files;the acceptance check failed: the acceptance check failed — plugins/tool/hydrate/plugin.sh was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
+- issue-acceptance: fail — The test suite fails across 12 tests; the live dispatch-unit loop still dispatches completed stages on resume, --from-stage still re-dispatches skipped stages, the R-9 iteration-count assertion was deleted rather than fixed, and the cycle-orchestrator.sh change introduces regressions that break four unrelated cycle tests.
