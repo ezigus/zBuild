@@ -247,16 +247,16 @@ differs, say why.
 - R-2: Each stage the interrupted run completed counts as done, and its outputs are put back (rehydrated) exactly as they were when the run stopped.
 - R-3: The run picks up at the stage that was interrupted, which runs again from its start.
 - R-4: --from-stage <s> works the same way: every stage before <s> is trusted and rehydrated, and the run starts at <s>.
-- R-5: Amend ADR-006 (resume contract) with the decision above, with the amendment naming its enforcing tests inline.
-- R-6: Amend ADR-050 §6 to draw the line explicitly between resume (continues the same run, governed by ADR-006) and new-run reuse (an earlier run's work, governed by ADR-050 §6).
-- R-7: Rehydration follows the same path the hydrate stage already uses (ADR-050, plugins/tool/hydrate), so "exactly as before" means the same files at the same paths.
+- R-5: Amend ADR-006 (resume contract) with the decision that a resume trusts every stage that already ran, with the amendment naming its enforcing tests inline.
+- R-6: Amend ADR-050 §6 to draw the line explicitly between resume (continues the same run, governed by ADR-006) and new-run reuse (earlier run's work, governed by ADR-050 §6).
+- R-7: Rehydration must follow the same path the hydrate stage already uses (ADR-050, plugins/tool/hydrate), so "exactly as before" means the same files at the same paths.
 - R-8: A run interrupted during stage k must not dispatch stages 1…k−1; their outputs must be present and byte-identical to what they were at the interruption; and stage k must be dispatched. (R1)
 - R-9: Inside a loop (e.g. build → test), a run interrupted mid-round must resume at the interrupted stage of that round, with the loop's iteration count and state restored, not reset. (R2)
 - R-10: --from-stage <s> must dispatch <s> first, with every earlier stage's outputs rehydrated, and must never emit pipeline.skip_to_stage and then run an earlier stage. (R3)
 - R-11: --from-stage <s> naming a stage with no prior output to rehydrate must refuse with a reason and must not start. (R4)
 - R-12: Every way to resume (--resume, auto-resume on restart, and zbuild pipeline resume --run-id) must find the interrupted run's state in runs/<run_id>/ and behave as R1, with each having its own test. (R5)
-- R-13: A run with no prior state must behave exactly as today. (R6)
-- R-14: A new run of the same issue must still never skip a stage because of an earlier run's output (ADR-050 §6). (R7)
+- R-13: A run with no prior state must behave exactly as today. (R6 — guard clause)
+- R-14: A new run of the same issue must still never skip a stage because of an earlier run's output (ADR-050 §6). (R7 — guard clause)
 - R-15: Tests for R1–R5 must use a cycle.
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.
@@ -394,7 +394,7 @@ Summary:
 - goal length: 4989 chars
 - platforms: 1
 
-### design (verdict: pass) — your own
+### design (verdict: timed_out) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
@@ -402,6 +402,19 @@ Outputs:
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Summary:
+## design — error
+
+- Design ran out of time before writing a design.
+
+design.md is unchanged: it stays the last good design.
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-5/design-steps.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-5/design-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-5/design-verdict.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-1-attempt-5/design.md
+
+Summary of that output:
 ## design — pass
 
 - authored design.md — 13 file(s) in scope, 13 acceptance SPEC(s)
@@ -511,6 +524,69 @@ and use that as the loop start value.
 `docs/adr/ADR-006-resume-contract.md` is listed in `config/adr-enforcement-baseline.txt`.
 No `## Enforced by` section is required for it. The amendments in this issue do not change
 that baseline status.
+
+Your last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:
+- (… 45 earlier steps not shown)
+- Bash: grep -n "_verdict_resolve_path\|_verdict_primary_output_path" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -10
+- Bash: grep -rn "_verdict_resolve_path\b\|_verdict_primary_output_path\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | grep "^.*:.*() {" | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/verdict.sh
+- Read: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
+- Read: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- Bash: grep -n "_artifact_persist_snapshot\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: grep -n "setup_git_temp_repo\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: grep -n "_artifact_persist_tmp_name_v\b\|zbuild_engine_tmpdir\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Bash: grep -n "zbuild_engine_tmpdir\b\|zbuild_engine_tmpdir_v\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/helpers.sh | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/helpers.sh
+- Bash: grep -n "setup_test_env\b\|TEST_TEMP_DIR" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -20
+- Bash: grep -n "^setup_test_env\b\|^setup_test_env()" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Bash: grep -n "_artifact_persist_stage_batch\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Bash: grep -rn "_artifact_persist_snapshot\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/ | grep -v "1805" | head -10
+- Bash: grep -rn "_artifact_persist_snapshot\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/ | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/hydrate-stage-test.sh
+- Bash: grep -n "zb_test_issue\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh 2>&1; echo "rc=$?"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: timeout 60 bash tests/integration/resume-rehydrate-test.sh 2>&1 | head -60
+- Bash: ls /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/ | head -20
+- Bash: grep -l "cycles\|type.*cycle" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/*.yaml 2>/dev/null | head -10
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/cycle-resume.yaml
+- Bash: grep -rn "id:.*cycled\|cycled" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/ | head -10
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/artifact-snapshot-coverage.yaml 2>/dev/null | head -30
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/resume.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/resume.sh
+- Bash: timeout 60 bash tests/integration/resume-rehydrate-test.sh 2>&1 | tail -40
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/cycle-resume.yaml
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/build-test-cycle-minimal.yaml
+- Bash: grep -n "ZBUILD_CYCLES_ENABLED\|_ZB_TEST_ISOLATED_VARS" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: grep -n "_ZBUILD_PIPELINE_RESUME_MODE" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -10
+- Bash: grep -n "_ZBUILD_PIPELINE_RESUME_MODE\|resume_mode\|ZBUILD_RESUME" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- Bash: timeout 60 bash tests/integration/resume-loop-state-test.sh 2>&1 | head -50
+- Bash: timeout 60 bash tests/integration/from-stage-rehydrate-test.sh 2>&1 | head -40
+- Bash: timeout 60 bash tests/integration/resume-entry-points-test.sh 2>&1 | head -50
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- Bash: timeout 30 bash -c ' source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh source core/state/artifact-persist.sh setup_test_env "debug-cycled" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null PLUGINS_ROOT="$TEST_TEMP_DIR/plug…
 
 ### test (verdict: fail)
 Outputs:
