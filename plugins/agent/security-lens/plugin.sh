@@ -195,7 +195,8 @@ _security_lens_run_inner() {
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.
     local _composed
-    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
+    # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
+    if ! _composed="$(stage_prompt_compose_parts --fresh "$prompt")"; then
         _security_lens_write_result "$output" misconfigured \
             "the prompt could not be composed, so no security review happened"
         stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" misconfigured \

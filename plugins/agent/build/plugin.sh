@@ -159,6 +159,9 @@ _build_stage_run_inner() {
     # the design either way (_build_load_context).
     local plan_json="{}"
     [[ -n "$plan_json_path" && -s "$plan_json_path" ]] && plan_json="$(cat "$plan_json_path")"
+    # #2458 (ADR-071, ADR-067 §6): build is shown the steps that change code;
+    # a step on the design's own test files is the test author's.
+    [[ "$plan_json" == *'"topic":"tests"'* ]] && plan_json="$(work_steps_of_topic "$plan_json" change)"
 
     local plan_files_csv="" _acceptance_testfiles="" _acceptance_spec_ids="" _design_decisions=""
     _build_load_context
@@ -196,7 +199,7 @@ _build_stage_run_inner() {
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
-        "$_acceptance_spec_ids" "$_iter_n" "$(_build_compose_limits "$plan_files_csv")"
+        "$_acceptance_spec_ids" "$_iter_n" "$(_build_compose_limits "$plan_files_csv" "$_acceptance_testfiles")"
 
     # ADR-067 §8: build's three parts and the engine's blocks, in the one
     # prompt order. Build's own latest summary — and every earlier stage's

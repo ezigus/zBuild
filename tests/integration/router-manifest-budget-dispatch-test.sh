@@ -99,7 +99,7 @@ assert_eq "[SETUP] the engine — not this test — supplied ZBUILD_PLUGIN_DIR" 
 
 assert_eq "[SPEC-1] router.timeout_s comes from the manifest, not the 300s constant" \
     "777" "$(_seen rmb-declares timeout)"
-assert_eq "[SPEC-1] router.max_turns comes from the manifest, not the 25 constant" \
+assert_eq "[SPEC-1] router.max_turns comes from the manifest, not the default" \
     "3" "$(_seen rmb-declares max_turns)"
 
 # ─── SPEC-2: a plugin that declares nothing is unchanged ────────────────────
@@ -108,7 +108,7 @@ print_test_section "[SPEC-2] a plugin declaring no budget resolves exactly as be
 _dispatch "$_SILENT" budget_fixture_stage
 assert_eq "[SETUP] silent fixture dispatched cleanly" "0" "$?"
 assert_eq "[SPEC-2] timeout_s is the 300s constant" "300" "$(_seen rmb-silent timeout)"
-assert_eq "[SPEC-2] max_turns is the 25 constant" "25" "$(_seen rmb-silent max_turns)"
+assert_eq "[SPEC-2] max_turns is the default: no limit (#2458)" "0" "$(_seen rmb-silent max_turns)"
 
 # ─── SPEC-3: identity does not leak into the NEXT dispatch ──────────────────
 # plugin_hook_call uses `local -x`, so stage N's manifest cannot be read by

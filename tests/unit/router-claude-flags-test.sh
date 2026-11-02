@@ -2,7 +2,8 @@
 # Tests: ADR-018 (#466, #1919 C10) — router adopts shipwright's claude flag set.
 # Locks the argv shape: --max-turns N --disallowed-tools "..." --permission-mode acceptEdits
 # --settings <file> coexist with --print/--model/--output-format and resolve max_turns
-# via the per-stage > env > 25 precedence rule (mirrors ADR-017's timeout_s).
+# via the per-stage > env > plugin precedence rule (mirrors ADR-017's timeout_s);
+# with none of them set there is no limit and no --max-turns (#2458, ADR-018).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,13 +73,14 @@ set -e
 assert_eq "T1: route returns rc=0" "0" "$rc"
 
 argv="$(_read_argv)"
-assert_contains "T1: argv contains --max-turns" "$argv" "--max-turns"
-# The value 25 must appear as its own argv token (not embedded in another flag).
-if grep -qx -- "25" <<< "$argv"; then
-    assert_pass "T1: argv contains default max_turns=25 as its own token"
+# #2458 (ADR-018): with no limit set anywhere there is none — no --max-turns.
+if grep -qx -- "--max-turns" <<< "$argv"; then
+    assert_fail "T1: no limit set → argv has no --max-turns" "argv: $argv"
 else
-    assert_fail "T1: argv contains default max_turns=25 as its own token" "argv: $argv"
+    assert_pass "T1: no limit set → argv has no --max-turns"
 fi
+assert_eq "T1: ...and the omission names the default as its source" "default" \
+    "$(jq -r 'select(.type=="router.max_turns.flag_omitted") | .data.source // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
 assert_contains "[SPEC-5] T1: argv contains --disallowed-tools" "$argv" "--disallowed-tools"
 # Comma must remain intact in a single argv token (no shell expansion).
 if grep -qx -- "EnterPlanMode,ExitPlanMode" <<< "$argv"; then
@@ -111,7 +113,7 @@ assert_contains "T1: argv preserves --print" "$argv" "--print"
 assert_contains "T1: argv preserves --model" "$argv" "--model"
 
 # ─── T2: JSON mode coexists with new flags ───────────────────────────────────
-export ZBUILD_ROUTER_JSON_OUTPUT=1
+export ZBUILD_ROUTER_JSON_OUTPUT=1 ZBUILD_ROUTER_MAX_TURNS=25   # #2458: a stated limit
 _install_recording_mock
 # Recording mock returns plain text; ZBUILD_ROUTER_JSON_OUTPUT=1 will then
 # fail JSON parse, returning rc=1 — but argv recording happens before that.
@@ -123,6 +125,7 @@ argv="$(_read_argv)"
 assert_contains "T2: --output-format coexists with new flags" "$argv" "--output-format"
 assert_contains "T2: json token present" "$argv" "json"
 assert_contains "T2: --max-turns still present in JSON mode" "$argv" "--max-turns"
+unset ZBUILD_ROUTER_MAX_TURNS
 # [SPEC-1] C10 (#2180): the never-ask mode applies in JSON mode too.
 if grep -qx -- "--permission-mode" <<< "$argv"; then
     assert_pass "[SPEC-1] T2: --permission-mode still present in JSON mode"
@@ -251,7 +254,7 @@ omitted_source="$(jq -r 'select(.type=="router.max_turns.flag_omitted") | .data.
 assert_eq "T4e: flag_omitted source classified as env (not default)" "env" "$omitted_source"
 unset ZBUILD_ROUTER_MAX_TURNS
 
-# ─── T5: empty env falls back to default (25) ────────────────────────────────
+# ─── T5: empty env falls back to the default: no limit (#2458) ───────────────
 _install_recording_mock
 export ZBUILD_ROUTER_MAX_TURNS=""
 set +e
@@ -260,10 +263,10 @@ rc=$?
 set -e
 assert_eq "T5: empty env → rc=0 (falls through to default)" "0" "$rc"
 argv="$(_read_argv)"
-if grep -qx -- "25" <<< "$argv"; then
-    assert_pass "T5: empty env falls back to default 25"
+if grep -qx -- "--max-turns" <<< "$argv"; then
+    assert_fail "T5: empty env falls back to no limit (no --max-turns)" "argv: $argv"
 else
-    assert_fail "T5: empty env falls back to default 25" "argv: $argv"
+    assert_pass "T5: empty env falls back to no limit (no --max-turns)"
 fi
 unset ZBUILD_ROUTER_MAX_TURNS
 

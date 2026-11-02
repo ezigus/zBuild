@@ -921,6 +921,25 @@ _cycle_detect_velocity_plateau() {
     return 0
 }
 
+# _cycle_stage_max_turns_v <var> <stage> — the turn limit <stage>'s calls run
+# under, resolved as the router resolves it, without any escalation in force;
+# 0 when it has none (#2458).
+_cycle_stage_max_turns_v() {
+    local -n _csmt="$1"; local _st="$2" _pd=""
+    _csmt=0
+    if ! declare -F _route_resolve_max_turns >/dev/null 2>&1; then
+        local _csl="${BASH_SOURCE[0]%/*}/../../scripts/lib/stage-limits.sh"
+        # shellcheck source=../../scripts/lib/stage-limits.sh
+        [[ -f "$_csl" ]] && source "$_csl" 2>/dev/null
+    fi
+    declare -F _route_resolve_max_turns >/dev/null 2>&1 || return 0
+    declare -F resolve_stage_plugin >/dev/null 2>&1 \
+        && _pd="$(resolve_stage_plugin "$_st" 2>/dev/null || true)"
+    _csmt="$(unset ZBUILD_ROUTER_MAX_TURNS_OVERRIDE; ZBUILD_CURRENT_STAGE="$_st" ZBUILD_PLUGIN_DIR="$_pd" \
+        _route_resolve_max_turns 2>/dev/null || true)"
+    [[ "$_csmt" =~ ^[0-9]+$ ]] || _csmt=0
+}
+
 # ─── _cycle_detect_blocked <verdicts_blob> <iter> ────────────────────────────
 # #528 — early-abort when any stage in _CYCLE_STAGES[] this iter has raw
 # verdict ∈ {error, corrupt_diff, block} (the "cannot-recover" class).
@@ -972,7 +991,8 @@ _cycle_detect_blocked() {
         case "$v" in
             error|corrupt_diff|block)
                 # ADR-029 G2 (#810): a verdict=error from this iter that
-                # came from a router timeout/OOM is recoverable — the
+                # came from a router timeout/OOM — or, #2458, from running out
+                # of turns — is recoverable — the
                 # member loop's G2 logic owns the abandon decision and
                 # already terminated rc=4 if it hit threshold. If we
                 # reached _cycle_detect_blocked, the counter is still
@@ -1815,8 +1835,8 @@ _cycle_iter_dispatch() {
         if [[ "${_CYCLE_TIMEOUT_RUN[$s]:-0}" -ge 1 ]] \
             && [[ -n "${_CYCLE_TURNS_BASE[$s]:-}" ]]; then
             local _g3_base="${_CYCLE_TURNS_BASE[$s]}"
-            # Escalate +50% rounded, cap at 2× base. base must be >0 and
-            # finite (the resolver default is 25).
+            # Escalate +50% rounded, cap at 2× base. base is >0: a stage with
+            # no limit (0, the resolver's default, #2458) records no base.
             local _g3_bumped=$(( _g3_base + (_g3_base / 2) ))
             local _g3_cap=$(( _g3_base * 2 ))
             [[ $_g3_bumped -gt $_g3_cap ]] && _g3_bumped=$_g3_cap
@@ -1953,8 +1973,11 @@ _cycle_iter_dispatch() {
         # largely dormant; it stays intact for any member that still reports an
         # error-class router_timeout/oom so G3 escalation continues to work.
         local _g2_reason="${_CYCLE_DISPATCH_REASON:-}"
+        # #2458: running out of turns is a budget running out, as a timeout is —
+        # it neither stops the loop (_cycle_detect_blocked) nor goes uncounted.
         if [[ "$verdict" == "error" ]] && \
-           [[ "$_g2_reason" == "router_timeout" || "$_g2_reason" == "router_oom_kill" ]]; then
+           [[ "$_g2_reason" == "router_timeout" || "$_g2_reason" == "router_oom_kill" \
+              || "$_g2_reason" == "router_out_of_turns" ]]; then
             _CYCLE_TIMEOUT_RUN["$s"]=$(( ${_CYCLE_TIMEOUT_RUN["$s"]:-0} + 1 ))
             # Sync to persist map so the incremented count survives re-entry.
             _CYCLE_TIMEOUT_RUN_PERSIST["${_CYCLE_TRAP_CYCLE_ID}:$s"]="${_CYCLE_TIMEOUT_RUN[$s]}"
@@ -1964,20 +1987,17 @@ _cycle_iter_dispatch() {
             # otherwise the compile-time default (25). Calling the template
             # helper directly (mirrors _route_resolve_max_turns logic) so the
             # captured base is the actual budget that was just exhausted.
+            # #2458: the base is the stage's real limit, from the router's own
+            # resolver (template > env > plugin > none). A stage with no limit
+            # (0) has none to raise and keeps none — #1805 run 41489923219 read
+            # build's "no limit" as 25 and ran its next round on 37 turns.
             if [[ -z "${_CYCLE_TURNS_BASE[$s]:-}" ]]; then
                 local _g3_capture=""
-                if command -v template_stage_router_max_turns >/dev/null 2>&1; then
-                    _g3_capture="$(template_stage_router_max_turns "$s" 2>/dev/null || true)"
+                _cycle_stage_max_turns_v _g3_capture "$s"
+                if [[ "$_g3_capture" =~ ^[0-9]+$ && "$_g3_capture" -gt 0 ]]; then
+                    _CYCLE_TURNS_BASE["$s"]="$_g3_capture"
+                    _CYCLE_TURNS_BASE_PERSIST["${_CYCLE_TRAP_CYCLE_ID}:$s"]="$_g3_capture"
                 fi
-                if [[ ! "$_g3_capture" =~ ^[0-9]+$ ]] || [[ "$_g3_capture" -le 0 ]]; then
-                    if [[ "${ZBUILD_ROUTER_MAX_TURNS:-}" =~ ^[0-9]+$ ]] && [[ "${ZBUILD_ROUTER_MAX_TURNS}" -gt 0 ]]; then
-                        _g3_capture="$ZBUILD_ROUTER_MAX_TURNS"
-                    else
-                        _g3_capture="25"
-                    fi
-                fi
-                _CYCLE_TURNS_BASE["$s"]="$_g3_capture"
-                _CYCLE_TURNS_BASE_PERSIST["${_CYCLE_TRAP_CYCLE_ID}:$s"]="$_g3_capture"
             fi
             eb_emit_event "cycle.member.timeout" \
                 "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \

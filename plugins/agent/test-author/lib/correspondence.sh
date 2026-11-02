@@ -82,7 +82,8 @@ _sc_call() {
     # prompt order. A prompt that cannot be composed is not sent: the call
     # fails as misconfigured (rc 2), the first failure kept like any other.
     local _composed
-    if ! _composed="$(stage_prompt_compose_parts "$_framed")"; then
+    # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
+    if ! _composed="$(stage_prompt_compose_parts --fresh "$_framed")"; then
         _ta_sc_emit "test_author.check.prompt_refused" "reason=not_composed"
         if [[ -n "$_rc_file" ]]; then
             local _prev0=0

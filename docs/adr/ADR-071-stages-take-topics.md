@@ -103,7 +103,16 @@ the code (155 turns, nothing saved), and the run ended. Only one finding was des
 - **The test stage labels by whose test it is.** A failing test file, or a file the shape check says this change must update, that is one of the design's test files keeps the output's topic (`code-findings`: test-author and build). Any other file is labelled `change`, which build takes and test-author and design do not.
 - **Each test file is listed once.** `acceptance_list_testfiles` used to print a file once per requirement that named it, and every reader repeated it (test-author's "Already written" list named one file six times).
 
+## Amendment 2026-11-02 (#2458) — §1 §2: design's work steps carry a topic
+
+On #1805 run 41489923219 design's step "add `export _ZBUILD_RESUME_ACTIVE=true` to `resume-loop-state-test.sh`" — one of the design's own test files — was given to build, which may not edit those files, and never to test-author. Build found the code fix, saw it turn that test red, and spent five tries without an edit.
+
+- **Each step in `design-steps.json` carries a topic, from its files.** A step whose files are the design's own test files (its TESTFILES) is `tests`: only the stage that writes the tests may change them. A step on code, or on a test file outside that list (a golden, an older test this change must update), is `change`. A step that touches both is split into one of each, with the same words. The same rule the test stage labels its findings by (#2454).
+- **Each stage is shown its own steps.** Build's work plan holds only the `change` steps; test-author's prompt lists the `tests` steps as part of its job. A step written before steps carried a topic counts as `change` (`work_steps_of_topic`).
+
 ## Enforced by
+
+- §1 §2 amendment 2026-11-02 (#2458: design's work steps carry a topic; each stage is shown its own) → `tests/unit/design-step-topics-test.sh` T1–T4
 
 - §1 §2 amendment 2026-11-02 (#2454: every stage result declares where its findings may go) → `tests/unit/finding-owner-topics-test.sh` O1–O5; `tests/integration/test-checks-own-run-test.sh` R8
 - §1 §2 amendment 2026-11-02 (#2452: each finding can carry its own topic) → `tests/unit/finding-topics-test.sh` F1 (a topic before a tab), F2–F4 (Previous work routes each finding by its own topic, else its output's), F5–F6 (issue-acceptance's marks; its summary does not list them), F7 (the acceptance check's code and test findings are code-findings), F8 (findings read back with their topics)

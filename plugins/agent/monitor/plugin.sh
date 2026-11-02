@@ -195,7 +195,8 @@ _monitor_stage_run_inner() {
     # ADR-067 §8: the stage's three parts and the engine's blocks — its budget
     # among the engine's rules — in the one prompt order.
     local _composed
-    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
+    # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
+    if ! _composed="$(stage_prompt_compose_parts --fresh "$prompt")"; then
         _monitor_write_result "$report_out" misconfigured "prompt_not_composed" "" "[]"
         return 1
     fi

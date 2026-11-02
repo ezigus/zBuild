@@ -134,7 +134,8 @@ _design_coverage() {
     local _scope _done_ev
     _scope="$(acceptance_list_scope "$design_md" 2>/dev/null || true)"
     _done_ev="$(_dcov_done_evidence "$design_md" "${ZBUILD_REPO_ROOT:-$PWD}")"
-    if ! framed="$(stage_prompt_compose_text "$(_dcov_prompt_own)" "$(_dcov_prompt_judge "$acc" "$reqs" "$_scope" "$_done_ev")" "$(_dcov_prompt_limits)")"; then
+    # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own)" "$(_dcov_prompt_judge "$acc" "$reqs" "$_scope" "$_done_ev")" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi

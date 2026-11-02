@@ -69,7 +69,19 @@ Previous work is open for you, confirm it and finish, in your answer's usual for
 #2441's "test-author runs its own test files" is withdrawn: test-author's model runs nothing, and its own
 script runs the test files the call created or changed (ADR-068 §6, amended 2026-11-01).
 
+## Amendment 2026-11-02 (#2458) — §8: a judging call, and a stage with no tools, starts fresh; §6: build's file list
+
+On #1805 run 41489923219 issue-acceptance was handed its notes from an earlier run, its earlier findings and "if it is already there and right, confirm it and finish" — and in round 2 repeated that SPEC-1 fails while the test results in its own prompt showed those files passing. intake has no tools and its reply is its output; told the same, it replied "confirming the existing intake" with no requirements, an unusable try on the first call of every run. design's coverage check and test-author's assertion checks were shown their author's notes.
+
+- **§8: a model call that judges composes fresh** (`stage_prompt_compose_text --fresh`, `stage_prompt_compose_parts --fresh`): Previous work without the stage's own notes or the list of its cut-off call, and rules with no notes file and no confirm rule. Instead the rules say: write your whole answer from what this prompt shows now; an earlier finding or verdict, your own included, is not an answer to repeat — check it against what this prompt shows now. The judging calls: intake (both calls), design's coverage check, test-author's assertion check, issue-acceptance, review-lens, security-lens, monitor.
+- **§8: a stage with no tools is fresh in every call**, whichever way it composes.
+- **§8: a building call is unchanged** — design's writing call, test-author's writing call and build keep their notes, their cut-off list and the confirm rule (#2445).
+- The engine writes both forms at dispatch (`previous-work.md`/`rules.md` and `previous-work-fresh.md`/`rules-fresh.md`) from one pass, with no extra program (ADR-065 §5).
+- **§6: build's list of files it may touch leaves out the design's own test files**, which it may not touch (the read-only rule above the list still names them).
+
 ## Enforced by
+
+- §8 §6 amendment 2026-11-02 (#2458: judging calls and stages with no tools start fresh; build's file list leaves out the test files it may not touch) → `tests/unit/fresh-judge-prompt-test.sh` J1–J4; `tests/unit/design-step-topics-test.sh` T5
 
 - §8 amendment 2026-11-01 (#2445: every stage confirms work already done; test-author runs nothing) → `tests/unit/already-done-test.sh` A1; `tests/unit/test-author-before-run-test.sh` B1; `tests/unit/test-author-checks-own-output-test.sh` A8, A11
 

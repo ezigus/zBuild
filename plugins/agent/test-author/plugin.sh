@@ -294,6 +294,20 @@ EXISTING CHECKS THIS CHANGE MAKES WRONG — these assertions exist already and a
 ${sup_block}"
     fi
 
+    # #2458 (ADR-071): the design's steps on these test files are this stage's
+    # to do — and only these; a step that changes code is build's.
+    local steps_section="" _wp _wpj="" _tsteps=""
+    _wp="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    [[ -n "$_wp" && -s "$_wp" ]] && { IFS= read -r -d '' _wpj < "$_wp" || true; }
+    if [[ "$_wpj" == *'"topic":"tests"'* ]]; then
+        _tsteps="$(jq -r '.steps[]? | select(.topic == "tests") | "- \(.description) (\(.areas | join(", ")))"' \
+            <<< "$_wpj" 2>/dev/null || true)"
+    fi
+    [[ -n "$_tsteps" ]] && steps_section="
+WHAT THE DESIGN SAYS TO DO IN THESE TEST FILES — part of your job:
+${_tsteps}
+"
+
     # #2445: what is already written, found by script, not re-read by the model.
     local written_block; written_block="$(_ta_written_list "$design" "$repo")"
 
@@ -331,7 +345,7 @@ LOOP_COMPLETE
 The requirements below. Write what each requirement DEMANDS, not what some implementation might do.
 
 REQUIREMENTS:
-${spec_block}${sup_section}
+${spec_block}${sup_section}${steps_section}
 ## What you must not do
 - You cannot see the implementation, and you must not guess at it. You may read the existing tests and the repository's test helpers; do not read the code this change is about.
 - Run nothing: when you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.
