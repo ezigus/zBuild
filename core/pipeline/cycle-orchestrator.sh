@@ -2328,15 +2328,25 @@ _cycle_orchestrator_run_body() {
         { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
     }
 
+    # ADR-006 §3.6 / #1805 (SPEC-7): read the persisted current_iter so a
+    # resumed cycle starts from the next unfinished iteration, not from 1.
+    # A fresh cycle has current_iter=0 (set by _cycle_state_init via //=), so
+    # _start_iter defaults to 1 — identical behaviour to the old hard-coded 1.
+    local _persisted_iter
+    _persisted_iter="$(get_state_field "$state_file" \
+        ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
+    [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
+    local _start_iter=$(( _persisted_iter + 1 ))
+
     _cycle_install_traps
 
     eb_emit_event "cycle.start" \
-        "cycle_id=$cycle_id" "iter=1" \
+        "cycle_id=$cycle_id" "iter=$_start_iter" \
         "max=$_CYCLE_MAX_ITER" \
         "stages=${_CYCLE_STAGES[*]}" 2>/dev/null || true
 
     local iter
-    for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
+    for (( iter=_start_iter; iter <= _CYCLE_MAX_ITER; iter++ )); do
         _CYCLE_TRAP_ITER="$iter"
         _CYCLE_LAST_ITERATIONS="$iter"
 

@@ -628,3 +628,20 @@ _artifact_persist_restore() {
     _ARTIFACT_PERSIST_LAST_REASON="restored from $ref"
     return 0
 }
+
+# ─── _artifact_persist_put_back <from> <to> (#1805, ADR-006 §3.6) ───────────
+# Copy every file under <from> to the same place under <to>, skipping any file
+# <to> already has (no-clobber). stage-io/ records are excluded (one run's
+# model calls, not stage output). Identical semantics to _hydrate_put_back;
+# extracted here so the runner's resume rehydration and the hydrate plugin
+# share one implementation.
+_artifact_persist_put_back() {
+    local from="$1" to="$2" f rel
+    mkdir -p "$to" || return 1
+    while IFS= read -r -d '' f; do
+        rel="${f#"$from"/}"
+        [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
+        mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
+    done < <(find "$from" -type f -print0 2>/dev/null)
+    return 0
+}

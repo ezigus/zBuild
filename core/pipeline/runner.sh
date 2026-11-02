@@ -1701,6 +1701,62 @@ _runner_rearm_traps() {
     trap '_runner_signal_trap TERM' TERM
 }
 
+# ─── _runner_resume_rehydrate <issue> <state_dir> (#1805, ADR-006 §3.6) ─────
+# Restore completed-stage artifacts from the git state branch into the
+# artifact area before the dispatch loop runs. Non-fatal on restore failure;
+# a still-absent artifact is caught by the dispatch loop's stale-artifact
+# check which now exits 1 instead of warning-and-continuing (SPEC-2 / SPEC-9).
+_runner_resume_rehydrate() {
+    local _rr_issue="$1" _rr_state_dir="$2"
+    local _rr_artifacts_dir="$_rr_state_dir/artifacts"
+    local _rr_staging="$_rr_state_dir/resume-rehydrate.staging"
+    rm -rf "$_rr_staging" 2>/dev/null || true
+    _artifact_persist_restore "$_rr_issue" "$_rr_staging" || {
+        rm -rf "${_rr_staging:?}" 2>/dev/null || true
+        return 0
+    }
+    if [[ -d "$_rr_staging/artifacts" ]]; then
+        _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" || true
+    fi
+    rm -rf "${_rr_staging:?}" 2>/dev/null || true
+    return 0
+}
+
+# ─── _runner_from_stage_preflight <stages_arr> <from_stage> <state_dir> <plugins_root> ─
+# For --from-stage <s>: restore + put_back artifacts from the git state branch,
+# then verify every stage before <s> has its primary artifact in ZBUILD_ARTIFACT_DIR.
+# Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
+_runner_from_stage_preflight() {
+    local -n _fsp_stages="$1"
+    local _fsp_from_stage="$2" _fsp_state_dir="$3" _fsp_plugins_root="$4"
+    local _fsp_artifacts_dir="$_fsp_state_dir/artifacts"
+    local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
+    rm -rf "$_fsp_staging" 2>/dev/null || true
+    # Restore + put_back (same sequence as _runner_resume_rehydrate)
+    _artifact_persist_restore "$_runner_issue" "$_fsp_staging" || true
+    if [[ -d "$_fsp_staging/artifacts" ]]; then
+        _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" || true
+    fi
+    rm -rf "${_fsp_staging:?}" 2>/dev/null || true
+    # Verify every stage before the target has its primary artifact
+    local _fsp_s _fsp_plugin_dir _fsp_manifest _fsp_prim_path _fsp_resolved
+    for _fsp_s in "${_fsp_stages[@]}"; do
+        [[ "$_fsp_s" == "$_fsp_from_stage" ]] && break
+        _fsp_plugin_dir=""; _fsp_manifest=""; _fsp_prim_path=""; _fsp_resolved=""
+        _fsp_plugin_dir="$(_find_plugin_for_stage "$_fsp_s" "$_fsp_plugins_root" 2>/dev/null || true)"
+        [[ -z "$_fsp_plugin_dir" ]] && continue
+        _fsp_manifest="$_fsp_plugin_dir/manifest.yaml"
+        _fsp_prim_path="$(_verdict_primary_output_path "$_fsp_manifest" 2>/dev/null || true)"
+        [[ -z "$_fsp_prim_path" ]] && continue
+        _fsp_resolved="$(_verdict_resolve_path "$_fsp_prim_path" "$_fsp_state_dir")"
+        if [[ ! -s "$_fsp_resolved" ]]; then
+            echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
+            return 1
+        fi
+    done
+    return 0
+}
+
 main() {
     local issue="" goal="" dry_run=false template="simple"
     local resume_mode=false from_stage="" no_resume=false force=false
@@ -2775,6 +2831,11 @@ main() {
         # resumed run immediately. Resume must always start from a clean
         # signal channel.
         _zbuild_disarm_abort_sentinel
+        # ADR-006 §3.6 (#1805): restore completed-stage artifacts from the git
+        # state branch before the dispatch loop, so complete stages have their
+        # primary artifacts available. A still-absent artifact causes exit 1 at
+        # the dispatch loop's stale-artifact check.
+        _runner_resume_rehydrate "$_runner_issue" "$state_dir"
         eb_emit_event "pipeline.resume" "run_id=$_runner_run_id" "issue=$_runner_issue"
         info "Pipeline resuming — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
         if [[ -n "$from_stage" ]]; then
@@ -2857,6 +2918,14 @@ main() {
     # ── Determine skip-ahead point when --from-stage is set ───────────────────
     local skip_until_stage=""
     [[ -n "$from_stage" ]] && skip_until_stage="$from_stage"
+
+    # ADR-006 §3.6 (#1805): when --from-stage is active, verify every stage
+    # before the target has a restorable artifact before the dispatch loop runs.
+    if [[ -n "$from_stage" ]]; then
+        if ! _runner_from_stage_preflight "active_stages" "$from_stage" "$state_dir" "$plugins_root"; then
+            return 1
+        fi
+    fi
 
     # ADR-021 (#512 + #511 F2): cycle-aware dispatch.
     # #511 Pin 4 — detect-and-enable with env override:
@@ -3749,9 +3818,12 @@ main() {
                             eb_emit_event "stage.verdict.stale_artifact" \
                                 "stage=$stage" "path=$_sk_resolved" \
                                 "run_id=$_runner_run_id"
-                            local _sk_sc; _sk_sc="$(_stage_color "$stage")"
-                            echo -e "${YELLOW}${BOLD}⚠${RESET} Stage ${_sk_sc}${BOLD}${stage}${RESET} complete (stale: primary artifact missing)" >&2
-                            continue
+                            # ADR-006 §3.6 (#1805): fail closed — a complete stage
+                            # whose artifact is absent after rehydration means the
+                            # git state branch had nothing to restore. Exit 1 before
+                            # any stage.start event is emitted (SPEC-2).
+                            echo "error: resume: stage '$stage' is marked complete but its primary artifact is absent after rehydration (expected: $_sk_resolved)" >&2
+                            return 1
                         fi
                     fi
                 fi
