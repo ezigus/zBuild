@@ -44,6 +44,8 @@ install_template_overlay "$S3_WORK_REPO" runner-state-dir-minimal
 # Create mock plugins.
 mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "build"  "agent" 0 >/dev/null
+# cycled sub-stage used by the artifact-snapshot-coverage cyclic fixture (SPEC-13 sub-case).
+mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
 S3_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
 # Create the intake primary artifact so the snapshot picks it up.
@@ -111,6 +113,17 @@ set -e
 assert_file_exists \
     "[#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage" \
     "$S3_STATE_DIR/artifacts/intake-result.json"
+
+# [#1805/SPEC-3]: the restored artifact must carry the payload originally snapshotted to
+# the git state branch — this proves _artifact_persist_restore read from git and
+# _artifact_persist_put_back placed it in ZBUILD_ARTIFACT_DIR (not re-created fresh by
+# the runner through any other mechanism).
+# Before the change: no restore → file absent → content="" → FAILS.
+# After the change: git state restore → original content present → PASSES.
+_s3_restored_content="$(cat "$S3_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
+assert_contains \
+    "[#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)" \
+    "$_s3_restored_content" "prior-run intake"
 
 # [#1805/SPEC-3]: intake must emit no stage.start event (it was skipped).
 # Before the change: no rehydration means intake might be re-dispatched → stage.start emitted → FAILS.
@@ -212,13 +225,54 @@ assert_eq "[#1805/SPEC-4] no stage.start emitted before exit 1" \
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "[#1805/SPEC-13] from-stage-rehydrate test uses a fixture containing a cyclic stage"
 
-# Install a cyclic fixture into a dedicated work repo to establish that this test
-# file's setup installs a pipeline containing a cyclic stage (SPEC-13 requirement).
+# Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
+# demonstrate that this test file exercises a pipeline containing a cyclic stage.
+_S13_FS_ID="$(zb_test_issue)"
 _S13_FS_WORK="$(setup_git_temp_repo fs-s13-cycle-check)"
 install_template_overlay "$_S13_FS_WORK" artifact-snapshot-coverage
+
+_S13_FS_STATE_DIR="$TEST_TEMP_DIR/s13fs-state"
+_S13_FS_EVENTS_DIR="$TEST_TEMP_DIR/s13fs-events"
+_S13_FS_EVENTS_JSONL="$_S13_FS_EVENTS_DIR/events.jsonl"
+_S13_FS_STATE_FILE="$_S13_FS_STATE_DIR/pipeline-state.json"
+mkdir -p "$_S13_FS_STATE_DIR/artifacts" "$_S13_FS_EVENTS_DIR"
+
+jq -n \
+    --arg run_id "s13fs-fresh-1805" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$_S13_FS_ID" \
+    '{
+        schema_version: 1, run_id: $run_id, issue: $issue,
+        stage_statuses: {}, current_iteration: 0, self_heal_count: {},
+        scope_manifest_hash: "", cost_ledger_pointer: 0, claim_lease_id: "",
+        plugin_state: {}, status: "in_progress", updated_at: $now
+    }' > "$_S13_FS_STATE_FILE"
+
+set +e
+( cd "$_S13_FS_WORK" && env \
+    ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$_S13_FS_STATE_DIR" \
+    ZBUILD_STATE_FILE="$_S13_FS_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$_S13_FS_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$_S13_FS_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template artifact-snapshot-coverage --issue "$_S13_FS_ID" ) \
+    >"$TEST_TEMP_DIR/s13fs-stdout.txt" 2>"$TEST_TEMP_DIR/s13fs-stderr.txt"
+set -e
+
+# [#1805/SPEC-13]: the fixture is cyclic (type: cycle present).
 _s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "[#1805/SPEC-13] from-stage-rehydrate test installs a fixture with type: cycle" \
+assert_contains "[#1805/SPEC-13] from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
     "$_s13_fs_content" "type: cycle"
+
+# [#1805/SPEC-13]: confirm the cyclic pipeline ran (intake dispatched in the fresh run).
+_s13_fs_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+    "$_S13_FS_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
+assert_eq "[#1805/SPEC-13] cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)" \
+    "1" "$_s13_fs_intake_starts"
 
 cleanup_test_env
 print_test_results
