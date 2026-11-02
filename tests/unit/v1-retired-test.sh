@@ -73,7 +73,7 @@ _manifest() {
         [[ -n "$contract" ]] && printf 'provides:\n  result_contract: %s\n' "$contract"
         printf 'inputs: []\n'
         if [[ -n "$prim" ]]; then
-            printf 'outputs:\n  - id: result\n    path: %s\n    type: json\n    required: true\n    primary: true\n' "$prim"
+            printf 'outputs:\n  - id: result\n    path: %s\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n' "$prim"
         fi
         [[ "$kind" == persona ]] || printf 'config:\n  valid_verdicts: [pass, fail]\n'
     } > "$dir/manifest.yaml"

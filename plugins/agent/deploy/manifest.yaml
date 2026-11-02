@@ -43,6 +43,7 @@ config:
 outputs:
   - id: deploy_result
     path: ${artifact_dir}/deploy-result.json
+    finding_topics: none
     type: deploy-result.json@1
     format: json
     required: true

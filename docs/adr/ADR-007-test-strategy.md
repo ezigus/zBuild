@@ -1,6 +1,6 @@
 # ADR-007: Test Strategy
 
-**Status:** Accepted
+**Status:** Accepted; amended 2026-11-02 (#2454: the grep -c check reads whole commands; a failure shows line breaks)
 **Date:** 2026-05-24
 
 ## Context
@@ -95,6 +95,11 @@ Phase 0 verification calls for this: spawn two simulated daemons, have them race
 - **5-test trial** has been applied to memory-sqlite (#216) and orch-sequential (#219) per PR #304. Other keepers await per-PR trial files; ADR-002 pruning protocol blocks `git rm` of legacy source until the trial files exist.
 - **Parity test** (`tests/e2e/parity-local-vs-ci-test.sh`) diffs full `pipeline-state.json` (normalized) + artifact sha256 tree + event-type sequence — the depth promised by ADR-010 (added by PR #306).
 - **CI gating:** `.github/workflows/test.yml` runs smoke + lint + unit + integration + e2e + golden + mutation as parallel jobs.
+
+## Amendment 2026-11-02 (#2454) — a test that cannot pass is caught, and a failure shows what it got
+
+- **`lint-grep-c.sh` reads whole commands.** `grep -c` prints `0` and exits 1 when nothing matches, so `|| echo 0` after it gives `0⏎0`, and a test comparing it with `0` fails exactly when the code is right. The check now joins a command continued with `\`, blanks quoted text (keeping a `$( … )` inside double quotes), and catches `|| printf` too. Six of #1805's assertions spread the command over two lines with brackets in a jq filter, and the old line-based check passed them. Enforced by `tests/unit/lint-grep-c-test.sh` SPEC-9.
+- **A failing `assert_eq` shows a value's line breaks.** A value with a line break is shown quoted, its breaks as `⏎`, on the one detail line the test stage keeps. `got: 0⏎0` used to print over two lines, and every stage read it as `got: 0`. Enforced by `tests/unit/test-helpers-assert-shows-line-breaks-test.sh` L1, L2.
 
 ## References
 

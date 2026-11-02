@@ -42,6 +42,7 @@ config:
 outputs:
   - id: mutation_result
     path: "${artifact_dir}/mutation-result.json"
+    finding_topics: none
     type: mutation-result.json@1
     format: json
     required: true

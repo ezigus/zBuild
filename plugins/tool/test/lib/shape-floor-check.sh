@@ -27,6 +27,11 @@ source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../script
 # #2366 (ADR-054 §6): the one result writer — contract 3, one outcome.
 # shellcheck source=../../../../scripts/lib/stage-result.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/stage-result.sh"
+# #2454: findings are labelled by whose test file they name.
+# shellcheck source=./findings.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/findings.sh"
+# shellcheck source=../../../../scripts/lib/earlier-output.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/earlier-output.sh"
 _SF_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../../core/event-bus/event-bus.sh
@@ -133,9 +138,11 @@ shape_floor_run() {
         declare -f _sf_collect_missing_floor_files >/dev/null 2>&1 && declare -f _sf_diff_files >/dev/null 2>&1 \
             && _sf_fl="$(_sf_collect_missing_floor_files "$repo_root" "$(_sf_diff_files "$repo_root")" 2>/dev/null || true)"
         if [[ -n "$_sf_fl" ]]; then
+            # #2454: a pinned file that is not one of the design's test files
+            # is the change's to update — labelled change, it reaches build.
             _sf_fnd="$(while IFS= read -r _sf_f; do
-                [[ -n "$_sf_f" ]] && printf '%s spells out a count, order or list this change alters; update it if it is now wrong\n' "$_sf_f"
-            done <<< "$_sf_fl" | stage_findings_json)"
+                [[ -n "$_sf_f" ]] && printf '%s\t%s spells out a count, order or list this change alters; update it if it is now wrong\n' "$_sf_f" "$_sf_f"
+            done <<< "$_sf_fl" | _test_findings_by_owner "$(earlier_acceptance_contract "$(dirname "$result_path")" "" 2>/dev/null || true)" | stage_findings_json)"
         else
             _sf_fnd="$(printf 'the shape check failed: %s\n' "$detail" | stage_findings_json)"
         fi

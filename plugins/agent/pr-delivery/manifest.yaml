@@ -46,6 +46,7 @@ outputs:
   # reads its verdict, disposition and reason. pr-url.txt stays an ordinary output.
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
+    finding_topics: none
     type: pr-result.json@1
     format: json
     required: true

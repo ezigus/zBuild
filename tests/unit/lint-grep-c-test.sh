@@ -8,6 +8,9 @@
 #                    defect that cost run 32886585375 through (#1969)
 #   SPEC-8 [change]: an explicit `lint-grep-c:allow` marker suppresses one line,
 #                    so the linter's own fixtures need no path exemption
+#   SPEC-9 [change]: a command continued over lines with `\`, or with brackets
+#                    inside quotes, is caught too; so is `|| printf` (#2454: six
+#                    of #1805's assertions had this form and the lint passed them)
 #
 # Plus the wiring assertions that keep the rule reachable: a linter nothing
 # invokes is inert, which is how the original defect shipped twice.
@@ -176,6 +179,44 @@ assert_eq "[SPEC-8] the marker is per-line: an unmarked sibling still fails" "1"
 assert_contains "[SPEC-8] only the unmarked line is reported" "$out" "mixed.sh:3"
 
 # ─── Wiring: the rule must actually run somewhere ────────────────────────────
+# ─── SPEC-9: the whole command, not one line (#2454) ─────────────────────────
+print_test_section "9a. a command over lines, brackets in quotes, || printf"
+FX_MULTI="$TEST_TEMP_DIR/multi"
+mkdir -p "$FX_MULTI"
+# Assembled at runtime, as above, so this file stays clean.
+_GC='grep -c'
+{
+    echo '#!/usr/bin/env bash'
+    echo 'n="$(jq -r '"'"'select(.type=="a") | .b // empty'"'"' \'
+    echo "    \"\$F\" 2>/dev/null | $_GC '^intake\$' || echo 0)\""
+} > "$FX_MULTI/continued.sh"
+{
+    echo '#!/usr/bin/env bash'
+    echo "n=\"\$(jq -r 'select(.a == (1)) | .b' f | $_GC x || echo 0)\""
+} > "$FX_MULTI/parens.sh"
+{
+    echo '#!/usr/bin/env bash'
+    echo "n=\"\$($_GC x f || printf '0')\""
+} > "$FX_MULTI/printf.sh"
+rc=0
+out="$(bash "$CHECKER" "$FX_MULTI" 2>&1)" || rc=$?
+assert_eq "[SPEC-9] lint exits 1" "1" "$rc"
+assert_contains "[SPEC-9] a command continued over lines is caught" "$out" "continued.sh"
+assert_contains "[SPEC-9] brackets inside quotes do not hide it" "$out" "parens.sh"
+assert_contains "[SPEC-9] || printf is the same bug" "$out" "printf.sh"
+FX_MOK="$TEST_TEMP_DIR/multiok"
+mkdir -p "$FX_MOK"
+{
+    echo '#!/usr/bin/env bash'
+    echo 'n="$(jq -r '"'"'select(.type=="a") | .b'"'"' \'
+    echo "    f | $_GC x || true)\""
+    echo "m=\"\$($_GC x f)\" || m=0"
+    echo "echo done; $_GC x f; echo other || echo fine"
+} > "$FX_MOK/safe.sh"
+rc=0
+out="$(bash "$CHECKER" "$FX_MOK" 2>&1)" || rc=$?
+assert_eq "[SPEC-9] the safe forms over lines still pass" "0" "$rc"
+
 print_test_section "9. wiring: CI configuration references lint-grep-c.sh"
 
 pkg_lint="$(jq -r '.scripts.lint // ""' "$REPO_ROOT/package.json")"

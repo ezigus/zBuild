@@ -86,6 +86,7 @@ outputs:
     topic: change
     description: "build's result: its outcome, and what it did about each finding it received"
     path: "${artifact_dir}/build-summary.json"
+    finding_topics: none
     type: build-summary.json@4
     format: json
     required: true
@@ -99,6 +100,7 @@ outputs:
     topic: code-findings
     description: "tests build says are wrong and cannot pass, each with the file and why"
     path: "${artifact_dir}/build-tests-result.json"
+    finding_topics: none
     type: build-tests.json@1
     format: json
     required: false

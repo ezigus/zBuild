@@ -33,6 +33,7 @@ config:
 outputs:
   - id: merge_result
     path: ${artifact_dir}/merge-result.json
+    finding_topics: none
     type: merge-result.json@1
     format: json
     required: true

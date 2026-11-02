@@ -576,8 +576,13 @@ A result write that fails never leaves an earlier round's file reading as this r
 - Intake ends non-zero, with a `broken` result whose reason names the file, when `scope-manifest.md` or `intake.md` cannot be written.
 - Every `| atomic_write` in `core/`, `plugins/` and `scripts/` checks its write: `&&` or `||` after it, an `if !` test, or a `PIPESTATUS` read at the write's index (never index 0, the producer). `scripts/lib/lint-atomic-write-unchecked.sh` in `npm run lint` fails one that does not.
 
+### Amendment (2026-11-02, #2454) — §6a: a cut-off call's saved steps are progress
+
+The steps of a call cut off at its time limit are saved beside the stage's notes for its next try (#2443). They are now something the try left, like the notes: a try whose saved steps are new or changed made progress and gets its retry. The same steps again, or none (the call finished and the list was removed), are not progress. A try that finished and changed nothing still gets no retry. Why: on #1805 run 41452299475 test-author's call was cut off, its steps were saved for the next try, and the progress rule then refused that try, so the steps were never used and the run ended.
+
 ## Enforced by
 
+- §6a amendment 2026-11-02 (#2454: a cut-off call's saved steps are progress) → `tests/unit/attempt-progress-test.sh` P8, P9
 - §5 amendment 2026-11-01 (#1754: a failed result write leaves no result) → `tests/unit/test-plugin-result-write-fallback-test.sh` SPEC-1; `tests/unit/test-result-reason-contract-test.sh` SPEC-2; `plugins/agent/intake/tests/intake-result-test.sh` SPEC-3, SPEC-4; `tests/unit/plugin-primary-output-atomic-test.sh` SPEC-5–SPEC-8; `scripts/lib/lint-atomic-write-unchecked.sh`
 - §6a amendment 2026-10-31 (#2439: the engine owns every retry, for every stage) → `tests/unit/stage-retry-test.sh` R1–R10; `tests/unit/route-one-call-per-try-test.sh` O1–O6; `tests/unit/retired-retry-settings-test.sh` T1–T6; `tests/unit/attempt-progress-test.sh` P1–P5
 - §6a amendment 2026-11-01 (#2443: the result file is not progress; the notes are; each try knows its number) → `tests/unit/attempt-progress-test.sh` P1, P5–P7; `tests/unit/stage-retry-test.sh` R10, R11; `tests/integration/write-boundary-revert-test.sh` D7

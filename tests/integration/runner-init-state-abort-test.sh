@@ -77,6 +77,7 @@ outputs:
     path: \${artifact_dir}/$id-result.json
     required: true
     primary: true
+    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {

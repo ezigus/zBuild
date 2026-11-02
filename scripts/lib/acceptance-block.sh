@@ -487,10 +487,14 @@ acceptance_list_supersedes() {
     done < "$design_md"
 }
 
+# acceptance_list_testfiles <design_md> — each test file the block names, once,
+# in first-seen order (#2454: a file named by several requirements was listed
+# once per requirement, and every reader repeated it).
 acceptance_list_testfiles() {
     local design_md="${1:-}"
     [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
     local block_output line in_testfiles=0
+    local -A _seen=()
     block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
     [[ -z "$block_output" ]] && return 0
     while IFS= read -r line; do
@@ -511,11 +515,15 @@ acceptance_list_testfiles() {
                 local _bp
                 for _bp in "${_bound_parts[@]}"; do
                     [[ -z "$_bp" || "$_bp" == /* || "/$_bp/" == *"/../"* ]] && continue
+                    [[ -n "${_seen[$_bp]:-}" ]] && continue
+                    _seen[$_bp]=1
                     printf '%s\n' "$_bp"
                 done
                 continue
             fi
             [[ "$line" == /* || "/$line/" == *"/../"* ]] && continue
+            [[ -n "${_seen[$line]:-}" ]] && continue
+            _seen[$line]=1
             printf '%s\n' "$line"
         fi
     done <<< "$block_output"

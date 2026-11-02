@@ -36,6 +36,7 @@ outputs:
     topic: ask
     description: "intake's result: the goal it took in"
     path: "${artifact_dir}/intake-result.json"
+    finding_topics: none
     type: intake-result.json@1
     format: json
     required: true

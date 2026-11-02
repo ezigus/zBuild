@@ -67,7 +67,7 @@ _producer() {
     mkdir -p "$PROOT/tool/$s"
     {
         printf 'id: %s\nname: %s\nkind: tool\nversion: 0.0.1\nhooks:\n  run: x_run\noutputs:\n' "$s" "$s"
-        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n' "$u" "$s"
+        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n' "$u" "$s"
         [[ -n "$tl" ]] && printf '%s\n' "$tl"
         printf '  - id: %s_summary\n    path: ${artifact_dir}/%s-summary.md\n    type: text\n    required: false\n    summary: true\n' "$u" "$s"
         [[ -n "$tl" ]] && printf '%s\n' "$tl"
@@ -94,7 +94,7 @@ _consumer() {
         printf 'id: %s\nname: %s\nkind: agent\nversion: 0.0.1\n' "$s" "$s"
         [[ -n "$takes" ]] && printf '%s' "$takes"
         printf 'hooks:\n  run: x_run\noutputs:\n'
-        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    topic: ask\n' "$u" "$s"
+        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n    topic: ask\n' "$u" "$s"
     } > "$PROOT/agent/$s/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$PROOT/agent/$s/plugin.sh"
 }
@@ -184,7 +184,7 @@ _valid() {
         printf 'id: v\nname: v\nkind: tool\nversion: 0.0.1\n'
         [[ -n "$2" ]] && printf '%s\n' "$2"
         printf 'provides:\n  result_contract: 3\nhooks:\n  run: x_run\noutputs:\n'
-        printf '  - id: v_result\n    path: ${artifact_dir}/v-result.json\n    type: json\n    required: true\n    primary: true\n    topic: %s\n    description: x\n' "$3"
+        printf '  - id: v_result\n    path: ${artifact_dir}/v-result.json\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n    topic: %s\n    description: x\n' "$3"
     } > "$1/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$1/plugin.sh"
 }

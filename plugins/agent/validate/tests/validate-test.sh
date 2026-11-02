@@ -388,7 +388,7 @@ if grep -q 'cleanup:' <<< "$_s25_hooks"; then
 else
     assert_pass "[SPEC-25] manifest hooks block has no cleanup hook"
 fi
-_s25_hook_count="$(grep -cE '^[[:space:]]+[a-z_]+:' <<< "$_s25_hooks" 2>/dev/null || printf '0')"
+_s25_hook_count="$(grep -cE '^[[:space:]]+[a-z_]+:' <<< "$_s25_hooks" 2>/dev/null || true)"
 assert_eq "[SPEC-25] manifest hooks block declares exactly one hook (run only)" "1" "$_s25_hook_count"
 
 # ---------------------------------------------------------------------------

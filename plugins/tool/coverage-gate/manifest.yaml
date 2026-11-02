@@ -43,6 +43,7 @@ config:
 outputs:
   - id: coverage_result
     path: "${artifact_dir}/coverage-result.json"
+    finding_topics: none
     type: coverage-result.json@1
     format: json
     required: true

@@ -113,7 +113,7 @@ _mk() { # <file> <id> [declared-contract] — a stage plugin: it declares a prim
         printf 'id: %s\nname: Test\nkind: tool\nversion: 0.1.0\n' "$2"
         printf 'hooks:\n  run: test_run\nprovides:\n  role: t\n'
         if [[ -n "${3:-}" ]]; then printf '  result_contract: %s\n' "$3"; fi
-        printf 'outputs:\n  - id: result\n    path: ${artifact_dir}/t-result.json\n    type: t.json@1\n    required: true\n    primary: true\n'
+        printf 'outputs:\n  - id: result\n    path: ${artifact_dir}/t-result.json\n    type: t.json@1\n    required: true\n    primary: true\n    finding_topics: none\n'
     } > "$1"
 }
 _mk "$TEST_TEMP_DIR/ok.yaml"   "ok-plugin"   3

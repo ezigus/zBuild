@@ -94,7 +94,7 @@ subs() { sort -u "$SUB" | tr '\n' ' ' | sed 's/ $//'; }
 mkplug() {
     local d="$1/tool/$2"
     mkdir -p "$d"
-    printf 'id: %s\nname: %s\nkind: tool\nversion: 0.0.1\nhooks:\n  run: %s_run\nrequires:\n  core: [event-bus]\noutputs:\n  - id: %s\n    path: ${artifact_dir}/%s.json\n    primary: true\n    summary: true\n    required: true\nprovides:\n  result_contract: 3\n' \
+    printf 'id: %s\nname: %s\nkind: tool\nversion: 0.0.1\nhooks:\n  run: %s_run\nrequires:\n  core: [event-bus]\noutputs:\n  - id: %s\n    path: ${artifact_dir}/%s.json\n    primary: true\n    finding_topics: none\n    summary: true\n    required: true\nprovides:\n  result_contract: 3\n' \
         "$2" "$2" "${2//-/_}" "$3" "$2" > "$d/manifest.yaml"
     printf '%s_run() { return 0; }\n' "${2//-/_}" > "$d/plugin.sh"
 }
@@ -119,9 +119,10 @@ if declare -F _sp_manifest_roles_v >/dev/null; then
     _r=""; work _sp_manifest_roles_v _r "$R/tool/s2/manifest.yaml" "$SD"
     assert_eq "[P2] _sp_manifest_roles_v starts no subshell" "0" "$(procs)"
     _r=""; _sp_manifest_roles_v _r "$R/tool/s2/manifest.yaml" "$SD"
-    # Summary, then errors, primary, required: the order the reader prints them.
+    # Summary, then errors, primary, required, then the finding topics (#2454):
+    # the order the reader prints them.
     assert_eq "[P2] …and gives the roles' lines" \
-        "S"$'\t''${artifact_dir}/s2.json'$'\n'"P"$'\t''${artifact_dir}/s2.json'$'\n'"R"$'\t''${artifact_dir}/s2.json' "$_r"
+        "S"$'\t''${artifact_dir}/s2.json'$'\n'"P"$'\t''${artifact_dir}/s2.json'$'\n'"R"$'\t''${artifact_dir}/s2.json'$'\n'"F"$'\t'"none"$'\t'"s2_out"$'\t''${artifact_dir}/s2.json' "$_r"
     assert_eq "[P2] …as _sp_manifest_roles prints them" "$_r" "$(_ws_real__sp_manifest_roles "$R/tool/s2/manifest.yaml" "$SD")"
 else
     assert_fail "[P2] _sp_manifest_roles_v exists" "not defined"

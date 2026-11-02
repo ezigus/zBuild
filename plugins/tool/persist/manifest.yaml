@@ -54,6 +54,7 @@ outputs:
     errors: true
   - id: persist_result
     path: "${artifact_dir}/persist-result.json"
+    finding_topics: none
     type: persist-result.json@1
     format: json
     required: true

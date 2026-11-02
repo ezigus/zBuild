@@ -36,6 +36,7 @@ config:
 outputs:
   - id: validate_result
     path: ${artifact_dir}/validate-result.json
+    finding_topics: none
     type: validate-result.json@1
     format: json
     required: true

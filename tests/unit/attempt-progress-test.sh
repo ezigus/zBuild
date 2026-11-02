@@ -23,6 +23,11 @@
 # P5 [change] ...a change to only its result file (primary) is no progress
 # P6 [change] a change to the stage's notes is progress
 # P7 [guard]  a change to any other declared output is progress
+# P8 [change] a try whose call was cut off and whose steps were saved made
+#             progress (#2454: on #1805 run 41452299475 the steps were saved
+#             for a next try the progress rule then refused)
+# P9 [guard]  ...the same steps again, or none (the call finished and the list
+#             was removed), are no progress
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,6 +101,15 @@ _attempt "$Q" designer 'printf "d4" > "$ART/designer-result.json"'
 assert_eq "[P6] ...its notes unchanged, only its result → no progress" "no" "$(_progress designer)"
 _attempt "$Q" designer 'printf "w1" > "$ART/designer-work.md"'
 assert_eq "[P7] another declared output changed → progress" "yes" "$(_progress designer)"
+
+print_test_section "P8-P9: a cut-off call's saved steps"
+_cut="$ART/notes/designer.cut-off.md"
+_attempt "$Q" designer 'printf -- "- Read: a.sh\n" > "$_cut"'
+assert_eq "[P8] its call was cut off and its steps saved → progress" "yes" "$(_progress designer)"
+_attempt "$Q" designer 'printf -- "- Read: a.sh\n" > "$_cut"'
+assert_eq "[P9] the same steps again → no progress" "no" "$(_progress designer)"
+_attempt "$Q" designer 'rm -f "$_cut"'
+assert_eq "[P9] the call finished and the list was removed → no progress" "no" "$(_progress designer)"
 
 cleanup_test_env
 print_test_results

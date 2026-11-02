@@ -208,6 +208,11 @@ assert_eq() {
     if [[ "$expected" == "$actual" ]]; then
         assert_pass "$desc"
     else
+        # #2454: a value with a line break is shown quoted, its breaks as ⏎, on
+        # the one detail line — the test stage keeps only that line, and
+        # "got: 0⏎0" printed over two lines read as "got: 0".
+        [[ "$expected" == *$'\n'* ]] && expected="\"${expected//$'\n'/⏎}\""
+        [[ "$actual" == *$'\n'* ]] && actual="\"${actual//$'\n'/⏎}\""
         assert_fail "$desc" "expected: $expected, got: $actual"
     fi
 }
@@ -946,6 +951,7 @@ outputs:
     format: json
     required: true
     primary: true
+    finding_topics: none
 EOF
     local _outcome=pass _srl
     [[ "$exit_code" -ne 0 ]] && _outcome=broken

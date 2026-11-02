@@ -51,6 +51,7 @@ config:
 outputs:
   - id: monitor_report
     path: "${artifact_dir}/monitor-report.json"
+    finding_topics: none
     type: monitor-report.json@1
     format: json
     required: true
