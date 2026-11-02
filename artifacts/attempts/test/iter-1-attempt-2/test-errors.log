@@ -1,0 +1,501 @@
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/unit/stage-retry-test.sh
+
+[38;2;0;212;255m[1m  the engine runs any stage again, as its template says (#2439)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [R1] timed_out with progress, no retry: in the template → 2 runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [R1] the retry that passes is what the dispatch reports
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [R2] retry: 2 → 3 runs
+    [2mexpected: 3, got: 1[0m
+  [38;2;248;113;113m✗[0m [R2] every word that means 'did not finish' is retried
+    [2mexpected: 3, got: 1[0m
+  [38;2;74;222;128m✓[0m [R3] pass → 1 run
+  [38;2;74;222;128m✓[0m [R3] fail → 1 run (the loop handles a failure, not the retry)
+  [38;2;248;113;113m✗[0m [R4] a try that changed nothing is not run again
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [R5] retry: 9 is capped at 5 → 6 runs
+    [2mexpected: 6, got: 1[0m
+  [38;2;248;113;113m✗[0m [R5] retry: lots → the default 1 → 2 runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;74;222;128m✓[0m [R5] retry: 0 → 1 run
+  [38;2;248;113;113m✗[0m [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [R7] one stage.retry for the one retry
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [R7] it names the stage
+    [2mexpected: twice, got: [0m
+  [38;2;248;113;113m✗[0m [R7] ...the outcome the try ended on
+    [2mexpected: timed_out, got: [0m
+  [38;2;248;113;113m✗[0m [R7] ...which try comes next
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [R7] ...of how many
+    [2mexpected: 3, got: [0m
+  [38;2;74;222;128m✓[0m [R7] stage.retry is a known event
+  [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;74;222;128m✓[0m [R9] the inner dispatch runs once; it is not retried on its own
+  [38;2;74;222;128m✓[0m [R10] a code-writing stage whose result alone changed made no progress
+  [38;2;74;222;128m✓[0m [R10] ...one whose other output changed did
+  [38;2;74;222;128m✓[0m [R10] ...one whose summary alone changed did not
+  [38;2;74;222;128m✓[0m [R10] ...one whose code changed did
+  [38;2;248;113;113m✗[0m [R11] each try is told its number
+    [2mexpected: 1 2 3 , got: none [0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m15 of 24 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [R1] timed_out with progress, no retry: in the template → 2 runs
+  [38;2;248;113;113m✗[0m [R1] the retry that passes is what the dispatch reports
+  [38;2;248;113;113m✗[0m [R2] retry: 2 → 3 runs
+  [38;2;248;113;113m✗[0m [R2] every word that means 'did not finish' is retried
+  [38;2;248;113;113m✗[0m [R4] a try that changed nothing is not run again
+  [38;2;248;113;113m✗[0m [R5] retry: 9 is capped at 5 → 6 runs
+  [38;2;248;113;113m✗[0m [R5] retry: lots → the default 1 → 2 runs
+  [38;2;248;113;113m✗[0m [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
+  [38;2;248;113;113m✗[0m [R7] one stage.retry for the one retry
+  [38;2;248;113;113m✗[0m [R7] it names the stage
+  [38;2;248;113;113m✗[0m [R7] ...the outcome the try ended on
+  [38;2;248;113;113m✗[0m [R7] ...which try comes next
+  [38;2;248;113;113m✗[0m [R7] ...of how many
+  [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
+  [38;2;248;113;113m✗[0m [R11] each try is told its number
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
+
+[38;2;0;212;255m[1m  inner cycle iter+history reset per outer iter (Wave 19-D-2 #732)[0m
+[2m  ══════════════════════════════════════════[0m
+
+══ build_review_cycle [cycle] seq=1 input ══════════════════════ 18:55:46 UTC ══
+(no feedback — first iteration)
+
+══ build_test_cycle [cycle] seq=1 input ════════════════════════ 18:55:46 UTC ══
+(no feedback — first iteration)
+
+
+══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 18:55:46 UTC ══
+exit_when stage=test field=verdict op=eq value=approve → NOT MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build_test_cycle ✓ ──
+
+══ build_test_cycle [cycle] seq=2 input ════════════════════════ 18:55:46 UTC ══
+(no stage summaries)
+
+
+══ build_test_cycle [cycle] seq=2 output OK 0.3s ═══════════════ 18:55:47 UTC ══
+exit_when stage=test field=verdict op=eq value=approve → NOT MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build_test_cycle ✓ ──
+
+══ build_review_cycle [cycle] seq=1 output OK 1.5s ═════════════ 18:55:47 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → NOT MATCHED (got=request_changes)
+health: progress=0 (no progress) - defects=1 → score=-1
+── end stage-io: build_review_cycle ✓ ──
+
+══ build_review_cycle [cycle] seq=2 input ══════════════════════ 18:55:47 UTC ══
+(no stage summaries)
+
+
+
+  [38;2;0;212;255mouter iter 2 entered and converges[0m
+  [38;2;74;222;128m✓[0m T1: outer cycle converges rc=0 (review approve on iter 2)
+  [38;2;74;222;128m✓[0m T2: review was called twice (one per outer iter)
+
+  [38;2;0;212;255minner cycle resets across outer iters[0m
+  [38;2;74;222;128m✓[0m T3: inner cycle.start emitted twice (one per outer iter)
+  [38;2;248;113;113m✗[0m T4: both inner cycle.start at iter=1 (RESET, not 4)
+    [2mexpected: 1, got: 1
+3[0m
+  [38;2;248;113;113m✗[0m T5: inner cycle.complete emitted twice
+    [2mexpected: 2, got: 1[0m
+  [38;2;74;222;128m✓[0m T6: both inner runs terminated reason=max_iterations
+  [38;2;248;113;113m✗[0m T7: inner cycle.iteration.complete emitted 4 times (2 iter × 2 outer iter)
+    [2mexpected: 4, got: 2[0m
+  [38;2;248;113;113m✗[0m T8: inner iteration counts: 2 of iter=1, 2 of iter=2 (proves reset)
+    [2mexpected: 2 1
+2 2, got: 1 1
+1 2[0m
+
+  [38;2;0;212;255minner history file truncated on outer iter 2[0m
+  [38;2;248;113;113m✗[0m T9: inner history file contains 2 rows (truncated on outer iter 2 entry)
+    [2mexpected: 2, got: 0[0m
+  [38;2;248;113;113m✗[0m T10: inner history rows have iter=1 and iter=2 only (reset on outer iter 2)
+    [2mexpected: 1,2, got: [0m
+
+  [38;2;0;212;255mouter cycle emits expected events[0m
+  [38;2;74;222;128m✓[0m T11: outer cycle.iteration.complete emitted twice
+  [38;2;74;222;128m✓[0m T12: outer cycle.complete reason=converged
+
+  [38;2;0;212;255mWave 19-D-1 member.dispatch events span both outer iters[0m
+  [38;2;74;222;128m✓[0m T13: 4 cycle.member.dispatch.start at outer (2 members × 2 iters)
+  [38;2;74;222;128m✓[0m T14: outer member dispatch order is build_test_cycle,review,build_test_cycle,review
+  [38;2;74;222;128m✓[0m T15: inner_cycle dispatch.complete verdict=fail (max_iter mapping)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m6 of 15 tests failed[0m
+
+  [38;2;248;113;113m✗[0m T4: both inner cycle.start at iter=1 (RESET, not 4)
+  [38;2;248;113;113m✗[0m T5: inner cycle.complete emitted twice
+  [38;2;248;113;113m✗[0m T7: inner cycle.iteration.complete emitted 4 times (2 iter × 2 outer iter)
+  [38;2;248;113;113m✗[0m T8: inner iteration counts: 2 of iter=1, 2 of iter=2 (proves reset)
+  [38;2;248;113;113m✗[0m T9: inner history file contains 2 rows (truncated on outer iter 2 entry)
+  [38;2;248;113;113m✗[0m T10: inner history rows have iter=1 and iter=2 only (reset on outer iter 2)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/cycle-member-dispatch-events-test.sh
+
+[38;2;0;212;255m[1m  cycle.member.dispatch.{start,complete} instrumentation (Wave 19-D-1 #731)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. leaf-only cycle: 2 members, 2 start + 2 complete events[0m
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 18:55:29 UTC ══
+(no feedback — first iteration)
+
+
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 18:55:30 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: the_cycle ✓ ──
+  [38;2;74;222;128m✓[0m cycle converges rc=0 on iter 1
+  [38;2;74;222;128m✓[0m cycle.member.dispatch.start emitted 2 times (one per leaf member)
+  [38;2;74;222;128m✓[0m cycle.member.dispatch.complete emitted 2 times
+  [38;2;74;222;128m✓[0m first dispatched member = build
+  [38;2;74;222;128m✓[0m second dispatched member = review
+  [38;2;74;222;128m✓[0m build member kind=leaf
+  [38;2;74;222;128m✓[0m review dispatch.complete verdict=approve (RAW)
+  [38;2;74;222;128m✓[0m review dispatch.complete rc=0
+  [38;2;74;222;128m✓[0m build dispatch.start position=1
+  [38;2;74;222;128m✓[0m review dispatch.start position=2
+
+  [38;2;0;212;255m2. 2-level cycle: nested-cycle member kind=cycle[0m
+══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 18:55:30 UTC ══
+(no feedback — first iteration)
+
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 18:55:30 UTC ══
+(no feedback — first iteration)
+
+
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 18:55:30 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ outer_cycle [cycle] seq=1 output OK 0.8s ════════════════════ 18:55:31 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: outer_cycle ✓ ──
+  [38;2;74;222;128m✓[0m outer cycle converges rc=0
+  [38;2;74;222;128m✓[0m outer cycle dispatched 2 members
+  [38;2;74;222;128m✓[0m inner_cycle member kind=cycle
+  [38;2;74;222;128m✓[0m review (outer's 2nd member) kind=leaf
+  [38;2;74;222;128m✓[0m inner cycle dispatched 2 members (build, test)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete rc=0 (converged)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete verdict=pass
+
+  [38;2;0;212;255m3. inner exhausts with failing tests → outer goes round, then halts (never advisory-rescued, #1208, #2271)[0m
+══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 18:55:31 UTC ══
+(no feedback — first iteration)
+
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 18:55:31 UTC ══
+(no feedback — first iteration)
+
+
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 18:55:31 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=2 input ═════════════════════════════ 18:55:31 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=2 output OK 0.3s ════════════════════ 18:55:32 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=3 input ═════════════════════════════ 18:55:32 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=3 output OK 0.3s ════════════════════ 18:55:32 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=review field=verdict
+══ outer_cycle [cycle] seq=1 output OK 2.0s ════════════════════ 18:55:33 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → NOT MATCHED (got=)
+health: progress=0 (no progress) - defects=1 → score=-1
+── end stage-io: outer_cycle ✓ ──
+
+══ outer_cycle [cycle] seq=2 input ═════════════════════════════ 18:55:33 UTC ══
+(no stage summaries)
+
+
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.start emitted once per outer round (instrumentation intact)
+  [38;2;74;222;128m✓[0m inner_cycle's last dispatch.complete rc=1 (#1208: exhausted with failing tests)
+  [38;2;248;113;113m✗[0m inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)
+    [2mexpected: blocking_member_failure, got: fail[0m
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete disposition is EMPTY (no inner-member leak)
+  [38;2;74;222;128m✓[0m an inner LEAF member still reports its own disposition
+  [38;2;248;113;113m✗[0m review NOT dispatched after a failing inner cycle (#1208 halt, no rescue)
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m outer cycle halts rc=1, outcome failed, reason blocking_member_failure (propagated)
+    [2mexpected: 1 failed blocking_member_failure, got: 1 failed design_timeout_exhausted[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 24 tests failed[0m
+
+  [38;2;248;113;113m✗[0m inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)
+  [38;2;248;113;113m✗[0m review NOT dispatched after a failing inner cycle (#1208 halt, no rescue)
+  [38;2;248;113;113m✗[0m outer cycle halts rc=1, outcome failed, reason blocking_member_failure (propagated)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/nested-loop-rounds-build-test.sh
+
+[38;2;0;212;255m[1m  the outer loop goes round when the build loop ends unconverged (#2271)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mL3: the build loop runs out of rounds with tests failing[0m
+  [38;2;248;113;113m✗[0m [L3] the outer loop goes round: design runs again
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [L3] the build loop starts again at round 1
+    [2mexpected: 2, got: 1[0m
+  [38;2;74;222;128m✓[0m [L3] when the outer rounds are spent the run does not succeed (rc=1)
+
+  [38;2;0;212;255mL6: a blocked build loop stops the run[0m
+  [38;2;74;222;128m✓[0m [L6] the outer loop does not go round
+  [38;2;74;222;128m✓[0m [L6] the run stops as blocked (rc=1, interrupted, reason blocked), not as a config error
+
+  [38;2;0;212;255mL7: a member that halts the run inside the build loop stops the run[0m
+  [38;2;74;222;128m✓[0m [L7] the outer loop does not go round
+  [38;2;74;222;128m✓[0m [L7] ...the run stops (rc=1, failed)
+  [38;2;74;222;128m✓[0m [L7] ...naming what the halting member said
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 8 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [L3] the outer loop goes round: design runs again
+  [38;2;248;113;113m✗[0m [L3] the build loop starts again at round 1
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/nested-loop-rounds-test.sh
+
+[38;2;0;212;255m[1m  the outer loop goes round when an inner loop ends unconverged (#2271)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mL1/L5: everything passes[0m
+  [38;2;74;222;128m✓[0m [L1] the outer loop converges
+  [38;2;74;222;128m✓[0m [L1] design runs once
+  [38;2;74;222;128m✓[0m [L1] impact runs once
+  [38;2;74;222;128m✓[0m [L5] the outer loop needs only one round
+
+  [38;2;0;212;255mL2: the design loop runs out of rounds[0m
+  [38;2;248;113;113m✗[0m [L2] design starts again at round 1 in the second outer round
+    [2mexpected: 2, got: 1[0m
+  [38;2;74;222;128m✓[0m [L2] build never runs on a design the checks reject
+  [38;2;74;222;128m✓[0m [L2] impact never runs either
+  [38;2;74;222;128m✓[0m [L2] the outer loop does not report success (rc=1)
+
+  [38;2;0;212;255mL4: design fails in the first outer round only[0m
+  [38;2;248;113;113m✗[0m [L4] the outer loop converges in round 2
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [L4] design started at round 1 in both outer rounds
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [L4] build ran once, in round 2
+    [2mexpected: 1, got: 0[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 11 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [L2] design starts again at round 1 in the second outer round
+  [38;2;248;113;113m✗[0m [L4] the outer loop converges in round 2
+  [38;2;248;113;113m✗[0m [L4] design started at round 1 in both outer rounds
+  [38;2;248;113;113m✗[0m [L4] build ran once, in round 2
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/resume-entry-points-test.sh
+
+[38;2;0;212;255m[1m  resume-entry-points — all resume paths rehydrate artifacts (#1805)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1805/SPEC-9] path 1: bash runner.sh --resume restores artifacts[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-9] path 1 (--resume flag): intake-result.json restored from state branch
+
+  [38;2;0;212;255m[#1805/SPEC-9] path 2: auto-resume on status=interrupted restores artifacts[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-9] path 2 (auto-resume/interrupted): intake-result.json restored from state branch
+
+  [38;2;0;212;255m[#1805/SPEC-9] path 3: zbuild pipeline resume --run-id restores artifacts[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-9] path 3 (zbuild pipeline resume): intake-result.json restored from state branch
+
+  [38;2;0;212;255mresume-entry-points test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m resume-entry-points test uses a cyclic fixture (type: cycle)
+  [38;2;74;222;128m✓[0m cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)
+  [38;2;248;113;113m✗[0m cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test
+    [2mexpected >0, got: 0
+0[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 6 tests failed[0m
+
+  [38;2;248;113;113m✗[0m cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/resume-rehydrate-test.sh
+
+[38;2;0;212;255m[1m  resume-rehydrate — artifact restore on resume (#1805)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1805/SPEC-1] resume restores completed-stage artifact into ZBUILD_ARTIFACT_DIR[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] setup: state branch populated with intake-result.json
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR
+  [38;2;248;113;113m✗[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
+    [2mexpected: 0, got: 0
+0[0m
+
+  [38;2;0;212;255m[#1805/SPEC-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume/interrupted): intake-result.json restored
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): build dispatched (pipeline ran via path-2 resume)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
+    [2mexpected: 0, got: 0
+0[0m
+
+  [38;2;0;212;255m[#1805/SPEC-1] path 3: zbuild pipeline resume --run-id restores artifacts[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake-result.json restored
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): build dispatched (pipeline ran via path-3)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
+    [2mexpected: 0, got: 0
+0[0m
+
+  [38;2;0;212;255m[#1805/SPEC-2] missing artifact causes resume exit 1 before any stage.start[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-2] resume exits 1 when primary artifact cannot be restored
+  [38;2;74;222;128m✓[0m [#1805/SPEC-2] no stage.start emitted before exit 1
+
+  [38;2;0;212;255m[#1805/SPEC-5] ADR-006 amended: step 3.5 restores artifacts before dispatch loop[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 added (step number present)
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 names _runner_resume_rehydrate
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 documents still-absent artifact causes exit 1
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 documents restore happens before the dispatch loop
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 documents artifacts restored from the git state branch
+
+  [38;2;0;212;255m[#1805/SPEC-6] ADR-050 §6 amended with boundary note distinguishing resume from new runs[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-6] ADR-050 §6 boundary note says invariant applies to new runs
+  [38;2;74;222;128m✓[0m [#1805/SPEC-6] ADR-050 §6 boundary note names ADR-006 as governing resume
+  [38;2;74;222;128m✓[0m [#1805/SPEC-6] ADR-050 §6 boundary note says a resume continues the same run
+
+  [38;2;0;212;255m[#1805/SPEC-12] fresh non-resume run dispatches all stages (ADR-050 §6 new-run side)[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-12] fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-12] fresh run dispatches cycled sub-stage (cycle ran; no stage skipped)
+    [2mexpected >0, got: 0
+0[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-12] cycle fixture used in SPEC-12 fresh-run sub-case has type: cycle
+
+  [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m resume-rehydrate fixture contains type: cycle
+  [38;2;248;113;113m✗[0m resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)
+    [2mexpected >0, got: 0
+0[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m5 of 28 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-12] fresh run dispatches cycled sub-stage (cycle ran; no stage skipped)
+  [38;2;248;113;113m✗[0m resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/stop-run-on-fail-test.sh
+
+[38;2;0;212;255m[1m  a loop's template names the members whose failure ends the run (ADR-068 §3)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [R1] the loop does not go round: design runs once
+  [38;2;74;222;128m✓[0m [R1] build does not run on a design that failed
+  [38;2;74;222;128m✓[0m [R1] the run ends failed
+  [38;2;74;222;128m✓[0m [R1] the reason names the member
+  [38;2;74;222;128m✓[0m [R1] the stop is said, naming the member
+  [38;2;74;222;128m✓[0m [R1] the run's ending says so in words
+  [38;2;248;113;113m✗[0m [R2] not named: build still runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;74;222;128m✓[0m [R3] design passes: build runs
+  [38;2;74;222;128m✓[0m [R4] a name that is not a member is refused
+  [38;2;74;222;128m✓[0m [R4] ...and the error names it
+  [38;2;74;222;128m✓[0m [R5] design fails in the inner loop: it runs once
+  [38;2;74;222;128m✓[0m [R5] ...build does not run
+  [38;2;74;222;128m✓[0m [R5] ...the outer loop does not go round: no review
+  [38;2;74;222;128m✓[0m [R5] ...the run ends failed
+  [38;2;74;222;128m✓[0m [R5] ...the reason names design
+  [38;2;74;222;128m✓[0m [R6] tests fail every round: 3 rounds, not 6
+  [38;2;74;222;128m✓[0m [R6] ...design runs every round
+  [38;2;74;222;128m✓[0m [R6] ...no review on a change whose tests fail
+  [38;2;74;222;128m✓[0m [R6] ...the run ends failed
+  [38;2;74;222;128m✓[0m [R6] ...the reason names the inner loop
+  [38;2;74;222;128m✓[0m [R7] the review fails once: it sends the change round one more time
+  [38;2;74;222;128m✓[0m [R7] ...design runs again for that round
+  [38;2;74;222;128m✓[0m [R7] ...the run converges
+  [38;2;74;222;128m✓[0m [R8] the review fails twice: the run stops after the second
+  [38;2;74;222;128m✓[0m [R8] ...the run ends failed
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 25 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [R2] not named: build still runs
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/write-boundary-revert-test.sh
+
+[38;2;0;212;255m[1m  write boundary: undo and retry, halt on a second offence[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mD1/D2: the first offence is undone and retried[0m
+  [38;2;74;222;128m✓[0m [D1] the edited file is back
+  [38;2;74;222;128m✓[0m [D1] the new file is gone
+  [38;2;74;222;128m✓[0m [D1] the deleted file is back
+  [38;2;74;222;128m✓[0m [D1] the earlier stage's uncommitted work is back, not reset to HEAD
+  [38;2;74;222;128m✓[0m [D2] the dispatch fails
+  [38;2;74;222;128m✓[0m [D2] the stage is retried (unusable), not halted
+  [38;2;74;222;128m✓[0m [D2] no halting marker
+  [38;2;74;222;128m✓[0m [D2] the paths are named
+
+  [38;2;0;212;255mD5: a clean retry is not held to it[0m
+  [38;2;74;222;128m✓[0m [D5] a clean re-dispatch of the stage resolves complete
+
+  [38;2;0;212;255mD3: a second offence by the same stage halts[0m
+  [38;2;74;222;128m✓[0m [D3] the second offence resolves broken
+  [38;2;74;222;128m✓[0m [D3] the files are still put back
+  [38;2;74;222;128m✓[0m [D3] ...including the earlier stage's work
+  [38;2;74;222;128m✓[0m [D6] the halt says which stage changed the repository
+  [38;2;74;222;128m✓[0m [D6] ...and which files
+  [38;2;74;222;128m✓[0m [D6] ...and only for the stage that did it
+
+  [38;2;0;212;255mD4: the count is per stage[0m
+  [38;2;74;222;128m✓[0m [D4] another stage's first offence is retried
+  [38;2;74;222;128m✓[0m [D4] and put back
+
+  [38;2;0;212;255mD7: the engine retries the first offence; the retry's offence halts[0m
+  [38;2;248;113;113m✗[0m [D7] the first offence was retried
+    [2moutput missing: stage.retry stage=again-judge outcome=unusable[0m
+  [38;2;248;113;113m✗[0m [D7] the retry's offence halts
+    [2mexpected: broken, got: unusable[0m
+  [38;2;74;222;128m✓[0m [D7] the files are put back
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 20 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [D7] the first offence was retried
+  [38;2;248;113;113m✗[0m [D7] the retry's offence halts

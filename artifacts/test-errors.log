@@ -1,4 +1,4 @@
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/unit/stage-retry-test.sh
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/unit/stage-retry-test.sh
 
 [38;2;0;212;255m[1m  the engine runs any stage again, as its template says (#2439)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -63,38 +63,38 @@ unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3
   [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
   [38;2;248;113;113m✗[0m [R11] each try is told its number
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
 
 [38;2;0;212;255m[1m  inner cycle iter+history reset per outer iter (Wave 19-D-2 #732)[0m
 [2m  ══════════════════════════════════════════[0m
 
-══ build_review_cycle [cycle] seq=1 input ══════════════════════ 04:21:50 UTC ══
+══ build_review_cycle [cycle] seq=1 input ══════════════════════ 18:55:46 UTC ══
 (no feedback — first iteration)
 
-══ build_test_cycle [cycle] seq=1 input ════════════════════════ 04:21:50 UTC ══
+══ build_test_cycle [cycle] seq=1 input ════════════════════════ 18:55:46 UTC ══
 (no feedback — first iteration)
 
 
-══ build_test_cycle [cycle] seq=1 output OK 0.5s ═══════════════ 04:21:50 UTC ══
+══ build_test_cycle [cycle] seq=1 output OK 0.3s ═══════════════ 18:55:46 UTC ══
 exit_when stage=test field=verdict op=eq value=approve → NOT MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_test_cycle ✓ ──
 
-══ build_test_cycle [cycle] seq=2 input ════════════════════════ 04:21:51 UTC ══
+══ build_test_cycle [cycle] seq=2 input ════════════════════════ 18:55:46 UTC ══
 (no stage summaries)
 
 
-══ build_test_cycle [cycle] seq=2 output OK 0.5s ═══════════════ 04:21:52 UTC ══
+══ build_test_cycle [cycle] seq=2 output OK 0.3s ═══════════════ 18:55:47 UTC ══
 exit_when stage=test field=verdict op=eq value=approve → NOT MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build_test_cycle ✓ ──
 
-══ build_review_cycle [cycle] seq=1 output OK 2.6s ═════════════ 04:21:52 UTC ══
+══ build_review_cycle [cycle] seq=1 output OK 1.5s ═════════════ 18:55:47 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → NOT MATCHED (got=request_changes)
 health: progress=0 (no progress) - defects=1 → score=-1
 ── end stage-io: build_review_cycle ✓ ──
 
-══ build_review_cycle [cycle] seq=2 input ══════════════════════ 04:21:53 UTC ══
+══ build_review_cycle [cycle] seq=2 input ══════════════════════ 18:55:47 UTC ══
 (no stage summaries)
 
 
@@ -144,18 +144,18 @@ health: progress=0 (no progress) - defects=1 → score=-1
   [38;2;248;113;113m✗[0m T9: inner history file contains 2 rows (truncated on outer iter 2 entry)
   [38;2;248;113;113m✗[0m T10: inner history rows have iter=1 and iter=2 only (reset on outer iter 2)
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/cycle-member-dispatch-events-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/cycle-member-dispatch-events-test.sh
 
 [38;2;0;212;255m[1m  cycle.member.dispatch.{start,complete} instrumentation (Wave 19-D-1 #731)[0m
 [2m  ══════════════════════════════════════════[0m
 
 
   [38;2;0;212;255m1. leaf-only cycle: 2 members, 2 start + 2 complete events[0m
-══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 04:21:30 UTC ══
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 18:55:29 UTC ══
 (no feedback — first iteration)
 
 
-══ the_cycle [cycle] seq=1 output OK 0.4s ══════════════════════ 04:21:30 UTC ══
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 18:55:30 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: the_cycle ✓ ──
@@ -171,19 +171,19 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m review dispatch.start position=2
 
   [38;2;0;212;255m2. 2-level cycle: nested-cycle member kind=cycle[0m
-══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 04:21:30 UTC ══
+══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 18:55:30 UTC ══
 (no feedback — first iteration)
 
-══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 04:21:30 UTC ══
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 18:55:30 UTC ══
 (no feedback — first iteration)
 
 
-══ inner_cycle [cycle] seq=1 output OK 0.4s ════════════════════ 04:21:31 UTC ══
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 18:55:30 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: inner_cycle ✓ ──
 
-══ outer_cycle [cycle] seq=1 output OK 1.0s ════════════════════ 04:21:32 UTC ══
+══ outer_cycle [cycle] seq=1 output OK 0.8s ════════════════════ 18:55:31 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: outer_cycle ✓ ──
@@ -196,42 +196,42 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m inner_cycle dispatch.complete verdict=pass
 
   [38;2;0;212;255m3. inner exhausts with failing tests → outer goes round, then halts (never advisory-rescued, #1208, #2271)[0m
-══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 04:21:32 UTC ══
+══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 18:55:31 UTC ══
 (no feedback — first iteration)
 
-══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 04:21:32 UTC ══
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 18:55:31 UTC ══
 (no feedback — first iteration)
 
 
-══ inner_cycle [cycle] seq=1 output OK 0.4s ════════════════════ 04:21:32 UTC ══
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 18:55:31 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: inner_cycle ✓ ──
 
-══ inner_cycle [cycle] seq=2 input ═════════════════════════════ 04:21:33 UTC ══
+══ inner_cycle [cycle] seq=2 input ═════════════════════════════ 18:55:31 UTC ══
 (no stage summaries)
 
 
-══ inner_cycle [cycle] seq=2 output OK 0.4s ════════════════════ 04:21:33 UTC ══
+══ inner_cycle [cycle] seq=2 output OK 0.3s ════════════════════ 18:55:32 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: inner_cycle ✓ ──
 
-══ inner_cycle [cycle] seq=3 input ═════════════════════════════ 04:21:34 UTC ══
+══ inner_cycle [cycle] seq=3 input ═════════════════════════════ 18:55:32 UTC ══
 (no stage summaries)
 
 
-══ inner_cycle [cycle] seq=3 output OK 0.4s ════════════════════ 04:21:34 UTC ══
+══ inner_cycle [cycle] seq=3 output OK 0.3s ════════════════════ 18:55:32 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: inner_cycle ✓ ──
   [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=review field=verdict
-══ outer_cycle [cycle] seq=1 output OK 3.0s ════════════════════ 04:21:35 UTC ══
+══ outer_cycle [cycle] seq=1 output OK 2.0s ════════════════════ 18:55:33 UTC ══
 exit_when stage=review field=verdict op=eq value=approve → NOT MATCHED (got=)
 health: progress=0 (no progress) - defects=1 → score=-1
 ── end stage-io: outer_cycle ✓ ──
 
-══ outer_cycle [cycle] seq=2 input ═════════════════════════════ 04:21:35 UTC ══
+══ outer_cycle [cycle] seq=2 input ═════════════════════════════ 18:55:33 UTC ══
 (no stage summaries)
 
 
@@ -254,37 +254,7 @@ health: progress=0 (no progress) - defects=1 → score=-1
   [38;2;248;113;113m✗[0m review NOT dispatched after a failing inner cycle (#1208 halt, no rescue)
   [38;2;248;113;113m✗[0m outer cycle halts rc=1, outcome failed, reason blocking_member_failure (propagated)
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/from-stage-rehydrate-test.sh
-
-[38;2;0;212;255m[1m  from-stage-rehydrate — artifact restore on --from-stage (#1805)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1805/SPEC-3] --from-stage rehydrates prior-stage artifacts and skips their stage.start[0m
-  [38;2;74;222;128m✓[0m [#1805/SPEC-3] setup: state branch populated
-  [38;2;74;222;128m✓[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-  [38;2;74;222;128m✓[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
-    [2mexpected: 0, got: 0
-0[0m
-  [38;2;74;222;128m✓[0m [#1805/SPEC-3] build is the first dispatched stage (--from-stage target, intake skipped)
-
-  [38;2;0;212;255m[#1805/SPEC-4] --from-stage with no restorable artifact exits 1 naming missing stage[0m
-  [38;2;74;222;128m✓[0m [#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact
-  [38;2;74;222;128m✓[0m [#1805/SPEC-4] stderr names the missing stage (intake)
-  [38;2;74;222;128m✓[0m [#1805/SPEC-4] no stage.start emitted before exit 1
-
-  [38;2;0;212;255m[#1805/SPEC-13] from-stage-rehydrate test uses a fixture containing a cyclic stage[0m
-  [38;2;74;222;128m✓[0m [#1805/SPEC-13] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
-  [38;2;74;222;128m✓[0m [#1805/SPEC-13] cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 10 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/nested-loop-rounds-build-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/nested-loop-rounds-build-test.sh
 
 [38;2;0;212;255m[1m  the outer loop goes round when the build loop ends unconverged (#2271)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -313,7 +283,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m [L3] the outer loop goes round: design runs again
   [38;2;248;113;113m✗[0m [L3] the build loop starts again at round 1
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/nested-loop-rounds-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/nested-loop-rounds-test.sh
 
 [38;2;0;212;255m[1m  the outer loop goes round when an inner loop ends unconverged (#2271)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -349,7 +319,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m [L4] design started at round 1 in both outer rounds
   [38;2;248;113;113m✗[0m [L4] build ran once, in round 2
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/resume-entry-points-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/resume-entry-points-test.sh
 
 [38;2;0;212;255m[1m  resume-entry-points — all resume paths rehydrate artifacts (#1805)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -364,10 +334,10 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;0;212;255m[#1805/SPEC-9] path 3: zbuild pipeline resume --run-id restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-9] path 3 (zbuild pipeline resume): intake-result.json restored from state branch
 
-  [38;2;0;212;255m[#1805/SPEC-13] resume-entry-points test uses a fixture containing a cyclic stage[0m
-  [38;2;74;222;128m✓[0m [#1805/SPEC-13] resume-entry-points test uses a cyclic fixture (type: cycle)
-  [38;2;74;222;128m✓[0m [#1805/SPEC-13] cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-13] cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test
+  [38;2;0;212;255mresume-entry-points test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m resume-entry-points test uses a cyclic fixture (type: cycle)
+  [38;2;74;222;128m✓[0m cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)
+  [38;2;248;113;113m✗[0m cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test
     [2mexpected >0, got: 0
 0[0m
 
@@ -375,40 +345,9 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;248;113;113m[1m1 of 6 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [#1805/SPEC-13] cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test
+  [38;2;248;113;113m✗[0m cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/resume-loop-state-test.sh
-
-[38;2;0;212;255m[1m  resume-loop-state — cycle orchestrator resumes from persisted iter (#1805)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255m[#1805/SPEC-7] cycle orchestrator resumes from current_iter (not 1)[0m
-
-══ build-test [cycle] seq=2 input ══════════════════════════════ 04:18:28 UTC ══
-(no stage summaries)
-
-
-══ build-test [cycle] seq=2 output OK 0.5s ═════════════════════ 04:18:28 UTC ══
-exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
-health: progress=0 (no progress) - defects=0 → score=0
-── end stage-io: build-test ✓ ──
-  [38;2;74;222;128m✓[0m [#1805/SPEC-7] first dispatched iter is 2 (resumed from current_iter=1, not restarted from 1)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-7] no cycle.iteration.complete for iter=1 (iter-1 was already done before resume)
-    [2mexpected: 0, got: 0
-0[0m
-
-  [38;2;0;212;255m[#1805/SPEC-13] resume-loop-state test uses a fixture containing a cyclic stage[0m
-  [38;2;74;222;128m✓[0m [#1805/SPEC-13] cycle fixture used by resume-loop-state test has type: cycle
-  [38;2;74;222;128m✓[0m [#1805/SPEC-13] resume-loop-state ran the cyclic pipeline (cycle_dispatch_stage was invoked)
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 4 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/SPEC-7] no cycle.iteration.complete for iter=1 (iter-1 was already done before resume)
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/resume-rehydrate-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/resume-rehydrate-test.sh
 
 [38;2;0;212;255m[1m  resume-rehydrate — artifact restore on resume (#1805)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -423,6 +362,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;0;212;255m[#1805/SPEC-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume/interrupted): intake-result.json restored
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): build dispatched (pipeline ran via path-2 resume)
   [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
     [2mexpected: 0, got: 0
@@ -430,6 +370,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;0;212;255m[#1805/SPEC-1] path 3: zbuild pipeline resume --run-id restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake-result.json restored
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): build dispatched (pipeline ran via path-3)
   [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
     [2mexpected: 0, got: 0
@@ -445,6 +386,8 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test
   [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test
   [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 documents still-absent artifact causes exit 1
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 documents restore happens before the dispatch loop
+  [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 documents artifacts restored from the git state branch
 
   [38;2;0;212;255m[#1805/SPEC-6] ADR-050 §6 amended with boundary note distinguishing resume from new runs[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-6] ADR-050 §6 boundary note says invariant applies to new runs
@@ -458,63 +401,23 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 0[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-12] cycle fixture used in SPEC-12 fresh-run sub-case has type: cycle
 
-  [38;2;0;212;255m[#1805/SPEC-13] resume-rehydrate test uses a fixture containing a cyclic stage[0m
-  [38;2;74;222;128m✓[0m [#1805/SPEC-13] resume-rehydrate fixture contains type: cycle
-  [38;2;248;113;113m✗[0m [#1805/SPEC-13] resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)
+  [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m resume-rehydrate fixture contains type: cycle
+  [38;2;248;113;113m✗[0m resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)
     [2mexpected >0, got: 0
 0[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m5 of 24 tests failed[0m
+  [38;2;248;113;113m[1m5 of 28 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
   [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
   [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
   [38;2;248;113;113m✗[0m [#1805/SPEC-12] fresh run dispatches cycled sub-stage (cycle ran; no stage skipped)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-13] resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)
+  [38;2;248;113;113m✗[0m resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/run-timed-out-test.sh
-
-[38;2;0;212;255m[1m  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mP1: slow stage timeout — status=timed_out written to pipeline-state.json[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: runner exits non-zero
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: the run's footer names the wall-clock limit
-
-  [38;2;0;212;255mP1: pipeline.end event fields — status=timed_out, stage, limit_s[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
-
-  [38;2;0;212;255mP2: watchdog fires even when engine is idle between dispatches[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: runner exits non-zero
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-    [2melapsed 22s > 17s — a global watchdog ends the run at ~12s; a per-stage reset at ~20s+[0m
-
-  [38;2;0;212;255mP3: stage that ignores SIGTERM is dead within TERM + 10s[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 6s)
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 718011 killed)
-
-  [38;2;0;212;255mP4: always_run release and persist stages execute on timed-out exit path[0m
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: pipeline status=timed_out
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
-  [38;2;74;222;128m✓[0m [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 17 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/stop-run-on-fail-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/stop-run-on-fail-test.sh
 
 [38;2;0;212;255m[1m  a loop's template names the members whose failure ends the run (ADR-068 §3)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -552,7 +455,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   [38;2;248;113;113m✗[0m [R2] not named: build still runs
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3cM6rZ/tests/integration/write-boundary-revert-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/write-boundary-revert-test.sh
 
 [38;2;0;212;255m[1m  write boundary: undo and retry, halt on a second offence[0m
 [2m  ══════════════════════════════════════════[0m
