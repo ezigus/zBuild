@@ -1835,8 +1835,8 @@ _cycle_iter_dispatch() {
         if [[ "${_CYCLE_TIMEOUT_RUN[$s]:-0}" -ge 1 ]] \
             && [[ -n "${_CYCLE_TURNS_BASE[$s]:-}" ]]; then
             local _g3_base="${_CYCLE_TURNS_BASE[$s]}"
-            # Escalate +50% rounded, cap at 2× base. base must be >0 and
-            # finite (the resolver default is 25).
+            # Escalate +50% rounded, cap at 2× base. base is >0: a stage with
+            # no limit (0, the resolver's default, #2458) records no base.
             local _g3_bumped=$(( _g3_base + (_g3_base / 2) ))
             local _g3_cap=$(( _g3_base * 2 ))
             [[ $_g3_bumped -gt $_g3_cap ]] && _g3_bumped=$_g3_cap

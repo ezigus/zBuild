@@ -235,7 +235,9 @@ _stage_block_rules_pair_v() {
   file in the repository — code, tests, or anything else. Write only the
   outputs your instructions name.
 "
-            _head_full="${_head_fresh%.$'\n'}, and your notes file.
+            _head_full="- You may not change the repository. Do not create, modify or delete any
+  file in the repository — code, tests, or anything else. Write only the
+  outputs your instructions name, and your notes file.
 "
         fi
         stage_notes_path_v _sbr_np "$state_dir" "$stage"
