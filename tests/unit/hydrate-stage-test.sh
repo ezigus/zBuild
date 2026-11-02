@@ -213,7 +213,7 @@ _S7_FROM="$TEST_TEMP_DIR/s7-from"; _S7_TO="$TEST_TEMP_DIR/s7-to"
 mkdir -p "$_S7_FROM/stage-io"
 printf 'prior plan\n' > "$_S7_FROM/plan.json"
 printf '{}\n' > "$_S7_FROM/stage-io/design-iter4-error.json"
-_hydrate_put_back "$_S7_FROM" "$_S7_TO"
+_artifact_persist_put_back "$_S7_FROM" "$_S7_TO"
 assert_file_exists "[SPEC-7] a stage's output is put back" "$_S7_TO/plan.json"
 assert_file_not_exists "[SPEC-7] an earlier run's stage-io record is not put back" \
     "$_S7_TO/stage-io/design-iter4-error.json"
