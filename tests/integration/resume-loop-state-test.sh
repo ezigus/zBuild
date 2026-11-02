@@ -96,6 +96,16 @@ assert_eq \
     "[#1805/SPEC-7] no cycle.iteration.complete for iter=1 (iter-1 was already done before resume)" \
     "0" "$_s7_iter1_complete"
 
+# ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
+print_test_section "[#1805/SPEC-13] resume-loop-state test uses a fixture containing a cyclic stage"
+
+# cycle-converges-iter2.yaml is loaded above via load_template and driven through
+# cycle_orchestrator_run. Assert it contains type: cycle to formally pin the fixture
+# contains a cyclic stage (as this test's SPEC-13 contract requires).
+_s13_loop_fixt_content="$(cat "$FIXT/cycle-converges-iter2.yaml")"
+assert_contains "[#1805/SPEC-13] cycle fixture used by resume-loop-state test has type: cycle" \
+    "$_s13_loop_fixt_content" "type: cycle"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

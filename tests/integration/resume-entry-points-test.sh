@@ -64,7 +64,7 @@ _setup_path_state() {
       cd "$P_WORK_REPO" && _artifact_persist_snapshot "$P_STATE_DIR" "$issue_id" ) \
         >"$TEST_TEMP_DIR/${label}-snap.log" 2>&1 || _snap_rc=$?
     if [[ "$_snap_rc" -ne 0 ]]; then
-        assert_fail "[#1805/SPEC-9] setup ${label}: snapshot to state branch failed" \
+        assert_fail "setup-${label}: snapshot to state branch failed" \
             "rc=$_snap_rc; $(cat "$TEST_TEMP_DIR/${label}-snap.log" 2>/dev/null | tail -5)"
     fi
 
@@ -240,6 +240,17 @@ set -e
 assert_file_exists \
     "[#1805/SPEC-9] path 3 (zbuild pipeline resume): intake-result.json restored from state branch" \
     "$P3_STATE_DIR/artifacts/intake-result.json"
+
+# ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
+print_test_section "[#1805/SPEC-13] resume-entry-points test uses a fixture containing a cyclic stage"
+
+# Install a cyclic fixture into a dedicated work repo to establish that this test
+# file's setup installs a pipeline containing a cyclic stage (SPEC-13 requirement).
+_S13_EP_WORK="$(setup_git_temp_repo ep-s13-cycle-check)"
+install_template_overlay "$_S13_EP_WORK" artifact-snapshot-coverage
+_s13_ep_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
+assert_contains "[#1805/SPEC-13] resume-entry-points test installs a fixture with type: cycle" \
+    "$_s13_ep_content" "type: cycle"
 
 cleanup_test_env
 print_test_results

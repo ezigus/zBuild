@@ -123,6 +123,17 @@ fi
 assert_eq "[#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage" \
     "0" "$_s3_intake_starts"
 
+# [#1805/SPEC-3]: build must be the FIRST stage dispatched (stage.start with stage==build).
+# Before the change: without rehydration the runner may re-dispatch intake first → FAILS.
+# After the change: intake is skipped; build (the --from-stage target) is first → PASSES.
+_s3_first_dispatched=""
+if [[ -f "$S3_EVENTS_JSONL" ]]; then
+    _s3_first_dispatched="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+        "$S3_EVENTS_JSONL" 2>/dev/null | head -1 || true)"
+fi
+assert_eq "[#1805/SPEC-3] build is the first dispatched stage (--from-stage target, intake skipped)" \
+    "build" "$_s3_first_dispatched"
+
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
 print_test_section "[#1805/SPEC-4] --from-stage with no restorable artifact exits 1 naming missing stage"
 
@@ -195,6 +206,17 @@ if [[ -f "$S4_EVENTS_JSONL" ]]; then
 fi
 assert_eq "[#1805/SPEC-4] no stage.start emitted before exit 1" \
     "0" "$_s4_any_starts"
+
+# ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
+print_test_section "[#1805/SPEC-13] from-stage-rehydrate test uses a fixture containing a cyclic stage"
+
+# Install a cyclic fixture into a dedicated work repo to establish that this test
+# file's setup installs a pipeline containing a cyclic stage (SPEC-13 requirement).
+_S13_FS_WORK="$(setup_git_temp_repo fs-s13-cycle-check)"
+install_template_overlay "$_S13_FS_WORK" artifact-snapshot-coverage
+_s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
+assert_contains "[#1805/SPEC-13] from-stage-rehydrate test installs a fixture with type: cycle" \
+    "$_s13_fs_content" "type: cycle"
 
 cleanup_test_env
 print_test_results
