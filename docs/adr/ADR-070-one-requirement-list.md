@@ -45,8 +45,13 @@ something the issue does not ask for, or contradicts it (`OUTSIDE:`). It is alwa
 and for each `[done]` SPEC the lines its evidence points at, and names each one whose code does not do what
 it says (`DONE_WRONG:`, ADR-069 §2). Each item is a finding design must fix, whatever the coverage verdict.
 
+## Amendment 2026-11-01 (#2448) — §1: intake's calls have no tools
+
+Each of intake's two calls has one turn and no tools (`config.router.tools: none`, ADR-017 §11): it is given the issue and answers in its reply. One turn alone did not keep it out of the code. With its tools on, try 1 on #1805 spent its turn on a tool call and ended `out_of_turns`.
+
 ## Enforced by
 
+- §1 amendment 2026-11-01 (#2448: intake's calls have no tools) → `tests/unit/intake-no-tools-test.sh` T4
 - §1 amendment 2026-11-01 (#2445: a model writes and checks the list) → `tests/unit/intake-requirements-model-test.sh` I1–I7; `tests/unit/requirements-list-test.sh` Q1
 - §4 amendment 2026-11-01 (#2445: the check looks both ways; scope and [done] evidence shown) → `tests/unit/design-coverage-test.sh` X1–X5
 

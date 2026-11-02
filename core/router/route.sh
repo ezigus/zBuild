@@ -639,6 +639,8 @@ _route_call_claude() {
             "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+    # #2448: a plugin whose calls need no tools gets none — built-in or MCP.
+    _route_manifest_no_tools && _claude_args+=(--strict-mcp-config --tools "")
     # ADR-051: the stage's persona, as the provider takes it.
     _route_persona_prepare
     _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")

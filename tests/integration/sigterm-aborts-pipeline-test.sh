@@ -107,39 +107,26 @@ RC_FILE="$TEST_TEMP_DIR/runner-rc"
 ELAPSED_FILE="$TEST_TEMP_DIR/elapsed"
 
 # Start runner in a backgrounded subshell so we can capture its PID and
-# deliver SIGTERM externally. `setsid` (when available) ensures a fresh
-# process group so kill -TERM <pid> hits a leader cleanly; falls back to
-# direct background otherwise.
+# deliver SIGTERM externally.
 start_ts=$(date +%s)
 
-# Background the runner in its own process group via `setsid` (Linux) or
-# `set -m` job-control (darwin). We need the runner + its plugin children
-# to share a pgrp distinct from the harness so we can `kill -TERM -<pgid>`
-# and deliver TERM to every descendant — the same way the kernel delivers
-# Ctrl-C to a foreground pgrp. Without this, only the runner bash gets
-# TERM; the build plugin's synchronous `sleep` blocks the trap from firing
-# until it returns.
+# Background the runner in its own process group with `set -m` job control,
+# on every platform: the runner + its plugin children share a pgrp distinct
+# from the harness, so `kill -TERM -<pgid>` delivers TERM to every descendant —
+# the same way the kernel delivers Ctrl-C to a foreground pgrp. Without this,
+# only the runner bash gets TERM; the build plugin's synchronous `sleep` blocks
+# the trap from firing until it returns. It is how a real run starts the
+# runner too (in a group, never a session leader), and it means a failure on
+# one OS can be reproduced on the other.
 # #1270: the runner resolves the fixture from $PWD, so cd into the overlay repo
 # before exec-ing it. `exec` replaces the wrapper shell so $! is the runner PID.
-if command -v setsid >/dev/null 2>&1; then
-    setsid bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
-        _ "$OVERLAY_REPO" "$RUNNER" "test-sigterm-halt" \
-        >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr" &
-    RUNNER_PID=$!
-    # setsid makes the child a session+pgrp leader → pgid == pid.
-    RUNNER_PGID="$RUNNER_PID"
-else
-    # darwin fallback: enable job control so each backgrounded pipeline gets
-    # its own pgrp. (`set -m` in this scope only; the harness wraps reset on
-    # cleanup.)
-    set -m
-    bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
-        _ "$OVERLAY_REPO" "$RUNNER" "test-sigterm-halt" \
-        >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr" &
-    RUNNER_PID=$!
-    RUNNER_PGID="$(ps -o pgid= "$RUNNER_PID" 2>/dev/null | tr -d ' ' || echo "$RUNNER_PID")"
-    set +m
-fi
+set -m
+bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+    _ "$OVERLAY_REPO" "$RUNNER" "test-sigterm-halt" \
+    >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr" &
+RUNNER_PID=$!
+RUNNER_PGID="$(ps -o pgid= "$RUNNER_PID" 2>/dev/null | tr -d ' ' || echo "$RUNNER_PID")"
+set +m
 
 # Wait up to 10s for the build stage to start (proves the runner is
 # established and trap is installed). Without this, racing the SIGTERM

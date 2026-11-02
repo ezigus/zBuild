@@ -230,5 +230,16 @@ else
     assert_pass "U8: no setsid probe remains in the spawn path"
 fi
 
+# U9b: the tests start a runner in its own group the same way on every OS —
+# `set -m` — so a failure on Linux can be reproduced on macOS. A `setsid` branch
+# ran the Linux path as a session leader, which no real run is, and hid it from
+# every local run.
+_u9b_hits=""
+while IFS= read -r _u9b_f; do
+    grep -qE 'command -v setsid|^[[:space:]]*setsid ' < <(grep -vE '^[[:space:]]*#' "$_u9b_f" 2>/dev/null) \
+        && _u9b_hits+="${_u9b_f#"$REPO_ROOT/"} "
+done < <(find "$REPO_ROOT/tests" -name '*.sh' -type f ! -name proc-group-test.sh)
+assert_eq "U9b: no test starts the runner under setsid" "" "$_u9b_hits"
+
 print_test_results
 exit $((FAIL > 0))

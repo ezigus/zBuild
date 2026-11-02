@@ -357,3 +357,9 @@ the engine had kept every step the call made (#2139).
 
 Enforced by `tests/unit/cut-off-hand-off-test.sh` H1–H4; `tests/integration/cut-off-steps-test.sh` C1–C4;
 `tests/unit/build-test-is-wrong-test.sh` W5.
+
+## Amendment (2026-11-01, #2448): a stage with no tools keeps no notes file
+
+A stage whose calls have no tools (ADR-017 §11, `tools: none`) cannot write a notes file, so its rules do not ask for one, or name one. They say instead that it has no tools, that everything it needs is in the prompt, and that its answer is its reply. Told to keep notes, intake's one-turn call on #1805 (run 41352202870) wrote them with a tool and had no turn left to answer.
+
+Enforced by: Amendment 2026-11-01 (#2448: a stage with no tools keeps no notes file) → `tests/unit/intake-no-tools-test.sh` T3

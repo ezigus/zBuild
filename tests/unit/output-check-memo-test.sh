@@ -79,6 +79,10 @@ print_test_section "M7: the index, built twice"
 SD="$TEST_TEMP_DIR/state"; PR="$TEST_TEMP_DIR/plugins"; mkdir -p "$PR" "$SD/artifacts"
 printf '{"p":1}\n' > "$SD/artifacts/plan.json"; printf '{"d":1}\n' > "$SD/artifacts/design.json"
 printf '# notes\n' > "$SD/artifacts/notes.md"
+# The outputs were written long before they are read, as in a run. Written the
+# instant before, a coarse filesystem clock (Linux) can give a file and its
+# mark the same time, and the mark is then not newer than the file.
+touch -t 202001010000 "$SD/artifacts/plan.json" "$SD/artifacts/design.json" "$SD/artifacts/notes.md"
 _TPL_STAGES=(plan design)
 _seed() {
     _IR_INDEX_KEY="${PR}|${SD}|plan design "

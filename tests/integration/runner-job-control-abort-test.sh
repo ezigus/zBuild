@@ -194,21 +194,13 @@ PLUG
 
 # #1270: the runner resolves the fixture from $PWD, so cd into the overlay repo
 # before exec-ing it. `exec` replaces the wrapper shell so $! is the runner PID.
-if command -v setsid >/dev/null 2>&1; then
-    setsid bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
-        _ "$OVERLAY_REPO" "$RUNNER" "w15h e2e" \
-        >"$TEST_TEMP_DIR/runner-e2e.stdout" 2>"$TEST_TEMP_DIR/runner-e2e.stderr" &
-    RUNNER_PID=$!
-    RUNNER_PGID="$RUNNER_PID"
-else
-    set -m
-    bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
-        _ "$OVERLAY_REPO" "$RUNNER" "w15h e2e" \
-        >"$TEST_TEMP_DIR/runner-e2e.stdout" 2>"$TEST_TEMP_DIR/runner-e2e.stderr" &
-    RUNNER_PID=$!
-    RUNNER_PGID="$(ps -o pgid= "$RUNNER_PID" 2>/dev/null | tr -d ' ' || echo "$RUNNER_PID")"
-    set +m
-fi
+set -m
+bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+    _ "$OVERLAY_REPO" "$RUNNER" "w15h e2e" \
+    >"$TEST_TEMP_DIR/runner-e2e.stdout" 2>"$TEST_TEMP_DIR/runner-e2e.stderr" &
+RUNNER_PID=$!
+RUNNER_PGID="$(ps -o pgid= "$RUNNER_PID" 2>/dev/null | tr -d ' ' || echo "$RUNNER_PID")"
+set +m
 
 for _ in $(seq 1 600); do
     [[ -f "$E2E_BUILD_STARTED" ]] && break

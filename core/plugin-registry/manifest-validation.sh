@@ -614,6 +614,13 @@ validate_manifest() {
     _manifest_router_block_v _rblock "$manifest"
     while read -r _rk _rv; do
         [[ -n "$_rk" ]] || continue
+        local _rwords; _rwords="$(_manifest_router_words "$_rk")"
+        if [[ -n "$_rwords" ]]; then
+            [[ " $_rwords " == *" $_rv "* ]] && continue
+            error "validate_manifest($manifest): config.router.$_rk must be one of: $_rwords, got: ${_rv:-<empty>}"
+            errors=$((errors + 1))
+            continue
+        fi
         _rrange="$(_manifest_router_range "$_rk")"
         if [[ -z "$_rrange" ]]; then
             error "validate_manifest($manifest): unknown key '$_rk' under config.router (valid: $_ZBUILD_MANIFEST_ROUTER_KNOBS)"

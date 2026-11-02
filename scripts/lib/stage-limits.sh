@@ -39,6 +39,18 @@ _route_manifest_knob() {
     printf '%s' "$v"
 }
 
+# ─── _route_manifest_no_tools [manifest] — #2448 (ADR-017 §11) ─────────────
+# rc 0 when the plugin declares `config.router.tools: none`: its calls get no
+# tools, and its rules ask for none. The manifest is the dispatched plugin's
+# unless one is named.
+_route_manifest_no_tools() {
+    local mf="${1:-${ZBUILD_PLUGIN_DIR:+$ZBUILD_PLUGIN_DIR/manifest.yaml}}"
+    [[ -n "$mf" && -f "$mf" ]] || return 1
+    declare -F _manifest_router_block_v >/dev/null 2>&1 || return 1
+    local _mnt; _manifest_router_block_v _mnt "$mf" tools
+    [[ "${_mnt%$'\n'}" == none ]]
+}
+
 # ─── _route_resolve_knob — ADR-017 (#455) precedence chokepoint ──────────────
 # Generic helper: future knobs (tier_default, budget_usd, model_override) reuse
 # this. Accessor returns per-stage value or empty; env_var supplies session-wide

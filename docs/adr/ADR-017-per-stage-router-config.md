@@ -439,8 +439,13 @@ retried at two or three levels at once. They are removed: a template stage that 
 `ZBUILD_ROUTER_RETRY_ON_EXHAUSTION` and `ZBUILD_ROUTER_MAX_ITERATIONS` are gone. The precedence rows for
 these knobs in the amendments above no longer apply.
 
+## Amendment 2026-11-01 (#2448) — §11: `tools: none`
+
+A plugin may declare `config.router.tools: none`. Every one-shot model call it makes (`_route_call_claude`) then has no tools: the router passes `--strict-mcp-config --tools ""`, so no built-in tool and no MCP server from the machine's config is offered. `none` is the only value; `validate_manifest` refuses any other. It is a property of the work, not of the flow, so it has no template or env layer. The loop path (`route_to_model_loop`) is for work done with tools and does not read it.
+
 ## Enforced by
 
+- §11 amendment 2026-11-01 (#2448: `tools: none`) → `tests/unit/intake-no-tools-test.sh` T1, T2
 - Amendment 2026-10-31 (#2439: the call-retry and call-limit knobs are removed) → `tests/unit/retired-retry-settings-test.sh` T1–T4, T6; `tests/unit/route-one-call-per-try-test.sh` O4, O6
 - §Per-stage `timeout_s:` (top-level stage block) is used by fanout, map, and sequential strategies via `template_stage_time_limit`; `ZBUILD_ORCH_TIMEOUT` flat deadline removed — `tests/integration/orch-timeout-applies-test.sh` [#1801/SPEC-1].
 - §`_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit` (`timeout_s:` in the stage block); `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` no longer read for this purpose — `tests/integration/runner-release-exit-paths-test.sh` [#1801/SPEC-5].
