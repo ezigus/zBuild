@@ -652,3 +652,14 @@ not in your change", so no stage took it as its own.
 
 Enforced by: `tests/unit/test-slow-file-check-test.sh` T1–T6; `tests/unit/acceptance-feedback-plain-test.sh`
 F5–F7.
+
+### Amendment (2026-11-01, #2450) — the check sees each test file whole; a fix-up is one call per file
+
+On #1805 (run 41365460329), test-author's check called most tests `partial`, and both fix-up calls ran out of their 15 minutes. Two things are fixed here:
+
+1. **The check sees each test file whole.** It still gets each tagged assertion with its own setup. It is now also shown each test file whole, comments stripped, with the lines tagged for each SPEC marked, under THE TEST FILES (`acceptance_testfile_source`). Setup that lives elsewhere in the file reaches it, such as a helper function or a block shared by several cases. Before, several findings were about code it was never shown ("no runner invocation is visible … unless the runner was called somewhere not shown").
+2. **A fix-up is one call per test file.** A round after the first makes one author call for each test file that has findings, given only that file's findings and told to fix only that file (`_ta_fixup_calls_v`). A finding that names no SPEC of the contract goes to every call. One call holding every finding for all four files re-read everything, planned every fix, and was cut off before it had edited much.
+
+The rounds (`config.check_rounds`) are unchanged. A call that does not finish still ends the try with its reason, and what was written is committed for the next try (ADR-054 §6a).
+
+Enforced by: `tests/unit/test-author-correspondence-test.sh` F1; `tests/unit/test-author-fixup-per-file-test.sh` F2–F4.
