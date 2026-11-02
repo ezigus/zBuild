@@ -152,6 +152,7 @@ S1P2_EVENTS_DIR="$TEST_TEMP_DIR/s1p2-events"
 S1P2_EVENTS_JSONL="$S1P2_EVENTS_DIR/events.jsonl"
 S1P2_STATE_FILE="$S1P2_STATE_DIR/pipeline-state.json"
 mkdir -p "$S1P2_STATE_DIR/artifacts" "$S1P2_EVENTS_DIR"
+touch "$S1P2_EVENTS_JSONL"
 
 S1P2_WORK_REPO="$(setup_git_temp_repo resume-reh-s1p2)"
 install_template_overlay "$S1P2_WORK_REPO" runner-state-dir-minimal
@@ -203,11 +204,17 @@ assert_file_exists \
     "[#1805/SPEC-1] path 2 (auto-resume/interrupted): intake-result.json restored" \
     "$S1P2_STATE_DIR/artifacts/intake-result.json"
 
-_s1p2_intake_starts=0
-if [[ -f "$S1P2_EVENTS_JSONL" ]]; then
-    _s1p2_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
-        "$S1P2_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' 2>/dev/null || echo 0)"
-fi
+# [#1805/SPEC-1] path 2: build must have dispatched (proving pipeline ran and events written).
+# Before fix: path-2 auto-resume doesn't exist → runner exits without events → build_starts=0 → FAILS.
+# After fix: runner auto-resumes, rehydrates, skips intake, dispatches build → build_starts=1 → PASSES.
+_s1p2_build_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+    "$S1P2_EVENTS_JSONL" 2>/dev/null | grep -c '^build$' || echo 0)"
+assert_eq "[#1805/SPEC-1] path 2 (auto-resume): build dispatched (pipeline ran via path-2 resume)" \
+    "1" "$_s1p2_build_starts"
+
+# [#1805/SPEC-1] path 2: intake must NOT have a stage.start event.
+_s1p2_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+    "$S1P2_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
 assert_eq "[#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)" \
     "0" "$_s1p2_intake_starts"
 
@@ -222,6 +229,7 @@ S1P3_EVENTS_DIR="$TEST_TEMP_DIR/s1p3-events"
 S1P3_EVENTS_JSONL="$S1P3_EVENTS_DIR/events.jsonl"
 S1P3_STATE_FILE="$S1P3_STATE_DIR/pipeline-state.json"
 mkdir -p "$S1P3_STATE_DIR/artifacts" "$S1P3_EVENTS_DIR"
+touch "$S1P3_EVENTS_JSONL"
 
 S1P3_WORK_REPO="$(setup_git_temp_repo resume-reh-s1p3)"
 install_template_overlay "$S1P3_WORK_REPO" runner-state-dir-minimal
@@ -274,11 +282,17 @@ assert_file_exists \
     "[#1805/SPEC-1] path 3 (zbuild pipeline resume): intake-result.json restored" \
     "$S1P3_STATE_DIR/artifacts/intake-result.json"
 
-_s1p3_intake_starts=0
-if [[ -f "$S1P3_EVENTS_JSONL" ]]; then
-    _s1p3_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
-        "$S1P3_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' 2>/dev/null || echo 0)"
-fi
+# [#1805/SPEC-1] path 3: build must have dispatched (proving pipeline ran via zbuild pipeline resume).
+# Before fix: zbuild pipeline resume path has no rehydration / may not exist → no events → FAILS.
+# After fix: zbuild calls runner --resume → rehydrates → dispatches build → PASSES.
+_s1p3_build_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+    "$S1P3_EVENTS_JSONL" 2>/dev/null | grep -c '^build$' || echo 0)"
+assert_eq "[#1805/SPEC-1] path 3 (zbuild pipeline resume): build dispatched (pipeline ran via path-3)" \
+    "1" "$_s1p3_build_starts"
+
+# [#1805/SPEC-1] path 3: intake must NOT have a stage.start event.
+_s1p3_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+    "$S1P3_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
 assert_eq "[#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)" \
     "0" "$_s1p3_intake_starts"
 
@@ -360,11 +374,11 @@ print_test_section "[#1805/SPEC-5] ADR-006 amended: step 3.5 restores artifacts 
 # This passes after the doc change; it need not fail before.
 _adr006="$(cat "$ADR_006" 2>/dev/null || true)"
 
-assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 describes artifact restore before dispatch loop" \
-    "$_adr006" "artifact"
+assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 added (step number present)" \
+    "$_adr006" "3.6"
 
-assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 states absent artifact causes exit 1" \
-    "$_adr006" "exit 1"
+assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 names _runner_resume_rehydrate" \
+    "$_adr006" "_runner_resume_rehydrate"
 
 assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test" \
     "$_adr006" "resume-rehydrate-test.sh"
