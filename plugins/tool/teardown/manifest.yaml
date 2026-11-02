@@ -40,6 +40,7 @@ provides:
 outputs:
   - id: teardown_result
     path: "${artifact_dir}/teardown-result.json"
+    finding_topics: none
     type: teardown-result.json@1
     format: json
     required: true

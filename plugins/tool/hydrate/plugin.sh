@@ -158,7 +158,7 @@ hydrate_run() {
     # file is this run's own, and newer.
     if [[ "$_status" != "failed" && -d "$_staging/artifacts" ]] \
        && [[ -n "$(ls -A "$_staging/artifacts" 2>/dev/null)" ]]; then
-        _count="$(find "$_staging/artifacts" -type f 2>/dev/null | /usr/bin/grep -c . || printf '0')"
+        _count="$(find "$_staging/artifacts" -type f 2>/dev/null | /usr/bin/grep -c . || true)"
         if _hydrate_put_back "$_staging/artifacts" "$_artifacts_dir"; then
             [[ -n "$_reason" ]] || _reason="restored $_count artifact(s) from zbuild/state/issue-$_issue"
         else

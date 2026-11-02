@@ -82,6 +82,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_run() {
@@ -117,6 +118,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 plan_run() {
@@ -156,6 +158,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 acceptance_gate_run() {
@@ -208,6 +211,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_gate_run() {
@@ -250,6 +254,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 gate_aggregator_run() {
@@ -300,6 +305,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 issue_acceptance_run() {

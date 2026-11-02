@@ -92,6 +92,7 @@ outputs:
     type: json
     required: $req
     primary: true
+    finding_topics: none
 EOF
     } > "$dir/manifest.yaml"
     printf '%s() {\n    local d; d="$(dirname "$2")/artifacts"; mkdir -p "$d"\n%s\n}\n' \

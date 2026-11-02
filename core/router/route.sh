@@ -641,6 +641,9 @@ _route_call_claude() {
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
     # #2448: a plugin whose calls need no tools gets none — built-in or MCP.
     _route_manifest_no_tools && _claude_args+=(--strict-mcp-config --tools "")
+    # #2454 (ADR-017 §11): how hard the model thinks — the plugin's, else medium.
+    local _rt_effort; _route_manifest_effort_v _rt_effort
+    _claude_args+=(--effort "$_rt_effort")
     # ADR-051: the stage's persona, as the provider takes it.
     _route_persona_prepare
     _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")
@@ -1381,6 +1384,9 @@ route_to_model_loop() {
             "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+    # #2454 (ADR-017 §11): how hard the model thinks — the plugin's, else medium.
+    local _rtl_effort; _route_manifest_effort_v _rtl_effort
+    _claude_args+=(--effort "$_rtl_effort")
     # ADR-051: the stage's persona, as the provider takes it.
     _route_persona_prepare
     _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")

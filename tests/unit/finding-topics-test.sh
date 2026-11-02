@@ -78,13 +78,14 @@ mkdir -p "$ART"
 init_state "$STATE/pipeline-state.json" run-1 7 >/dev/null 2>&1
 
 # _producer <name> <topic> <findings-json> — a stage whose result, summary and
-# error log all have <topic>, its result holding <findings-json>.
+# error log all have <topic>, its result holding <findings-json>; its result
+# lets a finding name any topic (finding_topics, #2454).
 _producer() {
     local s="$1" t="$2" f="$3" u="${1//-/_}"
     mkdir -p "$PROOT/tool/$s"
     {
         printf 'id: %s\nname: %s\nkind: tool\nversion: 0.0.1\nhooks:\n  run: x_run\noutputs:\n' "$s" "$s"
-        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    topic: %s\n' "$u" "$s" "$t"
+        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    topic: %s\n    finding_topics: ask tests change requirement-findings code-findings\n' "$u" "$s" "$t"
         printf '  - id: %s_summary\n    path: ${artifact_dir}/%s-summary.md\n    type: text\n    required: false\n    summary: true\n    topic: %s\n' "$u" "$s" "$t"
         printf '  - id: %s_errors\n    path: ${artifact_dir}/%s-errors.log\n    type: text\n    required: false\n    errors: true\n    topic: %s\n' "$u" "$s" "$t"
     } > "$PROOT/tool/$s/manifest.yaml"

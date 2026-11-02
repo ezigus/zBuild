@@ -50,6 +50,7 @@ outputs:
     topic: requirement-findings
     description: "whether the change meets each of the issue's requirements; findings: each requirement not met, and why"
     path: "${artifact_dir}/issue-acceptance-result.json"
+    finding_topics: code-findings requirement-findings
     type: issue-acceptance-result.json@1
     format: json
     required: true

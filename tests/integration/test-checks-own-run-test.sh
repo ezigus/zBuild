@@ -17,6 +17,9 @@
 #             (#2428), and test's reason names the check
 # R6 [change] design's Previous work shows the acceptance check's finding, and
 #             build's shows it once (#2428, ADR-071 §2)
+# R8 [change] a failing test file that is not one of the design's test files is
+#             labelled change, so it reaches build and not test-author; one of
+#             the design's keeps test's topic (#2454, ADR-071 §1)
 # R5 [change] shape-floor, acceptance-gate and assertion-integrity are no
 #             longer stages; test declares the checks' outputs
 set -uo pipefail
@@ -128,6 +131,23 @@ done
 _out="$(sed -n '/^outputs:/,/^[a-z]/p' "$REPO_ROOT/plugins/tool/test/manifest.yaml")"
 assert_contains "[R5] test declares the acceptance check's result" "$_out" "acceptance-gate-result.json"
 assert_contains "[R5] ...and the shape-floor check's" "$_out" "shape-floor-result.json"
+
+# ── R8 ───────────────────────────────────────────────────────────────────────
+# The suite fails in the design's test file and in another test file.
+_r8_cmd='printf "unit: FAIL %s/tests/a-test.sh\n  ✗ A-CHECK\n    expected: 1, got: 2\nunit: FAIL %s/tests/other-test.sh\n  ✗ OTHER-CHECK\n    expected: 1, got: 3\nunit: 0/2 passed\n" "$PWD" "$PWD"; exit 1'
+_r8_saved="$ZBUILD_TEST_CMD"; export ZBUILD_TEST_CMD="$_r8_cmd"
+_run r8 '# Design
+```acceptance
+SPEC-1[code]: the app says hi
+WIRING: none
+TESTFILES:
+SPEC-1: tests/a-test.sh
+```
+' ""
+export ZBUILD_TEST_CMD="$_r8_saved"
+_r8() { jq -r --arg k "$1" '[.data.findings[]? | select(.text | contains($k)) | (.topic // "none")][0] // "MISSING"' "$A/test-results.json" 2>/dev/null; }
+assert_eq "[R8] the design's test file keeps test's topic" "none" "$(_r8 'tests/a-test.sh fails')"
+assert_eq "[R8] another test file is change" "change" "$(_r8 'tests/other-test.sh fails')"
 
 cleanup_test_env
 print_test_results

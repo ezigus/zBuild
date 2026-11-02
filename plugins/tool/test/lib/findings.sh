@@ -112,6 +112,26 @@ _test_findings_about() {
     jq -r '[.[].points_at[]] | unique | join("\n")' <<< "${1:-[]}" 2>/dev/null || true
 }
 
+# _test_findings_by_owner <design_md> — reads "<file><TAB><text>" lines and
+# prints each as stage_findings_json takes it. #2454 (ADR-071 §1): a file that is
+# one of the design's test files is test-author's and build's to fix, so it keeps
+# the result's topic; any other file is the change's, so it is labelled
+# `change` — it reaches build, not test-author, which may not edit it. With no
+# design every file is the change's.
+_test_findings_by_owner() {
+    local design="${1:-}" f t
+    local -A mine=()
+    declare -F acceptance_list_testfiles >/dev/null 2>&1 \
+        || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/acceptance-block.sh" 2>/dev/null || true
+    if [[ -n "$design" && -f "$design" ]] && declare -F acceptance_list_testfiles >/dev/null 2>&1; then
+        while IFS= read -r f; do [[ -n "$f" ]] && mine[$f]=1; done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
+    fi
+    while IFS=$'\t' read -r f t; do
+        [[ -n "$t" ]] || continue
+        if [[ -n "${mine[$f]:-}" ]]; then printf '%s\n' "$t"; else printf 'change\t%s\n' "$t"; fi
+    done
+}
+
 # _test_findings_markdown <findings_json> — the "Failing files" section of the
 # stage summary, or empty when nothing failed.
 _test_findings_markdown() {

@@ -81,7 +81,7 @@ mkdir -p "$STATE_DIR"
 echo '{"schema_version":1,"run_id":"t","issue":484,"stage_statuses":{}}' > "$STATE_FILE"
 
 _reset_events() { : > "$ZBUILD_EVENTS_JSONL"; }
-_event_count() { grep -c "\"$1\"" "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0; }
+_event_count() { local n; n="$(grep -c "\"$1\"" "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"; printf '%s\n' "${n:-0}"; }
 
 unset CI CI_MODE
 

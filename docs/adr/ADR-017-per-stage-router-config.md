@@ -443,8 +443,13 @@ these knobs in the amendments above no longer apply.
 
 A plugin may declare `config.router.tools: none`. Every one-shot model call it makes (`_route_call_claude`) then has no tools: the router passes `--strict-mcp-config --tools ""`, so no built-in tool and no MCP server from the machine's config is offered. `none` is the only value; `validate_manifest` refuses any other. It is a property of the work, not of the flow, so it has no template or env layer. The loop path (`route_to_model_loop`) is for work done with tools and does not read it.
 
+## Amendment 2026-11-02 (#2454) — §11: `effort`, medium by default
+
+A plugin may declare `config.router.effort`: `low`, `medium`, `high`, `xhigh` or `max`, which is how hard the model thinks on its calls. Every model call passes `--effort <word>`: the one-shot path (`_route_call_claude`) and the loop path (`route_to_model_loop`) alike. A plugin that declares none gets `medium`, so no call runs at a default nobody chose. `validate_manifest` refuses any other word. Like `tools`, it is a property of the work, so it has no template or env layer. Why: on #1805 run 41452299475 the router passed nothing, and one test-author thinking turn ran for seven minutes until it hit the 32,000-token output limit and was cut off.
+
 ## Enforced by
 
+- §11 amendment 2026-11-02 (#2454: `effort`, medium by default) → `tests/unit/router-effort-test.sh` E1–E3
 - §11 amendment 2026-11-01 (#2448: `tools: none`) → `tests/unit/intake-no-tools-test.sh` T1, T2
 - Amendment 2026-10-31 (#2439: the call-retry and call-limit knobs are removed) → `tests/unit/retired-retry-settings-test.sh` T1–T4, T6; `tests/unit/route-one-call-per-try-test.sh` O4, O6
 - §Per-stage `timeout_s:` (top-level stage block) is used by fanout, map, and sequential strategies via `template_stage_time_limit`; `ZBUILD_ORCH_TIMEOUT` flat deadline removed — `tests/integration/orch-timeout-applies-test.sh` [#1801/SPEC-1].

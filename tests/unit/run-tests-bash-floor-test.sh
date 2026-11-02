@@ -36,7 +36,7 @@ assert_gt "[SPEC-3] _zbuild_check_bash is defined in compat.sh" \
     "$_floor_fn_count" "0"
 
 # Static: the correct floor comparison must be present.
-_floor_cmp=$(grep -c '(( major < 5 ))' "$COMPAT" 2>/dev/null || echo 0)
+_floor_cmp=$(grep -c '(( major < 5 ))' "$COMPAT" 2>/dev/null || true)
 assert_eq "[SPEC-3] compat.sh uses (( major < 5 )) as the floor comparison" \
     "1" "$_floor_cmp"
 

@@ -133,6 +133,7 @@ outputs:
     format: json
     required: true
     primary: true
+    finding_topics: none
 S6EOF
 _s6_rc=0
 validate_manifest "$_s6_mf" >/dev/null 2>&1 || _s6_rc=$?

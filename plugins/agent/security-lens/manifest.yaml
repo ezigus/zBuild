@@ -53,6 +53,7 @@ outputs:
     topic: code-findings
     description: "the security review of the change; findings: each security problem found in the code"
     path: ${artifact_dir}/security-findings.json
+    finding_topics: none
     type: findings.json@1
     format: json
     required: true

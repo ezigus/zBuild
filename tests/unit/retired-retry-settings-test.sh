@@ -77,6 +77,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 MF
     printf 'p_run() { :; }\n' > "$D/plugin.sh"
     _vm=0; validate_manifest "$D/manifest.yaml" >/dev/null 2>&1 || _vm=$?

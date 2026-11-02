@@ -79,6 +79,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 EOF
 cat > "$_dir/plugin.sh" <<EOF
 rbl_provider_run() {

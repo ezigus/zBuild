@@ -58,7 +58,7 @@ _card() {
         printf 'id: v\nname: v\nkind: tool\nversion: 0.0.1\n'
         [[ -n "$2" ]] && printf '%s\n' "$2"
         printf 'provides:\n  result_contract: 3\nhooks:\n  run: x_run\noutputs:\n'
-        printf '  - id: v_result\n    path: ${artifact_dir}/v-result.json\n    type: json\n    required: true\n    primary: true\n'
+        printf '  - id: v_result\n    path: ${artifact_dir}/v-result.json\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n'
         [[ -n "$3" ]] && printf '%s\n' "$3"
     } > "$1/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$1/plugin.sh"
@@ -122,6 +122,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
     topic: code-findings
     description: the suite's result
   - id: tt_check_result
@@ -143,7 +144,7 @@ _consumer() {   # _consumer <name> <topic>...
     {
         printf 'id: %s\nname: %s\nkind: agent\nversion: 0.0.1\ntakes:\n' "$s" "$s"
         for t in "$@"; do printf '  - topic: %s\n    for: x\n' "$t"; done
-        printf 'hooks:\n  run: x_run\noutputs:\n  - id: %s_r\n    path: ${artifact_dir}/%s-r.json\n    type: json\n    required: true\n    primary: true\n' "${s//-/_}" "$s"
+        printf 'hooks:\n  run: x_run\noutputs:\n  - id: %s_r\n    path: ${artifact_dir}/%s-r.json\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n' "${s//-/_}" "$s"
     } > "$PROOT/agent/$s/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$PROOT/agent/$s/plugin.sh"
 }

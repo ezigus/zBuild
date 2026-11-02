@@ -111,7 +111,7 @@ route_to_model_loop "T2" "$_PROMPT" "$_WORK" >/dev/null 2>&1
 _loop_rc=$?
 set -e
 
-_calls="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null || printf '0')"
+_calls="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null || true)"
 assert_eq "[SPEC-1] claude is invoked ONCE, not max_iterations times" "1" "$_calls"
 assert_eq "[SPEC-1] the loop reports the failure" "1" "$_loop_rc"
 assert_eq "[SPEC-1] terminated reason names the rate limit" \
@@ -168,7 +168,7 @@ route_to_model_loop "T2" "$_PROMPT" "$_WORK" >/dev/null 2>&1
 _neg_rc=$?
 set -e
 
-_neg_calls="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null || printf '0')"
+_neg_calls="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null || true)"
 assert_eq "[SPEC-4] a genuine failure is one call (one call per try, #2439)" "1" "$_neg_calls"
 assert_eq "[SPEC-4] and ends the try" "1" "$_neg_rc"
 assert_eq "[SPEC-4] its reason is a failed call, not a rate limit" \

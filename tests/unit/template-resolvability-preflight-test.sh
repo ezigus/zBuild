@@ -71,6 +71,7 @@ outputs:
     type: frob.json
     required: true
     primary: true
+    finding_topics: none
 provides:
   role: frobnicator
   result_contract: 3

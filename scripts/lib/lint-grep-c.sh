@@ -50,14 +50,17 @@ if [[ -z "${_SCAN_ROOTS[0]:-}" ]]; then
     _SCAN_REPO_ROOT_TOPLEVEL=1
 fi
 
-# A counting `grep` inside a command substitution, followed by `|| echo`.
-# The count flag may be in any cluster, not just the first — `grep -cE PAT`,
-# `grep -E -c PAT` and the GNU long form `grep --count PAT` are all the bug.
-# The `[^)]*` guards keep a match from spanning two sibling substitutions on
-# one line.
+# A counting `grep` — the count flag in any cluster, or the GNU long form
+# `--count` — followed by `|| echo` or `|| printf` in the same command, its
+# output piped on or not. #2454: the check reads whole commands, not lines. A
+# command continued with `\` is joined first, and single-quoted text (a jq
+# filter, a grep pattern) is blanked, so brackets or pipes inside it cannot hide
+# the bug. Six of #1805's assertions had exactly that shape, and a line-based
+# rule that stopped at the first `)` passed them.
 # Deliberately narrow: `|| true` and assignment-outside-substitution must both
 # keep passing.
-_PATTERN='\$\([^)]*grep[^)]*[[:space:]](-[a-zA-Z]*c[a-zA-Z]*|--count)[[:space:]][^)]*\|\|[[:space:]]*echo'
+_SEG='([^;&|()]|>&)*'
+_PATTERN="grep${_SEG}[[:space:]](-[a-zA-Z]*c[a-zA-Z]*|--count)([[:space:]]${_SEG})?(\\|[^|;&()]${_SEG})*\\|\\|[[:space:]]*(echo|printf)"
 
 _failures=0
 
@@ -72,25 +75,73 @@ _collect_files() {
     fi
 }
 
+# _scan <file>... — "file<TAB>line<TAB>command" for each offending command;
+# line is where the command starts.
+_scan() {
+    _LGC_PAT="$_PATTERN" awk '
+        # code(s) — s with the text inside quotes blanked: single-quoted text
+        # (a jq filter, a grep pattern) and double-quoted text (a test title),
+        # except a $( … ) inside double quotes, which is code. Brackets or pipes
+        # inside quotes then cannot hide the bug or fake it.
+        function code(s,   out, i, c, n, sp, st) {
+            out = ""; sp = 0; st[0] = "N"; n = length(s)
+            for (i = 1; i <= n; i++) {
+                c = substr(s, i, 1)
+                if (st[sp] == "S") { if (c == "\047") sp--; continue }
+                if (st[sp] == "D") {
+                    if (c == "\\") { i++; continue }
+                    if (c == "\"") { sp--; out = out "\""; continue }
+                    if (c == "$" && substr(s, i + 1, 1) == "(") { st[++sp] = "C"; out = out "$("; i++ }
+                    continue
+                }
+                if (c == "\\") { out = out substr(s, i, 2); i++; continue }
+                if (c == "\047") { st[++sp] = "S"; out = out "\047\047"; continue }
+                if (c == "\"") { st[++sp] = "D"; out = out "\""; continue }
+                if (c == "(") st[++sp] = "C"
+                else if (c == ")" && st[sp] == "C") sp--
+                out = out c
+            }
+            return out
+        }
+        function check(   t) {
+            if (cmd == "") return
+            t = cmd; sub(/^[[:space:]]+/, "", t)
+            # A comment describing the antipattern is not an instance of it,
+            # and a marked command is the explicit per-line opt-out (#1969).
+            if (t ~ /grep/ && t ~ /\|\|/ && t !~ /^#/ && t !~ /lint-grep-c:allow/) {
+                if (code(t) ~ pat) printf "%s\t%d\t%s\n", fname, start, t
+            }
+            cmd = ""
+        }
+        BEGIN { pat = ENVIRON["_LGC_PAT"] }
+        FNR == 1 { check(); fname = FILENAME }
+        {
+            line = $0
+            if (cmd == "") start = FNR
+            if (line ~ /\\$/) { sub(/\\$/, "", line); cmd = cmd line " "; next }
+            cmd = cmd line
+            check()
+        }
+        END { check() }' "$@" 2>/dev/null || true
+}
+
+_files=()
 while IFS= read -r -d '' _file; do
     case "$_file" in
         */legacy-DoNotUse/*) continue ;;
     esac
-    while IFS=: read -r _lineno _text; do
-        [[ -z "$_lineno" ]] && continue
-        # Trim leading whitespace for a readable report.
-        _text="${_text#"${_text%%[![:space:]]*}"}"
-        # A comment describing the antipattern is not an instance of it —
-        # this very file documents the bad form in its header.
-        [[ "$_text" == '#'* ]] && continue
-        # Explicit per-line opt-out (#1969) — see the header.
-        [[ "$_text" == *'lint-grep-c:allow'* ]] && continue
+    _files+=("$_file")
+done < <(_collect_files)
+
+if [[ ${#_files[@]} -gt 0 ]]; then
+    while IFS=$'\t' read -r _file _lineno _text; do
+        [[ -n "$_lineno" ]] || continue
         printf 'lint-grep-c: %s:%s — `grep -c … || echo` yields "0\\n0" on no-match; use `|| true`\n' \
             "${_file#"$_REPO_ROOT"/}" "$_lineno" >&2
         printf '    %s\n' "$_text" >&2
         _failures=$((_failures + 1))
-    done < <(/usr/bin/grep -nE "$_PATTERN" "$_file" 2>/dev/null || true)
-done < <(_collect_files)
+    done < <(_scan "${_files[@]}")
+fi
 
 if [[ "$_failures" -gt 0 ]]; then
     printf '\nlint-grep-c: %d occurrence(s). `grep -c` already prints the count — replace `|| echo 0` with `|| true`.\n' \

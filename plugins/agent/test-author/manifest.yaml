@@ -66,6 +66,7 @@ outputs:
     topic: code-findings
     description: "the tests written for each requirement, with each file's fingerprint; findings: an assertion that does not test what its requirement says"
     path: "${artifact_dir}/test-author-result.json"
+    finding_topics: none
     type: test-author-result.json@1
     format: json
     required: true

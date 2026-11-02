@@ -77,6 +77,7 @@ outputs:
     format: json
     required: true
     primary: true
+    finding_topics: none
   - id: lens_summary
     path: "${artifact_dir}/mock-${ZBUILD_REVIEW_LENS_ID}-summary.md"
     type: mock-lens-summary.md@1

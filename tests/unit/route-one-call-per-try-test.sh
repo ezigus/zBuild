@@ -62,7 +62,7 @@ source "$REPO_ROOT/core/router/route.sh"
 source "$REPO_ROOT/scripts/lib/router-rc-classify.sh"
 
 PROMPT="$TEST_TEMP_DIR/prompt.txt"; echo "do the work" > "$PROMPT"
-_calls() { grep -c . "$CALLS" 2>/dev/null || echo 0; }
+_calls() { local n; n="$(grep -c . "$CALLS" 2>/dev/null || true)"; printf '%s\n' "${n:-0}"; }
 _try() {   # <mode> — one try, 3 arguments, no call limit
     : > "$CALLS"
     MOCK_MODE="$1" route_to_model_loop T2 "$PROMPT" "$REPO" >/dev/null 2>&1

@@ -25,7 +25,8 @@ _ZBUILD_MANIFEST_ROUTER_BUDGET_LOADED=1
 # #2439 (ADR-054 §6a): `retries` and `retry_on_exhaustion` are gone — a stage
 # never repeats a model call; the template's per-stage `retry:` is the one retry.
 # #2448 (ADR-017 §11): `tools: none` — the plugin's calls get no tools at all.
-_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns tools"
+# #2454 (ADR-017 §11): `effort` — how hard the model thinks (the CLI's --effort).
+_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns tools effort"
 
 # _manifest_router_range <knob> → "<min> <max>", empty for an unknown knob.
 # The ranges are the template's ranges (_tpl_validate_io_knobs), deliberately:
@@ -43,6 +44,7 @@ _manifest_router_range() {
 _manifest_router_words() {
     case "$1" in
         tools) echo "none" ;;         # #2448
+        effort) echo "low medium high xhigh max" ;;   # #2454
         *)     echo "" ;;
     esac
 }

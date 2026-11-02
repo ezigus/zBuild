@@ -118,6 +118,7 @@ outputs:
     topic: code-findings
     description: "the suite's outcome; findings: each failing test file and why, and an assertion file changed after its tests were written; its reason names any of test's checks that failed"
     path: "${artifact_dir}/test-results.json"
+    finding_topics: change
     type: test-results.json@1
     format: json
     required: true
@@ -169,6 +170,7 @@ outputs:
     topic: code-findings
     description: "the shape check; findings: a change to a file whose shape tests pin, without those tests in the change"
     path: "${artifact_dir}/shape-floor-result.json"
+    finding_topics: change
     type: shape-floor-result.json@1
     format: json
     required: false
@@ -183,6 +185,7 @@ outputs:
     topic: requirement-findings
     description: "whether each requirement's test proves it; findings: a requirement with no tagged assertion, a test that passes without the change or fails with it, a WIRING file the change does not run through or that is not what runs it, a changed file no test needs"
     path: "${artifact_dir}/acceptance-gate-result.json"
+    finding_topics: code-findings
     type: acceptance-gate-result.json@1
     format: json
     required: false

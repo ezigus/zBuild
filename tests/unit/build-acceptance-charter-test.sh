@@ -197,7 +197,7 @@ assert_eq "AC4 setup: _build_stage_run_inner rc=0" "0" "$rc_ac4"
 # Check that build.scope.violation was emitted for the acceptance test path.
 violation_count="$(jq -r --arg p "$ACCEPTANCE_TEST_FILE" \
     'select(.type=="build.scope.violation") | select(.data.path==$p)' \
-    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -c '"type"' || echo 0)"
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -c '"type"' || true)"
 
 if [[ "$violation_count" -ge 1 ]]; then
     assert_pass "AC4: build.scope.violation emitted for acceptance test file"

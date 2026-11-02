@@ -51,6 +51,22 @@ _route_manifest_no_tools() {
     [[ "${_mnt%$'\n'}" == none ]]
 }
 
+# ─── _route_manifest_effort_v <var> [manifest] — #2454 (ADR-017 §11) ────────
+# How hard the model thinks on the plugin's calls: its `config.router.effort`,
+# else medium. Every call passes it, so no call runs at a default nobody chose.
+_ZB_ROUTE_EFFORT_DEFAULT="medium"
+_route_manifest_effort_v() {
+    local -n _rme="$1"
+    _rme="$_ZB_ROUTE_EFFORT_DEFAULT"
+    local mf="${2:-${ZBUILD_PLUGIN_DIR:+$ZBUILD_PLUGIN_DIR/manifest.yaml}}"
+    [[ -n "$mf" && -f "$mf" ]] || return 0
+    declare -F _manifest_router_block_v >/dev/null 2>&1 || return 0
+    local _mre; _manifest_router_block_v _mre "$mf" effort
+    _mre="${_mre%$'\n'}"
+    case "$_mre" in low|medium|high|xhigh|max) _rme="$_mre" ;; esac
+    return 0
+}
+
 # ─── _route_resolve_knob — ADR-017 (#455) precedence chokepoint ──────────────
 # Generic helper: future knobs (tier_default, budget_usd, model_override) reuse
 # this. Accessor returns per-stage value or empty; env_var supplies session-wide

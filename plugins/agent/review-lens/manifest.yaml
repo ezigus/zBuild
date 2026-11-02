@@ -69,6 +69,7 @@ outputs:
     topic: code-findings
     description: "one review lens's verdict on the change; findings: each problem the lens found in the code"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"
+    finding_topics: none
     type: review-lens.json@1
     format: json
     required: true
@@ -89,6 +90,7 @@ outputs:
     topic: code-findings
     description: "the lens's findings that send the run back and that the code or a test must fix"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-code-result.json"
+    finding_topics: none
     type: review-lens-routed.json@1
     format: json
     required: false
@@ -96,6 +98,7 @@ outputs:
     topic: requirement-findings
     description: "the lens's findings that send the run back and that the design must fix, or that say the issue itself is wrong"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-design-result.json"
+    finding_topics: none
     type: review-lens-routed.json@1
     format: json
     required: false

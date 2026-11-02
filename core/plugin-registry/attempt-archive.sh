@@ -173,6 +173,12 @@ attempt_outputs_fingerprint_v() {
         local _fp_notes; stage_notes_path_v _fp_notes "$_fp_sd" "$ZBUILD_CURRENT_STAGE"
         if [[ -e "$_fp_notes" ]]; then sum="$(cksum 2>/dev/null < "$_fp_notes" || printf 'absent')"; else sum="absent"; fi
         _fp_var+="__notes__"$'\t'"$sum"$'\n'
+        # #2454: the steps of a call cut off at its time limit are saved beside
+        # the notes for the next try (stage-cutoff.sh), so new steps are
+        # something left too. A call that finishes removes the list: absent.
+        local _fp_cut="${_fp_notes%.md}.cut-off.md"
+        if [[ -e "$_fp_cut" ]]; then sum="$(cksum 2>/dev/null < "$_fp_cut" || printf 'absent')"; else sum="absent"; fi
+        _fp_var+="__cutoff__"$'\t'"$sum"$'\n'
     fi
     _fp_var="${_fp_var%$'\n'}"
 }
@@ -250,9 +256,10 @@ attempt_archive_outputs() {
     local _unchanged="" _name _was _now _state _progress="" _after _bn _bs
     if [[ -n "$before" ]]; then
         # #2252 / #2439 / #2443 (ADR-054 §6a): progress is a change to the
-        # code (__repository__), to the stage's notes (__notes__), or to any
-        # declared output except its summary and its result file — those
-        # describe the try, so they change on every one. One rule, every stage.
+        # code (__repository__), to the stage's notes (__notes__), to the saved
+        # steps of a cut-off call (__cutoff__, #2454), or to any declared
+        # output except its summary and its result file — those describe the
+        # try, so they change on every one. One rule, every stage.
         _progress=false
         attempt_outputs_fingerprint_v _after "$plugin_dir" "$state_file" "$before"
         while IFS=$'\t' read -r _name _now; do

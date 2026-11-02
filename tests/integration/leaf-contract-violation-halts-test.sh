@@ -63,6 +63,7 @@ outputs:
     type: json
     required: true
     primary: true
+    finding_topics: none
 EOF
     printf '%s() {\n    local d; d="$(dirname "$2")/artifacts"; mkdir -p "$d"\n%s\n}\n' \
         "$fn" "$2" > "$dir/plugin.sh"

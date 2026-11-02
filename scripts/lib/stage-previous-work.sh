@@ -81,8 +81,9 @@ _sp_last_good_attempt() {
 # ─── Previous work ───────────────────────────────────────────────────────────
 # _sp_manifest_roles <manifest> <state_dir> — one line per output that plays a
 # role: "S<TAB>path" (summary: true), "E<TAB>path" (errors: true), "P<TAB>path"
-# (primary: true), "R<TAB>path" (required: true), and for every output that
-# names a topic (ADR-071) "T<TAB>topic<TAB>id<TAB>path". Read once per manifest per run and kept under the run's
+# (primary: true), "R<TAB>path" (required: true), for every output that
+# names a topic (ADR-071) "T<TAB>topic<TAB>id<TAB>path", and for every output
+# that declares finding_topics (#2454) "F<TAB>words<TAB>id<TAB>path". Read once per manifest per run and kept under the run's
 # runtime/ folder: the block is written at every dispatch, each dispatch is its
 # own subshell, and the fork budget (ADR-065) counts every read.
 _sp_manifest_roles() { local _smr; _sp_manifest_roles_v _smr "$1" "$2"; printf '%s' "$_smr"; }
@@ -103,8 +104,9 @@ _sp_manifest_roles_v() {
                     if (prim) print "P\t" path
                     if (req)  print "R\t" path
                     if (topic != "") print "T\t" topic "\t" id "\t" path
+                    if (ft != "") print "F\t" ft "\t" id "\t" path
                 }
-                path = ""; id = ""; topic = ""; summ = 0; err = 0; prim = 0; req = 0
+                path = ""; id = ""; topic = ""; ft = ""; summ = 0; err = 0; prim = 0; req = 0
             }
             /^outputs:[[:space:]]*$/ { inb = 1; next }
             inb && /^[a-zA-Z_]/ { flush(); inb = 0 }
@@ -121,6 +123,8 @@ _sp_manifest_roles_v() {
             inb && /^[[:space:]]+id:[[:space:]]*/ {
                 i = $0; sub(/^[[:space:]]+id:[[:space:]]*/, "", i); sub(/[[:space:]]*#.*/, "", i)
                 gsub(/^["\047]|["\047]$/, "", i); id = i }
+            inb && /^[[:space:]]+finding_topics:[[:space:]]*/ {
+                f = $0; sub(/^[[:space:]]+finding_topics:[[:space:]]*/, "", f); sub(/[[:space:]]*#.*/, "", f); ft = f }
             inb && /^[[:space:]]+topic:[[:space:]]*/ {
                 t = $0; sub(/^[[:space:]]+topic:[[:space:]]*/, "", t); sub(/[[:space:]]*#.*/, "", t)
                 gsub(/^["\047]|["\047]$/, "", t); topic = t }
@@ -214,7 +218,7 @@ _stage_block_previous_work() {
 
     local s manifest roles summ errp res req notes cutoff verdict own body any=0 raw content
     local listed t_topic t_id t_path
-    local -A topic_of=()
+    local -A topic_of=() allow_of=()
     for s in "${order[@]}"; do
         # Only a stage's own notes come back to it (ADR-067 §8); another
         # stage's notes are its working file, not its output.
@@ -229,21 +233,23 @@ _stage_block_previous_work() {
         [[ -n "${outs[$s]:-}" || -n "$notes" || -n "$cutoff" ]] || continue
         _inputs_stage_manifest_v manifest "$s" "$plugins_root" 2>/dev/null || true
         summ=""; errp=""; res=""; req=""; roles=""
-        topic_of=()
+        topic_of=(); allow_of=()
         [[ -n "$manifest" ]] && _sp_manifest_roles_v roles "$manifest" "$state_dir"
         # ADR-071: an output is shown when the stage takes its topic (by id
         # for the listed paths, by manifest path for the summary, the errors
         # and the result). With no takes:, everything is.
         while IFS=$'\t' read -r k t_topic t_id t_path; do
-            [[ "$k" == T ]] || continue
-            topic_of["id:$t_id"]="$t_topic"; topic_of["path:$t_path"]="$t_topic"
+            case "$k" in
+                T) topic_of["id:$t_id"]="$t_topic"; topic_of["path:$t_path"]="$t_topic" ;;
+                F) allow_of["id:$t_id"]="$t_topic"; allow_of["path:$t_path"]="$t_topic" ;;
+            esac
         done <<< "$roles"
-        local res_any="" res_topic=""
+        local res_any="" res_topic="" res_allow=""
         while IFS=$'\t' read -r k raw; do
             [[ "$k" == [SEP] ]] || { [[ "$k" == R ]] && req+="${raw##*/}"$'\n'; continue; }
             # #2452: the primary result is read for its findings whatever its
             # topic; each finding goes by its own topic (§2).
-            [[ "$k" == P && -z "$res_any" ]] && { _verdict_resolve_path_v res_any "$raw" "$state_dir"; res_topic="${topic_of["path:$raw"]:-none}"; }
+            [[ "$k" == P && -z "$res_any" ]] && { _verdict_resolve_path_v res_any "$raw" "$state_dir"; res_topic="${topic_of["path:$raw"]:-none}"; res_allow="${allow_of["path:$raw"]:-}"; }
             [[ -z "$takes" || "$takes" == *" ${topic_of["path:$raw"]:-none} "* ]] || continue
             case "$k" in
                 S) [[ -z "$summ" ]] && { summ="$(_inputs_output_paths "$s" "$raw" "$state_dir")"; summ="${summ%%$'\n'*}"; } ;;
@@ -251,10 +257,10 @@ _stage_block_previous_work() {
                 P) [[ -z "$res" ]] && _verdict_resolve_path_v res "$raw" "$state_dir" ;;
             esac
         done <<< "$roles"
-        listed=""; local -a found=() found_topic=()
+        listed=""; local -a found=() found_topic=() found_allow=()
         for id in ${outs[$s]:-}; do
             # Every JSON output is read for findings; only a taken one is listed.
-            [[ "${outpath[$id]:-}" == *.json ]] && { found+=("${outpath[$id]}"); found_topic+=("${topic_of["id:$id"]:-none}"); }
+            [[ "${outpath[$id]:-}" == *.json ]] && { found+=("${outpath[$id]}"); found_topic+=("${topic_of["id:$id"]:-none}"); found_allow+=("${allow_of["id:$id"]:-}"); }
             [[ -z "$takes" || "$takes" == *" ${topic_of["id:$id"]:-none} "* ]] || continue
             listed+="${outtext[$id]}"
         done
@@ -262,10 +268,11 @@ _stage_block_previous_work() {
         [[ "$res_any" == *.json && -s "$res_any" ]] || res_any=""
 
         # ADR-071 §2, #2452: a finding is shown when the stage takes its own
-        # topic, or — when it names none of the five — its output's.
+        # topic, or — when it names none its output allows (finding_topics,
+        # #2454) — its output's.
         body=""
         if [[ -n "$res_any" && "$(<"$res_any")" == *'"findings"'* ]]; then
-            body="$(_sp_findings_for "$res_any" "$s" "$s" "$res_topic" "$takes")"
+            body="$(_sp_findings_for "$res_any" "$s" "$s" "$res_topic" "$takes" "$res_allow")"
         fi
         # #2428 (ADR-071 §2): the findings of every other output, labelled by
         # the output's file — the name open_items_json gives them.
@@ -275,7 +282,7 @@ _stage_block_previous_work() {
             [[ "${fp##*/}" != "${res_any##*/}" && -s "$fp" ]] || continue
             [[ "$(<"$fp")" == *'"findings"'* ]] || continue
             lbl="${fp##*/}"; lbl="${lbl%.json}"; lbl="${lbl%-result}"
-            more="$(_sp_findings_for "$fp" "$s" "$lbl" "${found_topic[$_fx]}" "$takes")"
+            more="$(_sp_findings_for "$fp" "$s" "$lbl" "${found_topic[$_fx]}" "$takes" "${found_allow[$_fx]}")"
             [[ -n "$more" ]] && body+="${body:+$'\n'}$more"
         done
 
@@ -338,15 +345,16 @@ _stage_block_previous_work() {
     return 0
 }
 
-# _sp_findings_for <result.json> <stage> <label> <output-topic> <takes> — one
-# line per finding the stage is shown: its own topic when it names one of the
-# five, else its output's, must be among <takes> (" a b ", "" = everything).
+# _sp_findings_for <result.json> <stage> <label> <output-topic> <takes> <allowed>
+# — one line per finding the stage is shown: its own topic when its output's
+# finding_topics (<allowed>, "a b" or "none") lists it, else its output's, must
+# be among <takes> (" a b ", "" = everything).
 _sp_findings_for() {
-    jq -r --arg s "$2" --arg l "$3" --arg ot "$4" --arg tk "$5" \
+    jq -r --arg s "$2" --arg l "$3" --arg ot "$4" --arg tk "$5" --arg al " ${6:-} " \
         '(.data.findings // [])[]?
          | select(type == "object" and (.n|type) == "number")
          | ((if (.topic | type) == "string" then .topic else "" end) as $t
-            | if ($t | test("^(ask|tests|change|requirement-findings|code-findings)$")) then $t else $ot end) as $eff
+            | if ($t != "" and ($al | contains(" " + $t + " "))) then $t else $ot end) as $eff
          | select($tk == "" or ($tk | contains(" " + $eff + " ")))
          | "- \($l) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' "$1" 2>/dev/null || true
 }

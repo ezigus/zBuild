@@ -60,6 +60,7 @@ outputs:
     errors: true
   - id: hydrate_result
     path: "${artifact_dir}/hydrate-result.json"
+    finding_topics: none
     type: hydrate-result.json@1
     format: json
     required: true

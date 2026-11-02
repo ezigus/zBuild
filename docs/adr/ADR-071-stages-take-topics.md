@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic)
+**Status:** Accepted (2026-10-27); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -94,8 +94,18 @@ the code (155 turns, nothing saved), and the run ended. Only one finding was des
     test file that died on a signal, a test file too slow to check. Its findings about the requirements
     keep the result's topic.
 
+## Amendment 2026-11-02 (#2454) — §1 §2: every stage result declares where its findings may go
+
+#2452 let a finding name its own topic, but only issue-acceptance and the acceptance check used it, and nothing made a stage decide. On #1805 run 41452299475 the test stage sent all 12 failing test files and 9 shape-check findings to test-author, 7 of the files tests it did not write; it spent its call sorting 27 problems, 5 of them its own.
+
+- **§1: every stage result declares `finding_topics:`.** An output that is a stage result (`primary: true`, or a path ending `-result.json`) names the topics its findings may name for themselves, or `none`. `validate_manifest` refuses a stage result without it, or with a word outside the five, so a new stage, or a new kind of finding, cannot slip through undecided. The shipped declarations: issue-acceptance `code-findings requirement-findings`; the acceptance check `code-findings`; test's result and the shape check `change`; every other stage result `none`.
+- **§2: Previous work honours a finding's own topic only when its output lists it;** otherwise the finding goes by its output's topic.
+- **The test stage labels by whose test it is.** A failing test file, or a file the shape check says this change must update, that is one of the design's test files keeps the output's topic (`code-findings`: test-author and build). Any other file is labelled `change`, which build takes and test-author and design do not.
+- **Each test file is listed once.** `acceptance_list_testfiles` used to print a file once per requirement that named it, and every reader repeated it (test-author's "Already written" list named one file six times).
+
 ## Enforced by
 
+- §1 §2 amendment 2026-11-02 (#2454: every stage result declares where its findings may go) → `tests/unit/finding-owner-topics-test.sh` O1–O5; `tests/integration/test-checks-own-run-test.sh` R8
 - §1 §2 amendment 2026-11-02 (#2452: each finding can carry its own topic) → `tests/unit/finding-topics-test.sh` F1 (a topic before a tab), F2–F4 (Previous work routes each finding by its own topic, else its output's), F5–F6 (issue-acceptance's marks; its summary does not list them), F7 (the acceptance check's code and test findings are code-findings), F8 (findings read back with their topics)
 - §1 amendment 2026-10-31 (#2441: build's "test is wrong" answers are code-findings) → `tests/unit/build-test-is-wrong-test.sh` W2–W3; `tests/unit/stage-takes-topics-test.sh` T7
 - §1 → `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R3 (a lens's findings in one output per topic, by what fixes them); `tests/unit/stage-takes-topics-test.sh` T6 (an unknown topic or take is refused, naming it), T7 (every output of the shipped stages names its topic); `tests/unit/stage-contract-card-test.sh` C2 (an output with a topic and no description is refused), C5 (every shipped output with a topic has a description); `tests/integration/test-checks-own-run-test.sh` R4 (the acceptance check's finding lives only in its own result), R7 (a check that failed with no findings gets its reason as one finding)

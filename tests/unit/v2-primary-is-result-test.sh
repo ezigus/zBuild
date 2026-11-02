@@ -40,7 +40,7 @@ _mf() {   # _mf <dir> <result_contract or ""> <primary path>
         printf 'provides:\n  role: fx\n'
         [[ -n "$2" ]] && printf '  result_contract: %s\n' "$2"
         printf 'outputs:\n'
-        printf '  - id: main\n    path: %s\n    required: true\n    primary: true\n' "$3"
+        printf '  - id: main\n    path: %s\n    required: true\n    primary: true\n    finding_topics: none\n' "$3"
         printf 'hooks:\n  run: fx_run\n'
     } > "$1/manifest.yaml"
 }

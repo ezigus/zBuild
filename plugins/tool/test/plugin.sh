@@ -1107,6 +1107,16 @@ _test_write_result() {
     dir="$(dirname "$path")"
     mkdir -p "$dir"
 
+    # #2271: each failing file is a numbered finding; #2454: labelled by whose
+    # test file it is. The design is looked up only when something failed
+    # (ADR-065: a passing run pays nothing for it).
+    local _numbered="[]"
+    if [[ "$findings_json" != "[]" ]]; then
+        _numbered="$(jq -r '.[]? | "\(.file)\t\(.file) fails: \(.reason)"' <<< "$findings_json" 2>/dev/null \
+            | _test_findings_by_owner "$(earlier_acceptance_contract "$dir" "" 2>/dev/null || true)" | stage_findings_json)"
+        [[ -n "$_numbered" ]] || _numbered="[]"
+    fi
+
     # #2366 (ADR-054 §6): one outcome — pass/fail when the suite ran to the end,
     # otherwise how the stage stopped (the disposition word).
     local outcome="$verdict"
@@ -1154,7 +1164,7 @@ _test_write_result() {
         --arg mutation "$mutation_json" \
         --arg targeted "$targeted_json" \
         --arg findings "$findings_json" \
-        --argjson numbered "$(jq -r '.[]? | "\(.file) fails: \(.reason)"' <<< "${findings_json:-[]}" 2>/dev/null | stage_findings_json)" \
+        --argjson numbered "$_numbered" \
         '($findings | try fromjson catch []) as $fnd
         | {
             test_output: $test_output,
