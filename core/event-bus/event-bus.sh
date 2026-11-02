@@ -263,10 +263,18 @@ eb_emit_event() {
     # `|| true` on each: a lock or file that cannot be opened is a redirect
     # error, which `set -e` does not forgive, and an emit must never end its
     # caller (#1153).
-    if zbuild_has_flock; then
+    # #2456: a signal trap that interrupts this group runs inside it, with fd 9
+    # still holding the lock; an emit from that trap would wait 5 s on its own
+    # shell and drop its event. It writes at once instead: bash runs a trap
+    # between commands, so no line of the interrupted emit is half-written.
+    if zbuild_has_flock && [[ -z "${_EB_IN_EMIT:-}" ]]; then
+        _EB_IN_EMIT=1
         {
             flock -w 5 9 && echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
         } 9>"${ZBUILD_EVENTS_JSONL}.lock" || true
+        _EB_IN_EMIT=""
+    elif zbuild_has_flock; then
+        { echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"; } || true
     else
         # Best-effort fallback
         { echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"; } || true

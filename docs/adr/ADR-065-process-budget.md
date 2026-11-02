@@ -1,6 +1,6 @@
 # ADR-065 — Process budget: the engine's fork count is a tested contract
 
-**Status:** Accepted (2026-09-19)
+**Status:** Accepted (2026-09-19); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock)
 **Issue:** #2151
 **Related:** ADR-001 (Discovery + lockfile), ADR-012 (test tiering), ADR-053 (test flake policy — the serial-pin cap that also needs an amendment to raise), ADR-041 (the fd-9 lock discipline the trace harness must respect)
 
@@ -276,6 +276,12 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 > The full local suite went from 493s to 401s. Ratcheted `FORK_BUDGET` 4,440 → 4,380 (4,312 measured)
 > and set `PROCESS_BUDGET` 6,220 (6,139 measured; main before this round measured 8,331).
 
+### §5 amendment (2026-11-02, #2456) — an emit from a signal trap does not wait on its own lock
+
+The events lock is taken in the caller's shell (a brace group with `9>lock`, no fork, #2407). A TERM or INT that lands while that group holds the lock runs the trap inside it, with fd 9 still open. The abort trap's emits then opened the lock again, waited 5 s each on their own shell, and dropped their events: the abort took 5 s per emit and recorded no `pipeline.aborted`, which on Ubuntu CI failed `runner-release-exit-paths-test.sh` SPEC-5 and the sigterm tests now and then.
+
+`eb_emit_event` now marks the time it holds the lock. An emit that starts while the mark is set, which can only be a trap that interrupted this shell's own emit, writes its line at once without the lock. bash runs a trap between commands, so no line of the interrupted emit is half-written. An ordinary emit still takes the lock, and still starts no subshell. The other locks (`locked_state_update`, the cost ledger, the claim coordinator) take theirs in a subshell and are not affected.
+
 ## Consequences
 
 - A fork regression fails CI with its call site named, instead of surfacing months later as a
@@ -308,6 +314,7 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 
 ## Enforced by
 
+- §5 (amended 2026-11-02, #2456: an emit from a signal trap does not wait on its own lock) → `tests/unit/event-bus-trap-reentry-test.sh` T1, T2 (the trap's emit returns at once and is written), T3 (an ordinary emit still takes the lock); `tests/unit/event-bus-emit-cost-test.sh` E1 (still no subshell or extra process)
 - §1 → `tests/e2e/fork-budget-test.sh` SPEC-1 (the canary counts one exec), SPEC-1b (a quoted value is not a command), SPEC-2, SPEC-3, SPEC-4 (the total is within `FORK_BUDGET`)
 - §1 (amended #2236, exempt waits) → `tests/e2e/fork-budget-test.sh` (marked waits are listed apart and not counted)
 - §2 → `tests/e2e/fork-budget-test.sh` SPEC-4 (`FORK_BUDGET` carries its ratchet history in the comment above it)
