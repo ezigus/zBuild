@@ -269,17 +269,11 @@ _assert_released "SPEC-3" intake build
 print_test_section "SPEC-4: exit path = external SIGTERM"
 _prep sigterm
 export BUILD_RC=0 BUILD_SLEEP=1
-if command -v setsid >/dev/null 2>&1; then
-    setsid bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
-        _ "$OVERLAY_REPO" "$RUNNER" "release-sigterm" >"$CASE_DIR/out" 2>&1 &
-    RUNNER_PID=$!
-else
-    set -m
-    bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
-        _ "$OVERLAY_REPO" "$RUNNER" "release-sigterm" >"$CASE_DIR/out" 2>&1 &
-    RUNNER_PID=$!
-    set +m
-fi
+set -m
+bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+    _ "$OVERLAY_REPO" "$RUNNER" "release-sigterm" >"$CASE_DIR/out" 2>&1 &
+RUNNER_PID=$!
+set +m
 for _ in $(seq 1 300); do [[ -s "$BUILD_STARTED" ]] && break; sleep 0.1; done
 _build_pid="$(head -n 1 "$BUILD_STARTED" 2>/dev/null || true)"
 _t0=$(date +%s)
