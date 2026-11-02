@@ -1,0 +1,68 @@
+### SPEC-3 baseline tests/integration/from-stage-rehydrate-test.sh
+
+[38;2;0;212;255m[1m  from-stage-rehydrate — artifact restore on --from-stage (#1805)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1805/SPEC-3] --from-stage rehydrates prior-stage artifacts and skips their stage.start[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] setup: state branch populated
+  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.0QI0cR/s3-state/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
+    [2moutput missing: prior-run intake[0m
+  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
+    [2mexpected: 0, got: 0
+0[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] build is the first dispatched stage (--from-stage target, intake skipped)
+
+  [38;2;0;212;255m[#1805/SPEC-4] --from-stage with no restorable artifact exits 1 naming missing stage[0m
+  [38;2;248;113;113m✗[0m [#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact
+    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-4] stderr names the missing stage (intake)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-4] no stage.start emitted before exit 1
+    [2mexpected: 0, got: 1[0m
+
+  [38;2;0;212;255m[#1805/SPEC-13] from-stage-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-13] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
+  [38;2;74;222;128m✓[0m [#1805/SPEC-13] cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m5 of 10 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+  [38;2;248;113;113m✗[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
+  [38;2;248;113;113m✗[0m [#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact
+  [38;2;248;113;113m✗[0m [#1805/SPEC-4] no stage.start emitted before exit 1
+
+### SPEC-3 head tests/integration/from-stage-rehydrate-test.sh
+
+[38;2;0;212;255m[1m  from-stage-rehydrate — artifact restore on --from-stage (#1805)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1805/SPEC-3] --from-stage rehydrates prior-stage artifacts and skips their stage.start[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] setup: state branch populated
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
+  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
+    [2mexpected: 0, got: 0
+0[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] build is the first dispatched stage (--from-stage target, intake skipped)
+
+  [38;2;0;212;255m[#1805/SPEC-4] --from-stage with no restorable artifact exits 1 naming missing stage[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact
+  [38;2;74;222;128m✓[0m [#1805/SPEC-4] stderr names the missing stage (intake)
+  [38;2;74;222;128m✓[0m [#1805/SPEC-4] no stage.start emitted before exit 1
+
+  [38;2;0;212;255m[#1805/SPEC-13] from-stage-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-13] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
+  [38;2;74;222;128m✓[0m [#1805/SPEC-13] cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 10 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
+

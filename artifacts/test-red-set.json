@@ -1,0 +1,14 @@
+[
+  "tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh",
+  "tests/integration/cycle-member-dispatch-events-test.sh",
+  "tests/integration/from-stage-rehydrate-test.sh",
+  "tests/integration/nested-loop-rounds-build-test.sh",
+  "tests/integration/nested-loop-rounds-test.sh",
+  "tests/integration/resume-entry-points-test.sh",
+  "tests/integration/resume-loop-state-test.sh",
+  "tests/integration/resume-rehydrate-test.sh",
+  "tests/integration/run-timed-out-test.sh",
+  "tests/integration/stop-run-on-fail-test.sh",
+  "tests/integration/write-boundary-revert-test.sh",
+  "tests/unit/stage-retry-test.sh"
+]
