@@ -37,6 +37,8 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
 # Common mock plugins for all three paths.
 mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "build"  "agent" 0 >/dev/null
+# cycled sub-stage used by the artifact-snapshot-coverage cyclic fixture (SPEC-13 sub-case).
+mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
 # ── Shared helper: set up a work repo with a state branch for one path ──────────
@@ -244,13 +246,62 @@ assert_file_exists \
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "[#1805/SPEC-13] resume-entry-points test uses a fixture containing a cyclic stage"
 
-# Install a cyclic fixture into a dedicated work repo to establish that this test
-# file's setup installs a pipeline containing a cyclic stage (SPEC-13 requirement).
+# Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
+# demonstrate that this test file exercises a pipeline containing a cyclic stage.
+_S13_EP_ID="$(zb_test_issue)"
 _S13_EP_WORK="$(setup_git_temp_repo ep-s13-cycle-check)"
 install_template_overlay "$_S13_EP_WORK" artifact-snapshot-coverage
+
+_S13_EP_STATE_DIR="$TEST_TEMP_DIR/s13ep-state"
+_S13_EP_EVENTS_DIR="$TEST_TEMP_DIR/s13ep-events"
+_S13_EP_EVENTS_JSONL="$_S13_EP_EVENTS_DIR/events.jsonl"
+_S13_EP_STATE_FILE="$_S13_EP_STATE_DIR/pipeline-state.json"
+mkdir -p "$_S13_EP_STATE_DIR/artifacts" "$_S13_EP_EVENTS_DIR"
+
+jq -n \
+    --arg run_id "s13ep-fresh-1805" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$_S13_EP_ID" \
+    '{
+        schema_version: 1, run_id: $run_id, issue: $issue,
+        stage_statuses: {}, current_iteration: 0, self_heal_count: {},
+        scope_manifest_hash: "", cost_ledger_pointer: 0, claim_lease_id: "",
+        plugin_state: {}, status: "in_progress", updated_at: $now
+    }' > "$_S13_EP_STATE_FILE"
+
+set +e
+( cd "$_S13_EP_WORK" && env \
+    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$_S13_EP_STATE_DIR" \
+    ZBUILD_STATE_FILE="$_S13_EP_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$_S13_EP_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$_S13_EP_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template artifact-snapshot-coverage --issue "$_S13_EP_ID" ) \
+    >"$TEST_TEMP_DIR/s13ep-stdout.txt" 2>"$TEST_TEMP_DIR/s13ep-stderr.txt"
+set -e
+
+# [#1805/SPEC-13]: the fixture is cyclic (type: cycle present).
 _s13_ep_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "[#1805/SPEC-13] resume-entry-points test installs a fixture with type: cycle" \
+assert_contains "[#1805/SPEC-13] resume-entry-points test uses a cyclic fixture (type: cycle)" \
     "$_s13_ep_content" "type: cycle"
+
+# [#1805/SPEC-13]: confirm the cyclic pipeline ran (intake dispatched in the fresh run).
+_s13_ep_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
+assert_eq "[#1805/SPEC-13] cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)" \
+    "1" "$_s13_ep_intake_starts"
+
+# [#1805/SPEC-13]: confirm the cyclic STAGE ran (cycled dispatched), proving the
+# pipeline executed the cycle body — not just a non-cyclic pipeline.
+# Intake dispatching alone doesn't prove a cyclic stage ran; this does.
+_s13_ep_cycled_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^cycled$' || echo 0)"
+assert_gt "[#1805/SPEC-13] cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test" \
+    "$_s13_ep_cycled_starts" "0"
 
 cleanup_test_env
 print_test_results
