@@ -537,10 +537,14 @@ ${_dp_limits}")"; then
 }
 
 # _design_write_steps <design_md> <out_json> — the ```steps block as
-# {title, steps:[{id, description, areas}]}. A design with no steps writes none
+# {title, steps:[{id, description, areas, topic}]}. A design with no steps writes none
 # (and removes an earlier one, so a stale list is never read as this design's).
+# #2458 (ADR-071): each step's topic comes from its files — `tests` when they are
+# the design's own test files (TESTFILES), which only the stage that writes the
+# tests may change; `change` otherwise. A step with both is split, so each part
+# reaches the stage that may do it.
 _design_write_steps() {
-    local design="$1" out="$2" line in_block=0 title
+    local design="$1" out="$2" line in_block=0 title tfs
     local -a lines=()
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ ^'```steps'[[:space:]]*$ ]]; then in_block=1; continue; fi
@@ -549,11 +553,20 @@ _design_write_steps() {
     done < "$design"
     if [[ ${#lines[@]} -eq 0 ]]; then rm -f "$out" 2>/dev/null; return 0; fi
     title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"
-    printf '%s\n' "${lines[@]}" | jq -Rsc --arg t "$title" '
+    tfs="$(acceptance_list_testfiles "$design" 2>/dev/null | jq -Rsc 'split("\n") | map(select(length > 0))' 2>/dev/null)"
+    [[ -n "$tfs" ]] || tfs='[]'
+    printf '%s\n' "${lines[@]}" | jq -Rsc --arg t "$title" --argjson tf "$tfs" '
         split("\n") | map(select(length > 0))
-        | {title: $t, steps: [to_entries[] | (.value | split(" | areas:")) as $p
-            | {id: "step-\(.key + 1)", description: ($p[0] | gsub("^\\s+|\\s+$"; "")),
-               areas: (($p[1] // "") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))}]}' \
+        | [.[] | split(" | areas:") as $p
+            | {d: ($p[0] | gsub("^\\s+|\\s+$"; "")),
+               a: (($p[1] // "") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))}
+            | ([.a[] | select(. as $f | $tf | index([$f]))]) as $ta
+            | ([.a[] | select(. as $f | $tf | index([$f]) | not)]) as $ca
+            | if ($ta | length) > 0 and ($ca | length) > 0
+                then {description: .d, areas: $ca, topic: "change"}, {description: .d, areas: $ta, topic: "tests"}
+              elif ($ta | length) > 0 then {description: .d, areas: $ta, topic: "tests"}
+              else {description: .d, areas: $ca, topic: "change"} end]
+        | {title: $t, steps: [to_entries[] | {id: "step-\(.key + 1)"} + .value]}' \
         | atomic_write "$out" || rm -f "$out" 2>/dev/null
     return 0
 }

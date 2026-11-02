@@ -102,16 +102,29 @@ omit this line the pipeline falls back to the plan title.
 BUILD_PROMPT
 }
 
-# _build_compose_limits <plan_files_csv>
+# _build_compose_limits <plan_files_csv> [read-only files, one per line]
 # What build must not do (#2308): the scope it may touch and its rules. The
 # body places it after everything build judges against.
 _build_compose_limits() {
-    local plan_files_csv="${1:-}" scope_section
+    local plan_files_csv="${1:-}" ro="${2:-}" scope_section="" _f
+    # #2458 (ADR-067 §6): the design's own test files are read-only for build,
+    # so the list of files it may touch does not name them.
+    local -A _ro=()
+    # A TESTFILES line may name its SPEC first ("SPEC-1: tests/x-test.sh").
+    while IFS= read -r _f; do
+        [[ "$_f" =~ ^[[:space:]]*SPEC-[0-9]+:[[:space:]]*(.*)$ ]] && _f="${BASH_REMATCH[1]}"
+        _f="${_f%"${_f##*[![:space:]]}"}"
+        [[ -n "$_f" ]] && _ro[$_f]=1
+    done <<< "$ro"
     if [[ -n "$plan_files_csv" ]]; then
-        scope_section="$(printf '%s\n' "$plan_files_csv" | tr ',' '\n' | sed 's/^/  - /')"
-    else
-        scope_section="  (no plan.files[] declared — refuse to edit if scope is unclear)"
+        local -a _fl=()
+        IFS=',' read -r -a _fl <<< "$plan_files_csv"
+        for _f in ${_fl[@]+"${_fl[@]}"}; do
+            [[ -n "$_f" && -z "${_ro[$_f]:-}" ]] && scope_section+="${scope_section:+$'\n'}  - $_f"
+        done
     fi
+    [[ -n "$scope_section" ]] \
+        || scope_section="  (no plan.files[] declared — refuse to edit if scope is unclear)"
     cat <<BUILD_LIMITS
 ### Scope (plan.files[])
 You may ONLY touch files listed here. Refuse any out-of-scope edit.

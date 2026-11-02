@@ -316,9 +316,10 @@ _review_lens_run_inner() {
     local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content" "$(_rl_context)")"
 
     # ADR-067 §8: the lens's three parts and the engine's blocks — its budget
-    # and notes file among the engine's rules — in the one prompt order.
+    # among the engine's rules — in the one prompt order.
     local _composed
-    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
+    # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
+    if ! _composed="$(stage_prompt_compose_parts --fresh "$prompt")"; then
         _review_lens_write_result "$out" "degraded" "misconfigured" "prompt_not_composed"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the prompt could not be composed, so this lens reviewed nothing" \

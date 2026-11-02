@@ -333,6 +333,10 @@ _stage_block_previous_work() {
                 fi
             fi
         fi
+        # #2458: the stage's own notes and cut-off list, between marks the
+        # blocks writer takes out — kept for a building call, dropped for a
+        # fresh one (a judging call, a stage with no tools).
+        [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_OWN_BEGIN"
         if [[ -n "$own" && -n "$notes" ]]; then
             printf '\nYour notes so far:\n%s\n' "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
         fi
@@ -340,6 +344,7 @@ _stage_block_previous_work() {
             printf '\nYour last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:\n%s\n' \
                 "$(_sp_read "$cutoff" "$_ZB_SP_NOTES_MAX_BYTES")"
         fi
+        [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_OWN_END"
     done
     [[ "$any" -eq 1 ]] || printf '\nNo stage has run before this one.\n'
     return 0

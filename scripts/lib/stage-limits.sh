@@ -122,7 +122,9 @@ _route_resolve_timeout() {
         router.timeout.override_ignored timeout_s
 }
 
-# ADR-018 (#466): per-stage router.max_turns > $ZBUILD_ROUTER_MAX_TURNS > 25 default.
+# ADR-018 (#466): per-stage router.max_turns > $ZBUILD_ROUTER_MAX_TURNS > the
+# plugin's own > 0. #2458: 0 — no limit — when nothing sets one; the old 25
+# silently capped every stage that named none.
 # ADR-029 G3 (#812): when the cycle orchestrator detects a router timeout for
 # this stage, it sets ZBUILD_ROUTER_MAX_TURNS_OVERRIDE so the next dispatch
 # of the same stage uses an escalated budget (+50%, capped at 2× base). The
@@ -134,15 +136,14 @@ _route_resolve_max_turns() {
         printf '%s' "$ZBUILD_ROUTER_MAX_TURNS_OVERRIDE"
         return 0
     fi
-    _route_resolve_knob template_stage_router_max_turns ZBUILD_ROUTER_MAX_TURNS 25 \
+    _route_resolve_knob template_stage_router_max_turns ZBUILD_ROUTER_MAX_TURNS 0 \
         router.max_turns.override_ignored max_turns
 }
 
 # ADR-018 Amendment N (#762): when max_turns resolves to the 0 sentinel,
 # classify which source set it (template > env > manifest > default) for
-# telemetry. Emits `template`, `env`, `manifest` (#1816), or `default`. The
-# `default` branch is currently unreachable (compile-time default is 25, not 0)
-# but kept for forward compatibility if the default ever changes.
+# telemetry. Emits `template`, `env`, `manifest` (#1816), or `default` (#2458:
+# the default is 0, so a stage that sets nothing is `default`).
 # Copilot review #764: compare numerically so "00", "000" etc. (accepted
 # by the ^[0-9]+$ validator) classify correctly.
 _route_classify_max_turns_source() {

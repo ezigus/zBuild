@@ -138,3 +138,17 @@ sits (top-level OR cycle/parallel member; containers never call models).
 The leaf-level retry-on-timeout (`router.retries`) and its escalation are removed, with the `timeout_recur`
 breaker it was layered under: a stage makes one model call per try, and the engine's per-stage `retry:`
 (ADR-054 §6a) is the only retry. Enforced by `tests/unit/retired-retry-settings-test.sh` T1–T4, T6.
+
+## Amendment 2026-11-02 (#2458) — G3 leaves "no limit" alone; running out of turns does not stop the loop
+
+On #1805 run 41489923219 build (`max_turns: 0`) timed out; G3 read its limit as 25, and its next round ran
+with 37 turns, ran out of them, and running out of turns stopped the run (`_cycle_detect_blocked`), while
+running out of time would not have.
+
+- **G3's base is the stage's real turn limit**, from the router's own resolver (template > environment >
+  plugin > none). A stage with no limit has none to raise and keeps none.
+- **Running out of turns counts as a timeout does:** it is counted for G3 (so a stage with a limit gets +50%
+  on its next round) and it does not mark the loop blocked.
+
+Enforced by `tests/unit/cycle-g3-maxturns-escalation-test.sh` T4 (no limit stays no limit), T5 (running out
+of turns does not stop the loop and escalates a stated limit), T1–T3 (a stated limit escalates as before).

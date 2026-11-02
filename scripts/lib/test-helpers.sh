@@ -334,9 +334,8 @@ _zb_test_stage_blocks() {
         source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-prompt.sh" || exit 1
         mkdir -p "$dir" "$dir/repo" "$dir/state" || exit 1
         _stage_block_from_repo test-stage "$dir/repo" > "$dir/from-repo.md"
-        _stage_block_previous_work test-stage "$dir/state" "$dir/plugins" "" "$dir/repo" \
-            > "$dir/previous-work.md"
-        _stage_block_rules test-stage "$dir/state" "$dir/no-manifest.yaml" > "$dir/rules.md"
+        _stage_blocks_write_pw_rules "$dir" test-stage "$dir/state" "$dir/no-manifest.yaml" \
+            "$dir/plugins" "" "$dir/repo"
     ) 2>/dev/null
 }
 

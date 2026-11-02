@@ -82,7 +82,9 @@ _intake_requirements_json_v() {
     local issue reply prompt line item
     local -a reqs=()
     issue="$(_ireq_issue_text "${1:-}")"
-    prompt="$(stage_prompt_compose_text "$(_ireq_write_own)" "ISSUE:"$'\n'"$issue" "$(_ireq_limits)")" \
+    # #2458: intake has no tools and its reply is its output, so both its calls
+    # compose fresh — no notes, and no rule to confirm earlier work.
+    prompt="$(stage_prompt_compose_text --fresh "$(_ireq_write_own)" "ISSUE:"$'\n'"$issue" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     _ireq_call_v reply "$prompt" || return 1
     while IFS= read -r line; do
@@ -91,7 +93,7 @@ _intake_requirements_json_v() {
     [[ ${#reqs[@]} -gt 0 ]] || { _INTAKE_REQ_OUTCOME=unusable; return 1; }
 
     local listed; listed="$(printf -- '- %s\n' "${reqs[@]}")"
-    prompt="$(stage_prompt_compose_text "$(_ireq_check_own)" \
+    prompt="$(stage_prompt_compose_text --fresh "$(_ireq_check_own)" \
         "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     _ireq_call_v reply "$prompt" || return 1

@@ -1053,3 +1053,11 @@ The multi-turn loop (up to `router.max_iterations` calls, 10 by default) is remo
 (`no_done_sentinel`); a timeout ends it `timed_out`. Whether there is another try is the engine's, from the
 template's `retry:` (ADR-054 §6a). The "3 consecutive timeouts → fatal/yield" and "2 empty-diff iterations
 → no_progress" rules went with the loop. Enforced by `tests/unit/route-one-call-per-try-test.sh` O1–O6.
+
+## Amendment 2026-11-02 (#2458) — no turn limit unless one is set
+
+The compile-time default for `router.max_turns` was 25. It silently capped every stage that names no limit
+(test-author, issue-acceptance), and ADR-029 G3 read it as build's limit when build had said "no limit"
+(#1805 run 41489923219). The default is now 0 — no `--max-turns` — so a stage has a turn limit only when its
+template, the environment or its plugin sets one. Precedence is unchanged: template > `ZBUILD_ROUTER_MAX_TURNS`
+> the plugin's `router.max_turns` > none. Enforced by `tests/unit/turn-limit-default-test.sh` M1–M2.

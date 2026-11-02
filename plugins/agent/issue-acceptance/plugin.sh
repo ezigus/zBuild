@@ -206,7 +206,8 @@ issue_acceptance_run() {
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.
     local _composed
-    if ! _composed="$(stage_prompt_compose_parts "$_framed")"; then
+    # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
+    if ! _composed="$(stage_prompt_compose_parts --fresh "$_framed")"; then
         _ia_write "$art" misconfigured \
             "the prompt could not be composed — the engine's blocks are missing; the change was not judged"
         return 1
