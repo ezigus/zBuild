@@ -128,8 +128,10 @@ assert_eq "[#1805/SPEC-3] intake emits no stage.start when skipped via --from-st
 # After the change: intake is skipped; build (the --from-stage target) is first → PASSES.
 _s3_first_dispatched=""
 if [[ -f "$S3_EVENTS_JSONL" ]]; then
-    _s3_first_dispatched="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
-        "$S3_EVENTS_JSONL" 2>/dev/null | head -1 || true)"
+    # Use jq -rs to slurp all objects and pick .[0] — avoids | head (SIGPIPE-prone).
+    _s3_first_dispatched="$(jq -rs \
+        'map(select(.type=="stage.start") | .data.stage // empty) | .[0] // ""' \
+        "$S3_EVENTS_JSONL" 2>/dev/null || true)"
 fi
 assert_eq "[#1805/SPEC-3] build is the first dispatched stage (--from-stage target, intake skipped)" \
     "build" "$_s3_first_dispatched"
