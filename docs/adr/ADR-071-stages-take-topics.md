@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output)
+**Status:** Accepted (2026-10-27); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -19,7 +19,7 @@ The prompt was not enough. A stage should not be handed what its job does not us
    - `change` — the code the change made, and its summary;
    - `requirement-findings` — what checks found against the requirements and the design: issue-acceptance, design's own checks, the acceptance check on each requirement's test;
    - `code-findings` — what checks found in the code and the tests: the test suite, the test checker, the review lenses.
-   A finding takes the topic of the output it is in, and lives in one output: a stage does not copy one output's findings into another. The words are checked at load: a manifest naming any other topic is refused, naming the word.
+   A finding takes the topic of the output it is in, and lives in one output: a stage does not copy one output's findings into another. *Amended 2026-11-02 (#2452):* a finding may name its own topic, and then goes by it; one that names none goes by its output's (see the amendment below). The words are checked at load: a manifest naming any other topic is refused, naming the word.
 
    *Amended 2026-10-30 (#2428):* every output that names a topic also has a one-line `description:` saying what it holds, including the kinds of findings it can carry. The description sits on the output entry in the producing stage's manifest; two stages may produce the same type, and each describes its own output. A template author reads these, with each take's `for:` (§2), to see whether a finding reaches a stage that can act on it; the engine does not judge them. `validate_manifest` refuses an output with a topic and no description.
    *Amended 2026-10-30 (#2433):* a review lens declares one output per topic it writes findings to: `lens-<id>-code-result.json` (`code-findings`: what the code or a test must fix) and `lens-<id>-design-result.json` (`requirement-findings`: what the design must fix, or that the issue itself is wrong). A lens names what would fix a finding, never a stage; the topic carries it to the stages that take it.
@@ -67,8 +67,35 @@ must fix), holding only build's answers that a test is wrong, each naming the te
 on every try. It follows the review lenses' `lens-<id>-code-result.json`. Test-author takes
 `code-findings`, so it is shown them as `build-tests finding <n>`; build's diff and summary stay on `change`.
 
+## Amendment 2026-11-02 (#2452) — §1 §2: each finding can carry its own topic
+
+On #1805 run 41378014898, issue-acceptance found six unmet requirements, five of them code the change
+had not done yet. All six sat in its one result, whose topic is `requirement-findings`, and the same
+lines were in its summary, so design got all of them. Design spent its whole 20-minute call debugging
+the code (155 turns, nothing saved), and the run ended. Only one finding was design's to fix.
+
+- **§1: a finding may name its own topic,** one of the five words. A finding that names none, or names
+  any other word, takes its output's topic, as before. Every stage can tag a finding: the shared
+  `stage_findings_json` reads a line `<topic><TAB><text>` as a finding with that topic, and
+  `stage_findings_lines` reads a result's findings back the same way, so a stage that folds findings
+  keeps their topics. This replaces "a finding takes the topic of the output it is in". The lenses' one
+  output per topic (amendment 2026-10-30) still works.
+- **§2: Previous work shows a finding to a stage that takes the finding's topic,** whichever output holds
+  it, labelled as before. Paths, summaries and error logs still go by their output's topic. A stage that
+  sends its findings to more than one topic does not repeat them in its summary, because the summary goes
+  to every stage that takes the summary's topic.
+- **Who tags what.**
+  - issue-acceptance's judge starts each `UNMET:` line with `[fix-code]` (the change does not do it yet:
+    `code-findings`) or `[fix-design]` (the requirements miss it or get it wrong, or the issue is wrong:
+    `requirement-findings`). Its summary counts the unmet requirements and does not list them.
+  - The acceptance check tags as `code-findings` its findings about the code or a test: a test that does
+    not pass on the new code, a changed file no test checks, a test that never reached its assertion, a
+    test file that died on a signal, a test file too slow to check. Its findings about the requirements
+    keep the result's topic.
+
 ## Enforced by
 
+- §1 §2 amendment 2026-11-02 (#2452: each finding can carry its own topic) → `tests/unit/finding-topics-test.sh` F1 (a topic before a tab), F2–F4 (Previous work routes each finding by its own topic, else its output's), F5–F6 (issue-acceptance's marks; its summary does not list them), F7 (the acceptance check's code and test findings are code-findings), F8 (findings read back with their topics)
 - §1 amendment 2026-10-31 (#2441: build's "test is wrong" answers are code-findings) → `tests/unit/build-test-is-wrong-test.sh` W2–W3; `tests/unit/stage-takes-topics-test.sh` T7
 - §1 → `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R3 (a lens's findings in one output per topic, by what fixes them); `tests/unit/stage-takes-topics-test.sh` T6 (an unknown topic or take is refused, naming it), T7 (every output of the shipped stages names its topic); `tests/unit/stage-contract-card-test.sh` C2 (an output with a topic and no description is refused), C5 (every shipped output with a topic has a description); `tests/integration/test-checks-own-run-test.sh` R4 (the acceptance check's finding lives only in its own result), R7 (a check that failed with no findings gets its reason as one finding)
 - §2 → `tests/unit/stage-takes-topics-test.sh` T1 (only the topics taken: paths, summaries, findings, errors), T2 (no topic → no stage with `takes:`), T3 (no `takes:` → everything), T4 (the changed-files line is a `change`), T5 (own notes), T8 (the dispatch passes the stage's own manifest); `tests/unit/stage-contract-card-test.sh` C1 (a take is `{ topic, for }`; no `for:`, an unknown topic and the one-line form are refused), C3 (Previous work reads the topics), C4 (every taken output's findings, labelled by their output; an untaken output's never), C5 (every shipped take has a `for:`); `tests/integration/test-checks-own-run-test.sh` R6 (design is shown the acceptance check's finding; build is shown it once)

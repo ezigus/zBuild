@@ -237,8 +237,12 @@ _stage_block_previous_work() {
             [[ "$k" == T ]] || continue
             topic_of["id:$t_id"]="$t_topic"; topic_of["path:$t_path"]="$t_topic"
         done <<< "$roles"
+        local res_any="" res_topic=""
         while IFS=$'\t' read -r k raw; do
             [[ "$k" == [SEP] ]] || { [[ "$k" == R ]] && req+="${raw##*/}"$'\n'; continue; }
+            # #2452: the primary result is read for its findings whatever its
+            # topic; each finding goes by its own topic (§2).
+            [[ "$k" == P && -z "$res_any" ]] && { _verdict_resolve_path_v res_any "$raw" "$state_dir"; res_topic="${topic_of["path:$raw"]:-none}"; }
             [[ -z "$takes" || "$takes" == *" ${topic_of["path:$raw"]:-none} "* ]] || continue
             case "$k" in
                 S) [[ -z "$summ" ]] && { summ="$(_inputs_output_paths "$s" "$raw" "$state_dir")"; summ="${summ%%$'\n'*}"; } ;;
@@ -246,42 +250,44 @@ _stage_block_previous_work() {
                 P) [[ -z "$res" ]] && _verdict_resolve_path_v res "$raw" "$state_dir" ;;
             esac
         done <<< "$roles"
-        listed=""; local -a found=()
+        listed=""; local -a found=() found_topic=()
         for id in ${outs[$s]:-}; do
+            # Every JSON output is read for findings; only a taken one is listed.
+            [[ "${outpath[$id]:-}" == *.json ]] && { found+=("${outpath[$id]}"); found_topic+=("${topic_of["id:$id"]:-none}"); }
             [[ -z "$takes" || "$takes" == *" ${topic_of["id:$id"]:-none} "* ]] || continue
             listed+="${outtext[$id]}"
-            [[ "${outpath[$id]:-}" == *.json ]] && found+=("${outpath[$id]}")
         done
-        [[ -n "$listed" || -n "$summ" || -n "$errp" || -n "$res" || ( "$s" == "$stage" && -n "$notes$cutoff" ) ]] || continue
-        any=1
         [[ "$res" == *.json && -s "$res" ]] || res=""
+        [[ "$res_any" == *.json && -s "$res_any" ]] || res_any=""
+
+        # ADR-071 §2, #2452: a finding is shown when the stage takes its own
+        # topic, or — when it names none of the five — its output's.
+        body=""
+        if [[ -n "$res_any" && "$(<"$res_any")" == *'"findings"'* ]]; then
+            body="$(_sp_findings_for "$res_any" "$s" "$s" "$res_topic" "$takes")"
+        fi
+        # #2428 (ADR-071 §2): the findings of every other output, labelled by
+        # the output's file — the name open_items_json gives them.
+        local fp lbl more _fx
+        for _fx in "${!found[@]}"; do
+            fp="${found[$_fx]}"
+            [[ "${fp##*/}" != "${res_any##*/}" && -s "$fp" ]] || continue
+            [[ "$(<"$fp")" == *'"findings"'* ]] || continue
+            lbl="${fp##*/}"; lbl="${lbl%.json}"; lbl="${lbl%-result}"
+            more="$(_sp_findings_for "$fp" "$s" "$lbl" "${found_topic[$_fx]}" "$takes")"
+            [[ -n "$more" ]] && body+="${body:+$'\n'}$more"
+        done
+
+        [[ -n "$listed" || -n "$summ" || -n "$errp" || -n "$res" || -n "$body" || ( "$s" == "$stage" && -n "$notes$cutoff" ) ]] || continue
+        any=1
         verdict="${verdicts[$s]:-}"
-        content=""; [[ -n "$res" && -r "$res" ]] && content="$(<"$res")"
+        content=""; [[ -n "$res_any" && -r "$res_any" ]] && content="$(<"$res_any")"
         if [[ -z "$verdict" && -n "$content" && "$content" =~ \"(outcome|verdict)\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
             verdict="${BASH_REMATCH[2]}"
         fi
         own=""; [[ "$s" == "$stage" ]] && own=" — your own"
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
         [[ -n "$listed" ]] && printf 'Outputs:\n%s' "$listed"
-
-        body=""
-        if [[ "$content" == *'"findings"'* ]]; then
-            body="$(jq -r --arg s "$s" '(.data.findings // [])[]?
-                    | select(type == "object" and (.n|type) == "number")
-                    | "- \($s) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' "$res" 2>/dev/null || true)"
-        fi
-        # #2428 (ADR-071 §2): the findings of every other output it takes,
-        # labelled by the output's file — the name open_items_json gives them.
-        local fp lbl more
-        for fp in ${found[@]+"${found[@]}"}; do
-            [[ "${fp##*/}" != "${res##*/}" && -s "$fp" ]] || continue
-            [[ "$(<"$fp")" == *'"findings"'* ]] || continue
-            lbl="${fp##*/}"; lbl="${lbl%.json}"; lbl="${lbl%-result}"
-            more="$(jq -r --arg s "$s" --arg l "$lbl" '(.data.findings // [])[]?
-                    | select(type == "object" and (.n|type) == "number")
-                    | "- \($l) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' "$fp" 2>/dev/null || true)"
-            [[ -n "$more" ]] && body+="${body:+$'\n'}$more"
-        done
         [[ -n "$body" ]] && printf '\nFindings:\n%s\n' "$body"
         if [[ -n "$summ" && -s "$summ" ]]; then
             body="$(<"$summ")"
@@ -329,6 +335,19 @@ _stage_block_previous_work() {
     done
     [[ "$any" -eq 1 ]] || printf '\nNo stage has run before this one.\n'
     return 0
+}
+
+# _sp_findings_for <result.json> <stage> <label> <output-topic> <takes> — one
+# line per finding the stage is shown: its own topic when it names one of the
+# five, else its output's, must be among <takes> (" a b ", "" = everything).
+_sp_findings_for() {
+    jq -r --arg s "$2" --arg l "$3" --arg ot "$4" --arg tk "$5" \
+        '(.data.findings // [])[]?
+         | select(type == "object" and (.n|type) == "number")
+         | ((if (.topic | type) == "string" then .topic else "" end) as $t
+            | if ($t | test("^(ask|tests|change|requirement-findings|code-findings)$")) then $t else $ot end) as $eff
+         | select($tk == "" or ($tk | contains(" " + $eff + " ")))
+         | "- \($l) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' "$1" 2>/dev/null || true
 }
 
 # _sp_list_words " a b c " — "a, b and c".

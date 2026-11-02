@@ -61,11 +61,15 @@ Answer in this form:
 
 VERDICT: pass | fail | unsure
 REASON: <one sentence>
-UNMET: <one issue requirement the diff does not meet, and why>
+UNMET: [fix-code] or [fix-design] <one issue requirement the diff does not meet, and why>
 UNSURE: <one requirement you cannot tell is met, named as listed, and why>
 
 Write one UNMET: line for each requirement the diff does not meet (none on a
 pass), and one UNSURE: line for each you cannot tell is met (none when sure).
+Start each UNMET: line with what would fix it:
+- [fix-code] — the change does not do it yet: the code or its tests must change.
+- [fix-design] — the REQUIREMENTS miss it or get it wrong, or the issue itself is
+  wrong: the design must change.
 
 ## What you judge against
 Five things, shown at the end of this part:
@@ -127,11 +131,16 @@ _ia_write() {
     # #2271 (ADR-068): each unmet acceptance item is a numbered finding. #2304
     # (ADR-069 §7): so is each requirement the judge is not sure of — nothing
     # else checks it. #2330: each says what would settle it, never who must.
-    local _fnd; _fnd="$(jq -r --argjson s "$s" '(.[]? | "The issue requires this and the change does not meet it: " + tostring
-            + ". What would settle it: a change that meets this requirement in full."),
+    # #2452 (ADR-071 §1): an unmet line's [fix-code] / [fix-design] mark is the
+    # finding's topic — it reaches the stages that can fix it — never its text.
+    local _fnd; _fnd="$(jq -r --argjson s "$s" '(.[]? | tostring
+            | (if test("^\\[fix-code\\]") then "code-findings\t" elif test("^\\[fix-design\\]") then "requirement-findings\t" else "" end)
+              + "The issue requires this and the change does not meet it: " + sub("^\\[fix-(code|design)\\][[:space:]]*"; "")
+              + ". What would settle it: a change that meets this requirement in full."),
         ($s[] | "Not sure this requirement is met: " + tostring
             + ". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.")' \
         <<< "$u" 2>/dev/null | stage_findings_json)"
+    u="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$u" 2>/dev/null || printf '%s' "$u")"
     local _data
     _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson fnd "${_fnd:-[]}" --arg j "$j" \
         '{unmet: $u, unsure: $s, findings: $fnd} + (if $j == "" then {} else {judgement: $j} end)' 2>/dev/null)"
@@ -140,7 +149,9 @@ _ia_write() {
         _ia_emit "issue_acceptance.result.write_failed" "dir=$dir"
     fi
     local _body="- every requirement the issue states is met by the change"
-    [[ "$u" != "[]" || "$s" != "[]" ]] && _body="$(jq -r --argjson s "$s" '(.[] | "- NOT MET: " + .), ($s[] | "- NOT SURE: " + . + " — what would settle it: a test that fails when it is not met, or the code or document that shows it is met")' <<< "$u" 2>/dev/null || printf -- '- see result')"
+    # #2452: the unmet requirements are findings, each sent to the stages that
+    # can fix it; listed here they would reach every stage that reads this.
+    [[ "$u" != "[]" || "$s" != "[]" ]] && _body="$(jq -r --argjson s "$s" '(if length > 0 then "- \(length) requirement(s) not met — each is a finding, sent to the stages that can fix it" else empty end), ($s[] | "- NOT SURE: " + . + " — what would settle it: a test that fails when it is not met, or the code or document that shows it is met")' <<< "$u" 2>/dev/null || printf -- '- see result')"
     if [[ "$j" == unreadable ]] || [[ "$o" != pass && "$o" != fail ]]; then
         _body="- the change was not judged against the issue"
     fi
