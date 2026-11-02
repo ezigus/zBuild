@@ -204,6 +204,14 @@ assert_file_exists \
     "[#1805/SPEC-1] path 2 (auto-resume/interrupted): intake-result.json restored" \
     "$S1P2_STATE_DIR/artifacts/intake-result.json"
 
+# [#1805/SPEC-1] path 2: content must match what was snapshotted to the git state branch.
+# Proves the artifact was placed into ZBUILD_ARTIFACT_DIR FROM the git state branch, not
+# reconstructed from another source. Before fix: file absent → cat empty → FAILS. After: PASSES.
+_s1p2_artifact_content="$(cat "$S1P2_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
+assert_contains \
+    "[#1805/SPEC-1] path 2 (auto-resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch" \
+    "$_s1p2_artifact_content" "prior-run intake"
+
 # [#1805/SPEC-1] path 2: build must have dispatched (proving pipeline ran and events written).
 # Before fix: path-2 auto-resume doesn't exist → runner exits without events → build_starts=0 → FAILS.
 # After fix: runner auto-resumes, rehydrates, skips intake, dispatches build → build_starts=1 → PASSES.
@@ -281,6 +289,14 @@ set -e
 assert_file_exists \
     "[#1805/SPEC-1] path 3 (zbuild pipeline resume): intake-result.json restored" \
     "$S1P3_STATE_DIR/artifacts/intake-result.json"
+
+# [#1805/SPEC-1] path 3: content must match what was snapshotted to the git state branch.
+# Proves the artifact was placed into ZBUILD_ARTIFACT_DIR FROM the git state branch, not
+# reconstructed from another source. Before fix: file absent → cat empty → FAILS. After: PASSES.
+_s1p3_artifact_content="$(cat "$S1P3_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
+assert_contains \
+    "[#1805/SPEC-1] path 3 (zbuild pipeline resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch" \
+    "$_s1p3_artifact_content" "prior-run intake"
 
 # [#1805/SPEC-1] path 3: build must have dispatched (proving pipeline ran via zbuild pipeline resume).
 # Before fix: zbuild pipeline resume path has no rehydration / may not exist → no events → FAILS.
@@ -391,6 +407,16 @@ assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 names resume-entry-points-test.
 assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 documents still-absent artifact causes exit 1" \
     "$_adr006" "exit 1"
 
+# [#1805/SPEC-5]: ADR-006 step 3.6 must say restoration happens "before the dispatch loop".
+# Before the doc change: phrase absent → FAILS. After change: PASSES.
+assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 documents restore happens before the dispatch loop" \
+    "$_adr006" "before the dispatch loop"
+
+# [#1805/SPEC-5]: ADR-006 step 3.6 must say artifacts are restored "from the git state branch".
+# Before the doc change: phrase absent → FAILS. After change: PASSES.
+assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 documents artifacts restored from the git state branch" \
+    "$_adr006" "git state branch"
+
 # ── SPEC-6: ADR-050 §6 amended with resume boundary note ─────────────────────
 print_test_section "[#1805/SPEC-6] ADR-050 §6 amended with boundary note distinguishing resume from new runs"
 
@@ -429,8 +455,27 @@ install_template_overlay "$S12_WORK_REPO" artifact-snapshot-coverage
 # cycled sub-stage of the cyc cycle declares roles:[builder]
 mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
 
-# Fresh state: no completed stages. status=in_progress and no --resume flag →
-# runner treats this as a new run; no stage should be skipped.
+# Write intake artifact and snapshot to the state branch so the state looks
+# exactly like a run interrupted after intake (the state that would trigger
+# auto-resume if the --no-resume guard were absent).
+printf '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' \
+    > "$S12_STATE_DIR/artifacts/intake-result.json"
+
+_s12_snap_rc=0
+( export ZBUILD_STATE_DIR="$S12_STATE_DIR"
+  cd "$S12_WORK_REPO" && _artifact_persist_snapshot "$S12_STATE_DIR" "$_S12_ID" ) \
+    >"$TEST_TEMP_DIR/s12-snap.log" 2>&1 || _s12_snap_rc=$?
+if [[ "$_s12_snap_rc" -ne 0 ]]; then
+    assert_fail "[#1805/SPEC-12] setup: snapshot to state branch failed" \
+        "rc=$_s12_snap_rc; $(cat "$TEST_TEMP_DIR/s12-snap.log" 2>/dev/null | tail -5)"
+fi
+# Remove the artifact from disk — only the state branch has it now, matching a
+# real interrupted run where the workspace was cleaned between pipeline stages.
+rm -f "$S12_STATE_DIR/artifacts/intake-result.json"
+
+# State: intake=complete, status=interrupted — exactly what auto-resume would
+# act on (skip intake) if the --no-resume flag were NOT passed.
+# With --no-resume the runner must start fresh and dispatch all stages.
 jq -n \
     --arg run_id "s12-fresh-1805" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -439,19 +484,23 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: $issue,
-        stage_statuses: {},
+        stage_statuses: {intake: "complete"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
         cost_ledger_pointer: 0,
         claim_lease_id: "",
         plugin_state: {},
-        status: "in_progress",
+        status: "interrupted",
         updated_at: $now
     }' > "$S12_STATE_FILE"
 
-# Run WITHOUT --resume: a fresh (non-resume) run.
-# Contrast with SPEC-1 where a resumed run skips complete stages.
+# Run WITH --no-resume: explicitly suppresses auto-resume detection.
+# Without --no-resume, the runner would detect status=interrupted, call
+# _runner_resume_rehydrate, and skip intake (0 stage.start events for intake).
+# With --no-resume, the runner starts fresh: intake dispatches (1 stage.start).
+# The assert_eq "1" below distinguishes this flag-guarded fresh run from a run
+# that merely happens to have no completed stages in state.
 set +e
 ( cd "$S12_WORK_REPO" && env \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
@@ -462,8 +511,9 @@ set +e
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
+    ZBUILD_CYCLES_ENABLED=1 \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template artifact-snapshot-coverage --issue "$_S12_ID" ) \
+    bash "$RUNNER" --template artifact-snapshot-coverage --no-resume --issue "$_S12_ID" ) \
     >"$TEST_TEMP_DIR/s12-stdout.txt" 2>"$TEST_TEMP_DIR/s12-stderr.txt"
 set -e
 
@@ -497,18 +547,18 @@ assert_contains "[#1805/SPEC-12] cycle fixture used in SPEC-12 fresh-run sub-cas
     "$_s12_fixt_content" "type: cycle"
 
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
-print_test_section "[#1805/SPEC-13] resume-rehydrate test uses a fixture containing a cyclic stage"
+print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
 
-# [#1805/SPEC-13]: the fixture must contain type: cycle (satisfies "containing a cyclic stage").
+# : the fixture must contain type: cycle (satisfies "containing a cyclic stage").
 # Already read into _s12_fixt_content above from artifact-snapshot-coverage.yaml.
-assert_contains "[#1805/SPEC-13] resume-rehydrate fixture contains type: cycle" \
+assert_contains "resume-rehydrate fixture contains type: cycle" \
     "$_s12_fixt_content" "type: cycle"
 
-# [#1805/SPEC-13]: a pipeline using that cyclic fixture was actually run in this test.
+# : a pipeline using that cyclic fixture was actually run in this test.
 # _s12_cycled_starts was computed in the SPEC-12 section from the S12 pipeline run.
 # Before fix: ZBUILD_CYCLES_ENABLED=0 → cycled never dispatches → 0 → assert_gt fails.
 # After fix (cycles enabled, max_iter=1): cycled dispatches → assert_gt passes.
-assert_gt "[#1805/SPEC-13] resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)" \
+assert_gt "resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)" \
     "$_s12_cycled_starts" "0"
 
 cleanup_test_env
