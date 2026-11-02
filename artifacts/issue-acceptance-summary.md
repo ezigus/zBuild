@@ -1,8 +1,5 @@
 ## issue-acceptance — fail
 
-- The test suite fails on 9 tests, including tests that directly cover R-1, R-2, R-3, R-4, R-8, R-9, R-10, and R-12; the core contract — that a resume skips completed stages and rehydrates their artifacts — is not proven working, and the cycle-orchestrator change introduces regressions in unrelated cycle tests.
+- The test suite fails across 12 tests; the live dispatch-unit loop still dispatches completed stages on resume, --from-stage still re-dispatches skipped stages, the R-9 iteration-count assertion was deleted rather than fixed, and the cycle-orchestrator.sh change introduces regressions that break four unrelated cycle tests.
 
-- 7 requirement(s) not met — each is a finding, sent to the stages that can fix it
-- NOT SURE: R-5 (ADR-006 step 3.6 names enforcing tests inline): the ADR text change is present in the diff and the resume-rehydrate-test.sh SPEC-5 assertions check for "before the dispatch loop" and "git state branch" phrases, but resume-rehydrate-test.sh itself fails before the SPEC-5 section is cleanly reached, so I cannot confirm the SPEC-5 assertions actually execute and pass on the new code. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: R-6 (ADR-050 §6 boundary note present and correct): same file failure; the diff shows the boundary text was added to ADR-050 and a test string-checks for it, but the test file's failures mean I cannot confirm the §6 check runs to completion. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: R-7 (rehydration uses same path as hydrate stage, plugins/tool/hydrate): the diff extracts _artifact_persist_put_back and the hydrate plugin is updated to call it, which is structurally consistent with the requirement, but because end-to-end resume behavior fails in tests I cannot confirm the shared code path operates correctly at runtime. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- 10 requirement(s) not met — each is a finding, sent to the stages that can fix it
