@@ -1,59 +1,55 @@
-# test-author notes — issue #1805 (round 2 fix, final pass)
+# test-author notes — issue #1805 (round 2 fix: from-stage-rehydrate-test.sh)
 
-## Status: fixing resume-entry-points-test.sh SPEC-13 (this call)
+## Status: COMPLETE — from-stage-rehydrate-test.sh bug fixed
 
-## Round-2 checker finding for resume-entry-points-test.sh
+## Round-2 checker findings for from-stage-rehydrate-test.sh
 
-### SPEC-13 (resume-entry-points-test.sh)
-Finding:
-- "only check fixture file content — they do not check that a pipeline containing that cyclic
-  stage was actually run within those sections; the run evidence for those two files is tagged
-  to SPEC-12 and SPEC-7 respectively, so the 'uses a pipeline' half of the requirement is only
-  directly established by SPEC-13 assertions for two of the four files."
+### Finding 1: SPEC-3 — artifact placement assertions were non-tagged
 
-What is wrong:
-- The current SPEC-13 section (lines 287-296) asserts that intake dispatched (stage.start count).
-  But intake dispatches in ANY pipeline — this does not prove the cyclic stage ran.
-- Missing: assertion that the `cycled` stage was dispatched, which proves the cyclic portion
-  of the pipeline actually executed.
+**Original finding:** "`assert_file_exists` and `assert_contains` calls that check
+'places their artifacts in ZBUILD_ARTIFACT_DIR' are not tagged with `[#1805/SPEC-3]`"
 
-Fix:
-- After the existing intake-starts assertion, add:
-  `_s13_ep_cycled_starts` count of `stage.start` events where `.data.stage == "cycled"`
-  then `assert_gt` that count is > 0
-- This proves the pipeline executed the cyclic stage, not just a non-cyclic stage.
-- Fixture: artifact-snapshot-coverage has `cycled` stage in the cycle body.
-- Mock for `cycled` is already set up at line 41 (mock_plugin_factory "cycled" "agent" 0 "" "builder").
-- assert_gt signature: assert_gt desc actual threshold → checks `actual -gt threshold`
-  So: `assert_gt "desc" "$_s13_ep_cycled_starts" "0"`
+**Status in current file:** Already resolved by a previous test-author call. Lines 113-126
+carry `[#1805/SPEC-3]` tags on both the `assert_file_exists` and `assert_contains` calls.
 
-## Previous files (already correct)
+### Finding 2: SPEC-4 — stderr-naming assertion was non-tagged
 
-### from-stage-rehydrate-test.sh
-- SPEC-3: file exists + content matches + no intake.start + build first ✓
-- SPEC-4: exit 1 + stderr names stage + no stage.start ✓
-- SPEC-13: type: cycle check + pipeline actually ran (intake + cycled dispatched) ✓
+**Original finding:** "`assert_contains "$_s4_stderr" "intake"` is not tagged with `[#1805/SPEC-4]`"
 
-### resume-loop-state-test.sh
-- SPEC-7: cycle_dispatch_stage current_iter starts from persisted value, not 1 ✓
-- SPEC-13: type: cycle check + assert_gt _SPEC7_FIRST_ITER > -1 ✓
+**Status in current file:** Already resolved by a previous test-author call. Line 211-214
+carries `[#1805/SPEC-4] stderr names the missing stage (intake)`.
 
-### resume-rehydrate-test.sh
-- SPEC-1: all 3 paths use rehydration + complete stage emits no stage.start ✓
-- SPEC-2: absent artifact → exit 1 + no stage.start ✓
-- SPEC-5: ADR-006 has "3.6" + "_runner_resume_rehydrate" ✓
-- SPEC-6: ADR-050 §6 has "new run" + "ADR-006" + "continues the same run" ✓
-- SPEC-12: fresh run: intake dispatched + cycled dispatched (cycle enabled) ✓
-- SPEC-13: type: cycle + pipeline ran ✓
+## Test failure (round 2): SPEC-3 no-stage.start assertion fails with "expected: 0, got: 0"
 
-## SPEC coverage summary (all files):
-- SPEC-1: resume-rehydrate-test.sh
-- SPEC-2: resume-rehydrate-test.sh
-- SPEC-3: from-stage-rehydrate-test.sh
-- SPEC-4: from-stage-rehydrate-test.sh
-- SPEC-5: resume-rehydrate-test.sh
-- SPEC-6: resume-rehydrate-test.sh
-- SPEC-7: resume-loop-state-test.sh
-- SPEC-9: resume-entry-points-test.sh
-- SPEC-12: resume-rehydrate-test.sh
-- SPEC-13: all 4 files
+**Root cause:** Lines 131-135 used `| grep -c '^intake$' 2>/dev/null || echo 0`.
+When `grep -c` finds 0 matches:
+1. `grep -c` outputs `"0"` to stdout and exits with code 1
+2. `|| echo 0` fires (because grep exited 1) and outputs another `"0"` to stdout
+3. Command substitution captures `"0\n0"` — two zeros, not one
+4. `"0\n0"` != `"0"` → assert_eq fails, showing "expected: 0, got: 0" (the second 0
+   appears on the next display line, making it look like both are 0)
+
+**Fix applied (this call):** Replaced the buggy `grep -c ... || echo 0` with:
+```bash
+_s3_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+    "$S3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+```
+- Uses jq to filter to only `stage.start` events for `intake`, outputs `.type` per match
+- `wc -l` always exits 0 and outputs a count (no double-output problem)
+- `tr -d ' '` strips whitespace from `wc -l` output (mac compat)
+- No `|| echo 0` needed — `wc -l` never outputs a non-number
+
+This mirrors the pattern used in SPEC-4 (lines 218-221 use `wc -l | tr -d ' '`).
+
+## SPEC coverage summary for from-stage-rehydrate-test.sh
+
+- SPEC-3: assert_file_exists [tagged] + assert_contains content [tagged] +
+          no-intake-stage.start [tagged, fixed count] + build-is-first [tagged]
+- SPEC-4: exit 1 [tagged] + no-stage.start [tagged] + stderr names stage [tagged]
+- SPEC-13: type:cycle in fixture + intake dispatched in fresh run
+
+## Other test files (fixed in prior calls)
+
+- resume-rehydrate-test.sh — SPEC-1, SPEC-2, SPEC-5, SPEC-6, SPEC-12
+- resume-loop-state-test.sh — SPEC-7
+- resume-entry-points-test.sh — SPEC-9

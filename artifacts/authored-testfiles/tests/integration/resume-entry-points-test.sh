@@ -244,7 +244,7 @@ assert_file_exists \
     "$P3_STATE_DIR/artifacts/intake-result.json"
 
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
-print_test_section "[#1805/SPEC-13] resume-entry-points test uses a fixture containing a cyclic stage"
+print_test_section "resume-entry-points test uses a fixture containing a cyclic stage"
 
 # Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
 # demonstrate that this test file exercises a pipeline containing a cyclic stage.
@@ -279,28 +279,29 @@ set +e
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
+    ZBUILD_CYCLES_ENABLED=1 \
     PATH="$PATH" HOME="$HOME" \
     bash "$RUNNER" --template artifact-snapshot-coverage --issue "$_S13_EP_ID" ) \
     >"$TEST_TEMP_DIR/s13ep-stdout.txt" 2>"$TEST_TEMP_DIR/s13ep-stderr.txt"
 set -e
 
-# [#1805/SPEC-13]: the fixture is cyclic (type: cycle present).
+# : the fixture is cyclic (type: cycle present).
 _s13_ep_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "[#1805/SPEC-13] resume-entry-points test uses a cyclic fixture (type: cycle)" \
+assert_contains "resume-entry-points test uses a cyclic fixture (type: cycle)" \
     "$_s13_ep_content" "type: cycle"
 
-# [#1805/SPEC-13]: confirm the cyclic pipeline ran (intake dispatched in the fresh run).
+# : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
 _s13_ep_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
     "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
-assert_eq "[#1805/SPEC-13] cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)" \
+assert_eq "cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)" \
     "1" "$_s13_ep_intake_starts"
 
-# [#1805/SPEC-13]: confirm the cyclic STAGE ran (cycled dispatched), proving the
+# : confirm the cyclic STAGE ran (cycled dispatched), proving the
 # pipeline executed the cycle body — not just a non-cyclic pipeline.
 # Intake dispatching alone doesn't prove a cyclic stage ran; this does.
 _s13_ep_cycled_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
     "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^cycled$' || echo 0)"
-assert_gt "[#1805/SPEC-13] cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test" \
+assert_gt "cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test" \
     "$_s13_ep_cycled_starts" "0"
 
 cleanup_test_env

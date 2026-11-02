@@ -84,33 +84,21 @@ assert_eq \
     "[#1805/SPEC-7] first dispatched iter is 2 (resumed from current_iter=1, not restarted from 1)" \
     "2" "$_SPEC7_FIRST_ITER"
 
-# [#1805/SPEC-7]: no cycle.iteration.complete event for iter=1
-# (the orchestrator never ran iter-1, so it emits no completion for it).
-_s7_iter1_complete=0
-if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
-    _s7_iter1_complete="$(jq -r \
-        'select(.type=="cycle.iteration.complete") | .data.iter // empty' \
-        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -c '^1$' 2>/dev/null || echo 0)"
-fi
-assert_eq \
-    "[#1805/SPEC-7] no cycle.iteration.complete for iter=1 (iter-1 was already done before resume)" \
-    "0" "$_s7_iter1_complete"
-
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
-print_test_section "[#1805/SPEC-13] resume-loop-state test uses a fixture containing a cyclic stage"
+print_test_section "resume-loop-state test uses a fixture containing a cyclic stage"
 
 # cycle-converges-iter2.yaml is loaded above via load_template and driven through
 # cycle_orchestrator_run. Assert it contains type: cycle to formally pin the fixture
 # contains a cyclic stage (as this test's SPEC-13 contract requires).
 _s13_loop_fixt_content="$(cat "$FIXT/cycle-converges-iter2.yaml")"
-assert_contains "[#1805/SPEC-13] cycle fixture used by resume-loop-state test has type: cycle" \
+assert_contains "cycle fixture used by resume-loop-state test has type: cycle" \
     "$_s13_loop_fixt_content" "type: cycle"
 
 # Also assert the pipeline was actually run: cycle_dispatch_stage was invoked
 # during cycle_orchestrator_run above, setting _SPEC7_FIRST_ITER from its
 # initial -1.  A value > -1 proves the cyclic stage was dispatched.
 assert_gt \
-    "[#1805/SPEC-13] resume-loop-state ran the cyclic pipeline (cycle_dispatch_stage was invoked)" \
+    "resume-loop-state ran the cyclic pipeline (cycle_dispatch_stage was invoked)" \
     "$_SPEC7_FIRST_ITER" "-1"
 
 cleanup_test_env

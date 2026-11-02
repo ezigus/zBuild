@@ -130,8 +130,8 @@ assert_contains \
 # After the change: intake is complete and skipped entirely → no stage.start → PASSES.
 _s3_intake_starts=0
 if [[ -f "$S3_EVENTS_JSONL" ]]; then
-    _s3_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
-        "$S3_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' 2>/dev/null || echo 0)"
+    _s3_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+        "$S3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
 assert_eq "[#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage" \
     "0" "$_s3_intake_starts"
@@ -223,7 +223,7 @@ assert_eq "[#1805/SPEC-4] no stage.start emitted before exit 1" \
     "0" "$_s4_any_starts"
 
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
-print_test_section "[#1805/SPEC-13] from-stage-rehydrate test uses a fixture containing a cyclic stage"
+print_test_section "from-stage-rehydrate test uses a fixture containing a cyclic stage"
 
 # Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
 # demonstrate that this test file exercises a pipeline containing a cyclic stage.
@@ -263,15 +263,15 @@ set +e
     >"$TEST_TEMP_DIR/s13fs-stdout.txt" 2>"$TEST_TEMP_DIR/s13fs-stderr.txt"
 set -e
 
-# [#1805/SPEC-13]: the fixture is cyclic (type: cycle present).
+# : the fixture is cyclic (type: cycle present).
 _s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "[#1805/SPEC-13] from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
+assert_contains "from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
     "$_s13_fs_content" "type: cycle"
 
-# [#1805/SPEC-13]: confirm the cyclic pipeline ran (intake dispatched in the fresh run).
+# : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
 _s13_fs_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
     "$_S13_FS_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
-assert_eq "[#1805/SPEC-13] cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)" \
+assert_eq "cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)" \
     "1" "$_s13_fs_intake_starts"
 
 cleanup_test_env
