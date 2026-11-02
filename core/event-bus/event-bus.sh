@@ -273,10 +273,8 @@ eb_emit_event() {
             flock -w 5 9 && echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
         } 9>"${ZBUILD_EVENTS_JSONL}.lock" || true
         _EB_IN_EMIT=""
-    elif zbuild_has_flock; then
-        { echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"; } || true
     else
-        # Best-effort fallback
+        # No flock (best-effort), or a trap inside this shell's own emit.
         { echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"; } || true
     fi
 
