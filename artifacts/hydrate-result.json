@@ -1,1 +1,1 @@
-{"result_contract":3,"outcome":"pass","reason":"no prior work for issue 1805 (first run)","data":{"status":"empty","restored":0,"source":null}}
+{"result_contract":3,"outcome":"pass","reason":"restored 73 artifact(s) from zbuild/state/issue-1805","data":{"status":"restored","restored":73,"source":"remote"}}
