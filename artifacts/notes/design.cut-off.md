@@ -1,0 +1,61 @@
+- (… 45 earlier steps not shown)
+- Bash: grep -n "_verdict_resolve_path\|_verdict_primary_output_path" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -10
+- Bash: grep -rn "_verdict_resolve_path\b\|_verdict_primary_output_path\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | grep "^.*:.*() {" | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/verdict.sh
+- Read: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
+- Read: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- Bash: grep -n "_artifact_persist_snapshot\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: grep -n "setup_git_temp_repo\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: grep -n "_artifact_persist_tmp_name_v\b\|zbuild_engine_tmpdir\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Bash: grep -n "zbuild_engine_tmpdir\b\|zbuild_engine_tmpdir_v\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/helpers.sh | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/helpers.sh
+- Bash: grep -n "setup_test_env\b\|TEST_TEMP_DIR" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -20
+- Bash: grep -n "^setup_test_env\b\|^setup_test_env()" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Bash: grep -n "_artifact_persist_stage_batch\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Bash: grep -rn "_artifact_persist_snapshot\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/ | grep -v "1805" | head -10
+- Bash: grep -rn "_artifact_persist_snapshot\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/ | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/hydrate-stage-test.sh
+- Bash: grep -n "zb_test_issue\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -5
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh 2>&1; echo "rc=$?"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh 2>&1 | head -20; echo "rc=${PIPESTATUS[0]}"
+- Bash: timeout 60 bash tests/integration/resume-rehydrate-test.sh 2>&1 | head -60
+- Bash: ls /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/ | head -20
+- Bash: grep -l "cycles\|type.*cycle" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/*.yaml 2>/dev/null | head -10
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/cycle-resume.yaml
+- Bash: grep -rn "id:.*cycled\|cycled" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/ | head -10
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/artifact-snapshot-coverage.yaml 2>/dev/null | head -30
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/resume.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/resume.sh
+- Bash: timeout 60 bash tests/integration/resume-rehydrate-test.sh 2>&1 | tail -40
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/cycle-resume.yaml
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/build-test-cycle-minimal.yaml
+- Bash: grep -n "ZBUILD_CYCLES_ENABLED\|_ZB_TEST_ISOLATED_VARS" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: grep -n "_ZBUILD_PIPELINE_RESUME_MODE" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -10
+- Bash: grep -n "_ZBUILD_PIPELINE_RESUME_MODE\|resume_mode\|ZBUILD_RESUME" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- Bash: timeout 60 bash tests/integration/resume-loop-state-test.sh 2>&1 | head -50
+- Bash: timeout 60 bash tests/integration/from-stage-rehydrate-test.sh 2>&1 | head -40
+- Bash: timeout 60 bash tests/integration/resume-entry-points-test.sh 2>&1 | head -50
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- Bash: timeout 30 bash -c ' source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh source core/state/artifact-persist.sh setup_test_env "debug-cycled" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null PLUGINS_ROOT="$TEST_TEMP_DIR/plug…
