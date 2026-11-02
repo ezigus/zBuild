@@ -386,6 +386,11 @@ assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 names resume-rehydrate-test.sh 
 assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test" \
     "$_adr006" "resume-entry-points-test.sh"
 
+# [#1805/SPEC-5]: ADR-006 must document that a still-absent artifact causes exit 1.
+# Before the doc change: the clause is absent → FAILS. After change: PASSES.
+assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 documents still-absent artifact causes exit 1" \
+    "$_adr006" "exit 1"
+
 # ── SPEC-6: ADR-050 §6 amended with resume boundary note ─────────────────────
 print_test_section "[#1805/SPEC-6] ADR-050 §6 amended with boundary note distinguishing resume from new runs"
 
@@ -401,6 +406,11 @@ assert_contains "[#1805/SPEC-6] ADR-050 §6 boundary note says invariant applies
 
 assert_contains "[#1805/SPEC-6] ADR-050 §6 boundary note names ADR-006 as governing resume" \
     "$_adr050_s6" "ADR-006"
+
+# [#1805/SPEC-6]: §6 must say "a resume continues the same run" (not just reference ADR-006).
+# Before the doc change: clause absent → FAILS. After change: PASSES.
+assert_contains "[#1805/SPEC-6] ADR-050 §6 boundary note says a resume continues the same run" \
+    "$_adr050_s6" "continues the same run"
 
 # ── SPEC-12: fresh (non-resume) run dispatches all stages ─────────────────────
 print_test_section "[#1805/SPEC-12] fresh non-resume run dispatches all stages (ADR-050 §6 new-run side)"
@@ -444,7 +454,6 @@ jq -n \
 # Contrast with SPEC-1 where a resumed run skips complete stages.
 set +e
 ( cd "$S12_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$S12_STATE_DIR" \
     ZBUILD_STATE_FILE="$S12_STATE_FILE" \
@@ -470,6 +479,17 @@ fi
 assert_eq "[#1805/SPEC-12] fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)" \
     "1" "$_s12_intake_starts"
 
+# [#1805/SPEC-12]: the cycled sub-stage must dispatch (cycle executed; no stage skipped).
+# Before fix: ZBUILD_CYCLES_ENABLED=0 suppresses the cycle → cycled_starts=0 → assert_gt fails.
+# After fix: cycles enabled, cycled sub-stage runs for the 1 configured iteration → PASSES.
+_s12_cycled_starts=0
+if [[ -f "$S12_EVENTS_JSONL" ]]; then
+    _s12_cycled_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+        "$S12_EVENTS_JSONL" 2>/dev/null | grep -c '^cycled$' 2>/dev/null || echo 0)"
+fi
+assert_gt "[#1805/SPEC-12] fresh run dispatches cycled sub-stage (cycle ran; no stage skipped)" \
+    "$_s12_cycled_starts" "0"
+
 # [#1805/SPEC-12]: the cycle fixture used for this fresh-run sub-case contains type: cycle,
 # establishing that the fixture IS a cyclic pipeline (satisfying the "same cycle fixture" clause).
 _s12_fixt_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
@@ -479,11 +499,17 @@ assert_contains "[#1805/SPEC-12] cycle fixture used in SPEC-12 fresh-run sub-cas
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "[#1805/SPEC-13] resume-rehydrate test uses a fixture containing a cyclic stage"
 
-# SPEC-12 above installed artifact-snapshot-coverage into S12_WORK_REPO and ran a
-# fresh pipeline against it. That fixture IS the cyclic pipeline this test uses.
-# Verify it contains type: cycle (already read into _s12_fixt_content above).
-assert_contains "[#1805/SPEC-13] resume-rehydrate test installs and runs a cyclic fixture (type: cycle)" \
+# [#1805/SPEC-13]: the fixture must contain type: cycle (satisfies "containing a cyclic stage").
+# Already read into _s12_fixt_content above from artifact-snapshot-coverage.yaml.
+assert_contains "[#1805/SPEC-13] resume-rehydrate fixture contains type: cycle" \
     "$_s12_fixt_content" "type: cycle"
+
+# [#1805/SPEC-13]: a pipeline using that cyclic fixture was actually run in this test.
+# _s12_cycled_starts was computed in the SPEC-12 section from the S12 pipeline run.
+# Before fix: ZBUILD_CYCLES_ENABLED=0 → cycled never dispatches → 0 → assert_gt fails.
+# After fix (cycles enabled, max_iter=1): cycled dispatches → assert_gt passes.
+assert_gt "[#1805/SPEC-13] resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)" \
+    "$_s12_cycled_starts" "0"
 
 cleanup_test_env
 print_test_results
