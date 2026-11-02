@@ -191,6 +191,14 @@ A plugin author, when creating or changing a stage, MUST observe:
 - **Never write anything that must not reach main into the work branch** — durable
   cross-run state belongs on the state branch (engine-managed), not in the code diff.
 
+> **Resume boundary (issue #1805, ADR-006 §3.6).** The invariant above — "never
+> skip the stage on the basis of prior output" — applies to **new runs**. A
+> **resume** continues the same run rather than starting a new one: it restores
+> completed-stage artifacts from the git state branch and skips stages already
+> marked `complete` in the persisted state. Resume semantics are governed by
+> [ADR-006](ADR-006-resume-contract.md); this ADR's reuse rules do not apply
+> to a resume because a resume continues the same run, not a new run.
+
 ### 7. Amendment (#141) — git is the store, the folder is the working copy, and every run pushes
 
 **Status:** Accepted (2026-08-23). See [ADR-059](ADR-059-issue-vs-run-keying.md) §3.
