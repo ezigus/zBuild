@@ -296,11 +296,12 @@ ${sup_block}"
 
     # #2458 (ADR-071): the design's steps on these test files are this stage's
     # to do — and only these; a step that changes code is build's.
-    local steps_section="" _wp _tsteps=""
+    local steps_section="" _wp _wpj="" _tsteps=""
     _wp="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
-    if [[ -n "$_wp" && -s "$_wp" ]]; then
-        _tsteps="$(work_steps_of_topic "$(<"$_wp")" tests \
-            | jq -r '.steps[]? | "- \(.description) (\(.areas | join(", ")))"' 2>/dev/null || true)"
+    [[ -n "$_wp" && -s "$_wp" ]] && { IFS= read -r -d '' _wpj < "$_wp" || true; }
+    if [[ "$_wpj" == *'"topic":"tests"'* ]]; then
+        _tsteps="$(jq -r '.steps[]? | select(.topic == "tests") | "- \(.description) (\(.areas | join(", ")))"' \
+            <<< "$_wpj" 2>/dev/null || true)"
     fi
     [[ -n "$_tsteps" ]] && steps_section="
 WHAT THE DESIGN SAYS TO DO IN THESE TEST FILES — part of your job:

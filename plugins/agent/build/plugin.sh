@@ -161,7 +161,7 @@ _build_stage_run_inner() {
     [[ -n "$plan_json_path" && -s "$plan_json_path" ]] && plan_json="$(cat "$plan_json_path")"
     # #2458 (ADR-071, ADR-067 §6): build is shown the steps that change code;
     # a step on the design's own test files is the test author's.
-    plan_json="$(work_steps_of_topic "$plan_json" change)"
+    [[ "$plan_json" == *'"topic":"tests"'* ]] && plan_json="$(work_steps_of_topic "$plan_json" change)"
 
     local plan_files_csv="" _acceptance_testfiles="" _acceptance_spec_ids="" _design_decisions=""
     _build_load_context

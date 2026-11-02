@@ -145,15 +145,15 @@ print_test_section "[SPEC-1] a manifest with no config.router block is byte-iden
 
 assert_eq "timeout_s falls to the 300s constant" \
     "300" "$(ZBUILD_PLUGIN_DIR="$_FIX/silent" _route_resolve_timeout)"
-assert_eq "max_turns falls to the 25 constant" \
-    "25" "$(ZBUILD_PLUGIN_DIR="$_FIX/silent" _route_resolve_max_turns)"
+assert_eq "max_turns falls to the default: no limit (#2458)" \
+    "0" "$(ZBUILD_PLUGIN_DIR="$_FIX/silent" _route_resolve_max_turns)"
 
 # The no-dispatch case: nothing set ZBUILD_PLUGIN_DIR at all (direct router
 # use, a test, a non-plugin caller). Same constants, no error.
 assert_eq "no ZBUILD_PLUGIN_DIR at all → 300s constant" \
     "300" "$(_route_resolve_timeout)"
-assert_eq "no ZBUILD_PLUGIN_DIR at all → 25 constant" \
-    "25" "$(_route_resolve_max_turns)"
+assert_eq "no ZBUILD_PLUGIN_DIR at all → no limit (#2458)" \
+    "0" "$(_route_resolve_max_turns)"
 
 # A ZBUILD_PLUGIN_DIR that exists but holds no manifest must not error either.
 assert_eq "ZBUILD_PLUGIN_DIR without a manifest.yaml → constant, no failure" \
@@ -164,11 +164,11 @@ print_test_section "[SPEC-2] config.router.* is read as the default"
 
 assert_eq "manifest timeout_s beats the 300s constant" \
     "600" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" _route_resolve_timeout)"
-assert_eq "manifest max_turns beats the 25 constant" \
+assert_eq "manifest max_turns beats the default" \
     "45" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" _route_resolve_max_turns)"
 
 assert_eq "a partial declaration leaves the undeclared knobs on the constant" \
-    "900|25" \
+    "900|0" \
     "$(printf '%s|%s' \
         "$(ZBUILD_PLUGIN_DIR="$_FIX/partial" _route_resolve_timeout)" \
         "$(ZBUILD_PLUGIN_DIR="$_FIX/partial" _route_resolve_max_turns)")"
@@ -237,7 +237,7 @@ print_test_section "[SPEC-6] malformed manifest values fall back, never propagat
 assert_eq "non-numeric timeout_s falls to the constant" \
     "300" "$(ZBUILD_PLUGIN_DIR="$_FIX/malformed" _route_resolve_timeout)"
 assert_eq "out-of-range max_turns falls to the constant" \
-    "25" "$(ZBUILD_PLUGIN_DIR="$_FIX/malformed" _route_resolve_max_turns)"
+    "0" "$(ZBUILD_PLUGIN_DIR="$_FIX/malformed" _route_resolve_max_turns)"
 
 # ─── SPEC-7 the ADR-029 escalation override still outranks everything ────────
 print_test_section "[SPEC-7] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE still outranks all layers"

@@ -54,6 +54,9 @@ mkdir -p "$ZBUILD_STAGE_BLOCKS"
 printf 'REPO-BLOCK-SENTINEL\n' > "$ZBUILD_STAGE_BLOCKS/from-repo.md"
 printf 'PREVIOUS-WORK-SENTINEL\n' > "$ZBUILD_STAGE_BLOCKS/previous-work.md"
 printf 'RULES-BLOCK-SENTINEL\n' > "$ZBUILD_STAGE_BLOCKS/rules.md"
+# #2458: and the forms a judging call composes from.
+printf 'PREVIOUS-WORK-SENTINEL\n' > "$ZBUILD_STAGE_BLOCKS/previous-work-fresh.md"
+printf 'RULES-BLOCK-SENTINEL\n' > "$ZBUILD_STAGE_BLOCKS/rules-fresh.md"
 
 RAW="$TEST_TEMP_DIR/raw"; mkdir -p "$RAW"
 

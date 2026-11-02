@@ -341,10 +341,11 @@ stage_blocks_write_v() {
 _stage_blocks_write_pw_rules() {
     local dir="$1" stage="$2" state_dir="$3" manifest="$4" plugins_root="$5" index="$6" repo_root="$7"
     local _raw="" _pw_full _pw_fresh _r_full _r_fresh
+    # Written once, marked, to the file it is then rewritten as (no rm: one
+    # program less per dispatch, ADR-065 §5).
     _ZB_SP_MARK_OWN=1 _stage_block_previous_work "$stage" "$state_dir" "$plugins_root" "$index" "$repo_root" "$manifest" \
-        > "$dir/previous-work.raw" 2>/dev/null || return 1
-    IFS= read -r -d '' _raw < "$dir/previous-work.raw" || true
-    rm -f "$dir/previous-work.raw" 2>/dev/null
+        > "$dir/previous-work.md" 2>/dev/null || return 1
+    IFS= read -r -d '' _raw < "$dir/previous-work.md" || true
     _sp_own_notes_split_v _pw_full _pw_fresh "$_raw"
     _route_manifest_no_tools "$manifest" && _pw_full="$_pw_fresh"
     _stage_block_rules_pair_v _r_full _r_fresh "$stage" "$state_dir" "$manifest" 2>/dev/null || return 1
