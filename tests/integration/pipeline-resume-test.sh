@@ -247,6 +247,13 @@ jq -n \
         updated_at: $now
     }' > "$INT_STATE_FILE"
 
+# Pre-write intake's primary artifact so the SPEC-2 fail-closed stale-artifact
+# check (ADR-006 §3.6, added in #1805) does not abort the resume when the
+# state branch has no artifact (this test predates artifact rehydration).
+mkdir -p "$INT_STATE_DIR/artifacts"
+printf '{"result_contract":3,"outcome":"pass","reason":"stub"}' \
+    > "$INT_STATE_DIR/artifacts/intake-result.json"
+
 # Run runner --resume against this state file (CWD = overlay repo).
 set +e
 ( cd "$INT_OVERLAY_REPO" && env \
