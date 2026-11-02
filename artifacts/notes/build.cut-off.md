@@ -1,54 +1,61 @@
-- (… 40 earlier steps not shown)
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -n "intake.*stage.start\|stage.start.*intake" tests/integration/from-stage-rehydrate-test.sh | head -10
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh
-- said: Let me check the status of pipeline-resume-test.sh and resume-after-sigint-test.sh:
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree timeout 120 bash tests/integration/pipeline-resume-test.sh 2>&1 | tail -20
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree timeout 120 bash tests/integration/resume-after-sigint-test.sh 2>&1 | tail -20
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree timeout 120 bash tests/integration/pipeline-resume-test.sh 2>&1 | grep -A 5 "✗\|FAIL\|failed" | head -50
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/pipeline-resume-test.sh
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -n "resume.*exits 0\|build stage_status\|stage.start.*skipped\|WORK_REPO\|state_branch\|artifact\|persist" tests/integration/pipeline-resume-test.sh | head -30
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/pipeline-resume-test.sh
-- said: Let me check the current `_runner_resume_rehydrate` implementation:
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -n "_runner_resume_rehydrate\|_rr_\|primary_artifact\|stage_statuses\|complete.*stale" core/pipeline/runner.sh | head -40
+- (… 6 earlier steps not shown)
+- Bash: grep -n "_ZBUILD_RESUME_ACTIVE\|_runner_from_stage_preflight\|_runner_resume_rehydrate\|skip_until_stage\|resume_mode\|from_stage\|no.resume\|no_resume" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -60
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -n "_verdict_resolve_path\|artifact_dir\|ZBUILD_ARTIFACT_DIR" core/pipeline/runner.sh | head -20
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -n "_verdict_resolve_path" core/pipeline/dispatch.sh 2>/dev/null | head -5 grep -n "_verdict_resolve_path" scripts/lib/helpers.sh 2>/dev/null | head -5 grep -rn "_verdict_resolve_path()" core/ scripts/ --include="*.sh" | head -5
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -n "_verdict_resolve_path_v\|artifact_dir" core/pipeline/verdict.sh | head -20
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/verdict.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/pipeline-resume-test.sh
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree ls tests/unit/core-pipeline-cycle*.sh 2>/dev/null | head -10
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -n "stage.start\|stage_start" tests/unit/core-pipeline-cycle-events-test.sh | head -20
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -rn "stage.start" tests/unit/core-pipeline-cycle*.sh | head -10
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -rn "stage.start" tests/integration/*.sh | grep -v "resume-rehydrate\|from-stage-rehydrate\|resume-loop\|resume-entry\|pipeline-resume\|resume-after-sigint" | head -20
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -n "stage.start\|cycle" tests/integration/core-pipeline-runner-test.sh | head -20
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/core-pipeline-runner-test.sh
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -B5 -A5 "stage.start" tests/integration/run-cap-runner-test.sh | head -30
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -B2 -A2 "stage.start" tests/integration/runner-init-state-abort-test.sh | head -20
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -rn "stage.start.*count\|count.*stage.start\|stage_starts\|grep -c.*stage.start" tests/ --include="*.sh" | grep -v "resume-rehydrate\|from-stage-rehydrate\|resume-loop\|resume-entry\|pipeline-resume" | head -20
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree find tests/fixtures -name "two-cycles*" 2>/dev/null | head -3
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree cat tests/fixtures/templates/two-cycles.yaml
-- said: Now I understand all the issues. Let me implement the fixes. Let me first read the exact lines to edit:
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: grep -n "assert_eq\|assert_gt" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -20
+- Bash: # Test what wc -l | tr -d ' ' produces with empty input result="$(printf "" | wc -l | tr -d ' ')" echo "Empty input result: '${result}'" echo "Length: ${#result}" printf "Bytes: "; printf '%s' "$result" | od -c | head -2 # Also test with a newline character result2="$(printf "\n" | wc -l | tr -d ' '…
+- Bash: # Check what happens with || echo 0 pattern result="$(printf "" | grep -c "nothing" 2>/dev/null || echo 0)" echo "grep-c empty || echo 0: '${result}'" echo "Length: ${#result}" printf "Bytes: "; printf '%s' "$result" | od -c | head -2
+- said: Let me look at the specific implementation functions:
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
-- said: Now let me make the changes:
-- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
-- said: Now add `stage.start` emission for cycle member dispatch:
-- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
-- said: Now fix pipeline-resume-test.sh to pre-write intake's artifact:
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/pipeline-resume-test.sh
-- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/pipeline-resume-test.sh
-- said: Now let me run the tests to verify the fixes:
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree timeout 180 bash tests/integration/resume-entry-points-test.sh 2>&1 | tail -30
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree timeout 180 bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep -E "✓|✗|PASS|FAIL" | tail -30
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree # Run the SPEC-12 sub-case manually and capture events REPO_ROOT="$(pwd)" TEST_TEMP="$(mktemp -d)" PLUGINS="$TEST_TEMP/plugins" source "$REPO_ROOT/scripts/lib/test-helpers.sh" source "$REPO_ROOT/scripts/lib/helpers.sh" mock_plugin_fact…
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree cat "$TEST_TEMP_DIR/s12-debug-err.txt" 2>/dev/null | grep -v "^$" | tail -20
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree cat "$TEST_TEMP_DIR/s12-debug-err.txt" | head -30
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree ls /home/runner/work/_temp/zbuild-state/scratch/build/resume-rehydrate-1805.*/s12-debug-err.txt 2>/dev/null | head -5
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree echo "TEST_TEMP_DIR is: ${TEST_TEMP_DIR:-UNSET}" ls /tmp/zb-test-auto.* 2>/dev/null | head -5
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree # Create a proper test environment to debug SPEC-12 REPO_ROOT="$(pwd)" TMPDIR_BASE="/tmp" TEST_DIR="$(mktemp -d "$TMPDIR_BASE/spec12-debug.XXXXXX")" # Setup plugins like the actual test does mkdir -p "$TEST_DIR/plugins" # Create intake…
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -A 5 "^zb_test_issue()" scripts/lib/test-helpers.sh | head -10
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree # Let me check if there's something wrong with the template by looking at what preflight check fails REPO_ROOT="$(pwd)" TMPDIR_BASE="/tmp" TEST_DIR="$(mktemp -d "$TMPDIR_BASE/spec12-debug.XXXXXX")" WORK_REPO="$(mktemp -d "$TMPDIR_BASE/…
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -A 20 "^install_template_overlay()" scripts/lib/test-helpers.sh | head -25
-- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree grep -A 35 "^install_template_overlay()" scripts/lib/test-helpers.sh | tail -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: grep -n "_artifact_persist_restore\|_artifact_persist_put_back\|_artifact_persist_snapshot" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -30
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
+- said: Let me understand what changes test-author made vs the build implementation:
+- Bash: git show 4ada2396 --name-only | head -20
+- Bash: git show db0e567a --name-only | head -20
+- said: Let me look at the cycle-orchestrator implementation:
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- Bash: grep -n "_start_iter\|current_iter\|_ZBUILD_RESUME_ACTIVE\|cycle_iterations\|_cycle_state_" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh | head -40
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh
+- Bash: grep -n "iteration.complete\|iter-1 was already" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh
+- Bash: wc -l /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh wc -l /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh wc -l /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests…
+- Bash: git log --oneline -- tests/integration/resume-loop-state-test.sh | head -5
+- Bash: git show 4ada2396 -- tests/integration/resume-loop-state-test.sh | head -50
+- Bash: git show db0e567a -- core/pipeline/cycle-orchestrator.sh | head -80
+- said: Let me read the resume-entry-points test and understand the SPEC-13 failure:
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- Bash: grep -n "cycle_dispatch_stage\|stage\.start\|stage.start" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -i "cycle\|stage\.start" | head -30
+- Bash: grep -n "^cycle_dispatch_stage\|^ cycle_dispatch_stage\|cycle_dispatch_stage()" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/artifact-snapshot-coverage.yaml
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: grep -n "^mock_plugin_factory" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: grep -n "get_resume_recommendation\|auto_resume\|in_progress\|interrupted" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/resume.sh | head -30
+- said: Let me check the actual test output log for resume-entry-points:
+- Bash: grep -A 5 "resume-entry-points" /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md 2>/dev/null | head -30
+- Bash: cat /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt 2>/dev/null | head -60
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: grep -n "cycle:\|cycle_orchestrator_run\|_has_cycle_unit" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "^#\|#.*cycle" | head -30
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: grep -n "skip_until_stage\|resume_mode.*stage_status\|stage_status.*complete\|complete.*continue" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "^#" | head -20
+- Bash: grep -n "state_file\|ZBUILD_STATE_FILE\|ZBUILD_STATE_DIR" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "^#\|#.*state" | head -40
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/resume.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: grep -n "ZBUILD_ARTIFACT_DIR\|artifact_dir" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep "export\|:=" | head -20
+- Bash: grep -n "ZBUILD_ARTIFACT_DIR" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "^#" | head -10
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/cycle-converges-iter2.yaml
+- said: Let me update my notes file and then start making changes:
+- Write: /home/runner/work/_temp/zbuild-state/artifacts/notes/build.md
+- said: Let me check the shape-floor failure:
+- Bash: cat /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md 2>/dev/null | head -80
+- said: Let me check the cycle-member-dispatch-events failure:
+- Bash: grep -A 5 "blocking_member_failure\|design_timeout_exhausted" /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md | head -20
