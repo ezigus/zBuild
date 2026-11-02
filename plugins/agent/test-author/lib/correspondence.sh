@@ -196,12 +196,12 @@ _ta_correspondence() {
     # #2450: each test file whole, once, with the tags of every judged SPEC
     # marked — the batch call reads it; a one-SPEC call reads its own files.
     local -a _tags=() _files_seen=()
-    local _files_text="" _f _seen _x
+    local _files_text="" _f _sf _seen _x
     for sid in "${_ids[@]}"; do _tags+=("$(acceptance_spec_tag "$sid")"); done
     for _x in "${_tfss[@]}"; do
         for _f in $_x; do
             _seen=0
-            for sid in ${_files_seen[@]+"${_files_seen[@]}"}; do [[ "$sid" == "$_f" ]] && _seen=1; done
+            for _sf in ${_files_seen[@]+"${_files_seen[@]}"}; do [[ "$_sf" == "$_f" ]] && _seen=1; done
             (( _seen )) && continue
             _files_seen+=("$_f")
             _files_text+="--- $_f ---"$'\n'"$(acceptance_testfile_source "$repo" "$_f" "${_tags[@]}")"$'\n'
