@@ -1,54 +1,29 @@
-- (… 37 earlier steps not shown)
-- Bash: grep -n "runner-state-dir-minimal\|minimal.*yaml\|runner.*minimal" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/runner-state-dir-minimal.yaml 2>/dev/null || cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/runner-sta…
-- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/runner-state-dir-minimal.yaml
-- Bash: grep -rn 'ZBUILD.*scripts/zbuild\|"$ZBUILD"\|zbuild_script\|ZBUILD_SCRIPT' /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/ | grep -v ".sh:#" | head -20
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-after-sigint-test.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-after-sigint-test.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
-- Bash: grep -n "_artifact_persist_snapshot\|_artifact_persist_restore\|_artifact_persist_put_back" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -20
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh
-- Bash: grep -n "locked_state_update" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/atomic.sh | head -5
-- Bash: grep -rn "locked_state_update" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh | head -5
-- Bash: grep -n "source.*atomic\|source.*state" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh | head -10
-- Bash: grep -n "_artifact_persist_put_back\|put_back" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/artifact-persist.sh | head -10
-- Bash: grep -rn "_artifact_persist_put_back\|_hydrate_put_back" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -10
-- Bash: grep -n "_find_state_file" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/zbuild | head -10
-- Bash: grep -n "_find_state_file\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/helpers.sh | head -5
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/zbuild
+- Bash: ls -la /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration…
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- said: Let me read the ADR files and fixture file to understand what's needed for the fixes.
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/docs/adr/ADR-050-prior-work-reuse-contract.md
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/artifact-snapshot-coverage.yaml echo "===" cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/runner-state-dir-minimal.yaml
+- said: Let me read the test helpers to understand mock_plugin_factory and also check the ADR-006 document.
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/docs/adr/ADR-006-resume-contract.md
+- Bash: grep -n "mock_plugin_factory" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -5
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: grep -n "stage\.start\|cycle.*start\|ZBUILD_CYCLES_ENABLED" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-after-sigint-test.sh 2>/dev/null | head -30 echo "===" grep -rn 'artifact-snapshot-coverage' /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktre…
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/artifact-snapshot-runner-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/artifact-snapshot-runner-test.sh
+- Bash: grep -n "^assert_contains\|^assert_file_exists\|^assert_eq\|^assert_fail\|^assert_pass\|^assert_gt" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -30
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
-- said: Now I have enough context to write the three remaining test files. Let me update the notes and write each file.
+- said: Now I have a clear picture of what needs to change. Let me update the notes file and then make all the edits.
 - Write: /home/runner/work/_temp/zbuild-state/artifacts/notes/test-author.md
-- said: Now let me write `from-stage-rehydrate-test.sh`:
-- Write: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh
-- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh
-- said: Now let me write `resume-loop-state-test.sh` for SPEC-7. Let me first look at the cycle-report-stub to understand if I need it.
-- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/lib/cycle-report-stub.sh
-- Bash: grep -n "zb_stub_reports_tests\|_cycle_report\|test.*count\|report.*test" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/lib/cycle-report-stub.sh | head -20
-- Bash: grep -n "_cycle_load_template\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh | head -10
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
-- Bash: grep -n "assert_event_emitted\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh | head -5
-- Write: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh
-- said: Now let me write the `resume-entry-points-test.sh` for SPEC-9. Let me first verify the auto-resume condition and understand the zbuild script call more precisely.
-- Bash: grep -n "ZBUILD_RUN_ID\|ZBUILD_RESUME_RUN_ID\|ZBUILD_TEMPLATE\|template=\|--template" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/zbuild | grep "pipeline resume\|^[0-9]" | head -20
-- Bash: grep -n "template\|TEMPLATE" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep "state\|file\|load\|read\|get" | head -20
-- Bash: grep -n "template.*state\|state.*template\|get_state.*template\|template.*json\|template.*field" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -20
-- Bash: grep -n "template" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/pipeline-resume-test.sh | head -20
-- said: Now let me write the `resume-entry-points-test.sh`:
-- Write: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
-- said: Now let me verify all four test files exist and check them for any issues:
-- Bash: ls -la /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh \ /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh \ /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integra…
-- Bash: bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh && echo "syntax OK" || echo "SYNTAX ERROR" bash -n /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh && echo "syntax OK" || ech…
-- Bash: shellcheck tests/integration/from-stage-rehydrate-test.sh 2>&1 | head -30 shellcheck tests/integration/resume-loop-state-test.sh 2>&1 | head -30 shellcheck tests/integration/resume-entry-points-test.sh 2>&1 | head -30 shellcheck tests/integration/resume-rehydrate-test.sh 2>&1 | head -30
-- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/.shellcheckrc
-- Bash: grep -n "tail\|SIGPIPE.*tail" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/sigpipe-antipattern-guard-test.sh | head -10
-- Bash: grep -n "bare.*head\|bare.*tail\|head.*pipe\|tail.*pipe" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/sigpipe-antipattern-guard-test.sh | head -10
-- Bash: grep -n "bare.*head\|grep -q\| head\b\| tail\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/sigpipe-antipattern-guard-test.sh | head -20
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/sigpipe-antipattern-guard-test.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/sigpipe-antipattern-guard-test.sh
-- Bash: grep -n "shellcheck\|SC2317\|severity" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/lint-sh.sh 2>/dev/null | head -20 grep -rn "shellcheck\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/ 2>/dev/null | grep "severity\|format\|SC\b" | head -20
-- Bash: grep -rn "shellcheck" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/ 2>/dev/null | grep -v ".sh:#" | head -20
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/run-tests.sh
-- Bash: grep -n "run_lint_tier\|shellcheck.*severity\|shellcheck.*format" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/run-tests.sh | head -10
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/run-tests.sh
-- Bash: grep -n "shellcheck\|lint\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/package.json | head -10
+- Read: /home/runner/work/_temp/zbuild-state/artifacts/notes/test-author.md
+- Write: /home/runner/work/_temp/zbuild-state/artifacts/notes/test-author.md
+- said: Now I'll make all the targeted edits. Starting with `resume-rehydrate-test.sh`:
+- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- said: Now for path 3:
+- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- said: Now fix SPEC-5 (replace generic "artifact" and "exit 1" with specific tokens):
+- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
