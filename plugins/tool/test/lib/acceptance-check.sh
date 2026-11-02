@@ -464,11 +464,10 @@ acceptance_gate_run() {
 
     # ── Write result artifact ────────────────────────────────────────────────
     # #2271 (ADR-068): each clause of the plain reason — one kind of problem and
-    # the SPECs it concerns — is a numbered finding.
+    # the SPECs it concerns — is a numbered finding, with its topic (#2452).
     local _ag_fnd="[]"
     if [[ "$verdict" == "fail" && -n "${reason_msg:-}" ]]; then
-        local _ag_cl="${reason_msg#the acceptance check failed — }"
-        _ag_fnd="$(printf '%s\n' "${_ag_cl//; /$'\n'}" | stage_findings_json)"
+        _ag_fnd="$(_ag_reason_findings_json "${failures[@]}")"
     fi
     # #2366 (contract 3): one outcome — pass or fail, or `broken` when the gate
     # could not check anything. severity and failures stay top-level, where

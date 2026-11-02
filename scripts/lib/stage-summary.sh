@@ -20,9 +20,25 @@ _ZBUILD_STAGE_SUMMARY_SH_LOADED=1
 # #2271 (ADR-068): a check lists what it found as numbered items in its result
 # (`data.findings`), so later stages can answer each one and the check that
 # opened it can close it. Blank lines are skipped; numbering starts at 1.
+# #2452 (ADR-071 §1): a line "<topic><TAB><text>" is a finding with its own
+# topic, so it reaches only the stages that take that topic. Only the five
+# topic words count; any other line is a finding with no topic, kept whole.
+_ZB_FINDING_TOPICS='^(ask|tests|change|requirement-findings|code-findings)\t'
 stage_findings_json() {
-    jq -R -s -c '[ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]
-                 | to_entries | map({n: (.key + 1), text: .value})' 2>/dev/null || printf '[]'
+    jq -R -s -c --arg re "$_ZB_FINDING_TOPICS" \
+        '[ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]
+         | to_entries
+         | map(.value as $v | {n: (.key + 1)}
+               + if ($v | test($re)) then {text: ($v | sub("^[^\t]+\t"; "")), topic: ($v | split("\t")[0])}
+                 else {text: $v} end)' 2>/dev/null || printf '[]'
+}
+
+# stage_findings_lines <result.json> — the result's findings as the lines
+# stage_findings_json takes, each topic kept; a word outside the five is dropped.
+stage_findings_lines() {
+    jq -r --arg re "$_ZB_FINDING_TOPICS" '(.data.findings // [])[]? | select(type == "object")
+        | (.text // "" | tostring | gsub("[\r\n]+"; " ")) as $t
+        | if ((if (.topic | type) == "string" then .topic else "" end) + "\t" | test($re)) then "\(.topic)\t\($t)" else $t end' "$1" 2>/dev/null || true
 }
 
 # ─── stage_summary_write <path> <stage> <verdict> <reason> [body] ────────────

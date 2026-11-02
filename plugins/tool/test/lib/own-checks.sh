@@ -98,8 +98,9 @@ _test_own_checks() {
 
     local -a texts=() why=()
     local outcome="$own" r o t
+    # #2452: read back with each finding's topic, so folding keeps it.
     while IFS= read -r t; do [[ -n "$t" ]] && texts+=("$t"); done \
-        < <(jq -r '.data.findings[]?.text // empty' "$out" 2>/dev/null || true)
+        < <(stage_findings_lines "$out")
     for r in "$art/shape-floor-result.json:the shape floor" "$art/acceptance-gate-result.json:the acceptance check"; do
         local f="${r%%:*}" name="${r#*:}"
         o="$(jq -r '.outcome // empty' "$f" 2>/dev/null || true)"
