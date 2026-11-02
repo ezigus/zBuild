@@ -114,10 +114,13 @@ _producer ft-accept requirement-findings \
 # ft-test: a code-findings output holding one finding for the design.
 _producer ft-test code-findings \
     '[{"n":1,"text":"WRONG-REQUIREMENT","topic":"requirement-findings"},{"n":2,"text":"FAILING-FILE"}]'
+# ft-quoted: a manifest that quotes its topic, as YAML allows.
+_producer ft-quoted requirement-findings '[{"n":1,"text":"QUOTED-TOPIC-FINDING"}]'
+sed -i.bak 's/topic: requirement-findings/topic: "requirement-findings"/' "$PROOT/tool/ft-quoted/manifest.yaml"
 _consumer ft-design "$(_takes ask requirement-findings)"
 _consumer ft-build "$(_takes ask requirement-findings code-findings)"
 _consumer ft-coder "$(_takes ask code-findings)"
-_TPL_STAGES=(ft-accept ft-test ft-design ft-build ft-coder)
+_TPL_STAGES=(ft-accept ft-test ft-quoted ft-design ft-build ft-coder)
 
 _pw() {
     local idx; idx="$(_inputs_resolve_stage "$1" "$PROOT" "$STATE")"
@@ -147,6 +150,7 @@ print_test_section "F4: no topic, or a word outside the five, goes by the output
 assert_contains "[F4] design is shown the untagged finding of a requirement-findings output" "$_pwd" "DESIGN-GAP"
 assert_contains "[F4] ...and the one whose word is not a topic" "$_pwd" "ODD-WORD"
 assert_contains "[F4] ...and one whose topic is not a word at all" "$_pwd" "NUMBER-TOPIC"
+assert_contains "[F4] an output whose manifest quotes its topic goes by that topic" "$_pwd" "QUOTED-TOPIC-FINDING"
 assert_contains "[F4] ...and that output's summary" "$_pwd" "SUMMARY-OF-ft-accept"
 assert_not_contains "[F4] a stage not taking requirement-findings is not shown the odd word" "$_pwc" "ODD-WORD"
 assert_contains "[F4] it is shown the untagged finding of a code-findings output" "$_pwc" "FAILING-FILE"

@@ -81,7 +81,8 @@ the code (155 turns, nothing saved), and the run ended. Only one finding was des
   keeps their topics. This replaces "a finding takes the topic of the output it is in". The lenses' one
   output per topic (amendment 2026-10-30) still works.
 - **§2: Previous work shows a finding to a stage that takes the finding's topic,** whichever output holds
-  it, labelled as before. Paths, summaries and error logs still go by their output's topic. A stage that
+  it, labelled as before. Paths, summaries and error logs still go by their output's topic. A finding
+  with no topic in an output with no topic reaches no stage that declares `takes:`, as before (§2). A stage that
   sends its findings to more than one topic does not repeat them in its summary, because the summary goes
   to every stage that takes the summary's topic.
 - **Who tags what.**

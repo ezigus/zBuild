@@ -122,7 +122,8 @@ _sp_manifest_roles_v() {
                 i = $0; sub(/^[[:space:]]+id:[[:space:]]*/, "", i); sub(/[[:space:]]*#.*/, "", i)
                 gsub(/^["\047]|["\047]$/, "", i); id = i }
             inb && /^[[:space:]]+topic:[[:space:]]*/ {
-                t = $0; sub(/^[[:space:]]+topic:[[:space:]]*/, "", t); sub(/[[:space:]]*#.*/, "", t); topic = t }
+                t = $0; sub(/^[[:space:]]+topic:[[:space:]]*/, "", t); sub(/[[:space:]]*#.*/, "", t)
+                gsub(/^["\047]|["\047]$/, "", t); topic = t }
             END { flush() }' "$m" > "$c.$$" 2>/dev/null && mv -f "$c.$$" "$c" 2>/dev/null \
             || { rm -f "$c.$$" 2>/dev/null; return 0; }
     fi
