@@ -360,7 +360,12 @@ EOF
     # #2439 (ADR-054 §6a): one model call per round. A call that does not
     # finish ends the try with its reason, and what it wrote is committed for
     # the engine's next try (the template's retry:).
+    # #2450: what each of this round's author calls is told the check found —
+    # one call in round 1; after that, one per test file with findings.
+    local -a _calls=("")
     while :; do
+    local _ta_sums_before; _ta_testfile_sums_v _ta_sums_before "$design" "$repo"
+    for _found in "${_calls[@]}"; do
     # ADR-067 §8: the stage's three parts and the engine's blocks — its budget
     # and notes file among the engine's rules — in the one prompt order.
     local _composed
@@ -377,7 +382,6 @@ ${_ta_limits}")"; then
         return 1
     }
     printf '%s' "$prompt" > "$prompt_file"
-    local _ta_sums_before; _ta_testfile_sums_v _ta_sums_before "$design" "$repo"
     route_to_model_loop "$tier" "$prompt_file" "$repo" || rc=$?
     rm -f "$prompt_file"
     _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}"
@@ -407,6 +411,7 @@ ${_ta_limits}")"; then
             "the author did not finish (${_reason}) — what it wrote is kept for the next attempt" "$n"
         return 1
     fi
+    done
 
     # #2174: the stage enforces its own invariant — a [SPEC-n] tag whose
     # number is not in THIS contract is stale (an earlier contract's), and the
@@ -438,7 +443,7 @@ ${_ta_limits}")"; then
         return 0
     fi
     _round=$(( _round + 1 ))
-    _found="$(printf '\n### What the check of your assertions found (round %s of %s)\nYour assertions were checked against their requirements, and your new and changed test files were run on the code from before this change. These do not hold. Fix each one in its testfile; keep what already holds.\n' "$_round" "$_rounds"; printf -- '- %s\n' "${_TA_CORR_FINDINGS[@]}")"
+    _ta_fixup_calls_v _calls "$design" "$_round" "$_rounds"
     done
 
     # The digests are recorded HERE, by the author, immediately after authoring.

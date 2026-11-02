@@ -73,6 +73,28 @@ assert_contains "[W1] ...and the tagged assertion, marked" "$_P" '>> assert_eq "
 assert_contains "[W1] the prompt says what the marks are" "$(tr -s '[:space:]' ' ' <<< "$_P")" \
     "the lines marked >> are the ones tagged for the requirement; the lines above them set up the test"
 
+# ── F1 (#2450) ───────────────────────────────────────────────────────────────
+# Setup in a helper function, defined above another SPEC's assertion, used by
+# SPEC-2's: the stanza view never reached it, and the check called the test
+# partial for "code not shown" (#1805 run 41365460329).
+_contract 1
+cat > "$R/tests/acc-test.sh" <<'SH'
+_setup_paths() { EVENTS_FILE=populated_by_the_helper; }
+assert_eq "an untagged check" "1" "1"
+
+# SPEC-1 thing 1 holds — a comment that must not reach the check
+_setup_paths
+assert_eq "[SPEC-1] thing 1 holds" "populated_by_the_helper" "$EVENTS_FILE"
+SH
+_judge
+_P="$(cat "$_P_FILE")"
+assert_contains "[F1] the check sees setup defined elsewhere in the file" "$_P" "EVENTS_FILE=populated_by_the_helper"
+assert_contains "[F1] ...in the whole file, under its path" "$_P" "tests/acc-test.sh"
+assert_contains "[F1] ...with the tagged lines marked" "$_P" '>> assert_eq "[SPEC-1] thing 1 holds"'
+assert_eq "[F1] comments are stripped" "0" "$(grep -c 'a comment that must not reach the check' <<< "$_P" || true)"
+assert_contains "[F1] the prompt says setup anywhere in the file counts" "$(tr -s '[:space:]' ' ' <<< "$_P")" \
+    "setup anywhere in the file counts"
+
 # ── SPEC-1 / SPEC-2 / SPEC-3 ────────────────────────────────────────────────
 _contract 1
 _judge

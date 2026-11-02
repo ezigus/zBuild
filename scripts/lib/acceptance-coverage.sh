@@ -160,6 +160,29 @@ acceptance_find_assertion_sources() {
     return 0
 }
 
+# ─── acceptance_testfile_source <repo_root> <testfile> <tag>... ─────────────
+# The whole test file, comments stripped, with each assertion tagged by one of
+# <tag>s marked ">> " (#2450). The stanza view above shows an assertion's own
+# setup; setup that lives elsewhere — a helper function, a block shared by
+# several cases — reaches the check only from the file itself (#1805 run
+# 41365460329: the check called tests partial for code it was not shown).
+acceptance_testfile_source() {
+    local repo_root="${1:-}" tf="${2:-}"; shift 2
+    local abs="$repo_root/$tf" line out t marked
+    [[ -n "$tf" && -f "$abs" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        out="$(_acceptance_strip_comment "$line")"
+        [[ -n "${out// }" ]] || continue
+        marked=0
+        if [[ "$line" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]]; then
+            for t in "$@"; do [[ "$line" == *"$t"* ]] && { marked=1; break; }; done
+        fi
+        (( marked )) && out=">> ${out#"${out%%[![:space:]]*}"}"
+        printf '%s\n' "$out"
+    done < "$abs"
+    return 0
+}
+
 acceptance_find_assertion_label() {
     local repo_root="${1:-}" spec_id="${2:-}"; shift 2
     local pass tf abs match
