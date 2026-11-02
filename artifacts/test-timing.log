@@ -4445,3 +4445,26 @@ cpu 97 184 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z
 file 251 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/golden/golden-contracts-test.sh
 tier 303 golden
 tier 99496 lint
+run 3 targeted
+cpu 1237 1876 tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
+file 3564 tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
+cpu 1489 3094 tests/integration/from-stage-rehydrate-test.sh
+file 5732 tests/integration/from-stage-rehydrate-test.sh
+cpu 2091 3430 tests/integration/cycle-member-dispatch-events-test.sh
+file 6127 tests/integration/cycle-member-dispatch-events-test.sh
+cpu 308 552 tests/integration/resume-loop-state-test.sh
+file 947 tests/integration/resume-loop-state-test.sh
+cpu 4751 5690 tests/integration/nested-loop-rounds-build-test.sh
+file 10517 tests/integration/nested-loop-rounds-build-test.sh
+cpu 2961 5142 tests/integration/nested-loop-rounds-test.sh
+file 8539 tests/integration/nested-loop-rounds-test.sh
+cpu 369 655 tests/integration/write-boundary-revert-test.sh
+file 1003 tests/integration/write-boundary-revert-test.sh
+cpu 2249 4830 tests/integration/resume-entry-points-test.sh
+file 8941 tests/integration/resume-entry-points-test.sh
+cpu 2345 5412 tests/integration/resume-rehydrate-test.sh
+file 9543 tests/integration/resume-rehydrate-test.sh
+cpu 1509 2787 tests/unit/stage-retry-test.sh
+file 4148 tests/unit/stage-retry-test.sh
+cpu 5175 8197 tests/integration/stop-run-on-fail-test.sh
+file 12744 tests/integration/stop-run-on-fail-test.sh
