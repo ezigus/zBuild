@@ -65,7 +65,9 @@ takes:
                 _tbad="finding_topics '' "
             elif [[ "${_fws[*]}" != none ]]; then
                 for _fw in "${_fws[@]}"; do
-                    [[ " ${ZBUILD_STAGE_TOPICS[*]} " == *" $_fw "* ]] || _tbad="finding_topics '$_fw' "
+                    [[ " ${ZBUILD_STAGE_TOPICS[*]} " == *" $_fw "* ]] && continue
+                    error "validate_manifest($manifest): finding_topics '$_fw' is not one of: ${ZBUILD_STAGE_TOPICS[*]} (ADR-071)"
+                    errors=$((errors + 1))
                 done
             fi
         fi

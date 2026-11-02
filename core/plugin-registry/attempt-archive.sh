@@ -176,8 +176,8 @@ attempt_outputs_fingerprint_v() {
         # #2454: the steps of a call cut off at its time limit are saved beside
         # the notes for the next try (stage-cutoff.sh), so new steps are
         # something left too. A call that finishes removes the list: absent.
-        local _fp_cut="${_fp_notes%.md}.cut-off.md"
-        if [[ -e "$_fp_cut" ]]; then sum="$(cksum 2>/dev/null < "$_fp_cut" || printf 'absent')"; else sum="absent"; fi
+        local _fp_cut=""; [[ -n "$_fp_notes" ]] && _fp_cut="${_fp_notes%.md}.cut-off.md"
+        if [[ -n "$_fp_cut" && -e "$_fp_cut" ]]; then sum="$(cksum 2>/dev/null < "$_fp_cut" || printf 'absent')"; else sum="absent"; fi
         _fp_var+="__cutoff__"$'\t'"$sum"$'\n'
     fi
     _fp_var="${_fp_var%$'\n'}"

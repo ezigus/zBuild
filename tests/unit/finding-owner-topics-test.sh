@@ -86,6 +86,9 @@ assert_eq "[O2] finding_topics: none is accepted" "ok" "$(_valid "$(_mf none 'fi
 assert_eq "[O2] a list of topics is accepted" "ok" "$(_valid "$(_mf list 'finding_topics: code-findings change')")"
 assert_eq "[O2] a word outside the five is refused" "refused" "$(_valid "$(_mf odd 'finding_topics: code-findings everyone')")"
 assert_contains "[O2] ...naming the word" "$(validate_manifest "$(_mf odd2 'finding_topics: everyone')" 2>&1)" "everyone"
+_o2two="$(validate_manifest "$(_mf odd3 'finding_topics: bad1 bad2')" 2>&1)"
+assert_contains "[O2] ...each wrong word is named (the first)" "$_o2two" "bad1"
+assert_contains "[O2] ...each wrong word is named (the second)" "$_o2two" "bad2"
 
 # ── O3 ───────────────────────────────────────────────────────────────────────
 print_test_section "O3: every shipped stage result declares it"
