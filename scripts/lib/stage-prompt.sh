@@ -199,18 +199,24 @@ _sp_strip_comments() {
 # _stage_block_rules <stage> <state_dir> <manifest>
 _stage_block_rules() {
     local stage="$1" state_dir="$2" manifest="$3" secs turns stage_secs tv
-    if ! _sp_writes_repository "$manifest"; then
-        printf -- '- You may not change the repository. Do not create, modify or delete any\n'
-        printf '  file in the repository — code, tests, or anything else. Write only the\n'
-        printf '  outputs your instructions name, and your notes file.\n'
+    if _route_manifest_no_tools "$manifest"; then
+        # #2448: no tools — nothing to write, and no file to keep notes in.
+        printf -- '- You have no tools. Everything you need is in this prompt, and your\n'
+        printf '  answer is your reply.\n'
+    else
+        if ! _sp_writes_repository "$manifest"; then
+            printf -- '- You may not change the repository. Do not create, modify or delete any\n'
+            printf '  file in the repository — code, tests, or anything else. Write only the\n'
+            printf '  outputs your instructions name, and your notes file.\n'
+        fi
+        local _sbr_np; stage_notes_path_v _sbr_np "$state_dir" "$stage"
+        printf -- '- Your notes file is %s\n' "$_sbr_np"
+        printf '  Write to it as you work, not at the end: what you read, what you\n'
+        printf '  concluded, and what is left. If you run out of time or turns, it is all that\n'
+        printf '  survives, and its latest version comes back to you under Previous work.\n'
+        printf '  Write it as a hand-off: someone starting fresh, without your context, must\n'
+        printf '  be able to pick up from it.\n'
     fi
-    local _sbr_np; stage_notes_path_v _sbr_np "$state_dir" "$stage"
-    printf -- '- Your notes file is %s\n' "$_sbr_np"
-    printf '  Write to it as you work, not at the end: what you read, what you\n'
-    printf '  concluded, and what is left. If you run out of time or turns, it is all that\n'
-    printf '  survives, and its latest version comes back to you under Previous work.\n'
-    printf '  Write it as a hand-off: someone starting fresh, without your context, must\n'
-    printf '  be able to pick up from it.\n'
     # #2445: every stage, as build always was — work already done is confirmed,
     # not done again.
     printf -- '- If what you are asked to produce is already there and right, and no\n'

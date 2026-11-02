@@ -24,7 +24,8 @@ _ZBUILD_MANIFEST_ROUTER_BUDGET_LOADED=1
 # wrong — so validate_manifest refuses it.
 # #2439 (ADR-054 §6a): `retries` and `retry_on_exhaustion` are gone — a stage
 # never repeats a model call; the template's per-stage `retry:` is the one retry.
-_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns"
+# #2448 (ADR-017 §11): `tools: none` — the plugin's calls get no tools at all.
+_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns tools"
 
 # _manifest_router_range <knob> → "<min> <max>", empty for an unknown knob.
 # The ranges are the template's ranges (_tpl_validate_io_knobs), deliberately:
@@ -34,6 +35,15 @@ _manifest_router_range() {
         timeout_s) echo "1 3600" ;;   # ADR-017 (#455)
         max_turns) echo "0 200" ;;    # ADR-018 (#466); 0 = omit --max-turns (#762)
         *)         echo "" ;;
+    esac
+}
+
+# _manifest_router_words <knob> → the words a word-valued knob takes, empty for
+# a numeric or unknown knob.
+_manifest_router_words() {
+    case "$1" in
+        tools) echo "none" ;;         # #2448
+        *)     echo "" ;;
     esac
 }
 

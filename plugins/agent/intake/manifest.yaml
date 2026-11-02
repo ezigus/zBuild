@@ -98,7 +98,9 @@ config:
   tier_default: T1
   # ADR-017 §11 (#1816): declared so the template override wins. #2445: each
   # of intake's two model calls has one turn — it answers from the issue it is
-  # given, and cannot open the code.
+  # given. #2448: and no tools, so it cannot open the code or spend its turn on
+  # a tool call.
   router:
     timeout_s: 120
     max_turns: 1
+    tools: none
