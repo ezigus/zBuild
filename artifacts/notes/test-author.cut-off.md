@@ -1,0 +1,20 @@
+- said: I need to read the current test files to understand the failures and fix them. Let me start by reading the test files in parallel.
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- said: Let me read the test helpers to understand the assert functions:
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/helpers.sh
+- said: Let me read the test failure summaries and the artifact-snapshot-coverage fixture:
+- Read: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
+- Bash: find /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/ -name "*.yaml" | sort
+- said: Let me look at the actual test output log and understand what's really happening:
+- Bash: grep -A5 "SPEC-1.*intake emits no stage" /home/runner/work/_temp/zbuild-state/artifacts/test-output.log 2>/dev/null | head -60
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/artifact-snapshot-coverage.yaml
+- said: Let me look at how other cycle tests set up their environment, and look at the test output log for more context:
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/cycle-resume.yaml
+- Bash: grep -n "ZBUILD_CYCLES_ENABLED\|cycled_starts\|cycle_dispatch" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh | head -30
+- Bash: grep -r "ZBUILD_CYCLES_ENABLED" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/ --include="*.sh" --include="*.yaml" -l 2>/dev/null | grep -v "legacy-DoNotUse" | head -20
+- Read: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
+- Bash: grep -n "SPEC-1\|SPEC-12\|SPEC-13\|intake-result\|cycled\|expected: 0, got" /home/runner/work/_temp/zbuild-state/artifacts/test-output.log | head -60
