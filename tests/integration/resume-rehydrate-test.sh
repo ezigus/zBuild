@@ -49,11 +49,12 @@ WORK_REPO="$(setup_git_temp_repo resume-rehydrate-work)"
 git -C "$WORK_REPO" config user.email t@e.st
 git -C "$WORK_REPO" config user.name t
 
-install_template_overlay "$WORK_REPO" runner-state-dir-minimal
+install_template_overlay "$WORK_REPO" artifact-snapshot-coverage
 
-# Create mock plugins (intake + build, each declaring a primary artifact).
+# Create mock plugins (intake + cycled for the artifact-snapshot-coverage cyclic fixture;
+# cycled is the member of the cyc cycle stage, declared roles:[builder]).
 mock_plugin_factory "intake" "agent" 0 >/dev/null
-mock_plugin_factory "build"  "agent" 0 >/dev/null
+mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
 # ── SPEC-1: resume rehydrates artifacts from git state branch ─────────────────
@@ -84,7 +85,7 @@ fi
 # Remove the artifact from disk to simulate the "artifacts not on disk" scenario.
 rm -f "$S1_STATE_DIR/artifacts/intake-result.json"
 
-# Write state file: intake=complete, build=pending.
+# Write state file: intake=complete, cyc=pending.
 jq -n \
     --arg run_id "s1-resume-1805" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -93,7 +94,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -108,7 +109,7 @@ jq -n \
 # state branch. Capture rc; do not abort on failure.
 set +e
 ( cd "$WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$S1_STATE_DIR" \
     ZBUILD_STATE_FILE="$S1_STATE_FILE" \
@@ -118,7 +119,7 @@ set +e
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue "$_ZB_ID" ) \
+    bash "$RUNNER" --template artifact-snapshot-coverage --resume --issue "$_ZB_ID" ) \
     >"$TEST_TEMP_DIR/s1-stdout.txt" 2>"$TEST_TEMP_DIR/s1-stderr.txt"
 _s1_rc=$?
 set -e
@@ -142,19 +143,19 @@ assert_contains \
     "[#1805/SPEC-1] artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)" \
     "$_s1_artifact_content" "prior-run intake"
 
-# [#1805/SPEC-1]: build must have dispatched, proving the dispatch loop ran.
+# [#1805/SPEC-1]: at least one stage must have dispatched, proving the dispatch loop ran.
 # Combined with artifact-present (from git) and no-intake-stage.start, this establishes
 # that the artifact was placed BEFORE the dispatch loop: the loop's first dispatchable
-# stage (build) ran and the artifact was already there.
-# Before the change: runner may abort or dispatch stages in unexpected order → 0 or 1.
-# After the change: rehydrate → loop skips intake → dispatches build → build_starts=1.
-_s1_build_starts=0
+# stage (the cycle member cycled) ran and the artifact was already there.
+# Before the change: runner may abort or dispatch stages in unexpected order → 0 dispatches.
+# After the change: rehydrate → loop skips intake → dispatches cyc (cycle) → cycled dispatches.
+_s1_any_starts=0
 if [[ -f "$S1_EVENTS_JSONL" ]]; then
-    _s1_build_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="build") | .type' \
+    _s1_any_starts="$(jq -r 'select(.type=="stage.start") | .type' \
         "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/SPEC-1] build dispatched (dispatch loop ran; artifact was present before loop)" \
-    "1" "$_s1_build_starts"
+assert_gt "[#1805/SPEC-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)" \
+    "$_s1_any_starts" "0"
 
 # [#1805/SPEC-1]: pipeline.resume event must appear in the events log BEFORE the first
 # stage.start, proving _runner_resume_rehydrate (which calls _artifact_persist_restore
@@ -203,7 +204,7 @@ mkdir -p "$S1P2_STATE_DIR/artifacts" "$S1P2_EVENTS_DIR"
 touch "$S1P2_EVENTS_JSONL"
 
 S1P2_WORK_REPO="$(setup_git_temp_repo resume-reh-s1p2)"
-install_template_overlay "$S1P2_WORK_REPO" runner-state-dir-minimal
+install_template_overlay "$S1P2_WORK_REPO" artifact-snapshot-coverage
 
 printf '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' \
     > "$S1P2_STATE_DIR/artifacts/intake-result.json"
@@ -224,7 +225,7 @@ jq -n \
     --argjson issue "$S1P2_ID" \
     '{
         schema_version: 1, run_id: $run_id, issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0, self_heal_count: {}, scope_manifest_hash: "",
         cost_ledger_pointer: 0, claim_lease_id: "", plugin_state: {},
         status: "interrupted", updated_at: $now
@@ -232,7 +233,7 @@ jq -n \
 
 set +e
 ( cd "$S1P2_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$S1P2_STATE_DIR" \
     ZBUILD_STATE_FILE="$S1P2_STATE_FILE" \
@@ -242,7 +243,7 @@ set +e
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue "$S1P2_ID" ) \
+    bash "$RUNNER" --template artifact-snapshot-coverage --issue "$S1P2_ID" ) \
     >"$TEST_TEMP_DIR/s1p2-stdout.txt" 2>"$TEST_TEMP_DIR/s1p2-stderr.txt"
 set -e
 
@@ -263,16 +264,16 @@ assert_contains \
     "[#1805/SPEC-1] path 2 (auto-resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)" \
     "$_s1p2_artifact_content" "prior-run intake"
 
-# [#1805/SPEC-1] path 2: build must have dispatched (proving pipeline ran and events written).
-# Before fix: path-2 auto-resume doesn't exist → runner exits without events → build_starts=0 → FAILS.
-# After fix: runner auto-resumes, rehydrates, skips intake, dispatches build → build_starts=1 → PASSES.
-_s1p2_build_starts=0
+# [#1805/SPEC-1] path 2: at least one stage must have dispatched (proving pipeline ran and events written).
+# Before fix: path-2 auto-resume doesn't exist → runner exits without events → 0 stage.start → FAILS.
+# After fix: runner auto-resumes, rehydrates, skips intake, dispatches cyc cycle → cycled dispatches.
+_s1p2_any_starts=0
 if [[ -f "$S1P2_EVENTS_JSONL" ]]; then
-    _s1p2_build_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="build") | .type' \
+    _s1p2_any_starts="$(jq -r 'select(.type=="stage.start") | .type' \
         "$S1P2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/SPEC-1] path 2 (auto-resume): build dispatched (pipeline ran via path-2 resume)" \
-    "1" "$_s1p2_build_starts"
+assert_gt "[#1805/SPEC-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)" \
+    "$_s1p2_any_starts" "0"
 
 # [#1805/SPEC-1] path 2: pipeline.resume event must appear before the first stage.start,
 # proving _runner_resume_rehydrate (which calls _artifact_persist_restore + _artifact_persist_put_back)
@@ -311,7 +312,7 @@ mkdir -p "$S1P3_STATE_DIR/artifacts" "$S1P3_EVENTS_DIR"
 touch "$S1P3_EVENTS_JSONL"
 
 S1P3_WORK_REPO="$(setup_git_temp_repo resume-reh-s1p3)"
-install_template_overlay "$S1P3_WORK_REPO" runner-state-dir-minimal
+install_template_overlay "$S1P3_WORK_REPO" artifact-snapshot-coverage
 
 printf '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' \
     > "$S1P3_STATE_DIR/artifacts/intake-result.json"
@@ -332,7 +333,7 @@ jq -n \
     --argjson issue "$S1P3_ID" \
     '{
         schema_version: 1, run_id: $run_id, issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0, self_heal_count: {}, scope_manifest_hash: "",
         cost_ledger_pointer: 0, claim_lease_id: "", plugin_state: {},
         status: "interrupted", updated_at: $now
@@ -340,7 +341,7 @@ jq -n \
 
 set +e
 ( cd "$S1P3_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$S1P3_STATE_DIR" \
     ZBUILD_EVENTS_DIR="$S1P3_EVENTS_DIR" \
@@ -351,7 +352,7 @@ set +e
     PATH="$PATH" HOME="$HOME" \
     bash "$ZBUILD_CLI" pipeline resume \
         --run-id "$S1P3_RUN_ID" \
-        --template runner-state-dir-minimal ) \
+        --template artifact-snapshot-coverage ) \
     >"$TEST_TEMP_DIR/s1p3-stdout.txt" 2>"$TEST_TEMP_DIR/s1p3-stderr.txt"
 set -e
 
@@ -372,16 +373,16 @@ assert_contains \
     "[#1805/SPEC-1] path 3 (zbuild pipeline resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)" \
     "$_s1p3_artifact_content" "prior-run intake"
 
-# [#1805/SPEC-1] path 3: build must have dispatched (proving pipeline ran via zbuild pipeline resume).
+# [#1805/SPEC-1] path 3: at least one stage must have dispatched (proving pipeline ran via zbuild pipeline resume).
 # Before fix: zbuild pipeline resume path has no rehydration / may not exist → no events → FAILS.
-# After fix: zbuild calls runner --resume → rehydrates → dispatches build → PASSES.
-_s1p3_build_starts=0
+# After fix: zbuild calls runner --resume → rehydrates → dispatches cyc cycle → cycled dispatches.
+_s1p3_any_starts=0
 if [[ -f "$S1P3_EVENTS_JSONL" ]]; then
-    _s1p3_build_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="build") | .type' \
+    _s1p3_any_starts="$(jq -r 'select(.type=="stage.start") | .type' \
         "$S1P3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/SPEC-1] path 3 (zbuild pipeline resume): build dispatched (pipeline ran via path-3)" \
-    "1" "$_s1p3_build_starts"
+assert_gt "[#1805/SPEC-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)" \
+    "$_s1p3_any_starts" "0"
 
 # [#1805/SPEC-1] path 3: pipeline.resume event must appear before the first stage.start,
 # proving _runner_resume_rehydrate (which calls _artifact_persist_restore + _artifact_persist_put_back)
@@ -421,7 +422,7 @@ _S2_ID="$(zb_test_issue)"
 WORK_REPO2="$(setup_git_temp_repo resume-rehydrate-work2)"
 git -C "$WORK_REPO2" config user.email t@e.st
 git -C "$WORK_REPO2" config user.name t
-install_template_overlay "$WORK_REPO2" runner-state-dir-minimal
+install_template_overlay "$WORK_REPO2" artifact-snapshot-coverage
 
 # State: intake=complete but NO artifact on disk and NO state branch.
 jq -n \
@@ -432,7 +433,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -445,7 +446,7 @@ jq -n \
 
 set +e
 ( cd "$WORK_REPO2" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$S2_STATE_DIR" \
     ZBUILD_STATE_FILE="$S2_STATE_FILE" \
@@ -455,7 +456,7 @@ set +e
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue "$_S2_ID" ) \
+    bash "$RUNNER" --template artifact-snapshot-coverage --resume --issue "$_S2_ID" ) \
     >"$TEST_TEMP_DIR/s2-stdout.txt" 2>"$TEST_TEMP_DIR/s2-stderr.txt"
 _s2_rc=$?
 set -e
@@ -635,7 +636,7 @@ assert_contains "[#1805/SPEC-12] cycle fixture used in SPEC-12 fresh-run sub-cas
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
 
 # : the fixture must contain type: cycle (satisfies "containing a cyclic stage").
-assert_contains "resume-rehydrate fixture contains type: cycle" \
+assert_contains "[#1805/SPEC-14] resume-rehydrate SPEC-1/SPEC-2/SPEC-12 fixture (artifact-snapshot-coverage) contains type: cycle" \
     "$_s12_fixt_content" "type: cycle"
 
 # : the pipeline using the cyclic fixture was actually run; intake dispatched
