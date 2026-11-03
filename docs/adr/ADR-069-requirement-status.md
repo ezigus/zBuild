@@ -79,7 +79,8 @@ main behaviour would have shipped untested. Its evidence was a line number (`run
 - **§1: an id never moves** (design's checks, C9, no model). Held to the last design that passed: an id it had
   is kept or listed `REMOVED: <id> — <why>` in the acceptance block (`ID_DROPPED`); a removed id stays listed
   (`ID_REMOVED_LOST`) and never comes back (`ID_REUSED`); a new id's number is one more than its code's highest,
-  removed ones counted (`ID_NOT_AFTER_LAST`). Also refused: a duplicate (`ID_DUPLICATE`), a line shaped like an
+  removed ones counted, never skipping one (`ID_NOT_AFTER_LAST`); a REMOVED line names an id the last
+  design had (`ID_REMOVED_UNKNOWN`). Also refused: a duplicate (`ID_DUPLICATE`), a line shaped like an
   id with a bad code (`ID_BAD`), a code the issue's requirements use (`ID_OTHER_POOL`), an id the issue's own
   text writes (`ID_IN_ISSUE`, read from the requirement list's `issue_ids`). test-author's stale-tag step reads any id of this issue's.
 - **§2: `[done]` means the code from before the change already does it** (as §3–§4 always measured it). Its

@@ -78,7 +78,8 @@ of the first try, which then failed. The first try had been shown the list as bu
   `requirements.json` records those ids under `issue_ids`, so design refuses them as SPEC ids without reading
   the issue again.
 - **§1: an id never moves.** A kept requirement keeps its id. A new one's number is one more than the highest
-  its code has ever had, removed ids counted — never a gap a removed one left. A dropped requirement is
+  its code has ever had, removed ids counted — never a gap a removed one left, and never one that skips a
+  number. A REMOVED line names an id the last list had (`ID_REMOVED_UNKNOWN`). A dropped requirement is
   answered `REMOVED: <id> — <why>`; `requirements.json` keeps it under `removed` (id, words, reason), carried
   from run to run, so no later list uses it again. The rules are `scripts/lib/item-ids.sh`'s, checked by the
   engine; a reply that breaks one is asked again once with what was wrong (ADR-060 §6), then is `unusable`.

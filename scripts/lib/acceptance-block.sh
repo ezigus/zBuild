@@ -305,7 +305,7 @@ acceptance_spec_covers() {
 }
 
 # acceptance_requirements_list <requirements.json>  (#2306, ADR-070 §4)
-# The issue's requirements as every stage is shown them: one `- R-n: <text>`
+# The issue's requirements as every stage is shown them: one `- <id>: <text>`
 # line each, in order. Empty when the file is absent or unreadable (a goal run).
 acceptance_requirements_list() {
     local f="${1:-}"

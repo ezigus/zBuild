@@ -129,6 +129,16 @@ REPLY=([1]=$'REQUIREMENT: PRNT-1 a\nREQUIREMENT: PRNT-3 b\nREQUIREMENT: PRNT-2 c
 _intake
 assert_contains "[S5] a new number below the code's highest is refused" "$(_prompt 2)" "PRNT-2"
 assert_eq "[S5] ...and still wrong, intake ends unusable" "unusable" "$OUTCOME"
+_last '{"schema_version":1,"source":"model","requirements":[{"id":"PRNT-1","text":"a"}]}'
+REPLY=([1]=$'REQUIREMENT: PRNT-1 a\nREQUIREMENT: PRNT-3 b' [2]=$'REQUIREMENT: PRNT-1 a\nREQUIREMENT: PRNT-3 b')
+_intake
+assert_contains "[S5] a new number that skips one is refused (review #2463)" "$(_prompt 2)" "use PRNT-2"
+assert_eq "[S5] ...and still wrong, intake ends unusable" "unusable" "$OUTCOME"
+_last '{"schema_version":1,"source":"model","requirements":[{"id":"PRNT-1","text":"a"}]}'
+REPLY=([1]=$'REQUIREMENT: PRNT-1 a\nREMOVED: FAKE-1 — made up' [2]=$'REQUIREMENT: PRNT-1 a\nREMOVED: FAKE-1 — made up')
+_intake
+assert_contains "[S3] a REMOVED line for an id the last list never had is refused (review #2463)" "$(_prompt 2)" "FAKE-1"
+assert_eq "[S3] ...and still wrong, intake ends unusable" "unusable" "$OUTCOME"
 
 # ── S6 ───────────────────────────────────────────────────────────────────────
 _set_gh_mock "Make the gate quieter" $'KEEP-1: keep the exit code.\nPrint each line once.' 0

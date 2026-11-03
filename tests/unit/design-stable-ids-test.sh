@@ -15,7 +15,7 @@
 # D3  [code] an id the last design had is kept, or listed `REMOVED: <id> — <why>`
 # D4  [code] a removed id never comes back and stays listed as removed
 # D5  [code] a new id's number is one more than its code's highest, removed
-#            ones counted
+#            ones counted — never lower, never skipping one
 # D6  [code] a SPEC code that is a requirement's code is refused
 # D7  [code] a SPEC id the issue's own text writes is refused
 # D8  [code] the last design's old SPEC-n ids need no REMOVED line
@@ -104,6 +104,12 @@ _ok "[D5] a new id one past the code's highest (removed ones counted) passes"
 _md 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' > "$PREV"
 _check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' 'LOOP-2[no-code]: b'
 _has "[D5] a new number below the code's highest is refused" "ID_NOT_AFTER_LAST LOOP-2"
+_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' 'LOOP-5[no-code]: e'
+_has "[D5] a new number that skips one is refused (review #2463)" "ID_NOT_AFTER_LAST LOOP-5"
+_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' 'LOOP-5[no-code]: e' 'LOOP-4[no-code]: d'
+_ok "[D5] two new ones that follow on, in any order, pass"
+_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' 'REMOVED: NEVR-1 — never there'
+_has "[D3] a REMOVED line for an id the last design never had is refused (review #2463)" "ID_REMOVED_UNKNOWN NEVR-1"
 : > "$PREV"
 
 # ── D6 / D7 / D8 ─────────────────────────────────────────────────────────────

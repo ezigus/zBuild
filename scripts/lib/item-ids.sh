@@ -43,12 +43,18 @@ zb_ids_check_v() {
     local -n _zic="$1"
     local pa=" $2 " pr=" $3 " na="$4" nr=" $5 " text="$6" oc=" $7 " carry="${8:-0}"
     local id code num seen=" " hi
-    local -A _hi=()
+    local -A _hi=() _k=()
     _zic=()
     for id in $2 $3; do
         [[ "$id" =~ $_ZB_ID_NEW_RE ]] || continue
         code="${BASH_REMATCH[1]}"; num="${BASH_REMATCH[2]}"
         (( num > ${_hi[$code]:-0} )) && _hi[$code]="$num"
+    done
+    # How many new ids each code takes: k new ones are exactly the k numbers
+    # after its highest, in any order (distinct, so no gap is left).
+    for id in $na; do
+        [[ "$pa$pr" == *" $id "* ]] && continue
+        zb_id_new_form "$id" && _k[${BASH_REMATCH[1]}]=$(( ${_k[${BASH_REMATCH[1]}]:-0} + 1 ))
     done
     for id in $na; do
         if [[ "$id" =~ ^SPEC-[0-9]+$ ]]; then _zic+=("ID_OLD_FORM $id"); continue; fi
@@ -59,7 +65,7 @@ zb_ids_check_v() {
         if [[ "$pr" == *" $id "* ]]; then _zic+=("ID_REUSED $id"); continue; fi
         if [[ "$pa" != *" $id "* ]]; then
             hi="${_hi[$code]:-0}"
-            (( num > hi )) || _zic+=("ID_NOT_AFTER_LAST $id $code-$((hi + 1))")
+            (( num > hi && num <= hi + ${_k[$code]:-1} )) || _zic+=("ID_NOT_AFTER_LAST $id $code-$((hi + 1))")
         fi
         [[ "$oc" == *" $code "* ]] && _zic+=("ID_OTHER_POOL $id")
         [[ "$text" =~ (^|[^A-Za-z0-9])$id([^0-9]|$) ]] && _zic+=("ID_IN_ISSUE $id")
@@ -67,6 +73,11 @@ zb_ids_check_v() {
     for id in $2; do
         zb_id_new_form "$id" || continue
         [[ "$seen" == *" $id "* || "$nr" == *" $id "* ]] || _zic+=("ID_DROPPED $id")
+    done
+    # A removal names an id that was there: an invented one would hold its
+    # number forever (review #2463).
+    for id in $5; do
+        [[ "$pa" == *" $id "* || "$pr" == *" $id "* ]] || _zic+=("ID_REMOVED_UNKNOWN $id")
     done
     if [[ "$carry" == 1 ]]; then
         for id in $3; do
@@ -86,7 +97,8 @@ zb_id_plain() {
         ID_BAD*)       printf '%s is not an id — an id is 3 or 4 capital letters or digits starting with a letter, a dash and a number, such as LOOP-1' "$id" ;;
         ID_DUPLICATE*) printf '%s names two %ss — give each its own id' "$id" "$noun" ;;
         ID_REUSED*)    printf '%s was removed earlier and never comes back — give the %s a new id' "$id" "$noun" ;;
-        ID_NOT_AFTER_LAST*) printf '%s is new, but its number is not after the highest that code has had, removed ones counted — use %s' "$id" "$det" ;;
+        ID_NOT_AFTER_LAST*) printf '%s is new, but its number is not the next after the highest that code has had, removed ones counted — use %s' "$id" "$det" ;;
+        ID_REMOVED_UNKNOWN*) printf 'REMOVED: names %s, which the last list never had — remove only an id that was there' "$id" ;;
         ID_OTHER_POOL*) printf '%s uses a code the issue'"'"'s requirements use — a %s'"'"'s code is its own' "$id" "$noun" ;;
         ID_IN_ISSUE*)  printf '%s is written in the issue itself, where it means something else — choose another id' "$id" ;;
         ID_DROPPED*)   printf '%s was in the last list and is gone — keep it, or say why it goes on its own line: REMOVED: %s — <why>' "$id" "$id" ;;
