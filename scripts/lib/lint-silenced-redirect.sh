@@ -18,6 +18,9 @@ if [[ $# -eq 0 ]]; then
     set -- "$_LSR_ROOT/core" "$_LSR_ROOT/scripts" "$_LSR_ROOT/plugins"
 fi
 
+# #2460: whole commands — a redirect carried on to the next line is seen.
+# shellcheck source=./shell-join.sh
+source "$_LSR_ROOT/scripts/lib/shell-join.sh"
 _bad=0
 while IFS= read -r -d '' f; do
     [[ "$f" == */tests/* || "$f" == */legacy-DoNotUse/* ]] && continue
@@ -40,7 +43,7 @@ while IFS= read -r -d '' f; do
                 print NR "\t" t
             }
         }
-    ' "$f")
+    ' <(zb_shell_join "$f"))
 done < <(find "$@" -name '*.sh' -print0)
 
 if (( _bad > 0 )); then

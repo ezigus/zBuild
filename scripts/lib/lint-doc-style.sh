@@ -144,16 +144,27 @@ for _file in "${_targets[@]}"; do
     _found=0
     _nonblank=0
     _lineno=0
+    _para=""
     while IFS= read -r _l; do
         _lineno=$((_lineno + 1))
         [[ "$_lineno" -le "$_h1_ln" ]] && continue   # skip through the H1
-        [[ -z "${_l//[[:space:]]/}" ]] && continue   # skip blank lines
+        if [[ -z "${_l//[[:space:]]/}" ]]; then _para=""; continue; fi   # a blank ends a paragraph
         _nonblank=$((_nonblank + 1))
         [[ "$_nonblank" -gt 12 ]] && break
+        # #2460: a sentence that wraps is read with the lines of its paragraph
+        # before it — a plain prose line continues the one above it.
+        if [[ -n "$_para" ]] && _is_prose_opening "$_para ${_l#"${_l%%[![:space:]]*}"}"; then
+            _found=1
+            break
+        fi
         if _is_prose_opening "$_l"; then
             _found=1
             break
         fi
+        case "${_l#"${_l%%[![:space:]]*}"}" in
+            '#'*|'```'*|'~~~'*|'|'*|'!['*|'<'*|'- '*|'* '*|'+ '*) _para="" ;;
+            *) _para="${_para:+$_para }${_l#"${_l%%[![:space:]]*}"}" ;;
+        esac
     done < "$_file"
 
     if [[ "$_found" -ne 1 ]]; then

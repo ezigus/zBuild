@@ -13,8 +13,12 @@
 # distinction is what #1969 had to undo for lint-grep-c.
 set -uo pipefail
 
-REPO_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
+_LTI_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
+REPO_ROOT="${1:-$(cd "$_LTI_DIR/../.." && pwd)}"
 cd "$REPO_ROOT" || exit 1
+# #2460: a shell command whose arguments carry on to the next line is read whole.
+# shellcheck source=./shell-join.sh
+source "$_LTI_DIR/shell-join.sh"
 
 # Both assignment forms. The quoted one was missed on the first pass and hid 31
 # sites, so it is pinned explicitly here.
@@ -47,7 +51,15 @@ while IFS= read -r hit; do
     [[ "$num" -ge 90000000 ]] && continue    # reserved test range
 
     _offenders+="  $file:$line: ${trimmed:0:90}"$'\n'
-done < <(grep -rnE "$PATTERN" tests/ core/ plugins/ scripts/ 2>/dev/null || true)
+done < <(
+    _dirs=(); for _d in tests core plugins scripts; do [[ -d "$_d" ]] && _dirs+=("$_d/"); done
+    if [[ ${#_dirs[@]} -gt 0 ]]; then
+        grep -rnE --exclude='*.sh' "$PATTERN" "${_dirs[@]}" 2>/dev/null || true
+        # Only the shell files that name one of the forms are read whole.
+        _sh=(); while IFS= read -r _s; do [[ -n "$_s" ]] && _sh+=("$_s"); done \
+            < <(grep -rlE --include='*.sh' 'ZBUILD_ISSUE|--issue|_artifact_persist_|zbuild_run_key' "${_dirs[@]}" 2>/dev/null || true)
+        [[ ${#_sh[@]} -gt 0 ]] && { zb_shell_join_named "${_sh[@]}" | grep -E "^[^:]*:[0-9]+:.*($PATTERN)" || true; }
+    fi)
 
 if [[ -n "$_offenders" ]]; then
     printf 'lint-test-identity: FAIL — a real issue number is used as test identity\n\n'

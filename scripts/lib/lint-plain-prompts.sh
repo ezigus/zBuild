@@ -50,6 +50,20 @@ bad=0 files=0
 # A model sees a variable's VALUE, never its name: strip $name / ${…} first.
 _check() {   # _check <file> <lineno> <line>
     local _s="$3"
+    # #2460: a phrase that wraps onto this line from the last is read across
+    # them — the line before is checked with this one, and what either already
+    # reports on its own is not reported twice.
+    local _pair="${_PP_PREV:-} ${3#"${3%%[![:space:]]*}"}" _alone="$3"
+    _PP_PREV="$3"
+    if ! [[ "$_alone" =~ $FORBIDDEN || "$_alone" =~ $SKIP_JOB ]] \
+        && ! [[ "${_PP_PREVSTRIP:-}" =~ $FORBIDDEN || "${_PP_PREVSTRIP:-}" =~ $SKIP_JOB ]]; then
+        while [[ "$_pair" =~ (\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*) ]]; do _pair="${_pair/"${BASH_REMATCH[1]}"/}"; done
+        if [[ "$_pair" =~ $SKIP_JOB || "$_pair" =~ $FORBIDDEN ]]; then
+            echo "lint-plain-prompts: $1:$2 has, across this line and the one before, \"${BASH_REMATCH[0]}\" — say what the model must do, in plain words (ADR-067)" >&2
+            bad=$((bad + 1))
+        fi
+    fi
+    _PP_PREVSTRIP="$3"
     while [[ "$_s" =~ (\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*) ]]; do
         _s="${_s/"${BASH_REMATCH[1]}"/}"
     done
@@ -77,7 +91,7 @@ while IFS= read -r entry || [[ -n "$entry" ]]; do
         bad=$((bad + 1)); continue
     fi
     files=$((files + 1))
-    n=0
+    n=0; _PP_PREV=""; _PP_PREVSTRIP=""
     if [[ "$f" == *.md ]]; then
         while IFS= read -r line || [[ -n "$line" ]]; do
             n=$((n + 1))

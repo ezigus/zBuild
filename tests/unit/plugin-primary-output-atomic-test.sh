@@ -184,8 +184,9 @@ FIXTURE
 _spec5b_rc=0
 _spec5b_out="$(bash "$_LINT_SCRIPT" "$_SPEC5B_FIXTURE" 2>&1)" || _spec5b_rc=$?
 assert_eq "[#1754/SPEC-5b] lint exits non-zero for a PIPESTATUS[0]-only capture" "1" "$_spec5b_rc"
-assert_contains "[#1754/SPEC-5b] lint names that line" "$_spec5b_out" \
-    "spec5b-producer-only.sh:$(grep -n 'atomic_write' "$_SPEC5B_FIXTURE" | cut -d: -f1)"
+# #2460: the lint reads whole commands, and names one by the line it starts on.
+assert_contains "[#1754/SPEC-5b] lint names the command, by the line it starts on" "$_spec5b_out" \
+    "spec5b-producer-only.sh:$(grep -n "jq -n" "$_SPEC5B_FIXTURE" | cut -d: -f1)"
 
 # ─── [#1754/SPEC-5c] the read must be at the write's own index ──────────────
 # Each fixture holds one write the lint must flag, on line 2.

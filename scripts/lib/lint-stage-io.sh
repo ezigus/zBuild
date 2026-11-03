@@ -46,35 +46,19 @@ fi
 
 # Pattern documented in ADR-015 §v4: same-line route_to_model[_loop] OR
 # run_captured_command followed by 2>/dev/null with optional whitespace.
-_pattern='\b(route_to_model(_loop)?|run_captured_command)\b[^\n]*2>\s*/dev/null'
-
-# Prefer ripgrep (fast, PCRE-aware) when present; fall back to grep -PrnE.
-_rg=""
-if command -v rg >/dev/null 2>&1; then
-    _rg="rg"
-fi
-
+# #2460: whole commands — a call whose arguments carry on to the next line is
+# joined onto its first line (shell-join.sh), so `2>/dev/null` there is seen.
+# shellcheck source=./shell-join.sh
+source "$_LINT_STAGE_IO_DIR/shell-join.sh"
+_ere='(route_to_model(_loop)?|run_captured_command)([^A-Za-z0-9_].*)?2>[[:space:]]*/dev/null'
 _offenders=""
-if [[ -n "$_rg" ]]; then
-    # rg -P uses PCRE2; -n line numbers; --no-heading flat output.
-    _offenders="$("$_rg" -nP --no-heading "$_pattern" "${_targets[@]}" 2>/dev/null || true)"
-else
-    # grep -Prn on platforms with GNU grep; on macOS BSD grep, -P is unavailable
-    # — fall back to a slightly looser ERE that still catches the same shape.
-    if grep -Prn --include='*.sh' "$_pattern" "${_targets[@]}" >/dev/null 2>&1; then
-        _offenders="$(grep -Prn --include='*.sh' "$_pattern" "${_targets[@]}" 2>/dev/null || true)"
-    else
-        # BSD grep: drop \b (no word-boundary in BRE/ERE) — match on the token
-        # name literally; same-line requirement preserved by the single-line scan.
-        # NOTE: use `.*` not `[^\n]*` — in BSD ERE `[^\n]` is a bracket excluding
-        # the literal chars `\` and `n` (NOT "non-newline"), so a callsite with an
-        # `n` in the gap (e.g. run_captured_command) never matched (#995, macOS CI).
-        # grep is line-based, so `.` already cannot span newlines.
-        _ere='(route_to_model(_loop)?|run_captured_command).*2> */dev/null'
-        _offenders="$(grep -Ern --include='*.sh' "$_ere" "${_targets[@]}" 2>/dev/null || true)"
-    fi
-fi
-
+for _f in "${_targets[@]}"; do
+    [[ -f "$_f" ]] || continue
+    while IFS= read -r _hit; do
+        [[ -n "$_hit" ]] && _offenders+="$_f:$_hit"$'\n'
+    done < <(zb_shell_join "$_f" | grep -nE "$_ere" || true)
+done
+_offenders="${_offenders%$'\n'}"
 if [[ -n "$_offenders" ]]; then
     printf 'lint-stage-io: ADR-015 §v4 violation — 2>/dev/null on same line as route_to_model[_loop] or run_captured_command:\n' >&2
     printf '%s\n' "$_offenders" >&2

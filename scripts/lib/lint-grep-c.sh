@@ -75,6 +75,9 @@ _collect_files() {
     fi
 }
 
+# shellcheck source=./shell-join.sh
+source "$_SELF_DIR/shell-join.sh"
+
 # _scan <file>... — "file<TAB>line<TAB>command" for each offending command;
 # line is where the command starts.
 _scan() {
@@ -114,15 +117,13 @@ _scan() {
             cmd = ""
         }
         BEGIN { pat = ENVIRON["_LGC_PAT"] }
-        FNR == 1 { check(); fname = FILENAME }
+        # #2460: each line is a whole command — "<file>:<line>:<command>", joined
+        # over `\` and over a line ending in |, && or || (shell-join.sh).
         {
-            line = $0
-            if (cmd == "") start = FNR
-            if (line ~ /\\$/) { sub(/\\$/, "", line); cmd = cmd line " "; next }
-            cmd = cmd line
+            p = index($0, ":"); fname = substr($0, 1, p - 1); r = substr($0, p + 1)
+            p = index(r, ":"); start = substr(r, 1, p - 1); cmd = substr(r, p + 1)
             check()
-        }
-        END { check() }' "$@" 2>/dev/null || true
+        }' < <(zb_shell_join_named "$@") 2>/dev/null || true
 }
 
 _files=()

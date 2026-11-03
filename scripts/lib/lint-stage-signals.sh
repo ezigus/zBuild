@@ -14,6 +14,9 @@ _LSS_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 PLUGINS_ROOT="${1:-$_LSS_ROOT/plugins}"
 [[ -d "$PLUGINS_ROOT" ]] || { echo "lint-stage-signals: plugins root not found: $PLUGINS_ROOT" >&2; exit 1; }
 
+# #2460: whole commands — a trap whose signals carry on to the next line.
+# shellcheck source=./shell-join.sh
+source "$_LSS_ROOT/scripts/lib/shell-join.sh"
 _bad=0
 while IFS= read -r -d '' f; do
     [[ "$f" == */tests/* ]] && continue
@@ -27,7 +30,7 @@ while IFS= read -r -d '' f; do
             ok = ($0 ~ /# signal-ok:/)
             for (k = 1; k <= 3 && !ok; k++) if (NR - k > 0 && buf[(NR - k) % 4] ~ /# signal-ok:/) ok = 1
             if (!ok) { t = $0; sub(/^[[:space:]]+/, "", t); print NR "\t" t }
-        }' "$f")
+        }' <(zb_shell_join "$f"))
 done < <(find "$PLUGINS_ROOT" -name '*.sh' -print0)
 
 if (( _bad > 0 )); then

@@ -28,7 +28,7 @@ source "$REPO_ROOT/scripts/lib/acceptance-block.sh"
 source "$REPO_ROOT/scripts/lib/acceptance-coverage.sh"
 print_test_header "a check over several lines counts as tagged (#2460)"
 setup_test_env "multiline-assertion-tag"
-export ZBUILD_ISSUE=1805
+export ZBUILD_ISSUE="$(zb_test_issue)"
 TAG3="$(acceptance_spec_tag SPEC-3)"; TAG4="$(acceptance_spec_tag SPEC-4)"
 
 R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/tests"
