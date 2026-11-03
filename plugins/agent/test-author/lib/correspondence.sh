@@ -119,8 +119,28 @@ _sc_parse_verdict() {
     v="${v%%$'\n'*}"; printf '%s' "${v##*[[:space:]]}"
 }
 _sc_parse_reason() {
-    local r; r="$(grep -oE 'REASON:[^|]*' <<< "$1" || true)"
+    # #2460: the rest of the line — a reason may quote a `|`.
+    local r; r="$(grep -oE 'REASON:.*' <<< "$1" || true)"
     r="${r%%$'\n'*}"; r="${r#REASON:}"; r="${r#"${r%%[![:space:]]*}"}"; printf '%s' "${r%"${r##*[![:space:]]}"}"
+}
+# _sc_batch_line_v <var> <reply> <id> — the batch answer's line for <id>, read
+# whole (#2460): its continued lines joined, and a REASON: on the line after
+# its verdict taken as its own. A glob match, not a regex built from the id
+# (review on #2148).
+_sc_batch_line_v() {
+    local -n _sbl="$1"; local _sbl_j="" _sbl_l _sbl_take=0
+    _sbl=""
+    zb_reply_join_v _sbl_j "$2"
+    while IFS= read -r _sbl_l; do
+        if (( _sbl_take )); then
+            [[ "$_sbl_l" =~ ^[[:space:]]*REASON: ]] && _sbl+=" | ${_sbl_l#"${_sbl_l%%[![:space:]]*}"}"
+            break
+        fi
+        [[ "$_sbl_l" == "$3:"*"VERDICT:"* ]] || continue
+        _sbl="$_sbl_l"
+        [[ "$_sbl_l" == *REASON:* ]] && break
+        _sbl_take=1
+    done <<< "$_sbl_j"
 }
 # _sc_batch_prompt <ids_arr> <txts_arr> <srcs_arr> (namerefs) — every pair in
 # one prompt, one answer line per SPEC (#2143).
@@ -215,14 +235,10 @@ _ta_correspondence() {
     local _rc_file; _rc_file="$(mktemp)" || _rc_file=""
     [[ -n "$_rc_file" ]] && printf '0' > "$_rc_file" 2>/dev/null || true
 
-    local _batch_raw _line _l
+    local _batch_raw _line
     _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs "$_files_text")" "$_rc_file")"
     for (( _i=0; _i<n; _i++ )); do
-        # A glob match, not a regex built from the id (review on #2148).
-        _line=""
-        while IFS= read -r _l; do
-            [[ "$_l" == "${_ids[_i]}:"*"VERDICT:"* ]] && { _line="$_l"; break; }
-        done <<< "$_batch_raw"
+        _sc_batch_line_v _line "$_batch_raw" "${_ids[_i]}"
         [[ -n "$_line" ]] || continue
         _verdicts[_i]="$(_sc_parse_verdict "$_line")"
         _reasons[_i]="$(_sc_parse_reason "$_line")"

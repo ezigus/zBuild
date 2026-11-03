@@ -41,9 +41,11 @@ words. A requirement may be written as a checkbox, a numbered or bulleted item,
 or a sentence. Context, background, rationale, links and history are not
 requirements.
 
-Answer in exactly this form:
+Answer with one line for each requirement the list misses, in this form:
 
-MISSING: <every requirement the list misses, separated by semicolons, on this one line; or "none">
+MISSING: <a requirement the list misses, in the issue's words>
+
+or the one line "MISSING: none" when it misses nothing.
 EOF
 }
 
@@ -87,6 +89,8 @@ _intake_requirements_json_v() {
     prompt="$(stage_prompt_compose_text --fresh "$(_ireq_write_own)" "ISSUE:"$'\n'"$issue" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     _ireq_call_v reply "$prompt" || return 1
+    # #2460: a wrapped requirement is read whole.
+    zb_reply_join_v reply "$reply"
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*REQUIREMENT:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && reqs+=("${BASH_REMATCH[1]}")
     done <<< "$reply"
@@ -97,12 +101,13 @@ _intake_requirements_json_v() {
         "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     _ireq_call_v reply "$prompt" || return 1
-    line="$(grep -E '^[[:space:]]*MISSING:' <<< "$reply" || true)"
-    line="${line%%$'\n'*}"; line="${line#*MISSING:}"
-    while IFS= read -r item; do
-        item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
-        [[ -n "$item" && "${item,,}" != none ]] && reqs+=("$item")
-    done < <(tr ';' '\n' <<< "$line")
+    # #2460: each MISSING: line, whole, is one requirement — never split on ';'.
+    zb_reply_join_v reply "$reply"
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*MISSING:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] || continue
+        item="${BASH_REMATCH[1]}"
+        [[ "${item,,}" == none ]] || reqs+=("$item")
+    done <<< "$reply"
 
     _irj="$(printf '%s\n' "${reqs[@]}" | jq -Rsc '
         split("\n") | map(gsub("[[:cntrl:]]"; " ") | gsub("^\\s+|\\s+$"; "") | select(length > 0))

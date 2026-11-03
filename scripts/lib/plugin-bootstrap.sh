@@ -96,6 +96,13 @@ zbuild_plugin_bootstrap() {
         return 1
     }
 
+    # #2460: a model's reply is read in whole units, however many lines each spans.
+    # shellcheck source=./reply-units.sh
+    source "$_proot/scripts/lib/reply-units.sh" || {
+        printf 'plugin-bootstrap: failed to source reply-units.sh\n' >&2
+        return 1
+    }
+
     # Best-effort source artifact-render.sh so plugins inherit the renderer
     # registry without each having to source it explicitly. ADR-018.
     local _render="$_proot/scripts/lib/artifact-render.sh"

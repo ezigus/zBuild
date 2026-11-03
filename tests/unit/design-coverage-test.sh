@@ -84,7 +84,9 @@ assert_eq "[SPEC-4] the coverage call reads no other stage's output by name" "0"
 # ── SPEC-1 / E3 ──────────────────────────────────────────────────────────────
 _REPLY='VERDICT: uncovered
 REASON: three requirements have no SPEC
-UNCOVERED: R-2: refuse a missing config; R-3: B; R-4: C'
+UNCOVERED: R-2: refuse a missing config
+UNCOVERED: R-3: B
+UNCOVERED: R-4: C'
 _cov
 assert_eq "[SPEC-1][E3] each uncovered requirement is one entry" "3" "${#_DESIGN_UNCOVERED[@]}"
 assert_eq "[SPEC-1] the entry names the requirement" "R-2: refuse a missing config" "${_DESIGN_UNCOVERED[0]:-}"
@@ -183,7 +185,8 @@ assert_contains "[X4] the check is shown the code a [done] SPEC's evidence point
 assert_contains "[X4] ...and asked whether it does what the SPEC says" "$_P" "DONE_WRONG:"
 _REPLY='VERDICT: covered
 REASON: every requirement maps to a SPEC
-OUTSIDE: scripts/telemetry.sh: the issue asks for no telemetry; SPEC-1: also renames the flag
+OUTSIDE: scripts/telemetry.sh: the issue asks for no telemetry
+OUTSIDE: SPEC-1: also renames the flag
 DONE_WRONG: SPEC-2: the cited line returns 2 only when the file is absent, not when it is unreadable'
 ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
 assert_eq "[X2] each item outside the issue is one entry, whatever the coverage verdict" "2" "${#_DESIGN_OUTSIDE[@]}"

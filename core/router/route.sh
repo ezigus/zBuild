@@ -120,6 +120,9 @@ source "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh"
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
 # shellcheck source=../../scripts/lib/timeout-cmd.sh
 source "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
+# #2460: a reply read in whole units (the COMMIT_SUMMARY marker).
+# shellcheck source=../../scripts/lib/reply-units.sh
+source "$_ZBUILD_ROOT/scripts/lib/reply-units.sh"
 # Shared setsid capability probe + process-group kill helper.
 # Defines zbuild_pg_resolve and zbuild_pg_kill (extracted from the inline
 # probe that used to live here, so the test plugin can share one impl).
@@ -1116,6 +1119,8 @@ _route_loop_on_signal() {
 _route_parse_commit_summary_line() {
     local text="${1:-}" out
     [[ -z "$text" ]] && { printf ''; return 0; }
+    # #2460: a marker whose text is on the next line is read whole.
+    declare -F zb_reply_join_v >/dev/null 2>&1 && zb_reply_join_v text "$text"
     out="$(printf '%s\n' "$text" \
         | tail -n 50 \
         | grep -E '^COMMIT_SUMMARY:[[:space:]]*(.+)$' \

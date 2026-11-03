@@ -154,6 +154,8 @@ _build_blocked_request() {
     declare -F scope_collateral_class >/dev/null 2>&1 || return 0
     local nr; nr="$(_build_not_reproduced "$resp" | tr '\n' ',')"
     local entries="[]" re='^[[:space:]]*BLOCKED:.*[[:space:]]requires[[:space:]]+([^[:space:]]+)[[:space:]]+\(out of scope\)'
+    # #2460: a wrapped BLOCKED line is read whole.
+    local _joined; zb_reply_join_v _joined "$resp"
     while IFS= read -r line; do
         [[ "$line" =~ $re ]] || continue
         f="${BASH_REMATCH[1]}"
@@ -163,7 +165,7 @@ _build_blocked_request() {
         entries="$(jq -c --arg p "$f" --arg c "$(scope_collateral_class "$f")" --arg e "$line" \
             'if any(.[]; .path == $p) then . else . + [{path:$p, category:$c, evidence:$e, reason:"build reported it is blocked on this file"}] end' \
             <<<"$entries" 2>/dev/null || printf '%s' "$entries")"
-    done <<< "$resp"
+    done <<< "$_joined"
     [[ "$entries" == "[]" ]] && return 0
     jq -nc --argjson f "$entries" '{files:$f}' 2>/dev/null || true
 }

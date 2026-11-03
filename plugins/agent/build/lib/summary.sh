@@ -168,7 +168,9 @@ _build_scope_needs_line() {
 # Read from build's answer `ANSWER … : nothing to do — not reproduced: <path>`
 # (#2322), markdown and case allowed, and from the older `NOT_REPRODUCED: <path>`.
 _build_not_reproduced() {
-    local line seen="" restore re
+    local line seen="" restore re _joined
+    # #2460: a wrapped answer is read whole.
+    zb_reply_join_v _joined "${1:-}"
     re='^[[:space:]>*`_-]*(answer[[:space:]].*[[:space:]])?not[ _]reproduced[*`_]*[[:space:]]*:[[:space:]]*[*`]*([^[:space:]*`]+)'
     restore="$(shopt -p nocasematch)"
     shopt -s nocasematch
@@ -177,7 +179,7 @@ _build_not_reproduced() {
         case "$seen" in *$'\n'"${BASH_REMATCH[2]}"$'\n'*) continue ;; esac
         seen+=$'\n'"${BASH_REMATCH[2]}"$'\n'
         printf '%s\n' "${BASH_REMATCH[2]}"
-    done <<< "${1:-}"
+    done <<< "$_joined"
     eval "$restore"
 }
 
@@ -186,14 +188,16 @@ _build_not_reproduced() {
 # `ANSWER <stage> finding <n>: nothing to do — the test is wrong: <file>: <why>`.
 # Read by the shell: it runs on every try (ADR-065).
 _build_test_wrong() {
-    local line re had=0
+    local line re had=0 _joined
+    # #2460: a wrapped answer is read whole.
+    zb_reply_join_v _joined "${1:-}"
     re='^[[:space:]>*`_-]*answer[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+)[[:space:]]*:.*the[[:space:]]+test[[:space:]]+is[[:space:]]+wrong[[:space:]]*:[[:space:]]*(.+)$'
     shopt -q nocasematch && had=1
     shopt -s nocasematch
     while IFS= read -r line; do
         [[ "$line" =~ $re ]] || continue
         printf '%s: %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
-    done <<< "${1:-}"
+    done <<< "$_joined"
     (( had )) || shopt -u nocasematch
 }
 
