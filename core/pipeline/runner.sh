@@ -3422,6 +3422,25 @@ main() {
             case "$_unit" in
                 cycle:*)
                     local _cyc_id="${_unit#cycle:}"
+                    # ADR-006 §3.6 / #1805 (SPEC-1/SPEC-3): resume / from-stage
+                    # guards for the cycle dispatch unit, mirroring the stage:*
+                    # arm above. A complete cycle is skipped on resume; a cycle
+                    # that is not the from-stage target is skipped until the
+                    # target is reached.
+                    if $resume_mode && [[ -z "$skip_until_stage" ]]; then
+                        local _du_cyc_status
+                        _du_cyc_status="$(get_state_field "$state_file" \
+                            ".stage_statuses[\"$_cyc_id\"]" '' 2>/dev/null || true)"
+                        if [[ "$_du_cyc_status" == "complete" ]]; then
+                            info "Skipping already-complete cycle: $_cyc_id"
+                            continue
+                        fi
+                    fi
+                    if [[ -n "$skip_until_stage" && "$_cyc_id" != "$skip_until_stage" ]]; then
+                        info "Skipping cycle: $_cyc_id (awaiting $skip_until_stage)"
+                        continue
+                    fi
+                    [[ -n "$skip_until_stage" ]] && skip_until_stage=""
                     # #524: replace bare `info` with operator-visible cycle
                     # entry banner (heavy ═ + ▸ Entering + DIM trailer).
                     local _cyc_stages_csv=""
@@ -3690,6 +3709,51 @@ main() {
                     ;;
                 stage:*)
                     local _ust="${_unit#stage:}"
+                    # ADR-006 §3.6 / #1805 (SPEC-1): resume mode — skip stages
+                    # already marked complete. Mirrors the linear-loop guard at
+                    # the `for stage in active_stages` path below, so cyclic
+                    # templates honour resume semantics for their leaf stages.
+                    if $resume_mode && [[ -z "$skip_until_stage" ]]; then
+                        local _du_stage_status
+                        _du_stage_status="$(get_state_field "$state_file" \
+                            ".stage_statuses[\"$_ust\"]" '' 2>/dev/null || true)"
+                        if [[ "$_du_stage_status" == "complete" ]]; then
+                            # SPEC-2 / fail-closed: verify the primary artifact
+                            # is present after rehydration. Absent → exit 1.
+                            local _du_plugin_dir="" _du_manifest="" \
+                                  _du_prim_path="" _du_resolved=""
+                            _du_plugin_dir="$(_find_plugin_for_stage \
+                                "$_ust" "$plugins_root" 2>/dev/null || true)"
+                            if [[ -n "$_du_plugin_dir" ]]; then
+                                _du_manifest="$_du_plugin_dir/manifest.yaml"
+                                _du_prim_path="$(_verdict_primary_output_path \
+                                    "$_du_manifest" 2>/dev/null || true)"
+                                if [[ -n "$_du_prim_path" ]]; then
+                                    _du_resolved="$(_verdict_resolve_path \
+                                        "$_du_prim_path" "$state_dir")"
+                                    if [[ ! -s "$_du_resolved" ]]; then
+                                        eb_emit_event \
+                                            "stage.verdict.stale_artifact" \
+                                            "stage=$_ust" \
+                                            "path=$_du_resolved" \
+                                            "run_id=$_runner_run_id"
+                                        echo "error: resume: stage '$_ust' is marked complete but its primary artifact is absent after rehydration (expected: $_du_resolved)" >&2
+                                        return 1
+                                    fi
+                                fi
+                            fi
+                            info "Skipping already-complete stage: $_ust"
+                            continue
+                        fi
+                    fi
+                    # ADR-006 §3.6 / #1805 (SPEC-3): --from-stage — skip leaf
+                    # stages that precede the named target stage. Mirrors the
+                    # skip_until_stage guard in the linear-loop path below.
+                    if [[ -n "$skip_until_stage" && "$_ust" != "$skip_until_stage" ]]; then
+                        info "Skipping stage: $_ust (awaiting $skip_until_stage)"
+                        continue
+                    fi
+                    [[ -n "$skip_until_stage" ]] && skip_until_stage=""
                     # Re-enter the legacy loop for a single stage by re-using
                     # active_stages — simplest correct path: run that stage's
                     # body inline via cycle_dispatch_stage (gives same plugin
