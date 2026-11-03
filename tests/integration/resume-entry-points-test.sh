@@ -292,7 +292,7 @@ assert_contains "resume-entry-points test uses a cyclic fixture (type: cycle)" \
 
 # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
 _s13_ep_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
-    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
+    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || true)"
 assert_eq "cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)" \
     "1" "$_s13_ep_intake_starts"
 

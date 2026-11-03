@@ -187,7 +187,7 @@ jq -n \
 
 set +e
 ( cd "$S4_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$S4_STATE_DIR" \
     ZBUILD_STATE_FILE="$S4_STATE_FILE" \
@@ -209,11 +209,15 @@ set -e
 assert_eq "[#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact" \
     "1" "$_s4_rc"
 
-# [#1805/SPEC-4]: stderr must name the missing stage ("intake").
+# [#1805/SPEC-4]: stderr must contain the diagnostic phrase emitted by
+# _runner_from_stage_preflight — "has no restorable primary artifact".
+# This phrase is absent from the old code (which had no preflight check),
+# so this assertion FAILS on old code and PASSES only after the new
+# _runner_from_stage_preflight is present at runner.sh:1751.
 _s4_stderr="$(cat "$TEST_TEMP_DIR/s4-stderr.txt" 2>/dev/null || true)"
 assert_contains \
-    "[#1805/SPEC-4] stderr names the missing stage (intake)" \
-    "$_s4_stderr" "intake"
+    "[#1805/SPEC-4] stderr contains preflight diagnostic phrase (has no restorable primary artifact)" \
+    "$_s4_stderr" "has no restorable primary artifact"
 
 # [#1805/SPEC-4]: no stage.start must be emitted before the exit.
 _s4_any_starts=0
