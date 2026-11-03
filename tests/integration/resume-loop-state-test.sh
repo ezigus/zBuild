@@ -2,10 +2,11 @@
 # Tests: cycle orchestrator reads persisted current_iter and starts the
 # iteration loop from that value (not 1) on resume. (issue #1805, ADR-006 §3.5)
 #
-# SPEC-7 [code]: Cycle orchestrator reads cycle_iterations[CYCLE_ID].current_iter
+# ITER-1 [code]: Cycle orchestrator reads cycle_iterations[CYCLE_ID].current_iter
 #   from persisted state at resume and starts the iteration loop from that value
-#   (not 1); iter-1 complete stages emit no stage.start on resume into iter-2.
-#   Its test must FAIL on the code as it was before this change.
+#   (not 1); iter-1 complete stages emit no stage.start on resume into iter-2;
+#   the guard uses _ZBUILD_RESUME_ACTIVE so fresh runs and nested-loop re-entries
+#   always start at iter=1. Its test must FAIL before this change.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,7 +37,7 @@ source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
 STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
 
 # ── SPEC-7: cycle starts from persisted current_iter on resume ─────────────────
-print_test_section "[#1805/SPEC-7] cycle orchestrator resumes from current_iter (not 1)"
+print_test_section "[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)"
 
 # Seed minimal state file required by _cycle_state_init.
 : > "$ZBUILD_EVENTS_JSONL"
@@ -78,11 +79,11 @@ cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 _s7_rc=$?
 set -e
 
-# [#1805/SPEC-7]: first dispatched iter must be 2, not 1.
+# [#1805/ITER-1]: first dispatched iter must be 2, not 1.
 # Before the change: _SPEC7_FIRST_ITER=1 → assert 2==1 → FAILS.
 # After the change:  _SPEC7_FIRST_ITER=2 → assert 2==2 → PASSES.
 assert_eq \
-    "[#1805/SPEC-7] first dispatched iter is 2 (resumed from current_iter=1, not restarted from 1)" \
+    "[#1805/ITER-1] first dispatched iter is 2 (resumed from current_iter=1, not restarted from 1)" \
     "2" "$_SPEC7_FIRST_ITER"
 
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────

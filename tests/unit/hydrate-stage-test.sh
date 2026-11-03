@@ -211,9 +211,9 @@ assert_eq "[SPEC-5] the local state ref now exists and matches the fetched tip" 
 #
 # Guard: _artifact_persist_put_back is added by this change. On old code it
 # does not exist; without this stub the script exits 127 at the first call
-# below, before [#1805/SPEC-13] can run. The stub copies everything (stage-io
+# below, before [#1805/DLGT-1] can run. The stub copies everything (stage-io
 # included), so [SPEC-7]'s "not put back" assertion correctly FAILS on old code;
-# the [#1805/SPEC-13] section overrides this definition again before testing
+# the [#1805/DLGT-1] section overrides this definition again before testing
 # hydrate_run's delegation, so SPEC-13 also correctly FAILS on old code.
 if ! declare -f _artifact_persist_put_back >/dev/null 2>&1; then
     _artifact_persist_put_back() {
@@ -232,12 +232,12 @@ assert_file_exists "[SPEC-7] a stage's output is put back" "$_S7_TO/plan.json"
 assert_file_not_exists "[SPEC-7] an earlier run's stage-io record is not put back" \
     "$_S7_TO/stage-io/design-iter4-error.json"
 
-# ─── [#1805/SPEC-13] hydrate_run delegates copy-back to _artifact_persist_put_back ─
+# ─── [#1805/DLGT-1] hydrate_run delegates copy-back to _artifact_persist_put_back ─
 # hydrate_run must call _artifact_persist_put_back (not the old inline _hydrate_put_back)
 # for the copy-back operation. This sentinel test overrides _artifact_persist_put_back;
 # if hydrate_run calls the override, the sentinel is written. When plugin.sh is reverted to
 # calling _hydrate_put_back inline at line 162, the override is never reached → FAILS.
-print_test_section "[#1805/SPEC-13] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)"
+print_test_section "[#1805/DLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)"
 
 _SPEC13_SENTINEL="$TEST_TEMP_DIR/spec13-put-back-called"
 _artifact_persist_put_back() {
@@ -253,11 +253,11 @@ export ZBUILD_ARTIFACT_DIR="$_SPEC13_STATE/artifacts"
 ( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_SPEC13_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1 || true
 
-# [#1805/SPEC-13]: sentinel must be present, proving _artifact_persist_put_back was called.
+# [#1805/DLGT-1]: sentinel must be present, proving _artifact_persist_put_back was called.
 # Before this change (plugin.sh calls _hydrate_put_back inline): sentinel absent → FAILS.
 # After this change (plugin.sh calls _artifact_persist_put_back): sentinel written → PASSES.
 assert_file_exists \
-    "[#1805/SPEC-13] hydrate_run invoked _artifact_persist_put_back (sentinel written)" \
+    "[#1805/DLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)" \
     "$_SPEC13_SENTINEL"
 
 print_test_section "[SPEC-3][guard] a failed restore leaves the area absent, not partial"

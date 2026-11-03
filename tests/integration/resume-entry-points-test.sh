@@ -2,7 +2,7 @@
 # Tests: all three resume entry paths invoke _runner_resume_rehydrate before
 # the dispatch loop. (issue #1805, ADR-006 §3.5)
 #
-# SPEC-9 [code]: All three resume entry paths (--resume flag to runner.sh,
+# ENTR-1 [code]: All three resume entry paths (--resume flag to runner.sh,
 #   auto-resume on detecting status=interrupted, zbuild pipeline resume
 #   --run-id) invoke _runner_resume_rehydrate before the dispatch loop.
 #   Its test must FAIL on the code as it was before this change.
@@ -75,7 +75,7 @@ _setup_path_state() {
 }
 
 # ── PATH 1: --resume flag to runner.sh ────────────────────────────────────────
-print_test_section "[#1805/SPEC-9] path 1: bash runner.sh --resume restores artifacts"
+print_test_section "[#1805/ENTR-1] path 1: bash runner.sh --resume restores artifacts"
 
 P1_ID="$(zb_test_issue)"
 _setup_path_state "p1" "$P1_ID"
@@ -121,15 +121,15 @@ set +e
     >"$TEST_TEMP_DIR/p1-stdout.txt" 2>"$TEST_TEMP_DIR/p1-stderr.txt"
 set -e
 
-# [#1805/SPEC-9] path 1 assertion: artifact restored.
+# [#1805/ENTR-1] path 1 assertion: artifact restored.
 # Before change: no rehydration → file absent → FAILS.
 # After change: _runner_resume_rehydrate restores it → PASSES.
 assert_file_exists \
-    "[#1805/SPEC-9] path 1 (--resume flag): intake-result.json restored from state branch" \
+    "[#1805/ENTR-1] path 1 (--resume flag): intake-result.json restored from state branch" \
     "$P1_STATE_DIR/artifacts/intake-result.json"
 
 # ── PATH 2: auto-resume on detecting status=interrupted ───────────────────────
-print_test_section "[#1805/SPEC-9] path 2: auto-resume on status=interrupted restores artifacts"
+print_test_section "[#1805/ENTR-1] path 2: auto-resume on status=interrupted restores artifacts"
 
 P2_ID="$(zb_test_issue)"
 _setup_path_state "p2" "$P2_ID"
@@ -176,15 +176,15 @@ set +e
     >"$TEST_TEMP_DIR/p2-stdout.txt" 2>"$TEST_TEMP_DIR/p2-stderr.txt"
 set -e
 
-# [#1805/SPEC-9] path 2 assertion: artifact restored via auto-resume.
+# [#1805/ENTR-1] path 2 assertion: artifact restored via auto-resume.
 # Before change: no rehydration → file absent → FAILS.
 # After change: auto-resume path invokes _runner_resume_rehydrate → PASSES.
 assert_file_exists \
-    "[#1805/SPEC-9] path 2 (auto-resume/interrupted): intake-result.json restored from state branch" \
+    "[#1805/ENTR-1] path 2 (auto-resume/interrupted): intake-result.json restored from state branch" \
     "$P2_STATE_DIR/artifacts/intake-result.json"
 
 # ── PATH 3: zbuild pipeline resume --run-id ───────────────────────────────────
-print_test_section "[#1805/SPEC-9] path 3: zbuild pipeline resume --run-id restores artifacts"
+print_test_section "[#1805/ENTR-1] path 3: zbuild pipeline resume --run-id restores artifacts"
 
 P3_ID="$(zb_test_issue)"
 _setup_path_state "p3" "$P3_ID"
@@ -236,11 +236,11 @@ set +e
     >"$TEST_TEMP_DIR/p3-stdout.txt" 2>"$TEST_TEMP_DIR/p3-stderr.txt"
 set -e
 
-# [#1805/SPEC-9] path 3 assertion: artifact restored via zbuild pipeline resume.
+# [#1805/ENTR-1] path 3 assertion: artifact restored via zbuild pipeline resume.
 # Before change: no rehydration → file absent → FAILS.
 # After change: zbuild pipeline resume → runner --resume → _runner_resume_rehydrate → PASSES.
 assert_file_exists \
-    "[#1805/SPEC-9] path 3 (zbuild pipeline resume): intake-result.json restored from state branch" \
+    "[#1805/ENTR-1] path 3 (zbuild pipeline resume): intake-result.json restored from state branch" \
     "$P3_STATE_DIR/artifacts/intake-result.json"
 
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
