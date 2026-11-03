@@ -4,6 +4,10 @@
 
 [[ -n "${_ZBUILD_BUILD_COMMIT_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_COMMIT_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 
 # _build_clean_msg_line <line> (#1329)
 # Sanitize one commit-message line — strip control chars, trim whitespace,

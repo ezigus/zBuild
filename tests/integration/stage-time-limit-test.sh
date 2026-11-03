@@ -12,7 +12,7 @@
 # S2 [guard]  a stage inside its limit runs as before: no time-limit record
 # S3 [change] the limit is the stage's `timeout_s:`, or 900 seconds when unset
 # S4 [change] the shipped templates give the long stages room: build 3600,
-#             test 2700, design 1500, test-author 3780 (#2372: the acceptance
+#             test 2700, design 1500, test-author 2700 (#2460: one call per try; #2372: the acceptance
 #             check runs inside test; ADR-068 §10: design is one call and its
 #             coverage call per run)
 #             (simple.yaml; deployed.yaml has no test-author)
@@ -120,7 +120,7 @@ assert_eq "[S3] ...or 900 seconds when unset" "900" "$(template_stage_time_limit
 for _t in simple deployed; do
     load_template "$REPO_ROOT/config/templates/$_t.yaml" >/dev/null 2>&1
     _pairs="build:3600 test:2700"
-    [[ "$_t" == simple ]] && _pairs+=" test-author:3780 design:2700"
+    [[ "$_t" == simple ]] && _pairs+=" test-author:2700 design:2700"
     [[ "$_t" == deployed ]] && _pairs+=" design:1500"
     for _pair in $_pairs; do
         assert_eq "[S4] $_t.yaml: ${_pair%%:*} has ${_pair#*:}s" "${_pair#*:}" "$(template_stage_time_limit "${_pair%%:*}")"

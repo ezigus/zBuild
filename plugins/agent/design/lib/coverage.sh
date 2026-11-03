@@ -11,6 +11,10 @@
 
 [[ -n "${_ZBUILD_DESIGN_COVERAGE_LOADED:-}" ]] && return 0
 _ZBUILD_DESIGN_COVERAGE_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 
 # The call's three parts, composed with the engine's blocks in the one prompt
 # order (ADR-067 §8).
@@ -139,7 +143,7 @@ _design_coverage() {
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
-    local raw="" rc=0 rc_file ask="$framed" _try v="" u_line item
+    local raw="" rc=0 rc_file ask="$framed" _try v=""
     # ADR-060 §6: an answer with no verdict is asked again once, at once, with
     # what was wrong and the answer. A failed call is not asked again.
     for _try in 1 2; do

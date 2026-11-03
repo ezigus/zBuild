@@ -4,6 +4,10 @@
 
 [[ -n "${_ZBUILD_BUILD_SCOPE_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_SCOPE_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 
 # _build_path_in_scope <path> <allowed_files_array_name>
 # Thin wrapper around the shared _numstat_path_in_scope helper (#506).

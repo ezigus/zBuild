@@ -14,6 +14,10 @@ fi
 
 [[ -n "${_ZBUILD_BUILD_SUMMARY_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_SUMMARY_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 # #2108: the false-completion guard spawns TESTFILEs under the same scrub the
 # acceptance gate uses (env-scrub.sh sources nothing, so no cycle).
 if ! declare -F _zbuild_make_fresh_shell >/dev/null 2>&1; then

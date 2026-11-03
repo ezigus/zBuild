@@ -11,6 +11,10 @@
 
 [[ -n "${_ZBUILD_TA_CORRESPONDENCE_LOADED:-}" ]] && return 0
 _ZBUILD_TA_CORRESPONDENCE_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 
 _ta_sc_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
