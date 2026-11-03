@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+# Tests: the hydrate stage (#1074) — the fetch a fresh clone needs, the
+# promote that cannot leave a partial tree, and the local-wins read rule.
+# A rerun of an issue continues it: hydrate puts an earlier run's outputs back
+# in their LIVE places (ADR-050, amended; ADR-068 §8), so they are simply each
+# stage's latest output — there is no second "restored" area to read.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../core/state/artifact-persist.sh
+source "$REPO_ROOT/core/state/artifact-persist.sh"
+# shellcheck source=../../plugins/tool/hydrate/plugin.sh
+source "$REPO_ROOT/plugins/tool/hydrate/plugin.sh"
+
+print_test_header "hydrate stage (#1074)"
+setup_test_env "zb-hydrate"
+
+# #1921 follow-up: reserved test identity (see zb_test_issue). The literals
+# here were real issue numbers; a run keyed to one writes fabricated prior
+# work onto that issue's state branch.
+_ZB_ID="$(zb_test_issue)"
+
+# _artifact_persist_snapshot builds a throwaway git index under
+# ${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}. Inheriting whatever the harness or
+# the CI job left in ZBUILD_STAGE_SCRATCH makes this test depend on ambient
+# state — pin it to a directory this test owns and knows exists.
+export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch"
+mkdir -p "$ZBUILD_STAGE_SCRATCH"
+
+# Real repos and a real bare remote. The subject is a `git fetch` against a
+# clone that has never seen the branch, so a mock would prove nothing.
+_H_REMOTE="$TEST_TEMP_DIR/remote.git"
+_H_AUTHOR="$TEST_TEMP_DIR/author"
+git init -q --bare "$_H_REMOTE" 2>/dev/null
+mkdir -p "$_H_AUTHOR"
+(
+    cd "$_H_AUTHOR" || exit 1
+    git init -q -b main .
+    git config user.email t@e.st; git config user.name t
+    git remote add origin "$_H_REMOTE"
+    : > f; git add f; git commit -q -m init
+    git push -q -u origin main
+) >/dev/null 2>&1
+
+# The author run snapshots artifacts for issue 7001 and pushes them.
+_A_STATE="$TEST_TEMP_DIR/author-state"
+mkdir -p "$_A_STATE/artifacts"
+printf 'prior plan\n' > "$_A_STATE/artifacts/plan.json"
+printf 'prior design\n' > "$_A_STATE/artifacts/design.md"
+_seed_rc=0
+( cd "$_H_AUTHOR" && _artifact_persist_snapshot "$_A_STATE" $_ZB_ID && _artifact_persist_push $_ZB_ID ) \
+    >"$TEST_TEMP_DIR/seed.log" 2>&1 || _seed_rc=$?
+assert_exit_code "[SETUP] the author run snapshotted and pushed" "0" "$_seed_rc"
+[[ $_seed_rc -eq 0 ]] || cat "$TEST_TEMP_DIR/seed.log" >&2
+
+# ─── [SPEC-1][change] a fresh clone can hydrate at all ──────────────────────
+# This is what was missing. _artifact_persist_restore reads refs/heads first and
+# refs/remotes/origin second; on a fresh clone NEITHER exists until something
+# fetches, so restore reported "first run" for an issue with plenty of prior
+# work. Only the CI workflow's own fetch step ever covered that.
+print_test_section "[SPEC-1][change] a fresh clone restores prior work"
+
+# A CI runner has NO GLOBAL GIT IDENTITY. `_artifact_persist_snapshot` uses
+# `git commit-tree`, which refuses without one — so a clone here must configure
+# it explicitly. macOS passed on the operator's global config and ubuntu did
+# not, which is exactly the shape of a test that depends on ambient environment.
+_h_clone() {
+    git clone -q --single-branch --branch main "$_H_REMOTE" "$1" 2>/dev/null
+    git -C "$1" config user.email t@e.st
+    git -C "$1" config user.name t
+}
+
+_H_FRESH="$TEST_TEMP_DIR/fresh"
+_h_clone "$_H_FRESH"
+
+# Premise, asserted rather than assumed: this clone has neither ref.
+_h_refs="$( cd "$_H_FRESH" && git rev-parse -q --verify refs/heads/zbuild/state/issue-$_ZB_ID >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert_eq "[SPEC-1] premise: no local state ref in a fresh clone" "0" "$_h_refs"
+_h_refs="$( cd "$_H_FRESH" && git rev-parse -q --verify refs/remotes/origin/zbuild/state/issue-$_ZB_ID >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert_eq "[SPEC-1] premise: no remote-tracking state ref either" "0" "$_h_refs"
+
+# And the control: restore ALONE finds nothing here. Without this the SPEC below
+# could pass for a reason that has nothing to do with the fetch.
+# The status lives in a variable, and the `cd` has to happen in a subshell —
+# so echo it OUT rather than reading it after, which returns the parent's empty
+# copy and passes for the wrong reason.
+_h_control="$( cd "$_H_FRESH" \
+    && _artifact_persist_restore $_ZB_ID "$TEST_TEMP_DIR/control" >/dev/null 2>&1
+    printf '%s' "${_ARTIFACT_PERSIST_LAST_STATUS:-}" )"
+assert_eq "[SPEC-1] control: restore without a fetch reports first-run" \
+    "empty" "$_h_control"
+
+_H_STATE="$TEST_TEMP_DIR/fresh-state"
+mkdir -p "$_H_STATE/artifacts"
+export ZBUILD_ARTIFACT_DIR="$_H_STATE/artifacts"
+_rc=0
+( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_H_STATE" \
+    hydrate_run hydrate "" ) >/dev/null 2>&1 || _rc=$?
+assert_exit_code "[SPEC-1] hydrate returns 0" "0" "$_rc"
+assert_file_exists "[SPEC-1] prior plan.json was restored" \
+    "$ZBUILD_ARTIFACT_DIR/plan.json"
+assert_file_exists "[SPEC-1] prior design.md was restored" \
+    "$ZBUILD_ARTIFACT_DIR/design.md"
+assert_eq "[SPEC-1] the result records how many were restored" "2" \
+    "$(jq -r '.data.restored' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
+
+# ─── [SPEC-6][change] an earlier run's outputs land in the live places ──────
+assert_eq "[SPEC-6] no separate restored area is made" "no" \
+    "$([[ -e "$_H_STATE/restored-artifacts" ]] && echo yes || echo no)"
+# A file the run already has live is newer than an earlier run's: kept.
+_K_STATE="$TEST_TEMP_DIR/keep-state"
+mkdir -p "$_K_STATE/artifacts"
+printf 'THIS RUN design\n' > "$_K_STATE/artifacts/design.md"
+( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_K_STATE" \
+    ZBUILD_ARTIFACT_DIR="$_K_STATE/artifacts" hydrate_run hydrate "" ) >/dev/null 2>&1 || true
+assert_contains "[SPEC-6] a live file already there is kept" \
+    "$(cat "$_K_STATE/artifacts/design.md" 2>/dev/null)" "THIS RUN design"
+assert_contains "[SPEC-6] … and a missing one is put back" \
+    "$(cat "$_K_STATE/artifacts/plan.json" 2>/dev/null)" "prior plan"
+
+# ─── [SPEC-2][guard] the fetch cannot clobber an unpushed local snapshot ────
+# "Git wins" is about DURABILITY, not read precedence. A local snapshot may hold
+# work an earlier push never delivered; preferring origin would LOSE it.
+print_test_section "[SPEC-2][guard] unpushed local work survives a hydrate"
+
+_H_LOCAL="$TEST_TEMP_DIR/localwins"
+_h_clone "$_H_LOCAL"
+_L_STATE="$TEST_TEMP_DIR/local-state"
+mkdir -p "$_L_STATE/artifacts"
+printf 'NEWER local work\n' > "$_L_STATE/artifacts/plan.json"
+# Snapshot locally and deliberately do NOT push.
+# `|| _snap_rc=$?` rather than a bare subshell: under `set -e` a non-zero return
+# kills the whole file, and with stderr redirected it does so SILENTLY — the
+# section header prints and nothing follows. That is uninterpretable in CI.
+_snap_rc=0
+( cd "$_H_LOCAL" && _artifact_persist_snapshot "$_L_STATE" $_ZB_ID ) \
+    >"$TEST_TEMP_DIR/localsnap.log" 2>&1 || _snap_rc=$?
+assert_exit_code "[SPEC-2] the local snapshot succeeded" "0" "$_snap_rc"
+[[ $_snap_rc -eq 0 ]] || cat "$TEST_TEMP_DIR/localsnap.log" >&2
+# `|| true`: a missing ref must FAIL AN ASSERTION, not kill the file under
+# `set -e`. Without it the section aborts and every later assertion silently
+# never runs — which is how this reached CI looking like one failure instead of
+# a whole section that never executed.
+_l_before="$( cd "$_H_LOCAL" && git rev-parse refs/heads/zbuild/state/issue-$_ZB_ID 2>/dev/null || true )"
+if [[ -z "$_l_before" ]]; then
+    assert_fail "[SPEC-2] premise: local snapshot must create refs/heads/zbuild/state/issue-$_ZB_ID" \
+        "no ref — check git identity in the clone"
+else
+    assert_pass "[SPEC-2] premise: the local snapshot created a ref"
+fi
+
+_R_STATE="$TEST_TEMP_DIR/localwins-state"
+mkdir -p "$_R_STATE/artifacts"
+export ZBUILD_ARTIFACT_DIR="$_R_STATE/artifacts"
+( cd "$_H_LOCAL" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_R_STATE" \
+    hydrate_run hydrate "" ) >/dev/null 2>&1
+
+_l_after="$( cd "$_H_LOCAL" && git rev-parse refs/heads/zbuild/state/issue-$_ZB_ID 2>/dev/null || true )"
+assert_eq "[SPEC-2] the local branch ref is unmoved by the fetch" "$_l_before" "$_l_after"
+assert_contains "[SPEC-2] and the LOCAL (unpushed) content is what got restored" \
+    "$(cat "$ZBUILD_ARTIFACT_DIR/plan.json" 2>/dev/null)" "NEWER local work"
+
+# ─── [SPEC-3][guard] a partial extraction is never promoted ─────────────────
+# git archive | tar can fail mid-stream leaving a half-extracted tree that
+# satisfies a bare -d/-n check. PR #1880's review caught the engine adopting one
+# and gated on a status; staging + a single mv removes the failure mode instead.
+# ─── [SPEC-4][change] the result records WHERE the restore came from ────────
+# hydrate-result.json recorded {status, restored} but not the source, so a warm
+# start could only ever be INFERRED. #1836 is the standing proof that inference
+# gets misattributed: its state branch was credited to a push path that had
+# already been deleted. The core tracks _ARTIFACT_PERSIST_LAST_SOURCE; hydrate
+# simply never read it.
+print_test_section "[SPEC-4][change] hydrate records data.source"
+
+_H_SRC="$TEST_TEMP_DIR/srcfield"
+_h_clone "$_H_SRC"
+_S_STATE="$TEST_TEMP_DIR/srcfield-state"
+# Own artifact dir, like every section above. Inheriting SPEC-2's would make the
+# guard below read SPEC-2's file: a failed write here would then be masked by
+# stale data that already says status=restored.
+export ZBUILD_ARTIFACT_DIR="$_S_STATE/artifacts"
+( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_S_STATE" \
+    hydrate_run hydrate "" ) >/dev/null 2>&1 || true
+# Guard: the restore itself still worked (existing invariant, no [SPEC-N] tag).
+assert_eq "[source-guard] the fresh-clone restore still reports restored" "restored" \
+    "$(jq -r '.data.status' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
+# Change: source is a NEW field — absent at baseline, so jq returns "null".
+assert_eq "[SPEC-4] a fresh clone records source=remote, not local" "remote" \
+    "$(jq -r '.data.source | tostring' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
+
+# ─── [SPEC-5][change] hydrate leaves a local ref for the snapshot to chain on ─
+# Without this the CI path can never accumulate: _artifact_persist_snapshot
+# reads its parent from refs/heads, which a fetch never creates, so every CI
+# snapshot roots a new history and the force-push orphans origin's.
+print_test_section "[SPEC-5][change] hydrate adopts the fetched tip locally"
+
+_h_remote_tip="$( cd "$_H_SRC" && git rev-parse refs/remotes/origin/zbuild/state/issue-$_ZB_ID )"
+_h_local_tip="$( cd "$_H_SRC" && git rev-parse -q --verify refs/heads/zbuild/state/issue-$_ZB_ID 2>/dev/null || echo absent )"
+assert_eq "[SPEC-5] the local state ref now exists and matches the fetched tip" \
+    "$_h_remote_tip" "$_h_local_tip"
+
+# ─── [SPEC-7][change] an earlier run's model-call records are not put back ──
+# stage-io/ records one run's model calls; it is no stage's output. #1801's
+# rerun shipped a stage-io error file from two days earlier with its own.
+#
+# Guard: _artifact_persist_put_back is added by this change. On old code it
+# does not exist; without this stub the script exits 127 at the first call
+# below, before [#1805/SPEC-13] can run. The stub copies everything (stage-io
+# included), so [SPEC-7]'s "not put back" assertion correctly FAILS on old code;
+# the [#1805/SPEC-13] section overrides this definition again before testing
+# hydrate_run's delegation, so SPEC-13 also correctly FAILS on old code.
+if ! declare -f _artifact_persist_put_back >/dev/null 2>&1; then
+    _artifact_persist_put_back() {
+        local _from="$1" _to="$2"
+        mkdir -p "$_to"
+        cp -r "$_from/." "$_to/"
+    }
+fi
+print_test_section "[SPEC-7][change] stage-io records are not put back"
+_S7_FROM="$TEST_TEMP_DIR/s7-from"; _S7_TO="$TEST_TEMP_DIR/s7-to"
+mkdir -p "$_S7_FROM/stage-io"
+printf 'prior plan\n' > "$_S7_FROM/plan.json"
+printf '{}\n' > "$_S7_FROM/stage-io/design-iter4-error.json"
+_artifact_persist_put_back "$_S7_FROM" "$_S7_TO"
+assert_file_exists "[SPEC-7] a stage's output is put back" "$_S7_TO/plan.json"
+assert_file_not_exists "[SPEC-7] an earlier run's stage-io record is not put back" \
+    "$_S7_TO/stage-io/design-iter4-error.json"
+
+# ─── [#1805/SPEC-13] hydrate_run delegates copy-back to _artifact_persist_put_back ─
+# hydrate_run must call _artifact_persist_put_back (not the old inline _hydrate_put_back)
+# for the copy-back operation. This sentinel test overrides _artifact_persist_put_back;
+# if hydrate_run calls the override, the sentinel is written. When plugin.sh is reverted to
+# calling _hydrate_put_back inline at line 162, the override is never reached → FAILS.
+print_test_section "[#1805/SPEC-13] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)"
+
+_SPEC13_SENTINEL="$TEST_TEMP_DIR/spec13-put-back-called"
+_artifact_persist_put_back() {
+    touch "$_SPEC13_SENTINEL"
+}
+
+_SPEC13_STATE="$TEST_TEMP_DIR/spec13-state"
+mkdir -p "$_SPEC13_STATE/artifacts"
+export ZBUILD_ARTIFACT_DIR="$_SPEC13_STATE/artifacts"
+# _H_SRC already has prior work fetched and a valid state branch from the SPEC-4 section.
+# hydrate_run will call _artifact_persist_restore (still real) then _artifact_persist_put_back
+# (now our sentinel). We do not care if the overall run fails; we only check the sentinel.
+( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_SPEC13_STATE" \
+    hydrate_run hydrate "" ) >/dev/null 2>&1 || true
+
+# [#1805/SPEC-13]: sentinel must be present, proving _artifact_persist_put_back was called.
+# Before this change (plugin.sh calls _hydrate_put_back inline): sentinel absent → FAILS.
+# After this change (plugin.sh calls _artifact_persist_put_back): sentinel written → PASSES.
+assert_file_exists \
+    "[#1805/SPEC-13] hydrate_run invoked _artifact_persist_put_back (sentinel written)" \
+    "$_SPEC13_SENTINEL"
+
+print_test_section "[SPEC-3][guard] a failed restore leaves the area absent, not partial"
+
+_P_STATE="$TEST_TEMP_DIR/partial-state"
+mkdir -p "$_P_STATE/artifacts"
+export ZBUILD_ARTIFACT_DIR="$_P_STATE/artifacts"
+
+# Force a restore failure that still creates a staging directory with content —
+# the exact shape a mid-stream tar failure leaves behind.
+_artifact_persist_restore() {
+    local _issue="$1" _dir="$2"
+    mkdir -p "$_dir/artifacts"
+    printf 'HALF A FILE' > "$_dir/artifacts/plan.json"
+    _ARTIFACT_PERSIST_LAST_STATUS="failed"
+    _ARTIFACT_PERSIST_LAST_REASON="simulated mid-stream tar failure"
+    return 1
+}
+_rc=0
+( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_P_STATE" \
+    hydrate_run hydrate "" ) >/dev/null 2>&1 || _rc=$?
+assert_exit_code "[SPEC-3] hydrate still returns 0 on a failed restore" "0" "$_rc"
+assert_file_not_exists "[SPEC-3] the half-extracted file was NOT promoted" \
+    "$ZBUILD_ARTIFACT_DIR/plan.json"
+if [[ -d "$_P_STATE/hydrate.staging" ]]; then
+    assert_fail "[SPEC-3] the staging tree must be discarded" "still present"
+else
+    assert_pass "[SPEC-3] the staging tree is discarded whole"
+fi
+assert_eq "[SPEC-3] and the result records fail (#2366)" "fail" \
+    "$(jq -r '.outcome' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))

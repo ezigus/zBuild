@@ -73,6 +73,7 @@ zb_stub_reports_tests test
 # Before this change: loop starts at iter=1 → first dispatch is iter=1.
 # After this change: loop reads current_iter=1 → starts at iter=2 → first is 2.
 set +e
+export _ZBUILD_RESUME_ACTIVE=true
 cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 _s7_rc=$?
 set -e
