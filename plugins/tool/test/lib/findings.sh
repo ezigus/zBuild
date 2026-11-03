@@ -45,7 +45,9 @@ _test_failure_findings() {
             if (index(p, t "/") == 1) return substr(p, length(t) + 2)
             return ""
         }
+        function flushd() { if (after_x) printf "D\t%s\t%s\n", f, det; after_x = 0; det = "" }
         /^[a-z]+: (FAIL|TIMEOUT) / {
+            flushd()
             # The path is the rest of the line, not $3: a staging dir with a
             # space would split it (claude-review on #2210).
             path = $0; sub(/^[a-z]+: (FAIL|TIMEOUT) /, "", path)
@@ -54,13 +56,18 @@ _test_failure_findings() {
             if (inblk) printf "%s\t%s\t\n", kind, f
             next
         }
-        /^[a-z]+: [0-9]+\/[0-9]+ passed/ { inblk = 0; next }
+        /^[a-z]+: [0-9]+\/[0-9]+ passed/ { flushd(); inblk = 0; next }
         !inblk { next }
         {
             line = $0; sub(/^[[:space:]]+/, "", line)
-            # A ✗ right after a ✗ is the next check, not the detail of the first.
-            if (after_x && line != "" && line !~ /^(✗|✘)/) { printf "D\t%s\t%s\n", f, line; after_x = 0 }
-            if (line ~ /^(✗|✘)/) { printf "X\t%s\t%s\n", f, line; after_x = 1; next }
+            # #2460: the message of a failing check is every line after its ✗ up to
+            # the next check, a blank line or the tally of the file - however many
+            # lines it spans - kept as one, its line breaks shown as ⏎.
+            if (after_x) {
+                if (line == "" || line ~ /^(✗|✘|✓)/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/) flushd()
+                else det = (det == "" ? line : det " ⏎ " line)
+            }
+            if (line ~ /^(✗|✘)/) { printf "X\t%s\t%s\n", f, line; after_x = 1; det = ""; next }
             if (line ~ /^✓/) { printf "P\t%s\t%s\n", f, line; next }
             if (line ~ /line [0-9]+: |command not found|syntax error|unbound variable/) printf "E\t%s\t%s\n", f, line
             if (match(line, /^[^[:space:]:]+:[0-9]+:/)) {
@@ -68,7 +75,8 @@ _test_failure_findings() {
                 r = (substr(c, 1, 1) == "/") ? rel(c) : c
                 if (r != "") printf "L\t%s\t%s\n", f, r
             }
-        }' 2>/dev/null || true)"
+        }
+        END { flushd() }' 2>/dev/null || true)"
     [[ -n "$rows" ]] || { printf '[]'; return 0; }
 
     # A pointed-at path must exist in the tree and must not be the failing file.
@@ -90,13 +98,15 @@ _test_failure_findings() {
         | map(. as $r
             | ($r | map(select(.k == "X")) | .[0].t // "") as $x
             | ($r | map(select(.k == "D")) | .[0].t // "") as $d
+            | ($r | map(select(.k == "X")) | length) as $nx
             | ($r | map(select(.k == "E")) | .[0].t // "") as $e
             | ($r | map(select(.k == "P")) | last | .t // "") as $p
             | ($r | any(.k == "T")) as $timeout
             | {
                 file: $r[0].f,
                 reason: (
-                    if $x != "" then $x + (if ($d | test("expected|got|found|Expected")) then " — " + $d else "" end)
+                    if $x != "" then $x + (if $d != "" then " — " + $d else "" end)
+                        + (if $nx > 1 then " (and \($nx - 1) more failing check\(if $nx > 2 then "s" else "" end) in this file)" else "" end)
                     elif $timeout then "timed out before finishing" + (if $p != "" then " (last check that passed: " + ($p | sub("^✓[[:space:]]*"; "")) + ")" else "" end)
                     elif $e != "" then $e
                     elif $p != "" then "exited non-zero without a failing check, after its last passing check: " + ($p | sub("^✓[[:space:]]*"; ""))
