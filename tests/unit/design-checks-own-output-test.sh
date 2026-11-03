@@ -41,7 +41,7 @@ foo.sh
 ${BT}
 
 ${BT}acceptance
-SPEC-1[no-code]: the docs say so covers: R-1
+DOCS-1[no-code]: the docs say so covers: WANT-1
 WIRING: none
 TESTFILES:
 ${BT}
@@ -53,7 +53,7 @@ foo.sh
 ${BT}
 
 ${BT}acceptance
-SPEC-1[no-code]: the docs say so covers: R-1
+DOCS-1[no-code]: the docs say so covers: WANT-1
 TESTFILES:
 ${BT}
 "
@@ -89,7 +89,7 @@ _run() {
     _F_ART="$d/state/artifacts"; _F_DESIGN="$_F_ART/design.md"
     printf 'scope: all\n' > "$d/state/scope-manifest.md"
     printf '{"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["foo.sh"]}]}\n' > "$_F_ART/plan.json"
-    printf '{"requirements":[{"id":"R-1","text":"the docs say so"}]}\n' > "$_F_ART/requirements.json"
+    printf '{"requirements":[{"id":"WANT-1","text":"the docs say so"}]}\n' > "$_F_ART/requirements.json"
     _design_stage_run_inner "$d/state/scope-manifest.md" "$_F_DESIGN" "$_F_ART" >/dev/null 2>&1
     RC=$?
     OUTCOME="$(jq -r '.outcome // "MISSING"' "$_F_ART/design-verdict.json" 2>/dev/null || echo MISSING)"
@@ -107,13 +107,13 @@ assert_contains "[C1] the result carries the finding" "$FINDINGS" "WIRING"
 
 # ── C2 ───────────────────────────────────────────────────────────────────────
 DESIGNS=("$GOOD"); JUDGE=("VERDICT: uncovered
-REASON: R-1 is only half covered
-UNCOVERED: R-1: the docs say so" "VERDICT: covered"); JUDGE_RC=0
+REASON: WANT-1 is only half covered
+UNCOVERED: WANT-1: the docs say so" "VERDICT: covered"); JUDGE_RC=0
 _run
 assert_eq "[C2] an uncovered requirement: unusable" "unusable" "$OUTCOME"
-assert_contains "[C2] the finding names the uncovered requirement" "$FINDINGS" "R-1: the docs say so"
+assert_contains "[C2] the finding names the uncovered requirement" "$FINDINGS" "WANT-1: the docs say so"
 assert_contains "[C2] the coverage call is shown the SPECs" \
-    "$(cat "$TEST_TEMP_DIR/judge-prompt-1" 2>/dev/null)" "SPEC-1[no-code]: the docs say so"
+    "$(cat "$TEST_TEMP_DIR/judge-prompt-1" 2>/dev/null)" "DOCS-1[no-code]: the docs say so"
 assert_eq "[C2] still one design call" "1" "$CALLS"
 
 # ── C3 ───────────────────────────────────────────────────────────────────────

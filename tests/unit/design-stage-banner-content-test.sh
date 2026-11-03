@@ -54,7 +54,7 @@ route_to_model() {
         _body="$MOCK_DESIGN_BODY"
     else
         local _bt='```'
-        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: it works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
+        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: it works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
     fi
     [[ "$_to" == PROMPT ]] && _to="$(zb_test_prompt_write_path "$2")"
     mkdir -p "$(dirname "$_to")"
@@ -92,7 +92,7 @@ EOF
 _setup_test_fixture t1
 MOCK_DESIGN_WRITE_PATH=PROMPT
 _bt='```'
-MOCK_DESIGN_BODY="$(printf '# Design Doc T1\n\n## Decision\nUse pattern X for the migration.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: migration works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
+MOCK_DESIGN_BODY="$(printf '# Design Doc T1\n\n## Decision\nUse pattern X for the migration.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: migration works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
 unset _bt
 MOCK_LLM_STDOUT_SUMMARY="Design document written to $OUTPUT_MD. It covers Decision/Scope."
 set +e
@@ -121,7 +121,7 @@ unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY MOCK_LLM_STDOUT_SUMMARY
 _setup_test_fixture t2
 MOCK_DESIGN_WRITE_PATH="$FIXTURE_DIR/design.md"   # LLM writes to repo root
 _bt='```'
-MOCK_DESIGN_BODY="$(printf '# Design Doc T2 (recovered)\n\n## Decision\nrecovered\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: recovery works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
+MOCK_DESIGN_BODY="$(printf '# Design Doc T2 (recovered)\n\n## Decision\nrecovered\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: recovery works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
 unset _bt
 MOCK_LLM_STDOUT_SUMMARY="Design document written. LOOP_COMPLETE"
 set +e
@@ -169,7 +169,7 @@ _T4_TMP="$TEST_TEMP_DIR/t4-body.md"
         printf 'L%.0s' $(seq 1 60)
         printf '\n'
     done
-    printf '\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[no-code]: large file works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n```\n'
+    printf '\n```scope\nfoo.sh\n```\n\n```acceptance\nWORK-1[no-code]: large file works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n```\n'
 } > "$_T4_TMP"
 MOCK_DESIGN_WRITE_PATH=PROMPT
 MOCK_DESIGN_BODY="$(cat "$_T4_TMP")"

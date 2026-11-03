@@ -61,7 +61,7 @@ route_to_model() {
         _body="$MOCK_DESIGN_BODY"
     else
         local _bt='```'
-        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: foo works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
+        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: foo works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
     fi
     local _to="${MOCK_DESIGN_WRITE_PATH:-}"
     [[ "$_to" == PROMPT ]] && _to="$(zb_test_prompt_write_path "$2")"
@@ -184,14 +184,14 @@ MOCK_DESIGN_WRITE_PATH=PROMPT
 set +e
 _design_stage_run_inner "$scope_manifest" "$output_md" "$artifact_dir" >/dev/null 2>&1
 set +e
-assert_contains "T6: design.md is the design the call wrote" "$(cat "$output_md" 2>/dev/null)" "SPEC-1[no-code]: foo works"
+assert_contains "T6: design.md is the design the call wrote" "$(cat "$output_md" 2>/dev/null)" "WORK-1[no-code]: foo works"
 assert_eq "T6: the root design.md is left alone" "someone else's notes" "$(cat "$fixture/design.md" 2>/dev/null)"
 unset MOCK_DESIGN_WRITE_PATH
 
 # ─── T7: the stray cannot be moved → unusable, not a pass on the old copy ──
 _setup_test_fixture t7
 fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"; output_md="$OUTPUT_MD"; artifact_dir="$ARTIFACT_DIR"
-printf '# Design\n\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[no-code]: the last good one\nWIRING: none\nTESTFILES:\n```\n' > "$output_md"
+printf '# Design\n\n```scope\nfoo.sh\n```\n\n```acceptance\nWORK-1[no-code]: the last good one\nWIRING: none\nTESTFILES:\n```\n' > "$output_md"
 MOCK_DESIGN_WRITE_PATH="$fixture/design.md"   # LLM writes to repo root
 # Only the stray's move fails; every other move works as normal.
 _T7_STRAY="$fixture/design.md"

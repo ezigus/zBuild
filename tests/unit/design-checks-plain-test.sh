@@ -40,7 +40,7 @@ _gate $'# Design\n\nNo blocks at all.\n'
 _fb1="$FB"; _v1="$VIOL"
 _gate $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[code]: a\nSPEC-2: b\nTESTFILES:\n```\n'
 _fb2="$FB"; _v2="$VIOL"
-_gate $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[done]: a evidence: lib/gone.sh:3\nWIRING: lib/gone.sh\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n'
+_gate $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[done]: a evidence: lib/gone.sh\nWIRING: lib/gone.sh\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n'
 _fb3="$FB"; _v3="$VIOL"
 _all_fb="$_fb1"$'\n'"$_fb2"$'\n'"$_fb3"
 
@@ -58,7 +58,7 @@ assert_contains "[D2] a [code] requirement with no test file is said plainly" "$
 assert_contains "[D2] a missing WIRING line asks the question" "$_fb2" "which existing file calls the new code"
 assert_contains "[D2] a WIRING file that does not exist is said plainly" "$_fb3" "lib/gone.sh does not exist"
 assert_contains "[D2] evidence that does not exist is said plainly (#2304)" "$_fb3" \
-    "the evidence lib/gone.sh:3 for SPEC-1 does not point at the repository"
+    "the evidence lib/gone.sh for SPEC-1 does not point at the repository"
 
 assert_contains "[D3] the codes still carry SCOPE_MISSING" "$_v1" "SCOPE_MISSING"
 assert_contains "[D3] the codes still carry NO_STATUS" "$_v2" "NO_STATUS SPEC-2"

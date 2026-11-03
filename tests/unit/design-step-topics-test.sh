@@ -41,7 +41,7 @@ route_to_model() {
     local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
     if [[ -n "$_t" ]]; then
         mkdir -p "$(dirname "$_t")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\ncore/a.sh\ncore/b.sh\ntests/acc-test.sh\ntests/golden/g.golden\n%s\n\n%ssteps\n- guard the read in a.sh | areas: core/a.sh\n- set the flag in the test | areas: tests/acc-test.sh\n- export the flag and check it | areas: core/b.sh, tests/acc-test.sh\n- update the golden | areas: tests/golden/g.golden\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\nSPEC-1: tests/acc-test.sh\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\ncore/a.sh\ncore/b.sh\ntests/acc-test.sh\ntests/golden/g.golden\n%s\n\n%ssteps\n- guard the read in a.sh | areas: core/a.sh\n- set the flag in the test | areas: tests/acc-test.sh\n- export the flag and check it | areas: core/b.sh, tests/acc-test.sh\n- update the golden | areas: tests/golden/g.golden\n%s\n\n%sacceptance\nWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\nWORK-1: tests/acc-test.sh\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
     fi
     return 0
@@ -104,7 +104,7 @@ assert_contains "[T5] ...a test file outside the contract stays in it" "$_scope"
     _P="$TEST_TEMP_DIR/ta-prompt.txt"
     route_to_model() {
         if [[ "$2" == *"does that establish the REQUIREMENT"* ]]; then
-            printf 'SPEC-1: VERDICT: corresponds | REASON: ok\n'; return 0
+            printf 'WORK-1: VERDICT: corresponds | REASON: ok\n'; return 0
         fi
         printf '%s' "$2" > "$_P"; printf 'authored\n'; return 0
     }

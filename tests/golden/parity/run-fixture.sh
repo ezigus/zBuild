@@ -61,7 +61,7 @@ elif grep -q "EXACT absolute path:" <<< "$prompt"; then
     design_out="$(awk '/EXACT absolute path:/ { getline; sub(/^[[:space:]]+/, ""); gsub(/<\/?out-of-scope-context>/, ""); print; exit }' <<< "$prompt")"
     if [[ -n "$design_out" ]]; then
         mkdir -p "$(dirname "$design_out")"
-        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nSPEC-1[no-code]: the parity fixture file exists covers: R-1\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
+        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nFIXT-1[no-code]: the parity fixture file exists covers: PRTY-1\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
     fi
     jq -n --arg r 'wrote the design' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
@@ -71,7 +71,7 @@ elif grep -q "check a list of requirements" <<< "$prompt"; then
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "list every requirement this issue states" <<< "$prompt"; then
     # intake writes the issue's requirement list (#2445).
-    jq -n --arg r 'REQUIREMENT: Add the parity fixture file.' \
+    jq -n --arg r 'REQUIREMENT: PRTY-1 Add the parity fixture file.' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     # build stage (#467 Pattern 2) — edit the fixture file directly in $PWD

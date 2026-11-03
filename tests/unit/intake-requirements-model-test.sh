@@ -10,7 +10,7 @@
 # are given only the issue, and one turn each, so neither reads the code.
 #
 # I1 [change] a numbered list in the issue becomes one requirement per item,
-#             numbered R-1, R-2, … by the engine, source "model"
+#             each with the id its line gives (#2462), source "model"
 # I2 [change] the check's missing items are added to the list
 # I3 [change] the first call is given the issue and asked for every requirement
 #             it states; it is told it is given only the issue and may not read
@@ -65,15 +65,15 @@ _body='The gate prints every line twice.
 _set_gh_mock "Make the gate quieter" "$_body" 0
 
 # ── I1 / I3 / I4 ─────────────────────────────────────────────────────────────
-WRITE_REPLY='REQUIREMENT: Print each line once.
-REQUIREMENT: Keep the exit code.'
-CHECK_REPLY='MISSING: Say how many lines it printed.'
+WRITE_REPLY='REQUIREMENT: PRNT-1 Print each line once.
+REQUIREMENT: EXIT-1 Keep the exit code.'
+CHECK_REPLY='MISSING: CNT-1 Say how many lines it printed.'
 _intake
 assert_eq "[I1] intake passes" "pass" "$OUTCOME"
 assert_eq "[I1] the source is the model" "model" "$(jq -r '.source' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[I1][I2] one requirement per item, numbered by the engine, the check's missing one added" "R-1 R-2 R-3" \
+assert_eq "[I1][I2] one requirement per item, with its id, the check's missing one added" "PRNT-1 EXIT-1 CNT-1" \
     "$(jq -r '[.requirements[].id] | join(" ")' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[I1] R-1 is the first item's words" "Print each line once." "$(jq -r '.requirements[0].text' "$_REQ" 2>/dev/null)"
+assert_eq "[I1] PRNT-1 is the first item's words" "Print each line once." "$(jq -r '.requirements[0].text' "$_REQ" 2>/dev/null)"
 assert_eq "[I2] the check's missing item is added last" "Say how many lines it printed." "$(jq -r '.requirements[2].text' "$_REQ" 2>/dev/null)"
 _p1="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/prompt-1" 2>/dev/null)"
 assert_contains "[I3] the first call is given the issue" "$_p1" "Keep the exit code."
@@ -98,7 +98,7 @@ assert_file_not_exists "[I6] ...and no list is written" "$_REQ"
 # Behaviour, not text: an issue made only of checkboxes gets exactly the list
 # the model wrote — nothing scraped from the body joins it (review on #2446).
 _set_gh_mock "Checkbox issue" $'- [ ] first box\n- [x] second box' 0
-WRITE_REPLY='REQUIREMENT: what the model read'; CHECK_REPLY='MISSING: none'
+WRITE_REPLY='REQUIREMENT: READ-1 what the model read'; CHECK_REPLY='MISSING: none'
 _intake
 assert_eq "[I7] the list is the model's alone; no checkbox is scraped into it" "what the model read" \
     "$(jq -r '[.requirements[].text] | join("|")' "$_REQ" 2>/dev/null || echo MISSING)"

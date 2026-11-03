@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# tests/unit/descriptive-id-readers-test.sh — every reader of a SPEC id reads a
+# descriptive one (FSTG-1), and still reads the old SPEC-n form (#2462,
+# ADR-069 §1).
+#
+# Why: SPEC ids now describe their item. Twelve places read an id with a
+# pattern written for `SPEC-<n>` alone; each would drop a descriptive id
+# silently — a requirement nobody tests, a binding nobody runs, a stale tag
+# nobody removes. The 371 test files that carry earlier issues' [SPEC-n] tags
+# must still read as before.
+#
+# R1  [code] the acceptance block's SPEC lines, bindings and REMOVED lines read
+#            with descriptive ids; a REMOVED line is not part of a SPEC's words
+# R2  [code] a binding's test files, and the per-requirement binding checks
+# R3  [code] the WIRING list stops at a descriptive binding line
+# R4  [code] [done] evidence `file:"text with spaces"` is one item
+# R5  [code] the old-code check finds the last other verdict by a descriptive tag
+# R6  [code] the acceptance check reads the id on a NEGCTL line
+# R7  [code] build strips a descriptive binding prefix from a test file line,
+#            in its limits and in its false-completion probe
+# R8  [code] the status comment shows a descriptive label as code
+# R9  [code] test-author drops this issue's tags no longer in the contract,
+#            whatever their form, and keeps other issues' tags
+# R10 [code] the coverage check and issue-acceptance show the code around the
+#            evidence's text, not a line number
+# R11 [code] old SPEC-n ids still read everywhere above
+# R12 [code] issue-acceptance is not told the requirements are numbered R-1, R-2
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+print_test_header "every reader of a SPEC id reads a descriptive one (#2462)"
+setup_test_env "descriptive-id-readers"
+# shellcheck source=../../scripts/lib/acceptance-block.sh
+source "$REPO_ROOT/scripts/lib/acceptance-block.sh"
+# shellcheck source=../../scripts/lib/acceptance-negctl.sh
+source "$REPO_ROOT/scripts/lib/acceptance-negctl.sh"
+set +e
+assert_not_contains() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
+unset ZBUILD_ACCEPTANCE_RUN_CMD 2>/dev/null || true
+_ID="$(zb_test_issue)"
+
+D="$TEST_TEMP_DIR/design.md"
+cat > "$D" <<'EOF'
+# D
+```acceptance
+WIRING:
+core/run.sh
+FSTG-1[code]: --from-stage runs the stage first
+  and puts earlier outputs back covers: RSUM-1
+REMOVED: FSTG-2 — folded into FSTG-1
+SPEC-3[no-code]: an old-form requirement
+GARD-1[done]: a new run never skips evidence: core/run.sh:"if $resume_mode && x" tests/unit/a-test.sh
+TESTFILES:
+FSTG-1: tests/unit/from-stage-test.sh
+  tests/unit/from-stage-more-test.sh
+SPEC-3: tests/unit/old-test.sh
+```
+EOF
+
+# ── R1 / R11 ─────────────────────────────────────────────────────────────────
+assert_eq "[R1] descriptive and old ids are listed" "FSTG-1 SPEC-3 GARD-1" \
+    "$(acceptance_list_spec_ids "$D" | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "[R1] a REMOVED line is read with its reason" "FSTG-2	folded into FSTG-1" \
+    "$(acceptance_list_removed_ids "$D")"
+assert_eq "[R1] ...and is not part of the SPEC before it" \
+    "--from-stage runs the stage first and puts earlier outputs back" "$(acceptance_spec_text "$D" FSTG-1)"
+assert_eq "[R1] covers reads after a wrapped line" "RSUM-1" "$(acceptance_spec_covers "$D" FSTG-1)"
+
+# ── R2 ───────────────────────────────────────────────────────────────────────
+assert_eq "[R2] a descriptive binding's files, wrapped line included" \
+    "tests/unit/from-stage-test.sh tests/unit/from-stage-more-test.sh" \
+    "$(acceptance_list_testfiles_for_spec "$D" FSTG-1 | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "[R11] an old binding's file" "tests/unit/old-test.sh" "$(acceptance_list_testfiles_for_spec "$D" SPEC-3)"
+assert_eq "[R2] the union of test files strips descriptive prefixes" \
+    "tests/unit/from-stage-test.sh tests/unit/from-stage-more-test.sh tests/unit/old-test.sh" \
+    "$(acceptance_list_testfiles "$D" | tr '\n' ' ' | sed 's/ $//')"
+acceptance_has_per_spec_binding "$D"; assert_eq "[R2] per-requirement binding is seen" "0" "$?"
+acceptance_spec_has_binding "$D" FSTG-1; assert_eq "[R2] FSTG-1 has a binding" "0" "$?"
+
+# ── R3 ───────────────────────────────────────────────────────────────────────
+assert_eq "[R3] WIRING stops at a descriptive SPEC line" "core/run.sh" "$(acceptance_list_wiring "$D")"
+
+# ── R4 ───────────────────────────────────────────────────────────────────────
+assert_eq "[R4] quoted evidence text with spaces is one item" \
+    "core/run.sh:\"if \$resume_mode && x\""$'\n'"tests/unit/a-test.sh" "$(acceptance_spec_evidence "$D" GARD-1)"
+
+# ── R5 ───────────────────────────────────────────────────────────────────────
+LOG="$TEST_TEMP_DIR/negctl.log"
+export ZBUILD_ISSUE="$_ID"
+printf '✓ [#%s/FSTG-1] runs first\n✗ [#%s/GARD-1] never skips\n' "$_ID" "$_ID" > "$LOG"
+assert_eq "[R5] the last other verdict, by a descriptive tag" "GARD-1" "$(_negctl_last_other_verdict "$LOG" LOOP-9)"
+printf '✓ [#%s/SPEC-2] old\n' "$_ID" > "$LOG"
+assert_eq "[R11] ...and by an old one" "SPEC-2" "$(_negctl_last_other_verdict "$LOG" LOOP-9)"
+unset ZBUILD_ISSUE
+
+# ── R6 ───────────────────────────────────────────────────────────────────────
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh" 2>/dev/null
+_id=""; _ag_negctl_line_id_v _id "NEGCTL PASS FSTG-1 control_valid"
+assert_eq "[R6] the id on a NEGCTL PASS line" "FSTG-1" "$_id"
+_id=""; _ag_negctl_line_id_v _id "NEGCTL ERROR timeout:GARD-1"
+assert_eq "[R6] ...and on a NEGCTL ERROR line" "GARD-1" "$_id"
+_id=""; _ag_negctl_line_id_v _id "NEGCTL FAIL SPEC-4 tautology"
+assert_eq "[R11] ...and an old one" "SPEC-4" "$_id"
+
+# ── R7 ───────────────────────────────────────────────────────────────────────
+# shellcheck source=../../plugins/agent/build/lib/prompt.sh
+source "$REPO_ROOT/plugins/agent/build/lib/prompt.sh" 2>/dev/null
+_lim="$(_build_compose_limits "core/run.sh,tests/unit/from-stage-test.sh" "FSTG-1: tests/unit/from-stage-test.sh" 2>/dev/null)"
+if [[ "$_lim" == *"tests/unit/from-stage-test.sh"* ]]; then
+    assert_fail "[R7] build's limits leave out a test file bound with a descriptive id" "$_lim"
+else
+    assert_pass "[R7] build's limits leave out a test file bound with a descriptive id"
+fi
+_sum_src="$(cat "$REPO_ROOT/plugins/agent/build/lib/summary.sh")"
+_probe_re="$(sed -n '/_build_guard_false_completion()/,/^}/p' <<< "$_sum_src" | grep -c 'SPEC-\[0-9\]' || true)"
+assert_eq "[R7] the false-completion probe no longer reads SPEC-<n> alone" "0" "$_probe_re"
+
+# ── R8 ───────────────────────────────────────────────────────────────────────
+# shellcheck source=../../scripts/lib/run-status-render.sh
+source "$REPO_ROOT/scripts/lib/run-status-render.sh" 2>/dev/null
+_o=""; _rsc_code_labels_v _o "failed [#1805/FSTG-1] and [#1805/SPEC-2]"
+assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/FSTG-1]` and `[#1805/SPEC-2]`' "$_o"
+
+# ── R9 ───────────────────────────────────────────────────────────────────────
+REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests/unit"
+printf 'assert "[#%s/FSTG-1] keep" 1\nassert "[#%s/SPEC-3] old form, still in contract" 1\nassert "[#%s/SPEC-7] stale" 1\nassert "[#%s/LOOP-2] stale" 1\nassert "[#99/LOOP-2] other issue" 1\nassert "[UTF-8] not a tag" 1\n' "$_ID" "$_ID" "$_ID" "$_ID" \
+    > "$REPO/tests/unit/from-stage-test.sh"
+# shellcheck source=../../plugins/agent/test-author/plugin.sh
+source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" 2>/dev/null
+ZBUILD_ISSUE="$_ID" _ta_drop_stale_tags "$D" "$REPO"
+_tf="$(cat "$REPO/tests/unit/from-stage-test.sh")"
+assert_contains "[R9] a tag still in the contract stays" "$_tf" "[#$_ID/FSTG-1] keep"
+assert_contains "[R11] ...an old-form one too" "$_tf" "[#$_ID/SPEC-3]"
+assert_not_contains "[R9] this issue's old-form tag no longer in the contract goes" "$_tf" "[#$_ID/SPEC-7]"
+assert_not_contains "[R9] ...and a descriptive one" "$_tf" "[#$_ID/LOOP-2]"
+assert_contains "[R9] another issue's tag stays" "$_tf" "[#99/LOOP-2]"
+assert_contains "[R9] a bracket that is no tag stays" "$_tf" "[UTF-8]"
+
+# ── R10 ──────────────────────────────────────────────────────────────────────
+G="$(setup_git_temp_repo id-readers)"
+mkdir -p "$G/core"; printf 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\nif $resume_mode && x\nfin\n' > "$G/core/run.sh"
+git -C "$G" add -A >/dev/null 2>&1; git -C "$G" -c user.email=t@t -c user.name=t commit -qm r >/dev/null 2>&1
+# shellcheck source=../../plugins/agent/design/lib/coverage.sh
+source "$REPO_ROOT/plugins/agent/design/lib/coverage.sh" 2>/dev/null
+_cov="$(_dcov_done_evidence "$D" "$G")"
+assert_contains "[R10] the coverage check shows the line holding the text" "$_cov" 'if $resume_mode && x'
+assert_contains "[R10] ...and the lines around it" "$_cov" "fin"
+_jdg="$(acceptance_requirements_for_judge "$D" "$G")"
+assert_contains "[R10] issue-acceptance shows the line holding the text" "$_jdg" '13| if $resume_mode && x'
+
+# ── R12 ──────────────────────────────────────────────────────────────────────
+# shellcheck source=../../plugins/agent/issue-acceptance/plugin.sh
+source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" 2>/dev/null
+_iap="$(_ia_prompt "I" "S" "D" "pass" 2>/dev/null | tr -s '[:space:]' ' ')"
+assert_contains "[R12] issue-acceptance's prompt names the issue's requirements" "$_iap" "ISSUE REQUIREMENTS"
+_num=0; [[ "$_iap" == *"numbered R-1"* || "$_iap" == *"(R-2:"* ]] && _num=1
+assert_eq "[R12] ...and does not say they are numbered R-1, R-2" "0" "$_num"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))

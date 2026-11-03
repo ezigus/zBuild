@@ -104,7 +104,7 @@ route_to_model() {
     printf '%s\n' "$2" > "$MOCK_PROMPT_COPY" 2>/dev/null || true
     # A complete design (scope + acceptance), so the stage reaches its success
     # path; written where the prompt says, as the real model does.
-    printf '# Design (fresh)\n\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[change]: an empty input returns rc 1\nWIRING: none\nTESTFILES:\nSPEC-1: tests/unit/resume-default-test.sh\n```\n' > "$(zb_test_prompt_write_path "$2")"
+    printf '# Design (fresh)\n\n```scope\nfoo.sh\n```\n\n```acceptance\nWORK-1[change]: an empty input returns rc 1\nWIRING: none\nTESTFILES:\nWORK-1: tests/unit/resume-default-test.sh\n```\n' > "$(zb_test_prompt_write_path "$2")"
     return 0
 }
 apply_scope_redaction() { cp "$1" "$2"; return 0; }

@@ -248,28 +248,40 @@ path/to/file2
    The build follows them in order.
 
 4. A \`\`\`acceptance block listing what this change must deliver. Each line is
-   one requirement: a permanent number (SPEC-1, SPEC-2, …), a status, and ONE
-   behaviour someone could observe and test.
+   one requirement: an id, a status, and ONE behaviour someone could observe and test.
+   The id describes the SPEC: a code of 3 or 4 capital letters or digits,
+   starting with a letter, that says what it is about, a dash, and a number —
+   LOOP-1 for a SPEC about loop state. SPECs about the same thing share the code
+   and count up: LOOP-1, LOOP-2. A SPEC's code is never one of the issue's
+   requirement codes, and never an id the issue itself writes.
+   An id never changes: a SPEC you keep keeps its id. A new SPEC takes the
+   number one more than the highest its code has ever had, removed ones counted.
+   A SPEC you drop gets its own line in the block, \`REMOVED: <id> — <why>\`, and
+   that line stays in every later design, so the id is never used again.
+   A design written with the old ids (SPEC-1, SPEC-2, …) gives each SPEC a new
+   id once; the old ids need no REMOVED line.
    A requirement that asks for several things gets one SPEC per thing, each
-   naming the same R-n in covers: — never one SPEC that joins them with "and" or ";".
+   naming the same requirement id in covers: — never one SPEC that joins them with "and" or ";".
    Each SPEC is checked against one assertion, so a SPEC that promises two
    things is never fully met by it.
 
    The status says what work the requirement needs. Look at the code before you choose:
-   - \`SPEC-n[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
+   - \`LOOP-1[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
      If the code already does it, it is not [code]: its test would already pass, and the build stalls on it.
      A [code] requirement describes what the code does, not what a file contains: not "x.sh contains foo" or "file y exists".
-   - \`SPEC-n[no-code]:\` — it needs work that changes no behaviour: docs, a
+   - \`LOOP-2[no-code]:\` — it needs work that changes no behaviour: docs, a
      test, config, or a refactor. Its test must pass after the change; it need not fail before.
-   - \`SPEC-n[done]:\` — the code already does it. Name the evidence at the end of the line, after \` evidence: \` —
-     a file and line (scripts/x.sh:42) or an existing test file, by its path from the repository root,
-     several separated by spaces. Each must exist; a line number must be inside its file. No test is written for it.
+   - \`GARD-1[done]:\` — the code from before your change already does it. Name the evidence at the end of the line, after \` evidence: \` —
+     a file by its path from the repository root with an exact piece of its text in double quotes
+     (scripts/x.sh:"run_guard()"), or an existing test file named alone; several separated by spaces.
+     The text must be in the file on the default branch, outside anything this branch changed: code this
+     work added is not done yet, so it is [code], with a test. No test is written for a [done] SPEC.
    Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
 
    Test labels: each test file under TESTFILES holds at least one assertion
    whose label carries the requirement's tag, which includes this issue's
-   number — for SPEC-1 of this issue:
-   $(acceptance_spec_tag SPEC-1 2>/dev/null || printf '[SPEC-1]'). A shared test
+   number — for LOOP-1 of this issue:
+   $(acceptance_spec_tag LOOP-1 2>/dev/null || printf '[LOOP-1]'). A shared test
    may already hold other issues' tags; leave them alone. Each [code]
    assertion is also run against the code from before your change and must
    fail there, so write ONE requirement per assertion — then each behaviour is
@@ -277,21 +289,22 @@ path/to/file2
 
 The \`\`\`acceptance block format:
 \`\`\`acceptance
-SPEC-1[code]: <one new behaviour this change introduces>
-SPEC-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
-SPEC-3[done]: <something the code already does> evidence: scripts/x.sh:42
+LOOP-1[code]: <one new behaviour this change introduces>
+LOOP-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
+GARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"
+REMOVED: LOOP-3 — <why this SPEC was dropped>
 WIRING: <the existing file that calls the new code>
 TESTFILES:
-SPEC-1: tests/unit/some-test.sh
-SPEC-2: tests/integration/other-test.sh
+LOOP-1: tests/unit/some-test.sh
+LOOP-2: tests/integration/other-test.sh
 \`\`\`
 
 Bind each test file to its requirement:
-- Prefix the path with \`SPEC-n: \`, e.g. \`SPEC-1: tests/unit/foo-test.sh\`.
-- Several paths for one requirement: \`SPEC-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
-- Write one \`SPEC-n: path\` line per [code] requirement, so each requirement
+- Prefix the path with the SPEC's id, e.g. \`LOOP-1: tests/unit/foo-test.sh\`.
+- Several paths for one requirement: \`LOOP-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
+- Write one \`<id>: path\` line per [code] requirement, so each requirement
   is proven by its own test file. A [done] requirement needs none. A path with
-  no \`SPEC-n:\` prefix applies to every requirement.
+  no id prefix applies to every requirement.
 
 WIRING: Which existing file calls the new code?
 - Name the file in your scope whose code calls (or loads) the new behaviour:
@@ -343,7 +356,7 @@ DESIGN_PROMPT
     # #2364: found by what it contains.
     local _req_f _reqs; _req_f="$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     _reqs="$(acceptance_requirements_list "$_req_f")"
-    [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (numbered by the engine)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
+    [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (each with its id)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `LOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
 
     # On a later round design REFINES its prior design.md rather than
     # re-creating it. #1825 established that this content is spliced exactly ONCE. #1979 keeps
@@ -379,7 +392,7 @@ DESIGN_PROMPT
     # says"), never in another stage's verdict.
     if [[ -n "$_prior_design_body" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.
-        printf '\nIf Previous work says a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
+        printf '\nIf Previous work says a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file with an exact piece of its text, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
             >> "$prompt_input_file"
     fi
 
@@ -477,7 +490,9 @@ ${_dp_limits}")"; then
     # findings the next run needs (review on PR #2399).
     local -a _fnd=()
     local _v _u
-    _design_checks "$output_draft" "$repo_root" "$_req_f"
+    # #2462: held to the ids of the last design that passed (and, through the
+    # requirement list, to the ids the issue's words write).
+    _design_checks "$output_draft" "$repo_root" "$_req_f" "$output_design_md"
     for _v in "${_DESIGN_VIOLATIONS[@]}"; do _fnd+=("$(_dck_plain "$_v")"); done
     if [[ ${#_fnd[@]} -eq 0 && -n "$_reqs" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
         _design_coverage "$output_draft" "$_reqs" "$tier"

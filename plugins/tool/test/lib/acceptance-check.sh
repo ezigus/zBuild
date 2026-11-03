@@ -69,6 +69,16 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS
 # shellcheck source=./acceptance-reason.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/acceptance-reason.sh"
 
+# _ag_negctl_line_id_v <var> <line> — the SPEC id a NEGCTL line is about, or
+# empty. #1715: on an ERROR line it rides in the detail token after the colon.
+# #2462: any id of the contract's shape, descriptive (FSTG-1) or old (SPEC-n).
+_ag_negctl_line_id_v() {
+    local -n _anl="$1"; _anl=""
+    if [[ "$2" =~ ^NEGCTL\ (PASS|FAIL|SKIP)\ (${_ACCEPTANCE_ID_ERE}) ]]; then _anl="${BASH_REMATCH[2]}"
+    elif [[ "$2" =~ ^NEGCTL\ ERROR\ (timeout|sigkill):(${_ACCEPTANCE_ID_ERE}) ]]; then _anl="${BASH_REMATCH[2]}"; fi
+    return 0
+}
+
 acceptance_gate_run() {
     local _stage_id="$1"
     local state_file="$2"
@@ -221,13 +231,7 @@ acceptance_gate_run() {
             [[ -z "$line" ]] && continue
             # Enrich NEGCTL PASS/FAIL/SKIP lines with SPEC desc and assertion label (#1684)
             local _e_enriched="$line" _e_eid=""
-            if [[ "$line" =~ ^NEGCTL\ (PASS|FAIL|SKIP)\ (SPEC-[0-9]+) ]]; then
-                _e_eid="${BASH_REMATCH[2]}"
-            # #1715: the SPEC id rides in the detail token after the colon, not
-            # as a standalone word, so the leading regex cannot capture it.
-            elif [[ "$line" =~ ^NEGCTL\ ERROR\ (timeout|sigkill):(SPEC-[0-9]+) ]]; then
-                _e_eid="${BASH_REMATCH[2]}"
-            fi
+            _ag_negctl_line_id_v _e_eid "$line"
             [[ -n "$_e_eid" ]] && _ag_statused="$_ag_statused$_e_eid "
             if [[ -n "$_e_eid" ]]; then
                 local _e_desc _e_label _e_tf_line

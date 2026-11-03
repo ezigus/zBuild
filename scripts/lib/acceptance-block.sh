@@ -18,11 +18,19 @@
 [[ -n "${_ACCEPTANCE_BLOCK_LOADED:-}" ]] && return 0
 _ACCEPTANCE_BLOCK_LOADED=1
 
-# One requirement line: `SPEC-<n>[<tag>]:`. The tag may hold hyphens, so
+# A SPEC's id (#2462, ADR-069 §1): a code of 3 or 4 capital letters or digits
+# that describes it, starting with a letter, a dash, and a number — FSTG-1. The
+# old `SPEC-<n>` is an id of this shape, so earlier issues' ids and tags still
+# read. Every reader matches ids with this one pattern. No {2,3} interval:
+# awk reads it too, and mawk does not read every interval.
+_ACCEPTANCE_ID_ERE='[A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+'
+# One requirement line: `<id>[<tag>]:`. The tag may hold hyphens, so
 # `[no-code]` is a tag (#2304, ADR-069 §1) — it used to be `[a-z]+`, and a
 # `SPEC-2[no-code]:` line was silently dropped from every list. Groups:
 # 1 = the id, 3 = the tag (empty when the line has none).
-_ACCEPTANCE_SPEC_RE='^(SPEC-[0-9]+)(\[([a-z-]+)\])?:'
+_ACCEPTANCE_SPEC_RE="^(${_ACCEPTANCE_ID_ERE})(\\[([a-z-]+)\\])?:"
+# A test-file binding line under TESTFILES: `<id>: <path> …`. Group 1 = the id.
+_ACCEPTANCE_BIND_RE="^(${_ACCEPTANCE_ID_ERE}):[[:space:]]"
 
 # The shared timeout helper (#1752), loaded as a same-directory
 # `source "$DIR/<file>.sh"` line so _runner_contract_lib_closure lists it too.
@@ -84,13 +92,15 @@ extract_acceptance_block() {
                     in_testfiles=0
                 elif [[ -n "$_t" ]]; then
                     if [[ "$line" =~ ^[[:space:]] && ${#testfiles[@]} -gt 0 \
-                          && "${testfiles[-1]}" =~ ^SPEC-[0-9]+: ]]; then
+                          && "${testfiles[-1]}" =~ $_ACCEPTANCE_BIND_RE ]]; then
                         testfiles[-1]+=" $_t"
                     else
                         testfiles+=("$_t")
                     fi
                 fi
-            elif [[ "$_t" == SPEC:* || "$_t" =~ $_ACCEPTANCE_SPEC_RE ]]; then
+            elif [[ "$_t" == SPEC:* || "$_t" == REMOVED:* || "$_t" =~ $_ACCEPTANCE_SPEC_RE ]]; then
+                # #2462: a REMOVED line is its own entry — never part of the SPEC
+                # before it — and its own wrapped words carry on to it.
                 specs+=("$_t")
             elif [[ -n "$_t" && ${#specs[@]} -gt 0 && ! "$_t" =~ ^[A-Z][A-Z_]*: ]]; then
                 specs[-1]+=" $_t"
@@ -215,7 +225,8 @@ acceptance_spec_status() {
 
 # acceptance_spec_evidence <design_md> <spec_id>  (#2304, ADR-069 §1)
 # Echoes the evidence an "already done" requirement names — the items after
-# ` evidence: ` on its line (`file:line` or a test file), one per line. Empty
+# ` evidence: ` on its line, one per line: `file:"exact text"` or a test file
+# (#2462; the old `file:line` still reads, and design's checks refuse it). Empty
 # for any other status, and when none is named.
 acceptance_spec_evidence() {
     local design_md="${1:-}" spec_id="${2:-}" block_output
@@ -226,8 +237,55 @@ acceptance_spec_evidence() {
     local _ev="${_ACC_SPEC_REST#* evidence: }"
     local -a _items=()
     # %% (from the FIRST " covers: "), not %: evidence ends where covers begins.
-    read -ra _items <<< "${_ev%% covers: *}"
+    _acceptance_evidence_items_v _items "${_ev%% covers: *}"
     [[ ${#_items[@]} -gt 0 ]] && printf '%s\n' "${_items[@]}"
+    return 0
+}
+
+# _acceptance_evidence_items_v <array> <evidence> — the items of a [done]
+# requirement's evidence, split on spaces except inside a quoted text (#2462).
+_acceptance_evidence_items_v() {
+    local -n _aei="$1"; local _s="$2" _re='^[[:space:]]*([^[:space:]"]+:"[^"]*"|[^[:space:]]+)(.*)$'
+    _aei=()
+    while [[ "$_s" =~ $_re ]]; do _aei+=("${BASH_REMATCH[1]}"); _s="${BASH_REMATCH[2]}"; done
+    return 0
+}
+
+# acceptance_evidence_split <item> <path_var> <text_var> <line_var> — one
+# evidence item's parts: `file:"text"` sets path and text, the old `file:N`
+# sets path and line, a bare path sets path alone.
+acceptance_evidence_split() {
+    local -n _aesp="$2" _aest="$3" _aesl="$4"
+    local _it="$1" _rt='^([^"]+):"(.*)"$' _rl='^(.+):([0-9]+)$'
+    _aesp="$_it" _aest="" _aesl=""
+    if [[ "$_it" =~ $_rt ]]; then _aesp="${BASH_REMATCH[1]}"; _aest="${BASH_REMATCH[2]}"
+    elif [[ "$_it" =~ $_rl ]]; then _aesp="${BASH_REMATCH[1]}"; _aesl="${BASH_REMATCH[2]}"; fi
+    return 0
+}
+
+# acceptance_evidence_line_v <var> <content> <text> — the number of the first
+# line of <content> that holds <text>, or empty. Read by the shell, no fork.
+acceptance_evidence_line_v() {
+    local -n _ael="$1"; local _l _n=0
+    _ael=""
+    [[ -n "$3" ]] || return 0
+    while IFS= read -r _l; do
+        _n=$((_n + 1))
+        [[ "$_l" == *"$3"* ]] && { _ael="$_n"; return 0; }
+    done <<< "$2"
+    return 0
+}
+
+# acceptance_list_removed_ids <design_md>  (#2462, ADR-069 §1)
+# Each `REMOVED: <id> — <why>` line of the acceptance block, as "<id><TAB><why>".
+acceptance_list_removed_ids() {
+    local design_md="${1:-}" blk l re
+    re="^REMOVED:[[:space:]]*(${_ACCEPTANCE_ID_ERE})[[:space:]]*(—|–|-|:)?[[:space:]]*(.*)$"
+    blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    while IFS= read -r l; do
+        [[ "$l" == "TESTFILES:" ]] && break
+        [[ "$l" =~ $re ]] && printf '%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}"
+    done <<< "$blk"
     return 0
 }
 
@@ -291,9 +349,11 @@ acceptance_list_wiring() {
         fi
         if [[ $in_block -eq 1 ]]; then
             # Stop wiring collection when a new recognized sentinel is hit
+            # #2462: a SPEC or binding line, whatever its id, ends the list.
+            [[ $in_wiring -eq 1 && "${line#"${line%%[![:space:]]*}"}" =~ ^${_ACCEPTANCE_ID_ERE}(\[[a-z-]+\])?: ]] && in_wiring=0
             if [[ $in_wiring -eq 1 ]]; then
                 case "$line" in
-                    TESTFILES:|SPEC:*|SPEC-[0-9]*) in_wiring=0 ;;
+                    TESTFILES:|SPEC:*|REMOVED:*) in_wiring=0 ;;
                     '') continue ;;
                     *)
                         [[ -z "$line" ]] && continue
@@ -519,8 +579,8 @@ acceptance_list_testfiles() {
             # Stop at WIRING: sentinel (defensive: may appear after TESTFILES: in output)
             [[ "$line" == 'WIRING:'* ]] && break
             # Strip SPEC-n: prefix — emit the bare path(s) into the union
-            if [[ "$line" =~ ^SPEC-[0-9]+:[[:space:]]+(.*) ]]; then
-                local _bound_str="${BASH_REMATCH[1]}"
+            if [[ "$line" =~ $_ACCEPTANCE_BIND_RE ]]; then
+                local _bound_str="${line#*:}"
                 local -a _bound_parts
                 read -ra _bound_parts <<< "$_bound_str"
                 local _bp
@@ -553,7 +613,7 @@ acceptance_has_per_spec_binding() {
         if [[ "$line" == "TESTFILES:" ]]; then in_testfiles=1; continue; fi
         if [[ $in_testfiles -eq 1 ]]; then
             [[ "$line" == 'WIRING:'* ]] && break
-            [[ "$line" =~ ^SPEC-[0-9]+:[[:space:]] ]] && return 0
+            [[ "$line" =~ $_ACCEPTANCE_BIND_RE ]] && return 0
         fi
     done <<< "$block_output"
     return 1
@@ -621,8 +681,8 @@ acceptance_list_testfiles_for_spec() {
             line="${line%$'\r'}"
             [[ -z "$line" ]] && continue
             [[ "$line" == 'WIRING:'* ]] && break
-            if [[ "$line" =~ ^(SPEC-[0-9]+):[[:space:]]+(.*) ]]; then
-                local _bid="${BASH_REMATCH[1]}" _bpaths="${BASH_REMATCH[2]}"
+            if [[ "$line" =~ $_ACCEPTANCE_BIND_RE ]]; then
+                local _bid="${BASH_REMATCH[1]}" _bpaths="${line#*:}"
                 if [[ "$_bid" == "$spec_id" ]]; then
                     local -a _bparts; read -ra _bparts <<< "$_bpaths"
                     local _bp
@@ -682,17 +742,18 @@ acceptance_requirements_for_judge() {
             *)       printf '  Status: needs work (code) — its test failed on the old code and passes now\n'; continue ;;
         esac
         [[ "$_ACC_SPEC_STATUS" == "done" && "$_ACC_SPEC_REST" == *" evidence: "* ]] || continue
-        local _evl="${_ACC_SPEC_REST#* evidence: }"
-        local -a _evs=(); read -ra _evs <<< "${_evl%% covers: *}"
+        local _evl="${_ACC_SPEC_REST#* evidence: }" _evt _evn _src
+        local -a _evs=(); _acceptance_evidence_items_v _evs "${_evl%% covers: *}"
         for ev in "${_evs[@]+"${_evs[@]}"}"; do
             printf '  Evidence: %s\n' "$ev"
-            path="$ev" n=1
-            [[ "$ev" =~ ^(.+):([0-9]+)$ ]] && { path="${BASH_REMATCH[1]}"; n=$((10#${BASH_REMATCH[2]})); }
+            acceptance_evidence_split "$ev" path _evt _evn
             [[ "$path" != /* && "/$path/" != *"/../"* && $budget -gt 0 ]] || continue
-            from=$(( n > 10 ? n - 10 : 1 ))
-            # awk reads to the end (no early exit), so git never takes SIGPIPE.
-            body="$(git -C "$root" show "HEAD:$path" 2>/dev/null \
-                | awk -v a="$from" -v b="$((from + 19))" 'NR >= a && NR <= b { printf "    %d| %s\n", NR, $0 }')" || body=""
+            _src="$(git -C "$root" show "HEAD:$path" 2>/dev/null)" || _src=""
+            # #2462: the code around where the evidence's text is, not a line number.
+            n="${_evn:-1}"; [[ -n "$_evt" ]] && { acceptance_evidence_line_v n "$_src" "$_evt"; n="${n:-1}"; }
+            n=$((10#$n)); from=$(( n > 10 ? n - 10 : 1 ))
+            body="$(awk -v a="$from" -v b="$((from + 19))" 'NR >= a && NR <= b { printf "    %d| %s\n", NR, $0 }' <<< "$_src")" || body=""
+            [[ -n "$_src" ]] || body=""
             [[ -n "$body" ]] || { printf '    (not found in the commit at HEAD)\n'; continue; }
             body="${body:0:$budget}"; budget=$((budget - ${#body}))
             printf '%s\n' "$body"

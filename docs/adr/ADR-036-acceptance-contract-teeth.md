@@ -1021,8 +1021,19 @@ In #1951's run the design named its own test file under `WIRING:`. Level 3 put t
 - **A file listed under `TESTFILES:` is never a WIRING file.** A test checks the change; it is not what runs it. Design's checks refuse it (`WIRING_IS_TEST <file>`, C5), and the words say to name the file whose code calls the new code, or to write `WIRING: none` when only the test harness runs it.
 - **The put-back target stays put back.** Level 3 copies the TESTFILES from HEAD except its target, so the run sees the target's merge-base content.
 
+## Amendment (2026-11-03, #2462) — a SPEC id describes its item
+
+A SPEC's id is no longer `SPEC-<n>` alone: it is a code describing the SPEC, a dash and a number (`FSTG-1`),
+and never moves (ADR-069 §1, amended 2026-11-03). The tag is built the same way, `[#<issue>/<id>]`. Every
+reader of an id — the acceptance block, the negative control's last-verdict lookup, the acceptance check's
+NEGCTL lines, test-author's stale-tag step, build, the status comment — matches the one pattern
+`_ACCEPTANCE_ID_ERE`, which the old `SPEC-<n>` also fits, so every existing tag reads as before. With no issue
+(a `--goal` run) test-author still strips only bare old-form `[SPEC-n]` tags: a bare `[ABC-1]` may be any
+bracketed word.
+
 ## Enforced by
 
+- Amendment (2026-11-03, #2462) → `tests/unit/descriptive-id-readers-test.sh` R1–R11
 - §1 → `tests/unit/acceptance-block-test.sh` TC-7 (`acceptance_list_spec_ids` returns the ids); `tests/unit/acceptance-coverage-test.sh` C6 (bare legacy `SPEC:` lines carry no id and are not checked)
 - §2 → `tests/unit/acceptance-coverage-test.sh` C1–C5 (an untagged SPEC is named; zero or missing TESTFILES count as untagged); `tests/integration/acceptance-gate-test.sh` S3 (`acceptance.gate.untagged_spec`)
 - §3 → `tests/unit/acceptance-negctl-test.sh` NC-A (load-bearing passes), NC-B and NC-D (tautology, the #844 shape), NC-C (`not_passing_at_head`), NC-E (merge-base equals HEAD gives a per-SPEC `no_impl_delta` skip); `tests/integration/acceptance-gate-test.sh` S1, S2, S7; `tests/unit/merge-base-default-branch-test.sh` MB-1–MB-5
