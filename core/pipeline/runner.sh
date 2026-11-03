@@ -2832,6 +2832,9 @@ main() {
         # primary artifacts available. A still-absent artifact causes exit 1 at
         # the dispatch loop's stale-artifact check.
         _runner_resume_rehydrate "$_runner_issue" "$state_dir"
+        # ADR-006 §3.6 (#1805): signal to cycle orchestrators that this is a
+        # resume so they restore iteration count from state (SPEC-7).
+        export _ZBUILD_RESUME_ACTIVE=true
         eb_emit_event "pipeline.resume" "run_id=$_runner_run_id" "issue=$_runner_issue"
         info "Pipeline resuming — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
         if [[ -n "$from_stage" ]]; then
