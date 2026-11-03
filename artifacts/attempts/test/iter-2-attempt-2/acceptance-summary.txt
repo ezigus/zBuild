@@ -1,0 +1,46 @@
+NEGCTL PASS SPEC-1
+      design : On resume (all entry paths), before the dispatch loop, the runner calls _artifact_persist_restore an…
+      asserts: assert_fail "[#1805/SPEC-1] setup: snapshot to state branch failed" \
+NEGCTL PASS SPEC-2
+      design : A complete stage whose primary artifact is absent from both disk and the git state branch causes the…
+      asserts: assert_eq "[#1805/SPEC-2] resume exits 1 when primary artifact cannot be restored" \
+NEGCTL PASS SPEC-3
+      design : --from-stage <s> rehydrates all stages before <s> via _artifact_persist_restore and _artifact_persis…
+      asserts: assert_fail "[#1805/SPEC-3] setup: snapshot to state branch failed" \
+NEGCTL PASS SPEC-4
+      design : --from-stage <s> when a stage before <s> has no restorable artifact emits the preflight diagnostic p…
+      asserts: assert_eq "[#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact" \
+NEGCTL SKIP SPEC-5 no_code
+      design : ADR-006-resume-contract.md amended with step 3.6: before the dispatch loop the runner restores compl…
+      asserts: assert_contains "[#1805/SPEC-5] ADR-006 step 3.6 added (step number present)" \
+NEGCTL SKIP SPEC-6 no_code
+      design : ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant applies to new run…
+      asserts: assert_contains "[#1805/SPEC-6] ADR-050 §6 boundary note says invariant applies to new runs" \
+NEGCTL PASS SPEC-7
+      design : Cycle orchestrator reads cycle_iterations[CYCLE_ID].current_iter from persisted state at resume and …
+      asserts: print_test_section "[#1805/SPEC-7] cycle orchestrator resumes from current_iter (not 1)"
+NEGCTL SKIP SPEC-8 already_done
+      design : The dispatch loop skips any stage with stage_statuses[s]=="complete" during resume, so the run picks…
+      asserts: <none found>
+NEGCTL PASS SPEC-9
+      design : All three resume entry paths (--resume flag to runner.sh, auto-resume on detecting status=interrupte…
+      asserts: print_test_section "[#1805/SPEC-9] path 1: bash runner.sh --resume restores artifacts"
+NEGCTL SKIP SPEC-10 already_done
+      design : A run with no prior state file proceeds as a fresh start with no rehydration
+      asserts: <none found>
+NEGCTL SKIP SPEC-11 already_done
+      design : A new run of the same issue never skips a stage because the stage-skip guard requires resume_mode=tr…
+      asserts: <none found>
+NEGCTL SKIP SPEC-12 no_code
+      design : tests/integration/resume-rehydrate-test.sh contains a sub-case that runs a fresh (non-resume) run us…
+      asserts: assert_fail "[#1805/SPEC-12] setup: snapshot to state branch failed" \
+NEGCTL PASS SPEC-13
+      design : The hydrate plugin's hydrate_run delegates its copy-back operation to _artifact_persist_put_back (no…
+      asserts: # below, before [#1805/SPEC-13] can run. The stub copies everything (stage-io
+NEGCTL SKIP SPEC-14 no_code
+      design : The test fixtures used by the R-1/R-2/R-5 tests (resume-rehydrate-test.sh) and the R-4 tests (from-s…
+      asserts: assert_contains "[#1805/SPEC-14] resume-rehydrate SPEC-1/SPEC-2/SPEC-12 fixture (artifact-snapshot-c…
+REACHABILITY PASS core/pipeline/runner.sh
+REACHABILITY PASS core/pipeline/cycle-orchestrator.sh
+REACHABILITY PASS plugins/tool/hydrate/plugin.sh
+REACHABILITY PASS change core/state/artifact-persist.sh

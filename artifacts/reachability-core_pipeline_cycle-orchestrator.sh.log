@@ -11,8 +11,7 @@
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] pipeline.resume event emitted (runner reached resume path)
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] pipeline.resume precedes first stage.start (restore before dispatch loop)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
 
   [38;2;0;212;255m[#1805/SPEC-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume/interrupted): intake-result.json restored
@@ -20,8 +19,7 @@
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): pipeline.resume event emitted
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (restore before dispatch loop)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
 
   [38;2;0;212;255m[#1805/SPEC-1] path 3: zbuild pipeline resume --run-id restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake-result.json restored
@@ -29,13 +27,11 @@
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (restore before dispatch loop)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
 
   [38;2;0;212;255m[#1805/SPEC-2] missing artifact causes resume exit 1 before any stage.start[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-2] resume exits 1 when primary artifact cannot be restored
-  [38;2;248;113;113m✗[0m [#1805/SPEC-2] no stage.start emitted before exit 1
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-2] no stage.start emitted before exit 1
 
   [38;2;0;212;255m[#1805/SPEC-5] ADR-006 amended: step 3.5 restores artifacts before dispatch loop[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 added (step number present)
@@ -61,12 +57,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m4 of 35 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-2] no stage.start emitted before exit 1
+  [38;2;74;222;128m[1mAll 35 tests passed[0m
 
 ### core/pipeline/cycle-orchestrator.sh head tests/integration/resume-rehydrate-test.sh
 
@@ -81,8 +72,7 @@
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] pipeline.resume event emitted (runner reached resume path)
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] pipeline.resume precedes first stage.start (restore before dispatch loop)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
 
   [38;2;0;212;255m[#1805/SPEC-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume/interrupted): intake-result.json restored
@@ -90,8 +80,7 @@
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): pipeline.resume event emitted
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (restore before dispatch loop)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
 
   [38;2;0;212;255m[#1805/SPEC-1] path 3: zbuild pipeline resume --run-id restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake-result.json restored
@@ -99,13 +88,11 @@
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted
   [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (restore before dispatch loop)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
 
   [38;2;0;212;255m[#1805/SPEC-2] missing artifact causes resume exit 1 before any stage.start[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-2] resume exits 1 when primary artifact cannot be restored
-  [38;2;248;113;113m✗[0m [#1805/SPEC-2] no stage.start emitted before exit 1
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-2] no stage.start emitted before exit 1
 
   [38;2;0;212;255m[#1805/SPEC-5] ADR-006 amended: step 3.5 restores artifacts before dispatch loop[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-5] ADR-006 step 3.6 added (step number present)
@@ -131,12 +118,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m4 of 35 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-2] no stage.start emitted before exit 1
+  [38;2;74;222;128m[1mAll 35 tests passed[0m
 
 ### core/pipeline/cycle-orchestrator.sh reverted tests/integration/from-stage-rehydrate-test.sh
 
@@ -146,17 +128,14 @@
 
   [38;2;0;212;255m[#1805/SPEC-3] --from-stage rehydrates prior-stage artifacts and skips their stage.start[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-3] setup: state branch populated
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.VXC6zs/s3-state/artifacts/intake-result.json[0m
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
-    [2moutput missing: prior-run intake[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
   [38;2;74;222;128m✓[0m [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)
-    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)
 
   [38;2;0;212;255m[#1805/SPEC-4] --from-stage with no restorable artifact exits 1 naming missing stage[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact
-  [38;2;74;222;128m✓[0m [#1805/SPEC-4] stderr names the missing stage (intake)
+  [38;2;74;222;128m✓[0m [#1805/SPEC-4] stderr contains preflight diagnostic phrase (has no restorable primary artifact)
   [38;2;74;222;128m✓[0m [#1805/SPEC-4] no stage.start emitted before exit 1
 
   [38;2;0;212;255mfrom-stage-rehydrate test uses a fixture containing a cyclic stage[0m
@@ -165,11 +144,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m3 of 10 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
 
 ### core/pipeline/cycle-orchestrator.sh head tests/integration/from-stage-rehydrate-test.sh
 
@@ -179,17 +154,14 @@
 
   [38;2;0;212;255m[#1805/SPEC-3] --from-stage rehydrates prior-stage artifacts and skips their stage.start[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-3] setup: state branch populated
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.zruIGb/s3-state/artifacts/intake-result.json[0m
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
-    [2moutput missing: prior-run intake[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
   [38;2;74;222;128m✓[0m [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)
-    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)
 
   [38;2;0;212;255m[#1805/SPEC-4] --from-stage with no restorable artifact exits 1 naming missing stage[0m
   [38;2;74;222;128m✓[0m [#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact
-  [38;2;74;222;128m✓[0m [#1805/SPEC-4] stderr names the missing stage (intake)
+  [38;2;74;222;128m✓[0m [#1805/SPEC-4] stderr contains preflight diagnostic phrase (has no restorable primary artifact)
   [38;2;74;222;128m✓[0m [#1805/SPEC-4] no stage.start emitted before exit 1
 
   [38;2;0;212;255mfrom-stage-rehydrate test uses a fixture containing a cyclic stage[0m
@@ -198,11 +170,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m3 of 10 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
-  [38;2;248;113;113m✗[0m [#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
 
 ### core/pipeline/cycle-orchestrator.sh reverted tests/integration/resume-loop-state-test.sh
 
@@ -211,11 +179,11 @@
 
 
   [38;2;0;212;255m[#1805/SPEC-7] cycle orchestrator resumes from current_iter (not 1)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:25:21 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:40:51 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 01:25:21 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 02:40:51 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -240,11 +208,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/SPEC-7] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 01:25:00 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 02:40:52 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 01:25:00 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 02:40:52 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
