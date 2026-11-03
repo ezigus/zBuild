@@ -147,7 +147,12 @@ _build_write_build_summary 2>/dev/null
 
 _s7_verdict="$(jq -r '.outcome // ""' "$_spec7_summary" 2>/dev/null)"
 _s7_kind="$(jq -r '.data.build_kind // ""' "$_spec7_summary" 2>/dev/null)"
-assert_eq "[SPEC-7] inert_build summary: outcome=fail (#1832, #2366)" "fail" "$_s7_verdict"
+# #2460: build said done, changed nothing, and its test is still red — its own
+# work is unfinished, so the try is `unusable` and the engine runs it again,
+# told which test still fails.
+assert_eq "[SPEC-7] inert_build summary: outcome=unusable (#2460)" "unusable" "$_s7_verdict"
+assert_contains "[SPEC-7] ...with a finding naming the test that still fails (#2460)" \
+    "$(jq -r '.data.findings[]?.text // empty' "$_spec7_summary" 2>/dev/null)" "tests/unit/failing-test.sh"
 assert_eq "[SPEC-7] inert_build summary: data.build_kind=inert_build (#1832)" "inert_build" "$_s7_kind"
 assert_eq "[SPEC-7] inert_build summary: no verdict or disposition field (#2366)" "false" \
     "$(jq 'has("verdict") or has("disposition")' "$_spec7_summary" 2>/dev/null)"

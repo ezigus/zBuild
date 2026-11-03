@@ -59,10 +59,6 @@ provides:
     - build.scratch.cleaned
 
 config:
-  # #2371: rounds build spends scanning its own change for secrets and going
-  # back to its model with where they are; still a secret after the last is
-  # outcome fail.
-  check_rounds: 3
   tier_default: T2
   # ADR-017 §11 (#1816): build's own budget, previously written only in the
   # template. `max_turns: 0` omits --max-turns — the call is bounded by its

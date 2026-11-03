@@ -259,7 +259,8 @@ attempt_archive_outputs() {
         # code (__repository__), to the stage's notes (__notes__), to the saved
         # steps of a cut-off call (__cutoff__, #2454), or to any declared
         # output except its summary and its result file — those describe the
-        # try, so they change on every one. One rule, every stage.
+        # try, so they change on every one — or (below, #2460) new findings
+        # about its own work. One rule, every stage.
         _progress=false
         attempt_outputs_fingerprint_v _after "$plugin_dir" "$state_file" "$before"
         while IFS=$'\t' read -r _name _now; do
@@ -276,6 +277,23 @@ attempt_archive_outputs() {
             fi
             _outputs+=("$_name" "$_state")
         done <<< "$_after"
+    fi
+    # #2460: a try that changed no file but whose result names a problem with
+    # its own work its last try did not — build said done with its test still
+    # red, a check found something new — left its next try something to act
+    # on. The same findings again, or none, is no progress. One jq per result,
+    # and only on a try that otherwise made none.
+    if [[ "$_progress" == false ]]; then
+        local _xk _xb _xnow _xprev _xpf="" _xnf=""
+        while IFS=$'\t' read -r _xk _xb; do
+            [[ "$_xk" == X && -n "$_xb" && -s "$_dest/$_xb" ]] || continue
+            _xnow="$_dest/$_xb"; _xprev="$_base/iter-${_iter}-attempt-${_n}/$_xb"
+            _xnf="$(jq -c '[(.data.findings // .findings // [])[]? | (.text? // .)]' "$_xnow" 2>/dev/null || true)"
+            [[ -n "$_xnf" && "$_xnf" != "[]" ]] || continue
+            [[ "$_n" -gt 0 && -s "$_xprev" ]] \
+                && _xpf="$(jq -c '[(.data.findings // .findings // [])[]? | (.text? // .)]' "$_xprev" 2>/dev/null || true)"
+            if [[ "$_xnf" != "$_xpf" ]]; then _progress=true; _outputs+=("__findings__" "changed"); fi
+        done <<< "$_facts"
     fi
     _ATTEMPT_LAST_PROGRESS="$_progress"
     # One jq for the whole record: the outputs go in as name/state pairs, and

@@ -28,6 +28,10 @@
 #             for a next try the progress rule then refused)
 # P9 [guard]  ...the same steps again, or none (the call finished and the list
 #             was removed), are no progress
+# P10 [change] a try whose result holds findings about its own work that differ
+#             from its last try's made progress (#2460: build said done, changed
+#             nothing, and its test still failed — the next try is told so)
+# P11 [guard] ...the same findings again, or none, are no progress
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,6 +114,17 @@ _attempt "$Q" designer 'printf -- "- Read: a.sh\n" > "$_cut"'
 assert_eq "[P9] the same steps again → no progress" "no" "$(_progress designer)"
 _attempt "$Q" designer 'rm -f "$_cut"'
 assert_eq "[P9] the call finished and the list was removed → no progress" "no" "$(_progress designer)"
+
+print_test_section "P10-P11: findings about its own work"
+_fr() { printf '{"outcome":"unusable","data":{"findings":[{"n":1,"text":"%s"}]}}' "$1" > "$ART/designer-result.json"; }
+_attempt "$Q" designer '_fr "tests/a-test.sh still fails"'
+assert_eq "[P10] its result names a problem with its own work it did not name before → progress" "yes" "$(_progress designer)"
+_attempt "$Q" designer '_fr "tests/b-test.sh still fails"'
+assert_eq "[P10] ...a different problem than its last try → progress" "yes" "$(_progress designer)"
+_attempt "$Q" designer '_fr "tests/b-test.sh still fails"'
+assert_eq "[P11] the same findings as its last try → no progress" "no" "$(_progress designer)"
+_attempt "$Q" designer 'printf "{\"outcome\":\"unusable\"}" > "$ART/designer-result.json"'
+assert_eq "[P11] no findings → no progress" "no" "$(_progress designer)"
 
 cleanup_test_env
 print_test_results

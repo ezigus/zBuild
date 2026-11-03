@@ -253,7 +253,10 @@ _build_write_build_summary() {
         _inert_failing_testfile="$(_build_guard_false_completion \
             "$_acceptance_testfiles" "${repo_root:-}" 2>/dev/null || true)"
         if [[ -n "$_inert_failing_testfile" ]]; then
-            build_verdict="fail"   # #2187: the outcome carries the false completion
+            # #2460 (ADR-054 §6a): build's own work is unfinished — it said done,
+            # changed nothing, and its test is still red. The try is `unusable`,
+            # with that as its finding, and the engine runs build again.
+            build_verdict="unusable"
             build_reason="false_completion_detected"
             build_data_kind="inert_build"
             emit_event "build.inert_build" "plugin=build" \
@@ -379,6 +382,9 @@ _build_write_build_summary() {
         # made from.
         + ( ( (if $build_data_kind != "" then {build_kind: $build_data_kind} else {} end)
             + (if ($not_reproduced | length) > 0 then {not_reproduced: $not_reproduced} else {} end)
+            # #2460: what the next try is told — its test still fails.
+            + (if $failing_acceptance_testfile != "" then {findings: [{n: 1,
+                text: "you said the work was done but changed no file, and \($failing_acceptance_testfile) still fails — make it pass by changing the code"}]} else {} end)
             ) as $d | if ($d | length) > 0 then {data: $d} else {} end )
         ' | atomic_write "$output_summary_json" \
         && stage_result_add "$output_summary_json" "$build_verdict" "${_sum_build_reason:-${build_reason:-unknown}}"

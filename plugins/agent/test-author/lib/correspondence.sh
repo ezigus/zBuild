@@ -276,34 +276,3 @@ _ta_correspondence() {
     return 0
 }
 
-# _ta_fixup_calls_v <var> <design.md> <round> <rounds> — #2450: the text each
-# fix-up call is given, one per test file with findings, in _TA_CORR_FINDINGS
-# order. A finding belongs to the files of the SPEC it starts with; one that
-# names no SPEC of the contract goes to every call. One call holding every
-# finding for every file planned all of them and ran out of time (#1805 run
-# 41365460329).
-_ta_fixup_calls_v() {
-    local -n _tfc="$1"; local design="$2" round="$3" rounds="$4"
-    local -a files=() general=() f_text=()
-    local fnd sid tfs tf i found
-    for fnd in "${_TA_CORR_FINDINGS[@]}"; do
-        sid=""; [[ "$fnd" =~ ^(SPEC-[0-9]+) ]] && sid="${BASH_REMATCH[1]}"
-        tfs=""; [[ -n "$sid" ]] && tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null || true)"
-        if [[ -z "${tfs//[[:space:]]/}" ]]; then general+=("$fnd"); continue; fi
-        for tf in $tfs; do
-            found=-1
-            for (( i = 0; i < ${#files[@]}; i++ )); do [[ "${files[i]}" == "$tf" ]] && { found=$i; break; }; done
-            if (( found < 0 )); then files+=("$tf"); f_text+=(""); found=$(( ${#files[@]} - 1 )); fi
-            f_text[found]+="- $fnd"$'\n'
-        done
-    done
-    _tfc=()
-    local g=""; for fnd in ${general[@]+"${general[@]}"}; do g+="- $fnd"$'\n'; done
-    if [[ ${#files[@]} -eq 0 ]]; then
-        _tfc+=("$(printf '\n### What the check of your assertions found (round %s of %s)\nYour assertions were checked against their requirements, and your new and changed test files were run on the code from before this change. These do not hold. Fix each one in its testfile; keep what already holds.\n%s' "$round" "$rounds" "$g")")
-        return 0
-    fi
-    for (( i = 0; i < ${#files[@]}; i++ )); do
-        _tfc+=("$(printf '\n### What the check of your assertions found (round %s of %s)\nYour assertions were checked against their requirements, and your new and changed test files were run on the code from before this change. These do not hold in %s. In this call, fix only %s: each finding below, keeping what already holds. Each other test file with findings is fixed in a call of its own.\n%s%s' "$round" "$rounds" "${files[i]}" "${files[i]}" "${f_text[i]}" "$g")")
-    done
-}

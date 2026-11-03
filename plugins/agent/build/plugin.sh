@@ -205,12 +205,6 @@ _build_stage_run_inner() {
     # prompt order. Build's own latest summary — and every earlier stage's
     # output — reaches it under Previous work; the repository's guidance for
     # build under From the repo.
-    # #2371: what build's own check found in the last round, before the limits.
-    if [[ -n "${_BUILD_CHECK_FOUND:-}" ]]; then
-        local _bp_text; _bp_text="$(cat "$prompt_input_file")"
-        printf '%s\n' "${_bp_text%%$'\n'## What you must not do*}${_BUILD_CHECK_FOUND}
-## What you must not do${_bp_text#*$'\n'## What you must not do}" > "$prompt_input_file"
-    fi
     local _bp_composed
     if ! _bp_composed="$(stage_prompt_compose_parts "$(cat "$prompt_input_file")")"; then
         error "_build_stage_run_inner: the prompt could not be composed — the engine's blocks are missing"
