@@ -178,6 +178,12 @@ _ta_collect_answers() {
         [[ "$line" =~ $re ]] || continue
         a="${BASH_REMATCH[1]}"
         while [[ "$a" == *[[:space:]] ]]; do a="${a%[[:space:]]}"; done
+        # #2460: a finding answered again keeps only its latest answer.
+        local _k="${a%%:*}" _i
+        for _i in "${!_TA_ANSWERS[@]}"; do
+            [[ "${_TA_ANSWERS[_i]%%:*}" == "$_k" ]] && unset '_TA_ANSWERS[_i]'
+        done
+        _TA_ANSWERS=(${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"})
         _TA_ANSWERS+=("$a")
     done <<< "$_joined"
     return 0

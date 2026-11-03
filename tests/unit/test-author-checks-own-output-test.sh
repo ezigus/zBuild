@@ -37,7 +37,7 @@
 #             test-author fixed only its own check's findings)
 # A11 [change] it is not told its assertions are expected to fail on today's
 #             code: after round 1 today's code holds the change
-# A12 [change] what it did about each finding is recorded in its result and
+# A12 [change] what it did about each finding — its latest answer to each (#2460) — is recorded in its result and
 #             summary (ADR-068 §6)
 set -uo pipefail
 
@@ -203,6 +203,12 @@ ANSWERS="ANSWER test finding 3: nothing to do — the test is right   "
 _run
 assert_eq "[A12] an answer keeps no trailing spaces (review on PR #2438)" \
     "test finding 3: nothing to do — the test is right" "$(jq -r '.data.answers[0] // empty' "$A/test-author-result.json" 2>/dev/null)"
+# #2460: a finding answered twice keeps only its latest answer.
+ANSWERS=$'ANSWER test finding 1: nothing to do — the label is there\nANSWER test finding 2: done — fixed\nANSWER test finding 1: done — moved the label onto the assert line'
+_run
+assert_eq "[A12] a finding answered twice keeps only its latest answer" \
+    "test finding 1: done — moved the label onto the assert line|test finding 2: done — fixed" \
+    "$(jq -r '[.data.answers[]?] | sort | join("|")' "$A/test-author-result.json" 2>/dev/null)"
 ANSWERS=""
 
 # ── A5 ───────────────────────────────────────────────────────────────────────

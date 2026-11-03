@@ -31,6 +31,9 @@ Answer with one line per requirement, in the order the issue gives them:
 
 REQUIREMENT: <the requirement, in the issue's words>
 EOF
+    # #2460: a list from the last run is where the work starts.
+    [[ -n "${_INTAKE_PREV_REQS:-}" ]] && printf '\n%s\n' "Your list from the last run is shown below the issue: start from it. Keep each requirement the issue still states, in the same words; add any it misses; leave out any the issue no longer asks for."
+
 }
 
 _ireq_check_own() {
@@ -86,7 +89,10 @@ _intake_requirements_json_v() {
     issue="$(_ireq_issue_text "${1:-}")"
     # #2458: intake has no tools and its reply is its output, so both its calls
     # compose fresh — no notes, and no rule to confirm earlier work.
-    prompt="$(stage_prompt_compose_text --fresh "$(_ireq_write_own)" "ISSUE:"$'\n'"$issue" "$(_ireq_limits)")" \
+    # #2460: the list from the last run, to start from.
+    local _judged="ISSUE:"$'\n'"$issue"
+    [[ -n "${_INTAKE_PREV_REQS:-}" ]] && _judged+=$'\n\n'"YOUR LIST FROM THE LAST RUN:"$'\n'"$_INTAKE_PREV_REQS"
+    prompt="$(stage_prompt_compose_text --fresh "$(_ireq_write_own)" "$_judged" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     _ireq_call_v reply "$prompt" || return 1
     # #2460: a wrapped requirement is read whole.

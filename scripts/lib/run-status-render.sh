@@ -140,7 +140,22 @@ _rsc_first_line_v() {
     while [[ "$_rsv_rest" == *$'\n' ]]; do _rsv_rest="${_rsv_rest%$'\n'}"; done
     [[ "$_rsv_rest" =~ [^[:space:]] ]] \
         && _rsv_l+=$'\n'"<details><summary>the rest of what it reported</summary>"$'\n\n'"${_rsv_rest}"$'\n\n'"</details>"
+    _rsc_code_labels_v _rsv_l "$_rsv_l"
     printf -v "$1" '%s' "$_rsv_l"
+}
+
+# _rsc_code_labels_v <var> <text> — each requirement label, `[#1805/SPEC-3]`,
+# shown as code (#2460): GitHub links `#1805` and shows the issue's title in its
+# place. One already between backticks is left as it is. Read by the shell.
+_rsc_code_labels_v() {
+    local -n _rcl="$1"; local _in="$2" _out="" _pre _lbl
+    local _re='\[#[0-9]+/SPEC-[0-9]+\]'
+    while [[ "$_in" =~ $_re ]]; do
+        _lbl="${BASH_REMATCH[0]}"; _pre="${_in%%"$_lbl"*}"
+        if [[ "$_pre" == *'`' ]]; then _out+="$_pre$_lbl"; else _out+="$_pre\`$_lbl\`"; fi
+        _in="${_in#*"$_lbl"}"
+    done
+    _rcl="$_out$_in"
 }
 
 # ─── #2154: a closed row's summary is a snapshot ─────────────────────────────

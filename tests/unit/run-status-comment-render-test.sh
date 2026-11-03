@@ -262,6 +262,20 @@ assert_eq "[SPEC-8] no eb_emit_event call in the sidecar" "0" \
     "$(grep 'eb_emit_event' "$LIB" | grep -vc 'eb_emit_event() { return 0; }' || true)"
 assert_eq "[SPEC-8] the sidecar never sources the event bus" "0" "$(grep -c 'event-bus' "$LIB")"
 
+# ── #2460: a requirement's label is shown as code ───────────────────────────
+# GitHub links `#1805` and shows the issue's title, so `[#1805/SPEC-3]` read
+# as `[[bug] … #1805/SPEC-3]`. Shown as code, it stays the label it is.
+(
+    source "$REPO_ROOT/scripts/lib/run-status-render.sh" >/dev/null 2>&1
+    _sf="$TEST_TEMP_DIR/lbl-summary.md"
+    printf '%s\n' '## test-author — fail' '' '- 2 findings open on [#1805/SPEC-3]' '- answered: [#1805/SPEC-13] added; `[#1805/SPEC-4]` kept' > "$_sf"
+    _o=""; _rsc_first_line_v _o "$_sf"; printf '%s' "$_o" > "$TEST_TEMP_DIR/lbl.txt"
+)
+_lbl="$(cat "$TEST_TEMP_DIR/lbl.txt" 2>/dev/null)"
+assert_contains "[#2460] a label in the summary line is shown as code" "$_lbl" '`[#1805/SPEC-3]`'
+assert_contains "[#2460] ...and in the rest of what it reported" "$_lbl" '`[#1805/SPEC-13]`'
+assert_eq "[#2460] ...one already shown as code is left alone" "0" "$(grep -c '``\[#1805/SPEC-4\]' <<< "$_lbl" || true)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
