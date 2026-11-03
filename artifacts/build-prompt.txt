@@ -123,29 +123,19 @@ omit this line the pipeline falls back to the plan title.
    - Areas: `docs/adr/ADR-050-prior-work-reuse-contract.md`
 3. Add _artifact_persist_put_back <from> <to> to core/state/artifact-persist.sh (no-clobber copy skipping stage-io/); body identical to current _hydrate_put_back
    - Areas: `core/state/artifact-persist.sh`
-4. Redirect plugins/tool/hydrate/plugin.sh _hydrate_put_back call site to _artifact_persist_put_back (hydrate already sources artifact-persist.sh)
+4. Redirect plugins/tool/hydrate/plugin.sh hydrate_run call site (line 162) to _artifact_persist_put_back (hydrate already sources artifact-persist.sh)
    - Areas: `plugins/tool/hydrate/plugin.sh`
-5. Update tests/unit/hydrate-stage-test.sh: redirect the direct _hydrate_put_back call at line 216 to _artifact_persist_put_back
-   - Areas: `tests/unit/hydrate-stage-test.sh`
-6. Fix _cycle_orchestrator_run_body in core/pipeline/cycle-orchestrator.sh: replace the current unconditional block at lines 2305–2309 (local _persisted_iter … local _start_iter=$(( _persisted_iter + 1 ))) with: \`if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]; then local _persisted_iter; _persisted_iter="$(get_state_field "$state_file" ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"; [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0; local _start_iter=$(( _persisted_iter + 1 )); else local _start_iter=1; fi\` — when not in resume mode, _start_iter is always 1, restoring correct behaviour for fresh runs and nested-loop re-entries
+5. Fix _cycle_orchestrator_run_body in core/pipeline/cycle-orchestrator.sh: replace the unconditional block at lines 2325–2329 with: \`if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]; then local _persisted_iter; _persisted_iter="$(get_state_field "$state_file" ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"; [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0; local _start_iter=$(( _persisted_iter + 1 )); else local _start_iter=1; fi\` — when not in resume mode, _start_iter is always 1, restoring correct behaviour for fresh runs and nested-loop re-entries
    - Areas: `core/pipeline/cycle-orchestrator.sh`
-7. In runner.sh, add \`export _ZBUILD_RESUME_ACTIVE=true\` on the line immediately after the _runner_resume_rehydrate call at runner.sh:2838 (before the eb_emit_event "pipeline.resume" call at line 2839); do NOT set it for fresh runs (the else branch at line 2845)
+6. In runner.sh, add \`export _ZBUILD_RESUME_ACTIVE=true\` on the line immediately after the _runner_resume_rehydrate call at runner.sh:2838 (before the eb_emit_event "pipeline.resume" call at line 2839); do NOT set it for fresh runs (the else branch at line 2845)
    - Areas: `core/pipeline/runner.sh`
-8. Confirm tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh, tests/integration/nested-loop-rounds-test.sh, tests/integration/nested-loop-rounds-build-test.sh, and tests/integration/cycle-member-dispatch-events-test.sh pass after the guard fix (they were broken by the unconditional current_iter read)
+7. Confirm tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh, tests/integration/nested-loop-rounds-test.sh, tests/integration/nested-loop-rounds-build-test.sh, and tests/integration/cycle-member-dispatch-events-test.sh pass after the guard fix (they were broken by the unconditional current_iter read)
    - Areas: `tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh`, `tests/integration/nested-loop-rounds-test.sh`, `tests/integration/nested-loop-rounds-build-test.sh`, `tests/integration/cycle-member-dispatch-events-test.sh`
-9. Update tests/integration/resume-loop-state-test.sh: add \`export _ZBUILD_RESUME_ACTIVE=true\` before the cycle_orchestrator_run call (the test calls the orchestrator directly, bypassing runner.sh; without this the guard at step 6 prevents reading current_iter and SPEC-7 "first dispatched iter is 2" fails); replace the "no iter=1 complete" zero-count assertion using grep-c with \`wc -l | tr -d ' '\`
-   - Areas: `tests/integration/resume-loop-state-test.sh`
-10. Update tests/integration/resume-rehydrate-test.sh — four targeted changes in order: (1) Fix the four grep-c anti-pattern sites: at each of lines ~139, ~225, ~312, ~527 replace \`| grep -c '^...$' 2>/dev/null || echo 0\` with \`| wc -l | tr -d ' '\`; (2) add \`--no-resume\` flag to the SPEC-12 runner invocation (line ~516) to prevent auto-resume (status=interrupted + recent timestamp triggers auto_resume); (3) remove the entire SPEC-12 cycled-dispatch block — the \`_s12_cycled_starts\` initialisation, the jq pipe, and the \`assert_gt "[#1805/SPEC-12] fresh run dispatches cycled sub-stage"\` assertion (the cycled sub-stage does not dispatch in full runner runs of the artifact-snapshot-coverage fixture); (4) remove the entire SPEC-13 section at the end of the file — the \`print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"\` line and the two assertions that follow it (\`assert_contains "resume-rehydrate fixture contains type: cycle"\` and \`assert_gt "resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)"\`) — these are UNTAGGED remnants of SPEC-13 that are now dropped
-   - Areas: `tests/integration/resume-rehydrate-test.sh`
-11. Update tests/integration/from-stage-rehydrate-test.sh: fix the SPEC-3 "intake emits no stage.start" zero-count assertion — replace \`| grep -c '^intake$' 2>/dev/null || echo 0\` with \`| wc -l | tr -d ' '\`
-   - Areas: `tests/integration/from-stage-rehydrate-test.sh`
-12. Update tests/integration/resume-entry-points-test.sh: remove any \`[#1805/SPEC-13]\`-tagged assertions AND any untagged \`assert_gt\` assertions that check cycled sub-stage dispatch counts (no requirement mandates that cycled dispatches in full runner runs); intake-dispatched assertions and type:cycle fixture content checks tagged under a valid SPEC may remain
-   - Areas: `tests/integration/resume-entry-points-test.sh`
-13. Update tests/integration/pipeline-resume-test.sh: pre-write intake's primary artifact to ZBUILD_ARTIFACT_DIR before the --resume run so SPEC-2 fail-closed path does not break the existing exit-0 assertion
+8. Verify tests/integration/pipeline-resume-test.sh: confirm intake's primary artifact is pre-written to ZBUILD_ARTIFACT_DIR before the --resume run (line 255 writes intake-result.json)
    - Areas: `tests/integration/pipeline-resume-test.sh`
-14. Update tests/integration/resume-after-sigint-test.sh: ensure the Phase 1 intake stub writes intake-result.json; if the stub from mock_plugin_factory does not write it, replace with a stub that does; confirm P2.T1 (rc=0) still passes
+9. Verify tests/integration/resume-after-sigint-test.sh: mock_plugin_factory "intake" at line 102 writes intake-result.json; the runner snapshots it after Phase 1; resume rehydration restores it; P2.T1 (rc=0) still passes with the SPEC-2 fail-closed path in effect
    - Areas: `tests/integration/resume-after-sigint-test.sh`
-15. Run npm test and confirm full suite green
+10. Run npm test and confirm full suite green
    - Areas: `core/pipeline/runner.sh`, `core/state/artifact-persist.sh`, `plugins/tool/hydrate/plugin.sh`, `core/pipeline/cycle-orchestrator.sh`
 
 ### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
@@ -159,11 +149,12 @@ omit this line the pipeline falls back to the plan title.
 - Gap 1 — runner.sh resume entry: disarms sentinel, emits `pipeline.resume`, NO artifact restoration. **Fixed in implementation** — `_runner_resume_rehydrate` defined at runner.sh:1702 and called at runner.sh:2838.
 - Gap 2 — runner.sh stale-artifact branch warned+continued; after rehydration the right behaviour is exit 1. **Fixed in implementation** — exit 1 at runner.sh:3827–3832.
 - Gap 3 — runner.sh from-stage path: no artifact check or rehydration. **Fixed in implementation** — `_runner_from_stage_preflight` at runner.sh:1727.
-- Gap 4 — `_cycle_orchestrator_run_body` reads `current_iter` unconditionally (cycle-orchestrator.sh:2301–2309), breaking nested loops. **NOT YET FIXED** — guard with `_ZBUILD_RESUME_ACTIVE` must still be added (step 6), and runner.sh must export `_ZBUILD_RESUME_ACTIVE=true` after line 2838 (step 7).
+- Gap 4 — `_cycle_orchestrator_run_body` reads `current_iter` unconditionally (cycle-orchestrator.sh:2325–2329), breaking nested loops. **NOT YET FIXED** — guard with `_ZBUILD_RESUME_ACTIVE` must still be added (step 6), and runner.sh must export `_ZBUILD_RESUME_ACTIVE=true` after line 2838 (step 7). The test at resume-loop-state-test.sh:76 must also export `_ZBUILD_RESUME_ACTIVE=true` before calling `cycle_orchestrator_run` (step 9).
 - Gap 5 — ADR-006 and ADR-050 not amended. **Fixed in implementation.**
+- Gap 6 — `plugins/tool/hydrate/plugin.sh` line 162 calls `_artifact_persist_put_back` directly but no test fails when the file is reverted to calling `_hydrate_put_back` inline. **NOT YET FIXED** — add SPEC-13 sentinel-mock delegation test (step 5).
 
 **Decision:**
-Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh) into a new `_artifact_persist_put_back <from> <to>` function in `core/state/artifact-persist.sh` (which the runner already sources). Redirect the hydrate plugin's call site to the new function. At the single resume entry point in runner.sh (after `_runner_resume_rehydrate` at line 2838, before `eb_emit_event`), export `_ZBUILD_RESUME_ACTIVE=true` so cycle orchestrators know they are in resume context. In `_cycle_orchestrator_run_body` (cycle-orchestrator.sh:2305–2309), wrap the `_persisted_iter` read with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]; then … else _start_iter=1; fi` — only use persisted iter when actively resuming; otherwise start at 1. Change the stale-artifact branch from warn+continue to exit 1. Add a `_runner_from_stage_preflight` function called before the dispatch loop when `--from-stage` is active. Amend ADR-006 and ADR-050 to document these decisions.
+Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh) into a new `_artifact_persist_put_back <from> <to>` function in `core/state/artifact-persist.sh` (which the runner already sources). Redirect the hydrate plugin's `hydrate_run` call site (line 162) to the new function. At the single resume entry point in runner.sh (after `_runner_resume_rehydrate` at line 2838, before `eb_emit_event`), export `_ZBUILD_RESUME_ACTIVE=true` so cycle orchestrators know they are in resume context. In `_cycle_orchestrator_run_body` (cycle-orchestrator.sh:2325–2329), wrap the `_persisted_iter` read with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]; then … else _start_iter=1; fi` — only use persisted iter when actively resuming; otherwise start at 1. Change the stale-artifact branch from warn+continue to exit 1. Add a `_runner_from_stage_preflight` function called before the dispatch loop when `--from-stage` is active. Amend ADR-006 and ADR-050 to document these decisions.
 
 
 
@@ -171,23 +162,34 @@ Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh)
 
 ## Findings
 
-**Finding 1 — SPEC-13 dropped (design checker findings 1 and 2):** SPEC-13 carried `covers: R-15`, but R-15 does not appear in the engine-numbered requirements R-1 through R-14. A SPEC that covers only a non-existent requirement is not valid. Separately, no listed requirement asks that every test file use a pipeline containing a cyclic stage; R-9 requires only that loop-resume iteration-state restore works correctly, which is addressed by SPEC-7 alone. SPEC-13 is therefore dropped.
+**Finding 1 — SPEC-13 repurposed for hydrate delegation:** The original SPEC-13 (dropped in an earlier pass) is re-used here for the hydrate reachability fix (WIRING check). It covers R-7 and is [code]. R-15 is addressed by the new SPEC-14 (see Finding 11).
 
-**Finding 2 — SPEC-5 R-15 removed (design checker finding 3):** SPEC-5 previously carried `covers: R-5 R-15`. With R-15 non-existent, `R-15` is removed. SPEC-5 now covers only R-5.
+**Finding 2 — SPEC-5 R-15 removed (prior pass):** SPEC-5 previously carried `covers: R-5 R-15`. R-15 is now correctly covered by SPEC-14, not SPEC-5. SPEC-5 covers only R-5.
 
-**Finding 3 — SPEC-8 and SPEC-11 evidence line numbers:** Evidence at `core/pipeline/runner.sh:3808` (`if $resume_mode && [[ -z "$skip_until_stage" ]]`) covers both. Confirmed valid; new implementation lines at 1702 and 2838 are above this line, so it has not shifted to a different location.
+**Finding 3 — SPEC-8 and SPEC-11 evidence line numbers:** Evidence at `core/pipeline/runner.sh:3808` (`if $resume_mode && [[ -z "$skip_until_stage" ]]`) covers both. Verified against current tree.
 
-**Finding 4 — SPEC-10 evidence line number:** `core/state/resume.sh:247` is inside `get_resume_recommendation`, the no-state-file → fresh_start branch. Confirmed valid.
+**Finding 4 — SPEC-10 evidence line number:** `core/state/resume.sh:247` is inside `get_resume_recommendation`, the no-state-file → fresh_start branch. Verified.
 
-**Finding 5 — _artifact_persist_put_back exists; _artifact_persist_snapshot is pre-existing:** `_artifact_persist_put_back` at artifact-persist.sh:638 (new, added by build). `_artifact_persist_snapshot` at artifact-persist.sh:260 (pre-existing function; tests use it for setup). `_artifact_persist_restore` at artifact-persist.sh:568 (pre-existing).
+**Finding 5 — Implementation state (verified this pass):**
+- `_artifact_persist_put_back` at artifact-persist.sh:638 ✓
+- `_artifact_persist_restore` at artifact-persist.sh:568 ✓
+- `_runner_resume_rehydrate` at runner.sh:1702 ✓, called at runner.sh:2838 ✓
+- `plugins/tool/hydrate/plugin.sh` line 162 calls `_artifact_persist_put_back` ✓
+- `plugins/tool/hydrate/plugin.sh` still has `_hydrate_put_back` as dead code (lines 64–73) — no test calls through the plugin's call site; REACHABILITY FAIL confirmed
 
-**Finding 6 — cycle orchestrator unconditional read (regression):** `_cycle_orchestrator_run_body` at lines 2301–2309 reads `current_iter` unconditionally, not guarded by resume mode. For nested loops, the inner cycle's `current_iter` persists from the first outer iteration, causing the second outer iteration to start the inner cycle at N+1 instead of 1. This broke four existing tests. Fix (step 6): wrap with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]`; fresh path sets `_start_iter=1` unconditionally. Step 7: runner.sh exports `_ZBUILD_RESUME_ACTIVE=true` after line 2838. Step 9: resume-loop-state-test.sh exports `_ZBUILD_RESUME_ACTIVE=true` directly (calls orchestrator without runner). These two steps were NOT applied by the build.
+**Finding 6 — Cycle orchestrator unconditional read (NOT YET FIXED):** `_cycle_orchestrator_run_body` at lines 2325–2329 reads `current_iter` unconditionally, not guarded by resume mode. For nested loops, the inner cycle's `current_iter` persists from the first outer iteration, causing the second outer iteration to start the inner cycle at N+1 instead of 1. Broke four existing tests. Fix (step 6): wrap with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]`; fresh path sets `_start_iter=1` unconditionally. Step 7: runner.sh exports `_ZBUILD_RESUME_ACTIVE=true` after line 2838. Step 9: resume-loop-state-test.sh:76 must export `_ZBUILD_RESUME_ACTIVE=true` (calls orchestrator without runner; without it the guard causes _start_iter=1, breaking the [#1805/SPEC-7] "first iter is 2" assertion).
 
-**Finding 7 — grep-c anti-pattern (zero-count failures):** `grep -c '^...$' 2>/dev/null || echo 0` produces `"0\n0"` when count=0 (grep outputs "0" then exits 1, `|| echo 0` fires adding another "0"). `assert_eq "0" "0\n0"` fails. Affects: SPEC-1 (three paths in resume-rehydrate-test.sh at lines ~139, ~225, ~312), SPEC-3 (from-stage-rehydrate-test.sh), SPEC-7 (resume-loop-state-test.sh), and SPEC-12 (resume-rehydrate-test.sh line ~527). Fix: use `wc -l | tr -d ' '` at all zero-count assertion sites.
+**Finding 7 — grep-c anti-pattern:** Fixed at all zero-count assertion sites in resume-rehydrate-test.sh (step 10 item 1). The SPEC-3 zero-count in from-stage-rehydrate-test.sh also fixed (step 11 item 1). The SPEC-13 intake-dispatch assertion in from-stage-rehydrate-test.sh (line 272) uses grep-c with count=1 expected, not count=0, so it cannot produce the 0\n0 false-failure — no fix needed there.
 
-**Finding 8 — SPEC-12 auto-resume and cycled dispatch:** `status: "interrupted"` + recent timestamp triggers `auto_resume` in `get_resume_recommendation`, making the "fresh run" sub-case actually a resume. Fix (step 10 item 2): add `--no-resume` to the SPEC-12 runner call. The `cycled` sub-stage does not dispatch in full runner runs of the `artifact-snapshot-coverage` fixture; the cycled-dispatch `assert_gt` assertion fails. Fix (step 10 item 3): remove the entire `_s12_cycled_starts` initialization + `assert_gt "[#1805/SPEC-12] fresh run dispatches cycled sub-stage"` block. SPEC-12 coverage is preserved by the remaining assertions: intake dispatches (assert_eq "1" $_s12_intake_starts) + fixture contains type:cycle (assert_contains).
+**Finding 8 — SPEC-12 auto-resume and cycled dispatch:** `--no-resume` flag present on the SPEC-12 runner call (step 10 item 2). Cycled-dispatch `assert_gt` block removed (step 10 item 3). SPEC-12 coverage preserved.
 
-**Finding 9 — Untagged SPEC-13 section not removed (root cause of SPEC-1 NEGCTL fail):** The build applied step 10 item (4) only to `[#1805/SPEC-13]`-*tagged* assertions, but the SPEC-13 section in resume-rehydrate-test.sh (lines 549–563) uses UNTAGGED assertions: `assert_contains "resume-rehydrate fixture contains type: cycle"` and `assert_gt "resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)"`. The `assert_gt` (checking `_s12_cycled_starts > 0`) fires and fails because cycled never dispatches, causing the whole test file to fail at HEAD. Step 10 item (4) is updated to say: remove the **entire** SPEC-13 section — the `print_test_section` header and both assertions, tagged or untagged. This is the primary reason resume-rehydrate-test.sh fails at HEAD and why SPEC-1 shows NEGCTL FAIL.
+**Finding 9 — SPEC-13 section in resume-rehydrate-test.sh:** Lines 634–645 contain `assert_contains "resume-rehydrate fixture contains type: cycle"` (passes) and `assert_eq "1" "$_s12_intake_starts"` (passes via SPEC-12). These are retained but the assert_contains label is retagged to `[#1805/SPEC-14]` (step 10 item 4) so it serves as the SPEC-14 test assertion for this file.
+
+**Finding 10 — REACHABILITY FAIL for plugins/tool/hydrate/plugin.sh (NOT YET FIXED):** Reverting the hydrate plugin (line 162 back to `_hydrate_put_back`) leaves no test failing — hydrate-stage-test.sh line 216 calls `_artifact_persist_put_back` directly, bypassing the plugin's call site. Fix: SPEC-13[code] — a sentinel-mock test in hydrate-stage-test.sh overrides `_artifact_persist_put_back`, calls `hydrate_run`, and asserts the mock was reached. This test fails when the plugin is reverted. `plugins/tool/hydrate/plugin.sh` added to WIRING.
+
+**Finding 11 — R-15 and R-16 now covered:**
+- R-15 ("Tests for R1–R5 must use a cycle"): covered by SPEC-14[no-code]. The `artifact-snapshot-coverage.yaml` fixture used by both resume-rehydrate-test.sh and from-stage-rehydrate-test.sh contains `type: cycle` at line 17 (verified). Each test file already has an assert_contains checking this; step 10 item (4) and step 11 item (2) retag them as [#1805/SPEC-14].
+- R-16 ("A test pins each side."): covered by SPEC-12[no-code] (updated to `covers: R-14 R-16`). resume-rehydrate-test.sh has the resume-side assertions (SPEC-1/SPEC-2) and the fresh-run sub-case (SPEC-12 with --no-resume), making it the single test file that pins each side of the ADR-006/ADR-050 §6 boundary.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
@@ -201,6 +203,8 @@ These tests were written before your code. Make them pass by changing code only.
 - SPEC-7: tests/integration/resume-loop-state-test.sh
 - SPEC-9: tests/integration/resume-entry-points-test.sh
 - SPEC-12: tests/integration/resume-rehydrate-test.sh
+- SPEC-13: tests/unit/hydrate-stage-test.sh
+- SPEC-14: tests/integration/resume-rehydrate-test.sh tests/integration/from-stage-rehydrate-test.sh
 
 What each SPEC requires:
 - [#1805/SPEC-1] On resume (all entry paths), before the dispatch loop, the runner calls _artifact_persist_restore and _artifact_persist_put_back and places completed-stage artifacts from the git state branch into ZBUILD_ARTIFACT_DIR; the complete stage emits no stage.start event
@@ -211,7 +215,9 @@ What each SPEC requires:
 - [#1805/SPEC-6] ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant applies to new runs; a resume continues the same run and is governed by ADR-006
 - [#1805/SPEC-7] Cycle orchestrator reads cycle_iterations[CYCLE_ID].current_iter from persisted state at resume and starts the iteration loop from that value (not 1); iter-1 complete stages emit no stage.start on resume into iter-2; the guard uses _ZBUILD_RESUME_ACTIVE so fresh runs and nested-loop re-entries always start at iter=1
 - [#1805/SPEC-9] All three resume entry paths (--resume flag to runner.sh, auto-resume on detecting status=interrupted, zbuild pipeline resume --run-id) invoke _runner_resume_rehydrate before the dispatch loop
-- [#1805/SPEC-12] tests/integration/resume-rehydrate-test.sh contains a sub-case that runs a fresh (non-resume) run using the same cycle fixture, with --no-resume to prevent auto-resume, and verifies intake dispatches and the fixture contains type:cycle, pinning the new-run side of the ADR-050 §6 boundary
+- [#1805/SPEC-12] tests/integration/resume-rehydrate-test.sh contains a sub-case that runs a fresh (non-resume) run using the same cycle fixture, with --no-resume to prevent auto-resume, and verifies intake dispatches and the fixture contains type:cycle, pinning the new-run side of the ADR-050 §6 boundary; together with the resume-side assertions in the same file (SPEC-1/SPEC-2), a single test file pins each side of the ADR-006/ADR-050 §6 boundary
+- [#1805/SPEC-13] The hydrate plugin's hydrate_run delegates its copy-back operation to _artifact_persist_put_back (not the old inline _hydrate_put_back); a sentinel-mock test in hydrate-stage-test.sh overrides _artifact_persist_put_back, calls hydrate_run, and asserts the mock was reached — fails when plugins/tool/hydrate/plugin.sh is reverted to calling _hydrate_put_back inline at line 162
+- [#1805/SPEC-14] The test fixtures used by the R-1/R-2/R-5 tests (resume-rehydrate-test.sh) and the R-4 tests (from-stage-rehydrate-test.sh) each contain a pipeline stage of type: cycle, verified by an assert_contains tagged [#1805/SPEC-14] in each test file, ensuring R-1 through R-4 tests run against a cyclic pipeline
 
 ### REQUIREMENTS YOUR CODE MUST MEET
 Your change is done when the test for every requirement below passes.
@@ -231,7 +237,11 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [#1805/SPEC-9] All three resume entry paths (--resume flag to runner.sh, auto-resume on detecting status=interrupted, zbuild pipeline resume --run-id) invoke _runner_resume_rehydrate before the dispatch loop
   → its test is already written; make it pass
-- [#1805/SPEC-12] tests/integration/resume-rehydrate-test.sh contains a sub-case that runs a fresh (non-resume) run using the same cycle fixture, with --no-resume to prevent auto-resume, and verifies intake dispatches and the fixture contains type:cycle, pinning the new-run side of the ADR-050 §6 boundary
+- [#1805/SPEC-12] tests/integration/resume-rehydrate-test.sh contains a sub-case that runs a fresh (non-resume) run using the same cycle fixture, with --no-resume to prevent auto-resume, and verifies intake dispatches and the fixture contains type:cycle, pinning the new-run side of the ADR-050 §6 boundary; together with the resume-side assertions in the same file (SPEC-1/SPEC-2), a single test file pins each side of the ADR-006/ADR-050 §6 boundary
+  → its test is already written; make it pass
+- [#1805/SPEC-13] The hydrate plugin's hydrate_run delegates its copy-back operation to _artifact_persist_put_back (not the old inline _hydrate_put_back); a sentinel-mock test in hydrate-stage-test.sh overrides _artifact_persist_put_back, calls hydrate_run, and asserts the mock was reached — fails when plugins/tool/hydrate/plugin.sh is reverted to calling _hydrate_put_back inline at line 162
+  → its test is already written; make it pass
+- [#1805/SPEC-14] The test fixtures used by the R-1/R-2/R-5 tests (resume-rehydrate-test.sh) and the R-4 tests (from-stage-rehydrate-test.sh) each contain a pipeline stage of type: cycle, verified by an assert_contains tagged [#1805/SPEC-14] in each test file, ensuring R-1 through R-4 tests run against a cyclic pipeline
   → its test is already written; make it pass
 
 
@@ -268,7 +278,7 @@ Outputs:
 Summary:
 ## design — pass
 
-- authored design.md — 17 file(s) in scope, 12 acceptance SPEC(s)
+- authored design.md — 17 file(s) in scope, 14 acceptance SPEC(s)
 
 - scope: core/pipeline/runner.sh,core/state/artifact-persist.sh,plugins/tool/hydrate/plugin.sh,core/pipeline/cycle-orchestrator.sh,docs/adr/ADR-006-resume-contract.md,docs/adr/ADR-050-prior-work-reuse-contract.md,tests/integration/resume-rehydrate-test.sh,tests/integration/from-stage-rehydrate-test.sh,tests/integration/resume-loop-state-test.sh,tests/integration/resume-entry-points-test.sh,tests/integration/pipeline-resume-test.sh,tests/integration/resume-after-sigint-test.sh,tests/unit/hydrate-stage-test.sh,tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh,tests/integration/nested-loop-rounds-test.sh,tests/integration/nested-loop-rounds-build-test.sh,tests/integration/cycle-member-dispatch-events-test.sh
 - artifact: design.md
@@ -279,169 +289,161 @@ Outputs:
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
 
 Findings:
-- test-author finding 1 (opened by test-author): SPEC-1's assertion establishes only part of the requirement: The tagged assertions verify that completed-stage artifacts land in ZBUILD_ARTIFACT_DIR before the dispatch loop and that the complete stage emits no stage.start across all three entry paths, but they do not verify that specifically `_artifact_persist_restore` and `_artifact_persist_put_back` were called — the `assert_contains` that checks artifact content and names both functions in its label is present in the full file but is not tagged with `>>` for this SPEC.
-- test-author finding 2 (opened by test-author): SPEC-3's assertion establishes only part of the requirement: The two `>>`-tagged assertions establish only that no `stage.start` was emitted for the skipped stage and that `<s>` was the first dispatched stage (clauses 3 and 4 of the requirement), but the requirement's clauses 1 and 2 — that rehydration uses `_artifact_persist_restore` + `_artifact_persist_put_back` and that the artifacts land in `ZBUILD_ARTIFACT_DIR` — are checked only by the untagged `assert_file_exists` and `assert_contains` lines that appear between the runner invocation and the `>>` assertions.
-- test-author finding 3 (opened by test-author): SPEC-4's assertion establishes only part of the requirement: The two tagged assertions establish that the runner exits 1 and dispatches nothing, but the requirement's third clause — "names the missing stage in stderr" — is checked only by the untagged `assert_contains "$_s4_stderr" "intake"` line that sits between the two tagged assertions and is not itself marked `>>` for this SPEC.
+- test-author finding 1 (opened by test-author): SPEC-1's assertion establishes only part of the requirement: The tagged assertions establish that the artifact lands in ZBUILD_ARTIFACT_DIR (assert_file_exists), that pipeline.resume precedes any stage.start, and that the complete stage emits no stage.start across all three entry paths, but the requirement's clause "calls _artifact_persist_restore and _artifact_persist_put_back" is checked only by an untagged assert_contains (which names those functions in its label and checks artifact content) that sits between the runner invocation and the tagged lines in the full file.
+- test-author finding 2 (opened by test-author): SPEC-3's assertion establishes only part of the requirement: The tagged assertions establish that intake emits no stage.start and that cyc was dispatched (the skipped-and-dispatched-first clauses), but the requirement's first two clauses — that rehydration uses _artifact_persist_restore + _artifact_persist_put_back and that artifacts land in ZBUILD_ARTIFACT_DIR — are checked only by the untagged assert_file_exists and assert_contains that appear between the runner invocation and the tagged lines in the full file.
+- test-author finding 3 (opened by test-author): SPEC-4's assertion establishes only part of the requirement: The tagged assertions establish that the runner exits 1 and dispatches nothing before that exit, but the requirement's third clause — "names the missing stage in stderr" — is checked only by the untagged assert_contains "$_s4_stderr" "intake" that sits between the two tagged assertions in the full file and is not itself marked >> for this SPEC.
+- test-author finding 4 (opened by test-author): SPEC-4: tests/integration/from-stage-rehydrate-test.sh passes on the code from before this change — a requirement that needs code must have a test that fails there
 
 Summary:
 ## test-author — fail
 
-- changed 2 test file(s); 3 finding(s) about its assertions still open after 2 round(s)
+- changed 4 test file(s); 4 finding(s) about its assertions still open after 2 round(s)
 
-- SPECs in the contract: 9
+- SPECs in the contract: 11
 - assertions are authored from the SPEC text, never from the implementation
 - the test files, and the requirements each covers:
-- tests/integration/resume-rehydrate-test.sh — SPEC-1, SPEC-2, SPEC-5, SPEC-6, SPEC-12
-- tests/integration/from-stage-rehydrate-test.sh — SPEC-3, SPEC-4
+- tests/integration/resume-rehydrate-test.sh — SPEC-1, SPEC-2, SPEC-5, SPEC-6, SPEC-12, SPEC-14
+- tests/integration/from-stage-rehydrate-test.sh — SPEC-3, SPEC-4, SPEC-14
 - tests/integration/resume-loop-state-test.sh — SPEC-7
 - tests/integration/resume-entry-points-test.sh — SPEC-9
+- tests/unit/hydrate-stage-test.sh — SPEC-13
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: test finding 5: done — removed `cycled` dispatch assertion from resume-entry-points-test.sh SPEC-13 sub-case; SPEC-9 requires artifact restoration (assert_file_exists), not cycled dispatching
-- answered: test finding 6: done — fixed `grep -c ... || echo 0` double-output bug in all three SPEC-1 intake_starts variables using `wc -l | tr -d ' '`
-- answered: acceptance-gate finding 1: done — same fix; with wc -l, `assert_eq "0" "0"` will pass on new code
-- answered: issue-acceptance finding 3: nothing to do — `assert_eq "2" "$_SPEC7_FIRST_ITER"` in resume-loop-state-test.sh covers the full SPEC-7 requirement; the removed assertion was about `cycle.iteration.complete` events which SPEC-7 doesn't require; the first_iter==2 assertion proves both "starts from current_iter" and "iter-1 stages not re-dispatched"
-- answered: test-author finding 1: nothing to do — `assert_file_exists` (line 114) and `assert_contains` (line 125) for SPEC-3 artifact placement both carry `[#1805/SPEC-3]` in their labels; the finding describes a prior state before a previous test-author call fixed the tagging.
-- answered: test-author finding 2: nothing to do — `assert_contains` (line 213) for SPEC-4 stderr naming carries `[#1805/SPEC-4]` in its label; the finding describes a prior state before a previous test-author call fixed the tagging.
+- answered: acceptance-gate finding 1: done — added [#1805/SPEC-13] sentinel test in hydrate-stage-test.sh; the test fails when plugin.sh is reverted to calling _hydrate_put_back inline.
+- answered: test-author finding 1: nothing to do — the current file already has [#1805/SPEC-1] tags on assert_contains at lines 141-143; finding is stale from before a prior round's fix.
+- answered: test-author finding 2: nothing to do — from-stage-rehydrate-test.sh lines 124-126 already carry [#1805/SPEC-3]; finding is stale.
+- answered: test-author finding 3: nothing to do — from-stage-rehydrate-test.sh lines 212-214 already carry [#1805/SPEC-4]; finding is stale.
+- answered: test-author finding 1: nothing to do — `[#1805/SPEC-1]` tags are already present on all `assert_contains` assertions for `_artifact_persist_restore + _artifact_persist_put_back`
+- answered: checker finding 2: done — changed SPEC-1/SPEC-2 fixture to `artifact-snapshot-coverage`; SPEC-14 assertion now verifies the fixture those SPECs actually run against is cyclic
 
-### build (verdict: error) — your own
+### build (verdict: timed_out) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
-## build — out_of_turns
+## build — timed_out
 
-- changed 0 file(s) over 1 pass(es), 1 iteration(s)
+- changed 0 file(s) over 2 pass(es), 2 iteration(s)
 
 - lines: +0 / -0
-- terminated: router_out_of_turns
+- terminated: router_timeout
 - scope violation: false
 
 Your notes so far:
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
 ## Status
-Analyzing and implementing fixes from test stage findings.
+Starting fresh analysis from test stage failures. Previous build timed out.
 
-## Core implementation (committed in db0e567a)
-All key implementation changes:
-1. `_artifact_persist_put_back` in artifact-persist.sh ✓
-2. `_hydrate_put_back` → `_artifact_persist_put_back` in hydrate/plugin.sh ✓
-3. hydrate-stage-test.sh redirected ✓
-4. `_runner_resume_rehydrate` and `_runner_from_stage_preflight` in runner.sh ✓
-5. Resume entry point calls `_runner_resume_rehydrate` ✓
-6. Stale-artifact changed from warn+continue to exit 1 ✓
-7. `_runner_from_stage_preflight` call before dispatch loop ✓
-8. cycle-orchestrator reads current_iter unconditionally (BUG - needs guard) 
-9. ADR-006 step 3.6 added ✓
-10. ADR-050 §6 boundary note added ✓
+## Key failures from test stage
 
-## Test stage analysis (after 4ada2396 test-author commit)
+### 1. cycle-orchestrator UNCONDITIONAL current_iter read (NOT YET FIXED)
+File: core/pipeline/cycle-orchestrator.sh ~line 2325-2329
+Bug: reads current_iter from state regardless of resume mode, breaking nested loops.
+Fix: guard with `if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]`
 
-### Failing tests IN SCOPE:
-1. cycle-inner-iter-resets-per-outer-iter-test.sh → cycle reset bug (current_iter unconditional read)
-2. cycle-member-dispatch-events-test.sh → verdict issue (unrelated? but in scope)
-3. from-stage-rehydrate-test.sh SPEC-3 → "expected: 0, got: 0" (possibly already passes)
-4. nested-loop-rounds-build-test.sh → cycle reset bug
-5. nested-loop-rounds-test.sh → cycle reset bug
-6. resume-entry-points-test.sh SPEC-13 → cycled not dispatching (grep-c bug: got "0\n0")
-7. resume-loop-state-test.sh SPEC-7 → removed assertion from 4ada2396; need _ZBUILD_RESUME_ACTIVE
-8. resume-rehydrate-test.sh SPEC-1 → grep-c || echo 0 bug (produces "0\n0")
+### 2. stage.start DOUBLE-EMIT from _cycle_dispatch_stage
+Bug: A stage.start emit was added inside _cycle_dispatch_stage for cycle members,
+causing double-emit and breaking stop-run-on-fail, write-boundary-revert, stage-retry.
+Fix: remove the extra stage.start emit from _cycle_dispatch_stage
 
-### Failing tests OUT OF SCOPE (pre-existing):
-- run-timed-out-test.sh - out of scope
-- stop-run-on-fail-test.sh - out of scope
-- write-boundary-revert-test.sh - out of scope
-- stage-retry-test.sh - out of scope
+### 3. runner.sh needs `export _ZBUILD_RESUME_ACTIVE=true` after _runner_resume_rehydrate
 
-## Root cause analysis
+### 4. shape-floor: golden files and some tests may need updating
 
-### MAIN BUG: cycle-orchestrator reads current_iter UNCONDITIONALLY
-In `_cycle_orchestrator_run_body` (db0e567a), line ~2305:
-```bash
-_persisted_iter="$(get_state_field "$state_file" \
-    ".cycle_iterations[\"$cycle_id\"].current_iter" 0 ...)"
-_start_iter=$(( _persisted_iter + 1 ))
-```
-No guard. For nested loops (outer→inner), inner cycle picks up outer iteration's current_iter.
-Fix: guard with `[[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]`.
+## Files I CAN touch (scope for this build stage)
+- core/pipeline/runner.sh
+- core/state/artifact-persist.sh  
+- plugins/tool/hydrate/plugin.sh
+- core/pipeline/cycle-orchestrator.sh
+- docs/adr/ADR-006-resume-contract.md
+- docs/adr/ADR-050-prior-work-reuse-contract.md
+- tests/integration/pipeline-resume-test.sh
+- tests/integration/resume-after-sigint-test.sh
+- tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
+- tests/integration/nested-loop-rounds-test.sh
+- tests/integration/nested-loop-rounds-build-test.sh
+- tests/integration/cycle-member-dispatch-events-test.sh
+- tests/golden/full-pipeline/event-sequence.golden
+- tests/golden/parity/event-sequence.golden
+- tests/unit/core-pipeline-template-test.sh
+- tests/unit/shape-floor-content-stable-test.sh
+- tests/unit/shape-floor-summary-plain-test.sh
+- tests/unit/build-oos-pass-request-test.sh
+- tests/unit/template-simple-yaml-test.sh
+- tests/unit/template-resolvability-preflight-test.sh
+- tests/unit/change-scope-floor-test.sh
 
-### SPEC-7 test: needs _ZBUILD_RESUME_ACTIVE=true before cycle_orchestrator_run
-The resume-loop-state test calls cycle_orchestrator_run directly (bypasses runner.sh).
-Without export _ZBUILD_RESUME_ACTIVE=true, guard says "false" → _start_iter=1 → first iter=1 ≠ 2 → FAIL.
+## Files I CANNOT touch (acceptance tests - read only)
+- tests/integration/resume-rehydrate-test.sh
+- tests/integration/from-stage-rehydrate-test.sh
+- tests/integration/resume-loop-state-test.sh
+- tests/integration/resume-entry-points-test.sh
+- tests/unit/hydrate-stage-test.sh
 
-### SPEC-1 grep-c bug in resume-rehydrate-test.sh
-Paths 1, 2, 3 use: `grep -c '^intake$' 2>/dev/null || echo 0`
-When count=0: grep exits 1 → || echo 0 fires → result="0\n0" → assert_eq "0" "0\n0" → FAIL.
-Fix: change to `wc -l | tr -d ' '` pattern.
-
-### SPEC-13 in resume-entry-points: grep-c bug too
-`grep -c '^cycled$' || echo 0` - if count=0, produces "0\n0", assert_gt "0\n0" "0" fails.
-But wait: cycled SHOULD dispatch (iter=1, _cd_iter>0 → stage.start emitted).
-If cycled dispatches, grep-c finds "cycled" → count=1 → exits 0 → no || echo 0 → "1" → assert_gt passes.
-So either cycled doesn't dispatch, OR the grep-c bug means 0 matches.
-
-IMPORTANT: The SPEC-13 test uses status=in_progress + no --no-resume → auto_resume.
-With auto_resume, runner sets resume_mode=true and exports _ZBUILD_RESUME_ACTIVE=true (after my fix).
-Then cycle_orchestrator uses guarded path: reads current_iter=0 → _start_iter=1 → dispatches cycled.
-stage.start(cycled) emitted → grep-c finds it → assert_gt passes.
-
-Wait: WITHOUT my fix (current code, unconditional read), current_iter=0 for fresh state → _start_iter=1.
-SAME behavior. So cycled SHOULD dispatch with current code too.
-
-UNLESS: the auto_resume is the issue. With status=in_progress and stage_statuses={},
-the runner auto_resumes. Then it goes through resume path. Then cycle-aware dispatch loop.
-No skip in cycle-aware loop. Cycle runs. Cycled dispatches.
-
-I can't figure out why cycled wouldn't dispatch. Let me just try the fix and run the test.
-
-## Changes needed
-
-### 1. core/pipeline/cycle-orchestrator.sh
-Replace unconditional current_iter read with guarded version:
-```bash
-# BEFORE:
-local _persisted_iter
-_persisted_iter="$(get_state_field "$state_file" \
-    ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
-[[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
-local _start_iter=$(( _persisted_iter + 1 ))
-
-# AFTER:
-local _start_iter=1
-if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
-    local _persisted_iter
-    _persisted_iter="$(get_state_field "$state_file" \
-        ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
-    [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
-    _start_iter=$(( _persisted_iter + 1 ))
-fi
-```
-
-### 2. core/pipeline/runner.sh
-Add `export _ZBUILD_RESUME_ACTIVE=true` after _runner_resume_rehydrate:
-At line ~2838, after: `_runner_resume_rehydrate "$_runner_issue" "$state_dir"`
-Add: `export _ZBUILD_RESUME_ACTIVE=true`
-
-### 3. tests/integration/resume-loop-state-test.sh
-Add before cycle_orchestrator_run (line 76):
-`export _ZBUILD_RESUME_ACTIVE=true`
-
-### 4. tests/integration/resume-rehydrate-test.sh
-Fix three SPEC-1 grep-c || echo 0 patterns (paths 1, 2, 3) to use wc -l | tr -d ' ':
-- Path 1 (line ~139): `grep -c '^intake$' 2>/dev/null || echo 0` → `wc -l | tr -d ' '`
-- Path 2 (line ~225): `grep -c '^intake$' || echo 0` → `wc -l | tr -d ' '`
-- Path 3 (line ~311): `grep -c '^intake$' || echo 0` → `wc -l | tr -d ' '`
-
-### 5. Shape-floor tests (check if needed)
-Need to investigate shape-floor failures. Check if my changes affect any goldens.
-
-## Resolved findings
-- resume-loop-state SPEC-7 "no cycle.iteration.complete" assertion: REMOVED by 4ada2396, so it's dead.
-- The NEW SPEC-7 "first dispatched iter is 2" needs _ZBUILD_RESUME_ACTIVE=true in test.
-- cycle-member-dispatch-events: "blocking_member_failure vs fail" - need to investigate separately.
-- from-stage SPEC-3 "expected: 0, got: 0": might be OK after cycle-orchestrator fix.
+Your last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:
+- (… 39 earlier steps not shown)
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/stage-retry-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/stage-retry-test.sh
+- Bash: grep -n "plugin_hook_call\|_plugin_hook_call\|retry\|stage\.retry" core/plugin-registry/lifecycle.sh | head -40
+- Bash: ls scripts/lib/ | grep retry
+- Bash: wc -l scripts/lib/stage-retry.sh && head -20 scripts/lib/stage-retry.sh
+- Bash: git log --oneline -- scripts/lib/stage-retry.sh | head -5
+- Bash: git log --oneline cda7e92d^..HEAD -- scripts/lib/stage-retry.sh
+- Bash: git show cda7e92d^:scripts/lib/stage-retry.sh | wc -l; wc -l scripts/lib/stage-retry.sh
+- Bash: git log --oneline cda7e92d^..HEAD -- core/plugin-registry/lifecycle.sh
+- Bash: bash tests/unit/stage-retry-test.sh 2>&1 | head -30
+- Bash: git show cda7e92d^:tests/unit/stage-retry-test.sh 2>/dev/null | wc -l || echo "doesn't exist"
+- Bash: # Check if stage-retry-test.sh passes on the pre-design tree git stash 2>/dev/null || true git show cda7e92d^:tests/unit/stage-retry-test.sh > /tmp/stage-retry-test-orig.sh git show cda7e92d^:core/plugin-registry/lifecycle.sh > /tmp/lifecycle-orig.sh # Check if the pre-design version exists git stas…
+- Bash: diff <(git show cda7e92d^:tests/unit/stage-retry-test.sh) tests/unit/stage-retry-test.sh | head -50
+- Bash: # Check if write-boundary-revert-test.sh was changed by this issue diff <(git show cda7e92d^:tests/integration/write-boundary-revert-test.sh) tests/integration/write-boundary-revert-test.sh | head -20
+- Bash: diff <(git show cda7e92d^:tests/integration/stop-run-on-fail-test.sh) tests/integration/stop-run-on-fail-test.sh | head -20
+- Bash: git log --oneline cda7e92d^..HEAD -- tests/integration/stop-run-on-fail-test.sh tests/integration/write-boundary-revert-test.sh tests/unit/stage-retry-test.sh
+- Bash: git log --oneline cda7e92d^..HEAD -- core/plugin-registry/lifecycle.sh core/plugin-registry/registry.sh scripts/lib/stage-retry.sh
+- said: Let me look at what the shape-floor tests check:
+- Bash: bash tests/unit/shape-floor-content-stable-test.sh 2>&1 | tail -30
+- Bash: bash tests/unit/shape-floor-summary-plain-test.sh 2>&1 | tail -20
+- Bash: bash tests/unit/build-oos-pass-request-test.sh 2>&1 | tail -20
+- Bash: bash tests/unit/template-simple-yaml-test.sh 2>&1 | tail -20 && bash tests/unit/template-resolvability-preflight-test.sh 2>&1 | tail -20 && bash tests/unit/change-scope-floor-test.sh 2>&1 | tail -20
+- Bash: bash tests/unit/core-pipeline-template-test.sh 2>&1 | tail -20
+- Bash: bash scripts/lib/shape-floor.sh 2>&1 | head -50
+- Bash: grep -n "missing_floor_files\|floor.*fail\|_sf_" scripts/lib/shape-floor.sh | head -30
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/shape-floor.sh
+- Bash: git diff HEAD --name-only | head -30
+- Bash: git diff cda7e92d^ --name-only | head -30
+- Bash: source scripts/lib/shape-floor.sh _sf_list_event_goldens "$(pwd)/tests" echo "---" _sf_list_order_assertions "$(pwd)/tests"
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/shape-floor.sh
+- said: Let me look at the golden files and the `_cycle_dispatch_stage` code to understand if stage.start was added:
+- Bash: grep -n "stage.start\|cycled\|cycle" tests/golden/full-pipeline/event-sequence.golden | head -30
+- Bash: head -20 tests/golden/full-pipeline/event-sequence.golden && echo "..." && wc -l tests/golden/full-pipeline/event-sequence.golden
+- Bash: head -10 tests/golden/parity/event-sequence.golden && echo "..." && wc -l tests/golden/parity/event-sequence.golden
+- Bash: grep -n "cycle\|stage.start" tests/golden/parity/event-sequence.golden | head -30
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/golden/parity/event-sequence.golden
+- Bash: grep -rn "event-sequence.golden\|parity.*golden\|full-pipeline.*golden" tests/ | grep -v ".golden:" | head -20
+- Bash: grep -rn "parity/event-sequence\|full-pipeline/event-sequence" tests/ | grep -v ".golden:" | head -20
+- Bash: head -100 tests/e2e/parity-local-vs-ci-test.sh
+- Bash: head -50 tests/golden/parity/run-fixture.sh
+- Bash: grep -n "template\|simple\|deployed\|TEMPLATE" tests/golden/parity/run-fixture.sh | head -20
+- Bash: sed -n '206,350p' tests/golden/parity/run-fixture.sh
+- Bash: bash tests/integration/stop-run-on-fail-test.sh 2>&1 | tail -30
+- Bash: grep -n "R2\|not named\|build still" tests/integration/stop-run-on-fail-test.sh | head -10
+- Bash: sed -n '100,130p' tests/integration/stop-run-on-fail-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/stop-run-on-fail-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- Bash: grep -n "cycle\|cycle_orchestrator\|CYCLE\|outer_loop\|inner" tests/integration/write-boundary-revert-test.sh | head -20
+- Bash: bash tests/integration/write-boundary-revert-test.sh 2>&1 | grep -A2 "R2" | head -10
+- Bash: bash tests/integration/write-boundary-revert-test.sh 2>&1 | grep -E "✗|broken|unusable|expected|R2" | head -10
+- Bash: git log --oneline -5 -- core/plugin-registry/lifecycle.sh scripts/lib/stage-retry.sh
+- Bash: git log --oneline cda7e92d^..HEAD -- core/plugin-registry/lifecycle.sh scripts/lib/stage-retry.sh
+- said: Let me run the acceptance tests to see their current status:
+- Bash: bash tests/unit/hydrate-stage-test.sh 2>&1 | tail -25
+- Bash: bash tests/integration/resume-loop-state-test.sh 2>&1 | tail -20
+- Bash: grep -n "RESUME_ACTIVE\|_persisted_iter\|_start_iter" core/pipeline/cycle-orchestrator.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/shape-floor.sh
+- said: Let me check if the parity event sequence has actually changed:
+- Bash: timeout 120 bash tests/e2e/parity-local-vs-ci-test.sh 2>/dev/null | tail -20
 
 ### test (verdict: fail)
 Outputs:
@@ -456,107 +458,64 @@ Outputs:
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh fails: ✗ T4: both inner cycle.start at iter=1 (RESET, not 4) — expected: 1, got: 1
-- test finding 2 (opened by test): tests/integration/cycle-member-dispatch-events-test.sh fails: ✗ inner_cycle dispatch.complete verdict=blocking_member_failure (propagated) — expected: blocking_member_failure, got: fail
-- test finding 3 (opened by test): tests/integration/nested-loop-rounds-build-test.sh fails: ✗ [L3] the outer loop goes round: design runs again — expected: 2, got: 1
-- test finding 4 (opened by test): tests/integration/nested-loop-rounds-test.sh fails: ✗ [L2] design starts again at round 1 in the second outer round — expected: 2, got: 1
-- test finding 5 (opened by test): tests/integration/resume-entry-points-test.sh fails: ✗ cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test — expected >0, got: 0
-- test finding 6 (opened by test): tests/integration/resume-rehydrate-test.sh fails: ✗ [#1805/SPEC-1] intake emits no stage.start (complete stage skipped) — expected: 0, got: 0
-- test finding 7 (opened by test): tests/integration/stop-run-on-fail-test.sh fails: ✗ [R2] not named: build still runs — expected: 2, got: 1
-- test finding 8 (opened by test): tests/integration/write-boundary-revert-test.sh fails: ✗ [D7] the first offence was retried
-- test finding 9 (opened by test): tests/unit/stage-retry-test.sh fails: ✗ [R1] timed_out with progress, no retry: in the template → 2 runs — expected: 2, got: 1
-- acceptance-gate finding 1 (opened by test): SPEC-1/tests/integration/resume-rehydrate-test.sh: its test does not pass on the new code — the code or the test is wrong
+- acceptance-gate finding 1 (opened by test): plugins/tool/hydrate/plugin.sh was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 - shape-floor finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
 - shape-floor finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 3 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 4 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 5 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 6 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 7 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 8 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 9 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
 
 Summary:
 # Test stage summary
 
 - verdict: fail
-- passed: 832
-- failed: 9
+- passed: 4
+- failed: 7
 - exit_code: 1
-
-## Failing files
-
-- tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh — ✗ T4: both inner cycle.start at iter=1 (RESET, not 4) — expected: 1, got: 1
-- tests/integration/cycle-member-dispatch-events-test.sh — ✗ inner_cycle dispatch.complete verdict=blocking_member_failure (propagated) — expected: blocking_member_failure, got: fail
-- tests/integration/nested-loop-rounds-build-test.sh — ✗ [L3] the outer loop goes round: design runs again — expected: 2, got: 1
-- tests/integration/nested-loop-rounds-test.sh — ✗ [L2] design starts again at round 1 in the second outer round — expected: 2, got: 1
-- tests/integration/resume-entry-points-test.sh — ✗ cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test — expected >0, got: 0
-- tests/integration/resume-rehydrate-test.sh — ✗ [#1805/SPEC-1] intake emits no stage.start (complete stage skipped) — expected: 0, got: 0
-- tests/integration/stop-run-on-fail-test.sh — ✗ [R2] not named: build still runs — expected: 2, got: 1
-- tests/integration/write-boundary-revert-test.sh — ✗ [D7] the first offence was retried
-- tests/unit/stage-retry-test.sh — ✗ [R1] timed_out with progress, no retry: in the template → 2 runs — expected: 2, got: 1
 
 ## Failing lines (extracted)
 
 ```
-  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs
-    expected: 2, got: 1
-  ✗ [R1] the retry that passes is what the dispatch reports
-    expected: 0, got: 1
-  ✗ [R2] retry: 2 → 3 runs
-    expected: 3, got: 1
-  ✗ [R2] every word that means 'did not finish' is retried
-  ✗ [R4] a try that changed nothing is not run again
-  ✗ [R5] retry: 9 is capped at 5 → 6 runs
-    expected: 6, got: 1
-  ✗ [R5] retry: lots → the default 1 → 2 runs
-  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
-  ✗ [R7] one stage.retry for the one retry
-    expected: 1, got: 0
-  ✗ [R7] it names the stage
-    expected: twice, got: 
-  ✗ [R7] ...the outcome the try ended on
-    expected: timed_out, got: 
-  ✗ [R7] ...which try comes next
-    expected: 2, got: 
-  ✗ [R7] ...of how many
-    expected: 3, got: 
-  ✗ [R8] a stage run from a work unit is run again too → 2 runs
-  ✗ [R11] each try is told its number
-    expected: 1 2 3 , got: none 
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/unit/stage-retry-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/cycle-member-dispatch-events-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/nested-loop-rounds-build-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/nested-loop-rounds-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/resume-entry-points-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/resume-rehydrate-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/stop-run-on-fail-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/write-boundary-revert-test.sh
   ✗ T4: both inner cycle.start at iter=1 (RESET, not 4)
+    expected: 1, got: 1
   ✗ T5: inner cycle.complete emitted twice
+    expected: 2, got: 1
   ✗ T7: inner cycle.iteration.complete emitted 4 times (2 iter × 2 outer iter)
+    expected: 4, got: 2
   ✗ T8: inner iteration counts: 2 of iter=1, 2 of iter=2 (proves reset)
+    expected: 2 1
   ✗ T9: inner history file contains 2 rows (truncated on outer iter 2 entry)
+    expected: 2, got: 0
   ✗ T10: inner history rows have iter=1 and iter=2 only (reset on outer iter 2)
-    expected: 1 failed blocking_member_failure, got: 1 failed design_timeout_exhausted
-  3 of 24 tests failed
+    expected: 1,2, got: 
   ✗ inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)
+    expected: blocking_member_failure, got: fail
   ✗ review NOT dispatched after a failing inner cycle (#1208 halt, no rescue)
+    expected: 0, got: 1
   ✗ outer cycle halts rc=1, outcome failed, reason blocking_member_failure (propagated)
+    expected: 1 failed blocking_member_failure, got: 1 failed design_timeout_exhausted
+  ✗ [L3] the outer loop goes round: design runs again
+  ✗ [L3] the build loop starts again at round 1
+  ✗ [L2] design starts again at round 1 in the second outer round
+  ✗ [L4] the outer loop converges in round 2
+unit: FAIL tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
+unit: FAIL tests/integration/cycle-member-dispatch-events-test.sh
+unit: FAIL tests/integration/nested-loop-rounds-build-test.sh
+unit: FAIL tests/integration/nested-loop-rounds-test.sh
+unit: FAIL tests/integration/stop-run-on-fail-test.sh
+unit: FAIL tests/integration/write-boundary-revert-test.sh
+unit: FAIL tests/unit/stage-retry-test.sh
+  3 of 24 tests failed
   ✓ [L7] ...the run stops (rc=1, failed)
   ✓ [L7] ...naming what the halting member said
   2 of 8 tests failed
-  ✗ [L3] the outer loop goes round: design runs again
-  ✗ [L3] the build loop starts again at round 1
   4 of 11 tests failed
-  ✗ [L2] design starts again at round 1 in the second outer round
-  ✗ [L4] the outer loop converges in round 2
   ✗ [L4] design started at round 1 in both outer rounds
   ✗ [L4] build ran once, in round 2
-  ✗ cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test
-    expected >0, got: 0
-0
-  1 of 6 tests failed
-  5 of 28 tests failed
-  ✗ [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
-  ✗ [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
-  ✗ [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
-  ✗ [#1805/SPEC-12] fresh run dispatches cycled sub-stage (cycle ran; no stage skipped)
-  ✗ resume-rehydrate: pipeline with cyclic fixture was actually run (cycled dispatched)
   ✓ [R7] ...the run converges
   ✓ [R8] the review fails twice: the run stops after the second
   ✓ [R8] ...the run ends failed
@@ -567,84 +526,22 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   2 of 20 tests failed
   ✗ [D7] the first offence was retried
   ✗ [D7] the retry's offence halts
-    expected: 1, got: 1
-    expected: 4, got: 2
-    expected: 2 1
-    expected: 2, got: 0
+  ✗ [R7] it names the stage
+  ✗ [R7] ...the outcome the try ended on
+  ✗ [R7] ...which try comes next
+  ✗ [R7] ...of how many
+  ✗ [R8] a stage run from a work unit is run again too → 2 runs
+  ✗ [R11] each try is told its number
+  outer cycle emits expected events
+    expected: 1, got: 0
 ```
 
 ## The checks of this run
 - the shape floor failed: missing_floor_files
-- the acceptance check failed: the acceptance check failed — SPEC-1/tests/integration/resume-rehydrate-test.sh: its test does not pass on the new code — the code or the test is wrong
+- the acceptance check failed: the acceptance check failed — plugins/tool/hydrate/plugin.sh was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m [R1] the loop does not go round: design runs once
-  [38;2;74;222;128m✓[0m [R1] build does not run on a design that failed
-  [38;2;74;222;128m✓[0m [R1] the run ends failed
-  [38;2;74;222;128m✓[0m [R1] the reason names the member
-  [38;2;74;222;128m✓[0m [R1] the stop is said, naming the member
-  [38;2;74;222;128m✓[0m [R1] the run's ending says so in words
-  [38;2;248;113;113m✗[0m [R2] not named: build still runs
-    [2mexpected: 2, got: 1[0m
-  [38;2;74;222;128m✓[0m [R3] design passes: build runs
-  [38;2;74;222;128m✓[0m [R4] a name that is not a member is refused
-  [38;2;74;222;128m✓[0m [R4] ...and the error names it
-  [38;2;74;222;128m✓[0m [R5] design fails in the inner loop: it runs once
-  [38;2;74;222;128m✓[0m [R5] ...build does not run
-  [38;2;74;222;128m✓[0m [R5] ...the outer loop does not go round: no review
-  [38;2;74;222;128m✓[0m [R5] ...the run ends failed
-  [38;2;74;222;128m✓[0m [R5] ...the reason names design
-  [38;2;74;222;128m✓[0m [R6] tests fail every round: 3 rounds, not 6
-  [38;2;74;222;128m✓[0m [R6] ...design runs every round
-  [38;2;74;222;128m✓[0m [R6] ...no review on a change whose tests fail
-  [38;2;74;222;128m✓[0m [R6] ...the run ends failed
-  [38;2;74;222;128m✓[0m [R6] ...the reason names the inner loop
-  [38;2;74;222;128m✓[0m [R7] the review fails once: it sends the change round one more time
-  [38;2;74;222;128m✓[0m [R7] ...design runs again for that round
-  [38;2;74;222;128m✓[0m [R7] ...the run converges
-  [38;2;74;222;128m✓[0m [R8] the review fails twice: the run stops after the second
-  [38;2;74;222;128m✓[0m [R8] ...the run ends failed
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 25 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [R2] not named: build still runs
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zhis5x/tests/integration/write-boundary-revert-test.sh
-
-[38;2;0;212;255m[1m  write boundary: undo and retry, halt on a second offence[0m
-[2m  ══════════════════════════════════════════[0m
-
-
-  [38;2;0;212;255mD1/D2: the first offence is undone and retried[0m
-  [38;2;74;222;128m✓[0m [D1] the edited file is back
-  [38;2;74;222;128m✓[0m [D1] the new file is gone
-  [38;2;74;222;128m✓[0m [D1] the deleted file is back
-  [38;2;74;222;128m✓[0m [D1] the earlier stage's uncommitted work is back, not reset to HEAD
-  [38;2;74;222;128m✓[0m [D2] the dispatch fails
-  [38;2;74;222;128m✓[0m [D2] the stage is retried (unusable), not halted
-  [38;2;74;222;128m✓[0m [D2] no halting marker
-  [38;2;74;222;128m✓[0m [D2] the paths are named
-
-  [38;2;0;212;255mD5: a clean retry is not held to it[0m
-  [38;2;74;222;128m✓[0m [D5] a clean re-dispatch of the stage resolves complete
-
-  [38;2;0;212;255mD3: a second offence by the same stage halts[0m
-  [38;2;74;222;128m✓[0m [D3] the second offence resolves broken
-  [38;2;74;222;128m✓[0m [D3] the files are still put back
-  [38;2;74;222;128m✓[0m [D3] ...including the earlier stage's work
-  [38;2;74;222;128m✓[0m [D6] the halt says which stage changed the repository
-  [38;2;74;222;128m✓[0m [D6] ...and which files
-  [38;2;74;222;128m✓[0m [D6] ...and only for the stage that did it
-
-  [38;2;0;212;255mD4: the count is per stage[0m
-  [38;2;74;222;128m✓[0m [D4] another stage's first offence is retried
-  [38;2;74;222;128m✓[0m [D4] and put back
-
-  [38;2;0;212;255mD7: the engine retries the first offence; the retry's offence halts[0m
+;255mD7: the engine retries the first offence; the retry's offence halts[0m
   [38;2;248;113;113m✗[0m [D7] the first offence was retried
     [2moutput missing: stage.retry stage=again-judge outcome=unusable[0m
   [38;2;248;113;113m✗[0m [D7] the retry's offence halts
@@ -658,32 +555,94 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   [38;2;248;113;113m✗[0m [D7] the first offence was retried
   [38;2;248;113;113m✗[0m [D7] the retry's offence halts
 
+unit: FAIL tests/unit/stage-retry-test.sh
+
+[38;2;0;212;255m[1m  the engine runs any stage again, as its template says (#2439)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [R1] timed_out with progress, no retry: in the template → 2 runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [R1] the retry that passes is what the dispatch reports
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [R2] retry: 2 → 3 runs
+    [2mexpected: 3, got: 1[0m
+  [38;2;248;113;113m✗[0m [R2] every word that means 'did not finish' is retried
+    [2mexpected: 3, got: 1[0m
+  [38;2;74;222;128m✓[0m [R3] pass → 1 run
+  [38;2;74;222;128m✓[0m [R3] fail → 1 run (the loop handles a failure, not the retry)
+  [38;2;248;113;113m✗[0m [R4] a try that changed nothing is not run again
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [R5] retry: 9 is capped at 5 → 6 runs
+    [2mexpected: 6, got: 1[0m
+  [38;2;248;113;113m✗[0m [R5] retry: lots → the default 1 → 2 runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;74;222;128m✓[0m [R5] retry: 0 → 1 run
+  [38;2;248;113;113m✗[0m [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [R7] one stage.retry for the one retry
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [R7] it names the stage
+    [2mexpected: twice, got: [0m
+  [38;2;248;113;113m✗[0m [R7] ...the outcome the try ended on
+    [2mexpected: timed_out, got: [0m
+  [38;2;248;113;113m✗[0m [R7] ...which try comes next
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [R7] ...of how many
+    [2mexpected: 3, got: [0m
+  [38;2;74;222;128m✓[0m [R7] stage.retry is a known event
+  [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
+    [2mexpected: 2, got: 1[0m
+  [38;2;74;222;128m✓[0m [R9] the inner dispatch runs once; it is not retried on its own
+  [38;2;74;222;128m✓[0m [R10] a code-writing stage whose result alone changed made no progress
+  [38;2;74;222;128m✓[0m [R10] ...one whose other output changed did
+  [38;2;74;222;128m✓[0m [R10] ...one whose summary alone changed did not
+  [38;2;74;222;128m✓[0m [R10] ...one whose code changed did
+  [38;2;248;113;113m✗[0m [R11] each try is told its number
+    [2mexpected: 1 2 3 , got: none [0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m15 of 24 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [R1] timed_out with progress, no retry: in the template → 2 runs
+  [38;2;248;113;113m✗[0m [R1] the retry that passes is what the dispatch reports
+  [38;2;248;113;113m✗[0m [R2] retry: 2 → 3 runs
+  [38;2;248;113;113m✗[0m [R2] every word that means 'did not finish' is retried
+  [38;2;248;113;113m✗[0m [R4] a try that changed nothing is not run again
+  [38;2;248;113;113m✗[0m [R5] retry: 9 is capped at 5 → 6 runs
+  [38;2;248;113;113m✗[0m [R5] retry: lots → the default 1 → 2 runs
+  [38;2;248;113;113m✗[0m [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
+  [38;2;248;113;113m✗[0m [R7] one stage.retry for the one retry
+  [38;2;248;113;113m✗[0m [R7] it names the stage
+  [38;2;248;113;113m✗[0m [R7] ...the outcome the try ended on
+  [38;2;248;113;113m✗[0m [R7] ...which try comes next
+  [38;2;248;113;113m✗[0m [R7] ...of how many
+  [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
+  [38;2;248;113;113m✗[0m [R11] each try is told its number
+
 ### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1/R-2/R-3/R-8: resume-rehydrate-test.sh SPEC-1 assertions fail ("intake emits no stage.start (complete stage skipped)", path-2 and path-3 variants), meaning the dispatch-unit loop still dispatches stages marked complete; the rehydrate-then-skip contract is not working in the live path.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4/R-10: from-stage-rehydrate-test.sh SPEC-3 fails ("intake emits no stage.start when skipped via --from-stage"), meaning --from-stage still re-dispatches the stage that should be skipped; the rehydration+skip logic for --from-stage is not working.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 3 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-9: resume-loop-state-test.sh SPEC-7 assertion "no cycle.iteration.complete for iter=1 (iter-1 was already done before resume)" was removed from the diff rather than made to pass; the diff deletes the assertion instead of fixing the behavior, so the requirement that loop iteration state is restored (not reset) is no longer verified by any tagged assertion.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 4 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-12: resume-entry-points-test.sh fails ("cyclic stage 'cycled' dispatched — pipeline containing cyclic stage ran in resume-entry-points test", got 0); all three entry points are required to have their own passing test using a cycle fixture, and this one does not pass.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 5 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-13/R-14: SPEC-12 in resume-rehydrate-test.sh fails ("fresh run dispatches cycled sub-stage (cycle ran; no stage skipped)" and "pipeline with cyclic fixture was actually run (cycled dispatched)"), meaning the guard that a new run never skips stages is not verified as passing — the ZBUILD_CYCLES_ENABLED=1 fix and the --no-resume flag change were introduced but the cycle body still does not dispatch.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 6 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-9 (regression): The cycle-orchestrator.sh change reads current_iter from persisted state unconditionally, causing inner cycles to start at the wrong iteration when an outer loop re-enters them; this breaks cycle-inner-iter-resets-per-outer-iter-test.sh, cycle-member-dispatch-events-test.sh, nested-loop-rounds-build-test.sh, and nested-loop-rounds-test.sh — four tests outside this issue's scope that must not regress.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 7 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1/R-8 (regression from stage.start emit change): stop-run-on-fail-test.sh (R2), write-boundary-revert-test.sh (D7), and stage-retry-test.sh (R1) fail, indicating the _cycle_dispatch_stage change double-emits stage.start for cycle members or otherwise alters dispatch counting in ways the change must not cause.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 8 (opened by issue-acceptance): Not sure this requirement is met: R-5 (ADR-006 step 3.6 names enforcing tests inline): the ADR text change is present in the diff and the resume-rehydrate-test.sh SPEC-5 assertions check for "before the dispatch loop" and "git state branch" phrases, but resume-rehydrate-test.sh itself fails before the SPEC-5 section is cleanly reached, so I cannot confirm the SPEC-5 assertions actually execute and pass on the new code.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 9 (opened by issue-acceptance): Not sure this requirement is met: R-6 (ADR-050 §6 boundary note present and correct): same file failure; the diff shows the boundary text was added to ADR-050 and a test string-checks for it, but the test file's failures mean I cannot confirm the §6 check runs to completion.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 10 (opened by issue-acceptance): Not sure this requirement is met: R-7 (rehydration uses same path as hydrate stage, plugins/tool/hydrate): the diff extracts _artifact_persist_put_back and the hydrate plugin is updated to call it, which is structurally consistent with the requirement, but because end-to-end resume behavior fails in tests I cannot confirm the shared code path operates correctly at runtime.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1: A resume trusts every stage that already ran — resume-rehydrate-test.sh SPEC-1 assertions fail on all three entry paths ("intake emits no stage.start (complete stage skipped)", path-2 and path-3 variants), proving the live dispatch-unit loop is still dispatching stages already marked complete rather than skipping them.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-2: Completed-stage outputs rehydrated byte-identically — the same SPEC-1 failures mean rehydration is not placing the snapshotted artifacts into ZBUILD_ARTIFACT_DIR before the dispatch loop; the "artifact content from git state branch" assertions cannot be reached or are not passing.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-3: Run picks up at the interrupted stage — same SPEC-1 failure: because completed stages are not skipped, the run is replaying from the start rather than resuming at the interrupted stage.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 4 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-4: --from-stage rehydrates all earlier stages and starts at <s> — from-stage-rehydrate-test.sh SPEC-3 fails ("intake emits no stage.start when skipped via --from-stage"), meaning --from-stage still re-dispatches stages that should be skipped after rehydration.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 5 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-9: Inside a loop, resume restores the loop's iteration count rather than resetting it — the SPEC-7 assertion "no cycle.iteration.complete for iter=1 (iter-1 was already done before resume)" was deleted from resume-loop-state-test.sh in the diff rather than made to pass; the behavior it was pinning is no longer verified by any tagged assertion.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 6 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-12: Every resume entry path finds state in runs/<run_id>/ and behaves as R-1 — resume-entry-points-test.sh fails because the cycled sub-stage is never dispatched in the cycle fixture run (got 0), so the entry-points test does not demonstrate a cycle ran; R-12 requires each entry path to have its own passing test using a cycle fixture.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 7 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-13 (guard): A run with no prior state behaves exactly as today — SPEC-12 in resume-rehydrate-test.sh fails; the fresh-run guard test was restructured but the cycled sub-stage dispatch still does not fire, so the guard that a new run never skips stages is unverified as passing.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 8 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-14 (guard): A new run never skips a stage because of an earlier run's output — SPEC-12's assertion "fresh run dispatches cycled sub-stage (cycle ran; no stage skipped)" was removed from the diff rather than fixed; the guard is now weaker and the cycle body dispatch is not confirmed.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 9 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1/R-3 (regression): The cycle-orchestrator.sh change reads current_iter from persisted state for all cycle entries, not only resumed ones, causing inner cycles to start at the wrong iteration when an outer loop re-enters them; this breaks cycle-inner-iter-resets-per-outer-iter-test.sh, cycle-member-dispatch-events-test.sh, nested-loop-rounds-build-test.sh, and nested-loop-rounds-test.sh — regressions the issue requires not to occur.. What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 10 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-1/R-3 (regression): A stage.start emit added inside _cycle_dispatch_stage for cycle members double-emits the event, breaking stop-run-on-fail-test.sh, write-boundary-revert-test.sh, and stage-retry-test.sh — tests outside this issue's scope that the change must not regress.. What would settle it: a change that meets this requirement in full.
 
 Summary:
 ## issue-acceptance — fail
 
-- The test suite fails on 9 tests, including tests that directly cover R-1, R-2, R-3, R-4, R-8, R-9, R-10, and R-12; the core contract — that a resume skips completed stages and rehydrates their artifacts — is not proven working, and the cycle-orchestrator change introduces regressions in unrelated cycle tests.
+- The test suite fails across 12 tests; the live dispatch-unit loop still dispatches completed stages on resume, --from-stage still re-dispatches skipped stages, the R-9 iteration-count assertion was deleted rather than fixed, and the cycle-orchestrator.sh change introduces regressions that break four unrelated cycle tests.
 
-- 7 requirement(s) not met — each is a finding, sent to the stages that can fix it
-- NOT SURE: R-5 (ADR-006 step 3.6 names enforcing tests inline): the ADR text change is present in the diff and the resume-rehydrate-test.sh SPEC-5 assertions check for "before the dispatch loop" and "git state branch" phrases, but resume-rehydrate-test.sh itself fails before the SPEC-5 section is cleanly reached, so I cannot confirm the SPEC-5 assertions actually execute and pass on the new code. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: R-6 (ADR-050 §6 boundary note present and correct): same file failure; the diff shows the boundary text was added to ADR-050 and a test string-checks for it, but the test file's failures mean I cannot confirm the §6 check runs to completion. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: R-7 (rehydration uses same path as hydrate stage, plugins/tool/hydrate): the diff extracts _artifact_persist_put_back and the hydrate plugin is updated to call it, which is structurally consistent with the requirement, but because end-to-end resume behavior fails in tests I cannot confirm the shared code path operates correctly at runtime. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- 10 requirement(s) not met — each is a finding, sent to the stages that can fix it
 
 ## What you must not do
 
@@ -697,13 +656,8 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - core/pipeline/cycle-orchestrator.sh
   - docs/adr/ADR-006-resume-contract.md
   - docs/adr/ADR-050-prior-work-reuse-contract.md
-  - tests/integration/resume-rehydrate-test.sh
-  - tests/integration/from-stage-rehydrate-test.sh
-  - tests/integration/resume-loop-state-test.sh
-  - tests/integration/resume-entry-points-test.sh
   - tests/integration/pipeline-resume-test.sh
   - tests/integration/resume-after-sigint-test.sh
-  - tests/unit/hydrate-stage-test.sh
   - tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
   - tests/integration/nested-loop-rounds-test.sh
   - tests/integration/nested-loop-rounds-build-test.sh
@@ -748,7 +702,7 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
 - If what you are asked to produce is already there and right, and no
   finding under Previous work is open for you, confirm it and finish: say so
   in your answer, in its usual form, and do not redo the work.
-- Your budget: each model call has 900 seconds and 37 turns. A call that runs out of time
+- Your budget: each model call has 900 seconds, with no limit on turns. A call that runs out of time
   returns nothing: finish and write your answer well before the limit. The whole stage has 3600 seconds.
 
 ### How every stage works
