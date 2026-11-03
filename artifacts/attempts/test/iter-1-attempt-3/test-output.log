@@ -1,0 +1,278 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.oGgEnF/tests/unit/lint-grep-c-test.sh
+
+  lint-grep-c — grep -c || echo detection (#1751)
+
+
+  4. bad pattern detected: exit 1
+  ✓ [SPEC-4] lint exits 1 when bad pattern is present
+  ✓ [SPEC-4] lint names the offending file and line
+  ✓ [SPEC-4] lint catches -c in a later flag cluster (grep -E -c)
+  ✓ [SPEC-4] lint catches the GNU long form (grep --count)
+
+  5. clean code: exit 0
+  ✓ [SPEC-5] lint exits 0 when no bad pattern is present
+  ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean
+    expected: 0, got: 1
+
+  6. legacy-DoNotUse/ directory excluded from scan
+  ✓ [SPEC-6] bad pattern under legacy-DoNotUse/ is excluded from lint
+
+  7. test files are scanned (#1969)
+  ✓ [SPEC-7] a *-test.sh under tests/ is scanned, not exempted
+  ✓ [SPEC-7] the offending test file is named with file:line
+  ✓ [SPEC-7] a plain .sh under a tests/ dir is scanned
+
+  8. lint-grep-c:allow suppresses a single line (#1969)
+  ✓ [SPEC-8] a line marked lint-grep-c:allow is not reported
+  ✓ [SPEC-8] the marker is per-line: an unmarked sibling still fails
+  ✓ [SPEC-8] only the unmarked line is reported
+
+  9a. a command over lines, brackets in quotes, || printf
+  ✓ [SPEC-9] lint exits 1
+  ✓ [SPEC-9] a command continued over lines is caught
+  ✓ [SPEC-9] brackets inside quotes do not hide it
+  ✓ [SPEC-9] || printf is the same bug
+  ✓ [SPEC-9] the safe forms over lines still pass
+
+  9. wiring: CI configuration references lint-grep-c.sh
+  ✓ [SPEC-4] package.json lint script includes lint-grep-c.sh
+  ✓ [SPEC-5] .github/workflows/test.yml references lint-grep-c step
+  ✓ [SPEC-6] .github/workflows/deferred-tracker.yml has if: failure() step
+
+
+  1 of 21 tests failed
+
+  ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.oGgEnF/tests/unit/stage-retry-test.sh
+
+  the engine runs any stage again, as its template says (#2439)
+
+  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs
+    expected: 2, got: 1
+  ✗ [R1] the retry that passes is what the dispatch reports
+    expected: 0, got: 1
+  ✗ [R2] retry: 2 → 3 runs
+    expected: 3, got: 1
+  ✗ [R2] every word that means 'did not finish' is retried
+    expected: 3, got: 1
+  ✓ [R3] pass → 1 run
+  ✓ [R3] fail → 1 run (the loop handles a failure, not the retry)
+  ✗ [R4] a try that changed nothing is not run again
+    expected: 2, got: 1
+  ✗ [R5] retry: 9 is capped at 5 → 6 runs
+    expected: 6, got: 1
+  ✗ [R5] retry: lots → the default 1 → 2 runs
+    expected: 2, got: 1
+  ✓ [R5] retry: 0 → 1 run
+  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
+    expected: 2, got: 1
+  ✗ [R7] one stage.retry for the one retry
+    expected: 1, got: 0
+  ✗ [R7] it names the stage
+    expected: twice, got: 
+  ✗ [R7] ...the outcome the try ended on
+    expected: timed_out, got: 
+  ✗ [R7] ...which try comes next
+    expected: 2, got: 
+  ✗ [R7] ...of how many
+    expected: 3, got: 
+  ✓ [R7] stage.retry is a known event
+  ✗ [R8] a stage run from a work unit is run again too → 2 runs
+    expected: 2, got: 1
+  ✓ [R9] the inner dispatch runs once; it is not retried on its own
+  ✓ [R10] a code-writing stage whose result alone changed made no progress
+  ✓ [R10] ...one whose other output changed did
+  ✓ [R10] ...one whose summary alone changed did not
+  ✓ [R10] ...one whose code changed did
+  ✗ [R11] each try is told its number
+    expected: 1 2 3 , got: none 
+
+
+  15 of 24 tests failed
+
+  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs
+  ✗ [R1] the retry that passes is what the dispatch reports
+  ✗ [R2] retry: 2 → 3 runs
+  ✗ [R2] every word that means 'did not finish' is retried
+  ✗ [R4] a try that changed nothing is not run again
+  ✗ [R5] retry: 9 is capped at 5 → 6 runs
+  ✗ [R5] retry: lots → the default 1 → 2 runs
+  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
+  ✗ [R7] one stage.retry for the one retry
+  ✗ [R7] it names the stage
+  ✗ [R7] ...the outcome the try ended on
+  ✗ [R7] ...which try comes next
+  ✗ [R7] ...of how many
+  ✗ [R8] a stage run from a work unit is run again too → 2 runs
+  ✗ [R11] each try is told its number
+
+unit: 554/556 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.oGgEnF/tests/integration/from-stage-rehydrate-test.sh
+
+  from-stage-rehydrate — artifact restore on --from-stage (#1805)
+
+
+  [#1805/SPEC-3] --from-stage rehydrates prior-stage artifacts and skips their stage.start
+  ✓ [#1805/SPEC-3] setup: state branch populated
+  ✗ [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.X2OBSD/s3-state/artifacts/intake-result.json
+  ✗ [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
+    output missing: prior-run intake
+  ✓ [#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage
+  ✗ [#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)
+    expected: 1, got: 0
+
+  [#1805/SPEC-4] --from-stage with no restorable artifact exits 1 naming missing stage
+  ✓ [#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact
+  ✓ [#1805/SPEC-4] stderr names the missing stage (intake)
+  ✓ [#1805/SPEC-4] no stage.start emitted before exit 1
+
+  from-stage-rehydrate test uses a fixture containing a cyclic stage
+  ✓ [#1805/SPEC-14] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
+  ✓ cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
+
+
+  3 of 10 tests failed
+
+  ✗ [#1805/SPEC-3] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+  ✗ [#1805/SPEC-3] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
+  ✗ [#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.oGgEnF/tests/integration/resume-rehydrate-test.sh
+
+  resume-rehydrate — artifact restore on resume (#1805)
+
+
+  [#1805/SPEC-1] resume restores completed-stage artifact into ZBUILD_ARTIFACT_DIR
+  ✓ [#1805/SPEC-1] setup: state branch populated with intake-result.json
+  ✓ [#1805/SPEC-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR
+  ✓ [#1805/SPEC-1] artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)
+  ✓ [#1805/SPEC-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)
+  ✓ [#1805/SPEC-1] pipeline.resume event emitted (runner reached resume path)
+  ✓ [#1805/SPEC-1] pipeline.resume precedes first stage.start (restore before dispatch loop)
+  ✗ [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
+    expected: 0, got: 1
+
+  [#1805/SPEC-1] path 2: auto-resume (status=interrupted) restores artifacts
+  ✓ [#1805/SPEC-1] path 2 (auto-resume/interrupted): intake-result.json restored
+  ✓ [#1805/SPEC-1] path 2 (auto-resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)
+  ✓ [#1805/SPEC-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)
+  ✓ [#1805/SPEC-1] path 2 (auto-resume): pipeline.resume event emitted
+  ✓ [#1805/SPEC-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (restore before dispatch loop)
+  ✗ [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
+    expected: 0, got: 1
+
+  [#1805/SPEC-1] path 3: zbuild pipeline resume --run-id restores artifacts
+  ✓ [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake-result.json restored
+  ✓ [#1805/SPEC-1] path 3 (zbuild pipeline resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)
+  ✓ [#1805/SPEC-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)
+  ✓ [#1805/SPEC-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted
+  ✓ [#1805/SPEC-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (restore before dispatch loop)
+  ✗ [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
+    expected: 0, got: 1
+
+  [#1805/SPEC-2] missing artifact causes resume exit 1 before any stage.start
+  ✓ [#1805/SPEC-2] resume exits 1 when primary artifact cannot be restored
+  ✗ [#1805/SPEC-2] no stage.start emitted before exit 1
+    expected: 0, got: 1
+
+  [#1805/SPEC-5] ADR-006 amended: step 3.5 restores artifacts before dispatch loop
+  ✓ [#1805/SPEC-5] ADR-006 step 3.6 added (step number present)
+  ✓ [#1805/SPEC-5] ADR-006 step 3.6 names _runner_resume_rehydrate
+  ✓ [#1805/SPEC-5] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test
+  ✓ [#1805/SPEC-5] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test
+  ✓ [#1805/SPEC-5] ADR-006 step 3.6 documents still-absent artifact causes exit 1
+  ✓ [#1805/SPEC-5] ADR-006 step 3.6 documents restore happens before the dispatch loop
+  ✓ [#1805/SPEC-5] ADR-006 step 3.6 documents artifacts restored from the git state branch
+
+  [#1805/SPEC-6] ADR-050 §6 amended with boundary note distinguishing resume from new runs
+  ✓ [#1805/SPEC-6] ADR-050 §6 boundary note says invariant applies to new runs
+  ✓ [#1805/SPEC-6] ADR-050 §6 boundary note names ADR-006 as governing resume
+  ✓ [#1805/SPEC-6] ADR-050 §6 boundary note says a resume continues the same run
+
+  [#1805/SPEC-12] fresh non-resume run dispatches all stages (ADR-050 §6 new-run side)
+  ✓ [#1805/SPEC-12] fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
+  ✓ [#1805/SPEC-12] cycle fixture used in SPEC-12 fresh-run sub-case has type: cycle
+
+  resume-rehydrate test uses a fixture containing a cyclic stage
+  ✓ [#1805/SPEC-14] resume-rehydrate SPEC-1/SPEC-2/SPEC-12 fixture (artifact-snapshot-coverage) contains type: cycle
+  ✓ resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
+
+
+  4 of 35 tests failed
+
+  ✗ [#1805/SPEC-1] intake emits no stage.start (complete stage skipped)
+  ✗ [#1805/SPEC-1] path 2 (auto-resume): intake emits no stage.start (skipped)
+  ✗ [#1805/SPEC-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
+  ✗ [#1805/SPEC-2] no stage.start emitted before exit 1
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.oGgEnF/tests/integration/write-boundary-revert-test.sh
+
+  write boundary: undo and retry, halt on a second offence
+
+
+  D1/D2: the first offence is undone and retried
+  ✓ [D1] the edited file is back
+  ✓ [D1] the new file is gone
+  ✓ [D1] the deleted file is back
+  ✓ [D1] the earlier stage's uncommitted work is back, not reset to HEAD
+  ✓ [D2] the dispatch fails
+  ✓ [D2] the stage is retried (unusable), not halted
+  ✓ [D2] no halting marker
+  ✓ [D2] the paths are named
+
+  D5: a clean retry is not held to it
+  ✓ [D5] a clean re-dispatch of the stage resolves complete
+
+  D3: a second offence by the same stage halts
+  ✓ [D3] the second offence resolves broken
+  ✓ [D3] the files are still put back
+  ✓ [D3] ...including the earlier stage's work
+  ✓ [D6] the halt says which stage changed the repository
+  ✓ [D6] ...and which files
+  ✓ [D6] ...and only for the stage that did it
+
+  D4: the count is per stage
+  ✓ [D4] another stage's first offence is retried
+  ✓ [D4] and put back
+
+  D7: the engine retries the first offence; the retry's offence halts
+  ✗ [D7] the first offence was retried
+    output missing: stage.retry stage=again-judge outcome=unusable
+  ✗ [D7] the retry's offence halts
+    expected: broken, got: unusable
+  ✓ [D7] the files are put back
+
+
+  2 of 20 tests failed
+
+  ✗ [D7] the first offence was retried
+  ✗ [D7] the retry's offence halts
+
+integration: 255/258 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh && bash scripts/lib/lint-atomic-write-unchecked.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 43 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: tests/integration/resume-entry-points-test.sh:294 — `grep -c … || echo` yields "0\n0" on no-match; use `|| true`
+    _s13_ep_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty'      "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
+
+lint-grep-c: 1 occurrence(s). `grep -c` already prints the count — replace `|| echo 0` with `|| true`.
+lint: 0/1 passed
+
+total: 845/851 passed (4 skipped)

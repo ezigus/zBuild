@@ -5,11 +5,11 @@
 
 
   [38;2;0;212;255m[#1805/SPEC-7] cycle orchestrator resumes from current_iter (not 1)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 20:14:30 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:24:29 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 20:14:30 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 01:24:29 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -34,11 +34,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/SPEC-7] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 20:14:31 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 01:24:30 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 20:14:31 UTC ══
+══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 01:24:30 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
