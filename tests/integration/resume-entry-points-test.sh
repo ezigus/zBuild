@@ -128,6 +128,28 @@ assert_file_exists \
     "[#1805/ENTR-1] path 1 (--resume flag): intake-result.json restored from state branch" \
     "$P1_STATE_DIR/artifacts/intake-result.json"
 
+# [#1805/ENTR-1] path 1: pipeline.resume event must be emitted BEFORE the first
+# stage.start. The runner emits pipeline.resume immediately after
+# _runner_resume_rehydrate returns, before entering the dispatch loop. A
+# pipeline.resume line number lower than the first stage.start line number
+# proves the rehydration call completed before any stage was dispatched.
+# Before change: no _runner_resume_rehydrate → no pipeline.resume event →
+#   resume_lineno=0 → assert 0 > 0 → FAILS.
+# After change: _runner_resume_rehydrate called → pipeline.resume emitted before
+#   dispatch loop → resume_lineno > 0 and < first_start_lineno → PASSES.
+_p1_resume_lineno=0
+_p1_first_start_lineno=0
+if [[ -f "$P1_EVENTS_JSONL" ]]; then
+    _p1_resume_lineno="$(awk '/"pipeline.resume"/{print NR; exit}' "$P1_EVENTS_JSONL" 2>/dev/null)"
+    _p1_resume_lineno="${_p1_resume_lineno:-0}"
+    _p1_first_start_lineno="$(awk '/"stage.start"/{print NR; exit}' "$P1_EVENTS_JSONL" 2>/dev/null)"
+    _p1_first_start_lineno="${_p1_first_start_lineno:-0}"
+fi
+assert_gt "[#1805/ENTR-1] path 1 (--resume flag): pipeline.resume event emitted (rehydration ran before dispatch)" \
+    "$_p1_resume_lineno" "0"
+assert_gt "[#1805/ENTR-1] path 1 (--resume flag): pipeline.resume precedes first stage.start (rehydration before dispatch loop)" \
+    "$_p1_first_start_lineno" "$_p1_resume_lineno"
+
 # ── PATH 2: auto-resume on detecting status=interrupted ───────────────────────
 print_test_section "[#1805/ENTR-1] path 2: auto-resume on status=interrupted restores artifacts"
 
@@ -182,6 +204,25 @@ set -e
 assert_file_exists \
     "[#1805/ENTR-1] path 2 (auto-resume/interrupted): intake-result.json restored from state branch" \
     "$P2_STATE_DIR/artifacts/intake-result.json"
+
+# [#1805/ENTR-1] path 2: pipeline.resume event emitted before first stage.start,
+# proving _runner_resume_rehydrate was called before the dispatch loop.
+# Before change: no _runner_resume_rehydrate → pipeline.resume absent →
+#   resume_lineno=0 → assert 0 > 0 → FAILS.
+# After change: auto-resume path calls _runner_resume_rehydrate →
+#   pipeline.resume emitted before dispatch loop → PASSES.
+_p2_resume_lineno=0
+_p2_first_start_lineno=0
+if [[ -f "$P2_EVENTS_JSONL" ]]; then
+    _p2_resume_lineno="$(awk '/"pipeline.resume"/{print NR; exit}' "$P2_EVENTS_JSONL" 2>/dev/null)"
+    _p2_resume_lineno="${_p2_resume_lineno:-0}"
+    _p2_first_start_lineno="$(awk '/"stage.start"/{print NR; exit}' "$P2_EVENTS_JSONL" 2>/dev/null)"
+    _p2_first_start_lineno="${_p2_first_start_lineno:-0}"
+fi
+assert_gt "[#1805/ENTR-1] path 2 (auto-resume): pipeline.resume event emitted (rehydration ran before dispatch)" \
+    "$_p2_resume_lineno" "0"
+assert_gt "[#1805/ENTR-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)" \
+    "$_p2_first_start_lineno" "$_p2_resume_lineno"
 
 # ── PATH 3: zbuild pipeline resume --run-id ───────────────────────────────────
 print_test_section "[#1805/ENTR-1] path 3: zbuild pipeline resume --run-id restores artifacts"
@@ -243,6 +284,26 @@ assert_file_exists \
     "[#1805/ENTR-1] path 3 (zbuild pipeline resume): intake-result.json restored from state branch" \
     "$P3_STATE_DIR/artifacts/intake-result.json"
 
+# [#1805/ENTR-1] path 3: pipeline.resume event emitted before first stage.start,
+# proving zbuild pipeline resume invokes _runner_resume_rehydrate before the
+# dispatch loop.
+# Before change: no _runner_resume_rehydrate → pipeline.resume absent →
+#   resume_lineno=0 → assert 0 > 0 → FAILS.
+# After change: zbuild calls runner --resume → _runner_resume_rehydrate called →
+#   pipeline.resume emitted before dispatch loop → PASSES.
+_p3_resume_lineno=0
+_p3_first_start_lineno=0
+if [[ -f "$P3_EVENTS_JSONL" ]]; then
+    _p3_resume_lineno="$(awk '/"pipeline.resume"/{print NR; exit}' "$P3_EVENTS_JSONL" 2>/dev/null)"
+    _p3_resume_lineno="${_p3_resume_lineno:-0}"
+    _p3_first_start_lineno="$(awk '/"stage.start"/{print NR; exit}' "$P3_EVENTS_JSONL" 2>/dev/null)"
+    _p3_first_start_lineno="${_p3_first_start_lineno:-0}"
+fi
+assert_gt "[#1805/ENTR-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted (rehydration ran before dispatch)" \
+    "$_p3_resume_lineno" "0"
+assert_gt "[#1805/ENTR-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)" \
+    "$_p3_first_start_lineno" "$_p3_resume_lineno"
+
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-entry-points test uses a fixture containing a cyclic stage"
 
@@ -291,8 +352,8 @@ assert_contains "resume-entry-points test uses a cyclic fixture (type: cycle)" \
     "$_s13_ep_content" "type: cycle"
 
 # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
-_s13_ep_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
-    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || true)"
+_s13_ep_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)" \
     "1" "$_s13_ep_intake_starts"
 
