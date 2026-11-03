@@ -1738,10 +1738,22 @@ _runner_from_stage_preflight() {
         _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" || true
     fi
     rm -rf "${_fsp_staging:?}" 2>/dev/null || true
+    # When from_stage is a cycle ID, stop checking before the cycle's first
+    # member (the first element of _TPL_CYCLE_STAGES_<id>). Cycle IDs are not
+    # in active_stages[], so a literal match would never fire and all stages
+    # (including cycle members) would be checked — wrong.
+    local _fsp_stop_stage="$_fsp_from_stage"
+    local _fsp_cycle_safe="${_fsp_from_stage//-/_}"
+    local _fsp_cycle_stages_var="_TPL_CYCLE_STAGES_${_fsp_cycle_safe}"
+    local _fsp_cycle_csv="${!_fsp_cycle_stages_var:-}"
+    if [[ -n "$_fsp_cycle_csv" ]]; then
+        # from_stage is a cycle; the stop point is its first member stage.
+        _fsp_stop_stage="${_fsp_cycle_csv%%,*}"
+    fi
     # Verify every stage before the target has its primary artifact
     local _fsp_s _fsp_plugin_dir _fsp_manifest _fsp_prim_path _fsp_resolved
     for _fsp_s in "${_fsp_stages[@]}"; do
-        [[ "$_fsp_s" == "$_fsp_from_stage" ]] && break
+        [[ "$_fsp_s" == "$_fsp_stop_stage" ]] && break
         _fsp_plugin_dir=""; _fsp_manifest=""; _fsp_prim_path=""; _fsp_resolved=""
         _fsp_plugin_dir="$(_find_plugin_for_stage "$_fsp_s" "$_fsp_plugins_root" 2>/dev/null || true)"
         [[ -z "$_fsp_plugin_dir" ]] && continue
@@ -2070,12 +2082,21 @@ main() {
     fi
     _runner_state_file="$state_file"
 
-    # Validate --from-stage against active_stages now that we have the stage list
+    # Validate --from-stage against active_stages now that we have the stage list.
+    # Cycle IDs (from _TPL_CYCLES) are also valid targets: --from-stage <cycle-id>
+    # skips all stages before the cycle and dispatches the cycle as the first unit.
     if [[ -n "$from_stage" ]]; then
         local _fs_valid=false _fs_s
         for _fs_s in "${active_stages[@]}"; do
             [[ "$_fs_s" == "$from_stage" ]] && { _fs_valid=true; break; }
         done
+        # Also accept cycle IDs — cycles appear in _TPL_CYCLES, not _TPL_STAGES.
+        if ! $_fs_valid && declare -p _TPL_CYCLES >/dev/null 2>&1; then
+            local _fv_cyc
+            for _fv_cyc in "${_TPL_CYCLES[@]}"; do
+                [[ "$_fv_cyc" == "$from_stage" ]] && { _fs_valid=true; break; }
+            done
+        fi
         if ! $_fs_valid; then
             error "--from-stage '$from_stage' is not a known stage (active stages: ${active_stages[*]})"
             return 1
