@@ -549,7 +549,14 @@ _design_write_steps() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ ^'```steps'[[:space:]]*$ ]]; then in_block=1; continue; fi
         if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then break; fi
-        [[ $in_block -eq 1 && "$line" =~ ^[[:space:]]*[-*0-9.]+[[:space:]]+(.*[^[:space:]]) ]] && lines+=("${BASH_REMATCH[1]}")
+        [[ $in_block -eq 1 ]] || continue
+        if [[ "$line" =~ ^[[:space:]]*[-*0-9.]+[[:space:]]+(.*[^[:space:]]) ]]; then
+            lines+=("${BASH_REMATCH[1]}")
+        elif [[ -n "${line// }" && ${#lines[@]} -gt 0 ]]; then
+            # #2460: a step whose words or areas carry on to the next line.
+            local _c="${line#"${line%%[![:space:]]*}"}"
+            lines[-1]+=" ${_c%"${_c##*[![:space:]]}"}"
+        fi
     done < "$design"
     if [[ ${#lines[@]} -eq 0 ]]; then rm -f "$out" 2>/dev/null; return 0; fi
     title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"

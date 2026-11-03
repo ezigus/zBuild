@@ -10,27 +10,10 @@ _ZBUILD_BUILD_CONTEXT_LOADED=1
 # one per line. Empty when design.md is absent, has no acceptance block, or
 # the block has no TESTFILES section.
 _build_read_acceptance_testfiles() {
-    local design_md="${1:-}"
-    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
-    local block_output
-    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
-    [[ -z "$block_output" ]] && return 0
-    local in_testfiles=0 line
-    while IFS= read -r line; do
-        if [[ "$line" == "TESTFILES:" ]]; then
-            in_testfiles=1
-            continue
-        fi
-        if [[ $in_testfiles -eq 1 && -n "$line" ]]; then
-            line="${line%$'\r'}"
-            [[ -z "$line" ]] && continue
-            # ADR-031: never surface absolute or ".."-containing paths.
-            if [[ "$line" == /* || "/$line/" == *"/../"* ]]; then
-                continue
-            fi
-            printf '%s\n' "$line"
-        fi
-    done <<< "$block_output"
+    # #2460: one path per line, however the design binds them — a binding that
+    # names two files is two files, and a wrapped binding is read whole. The
+    # shared reader drops absolute and ".." paths (ADR-031).
+    acceptance_list_testfiles "${1:-}"
 }
 
 # _build_read_design_decisions <design_md_path> (ISSUE-E / #916, ADR-020)
