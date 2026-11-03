@@ -1,70 +1,50 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Refinement complete (eighth pass)
+## Status: Eleventh pass — fixing three design-gate findings
 
-### Finding addressed this pass: SPEC-4 tautology
+### Findings addressed this pass (eleventh)
 
-**acceptance-gate finding 1:** SPEC-4's test already passes on old code.
+**design finding 1** — R-9 not covered: SPEC-7 covers loop-state side of R-9; SPEC-9 covers "all three entry paths invoke _runner_resume_rehydrate" which is exactly R-9 ("every way to resume finds the interrupted run's state and behaves as R-1"), but SPEC-9 named only R-12. Fix: add `R-9` to SPEC-9 covers. SPEC-7 retains R-9 too.
 
-Root cause verified by reading from-stage-rehydrate-test.sh:154–225 and runner.sh:1727–1756:
+**design finding 2** — R-10 not covered: SPEC-3 named R-10 but covers --from-stage dispatch. SPEC-10[done] covers the no-prior-state → fresh-start path (resume.sh:247) which is exactly R-10. Fix: add `R-10` to SPEC-10 covers.
 
-The test has three assertions under SPEC-4:
-1. `assert_eq "1" "$_s4_rc"` — old code also exits 1 (for different reasons)
-2. `assert_contains "$_s4_stderr" "intake"` — old code emits "intake" in stderr too
-3. `assert_eq "0" "$_s4_any_starts"` — old code also emits no stage.start before exiting
+**design finding 3** — R-12 not covered: SPEC-9 named R-12 but only checks the call path. R-12 requires amending ADR-006. SPEC-5 verifies the amendment via grep assertions. Fix: add `R-12` to SPEC-5 covers. SPEC-9 retains R-12 too (three-entry-path test is the ADR's named enforcing test).
 
-The ONLY phrase that discriminates new from old code is from `_runner_from_stage_preflight` at runner.sh:1751:
-```
-"error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact"
-```
+### Summary of changes from tenth to eleventh pass
 
-Key substring: **"has no restorable primary artifact"** — absent from old code entirely.
+| SPEC | Field changed | Old value | New value |
+|------|--------------|-----------|-----------|
+| SPEC-5 | covers | R-5 | R-5 R-12 |
+| SPEC-9 | covers | R-12 | R-9 R-12 |
+| SPEC-10 | covers | R-13 | R-10 R-13 |
 
-Fixes applied in design (eighth pass):
-- SPEC-4 rewritten to require this specific phrase in stderr (not just "intake")
-- Step 11 updated: added item (3) — change assert_contains for SPEC-4 from "intake" to "has no restorable primary artifact"
-- Finding 12 added documenting the tautology and its fix
+### issue-acceptance findings (not design changes)
 
-### SPEC-1/SPEC-2/SPEC-3 not_passing_at_head (issue-acceptance finding)
+- Finding 3: ADR-006 amendment not verifiable from diff — build concern; SPEC-5 already specifies grep assertion in resume-rehydrate-test.sh
+- Finding 4: ADR-050 amendment not verifiable from diff — build concern; SPEC-6 already specifies grep assertion in resume-rehydrate-test.sh
 
-These fail because the setup step `assert_fail "[#1805/SPEC-1] setup: snapshot to state branch failed"` fails — `_artifact_persist_snapshot` fails in the test environment. Build-stage concern, not a design change. Finding 13 added.
+### Previously verified (still holds from tenth pass)
 
-### issue-acceptance findings 7 and 8
-
-Finding 7 (R-9/SPEC-7 loop iter): SPEC-7 NEGCTL PASS — the uncertainty is a build-stage concern. Finding 14 added.
-Finding 8 (R-5/R-6 ADR amendments): ADR diffs not visible to issue-acceptance. Steps 1 and 2 correctly specify the amendments. Finding 15 added.
-
----
-
-## What still needs to be done by the build
-
-| Step | What | Files |
-|------|------|-------|
-| 5(b) | Add SPEC-13 sentinel-mock delegation test | tests/unit/hydrate-stage-test.sh |
-| 6 | Add _ZBUILD_RESUME_ACTIVE guard to cycle-orchestrator.sh | core/pipeline/cycle-orchestrator.sh |
-| 7 | Export _ZBUILD_RESUME_ACTIVE=true in runner.sh after line 2838 | core/pipeline/runner.sh |
-| 9 | Add export _ZBUILD_RESUME_ACTIVE=true before cycle_orchestrator_run at line 76 | tests/integration/resume-loop-state-test.sh |
-| 10 item (4) | Retag assert_contains in SPEC-13 section (line ~638) as [#1805/SPEC-14] | tests/integration/resume-rehydrate-test.sh |
-| 11 items (2)+(3) | Retag assert_contains (SPEC-14); change SPEC-4 assert_contains to "has no restorable primary artifact" | tests/integration/from-stage-rehydrate-test.sh |
-| SPEC-1/2/3 setup | Fix _artifact_persist_snapshot state branch write in test environments | tests/integration/resume-rehydrate-test.sh, tests/integration/from-stage-rehydrate-test.sh |
-
----
-
-## Evidence verified (eighth pass)
-
-- `_runner_from_stage_preflight` at runner.sh:1727–1756: error message at runner.sh:1751: "error: --from-stage '...': stage '...' has no restorable primary artifact" ✓
-- from-stage-rehydrate-test.sh:214-216: `assert_contains ... "$_s4_stderr" "intake"` — tautological ✓
-
-## Previously verified (still holds)
-
+- runner.sh:3896 = `if $resume_mode && [[ -z "$skip_until_stage" ]]; then` (SPEC-8, SPEC-11 evidence)
+- runner.sh:3899 = `if [[ "$stage_status" == "complete" ]]; then` (SPEC-8 evidence)
+- resume.sh:247 = no-state-file → fresh_start branch (SPEC-10 evidence)
 - `_artifact_persist_put_back` at artifact-persist.sh:638 ✓
 - `_artifact_persist_restore` at artifact-persist.sh:568 ✓
 - `_runner_resume_rehydrate` at runner.sh:1702 ✓, called at runner.sh:2838 ✓
 - `plugins/tool/hydrate/plugin.sh` line 162 calls `_artifact_persist_put_back` ✓
-- SPEC-8[done]: runner.sh:3808 = `if $resume_mode && [[ -z "$skip_until_stage" ]]` ✓
-- SPEC-10[done]: resume.sh:247 = no-state → fresh_start branch ✓
-- SPEC-11[done]: runner.sh:3808 same line (resume_mode=false for new runs) ✓
-- artifact-snapshot-coverage.yaml line 17: `type: cycle` ✓
 - SPEC-7: NEGCTL PASS ✓
 - SPEC-9: NEGCTL PASS ✓
 - SPEC-13: NEGCTL PASS ✓
+
+### What build must still do
+
+| Step | What | Files |
+|------|------|-------|
+| 1 | Amend ADR-006 step 3.6 + SPEC-5 grep assertions | docs/adr/ADR-006-resume-contract.md, tests/integration/resume-rehydrate-test.sh |
+| 2 | Amend ADR-050 §6 boundary note + SPEC-6 grep assertion | docs/adr/ADR-050-prior-work-reuse-contract.md, tests/integration/resume-rehydrate-test.sh |
+| 5(b) | Add SPEC-13 sentinel-mock delegation test | tests/unit/hydrate-stage-test.sh |
+| 6 | Add _ZBUILD_RESUME_ACTIVE guard to cycle-orchestrator.sh | core/pipeline/cycle-orchestrator.sh |
+| 7 | Export _ZBUILD_RESUME_ACTIVE=true in runner.sh after line 2838 | core/pipeline/runner.sh |
+| 9 | Add export _ZBUILD_RESUME_ACTIVE=true before cycle_orchestrator_run | tests/integration/resume-loop-state-test.sh |
+| 10 | Retag SPEC-14; fix grep-c; add SPEC-5/SPEC-6 ADR greps; remove stale SPEC-12 block | tests/integration/resume-rehydrate-test.sh |
+| 11(2)+(3) | Retag SPEC-14; change SPEC-4 assert to "has no restorable primary artifact" | tests/integration/from-stage-rehydrate-test.sh |

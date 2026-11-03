@@ -1,0 +1,13 @@
+## design — fail
+
+- the design fails 7 check(s)
+
+- The issue asks for this and no SPEC covers it: R-6 — "the loop's iteration count and state are restored, not reset": SPEC-6 (sole SPEC naming R-6) demands only an ADR-050 text amendment; the behavioral requirement for the cycle orchestrator to read `cycle_iterations[CYCLE_ID].current_iter` from persisted state and start from that value is demanded only by SPEC-7, which names R-9
+- The issue asks for this and no SPEC covers it: R-8 — "--from-stage <s> naming a stage with no prior output to rehydrate refuses with a reason, and does not start": SPEC-2 (sole SPEC naming R-8) demands "the resume to exit 1" when an artifact is absent — the wording is explicitly the resume path; the --from-stage preflight refusal behavior is demanded by SPEC-4, which names R-11
+- The issue asks for this and no SPEC covers it: R-11 — "a new run of the same issue still never skips a stage because of an earlier run's output": SPEC-4 (sole SPEC naming R-11) demands the --from-stage missing-artifact preflight error, which is R-8's requirement; the behavior matching R-11 (stage-skip guard gated on `resume_mode=true`) is described by SPEC-11, which names R-14
+- the issue does not ask for this, or the design gets it wrong: SPEC-14 covers R-15 — R-15 does not appear in REQUIREMENTS; the design commits to verifying a requirement the issue never states
+- the issue does not ask for this, or the design gets it wrong: SPEC-12 covers R-16 — R-16 does not appear in REQUIREMENTS; the design commits to verifying a requirement the issue never states
+- marked [done], but the code its evidence points at does not do it: SPEC-8 — evidence at runner.sh:3808 (lines 3803–3813) shows post-dispatch failure handling (`_render_pipeline_end`, `error`, `_runner_leaf_contract_halt`, `_runner_leaf_verdict_halt`); no test of `stage_statuses[s]=="complete"` and no stage-skip logic appears in the cited code
+- marked [done], but the code its evidence points at does not do it: SPEC-11 — evidence at runner.sh:3808 (same lines 3803–3813, identical window) shows the same failure-handling path; no check of `resume_mode` and no stage-skip guard appears in the cited code
+
+This try is kept as the working copy for the next run; design.md is unchanged.

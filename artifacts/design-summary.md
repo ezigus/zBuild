@@ -1,6 +1,7 @@
-## design — pass
+## design — fail
 
-- authored design.md — 17 file(s) in scope, 14 acceptance SPEC(s)
+- the design fails 1 check(s)
 
-- scope: core/pipeline/runner.sh,core/state/artifact-persist.sh,plugins/tool/hydrate/plugin.sh,core/pipeline/cycle-orchestrator.sh,docs/adr/ADR-006-resume-contract.md,docs/adr/ADR-050-prior-work-reuse-contract.md,tests/integration/resume-rehydrate-test.sh,tests/integration/from-stage-rehydrate-test.sh,tests/integration/resume-loop-state-test.sh,tests/integration/resume-entry-points-test.sh,tests/integration/pipeline-resume-test.sh,tests/integration/resume-after-sigint-test.sh,tests/unit/hydrate-stage-test.sh,tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh,tests/integration/nested-loop-rounds-test.sh,tests/integration/nested-loop-rounds-build-test.sh,tests/integration/cycle-member-dispatch-events-test.sh
-- artifact: design.md
+- The issue asks for this and no SPEC covers it: R-14: Rehydration follows the same path the hydrate stage already uses (`_artifact_persist_put_back`) — the only SPEC naming R-14 is SPEC-11[done], whose text is "A new run never skips a stage because the stage-skip guard requires `resume_mode=true`"; that text demands skip prevention, not code-path sharing with the hydrate plugin; SPEC-13, which does demand that `hydrate_run` delegates to `_artifact_persist_put_back`, names R-7, not R-14; no SPEC naming R-14 demands the shared chokepoint.
+
+This try is kept as the working copy for the next run; design.md is unchanged.
