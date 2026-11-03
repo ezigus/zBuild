@@ -247,8 +247,15 @@ the step's backstop is 352 minutes, and the `always()` steps have the 8 minutes 
 The comment's ceiling is 345 (`ZBUILD_STATUS_CEILING_MIN`). Enforced by
 `tests/unit/ci-stop-before-github-test.sh` C1–C3.
 
+## Amendment 2026-11-02 (#2460) — a requirement's label is shown as code
+
+GitHub links `#1805` in a comment and shows the issue's title in its place, so `[#1805/SPEC-3]` read as
+`[[bug] --resume … #1805/SPEC-3]`. The comment shows each `[#n/SPEC-m]` label as code, which GitHub leaves
+as written; one already between backticks is left alone.
+
 ## Enforced by
 
+- Amendment 2026-11-02 (#2460: labels shown as code) → `tests/unit/run-status-comment-render-test.sh` #2460
 - Amendment 2026-11-01 (#2443: stop at 345 minutes) → `tests/unit/ci-stop-before-github-test.sh` C1–C3
 - Amendment 2026-10-28 → `tests/unit/run-status-comment-pages-test.sh` P1–P2 (the whole line, the rest folded), P3 (the snapshot keeps it whole), P4–P6 (parts, not omissions; the newest has the header; earlier parts do not change), P7 (one comment per part); `tests/unit/run-status-comment-render-test.sh` SPEC-4 (never cut), SPEC-6 (no omission); `tests/unit/test-author-loop-test.sh` A9 (test-author counts the test files it changed); `tests/unit/test-author-test.sh` SPEC-14 (a retryable outcome carries no count)
 

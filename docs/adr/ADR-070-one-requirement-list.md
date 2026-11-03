@@ -49,8 +49,24 @@ it says (`DONE_WRONG:`, ADR-069 §2). Each item is a finding design must fix, wh
 
 Each of intake's two calls has one turn and no tools (`config.router.tools: none`, ADR-017 §11): it is given the issue and answers in its reply. One turn alone did not keep it out of the code. With its tools on, try 1 on #1805 spent its turn on a tool call and ended `out_of_turns`.
 
+## Amendment 2026-11-02 (#2460) — §1 §2: intake starts from its last list and says what changed; one item per line
+
+Over the same issue text intake listed 17, 15, 15, 14 and 16 requirements in successive runs of #1805 — its
+check call finds different misses each time — and said nothing; on run 41546214211 the two it added made
+design's first try fail.
+
+- **§2: the last run's list is kept in hand, never read as this run's.** intake's writing call is shown it and
+  told to start from it — keep each requirement the issue still states, in the same words; add any it misses;
+  leave out any the issue no longer asks for. The latest list is the one kept.
+- **§2: intake says what changed.** Its result carries `requirements_changed` (`added`, `removed`, by their
+  words) and its summary says "the requirements changed since the last run", naming each, or that they are
+  the same as the last run's.
+- **§1: one item per line.** The check answers one `MISSING:` line per requirement it finds missing; a reply is
+  read in whole units (`scripts/lib/reply-units.sh`), so a requirement that wraps, or holds a `;`, is one.
+
 ## Enforced by
 
+- §1 §2 amendment 2026-11-02 (#2460: intake starts from its last list and says what changed; one item per line) → `tests/unit/intake-previous-list-test.sh` P1–P4; `tests/unit/reply-multiline-test.sh` Q1
 - §1 amendment 2026-11-01 (#2448: intake's calls have no tools) → `tests/unit/intake-no-tools-test.sh` T4
 - §1 amendment 2026-11-01 (#2445: a model writes and checks the list) → `tests/unit/intake-requirements-model-test.sh` I1–I7; `tests/unit/requirements-list-test.sh` Q1
 - §4 amendment 2026-11-01 (#2445: the check looks both ways; scope and [done] evidence shown) → `tests/unit/design-coverage-test.sh` X1–X5
