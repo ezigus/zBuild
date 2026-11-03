@@ -96,10 +96,13 @@ delivery_loop:
 test-author:
   gate: auto
   roles: [test_author]
-  # The whole stage, every call and check inside it (one 15-minute model call per
-  # round of its own check, plus the checks); the engine stops it here. The
-  # default for a stage is 900 (15 minutes).
-  timeout_s: 3780
+  # Each try: one 15-minute model call, then its own checks; the engine stops it
+  # here. The default for a stage is 900 (15 minutes).
+  timeout_s: 2700
+  # #2460 (ADR-054 §6a): the engine owns every retry. A try whose own check
+  # finds problems ends `unusable` with them, and the engine runs test-author
+  # again — up to 2 more tries a round, each shown the last one's findings.
+  retry: 2
   # #2188: no authored assertions → the cycle stops before build. Otherwise build
   # writes its own tests, the defect #2022 exists to prevent (#1849 run
   # 35949629759). Its failure is retried first (the stage's `retry:` budget).

@@ -14,6 +14,10 @@ fi
 
 [[ -n "${_ZBUILD_BUILD_SUMMARY_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_SUMMARY_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 # #2108: the false-completion guard spawns TESTFILEs under the same scrub the
 # acceptance gate uses (env-scrub.sh sources nothing, so no cycle).
 if ! declare -F _zbuild_make_fresh_shell >/dev/null 2>&1; then
@@ -168,7 +172,9 @@ _build_scope_needs_line() {
 # Read from build's answer `ANSWER … : nothing to do — not reproduced: <path>`
 # (#2322), markdown and case allowed, and from the older `NOT_REPRODUCED: <path>`.
 _build_not_reproduced() {
-    local line seen="" restore re
+    local line seen="" restore re _joined
+    # #2460: a wrapped answer is read whole.
+    zb_reply_join_v _joined "${1:-}"
     re='^[[:space:]>*`_-]*(answer[[:space:]].*[[:space:]])?not[ _]reproduced[*`_]*[[:space:]]*:[[:space:]]*[*`]*([^[:space:]*`]+)'
     restore="$(shopt -p nocasematch)"
     shopt -s nocasematch
@@ -177,7 +183,7 @@ _build_not_reproduced() {
         case "$seen" in *$'\n'"${BASH_REMATCH[2]}"$'\n'*) continue ;; esac
         seen+=$'\n'"${BASH_REMATCH[2]}"$'\n'
         printf '%s\n' "${BASH_REMATCH[2]}"
-    done <<< "${1:-}"
+    done <<< "$_joined"
     eval "$restore"
 }
 
@@ -186,14 +192,16 @@ _build_not_reproduced() {
 # `ANSWER <stage> finding <n>: nothing to do — the test is wrong: <file>: <why>`.
 # Read by the shell: it runs on every try (ADR-065).
 _build_test_wrong() {
-    local line re had=0
+    local line re had=0 _joined
+    # #2460: a wrapped answer is read whole.
+    zb_reply_join_v _joined "${1:-}"
     re='^[[:space:]>*`_-]*answer[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+)[[:space:]]*:.*the[[:space:]]+test[[:space:]]+is[[:space:]]+wrong[[:space:]]*:[[:space:]]*(.+)$'
     shopt -q nocasematch && had=1
     shopt -s nocasematch
     while IFS= read -r line; do
         [[ "$line" =~ $re ]] || continue
         printf '%s: %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
-    done <<< "${1:-}"
+    done <<< "$_joined"
     (( had )) || shopt -u nocasematch
 }
 
@@ -253,7 +261,10 @@ _build_write_build_summary() {
         _inert_failing_testfile="$(_build_guard_false_completion \
             "$_acceptance_testfiles" "${repo_root:-}" 2>/dev/null || true)"
         if [[ -n "$_inert_failing_testfile" ]]; then
-            build_verdict="fail"   # #2187: the outcome carries the false completion
+            # #2460 (ADR-054 §6a): build's own work is unfinished — it said done,
+            # changed nothing, and its test is still red. The try is `unusable`,
+            # with that as its finding, and the engine runs build again.
+            build_verdict="unusable"
             build_reason="false_completion_detected"
             build_data_kind="inert_build"
             emit_event "build.inert_build" "plugin=build" \
@@ -379,6 +390,9 @@ _build_write_build_summary() {
         # made from.
         + ( ( (if $build_data_kind != "" then {build_kind: $build_data_kind} else {} end)
             + (if ($not_reproduced | length) > 0 then {not_reproduced: $not_reproduced} else {} end)
+            # #2460: what the next try is told — its test still fails.
+            + (if $failing_acceptance_testfile != "" then {findings: [{n: 1,
+                text: "you said the work was done but changed no file, and \($failing_acceptance_testfile) still fails — make it pass by changing the code"}]} else {} end)
             ) as $d | if ($d | length) > 0 then {data: $d} else {} end )
         ' | atomic_write "$output_summary_json" \
         && stage_result_add "$output_summary_json" "$build_verdict" "${_sum_build_reason:-${build_reason:-unknown}}"

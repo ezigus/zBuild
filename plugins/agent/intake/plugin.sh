@@ -128,7 +128,11 @@ _intake_run_inner() {
     local issue="${ZBUILD_ISSUE:-0}"
     # #2306 (ADR-070 §2): only an issue has a requirement list; a list left by an
     # earlier run must not be read as this run's.
-    local _raw_json="" fetched_ok=""
+    local _raw_json="" fetched_ok="" _prev_req=""
+    # #2460: the last run's list is kept in hand — the writing call starts from
+    # it, and the result says what changed — and never read as this run's.
+    [[ -n "$_art" && -s "$_art/requirements.json" ]] && _prev_req="$(<"$_art/requirements.json")"
+    _INTAKE_PREV_REQS="$(jq -r '.requirements[]? | "- \(.text)"' <<< "${_prev_req:-{\}}" 2>/dev/null || true)"
     [[ -n "$_art" ]] && rm -f "$_art/requirements.json"
 
     # Support --issue mode: when goal text is absent, derive it from the issue number.
@@ -307,15 +311,29 @@ _intake_run_inner() {
         warn "intake_run: could not write $_art/requirements.json — later stages judge the issue text alone"
     fi
 
+    # #2460 (ADR-070 §2): what changed since the last run's list, by its words.
+    local _chg="null" _chg_md=""
+    if [[ -n "$_prev_req" && -s "$_art/requirements.json" ]]; then
+        _chg="$(jq -c --argjson p "$_prev_req" '[.requirements[]?.text] as $n | [$p.requirements[]?.text] as $o
+            | {added: [$n[] | select(. as $t | $o | index([$t]) | not)],
+               removed: [$o[] | select(. as $t | $n | index([$t]) | not)]}' "$_art/requirements.json" 2>/dev/null || printf 'null')"
+        _chg_md="$(jq -r 'if (.added | length) + (.removed | length) == 0
+                then "- the requirements are the same as the last run'"'"'s"
+                else "- the requirements changed since the last run:"
+                    + ([.added[] | "\n  - added: " + .] | join(""))
+                    + ([.removed[] | "\n  - removed: " + .] | join("")) end' <<< "$_chg" 2>/dev/null || true)"
+    fi
+
     # #2364: the result carries the issue text, so a later stage finds it by
     # what it is (data.issue_text), never by intake's file name.
     _intake_write_result "$_art" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
-        "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" \
-            '{goal_len: ($t | length), platform_count: $n, issue_text: $t}')" || return 1
+        "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" --argjson c "${_chg:-null}" \
+            '{goal_len: ($t | length), platform_count: $n, issue_text: $t}
+             + (if $c != null then {requirements_changed: $c} else {} end)')" || return 1
     stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
-        "$(printf -- '- goal length: %s chars\n- platforms: %s' "${#sanitized}" "${#platforms[@]}")"
+        "$(printf -- '- goal length: %s chars\n- platforms: %s' "${#sanitized}" "${#platforms[@]}"; [[ -n "$_chg_md" ]] && printf '\n%s' "$_chg_md")"
     emit_event "plugin.result" "plugin=intake" \
         "goal_len=${#sanitized}" \
         "platform_count=${#platforms[@]}"

@@ -11,6 +11,10 @@
 
 [[ -n "${_ZBUILD_DESIGN_COVERAGE_LOADED:-}" ]] && return 0
 _ZBUILD_DESIGN_COVERAGE_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 
 # The call's three parts, composed with the engine's blocks in the one prompt
 # order (ADR-067 §8).
@@ -35,9 +39,9 @@ Answer in exactly this form:
 
 VERDICT: covered | uncovered
 REASON: <one sentence>
-UNCOVERED: <every requirement no SPEC fully covers, separated by semicolons, all on this one line; omit when covered>
-OUTSIDE: <every SPEC or scope entry the issue does not ask for or that contradicts it, with why, separated by semicolons, on this one line; omit when none>
-DONE_WRONG: <every [done] SPEC whose evidence code does not do what it says, with why, separated by semicolons, on this one line; omit when none>
+UNCOVERED: <a requirement no SPEC fully covers> — one line for each; omit when covered
+OUTSIDE: <a SPEC or scope entry the issue does not ask for or that contradicts it, with why> — one line for each; omit when none
+DONE_WRONG: <a [done] SPEC whose evidence code does not do what it says, with why> — one line for each; omit when none
 EOF2
 }
 # _dcov_done_evidence <design_md> <repo_root> — for each [done] SPEC, the lines
@@ -139,7 +143,7 @@ _design_coverage() {
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
-    local raw="" rc=0 rc_file ask="$framed" _try v="" u_line item
+    local raw="" rc=0 rc_file ask="$framed" _try v=""
     # ADR-060 §6: an answer with no verdict is asked again once, at once, with
     # what was wrong and the answer. A failed call is not asked again.
     for _try in 1 2; do
@@ -178,33 +182,29 @@ _design_coverage() {
         _DESIGN_COV_OUTCOME=unusable
         return 0
     fi
+    # #2460: each item read whole, however many lines it spans.
+    zb_reply_join_v raw "$raw"
     # #2445: what lies outside the issue, and [done] claims the code does not
     # bear out, are read whatever the coverage verdict.
     _dcov_list _DESIGN_OUTSIDE OUTSIDE "$raw"
     _dcov_list _DESIGN_DONE_WRONG DONE_WRONG "$raw"
     [[ "$v" == covered ]] && return 0
-    u_line="$(grep -E '^UNCOVERED:' <<< "$raw" || true)"
-    u_line="${u_line%%$'\n'*}"; u_line="${u_line#UNCOVERED:}"
-    while IFS= read -r item; do
-        item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
-        [[ -n "$item" ]] && _DESIGN_UNCOVERED+=("$item")
-    done < <(tr ';' '\n' <<< "$u_line")
+    _dcov_list _DESIGN_UNCOVERED UNCOVERED "$raw"
     # An uncovered verdict that names nothing is still uncovered.
     [[ ${#_DESIGN_UNCOVERED[@]} -gt 0 ]] || _DESIGN_UNCOVERED+=("a requirement (the check did not say which)")
     return 0
 }
 
-# _dcov_list <array> <LABEL> <answer> — the ;-separated items on the answer's
-# `LABEL:` line, one entry each.
+# _dcov_list <array> <LABEL> <answer> — every `LABEL:` line of the (joined)
+# answer, one entry each (#2460: never split on ';' — a "why" may hold one).
 _dcov_list() {
     local -n _dl="$1"
     local line item
-    line="$(grep -E "^$2:" <<< "$3" || true)"
-    line="${line%%$'\n'*}"; line="${line#"$2":}"
-    while IFS= read -r item; do
-        item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
-        [[ -n "$item" ]] && _dl+=("$item")
-    done < <(tr ';' '\n' <<< "$line")
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*$2:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] || continue
+        item="${BASH_REMATCH[1]}"
+        [[ "${item,,}" == none ]] || _dl+=("$item")
+    done <<< "$3"
     return 0
 }
 

@@ -188,8 +188,10 @@ assert_pass() {
 }
 
 assert_fail() {
-    local desc="$1"
-    local detail="${2:-}"
+    # #2460: a label or a message that spans lines is printed on one line, its
+    # line breaks shown as ⏎ — a reader of the output keeps a failure's line.
+    local desc="${1//$'\n'/ ⏎ }"
+    local detail="${2:-}"; detail="${detail//$'\n'/ ⏎ }"
     TOTAL=$((TOTAL + 1))
     FAIL=$((FAIL + 1))
     FAILURES[${#FAILURES[@]}]="$desc"

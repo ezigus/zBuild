@@ -5,15 +5,14 @@
 # Why: a check that reads one stage's output belongs to that stage. The scan
 # that was the secret-scan stage runs inside build, over the change build made.
 # A secret found goes back to build's model, with where it is (never the value),
-# until the change is clean or build's rounds (config.check_rounds: 3) run out;
-# then build's one outcome is fail, with the findings.
+# #2460: build no longer re-asks itself. A secret ends the try `unusable` with
+# where it is, and the engine runs build again (its template's retry:).
 #
-# K1 [change] a secret in pass 1 goes back to the model, naming where it is;
-#             a clean pass 2 passes
-# K2 [change] still a secret when the rounds run out: outcome fail, the result
-#             lists the finding (file and line, never the value)
+# K1 [change] (#2460) a secret ends the try `unusable` after one pass, the
+#             result naming where it is (file and line, never the value)
+# K2 [change] (#2460) build runs no rounds of its own
 # K3 [guard]  a clean change takes one pass
-# K4 [change] the rounds come from build's own manifest (3)
+# K4 [change] (#2460) build's manifest sets no rounds; its template gives the engine retries
 # K5 [change] secret-scan is no longer a stage, and the build loop requires
 #             build to pass
 set -uo pipefail
@@ -63,19 +62,15 @@ _run() {
 # ── K1 ───────────────────────────────────────────────────────────────────────
 PASSES=("$SECRET" 'aws_key="${AWS_KEY:?}"')
 _run
-assert_eq "[K1] a secret sends build round again" "2" "$N"
-assert_contains "[K1] the next pass is told where it is" "$(cat "$TEST_TEMP_DIR/found-2" 2>/dev/null)" "src/app.sh:1"
-assert_eq "[K1] ...never the value" "0" "$(grep -c 'AKIAABCDEFGHIJKLMNOP' "$TEST_TEMP_DIR/found-2" 2>/dev/null || true)"
-assert_eq "[K1] a clean pass 2 passes" "pass" "$OUTCOME"
+assert_eq "[K1] a secret ends the try after one pass" "1" "$N"
+assert_eq "[K1] ...unusable, for the engine to run build again" "unusable" "$OUTCOME"
+assert_eq "[K1] ...rc 1" "1" "$RC"
+assert_contains "[K1] the result names where it is" "$FINDINGS" "src/app.sh:1"
+assert_eq "[K1] ...never the value" "0" "$(grep -c 'AKIAABCDEFGHIJKLMNOP' "$A/build-summary.json" || true)"
 
 # ── K2 ───────────────────────────────────────────────────────────────────────
-PASSES=("$SECRET")
-_run
-assert_eq "[K2] one pass per round, no more" "3" "$N"
-assert_eq "[K2] still a secret when the rounds run out: outcome fail" "fail" "$OUTCOME"
-assert_eq "[K2] ...rc 0 (the stage finished)" "0" "$RC"
-assert_contains "[K2] the result lists where it is" "$FINDINGS" "src/app.sh:1"
-assert_eq "[K2] ...never the value" "0" "$(grep -c 'AKIAABCDEFGHIJKLMNOP' "$A/build-summary.json" || true)"
+assert_eq "[K2] build no longer re-asks itself" "0" \
+    "$(grep -c '_BUILD_CHECK_FOUND\|check_rounds' "$REPO_ROOT/plugins/agent/build/lib/secrets.sh" "$REPO_ROOT/plugins/agent/build/plugin.sh" | awk -F: '{s+=$2} END {print s+0}')"
 
 # ── K3 ───────────────────────────────────────────────────────────────────────
 PASSES=('echo hello')
@@ -84,8 +79,10 @@ assert_eq "[K3] a clean change takes one pass" "1" "$N"
 assert_eq "[K3] ...and passes" "pass" "$OUTCOME"
 
 # ── K4 / K5 ──────────────────────────────────────────────────────────────────
-assert_eq "[K4] build's manifest sets its rounds" "3" \
+assert_eq "[K4] build's manifest sets no rounds of its own" "" \
     "$(yaml_get "$REPO_ROOT/plugins/agent/build/manifest.yaml" config.check_rounds 2>/dev/null)"
+assert_eq "[K4] simple.yaml gives build the engine's retries (retry: 2)" "2" \
+    "$(awk '/^build:/{f=1;next} /^[a-z_-]+:/{f=0} f && /^  retry:/{print $2}' "$REPO_ROOT/config/templates/simple.yaml")"
 assert_eq "[K5] secret-scan is no longer a plugin" "absent" \
     "$([[ -d "$REPO_ROOT/plugins/tool/secret-scan" ]] && echo present || echo absent)"
 # shellcheck source=../../core/pipeline/template.sh

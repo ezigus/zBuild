@@ -662,4 +662,27 @@ On #1805 (run 41365460329), test-author's check called most tests `partial`, and
 
 The rounds (`config.check_rounds`) are unchanged. A call that does not finish still ends the try with its reason, and what was written is committed for the next try (ADR-054 §6a).
 
-Enforced by: `tests/unit/test-author-correspondence-test.sh` F1; `tests/unit/test-author-fixup-per-file-test.sh` F2–F4.
+Enforced by: `tests/unit/test-author-correspondence-test.sh` F1. (The per-file fix-up calls, and their test `test-author-fixup-per-file-test.sh`, went with the rounds in #2460, below.)
+
+### Amendment (2026-11-02, #2460) — the engine owns every retry; a check reads whole multi-line checks
+
+On #1805 (run 41546214211) test-author re-asked its own model inside one try for two rounds, then reported
+`fail` with findings still open; the engine never reruns `fail`, so build ran on tests the stage already
+knew were wrong. Three of those four findings were false: the check counted an assertion as tagged only when
+`assert…` and its tag shared a line, and test-author writes `assert_contains \` with the label on the next line.
+
+- **No stage re-asks its own model.** test-author makes one authoring call per try; when its own check (does
+  each assertion test its SPEC; does each [code] test fail on the code from before the change) leaves
+  findings, it ends `unusable`, the findings in its result, and the engine runs it again (its template's
+  `retry: 2`), the next try shown them under Previous work — as design is (ADR-068 §10). build's secret
+  scan does the same. `config.check_rounds` is gone from both manifests, and with it the per-file fix-up
+  calls (#2450 §2).
+- **build that says done and did nothing is run again.** A build that said done, changed no file, and left an
+  acceptance test red ends `unusable` with that as its finding (was `fail`).
+- **A check is the whole command.** The checker's stanza view, the whole-file view and the label readout
+  (`scripts/lib/acceptance-coverage.sh`) read a check that carries on with `\` as one, tagged when its label
+  is on any of its lines, every line of it marked `>>`.
+
+Enforced by: `tests/unit/test-author-checks-own-output-test.sh` A1, A2, A4, A6; `tests/unit/build-checks-own-output-test.sh`
+K1, K2, K4; `tests/unit/build-false-completion-guard-test.sh` SPEC-7; `tests/unit/own-check-retry-test.sh` R1–R3;
+`tests/unit/multiline-assertion-tag-test.sh` M1–M4.

@@ -106,3 +106,17 @@ Phase 0 verification calls for this: spawn two simulated daemons, have them race
 - [KEEPERS.md §G](../KEEPERS.md#section-g--test-harness-carry-forward-with-audit-correction) — full migration matrix and harness audit.
 - [KEEPERS.md §J](../KEEPERS.md#section-j--verification) — the 5-test trial.
 - `legacy-DoNotUse/scripts/lib/test-helpers.sh` — source for the lifted harness.
+
+## Amendment 2026-11-02 (#2460) — a failure's whole message, and lints that read whole commands
+
+- **A failing check's whole message is kept.** `assert_fail` prints a label or a message that spans lines on
+  one line, its breaks shown as ⏎; the test stage's findings and summary keep every line after a ✗ up to the
+  next check, a blank line or the file's tally. #1805's "expected: 1, got: 1" had a "3" on the next line.
+- **The lints read whole commands.** `scripts/lib/shell-join.sh` gives each lint a shell file with every
+  command continued by `\`, `|`, `&&` or `||` joined onto its first line, the line count kept; the stage-io,
+  silenced-redirect, stage-signals, disposition-words, test-identity, bare-timeout, atomic-write and grep-c
+  lints read it. The prose lints read across a wrap: plain-prompts a phrase split over two lines, doc-style
+  an opening sentence that wraps, test-engine-state a write split over two lines.
+
+Enforced by: `tests/unit/test-failure-detail-test.sh` D1–D5; `tests/unit/shell-join-test.sh` S1–S4;
+`tests/unit/lint-multiline-test.sh` L1–L11.

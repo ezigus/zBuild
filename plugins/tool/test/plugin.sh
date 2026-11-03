@@ -809,9 +809,17 @@ _test_emit_failures_summary() {
         # shapes, lint findings (SCnnnn / "In <file> line N:"), and the last
         # 6 non-blank lines of the block — the tail is where bash puts why.
         local _ex_first _ex_rest _ex_tail
-        # sigpipe-ok: || true, and an explicit empty-check follows
-        _ex_first="$(printf '%s' "$raw_output" \
-            | grep -E -A1 '(✗|✘)' | grep -v '^--$' | head -n 40 || true)"
+        # #2460: each failure with its whole message — every line after the ✗
+        # up to the next check, a blank line or the tally of its file — on one
+        # line, its line breaks shown as ⏎, so no continued line is lost or
+        # merged away as a repeat.
+        _ex_first="$(printf '%s\n' "$raw_output" | awk '
+            function flush() { if (blk != "") print blk; blk = "" }
+            { line = $0; sub(/^[[:space:]]+/, "", line) }
+            line ~ /^(✗|✘)/ { flush(); blk = $0; next }
+            blk != "" && (line == "" || line ~ /^✓/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/ || $0 ~ /^[a-z]+: /) { flush(); next }
+            blk != "" { blk = blk " ⏎ " line }
+            END { flush() }' 2>/dev/null | head -n 40 || true)"  # sigpipe-ok: || true, and an explicit empty-check follows
         # sigpipe-ok: || true
         _ex_first="${_ex_first}${_ex_first:+$'\n'}$(printf '%s' "$raw_output" \
             | grep -E '^[a-z]+: (FAIL|TIMEOUT) ' | head -n 10 || true)"

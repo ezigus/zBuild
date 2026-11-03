@@ -74,15 +74,26 @@ extract_acceptance_block() {
                 found_testfiles=1
                 continue
             fi
+            # #2460: a line that carries on from the one before it is part of
+            # it — a SPEC's words, or a binding's files, wrapped onto the next
+            # line. Every line is trimmed; none keeps its indent.
+            local _t="${line%$'\r'}"; _t="${_t#"${_t%%[![:space:]]*}"}"; _t="${_t%"${_t##*[![:space:]]}"}"
             if [[ $in_testfiles -eq 1 ]]; then
                 # Stop testfile collection at WIRING: sentinel (may appear after TESTFILES:)
-                if [[ "$line" == 'WIRING:'* ]]; then
+                if [[ "$_t" == 'WIRING:'* ]]; then
                     in_testfiles=0
-                elif [[ -n "$line" ]]; then
-                    testfiles+=("$line")
+                elif [[ -n "$_t" ]]; then
+                    if [[ "$line" =~ ^[[:space:]] && ${#testfiles[@]} -gt 0 \
+                          && "${testfiles[-1]}" =~ ^SPEC-[0-9]+: ]]; then
+                        testfiles[-1]+=" $_t"
+                    else
+                        testfiles+=("$_t")
+                    fi
                 fi
-            elif [[ "$line" == SPEC:* || "$line" =~ $_ACCEPTANCE_SPEC_RE ]]; then
-                specs+=("$line")
+            elif [[ "$_t" == SPEC:* || "$_t" =~ $_ACCEPTANCE_SPEC_RE ]]; then
+                specs+=("$_t")
+            elif [[ -n "$_t" && ${#specs[@]} -gt 0 && ! "$_t" =~ ^[A-Z][A-Z_]*: ]]; then
+                specs[-1]+=" $_t"
             fi
         fi
     done < "$design_md"

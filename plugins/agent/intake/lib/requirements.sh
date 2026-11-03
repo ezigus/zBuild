@@ -14,6 +14,10 @@
 
 [[ -n "${_ZBUILD_INTAKE_REQUIREMENTS_LOADED:-}" ]] && return 0
 _ZBUILD_INTAKE_REQUIREMENTS_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 
 # _ireq_issue_text <issue_json> — the issue as the calls are shown it.
 _ireq_issue_text() {
@@ -31,6 +35,9 @@ Answer with one line per requirement, in the order the issue gives them:
 
 REQUIREMENT: <the requirement, in the issue's words>
 EOF
+    # #2460: a list from the last run is where the work starts.
+    [[ -n "${_INTAKE_PREV_REQS:-}" ]] && printf '\n%s\n' "Your list from the last run is shown below the issue: start from it. Keep each requirement the issue still states, in the same words; add any it misses; leave out any the issue no longer asks for."
+
 }
 
 _ireq_check_own() {
@@ -41,9 +48,11 @@ words. A requirement may be written as a checkbox, a numbered or bulleted item,
 or a sentence. Context, background, rationale, links and history are not
 requirements.
 
-Answer in exactly this form:
+Answer with one line for each requirement the list misses, in this form:
 
-MISSING: <every requirement the list misses, separated by semicolons, on this one line; or "none">
+MISSING: <a requirement the list misses, in the issue's words>
+
+or the one line "MISSING: none" when it misses nothing.
 EOF
 }
 
@@ -84,9 +93,14 @@ _intake_requirements_json_v() {
     issue="$(_ireq_issue_text "${1:-}")"
     # #2458: intake has no tools and its reply is its output, so both its calls
     # compose fresh — no notes, and no rule to confirm earlier work.
-    prompt="$(stage_prompt_compose_text --fresh "$(_ireq_write_own)" "ISSUE:"$'\n'"$issue" "$(_ireq_limits)")" \
+    # #2460: the list from the last run, to start from.
+    local _judged="ISSUE:"$'\n'"$issue"
+    [[ -n "${_INTAKE_PREV_REQS:-}" ]] && _judged+=$'\n\n'"YOUR LIST FROM THE LAST RUN:"$'\n'"$_INTAKE_PREV_REQS"
+    prompt="$(stage_prompt_compose_text --fresh "$(_ireq_write_own)" "$_judged" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     _ireq_call_v reply "$prompt" || return 1
+    # #2460: a wrapped requirement is read whole.
+    zb_reply_join_v reply "$reply"
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*REQUIREMENT:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && reqs+=("${BASH_REMATCH[1]}")
     done <<< "$reply"
@@ -97,12 +111,13 @@ _intake_requirements_json_v() {
         "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     _ireq_call_v reply "$prompt" || return 1
-    line="$(grep -E '^[[:space:]]*MISSING:' <<< "$reply" || true)"
-    line="${line%%$'\n'*}"; line="${line#*MISSING:}"
-    while IFS= read -r item; do
-        item="${item#"${item%%[![:space:]]*}"}"; item="${item%"${item##*[![:space:]]}"}"
-        [[ -n "$item" && "${item,,}" != none ]] && reqs+=("$item")
-    done < <(tr ';' '\n' <<< "$line")
+    # #2460: each MISSING: line, whole, is one requirement — never split on ';'.
+    zb_reply_join_v reply "$reply"
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*MISSING:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] || continue
+        item="${BASH_REMATCH[1]}"
+        [[ "${item,,}" == none ]] || reqs+=("$item")
+    done <<< "$reply"
 
     _irj="$(printf '%s\n' "${reqs[@]}" | jq -Rsc '
         split("\n") | map(gsub("[[:cntrl:]]"; " ") | gsub("^\\s+|\\s+$"; "") | select(length > 0))

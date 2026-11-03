@@ -112,35 +112,38 @@ _acceptance_strip_comment() {
 # the test's setup travels with it: every line above it back to the previous
 # assertion's stanza, blank lines or not (#1944 run 40329284881: a judge shown
 # the stanza alone called it partial for what its setup established). The
-# tagged lines are marked ">> ". Comments are stripped: pasting the SPEC
+# tagged checks are marked ">> ", every line of each (#2460: a check is the whole
+# command, however many lines it spans). Comments are stripped: pasting the SPEC
 # sentence beside a weak assertion is the one gaming vector this input has.
 acceptance_find_assertion_sources() {
     local repo_root="${1:-}" spec_id="${2:-}"; shift 2
-    local tf abs i n a b j line first=1 tag
+    local tf abs i n a b j line first=1 tag u
     for tf in "$@"; do
         [[ -z "$tf" ]] && continue
         abs="$repo_root/$tf"
         [[ -f "$abs" ]] || continue
-        local -a lines=()
+        local -a lines=() ustart=() uend=() ucheck=() utext=()
         while IFS= read -r line || [[ -n "$line" ]]; do lines+=("$line"); done < "$abs"
         n=${#lines[@]}
+        _acceptance_check_units
         local -a starts=()
         tag="$(acceptance_spec_tag "$spec_id")"
         for (( i = 0; i < n; i++ )); do
-            [[ "${lines[i]}" == *"$tag"* ]] || continue
-            [[ "${lines[i]}" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]] || continue
+            # #2460: a check is the whole command, however many lines it spans.
+            (( ucheck[i] && ustart[i] == i )) || continue
+            [[ "${utext[i]}" == *"$tag"* ]] || continue
             a=$i; while (( a > 0 )) && [[ -n "${lines[a-1]// }" ]]; do (( a-- )); done
-            b=$i; while (( b < n - 1 )) && [[ -n "${lines[b+1]// }" ]]; do (( b++ )); done
-            # The setup: back to the end of the previous assertion's stanza.
+            b=${uend[i]}; while (( b < n - 1 )) && [[ -n "${lines[b+1]// }" ]]; do (( b++ )); done
+            # The setup: back to the end of the previous check's stanza.
             j=$(( a - 1 ))
-            while (( j >= 0 )) && ! [[ "${lines[j]}" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]]; do (( j-- )); done
+            while (( j >= 0 )) && ! (( ucheck[j] )); do (( j-- )); done
             if (( j >= 0 )); then
                 while (( j < a - 1 )) && [[ -n "${lines[j+1]// }" ]]; do (( j++ )); done
                 a=$(( j + 1 ))
             else
                 a=0
             fi
-            # One stanza is emitted once however many tagged lines it holds.
+            # One stanza is emitted once however many tagged checks it holds.
             local seen=0 s
             for s in ${starts[@]+"${starts[@]}"}; do [[ "$s" == "$a:$b" ]] && seen=1; done
             (( seen )) && continue
@@ -150,7 +153,8 @@ acceptance_find_assertion_sources() {
             for (( ; a <= b; a++ )); do
                 line="$(_acceptance_strip_comment "${lines[a]}")"
                 [[ -n "${line// }" ]] || continue
-                if [[ "${lines[a]}" == *"$tag"* && "${lines[a]}" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]]; then
+                u=${ustart[a]}
+                if (( ucheck[u] )) && [[ "${utext[u]}" == *"$tag"* ]]; then
                     line=">> ${line#"${line%%[![:space:]]*}"}"
                 fi
                 printf '%s\n' "$line"
@@ -160,42 +164,79 @@ acceptance_find_assertion_sources() {
     return 0
 }
 
+# _acceptance_check_units — over the caller's lines[] (and n), each line's unit:
+# ustart[i]/uend[i] the first and last line of the command it belongs to (a line
+# ending in a backslash continues onto the next), ucheck[i] 1 when that command
+# is a check (`assert…`), and utext[start] the command's lines joined (#2460).
+_acceptance_check_units() {
+    local _i=0 _s _t _l
+    while (( _i < n )); do
+        _s=$_i; _t="${lines[_i]}"
+        while :; do
+            _l="${lines[_i]}"; _l="${_l%"${_l##*[![:space:]]}"}"
+            [[ "$_l" == *\\ ]] && (( _i < n - 1 )) || break
+            (( _i++ )); _t+=$'\n'"${lines[_i]}"
+        done
+        local _c=0; [[ "${lines[_s]}" =~ ^[[:space:]]*assert[a-z_]*([[:space:]]|$) ]] && _c=1
+        for (( _k = _s; _k <= _i; _k++ )); do ustart[_k]=$_s; uend[_k]=$_i; ucheck[_k]=$_c; done
+        utext[_s]="$_t"
+        (( _i++ ))
+    done
+}
+
 # ─── acceptance_testfile_source <repo_root> <testfile> <tag>... ─────────────
 # The whole test file, comments stripped, with each assertion tagged by one of
-# <tag>s marked ">> " (#2450). The stanza view above shows an assertion's own
+# <tag>s marked ">> " (#2450) — every line of it, however many it spans (#2460).
+# The stanza view above shows an assertion's own
 # setup; setup that lives elsewhere — a helper function, a block shared by
 # several cases — reaches the check only from the file itself (#1805 run
 # 41365460329: the check called tests partial for code it was not shown).
 acceptance_testfile_source() {
     local repo_root="${1:-}" tf="${2:-}"; shift 2
-    local abs="$repo_root/$tf" line out t marked
+    local abs="$repo_root/$tf" line out t marked i u
     [[ -n "$tf" && -f "$abs" ]] || return 0
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        out="$(_acceptance_strip_comment "$line")"
+    local -a lines=() ustart=() uend=() ucheck=() utext=()
+    while IFS= read -r line || [[ -n "$line" ]]; do lines+=("$line"); done < "$abs"
+    local n=${#lines[@]}
+    _acceptance_check_units
+    for (( i = 0; i < n; i++ )); do
+        out="$(_acceptance_strip_comment "${lines[i]}")"
         [[ -n "${out// }" ]] || continue
-        marked=0
-        if [[ "$line" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]]; then
-            for t in "$@"; do [[ "$line" == *"$t"* ]] && { marked=1; break; }; done
+        marked=0; u=${ustart[i]}
+        if (( ucheck[u] )); then
+            for t in "$@"; do [[ "${utext[u]}" == *"$t"* ]] && { marked=1; break; }; done
         fi
         (( marked )) && out=">> ${out#"${out%%[![:space:]]*}"}"
         printf '%s\n' "$out"
-    done < "$abs"
+    done
     return 0
 }
 
 acceptance_find_assertion_label() {
     local repo_root="${1:-}" spec_id="${2:-}"; shift 2
-    local pass tf abs match
+    local pass tf abs match tag i line
+    tag="$(acceptance_spec_tag "$spec_id")"
     for pass in assert any; do
         for tf in "$@"; do
             [[ -z "$tf" ]] && continue
             abs="$repo_root/$tf"
             [[ -f "$abs" ]] || continue
+            match=""
             if [[ "$pass" == "assert" ]]; then
-                match="$(awk -v t="$(acceptance_spec_tag "$spec_id")" \
-                    'index($0, t) && /^[[:space:]]*assert[a-z_]*[[:space:]]/ { print; exit }' "$abs" 2>/dev/null || true)"
+                # #2460: the check whose command — over however many lines —
+                # carries the tag, read whole.
+                local -a lines=() ustart=() uend=() ucheck=() utext=()
+                while IFS= read -r line || [[ -n "$line" ]]; do lines+=("$line"); done < "$abs"
+                local n=${#lines[@]}
+                _acceptance_check_units
+                for (( i = 0; i < n; i++ )); do
+                    (( ucheck[i] && ustart[i] == i )) || continue
+                    [[ "${utext[i]}" == *"$tag"* ]] || continue
+                    match="${utext[i]//\\$'\n'/ }"; match="${match//$'\n'/ }"
+                    break
+                done
             else
-                match="$(grep -m1 -F "$(acceptance_spec_tag "$spec_id")" "$abs" 2>/dev/null || true)"
+                match="$(grep -m1 -F "$tag" "$abs" 2>/dev/null || true)"
             fi
             if [[ -n "$match" ]]; then
                 _acceptance_trim_label "$match"

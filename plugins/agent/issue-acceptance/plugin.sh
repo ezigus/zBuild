@@ -239,7 +239,9 @@ issue_acceptance_run() {
         return 1
     fi
 
-    # No `| head` (#1886): capture in full, trim in bash.
+    # No `| head` (#1886): capture in full, trim in bash. #2460: a wrapped
+    # REASON, UNMET or UNSURE is read whole.
+    zb_reply_join_v _raw "$_raw"
     local _v _r _u_line _s_line
     _v="$(grep -oE 'VERDICT:[[:space:]]*(pass|fail|unsure)' <<< "$_raw" || true)"
     _v="${_v%%$'\n'*}"; _v="${_v##*[[:space:]]}"

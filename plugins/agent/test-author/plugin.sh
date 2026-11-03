@@ -171,13 +171,21 @@ _ta_write_result() {
 # lines, added to _TA_ANSWERS without the word ANSWER (ADR-068 §6).
 _TA_ANSWERS=()
 _ta_collect_answers() {
-    local line a re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*:.*)$'
+    local line a re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*:.*)$' _joined
+    # #2460: a wrapped answer is read whole.
+    zb_reply_join_v _joined "${1:-}"
     while IFS= read -r line; do
         [[ "$line" =~ $re ]] || continue
         a="${BASH_REMATCH[1]}"
         while [[ "$a" == *[[:space:]] ]]; do a="${a%[[:space:]]}"; done
+        # #2460: a finding answered again keeps only its latest answer.
+        local _k="${a%%:*}" _i
+        for _i in "${!_TA_ANSWERS[@]}"; do
+            [[ "${_TA_ANSWERS[_i]%%:*}" == "$_k" ]] && unset '_TA_ANSWERS[_i]'
+        done
+        _TA_ANSWERS=(${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"})
         _TA_ANSWERS+=("$a")
-    done <<< "${1:-}"
+    done <<< "$_joined"
     return 0
 }
 
@@ -354,13 +362,6 @@ ${spec_block}${sup_section}${steps_section}
 EOF
 )"
 
-    # #2370: the limits are kept apart from the rest so each round can add what
-    # the check found before them.
-    local _ta_text="${prompt%%$'\n'## What you must not do*}"
-    local _ta_limits="## What you must not do${prompt#*$'\n'## What you must not do}"
-    local _rounds; _rounds="$(yaml_get "$(dirname "${BASH_SOURCE[0]}")/manifest.yaml" config.check_rounds 2>/dev/null || true)"
-    [[ "$_rounds" =~ ^[1-9][0-9]*$ ]] || _rounds=2
-    local _round=1 _found=""
     _TA_ANSWERS=(); _TA_BEFORE_OPEN=""
 
     local tier="T2" rc=0
@@ -371,20 +372,15 @@ EOF
             "no router available to author assertions" "$n"
         return 1
     fi
-    # #2439 (ADR-054 §6a): one model call per round. A call that does not
-    # finish ends the try with its reason, and what it wrote is committed for
-    # the engine's next try (the template's retry:).
-    # #2450: what each of this round's author calls is told the check found —
-    # one call in round 1; after that, one per test file with findings.
-    local -a _calls=("")
-    while :; do
+    # #2439 (ADR-054 §6a): one model call per try. A call that does not finish
+    # ends the try with its reason, and what it wrote is committed for the
+    # engine's next try (the template's retry:). #2460: the engine owns every
+    # retry — this stage never calls its model again within a try.
     local _ta_sums_before; _ta_testfile_sums_v _ta_sums_before "$design" "$repo"
-    for _found in "${_calls[@]}"; do
     # ADR-067 §8: the stage's three parts and the engine's blocks — its budget
     # and notes file among the engine's rules — in the one prompt order.
     local _composed
-    if ! _composed="$(stage_prompt_compose_parts "${_ta_text}${_found}
-${_ta_limits}")"; then
+    if ! _composed="$(stage_prompt_compose_parts "$prompt")"; then
         _ta_write_result "$art" "misconfigured" \
             "the prompt could not be composed — the engine's blocks are missing" "$n"
         return 1
@@ -425,17 +421,15 @@ ${_ta_limits}")"; then
             "the author did not finish (${_reason}) — what it wrote is kept for the next attempt" "$n"
         return 1
     fi
-    done
 
     # #2174: the stage enforces its own invariant — a [SPEC-n] tag whose
     # number is not in THIS contract is stale (an earlier contract's), and the
     # gate would match it instead of the authored assertion. Drop the tag,
     # keep the assertion. #2370: then test-author checks its own assertions —
-    # does each one test what its SPEC says? What does not goes back to its
-    # model, within its rounds.
+    # does each one test what its SPEC says?
     _ta_drop_stale_tags "$design" "$repo"
     # #2445: the changed test files, run by script on the code from before this
-    # change; what it finds goes back to the model with the check's findings.
+    # change; what it finds is a finding like the check's.
     _ta_before_run "$design" "$repo" "$_ta_sums_before"
     _ta_correspondence "$design" "$repo" "$tier"
     if [[ -n "$_TA_CORR_OUTCOME" ]]; then
@@ -446,19 +440,18 @@ ${_ta_limits}")"; then
         return 0
     fi
     _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})
-    [[ ${#_TA_CORR_FINDINGS[@]} -eq 0 ]] && break
-    _ta_emit "test_author.checks.failed" "round=$_round" "rounds=$_rounds" "findings=${#_TA_CORR_FINDINGS[@]}"
-    if (( _round >= _rounds )); then
+    # #2460 (ADR-054 §6a): what its own check found ends the try `unusable`,
+    # the findings in its result: the engine runs test-author again, and the
+    # next try is shown them under Previous work — as design is (ADR-068 §10).
+    if [[ ${#_TA_CORR_FINDINGS[@]} -gt 0 ]]; then
+        _ta_emit "test_author.checks.failed" "findings=${#_TA_CORR_FINDINGS[@]}"
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), still failing their check"
-        _ta_write_result "$art" "fail" \
-            "changed $_TA_CHANGED test file(s); ${#_TA_CORR_FINDINGS[@]} finding(s) about its assertions still open after $_round round(s)" "$n" \
+        _ta_write_result "$art" "unusable" \
+            "changed $_TA_CHANGED test file(s); ${#_TA_CORR_FINDINGS[@]} finding(s) about its assertions are open — the next try fixes them" "$n" \
             "$(printf '%s\n' "${_TA_CORR_FINDINGS[@]}" | stage_findings_json)"
-        return 0
+        return 1
     fi
-    _round=$(( _round + 1 ))
-    _ta_fixup_calls_v _calls "$design" "$_round" "$_rounds"
-    done
 
     # The digests are recorded HERE, by the author, immediately after authoring.
     # Recording anywhere else would baseline someone else's edit as if it were

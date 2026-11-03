@@ -29,6 +29,9 @@ fi
 
 # shellcheck source=../../core/pipeline/disposition.sh
 source "$_LDW_ROOT/core/pipeline/disposition.sh"
+# #2460: whole commands — a word written on a continued line is read.
+# shellcheck source=./shell-join.sh
+source "$_LDW_DIR/shell-join.sh"
 
 _found=0 _bad=0
 while IFS= read -r -d '' f; do
@@ -86,7 +89,7 @@ while IFS= read -r -d '' f; do
                 print NR "\t" m "\t" ok
             }
         }
-    ' "$f")
+    ' <(zb_shell_join "$f"))
 done < <(find "$PLUGINS_ROOT" -name '*.sh' -print0)
 
 if (( _bad > 0 )); then

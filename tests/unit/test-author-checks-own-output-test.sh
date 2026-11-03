@@ -10,15 +10,16 @@
 # its rounds (config.check_rounds) run out; then its one outcome is fail, and
 # the build loop requires test-author to pass.
 #
-# A1 [change] a mismatch in round 1 goes back to the model, naming the SPEC and
+# A1 [change] (#2460) a mismatch ends the try `unusable`, with a finding naming the SPEC and
 #             why; corresponding in round 2 passes
-# A2 [change] still a mismatch when the rounds run out: outcome fail, the result
+# A2 [change] (#2460) one model call per try — the engine, not the stage, runs it again; the result
 #             lists the finding, rc 0
 # A3 [change] the check call is rate-limited: that is test-author's outcome
-# A4 [change] the rounds come from test-author's own manifest (2)
+# A4 [change] (#2460) test-author has no rounds of its own (no config.check_rounds); its template
+#             gives the engine retries (retry: 2)
 # A5 [change] the build loop requires test-author to pass; spec-correspondence
 #             is no longer a stage
-# A6 [change] each round is one model call, given no call limit (#2439: one
+# A6 [change] each try is one model call, given no call limit (#2439: one
 #             call per try; was a budget of calls the rounds shared, #1801)
 # A7 retired (#2439): there is no call budget left to run out of; the rounds
 #             end at check_rounds (A2)
@@ -36,7 +37,7 @@
 #             test-author fixed only its own check's findings)
 # A11 [change] it is not told its assertions are expected to fail on today's
 #             code: after round 1 today's code holds the change
-# A12 [change] what it did about each finding is recorded in its result and
+# A12 [change] what it did about each finding — its latest answer to each (#2460) — is recorded in its result and
 #             summary (ADR-068 §6)
 set -uo pipefail
 
@@ -109,20 +110,23 @@ MISMATCH="SPEC-1: VERDICT: mismatch REASON: it checks the exit code of the wrong
 CORRESP="SPEC-1: VERDICT: corresponds REASON: it checks the requirement"
 
 # ── A1 ───────────────────────────────────────────────────────────────────────
+# #2460: the engine owns every retry. A mismatch ends this try `unusable`, the
+# finding in the result, and the engine's next try is told it under Previous work.
 JUDGE=("$MISMATCH" "$CORRESP"); JUDGE_RC=0
 _run
-assert_eq "[A1] the model is called again after a mismatch" "2" "$CALLS"
-assert_contains "[A1] round 2's prompt names the SPEC and why" \
-    "$(cat "$TEST_TEMP_DIR/author-prompt-2" 2>/dev/null)" "it checks the exit code of the wrong command"
-assert_eq "[A1] corresponding in round 2 passes" "pass" "$OUTCOME"
+assert_eq "[A1] a mismatch is not sent back to the model inside the try" "1" "$CALLS"
+assert_eq "[A1] ...the try ends unusable, for the engine to run again" "unusable" "$OUTCOME"
+assert_eq "[A1] ...rc 1 (the try did not produce a usable result)" "1" "$RC"
+assert_contains "[A1] the result names the SPEC and why" "$FINDINGS" "it checks the exit code of the wrong command"
 
 # ── A2 ───────────────────────────────────────────────────────────────────────
 JUDGE=("$MISMATCH"); JUDGE_RC=0
 _run
-assert_eq "[A2] the model is called once per round, no more" "2" "$CALLS"
-assert_eq "[A2] still a mismatch when the rounds run out: outcome fail" "fail" "$OUTCOME"
-assert_eq "[A2] ...rc 0 (the stage finished)" "0" "$RC"
+assert_eq "[A2] one model call per try, no more" "1" "$CALLS"
+assert_eq "[A2] still a mismatch: outcome unusable, not fail" "unusable" "$OUTCOME"
 assert_contains "[A2] the result lists the finding" "$FINDINGS" "SPEC-1"
+assert_eq "[A2] the stage no longer re-asks itself: no fix-up rounds" "0" \
+    "$(grep -c '_ta_fixup_calls_v\|check_rounds' "$REPO_ROOT/plugins/agent/test-author/plugin.sh" || true)"
 
 # ── A3 ───────────────────────────────────────────────────────────────────────
 JUDGE=("rate limited"); JUDGE_RC=1
@@ -132,15 +136,19 @@ assert_eq "[A3] a rate-limited check call is test-author's outcome" "rate_limite
 unset -f _router_rc_classify
 
 # ── A4 ───────────────────────────────────────────────────────────────────────
-assert_eq "[A4] test-author's manifest sets its rounds" "2" \
+assert_eq "[A4] test-author's manifest sets no rounds of its own" "" \
     "$(yaml_get "$REPO_ROOT/plugins/agent/test-author/manifest.yaml" config.check_rounds 2>/dev/null)"
+for _tpl in simple; do
+    assert_eq "[A4] $_tpl.yaml gives test-author the engine's retries (retry: 2)" "2" \
+        "$(awk '/^test-author:/{f=1;next} /^[a-z_-]+:/{f=0} f && /^  retry:/{print $2}' "$REPO_ROOT/config/templates/$_tpl.yaml")"
+done
 
 # ── A6 ───────────────────────────────────────────────────────────────────────
-JUDGE=("$MISMATCH" "$CORRESP"); JUDGE_RC=0
+JUDGE=("$CORRESP"); JUDGE_RC=0
 _run
-assert_eq "[A6] two rounds, one call each" "2" "$CALLS"
+assert_eq "[A6] one call in the try" "1" "$CALLS"
 assert_eq "[A6] the call is given no call limit: <tier> <prompt> <repo>" "3" "$(cat "$TEST_TEMP_DIR/author-argc-1" 2>/dev/null)"
-assert_eq "[A6] ...and corresponding then passes" "pass" "$OUTCOME"
+assert_eq "[A6] ...and corresponding passes" "pass" "$OUTCOME"
 
 # ── A8 ───────────────────────────────────────────────────────────────────────
 JUDGE=("$CORRESP"); JUDGE_RC=0
@@ -195,6 +203,12 @@ ANSWERS="ANSWER test finding 3: nothing to do — the test is right   "
 _run
 assert_eq "[A12] an answer keeps no trailing spaces (review on PR #2438)" \
     "test finding 3: nothing to do — the test is right" "$(jq -r '.data.answers[0] // empty' "$A/test-author-result.json" 2>/dev/null)"
+# #2460: a finding answered twice keeps only its latest answer.
+ANSWERS=$'ANSWER test finding 1: nothing to do — the label is there\nANSWER test finding 2: done — fixed\nANSWER test finding 1: done — moved the label onto the assert line'
+_run
+assert_eq "[A12] a finding answered twice keeps only its latest answer" \
+    "test finding 1: done — moved the label onto the assert line|test finding 2: done — fixed" \
+    "$(jq -r '[.data.answers[]?] | sort | join("|")' "$A/test-author-result.json" 2>/dev/null)"
 ANSWERS=""
 
 # ── A5 ───────────────────────────────────────────────────────────────────────

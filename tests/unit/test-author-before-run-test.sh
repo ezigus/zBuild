@@ -13,6 +13,7 @@
 # B1 [change] the model is told to run nothing, and that its new and changed
 #             test files are run afterwards on the code from before this change
 # B2 [change] a [code] requirement's test that passes on that code is a finding
+#             that ends the try unusable (#2460: the engine runs it again)
 #             that goes back to the model, naming the requirement and the file;
 #             still so when the rounds run out: outcome fail, the finding listed
 # B3 [guard]  a test that fails there, as it must, is no finding: outcome pass
@@ -112,21 +113,19 @@ assert_eq "[B3] a test that fails on the old code, as it must, is no finding" "p
 assert_eq "[B3] ...and the model is called once" "1" "$CALLS"
 
 # ── B2 ───────────────────────────────────────────────────────────────────────
+# #2460: the engine owns every retry — the finding ends the try `unusable`, and
+# the engine's next try is told it under Previous work.
 WRITE=(passes fails); _run
-assert_eq "[B2] a [code] test that passes on the old code sends the model round again" "2" "$CALLS"
-_AP2="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-2" 2>/dev/null)"
-assert_contains "[B2] ...naming the requirement" "$_AP2" "SPEC-1"
-assert_contains "[B2] ...the file, and that it passes on the code from before this change" "$_AP2" \
+assert_eq "[B2] a [code] test that passes on the old code ends the try after one call" "1" "$CALLS"
+assert_eq "[B2] ...unusable, for the engine to run test-author again" "unusable" "$OUTCOME"
+assert_contains "[B2] ...the result names the requirement" "$FINDINGS" "SPEC-1"
+assert_contains "[B2] ...the file, and that it passes on the code from before this change" "$FINDINGS" \
     "tests/a-test.sh passes on the code from before this change"
-assert_eq "[B2] fixed in round 2: pass" "pass" "$OUTCOME"
-WRITE=(passes); _run
-assert_eq "[B2] still passing when the rounds run out: fail" "fail" "$OUTCOME"
-assert_contains "[B2] ...with the finding in its result" "$FINDINGS" "tests/a-test.sh passes on the code from before this change"
 
 # ── B4 ───────────────────────────────────────────────────────────────────────
 WRITE=(crash fails); _run
-assert_contains "[B4] a file that stops before its assertion runs is a finding" \
-    "$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-2" 2>/dev/null)" "tests/a-test.sh stopped before"
+assert_contains "[B4] a file that stops before its assertion runs is a finding (in the result, #2460)" \
+    "$FINDINGS" "tests/a-test.sh stopped before"
 
 # ── B5 ───────────────────────────────────────────────────────────────────────
 # b-test.sh passes on the old code, but it is [no-code] and the call did not

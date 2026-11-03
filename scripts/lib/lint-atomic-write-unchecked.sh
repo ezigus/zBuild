@@ -17,6 +17,8 @@
 set -uo pipefail
 
 _law_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=./shell-join.sh
+source "$_law_root/scripts/lib/shell-join.sh"
 # Split so this file does not match itself.
 _law_fn='atomic'"_write"
 
@@ -25,7 +27,7 @@ if [[ $# -gt 0 ]]; then
     _law_files=("$@")
 else
     # One grep finds the few files that pipe to the function; the rest are never read.
-    mapfile -t _law_files < <(grep -rlE --include='*.sh' -- "\\|[[:space:]]*$_law_fn" \
+    mapfile -t _law_files < <(grep -rlE --include='*.sh' -- "$_law_fn" \
         "$_law_root/core" "$_law_root/plugins" "$_law_root/scripts" 2>/dev/null | sort)
 fi
 
@@ -69,7 +71,8 @@ _law_violations=0
 
 for _law_file in "${_law_files[@]}"; do
     [[ -f "$_law_file" ]] || continue
-    mapfile -t _law_lines < "$_law_file"
+    # #2460: whole commands — a pipe ending one line into the write on the next.
+    mapfile -t _law_lines < <(zb_shell_join "$_law_file")
     _law_n="${#_law_lines[@]}"
     # Each line's code, in file order: quotes carry over, heredoc bodies are blank.
     _law_codes=(); _LAW_Q=""; _law_hd=""

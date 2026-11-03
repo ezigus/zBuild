@@ -52,10 +52,6 @@ provides:
 
 config:
   tier_default: T2
-  # #2370: rounds test-author spends checking that each assertion tests what
-  # its SPEC says, going back to its model with what does not; still failing
-  # after the last is outcome fail.
-  check_rounds: 2
 
 # #2174: the author writes the acceptance testfiles INTO the repository.
 capabilities:

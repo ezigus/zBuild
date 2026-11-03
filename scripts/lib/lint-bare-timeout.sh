@@ -43,7 +43,7 @@ done
 # The awk pass blanks quoted text (keeping $(...) inside double quotes, which
 # runs), drops comments and heredoc bodies, then looks for the two shapes.
 findings="$(awk -v root="$ROOT/" '
-function reset() { depth = 0; ctx[0] = "N"; par[0] = 0; hd = "" }
+function reset() { depth = 0; ctx[0] = "N"; par[0] = 0; hd = ""; pcode = ""; praw = ""; pallow = 0 }
 FNR == 1 { reset() }
 {
     raw = $0
@@ -79,6 +79,12 @@ FNR == 1 { reset() }
         h = substr(raw, RSTART, RLENGTH); hd_tabs = (h ~ /^<<-/)
         gsub(/^<<-?[ \t]*|[\047"]/, "", h); hd = h
     }
+    # #2460: a command carried on with a backslash is read whole — an argument
+    # on the next line is not in command position.
+    if (depth == 0 && code ~ /\\[ \t]*$/) {
+        sub(/\\[ \t]*$/, "", code); pcode = pcode code " "; praw = praw raw " "; pallow = pallow || allowed; next
+    }
+    if (pcode != "") { code = pcode code; raw = praw raw; allowed = allowed || pallow; pcode = ""; praw = ""; pallow = 0 }
     if (allowed) next
     rel = FILENAME; if (index(rel, root) == 1) rel = substr(rel, length(root) + 1)
     if (rel != "scripts/lib/timeout-cmd.sh" &&

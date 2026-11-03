@@ -141,44 +141,31 @@ _build_secret_check() {
 
 # _build_stage_run_checked <same args as _build_stage_run_inner>  (#2371)
 # Build checks its own change: after a pass that finished, it scans the change
-# for secrets. A secret goes back to build's model — where it is, never the
-# value — for another pass, until the change is clean or build's rounds
-# (config.check_rounds) run out; then build's one outcome is fail, with the
-# findings. A pass that did not finish ends the stage as it said.
+# for secrets. #2460 (ADR-054 §6a): the engine owns every retry — a secret ends
+# the try `unusable`, with where it is (never the value) as its findings, and
+# the engine runs build again, the next try shown them under Previous work.
+# A pass that did not finish ends the stage as it said.
 _build_stage_run_checked() {
     local summary_json="$4"
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-    local _rounds; _rounds="$(yaml_get "$_BUILD_DIR/manifest.yaml" config.check_rounds 2>/dev/null || true)"
-    [[ "$_rounds" =~ ^[1-9][0-9]*$ ]] || _rounds=3
-    local _round=1 rc
-    _BUILD_CHECK_FOUND=""
-    while :; do
-        rc=0
-        _build_stage_run_inner "$@" || rc=$?
-        [[ $rc -eq 0 ]] || { _BUILD_CHECK_FOUND=""; return "$rc"; }
-        _build_secret_check "$repo_root"
-        if [[ -n "$_BUILD_SECRET_OUTCOME" ]]; then
-            stage_result_add "$summary_json" "$_BUILD_SECRET_OUTCOME" "the change could not be scanned for secrets" 2>/dev/null || true
-            _BUILD_CHECK_FOUND=""
-            return 0
-        fi
-        [[ ${#_BUILD_SECRET_FINDINGS[@]} -eq 0 ]] && { _BUILD_CHECK_FOUND=""; return 0; }
-        emit_event "build.checks.failed" "plugin=build" "round=$_round" "rounds=$_rounds" \
-            "findings=${#_BUILD_SECRET_FINDINGS[@]}" 2>/dev/null || true
-        if (( _round >= _rounds )); then
-            local _fj _tmp
-            _fj="$(printf '%s\n' "${_BUILD_SECRET_FINDINGS[@]}" | stage_findings_json)"
-            _tmp="$(jq --argjson f "${_fj:-[]}" '.data = ((.data // {}) + {findings: $f})' "$summary_json" 2>/dev/null)" \
-                && printf '%s\n' "$_tmp" | atomic_write "$summary_json" || true
-            stage_result_add "$summary_json" fail \
-                "the change still holds ${#_BUILD_SECRET_FINDINGS[@]} secret(s) after $_rounds rounds" 2>/dev/null || true
-            stage_summary_write "$(dirname "$summary_json")/build-summary.md" "build" "fail" \
-                "the change still holds ${#_BUILD_SECRET_FINDINGS[@]} secret(s) after $_rounds rounds" \
-                "$(printf -- '- %s\n' "${_BUILD_SECRET_FINDINGS[@]}")"
-            _BUILD_CHECK_FOUND=""
-            return 0
-        fi
-        _round=$(( _round + 1 ))
-        _BUILD_CHECK_FOUND="$(printf '\n### What the check of your change found (round %s of %s)\nYour change was scanned for secrets, and these were found. Remove each one from the change; keep the rest of your work.\n' "$_round" "$_rounds"; printf -- '- %s\n' "${_BUILD_SECRET_FINDINGS[@]}")"
-    done
+    local rc=0
+    _build_stage_run_inner "$@" || rc=$?
+    [[ $rc -eq 0 ]] || return "$rc"
+    _build_secret_check "$repo_root"
+    if [[ -n "$_BUILD_SECRET_OUTCOME" ]]; then
+        stage_result_add "$summary_json" "$_BUILD_SECRET_OUTCOME" "the change could not be scanned for secrets" 2>/dev/null || true
+        return 0
+    fi
+    [[ ${#_BUILD_SECRET_FINDINGS[@]} -eq 0 ]] && return 0
+    emit_event "build.checks.failed" "plugin=build" "findings=${#_BUILD_SECRET_FINDINGS[@]}" 2>/dev/null || true
+    local _fj _tmp
+    _fj="$(printf '%s\n' "${_BUILD_SECRET_FINDINGS[@]}" | stage_findings_json)"
+    _tmp="$(jq --argjson f "${_fj:-[]}" '.data = ((.data // {}) + {findings: $f})' "$summary_json" 2>/dev/null)" \
+        && printf '%s\n' "$_tmp" | atomic_write "$summary_json" || true
+    stage_result_add "$summary_json" unusable \
+        "the change holds ${#_BUILD_SECRET_FINDINGS[@]} secret(s) — the next try removes them" 2>/dev/null || true
+    stage_summary_write "$(dirname "$summary_json")/build-summary.md" "build" "fail" \
+        "the change holds ${#_BUILD_SECRET_FINDINGS[@]} secret(s) — the next try removes them" \
+        "$(printf -- '- %s\n' "${_BUILD_SECRET_FINDINGS[@]}")"
+    return 1
 }

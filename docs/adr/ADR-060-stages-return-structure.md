@@ -125,3 +125,17 @@ npm run test:unit && npm run lint
 ```
 
 The #1833 reply is a permanent fixture: an envelope carrying `done\_sentinel` must classify as `unparseable`, not `schema`. Before this ADR it aborted the pipeline and reported a version requirement it had actually met.
+
+## Amendment 2026-11-02 (#2460) — a reply is read in whole units
+
+A model wraps long lines, and every reader of a reply took one line per item: a wrapped REQUIREMENT,
+UNMET, REASON or ANSWER kept half its words, a list under its key as bullets was lost, and items were split on
+`;`, so one holding a `;` became two. Every reader now joins the reply first (`zb_reply_join_v`,
+`scripts/lib/reply-units.sh`): a line continues the one before it unless it is blank, follows a blank, or
+starts a unit of its own (a `KEY:`, an ANSWER, a list item, LOOP_COMPLETE); a list straight under an empty
+`KEY:` becomes one `KEY:` line per item. No reader splits an item on `;`: a reply gives one line per item.
+The same holds for the design's own blocks: a SPEC, a test-file binding or a step that carries on to the next
+line is read whole, and a binding naming two files is two files.
+
+Enforced by: `tests/unit/reply-multiline-test.sh` J1–J3, Q1–Q7; `tests/unit/design-block-multiline-test.sh` B1–B4;
+`tests/unit/design-coverage-test.sh`.

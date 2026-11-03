@@ -11,6 +11,10 @@
 
 [[ -n "${_ZBUILD_TA_CORRESPONDENCE_LOADED:-}" ]] && return 0
 _ZBUILD_TA_CORRESPONDENCE_LOADED=1
+# #2460: a reply is read in whole units; loaded here too, for a caller that
+# sources this file alone.
+declare -F zb_reply_join_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 
 _ta_sc_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
@@ -119,8 +123,33 @@ _sc_parse_verdict() {
     v="${v%%$'\n'*}"; printf '%s' "${v##*[[:space:]]}"
 }
 _sc_parse_reason() {
-    local r; r="$(grep -oE 'REASON:[^|]*' <<< "$1" || true)"
+    # #2460: the rest of the line — a reason may quote a `|`.
+    local r; r="$(grep -oE 'REASON:.*' <<< "$1" || true)"
     r="${r%%$'\n'*}"; r="${r#REASON:}"; r="${r#"${r%%[![:space:]]*}"}"; printf '%s' "${r%"${r##*[![:space:]]}"}"
+}
+# _sc_one_reason <reply> — the REASON of a one-requirement answer, read whole
+# (#2460, review on #2461): a REASON that wraps onto the next line is joined.
+_sc_one_reason() {
+    local _sor_j=""; zb_reply_join_v _sor_j "$1"; _sc_parse_reason "$_sor_j"
+}
+# _sc_batch_line_v <var> <reply> <id> — the batch answer's line for <id>, read
+# whole (#2460): its continued lines joined, and a REASON: on the line after
+# its verdict taken as its own. A glob match, not a regex built from the id
+# (review on #2148).
+_sc_batch_line_v() {
+    local -n _sbl="$1"; local _sbl_j="" _sbl_l _sbl_take=0
+    _sbl=""
+    zb_reply_join_v _sbl_j "$2"
+    while IFS= read -r _sbl_l; do
+        if (( _sbl_take )); then
+            [[ "$_sbl_l" =~ ^[[:space:]]*REASON: ]] && _sbl+=" | ${_sbl_l#"${_sbl_l%%[![:space:]]*}"}"
+            break
+        fi
+        [[ "$_sbl_l" == "$3:"*"VERDICT:"* ]] || continue
+        _sbl="$_sbl_l"
+        [[ "$_sbl_l" == *REASON:* ]] && break
+        _sbl_take=1
+    done <<< "$_sbl_j"
 }
 # _sc_batch_prompt <ids_arr> <txts_arr> <srcs_arr> (namerefs) — every pair in
 # one prompt, one answer line per SPEC (#2143).
@@ -215,14 +244,10 @@ _ta_correspondence() {
     local _rc_file; _rc_file="$(mktemp)" || _rc_file=""
     [[ -n "$_rc_file" ]] && printf '0' > "$_rc_file" 2>/dev/null || true
 
-    local _batch_raw _line _l
+    local _batch_raw _line
     _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs "$_files_text")" "$_rc_file")"
     for (( _i=0; _i<n; _i++ )); do
-        # A glob match, not a regex built from the id (review on #2148).
-        _line=""
-        while IFS= read -r _l; do
-            [[ "$_l" == "${_ids[_i]}:"*"VERDICT:"* ]] && { _line="$_l"; break; }
-        done <<< "$_batch_raw"
+        _sc_batch_line_v _line "$_batch_raw" "${_ids[_i]}"
         [[ -n "$_line" ]] || continue
         _verdicts[_i]="$(_sc_parse_verdict "$_line")"
         _reasons[_i]="$(_sc_parse_reason "$_line")"
@@ -244,7 +269,7 @@ _ta_correspondence() {
                 "it has no VERDICT: line saying corresponds, partial, mismatch or uncheckable" "$_one_raw")"
             _verdicts[_i]="$(_sc_parse_verdict "$_one_raw")"
         fi
-        _reasons[_i]="$(_sc_parse_reason "$_one_raw")"
+        _reasons[_i]="$(_sc_one_reason "$_one_raw")"
     done
 
     # A call that failed is how the check ended (#2032): its rc, classified.
@@ -276,34 +301,3 @@ _ta_correspondence() {
     return 0
 }
 
-# _ta_fixup_calls_v <var> <design.md> <round> <rounds> — #2450: the text each
-# fix-up call is given, one per test file with findings, in _TA_CORR_FINDINGS
-# order. A finding belongs to the files of the SPEC it starts with; one that
-# names no SPEC of the contract goes to every call. One call holding every
-# finding for every file planned all of them and ran out of time (#1805 run
-# 41365460329).
-_ta_fixup_calls_v() {
-    local -n _tfc="$1"; local design="$2" round="$3" rounds="$4"
-    local -a files=() general=() f_text=()
-    local fnd sid tfs tf i found
-    for fnd in "${_TA_CORR_FINDINGS[@]}"; do
-        sid=""; [[ "$fnd" =~ ^(SPEC-[0-9]+) ]] && sid="${BASH_REMATCH[1]}"
-        tfs=""; [[ -n "$sid" ]] && tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null || true)"
-        if [[ -z "${tfs//[[:space:]]/}" ]]; then general+=("$fnd"); continue; fi
-        for tf in $tfs; do
-            found=-1
-            for (( i = 0; i < ${#files[@]}; i++ )); do [[ "${files[i]}" == "$tf" ]] && { found=$i; break; }; done
-            if (( found < 0 )); then files+=("$tf"); f_text+=(""); found=$(( ${#files[@]} - 1 )); fi
-            f_text[found]+="- $fnd"$'\n'
-        done
-    done
-    _tfc=()
-    local g=""; for fnd in ${general[@]+"${general[@]}"}; do g+="- $fnd"$'\n'; done
-    if [[ ${#files[@]} -eq 0 ]]; then
-        _tfc+=("$(printf '\n### What the check of your assertions found (round %s of %s)\nYour assertions were checked against their requirements, and your new and changed test files were run on the code from before this change. These do not hold. Fix each one in its testfile; keep what already holds.\n%s' "$round" "$rounds" "$g")")
-        return 0
-    fi
-    for (( i = 0; i < ${#files[@]}; i++ )); do
-        _tfc+=("$(printf '\n### What the check of your assertions found (round %s of %s)\nYour assertions were checked against their requirements, and your new and changed test files were run on the code from before this change. These do not hold in %s. In this call, fix only %s: each finding below, keeping what already holds. Each other test file with findings is fixed in a call of its own.\n%s%s' "$round" "$rounds" "${files[i]}" "${files[i]}" "${f_text[i]}" "$g")")
-    done
-}

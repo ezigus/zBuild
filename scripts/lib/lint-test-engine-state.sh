@@ -23,12 +23,17 @@ _LES_RE='"cycle_iterations"[[:space:]]*:[[:space:]]*\{|(^|[^."A-Za-z_])cycle_ite
 _bad=0
 while IFS= read -r -d '' f; do
     [[ "$f" == */legacy-DoNotUse/* ]] && continue
-    _n=0
+    _n=0 _prev="" _prev_hit=1
     while IFS= read -r line || [[ -n "$line" ]]; do
         _n=$((_n + 1))
-        [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        [[ "$line" == *"lint-test-engine-state:allow"* ]] && continue
-        if [[ "$line" =~ $_LES_RE ]]; then
+        # #2460: a write split over two lines (a jq program wraps inside its
+        # quotes) is read with the line before it.
+        _pair="$_prev ${line#"${line%%[![:space:]]*}"}"; _pp="$_prev_hit"
+        _prev="$line"; _prev_hit=0
+        [[ "$line" =~ ^[[:space:]]*# ]] && { _prev=""; continue; }
+        [[ "$line" == *"lint-test-engine-state:allow"* ]] && { _prev=""; _prev_hit=1; continue; }
+        if [[ "$line" =~ $_LES_RE ]] || { (( ! _pp )) && [[ "$_pair" =~ $_LES_RE ]]; }; then
+            _prev_hit=1
             echo "lint-test-engine-state: ${f#"$_LES_ROOT"/}:$_n writes cycle_iterations by hand — make it with zb_engine_loop_state (the engine's own writers), so the test holds what the engine really writes" >&2
             _bad=$((_bad + 1))
         fi
