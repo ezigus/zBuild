@@ -2276,15 +2276,20 @@ _cycle_orchestrator_run_body() {
         { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
     }
 
-    # ADR-006 §3.6 / #1805 (SPEC-7): read the persisted current_iter so a
-    # resumed cycle starts from the next unfinished iteration, not from 1.
-    # A fresh cycle has current_iter=0 (set by _cycle_state_init via //=), so
-    # _start_iter defaults to 1 — identical behaviour to the old hard-coded 1.
-    local _persisted_iter
-    _persisted_iter="$(get_state_field "$state_file" \
-        ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
-    [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
-    local _start_iter=$(( _persisted_iter + 1 ))
+    # ADR-006 §3.6 / #1805 (SPEC-7): on resume (_ZBUILD_RESUME_ACTIVE=true),
+    # read the persisted current_iter so the cycle starts from the next
+    # unfinished iteration. On a fresh run or nested-loop re-entry, always
+    # start at 1 so inner cycles reset correctly on each outer iteration.
+    local _start_iter
+    if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
+        local _persisted_iter
+        _persisted_iter="$(get_state_field "$state_file" \
+            ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
+        [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
+        _start_iter=$(( _persisted_iter + 1 ))
+    else
+        _start_iter=1
+    fi
 
     _cycle_install_traps
 
