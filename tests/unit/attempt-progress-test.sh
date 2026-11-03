@@ -140,6 +140,14 @@ printf '{"data":{"findings":[{"n":1,"text":"X"}]}}' > "$ART/twin-b-result.json"
 _attempt "$R2P" twin ':'
 _attempt "$R2P" twin ':'
 assert_eq "[P12] the same findings in both files again → no progress (each compared with its own last)" "no" "$(_progress twin)"
+# A file with no last copy is compared with nothing, never with the other
+# file's: b is new this try, with the findings a already had.
+export ZBUILD_CYCLE_ITER=8
+rm -f "$ART/twin-b-result.json"
+_attempt "$R2P" twin ':'
+printf '{"data":{"findings":[{"n":1,"text":"X"}]}}' > "$ART/twin-b-result.json"
+_attempt "$R2P" twin ':'
+assert_eq "[P12] a result file with no last copy, holding findings, is progress" "yes" "$(_progress twin)"
 export ZBUILD_CYCLE_ITER=1
 
 cleanup_test_env
