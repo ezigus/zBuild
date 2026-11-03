@@ -33,10 +33,57 @@ index 85d5d4be..de6af22f 100644
      _cycle_install_traps
  
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index 0e59e7d4..8eacdbb6 100755
+index 0e59e7d4..ed67197c 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -2836,6 +2836,9 @@ main() {
+@@ -1736,10 +1736,22 @@ _runner_from_stage_preflight() {
+         _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" || true
+     fi
+     rm -rf "${_fsp_staging:?}" 2>/dev/null || true
++    # When from_stage is a cycle ID, stop checking before the cycle's first
++    # member (the first element of _TPL_CYCLE_STAGES_<id>). Cycle IDs are not
++    # in active_stages[], so a literal match would never fire and all stages
++    # (including cycle members) would be checked — wrong.
++    local _fsp_stop_stage="$_fsp_from_stage"
++    local _fsp_cycle_safe="${_fsp_from_stage//-/_}"
++    local _fsp_cycle_stages_var="_TPL_CYCLE_STAGES_${_fsp_cycle_safe}"
++    local _fsp_cycle_csv="${!_fsp_cycle_stages_var:-}"
++    if [[ -n "$_fsp_cycle_csv" ]]; then
++        # from_stage is a cycle; the stop point is its first member stage.
++        _fsp_stop_stage="${_fsp_cycle_csv%%,*}"
++    fi
+     # Verify every stage before the target has its primary artifact
+     local _fsp_s _fsp_plugin_dir _fsp_manifest _fsp_prim_path _fsp_resolved
+     for _fsp_s in "${_fsp_stages[@]}"; do
+-        [[ "$_fsp_s" == "$_fsp_from_stage" ]] && break
++        [[ "$_fsp_s" == "$_fsp_stop_stage" ]] && break
+         _fsp_plugin_dir=""; _fsp_manifest=""; _fsp_prim_path=""; _fsp_resolved=""
+         _fsp_plugin_dir="$(_find_plugin_for_stage "$_fsp_s" "$_fsp_plugins_root" 2>/dev/null || true)"
+         [[ -z "$_fsp_plugin_dir" ]] && continue
+@@ -2061,12 +2073,21 @@ main() {
+     fi
+     _runner_state_file="$state_file"
+ 
+-    # Validate --from-stage against active_stages now that we have the stage list
++    # Validate --from-stage against active_stages now that we have the stage list.
++    # Cycle IDs (from _TPL_CYCLES) are also valid targets: --from-stage <cycle-id>
++    # skips all stages before the cycle and dispatches the cycle as the first unit.
+     if [[ -n "$from_stage" ]]; then
+         local _fs_valid=false _fs_s
+         for _fs_s in "${active_stages[@]}"; do
+             [[ "$_fs_s" == "$from_stage" ]] && { _fs_valid=true; break; }
+         done
++        # Also accept cycle IDs — cycles appear in _TPL_CYCLES, not _TPL_STAGES.
++        if ! $_fs_valid && declare -p _TPL_CYCLES >/dev/null 2>&1; then
++            local _fv_cyc
++            for _fv_cyc in "${_TPL_CYCLES[@]}"; do
++                [[ "$_fv_cyc" == "$from_stage" ]] && { _fs_valid=true; break; }
++            done
++        fi
+         if ! $_fs_valid; then
+             error "--from-stage '$from_stage' is not a known stage (active stages: ${active_stages[*]})"
+             return 1
+@@ -2836,6 +2857,9 @@ main() {
          # primary artifacts available. A still-absent artifact causes exit 1 at
          # the dispatch loop's stale-artifact check.
          _runner_resume_rehydrate "$_runner_issue" "$state_dir"
@@ -46,8 +93,86 @@ index 0e59e7d4..8eacdbb6 100755
          eb_emit_event "pipeline.resume" "run_id=$_runner_run_id" "issue=$_runner_issue"
          info "Pipeline resuming — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
          if [[ -n "$from_stage" ]]; then
+@@ -3410,6 +3434,25 @@ main() {
+             case "$_unit" in
+                 cycle:*)
+                     local _cyc_id="${_unit#cycle:}"
++                    # ADR-006 §3.6 / #1805 (SPEC-1/SPEC-3): resume / from-stage
++                    # guards for the cycle dispatch unit, mirroring the stage:*
++                    # arm above. A complete cycle is skipped on resume; a cycle
++                    # that is not the from-stage target is skipped until the
++                    # target is reached.
++                    if $resume_mode && [[ -z "$skip_until_stage" ]]; then
++                        local _du_cyc_status
++                        _du_cyc_status="$(get_state_field "$state_file" \
++                            ".stage_statuses[\"$_cyc_id\"]" '' 2>/dev/null || true)"
++                        if [[ "$_du_cyc_status" == "complete" ]]; then
++                            info "Skipping already-complete cycle: $_cyc_id"
++                            continue
++                        fi
++                    fi
++                    if [[ -n "$skip_until_stage" && "$_cyc_id" != "$skip_until_stage" ]]; then
++                        info "Skipping cycle: $_cyc_id (awaiting $skip_until_stage)"
++                        continue
++                    fi
++                    [[ -n "$skip_until_stage" ]] && skip_until_stage=""
+                     # #524: replace bare `info` with operator-visible cycle
+                     # entry banner (heavy ═ + ▸ Entering + DIM trailer).
+                     local _cyc_stages_csv=""
+@@ -3678,6 +3721,51 @@ main() {
+                     ;;
+                 stage:*)
+                     local _ust="${_unit#stage:}"
++                    # ADR-006 §3.6 / #1805 (SPEC-1): resume mode — skip stages
++                    # already marked complete. Mirrors the linear-loop guard at
++                    # the `for stage in active_stages` path below, so cyclic
++                    # templates honour resume semantics for their leaf stages.
++                    if $resume_mode && [[ -z "$skip_until_stage" ]]; then
++                        local _du_stage_status
++                        _du_stage_status="$(get_state_field "$state_file" \
++                            ".stage_statuses[\"$_ust\"]" '' 2>/dev/null || true)"
++                        if [[ "$_du_stage_status" == "complete" ]]; then
++                            # SPEC-2 / fail-closed: verify the primary artifact
++                            # is present after rehydration. Absent → exit 1.
++                            local _du_plugin_dir="" _du_manifest="" \
++                                  _du_prim_path="" _du_resolved=""
++                            _du_plugin_dir="$(_find_plugin_for_stage \
++                                "$_ust" "$plugins_root" 2>/dev/null || true)"
++                            if [[ -n "$_du_plugin_dir" ]]; then
++                                _du_manifest="$_du_plugin_dir/manifest.yaml"
++                                _du_prim_path="$(_verdict_primary_output_path \
++                                    "$_du_manifest" 2>/dev/null || true)"
++                                if [[ -n "$_du_prim_path" ]]; then
++                                    _du_resolved="$(_verdict_resolve_path \
++                                        "$_du_prim_path" "$state_dir")"
++                                    if [[ ! -s "$_du_resolved" ]]; then
++                                        eb_emit_event \
++                                            "stage.verdict.stale_artifact" \
++                                            "stage=$_ust" \
++                                            "path=$_du_resolved" \
++                                            "run_id=$_runner_run_id"
++                                        echo "error: resume: stage '$_ust' is marked complete but its primary artifact is absent after rehydration (expected: $_du_resolved)" >&2
++                                        return 1
++                                    fi
++                                fi
++                            fi
++                            info "Skipping already-complete stage: $_ust"
++                            continue
++                        fi
++                    fi
++                    # ADR-006 §3.6 / #1805 (SPEC-3): --from-stage — skip leaf
++                    # stages that precede the named target stage. Mirrors the
++                    # skip_until_stage guard in the linear-loop path below.
++                    if [[ -n "$skip_until_stage" && "$_ust" != "$skip_until_stage" ]]; then
++                        info "Skipping stage: $_ust (awaiting $skip_until_stage)"
++                        continue
++                    fi
++                    [[ -n "$skip_until_stage" ]] && skip_until_stage=""
+                     # Re-enter the legacy loop for a single stage by re-using
+                     # active_stages — simplest correct path: run that stage's
+                     # body inline via cycle_dispatch_stage (gives same plugin
 diff --git a/tests/integration/from-stage-rehydrate-test.sh b/tests/integration/from-stage-rehydrate-test.sh
-index 3fa611a3..41a44c68 100644
+index 3fa611a3..fd70ad6a 100644
 --- a/tests/integration/from-stage-rehydrate-test.sh
 +++ b/tests/integration/from-stage-rehydrate-test.sh
 @@ -39,12 +39,13 @@ mkdir -p "$S3_STATE_DIR/artifacts" "$S3_EVENTS_DIR"
@@ -161,6 +286,15 @@ index 3fa611a3..41a44c68 100644
          current_iteration: 0,
          self_heal_count: {},
          scope_manifest_hash: "",
+@@ -185,7 +187,7 @@ jq -n \
+ 
+ set +e
+ ( cd "$S4_WORK_REPO" && env \
+-    ZBUILD_CYCLES_ENABLED=0 \
++    ZBUILD_CYCLES_ENABLED=1 \
+     ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+     ZBUILD_STATE_DIR="$S4_STATE_DIR" \
+     ZBUILD_STATE_FILE="$S4_STATE_FILE" \
 @@ -195,8 +197,8 @@ set +e
      ZBUILD_CONTRACT_VALIDATOR=warn \
      ZBUILD_VISION_GATE=off \
@@ -172,7 +306,26 @@ index 3fa611a3..41a44c68 100644
      >"$TEST_TEMP_DIR/s4-stdout.txt" 2>"$TEST_TEMP_DIR/s4-stderr.txt"
  _s4_rc=$?
  set -e
-@@ -265,12 +267,12 @@ set -e
+@@ -207,11 +209,15 @@ set -e
+ assert_eq "[#1805/SPEC-4] --from-stage exits 1 when prior stage has no restorable artifact" \
+     "1" "$_s4_rc"
+ 
+-# [#1805/SPEC-4]: stderr must name the missing stage ("intake").
++# [#1805/SPEC-4]: stderr must contain the diagnostic phrase emitted by
++# _runner_from_stage_preflight — "has no restorable primary artifact".
++# This phrase is absent from the old code (which had no preflight check),
++# so this assertion FAILS on old code and PASSES only after the new
++# _runner_from_stage_preflight is present at runner.sh:1751.
+ _s4_stderr="$(cat "$TEST_TEMP_DIR/s4-stderr.txt" 2>/dev/null || true)"
+ assert_contains \
+-    "[#1805/SPEC-4] stderr names the missing stage (intake)" \
+-    "$_s4_stderr" "intake"
++    "[#1805/SPEC-4] stderr contains preflight diagnostic phrase (has no restorable primary artifact)" \
++    "$_s4_stderr" "has no restorable primary artifact"
+ 
+ # [#1805/SPEC-4]: no stage.start must be emitted before the exit.
+ _s4_any_starts=0
+@@ -265,12 +271,12 @@ set -e
  
  # : the fixture is cyclic (type: cycle present).
  _s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
@@ -187,6 +340,19 @@ index 3fa611a3..41a44c68 100644
 +    "$_S13_FS_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
  assert_eq "cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)" \
      "1" "$_s13_fs_intake_starts"
+ 
+diff --git a/tests/integration/resume-entry-points-test.sh b/tests/integration/resume-entry-points-test.sh
+index c89ba5cb..4bf98c32 100644
+--- a/tests/integration/resume-entry-points-test.sh
++++ b/tests/integration/resume-entry-points-test.sh
+@@ -292,7 +292,7 @@ assert_contains "resume-entry-points test uses a cyclic fixture (type: cycle)" \
+ 
+ # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
+ _s13_ep_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
+-    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
++    "$_S13_EP_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || true)"
+ assert_eq "cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)" \
+     "1" "$_s13_ep_intake_starts"
  
 diff --git a/tests/integration/resume-loop-state-test.sh b/tests/integration/resume-loop-state-test.sh
 index 28bd797a..f34ee40c 100644
