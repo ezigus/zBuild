@@ -39,12 +39,13 @@ mkdir -p "$S3_STATE_DIR/artifacts" "$S3_EVENTS_DIR"
 
 # Create a git repo; _artifact_persist_snapshot writes the state branch here.
 S3_WORK_REPO="$(setup_git_temp_repo fs-rehydrate-s3)"
-install_template_overlay "$S3_WORK_REPO" runner-state-dir-minimal
+install_template_overlay "$S3_WORK_REPO" artifact-snapshot-coverage
 
-# Create mock plugins.
+# Create mock plugins (intake + cycled for the artifact-snapshot-coverage cyclic fixture;
+# cycled is the inner member of the cyc cycle stage, roles:[builder]).
 mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "build"  "agent" 0 >/dev/null
-# cycled sub-stage used by the artifact-snapshot-coverage cyclic fixture (SPEC-13 sub-case).
+# cycled: inner member of cyc cycle stage (used by SPEC-3 and SPEC-13 sub-case).
 mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
 S3_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
@@ -67,7 +68,7 @@ fi
 # Remove the artifact from disk; it now lives only on the state branch.
 rm -f "$S3_STATE_DIR/artifacts/intake-result.json"
 
-# Write state file: intake=complete, build=pending, status=in_progress.
+# Write state file: intake=complete, cyc=pending, status=in_progress.
 jq -n \
     --arg run_id "s3-fs-1805" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -76,7 +77,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -87,11 +88,11 @@ jq -n \
         updated_at: $now
     }' > "$S3_STATE_FILE"
 
-# Run runner with --from-stage build. CWD=S3_WORK_REPO so the state branch
-# is reachable. Artifact must be restored before build dispatches.
+# Run runner with --from-stage cyc. CWD=S3_WORK_REPO so the state branch
+# is reachable. Artifact must be restored before cyc (the cycle) dispatches.
 set +e
 ( cd "$S3_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$S3_STATE_DIR" \
     ZBUILD_STATE_FILE="$S3_STATE_FILE" \
@@ -101,8 +102,8 @@ set +e
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal \
-        --resume --from-stage build --issue "$S3_ID" ) \
+    bash "$RUNNER" --template artifact-snapshot-coverage \
+        --resume --from-stage cyc --issue "$S3_ID" ) \
     >"$TEST_TEMP_DIR/s3-stdout.txt" 2>"$TEST_TEMP_DIR/s3-stderr.txt"
 _s3_rc=$?
 set -e
@@ -136,18 +137,19 @@ fi
 assert_eq "[#1805/SPEC-3] intake emits no stage.start when skipped via --from-stage" \
     "0" "$_s3_intake_starts"
 
-# [#1805/SPEC-3]: build must be the FIRST stage dispatched (stage.start with stage==build).
+# [#1805/SPEC-3]: cyc (the cycle stage) must be dispatched as the first stage.
+# artifact-snapshot-coverage has intake (leaf) then cyc (cycle). --from-stage cyc means
+# intake is skipped and cyc is the first thing dispatched: the cycle emits cycle.start
+# with cycle_id=cyc (cycles do not emit stage.start; their inner members do).
 # Before the change: without rehydration the runner may re-dispatch intake first → FAILS.
-# After the change: intake is skipped; build (the --from-stage target) is first → PASSES.
-_s3_first_dispatched=""
+# After the change: intake is skipped; cyc (the --from-stage target) dispatches → PASSES.
+_s3_cyc_started=0
 if [[ -f "$S3_EVENTS_JSONL" ]]; then
-    # Use jq -rs to slurp all objects and pick .[0] — avoids | head (SIGPIPE-prone).
-    _s3_first_dispatched="$(jq -rs \
-        'map(select(.type=="stage.start") | .data.stage // empty) | .[0] // ""' \
-        "$S3_EVENTS_JSONL" 2>/dev/null || true)"
+    _s3_cyc_started="$(jq -r 'select(.type=="cycle.start" and .data.cycle_id=="cyc") | .data.cycle_id' \
+        "$S3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/SPEC-3] build is the first dispatched stage (--from-stage target, intake skipped)" \
-    "build" "$_s3_first_dispatched"
+assert_eq "[#1805/SPEC-3] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)" \
+    "1" "$_s3_cyc_started"
 
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
 print_test_section "[#1805/SPEC-4] --from-stage with no restorable artifact exits 1 naming missing stage"
@@ -161,9 +163,9 @@ mkdir -p "$S4_STATE_DIR/artifacts" "$S4_EVENTS_DIR"
 
 # Fresh repo with no state branch for S4_ID — no artifact anywhere.
 S4_WORK_REPO="$(setup_git_temp_repo fs-rehydrate-s4)"
-install_template_overlay "$S4_WORK_REPO" runner-state-dir-minimal
+install_template_overlay "$S4_WORK_REPO" artifact-snapshot-coverage
 
-# State: intake=complete, build=pending, NO artifact on disk, NO state branch.
+# State: intake=complete, cyc=pending, NO artifact on disk, NO state branch.
 jq -n \
     --arg run_id "s4-fs-1805" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -172,7 +174,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -195,8 +197,8 @@ set +e
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal \
-        --resume --from-stage build --issue "$S4_ID" ) \
+    bash "$RUNNER" --template artifact-snapshot-coverage \
+        --resume --from-stage cyc --issue "$S4_ID" ) \
     >"$TEST_TEMP_DIR/s4-stdout.txt" 2>"$TEST_TEMP_DIR/s4-stderr.txt"
 _s4_rc=$?
 set -e
@@ -265,12 +267,12 @@ set -e
 
 # : the fixture is cyclic (type: cycle present).
 _s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
+assert_contains "[#1805/SPEC-14] from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
     "$_s13_fs_content" "type: cycle"
 
 # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
-_s13_fs_intake_starts="$(jq -r 'select(.type=="stage.start") | .data.stage // empty' \
-    "$_S13_FS_EVENTS_JSONL" 2>/dev/null | grep -c '^intake$' || echo 0)"
+_s13_fs_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+    "$_S13_FS_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)" \
     "1" "$_s13_fs_intake_starts"
 
