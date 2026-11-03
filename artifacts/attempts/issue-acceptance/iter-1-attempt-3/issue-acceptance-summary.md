@@ -1,0 +1,7 @@
+## issue-acceptance — fail
+
+- The live dispatch-unit loop still dispatches stages already marked complete on resume — SPEC-1 fails on all three entry paths — so R-1, R-2, R-3, and their dependent requirements are unmet; from-stage-rehydrate SPEC-3 also fails; and the change introduces regressions in stage-retry and write-boundary-revert tests.
+
+- 6 requirement(s) not met — each is a finding, sent to the stages that can fix it
+- NOT SURE: R-9 / R-2 (loop iteration count restored) — `resume-loop-state-test.sh` is not listed in the failing test files, so SPEC-7 may be passing; but the acceptance finding states the assertion "no `cycle.iteration.complete` for iter=1 (iter-1 already done before resume)" was deleted from the file rather than made to pass, and the diff shows only the addition of `export _ZBUILD_RESUME_ACTIVE=true` without the full post-deletion assertion set. I cannot confirm from the diff alone whether the remaining assertions are sufficient to catch a revert of the cycle-orchestrator change. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: R-5 / R-6 (ADR amendments) — `docs/adr/ADR-006-resume-contract.md` and `docs/adr/ADR-050-prior-work-reuse-contract.md` are listed as changed files but their diffs are not shown. I cannot verify that the amendment text names the correct enforcing test files or draws the ADR-050 §6 boundary explicitly as required. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
