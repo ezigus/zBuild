@@ -32,6 +32,7 @@
 #             from its last try's made progress (#2460: build said done, changed
 #             nothing, and its test still failed — the next try is told so)
 # P11 [guard] ...the same findings again, or none, are no progress
+# P12 [guard] each result file is compared with its own last copy (review on #2461)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -125,6 +126,21 @@ _attempt "$Q" designer '_fr "tests/b-test.sh still fails"'
 assert_eq "[P11] the same findings as its last try → no progress" "no" "$(_progress designer)"
 _attempt "$Q" designer 'printf "{\"outcome\":\"unusable\"}" > "$ART/designer-result.json"'
 assert_eq "[P11] no findings → no progress" "no" "$(_progress designer)"
+
+print_test_section "P12: a stage with two result files (review on #2461)"
+R2P="$TEST_TEMP_DIR/plugins/twin"; mkdir -p "$R2P"
+{
+    printf 'id: twin\nkind: agent\noutputs:\n'
+    printf '  - id: a\n    path: "${artifact_dir}/twin-a-result.json"\n    primary: true\n'
+    printf '  - id: b\n    path: "${artifact_dir}/twin-b-result.json"\n    primary: true\n'
+} > "$R2P/manifest.yaml"
+export ZBUILD_CYCLE_ITER=7
+printf '{"data":{"findings":[{"n":1,"text":"X"}]}}' > "$ART/twin-a-result.json"
+printf '{"data":{"findings":[{"n":1,"text":"X"}]}}' > "$ART/twin-b-result.json"
+_attempt "$R2P" twin ':'
+_attempt "$R2P" twin ':'
+assert_eq "[P12] the same findings in both files again → no progress (each compared with its own last)" "no" "$(_progress twin)"
+export ZBUILD_CYCLE_ITER=1
 
 cleanup_test_env
 print_test_results

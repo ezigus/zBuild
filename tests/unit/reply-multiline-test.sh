@@ -103,6 +103,12 @@ assert_eq "[Q3] ...two items" "2" "$(grep -c . "$TEST_TEMP_DIR/q3.txt" 2>/dev/nu
 )
 assert_eq "[Q4] the verdict is read" "partial" "$(sed -n 1p "$TEST_TEMP_DIR/q4.txt" 2>/dev/null)"
 assert_eq "[Q4] a REASON on the next line, holding '|', is read whole" "it checks grep x | wc -l, not the file" "$(sed -n 2p "$TEST_TEMP_DIR/q4.txt" 2>/dev/null)"
+(
+    source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
+    _sc_one_reason $'VERDICT: partial\nREASON: it checks the exit code\n  of the wrong command' > "$TEST_TEMP_DIR/q4b.txt"
+)
+assert_eq "[Q4] the one-requirement answer keeps a wrapped REASON whole (review on #2461)" "it checks the exit code of the wrong command" \
+    "$(cat "$TEST_TEMP_DIR/q4b.txt" 2>/dev/null)"
 
 # ── Q5 ───────────────────────────────────────────────────────────────────────
 (

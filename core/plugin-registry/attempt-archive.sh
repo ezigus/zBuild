@@ -287,7 +287,7 @@ attempt_archive_outputs() {
         local _xk _xb _xnow _xprev _xpf="" _xnf=""
         while IFS=$'\t' read -r _xk _xb; do
             [[ "$_xk" == X && -n "$_xb" && -s "$_dest/$_xb" ]] || continue
-            _xnow="$_dest/$_xb"; _xprev="$_base/iter-${_iter}-attempt-${_n}/$_xb"
+            _xnow="$_dest/$_xb"; _xprev="$_base/iter-${_iter}-attempt-${_n}/$_xb"; _xpf=""
             _xnf="$(jq -c '[(.data.findings // .findings // [])[]? | (.text? // .)]' "$_xnow" 2>/dev/null || true)"
             [[ -n "$_xnf" && "$_xnf" != "[]" ]] || continue
             [[ "$_n" -gt 0 && -s "$_xprev" ]] \

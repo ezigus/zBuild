@@ -49,9 +49,13 @@ FNR == 1 { if (held) emit(); depth = 0; ctx[0] = "N"; par[0] = 0; hd = ""; buf =
     }
     wasq = (ctx[depth] == "S" || ctx[depth] == "D")
     code = scan(raw)
-    if (!wasq && match(code, /<<-?[ \t]*[A-Za-z_][A-Za-z0-9_]*/) && substr(code, RSTART, 3) != "<<<") {
-        h = substr(raw, RSTART, RLENGTH + 2); hd_tabs = (h ~ /^<<-/)
-        gsub(/^<<-?[ \t]*|[\047"]/, "", h); sub(/[^A-Za-z0-9_].*$/, "", h); hd = h
+    # The opener is found in the code (a << inside quotes is not one), its word
+    # read from the raw line: a quoted word, <<\047EOF\047, is blanked in the code
+    # (review on #2461).
+    if (!wasq && match(code, /<<-?/) && substr(code, RSTART, 3) != "<<<") {
+        h = substr(raw, RSTART); hd_tabs = (h ~ /^<<-/)
+        sub(/^<<-?[ \t]*/, "", h); gsub(/[\047"]/, "", h); sub(/[^A-Za-z0-9_].*$/, "", h)
+        if (h ~ /^[A-Za-z_]/) hd = h
     }
     t = code; sub(/[ \t]+$/, "", t)
     top = ctx[depth]

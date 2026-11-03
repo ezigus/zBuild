@@ -127,6 +127,11 @@ _sc_parse_reason() {
     local r; r="$(grep -oE 'REASON:.*' <<< "$1" || true)"
     r="${r%%$'\n'*}"; r="${r#REASON:}"; r="${r#"${r%%[![:space:]]*}"}"; printf '%s' "${r%"${r##*[![:space:]]}"}"
 }
+# _sc_one_reason <reply> — the REASON of a one-requirement answer, read whole
+# (#2460, review on #2461): a REASON that wraps onto the next line is joined.
+_sc_one_reason() {
+    local _sor_j=""; zb_reply_join_v _sor_j "$1"; _sc_parse_reason "$_sor_j"
+}
 # _sc_batch_line_v <var> <reply> <id> — the batch answer's line for <id>, read
 # whole (#2460): its continued lines joined, and a REASON: on the line after
 # its verdict taken as its own. A glob match, not a regex built from the id
@@ -264,7 +269,7 @@ _ta_correspondence() {
                 "it has no VERDICT: line saying corresponds, partial, mismatch or uncheckable" "$_one_raw")"
             _verdicts[_i]="$(_sc_parse_verdict "$_one_raw")"
         fi
-        _reasons[_i]="$(_sc_parse_reason "$_one_raw")"
+        _reasons[_i]="$(_sc_one_reason "$_one_raw")"
     done
 
     # A call that failed is how the check ended (#2032): its rc, classified.

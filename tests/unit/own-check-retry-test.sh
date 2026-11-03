@@ -14,7 +14,8 @@
 # R2 [guard]  build's next try is shown the finding it left when it said done,
 #             changed nothing, and its test still failed
 # R3 [guard]  the engine runs again a try that ended `unusable` with new
-#             findings about its own work, even when it changed no file
+#             findings about its own work, even when it changed no file — how
+#             those findings are compared is attempt-progress-test.sh P10-P12
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

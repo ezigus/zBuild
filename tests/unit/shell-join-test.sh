@@ -38,16 +38,22 @@ printf '%s\n' \
     'cat <<HD' \
     'body line \' \
     'HD' \
-    'last' > "$F"
+    'last' \
+    "cat <<'QH'" \
+    'quoted body \' \
+    'next body line' \
+    'QH' > "$F"
 _out="$(zb_shell_join "$F" 2>/dev/null)"
 assert_eq "[S1] a backslash-continued command is joined on its first line" 'route_to_model "$tier" "$prompt" 2>/dev/null' \
     "$(sed -n 1p <<< "$_out" | tr -s ' ')"
 assert_eq "[S2] ...and a pipe-continued one" "printf '%s' \"\$x\" | atomic_write \"\$f\" || true" "$(sed -n 3p <<< "$_out" | tr -s ' ')"
-assert_eq "[S3] the file keeps its line count" "11" "$(printf '%s\n' "$_out" | wc -l | tr -d ' ')"
+assert_eq "[S3] the file keeps its line count" "15" "$(printf '%s\n' "$_out" | wc -l | tr -d ' ')"
 assert_eq "[S3] ...the line taken is blank" "" "$(sed -n 2p <<< "$_out")"
 assert_eq "[S4] a backslash inside quotes joins nothing" "echo 'a \\'" "$(sed -n 5p <<< "$_out")"
 assert_eq "[S4] ...nor one in a comment" "real_cmd" "$(sed -n 7p <<< "$_out")"
 assert_eq "[S4] ...nor one in a heredoc body" "HD" "$(sed -n 10p <<< "$_out")"
+assert_eq "[S4] ...nor one in a quoted heredoc's body (review on #2461)" "quoted body \\" "$(sed -n 13p <<< "$_out")"
+assert_eq "[S4] ...whose next line stays its own" "next body line" "$(sed -n 14p <<< "$_out")"
 
 cleanup_test_env
 print_test_results
