@@ -53,14 +53,19 @@ zb_engine_loop_state "$STATE_FILE" "build-test" 1 5 "in_progress"
 # Load the cycle template.
 load_template "$FIXT/cycle-converges-iter2.yaml"
 
-# Mock cycle_dispatch_stage: record the first iter dispatched, always pass.
-# We record across all stages because the very first dispatch call reveals
-# which iter the orchestrator started from.
+# Mock cycle_dispatch_stage: record the first iter dispatched and whether iter=1
+# was ever dispatched. We record across all stages because the very first
+# dispatch call reveals which iter the orchestrator started from, and the
+# _SPEC7_ITER1_DISPATCHED flag proves whether iter-1 stages were skipped.
 _SPEC7_FIRST_ITER=-1
+_SPEC7_ITER1_DISPATCHED=0
 cycle_dispatch_stage() {
     local stage="$1" iter="$2"
     if [[ "$_SPEC7_FIRST_ITER" -eq -1 ]]; then
         _SPEC7_FIRST_ITER="$iter"
+    fi
+    if [[ "$iter" -eq 1 ]]; then
+        _SPEC7_ITER1_DISPATCHED=1
     fi
     _CYCLE_DISPATCH_VERDICT="pass"
     _CYCLE_DISPATCH_STATUS="complete"
@@ -85,6 +90,58 @@ set -e
 assert_eq \
     "[#1805/ITER-1] first dispatched iter is 2 (resumed from current_iter=1, not restarted from 1)" \
     "2" "$_SPEC7_FIRST_ITER"
+
+# [#1805/ITER-1]: iter-1 stages must not be dispatched on resume into iter-2.
+# cycle_dispatch_stage is the function that dispatches individual stages inside
+# a cycle iteration; if any iter=1 stage were dispatched it would set this flag.
+# Before the change: orchestrator starts at iter=1 → iter=1 stages dispatched →
+#   _SPEC7_ITER1_DISPATCHED=1 → assert 0==1 → FAILS.
+# After the change: starts at iter=2 → iter=1 never dispatched →
+#   _SPEC7_ITER1_DISPATCHED=0 → PASSES.
+assert_eq \
+    "[#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (complete iter skipped)" \
+    "0" "$_SPEC7_ITER1_DISPATCHED"
+
+# ── SPEC-7 clause 3: _ZBUILD_RESUME_ACTIVE guard — fresh runs start at iter=1 ─
+# [#1805/ITER-1] clause 3: without _ZBUILD_RESUME_ACTIVE=true, the orchestrator
+# must start at iter=1 even when current_iter=1 is in state. This verifies the
+# guard prevents the resume-path from affecting fresh runs and nested re-entries.
+print_test_section "[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1"
+
+# Re-seed state: same current_iter=1 as the resume test above, so that if the
+# guard were absent, new code would start at iter=2 (making this assertion FAIL).
+: > "$ZBUILD_EVENTS_JSONL"
+jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
+zb_engine_loop_state "$STATE_FILE" "build-test" 1 5 "in_progress"
+
+# Unset the resume guard: simulates a fresh run (or a nested-loop re-entry).
+unset _ZBUILD_RESUME_ACTIVE
+
+_SPEC7_FRESH_FIRST_ITER=-1
+cycle_dispatch_stage() {
+    local stage="$1" iter="$2"
+    if [[ "$_SPEC7_FRESH_FIRST_ITER" -eq -1 ]]; then
+        _SPEC7_FRESH_FIRST_ITER="$iter"
+    fi
+    _CYCLE_DISPATCH_VERDICT="pass"
+    _CYCLE_DISPATCH_STATUS="complete"
+    return 0
+}
+
+set +e
+cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
+_s7_fresh_rc=$?
+set -e
+
+# [#1805/ITER-1]: without _ZBUILD_RESUME_ACTIVE, the orchestrator must start at
+# iter=1 even though current_iter=1 in state. This is the guard: fresh runs and
+# nested-loop re-entries are NOT affected by resume-state iteration tracking.
+# Old code (no resume logic): always starts at 1 → PASSES (guard trivially holds).
+# New code with guard: unset → bypasses current_iter lookup → starts at 1 → PASSES.
+# New code WITHOUT guard: would start at 2 → FAILS (regression detector).
+assert_eq \
+    "[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)" \
+    "1" "$_SPEC7_FRESH_FIRST_ITER"
 
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-loop-state test uses a fixture containing a cyclic stage"

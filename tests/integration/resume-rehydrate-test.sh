@@ -518,6 +518,14 @@ assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 documents restore happens befor
 assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 documents artifacts restored from the git state branch" \
     "$_adr006" "git state branch"
 
+# [#1805/AMDR-1]: ADR-006 step 3.6 must document the ordering constraint:
+# "not to be combined with dispatch-loop changes". The AMDR-1 requirement names
+# this clause explicitly; without it the spec omits the reason this step must
+# ship in a dedicated PR and reviewers have no guidance.
+# Before the doc change: phrase absent → FAILS. After change: PASSES.
+assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 documents ordering constraint (not to be combined with dispatch-loop changes)" \
+    "$_adr006" "not to be combined with dispatch-loop changes"
+
 # ── SPEC-6: ADR-050 §6 amended with resume boundary note ─────────────────────
 print_test_section "[#1805/AMDR-2] ADR-050 §6 amended: resume governed by ADR-006; new-run invariant governs new runs"
 
