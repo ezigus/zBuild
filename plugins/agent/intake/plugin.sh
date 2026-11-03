@@ -128,12 +128,13 @@ _intake_run_inner() {
     local issue="${ZBUILD_ISSUE:-0}"
     # #2306 (ADR-070 §2): only an issue has a requirement list; a list left by an
     # earlier run must not be read as this run's.
-    local _raw_json="" fetched_ok="" _prev_req=""
-    # #2460: the last run's list is kept in hand — the writing call starts from
-    # it, and the result says what changed — and never read as this run's.
-    [[ -n "$_art" && -s "$_art/requirements.json" ]] && _prev_req="$(<"$_art/requirements.json")"
-    _INTAKE_PREV_REQS="$(jq -r '.requirements[]? | "- \(.text)"' <<< "${_prev_req:-{\}}" 2>/dev/null || true)"
-    [[ -n "$_art" ]] && rm -f "$_art/requirements.json"
+    local _raw_json="" fetched_ok="" _req_written=""
+    # #2460, #2462: the last run's list is where the writing call starts. It
+    # stays on disk until this run's list replaces it — a try that fails leaves
+    # it for the next try — and a pass that writes no list removes it, so it is
+    # never read as this run's.
+    _INTAKE_PREV_REQ_JSON=""
+    [[ -n "$_art" && -s "$_art/requirements.json" ]] && _INTAKE_PREV_REQ_JSON="$(<"$_art/requirements.json")"
 
     # Support --issue mode: when goal text is absent, derive it from the issue number.
     # Runner exports ZBUILD_GOAL="" in --issue runs, so we fall back rather than hard-fail.
@@ -301,7 +302,6 @@ _intake_run_inner() {
     # ends intake with that call's outcome, so the engine can run it again.
     if [[ -n "$fetched_ok" && -n "$_art" ]] && ! _intake_write_requirements "$_art" "$_raw_json"; then
         if [[ -n "${_INTAKE_REQ_OUTCOME:-}" ]]; then
-            rm -f "$_art/requirements.json" 2>/dev/null || true
             _intake_write_result "$_art" "$_INTAKE_REQ_OUTCOME" \
                 "the issue's requirements could not be written: a model call ended $_INTAKE_REQ_OUTCOME" "{}" || true
             stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "error" \
@@ -309,19 +309,21 @@ _intake_run_inner() {
             return 1
         fi
         warn "intake_run: could not write $_art/requirements.json — later stages judge the issue text alone"
+    elif [[ -n "$fetched_ok" && -n "$_art" ]]; then
+        _req_written=1
     fi
+    [[ -n "$_req_written" || -z "$_art" ]] || rm -f "$_art/requirements.json" 2>/dev/null || true
 
-    # #2460 (ADR-070 §2): what changed since the last run's list, by its words.
+    # #2460, #2462 (ADR-070 §2): what changed since the last run's list, by id,
+    # with why each removed one went.
     local _chg="null" _chg_md=""
-    if [[ -n "$_prev_req" && -s "$_art/requirements.json" ]]; then
-        _chg="$(jq -c --argjson p "$_prev_req" '[.requirements[]?.text] as $n | [$p.requirements[]?.text] as $o
-            | {added: [$n[] | select(. as $t | $o | index([$t]) | not)],
-               removed: [$o[] | select(. as $t | $n | index([$t]) | not)]}' "$_art/requirements.json" 2>/dev/null || printf 'null')"
+    if [[ -n "$_req_written" && -n "${_INTAKE_REQ_CHANGES:-}" ]]; then
+        _chg="$_INTAKE_REQ_CHANGES"
         _chg_md="$(jq -r 'if (.added | length) + (.removed | length) == 0
                 then "- the requirements are the same as the last run'"'"'s"
                 else "- the requirements changed since the last run:"
-                    + ([.added[] | "\n  - added: " + .] | join(""))
-                    + ([.removed[] | "\n  - removed: " + .] | join("")) end' <<< "$_chg" 2>/dev/null || true)"
+                    + ([.added[] | "\n  - added: \(.id) \(.text)"] | join(""))
+                    + ([.removed[] | "\n  - removed: \(.id) \(.text) — \(.reason)"] | join("")) end' <<< "$_chg" 2>/dev/null || true)"
     fi
 
     # #2364: the result carries the issue text, so a later stage finds it by

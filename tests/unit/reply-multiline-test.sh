@@ -51,8 +51,8 @@ assert_contains "[J3] ...and an item's continued line joins it" "$_j" "MISSING: 
 (
     source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
     route_to_model() {
-        if [[ "$2" == *"THE LIST:"* ]]; then printf 'MISSING: retries 3 times; on the last failure it exits 2\n'
-        else printf 'REQUIREMENT: the gate must reject a test that\n  passes on the old code\nREQUIREMENT: the summary names the file\n'; fi
+        if [[ "$2" == *"THE LIST:"* ]]; then printf 'MISSING: RTRY-1 retries 3 times; on the last failure it exits 2\n'
+        else printf 'REQUIREMENT: GATE-1 the gate must reject a test that\n  passes on the old code\nREQUIREMENT: SUMM-1 the summary names the file\n'; fi
     }
     _j=""; _intake_requirements_json_v _j '{"title":"t","body":"b"}' >/dev/null 2>&1
     printf '%s' "$_j" > "$TEST_TEMP_DIR/q1.json"

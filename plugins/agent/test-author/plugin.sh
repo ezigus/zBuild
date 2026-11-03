@@ -56,19 +56,20 @@ _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || t
 
 
 # _ta_drop_stale_tags <design.md> <repo_root> — strip THIS issue's tags whose
-# SPEC number is not in this contract (#2174): they are left over from an
-# earlier design of the same issue. Under an issue only [#<issue>/SPEC-n] tags
-# are ever considered — a legacy [SPEC-n] or another issue's [#N/SPEC-n] belongs
-# to other work and is never touched (#1845 stripped #1328's [SPEC-1..10] from a
-# shared test before tags carried their issue). With no issue (a --goal run) the
-# bare legacy tags are this run's, as before.
+# id is not in this contract (#2174): they are left over from an earlier design
+# of the same issue. Under an issue only [#<issue>/<id>] tags are ever
+# considered — a legacy [SPEC-n] or another issue's [#N/<id>] belongs to other
+# work and is never touched (#1845 stripped #1328's [SPEC-1..10] from a shared
+# test before tags carried their issue). #2462: an id of any form — descriptive
+# (FSTG-1) or old (SPEC-n). With no issue (a --goal run) only bare old-form tags
+# are this run's, as before: a bare [ABC-1] may be any bracketed word.
 _ta_drop_stale_tags() {
     local design="$1" repo="$2" ids tf n=0 before after re issue="${ZBUILD_ISSUE:-}"
     declare -F acceptance_list_spec_ids >/dev/null 2>&1 || return 0
-    ids="$(acceptance_list_spec_ids "$design" 2>/dev/null | sed 's/^SPEC-//' | tr '\n' ' ')"
+    ids="$(acceptance_list_spec_ids "$design" 2>/dev/null | tr '\n' ' ')"
     [[ -n "$ids" ]] || return 0
     if [[ "$issue" =~ ^[1-9][0-9]*$ ]]; then
-        re="\\[#${issue}/SPEC-[0-9]+\\]"
+        re="\\[#${issue}/${_ACCEPTANCE_ID_ERE}\\]"
     else
         re='\[SPEC-[0-9]+\]'
     fi
@@ -81,9 +82,9 @@ _ta_drop_stale_tags() {
             { line=$0; out="";
               re = ENVIRON["ZB_TAG_RE"]
               while (match(line, re " ?")) {
-                  tag=substr(line, RSTART, RLENGTH); num=tag
-                  sub(/^.*SPEC-/, "", num); gsub(/[^0-9]/, "", num)
-                  keep = index(ids, " " num " ") > 0
+                  tag=substr(line, RSTART, RLENGTH); id=tag
+                  sub(/^\[(#[0-9]+\/)?/, "", id); sub(/\].*$/, "", id)
+                  keep = index(ids, " " id " ") > 0
                   out = out substr(line, 1, RSTART-1) (keep ? tag : "")
                   line = substr(line, RSTART+RLENGTH)
               }

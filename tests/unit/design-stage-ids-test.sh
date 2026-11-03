@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# tests/unit/design-stage-ids-test.sh — the design stage holds a new design to
+# the ids of the last one that passed and to the issue's words, and tells its
+# model how ids and [done] evidence are written (#2462, ADR-069 §1, §2).
+#
+# Why: design's checks can only keep an id stable if they are shown the last
+# design that passed, and can only refuse an id the issue writes if they are
+# shown the issue. The model must be told the rules it is held to, or every try
+# fails on them.
+#
+# E1 [code] a design that drops an id the last passing design had, with no
+#           REMOVED line, is unusable, and the finding names the id
+# E2 [code] a SPEC id the issue's own text writes (intake records them in the
+#           requirement list) is unusable
+# E3 [code] design's prompt says what an id is, that ids never move, how one is
+#           removed, and that [done] evidence is a file and an exact piece of its
+#           text — never a line number
+# E4 [code] the coverage call is not told the requirements are numbered R-1, R-2
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+print_test_header "the design stage holds ids to the last design and the issue (#2462)"
+setup_test_env "design-stage-ids"
+# shellcheck source=../../plugins/agent/design/plugin.sh
+source "$REPO_ROOT/plugins/agent/design/plugin.sh"
+apply_scope_redaction() { cp "$1" "$2"; return 0; }
+set +e
+
+BT='```'
+_design() {   # <acceptance lines...>
+    printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\n' "$BT" "$BT" "$BT"
+    printf '%s\n' "$@"
+    printf 'WIRING: none\nTESTFILES:\n%s\n' "$BT"
+}
+DRAFT=""
+route_to_model() {
+    local _t; _t="$(zb_test_prompt_write_path "$2")"
+    if [[ -n "$_t" ]]; then
+        printf '%s\n' "$2" > "$TEST_TEMP_DIR/design-prompt"
+        printf '%s' "$DRAFT" > "$_t"; return 0
+    fi
+    printf '%s\n' "$2" > "$TEST_TEMP_DIR/judge-prompt"
+    printf 'VERDICT: covered\n'
+}
+_run() {   # <last design or ""> <issue text>
+    local d="$TEST_TEMP_DIR/run"
+    rm -rf "$d" "$TEST_TEMP_DIR/design-prompt" "$TEST_TEMP_DIR/judge-prompt"
+    mkdir -p "$d/state/artifacts"
+    git -C "$d" init -q >/dev/null 2>&1
+    export ZBUILD_REPO_ROOT="$d"
+    export ZBUILD_EVENTS_JSONL="$d/state/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
+    _F_ART="$d/state/artifacts"
+    printf 'scope: all\n' > "$d/state/scope-manifest.md"
+    jq -nc --argjson i "${ISSUE_IDS:-[]}" '{requirements: [{id: "DOCS-1", text: "the docs say so"}], issue_ids: $i}' > "$_F_ART/requirements.json"
+    jq -nc --arg t "$2" '{result_contract: 3, outcome: "pass", reason: "r", data: {issue_text: $t}}' > "$_F_ART/intake-result.json"
+    [[ -n "$1" ]] && printf '%s' "$1" > "$_F_ART/design.md"
+    _design_stage_run_inner "$d/state/scope-manifest.md" "$_F_ART/design.md" "$_F_ART" >/dev/null 2>&1
+    OUTCOME="$(jq -r '.outcome // "MISSING"' "$_F_ART/design-verdict.json" 2>/dev/null || echo MISSING)"
+    FINDINGS="$(jq -r '.data.findings[]?.text // empty' "$_F_ART/design-verdict.json" 2>/dev/null || true)"
+}
+
+# ── E1 ───────────────────────────────────────────────────────────────────────
+DRAFT="$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1')"
+_run "$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1' 'DOCW-2[no-code]: the readme says so covers: DOCS-1')" "Write the docs."
+assert_eq "[E1] dropping an id of the last passing design: unusable" "unusable" "$OUTCOME"
+assert_contains "[E1] ...the finding names it" "$FINDINGS" "DOCW-2 was in the last list"
+DRAFT="$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1' 'REMOVED: DOCW-2 — the readme is out of scope')"
+_run "$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1' 'DOCW-2[no-code]: the readme says so covers: DOCS-1')" "Write the docs."
+assert_eq "[E1] dropped with a REMOVED line, it passes" "pass" "$OUTCOME"
+
+# ── E2 ───────────────────────────────────────────────────────────────────────
+DRAFT="$(_design 'NOTE-1[no-code]: the docs say so covers: DOCS-1')"
+ISSUE_IDS='["NOTE-1"]' _run "" "Write the docs. NOTE-1 in the tracker says how."
+assert_eq "[E2] a SPEC id the issue writes: unusable" "unusable" "$OUTCOME"
+assert_contains "[E2] ...the finding says so" "$FINDINGS" "NOTE-1 is written in the issue itself"
+
+# ── E3 / E4 ──────────────────────────────────────────────────────────────────
+_p="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/design-prompt" 2>/dev/null)"
+assert_contains "[E3] the prompt says what an id is" "$_p" "3 or 4 capital letters or digits"
+assert_contains "[E3] ...that a kept id never changes" "$_p" "never changes"
+assert_contains "[E3] ...how one is removed" "$_p" "REMOVED: <id> — <why>"
+assert_contains "[E3] ...that a new id takes the number after its code's highest" "$_p" "one more than the highest"
+assert_contains "[E3] ...that [done] evidence quotes the file's text" "$_p" 'scripts/x.sh:"'
+_line=0; [[ "$_p" == *"a file and line"* || "$_p" == *"scripts/x.sh:42"* ]] && _line=1
+assert_eq "[E3] ...and never offers a line number" "0" "$_line"
+DRAFT="$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1')"
+_run "" "Write the docs."
+_j="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/judge-prompt" 2>/dev/null)"
+assert_contains "[E4] the coverage call ran" "$_j" "DOCS-1"
+_num=0; [[ "$_j" == *"numbered R-1"* || "$_j" == *"(R-2:"* ]] && _num=1
+assert_eq "[E4] ...and is not told the ids are R-1, R-2" "0" "$_num"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))

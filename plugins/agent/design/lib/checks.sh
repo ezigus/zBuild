@@ -12,6 +12,9 @@
 _ZBUILD_DESIGN_CHECKS_LOADED=1
 # shellcheck source=../../../../scripts/lib/test-paths.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/test-paths.sh"
+# shellcheck source=../../../../scripts/lib/item-ids.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
+_DCK_LIB_DIR="${BASH_SOURCE[0]%/*}/../../../../scripts/lib"
 
 # _dck_scope_nonempty <design_md>
 # C1: returns 0 iff design.md carries a ```scope fence with ≥1 non-blank entry.
@@ -31,16 +34,79 @@ _dck_scope_nonempty() {
     [[ $entries -gt 0 ]]
 }
 
-# _dck_evidence_ok <repo_root> <item> — rc 0 when one evidence item of a [done]
-# requirement points at the repository (ADR-069 §2): a repo-relative path (no
-# leading / and no ..) to a file that exists, optionally `:N` with N inside it.
-_dck_evidence_ok() {
-    local root="$1" item="$2" path="$2" n=""
-    if [[ "$item" =~ ^(.+):([0-9]+)$ ]]; then path="${BASH_REMATCH[1]}"; n="${BASH_REMATCH[2]}"; fi
-    [[ -n "$path" && "$path" != /* && "/$path/" != *"/../"* && -f "$root/$path" ]] || return 1
-    [[ -z "$n" ]] && return 0
-    local lines; lines="$(awk 'END { print NR }' "$root/$path" 2>/dev/null)"
-    [[ "$n" -ge 1 && "$n" -le "${lines:-0}" ]]
+# _dck_evidence_v <var> <repo_root> <item> <base> — what is wrong with one
+# evidence item of a [done] requirement (ADR-069 §2), or empty. #2462: [done]
+# means the code from before the change already does it, so the item is
+# `file:"exact text"` whose text is in the file on the base commit and still in
+# it outside what this branch changed — or a test file named alone that the
+# base commit has. Never a line number: lines move as the change is made. With
+# no base commit (none resolves), the text in the file is all that is checked.
+#   LINE     a line number      BAD       not a file in the repository
+#   NO_TEXT  a source file named alone    MISSING   the text is not in it
+#   NOT_BEFORE  not on the base commit, or only in lines this branch changed
+_dck_evidence_v() {
+    local -n _dev="$1"; local root="$2" item="$3" base="$4" path txt n src occ ranges a c l ok=0
+    _dev=""
+    acceptance_evidence_split "$item" path txt n
+    [[ -n "$n" ]] && { _dev=LINE; return 0; }
+    [[ -n "$path" && "$path" != /* && "/$path/" != *"/../"* && -f "$root/$path" ]] || { _dev=BAD; return 0; }
+    if [[ -z "$txt" ]]; then
+        zb_is_test_path "$path" "$root" || { _dev=NO_TEXT; return 0; }
+        [[ -z "$base" ]] || git -C "$root" cat-file -e "$base:$path" 2>/dev/null || _dev=NOT_BEFORE
+        return 0
+    fi
+    src="$(<"$root/$path")"
+    [[ "$src" == *"$txt"* ]] || { _dev=MISSING; return 0; }
+    [[ -n "$base" ]] || return 0
+    [[ "$(git -C "$root" show "$base:$path" 2>/dev/null)" == *"$txt"* ]] || { _dev=NOT_BEFORE; return 0; }
+    # The lines this branch added or changed: each hunk's "+start,count".
+    ranges="$(git -C "$root" diff -U0 --no-color "$base" -- "$path" 2>/dev/null \
+        | sed -nE 's/^@@ [^+]*\+([0-9]+)(,([0-9]+))? @@.*/\1 \3/p')"
+    occ=0
+    while IFS= read -r l; do
+        occ=$((occ + 1))
+        [[ "$l" == *"$txt"* ]] || continue
+        ok=1
+        while read -r a c; do
+            [[ -n "$a" ]] || continue
+            c="${c:-1}"
+            (( occ >= a && occ < a + c )) && { ok=0; break; }
+        done <<< "$ranges"
+        (( ok )) && return 0
+    done <<< "$src"
+    _dev=NOT_BEFORE
+}
+
+# _dck_block_ids_v <ids_var> <removed_var> <block> — the SPEC ids, and the ids
+# of the REMOVED lines, of an extracted acceptance block, space separated. Read
+# by the shell: design's checks run on every try.
+_dck_block_ids_v() {
+    local -n _dbi="$1" _dbr="$2"; local _l re
+    re="^REMOVED:[[:space:]]*(${_ACCEPTANCE_ID_ERE})"
+    _dbi="" _dbr=""
+    while IFS= read -r _l; do
+        [[ "$_l" == "TESTFILES:" ]] && break
+        if [[ "$_l" =~ $_ACCEPTANCE_SPEC_RE ]]; then _dbi+="${BASH_REMATCH[1]} "
+        elif [[ "$_l" =~ $re ]]; then _dbr+="${BASH_REMATCH[1]} "; fi
+    done <<< "$3"
+    return 0
+}
+
+# _dck_bad_id_lines_v <array> <design_md> — each acceptance-block line (before
+# TESTFILES) shaped like a SPEC line whose id has no valid form (#2462): such a
+# line is otherwise read as words of the SPEC before it.
+_dck_bad_id_lines_v() {
+    local -n _dbl="$1"; local l in=0 re='^([A-Za-z][A-Za-z0-9_]*-[0-9]+)(\[[a-z-]+\])?:'
+    _dbl=()
+    while IFS= read -r l; do
+        [[ "$l" == '```acceptance' ]] && { in=1; continue; }
+        (( in )) || continue
+        [[ "$l" == '```' || "$l" == TESTFILES: ]] && break
+        [[ "$l" =~ $re ]] || continue
+        local _id="${BASH_REMATCH[1]}"
+        [[ "$l" =~ $_ACCEPTANCE_SPEC_RE ]] || _dbl+=("$_id")
+    done < "$2"
+    return 0
 }
 
 # _dck_describes_contents <text> — rc 0 when a [code] requirement's words only
@@ -83,8 +149,14 @@ _dck_plain() {
         # The retired tag is named, not written: design would copy it back.
         "UNKNOWN_STATUS "*" [guard] "*) printf '%s carries the old guard tag, which is no longer a status — tag it [done] if the code already does it, naming the evidence after " evidence: ", or [code] if it needs code' "$id" ;;
         UNKNOWN_STATUS*)     printf '%s is tagged %s, which is not a status — tag it [code] if it needs code, [no-code] if it needs work that changes no behaviour, or [done] if the code already does it, naming the evidence after " evidence: "' "$id" "$third" ;;
-        DONE_NO_EVIDENCE*)   printf '%s is marked [done] but names no evidence — end its line with " evidence: " and a file and line (scripts/x.sh:42) or an existing test file that shows the code already does it' "$id" ;;
-        DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), with a line number inside the file' "$third" "$id" ;;
+        DONE_NO_EVIDENCE*)   printf '%s is marked [done] but names no evidence — end its line with " evidence: " and a file with an exact piece of its text (scripts/x.sh:"run_guard()"), or an existing test file, that shows the code already does it' "$id" ;;
+        DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), with an exact piece of its text: scripts/x.sh:"run_guard()"' "$third" "$id" ;;
+        # #2462: [done] is done on the code from before the change, shown by text.
+        DONE_LINE_EVIDENCE*) printf 'the evidence %s for %s names a line number, and line numbers move as the change is made — name an exact piece of the file'"'"'s text instead: scripts/x.sh:"run_guard()"' "$third" "$id" ;;
+        DONE_NO_TEXT*)       printf 'the evidence %s for %s names a source file alone — add an exact piece of its text that shows the code already does it: %s:"run_guard()"' "$third" "$id" "$third" ;;
+        DONE_TEXT_MISSING*)  printf 'the evidence %s for %s is not in that file — quote its text exactly' "$third" "$id" ;;
+        DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added or changed it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
+        ID_*)                zb_id_plain "$v" SPEC ;;
         CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — describe the behaviour someone could observe (an input and what happens), or, if the code already does it, mark it [done] with evidence' "$id" ;;
         MISSING_TESTFILE_FOR_SPEC*) printf '%s has no test file listed — add a "%s: <test file>" line under TESTFILES:' "$id" "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
@@ -100,14 +172,32 @@ _dck_plain() {
     esac
 }
 
-# _design_checks <design_md> <repo_root> <requirements_json>
-# Fills _DESIGN_VIOLATIONS with one code per violation (C1..C5, C7); empty when
-# design.md passes. The requirements file is absent on a goal run.
+# _design_checks <design_md> <repo_root> <requirements_json> [last_design] [issue_text]
+# Fills _DESIGN_VIOLATIONS with one code per violation (C1..C5, C7, C9); empty
+# when design.md passes. The requirements file is absent on a goal run;
+# [last_design] is the last design that passed, [issue_text] the issue's words
+# (the stage passes none: the requirement list carries the ids they write).
 _design_checks() {
-    local design_md="$1" repo_root="$2" req_json="${3:-}"
+    local design_md="$1" repo_root="$2" req_json="${3:-}" last="${4:-}" _txt="${5:-}"
     _DESIGN_VIOLATIONS=()
     local -a violations=()
-    local _covered=" "
+    local _covered=" " _base="" _base_done="" _evw="" _req_rows="" _req_codes="" _rr_k _rr_id _rr_t
+    # The requirements, read once: "A<US>id<US>text" for each, "R<US>id" for
+    # each removed one, "I<US>id" for each id the issue's words write — C7 reads
+    # the first, C9 the codes of both and the issue's ids.
+    if [[ -s "$req_json" ]]; then
+        # Unit separator, not @tsv: @tsv would double every backslash in the
+        # text (review #2320). Intake strips control characters, so it never occurs.
+        _req_rows="$(jq -r '(.requirements[]? | "A\u001f" + .id + "\u001f" + (.text | gsub("[[:cntrl:]]"; " "))),
+                            (.removed[]? | "R\u001f" + .id + "\u001f"),
+                            (.issue_ids[]? | "I\u001f" + . + "\u001f")' "$req_json" 2>/dev/null || true)"
+        while IFS=$'\x1f' read -r _rr_k _rr_id _rr_t; do
+            [[ -n "$_rr_id" ]] || continue
+            # #2462: the ids the issue's own words write, as intake recorded them.
+            [[ "$_rr_k" == I ]] && { _txt+=" $_rr_id"; continue; }
+            [[ "$_req_codes " != *" ${_rr_id%%-*} "* ]] && _req_codes+=" ${_rr_id%%-*}"
+        done <<< "$_req_rows"
+    fi
 
     # ── C1 SCOPE: non-empty ```scope block ──────────────────────────────────
     if ! _dck_scope_nonempty "$design_md"; then
@@ -127,10 +217,11 @@ _design_checks() {
     # "already done" is a claim the gate can check, not a way to skip the red
     # step (#2035). Only a code requirement needs a test file of its own.
     if [[ $_accept_ok -eq 1 ]]; then
-        local _blk _spec _ev _ev_n
+        local _blk _spec _ev _ev_n _na="" _nr=""
         _blk="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
-        while IFS= read -r _spec; do
-            [[ -z "$_spec" ]] && continue
+        # The ids, read once from the block: C3 walks them, C9 checks them.
+        _dck_block_ids_v _na _nr "$_blk"
+        for _spec in $_na; do
             _acceptance_spec_line "$_blk" "$_spec" || continue
             _covered+="${_ACC_SPEC_COVERS//,/ } "
             case "$_ACC_SPEC_STATUS" in
@@ -154,13 +245,44 @@ _design_checks() {
                     while IFS= read -r _ev; do
                         [[ -z "$_ev" ]] && continue
                         _ev_n=$((_ev_n + 1))
-                        _dck_evidence_ok "$repo_root" "$_ev" \
-                            || violations+=("DONE_BAD_EVIDENCE $_spec $_ev (not a file in the repository, or the line is outside it)")
+                        # The base commit is resolved once, and only when a [done] needs it.
+                        if [[ -z "$_base_done" ]]; then
+                            # shellcheck source=../../../../scripts/lib/merge-base.sh
+                            declare -F zbuild_resolve_merge_base >/dev/null 2>&1 || source "$_DCK_LIB_DIR/merge-base.sh"
+                            _base="$(zbuild_resolve_merge_base "$repo_root" 2>/dev/null || true)"; _base_done=1
+                        fi
+                        _dck_evidence_v _evw "$repo_root" "$_ev" "$_base"
+                        case "$_evw" in
+                            "")         : ;;
+                            LINE)       violations+=("DONE_LINE_EVIDENCE $_spec $_ev (a line number)") ;;
+                            NO_TEXT)    violations+=("DONE_NO_TEXT $_spec $_ev (a source file with no text)") ;;
+                            MISSING)    violations+=("DONE_TEXT_MISSING $_spec $_ev (the text is not in the file)") ;;
+                            NOT_BEFORE) violations+=("DONE_NOT_BEFORE $_spec $_ev (not in the code from before the change)") ;;
+                            *)          violations+=("DONE_BAD_EVIDENCE $_spec $_ev (not a file in the repository)") ;;
+                        esac
                     done < <(acceptance_spec_evidence "$design_md" "$_spec" 2>/dev/null || true)
                     [[ $_ev_n -eq 0 ]] && violations+=("DONE_NO_EVIDENCE $_spec ([done] names no evidence)") ;;
                 *)       violations+=("UNKNOWN_STATUS $_spec [${_ACC_SPEC_TAG}] (not a status)") ;;
             esac
-        done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+        done
+    fi
+
+    # ── C9 IDS (#2462, ADR-069 §1): each SPEC id describes it and never moves.
+    # The last design that passed holds the ids to keep; REMOVED lines say why
+    # one goes, and stay. A requirement's code is never a SPEC's.
+    if [[ $_accept_ok -eq 1 ]]; then
+        local _pa="" _pr="" _bad _w
+        local -a _iv=()
+        if [[ -n "$last" && -s "$last" && "$last" != "$design_md" ]]; then
+            # A working copy that is still the last design holds its ids: no second read.
+            if [[ "$(<"$last")" == "$(<"$design_md")" ]]; then _pa="$_na" _pr="$_nr"
+            else _dck_block_ids_v _pa _pr "$(extract_acceptance_block "$last" 2>/dev/null)"; fi
+        fi
+        zb_ids_check_v _iv "$_pa" "$_pr" "$_na" "$_nr" "$_txt" "$_req_codes" 1
+        for _w in "${_iv[@]+"${_iv[@]}"}"; do violations+=("$_w"); done
+        local -a _bads=()
+        _dck_bad_id_lines_v _bads "$design_md"
+        for _bad in "${_bads[@]+"${_bads[@]}"}"; do violations+=("ID_BAD $_bad"); done
     fi
 
     # ── C8 TEST FOLDERS (ADR-069 §10): every test file is in a test folder ──
@@ -178,14 +300,12 @@ _design_checks() {
     # is covered by at least one SPEC, whatever its status. Read by script, so
     # no model decides what the issue asked for.
     if [[ $_accept_ok -eq 1 && -s "$req_json" ]]; then
-        local _rid _rtext
-        # Unit separator, not @tsv: @tsv would double every backslash in the
-        # text (review #2320). Intake strips control characters, so it never occurs.
-        while IFS=$'\x1f' read -r _rid _rtext; do
-            [[ -z "$_rid" ]] && continue
+        local _rid _rtext _rk
+        while IFS=$'\x1f' read -r _rk _rid _rtext; do
+            [[ "$_rk" == A && -n "$_rid" ]] || continue
             [[ "$_covered" == *" $_rid "* ]] \
                 || violations+=("REQUIREMENT_NOT_COVERED $_rid ($_rtext)")
-        done < <(jq -r '.requirements[]? | .id + "\u001f" + (.text | gsub("[[:cntrl:]]"; " "))' "$req_json" 2>/dev/null || true)
+        done <<< "$_req_rows"
     fi
 
     # ── C5 WIRING: section present ("none" ok); each concrete path exists and is no TESTFILE ─

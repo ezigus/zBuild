@@ -64,8 +64,37 @@ The scripted check confirms that a `[done]` requirement's evidence exists. Desig
 also shown the lines that evidence points at and judges whether that code does what the requirement says
 (ADR-070 §4, amended 2026-11-01), so a wrong "already done" is caught in the round that wrote it.
 
+## Amendment 2026-11-03 (#2462) — §1: a SPEC's id describes it and never moves; §2: [done] is proven on the code from before the change
+
+On #1805 run 41582195372 design marked the core of the issue `[done]` with evidence in code last run's build
+had written on the reused branch: a `[done]` requirement has no test and the old-code check skips it, so the
+main behaviour would have shipped untested. Its evidence was a line number (`runner.sh:3808`), which moved to
+3896 between tries.
+
+- **§1: a SPEC's id describes it.** `<code>-<n>` like a requirement's (ADR-070 §1, amended 2026-11-03): 3 or 4
+  capital letters or digits starting with a letter, a dash, a number. Every reader matches ids with one
+  pattern, `_ACCEPTANCE_ID_ERE` (`scripts/lib/acceptance-block.sh`), and the old `SPEC-<n>` is an id of that
+  shape, so earlier issues' ids and `[SPEC-n]` / `[#<issue>/SPEC-n]` tags read as before and are never changed.
+  A new design does not use the code `SPEC` (`ID_OLD_FORM`); its old ids need no REMOVED line.
+- **§1: an id never moves** (design's checks, C9, no model). Held to the last design that passed: an id it had
+  is kept or listed `REMOVED: <id> — <why>` in the acceptance block (`ID_DROPPED`); a removed id stays listed
+  (`ID_REMOVED_LOST`) and never comes back (`ID_REUSED`); a new id's number is one more than its code's highest,
+  removed ones counted, never skipping one (`ID_NOT_AFTER_LAST`); a REMOVED line names an id the last
+  design had (`ID_REMOVED_UNKNOWN`). Also refused: a duplicate (`ID_DUPLICATE`), a line shaped like an
+  id with a bad code (`ID_BAD`), a code the issue's requirements use (`ID_OTHER_POOL`), an id the issue's own
+  text writes (`ID_IN_ISSUE`, read from the requirement list's `issue_ids`). test-author's stale-tag step reads any id of this issue's.
+- **§2: `[done]` means the code from before the change already does it** (as §3–§4 always measured it). Its
+  evidence is a file with an exact piece of its text, `file:"text"`, or a test file named alone — never a line
+  number (`DONE_LINE_EVIDENCE`): lines move as the change is made. The text must be in the file on the base
+  commit (the merge-base with the default branch) and still in it outside every line this branch added or
+  changed (`DONE_NOT_BEFORE`); a source file named alone is refused (`DONE_NO_TEXT`), and text not in the file
+  (`DONE_TEXT_MISSING`). The words tell design to tag such a requirement `[code]` and give it a test. With no
+  base commit, the text in the file is what is checked. The coverage check and issue-acceptance show the code
+  around the line holding the text.
+
 ## Enforced by
 
+- §1 §2 amendment 2026-11-03 (#2462: descriptive ids that never move; [done] proven on the code from before) → `tests/unit/design-stable-ids-test.sh` D1–D14; `tests/unit/design-stage-ids-test.sh` E1–E4; `tests/unit/descriptive-id-readers-test.sh` R1–R12
 - §2 amendment 2026-11-01 (#2445) → `tests/unit/design-coverage-test.sh` X4, X5
 
 - §1 → `tests/unit/requirement-status-test.sh` S1 (a `[no-code]` requirement is listed), S2 (the status of each tag, including `[change]` → code and `[guard]` → done), S3 (evidence is split from the requirement text)

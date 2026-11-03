@@ -64,8 +64,37 @@ design's first try fail.
 - **§1: one item per line.** The check answers one `MISSING:` line per requirement it finds missing; a reply is
   read in whole units (`scripts/lib/reply-units.sh`), so a requirement that wraps, or holds a `;`, is one.
 
+## Amendment 2026-11-03 (#2462) — §1 §2: each id describes its requirement and never moves; a removal says why
+
+Ids were positions (R-1, R-2, …). On #1805 run 41582195372 intake's second try wrote 14 requirements instead
+of 16, in a new order, so every R-n named a different requirement than design's kept work did, and design
+spent three tries on numbering alone. That try had never seen the last list: intake deleted it at the start
+of the first try, which then failed. The first try had been shown the list as bullets and answered in bullets.
+
+- **§1: an id describes its requirement.** It is a code of 3 or 4 capital letters or digits, starting with a
+  letter, that says what the requirement is about, a dash, and a number (`LOOP-1`). The model writes it on each
+  line, `REQUIREMENT: <id> <words>`, and the check call writes `MISSING: <id> <words>`. Nothing in the engine
+  names a code, so the same holds on any repository. An id the issue's own text writes is refused (#2035);
+  `requirements.json` records those ids under `issue_ids`, so design refuses them as SPEC ids without reading
+  the issue again.
+- **§1: an id never moves.** A kept requirement keeps its id. A new one's number is one more than the highest
+  its code has ever had, removed ids counted — never a gap a removed one left, and never one that skips a
+  number. A REMOVED line names an id the last list had (`ID_REMOVED_UNKNOWN`). A dropped requirement is
+  answered `REMOVED: <id> — <why>`; `requirements.json` keeps it under `removed` (id, words, reason), carried
+  from run to run, so no later list uses it again. The rules are `scripts/lib/item-ids.sh`'s, checked by the
+  engine; a reply that breaks one is asked again once with what was wrong (ADR-060 §6), then is `unusable`.
+- **§1: one pool.** A requirement's code is never a SPEC's (ADR-069 §1, amended 2026-11-03).
+- **§2: the last list is shown with its ids, in the form the reply is written in,** with the ids already
+  removed; an old position id (R-n) is shown without it, so that requirement gets an id that describes it, and
+  needs no REMOVED line.
+- **§2: the last list stays on disk until this run's replaces it.** A try that fails leaves it for the next
+  try; a pass that writes no list (a goal run) removes it, so it is never read as this run's.
+- **§2: intake says what changed by id.** `requirements_changed.added` lists `{id, text}`, `.removed` lists
+  `{id, text, reason}`; the summary names each, with the reason.
+
 ## Enforced by
 
+- §1 §2 amendment 2026-11-03 (#2462: ids describe their requirement and never move; a removal says why) → `tests/unit/intake-stable-ids-test.sh` S1–S11; `tests/unit/intake-requirements-model-test.sh` I1, I2; `tests/unit/intake-previous-list-test.sh` P2
 - §1 §2 amendment 2026-11-02 (#2460: intake starts from its last list and says what changed; one item per line) → `tests/unit/intake-previous-list-test.sh` P1–P4; `tests/unit/reply-multiline-test.sh` Q1
 - §1 amendment 2026-11-01 (#2448: intake's calls have no tools) → `tests/unit/intake-no-tools-test.sh` T4
 - §1 amendment 2026-11-01 (#2445: a model writes and checks the list) → `tests/unit/intake-requirements-model-test.sh` I1–I7; `tests/unit/requirements-list-test.sh` Q1

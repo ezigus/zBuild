@@ -55,7 +55,7 @@ route_to_model() {
     local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
     if [[ "$_MOCK_WRITE" == 1 && -n "$_t" ]]; then
         mkdir -p "$(dirname "$_t")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
     fi
     return "$_MOCK_ROUTER_RC"
@@ -193,7 +193,7 @@ _design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 assert_eq "[SPEC-12] timeout after a new design → returns rc=0" "0" "$_rc"
-if grep -q '^SPEC-1\[no-code\]: works' "$_F_DESIGN" 2>/dev/null; then
+if grep -q '^WORK-1\[no-code\]: works' "$_F_DESIGN" 2>/dev/null; then
     assert_pass "[SPEC-12] the design this call wrote becomes design.md"
 else
     assert_fail "[SPEC-12] the design this call wrote did not become design.md" \

@@ -57,13 +57,13 @@ outputs:
     type: intake.md@1
     format: markdown
     required: true
-  # #2306 (ADR-070 §1): the issue's requirements, numbered R-1, R-2, … by the
-  # engine. Written only for an issue run (a --goal run has no issue), so
+  # #2306 (ADR-070 §1): the issue's requirements, each with an id that
+  # describes it and never moves (#2462). Written only for an issue run (a --goal run has no issue), so
   # required:false; design and issue-acceptance
   # read it as their `requirements` input.
   - id: requirements
     topic: ask
-    description: "the issue's numbered requirements (R-1, R-2, …)"
+    description: "the issue's requirements, each with its id, and the ids removed"
     path: "${artifact_dir}/requirements.json"
     type: requirements.json@1
     format: json

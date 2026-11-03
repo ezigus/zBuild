@@ -40,7 +40,7 @@ source "$PLUGIN_DIR/plugin.sh"
 # requirement and finds nothing missing; a test about the list sets its own.
 route_to_model() {
     if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
-    else printf 'REQUIREMENT: %s\n' "${MOCK_GH_ISSUE_TITLE:-the goal}"; fi
+    else printf 'REQUIREMENT: GOAL-1 %s\n' "${MOCK_GH_ISSUE_TITLE:-the goal}"; fi
 }
 
 # ─── gh mock for --issue tests ───────────────────────────────────────────────

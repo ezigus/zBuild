@@ -440,7 +440,7 @@ _build_guard_false_completion() {
     local _raw _tfp _dup tf rc
     while IFS= read -r _raw; do
         _tfp="${_raw%$'\r'}"
-        [[ "$_tfp" =~ ^SPEC-[0-9]+:[[:space:]]+(.*)$ ]] && _tfp="${BASH_REMATCH[1]}"
+        [[ "$_tfp" =~ ^${_ACCEPTANCE_ID_ERE}:[[:space:]]+(.*)$ ]] && _tfp="${BASH_REMATCH[1]}"
         _tfp="${_tfp#"${_tfp%%[![:space:]]*}"}"
         [[ -z "$_tfp" || "$_tfp" == WIRING:* || "$_tfp" == TESTFILES:* ]] && continue
         _dup=0; for tf in "${_seen[@]+"${_seen[@]}"}"; do [[ "$tf" == "$_tfp" ]] && { _dup=1; break; }; done

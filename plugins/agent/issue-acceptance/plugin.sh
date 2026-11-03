@@ -75,13 +75,13 @@ Start each UNMET: line with what would fix it:
 Five things, shown at the end of this part:
 
 ISSUE — what was asked for, in the requester's own words. This is the standard.
-ISSUE REQUIREMENTS — the issue's requirements, numbered R-1, R-2, … by the pipeline.
+ISSUE REQUIREMENTS — the issue's requirements, each with its id.
 REQUIREMENTS — what the design committed to, each with what was done about it.
 DIFF — the change as built.
 TEST VERDICT — whether the test suite passed.
 
 Judge every requirement in ISSUE REQUIREMENTS: decide whether the DIFF meets it
-IN FULL, and name an unmet one by its id and words (R-2: <its words>). Read the
+IN FULL, and name an unmet one by its id and words (<its id>: <its words>). Read the
 ISSUE for what a requirement means. When none are listed under ISSUE REQUIREMENTS,
 judge every requirement the ISSUE states.
 Judge against the issue's own words, not the SPECs: a SPEC that narrowed a

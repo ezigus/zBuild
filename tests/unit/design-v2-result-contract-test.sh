@@ -39,7 +39,7 @@ route_to_model() {
         if [[ -n "$_MOCK_DESIGN_TEXT" ]]; then
             printf '%s' "$_MOCK_DESIGN_TEXT" > "$_t"
         else
-            printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+            printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
                 "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
         fi
     fi

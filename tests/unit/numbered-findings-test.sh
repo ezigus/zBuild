@@ -54,17 +54,17 @@ _dg() {   # _dg <dir> <design.md>
     _design_stage_run_inner "$1/scope-manifest.md" "$_DG_OUT" "$1/artifacts" >/dev/null 2>&1 || true
 }
 D1="$TEST_TEMP_DIR/dg1"
-_dg "$D1" $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[code]: a\nSPEC-2: b\nTESTFILES:\n```\n'
+_dg "$D1" $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nWORK-1[code]: a\nWORK-2: b\nTESTFILES:\n```\n'
 _f="$(jq -c '.data.findings // empty' "$D1/artifacts/design-verdict.json" 2>/dev/null)"
 assert_eq "[N2] the findings are numbered from 1" "1" "$(jq -r '.[0].n // empty' <<< "$_f" 2>/dev/null)"
-assert_contains "[N2] a finding is the plain sentence" "$(jq -r '.[].text' <<< "$_f" 2>/dev/null)" "SPEC-2 has no status"
+assert_contains "[N2] a finding is the plain sentence" "$(jq -r '.[].text' <<< "$_f" 2>/dev/null)" "WORK-2 has no status"
 if grep -qE 'NO_STATUS|MISSING_TESTFILE' <<< "$_f"; then
     assert_fail "[N2] a finding never carries the internal code" "$_f"
 else
     assert_pass "[N2] a finding never carries the internal code"
 fi
 D2="$TEST_TEMP_DIR/dg2"
-_dg "$D2" $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[code]: a\nWIRING: none\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n'
+_dg "$D2" $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nWORK-1[code]: a\nWIRING: none\nTESTFILES:\nWORK-1: tests/a-test.sh\n```\n'
 assert_eq "[N4] a passing check lists no findings" "0" \
     "$(jq -r '(.data.findings // []) | length' "$D2/artifacts/design-verdict.json" 2>/dev/null)"
 assert_eq "[N4] ...and passes" "pass" "$(jq -r '.outcome' "$D2/artifacts/design-verdict.json" 2>/dev/null)"

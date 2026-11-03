@@ -13,6 +13,10 @@ _bp_spec_tag() {
 }
 
 _ZBUILD_BUILD_PROMPT_LOADED=1
+# #2462: the shape of a SPEC id is the acceptance block's; loaded here too, for
+# a caller that sources this file alone.
+[[ -n "${_ACCEPTANCE_ID_ERE:-}" ]] \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/acceptance-block.sh" 2>/dev/null || true
 
 # _build_render_task_header <round>
 # Emits the stable banner that prefixes every build prompt: the loop's round.
@@ -110,9 +114,9 @@ _build_compose_limits() {
     # #2458 (ADR-067 §6): the design's own test files are read-only for build,
     # so the list of files it may touch does not name them.
     local -A _ro=()
-    # A TESTFILES line may name its SPEC first ("SPEC-1: tests/x-test.sh").
+    # A TESTFILES line may name its SPEC first ("FSTG-1: tests/x-test.sh").
     while IFS= read -r _f; do
-        [[ "$_f" =~ ^[[:space:]]*SPEC-[0-9]+:[[:space:]]*(.*)$ ]] && _f="${BASH_REMATCH[1]}"
+        [[ "$_f" =~ ^[[:space:]]*${_ACCEPTANCE_ID_ERE}:[[:space:]]*(.*)$ ]] && _f="${BASH_REMATCH[1]}"
         _f="${_f%"${_f##*[![:space:]]}"}"
         [[ -n "$_f" ]] && _ro[$_f]=1
     done <<< "$ro"

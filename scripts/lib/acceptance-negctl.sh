@@ -194,12 +194,13 @@ _negctl_last_other_verdict() {
     local logfile="$1" spec_id="$2" tag prefix line rest id last=""
     [[ -n "${ZBUILD_ACCEPTANCE_RUN_CMD:-}" || ! -f "$logfile" ]] && return 1
     tag="$(acceptance_spec_tag "$spec_id")"
-    prefix="${tag%"$spec_id"]}SPEC-"
+    prefix="${tag%"$spec_id"]}"
     while IFS= read -r line; do
         [[ "$line" == *"$prefix"* && ( "$line" == *✓* || "$line" == *✗* ) ]] || continue
+        # #2462: any id of the contract's shape, descriptive or old.
         rest="${line#*"$prefix"}"
-        id="SPEC-${rest%%]*}"
-        [[ "$id" =~ ^SPEC-[0-9]+$ && "$id" != "$spec_id" ]] && last="$id"
+        id="${rest%%]*}"
+        [[ "$id" =~ ^${_ACCEPTANCE_ID_ERE}$ && "$id" != "$spec_id" ]] && last="$id"
     done < <(LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' "$logfile" 2>/dev/null)
     [[ -n "$last" ]] || return 1
     printf '%s' "$last"

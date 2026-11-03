@@ -26,7 +26,7 @@ One verdict: what does the issue require that no SPEC covers?
 
 Check EVERY requirement,
 and list EVERY one that no SPEC fully covers — not only the first you find — by
-its id and words (R-2: <its words>). The design is revised once per round and
+its id and words (<its id>: <its words>). The design is revised once per round and
 fixes only what you list; a gap left out of this answer costs a whole round.
 
 Then look the other way: list EVERY SPEC or scope entry that commits to something
@@ -45,18 +45,19 @@ DONE_WRONG: <a [done] SPEC whose evidence code does not do what it says, with wh
 EOF2
 }
 # _dcov_done_evidence <design_md> <repo_root> — for each [done] SPEC, the lines
-# its evidence points at (a few either side of `file:N`, else the file's start),
-# so the check judges the code itself, not the claim (#2445, ADR-069 §2).
+# its evidence points at (a few either side of the line holding its text, else
+# the file's start), so the check judges the code itself, not the claim (#2445,
+# ADR-069 §2; #2462: found by its text, never by a line number).
 _dcov_done_evidence() {
-    local design="$1" root="$2" sid item path n from to
+    local design="$1" root="$2" sid item path txt n from to
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
         [[ "$(acceptance_spec_status "$design" "$sid" 2>/dev/null)" == "done" ]] || continue
         while IFS= read -r item; do
             [[ -n "$item" ]] || continue
-            path="$item"; n=""
-            if [[ "$item" =~ ^(.+):([0-9]+)$ ]]; then path="${BASH_REMATCH[1]}"; n="${BASH_REMATCH[2]}"; fi
+            acceptance_evidence_split "$item" path txt n
             [[ "$path" != /* && "/$path/" != *"/../"* && -f "$root/$path" ]] || continue
+            [[ -n "$txt" ]] && acceptance_evidence_line_v n "$(<"$root/$path")" "$txt"
             if [[ -n "$n" ]]; then from=$(( n > 5 ? n - 5 : 1 )); to=$(( n + 5 )); else from=1; to=30; fi
             printf '%s — %s (lines %s-%s):\n' "$sid" "$item" "$from" "$to"
             sed -n "${from},${to}p" "$root/$path" 2>/dev/null
@@ -70,7 +71,7 @@ _dcov_prompt_judge() {
     cat <<EOF2
 Two things, shown at the end of this part, and the issue:
 
-REQUIREMENTS — the issue's requirements, numbered R-1, R-2, … by the pipeline.
+REQUIREMENTS — the issue's requirements, each with its id.
 ACCEPTANCE — the SPEC sentences the design commits to.
 The issue itself, in the requester's own words, is under Previous work.
 
