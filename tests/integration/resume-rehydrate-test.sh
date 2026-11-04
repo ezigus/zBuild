@@ -638,6 +638,16 @@ fi
 assert_eq "[#1805/BNDY-1] fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)" \
     "1" "$_s12_intake_starts"
 
+# [#1805/FRSH-1]: dispatch started from stage 1; intake must have dispatched exactly once.
+# The state file has status=interrupted and intake=complete, which would trigger auto-resume
+# (skipping intake, starting from a later stage) if --no-resume were absent. With --no-resume,
+# the runner starts fresh from stage 1: intake dispatches, proving dispatch was not jumped to
+# a later stage due to prior state. This establishes the "dispatches all stages from stage 1"
+# clause of FRSH-1 directly (tagged FRSH-1, not only BNDY-1).
+# FRSH-1 is a no-code requirement: need not fail before this change; must pass after.
+assert_eq "[#1805/FRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)" \
+    "1" "$_s12_intake_starts"
+
 # [#1805/FRSH-1]: a fresh run (--no-resume) emits no stage.skip events, proving all stages
 # are dispatched from stage 1 and none are skipped due to prior state. stage.skip events
 # are only emitted by the resume rehydration path (which is suppressed by --no-resume).
