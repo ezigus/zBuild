@@ -19,8 +19,8 @@
 # Q3 [change] design's coverage check reads its item lines bulleted, one per
 #             line, a wrapped one whole
 #             or as bullets, and never splits one on ';'
-# Q4 [change] test-author's check reads a REASON on the line after its SPEC's
-#             verdict, and a REASON holding '|' whole
+# Q4 [change] test-author's check reads a part's WHY wrapped onto the next
+#             line, and one holding '|', whole (#2467: a line per part)
 # Q5 [change] test-author keeps a wrapped ANSWER whole
 # Q6 [change] build reads a wrapped "the test is wrong:" and "not reproduced:"
 # Q7 [change] a COMMIT_SUMMARY whose text is on the next line is read
@@ -98,19 +98,17 @@ assert_contains "[Q3] ...and one holding ';' stays one" "$_q3" "R-2: retries 3 t
 assert_eq "[Q3] ...two items" "2" "$(grep -c . "$TEST_TEMP_DIR/q3.txt" 2>/dev/null || true)"
 
 # ── Q4 ───────────────────────────────────────────────────────────────────────
+# #2467: test-author's check answers a line per part of a SPEC.
 (
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
-    _l=""; _sc_batch_line_v _l $'SPEC-1: VERDICT: partial\nREASON: it checks grep x | wc -l, not the file\nSPEC-2: VERDICT: corresponds | REASON: ok' SPEC-1
-    printf '%s\n' "$(_sc_parse_verdict "$_l")" "$(_sc_parse_reason "$_l")" > "$TEST_TEMP_DIR/q4.txt"
+    _parts=($'Then 1\tit counts the lines of the file')
+    _r=""; zb_reply_join_v _r $'SPEC-1 Then 1: missing | WHY: it checks grep x | wc -l,\n  not the file | QUOTE: "it counts the lines of the file"\nSPEC-1 sections: ok\nSPEC-2 Then 1: ok'
+    _sc_judge "$_r" SPEC-1 _parts "it counts the lines of the file" "$TEST_TEMP_DIR"
+    printf '%s\n' "$_SC_V" "$_SC_F" > "$TEST_TEMP_DIR/q4.txt"
 )
-assert_eq "[Q4] the verdict is read" "partial" "$(sed -n 1p "$TEST_TEMP_DIR/q4.txt" 2>/dev/null)"
-assert_eq "[Q4] a REASON on the next line, holding '|', is read whole" "it checks grep x | wc -l, not the file" "$(sed -n 2p "$TEST_TEMP_DIR/q4.txt" 2>/dev/null)"
-(
-    source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
-    _sc_one_reason $'VERDICT: partial\nREASON: it checks the exit code\n  of the wrong command' > "$TEST_TEMP_DIR/q4b.txt"
-)
-assert_eq "[Q4] the one-requirement answer keeps a wrapped REASON whole (review on #2461)" "it checks the exit code of the wrong command" \
-    "$(cat "$TEST_TEMP_DIR/q4b.txt" 2>/dev/null)"
+assert_eq "[Q4] the part's verdict is read" "partial" "$(sed -n 1p "$TEST_TEMP_DIR/q4.txt" 2>/dev/null)"
+assert_contains "[Q4] a WHY wrapped onto the next line, holding '|', is read whole" "$(sed -n 2p "$TEST_TEMP_DIR/q4.txt" 2>/dev/null)" \
+    "it checks grep x | wc -l, not the file"
 
 # ── Q5 ───────────────────────────────────────────────────────────────────────
 (

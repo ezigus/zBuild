@@ -136,6 +136,32 @@ _dck_describes_contents() {
     return 0
 }
 
+# _dck_parts <id> <status> <parts> — C10 (#2467, ADR-073 §3): what is wrong
+# with a SPEC's Given/When/Then, added to the caller's violations. A [code] or
+# [done] SPEC needs them; a [no-code] one may have them, and they are then held
+# to the same rules.
+_dck_parts() {
+    local _dp_id="$1" _dp_st="$2" _dp_raw="$3" _dp_q
+    if [[ -z "$_dp_raw" ]]; then
+        [[ "$_dp_st" == "code" || "$_dp_st" == "done" ]] \
+            && violations+=("GWT_MISSING $_dp_id (no Given/When/Then)")
+        return 0
+    fi
+    local -a _dp_parts=() _dp_probs=()
+    acceptance_parts_v _dp_parts "$_dp_raw" _dp_probs
+    for _dp_q in ${_dp_probs[@]+"${_dp_probs[@]}"}; do
+        case "$_dp_q" in
+            NO_WHEN)        violations+=("GWT_NO_WHEN $_dp_id (no When:)") ;;
+            MANY_WHEN)      violations+=("GWT_MANY_WHEN $_dp_id (more than one When:)") ;;
+            AND_AFTER_WHEN) violations+=("GWT_AND_AFTER_WHEN $_dp_id (an And: after the When:)") ;;
+            AND_FIRST)      violations+=("GWT_AND_FIRST $_dp_id (an And: with no part above it)") ;;
+            NO_THEN)        violations+=("GWT_NO_THEN $_dp_id (no Then:)") ;;
+            "EMPTY "*)      violations+=("GWT_EMPTY_PART $_dp_id ${_dp_q#EMPTY } (no words)") ;;
+        esac
+    done
+    return 0
+}
+
 # _dck_plain <violation> — the sentence design reads for one violation (#2269).
 # The code stays in the result JSON (other code and tests read it); the feedback
 # file says what to change, in the words design was given.
@@ -167,6 +193,18 @@ _dck_plain() {
         TESTFILE_NOT_A_TEST*) local _tg; zb_test_path_globs_v _tg
             printf '%s is named as a test, but it is not in a test folder (%s) — name a test file in one of them, or leave it out: a document or a source file is not a test' "$id" "${_tg// /, }" ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
+        # #2467 (ADR-073 §1 §3): a SPEC's parts.
+        GWT_MISSING*)        printf '%s is written on one line — rewrite it with its parts on the lines under it: Given: <the setup> (optional), When: <the one action>, Then: <what a test can observe> (one or more; And: adds another), and Cleanup: <what must be true again after> when the setup or a Then leaves something behind' "$id" ;;
+        GWT_NO_WHEN*)        printf '%s has no When: line — add the one action that the test performs' "$id" ;;
+        GWT_MANY_WHEN*)      printf '%s has more than one When: — one SPEC has one When, one action; split it into one SPEC per action' "$id" ;;
+        GWT_AND_AFTER_WHEN*) printf '%s has an And: straight after its When:, which would be a second action — one SPEC has one When; put the extra setup under Given: or split the SPEC' "$id" ;;
+        GWT_AND_FIRST*)      printf '%s starts its parts with And: — And: continues the Given:, Then: or Cleanup: above it' "$id" ;;
+        GWT_NO_THEN*)        printf '%s has no Then: line — add what a test can observe after the When' "$id" ;;
+        GWT_EMPTY_PART*)     local _gp="${rest#* }"; _gp="${_gp%% (*}"
+            printf '%s has an empty %s — write what it says, or remove the line' "$id" "$_gp" ;;
+        GWT_ORPHAN_PART*)    local _op="${rest#(}"; _op="${_op%)}"
+            printf 'a part line is under no SPEC (%s) — put each Given:, When:, Then:, And: or Cleanup: line under the SPEC it belongs to' "$_op" ;;
+        GWT_PART_ON_REMOVED*) printf '%s is removed, so it has no parts — remove the lines under its REMOVED line' "$id" ;;
         WIRING_IS_TEST*)     printf 'the WIRING file %s is one of your test files — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
@@ -221,9 +259,22 @@ _design_checks() {
         _blk="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
         # The ids, read once from the block: C3 walks them, C9 checks them.
         _dck_block_ids_v _na _nr "$_blk"
+        # C10: a part with no SPEC above it, or under a REMOVED line.
+        local _bl _rre="^REMOVED:[[:space:]]*(${_ACCEPTANCE_ID_ERE})"
+        while IFS= read -r _bl; do
+            [[ "$_bl" == "TESTFILES:" ]] && break
+            if [[ "$_bl" =~ $_ACCEPTANCE_PART_RE ]]; then
+                violations+=("GWT_ORPHAN_PART (${_bl%%$'\x1f'*})")
+            elif [[ "$_bl" =~ $_rre && "$_bl" == *$'\x1f'* ]]; then
+                violations+=("GWT_PART_ON_REMOVED ${BASH_REMATCH[1]} (a part under a REMOVED line)")
+            fi
+        done <<< "$_blk"
         for _spec in $_na; do
             _acceptance_spec_line "$_blk" "$_spec" || continue
             _covered+="${_ACC_SPEC_COVERS//,/ } "
+            # ── C10 PARTS (#2467, ADR-073 §3): a [code] or [done] SPEC is written
+            # as Given/When/Then — one action, at least one thing to observe.
+            _dck_parts "$_spec" "$_ACC_SPEC_STATUS" "$_ACC_SPEC_PARTS"
             case "$_ACC_SPEC_STATUS" in
                 "")      violations+=("NO_STATUS $_spec (requirement carries no [code], [no-code] or [done] status)") ;;
                 no-code) : ;;

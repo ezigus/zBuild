@@ -71,17 +71,9 @@ source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
 # is the test that can see that, and it dispatches in a fresh process for exactly
 # this reason.
 # #2370: test-author then checks its assertions with a second model call. The
-# fake model answers that check as a model would — every assertion corresponds
-# — so these tests of the authoring keep seeing only the authoring prompt.
-_ta_judge() {
-    [[ "$1" == *"does that establish the REQUIREMENT"* ]] || return 1
-    local _ids; _ids="$(grep -oE '^### SPEC-[0-9]+' <<< "$1" | sed 's/^### //')"
-    if [[ -n "$_ids" ]]; then
-        while IFS= read -r _i; do printf '%s: VERDICT: corresponds | REASON: ok\n' "$_i"; done <<< "$_ids"
-    else
-        printf 'VERDICT: corresponds\nREASON: ok\n'
-    fi
-}
+# fake model answers that check as a model would — every part of every SPEC is
+# met (#2467) — so these tests of the authoring keep seeing only the authoring prompt.
+_ta_judge() { zb_test_check_ok "$1"; }
 route_to_model() { _ta_judge "$2" && return 0; printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
 resolve_tier() { printf 'T2'; }
 # #2225: test-author calls the model through route_to_model_loop now. These

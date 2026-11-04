@@ -147,14 +147,17 @@ _c_issue_acceptance() { ( ad="$(_fixture issue-acceptance)"; sd="${ad%/artifacts
     route_to_model() { printf '%s' "$2" > "$RAW/issue-acceptance.txt"; return 1; }
     ZBUILD_STAGE_INPUTS="$sd/idx.json" ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_REPO_ROOT="${sd%/state}" \
         issue_acceptance_run issue-acceptance "$sd/pipeline-state.json" ) >/dev/null 2>&1; }
-# #2370: test-author's check of its own assertions builds two prompts: one
-# pair, and every pair at once. Checked beside test-author's own prompt.
+# #2370: test-author's check of its own assertions asks about one SPEC, and
+# about every SPEC at once (#2467: the same prompt, with one SPEC or several).
+# Checked beside test-author's own prompt.
 _c_test_author_check() { ( source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
     route_to_model() { printf '%s' "$2" > "$_SC_CAP"; return 1; }
-    _SC_CAP="$RAW/test-author-check.txt"
-    _sc_call T2 "$(_sc_prompt "the stage writes its result" 'assert_eq "[SPEC-1] x" 1 "$got"')" >/dev/null
     # shellcheck disable=SC2034  # read through namerefs
-    { _ids=(SPEC-1); _txts=("the stage writes its result"); _srcs=('assert_eq "[SPEC-1] x" 1 "$got"'); }
+    { _ids=(SPEC-1); _txts=($'the stage writes its result\n  When: it runs\n  Then 1: its result is written'); _srcs=('assert_eq "[SPEC-1] x" 1 "$got"'); }
+    _SC_CAP="$RAW/test-author-check.txt"
+    _sc_call T2 "$(_sc_batch_prompt _ids _txts _srcs 'the test file')" >/dev/null
+    # shellcheck disable=SC2034  # read through namerefs
+    { _ids+=(SPEC-2); _txts+=("the stage reads its input"); _srcs+=('assert_eq "[SPEC-2] y" 1 "$got"'); }
     _SC_CAP="$RAW/test-author-check-batch.txt"
     _sc_call T2 "$(_sc_batch_prompt _ids _txts _srcs)" >/dev/null ) >/dev/null 2>&1; }
 

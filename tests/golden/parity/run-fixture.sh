@@ -56,14 +56,15 @@ elif grep -q "whether a DESIGN covers what an ISSUE asked for" <<< "$prompt"; th
     # design's coverage check (#2445: design is in the fixture now that plan is
     # gone — it is where build's scope comes from).
     # #2464 (ADR-072 §3): one line for each requirement and each SPEC.
-    jq -n --arg r $'PRTY-1: covered\nFIXT-1: ok' \
+    # #2467 (ADR-073 §5): and one line for each part of each SPEC.
+    jq -n --arg r $'PRTY-1: covered\nFIXT-1: ok\nFIXT-1 When: ok\nFIXT-1 Then 1: ok' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "EXACT absolute path:" <<< "$prompt"; then
     # design: the model writes its working copy at the path its prompt names.
     design_out="$(awk '/EXACT absolute path:/ { getline; sub(/^[[:space:]]+/, ""); gsub(/<\/?out-of-scope-context>/, ""); print; exit }' <<< "$prompt")"
     if [[ -n "$design_out" ]]; then
         mkdir -p "$(dirname "$design_out")"
-        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nFIXT-1[no-code]: the parity fixture file exists covers: PRTY-1\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
+        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nFIXT-1[no-code]: the parity fixture file exists covers: PRTY-1\n  When: the build runs\n  Then: the parity fixture file is in tests/fixtures\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
     fi
     jq -n --arg r 'wrote the design' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'

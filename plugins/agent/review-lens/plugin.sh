@@ -222,11 +222,13 @@ _review_lens_id() {
 # ADR-069), the evidence a done one names, the file that calls the new code,
 # and the test files that check each one.
 _rl_requirements_readable() {
-    local design="$1" sid txt st kind tfs ev w
+    local design="$1" sid txt st kind tfs ev w blk _p
+    # #2467: the block read once; each SPEC's words, status and parts from it.
+    blk="$(extract_acceptance_block "$design" 2>/dev/null)" || blk=""
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
-        txt="$(acceptance_spec_text "$design" "$sid" 2>/dev/null || true)"
-        st="$(acceptance_spec_status "$design" "$sid" 2>/dev/null || true)"
+        txt="" st=""
+        _acceptance_spec_line "$blk" "$sid" && { txt="$_ACC_SPEC_TEXT"; st="$_ACC_SPEC_STATUS"; }
         case "$st" in
             no-code) kind="work that changes no behaviour" ;;
             done)    kind="already done — the code already does this" ;;
@@ -234,6 +236,9 @@ _rl_requirements_readable() {
         esac
         tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         printf -- '- %s (%s): %s\n' "$sid" "$kind" "${txt:-<no text>}"
+        local -a _rl_parts=()
+        acceptance_parts_v _rl_parts "$_ACC_SPEC_PARTS"
+        for _p in ${_rl_parts[@]+"${_rl_parts[@]}"}; do printf '  %s: %s\n' "${_p%%$'\t'*}" "${_p#*$'\t'}"; done
         ev="$(acceptance_spec_evidence "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         [[ -n "${ev// /}" ]] && printf -- '  shown by: %s\n' "${ev% }"
         [[ -n "${tfs// /}" ]] && printf -- '  checked by: %s\n' "${tfs% }"

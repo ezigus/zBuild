@@ -77,77 +77,77 @@ _ok()  { if [[ -z "$V" ]]; then assert_pass "$1"; else assert_fail "$1" "violati
 _has() { assert_contains "$1" "$V" "$2"; }
 
 # ── D1 / D2 ──────────────────────────────────────────────────────────────────
-_check 'LOOP-1[code]: a resumed loop starts at its round covers: RSUM-1'
+_check 'LOOP-1[code]: a resumed loop starts at its round covers: RSUM-1' '  When: it runs' '  Then: it is done'
 _ok "[D1] a design with descriptive ids passes"
 BIND=("SPEC-1: tests/unit/run-test.sh")
-_check 'SPEC-1[code]: a resumed loop starts at its round covers: RSUM-1'
+_check 'SPEC-1[code]: a resumed loop starts at its round covers: RSUM-1' '  When: it runs' '  Then: it is done'
 _has "[D1] the bare SPEC code is refused" "ID_OLD_FORM SPEC-1"
 assert_contains "[D1] ...in plain words that ask for a describing code" "$P" "describes"
 BIND=("LOOP-1: tests/unit/run-test.sh")
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-1[no-code]: b'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-1[no-code]: b'
 _has "[D2] a duplicate id is refused" "ID_DUPLICATE LOOP-1"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOPING-1[no-code]: b'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOPING-1[no-code]: b'
 _has "[D2] a line shaped like an id with a bad code is refused" "ID_BAD LOOPING-1"
 
 # ── D3 / D4 / D5 ─────────────────────────────────────────────────────────────
-_md 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-2[no-code]: b' 'REMOVED: LOOP-3 — the issue dropped it' > "$PREV"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'REMOVED: LOOP-3 — the issue dropped it'
+_md 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-2[no-code]: b' 'REMOVED: LOOP-3 — the issue dropped it' > "$PREV"
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'REMOVED: LOOP-3 — the issue dropped it'
 _has "[D3] an id the last design had, dropped with no REMOVED line, is refused" "ID_DROPPED LOOP-2"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'REMOVED: LOOP-2 — folded into LOOP-1' 'REMOVED: LOOP-3 — the issue dropped it'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'REMOVED: LOOP-2 — folded into LOOP-1' 'REMOVED: LOOP-3 — the issue dropped it'
 _ok "[D3] ...listed as REMOVED with why, it passes"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-2[no-code]: b' 'LOOP-3[no-code]: c'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-2[no-code]: b' 'LOOP-3[no-code]: c'
 _has "[D4] a removed id coming back is refused" "ID_REUSED LOOP-3"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-2[no-code]: b'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-2[no-code]: b'
 _has "[D4] a removed id no longer listed as removed is refused" "ID_REMOVED_LOST LOOP-3"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-2[no-code]: b' 'LOOP-4[no-code]: d' 'REMOVED: LOOP-3 — the issue dropped it'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-2[no-code]: b' 'LOOP-4[no-code]: d' 'REMOVED: LOOP-3 — the issue dropped it'
 _ok "[D5] a new id one past the code's highest (removed ones counted) passes"
-_md 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' > "$PREV"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' 'LOOP-2[no-code]: b'
+_md 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' > "$PREV"
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'LOOP-2[no-code]: b'
 _has "[D5] a new number below the code's highest is refused" "ID_NOT_AFTER_LAST LOOP-2"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' 'LOOP-5[no-code]: e'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'LOOP-5[no-code]: e'
 _has "[D5] a new number that skips one is refused (review #2463)" "ID_NOT_AFTER_LAST LOOP-5"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' 'LOOP-5[no-code]: e' 'LOOP-4[no-code]: d'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'LOOP-5[no-code]: e' 'LOOP-4[no-code]: d'
 _ok "[D5] two new ones that follow on, in any order, pass"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'LOOP-3[no-code]: c' 'REMOVED: NEVR-1 — never there'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'REMOVED: NEVR-1 — never there'
 _has "[D3] a REMOVED line for an id the last design never had is refused (review #2463)" "ID_REMOVED_UNKNOWN NEVR-1"
 : > "$PREV"
 
 # ── D6 / D7 / D8 ─────────────────────────────────────────────────────────────
 BIND=("RSUM-2: tests/unit/run-test.sh")
-_check 'RSUM-2[code]: a covers: RSUM-1'
+_check 'RSUM-2[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done'
 _has "[D6] a SPEC code that is a requirement's code is refused" "ID_OTHER_POOL RSUM-2"
 BIND=("GONE-2: tests/unit/run-test.sh")
-_check 'GONE-2[code]: a covers: RSUM-1'
+_check 'GONE-2[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done'
 _has "[D6] ...a removed requirement's code too" "ID_OTHER_POOL GONE-2"
 BIND=("LBL-1: tests/unit/run-test.sh")
-_check 'LBL-1[code]: a covers: RSUM-1'
+_check 'LBL-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done'
 _has "[D7] a SPEC id the issue's text writes is refused" "ID_IN_ISSUE LBL-1"
 BIND=("LOOP-1: tests/unit/run-test.sh")
-_md 'SPEC-1[code]: a covers: RSUM-1' 'SPEC-2[no-code]: b' > "$PREV"
-_check 'LOOP-1[code]: a covers: RSUM-1'
+_md 'SPEC-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'SPEC-2[no-code]: b' > "$PREV"
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done'
 _ok "[D8] the last design's old SPEC-n ids need no REMOVED line"
 : > "$PREV"
 
 # ── D9–D13 ───────────────────────────────────────────────────────────────────
-_check 'LOOP-1[code]: a covers: RSUM-1' 'GARD-1[done]: the old guard runs evidence: scripts/run.sh:2'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'GARD-1[done]: the old guard runs evidence: scripts/run.sh:2' '  When: it runs' '  Then: it is done'
 _has "[D9] evidence with a line number is refused" "DONE_LINE_EVIDENCE GARD-1 scripts/run.sh:2"
 assert_contains "[D9] ...saying line numbers move" "$P" "move"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'GARD-1[done]: the old guard runs evidence: scripts/run.sh:"echo old guard"'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'GARD-1[done]: the old guard runs evidence: scripts/run.sh:"echo old guard"' '  When: it runs' '  Then: it is done'
 _ok "[D10] text on the base commit, outside this branch's change, passes"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'GARD-1[done]: the skip guard runs evidence: scripts/run.sh:"echo new skip guard"'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'GARD-1[done]: the skip guard runs evidence: scripts/run.sh:"echo new skip guard"' '  When: it runs' '  Then: it is done'
 _has "[D11] text only in lines this branch added is refused" "DONE_NOT_BEFORE GARD-1"
 assert_contains "[D11] ...saying to make it [code] with a test" "$P" "[code]"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'GARD-1[done]: x evidence: scripts/run.sh:"no such text"'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'GARD-1[done]: x evidence: scripts/run.sh:"no such text"' '  When: it runs' '  Then: it is done'
 _has "[D12] text not in the file is refused" "DONE_TEXT_MISSING GARD-1"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'GARD-1[done]: x evidence: tests/unit/run-test.sh'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'GARD-1[done]: x evidence: tests/unit/run-test.sh' '  When: it runs' '  Then: it is done'
 _ok "[D13] a test file named alone passes"
-_check 'LOOP-1[code]: a covers: RSUM-1' 'GARD-1[done]: x evidence: scripts/run.sh'
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'GARD-1[done]: x evidence: scripts/run.sh' '  When: it runs' '  Then: it is done'
 _has "[D13] a source file named alone is refused" "DONE_NO_TEXT GARD-1"
 
 # ── D14 ──────────────────────────────────────────────────────────────────────
 NOGIT="$TEST_TEMP_DIR/nogit"; mkdir -p "$NOGIT/scripts" "$NOGIT/tests/unit"
 cp "$ROOT/scripts/run.sh" "$NOGIT/scripts/run.sh"; cp "$ROOT/tests/unit/run-test.sh" "$NOGIT/tests/unit/"
-_md 'LOOP-1[code]: a covers: RSUM-1' 'GARD-1[done]: x evidence: scripts/run.sh:"echo new skip guard"' > "$TEST_TEMP_DIR/design.md"
+_md 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'GARD-1[done]: x evidence: scripts/run.sh:"echo new skip guard"' '  When: it runs' '  Then: it is done' > "$TEST_TEMP_DIR/design.md"
 _design_checks "$TEST_TEMP_DIR/design.md" "$NOGIT" "$REQ" "$PREV" "$(<"$ISSUE")"
 assert_eq "[D14] with no base commit, the text in the file is enough" "" "$(printf '%s' "${_DESIGN_VIOLATIONS[*]}")"
 
