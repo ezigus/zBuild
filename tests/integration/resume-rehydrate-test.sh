@@ -651,6 +651,21 @@ fi
 assert_eq "[#1805/FRSH-1] fresh run (--no-resume) emits no stage.skip events (all stages dispatched from stage 1; none skipped due to prior state)" \
     "0" "$_s12_stage_skips"
 
+# [#1805/FRSH-1]: no artifact from a prior run must appear in ZBUILD_ARTIFACT_DIR.
+# The setup placed prior-run intake-result.json content on the state branch only
+# (the disk copy was removed before the runner was invoked). A fresh run must NOT
+# call _artifact_persist_restore, so the content "prior-run intake" (which is in
+# the state branch but not on disk) must NOT appear in ZBUILD_ARTIFACT_DIR.
+# If the runner mistakenly invoked _artifact_persist_restore on the --no-resume path,
+# "prior-run intake" would appear in intake-result.json, failing this assertion.
+_s12_prior_artifact_content="$(cat "$S12_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
+_s12_prior_in_dir=0
+if grep -q "prior-run intake" <<< "$_s12_prior_artifact_content"; then
+    _s12_prior_in_dir=1
+fi
+assert_eq "[#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)" \
+    "0" "$_s12_prior_in_dir"
+
 # [#1805/BNDY-1]: the cycle fixture used for this fresh-run sub-case contains type: cycle,
 # establishing that the fixture IS a cyclic pipeline (satisfying the "same cycle fixture" clause).
 # BNDY-1 requires "verifies intake dispatches AND the fixture contains type:cycle" —
