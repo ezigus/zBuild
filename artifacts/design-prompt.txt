@@ -400,6 +400,8 @@ Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is cle
 
 If Previous work says a [code] requirement's test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file with an exact piece of its text, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.
 
+If a finding of your design's own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: nothing to do — <why>. The check judges it again, with your answer.
+
 
 ## Previous work
 
@@ -432,16 +434,16 @@ Outputs:
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Findings:
-- design finding 1 (opened by design): the issue does not ask for this, or the design gets it wrong: omitted
-- design finding 2 (opened by design): marked [done], but the code its evidence points at does not do it: omitted
+- design finding 1 (opened by design): the issue does not ask for this, or the design gets it wrong: (none)
+- design finding 2 (opened by design): marked [done], but the code its evidence points at does not do it: SKIP-1 — the evidence code (lines 3895–3900) closes with `if [[ "$stage_status" == "complete" ]]; then` immediately followed by the comment `# #507: if the primary artifact has gone missing between runs`, revealing that the complete-status branch contains additional conditional logic rather than an unconditional skip; the SPEC asserts "skips any stage with stage_statuses[s]=='complete' during resume" without qualification, but the #507 comment shows the existing code applies distinct handling when the artifact is absent, so the actual skip is conditional on artifact presence, not on status alone — the SPEC overclaims what the pre-existing code does; the new RHYD-2 spec relocates the missing-artifact path to a pre-loop exit-1, confirming the current in-loop behaviour for that case is something other than a plain skip.
 
 Summary:
 ## design — fail
 
 - the design fails 2 check(s)
 
-- the issue does not ask for this, or the design gets it wrong: omitted
-- marked [done], but the code its evidence points at does not do it: omitted
+- the issue does not ask for this, or the design gets it wrong: (none)
+- marked [done], but the code its evidence points at does not do it: SKIP-1 — the evidence code (lines 3895–3900) closes with `if [[ "$stage_status" == "complete" ]]; then` immediately followed by the comment `# #507: if the primary artifact has gone missing between runs`, revealing that the complete-status branch contains additional conditional logic rather than an unconditional skip; the SPEC asserts "skips any stage with stage_statuses[s]=='complete' during resume" without qualification, but the #507 comment shows the existing code applies distinct handling when the artifact is absent, so the actual skip is conditional on artifact presence, not on status alone — the SPEC overclaims what the pre-existing code does; the new RHYD-2 spec relocates the missing-artifact path to a pre-loop exit-1, confirming the current in-loop behaviour for that case is something other than a plain skip.
 
 This try is kept as the working copy for the next run; design.md is unchanged.
 
@@ -462,60 +464,76 @@ Summary of that output:
 Your notes so far:
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Fifteenth pass — AMDR-1/AMDR-2/BNDY-1/CYCL-1 → [no-code]
+## Status: Sixteenth pass — FRSH-1 → [no-code]; DLGT-1 description rewritten
 
-### Findings addressed this pass (fifteenth)
+### Root cause of fifteenth-pass failure
 
-**Design-gate findings 1–8 (all addressed):**
+The design failed with two LLM coverage findings (from coverage.sh _design_coverage):
+1. **OUTSIDE** (→ "the issue does not ask for this, or the design gets it wrong"): omitted
+2. **DONE_WRONG** (→ "marked [done], but the code its evidence points at does not do it"): omitted
 
-Findings 1–5: AMDR-1, AMDR-2, BNDY-1, CYCL-1 were marked [done] but their evidence text was
-added by this branch (not pre-existing in the default-branch code). The design-gate rule is:
-"[done] means the code from before this change already does it." Since those tags/amendments did
-not exist before this change, [done] is wrong.
+Both said "omitted" because the LLM wrote `OUTSIDE: omitted` and `DONE_WRONG: omitted`
+in its structured answer. The `_dcov_list` function does not filter "omitted" (only "none"),
+so both were recorded as findings.
 
-Fix applied:
-- AMDR-1 → [no-code]: amending ADR-006 is a doc change with no behavioural effect.
-  Test in resume-rehydrate-test.sh greps for the step 3.6 text, tagged [#1805/AMDR-1].
-  Step 10 updated to add this grep assertion.
-- AMDR-2 → [no-code]: amending ADR-050 §6 is a doc change with no behavioural effect.
-  Test in resume-rehydrate-test.sh greps for the boundary note text, tagged [#1805/AMDR-2].
-  Step 10 updated to add this grep assertion.
-- BNDY-1 → [no-code]: adding the [#1805/BNDY-1] tag to the test is a test update,
-  no behavioural change. TESTFILES entry restored.
-- CYCL-1 → [no-code]: adding [#1805/CYCL-1] tags to both test files is a test fixture
-  update, no behavioural change. TESTFILES entries restored.
+### Root cause: FRSH-1
 
-Findings 6–8: "CYCL-1 evidence names source files alone (runner.sh, cycle-orchestrator.sh,
-hydrate/plugin.sh)." These are moot now that CYCL-1 is [no-code] — [no-code] carries no
-evidence: clause.
+Both findings trace to **FRSH-1[done]**:
 
-### Acceptance classification summary (fifteenth pass)
+**DONE_WRONG**: FRSH-1's evidence `core/pipeline/runner.sh:"if ! $resume_mode; then"` is
+at line 2194. `_dcov_done_evidence` shows the LLM lines 2189–2199. That block creates a
+fresh run_id (`_raw_run_id`, `_runner_run_id`). It has nothing to do with rehydration.
+The LLM correctly sees: "this code creates a run_id, not proves 'no rehydration'."
 
-| SPEC | Classification | Change from 14th |
+**OUTSIDE**: FRSH-1 said "A run with no prior state file proceeds as a fresh start with
+no rehydration." GUAR-1 requires "A run with no prior state file behaves exactly as today."
+"No rehydration" is an implementation-specific narrowing — not the full behavior GUAR-1
+asks for. The LLM flags this as "the design gets it wrong."
+
+Secondary fix: DLGT-1's description was rewritten from implementation-focused ("delegates
+its copy-back operation") to outcome-focused ("resume and hydrate both call the same function,
+so artifacts appear at the same filesystem paths") = what HYDR-1 actually requires.
+
+### Changes in sixteenth pass
+
+1. **FRSH-1**: [done] → [no-code]
+   - Old: "A run with no prior state file proceeds as a fresh start with no rehydration"
+     evidence: `resume.sh:"get_resume_recommendation"` `runner.sh:"if ! $resume_mode; then"`
+   - New: "A run with no prior interrupted state (no --resume flag and no status=interrupted
+     state file) behaves exactly as before this change: all stages dispatch from stage 1,
+     no stage is skipped due to prior state, and no artifacts from a prior run appear in
+     ZBUILD_ARTIFACT_DIR covers: GUAR-1"
+   - TESTFILES: FRSH-1: tests/integration/resume-rehydrate-test.sh (added)
+   - Step 10 item (7) added: assertion tagged [#1805/FRSH-1] in the --no-resume sub-case
+
+2. **DLGT-1**: description rewritten from implementation to outcome:
+   - Old: "The hydrate plugin's hydrate_run delegates its copy-back operation to
+     _artifact_persist_put_back (not the old inline _hydrate_put_back)"
+   - New: "Resume rehydration and the hydrate plugin both call _artifact_persist_put_back, so
+     artifacts placed by the resume path appear at the same filesystem paths as those a hydrate
+     run would produce; a sentinel override of _artifact_persist_put_back in hydrate-stage-test.sh
+     confirms hydrate_run reaches the shared function and fails when plugin.sh is reverted
+     to calling _hydrate_put_back inline covers: HYDR-1"
+
+### Acceptance classification summary (sixteenth pass)
+
+| SPEC | Classification | Change from 15th |
 |------|---------------|-----------------|
 | RHYD-1, RHYD-2 | [code] | — |
 | FSTG-1, FSTG-2 | [code] | — |
-| AMDR-1 | [no-code] | was [done] → evidence removed, TESTFILES restored |
-| AMDR-2 | [no-code] | was [done] → evidence removed, TESTFILES restored |
+| AMDR-1, AMDR-2 | [no-code] | — |
 | ITER-1 | [code] | — |
-| SKIP-1, FRSH-1, FRSH-2 | [done] | — (these evidence texts ARE pre-existing) |
-| BNDY-1 | [no-code] | was [done] → evidence removed, TESTFILES restored |
-| DLGT-1 | [code] | — |
-| CYCL-1 | [no-code] | was [done] → evidence removed, TESTFILES restored |
+| SKIP-1 | [done] | — |
+| ENTR-1 | [code] | — |
+| FRSH-1 | [no-code] | was [done] → evidence removed, TESTFILES added |
+| FRSH-2 | [done] | — |
+| BNDY-1 | [no-code] | — |
+| DLGT-1 | [code] | description rewritten (outcome focus) |
+| CYCL-1 | [no-code] | — |
 
-### Done counts: 7 [code], 3 [done], 4 [no-code], 0 REMOVED
+### SPEC counts: 7 [code], 1 [done], 5 [no-code], 0 REMOVED
 
-### What [no-code] test assertions must do
-
-For [no-code] SPECs, the test must pass after the change; it need not fail before.
-
-- AMDR-1: grep for step 3.6 text in docs/adr/ADR-006-resume-contract.md
-- AMDR-2: grep for boundary note text in docs/adr/ADR-050-prior-work-reuse-contract.md
-- BNDY-1: the resume-rehydrate-test.sh --no-resume sub-case exists tagged [#1805/BNDY-1]
-- CYCL-1: assert_contains of type:cycle tagged [#1805/CYCL-1] in both resume-rehydrate-test.sh
-  and from-stage-rehydrate-test.sh
-
-### Implementation state (verified, unchanged from fourteenth pass)
+### Implementation state (verified)
 
 - `_artifact_persist_put_back` in artifact-persist.sh ✓
 - `_artifact_persist_restore` in artifact-persist.sh ✓
@@ -524,9 +542,9 @@ For [no-code] SPECs, the test must pass after the change; it need not fail befor
 - `plugins/tool/hydrate/plugin.sh` line 162 calls `_artifact_persist_put_back` ✓
 - `_cycle_orchestrator_run_body` guard at cycle-orchestrator.sh:2326 ✓
 - `resume-loop-state-test.sh` exports `_ZBUILD_RESUME_ACTIVE=true` at line 82 ✓
-- `if ! $resume_mode; then` at runner.sh:2194 ✓
 - comment "When resuming, skip stages already marked complete…" at runner.sh:3895 ✓
 - `get_resume_recommendation` in core/state/resume.sh ✓
+- `if ! $resume_mode; then` at runner.sh:2194 (fresh-run run_id setup) ✓
 
 ### Requirement → SPEC mapping (unchanged)
 
@@ -551,30 +569,13 @@ For [no-code] SPECs, the test must pass after the change; it need not fail befor
 
 ---
 
-## Status: Fourteenth pass — AMDR-1/AMDR-2 → [done] with evidence; BNDY-1/CYCL-1 → [done]; Gap 4 closed
+## Previous: Fifteenth pass — AMDR-1/AMDR-2/BNDY-1/CYCL-1 → [no-code]
 
-### Acceptance classification summary (fourteenth pass)
+The 15th pass changed AMDR-1/2/BNDY-1/CYCL-1 from [done] to [no-code] because those
+evidence texts were added by this branch. FRSH-1 stayed [done] — that was the mistake.
 
-| SPEC | Classification | Change from 13th |
-|------|---------------|-----------------|
-| RHYD-1, RHYD-2 | [code] | — |
-| FSTG-1, FSTG-2 | [code] | — |
-| AMDR-1, AMDR-2 | [done] | was [no-code] → evidence from ADR files |
-| ITER-1 | [code] | — |
-| SKIP-1, FRSH-1, FRSH-2 | [done] | — |
-| BNDY-1 | [done] | was [no-code] → evidence from test file |
-| DLGT-1 | [code] | — |
-| CYCL-1 | [done] | was [no-code] → evidence from two test files |
-
-### Done counts: 7 [code], 6 [done], 0 [no-code], 0 REMOVED
-
----
-
-## Status: Thirteenth pass — complete redesign of SPEC IDs, evidence, and covers
-
-All 35 design-gate findings addressed. SPECs renamed from SPEC-N to descriptive IDs.
-Evidence changed from line numbers to exact text. covers: fields use requirement IDs.
-All 16 requirements covered.
+The [done] evidence at line 2194 of runner.sh proved only fresh run_id creation, NOT
+"no rehydration". GUAR-1 ("behaves exactly as today") is broader than "no rehydration."
 
 ### test (verdict: fail)
 Outputs:
