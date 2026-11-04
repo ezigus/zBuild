@@ -102,6 +102,48 @@ assert_eq \
     "[#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (complete iter skipped)" \
     "0" "$_SPEC7_ITER1_DISPATCHED"
 
+# ── SPEC-7 clause 2b: nested-loop re-entry starts at iter=1 ─────────────────
+# [#1805/ITER-1] clause 2b: a nested-loop re-entry (inner cycle called from within an outer
+# cycle iteration) must start at iter=1, not from current_iter in state.
+# Mechanism: the outer resume path consumes/clears _ZBUILD_RESUME_ACTIVE after using it,
+# so any nested (inner) cycle call that follows sees the flag as cleared and starts at iter=1.
+# This sub-test does NOT manually clear _ZBUILD_RESUME_ACTIVE — it relies on the outer
+# cycle_orchestrator_run call above having consumed/cleared the flag. Re-seeding state with
+# current_iter=1 and calling the orchestrator again simulates the nested invocation:
+#   - Correct implementation (clears flag after outer use): starts at iter=1 → PASSES
+#   - Incorrect implementation (keeps flag): starts at iter=2 → FAILS (regression detector)
+# Before this change (no resume logic): always starts at 1 → passes trivially.
+# After this change with correct flag consumption: flag cleared by outer call → PASSES.
+# After this change without flag consumption: flag still true → starts at iter=2 → FAILS.
+print_test_section "[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)"
+
+# Re-seed state: same current_iter=1 setup as the outer resume above.
+: > "$ZBUILD_EVENTS_JSONL"
+jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
+zb_engine_loop_state "$STATE_FILE" "build-test" 1 5 "in_progress"
+
+# _ZBUILD_RESUME_ACTIVE is NOT manually cleared here.
+# We check whatever state the outer cycle_orchestrator_run left the flag in.
+_SPEC7_NESTED_FIRST_ITER=-1
+cycle_dispatch_stage() {
+    local stage="$1" iter="$2"
+    if [[ "$_SPEC7_NESTED_FIRST_ITER" -eq -1 ]]; then
+        _SPEC7_NESTED_FIRST_ITER="$iter"
+    fi
+    _CYCLE_DISPATCH_VERDICT="pass"
+    _CYCLE_DISPATCH_STATUS="complete"
+    return 0
+}
+
+set +e
+cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
+_s7_nested_rc=$?
+set -e
+
+assert_eq \
+    "[#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)" \
+    "1" "$_SPEC7_NESTED_FIRST_ITER"
+
 # ── SPEC-7 clause 3: _ZBUILD_RESUME_ACTIVE guard — fresh runs start at iter=1 ─
 # [#1805/ITER-1] clause 3: without _ZBUILD_RESUME_ACTIVE=true, the orchestrator
 # must start at iter=1 even when current_iter=1 is in state. This verifies the
