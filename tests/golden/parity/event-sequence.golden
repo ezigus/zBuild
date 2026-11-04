@@ -66,6 +66,7 @@ redaction.applied
 model.route
 model.outcome
 stage.io.captured
+judge.kept.saved
 plugin.result
 plugin.run.complete
 parallel.member.dispatch.complete

@@ -248,13 +248,11 @@ _design_coverage() {
     [[ -n "$_kd" ]] && kf="${_kd%/}/design-judged.json"
     judge_engine_v eng
     judge_fp_v fp "$eng"$'\n'"$acc"$'\n'"$reqs"$'\n'"$_scope"$'\n'"$_ev_items"$'\n'"$base_sha"$'\n'"$answers"
-    [[ -n "$kf" ]] && judge_kept_get_v kept "$kf" coverage "$fp"
+    local _disputed=0; [[ -n "${answers//[[:space:]]/}" ]] && _disputed=1
+    [[ -n "$kf" ]] && judge_kept_get_v kept "$kf" coverage "$fp" "$_disputed"
     if [[ -n "$kept" ]]; then
         _dcov_parse "$kept" "$reqs" "$acc" "$_scope" "$repo" "$base"
-        if [[ -z "$_DCOV_PROBLEM" ]]; then
-            declare -F emit_event >/dev/null 2>&1 && emit_event "judge.kept" "check=design-coverage" 2>/dev/null
-            return 0
-        fi
+        [[ -z "$_DCOV_PROBLEM" ]] && return 0
     fi
 
     local framed

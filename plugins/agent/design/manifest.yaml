@@ -35,8 +35,16 @@ provides:
     - design.stray.conflict
     - design.stray.recovered
     - design.checks.failed
-    # #2464 (ADR-072 §4): its answer was kept, so no model call was made.
-    - judge.kept
+    # #2464, #2466 (ADR-072 §4): a kept answer saved, used instead of a call,
+    # or found stale and judged again — one event per item.
+    - judge.kept.saved
+    - judge.kept.used
+    - judge.kept.stale
+    # #2466 (ADR-072 §2): the old-code copy made, or not.
+    - judge.base.created
+    - judge.base.failed
+    # ...and an older copy removed for a new base commit.
+    - judge.base.released
 
 config:
   tier_default: T2

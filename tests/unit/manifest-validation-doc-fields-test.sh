@@ -143,7 +143,8 @@ assert_eq "[SPEC-7] a scalar requires.core and an empty summary fail validation"
 assert_contains "[SPEC-7] …the scalar core is reported" "$_err7" "requires.core must be a YAML list"
 assert_contains "[SPEC-7] …and so is the empty summary" "$_err7" "'summary' is declared but empty"
 assert_eq "[SPEC-7] …and usage is not" "0" "$(grep -c "'usage' is declared but empty" <<< "$_err7" || true)"
-assert_eq "[SPEC-7] the four checks read the manifest in one awk" "1" "$(wc -l < "$_AWKS" | tr -d ' ')"
+# #2466: and since then by the shell — no awk at all.
+assert_eq "[SPEC-7] the four checks read the manifest with no awk" "0" "$(wc -l < "$_AWKS" | tr -d ' ')"
 
 cleanup_test_env
 print_test_results

@@ -82,7 +82,9 @@ setup_test_env "fork-budget"
 # change, the clock and a library's folder from the shell, eight manifest
 # readers in bash) — measured 2,196 macOS. 2190 (round 9: a snapshot names its
 # temp files without mktemp; main measured 2,196) — measured 2,142 macOS.
-FORK_BUDGET=2190
+# 2100 (#2466: validate_manifest reads requires.core, its scalar fields and its
+# events with the shell, not three awks a manifest) — measured 2,052 macOS.
+FORK_BUDGET=2100
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -100,8 +102,9 @@ FORK_BUDGET=2190
 # shell that asks — measured 2,819 macOS).
 # 2870 (#2464: validate_manifest reads each router knob's range and words in its
 # shell, not in two `$( )` a knob — measured 2,853 macOS with the judges' kept
-# answers added; main was at 2,879).
-PROCESS_BUDGET=2870
+# answers added; main was at 2,879). 2800 (#2466, the same change as
+# FORK_BUDGET 2100 — measured 2,762 macOS).
+PROCESS_BUDGET=2800
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh

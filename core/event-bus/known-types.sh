@@ -82,6 +82,43 @@ eb_manifest_events() {
     ' "$@" 2>/dev/null
 }
 
+# eb_manifest_events_v <array_var> <manifest> — one manifest's events, read by
+# the shell, the same rules as eb_manifest_events (#2466, ADR-065 §5:
+# validate_manifest reads one manifest at a time, and that was one awk each).
+eb_manifest_events_v() {
+    local -n _emv="$1"; local _emv_l _emv_it _emv_p=0 _emv_e=0 _emv_ind=0
+    local -a _emv_items=()
+    _emv=()
+    [[ -f "$2" ]] || return 0
+    while IFS= read -r _emv_l || [[ -n "$_emv_l" ]]; do
+        if [[ "$_emv_l" =~ ^provides:[[:space:]]*$ ]]; then _emv_p=1; _emv_e=0; continue; fi
+        (( _emv_p )) && [[ "$_emv_l" =~ ^[a-zA-Z_] ]] && { _emv_p=0; _emv_e=0; }
+        if (( _emv_e )); then
+            [[ "$_emv_l" =~ ^[[:space:]]*$ || "$_emv_l" =~ ^[[:space:]]*# ]] && continue
+            if [[ "$_emv_l" =~ ^([[:space:]]+)-[[:space:]]+(.*)$ ]] && (( ${#BASH_REMATCH[1]} > _emv_ind )); then
+                _emv_it="${BASH_REMATCH[2]}"; _emv_it="${_emv_it%%#*}"
+                _emv_it="${_emv_it%"${_emv_it##*[![:space:]]}"}"
+                _emv_it="${_emv_it#[\"\']}"; _emv_it="${_emv_it%[\"\']}"
+                _emv_it="${_emv_it%"${_emv_it##*[![:space:]]}"}"
+                [[ -n "$_emv_it" ]] && _emv+=("$_emv_it")
+                continue
+            fi
+            _emv_e=0
+        fi
+        (( _emv_p )) || continue
+        if [[ "$_emv_l" =~ ^[[:space:]]+events:[[:space:]]*\[([^]]*) ]]; then
+            IFS=',' read -r -a _emv_items <<< "${BASH_REMATCH[1]}"
+            for _emv_it in ${_emv_items[@]+"${_emv_items[@]}"}; do
+                _emv_it="${_emv_it#"${_emv_it%%[![:space:]\"\']*}"}"; _emv_it="${_emv_it%"${_emv_it##*[![:space:]\"\']}"}"
+                [[ -n "$_emv_it" ]] && _emv+=("$_emv_it")
+            done
+            continue
+        fi
+        if [[ "$_emv_l" =~ ^([[:space:]]+)events:[[:space:]]*$ ]]; then _emv_e=1; _emv_ind=${#BASH_REMATCH[1]}; fi
+    done < "$2"
+    return 0
+}
+
 # ─── eb_manifest_events_invalid <manifest> ──────────────────────────────────
 # Print every `provides.events` entry that is not a well-formed event name, one
 # per line (nothing = the block is valid). Lives next to the reader on purpose:
@@ -90,16 +127,16 @@ eb_manifest_events() {
 # emit. validate_manifest turns each line into a load-time error.
 eb_manifest_events_invalid() { local _emi; eb_manifest_events_invalid_v _emi "$1"; printf '%s' "$_emi"; }
 # eb_manifest_events_invalid_v <var> <manifest> — the same lines into <var>:
-# the manifest's events read with one awk, checked in this shell.
+# the manifest's events read and checked in this shell.
 eb_manifest_events_invalid_v() {
     local -n _emio="$1"
-    local _emi_ev _emi_all
+    local _emi_ev
+    local -a _emi_all=()
     _emio=""
-    _emi_all="$(eb_manifest_events "$2")"
-    while IFS= read -r _emi_ev; do
-        [[ -n "$_emi_ev" ]] || continue
+    eb_manifest_events_v _emi_all "$2"
+    for _emi_ev in ${_emi_all[@]+"${_emi_all[@]}"}; do
         [[ "$_emi_ev" =~ ^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$ ]] || _emio+="$_emi_ev"$'\n'
-    done <<< "$_emi_all"
+    done
 }
 
 # ─── eb_compose_known_types [schema] [plugins_root] ─────────────────────────
