@@ -205,19 +205,27 @@ judge_fp_v() {
     local _jfp_f="${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-judge-fp.$BASHPID" _jfp_c="" _jfp_n=""
     _jfp=""
     cksum <<< "$2" > "$_jfp_f" 2>/dev/null && read -r _jfp_c _jfp_n < "$_jfp_f"
+    rm -f "$_jfp_f" 2>/dev/null
     [[ -n "$_jfp_c" ]] && _jfp="$_jfp_c-$_jfp_n"
     return 0
 }
 
 # _judge_hashes_v <assoc_var> <path>... — each path's content hash, `absent`
-# for a missing one, in one git call.
+# for a missing one, in one git call. A directory (a judge searched it) is the
+# commit's tree of it, so a commit that changes a file in it changes its hash;
+# one outside any repository can never be known unchanged (review on #2465).
 _judge_hashes_v() {
     local -n _jhs="$1"; shift
     local -a __judge_have=() __judge_hs=()
     local __judge_p __judge_i
+    local __judge_t
     for __judge_p in "$@"; do
         [[ -n "$__judge_p" ]] || continue
-        if [[ -f "$__judge_p" ]]; then __judge_have+=("$__judge_p"); else _jhs["$__judge_p"]=absent; fi
+        if [[ -f "$__judge_p" ]]; then __judge_have+=("$__judge_p")
+        elif [[ -d "$__judge_p" ]]; then
+            __judge_t="$(git -C "$__judge_p" rev-parse HEAD:./ 2>/dev/null)" || __judge_t=""
+            _jhs["$__judge_p"]="tree:${__judge_t:-unknown-$RANDOM$RANDOM}"
+        else _jhs["$__judge_p"]=absent; fi
     done
     [[ ${#__judge_have[@]} -gt 0 ]] || return 0
     mapfile -t __judge_hs < <(git hash-object -- "${__judge_have[@]}" 2>/dev/null)

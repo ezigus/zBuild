@@ -75,6 +75,14 @@ _dcov_done_evidence() {
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
 }
 
+# _dcov_ev_items_v <var> <done_evidence> <base> — the evidence as its
+# fingerprint takes it: without the copy's path, which differs every run; with
+# no copy, unchanged (review on #2465: an empty base stripped every `/`).
+_dcov_ev_items_v() {
+    local -n _dei="$1"
+    if [[ -n "$3" ]]; then _dei="${2//"$3/"/}"; else _dei="$2"; fi
+}
+
 # _dcov_prompt_judge <acceptance> <requirements> [scope] [done_evidence] [base]
 _dcov_prompt_judge() {
     cat <<EOF2
@@ -232,7 +240,7 @@ _design_coverage() {
     [[ -n "$base" && -f "$base.sha" ]] && base_sha="$(<"$base.sha")"
     _scope="$(acceptance_list_scope "$design_md" 2>/dev/null || true)"
     _done_ev="$(_dcov_done_evidence "$design_md" "$base")"
-    _ev_items="${_done_ev//"$base/"/}"
+    _dcov_ev_items_v _ev_items "$_done_ev" "$base"
 
     # ADR-072 §4: the answer is kept while what it judged is unchanged.
     local kf="" fp="" eng kept=""

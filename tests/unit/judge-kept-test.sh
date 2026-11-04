@@ -14,6 +14,9 @@
 #    engine is judged again
 # K3 ...an answer from design disputing one of its findings is judged again,
 #    with the answer shown, and that verdict is kept in turn
+# K9 (review on #2465) a directory the judge searched is a dependency: a commit
+#    that changes a file in it is judged again; the fingerprint leaves no file
+#    behind; with no old-code copy the evidence keeps its path
 # K4 test-author's check: per SPEC — an unchanged SPEC is not asked again, a
 #    SPEC whose test changed is, alone
 # K5 ...test-author's answer to one of its findings re-judges that SPEC alone,
@@ -98,6 +101,35 @@ assert_eq "[K2] a file the judge opened changed: judged again" "1|1|" "$(_l K2b)
 assert_eq "[K2] another engine: judged again" "1|1|" "$(_l K2c)"
 assert_eq "[K3] design disputes the finding: judged again, the answer shown" "1|1||shown" "$(_l K3a)"
 assert_eq "[K3] ...and that verdict is kept in turn" "0|1|" "$(_l K3b)"
+
+print_test_section "K9: what the fingerprint depends on (review on #2465)"
+(
+    # shellcheck source=../../plugins/agent/design/plugin.sh
+    source "$REPO_ROOT/plugins/agent/design/plugin.sh"
+    artifact_dir="$ZBUILD_STATE_DIR/artifacts"; rm -f "$artifact_dir/design-judged.json"
+    _R=$'RQST-1: covered\nWORK-1: ok\n'
+    route_to_model() {
+        local n; n=$(( $(cat "$_N") + 1 )); printf "%s" "$n" > "$_N"
+        [[ -n "${ZBUILD_ROUTER_OPENED_FILE:-}" ]] && printf "%s\n" "$XR/scripts" >> "$ZBUILD_ROUTER_OPENED_FILE"
+        printf "%s" "$_R"
+    }
+    D="$TEST_TEMP_DIR/k9.md"
+    printf '# Design\n```acceptance\nWORK-1[code]: a --dry-run flag is accepted covers: RQST-1\nTESTFILES:\nWORK-1: tests/acc-test.sh\nWIRING: none\n```\n' > "$D"
+    _cov() { printf 0 > "$_N"; _design_coverage "$D" "- RQST-1: add a --dry-run flag" T2 >/dev/null 2>&1; cat "$_N"; }
+    echo "K9a|$(_cov)|$(_cov)"
+    ( cd "$XR" && printf 'new\n' > scripts/new.sh && git add -A && git commit -qm more )
+    echo "K9b|$(_cov)"
+    _fp=""; ZBUILD_STAGE_SCRATCH="" TMPDIR="$TEST_TEMP_DIR/fp-tmp" judge_fp_v _fp "text"
+    mkdir -p "$TEST_TEMP_DIR/fp-tmp"; ZBUILD_STAGE_SCRATCH="" TMPDIR="$TEST_TEMP_DIR/fp-tmp" judge_fp_v _fp "text"
+    echo "K9c|${_fp:+fp}|$(ls -A "$TEST_TEMP_DIR/fp-tmp" | grep -c .)"
+    _ev=""; _dcov_ev_items_v _ev $'- CNFG-1: scripts/cfg.sh:"x" — open scripts/cfg.sh' ""
+    echo "K9d|$_ev"
+) > "$TEST_TEMP_DIR/k9.out" 2>/dev/null
+_l() { grep "^$1|" "$TEST_TEMP_DIR/k9.out" | head -1 | cut -d'|' -f2-; }
+assert_eq "[K9] a searched directory: judged, then kept" "1|0" "$(_l K9a)"
+assert_eq "[K9] ...a commit that changes a file in it: judged again" "1" "$(_l K9b)"
+assert_eq "[K9] the fingerprint leaves no file behind" "fp|0" "$(_l K9c)"
+assert_eq "[K9] with no old-code copy the evidence keeps its path" '- CNFG-1: scripts/cfg.sh:"x" — open scripts/cfg.sh' "$(_l K9d)"
 
 print_test_section "K4-K5: test-author's check, per SPEC"
 (

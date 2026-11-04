@@ -46,7 +46,7 @@ A judging call is a model call whose answer the engine acts on: design's coverag
    - Each check keeps its answer in its own output in the artifacts folder, which hydrate carries into the next run: `design-judged.json`, `test-author-judged.json` (one entry per SPEC), `issue-acceptance-judged.json`, and `lens-<id>-judged.json`.
    - Each answer is kept with:
      - a fingerprint of the engine's commit, what the judge was shown of the item, and the answers to its earlier findings (§5);
-     - the content hash of every file it depends on: the files the call opened (from the call's own step stream, `ZBUILD_ROUTER_OPENED_FILE`), the files its quotes name, and, for test-author's check, the SPEC's test files.
+     - the content hash of every file it depends on: the files the call opened (from the call's own step stream, `ZBUILD_ROUTER_OPENED_FILE`), the files its quotes name, and, for test-author's check, the SPEC's test files. A directory the call searched counts by the commit's tree of it, so a commit that changes a file in it is judged again; one outside any repository is never known unchanged.
    - When all of these are unchanged, the kept answer is used and no call is made (event `judge.kept`). This holds for fails as much as for passes: the same input gives the same answer.
    - Only what changed is judged again. test-author's check sends only the changed SPECs to its judge.
    - The judge itself still starts fresh (ADR-067 §8): it is never shown its earlier verdict. It is simply not asked the same question twice.
@@ -84,5 +84,5 @@ A judging call is a model call whose answer the engine acts on: design's coverag
 - §1 → `tests/unit/judge-tools-test.sh` T1–T6
 - §2 → `tests/unit/judge-base-code-test.sh` B1–B6; `tests/unit/judge-quotes-test.sh` Q2 (a [done] claim read on the old code, by file; no window), Q4 (no window); `tests/unit/descriptive-id-readers-test.sh` R10
 - §3 → `tests/unit/judge-quotes-test.sh` Q1–Q5
-- §4 → `tests/unit/judge-kept-test.sh` K1, K2, K4, K7, K8
+- §4 → `tests/unit/judge-kept-test.sh` K1, K2, K4, K7, K8, K9
 - §5 → `tests/unit/judge-kept-test.sh` K3, K5, K6, K7, K8; `tests/unit/design-stage-ids-test.sh` E5

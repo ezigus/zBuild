@@ -1174,8 +1174,8 @@ _route_stream_envelope() {
     _route_stream_envelope_text 2>/dev/null < "$1" > "$2" || : > "$2"
 }
 
-# _route_stream_opened — stdin: a call's step stream; stdout: each file it read
-# (Read) or searched by name (Grep with a file path), one per line (#2464).
+# _route_stream_opened — stdin: a call's step stream; stdout: each path it read
+# (Read) or searched (Grep's path — a file or a directory), one per line (#2464).
 _route_stream_opened() {
     jq -Rr 'fromjson? | select(type == "object" and .type == "assistant")
         | .message.content[]? | select(.type == "tool_use")
