@@ -141,18 +141,19 @@ print_test_section "K4-K5: test-author's check, per SPEC"
     printf '# Design\n```acceptance\nLOOP-1[code]: fresh runs and nested re-entries start at round 1\nKEEP-1[code]: the saved round is read on resume\nWIRING: none\nTESTFILES:\nLOOP-1: tests/loop-test.sh\nKEEP-1: tests/keep-test.sh\n```\n' > "$D"
     printf 'assert_eq "[LOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/loop-test.sh"
     printf 'assert_eq "[KEEP-1] resume reads the saved round" "2" "$got"\n' > "$R/tests/keep-test.sh"
-    _R=$'LOOP-1: VERDICT: partial | REASON: only a fresh run | QUOTE: "nested re-entries"\nKEEP-1: VERDICT: corresponds | REASON: fine\n'
+    # #2467 (ADR-073 §6): a line per part (a one-line SPEC is its one Then), and the sections.
+    _R=$'LOOP-1 Then 1: missing | WHY: only a fresh run | QUOTE: "nested re-entries"\nLOOP-1 sections: ok\nKEEP-1 Then 1: ok\nKEEP-1 sections: ok\n'
     _j() { printf 0 > "$_N"; _ta_correspondence "$D" "$R" T2 "$A" >/dev/null 2>&1; printf '%s|%s' "$(_calls)" "${#_TA_CORR_FINDINGS[@]}"; }
     echo "K4a|$(_j)"
     echo "K4b|$(_j)"
     printf 'assert_eq "[KEEP-1] resume reads the saved round" "3" "$got"\n' > "$R/tests/keep-test.sh"
-    _R=$'KEEP-1: VERDICT: corresponds | REASON: fine\n'
+    _R=$'KEEP-1 Then 1: ok\nKEEP-1 sections: ok\n'
     echo "K4c|$(_j)|$(grep -c 'LOOP-1' "$_P.1" 2>/dev/null)|$(grep -q 'KEEP-1' "$_P.1" 2>/dev/null && echo asked)"
     # The finding test-author answers is its result's finding 1, written by its own writer.
     _ta_write_result "$A" unusable "1 finding" 2 \
-        "$(printf '%s\n' "LOOP-1's assertion establishes only part of the requirement: only a fresh run" | stage_findings_json)"
+        "$(printf '%s\n' "LOOP-1 Then 1 is not asserted: only a fresh run" | stage_findings_json)"
     _TA_ANSWERS=("test-author finding 1: nothing to do — the helper re-enters a nested loop before the assertion")
-    _R=$'LOOP-1: VERDICT: corresponds | REASON: the helper re-enters\n'
+    _R=$'LOOP-1 Then 1: ok\nLOOP-1 sections: ok\n'
     echo "K5a|$(_j)|$(grep -c 'KEEP-1' "$_P.1" 2>/dev/null)|$([[ "$(cat "$_P.1" 2>/dev/null)" == *"re-enters a nested loop"* ]] && echo shown)"
     echo "K5b|$(_j)"
 ) > "$TEST_TEMP_DIR/k4.out" 2>/dev/null

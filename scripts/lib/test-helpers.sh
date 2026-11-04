@@ -1501,6 +1501,27 @@ zb_test_acceptance_ok() {
     return 0
 }
 
+# zb_test_check_ok <prompt> — test-author's assertion check answering that
+# every part of every SPEC is met and every test is laid out in sections
+# (#2467, ADR-073 §6), read off the prompt it was asked, as the real check
+# reads it. rc 1 when <prompt> is not that check's.
+zb_test_check_ok() {
+    [[ "$1" == *"judge every part of it against its test"* ]] || return 1
+    local l id="" in=0
+    while IFS= read -r l; do
+        if [[ "$l" =~ ^\#\#\#\ ([A-Z][A-Z0-9_]*-[0-9]+)$ ]]; then
+            [[ -n "$id" ]] && printf '%s sections: ok\n' "$id"
+            id="${BASH_REMATCH[1]}"; in=0; continue
+        fi
+        [[ "$l" == "REQUIREMENT:" ]] && { in=1; continue; }
+        [[ "$l" == "ASSERTION:" ]] && { in=0; continue; }
+        (( in )) && [[ "$l" =~ ^\ \ ((Given|Then|Cleanup)\ [0-9]+|When(\ [0-9]+)?):\  ]] \
+            && printf '%s %s: ok\n' "$id" "${BASH_REMATCH[1]}"
+    done <<< "$1"
+    [[ -n "$id" ]] && printf '%s sections: ok\n' "$id"
+    return 0
+}
+
 # zb_test_prompt_write_path <prompt text> — the file a stage's prompt tells its
 # model to write: the path on the line after "EXACT absolute path:". A fake
 # model writes there, as the real one does, so a test never assumes which file

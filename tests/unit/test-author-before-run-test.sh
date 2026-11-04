@@ -66,7 +66,7 @@ route_to_model_loop() {
     return 0
 }
 # The correspondence check always agrees: only the script's findings matter here.
-route_to_model() { printf 'SPEC-1: VERDICT: corresponds REASON: ok\nSPEC-2: VERDICT: corresponds REASON: ok\n'; }
+route_to_model() { zb_test_check_ok "$2"; }
 
 _run() {
     rm -rf "$TEST_TEMP_DIR/run" "$TEST_TEMP_DIR"/author-*

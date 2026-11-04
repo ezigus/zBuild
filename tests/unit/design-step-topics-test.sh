@@ -103,8 +103,8 @@ assert_contains "[T5] ...a test file outside the contract stays in it" "$_scope"
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
     _P="$TEST_TEMP_DIR/ta-prompt.txt"
     route_to_model() {
-        if [[ "$2" == *"does that establish the REQUIREMENT"* ]]; then
-            printf 'WORK-1: VERDICT: corresponds | REASON: ok\n'; return 0
+        if zb_test_check_ok "$2"; then
+            return 0
         fi
         printf '%s' "$2" > "$_P"; printf 'authored\n'; return 0
     }

@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events)
+**Status:** Accepted (2026-11-03); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -86,8 +86,13 @@ On #1805 run 41757933766, two things could only be inferred, never read off the 
 - **§2:** making the copy emits `judge.base.created` (`base`, `path`). Not making it emits `judge.base.failed` (`reason`: `no_state_dir`, `no_base_commit` or `worktree_add_failed`). Removing it emits `judge.base.released` (`path`, and `by`: `teardown`, or `new_base` when a new base commit replaces it). With nothing to remove, nothing is emitted.
 - **§4:** one event per item. `judge.kept.saved` when a verdict is kept. `judge.kept.used` when a kept verdict is used and that item is not sent to the judge. `judge.kept.stale` when a kept verdict exists but cannot be used, with `why`: `fingerprint` (what was judged changed), `disputed` (a stage answered one of its findings) or `file` (a file it depended on changed). Each carries `check` (`design`, `test-author`, `issue-acceptance`, `lens-<id>`) and `item` (the SPEC id, or `coverage`, `issue`, `lens`). `judge.kept` is gone. Each event is declared by the plugins that emit it.
 
+## Amendment 2026-11-04 (#2467) — §3: the checks answer one line per part of a SPEC
+
+design's coverage check and test-author's assertion check answer one line for every part of every SPEC (ADR-073 §5 §6), each complaint quoted from that part. A part with no line makes the answer unusable, asked again once. design's check adds the part verdicts `untestable`, `how`, `contradicts` and `duplicate`, and the SPEC verdict `needs_cleanup`; test-author's check answers `ok`, `missing` or `wrong` per part, a line for the test's sections, and `untestable` for a SPEC no test can prove, which ends the run.
+
 ## Enforced by
 
+- §3 amendment 2026-11-04 (#2467: one line per part) → `tests/unit/gwt-judges-test.sh` J1–J8, T1–T9
 - §2 §4 amendment 2026-11-04 (#2466: the copy and every kept answer leave events) → `tests/unit/judge-events-test.sh` V1–V5
 - §1 → `tests/unit/judge-tools-test.sh` T1–T6
 - §2 → `tests/unit/judge-base-code-test.sh` B1–B6; `tests/unit/judge-quotes-test.sh` Q2 (a [done] claim read on the old code, by file; no window), Q4 (no window); `tests/unit/descriptive-id-readers-test.sh` R10

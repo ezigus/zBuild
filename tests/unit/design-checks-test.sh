@@ -72,6 +72,8 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: the thing works
+  When: it runs
+  Then: it is done
 TESTFILES:
 tests/a-test.sh
 WIRING: scripts/wire.sh
@@ -90,6 +92,8 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: the thing works
+  When: it runs
+  Then: it is done
 TESTFILES:
 tests/untagged-test.sh
 WIRING: scripts/wire.sh
@@ -127,6 +131,8 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: the thing works
+  When: it runs
+  Then: it is done
 TESTFILES:
 tests/a-test.sh
 ```
@@ -144,6 +150,8 @@ _run_gate_with_md '# Design
 
 ```acceptance
 WORK-1[change]: the thing works
+  When: it runs
+  Then: it is done
 TESTFILES:
 tests/a-test.sh
 WIRING: scripts/wire.sh
@@ -167,6 +175,8 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: the thing works
+  When: it runs
+  Then: it is done
 TESTFILES:
 tests/does-not-exist-test.sh
 WIRING: scripts/wire.sh
@@ -195,8 +205,12 @@ _run_gate_with_md '# Design
 
 ```acceptance
 WORK-1[change]: has a per-SPEC binding
+  When: it runs
+  Then: it is done
 WORK-2: unclassified
 WORK-3[change]: declares no testfile of its own
+  When: it runs
+  Then: it is done
 TESTFILES:
 WORK-1: tests/does-not-exist-test.sh
 ```
@@ -248,13 +262,13 @@ _g_md() {
 }
 _viol() { jq -r '.data.violations|join(" ")' "$RESULT_JSON"; }
 
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2: no status here')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2: no status here')"
 assert_eq "[G1] a requirement with no status → verdict=fail" "fail" "$VERDICT"
 assert_contains "[G1] the violation names it" "$(_viol)" "NO_STATUS WORK-2"
 assert_contains "[G1] the feedback says what the three statuses are" "$(cat "$FEEDBACK_PATH")" \
     "WORK-2 has no status — tag it [code]"
 
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2[guard]: an old guard')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2[guard]: an old guard' '  When: it runs' '  Then: it is done')"
 assert_eq "[G2] an old [guard] tag → verdict=fail" "fail" "$VERDICT"
 assert_contains "[G2] the violation names it" "$(_viol)" "UNKNOWN_STATUS WORK-2"
 assert_contains "[G2] the feedback tells design what to use instead" "$(cat "$FEEDBACK_PATH")" \
@@ -265,40 +279,40 @@ assert_eq "[G2] the feedback does not write the retired tag itself" "0" \
     "$(grep -cF '[guard]' "$FEEDBACK_PATH" || true)"
 assert_eq "[G2] ...nor does the finding design answers" "0" \
     "$(jq -r '.data.findings[].text' "$RESULT_JSON" | grep -cF '[guard]' || true)"
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2[maybe]: unknown')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2[maybe]: unknown')"
 assert_contains "[G2] an unknown tag is rejected the same way" "$(_viol)" "UNKNOWN_STATUS WORK-2"
-_run_gate_with_md "$(_g_md 'WORK-1[change]: x' 'WORK-2[no-code]: docs')"
+_run_gate_with_md "$(_g_md 'WORK-1[change]: x' '  When: it runs' '  Then: it is done' 'WORK-2[no-code]: docs')"
 assert_eq "[G2] the old [change] still reads as code, and [no-code] is a status" "pass" "$VERDICT"
 
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2[done]: already there')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2[done]: already there' '  When: it runs' '  Then: it is done')"
 assert_eq "[G3] a [done] requirement with no evidence → verdict=fail" "fail" "$VERDICT"
 assert_contains "[G3] the violation names it" "$(_viol)" "DONE_NO_EVIDENCE WORK-2"
 assert_contains "[G3] the feedback says how to name evidence" "$(cat "$FEEDBACK_PATH")" \
     "WORK-2 is marked [done] but names no evidence"
 
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2[done]: already there evidence: scripts/three.sh:"line three" tests/a-test.sh')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2[done]: already there evidence: scripts/three.sh:"line three" tests/a-test.sh' '  When: it runs' '  Then: it is done')"
 assert_eq "[G4] evidence that exists (a file with its text, and a test file) → pass" "pass" "$VERDICT"
 for _ev in /etc/hosts ../outside.sh scripts/missing.sh scripts/three.sh:x; do
-    _run_gate_with_md "$(_g_md 'WORK-1[code]: x' "WORK-2[done]: already there evidence: $_ev")"
+    _run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' "WORK-2[done]: already there evidence: $_ev" "  When: it runs" "  Then: it is done")"
     assert_contains "[G4] evidence '$_ev' is rejected" "$(_viol)" "DONE_BAD_EVIDENCE WORK-2 $_ev"
 done
 assert_contains "[G4] the feedback says what is wrong with the evidence" "$(cat "$FEEDBACK_PATH")" \
     "the evidence scripts/three.sh:x for WORK-2"
 # #2462 (ADR-069 §2): a line number is never evidence — lines move.
 for _ev in scripts/three.sh:3 scripts/three.sh:0; do
-    _run_gate_with_md "$(_g_md 'WORK-1[code]: x' "WORK-2[done]: already there evidence: $_ev")"
+    _run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' "WORK-2[done]: already there evidence: $_ev" "  When: it runs" "  Then: it is done")"
     assert_contains "[G4] evidence '$_ev' names a line number and is rejected" "$(_viol)" "DONE_LINE_EVIDENCE WORK-2 $_ev"
 done
 
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2[no-code]: docs' 'WORK-3[done]: there evidence: scripts/three.sh:"line one"')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2[no-code]: docs' 'WORK-3[done]: there evidence: scripts/three.sh:"line one"' '  When: it runs' '  Then: it is done')"
 assert_eq "[G5] [no-code] and [done] need no test file of their own" "pass" "$VERDICT"
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2[code]: y')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2[code]: y' '  When: it runs' '  Then: it is done')"
 assert_contains "[G5] a [code] requirement with no test file is still caught" "$(_viol)" \
     "MISSING_TESTFILE_FOR_SPEC WORK-2"
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2[change]: y')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2[change]: y' '  When: it runs' '  Then: it is done')"
 assert_contains "[G5] ...and so is an old [change] one" "$(_viol)" "MISSING_TESTFILE_FOR_SPEC WORK-2"
 
-_run_gate_with_md "$(_g_md 'WORK-1[code]: x' 'WORK-2[guard]: old')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: x' '  When: it runs' '  Then: it is done' 'WORK-2[guard]: old' '  When: it runs' '  Then: it is done')"
 assert_eq "[G6] the result carries no guard pre-check block" "absent" \
     "$(jq -r 'if has("guard_precheck") then "present" else "absent" end' "$RESULT_JSON")"
 assert_eq "[G6] the feedback has no guard coverage section" "0" \
@@ -311,7 +325,7 @@ assert_eq "[G6] the gate no longer defines a guard pre-check" "absent" \
 # passes on the new, so the fail-first rule accepts it while it proves nothing
 # about what the code does. The gate reads the requirement's words: a contents
 # or existence verb about a file, with no behaviour verb, is rejected.
-_run_gate_with_md "$(_g_md 'WORK-1[code]: plugin.sh contains `_foo`')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: plugin.sh contains `_foo`' '  When: it runs' '  Then: it is done')"
 assert_eq "[G7] 'plugin.sh contains _foo' as [code] → verdict=fail" "fail" "$VERDICT"
 assert_contains "[G7] the violation names it" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR WORK-1"
 assert_contains "[G7] the feedback says it in plain words" "$(cat "$FEEDBACK_PATH")" \
@@ -321,26 +335,26 @@ for _t in 'the manifest declares key `x`' 'scripts/x.sh defines function bar' \
           'the file tests/x-test.sh exists' 'the helper is present in scripts/lib/x.sh' \
           'the manifest has a `config.router` key' 'the test greps plugin.sh for `_foo`' \
           '`plugin.sh` contains `fails`'; do
-    _run_gate_with_md "$(_g_md "WORK-1[code]: $_t")"
+    _run_gate_with_md "$(_g_md "WORK-1[code]: $_t" "  When: it runs" "  Then: it is done")"
     assert_contains "[G7] '$_t' as [code] is rejected" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR WORK-1"
 done
-_run_gate_with_md "$(_g_md 'WORK-1[change]: plugin.sh contains `_foo`')"
+_run_gate_with_md "$(_g_md 'WORK-1[change]: plugin.sh contains `_foo`' '  When: it runs' '  Then: it is done')"
 assert_contains "[G7] ...and so is the old [change] tag" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR WORK-1"
 for _t in 'an empty input returns rc 1' 'build writes a summary when the diff is empty' \
           'scripts/x.sh prints an error and exits 1 when the file does not exist' \
           'the design prompt contains the evidence syntax' \
           'a manifest that declares no key is rejected by the loader' \
           'design-gate fails a design whose scope block is empty'; do
-    _run_gate_with_md "$(_g_md "WORK-1[code]: $_t")"
+    _run_gate_with_md "$(_g_md "WORK-1[code]: $_t" "  When: it runs" "  Then: it is done")"
     assert_eq "[G7] guard: '$_t' passes" "pass" "$VERDICT"
 done
-_run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' 'WORK-2[done]: scripts/three.sh contains line two evidence: scripts/three.sh:"line two"')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'WORK-2[done]: scripts/three.sh contains line two evidence: scripts/three.sh:"line two"' '  When: it runs' '  Then: it is done')"
 assert_eq "[G7] guard: a [done] requirement may describe what a file contains" "pass" "$VERDICT"
-_run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' 'WORK-2[no-code]: docs/x.md contains the new section')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'WORK-2[no-code]: docs/x.md contains the new section')"
 assert_eq "[G7] guard: a [no-code] requirement may describe what a file contains" "pass" "$VERDICT"
 # One bad [code] requirement with no test file draws both violations in the
 # same pass (review #2319): the gate reports everything at once (SPEC-7).
-_run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' 'WORK-2[code]: plugin.sh contains `_bar`')"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'WORK-2[code]: plugin.sh contains `_bar`' '  When: it runs' '  Then: it is done')"
 assert_contains "[G7] a contents-only requirement with no test file is named for the missing test file" "$(_viol)" "MISSING_TESTFILE_FOR_SPEC WORK-2"
 assert_contains "[G7] ...and, in the same pass, for describing contents" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR WORK-2"
 
@@ -349,7 +363,7 @@ assert_contains "[G7] ...and, in the same pass, for describing contents" "$(_vio
 # accepts a fence line carrying trailing whitespace. C1's fence check must
 # mirror that tolerance so a trailing-space fence does NOT falsely trip
 # SCOPE_MISSING. Build a clean design whose scope fence has a trailing space.
-_ws_md="$(printf '# Design\n\n```scope \nscripts/wire.sh\n```\n\n```acceptance\nWORK-1[change]: the thing works\nTESTFILES:\ntests/a-test.sh\nWIRING: scripts/wire.sh\n```\n')"
+_ws_md="$(printf '# Design\n\n```scope \nscripts/wire.sh\n```\n\n```acceptance\nWORK-1[change]: the thing works\n  When: it runs\n  Then: it is done\nTESTFILES:\ntests/a-test.sh\nWIRING: scripts/wire.sh\n```\n')"
 _run_gate_with_md "$_ws_md"
 _ws_viol="$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")"
 assert_eq "[WORK-11] trailing-ws scope fence → no false SCOPE_MISSING" "absent" \
@@ -367,7 +381,11 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: first new behavior
+  When: it runs
+  Then: it is done
 WORK-2[change]: second new behavior
+  When: it runs
+  Then: it is done
 WIRING: scripts/wire.sh
 TESTFILES:
 WORK-1: tests/a-test.sh
@@ -388,6 +406,8 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: new behavior
+  When: it runs
+  Then: it is done
 WIRING: scripts/wire.sh
 TESTFILES:
 WORK-1: tests/does-not-exist-per-spec-test.sh
@@ -412,7 +432,11 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: first new behavior
+  When: it runs
+  Then: it is done
 WORK-2[change]: second new behavior, deliberately given no testfile of its own
+  When: it runs
+  Then: it is done
 WIRING: scripts/wire.sh
 TESTFILES:
 WORK-1: tests/a-test.sh
@@ -435,6 +459,8 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: the thing works
+  When: it runs
+  Then: it is done
 WIRING: scripts/wire.sh
 TESTFILES:
 WORK-1: ../outside-the-repo-test.sh
@@ -455,6 +481,8 @@ scripts/wire.sh
 
 ```acceptance
 WORK-1[change]: the thing works
+  When: it runs
+  Then: it is done
 WIRING: scripts/wire.sh
 TESTFILES:
 WORK-1: /etc/passwd-test.sh
@@ -470,7 +498,7 @@ assert_contains "[WORK-15] a dropped absolute path also surfaces as MISSING_TEST
 # created files in the worktree.
 _g8_md() {   # _g8_md <WORK-2 test file>
     printf '# Design\n\n```scope\nscripts/wire.sh\n```\n\n```acceptance\n'
-    printf 'WORK-1[code]: x\nWORK-2[no-code]: the ADR says so\n'
+    printf 'WORK-1[code]: x\n  When: it runs\n  Then: it is done\nWORK-2[no-code]: the ADR says so\n'
     printf 'WIRING: scripts/wire.sh\nTESTFILES:\nWORK-1: tests/a-test.sh\nWORK-2: %s\n```\n' "$1"
 }
 _run_gate_with_md "$(_g8_md docs/adr/ADR-011-pluggable-backends.md)"

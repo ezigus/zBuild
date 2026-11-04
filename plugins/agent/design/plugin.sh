@@ -272,6 +272,21 @@ path/to/file2
    Each SPEC is checked against one assertion, so a SPEC that promises two
    things is never fully met by it.
 
+   Under its line, each [code] and [done] SPEC says its behaviour in parts, one
+   per line, indented ([no-code] may too):
+   - \`Given:\` the setup the behaviour starts from. Optional; any number.
+   - \`When:\` the one action — exactly one When per SPEC: a second action is a second SPEC.
+   - \`Then:\` something a test can observe after the When — an output, a
+     result, a file the code writes, an event. One or more. Never what a file
+     or a test contains.
+   - \`And:\` adds another line to the Given, Then or Cleanup above it.
+   - \`Cleanup:\` what must be true again after the test, for anything the
+     Given sets up or a Then says happens that outlives the test — an exported
+     variable, a file outside the test's own folder, global config or git state.
+     Leave it out when nothing outlives the test: the test harness cleans up
+     after every test.
+   A SPEC kept from an earlier design that is written on one line: rewrite it with its parts.
+
    The status says what work the requirement needs. Look at the code before you choose:
    - \`LOOP-1[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
      If the code already does it, it is not [code]: its test would already pass, and the build stalls on it.
@@ -297,8 +312,15 @@ path/to/file2
 The \`\`\`acceptance block format:
 \`\`\`acceptance
 LOOP-1[code]: <one new behaviour this change introduces>
+  Given: <the setup it starts from>
+  When: <the one action>
+  Then: <what a test can observe after it>
+  And: <another thing a test can observe>
+  Cleanup: <what must be true again after, when the setup or a Then outlives the test>
 LOOP-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
 GARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"
+  When: <the action>
+  Then: <what the code from before this change already does>
 REMOVED: LOOP-3 — <why this SPEC was dropped>
 WIRING: <the existing file that calls the new code>
 TESTFILES:

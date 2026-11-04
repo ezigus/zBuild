@@ -11,7 +11,8 @@
 #
 #   SPEC-1 the prompt carries the requirement TEXT and the assertion source
 #   SPEC-2 and NO implementation (no diff, no build summary)
-#   SPEC-3 `partial` is in the vocabulary, and a partial assertion is a finding
+#   SPEC-3 a part of a SPEC its test falls short on is a finding naming it
+#          (was `partial` for the whole SPEC; #2467 judges each part)
 #   SPEC-7/8 junk replies are never a pass: the outcome is unusable (#2062)
 #   #2108 a model that drains stdin still leaves every SPEC judged
 #   #2143 every SPEC is judged in ONE call when the reply answers each
@@ -39,9 +40,14 @@ source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
 
 # Stubbed AFTER the plugin loads: it sources core/router/route.sh itself.
 _P_FILE="$TEST_TEMP_DIR/prompt.txt"; _CALLS="$TEST_TEMP_DIR/calls"
-_REPLY='VERDICT: corresponds
-REASON: the assertion checks exactly the property the requirement names'
-route_to_model() { cat >/dev/null; printf 'x\n' >> "$_CALLS"; printf '%s' "$2" >> "$_P_FILE"; printf '%s' "$_REPLY"; return 0; }
+# #2467 (ADR-073 §6): with no _REPLY set, the fake answers as a model would that
+# every part of every SPEC it is shown is met.
+_REPLY=""
+route_to_model() {
+    cat >/dev/null; printf 'x\n' >> "$_CALLS"; printf '%s' "$2" >> "$_P_FILE"
+    if [[ -n "$_REPLY" ]]; then printf '%s' "$_REPLY"; else zb_test_check_ok "$2"; fi
+    return 0
+}
 
 R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/tests"; D="$TEST_TEMP_DIR/design.md"
 _contract() {   # _contract <n> — SPEC-1..n, each with a tagged assertion
@@ -102,28 +108,30 @@ _P="$(cat "$_P_FILE")"
 assert_contains "[SPEC-1] the prompt carries the requirement TEXT" "$_P" "thing 1 holds"
 assert_contains "[SPEC-1] and the assertion source" "$_P" '"[SPEC-1] thing 1 holds"'
 assert_eq "[SPEC-2] the prompt carries NO diff" "0" "$(grep -c 'diff --git' <<< "$_P" || true)"
-assert_contains "[SPEC-3] partial is offered as a verdict" "$_P" "partial"
+assert_contains "[SPEC-3] a part short of what it says can be named (#2467: missing, per part)" "$_P" "<identifier> <part>: missing"
 assert_eq "[SPEC-2] a corresponding assertion: no finding" "0" "${#_TA_CORR_FINDINGS[@]}"
 assert_eq "[SPEC-2] ...and the check was judged" "" "$_TA_CORR_OUTCOME"
 
 # ── #2143 / SPEC-3 ──────────────────────────────────────────────────────────
 _contract 3
-_REPLY='SPEC-1: VERDICT: corresponds | REASON: exactly the property
-SPEC-2: VERDICT: partial | REASON: one case of several | QUOTE: "thing 2 holds"
-SPEC-3: VERDICT: corresponds | REASON: exactly the property'
+_REPLY='SPEC-1 Then 1: ok
+SPEC-1 sections: ok
+SPEC-2 Then 1: missing | WHY: one case of several | QUOTE: "thing 2 holds"
+SPEC-2 sections: ok
+SPEC-3 Then 1: ok
+SPEC-3 sections: ok'
 _judge
 assert_eq "[#2143] all 3 SPECs are judged in ONE model call" "1" "$(wc -l < "$_CALLS" | tr -d ' ')"
 for _id in SPEC-1 SPEC-2 SPEC-3; do
     assert_contains "[#2143] the batch prompt carries $_id as a heading" "$(cat "$_P_FILE")" "### $_id"
 done
-assert_eq "[SPEC-3] a partial assertion is one finding" "1" "${#_TA_CORR_FINDINGS[@]}"
-assert_contains "[SPEC-3] ...naming the SPEC and why" "${_TA_CORR_FINDINGS[0]:-}" "SPEC-2's assertion establishes only part of the requirement: one case of several"
+assert_eq "[SPEC-3] a part short of its SPEC is one finding" "1" "${#_TA_CORR_FINDINGS[@]}"
+assert_contains "[SPEC-3] ...naming the SPEC, the part and why" "${_TA_CORR_FINDINGS[0]:-}" "SPEC-2 Then 1 is not asserted: one case of several"
 
 # ── #2108: a stdin-draining model still leaves every SPEC judged ────────────
-_REPLY='VERDICT: corresponds
-REASON: the property'
+_REPLY=""
 _judge
-assert_eq "[#2108] 1 batch + 3 fallback calls, every SPEC judged" "4" "$(wc -l < "$_CALLS" | tr -d ' ')"
+assert_eq "[#2108] a model that drains stdin: one call, every SPEC judged" "1" "$(wc -l < "$_CALLS" | tr -d ' ')"
 assert_eq "[#2108] ...and judged clean" "0|" "${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
 # ── SPEC-7/8: junk replies are never a pass ─────────────────────────────────
@@ -144,7 +152,7 @@ assert_eq "[#2032] rc=124 → timed_out" "timed_out" "$_TA_CORR_OUTCOME"
 route_to_model() {
     cat >/dev/null; printf 'x\n' >> "$_CALLS"
     [[ "$(wc -l < "$_CALLS" | tr -d ' ')" -eq 1 ]] && return 124
-    printf 'VERDICT: corresponds\nREASON: the assertion checks the SPEC'; return 0
+    zb_test_check_ok "$2"; return 0
 }
 _judge
 assert_eq "[#2032] the batch timed out and the fallback succeeded: still timed_out" "timed_out" "$_TA_CORR_OUTCOME"
@@ -162,10 +170,10 @@ route_to_model() {
         *) printf '%s' "$_RA_R3" ;;
     esac
 }
-printf '0' > "$_RA_N"; _RA_R3=$'VERDICT: corresponds\nREASON: the property'
+printf '0' > "$_RA_N"; _RA_R3=$'SPEC-1 Then 1: ok\nSPEC-1 sections: ok'
 _judge
 assert_eq "[RA] batch, one-SPEC call, and one more ask" "3" "$(cat "$_RA_N")"
-assert_contains "[RA] the second ask says what was wrong" "$(cat "$_P_FILE.3" 2>/dev/null)" "it has no VERDICT: line"
+assert_contains "[RA] the second ask says what was wrong" "$(cat "$_P_FILE.3" 2>/dev/null)" "it has no line for SPEC-1 Then 1, SPEC-1 sections"
 assert_contains "[RA] the second ask carries the answer" "$(cat "$_P_FILE.3" 2>/dev/null)" "hmm, looks about right"
 assert_eq "[RA] the second answer is the judgement" "0|" "${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 printf '0' > "$_RA_N"; _RA_R3='still unsure'

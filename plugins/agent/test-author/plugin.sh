@@ -234,16 +234,23 @@ test_author_run() {
     # ── The contract, and ONLY the contract ─────────────────────────────────
     # #1978: naming a SPEC by id while its requirement sits 130 lines away is
     # how an assertion comes to test something else. The text travels with the id.
-    local sid n=0 n_done=0 spec_block=""
+    local sid n=0 n_done=0 spec_block="" _ta_blk _ta_p
+    # #2467: the block read once; each SPEC's status, words and parts from it.
+    _ta_blk="$(extract_acceptance_block "$design" 2>/dev/null)" || _ta_blk=""
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
-        local _st _txt _tfs
-        _st="$(acceptance_spec_status "$design" "$sid" 2>/dev/null || true)"
+        local _st="" _txt="" _tfs
+        _acceptance_spec_line "$_ta_blk" "$sid" && _st="$_ACC_SPEC_STATUS"
         # #2304 (ADR-069 §6): the code already does a done requirement — no test.
         if [[ "$_st" == "done" ]]; then n_done=$(( n_done + 1 )); continue; fi
-        _txt="$(acceptance_spec_text "$design" "$sid" 2>/dev/null || true)"
+        _txt="$_ACC_SPEC_TEXT"
+        local -a _ta_parts=()
+        acceptance_parts_v _ta_parts "$_ACC_SPEC_PARTS"
         _tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         spec_block="${spec_block}- ${sid} [${_st:-code}] ${_txt}"$'\n'
+        for _ta_p in ${_ta_parts[@]+"${_ta_parts[@]}"}; do
+            spec_block="${spec_block}    ${_ta_p%%$'\t'*}: ${_ta_p#*$'\t'}"$'\n'
+        done
         # #2269: what the status demands of the test, in before-and-after words.
         if [[ "$_st" == "no-code" ]]; then
             spec_block="${spec_block}    its test must pass after this change; it need not fail before"$'\n'
@@ -315,6 +322,13 @@ Your job: write the acceptance assertions for the requirements below, in the lan
 An assertion for every requirement below, written to its testfile(s)${sup_block:+, and the existing checks listed below brought up to the new behaviour}.
 
 Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass. Check the new value or file itself — the output, the field, the file's content — not only that the step finished without an error: a test that only checks that something ran passes on the old code too.
+
+Write each SPEC's test in sections, marked with comments in the test's own language — in a shell test:
+# Given — the setup its Given lines name
+# When — the one action its When names
+# Then — an assertion for each of its Then lines
+# Cleanup — putting back what its Cleanup lines name (when it has any)
+A test you touch that is not laid out this way — one you update, or one you add an assertion to — rewrite it into these sections, keeping everything it checks.
 
 A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code, never by hand: hand-made data holds whatever its author assumed. Find how the existing tests and test helpers already make it, and do the same.
 
@@ -425,6 +439,17 @@ EOF
         _ta_write_result "$art" "$_TA_CORR_OUTCOME" \
             "the check that each assertion tests its SPEC could not be run ($_TA_CORR_OUTCOME)" "$n"
         return 0
+    fi
+    # #2467 (ADR-073 §6): a SPEC no test can prove is design's to rewrite. The
+    # tries cannot fix it, so the run stops here, naming it — nothing loops back.
+    if [[ -n "${_TA_CORR_UNTESTABLE:-}" ]]; then
+        local _ut_first="${_TA_CORR_UNTESTABLE%%$'\n'*}"
+        declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
+        _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a SPEC cannot be tested"
+        _ta_write_result "$art" "misconfigured" \
+            "${_ut_first%%:*} cannot be proven by any test — design must rewrite it: ${_ut_first#*: }" "$n" \
+            "$(while IFS= read -r _ut_first; do printf '%s cannot be proven by any test — design must rewrite it: %s\n' "${_ut_first%%:*}" "${_ut_first#*: }"; done <<< "$_TA_CORR_UNTESTABLE" | stage_findings_json)"
+        return 1
     fi
     _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})
     # #2460 (ADR-054 §6a): what its own check found ends the try `unusable`,

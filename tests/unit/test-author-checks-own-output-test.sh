@@ -107,8 +107,9 @@ MD
 }
 
 # #2464 (ADR-072 §3): a verdict short of corresponds quotes the requirement.
-MISMATCH='SPEC-1: VERDICT: mismatch REASON: it checks the exit code of the wrong command | QUOTE: "an empty input returns rc 1"'
-CORRESP="SPEC-1: VERDICT: corresponds REASON: it checks the requirement"
+# #2467 (ADR-073 §6): a line per part of the SPEC, and one for the test's sections.
+MISMATCH=$'SPEC-1 Then 1: wrong | WHY: it checks the exit code of the wrong command | QUOTE: "an empty input returns rc 1"\nSPEC-1 sections: ok'
+CORRESP=$'SPEC-1 Then 1: ok\nSPEC-1 sections: ok'
 
 # ── A1 ───────────────────────────────────────────────────────────────────────
 # #2460: the engine owns every retry. A mismatch ends this try `unusable`, the

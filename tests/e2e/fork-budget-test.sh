@@ -103,8 +103,10 @@ FORK_BUDGET=2100
 # 2870 (#2464: validate_manifest reads each router knob's range and words in its
 # shell, not in two `$( )` a knob — measured 2,853 macOS with the judges' kept
 # answers added; main was at 2,879). 2800 (#2466, the same change as
-# FORK_BUDGET 2100 — measured 2,762 macOS).
-PROCESS_BUDGET=2800
+# FORK_BUDGET 2100 — measured 2,762 macOS). 2790 (#2467: the build, lens and
+# test-author readers read the acceptance block once, not once per SPEC —
+# measured 2,756 macOS).
+PROCESS_BUDGET=2790
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh

@@ -29,6 +29,10 @@ _ACCEPTANCE_ID_ERE='[A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+'
 # `SPEC-2[no-code]:` line was silently dropped from every list. Groups:
 # 1 = the id, 3 = the tag (empty when the line has none).
 _ACCEPTANCE_SPEC_RE="^(${_ACCEPTANCE_ID_ERE})(\\[([a-z-]+)\\])?:"
+# #2467 (ADR-073 §1): a part of the SPEC above it, on its own line — Given,
+# When, Then, And (continues the Given, Then or Cleanup above it) or Cleanup.
+# Group 2 = the part, 3 = its words.
+_ACCEPTANCE_PART_RE='^(-[[:space:]]+)?(Given|When|Then|And|Cleanup)[[:space:]]*:[[:space:]]*(.*)$'
 # A test-file binding line under TESTFILES: `<id>: <path> …`. Group 1 = the id.
 _ACCEPTANCE_BIND_RE="^(${_ACCEPTANCE_ID_ERE}):[[:space:]]"
 
@@ -102,6 +106,13 @@ extract_acceptance_block() {
                 # #2462: a REMOVED line is its own entry — never part of the SPEC
                 # before it — and its own wrapped words carry on to it.
                 specs+=("$_t")
+            elif [[ "$_t" =~ $_ACCEPTANCE_PART_RE ]]; then
+                # #2467 (ADR-073 §1): a part of the SPEC above it, kept apart
+                # from its words by a unit separator, so the SPEC stays one
+                # entry. A part with no SPEC above it is an entry of its own,
+                # for design's checks to refuse.
+                if [[ ${#specs[@]} -gt 0 ]]; then specs[-1]+=$'\x1f'"${BASH_REMATCH[2]}: ${BASH_REMATCH[3]}"
+                else specs+=("${BASH_REMATCH[2]}: ${BASH_REMATCH[3]}"); fi
             elif [[ -n "$_t" && ${#specs[@]} -gt 0 && ! "$_t" =~ ^[A-Z][A-Z_]*: ]]; then
                 specs[-1]+=" $_t"
             fi
@@ -181,15 +192,19 @@ acceptance_list_spec_ids() {
 #                    is part of the requirement)
 #   _ACC_SPEC_COVERS the issue requirement ids after ` covers: ` (R-1 R-3), up
 #                    to any ` evidence: ` — space separated (#2306, ADR-070 §3)
+#   _ACC_SPEC_PARTS  its Given/When/Then/And/Cleanup lines as written, each
+#                    "<Part>: <words>", joined by a unit separator (#2467)
 # Returns 1 when the block has no such line. Stops at TESTFILES: — the per-SPEC
 # binding lines there share the `SPEC-n:` shape, and a path is not a requirement.
 _acceptance_spec_line() {
     local _block="${1:-}" _sid="${2:-}" _l
-    _ACC_SPEC_TAG="" _ACC_SPEC_STATUS="" _ACC_SPEC_REST="" _ACC_SPEC_TEXT="" _ACC_SPEC_COVERS=""
+    _ACC_SPEC_TAG="" _ACC_SPEC_STATUS="" _ACC_SPEC_REST="" _ACC_SPEC_TEXT="" _ACC_SPEC_COVERS="" _ACC_SPEC_PARTS=""
     [[ -n "$_block" && -n "$_sid" ]] || return 1
     while IFS= read -r _l; do
         [[ "$_l" == "TESTFILES:" ]] && break
         if [[ "$_l" =~ $_ACCEPTANCE_SPEC_RE && "${BASH_REMATCH[1]}" == "$_sid" ]]; then
+            # #2467: its parts follow its first line, each after a unit separator.
+            if [[ "$_l" == *$'\x1f'* ]]; then _ACC_SPEC_PARTS="${_l#*$'\x1f'}"; _l="${_l%%$'\x1f'*}"; fi
             _ACC_SPEC_TAG="${BASH_REMATCH[3]}"
             _ACC_SPEC_REST="${_l#*:}"
             _ACC_SPEC_REST="${_ACC_SPEC_REST#"${_ACC_SPEC_REST%%[![:space:]]*}"}"
@@ -210,6 +225,91 @@ _acceptance_spec_line() {
         fi
     done <<< "$_block"
     return 1
+}
+
+# acceptance_parts_v <array_var> <parts> [problems_var] — a SPEC's parts
+# (_ACC_SPEC_PARTS) as "<label><TAB><words>", in order (#2467, ADR-073 §1). The
+# labels are what a check names: "Given 1", "When", "Then 2", "Cleanup 1". And
+# continues the Given, Then or Cleanup above it and takes its next number. With
+# [problems_var], each thing wrong with them: NO_WHEN, MANY_WHEN, NO_THEN,
+# AND_AFTER_WHEN, AND_FIRST, and "EMPTY <label>" for a part with no words.
+acceptance_parts_v() {
+    local -n _apv="$1"; local _apv_raw="${2:-}" _apv_pl="${3:-}"
+    local _apv_g=0 _apv_w=0 _apv_t=0 _apv_c=0 _apv_last="" _apv_k _apv_x _apv_lab
+    local -a _apv_pr=()
+    _apv=()
+    # read, not word splitting: a part's words may hold a * or a ?.
+    local -a _apv_items=()
+    [[ -n "$_apv_raw" ]] && IFS=$'\x1f' read -r -d '' -a _apv_items <<< "$_apv_raw"
+    [[ ${#_apv_items[@]} -gt 0 ]] && _apv_items[-1]="${_apv_items[-1]%$'\n'}"
+    for _apv_x in ${_apv_items[@]+"${_apv_items[@]}"}; do
+        _apv_k="${_apv_x%%:*}"; _apv_x="${_apv_x#*:}"; _apv_x="${_apv_x# }"
+        if [[ "$_apv_k" == And ]]; then
+            case "$_apv_last" in
+                "")   _apv_pr+=(AND_FIRST); _apv_k=Then ;;
+                When) _apv_pr+=(AND_AFTER_WHEN); _apv_k=When ;;
+                *)    _apv_k="$_apv_last" ;;
+            esac
+        fi
+        case "$_apv_k" in
+            Given)   _apv_g=$((_apv_g + 1)); _apv_lab="Given $_apv_g" ;;
+            When)    _apv_w=$((_apv_w + 1)); _apv_lab="When"; (( _apv_w > 1 )) && _apv_lab="When $_apv_w" ;;
+            Then)    _apv_t=$((_apv_t + 1)); _apv_lab="Then $_apv_t" ;;
+            Cleanup) _apv_c=$((_apv_c + 1)); _apv_lab="Cleanup $_apv_c" ;;
+        esac
+        _apv_last="$_apv_k"
+        [[ -n "${_apv_x//[[:space:]]/}" ]] || _apv_pr+=("EMPTY $_apv_lab")
+        _apv+=("$_apv_lab"$'\t'"$_apv_x")
+    done
+    if [[ -n "$_apv_pl" ]]; then
+        local -n _apv_p="$_apv_pl"
+        (( _apv_w == 0 )) && _apv_pr+=(NO_WHEN)
+        (( _apv_w > 1 )) && [[ " ${_apv_pr[*]-} " != *" AND_AFTER_WHEN "* ]] && _apv_pr+=(MANY_WHEN)
+        (( _apv_t == 0 )) && _apv_pr+=(NO_THEN)
+        _apv_p=(${_apv_pr[@]+"${_apv_pr[@]}"})
+    fi
+    return 0
+}
+
+# acceptance_spec_parts_v <array_var> <block_output> <spec_id> — the SPEC's
+# parts, as acceptance_parts_v gives them; none for a SPEC written on one line.
+acceptance_spec_parts_v() {
+    local -n _aspv="$1"
+    _aspv=()
+    _acceptance_spec_line "$2" "$3" || return 0
+    acceptance_parts_v _aspv "$_ACC_SPEC_PARTS"
+}
+
+# acceptance_spec_render_v <var> <block_output> <spec_id> [indent] — the SPEC's
+# words and, under them, each of its parts by its label: how a SPEC is shown to
+# a model (#2467, ADR-073 §2).
+acceptance_spec_render_v() {
+    local -n _asr="$1"; local _asr_i="${4-  }" _asr_x
+    _asr=""
+    _acceptance_spec_line "$2" "$3" || return 0
+    _asr="$_ACC_SPEC_TEXT"
+    local -a _asr_p=()
+    acceptance_parts_v _asr_p "$_ACC_SPEC_PARTS"
+    for _asr_x in ${_asr_p[@]+"${_asr_p[@]}"}; do _asr+=$'\n'"${_asr_i}${_asr_x%%$'\t'*}: ${_asr_x#*$'\t'}"; done
+    return 0
+}
+
+# acceptance_block_render_v <var> <block_output> — the extracted block as a
+# model reads it: each SPEC's parts on their own lines, labelled, under it.
+acceptance_block_render_v() {
+    local -n _abr="$1"; local _abr_l _abr_x
+    _abr=""
+    while IFS= read -r _abr_l; do
+        if [[ "$_abr_l" == *$'\x1f'* ]]; then
+            local -a _abr_p=()
+            acceptance_parts_v _abr_p "${_abr_l#*$'\x1f'}"
+            _abr+="${_abr_l%%$'\x1f'*}"$'\n'
+            for _abr_x in ${_abr_p[@]+"${_abr_p[@]}"}; do _abr+="  ${_abr_x%%$'\t'*}: ${_abr_x#*$'\t'}"$'\n'; done
+        else
+            _abr+="$_abr_l"$'\n'
+        fi
+    done <<< "$2"
+    _abr="${_abr%$'\n'}"
 }
 
 # acceptance_spec_status <design_md> <spec_id>  (#2304, ADR-069 §1)
@@ -284,7 +384,7 @@ acceptance_list_removed_ids() {
     blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
     while IFS= read -r l; do
         [[ "$l" == "TESTFILES:" ]] && break
-        [[ "$l" =~ $re ]] && printf '%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}"
+        [[ "$l" =~ $re ]] && printf '%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]%%$'\x1f'*}"
     done <<< "$blk"
     return 0
 }
@@ -736,6 +836,10 @@ acceptance_requirements_for_judge() {
         sid="${BASH_REMATCH[1]}"
         _acceptance_spec_line "$blk" "$sid" || continue
         printf -- '- %s: %s\n' "$sid" "$_ACC_SPEC_TEXT"
+        # #2467: and its parts, each on its own line.
+        local -a _rfj_p=(); local _rfj_x
+        acceptance_parts_v _rfj_p "$_ACC_SPEC_PARTS"
+        for _rfj_x in ${_rfj_p[@]+"${_rfj_p[@]}"}; do printf '  %s: %s\n' "${_rfj_x%%$'\t'*}" "${_rfj_x#*$'\t'}"; done
         case "$_ACC_SPEC_STATUS" in
             no-code) printf '  Status: needs work (no code) — nothing checked it mechanically; judge it yourself, and say whether its tests would catch it broken\n' ;;
             done)    printf '  Status: already done — design says the code already does this; check the claim\n' ;;

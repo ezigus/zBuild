@@ -1,6 +1,6 @@
 # ADR-031 — Behavioral acceptance contract
 
-**Status:** Implemented (2026-06-17)
+**Status:** Implemented (2026-06-17); amended 2026-11-04 (#2467: a SPEC is written as Given/When/Then, ADR-073)
 **Related:** ADR-007 (test strategy), ADR-022 (test-assessment stage), ADR-027 (recursive-flow template format), ADR-030 (scope governance), ADR-036 (acceptance-contract teeth)
 **Issue:** #864
 
@@ -105,3 +105,11 @@ Delivered in this PR:
 - **Integration tests IT-1–IT-4** (`tests/integration/test-assessment-acceptance-flow-test.sh`) — end-to-end flow covering the same four scenarios against the full plugin sourced in a git fixture.
 
 The downgrade event taxonomy added to ADR-022 Amendment v5 covers these two downgrade reasons. No further amendments to this ADR are expected.
+
+## Amendment 2026-11-04 (#2467) — a SPEC is written as Given/When/Then
+
+A SPEC in the acceptance block keeps its first line (id, status, title, `covers:`, `evidence:`) and says its behaviour on indented lines under it: `Given:` (optional), exactly one `When:`, one or more `Then:`, `And:` to continue a part, and `Cleanup:` for what outlives the test (ADR-073 §1). A `[code]` or `[done]` SPEC needs them; design's check C10 refuses one without them, or with no When, two Whens or no Then (ADR-073 §3).
+
+## Enforced by
+
+- Amendment 2026-11-04 (#2467: Given/When/Then SPECs) → `tests/unit/gwt-format-test.sh` P1–P5, C1–C5

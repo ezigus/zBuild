@@ -48,8 +48,29 @@ starting with its id, in exactly this form:
 <SPEC id>: outside | WHY: <what the issue does not ask for, or how it contradicts it> | QUOTE: "<the SPEC's own words that do>"
 <SPEC id>: done_wrong | WHY: <what the code does instead> | QUOTE: <file>:"<the exact text of the code that shows it>"
 
-done_wrong is only for a SPEC marked [done]. A scope entry the issue does not
-ask for, or that contradicts it, has a line of its own:
+done_wrong is only for a SPEC marked [done].
+
+A SPEC with parts (shown under it, each with its label: Given 1, When, Then 1,
+Cleanup 1) is judged part by part too. Answer one more line for every part:
+
+<SPEC id> <part>: ok
+<SPEC id> <part>: untestable | WHY: <why a test cannot observe it> | QUOTE: "<the part's own words>"
+<SPEC id> <part>: how | WHY: <what it says about how it is built> | QUOTE: "<the part's own words>"
+<SPEC id> <part>: contradicts | WHY: <what it cannot be true together with> | QUOTE: "<those words>" or <file>:"<that text>"
+<SPEC id> <part>: duplicate | WHY: <which SPEC already has this action> | QUOTE: "<that SPEC's words>"
+
+untestable is only for a Then: a Then must be something a test can observe
+after the When — an output, a result, a file the code writes, an event — never
+what a file or a test contains, and never "it works". duplicate is only for a
+When. And on the SPEC's own line, instead of ok:
+
+<SPEC id>: needs_cleanup | WHY: <what the Given or a Then leaves behind> | QUOTE: "<the part's own words that leave it>"
+
+when its Given sets up, or a Then says the code leaves, something that outlives
+the test — an exported variable, a file outside the test's own folder, global
+config or git state — and no Cleanup part puts it back.
+
+A scope entry the issue does not ask for, or that contradicts it, has a line of its own:
 
 SCOPE: <the scope entry, as listed> | WHY: <why>
 
@@ -153,9 +174,13 @@ EOF2
 _dcov_parse() {
     local raw="$1" reqs="$2" acc="$3" scope="$4" repo="$5" base="$6"
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DCOV_PROBLEM=""; _DCOV_QUOTED=()
-    local -A req_text=() spec_text=() spec_st=() seen=()
+    _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=()
+    local -A req_text=() spec_text=() spec_st=() seen=() part_text=() spec_parts=()
     local -a order=() bad=()
-    local l id rest word why quote w qp
+    local l id rest word why quote w qp lab _px
+    # #2467: the words every quote of a contradiction or a duplicate may come from.
+    local all_words="$reqs"$'\n'
+    acceptance_block_render_v w "$acc"; all_words+="$w"
     while IFS= read -r l; do
         [[ "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+):[[:space:]]*(.*)$ ]] || continue
         req_text["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"; order+=("${BASH_REMATCH[1]}")
@@ -166,6 +191,14 @@ _dcov_parse() {
         id="${BASH_REMATCH[1]}"
         _acceptance_spec_line "$acc" "$id" || continue
         spec_text["$id"]="$_ACC_SPEC_TEXT"; spec_st["$id"]="$_ACC_SPEC_STATUS"; order+=("$id")
+        # #2467 (ADR-073 §5): each part of it is judged on its own line.
+        local -a _dp_parts=()
+        acceptance_parts_v _dp_parts "$_ACC_SPEC_PARTS"
+        for _px in ${_dp_parts[@]+"${_dp_parts[@]}"}; do
+            lab="${_px%%$'\t'*}"
+            part_text["$id $lab"]="${_px#*$'\t'}"; order+=("$id $lab")
+            spec_parts["$id"]+="${_px#*$'\t'}"$'\n'
+        done
     done <<< "$acc"
     while IFS= read -r l; do
         l="${l#"${l%%[![:space:]>*\`_-]*}"}"
@@ -177,6 +210,10 @@ _dcov_parse() {
             else
                 bad+=("SCOPE names $w, which is not in the design's scope")
             fi
+            continue
+        fi
+        if [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[[:space:]]+((Given|Then|Cleanup)[[:space:]]+[0-9]+|When([[:space:]]+[0-9]+)?)[*\`_]*:[[:space:]]*([a-z_]+)(.*)$ ]]; then
+            _dcov_part_line "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}"
             continue
         fi
         [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[*\`_]*:[[:space:]]*([a-z_]+)(.*)$ ]] || continue
@@ -201,6 +238,10 @@ _dcov_parse() {
         fi
         case "$word" in
             ok) ;;
+            needs_cleanup)
+                if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
+                judge_quote_check_v w "$quote" "${spec_text[$id]}"$'\n'"${spec_parts[$id]:-}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
+                _DESIGN_NEEDS_CLEANUP+=("$id: ${why:-it leaves something behind} — ${quote#"${quote%%[![:space:]]*}"}") ;;
             outside|done_wrong)
                 if [[ "$word" == done_wrong && "${spec_st[$id]}" != "done" ]]; then
                     bad+=("$id is not marked [done]: done_wrong is only for a SPEC that is"); continue
@@ -211,7 +252,7 @@ _dcov_parse() {
                 quote="${quote#"${quote%%[![:space:]]*}"}"
                 if [[ "$word" == outside ]]; then _DESIGN_OUTSIDE+=("$id: ${why:-the issue does not ask for it} — $quote")
                 else _DESIGN_DONE_WRONG+=("$id: ${why:-the code does not do it} — $quote"); fi ;;
-            *) bad+=("$id is a SPEC: it is ok, outside or done_wrong, not $word") ;;
+            *) bad+=("$id is a SPEC: it is ok, outside, done_wrong or needs_cleanup, not $word") ;;
         esac
     done <<< "$raw"
     local -a missing=()
@@ -220,6 +261,32 @@ _dcov_parse() {
     if [[ ${#bad[@]} -gt 0 ]]; then
         local IFS=';'; _DCOV_PROBLEM="${bad[*]}"; _DCOV_PROBLEM="${_DCOV_PROBLEM//;/; }"
     fi
+    return 0
+}
+
+# _dcov_part_line <"<id> <label>"> <verdict> <rest> — one part's line of the
+# answer (#2467, ADR-073 §5), read in _dcov_parse's scope: its seen, bad,
+# part_text, all_words and _DESIGN_PART_WRONG.
+_dcov_part_line() {
+    local key="$1" word="$2" rest="$3" why="" quote="" own w qp
+    [[ -n "${part_text[$key]+x}" ]] || return 0
+    seen["$key"]=1
+    [[ "$word" == ok ]] && return 0
+    if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
+    why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
+    [[ "$rest" == *"| QUOTE:"* ]] && quote="${rest#*| QUOTE:}"
+    case "$word" in
+        untestable) [[ "$key" == *" Then "* ]] || { bad+=("$key: untestable is only for a Then"); return 0; }; own="${part_text[$key]}" ;;
+        how)        own="${part_text[$key]}" ;;
+        duplicate)  [[ "$key" == *" When"* ]] || { bad+=("$key: duplicate is only for a When"); return 0; }; own="$all_words" ;;
+        contradicts) own="$all_words" ;;
+        *) bad+=("$key is a part: it is ok, untestable, how, contradicts or duplicate, not $word"); return 0 ;;
+    esac
+    if [[ -z "$quote" ]]; then bad+=("$key has no QUOTE"); return 0; fi
+    judge_quote_check_v w "$quote" "$own" "$repo" "$base" || { bad+=("$key's quote $w"); return 0; }
+    judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED+=("$qp")
+    quote="${quote#"${quote%%[![:space:]]*}"}"
+    _DESIGN_PART_WRONG+=("$word"$'\t'"$key"$'\t'"${why:-}"$'\t'"$quote")
     return 0
 }
 
@@ -232,6 +299,7 @@ _dcov_parse() {
 _design_coverage() {
     local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}"
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DESIGN_COV_OUTCOME=""
+    _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=()
     local acc; acc="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     [[ -n "$acc" ]] || return 0
 
@@ -257,7 +325,9 @@ _design_coverage() {
 
     local framed
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own)" "$(_dcov_prompt_judge "$acc" "$reqs" "$_scope" "$_done_ev" "$base")$(judge_disputes_block "$answers")" "$(_dcov_prompt_limits)")"; then
+    # #2467: each SPEC shown with its parts, labelled as the answer names them.
+    local _acc_shown; acceptance_block_render_v _acc_shown "$acc"
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own)" "$(_dcov_prompt_judge "$_acc_shown" "$reqs" "$_scope" "$_done_ev" "$base")$(judge_disputes_block "$answers")" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
@@ -303,7 +373,7 @@ _design_coverage() {
     local -a files=()
     judge_opened_v files "$opened"; rm -f "$opened" 2>/dev/null
     if [[ -n "$_DCOV_PROBLEM" ]]; then
-        _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=()
+        _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=()
         _DESIGN_COV_OUTCOME=unusable
         return 0
     fi
@@ -319,5 +389,19 @@ _design_coverage_findings() {
     for x in ${_DESIGN_UNCOVERED[@]+"${_DESIGN_UNCOVERED[@]}"}; do printf 'The issue asks for this and no SPEC covers it: %s\n' "$x"; done
     for x in ${_DESIGN_OUTSIDE[@]+"${_DESIGN_OUTSIDE[@]}"}; do printf 'the issue does not ask for this, or the design gets it wrong: %s\n' "$x"; done
     for x in ${_DESIGN_DONE_WRONG[@]+"${_DESIGN_DONE_WRONG[@]}"}; do printf 'marked [done], but the code its evidence points at does not do it: %s\n' "$x"; done
+    # #2467 (ADR-073 §5): which part of which SPEC, and what is wrong with it.
+    local _v _k _w _q
+    for x in ${_DESIGN_PART_WRONG[@]+"${_DESIGN_PART_WRONG[@]}"}; do
+        IFS=$'\t' read -r _v _k _w _q <<< "$x"
+        case "$_v" in
+            untestable)  printf '%s is not something a test can observe: %s — %s. Rewrite it as what someone could see the code do after the When\n' "$_k" "$_w" "$_q" ;;
+            how)         printf '%s says how it is built, not what it does: %s — %s. Say what someone could see happen instead\n' "$_k" "$_w" "$_q" ;;
+            contradicts) printf '%s cannot be true together with %s — %s\n' "$_k" "$_w" "$_q" ;;
+            duplicate)   printf '%s is the same action as another SPEC: %s — %s. Keep one of them\n' "$_k" "$_w" "$_q" ;;
+        esac
+    done
+    for x in ${_DESIGN_NEEDS_CLEANUP[@]+"${_DESIGN_NEEDS_CLEANUP[@]}"}; do
+        printf '%s leaves something behind that nothing puts back: %s. Add a Cleanup: line under it saying what must be true again after the test\n' "${x%%: *}" "${x#*: }"
+    done
     return 0
 }

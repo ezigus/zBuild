@@ -1,6 +1,6 @@
 # ADR-036 — Acceptance-contract teeth (mechanical SPEC↔assertion gate)
 
-**Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions);
+**Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions);; amended 2026-11-04 (#2467: build and a test that leaves something behind)
 amended 2026-07-03 (#1218, ADR-046 — Level-1 SPEC-tag-presence shifts LEFT to a PRE-build
 `design-gate`; this post-build acceptance-gate retains Level-2 negative-control/tautology +
 Level-3 reachability, which cannot shift left — they need a built assertion + baseline-vs-HEAD);
@@ -1031,8 +1031,13 @@ NEGCTL lines, test-author's stale-tag step, build, the status comment — matche
 (a `--goal` run) test-author still strips only bare old-form `[SPEC-n]` tags: a bare `[ABC-1]` may be any
 bracketed word.
 
+## Amendment 2026-11-04 (#2467) — build and a test that leaves something behind
+
+build still never edits an acceptance test. When a test leaves something behind that breaks the tests after it, build's prompt names three cases: its code leaks, and it changes the code to write where it is told; the code is meant to leave it, and it answers `the test is wrong: <test file>: needs cleanup of <what>`, which reaches test-author (#2441); or every test needs the same guard, and it changes the shared test helpers (ADR-073 §7).
+
 ## Enforced by
 
+- Amendment 2026-11-04 (#2467: a test that leaves something behind) → `tests/unit/gwt-format-test.sh` B1
 - Amendment (2026-11-03, #2462) → `tests/unit/descriptive-id-readers-test.sh` R1–R11
 - §1 → `tests/unit/acceptance-block-test.sh` TC-7 (`acceptance_list_spec_ids` returns the ids); `tests/unit/acceptance-coverage-test.sh` C6 (bare legacy `SPEC:` lines carry no id and are not checked)
 - §2 → `tests/unit/acceptance-coverage-test.sh` C1–C5 (an untagged SPEC is named; zero or missing TESTFILES count as untagged); `tests/integration/acceptance-gate-test.sh` S3 (`acceptance.gate.untagged_spec`)

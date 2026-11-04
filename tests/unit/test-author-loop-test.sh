@@ -74,9 +74,17 @@ _in="$(cat)"
 # #2370: test-author's check of its assertions is a model call too; the fake
 # answers it as a model would (every assertion corresponds) and it is not one
 # of the authoring calls this file counts.
-if [[ "$_in" == *"does that establish the REQUIREMENT"* ]]; then
-    _r="$(grep -oE '^### SPEC-[0-9]+' <<< "$_in" | sed 's/^### //' | while read -r i; do printf '%s: VERDICT: corresponds | REASON: ok\n' "$i"; done)"
-    [[ -n "$_r" ]] || _r="$(printf 'VERDICT: corresponds\nREASON: ok')"
+if [[ "$_in" == *"judge every part of it against its test"* ]]; then
+    # #2467: every part of every SPEC is met, and every test is in sections —
+    # each "### <id>" with its "  <part>:" lines under REQUIREMENT:.
+    _r=""; _id=""; _inr=0
+    while IFS= read -r _l; do
+        if [[ "$_l" =~ ^\#\#\#\ ([A-Z][A-Z0-9_]*-[0-9]+)$ ]]; then [[ -n "$_id" ]] && _r+="$_id sections: ok"$'\n'; _id="${BASH_REMATCH[1]}"; _inr=0; continue; fi
+        [[ "$_l" == "REQUIREMENT:" ]] && { _inr=1; continue; }
+        [[ "$_l" == "ASSERTION:" ]] && { _inr=0; continue; }
+        (( _inr )) && [[ "$_l" =~ ^\ \ ((Given|Then|Cleanup)\ [0-9]+|When(\ [0-9]+)?):\  ]] && _r+="$_id ${BASH_REMATCH[1]}: ok"$'\n'
+    done <<< "$_in"
+    [[ -n "$_id" ]] && _r+="$_id sections: ok"
     jq -n --arg r "$_r" '{type:"result",result:$r,usage:{input_tokens:1,output_tokens:1}}'
     exit 0
 fi

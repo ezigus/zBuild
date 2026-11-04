@@ -98,9 +98,9 @@ print_test_section "Q2: covers is split from the requirement's words"
 source "$REPO_ROOT/scripts/lib/acceptance-block.sh"
 _DM="$TEST_TEMP_DIR/q2-design.md"
 printf '%s\n' '# Design' '```acceptance' \
-    'WORK-1[code]: the gate fails an uncovered requirement covers: R-1 R-3' \
-    'WORK-2[done]: the loader reads the file covers: R-2 evidence: scripts/x.sh:3' \
-    'WORK-3[done]: the loader reads it evidence: scripts/x.sh:4 covers: R-4' \
+    'WORK-1[code]: the gate fails an uncovered requirement covers: R-1 R-3' '  When: it runs' '  Then: it is done' \
+    'WORK-2[done]: the loader reads the file covers: R-2 evidence: scripts/x.sh:3' '  When: it runs' '  Then: it is done' \
+    'WORK-3[done]: the loader reads it evidence: scripts/x.sh:4 covers: R-4' '  When: it runs' '  Then: it is done' \
     'WORK-4[no-code]: the docs say so' \
     'TESTFILES:' 'WORK-1: tests/t.sh' 'WIRING: none' '```' > "$_DM"
 assert_eq "[Q2] the text stops before covers" "the gate fails an uncovered requirement" "$(acceptance_spec_text "$_DM" WORK-1)"
@@ -122,8 +122,8 @@ export ZBUILD_REPO_ROOT="$_ROOT"
 _q3() {   # _q3 <name> <covers-for-WORK-1> <covers-for-WORK-2> [no-req] [R-3 text as JSON]
     _S="$TEST_TEMP_DIR/q3-$1"; _A="$_S/artifacts"; mkdir -p "$_A"
     printf '%s\n' '# Design' '```scope' 'scripts/x.sh' '```' '```acceptance' \
-        "WORK-1[code]: the gate fails on a missing file$2" \
-        "WORK-2[done]: the loader reads the file$3 evidence: scripts/x.sh:\"two\"" \
+        "WORK-1[code]: the gate fails on a missing file$2" "  When: it runs" "  Then: it is done" \
+        "WORK-2[done]: the loader reads the file$3 evidence: scripts/x.sh:\"two\"" "  When: it runs" "  Then: it is done" \
         'TESTFILES:' 'WORK-1: tests/t.sh' 'WIRING: none' '```' > "$_A/design.md"
     [[ "${4:-}" == "no-req" ]] || printf '%s\n' '{"schema_version":1,"source":"checkboxes","requirements":[' \
         '{"id":"R-1","text":"fail on a missing file"},{"id":"R-2","text":"read the file"},' \
@@ -164,7 +164,7 @@ source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 route_to_model() {
     local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
     if [[ -n "$_t" ]]; then
-        printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[code]: x covers: R-1 R-2\nTESTFILES:\nWORK-1: tests/t.sh\nWIRING: none\n%s\n' \
+        printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[code]: x covers: R-1 R-2\n  When: it runs\n  Then: it is done\nTESTFILES:\nWORK-1: tests/t.sh\nWIRING: none\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
         return 0
     fi
@@ -190,7 +190,7 @@ print_test_section "Q5: design's coverage call judges the list"
 _PROMPT="$TEST_TEMP_DIR/prompt.txt"
 route_to_model() { printf '%s' "$2" > "$_PROMPT"; printf 'VERDICT: covered\nREASON: ok\n'; return 0; }
 _S5="$TEST_TEMP_DIR/q5"; mkdir -p "$_S5/artifacts"
-printf '%s\n' '# Design' '```acceptance' 'WORK-1[code]: the gate fails covers: R-1' 'TESTFILES:' 'WORK-1: tests/t.sh' 'WIRING: none' '```' > "$_S5/artifacts/design.md"
+printf '%s\n' '# Design' '```acceptance' 'WORK-1[code]: the gate fails covers: R-1' '  When: it runs' '  Then: it is done' 'TESTFILES:' 'WORK-1: tests/t.sh' 'WIRING: none' '```' > "$_S5/artifacts/design.md"
 printf '%s\n' '{"schema_version":1,"source":"checkboxes","requirements":[{"id":"R-1","text":"the gate fails on a missing file"},{"id":"R-2","text":"the SPEC-2 label still passes"}]}' > "$_S5/artifacts/requirements.json"
 : > "$_PROMPT"
 _design_coverage "$_S5/artifacts/design.md" "$(acceptance_requirements_list "$_S5/artifacts/requirements.json")" T2 >/dev/null 2>&1

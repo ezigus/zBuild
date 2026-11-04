@@ -74,12 +74,20 @@ _build_read_prior_assessment() {
 # than dropping a SPEC the gate will still demand coverage for. A done SPEC is
 # left out: the code already does it, so build has nothing to do (#2304, ADR-069 §6).
 _build_gather_acceptance_specs() {
-    local design_md="${1:-}" sid text
+    local design_md="${1:-}" sid text blk _p
     [[ -n "$design_md" && -f "$design_md" ]] || return 0
+    # #2467: the block read once; each SPEC's words and its parts, on its one line.
+    blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || blk=""
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
-        [[ "$(acceptance_spec_status "$design_md" "$sid" 2>/dev/null)" == "done" ]] && continue
-        text="$(acceptance_spec_text "$design_md" "$sid" 2>/dev/null || true)"
+        text=""
+        if _acceptance_spec_line "$blk" "$sid"; then
+            [[ "$_ACC_SPEC_STATUS" == "done" ]] && continue
+            text="$_ACC_SPEC_TEXT"
+            local -a _bg_parts=()
+            acceptance_parts_v _bg_parts "$_ACC_SPEC_PARTS"
+            for _p in ${_bg_parts[@]+"${_bg_parts[@]}"}; do text+=" — ${_p%%$'\t'*}: ${_p#*$'\t'}"; done
+        fi
         if [[ -n "$text" ]]; then
             printf '%s\t%s\n' "$sid" "$text"
         else

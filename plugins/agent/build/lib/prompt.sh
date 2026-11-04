@@ -79,6 +79,20 @@ sentinel, and stop working on that test:
 Say exactly why it cannot pass. The stage that owns the tests is given this
 answer, and fixes the test.
 
+### When a test leaves something behind
+A test that leaves something behind — an exported variable, a file outside its
+own folder, a background process — breaks the tests after it. Which of three it
+is decides what you do:
+1. Your code puts it where it should not: change the code to write where it is
+   told (TMPDIR, HOME, or a folder the caller passes in).
+2. The code is meant to leave it, and the test does not clean it up: you may
+   not change the test. Answer, on its own line before the sentinel:
+
+    ANSWER <stage> finding <n>: nothing to do — the test is wrong: <test file>: needs cleanup of <what>
+
+3. Every test needs the same guard: put it in the shared test helpers, which
+   are code like any other in your scope.
+
 ### Running tests
 - Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline
   runs them and their results are under Previous work.

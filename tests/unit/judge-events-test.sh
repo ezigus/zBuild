@@ -87,20 +87,21 @@ _reset
     printf 'assert_eq "[LOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/loop-test.sh"
     printf 'assert_eq "[KEEP-1] resume reads the saved round" "2" "$got"\n' > "$R/tests/keep-test.sh"
     route_to_model() { printf '%s' "$_R"; }
-    _R=$'LOOP-1: VERDICT: partial | REASON: only fresh | QUOTE: "fresh runs"\nKEEP-1: VERDICT: corresponds | REASON: fine\n'
+    # #2467 (ADR-073 §6): a line per part (a one-line SPEC is its one Then), and the sections.
+    _R=$'LOOP-1 Then 1: missing | WHY: only fresh | QUOTE: "fresh runs"\nLOOP-1 sections: ok\nKEEP-1 Then 1: ok\nKEEP-1 sections: ok\n'
     _ta_correspondence "$D" "$R" T2 "$A"
     printf 'MARK1\n' >> "$ZBUILD_EVENTS_JSONL"
     _ta_correspondence "$D" "$R" T2 "$A"
     printf 'MARK2\n' >> "$ZBUILD_EVENTS_JSONL"
     # A line after the assertion's own lines: the fingerprint is the same, the file is not.
     printf 'assert_eq "[KEEP-1] resume reads the saved round" "2" "$got"\n\n_unused_helper() { :; }\n' > "$R/tests/keep-test.sh"
-    _R=$'KEEP-1: VERDICT: corresponds | REASON: fine\n'
+    _R=$'KEEP-1 Then 1: ok\nKEEP-1 sections: ok\n'
     _ta_correspondence "$D" "$R" T2 "$A"
     printf 'MARK3\n' >> "$ZBUILD_EVENTS_JSONL"
     _ta_write_result "$A" unusable "1 finding" 2 \
-        "$(printf '%s\n' "LOOP-1's assertion establishes only part of the requirement: only fresh" | stage_findings_json)"
+        "$(printf '%s\n' "LOOP-1 Then 1 is not asserted: only fresh" | stage_findings_json)"
     _TA_ANSWERS=("test-author finding 1: nothing to do — it covers both")
-    _R=$'LOOP-1: VERDICT: corresponds | REASON: fine\n'
+    _R=$'LOOP-1 Then 1: ok\nLOOP-1 sections: ok\n'
     _ta_correspondence "$D" "$R" T2 "$A"
 ) >/dev/null 2>&1
 _seg() {  # <n> — the events between marks n-1 and n, as a file

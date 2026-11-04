@@ -12,9 +12,9 @@
 # Q2 design's coverage check: one line per requirement and per SPEC; a missing
 #    line or a quote that is not there is asked again, then `unusable`; junk
 #    lines are never findings; a [done] claim is read on the old code, by file
-# Q3 test-author's assertion check: a verdict short of `corresponds` quotes the
-#    requirement's words it does not establish; one that does not is asked
-#    again, then not judged
+# Q3 test-author's assertion check: a part the test falls short on quotes that
+#    part's words (#2467: a line per part); one that does not is asked again,
+#    then not judged
 # Q4 issue-acceptance: one line per requirement; complaints quoted; no line
 #    numbers or windows of code in its prompt
 # Q5 a review lens quotes each finding's text from its file
@@ -165,23 +165,24 @@ print_test_section "Q3: test-author's assertion check"
     printf 'unset RESUME\nassert_eq "[LOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/acc-test.sh"
     _j() { printf 0 > "$_N"; _ta_correspondence "$D" "$R" T2 >/dev/null 2>&1; }
 
-    _R1='LOOP-1: VERDICT: partial | REASON: only a fresh run is tested | QUOTE: "nested re-entries"'; _R2=""; _j
+    # #2467 (ADR-073 §6): a line per part (this one-line SPEC is its one Then), and the sections.
+    _R1=$'LOOP-1 Then 1: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"\nLOOP-1 sections: ok'; _R2=""; _j
     echo "Q3a|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}|$_TA_CORR_OUTCOME|$(cat "$_N")"
-    echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: "<the requirement'"'"'s own words'* ]] && echo asked)"
+    echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: "<the part'"'"'s own words'* ]] && echo asked)"
 
-    _R1='LOOP-1: VERDICT: partial | REASON: only a fresh run is tested'
-    _R2=$'VERDICT: partial\nREASON: only a fresh run is tested\nQUOTE: "nested re-entries"'; _j
+    _R1=$'LOOP-1 Then 1: missing | WHY: only a fresh run is tested\nLOOP-1 sections: ok'
+    _R2=$'LOOP-1 Then 1: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"\nLOOP-1 sections: ok'; _j
     echo "Q3b|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
-    _R1='LOOP-1: VERDICT: partial | REASON: only a fresh run is tested'
-    _R2=$'VERDICT: partial\nREASON: only a fresh run is tested'; _j
+    _R1=$'LOOP-1 Then 1: missing | WHY: only a fresh run is tested\nLOOP-1 sections: ok'
+    _R2="$_R1"; _j
     echo "Q3c|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.3" 2>/dev/null)"
 
-    _R1='LOOP-1: VERDICT: mismatch | REASON: x | QUOTE: "a resumed run reads the saved round"'
-    _R2=$'VERDICT: mismatch\nREASON: x\nQUOTE: "a resumed run reads the saved round"'; _j
+    _R1=$'LOOP-1 Then 1: wrong | WHY: x | QUOTE: "a resumed run reads the saved round"\nLOOP-1 sections: ok'
+    _R2="$_R1"; _j
     echo "Q3d|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
-    _R1='LOOP-1: VERDICT: corresponds | REASON: fine'; _R2=""; _j
+    _R1=$'LOOP-1 Then 1: ok\nLOOP-1 sections: ok'; _R2=""; _j
     echo "Q3e|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(cat "$_N")"
 ) > "$TEST_TEMP_DIR/q3.out" 2>/dev/null
 _l() { grep "^$1|" "$TEST_TEMP_DIR/q3.out" | head -1 | cut -d'|' -f2-; }
@@ -190,7 +191,7 @@ assert_contains "[Q3] ...in one call" "$(_l Q3a)" "||1"
 assert_eq "[Q3] the check asks for the quote" "asked" "$(_l Q3p)"
 assert_eq "[Q3] partial with no quote is asked again on its own, and the answer counts" "2|1|" "$(_l Q3b)"
 assert_contains "[Q3] still no quote: asked again once more, then not judged" "$(_l Q3c)" "3|0|unusable|"
-assert_contains "[Q3] ...told what was wrong" "$(_l Q3c)" "it has no QUOTE: line"
+assert_contains "[Q3] ...told what was wrong" "$(_l Q3c)" "LOOP-1 Then 1 has no QUOTE"
 assert_eq "[Q3] a quote the requirement does not say is not judged" "0|unusable" "$(_l Q3d)"
 assert_eq "[Q3] corresponds needs no quote" "0||1" "$(_l Q3e)"
 

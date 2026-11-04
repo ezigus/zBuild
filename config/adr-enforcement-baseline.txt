@@ -26,7 +26,6 @@ ADR-026-review-remediation-cycle.md
 ADR-028-shared-llm-agent-framework.md
 ADR-029-context-budget-management.md
 ADR-030-scope-governance.md
-ADR-031-behavioral-acceptance-contract.md
 ADR-032-per-repo-prompt-overrides.md
 ADR-033-compile-typecheck-gate.md
 ADR-034-targeted-test-rerun.md
