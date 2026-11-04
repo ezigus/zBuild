@@ -222,6 +222,17 @@ _build_write_test_findings() {
         "{\"findings\":$(printf '%s\n' "$lines" | stage_findings_json)}" 2>/dev/null || true
 }
 
+# _build_answers_json_v <var> — build's ANSWER lines as JSON, as test-author
+# keeps its own (#2464); no process when there are none (ADR-065 §5).
+_build_answers_json_v() {
+    local -n _baj="$1"; local -a _ba=()
+    _baj="[]"
+    declare -F zb_answers_collect_v >/dev/null 2>&1 && zb_answers_collect_v _ba "${_ROUTE_LOOP_LAST_RESPONSE:-}"
+    [[ ${#_ba[@]} -gt 0 ]] || return 0
+    _baj="$(printf '%s\n' "${_ba[@]}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null)" || _baj="[]"
+    [[ -n "$_baj" ]] || _baj="[]"
+}
+
 _build_write_build_summary() {
     local _sum_violations_json="[]"
     local _sum_build_reason=""
@@ -337,6 +348,8 @@ _build_write_build_summary() {
         fi
     fi
 
+    local _sum_answers_json="[]"
+    _build_answers_json_v _sum_answers_json
     local _sum_issue="${issue:-0}"
     [[ "$_sum_issue" =~ ^[0-9]+$ ]] || _sum_issue=0
 
@@ -355,6 +368,7 @@ _build_write_build_summary() {
         --argjson loop_input_tokens "${loop_input_tokens:-0}" \
         --argjson loop_output_tokens "${loop_output_tokens:-0}" \
         --argjson not_reproduced "$(_build_not_reproduced "${_ROUTE_LOOP_LAST_RESPONSE:-}" | jq -R . | jq -sc . 2>/dev/null || echo '[]')" \
+        --argjson answers "$_sum_answers_json" \
         --arg reason "$_sum_build_reason" \
         --argjson out_of_scope_files "$_sum_out_of_scope_files_json" \
         --argjson scope_expansion_request "${_sum_scope_expansion_request_json:-null}" \
@@ -390,6 +404,9 @@ _build_write_build_summary() {
         # made from.
         + ( ( (if $build_data_kind != "" then {build_kind: $build_data_kind} else {} end)
             + (if ($not_reproduced | length) > 0 then {not_reproduced: $not_reproduced} else {} end)
+            # #2464 (ADR-068 §6, ADR-072 §5): what build did about each finding it
+            # received — a "nothing to do" sends that finding back to its judge.
+            + (if ($answers | length) > 0 then {answers: $answers} else {} end)
             # #2460: what the next try is told — its test still fails.
             + (if $failing_acceptance_testfile != "" then {findings: [{n: 1,
                 text: "you said the work was done but changed no file, and \($failing_acceptance_testfile) still fails — make it pass by changing the code"}]} else {} end)

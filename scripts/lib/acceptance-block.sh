@@ -721,14 +721,14 @@ design_decisions_prose() {
     printf '%s\n' "$body"
 }
 
-# acceptance_requirements_for_judge <design_md> [repo_root]  (#2304, ADR-069 §7)
+# acceptance_requirements_for_judge <design_md>  (#2304, ADR-069 §7)
 # The requirements as issue-acceptance reads them: each one's words and, in
 # plain words, what its status means — never the raw tag. A done requirement
-# also gets its evidence and up to 20 lines around each cited line, read from
-# the commit at HEAD (what ships, not the working copy); 6000 characters of
-# excerpts in all. The caller cleans the text before it reaches a model.
+# also gets its evidence, a file and a piece of its text: the judge opens the
+# file and reads as much of it as it needs (#2464, ADR-072 §2 — no window of
+# lines). The caller cleans the text before it reaches a model.
 acceptance_requirements_for_judge() {
-    local design_md="${1:-}" root="${2:-.}" blk l sid ev path n from body budget=6000
+    local design_md="${1:-}" blk l sid ev
     blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
     while IFS= read -r l; do
         [[ "$l" == "TESTFILES:" ]] && break
@@ -742,21 +742,10 @@ acceptance_requirements_for_judge() {
             *)       printf '  Status: needs work (code) — its test failed on the old code and passes now\n'; continue ;;
         esac
         [[ "$_ACC_SPEC_STATUS" == "done" && "$_ACC_SPEC_REST" == *" evidence: "* ]] || continue
-        local _evl="${_ACC_SPEC_REST#* evidence: }" _evt _evn _src
-        local -a _evs=(); _acceptance_evidence_items_v _evs "${_evl%% covers: *}"
+        local -a _evs=(); local _evl="${_ACC_SPEC_REST#* evidence: }"
+        _acceptance_evidence_items_v _evs "${_evl%% covers: *}"
         for ev in "${_evs[@]+"${_evs[@]}"}"; do
-            printf '  Evidence: %s\n' "$ev"
-            acceptance_evidence_split "$ev" path _evt _evn
-            [[ "$path" != /* && "/$path/" != *"/../"* && $budget -gt 0 ]] || continue
-            _src="$(git -C "$root" show "HEAD:$path" 2>/dev/null)" || _src=""
-            # #2462: the code around where the evidence's text is, not a line number.
-            n="${_evn:-1}"; [[ -n "$_evt" ]] && { acceptance_evidence_line_v n "$_src" "$_evt"; n="${n:-1}"; }
-            n=$((10#$n)); from=$(( n > 10 ? n - 10 : 1 ))
-            body="$(awk -v a="$from" -v b="$((from + 19))" 'NR >= a && NR <= b { printf "    %d| %s\n", NR, $0 }' <<< "$_src")" || body=""
-            [[ -n "$_src" ]] || body=""
-            [[ -n "$body" ]] || { printf '    (not found in the commit at HEAD)\n'; continue; }
-            body="${body:0:$budget}"; budget=$((budget - ${#body}))
-            printf '%s\n' "$body"
+            printf '  Evidence: %s — open the file and read the code around that text\n' "$ev"
         done
     done <<< "$blk"
     return 0

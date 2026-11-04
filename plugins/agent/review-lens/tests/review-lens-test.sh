@@ -48,9 +48,9 @@ route_to_model() {
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
     if [[ "$2" == *'"security" lens'* ]]; then
-        printf '%s' '{"score":3,"findings":[{"file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
+        printf '%s' '{"score":3,"findings":[{"quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
     elif [[ "$2" == *'"performance" lens'* ]]; then
-        printf '%s' '{"score":8,"findings":[{"file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
+        printf '%s' '{"score":8,"findings":[{"quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
     else
         printf '%s' '{"score":10,"findings":[]}'
     fi

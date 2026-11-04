@@ -1,6 +1,6 @@
 # ADR-068 — Nested loops and finding answers: the engine never decides who owns a finding
 
-**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop); amended 2026-10-11 (§6–§8: the engine keeps only stage outputs; §8: only each stage's latest output is passed on); amended 2026-10-12 (§8: every stage's latest output, from any run and the stage's own included, goes to every later stage — ADR-067 §8, ADR-050 §9; §1: impact retired from zBuild; §8: loop `feedback:` edges retired); amended 2026-10-18 (§1 §2 §3 §10: design makes one model call per run and keeps its last good design; a design that still fails ends the run — #1944 run 38883031887); amended 2026-10-27 (§6 §8: a stage is given, and answers, only the topics it takes — ADR-071, #1944 run 40393999128); amended 2026-10-28 (§5: a finding is never split); amended 2026-10-31 (§1 §2 §3: design runs in every round of the build loop; only the lenses send the change round again; §6: test-author answers the findings about its tests — #1754 run 41138244027); amended 2026-10-31 (#2441, §6: build may answer that a test is wrong; that answer is a finding for test-author — #1754 run 41208786459)
+**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop); amended 2026-10-11 (§6–§8: the engine keeps only stage outputs; §8: only each stage's latest output is passed on); amended 2026-10-12 (§8: every stage's latest output, from any run and the stage's own included, goes to every later stage — ADR-067 §8, ADR-050 §9; §1: impact retired from zBuild; §8: loop `feedback:` edges retired); amended 2026-10-18 (§1 §2 §3 §10: design makes one model call per run and keeps its last good design; a design that still fails ends the run — #1944 run 38883031887); amended 2026-10-27 (§6 §8: a stage is given, and answers, only the topics it takes — ADR-071, #1944 run 40393999128); amended 2026-10-28 (§5: a finding is never split); amended 2026-10-31 (§1 §2 §3: design runs in every round of the build loop; only the lenses send the change round again; §6: test-author answers the findings about its tests — #1754 run 41138244027); amended 2026-10-31 (#2441, §6: build may answer that a test is wrong; that answer is a finding for test-author — #1754 run 41208786459); amended 2026-11-03 (#2464, §6 §7: answers are kept in the result; a check keeps a verdict whose inputs are unchanged)
 **Issue:** #2271; §8 amended by #2330 (2026-10-06); §1 §8 amended by #1668 (2026-10-10); §6–§8 amended 2026-10-11 (after the #1668 and #1932 runs)
 **Supersedes:** ADR-045 (bounded typed backward-route), ADR-061 (fault-class vocabulary)
 **Amends:** ADR-021, ADR-027, ADR-040, ADR-046, ADR-047, ADR-054 §4, ADR-055 (finding-owner amendment)
@@ -106,8 +106,14 @@ findings, within its rounds. The prompt lists, found by script, each testfile an
 it already holds, and says that when every requirement has its test and nothing is open for it, it confirms
 them and ends.
 
+## Amendment 2026-11-03 (#2464) — §6: every answer is kept in the result; §7: a check keeps a verdict whose inputs are unchanged
+
+- **§6:** a stage's `ANSWER <stage> finding <n>: …` lines are kept in its result as `data.answers`. build and design keep them too, as test-author already did. Design may answer a finding of its own check. A "nothing to do" answer sends that finding back to its judge (ADR-072 §5).
+- **§7:** a check still lists what it finds each time it runs, and its newest list replaces its old one. But an item whose inputs are unchanged — what the judge was shown, the files it read, the engine, and the answers to its findings — keeps its last verdict without a model call (ADR-072 §4). On #1805 run 41643063636, test-author's check called BNDY-1 "corresponds" twice and then "partial" on unchanged test files, and that flip ended the run.
+
 ## Enforced by
 
+- §6 §7 amendment 2026-11-03 (#2464: answers kept in the result; a verdict kept while its inputs are unchanged) → `tests/unit/judge-kept-test.sh` K1–K8; `tests/unit/design-stage-ids-test.sh` E5
 - §6 amendment 2026-11-01 (#2445: test-author's tests run by script on the old code; the written-tests list) → `tests/unit/test-author-before-run-test.sh` B1–B7; `tests/unit/test-author-loop-test.sh` A1
 
 - §6 amendment 2026-10-31 (#2441: build can say a test is wrong) → `tests/unit/build-test-is-wrong-test.sh` W1–W3; `plugins/agent/build/tests/build-test-is-wrong-run-test.sh`; `tests/unit/test-author-checks-own-output-test.sh` A10

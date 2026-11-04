@@ -16,6 +16,9 @@
 #           removed, and that [done] evidence is a file and an exact piece of its
 #           text — never a line number
 # E4 [code] the coverage call is not told the requirements are numbered R-1, R-2
+# E5 [code] design may answer a finding of its own check (#2464, ADR-072 §5):
+#           its reply's ANSWER line is kept in its result and shown to the
+#           check, which judges again; the prompt says how to answer
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,15 +40,15 @@ _design() {   # <acceptance lines...>
     printf '%s\n' "$@"
     printf 'WIRING: none\nTESTFILES:\n%s\n' "$BT"
 }
-DRAFT=""
+DRAFT="" REPLY=""
 route_to_model() {
     local _t; _t="$(zb_test_prompt_write_path "$2")"
     if [[ -n "$_t" ]]; then
         printf '%s\n' "$2" > "$TEST_TEMP_DIR/design-prompt"
-        printf '%s' "$DRAFT" > "$_t"; return 0
+        printf '%s' "$DRAFT" > "$_t"; printf '%s' "$REPLY"; return 0
     fi
     printf '%s\n' "$2" > "$TEST_TEMP_DIR/judge-prompt"
-    printf 'VERDICT: covered\n'
+    zb_test_coverage_ok "$2"
 }
 _run() {   # <last design or ""> <issue text>
     local d="$TEST_TEMP_DIR/run"
@@ -94,6 +97,17 @@ _j="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/judge-prompt" 2>/dev/null)"
 assert_contains "[E4] the coverage call ran" "$_j" "DOCS-1"
 _num=0; [[ "$_j" == *"numbered R-1"* || "$_j" == *"(R-2:"* ]] && _num=1
 assert_eq "[E4] ...and is not told the ids are R-1, R-2" "0" "$_num"
+
+# ── E5 ───────────────────────────────────────────────────────────────────────
+assert_contains "[E5] design is told it may answer its own check's finding" "$_p" \
+    "ANSWER design finding <n>: nothing to do — <why>"
+REPLY=$'Wrote the design.\nANSWER design finding 1: nothing to do — DOCW-1 is the whole of DOCS-1'
+_run "" "Write the docs."
+assert_eq "[E5] the answer is kept in design's result" \
+    "design finding 1: nothing to do — DOCW-1 is the whole of DOCS-1" \
+    "$(jq -r '.data.answers[0] // ""' "$_F_ART/design-verdict.json" 2>/dev/null)"
+assert_contains "[E5] ...and shown to the check" "$(cat "$TEST_TEMP_DIR/judge-prompt" 2>/dev/null)" "DOCW-1 is the whole of DOCS-1"
+REPLY=""
 
 cleanup_test_env
 print_test_results

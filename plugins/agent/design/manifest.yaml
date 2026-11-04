@@ -35,6 +35,8 @@ provides:
     - design.stray.conflict
     - design.stray.recovered
     - design.checks.failed
+    # #2464 (ADR-072 §4): its answer was kept, so no model call was made.
+    - judge.kept
 
 config:
   tier_default: T2

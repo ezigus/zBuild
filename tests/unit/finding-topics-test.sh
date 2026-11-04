@@ -185,14 +185,15 @@ _ia_res() { jq -r "$1" "$_A/issue-acceptance-result.json" 2>/dev/null || echo MI
 
 print_test_section "F5: issue-acceptance's marks become the finding's topic"
 _ia_setup f5
-_IA_ANSWER=$'VERDICT: fail\nREASON: two unmet\nUNMET: [fix-code] R-1: intake still runs on resume\nUNMET: [fix-design] R-9: the design never says only on a resume\nUNMET: R-3: unmarked'
+# #2464 (ADR-072 §3): each complaint quoted.
+_IA_ANSWER=$'UNMET: [fix-code] resume | WHY: intake still runs on resume | QUOTE: "resume skips done stages"\nUNMET: [fix-design] the design | WHY: the design never says only on a resume | QUOTE: "resume skips done stages"\nUNMET: the rest | WHY: unmarked | QUOTE: "Do it."'
 issue_acceptance_run issue-acceptance "$_S/pipeline-state.json" >/dev/null 2>&1
 assert_eq "[F5] [fix-code] → code-findings" "code-findings" "$(_ia_res '.data.findings[0].topic')"
 assert_eq "[F5] [fix-design] → requirement-findings" "requirement-findings" "$(_ia_res '.data.findings[1].topic')"
 assert_eq "[F5] an unmarked line has no topic" "null" "$(_ia_res '.data.findings[2].topic')"
-assert_eq "[F5] the mark is not in data.unmet" "R-1: intake still runs on resume" "$(_ia_res '.data.unmet[0]')"
+assert_eq "[F5] the mark is not in data.unmet" 'resume: intake still runs on resume — "resume skips done stages"' "$(_ia_res '.data.unmet[0]')"
 assert_not_contains "[F5] ...nor in the finding" "$(_ia_res '.data.findings[0].text')" "[fix-code]"
-assert_contains "[F5] the finding names the requirement" "$(_ia_res '.data.findings[0].text')" "R-1: intake still runs on resume"
+assert_contains "[F5] the finding names the requirement" "$(_ia_res '.data.findings[0].text')" "resume: intake still runs on resume"
 _p5="$(tr -s '[:space:]' ' ' <<< "$(_ia_prompt I S D fail)")"
 assert_contains "[F5] the prompt asks for the [fix-code] mark" "$_p5" "[fix-code]"
 assert_contains "[F5] the prompt asks for the [fix-design] mark" "$_p5" "[fix-design]"

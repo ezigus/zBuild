@@ -25,29 +25,34 @@ _ZBUILD_MANIFEST_ROUTER_BUDGET_LOADED=1
 # #2439 (ADR-054 §6a): `retries` and `retry_on_exhaustion` are gone — a stage
 # never repeats a model call; the template's per-stage `retry:` is the one retry.
 # #2448 (ADR-017 §11): `tools: none` — the plugin's calls get no tools at all.
+# #2464 (ADR-072 §1): `tools: read` — every call it makes judges: Read, Grep, Glob.
 # #2454 (ADR-017 §11): `effort` — how hard the model thinks (the CLI's --effort).
 _ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns tools effort"
 
-# _manifest_router_range <knob> → "<min> <max>", empty for an unknown knob.
-# The ranges are the template's ranges (_tpl_validate_io_knobs), deliberately:
-# one value, two places it can be written, one notion of "valid".
-_manifest_router_range() {
-    case "$1" in
-        timeout_s) echo "1 3600" ;;   # ADR-017 (#455)
-        max_turns) echo "0 200" ;;    # ADR-018 (#466); 0 = omit --max-turns (#762)
-        *)         echo "" ;;
+# _manifest_router_range_v <var> <knob> → "<min> <max>", empty for an unknown
+# knob. The ranges are the template's ranges (_tpl_validate_io_knobs),
+# deliberately: one value, two places it can be written, one notion of "valid".
+# Into <var>, with no subshell (#2464, ADR-065 §5: validate_manifest asks for
+# every knob of every manifest).
+_manifest_router_range_v() {
+    case "$2" in
+        timeout_s) printf -v "$1" '%s' "1 3600" ;;   # ADR-017 (#455)
+        max_turns) printf -v "$1" '%s' "0 200" ;;    # ADR-018 (#466); 0 = omit --max-turns (#762)
+        *)         printf -v "$1" '%s' "" ;;
     esac
 }
+_manifest_router_range() { local _mrr; _manifest_router_range_v _mrr "$1"; echo "$_mrr"; }
 
-# _manifest_router_words <knob> → the words a word-valued knob takes, empty for
-# a numeric or unknown knob.
-_manifest_router_words() {
-    case "$1" in
-        tools) echo "none" ;;         # #2448
-        effort) echo "low medium high xhigh max" ;;   # #2454
-        *)     echo "" ;;
+# _manifest_router_words_v <var> <knob> → the words a word-valued knob takes,
+# empty for a numeric or unknown knob.
+_manifest_router_words_v() {
+    case "$2" in
+        tools)  printf -v "$1" '%s' "none read" ;;    # #2448; #2464: read — a judge's Read, Grep and Glob
+        effort) printf -v "$1" '%s' "low medium high xhigh max" ;;   # #2454
+        *)      printf -v "$1" '%s' "" ;;
     esac
 }
+_manifest_router_words() { local _mrw; _manifest_router_words_v _mrw "$1"; echo "$_mrw"; }
 
 # ─── manifest_router_knob <manifest> <knob> ─────────────────────────────────
 # Read `config.router.<knob>` from a plugin manifest. Prints the raw value, or

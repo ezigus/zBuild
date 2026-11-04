@@ -59,8 +59,8 @@ evidence="$artifact_dir/diff.patch"
 printf 'diff --git a/core/x.sh b/core/x.sh\n+ new line\n' > "$evidence"
 
 # #1760's breakage: a quoted phrase inside a string, its quotes not escaped.
-BAD='{"score":6,"findings":[{"file":"core/x.sh","severity":"medium","message":"the message "until.{stage,field,op,value} all required" is wrong","introduced":true}]}'
-GOOD='{"score":6,"findings":[{"file":"core/x.sh","severity":"low","message":"the message \"until\" is wrong","introduced":true}]}'
+BAD='{"score":6,"findings":[{"quote":"new line","file":"core/x.sh","severity":"medium","message":"the message "until.{stage,field,op,value} all required" is wrong","introduced":true}]}'
+GOOD='{"score":6,"findings":[{"quote":"new line","file":"core/x.sh","severity":"low","message":"the message \"until\" is wrong","introduced":true}]}'
 
 # ─── L1 ──────────────────────────────────────────────────────────────────────
 _rl_reset "$BAD" "$GOOD"

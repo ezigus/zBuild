@@ -1,6 +1,6 @@
 # ADR-067 — Model-facing text speaks plainly
 
-**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8), 2026-10-07 (#1799, §8), 2026-10-11 (§8 findings wording, §9), 2026-10-12 (§8: the engine/stage prompt contract — three parts from the stage, three blocks from the engine, one order), 2026-10-13 (#2363, §8: the engine's blocks hold only what every stage shares; §9: plan does not read code), 2026-10-14 (#2376, §8: design's job comes first, it writes design.md as it goes, finds its scope by searching, and may write its notes), 2026-10-27 (ADR-071, §8: Previous work holds only the topics the stage takes), 2026-10-31 (#2441, §8: test-author runs its own test files and nothing else)
+**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8), 2026-10-07 (#1799, §8), 2026-10-11 (§8 findings wording, §9), 2026-10-12 (§8: the engine/stage prompt contract — three parts from the stage, three blocks from the engine, one order), 2026-10-13 (#2363, §8: the engine's blocks hold only what every stage shares; §9: plan does not read code), 2026-10-14 (#2376, §8: design's job comes first, it writes design.md as it goes, finds its scope by searching, and may write its notes), 2026-10-27 (ADR-071, §8: Previous work holds only the topics the stage takes), 2026-10-31 (#2441, §8: test-author runs its own test files and nothing else); 2026-11-03 (#2464, §8: a judging call can read and search files, and nothing else)
 **Issue:** #2269, #2308
 **Related:** ADR-066 (every ADR statement has a test), ADR-055 §9 (stage summaries are read by every later stage), ADR-036 (the acceptance check whose vocabulary leaked), ADR-050 §9 and ADR-068 §8 (each stage's latest output, any run), ADR-063 §1 (the budget is stated from the value that enforces it)
 
@@ -79,8 +79,13 @@ On #1805 run 41489923219 issue-acceptance was handed its notes from an earlier r
 - The engine writes both forms at dispatch (`previous-work.md`/`rules.md` and `previous-work-fresh.md`/`rules-fresh.md`) from one pass, with no extra program (ADR-065 §5).
 - **§6: build's list of files it may touch leaves out the design's own test files**, which it may not touch (the read-only rule above the list still names them).
 
+## Amendment 2026-11-03 (#2464) — §8: a judging call can read and search files, and nothing else
+
+A fresh call (a judging call) is told that it can open and search files (Read, Grep, Glob) and nothing else, that it should open whatever it needs, and that its answer is its reply. A stage whose every call judges (`tools: read`, ADR-017 §11) has only the fresh rules and the fresh Previous work, as a stage with no tools already did. Judging calls still start fresh: none is shown its own earlier verdict. ADR-072 §4 keeps an unchanged item's verdict without asking again.
+
 ## Enforced by
 
+- §8 amendment 2026-11-03 (#2464: a judging call reads and searches files and nothing else) → `tests/unit/judge-tools-test.sh` T5
 - §8 §6 amendment 2026-11-02 (#2458: judging calls and stages with no tools start fresh; build's file list leaves out the test files it may not touch) → `tests/unit/fresh-judge-prompt-test.sh` J1–J4; `tests/unit/design-step-topics-test.sh` T5
 
 - §8 amendment 2026-11-01 (#2445: every stage confirms work already done; test-author runs nothing) → `tests/unit/already-done-test.sh` A1; `tests/unit/test-author-before-run-test.sh` B1; `tests/unit/test-author-checks-own-output-test.sh` A8, A11

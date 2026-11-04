@@ -82,7 +82,7 @@ _run() { : > "$_IA_PROMPT"; issue_acceptance_run "issue-acceptance" "$_S/pipelin
 
 print_test_section "SPEC-1: the prompt carries everything the judgement needs"
 _setup s1
-_IA_ANSWER=$'VERDICT: pass\nREASON: all met'
+_IA_ANSWER=$'MET: no artifact paths in code\nMET: an interrupted push reports unavailable'
 _run
 _p="$(cat "$_IA_PROMPT")"
 assert_contains "[SPEC-1] the issue text" "$_p" "an interrupted push reports unavailable"
@@ -92,18 +92,18 @@ assert_contains "[SPEC-1] the test verdict" "$_p" "TEST VERDICT: pass"
 
 print_test_section "SPEC-2: unmet by the code → fail, a numbered finding"
 _setup s2
-_IA_ANSWER=$'VERDICT: fail\nREASON: the push failure is reported as broken\nUNMET: an interrupted push reports unavailable'
+_IA_ANSWER=$'MET: no artifact paths in code\nUNMET: an interrupted push | WHY: the push failure is reported as broken | QUOTE: "an interrupted push reports unavailable"'
 _run; _rc=$?
 assert_eq "[SPEC-2] rc=0 (the verdict is in the artifact)" "0" "$_rc"
 assert_eq "[SPEC-2] outcome=fail" "fail" "$(_res .outcome)"
 assert_eq "[SPEC-2] contract 3 (#2366)" "3" "$(_res .result_contract)"
 assert_eq "[SPEC-2] no verdict or disposition field" "false" "$(_res 'has("verdict") or has("disposition")')"
 assert_contains "[SPEC-2] the unmet requirement is a numbered finding" "$(_res '.data.findings[0].text')" "an interrupted push reports unavailable"
-assert_eq "[SPEC-2] the unmet requirement is named" "an interrupted push reports unavailable" "$(_res '.data.unmet[0]')"
+assert_contains "[SPEC-2] the unmet requirement is named, with why" "$(_res '.data.unmet[0]')" "an interrupted push: the push failure is reported as broken"
 
 print_test_section "SPEC-3: no fault class — the stage does not decide who fixes it"
 _setup s3
-_IA_ANSWER=$'VERDICT: fail\nFAULT: specification\nREASON: no SPEC asks for it\nUNMET: no artifact paths in code'
+_IA_ANSWER=$'FAULT: specification\nUNMET: no artifact paths | WHY: no SPEC asks for it | QUOTE: "no artifact paths in code"\nMET: an interrupted push reports unavailable'
 _run
 assert_eq "[SPEC-3] a fault line in the reply is not written" "null" "$(_res .fault)"
 if grep -q 'FAULT' "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh"; then
@@ -114,14 +114,14 @@ fi
 
 print_test_section "SPEC-4: every requirement met → pass"
 _setup s4
-_IA_ANSWER=$'VERDICT: pass\nREASON: every requirement is met by the diff'
+_IA_ANSWER=$'MET: no artifact paths in code\nMET: an interrupted push reports unavailable'
 _run
 assert_eq "[SPEC-4] outcome=pass" "pass" "$(_res .outcome)"
 assert_eq "[SPEC-4] no fault on a pass" "null" "$(_res .fault)"
 
 print_test_section "SPEC-5: a placeholder issue is never a pass"
 _setup s5 "GitHub issue #1849"
-_IA_ANSWER=$'VERDICT: pass\nREASON: fine'
+_IA_ANSWER=$'MET: no artifact paths in code\nMET: an interrupted push reports unavailable'
 _run
 assert_eq "[SPEC-5] outcome=fail" "fail" "$(_res .outcome)"
 assert_eq "[SPEC-5] ...because the issue was unreadable" "unreadable" "$(_res .data.judgement)"
@@ -138,7 +138,7 @@ printf '{"inputs":{}}\n' > "$_S/stage-inputs.json"
 # Real-looking outputs on disk, but not in the index: they are not read.
 zb_test_issue_output "$_S" "on-disk issue" >/dev/null
 printf '%s\n' '```acceptance' 'SPEC-1[change]: on disk' '```' > "$_A/design.md"
-_IA_ANSWER=$'VERDICT: pass\nREASON: ok'
+_IA_ANSWER=$'MET: no artifact paths in code\nMET: an interrupted push reports unavailable'
 _run
 assert_eq "[SPEC-7] no index entry → nothing to judge against (unreadable), whatever is on disk" "unreadable" "$(_res .data.judgement)"
 _code="$(grep -v '^[[:space:]]*#' "$PLUGIN_DIR/plugin.sh")"
@@ -182,20 +182,20 @@ assert_contains "[SPEC-9] the narrowed-SPEC rule is kept" "$_p9" "a SPEC that na
 
 print_test_section "SPEC-10: one finding per line, whole"
 _setup s10
-_IA_ANSWER=$'VERDICT: fail\nREASON: two unmet\nUNMET: R-4: persist is not tested; only release is\nUNMET: R-10: lint fails (eight files use `set +e`; one sets `set -e` mid-file)\nUNSURE: R-9: §9 or §11; the issue is unclear'
+_IA_ANSWER=$'UNMET: R-4 | WHY: persist is not tested; only release is | QUOTE: "no artifact paths in code"\nUNMET: R-10 | WHY: lint fails (eight files use `set +e`; one sets `set -e` mid-file) | QUOTE: "no artifact paths in code"\nUNSURE: R-9 | WHY: §9 or §11; the issue is unclear | QUOTE: "an interrupted push reports unavailable"'
 _run
 assert_eq "[SPEC-10] two UNMET lines → two unmet items" "2" "$(_res '.data.unmet | length')"
 assert_eq "[SPEC-10] a semicolon inside a finding does not split it" \
-    "R-4: persist is not tested; only release is" "$(_res '.data.unmet[0]')"
+    'R-4: persist is not tested; only release is — "no artifact paths in code"' "$(_res '.data.unmet[0]')"
 assert_eq "[SPEC-10] ...nor a backticked one" \
-    'R-10: lint fails (eight files use `set +e`; one sets `set -e` mid-file)' "$(_res '.data.unmet[1]')"
-assert_eq "[SPEC-10] an UNSURE line is one item too" "R-9: §9 or §11; the issue is unclear" "$(_res '.data.unsure[0]')"
+    'R-10: lint fails (eight files use `set +e`; one sets `set -e` mid-file) — "no artifact paths in code"' "$(_res '.data.unmet[1]')"
+assert_eq "[SPEC-10] an UNSURE line is one item too" 'R-9: §9 or §11; the issue is unclear — "an interrupted push reports unavailable"' "$(_res '.data.unsure[0]')"
 assert_eq "[SPEC-10] three findings in all" "3" "$(_res '.data.findings | length')"
 _p10="$(_ia_prompt "I" "S" "D" "pass")"
 assert_eq "[SPEC-10] the prompt no longer asks for a semicolon-separated list" \
     "0" "$(grep -c "semicolon" <<< "$_p10" || true)"
 
-print_test_section "SPEC-11: an answer with no verdict is asked again, with what was wrong"
+print_test_section "SPEC-11: an answer with no line is asked again, with what was wrong (#2464: no VERDICT line any more)"
 _IA_N="$TEST_TEMP_DIR/n11"
 _ia_two() {   # _ia_two <rc1> <answer1> <answer2>
     printf '0' > "$_IA_N"; _IA_A1="$2"; _IA_A2="$3"; _IA_RC1="$1"
@@ -207,11 +207,11 @@ _ia_two() {   # _ia_two <rc1> <answer1> <answer2>
     }
 }
 _setup s11a
-_ia_two 0 "I think it mostly looks fine?" $'VERDICT: pass\nREASON: all met'
+_ia_two 0 "I think it mostly looks fine?" $'MET: no artifact paths in code\nMET: an interrupted push reports unavailable'
 _run
 assert_eq "[SPEC-11] asked twice" "2" "$(cat "$_IA_N")"
 _p11="$(cat "$_IA_PROMPT.2" 2>/dev/null)"
-assert_contains "[SPEC-11] the second ask says what was wrong" "$_p11" "it has no VERDICT: line"
+assert_contains "[SPEC-11] the second ask says what was wrong" "$_p11" "it has no MET:, UNMET: or UNSURE: line"
 assert_contains "[SPEC-11] the second ask carries the first answer" "$_p11" "I think it mostly looks fine?"
 assert_eq "[SPEC-11] the second answer is the judgement" "pass" "$(_res .outcome)"
 _setup s11b
@@ -219,9 +219,9 @@ _ia_two 0 "maybe?" "still maybe?"
 _run
 assert_eq "[SPEC-11] asked twice, no more" "2" "$(cat "$_IA_N")"
 assert_eq "[SPEC-11] still no verdict: unusable" "unusable" "$(_res .outcome)"
-assert_contains "[SPEC-11] ...saying what was wrong" "$(_res .reason)" "it has no VERDICT: line"
+assert_contains "[SPEC-11] ...saying what was wrong" "$(_res .reason)" "it has no MET:, UNMET: or UNSURE: line"
 _setup s11c
-_ia_two 1 "" $'VERDICT: pass\nREASON: all met'
+_ia_two 1 "" $'MET: no artifact paths in code\nMET: an interrupted push reports unavailable'
 _run
 assert_eq "[SPEC-11] a failed call is not asked again" "1" "$(cat "$_IA_N")"
 route_to_model() { printf '%s' "$2" > "$_IA_PROMPT"; printf '%s\n' "$_IA_ANSWER"; return $_IA_RC; }

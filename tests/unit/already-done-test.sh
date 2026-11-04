@@ -24,7 +24,9 @@ print_test_header "every stage finishes at once when its work is already done (#
 setup_test_env "already-done"
 
 S="$TEST_TEMP_DIR/state"; mkdir -p "$S/artifacts"
-for _st in design test-author issue-acceptance; do
+# #2464 (ADR-072 §1): the stages whose calls build something. issue-acceptance
+# only judges (tools: read): its calls start fresh, with no such rule.
+for _st in design test-author build; do
     _rules="$(_stage_block_rules "$_st" "$S" "$REPO_ROOT/plugins/agent/$_st/manifest.yaml" 2>/dev/null)"
     assert_contains "[A1] $_st is told what to do when its work is already there" "$_rules" "already there and right"
     assert_contains "[A1] ...to confirm it and finish, not redo it" "$_rules" "confirm it and finish"

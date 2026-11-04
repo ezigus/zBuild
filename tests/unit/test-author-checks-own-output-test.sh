@@ -106,7 +106,8 @@ MD
     CALLS="$(cat "$TEST_TEMP_DIR/author-calls" 2>/dev/null || echo 0)"
 }
 
-MISMATCH="SPEC-1: VERDICT: mismatch REASON: it checks the exit code of the wrong command"
+# #2464 (ADR-072 §3): a verdict short of corresponds quotes the requirement.
+MISMATCH='SPEC-1: VERDICT: mismatch REASON: it checks the exit code of the wrong command | QUOTE: "an empty input returns rc 1"'
 CORRESP="SPEC-1: VERDICT: corresponds REASON: it checks the requirement"
 
 # ── A1 ───────────────────────────────────────────────────────────────────────

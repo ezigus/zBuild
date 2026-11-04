@@ -47,6 +47,8 @@ config:
   router:
     timeout_s: 600
     max_turns: 45
+    # #2464 (ADR-072 §1): it judges — it reads and searches files, and changes none.
+    tools: read
 
 outputs:
   - id: findings

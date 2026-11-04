@@ -44,11 +44,30 @@ _route_manifest_knob() {
 # tools, and its rules ask for none. The manifest is the dispatched plugin's
 # unless one is named.
 _route_manifest_no_tools() {
-    local mf="${1:-${ZBUILD_PLUGIN_DIR:+$ZBUILD_PLUGIN_DIR/manifest.yaml}}"
-    [[ -n "$mf" && -f "$mf" ]] || return 1
-    declare -F _manifest_router_block_v >/dev/null 2>&1 || return 1
-    local _mnt; _manifest_router_block_v _mnt "$mf" tools
-    [[ "${_mnt%$'\n'}" == none ]]
+    local _mnt; _route_manifest_tools_v _mnt "${1:-}"
+    [[ "$_mnt" == none ]]
+}
+
+# ─── _route_manifest_tools_v <var> [manifest] — #2448, #2464 (ADR-072 §1) ────
+# The plugin's `config.router.tools`: none, read, or empty (the full set).
+_ZB_JUDGE_TOOLS="Read,Grep,Glob"
+_route_manifest_tools_v() {
+    local -n _rmt="$1"
+    local mf="${2:-${ZBUILD_PLUGIN_DIR:+$ZBUILD_PLUGIN_DIR/manifest.yaml}}"
+    _rmt=""
+    [[ -n "$mf" && -f "$mf" ]] || return 0
+    declare -F _manifest_router_block_v >/dev/null 2>&1 || return 0
+    _manifest_router_block_v _rmt "$mf" tools
+    _rmt="${_rmt%$'\n'}"
+}
+
+# _route_judge_tools — rc 0 when this call judges: its plugin declares
+# `tools: read`, or the caller asked for it (ZBUILD_ROUTE_TOOLS=read — the
+# design and test-author checks, whose stages need the full set for their own
+# call). `tools: none` wins over both.
+_route_judge_tools() {
+    local _rjt; _route_manifest_tools_v _rjt "${1:-}"
+    [[ "$_rjt" != none ]] && [[ "$_rjt" == read || "${ZBUILD_ROUTE_TOOLS:-}" == read ]]
 }
 
 # ─── _route_manifest_effort_v <var> [manifest] — #2454 (ADR-017 §11) ────────

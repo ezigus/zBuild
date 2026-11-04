@@ -98,7 +98,10 @@ FORK_BUDGET=2190
 # 2880 (round 9: a dispatch's result readers, input index, prompt blocks and
 # setup, the manifest checks and the snapshot's names fill variables in the
 # shell that asks — measured 2,819 macOS).
-PROCESS_BUDGET=2880
+# 2870 (#2464: validate_manifest reads each router knob's range and words in its
+# shell, not in two `$( )` a knob — measured 2,853 macOS with the judges' kept
+# answers added; main was at 2,879).
+PROCESS_BUDGET=2870
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh

@@ -48,6 +48,8 @@ provides:
     - review_lens.failed
     - review_lens.redaction_failed
     - review_lens.unparseable
+    # #2464 (ADR-072 §4): its answer was kept, so no model call was made.
+    - judge.kept
 
 config:
   # One outcome (#2366): fail when the lens found a high or critical problem
@@ -63,6 +65,8 @@ config:
     # old 300s ceiling (#1845's diff-only prompt peaked at 162s).
     timeout_s: 600
     max_turns: 20
+    # #2464 (ADR-072 §1): it judges — it reads and searches files, and changes none.
+    tools: read
 
 outputs:
   - id: lens_result

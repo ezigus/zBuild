@@ -643,7 +643,12 @@ _route_call_claude() {
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
     # #2448: a plugin whose calls need no tools gets none — built-in or MCP.
-    _route_manifest_no_tools && _claude_args+=(--strict-mcp-config --tools "")
+    # #2464 (ADR-072 §1): a judging call reads and searches files, and nothing else.
+    if _route_manifest_no_tools; then
+        _claude_args+=(--strict-mcp-config --tools "")
+    elif _route_judge_tools; then
+        _claude_args+=(--strict-mcp-config --tools "$_ZB_JUDGE_TOOLS")
+    fi
     # #2454 (ADR-017 §11): how hard the model thinks — the plugin's, else medium.
     local _rt_effort; _route_manifest_effort_v _rt_effort
     _claude_args+=(--effort "$_rt_effort")
@@ -729,6 +734,9 @@ _route_call_claude() {
     # the envelope, exactly as it did when the CLI printed only that.
     local _sync_stream="$response"
     response="$(_route_stream_envelope_text <<< "$_sync_stream")"
+    # #2464 (ADR-072 §4): the files a judging call opened, for its kept answer.
+    [[ -n "${ZBUILD_ROUTER_OPENED_FILE:-}" && "$_sync_stream" == *'"tool_use"'* ]] \
+        && _route_stream_opened <<< "$_sync_stream" >> "$ZBUILD_ROUTER_OPENED_FILE" 2>/dev/null
 
     if [[ $rc -ne 0 ]]; then
         # Wave 19-K (#748) + #762: mirror Wave 19-I Fix B for the SYNC path.
@@ -1164,6 +1172,15 @@ _route_stream_envelope_text() {
 # _route_stream_envelope <stream_file> <envelope_out> — the same, file to file.
 _route_stream_envelope() {
     _route_stream_envelope_text 2>/dev/null < "$1" > "$2" || : > "$2"
+}
+
+# _route_stream_opened — stdin: a call's step stream; stdout: each file it read
+# (Read) or searched by name (Grep with a file path), one per line (#2464).
+_route_stream_opened() {
+    jq -Rr 'fromjson? | select(type == "object" and .type == "assistant")
+        | .message.content[]? | select(.type == "tool_use")
+        | if .name == "Read" then .input.file_path elif .name == "Grep" then .input.path else empty end
+        | strings' 2>/dev/null || true
 }
 
 # _route_stream_progress <stream_file> — "<turns> <last_tool>" read from the

@@ -1,6 +1,6 @@
 # ADR-017: Per-Stage Router Configuration
 
-**Status:** Accepted (2026-05-29)
+**Status:** Accepted (2026-05-29); amended 2026-11-03 (#2464, §11: `tools: read`)
 **Date:** 2026-05-29
 **Amended:** 2026-10-31 (#2439, ADR-054 §6a) — `router.retries`, `router.retry_on_exhaustion` and `router.max_iterations` are removed: a stage makes one model call per try, and the template's per-stage `retry:` is the only retry (amendment at the end).
 **Amended:** 2026-08-09 (#1820, ADR-054) — noting that #1816 inserts the manifest layer into ADR-017's resolution chain; per-stage router config is now resolved through the manifest-declared data path before falling through to the template/global config tiers documented here.
@@ -447,8 +447,13 @@ A plugin may declare `config.router.tools: none`. Every one-shot model call it m
 
 A plugin may declare `config.router.effort`: `low`, `medium`, `high`, `xhigh` or `max`, which is how hard the model thinks on its calls. Every model call passes `--effort <word>`: the one-shot path (`_route_call_claude`) and the loop path (`route_to_model_loop`) alike. A plugin that declares none gets `medium`, so no call runs at a default nobody chose. `validate_manifest` refuses any other word. Like `tools`, it is a property of the work, so it has no template or env layer. Why: on #1805 run 41452299475 the router passed nothing, and one test-author thinking turn ran for seven minutes until it hit the 32,000-token output limit and was cut off.
 
+## Amendment 2026-11-03 (#2464) — §11: `tools: read`
+
+`config.router.tools` also takes `read`. Every one-shot call such a plugin makes judges, so the router passes `--strict-mcp-config --tools "Read,Grep,Glob"`: the call can open and search files and nothing else. A call from another plugin gets the same when its caller sets `ZBUILD_ROUTE_TOOLS=read` for it; the design coverage check and test-author's assertion check do this. `none` wins over both. `validate_manifest` accepts `none` and `read`, and refuses any other word. Why: on #1805's runs of 2026-11-03, every judge but intake's ran with every tool and write access to the repository (ADR-072 §1).
+
 ## Enforced by
 
+- §11 amendment 2026-11-03 (#2464: `tools: read`) → `tests/unit/judge-tools-test.sh` T1–T4
 - §11 amendment 2026-11-02 (#2454: `effort`, medium by default) → `tests/unit/router-effort-test.sh` E1–E3
 - §11 amendment 2026-11-01 (#2448: `tools: none`) → `tests/unit/intake-no-tools-test.sh` T1, T2
 - Amendment 2026-10-31 (#2439: the call-retry and call-limit knobs are removed) → `tests/unit/retired-retry-settings-test.sh` T1–T4, T6; `tests/unit/route-one-call-per-try-test.sh` O4, O6

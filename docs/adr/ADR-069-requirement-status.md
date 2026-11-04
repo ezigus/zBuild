@@ -1,6 +1,6 @@
 # ADR-069 — Requirement status: needs work (code), needs work (no code), already done
 
-**Status:** Accepted (2026-10-05)
+**Status:** Accepted (2026-10-05); amended 2026-11-03 (#2464, §2: a [done] claim is read in the code from before the change, by file)
 **Issue:** #2304; §9 #2305
 **Amends:** ADR-036 (the acceptance check: the #1670, #1777, #2234 and #2244 guard rules are superseded), ADR-046 (design-gate C3/C4 rewritten, C6 removed), ADR-021 and ADR-053 (historical notes) — amended in PR B of #2304
 **Carries out:** ADR-037's planned removal of the `[change]`/`[guard]` classification (ADR-037, the ADR-031 and ADR-036 rows of its retirement table)
@@ -92,8 +92,13 @@ main behaviour would have shipped untested. Its evidence was a line number (`run
   base commit, the text in the file is what is checked. The coverage check and issue-acceptance show the code
   around the line holding the text.
 
+## Amendment 2026-11-03 (#2464) — §2: a [done] claim is read in the code from before the change, by file
+
+The checks that judge a `[done]` claim — design's coverage check and issue-acceptance — are pointed at each evidence item's file and text, and open the file themselves. They are never given a window of lines; the windows (10 lines in the coverage check, 20 in issue-acceptance) are gone. The coverage check reads the claim in a read-only copy of the base commit (ADR-072 §2), because the claim is about the code from before the change; before this amendment it read the branch's own working copy. On #1805 run 41679237388 it ruled SKIP-1's claim wrong from ten lines, with the line that proved it just past them.
+
 ## Enforced by
 
+- §2 amendment 2026-11-03 (#2464: read in the code from before, by file) → `tests/unit/judge-quotes-test.sh` Q2, Q4; `tests/unit/descriptive-id-readers-test.sh` R10; `tests/unit/judge-base-code-test.sh` B1–B6
 - §1 §2 amendment 2026-11-03 (#2462: descriptive ids that never move; [done] proven on the code from before) → `tests/unit/design-stable-ids-test.sh` D1–D14; `tests/unit/design-stage-ids-test.sh` E1–E4; `tests/unit/descriptive-id-readers-test.sh` R1–R12
 - §2 amendment 2026-11-01 (#2445) → `tests/unit/design-coverage-test.sh` X4, X5
 

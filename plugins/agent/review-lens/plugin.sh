@@ -39,6 +39,8 @@ source "$_RL_ROOT/scripts/lib/llm-agent.sh"
 # full-branch diff as `review`, not the (often empty) incremental build diff.patch.
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_RL_ROOT/scripts/lib/merge-base.sh"
+# shellcheck source=../../../scripts/lib/judge.sh
+source "$_RL_ROOT/scripts/lib/judge.sh"
 # #721: strip stage-io banners and ANSI from input before the LLM prompt.
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_RL_ROOT/scripts/lib/test-output-sanitize.sh"
@@ -114,6 +116,29 @@ _rl_reply_problem() {
         *) _rp_why="it is not valid JSON: $(_llm_envelope_parse_error "${_rp_json:-$1}")" ;;
     esac
     _rp_json=""
+}
+
+# _rl_quote_problem_v <var> <json> <evidence> <repo> — what is wrong with the
+# report's quotes (#2464, ADR-072 §3): a finding with none, or one that is in
+# neither its file nor the change. Empty when every quote is there. Sets
+# _RL_QUOTE_FILES: the files the findings name, which a kept report depends on.
+_rl_quote_problem_v() {
+    local -n _rqp="$1"; local _rqp_n=0 _rqp_f _rqp_q _rqp_w
+    local -a _rqp_bad=()
+    _rqp=""; _RL_QUOTE_FILES=()
+    [[ "$2" == *'"file"'* || "$2" == *'"quote"'* || "$2" == *'"message"'* ]] || return 0
+    while IFS=$'\037' read -r _rqp_f _rqp_q; do
+        _rqp_n=$(( _rqp_n + 1 ))
+        [[ -n "$_rqp_f" && "$_rqp_f" != unknown ]] && _RL_QUOTE_FILES+=("$4/$_rqp_f")
+        if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); continue; fi
+        judge_quote_check_v _rqp_w "$_rqp_f:\"$_rqp_q\"" "$3" "$4" && continue
+        _judge_holds "$3" "$_rqp_q" && continue
+        _rqp_bad+=("finding $_rqp_n's quote $_rqp_w")
+    # One line per finding, its file and quote split by a unit separator: @tsv
+    # would double a backslash in the quote.
+    done < <(jq -r '(.findings // [])[]? | [(if type == "object" then (.file // "") else "" end), (if type == "object" then (.quote // "") else "" end)] | map(tostring | gsub("[\n\u001f]"; " ")) | join("\u001f")' <<< "$2" 2>/dev/null)
+    [[ ${#_rqp_bad[@]} -gt 0 ]] || return 0
+    local IFS=';'; _rqp="${_rqp_bad[*]}"; _rqp="${_rqp//;/; }"
 }
 
 # _rl_write_routed <path> <lines-json> <what> — one routed result (#2433): fail
@@ -314,6 +339,9 @@ _review_lens_run_inner() {
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
     local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content" "$(_rl_context)")"
+    # #2464: what the lens judges, before the engine's blocks (whose Previous
+    # work names this run's paths) — its kept answer's fingerprint.
+    local _rl_judged="$prompt"
 
     # ADR-067 §8: the lens's three parts and the engine's blocks — its budget
     # among the engine's rules — in the one prompt order.
@@ -349,14 +377,42 @@ _review_lens_run_inner() {
     local _rl_ask="$prompt" _rl_problem="" _rl_try json=""
     local _rl_replies="${out%.json}-reply.txt"
     : > "$_rl_replies" 2>/dev/null || true
+    # #2464 (ADR-072 §4 §5): the lens's report is kept while what it judged is
+    # unchanged; a stage's "nothing to do" answer to one of its findings is
+    # judged again, shown to the lens.
+    local _rl_repo="${ZBUILD_REPO_ROOT:-$PWD}" _rl_kf="${out%.json}-judged.json" _rl_eng _rl_fp _rl_kept="" _rl_ans
+    judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-design"
+    judge_engine_v _rl_eng
+    judge_fp_v _rl_fp "$_rl_eng"$'\n'"$lens"$'\n'"$_rl_judged"$'\n'"$_rl_ans"
+    judge_kept_get_v _rl_kept "$_rl_kf" lens "$_rl_fp"
+    if [[ -n "$_rl_kept" ]]; then
+        _rl_quote_problem_v _rl_problem "$_rl_kept" "$evidence_content" "$_rl_repo"
+        [[ -z "$_rl_problem" ]] && { json="$_rl_kept"; raw_response="$_rl_kept"; emit_event "judge.kept" "check=review-lens" "lens=$lens"; }
+        _rl_problem=""
+    fi
+    [[ -n "$_rl_ans" ]] && { prompt+=$'\n'"$(judge_disputes_block "$_rl_ans")"; _rl_ask="$prompt"; }
+    # The files the call opens, listed by the router (no mktemp: ADR-065 §5).
+    local _rl_opened="${ZBUILD_STAGE_SCRATCH:-$artifact_dir}/lens-${lens}-opened.txt"
+    : > "$_rl_opened" 2>/dev/null || _rl_opened=""
+    local -x ZBUILD_ROUTER_OPENED_FILE="$_rl_opened"
     for _rl_try in 1 2; do
+        [[ -n "$json" ]] && break
         raw_response=""; router_rc=0; _rl_problem=""
         raw_response="$(route_to_model "$tier" "$_rl_ask")" || router_rc=$?
         printf -- '--- reply %s ---\n%s\n' "$_rl_try" "$raw_response" >> "$_rl_replies" 2>/dev/null || true
         # A signal that landed during the call ends the lens here (review on #2434).
         [[ $router_rc -eq 0 && -n "$raw_response" && "${_rl_interrupted:-0}" != "1" ]] || break
         _rl_reply_problem "$raw_response" json _rl_problem
-        [[ -n "$_rl_problem" ]] || break
+        # ADR-072 §3: every finding quotes the text that shows it.
+        [[ -z "$_rl_problem" ]] && _rl_quote_problem_v _rl_problem "$json" "$evidence_content" "$_rl_repo"
+        if [[ -z "$_rl_problem" ]]; then
+            local -a _rl_deps=()
+            judge_opened_v _rl_deps "$_rl_opened"
+            _rl_deps+=(${_RL_QUOTE_FILES[@]+"${_RL_QUOTE_FILES[@]}"})
+            judge_kept_put_one "$_rl_kf" lens "$_rl_fp" "$json" ${_rl_deps[@]+"${_rl_deps[@]}"}
+            break
+        fi
+        json=""
         _rl_ask="$(stage_prompt_reask "$prompt" "$_rl_problem" "$raw_response")"
     done
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
@@ -447,6 +503,7 @@ _review_lens_run_inner() {
                          then (.severity|tostring|ascii_downcase) else "low" end),
               line: (.line // null),
               message: (.message // (.|tostring)),
+              quote: (.quote // ""),
               # ADR-038 amendment: whether the change introduced it. Kept here —
               # dropping it made every finding count as new (review on #2215).
               introduced: (if .introduced == false then false else true end),
@@ -456,7 +513,7 @@ _review_lens_run_inner() {
                     then (.fix|tostring|ascii_downcase) else "code" end)
             } else {
               file: "unknown", category: "general", severity: "low",
-              line: null, message: (.|tostring), introduced: true, fix: "code"
+              line: null, message: (.|tostring), quote: "", introduced: true, fix: "code"
             } end ]
         }' 2>/dev/null || true)"
     if [[ -z "$normalized" ]]; then
