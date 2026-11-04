@@ -384,8 +384,8 @@ _review_lens_run_inner() {
     judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-design"
     judge_engine_v _rl_eng
     judge_fp_v _rl_fp "$_rl_eng"$'\n'"$lens"$'\n'"$_rl_judged"$'\n'"$_rl_ans"
-    local _rl_disp=0; [[ -n "$_rl_ans" ]] && _rl_disp=1
-    judge_kept_get_v _rl_kept "$_rl_kf" lens "$_rl_fp" "$_rl_disp"
+    local _rl_disputed=0; [[ -n "$_rl_ans" ]] && _rl_disputed=1
+    judge_kept_get_v _rl_kept "$_rl_kf" lens "$_rl_fp" "$_rl_disputed"
     if [[ -n "$_rl_kept" ]]; then
         _rl_quote_problem_v _rl_problem "$_rl_kept" "$evidence_content" "$_rl_repo"
         [[ -z "$_rl_problem" ]] && { json="$_rl_kept"; raw_response="$_rl_kept"; }

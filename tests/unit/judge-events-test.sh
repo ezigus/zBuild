@@ -182,6 +182,7 @@ done
 assert_eq "[V5] design declares judge.base.created" "1" "$(_decl agent/design judge.base.created)"
 assert_eq "[V5] design declares judge.base.failed" "1" "$(_decl agent/design judge.base.failed)"
 assert_eq "[V5] teardown declares judge.base.released" "1" "$(_decl tool/teardown judge.base.released)"
+assert_eq "[V5] ...and so does design, which replaces a copy for a new base commit" "1" "$(_decl agent/design judge.base.released)"
 assert_eq "[V5] no code emits judge.kept any more" "0" \
     "$(grep -rn '"judge\.kept"' "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" --include='*.sh' | grep -v '/tests/' | grep -c . || true)"
 
