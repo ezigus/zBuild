@@ -36,6 +36,8 @@ provides:
     - teardown.scratch.purged
     - teardown.scope.invalid
     - teardown.start
+    # #2466 (ADR-072 §2): the judges' old-code copy removed.
+    - judge.base.released
 
 outputs:
   - id: teardown_result

@@ -295,7 +295,7 @@ _ta_correspondence() {
         judge_fp_v _k "$eng"$'\n'"${_ids[_i]}"$'\n'"${_txts[_i]}"$'\n'"${_srcs[_i]}"$'\n'"${_disp[${_ids[_i]}]:-}"
         _fps[_i]="$_k"
         [[ -n "$kf" ]] || continue
-        judge_kept_get_v _k "$kf" "${_ids[_i]}" "${_fps[_i]}"
+        judge_kept_get_v _k "$kf" "${_ids[_i]}" "${_fps[_i]}" "${_disp[${_ids[_i]}]:+1}"
         [[ -n "$_k" ]] || continue
         IFS=$'\t' read -r "_verdicts[_i]" "_reasons[_i]" "_quotes[_i]" <<< "$_k"
         _kept[_i]=1
@@ -313,9 +313,7 @@ _ta_correspondence() {
         _jsrcs+=("$_src")
         _tags+=("$(acceptance_spec_tag "${_ids[_i]}")")
     done
-    if [[ ${#_jx[@]} -eq 0 ]]; then
-        _ta_sc_emit "judge.kept" "check=test-author-correspondence"
-    else
+    if [[ ${#_jx[@]} -gt 0 ]]; then
         local _files_text="" _sf _seen _x
         for _i in "${_jx[@]}"; do
             for _f in ${_tfss[_i]}; do

@@ -48,8 +48,11 @@ provides:
     - review_lens.failed
     - review_lens.redaction_failed
     - review_lens.unparseable
-    # #2464 (ADR-072 §4): its answer was kept, so no model call was made.
-    - judge.kept
+    # #2464, #2466 (ADR-072 §4): a kept answer saved, used instead of a call,
+    # or found stale and judged again — one event per item.
+    - judge.kept.saved
+    - judge.kept.used
+    - judge.kept.stale
 
 config:
   # One outcome (#2366): fail when the lens found a high or critical problem

@@ -13,6 +13,9 @@
 _ZBUILD_JUDGE_LOADED=1
 _ZB_JUDGE_DIR="${BASH_SOURCE[0]%/*}"
 
+# _judge_emit <type> [k=v]... — an event, when the event bus is loaded (#2466).
+_judge_emit() { declare -F eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" 2>/dev/null; return 0; }
+
 # ─── The code from before the change (§2) ───────────────────────────────────
 
 # judge_base_dir_v <var> [repo_root] — the read-only copy of the base commit
@@ -24,18 +27,19 @@ judge_base_dir_v() {
     local -n _jbd="$1"
     local _judge__repo="${2:-${ZBUILD_REPO_ROOT:-$PWD}}" _judge__sd="${ZBUILD_STATE_DIR:-}" _judge__base="" _judge__dir
     _jbd=""
-    [[ -n "$_judge__sd" ]] || return 1
+    [[ -n "$_judge__sd" ]] || { _judge_emit judge.base.failed "reason=no_state_dir"; return 1; }
     declare -F zbuild_resolve_merge_base >/dev/null 2>&1 \
         || source "$_ZB_JUDGE_DIR/merge-base.sh" 2>/dev/null || return 1
     _judge__base="$(zbuild_resolve_merge_base "$_judge__repo")"
-    [[ -n "$_judge__base" ]] || return 1
+    [[ -n "$_judge__base" ]] || { _judge_emit judge.base.failed "reason=no_base_commit"; return 1; }
     _judge__dir="${_judge__sd%/}/base-code"
     if [[ -d "$_judge__dir" && -f "$_judge__dir.sha" && "$(<"$_judge__dir.sha")" == "$_judge__base" ]]; then
         _jbd="$_judge__dir"; return 0
     fi
-    judge_base_release "$_judge__sd" "$_judge__repo"
+    judge_base_release "$_judge__sd" "$_judge__repo" new_base
     mkdir -p "$_judge__sd" 2>/dev/null || return 1
-    git -C "$_judge__repo" worktree add --detach "$_judge__dir" "$_judge__base" >/dev/null 2>&1 || return 1
+    git -C "$_judge__repo" worktree add --detach "$_judge__dir" "$_judge__base" >/dev/null 2>&1 \
+        || { _judge_emit judge.base.failed "reason=worktree_add_failed"; return 1; }
     declare -F _zbuild_worktree_apply_sparse >/dev/null 2>&1 \
         && { _zbuild_worktree_apply_sparse "$_judge__dir" "$_judge__repo" >/dev/null 2>&1 || true; }
     # Read-only: nothing that runs in this run may change the code it is judged
@@ -43,13 +47,15 @@ judge_base_dir_v() {
     # still delete it.
     find "$_judge__dir" -type f -exec chmod a-w {} + 2>/dev/null || true
     printf '%s' "$_judge__base" > "$_judge__dir.sha"
+    _judge_emit judge.base.created "base=$_judge__base" "path=$_judge__dir"
     _jbd="$_judge__dir"
 }
 
-# judge_base_release [state_dir] [repo_root] — remove the copy, and git's record
-# of it. Teardown calls it on every exit path (ADR-054 §7).
+# judge_base_release [state_dir] [repo_root] [by] — remove the copy, and git's
+# record of it. Teardown calls it on every exit path (ADR-054 §7); <by> says
+# who, in the judge.base.released event (#2466).
 judge_base_release() {
-    local _judge__sd="${1:-${ZBUILD_STATE_DIR:-}}" _judge__repo="${2:-${ZBUILD_REPO_ROOT:-$PWD}}" _judge__dir
+    local _judge__sd="${1:-${ZBUILD_STATE_DIR:-}}" _judge__repo="${2:-${ZBUILD_REPO_ROOT:-$PWD}}" _judge__dir _judge__by="${3:-teardown}"
     [[ -n "$_judge__sd" ]] || return 0
     _judge__dir="${_judge__sd%/}/base-code"
     [[ -e "$_judge__dir.sha" ]] && rm -f "$_judge__dir.sha" 2>/dev/null
@@ -57,6 +63,7 @@ judge_base_release() {
     chmod -R u+w "$_judge__dir" 2>/dev/null || true
     git -C "$_judge__repo" worktree remove --force "$_judge__dir" >/dev/null 2>&1 \
         || { rm -rf -- "$_judge__dir" 2>/dev/null; git -C "$_judge__repo" worktree prune >/dev/null 2>&1; }
+    _judge_emit judge.base.released "path=$_judge__dir" "by=$_judge__by"
     return 0
 }
 
@@ -200,12 +207,11 @@ judge_engine_v() {
 # checksum and its length in bytes (cksum), which two different texts share by
 # chance about once in four billion.
 judge_fp_v() {
-    local -n _jfp="$1"
-    # Through a file, not $( ): one program, no copy of the shell (ADR-065 §5).
-    local _jfp_f="${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-judge-fp.$BASHPID" _jfp_c="" _jfp_n=""
+    local -n _jfp="$1"; local _jfp_c="" _jfp_n=""
     _jfp=""
-    cksum <<< "$2" > "$_jfp_f" 2>/dev/null && read -r _jfp_c _jfp_n < "$_jfp_f"
-    rm -f "$_jfp_f" 2>/dev/null
+    # A process substitution, not a temp file: one program, and nothing to remove
+    # (review on #2465; ADR-065 §5 counts the rm a temp file needs).
+    read -r _jfp_c _jfp_n < <(cksum <<< "$2" 2>/dev/null)
     [[ -n "$_jfp_c" ]] && _jfp="$_jfp_c-$_jfp_n"
     return 0
 }
@@ -232,17 +238,29 @@ _judge_hashes_v() {
     for __judge_i in "${!__judge_have[@]}"; do _jhs["${__judge_have[__judge_i]}"]="${__judge_hs[__judge_i]:-absent}"; done
 }
 
-# judge_kept_get_v <var> <kept_file> <key> <fp> — the payload kept for <key>
-# when it was kept for fingerprint <fp> and every file it depended on is
-# unchanged; empty otherwise.
+# _judge_check_name_v <var> <kept_file> — the check a kept file belongs to, as
+# its events name it: design, test-author, issue-acceptance, lens-<id>.
+_judge_check_name_v() { local -n _jcn="$1"; _jcn="${2##*/}"; _jcn="${_jcn%-judged.json}"; }
+
+# judge_kept_get_v <var> <kept_file> <key> <fp> [disputed] — the payload kept
+# for <key> when it was kept for fingerprint <fp> and every file it depended on
+# is unchanged; empty otherwise. #2466: emits judge.kept.used when it is, and
+# judge.kept.stale (why=fingerprint, disputed when [disputed] is 1, or file)
+# when a kept answer exists but cannot be used.
 judge_kept_get_v() {
-    local -n _jkg="$1"; local _judge__kf="$2" _judge__key="$3" _judge__fp="$4" _judge__rec
+    local -n _jkg="$1"; local _judge__kf="$2" _judge__key="$3" _judge__fp="$4" _judge__rec _judge__chk
     _jkg=""
     [[ -n "$_judge__fp" && -s "$_judge__kf" ]] || return 0
+    _judge_check_name_v _judge__chk "$_judge__kf"
     _judge__rec="$(jq -r --arg k "$_judge__key" --arg fp "$_judge__fp" \
-        '.[$k] // empty | select(.fp == $fp) | ((.files // {} | to_entries[] | "F\t\(.key)\t\(.value)"), "P\t\(.payload | @json)")' \
+        '.[$k] // empty | ("X\t\(.fp)"), (select(.fp == $fp) | ((.files // {} | to_entries[] | "F\t\(.key)\t\(.value)"), "P\t\(.payload | @json)"))' \
         "$_judge__kf" 2>/dev/null)" || return 0
     [[ -n "$_judge__rec" ]] || return 0
+    if [[ "$_judge__rec" != *$'\nP\t'* ]]; then
+        local _judge__why=fingerprint; [[ "${5:-0}" == 1 ]] && _judge__why=disputed
+        _judge_emit judge.kept.stale "check=$_judge__chk" "item=$_judge__key" "why=$_judge__why"
+        return 0
+    fi
     local _judge__kind _judge__a _judge__b _judge__payload=""
     local -a _judge__paths=() _judge__want=()
     while IFS=$'\t' read -r _judge__kind _judge__a _judge__b; do
@@ -255,9 +273,13 @@ judge_kept_get_v() {
     _judge_hashes_v _judge__now ${_judge__paths[@]+"${_judge__paths[@]}"}
     local _judge__i
     for _judge__i in "${!_judge__paths[@]}"; do
-        [[ "${_judge__now[${_judge__paths[_judge__i]}]:-absent}" == "${_judge__want[_judge__i]}" ]] || return 0
+        [[ "${_judge__now[${_judge__paths[_judge__i]}]:-absent}" == "${_judge__want[_judge__i]}" ]] && continue
+        _judge_emit judge.kept.stale "check=$_judge__chk" "item=$_judge__key" "why=file"
+        return 0
     done
     _jkg="$(jq -r '.' <<< "$_judge__payload" 2>/dev/null)" || _jkg=""
+    [[ -n "$_jkg" ]] && _judge_emit judge.kept.used "check=$_judge__chk" "item=$_judge__key"
+    return 0
 }
 
 # judge_kept_put <kept_file> <key> <fp> <payload> [file]... — keep <payload> for
@@ -278,6 +300,8 @@ judge_kept_put() {
                    files: ([$pairs | split("\n")[] | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {})}}' \
         <<< "$_judge__cur" > "$_judge__kf" 2>/dev/null
     # The old content was read first; a write cut short only costs a fresh judgement.
+    local _judge__chk; _judge_check_name_v _judge__chk "$_judge__kf"
+    _judge_emit judge.kept.saved "check=$_judge__chk" "item=$_judge__key"
     return 0
 }
 
@@ -305,6 +329,8 @@ judge_kept_put_one() {
     _judge_json_str_v _jpo_k "$_jpo_key"; _judge_json_str_v _jpo_v "$_jpo_p"; _judge_json_str_v _jpo_j "$_jpo_fp"
     [[ -d "${_jpo_kf%/*}" ]] || mkdir -p "${_jpo_kf%/*}" 2>/dev/null || true
     printf '{%s:{"fp":%s,"payload":%s,"files":{%s}}}\n' "$_jpo_k" "$_jpo_j" "$_jpo_v" "$_jpo_files" > "$_jpo_kf" 2>/dev/null
+    _judge_check_name_v _jpo_j "$_jpo_kf"
+    _judge_emit judge.kept.saved "check=$_jpo_j" "item=$_jpo_key"
     return 0
 }
 

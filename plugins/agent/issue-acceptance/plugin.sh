@@ -218,11 +218,10 @@ issue_acceptance_run() {
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
     judge_engine_v eng
     judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$acc"$'\n'"$diff"$'\n'"$test_verdict"$'\n'"$_ans"
-    judge_kept_get_v kept "$kf" issue "$fp"
+    judge_kept_get_v kept "$kf" issue "$fp" "${_ans:+1}"
     if [[ -n "$kept" ]]; then
         _ia_parse "$kept" "$_reqs" "$issue" "$_root_q"
         if [[ -z "$_IA_PROBLEM" ]]; then
-            _ia_emit "judge.kept" "check=issue-acceptance"
             _ia_finish "$art"
             return 0
         fi
