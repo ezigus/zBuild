@@ -89,10 +89,16 @@ MD
     echo "J7|$(_design_coverage_findings | tr '\n' ' ')"
     _R1="${OK/FRSH-1 Then 2: ok/FRSH-1 Then 2: untestable | WHY: x | QUOTE: \"every stage is dispatched\"}"; _R2="$_R1"; _cov
     echo "J8|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
+    # Review on #2469: the tests' stand-in for a judge that finds nothing answers
+    # every part of a SPEC with parts, as the real judge is asked to.
+    route_to_model() { zb_test_coverage_ok "$2"; }
+    _cov
+    echo "J9|$_DESIGN_COV_OUTCOME|$(_design_coverage_findings | grep -c .)"
 ) > "$TEST_TEMP_DIR/j.out" 2>/dev/null
 J="$TEST_TEMP_DIR/j.out"
 assert_contains "[J1] the check is shown each part, labelled" "$(_l "$J" J1)" "Then 2: the test file contains both cases"
 assert_contains "[J1] ...and asked for a line per part" "$(_l "$J" J1)" "<SPEC id> <part>: ok"
+assert_eq "[J9] the tests' all-ok judge answers every part (review on #2469)" "|0" "$(_l "$J" J9)"
 assert_eq "[J2] every part ok: nothing found, one call" "0||1" "$(_l "$J" J2)"
 assert_contains "[J3] a part with no line is asked again" "$(_l "$J" J3)" "2||"
 assert_contains "[J3] ...naming it" "$(_l "$J" J3)" "no line for FRSH-1 Then 2"

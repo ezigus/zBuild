@@ -202,7 +202,8 @@ _dck_plain() {
         GWT_NO_THEN*)        printf '%s has no Then: line — add what a test can observe after the When' "$id" ;;
         GWT_EMPTY_PART*)     local _gp="${rest#* }"; _gp="${_gp%% (*}"
             printf '%s has an empty %s — write what it says, or remove the line' "$id" "$_gp" ;;
-        GWT_ORPHAN_PART*)    printf 'a part line is under no SPEC (%s) — put each Given:, When:, Then:, And: or Cleanup: line under the SPEC it belongs to' "${rest#(}" ;;
+        GWT_ORPHAN_PART*)    local _op="${rest#(}"; _op="${_op%)}"
+            printf 'a part line is under no SPEC (%s) — put each Given:, When:, Then:, And: or Cleanup: line under the SPEC it belongs to' "$_op" ;;
         GWT_PART_ON_REMOVED*) printf '%s is removed, so it has no parts — remove the lines under its REMOVED line' "$id" ;;
         WIRING_IS_TEST*)     printf 'the WIRING file %s is one of your test files — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;

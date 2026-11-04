@@ -1472,7 +1472,7 @@ zb_test_test_run_output() {
 # finds nothing (#2464, ADR-072 §3): every requirement covered and every SPEC
 # ok, each read off the prompt it was asked, as the real judge reads them.
 zb_test_coverage_ok() {
-    local l sec=""
+    local l sec="" id=""
     while IFS= read -r l; do
         case "$l" in
             REQUIREMENTS:) sec=r; continue ;;
@@ -1482,7 +1482,10 @@ zb_test_coverage_ok() {
         if [[ "$sec" == r && "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+): ]]; then
             printf '%s: covered\n' "${BASH_REMATCH[1]}"
         elif [[ "$sec" == a && "$l" =~ ^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)(\[[a-z-]+\])?: ]]; then
-            printf '%s: ok\n' "${BASH_REMATCH[1]}"
+            id="${BASH_REMATCH[1]}"; printf '%s: ok\n' "$id"
+        elif [[ "$sec" == a && -n "$id" && "$l" =~ ^[[:space:]]+((Given|Then|Cleanup)\ [0-9]+|When(\ [0-9]+)?):\  ]]; then
+            # #2467 (review on #2469): every part of a SPEC with parts, too.
+            printf '%s %s: ok\n' "$id" "${BASH_REMATCH[1]}"
         fi
     done <<< "$1"
 }

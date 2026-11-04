@@ -121,7 +121,9 @@ assert_contains "[C3] no Then" "$(_gwt)" "GWT_NO_THEN FRSH-1"
 _design 'FRSH-1[code]: x' '  When: it starts' '  Then:'
 assert_contains "[C3] an empty part" "$(_gwt)" "GWT_EMPTY_PART FRSH-1 Then 1"
 _design '  Given: a stray part' 'FRSH-1[code]: x' '  When: it starts' '  Then: it ran'
-assert_contains "[C4] a part outside any SPEC" "$(_gwt)" "GWT_ORPHAN_PART"
+_v="$(_gwt)"
+assert_contains "[C4] a part outside any SPEC" "$_v" "GWT_ORPHAN_PART"
+assert_contains "[C4] ...said in plain words, naming the line (review on #2469)" "$(_plain "$_v")" "(Given: a stray part) —"
 _design 'FRSH-1[code]: x' '  When: it starts' '  Then: it ran' 'REMOVED: FRSH-2 — merged into FRSH-1' '  Then: something'
 assert_contains "[C4] a part under a REMOVED line" "$(_gwt)" "GWT_PART_ON_REMOVED FRSH-2"
 
