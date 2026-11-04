@@ -1,5 +1,22 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
+## Status: Nineteenth pass — DLGT-1 And: removed (unobservable)
+
+### Root cause of eighteenth-pass failure (design finding 1)
+
+DLGT-1's second And: line described what happens after reverting the implementation — "When plugin.sh is reverted to calling _hydrate_put_back inline, the sentinel is not written and the assertion fails" — which is not an observable output of the When's execution. Removed that And: line. The first Then: ("The sentinel file is written") is sufficient and testable.
+
+---
+
+## Status: Eighteenth pass — SPECs expanded with Given/When/Then parts
+
+### Root cause of seventeenth-pass failure (design findings 1-9)
+
+The checker found 9 SPECs written on a single line without required Given/When/Then sub-parts. This pass expands: RHYD-1, RHYD-2, FSTG-1, FSTG-2, ITER-1, SKIP-1, ENTR-1, FRSH-2, DLGT-1.
+The 5 single-line [no-code] SPECs (AMDR-1, AMDR-2, FRSH-1, BNDY-1, CYCL-1) describe structural/doc work and remain as single lines per [no-code] conventions.
+
+---
+
 ## Status: Seventeenth pass — SKIP-1 narrowed; FRSH-1 → [no-code]
 
 ### Root cause of sixteenth-pass failure (design finding 2)
