@@ -638,6 +638,19 @@ fi
 assert_eq "[#1805/BNDY-1] fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)" \
     "1" "$_s12_intake_starts"
 
+# [#1805/FRSH-1]: a fresh run (--no-resume) emits no stage.skip events, proving all stages
+# are dispatched from stage 1 and none are skipped due to prior state. stage.skip events
+# are only emitted by the resume rehydration path (which is suppressed by --no-resume).
+# A fresh run must not consult or skip any stage based on prior state.
+# This requirement need not fail before this change (no-code property); it must pass after.
+_s12_stage_skips=0
+if [[ -f "$S12_EVENTS_JSONL" ]]; then
+    _s12_stage_skips="$(jq -r 'select(.type=="stage.skip") | .type' \
+        "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/FRSH-1] fresh run (--no-resume) emits no stage.skip events (all stages dispatched from stage 1; none skipped due to prior state)" \
+    "0" "$_s12_stage_skips"
+
 # [#1805/BNDY-1]: the cycle fixture used for this fresh-run sub-case contains type: cycle,
 # establishing that the fixture IS a cyclic pipeline (satisfying the "same cycle fixture" clause).
 # BNDY-1 requires "verifies intake dispatches AND the fixture contains type:cycle" —
