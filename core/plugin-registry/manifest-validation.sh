@@ -286,6 +286,32 @@ yaml_get_list() {
     ' "$file" 2>/dev/null
 }
 
+# _manifest_scalar_checks_v <var> <manifest> — `core=bad` when requires.core is
+# a scalar, and `summary=OK|EMPTY` / `usage=OK|EMPTY` for the first top-level
+# declaration of each, one per line (#287/#294, #1414). Read by the shell
+# (#2466, ADR-065 §5: it was one awk a manifest).
+_manifest_scalar_checks_v() {
+    local -n _msc="$1"; local _msc_l _msc_in=0 _msc_bad=0 _msc_k _msc_v _msc_s=0 _msc_u=0
+    _msc=""
+    [[ -f "$2" ]] || return 0
+    while IFS= read -r _msc_l || [[ -n "$_msc_l" ]]; do
+        if [[ "$_msc_l" =~ ^requires:[[:space:]]*$ ]]; then _msc_in=1; continue; fi
+        (( _msc_in )) && [[ "$_msc_l" =~ ^[a-zA-Z_] ]] && _msc_in=0
+        if (( _msc_in && ! _msc_bad )) && [[ "$_msc_l" =~ ^[[:space:]]+core:[[:space:]]*[^[[:space:]] && ! "$_msc_l" =~ ^[[:space:]]+core:[[:space:]]*\[ ]]; then
+            _msc+="core=bad"$'\n'; _msc_bad=1
+        fi
+        for _msc_k in summary usage; do
+            [[ "$_msc_l" == "$_msc_k:"* ]] || continue
+            if [[ "$_msc_k" == summary ]]; then (( _msc_s )) && continue; _msc_s=1; else (( _msc_u )) && continue; _msc_u=1; fi
+            _msc_v="${_msc_l#*:}"; _msc_v="${_msc_v#"${_msc_v%%[![:space:]]*}"}"
+            _msc_v="${_msc_v%%#*}"; _msc_v="${_msc_v%"${_msc_v##*[![:space:]]}"}"
+            _msc_v="${_msc_v#[\"\']}"; _msc_v="${_msc_v%[\"\']}"
+            if [[ -z "$_msc_v" ]]; then _msc+="$_msc_k=EMPTY"$'\n'; else _msc+="$_msc_k=OK"$'\n'; fi
+        done
+    done < "$2"
+    return 0
+}
+
 # ─── _yaml_get_requires_core_list — parse requires: → core: list ────────────
 # Emits one core item per line. Structurally parses ONLY the `requires:` →
 # `core:` sub-block — so a stray `- redaction` outside that block does NOT
@@ -303,68 +329,53 @@ yaml_get_list() {
 # comment/blank, so a sibling key (`plugins:`) or the next top-level section
 # terminates it and a later `- ` list is never swept in.
 _yaml_get_requires_core_list() {
-    local file="$1"
-    awk '
-        # Find requires: block at column 0
-        /^requires:[[:space:]]*$/ { in_requires = 1; next }
-        # Exit requires: block if we hit another top-level key
-        in_requires && /^[a-zA-Z_]/ { in_requires = 0 }
+    local -a _ygrc=()
+    _yaml_get_requires_core_list_v _ygrc "$1"
+    [[ ${#_ygrc[@]} -gt 0 ]] && printf '%s\n' "${_ygrc[@]}"
+    return 0
+}
 
-        # Inside requires, find core:
-        in_requires && /^[[:space:]]+core:[[:space:]]*\[/ {
+# _yaml_get_requires_core_list_v <array_var> <manifest> — the same, into an
+# array, read by the shell (#2466, ADR-065 §5: it runs for every manifest on
+# every discovery walk; it was one awk each).
+_yaml_get_requires_core_list_v() {
+    local -n _ygr="$1"; local _ygr_f="$2" _ygr_l _ygr_it _ygr_in=0 _ygr_core=0 _ygr_ind=0
+    local -a _ygr_items=()
+    _ygr=()
+    [[ -f "$_ygr_f" ]] || return 0
+    while IFS= read -r _ygr_l || [[ -n "$_ygr_l" ]]; do
+        if (( _ygr_core )); then
+            if [[ "$_ygr_l" =~ ^([[:space:]]+)-[[:space:]]+(.*)$ ]]; then
+                # An item deeper than `core:` itself.
+                if (( ${#BASH_REMATCH[1]} > _ygr_ind )); then
+                    _ygr_it="${BASH_REMATCH[2]}"; _ygr_it="${_ygr_it%%#*}"
+                    _ygr_it="${_ygr_it%"${_ygr_it##*[![:space:]]}"}"
+                    _ygr_it="${_ygr_it#[\"\']}"; _ygr_it="${_ygr_it%[\"\']}"
+                    [[ -n "$_ygr_it" ]] && _ygr+=("$_ygr_it")
+                fi
+                continue
+            fi
+            # #2083: a blank or comment-only line is not the end of the list.
+            [[ "$_ygr_l" =~ ^[[:space:]]*$ || "$_ygr_l" =~ ^[[:space:]]*# ]] && continue
+            return 0
+        fi
+        if [[ "$_ygr_l" =~ ^requires:[[:space:]]*$ ]]; then _ygr_in=1; continue; fi
+        (( _ygr_in )) || continue
+        [[ "$_ygr_l" =~ ^[a-zA-Z_] ]] && { _ygr_in=0; continue; }
+        if [[ "$_ygr_l" =~ ^[[:space:]]+core:[[:space:]]*\[([^]]*) ]]; then
             # Inline list: core: [a, b, c]
-            line = $0
-            sub(/^[^[]*\[/, "", line)
-            sub(/\].*$/, "", line)
-            n = split(line, items, /,[[:space:]]*/)
-            for (i = 1; i <= n; i++) {
-                gsub(/^[[:space:]"'"'"']+|[[:space:]"'"'"']+$/, "", items[i])
-                if (items[i] != "") print items[i]
-            }
-            in_requires = 0
-            exit
-        }
-        in_requires && /^[[:space:]]+core:[[:space:]]*$/ {
-            in_core = 1
-            # Compute the indent depth of the `-` items: must be deeper than
-            # the indent of `core:` itself.
-            match($0, /^[[:space:]]+/)
-            core_indent = RLENGTH
-            next
-        }
-        # While inside core block, accept `<deeper-indent> - <item>` lines.
-        in_core {
-            if (match($0, /^[[:space:]]+-[[:space:]]+/)) {
-                # Verify the indent is deeper than core: indent.
-                indent_len = index($0, "-") - 1
-                if (indent_len > core_indent) {
-                    item = $0
-                    gsub(/^[[:space:]]*-[[:space:]]*/, "", item)
-                    gsub(/[[:space:]]*#.*/, "", item)
-                    gsub(/^["'"'"']|["'"'"']$/, "", item)
-                    gsub(/[[:space:]]*$/, "", item)
-                    if (item != "") print item
-                }
-                next
-            }
-            # #2083: a blank line or a comment-only line is NOT the end of the
-            # list. Both are valid YAML between sequence items, and both used to
-            # fall through to the terminator below — so
-            #     core:
-            #       - redaction
-            #       # a rationale comment
-            #       - router
-            # parsed to `redaction` alone and every later entry silently did not
-            # exist. The asymmetry is what hid it for so long: the only enforced
-            # consumer was the kind: agent literal-`redaction` check, and a
-            # comment BEFORE the first item empties the list (loud failure) while
-            # one AFTER it drops only the remainder (silent). #2065 makes the
-            # whole list load-bearing, so the truncation had to go first.
-            if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) next
-            # Any other content at the same or shallower indent ends the block.
-            in_core = 0
-        }
-    ' "$file" 2>/dev/null
+            IFS=',' read -r -a _ygr_items <<< "${BASH_REMATCH[1]}"
+            for _ygr_it in ${_ygr_items[@]+"${_ygr_items[@]}"}; do
+                _ygr_it="${_ygr_it#"${_ygr_it%%[![:space:]\"\']*}"}"; _ygr_it="${_ygr_it%"${_ygr_it##*[![:space:]\"\']}"}"
+                [[ -n "$_ygr_it" ]] && _ygr+=("$_ygr_it")
+            done
+            return 0
+        fi
+        if [[ "$_ygr_l" =~ ^([[:space:]]+)core:[[:space:]]*$ ]]; then
+            _ygr_core=1; _ygr_ind=${#BASH_REMATCH[1]}
+        fi
+    done < "$_ygr_f"
+    return 0
 }
 
 # ─── _required_hooks_for_kind — ADR-001 §"Required hooks per kind" ──────────
@@ -567,26 +578,7 @@ validate_manifest() {
     # a line inside a block scalar, and (being index(), not a regex) the field
     # name is never interpreted as a pattern. The first declaration decides.
     local _chk
-    _chk="$(awk '
-        /^requires:[[:space:]]*$/ { in_req = 1; next }
-        in_req && /^[a-zA-Z_]/ { in_req = 0 }
-        !bad && in_req && /^[[:space:]]+core:[[:space:]]*[^[[:space:]]/ && $0 !~ /^[[:space:]]+core:[[:space:]]*\[/ {
-            print "core=bad"; bad = 1
-        }
-        {
-            for (i = 1; i <= 2; i++) {
-                k = (i == 1) ? "summary" : "usage"
-                if (!(k in seen) && index($0, k":") == 1) {
-                    v = $0
-                    sub(/^[^:]*:[[:space:]]*/, "", v)   # strip "key:" + leading ws
-                    sub(/[[:space:]]*#.*/, "", v)        # strip trailing comment
-                    gsub(/^["'"'"']|["'"'"']$/, "", v)   # strip surrounding quotes
-                    seen[k] = 1
-                    print k "=" (v == "" ? "EMPTY" : "OK")
-                }
-            }
-        }
-    ' "$manifest" 2>/dev/null)" || true
+    _manifest_scalar_checks_v _chk "$manifest"
     if [[ $'\n'"$_chk"$'\n' == *$'\n'core=bad$'\n'* ]]; then
         error "validate_manifest($manifest): requires.core must be a YAML list (use 'core: [redaction, ...]' or '  - redaction')"
         errors=$((errors + 1))

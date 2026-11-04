@@ -26,6 +26,9 @@
 # P11 [change] the abort check and the disposition tests start no subshell,
 #             and answer as before
 # P12 [change] the rules block reads the notes path and time limit in its shell
+# P13 [change] (#2466) validate_manifest and the requires.core reader run no
+#             awk, for every shipped manifest, and read what they read: the same
+#             core list, the same verdict
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -293,6 +296,34 @@ _np=""; stage_notes_path_v _np "$SD" s2
 assert_contains "[P12] …and still names the notes file" "$(cat "$TEST_TEMP_DIR/rules.md")" "Your notes file is $_np"
 
 unset _TPL_STAGES
+
+print_test_section "P13: validate_manifest starts no program (#2466)"
+_AWK_LOG="$TEST_TEMP_DIR/awk-calls"; : > "$_AWK_LOG"
+awk() { printf 'awk\n' >> "$_AWK_LOG"; command awk "$@"; }
+_p13_lists="" _p13_rcs=""
+for _mf in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
+    _p13_lists+="${_mf#"$REPO_ROOT"/}: $(_yaml_get_requires_core_list "$_mf" | tr '\n' ' ')"$'\n'
+    validate_manifest "$_mf" >/dev/null 2>&1; _p13_rcs+="$? "
+done
+unset -f awk
+assert_eq "[P13] no awk ran for any shipped manifest" "0" "$(grep -c . "$_AWK_LOG")"
+assert_contains "[P13] …the core lists read as before (design)" "$_p13_lists" "plugins/agent/design/manifest.yaml: redaction"
+assert_eq "[P13] …every shipped manifest is still valid" "" "${_p13_rcs//0 /}"
+# The cases the reader exists for (#294, #2083): an inline list, comments and
+# blank lines inside the list, and a `- redaction` outside requires.core.
+_m13="$TEST_TEMP_DIR/m13.yaml"
+printf 'id: x\nrequires:\n  core:\n    - redaction\n    # why the router\n\n    - router\n  plugins: []\nnotes:\n  - stray\n' > "$_m13"
+assert_eq "[P13] …a block list with a comment and a blank line" "redaction router" "$(_yaml_get_requires_core_list "$_m13" | tr '\n' ' ' | sed 's/ $//')"
+printf 'id: x\nrequires:\n  core: [redaction, "router"]\n' > "$_m13"
+assert_eq "[P13] …an inline list" "redaction router" "$(_yaml_get_requires_core_list "$_m13" | tr '\n' ' ' | sed 's/ $//')"
+printf 'id: x\nrequires:\n  plugins: []\nother:\n  core:\n    - redaction\n' > "$_m13"
+assert_eq "[P13] …a core list outside requires: is not read" "" "$(_yaml_get_requires_core_list "$_m13")"
+printf 'id: x\nkind: tool\nversion: 1\nrequires:\n  core: redaction\n' > "$_m13"
+_v13="$(validate_manifest "$_m13" 2>&1)"
+assert_contains "[P13] …a scalar requires.core is still refused" "$_v13" "requires.core must be a YAML list"
+printf 'id: x\nkind: tool\nversion: 1\nsummary: ""\nrequires:\n  core: []\n' > "$_m13"
+assert_contains "[P13] …an empty summary is still refused" "$(validate_manifest "$_m13" 2>&1)" "summary"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
