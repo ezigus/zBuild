@@ -513,7 +513,8 @@ _out14="$(PATH="$_SHIM14:$PATH" requires_core_check "$_fx_cost/manifest.yaml")";
 assert_eq "[SPEC-14] the plugin resolves (router and redaction both sourced)" "0|" "$_rc14|$_out14"
 assert_eq "[SPEC-14] plugin.sh is stripped once" "1" "$(grep -cx sed "$_LOG14" || true)"
 assert_eq "[SPEC-14] no dirname" "0" "$(grep -cx dirname "$_LOG14" || true)"
-assert_eq "[SPEC-14] a kind: agent's requires.core list is parsed once" "1" "$(grep -cx awk-requires "$_LOG14" || true)"
+# #2466: the list is read by the shell now — no awk at all.
+assert_eq "[SPEC-14] a kind: agent's requires.core list is read with no awk" "0" "$(grep -cx awk-requires "$_LOG14" || true)"
 # The list handed down is the one the check reads: an agent missing redaction
 # is still refused, and an unresolved entry still named.
 _fx_cost2="$(_fixture cost-check2 agent 'requires:
