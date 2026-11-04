@@ -31,6 +31,8 @@ source "$_ZBUILD_TEARDOWN_ROOT/core/plugin-registry/registry.sh"
 # resolve_stage_plugin lives here; declare it rather than inherit the runner's
 # scope — without it any other caller frees nothing and still returns 0.
 source "$_ZBUILD_TEARDOWN_ROOT/core/pipeline/dispatch.sh"
+# shellcheck source=../../../scripts/lib/judge.sh
+source "$_ZBUILD_TEARDOWN_ROOT/scripts/lib/judge.sh"
 
 # ─── teardown_run ────────────────────────────────────────────────────────────
 # Entry point called by the pipeline engine.
@@ -227,6 +229,10 @@ teardown_run() {
             _targets+=("{\"stage\":$(printf '%s' "$_stage" | jq -Rc .),\"outcome\":\"ok\"}")
         fi
     done
+
+    # #2464 (ADR-072 §2): the judges' copy of the code from before the change is
+    # run infrastructure like a stage's live resources — freed on every exit path.
+    [[ -n "$_state_dir" ]] && judge_base_release "$_state_dir"
 
     # Build the data.targets JSON array from collected entries.
     local _targets_json="["

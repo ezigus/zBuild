@@ -44,7 +44,8 @@ done
 # Build (Pattern 2) already wraps, since route_to_model_loop drives it.
 if grep -q "whether a finished CHANGE does what an ISSUE asked" <<< "$prompt"; then
     # issue-acceptance (#1849): the fixture's one-file change meets its issue.
-    jq -n --arg r $'VERDICT: pass\nREASON: the fixture file the issue asks for is added' \
+    # #2464 (ADR-072 §3): one line per requirement.
+    jq -n --arg r $'MET: PRTY-1' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q 'A report for the ' <<< "$prompt"; then
     # a review lens (#1842): no concerns — a real lens result for the engine to
@@ -54,7 +55,8 @@ elif grep -q 'A report for the ' <<< "$prompt"; then
 elif grep -q "whether a DESIGN covers what an ISSUE asked for" <<< "$prompt"; then
     # design's coverage check (#2445: design is in the fixture now that plan is
     # gone — it is where build's scope comes from).
-    jq -n --arg r $'VERDICT: covered\nREASON: the one requirement has its SPEC' \
+    # #2464 (ADR-072 §3): one line for each requirement and each SPEC.
+    jq -n --arg r $'PRTY-1: covered\nFIXT-1: ok' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "EXACT absolute path:" <<< "$prompt"; then
     # design: the model writes its working copy at the path its prompt names.

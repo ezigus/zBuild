@@ -31,6 +31,8 @@ source "$_IA_ROOT/scripts/lib/earlier-output.sh"
 source "$_IA_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_IA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
+# shellcheck source=../../../scripts/lib/judge.sh
+source "$_IA_ROOT/scripts/lib/judge.sh"
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_IA_ROOT/scripts/lib/router-rc-classify.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/persona-resolve.sh
@@ -57,19 +59,26 @@ You are checking whether a finished CHANGE does what an ISSUE asked for.
 One verdict on the whole issue: does the DIFF meet every requirement the issue
 states, in full — including what its tests must catch?
 
-Answer in this form:
+Answer with one line for every requirement in ISSUE REQUIREMENTS, by its id:
 
-VERDICT: pass | fail | unsure
-REASON: <one sentence>
-UNMET: [fix-code] or [fix-design] <one issue requirement the diff does not meet, and why>
-UNSURE: <one requirement you cannot tell is met, named as listed, and why>
+MET: <id>
+UNMET: [fix-code] <id> | WHY: <what the change does not do> | QUOTE: <quote>
+UNMET: [fix-design] <id> | WHY: <what the requirements miss or get wrong> | QUOTE: <quote>
+UNSURE: <id> | WHY: <what you cannot tell, and what would settle it> | QUOTE: <quote>
 
-Write one UNMET: line for each requirement the diff does not meet (none on a
-pass), and one UNSURE: line for each you cannot tell is met (none when sure).
+When none are listed under ISSUE REQUIREMENTS, write one of these lines for
+each requirement the ISSUE states, naming it in a few words where the id would
+go.
+
 Start each UNMET: line with what would fix it:
 - [fix-code] — the change does not do it yet: the code or its tests must change.
 - [fix-design] — the REQUIREMENTS miss it or get it wrong, or the issue itself is
   wrong: the design must change.
+
+A QUOTE is either the requirement's own words — "<the exact words>", from ISSUE
+REQUIREMENTS or the ISSUE — or the code that shows it — <file>:"<its exact
+text>". Copy it exactly: it is checked, and one that is not there makes the
+answer unusable.
 
 ## What you judge against
 Five things, shown at the end of this part:
@@ -96,7 +105,8 @@ change were broken, would its tests catch it? If they would not, it is unmet.
 
 Some REQUIREMENTS were not run against the old code: those that need work but
 no code, and those design says are already done. Nothing but you checks them.
-For one already done, check the claim against the evidence shown. If you cannot
+For one already done, open the file its evidence names and check the claim
+against the code. If you cannot
 tell whether such a requirement is met, say so rather than guess: the run then
 reports it as open, with what would settle it.
 
@@ -113,7 +123,7 @@ DIFF:
 $3
 
 TEST VERDICT: $4
-
+${6:-}
 ## What you must not do
 - Do not suggest code.
 - Do not guess whether a requirement is met: say you are unsure instead.
@@ -201,7 +211,24 @@ issue_acceptance_run() {
     # #2306 (ADR-070 §4): the issue's requirements as intake numbered them.
     local _reqs=""; declare -F acceptance_requirements_list >/dev/null 2>&1 \
         && _reqs="$(acceptance_requirements_list "$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)")"
-    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${diff:-<no diff>}" "${test_verdict:-unknown}" "$_reqs")"
+    # #2464 (ADR-072 §4 §5): the answer is kept while what it judged is
+    # unchanged; a stage's "nothing to do" answer to one of its findings is
+    # judged again, shown to the judge.
+    local _ans=""; judge_answers_to_v _ans "$art" issue-acceptance
+    local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
+    judge_engine_v eng
+    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$acc"$'\n'"$diff"$'\n'"$test_verdict"$'\n'"$_ans"
+    judge_kept_get_v kept "$kf" issue "$fp"
+    if [[ -n "$kept" ]]; then
+        _ia_parse "$kept" "$_reqs" "$issue" "$_root_q"
+        if [[ -z "$_IA_PROBLEM" ]]; then
+            _ia_emit "judge.kept" "check=issue-acceptance"
+            _ia_finish "$art"
+            return 0
+        fi
+    fi
+
+    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${diff:-<no diff>}" "${test_verdict:-unknown}" "$_reqs" "$(judge_disputes_block "$_ans")")"
     _framed="$_task"
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.
@@ -213,11 +240,13 @@ issue_acceptance_run() {
         return 1
     fi
     _framed="$_composed"
-    local _raw="" rc=0 _ask="$_framed" _try _wrong=""
-    # ADR-060 §6: an answer with no verdict is asked again once, at once, with
-    # what was wrong and the answer. A failed call is not asked again.
+    local _raw="" rc=0 _ask="$_framed" _try _opened
+    _opened="$(mktemp 2>/dev/null)" || _opened=""
+    local -x ZBUILD_ROUTER_OPENED_FILE="$_opened"
+    # ADR-060 §6: an answer that cannot be used is asked again once, at once,
+    # with what was wrong and the answer. A failed call is not asked again.
     for _try in 1 2; do
-        _raw=""; _wrong=""
+        _raw=""
         # No 2>/dev/null: the stage-io banner writes to fd 2 (ADR-015 §v4).
         if declare -f route_to_model >/dev/null 2>&1; then
             _raw="$(route_to_model "$tier" "$_ask")" || rc=$?
@@ -225,10 +254,15 @@ issue_acceptance_run() {
             rc=1
         fi
         [[ $rc -eq 0 ]] || break
-        grep -qE 'VERDICT:[[:space:]]*(pass|fail|unsure)' <<< "$_raw" && break
-        _wrong="it has no VERDICT: line saying pass, fail or unsure"
-        _ask="$(stage_prompt_reask "$_framed" "$_wrong" "$_raw")"
+        # No `| head` (#1886): capture in full, trim in bash. #2460: a wrapped
+        # line is read whole.
+        zb_reply_join_v _raw "$_raw"
+        _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q"
+        [[ -z "$_IA_PROBLEM" ]] && break
+        _ask="$(stage_prompt_reask "$_framed" "$_IA_PROBLEM" "$_raw")"
     done
+    local -a _deps=()
+    judge_opened_v _deps "$_opened"; rm -f "$_opened" 2>/dev/null
     if [[ $rc -ne 0 ]]; then
         local _v="" _reason="" _disp="broken"
         declare -f _llm_router_classify >/dev/null 2>&1 && _llm_router_classify "$rc" _v _reason 2>/dev/null
@@ -238,48 +272,95 @@ issue_acceptance_run() {
             "the model call failed (${_reason:-rc=$rc}) — the change was not judged"
         return 1
     fi
-
-    # No `| head` (#1886): capture in full, trim in bash. #2460: a wrapped
-    # REASON, UNMET or UNSURE is read whole.
-    zb_reply_join_v _raw "$_raw"
-    local _v _r _u_line _s_line
-    _v="$(grep -oE 'VERDICT:[[:space:]]*(pass|fail|unsure)' <<< "$_raw" || true)"
-    _v="${_v%%$'\n'*}"; _v="${_v##*[[:space:]]}"
-    _r="$(grep -E '^REASON:' <<< "$_raw" || true)"
-    _r="${_r%%$'\n'*}"; _r="${_r#REASON:}"; _r="${_r#"${_r%%[![:space:]]*}"}"
-    # Every UNMET:/UNSURE: line, each one whole finding (ADR-068 §5).
-    _u_line="$(grep -E '^UNMET:' <<< "$_raw" || true)"
-    _s_line="$(grep -E '^UNSURE:' <<< "$_raw" || true)"
-
-    if [[ -z "$_v" ]]; then
+    if [[ -n "$_IA_PROBLEM" ]]; then
         # ADR-054 §6a: the stage ran but its output cannot be used — retry.
         _ia_write "$art" unusable \
-            "the answer could not be used, even when asked again: ${_wrong:-it has no verdict} — the change was not judged"
+            "the answer could not be used, even when asked again: $_IA_PROBLEM — the change was not judged"
         return 0
     fi
-
-    local _u_json='[]' _s_json
-    [[ "$_v" == "pass" ]] || _u_json="$(_ia_list "$_u_line")"
-    # #2304 (ADR-069 §7): a requirement the judge is not sure of is never a
-    # pass — whatever the verdict line says — and is reported as open.
-    _s_json="$(_ia_list "$_s_line")"
-    if [[ "$_s_json" != "[]" || "$_v" == "unsure" ]]; then
-        _v="fail"
-        _ia_emit "issue_acceptance.unsure" "count=$(jq 'length' <<< "$_s_json" 2>/dev/null || printf 0)"
-    fi
-
-    _ia_emit "issue_acceptance.judged" "verdict=$_v"
-    _ia_write "$art" "$_v" "${_r:-judged the change against the issue}" "$_u_json" "$_s_json"
+    local _q
+    for _q in ${_IA_QUOTED[@]+"${_IA_QUOTED[@]}"}; do _deps+=("$_root_q/$_q"); done
+    judge_kept_put_one "$kf" issue "$fp" "$_raw" ${_deps[@]+"${_deps[@]}"}
+    _ia_finish "$art"
     return 0
 }
 
-# _ia_list <lines> — a JSON array with one item per `KEY: text` line, the key
-# and surrounding blanks dropped; "none" (any case) and blanks are dropped. A
-# line is never split: a `;` in its prose is part of the finding (#1944).
-_ia_list() {
-    local _j=""
-    [[ -n "${1// }" ]] && _j="$(jq -Rsc 'split("\n") | map(sub("^[A-Z]+:";"") | sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0 and ascii_downcase != "none"))' <<< "$1" 2>/dev/null || true)"
-    printf '%s' "${_j:-[]}"
+# _ia_finish <dir> — the judged answer as the stage's result: fail when any
+# requirement is unmet or unsure (#2304, ADR-069 §7: one the judge is not sure
+# of is never a pass, and is reported as open), pass otherwise.
+_ia_finish() {
+    local _v=pass _u_json _s_json
+    _u_json="$(_ia_json_list "${_IA_UNMET[@]+"${_IA_UNMET[@]}"}")"
+    _s_json="$(_ia_json_list "${_IA_UNSURE[@]+"${_IA_UNSURE[@]}"}")"
+    [[ ${#_IA_UNMET[@]} -gt 0 ]] && _v=fail
+    if [[ ${#_IA_UNSURE[@]} -gt 0 ]]; then
+        _v=fail
+        _ia_emit "issue_acceptance.unsure" "count=${#_IA_UNSURE[@]}"
+    fi
+    _ia_emit "issue_acceptance.judged" "verdict=$_v"
+    local _r="judged the change against the issue: every requirement is met"
+    [[ "$_v" == fail ]] && _r="judged the change against the issue: $(( ${#_IA_UNMET[@]} + ${#_IA_UNSURE[@]} )) requirement(s) not met or not sure"
+    _ia_write "$1" "$_v" "$_r" "$_u_json" "$_s_json"
+}
+
+# _ia_json_list <item>... — the items as a JSON array of strings.
+_ia_json_list() {
+    [[ $# -gt 0 ]] || { printf '[]'; return 0; }
+    printf '%s\n' "$@" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || printf '[]'
+}
+
+# _ia_parse <reply> <requirements> <issue> <repo> — each MET:/UNMET:/UNSURE:
+# line (ADR-072 §3) into _IA_UNMET ("[fix-code] <id>: <why> — <quote>"; an
+# unmarked line keeps no mark, #2452) and
+# _IA_UNSURE. _IA_PROBLEM says what makes the answer unusable: a requirement
+# with no line, a line naming none of them, a complaint with no quote or a
+# quote that is not there. A line that names nothing ("none") is no line.
+_ia_parse() {
+    local raw="$1" reqs="$2" issue="$3" repo="$4"
+    _IA_UNMET=(); _IA_UNSURE=(); _IA_PROBLEM=""; _IA_QUOTED=()
+    local -A rtext=() seen=()
+    local -a order=() bad=()
+    local l kind rest fix name why quote w qp own
+    while IFS= read -r l; do
+        [[ "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+):[[:space:]]*(.*)$ ]] || continue
+        rtext["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"; order+=("${BASH_REMATCH[1]}")
+    done <<< "$reqs"
+    while IFS= read -r l; do
+        l="${l#"${l%%[![:space:]>*\`_-]*}"}"
+        [[ "$l" =~ ^(MET|UNMET|UNSURE):[[:space:]]*(.*)$ ]] || continue
+        kind="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"; fix=""
+        [[ "$kind" == UNMET && "$rest" =~ ^(\[fix-(code|design)\])[[:space:]]*(.*)$ ]] && { fix="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[3]}"; }
+        name="${rest%%|*}"; name="${name%"${name##*[![:space:]]}"}"; name="${name%:}"
+        shopt -q nocasematch; local _ncm=$?
+        shopt -s nocasematch
+        [[ -z "$name" || "$name" =~ ^\(?(none|omitted|n/a|nothing)\)?\.?$ ]] && { (( _ncm )) && shopt -u nocasematch; continue; }
+        (( _ncm )) && shopt -u nocasematch
+        if [[ ${#order[@]} -gt 0 && -z "${rtext[$name]+x}" ]]; then
+            bad+=("$kind names $name, which is not a requirement listed"); continue
+        fi
+        seen["$name"]=1
+        [[ "$kind" == MET ]] && continue
+        why=""; quote=""
+        if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
+        why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
+        [[ "$rest" == *"| QUOTE:"* ]] && { quote="${rest#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; }
+        if [[ -z "$quote" ]]; then bad+=("$name has no QUOTE"); continue; fi
+        own="${rtext[$name]:-}"$'\n'"$issue"
+        judge_quote_check_v w "$quote" "$own" "$repo" || { bad+=("$name's quote $w"); continue; }
+        judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
+        if [[ "$kind" == UNMET ]]; then _IA_UNMET+=("${fix:+$fix }$name: ${why:-it is not met} — $quote")
+        else _IA_UNSURE+=("$name: ${why:-it cannot be told} — $quote"); fi
+    done <<< "$raw"
+    local -a missing=()
+    for name in ${order[@]+"${order[@]}"}; do [[ -n "${seen[$name]+x}" ]] || missing+=("$name"); done
+    [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
+    # With no list, an answer must still judge something: no line is no answer.
+    [[ ${#order[@]} -eq 0 && ${#seen[@]} -eq 0 && ${#bad[@]} -eq 0 ]] \
+        && bad=("it has no MET:, UNMET: or UNSURE: line")
+    if [[ ${#bad[@]} -gt 0 ]]; then
+        local IFS=';'; _IA_PROBLEM="${bad[*]}"; _IA_PROBLEM="${_IA_PROBLEM//;/; }"
+    fi
+    return 0
 }
 
 issue_acceptance_cleanup() { return 0; }

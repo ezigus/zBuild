@@ -14,8 +14,10 @@
 # J3 [change] ...a list under an empty KEY: becomes one KEY: line per item
 # Q1 [change] intake keeps a wrapped requirement whole, and a missing one that
 #             holds ';' stays one requirement
-# Q2 [change] issue-acceptance keeps a wrapped UNMET and REASON whole
-# Q3 [change] design's coverage check reads UNCOVERED items written one per line
+# Q2 [change] issue-acceptance keeps a wrapped UNMET whole (#2464: its WHY and
+#             QUOTE on the lines that continue it)
+# Q3 [change] design's coverage check reads its item lines bulleted, one per
+#             line, a wrapped one whole
 #             or as bullets, and never splits one on ';'
 # Q4 [change] test-author's check reads a REASON on the line after its SPEC's
 #             verdict, and a REASON holding '|' whole
@@ -73,25 +75,25 @@ assert_eq "[Q1] ...three requirements, not four" "3" "$(jq '.requirements | leng
     jq -n --arg g "$sd/intake-result.json" --arg d "$ad/design.md" --arg p "$ad/d.patch" \
         '{schema_version:2, stage:"issue-acceptance", inputs:{a:$g, b:$d, c:$p}}' > "$sd/idx.json"
     source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf 'VERDICT: fail\nREASON: the retry is not bounded,\n  so a hung call blocks the run\nUNMET: [fix-code] R-1: the timeout is not applied to the retry path,\n  so a hung retry blocks forever\n'; }
+    route_to_model() { printf 'UNMET: [fix-code] the retry | WHY: the timeout is not applied to the retry path,\n  so a hung retry blocks forever | QUOTE: "the retry is bounded"\n'; }
     ZBUILD_STAGE_INPUTS="$sd/idx.json" ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_REPO_ROOT="${sd%/state}" \
         issue_acceptance_run issue-acceptance "$sd/pipeline-state.json" >/dev/null 2>&1
 )
 _q2="$TEST_TEMP_DIR/q2/state/artifacts/issue-acceptance-result.json"
 assert_contains "[Q2] a wrapped UNMET is kept whole" "$(jq -r '[.data.unmet[]?, .data.findings[]?.text?] | map(strings) | join("\n")' "$_q2" 2>/dev/null)" "so a hung retry blocks forever"
-assert_contains "[Q2] ...and a wrapped REASON" "$(jq -r '.reason' "$_q2" 2>/dev/null)" "so a hung call blocks the run"
+assert_contains "[Q2] ...with the quote on its continued line" "$(jq -r '.data.unmet[0] // ""' "$_q2" 2>/dev/null)" '"the retry is bounded"'
 
 # ── Q3 ───────────────────────────────────────────────────────────────────────
 (
     source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
     d="$TEST_TEMP_DIR/q3.md"
     printf '# Design\n```acceptance\nSPEC-1[code]: x covers: R-1\nTESTFILES:\nSPEC-1: tests/a.sh\nWIRING: none\n```\n' > "$d"
-    route_to_model() { printf 'VERDICT: uncovered\nUNCOVERED:\n- R-2: retries 3 times; then exits 2\n- R-3: names the file\n'; }
+    route_to_model() { printf -- '- R-1: covered\n- R-2: uncovered | WHY: retries 3 times; then exits 2 | QUOTE: "retries"\n- R-3: uncovered | WHY: names the file,\n  and only the file | QUOTE: "names"\n- SPEC-1: ok\n'; }
     _design_coverage "$d" $'- R-1: x\n- R-2: retries\n- R-3: names' T2 >/dev/null 2>&1
     printf '%s\n' "${_DESIGN_UNCOVERED[@]}" > "$TEST_TEMP_DIR/q3.txt"
 )
 _q3="$(cat "$TEST_TEMP_DIR/q3.txt" 2>/dev/null)"
-assert_contains "[Q3] a bulleted UNCOVERED item is read" "$_q3" "R-3: names the file"
+assert_contains "[Q3] a bulleted item, wrapped, is read whole" "$_q3" "R-3: names the file, and only the file"
 assert_contains "[Q3] ...and one holding ';' stays one" "$_q3" "R-2: retries 3 times; then exits 2"
 assert_eq "[Q3] ...two items" "2" "$(grep -c . "$TEST_TEMP_DIR/q3.txt" 2>/dev/null || true)"
 

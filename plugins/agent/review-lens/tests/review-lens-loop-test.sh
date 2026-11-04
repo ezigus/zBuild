@@ -45,7 +45,7 @@ evidence="$artifact_dir/diff.patch"; printf 'diff --git a/core/x.sh b/core/x.sh\
 export ZBUILD_CURRENT_STAGE=review_lenses
 export _TPL_STAGE_FAIL_ON_review_lenses="medium high critical"
 _f() {   # _f <severity> <introduced> <fix> <message>
-    printf '{"file":"core/x.sh","line":3,"category":"logic","severity":"%s","introduced":%s,"fix":"%s","message":"%s"}' "$1" "$2" "$3" "$4"
+    printf '{"quote":"new line","file":"core/x.sh","line":3,"category":"logic","severity":"%s","introduced":%s,"fix":"%s","message":"%s"}' "$1" "$2" "$3" "$4"
 }
 _lens() {   # _lens <id> <finding-json>... — run one lens on a reply holding those findings
     local id="$1"; shift

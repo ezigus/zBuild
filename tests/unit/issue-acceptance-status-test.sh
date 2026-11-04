@@ -11,9 +11,9 @@
 # I1 [code] the judge reads every requirement with its status in plain words: a
 #           code one says its test failed on the old code and passes now; a
 #           no-code one says nothing checked it mechanically; a done one says
-#           design claims the code already does it, names its evidence, and shows
-#           a short excerpt of the cited file as committed (HEAD), cleaned of
-#           terminal colour codes. No raw [code]/[no-code]/[done] tag reaches it.
+#           design claims the code already does it and names its evidence, which
+#           the judge opens itself: no excerpt of the file is pasted (#2464,
+#           ADR-072 §2). No raw [code]/[no-code]/[done] tag reaches it.
 # I2 [code] the judge may say it is not sure about named requirements: the result
 #           is a fail, data.unsure lists them, each is a numbered finding saying
 #           what is unresolved and what would settle it (never who must check it,
@@ -82,7 +82,7 @@ _run() { : > "$_IA_PROMPT"; issue_acceptance_run "issue-acceptance" "$_S/pipelin
 
 print_test_section "I1: each requirement in plain words, with its status"
 _setup i1
-_IA_ANSWER=$'VERDICT: pass\nREASON: all met'
+_IA_ANSWER=$'MET: the flag\nMET: the docs\nMET: the parser'
 _run
 _p="$(cat "$_IA_PROMPT")"
 _p1="$(tr -s '[:space:]' ' ' <<< "$_p")"
@@ -94,39 +94,34 @@ assert_contains "[I1] a done requirement: design claims it, check the claim" "$_
     "already done — design says the code already does this; check the claim"
 assert_contains "[I1] the requirement's own words reach the judge" "$_p1" "the parser already reads flags"
 assert_contains "[I1] the done requirement's evidence is named" "$_p1" "scripts/x.sh:50"
-assert_contains "[I1] the excerpt shows the cited line as committed (HEAD)" "$_p" "COMMITTED_LINE_50"
-assert_eq "[I1] the excerpt is not the working copy" "0" "$(grep -c 'WORKING_COPY_ONLY' <<< "$_p" || true)"
-assert_contains "[I1] the excerpt includes lines near the cited one" "$_p" "line 45"
-assert_eq "[I1] the excerpt is bounded: a line far from the cited one is left out" "0" \
-    "$(grep -cE '(^|[^0-9])line 20($|[^0-9])' <<< "$_p" || true)"
-assert_eq "[I1] the excerpt is cleaned (no terminal colour codes)" "0" \
-    "$(grep -c $'\033' <<< "$_p" || true)"
+assert_contains "[I1] ...with the file to open" "$_p1" "open the file and read the code around that text"
+assert_eq "[I1] no line of the file is pasted (#2464)" "0" "$(grep -cE 'COMMITTED_LINE_50|WORKING_COPY_ONLY|line 45' <<< "$_p" || true)"
 for _tag in '[code]' '[no-code]' '[done]'; do
     assert_eq "[I1] no raw $_tag tag reaches the judge" "0" "$(grep -cF "$_tag" <<< "$_p" || true)"
 done
 
 print_test_section "I2: not sure → fail, data.unsure, a finding saying what would settle it, an event"
 _setup i2
-_IA_ANSWER=$'VERDICT: unsure\nREASON: cannot tell whether the docs cover the flag\nUNSURE: SPEC-2 the flag is documented'
+_IA_ANSWER=$'MET: the flag\nUNSURE: the docs | WHY: cannot tell whether the docs cover the flag | QUOTE: "Document it."\nMET: the parser'
 : > "$ZBUILD_EVENTS_JSONL"
 _run; _rc=$?
 assert_eq "[I2] rc=0 (the verdict is in the artifact)" "0" "$_rc"
 assert_eq "[I2] outcome=fail" "fail" "$(_res .outcome)"
-assert_eq "[I2] data.unsure lists the requirement" "SPEC-2 the flag is documented" "$(_res '.data.unsure[0]')"
+assert_contains "[I2] data.unsure lists the requirement" "$(_res '.data.unsure[0]')" "the docs: cannot tell whether the docs cover the flag"
 assert_contains "[I2] a numbered finding says what would settle it (#2330)" \
     "$(_res '.data.findings[0].text')" "What would settle it:"
 _f2="$(_res '.data.findings[0].text') $(cat "$_A/issue-acceptance-summary.md" 2>/dev/null)"
 assert_eq "[I2] ...and never says who must check it: no 'a person' or 'human' (#2330)" "0" \
     "$(grep -ciE 'a person|human' <<< "$_f2" || true)"
-assert_contains "[I2] ...naming the requirement" "$(_res '.data.findings[0].text')" "SPEC-2 the flag is documented"
+assert_contains "[I2] ...naming the requirement" "$(_res '.data.findings[0].text')" "the docs: cannot tell"
 assert_contains "[I2] issue_acceptance.unsure is emitted" "$(cat "$ZBUILD_EVENTS_JSONL")" "issue_acceptance.unsure"
 assert_contains "[I2] the manifest declares the event" "$(cat "$PLUGIN_DIR/manifest.yaml")" "- issue_acceptance.unsure"
 _p2="$(tr -s '[:space:]' ' ' <<< "$(cat "$_IA_PROMPT")")"
-assert_contains "[I2] the prompt offers the 'not sure' answer" "$_p2" "VERDICT: pass | fail | unsure"
+assert_contains "[I2] the prompt offers the 'not sure' answer" "$_p2" "UNSURE: <id> | WHY:"
 assert_contains "[I2] the prompt says how to name what it is not sure of" "$_p2" "UNSURE:"
 
 _setup i2b
-_IA_ANSWER=$'VERDICT: pass\nREASON: all met\nUNSURE: none'
+_IA_ANSWER=$'MET: the flag\nMET: the docs\nMET: the parser\nUNSURE: none'
 _run
 assert_eq "[I2] 'UNSURE: none' on a pass stays a pass" "pass" "$(_res .outcome)"
 assert_eq "[I2] ...with nothing listed as unsure" "0" "$(_res '.data.unsure | length')"

@@ -40,6 +40,8 @@ source "$_BUILD_ROOT/scripts/lib/artifact-render.sh"
 # #506: shared numstat banner formatter (also used by review).
 # shellcheck source=../../../scripts/lib/numstat-format.sh
 source "$_BUILD_ROOT/scripts/lib/numstat-format.sh"
+# shellcheck source=../../../scripts/lib/judge.sh
+source "$_BUILD_ROOT/scripts/lib/judge.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_BUILD_ROOT/scripts/lib/prompt-overrides.sh"
 # ADR-031 (#866): acceptance-block extractor for charter injection into prompt.

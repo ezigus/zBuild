@@ -56,6 +56,7 @@
 ./artifacts/intake-summary.md
 ./artifacts/lens-correctness-code-result.json
 ./artifacts/lens-correctness-design-result.json
+./artifacts/lens-correctness-judged.json
 ./artifacts/lens-correctness-reply.txt
 ./artifacts/lens-correctness-summary.md
 ./artifacts/lens-correctness.json

@@ -50,11 +50,15 @@ OUTPUT CONTRACT (obey absolutely):
         "severity": "<one of: low, medium, high, critical>",
         "line": <integer line number or null>,
         "message": "<one-sentence description>",
+        "quote": "<the exact text that shows it, copied from the file as it is now, or a line the change removed>",
         "introduced": <true if this change introduced or worsened it; false if the code before the change already did this>,
         "fix": "<one of: code, test, design, issue>"
       }
     ]
   }
+- Every finding quotes the text that shows it. The quote is checked against
+  its file and the change: a finding whose quote is not there makes the report
+  unusable.
 - If you find nothing for this lens, return {"score": 10, "findings": []}.
 
 SEVERITY — grade each finding on this one scale:

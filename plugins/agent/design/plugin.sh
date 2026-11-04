@@ -66,6 +66,8 @@ source "$_DESIGN_ROOT/scripts/lib/earlier-output.sh"
 # Called on every terminal exit path so the sidecar is always on disk. #2369:
 # what design's checks still find is carried as numbered findings. [design] is
 # the passing design it reports on (default: design.md).
+# design's ANSWER lines from its last call (#2464), kept in its result.
+_DESIGN_ANSWERS=()
 _design_write_outcome() {
     local dir="$1" outcome="$2" reason="$3" findings="${4:-[]}" design="${5:-$1/design.md}"
     mkdir -p "$dir" 2>/dev/null || true
@@ -96,12 +98,17 @@ _design_write_outcome() {
         _scope="$(jq -Rnc '[inputs | select(length > 0)]' <<< "$_sl" 2>/dev/null || true)"
         [[ -n "$_scope" ]] || _scope="[]"
     fi
+    # #2464 (ADR-068 §6): what design did about each finding it received.
+    local _ans="[]"
+    [[ ${#_DESIGN_ANSWERS[@]} -gt 0 ]] \
+        && _ans="$(printf '%s\n' "${_DESIGN_ANSWERS[@]}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || printf '[]')"
     local _data
     _data="$(jq -nc --arg at "$_at" --arg sha "$_sha" \
-        --argjson w "${_wiring:-[]}" --argjson sc "${_scope:-[]}" --argjson f "$findings" \
+        --argjson w "${_wiring:-[]}" --argjson sc "${_scope:-[]}" --argjson f "$findings" --argjson a "${_ans:-[]}" \
         '{authored_at: $at, authored_at_commit: $sha, wiring_files: $w}
          + (if ($sc | length) > 0 then {scope_files: $sc} else {} end)
-         + (if ($f | length) > 0 then {findings: $f} else {} end)')"
+         + (if ($f | length) > 0 then {findings: $f} else {} end)
+         + (if ($a | length) > 0 then {answers: $a} else {} end)')"
     stage_result_write "$dir/design-verdict.json" "$outcome" "$reason" "$_data" 2>/dev/null \
         || warn "_design_write_outcome: failed to write design-verdict.json (outcome=$outcome)"
 }
@@ -396,6 +403,12 @@ DESIGN_PROMPT
             >> "$prompt_input_file"
     fi
 
+    # #2464 (ADR-072 §5, ADR-068 §6): a finding of design's own check that
+    # design says is wrong is answered, not designed around; the check judges
+    # it again with the answer.
+    printf '\nIf a finding of your design'"'"'s own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: nothing to do — <why>. The check judges it again, with your answer.\n' \
+        >> "$prompt_input_file"
+
     # #2308: the limits close the stage's own text.
     local _dp_limits
     _dp_limits="$(cat <<DESIGN_LIMITS
@@ -429,9 +442,15 @@ ${_dp_limits}")"; then
     # (the template's retry:), and that run is handed this one's result and the
     # last good design. A valid design counts when the call ended normally, or
     # when this call wrote it before it was cut off.
-    local router_rc=0 _draft_before _draft_after
+    local router_rc=0 _draft_before _draft_after _dp_reply=""
     _draft_before="$(cksum 2>/dev/null < "$output_draft" || printf 'absent')"
-    route_to_model "$tier" "$_dp_composed" >/dev/null || router_rc=$?
+    # #2464: the reply is kept for its ANSWER lines, through a file — the call
+    # stays in this shell, as before (no $( ), ADR-065 §5).
+    local _dp_reply_f="${ZBUILD_STAGE_SCRATCH:-$artifact_dir}/design-reply.txt"
+    route_to_model "$tier" "$_dp_composed" > "$_dp_reply_f" || router_rc=$?
+    [[ -f "$_dp_reply_f" ]] && { IFS= read -r -d '' _dp_reply < "$_dp_reply_f" || true; }
+    _DESIGN_ANSWERS=()
+    zb_answers_collect_v _DESIGN_ANSWERS "$_dp_reply"
     if [[ $router_rc -eq 130 ]]; then
         warn "_design_stage_run_inner: the model call was interrupted (SIGINT) — propagating abort"
         return 130
@@ -495,7 +514,11 @@ ${_dp_limits}")"; then
     _design_checks "$output_draft" "$repo_root" "$_req_f" "$output_design_md"
     for _v in "${_DESIGN_VIOLATIONS[@]}"; do _fnd+=("$(_dck_plain "$_v")"); done
     if [[ ${#_fnd[@]} -eq 0 && -n "$_reqs" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
-        _design_coverage "$output_draft" "$_reqs" "$tier"
+        local _dp_ans="" _a
+        for _a in ${_DESIGN_ANSWERS[@]+"${_DESIGN_ANSWERS[@]}"}; do
+            [[ "$_a" == "design finding "* ]] && _dp_ans+="$_a"$'\n'
+        done
+        _design_coverage "$output_draft" "$_reqs" "$tier" "$_dp_ans"
         if [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
             error "_design_stage_run_inner: the coverage check could not be run ($_DESIGN_COV_OUTCOME)"
             _design_write_outcome "$artifact_dir" "$_DESIGN_COV_OUTCOME" "coverage_check_failed"

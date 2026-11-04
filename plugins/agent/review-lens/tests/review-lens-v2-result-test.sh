@@ -39,9 +39,9 @@ route_to_model() {
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
     if [[ "$2" == *'"security" review lens'* ]]; then
-        printf '%s' '{"score":3,"findings":[{"file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
+        printf '%s' '{"score":3,"findings":[{"quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
     elif [[ "$2" == *'"performance" review lens'* ]]; then
-        printf '%s' '{"score":8,"findings":[{"file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
+        printf '%s' '{"score":8,"findings":[{"quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
     else
         printf '%s' '{"score":10,"findings":[]}'
     fi
@@ -68,7 +68,7 @@ EOF
 route_to_model() {
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
-    printf '%s' '{"score":7,"findings":[{"file":"core/a.sh","category":"correctness","severity":"high","line":5,"message":"bug found"}]}'
+    printf '%s' '{"score":7,"findings":[{"quote":"exec user input","file":"core/a.sh","category":"correctness","severity":"high","line":5,"message":"bug found"}]}'
     return 0
 }
 
@@ -188,7 +188,7 @@ assert_eq "[SPEC-3] outcome == unusable on unparseable reply (#2187)" \
 # a second JSON object that fails the schema gate (no .findings array).
 # LAST-wins selects the broken postamble object; schema-gate recovery must find
 # the valid first object — producing a valid lens result, NOT review_lens.unparseable.
-_1840_postamble_resp='{"score":4,"findings":[{"file":"b.sh","severity":"low","line":2,"message":"nit"}]}
+_1840_postamble_resp='{"score":4,"findings":[{"quote":"exec user input","file":"b.sh","severity":"low","line":2,"message":"nit"}]}
 Some postamble reasoning text here.
 {"not_a_lens_object":true,"no_findings_key":"wrong"}'
 # shellcheck disable=SC2329
@@ -351,7 +351,7 @@ fi
 route_to_model() {
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
-    printf '%s' '{"score":6,"findings":[{"file":"core/b.sh","category":"correctness","severity":"medium","line":3,"message":"null deref"}]}'
+    printf '%s' '{"score":6,"findings":[{"quote":"exec user input","file":"core/b.sh","category":"correctness","severity":"medium","line":3,"message":"null deref"}]}'
     return 0
 }
 out_1840_s9="$artifact_dir/lens-1840spec9.json"
@@ -422,7 +422,7 @@ fi
 # shellcheck disable=SC2329
 route_to_model() {
     printf 'call\n' >> "$_RL_CALLS"
-    printf '%s' '{"score":3,"findings":[{"file":"core/c.sh","category":"injection","severity":"high","line":9,"message":"unquoted eval","introduced":true}]}'
+    printf '%s' '{"score":3,"findings":[{"quote":"exec user input","file":"core/c.sh","category":"injection","severity":"high","line":9,"message":"unquoted eval","introduced":true}]}'
     return 0
 }
 out_2366_f="$artifact_dir/lens-2366fail.json"
@@ -436,7 +436,7 @@ assert_eq "[#2366] ...its findings stay where the aggregator reads them" \
 # shellcheck disable=SC2329
 route_to_model() {
     printf 'call\n' >> "$_RL_CALLS"
-    printf '%s' '{"score":4,"findings":[{"file":"core/c.sh","category":"injection","severity":"critical","line":9,"message":"old eval","introduced":false}]}'
+    printf '%s' '{"score":4,"findings":[{"quote":"exec user input","file":"core/c.sh","category":"injection","severity":"critical","line":9,"message":"old eval","introduced":false}]}'
     return 0
 }
 out_2366_p="$artifact_dir/lens-2366pre.json"

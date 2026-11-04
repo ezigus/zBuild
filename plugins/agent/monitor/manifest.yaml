@@ -47,6 +47,8 @@ config:
   router:
     timeout_s: 300 # single-shot advisory; no exploration loop needed
     max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
+    # #2464 (ADR-072 §1): everything it judges is in its prompt.
+    tools: none
 
 outputs:
   - id: monitor_report

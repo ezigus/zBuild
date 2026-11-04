@@ -1,0 +1,88 @@
+# ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
+
+**Status:** Accepted (2026-11-03)
+**Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
+**Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
+**Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
+
+## Context
+
+A judging call is a model call whose answer the engine acts on: design's coverage check, test-author's assertion check, issue-acceptance, and the review lenses. Two runs of #1805 on 2026-11-03 ended on judges' answers, and in each case the engine took the answer as fact:
+
+- **The same files got opposite answers.** test-author's check called BNDY-1 "corresponds" in rounds 1 and 2, and "partial" in round 3, with the test files unchanged. That flip ended run 41643063636.
+- **An empty answer became two findings.** Design's coverage judge wrote `VERDICT: covered`, then `omitted` and `(none)` where its lists were empty. The parser dropped only the exact word `none`, so each blank became a finding. Design spent two of its three tries in run 41679237388 guessing what they meant.
+- **The judge ruled on ten lines.** It called SKIP-1's `[done]` claim wrong from ten lines around the evidence. The `continue` that proves the claim was just past them.
+- **The judge read the wrong code.** It judged "the code already does this" on the branch's own version (`_dcov_done_evidence` read the working copy). The claim is about the code from before the change.
+- **The judges had every tool and used none.** Every judging call but intake's ran with every tool and write access to the repository. Their prompts told them to judge what was pasted in, and they made no tool call.
+
+## Decision
+
+1. **A judging call reads the code itself, and can change nothing.**
+   - It gets Read, Grep and Glob, and no MCP server: the router passes `--strict-mcp-config --tools "Read,Grep,Glob"`.
+   - A plugin whose every call judges declares `config.router.tools: read`: issue-acceptance, review-lens and security-lens.
+   - The design coverage check and test-author's assertion check run inside stages that need full tools for their own call, so they ask for read-only tools for their call only (`ZBUILD_ROUTE_TOOLS=read`).
+   - `tools: none` wins over both. intake and monitor declare it: everything they judge is in their prompt.
+   - The rules a judging call is given (`--fresh`) say it can open and search files and change none, and that it should open whatever it needs.
+2. **The code is given by file, never by snippet.**
+   - A judge is pointed at a file and a piece of its text, and opens the file itself. No judge is given a window of lines.
+   - The code from before the change is a read-only copy of the base commit (the merge-base with the default branch), at `<run state>/base-code`:
+     - It is made with `git worktree add --detach` the first time a judge asks for it (`judge_base_dir_v`, `scripts/lib/judge.sh`), and shared for the rest of the run.
+     - It sits outside the repository, on no branch, so it never appears in `git status` and is never committed.
+     - A new base commit gets a new copy.
+     - teardown removes it, and git's record of it, on every exit path (ADR-054 §7).
+   - Design's coverage check reads a `[done]` claim's code in that copy.
+3. **One line per item, and every complaint quoted.**
+   - **Design's coverage check** answers one line per requirement (`covered`, or `uncovered`) and one per SPEC (`ok`, `outside`, or `done_wrong`). `done_wrong` is only for a SPEC marked `[done]`. A scope entry the issue does not ask for gets its own `SCOPE:` line.
+   - **test-author's assertion check** answers one line per SPEC.
+   - **issue-acceptance** answers `MET:`, `UNMET:` or `UNSURE:` for each listed requirement.
+   - **A review lens** gives each finding a `quote` field.
+   - A complaint quotes the text it is about, as `| QUOTE:` at the end of its line:
+     - `"<words>"` must be in the item's own words (and, for issue-acceptance, the issue's);
+     - `<file>:"<text>"` must be in that file, in the repository or in the old-code copy. A lens's quote may also be a line the change removed.
+     - Spacing does not count (`judge_quote_check_v`).
+   - A missing line, a word that is not that item's kind, or a quote that is not there makes the answer unusable. It is asked again once, saying what was wrong (ADR-060 §6). If it is still wrong, the item is not judged: the check ends `unusable`. A bad answer never becomes a finding and never becomes a pass.
+   - A line that names nothing (`none`, `omitted`, `(none)`) is not an item.
+4. **A verdict is kept while what it judged is unchanged.**
+   - Each check keeps its answer in its own output in the artifacts folder, which hydrate carries into the next run: `design-judged.json`, `test-author-judged.json` (one entry per SPEC), `issue-acceptance-judged.json`, and `lens-<id>-judged.json`.
+   - Each answer is kept with:
+     - a fingerprint of the engine's commit, what the judge was shown of the item, and the answers to its earlier findings (§5);
+     - the content hash of every file it depends on: the files the call opened (from the call's own step stream, `ZBUILD_ROUTER_OPENED_FILE`), the files its quotes name, and, for test-author's check, the SPEC's test files. A directory the call searched counts by the commit's tree of it, so a commit that changes a file in it is judged again; one outside any repository is never known unchanged.
+   - When all of these are unchanged, the kept answer is used and no call is made (event `judge.kept`). This holds for fails as much as for passes: the same input gives the same answer.
+   - Only what changed is judged again. test-author's check sends only the changed SPECs to its judge.
+   - The judge itself still starts fresh (ADR-067 §8): it is never shown its earlier verdict. It is simply not asked the same question twice.
+5. **A disputed verdict is judged again.**
+   - A stage that answers a finding with `ANSWER <stage> finding <n>: nothing to do — <why>` keeps that answer in its result (`data.answers`). This applies to build and design, as it already did to test-author.
+   - Design may now answer its own check's findings: its reply's `ANSWER design finding <n>: …` lines reach the check.
+   - A "nothing to do" answer to one of a check's findings is part of that check's fingerprint. The item is therefore judged again, with the answer shown under ANSWERS TO YOUR EARLIER FINDINGS, and the new verdict is kept in turn.
+   - For test-author's check, only the SPEC whose finding was answered is judged again.
+
+## Consequences
+
+- A judge cannot flip on unchanged input. A wrong first verdict stays wrong until the work changes or a stage disputes it, and a dispute is the way out.
+- `omitted`, `(none)` and other filler can no longer become findings, and a finding without real text behind it is refused.
+- Judges spend turns reading code, so they cost more time per call; calls whose answers are kept cost none.
+- A judge cannot edit the work it is judging.
+
+## Implementation Notes
+
+- **`scripts/lib/judge.sh`**:
+  - old-code copy: `judge_base_dir_v`, `judge_base_release`;
+  - quotes: `judge_quote_check_v`, `judge_quote_path_v`;
+  - answers: `zb_answers_collect_v`, `judge_answers_to`, `judge_disputes_block`;
+  - kept verdicts: `judge_engine_v`, `judge_fp_v`, `judge_kept_get_v`, `judge_kept_put`, `judge_opened_v`.
+- **The router and the rules** (`core/router/route.sh`, `scripts/lib/stage-limits.sh`, `scripts/lib/stage-prompt.sh`): `_route_judge_tools` picks the read-only tools, `_route_stream_opened` lists the files a call opened, and `_stage_block_rules_pair_v` writes the read-only rules.
+- **The judges and the stages that answer them**:
+  - design: `plugins/agent/design/lib/coverage.sh` (`_dcov_parse`, `_design_coverage`), with `plugin.sh` collecting design's answers;
+  - test-author: `plugins/agent/test-author/lib/correspondence.sh` (`_sc_disputes`, `_ta_correspondence`);
+  - issue-acceptance: `plugins/agent/issue-acceptance/plugin.sh` (`_ia_parse`, `_ia_finish`);
+  - review-lens: `plugins/agent/review-lens/plugin.sh` (`_rl_quote_problem_v`) and `lib/charters.sh`;
+  - build: `plugins/agent/build/lib/summary.sh` (`_build_answers_json`);
+  - teardown: `plugins/tool/teardown/plugin.sh`.
+
+## Enforced by
+
+- §1 → `tests/unit/judge-tools-test.sh` T1–T6
+- §2 → `tests/unit/judge-base-code-test.sh` B1–B6; `tests/unit/judge-quotes-test.sh` Q2 (a [done] claim read on the old code, by file; no window), Q4 (no window); `tests/unit/descriptive-id-readers-test.sh` R10
+- §3 → `tests/unit/judge-quotes-test.sh` Q1–Q5
+- §4 → `tests/unit/judge-kept-test.sh` K1, K2, K4, K7, K8, K9
+- §5 → `tests/unit/judge-kept-test.sh` K3, K5, K6, K7, K8; `tests/unit/design-stage-ids-test.sh` E5

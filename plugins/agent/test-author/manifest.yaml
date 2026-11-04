@@ -48,6 +48,8 @@ provides:
     - test_author.result.write_failed
     - test_author.stale_tags_dropped
     - test_author.checks.failed
+    # #2464 (ADR-072 §4): its answer was kept, so no model call was made.
+    - judge.kept
     - test_author.check.prompt_refused
 
 config:

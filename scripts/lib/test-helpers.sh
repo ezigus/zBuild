@@ -313,7 +313,7 @@ _ZB_TEST_ISOLATED_VARS=(
     ZBUILD_WORKTREE_ROOT ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS
     ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_NEGCTL_ARTIFACT_DIR
     ZBUILD_RUN_START_MARKER ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL
-    ZBUILD_MEMORY_DB ZBUILD_CACHE_DIR ZBUILD_COST_LEDGER ZBUILD_ROUTER_TOOL_USES_FILE
+    ZBUILD_MEMORY_DB ZBUILD_CACHE_DIR ZBUILD_COST_LEDGER ZBUILD_ROUTER_TOOL_USES_FILE ZBUILD_ROUTER_OPENED_FILE ZBUILD_ROUTE_TOOLS
     ZBUILD_WIKI_ROOT ZBUILD_INSTALL_DIR ZBUILD_BIN_DIR
 )
 # Code, config and the test runner's own channels: read, or deliberately shared
@@ -1466,6 +1466,39 @@ zb_test_test_run_output() {
     ) >/dev/null 2>&1 && [[ -s "$dir/test-results.json" ]] \
         || { printf 'zb_test_test_run_output: test wrote no result in %s\n' "$dir" >&2; return 1; }
     printf '%s\n' "$dir/test-results.json"
+}
+
+# zb_test_coverage_ok <prompt> — design's coverage check answering that it
+# finds nothing (#2464, ADR-072 §3): every requirement covered and every SPEC
+# ok, each read off the prompt it was asked, as the real judge reads them.
+zb_test_coverage_ok() {
+    local l sec=""
+    while IFS= read -r l; do
+        case "$l" in
+            REQUIREMENTS:) sec=r; continue ;;
+            ACCEPTANCE:)   sec=a; continue ;;
+            "SCOPE —"*|TESTFILES:) sec=""; continue ;;
+        esac
+        if [[ "$sec" == r && "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+): ]]; then
+            printf '%s: covered\n' "${BASH_REMATCH[1]}"
+        elif [[ "$sec" == a && "$l" =~ ^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)(\[[a-z-]+\])?: ]]; then
+            printf '%s: ok\n' "${BASH_REMATCH[1]}"
+        fi
+    done <<< "$1"
+}
+
+# zb_test_acceptance_ok <prompt> — issue-acceptance answering that every
+# requirement the prompt lists under ISSUE REQUIREMENTS is met (#2464).
+zb_test_acceptance_ok() {
+    local l sec=""
+    while IFS= read -r l; do
+        case "$l" in
+            "ISSUE REQUIREMENTS:") sec=r; continue ;;
+            REQUIREMENTS:|DIFF:) sec=""; continue ;;
+        esac
+        [[ "$sec" == r && "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+): ]] && printf 'MET: %s\n' "${BASH_REMATCH[1]}"
+    done <<< "$1"
+    return 0
 }
 
 # zb_test_prompt_write_path <prompt text> — the file a stage's prompt tells its

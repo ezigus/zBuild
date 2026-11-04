@@ -190,7 +190,7 @@ while IFS= read -r _c13; do
 done <<< "$_c13_lenses"
 
 print_test_section "C10: introduced survives the lens's own result file"
-route_to_model() { printf '%s' '{"score":7,"findings":[{"file":"a.sh","category":"x","severity":"medium","line":3,"message":"OLD-BEHAVIOUR","introduced":false},{"file":"b.sh","category":"y","severity":"low","line":5,"message":"NEW-THING","introduced":true}]}'; return 0; }
+route_to_model() { printf '%s' '{"score":7,"findings":[{"quote":"changed","file":"a.sh","category":"x","severity":"medium","line":3,"message":"OLD-BEHAVIOUR","introduced":false},{"quote":"changed","file":"b.sh","category":"y","severity":"low","line":5,"message":"NEW-THING","introduced":true}]}'; return 0; }
 _review_lens_run_inner red-team "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1 || true
 assert_eq "[C10] the lens's result keeps introduced:false" "false" \
     "$(jq -r '[.findings[] | select(.message == "OLD-BEHAVIOUR") | .introduced][0] | tostring' "$ART/lens-red-team.json" 2>/dev/null || true)"

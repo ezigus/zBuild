@@ -21,8 +21,8 @@
 # R8  [code] the status comment shows a descriptive label as code
 # R9  [code] test-author drops this issue's tags no longer in the contract,
 #            whatever their form, and keeps other issues' tags
-# R10 [code] the coverage check and issue-acceptance show the code around the
-#            evidence's text, not a line number
+# R10 [code] the coverage check and issue-acceptance name the evidence by its
+#            file and text, not a line number (#2464: and no window of lines)
 # R11 [code] old SPEC-n ids still read everywhere above
 # R12 [code] issue-acceptance is not told the requirements are numbered R-1, R-2
 set -uo pipefail
@@ -148,11 +148,14 @@ mkdir -p "$G/core"; printf 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\nif $resume_mode 
 git -C "$G" add -A >/dev/null 2>&1; git -C "$G" -c user.email=t@t -c user.name=t commit -qm r >/dev/null 2>&1
 # shellcheck source=../../plugins/agent/design/lib/coverage.sh
 source "$REPO_ROOT/plugins/agent/design/lib/coverage.sh" 2>/dev/null
+# #2464 (ADR-072 §2): the judges are pointed at the file and its text, and
+# open it themselves — no window of lines.
 _cov="$(_dcov_done_evidence "$D" "$G")"
-assert_contains "[R10] the coverage check shows the line holding the text" "$_cov" 'if $resume_mode && x'
-assert_contains "[R10] ...and the lines around it" "$_cov" "fin"
-_jdg="$(acceptance_requirements_for_judge "$D" "$G")"
-assert_contains "[R10] issue-acceptance shows the line holding the text" "$_jdg" '13| if $resume_mode && x'
+assert_contains "[R10] the coverage check names the evidence by its text" "$_cov" 'if $resume_mode'
+assert_contains "[R10] ...and the file to open" "$_cov" "open $G/core/run.sh"
+_jdg="$(acceptance_requirements_for_judge "$D")"
+assert_contains "[R10] issue-acceptance names the evidence by its text" "$_jdg" 'if $resume_mode'
+assert_not_contains "[R10] ...with no window of lines" "$_jdg" '13| if $resume_mode && x'
 
 # ── R12 ──────────────────────────────────────────────────────────────────────
 # shellcheck source=../../plugins/agent/issue-acceptance/plugin.sh

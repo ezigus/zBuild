@@ -171,24 +171,9 @@ _ta_write_result() {
 # _ta_collect_answers <reply> — the model's `ANSWER <stage> finding <n>: …`
 # lines, added to _TA_ANSWERS without the word ANSWER (ADR-068 §6).
 _TA_ANSWERS=()
-_ta_collect_answers() {
-    local line a re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*:.*)$' _joined
-    # #2460: a wrapped answer is read whole.
-    zb_reply_join_v _joined "${1:-}"
-    while IFS= read -r line; do
-        [[ "$line" =~ $re ]] || continue
-        a="${BASH_REMATCH[1]}"
-        while [[ "$a" == *[[:space:]] ]]; do a="${a%[[:space:]]}"; done
-        # #2460: a finding answered again keeps only its latest answer.
-        local _k="${a%%:*}" _i
-        for _i in "${!_TA_ANSWERS[@]}"; do
-            [[ "${_TA_ANSWERS[_i]%%:*}" == "$_k" ]] && unset '_TA_ANSWERS[_i]'
-        done
-        _TA_ANSWERS=(${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"})
-        _TA_ANSWERS+=("$a")
-    done <<< "$_joined"
-    return 0
-}
+# #2460: a wrapped answer is read whole, and a finding answered again keeps
+# only its latest answer (#2464: the one reader build and design use too).
+_ta_collect_answers() { zb_answers_collect_v _TA_ANSWERS "${1:-}"; }
 
 # ─── test_author_run <stage_id> <state_file> [resolved_inputs] ───────────────
 # ADR-054 §4: rc is binary. rc=0 = "my result file is on disk"; rc=1 = "I
@@ -432,7 +417,8 @@ EOF
     # #2445: the changed test files, run by script on the code from before this
     # change; what it finds is a finding like the check's.
     _ta_before_run "$design" "$repo" "$_ta_sums_before"
-    _ta_correspondence "$design" "$repo" "$tier"
+    # #2464 (ADR-072 §4): its verdicts are kept beside its result.
+    _ta_correspondence "$design" "$repo" "$tier" "$art"
     if [[ -n "$_TA_CORR_OUTCOME" ]]; then
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), unchecked"

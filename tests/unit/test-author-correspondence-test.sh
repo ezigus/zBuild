@@ -109,7 +109,7 @@ assert_eq "[SPEC-2] ...and the check was judged" "" "$_TA_CORR_OUTCOME"
 # ── #2143 / SPEC-3 ──────────────────────────────────────────────────────────
 _contract 3
 _REPLY='SPEC-1: VERDICT: corresponds | REASON: exactly the property
-SPEC-2: VERDICT: partial | REASON: one case of several
+SPEC-2: VERDICT: partial | REASON: one case of several | QUOTE: "thing 2 holds"
 SPEC-3: VERDICT: corresponds | REASON: exactly the property'
 _judge
 assert_eq "[#2143] all 3 SPECs are judged in ONE model call" "1" "$(wc -l < "$_CALLS" | tr -d ' ')"

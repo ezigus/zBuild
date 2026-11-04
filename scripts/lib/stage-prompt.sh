@@ -222,7 +222,10 @@ _stage_block_rules_pair_v() {
   is not an answer to repeat: check it against what this prompt shows now, and
   say what is true now.
 "
-    if _route_manifest_no_tools "$manifest"; then
+    # #2464 (ADR-072 §1): a fresh call judges, and a judging call reads and
+    # searches files and nothing else — the router gives it only those tools.
+    local _sbr_tools; _route_manifest_tools_v _sbr_tools "$manifest"
+    if [[ "$_sbr_tools" == none ]]; then
         # #2448: no tools — nothing to write, and no file to keep notes in.
         _head_full="- You have no tools. Everything you need is in this prompt, and your
   answer is your reply.
@@ -230,16 +233,25 @@ _stage_block_rules_pair_v() {
         _head_fresh="$_head_full"
         _confirm="$_write"
     else
-        if ! _sp_writes_repository "$manifest"; then
-            _head_fresh="- You may not change the repository. Do not create, modify or delete any
-  file in the repository — code, tests, or anything else. Write only the
-  outputs your instructions name.
+        _head_fresh="- You can open and search files (Read, Grep, Glob), and nothing else:
+  you cannot change, create or delete any file, or run anything. Open
+  whatever you need to judge — the whole function, what calls it, the rest
+  of the file — and judge the code itself, not what this prompt says about
+  it. Your answer is your reply.
 "
+        if [[ "$_sbr_tools" == read ]]; then
+            # A stage whose every call judges has only the fresh set.
+            _head_full="$_head_fresh"
+        elif ! _sp_writes_repository "$manifest"; then
             _head_full="- You may not change the repository. Do not create, modify or delete any
   file in the repository — code, tests, or anything else. Write only the
   outputs your instructions name, and your notes file.
 "
         fi
+    fi
+    if [[ "$_sbr_tools" == read ]]; then
+        _confirm="$_write"
+    elif [[ "$_sbr_tools" != none ]]; then
         stage_notes_path_v _sbr_np "$state_dir" "$stage"
         _head_full+="- Your notes file is $_sbr_np
   Write to it as you work, not at the end: what you read, what you
@@ -349,7 +361,9 @@ _stage_blocks_write_pw_rules() {
         > "$dir/previous-work.md" 2>/dev/null || return 1
     IFS= read -r -d '' _raw < "$dir/previous-work.md" || true
     _sp_own_notes_split_v _pw_full _pw_fresh "$_raw"
-    _route_manifest_no_tools "$manifest" && _pw_full="$_pw_fresh"
+    # A stage whose every call judges (#2464) or that has no tools reads only the fresh set.
+    local _pwr_tools; _route_manifest_tools_v _pwr_tools "$manifest"
+    [[ -n "$_pwr_tools" ]] && _pw_full="$_pw_fresh"
     _stage_block_rules_pair_v _r_full _r_fresh "$stage" "$state_dir" "$manifest" 2>/dev/null || return 1
     printf '%s' "$_pw_full"  > "$dir/previous-work.md" 2>/dev/null || return 1
     printf '%s' "$_pw_fresh" > "$dir/previous-work-fresh.md" 2>/dev/null || return 1
