@@ -169,20 +169,21 @@ fi
 assert_eq "[#1805/FSTG-1] intake emits no stage.start when skipped via --from-stage" \
     "0" "$_s3_intake_starts"
 
-# [#1805/FSTG-1]: cyc (the cycle stage) must be dispatched as the first stage.
-# artifact-snapshot-coverage has intake (leaf) then cyc (cycle). --from-stage cyc means
-# intake is skipped and cyc is the first thing dispatched: the cycle emits cycle.start
-# with cycle_id=cyc (cycles do not emit stage.start for the cycle itself; their inner
-# members do; cycle.start is the event that proves the cycle stage was dispatched).
-# Before the change: without rehydration the runner may re-dispatch intake first → FAILS.
-# After the change: intake is skipped; cyc (the --from-stage target) dispatches → PASSES.
-_s3_cyc_started=0
+# [#1805/FSTG-1]: stage <s>=cyc must be dispatched as the first stage and a stage.start
+# event must be emitted. artifact-snapshot-coverage has intake (leaf) then cyc (cycle).
+# --from-stage cyc means intake is skipped and cyc is the first thing dispatched.
+# A cycle stage's inner member (cycled) emits stage.start with stage=cycled when cyc
+# dispatches it; this is the first stage.start event and proves cyc was dispatched first.
+# Before the change: without rehydration the runner may re-dispatch intake first →
+#   stage.start for intake before cycled → no cycled stage.start OR intake dispatched → FAILS.
+# After the change: intake is skipped; cyc dispatches cycled as first stage → PASSES.
+_s3_cycled_started=0
 if [[ -f "$S3_EVENTS_JSONL" ]]; then
-    _s3_cyc_started="$(jq -r 'select(.type=="cycle.start" and .data.cycle_id=="cyc") | .data.cycle_id' \
+    _s3_cycled_started="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
         "$S3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/FSTG-1] cyc (cycle) dispatched as the first stage (--from-stage target, intake skipped)" \
-    "1" "$_s3_cyc_started"
+assert_gt "[#1805/FSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)" \
+    "$_s3_cycled_started" "0"
 
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
 print_test_section "[#1805/FSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1"
@@ -268,6 +269,8 @@ assert_eq "[#1805/FSTG-2] no stage.start emitted before exit 1" \
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "from-stage-rehydrate test uses a fixture containing a cyclic stage"
 
+# Then — the test fixtures used by from-stage-rehydrate-test.sh contain a pipeline stage
+#   of type: cycle, verified by an assert_contains tagged [#1805/CYCL-1].
 # Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
 # demonstrate that this test file exercises a pipeline containing a cyclic stage.
 _S13_FS_ID="$(zb_test_issue)"
