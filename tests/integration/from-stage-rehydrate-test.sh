@@ -32,6 +32,8 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
 # ── SPEC-3: --from-stage rehydrates stages before <s> from git state branch ──
 print_test_section "[#1805/FSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first"
 
+# Given — a previous run completed stages before <s> (intake is complete); their artifacts
+#   are present in the git state branch; a new invocation uses --from-stage cyc.
 S3_ID="$(zb_test_issue)"
 S3_STATE_DIR="$TEST_TEMP_DIR/s3-state"
 S3_EVENTS_DIR="$TEST_TEMP_DIR/s3-events"
@@ -92,6 +94,7 @@ jq -n \
 
 # Run runner with --from-stage cyc. CWD=S3_WORK_REPO so the state branch
 # is reachable. Artifact must be restored before cyc (the cycle) dispatches.
+# When — the runner starts with --from-stage cyc.
 set +e
 ( cd "$S3_WORK_REPO" && env \
     ZBUILD_CYCLES_ENABLED=1 \
@@ -109,6 +112,10 @@ set +e
     >"$TEST_TEMP_DIR/s3-stdout.txt" 2>"$TEST_TEMP_DIR/s3-stderr.txt"
 _s3_rc=$?
 set -e
+
+# Then — artifacts from every stage before cyc appear in ZBUILD_ARTIFACT_DIR before
+# the dispatch loop starts; stage cyc is dispatched as the first stage; no stage.start
+# for any stage before cyc.
 
 # [#1805/FSTG-1]: intake artifact must be in ZBUILD_ARTIFACT_DIR after --from-stage.
 # Before the change: no rehydration → file absent → FAILS.
@@ -128,6 +135,29 @@ assert_contains \
     "[#1805/FSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)" \
     "$_s3_restored_content" "prior-run intake"
 
+# [#1805/FSTG-1]: pipeline.resume must appear in the events log BEFORE the first
+# cycle.start event, proving _runner_from_stage_preflight (which calls
+# _artifact_persist_restore and _artifact_persist_put_back) completed before the
+# dispatch loop reached stage cyc. pipeline.resume is emitted at the end of the
+# preflight / rehydration step, before the dispatch loop begins. cycle.start is emitted
+# when cyc (the --from-stage target) is first dispatched.
+# Before the change: no preflight → pipeline.resume absent OR no ordering guarantee →
+#   resume_lineno=0 → assert 0 > 0 → FAILS.
+# After the change: preflight runs → pipeline.resume emitted → dispatch loop starts →
+#   cycle.start emitted → resume_lineno < cyc_start_lineno → PASSES.
+_s3_resume_lineno=0
+_s3_first_dispatch_lineno=0
+if [[ -f "$S3_EVENTS_JSONL" ]]; then
+    _s3_resume_lineno="$(awk '/"pipeline.resume"/{print NR; exit}' "$S3_EVENTS_JSONL" 2>/dev/null)"
+    _s3_resume_lineno="${_s3_resume_lineno:-0}"
+    _s3_first_dispatch_lineno="$(awk '/"cycle.start"/{print NR; exit}' "$S3_EVENTS_JSONL" 2>/dev/null)"
+    _s3_first_dispatch_lineno="${_s3_first_dispatch_lineno:-0}"
+fi
+assert_gt "[#1805/FSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)" \
+    "$_s3_resume_lineno" "0"
+assert_gt "[#1805/FSTG-1] pipeline.resume precedes first dispatch event (artifact restored before dispatch loop started)" \
+    "$_s3_first_dispatch_lineno" "$_s3_resume_lineno"
+
 # [#1805/FSTG-1]: intake must emit no stage.start event (it was skipped).
 # Before the change: no rehydration means intake might be re-dispatched → stage.start emitted → FAILS.
 # After the change: intake is complete and skipped entirely → no stage.start → PASSES.
@@ -142,7 +172,8 @@ assert_eq "[#1805/FSTG-1] intake emits no stage.start when skipped via --from-st
 # [#1805/FSTG-1]: cyc (the cycle stage) must be dispatched as the first stage.
 # artifact-snapshot-coverage has intake (leaf) then cyc (cycle). --from-stage cyc means
 # intake is skipped and cyc is the first thing dispatched: the cycle emits cycle.start
-# with cycle_id=cyc (cycles do not emit stage.start; their inner members do).
+# with cycle_id=cyc (cycles do not emit stage.start for the cycle itself; their inner
+# members do; cycle.start is the event that proves the cycle stage was dispatched).
 # Before the change: without rehydration the runner may re-dispatch intake first → FAILS.
 # After the change: intake is skipped; cyc (the --from-stage target) dispatches → PASSES.
 _s3_cyc_started=0
@@ -156,6 +187,8 @@ assert_eq "[#1805/FSTG-1] cyc (cycle) dispatched as the first stage (--from-stag
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
 print_test_section "[#1805/FSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1"
 
+# Given — --from-stage cyc is active; at least one stage before cyc (intake) has no
+#   restorable primary artifact in the git state branch (no state branch for this issue).
 S4_ID="$(zb_test_issue)"
 S4_STATE_DIR="$TEST_TEMP_DIR/s4-state"
 S4_EVENTS_DIR="$TEST_TEMP_DIR/s4-events"
@@ -187,6 +220,7 @@ jq -n \
         updated_at: $now
     }' > "$S4_STATE_FILE"
 
+# When — the runner performs the from-stage preflight check (--resume --from-stage cyc).
 set +e
 ( cd "$S4_WORK_REPO" && env \
     ZBUILD_CYCLES_ENABLED=1 \
@@ -205,6 +239,7 @@ set +e
 _s4_rc=$?
 set -e
 
+# Then — diagnostic appears on stderr; runner exits 1 before any stage.start event.
 # [#1805/FSTG-2]: runner must exit 1 when prior stage has no restorable artifact.
 # Before the change: runner has no preflight check → continues → exits 0 → FAILS.
 # After the change: _runner_from_stage_preflight exits 1 → PASSES.
