@@ -84,7 +84,9 @@ setup_test_env "fork-budget"
 # temp files without mktemp; main measured 2,196) — measured 2,142 macOS.
 # 2100 (#2466: validate_manifest reads requires.core, its scalar fields and its
 # events with the shell, not three awks a manifest) — measured 2,052 macOS.
-FORK_BUDGET=2100
+# 2040 (#2470: a stage prompt is put together, read back and checked by the
+# shell, not by a cat per section and a head) — measured 2,028 macOS.
+FORK_BUDGET=2040
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -105,8 +107,10 @@ FORK_BUDGET=2100
 # answers added; main was at 2,879). 2800 (#2466, the same change as
 # FORK_BUDGET 2100 — measured 2,762 macOS). 2790 (#2467: the build, lens and
 # test-author readers read the acceptance block once, not once per SPEC —
-# measured 2,756 macOS).
-PROCESS_BUDGET=2790
+# measured 2,756 macOS). 2745 (#2470: Previous work finds each stage's summary
+# path in its shell, not in a `$( )` a stage; the prompt's first line is read
+# without a `$( )` — measured 2,724 macOS).
+PROCESS_BUDGET=2745
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh

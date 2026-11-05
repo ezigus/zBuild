@@ -1,6 +1,6 @@
 # ADR-073 — A requirement and its test are written as Given/When/Then, and every part is judged
 
-**Status:** Accepted (2026-11-04)
+**Status:** Accepted (2026-11-04); amended 2026-11-04 (#2470, §1 §2 §5 §6: a SPEC is shown with its parts as design wrote them; design is told which SPECs it keeps are still on one line; a finding shows the failing SPEC whole, marked where to fix it; the checks answer per SPEC)
 **Issue:** #2467 (#1805 run 41757933766)
 **Amends:** ADR-031 (the form of a SPEC), ADR-069 §1 (a [code] or [done] SPEC has parts), ADR-072 §3 (the checks answer a line per part), ADR-036 (build's three ways with a test that leaves something behind)
 **Related:** ADR-068 §3 (a `misconfigured` result ends the run), ADR-071, ADR-066 (every ADR statement has a test)
@@ -27,7 +27,7 @@ design's own check had passed both. test-author's check called each test "partia
    - A SPEC from an earlier design written on one line still reads everywhere; design rewrites it with its parts when it keeps it.
    - Assertion tags do not change.
 
-   The parts are labelled for the checks: `Given 1`, `When`, `Then 2`, `Cleanup 1`.
+   The parts are labelled inside the engine: `Given 1`, `When`, `Then 2`, `Cleanup 1`. (Amended 2026-11-04, #2470: no model is shown these labels; see the amendment below.)
 
 2. **How the parts are read.** The parser (`extract_acceptance_block`) keeps a SPEC's parts with it, apart from its words, so every reader still sees one entry per SPEC, and its title, `covers:` and evidence read as before.
    - `acceptance_spec_parts_v` gives the labelled parts.
@@ -71,12 +71,25 @@ design's own check had passed both. test-author's check called each test "partia
 ## Implementation Notes
 
 - **Parsing:** `scripts/lib/acceptance-block.sh` — `_ACCEPTANCE_PART_RE`; `extract_acceptance_block` joins a SPEC's parts to it with a unit separator; `_acceptance_spec_line` sets `_ACC_SPEC_PARTS`; and `acceptance_parts_v`, `acceptance_spec_parts_v`, `acceptance_spec_render_v`, `acceptance_block_render_v` read and show the parts.
-- **The part line in a reply:** `scripts/lib/reply-units.sh` treats a line like `FRSH-1 Then 2:` as the start of an item.
+- **The part line in a reply:** `scripts/lib/reply-units.sh` treats a line like `FRSH-1 Then:`, `FRSH-1 And:` or an old `FRSH-1 Then 2:` as the start of an item.
 - **design:** `plugins/agent/design/lib/checks.sh` (C10: `_dck_parts`, `_dck_plain`) and `plugins/agent/design/lib/coverage.sh` (`_dcov_part_line`, `_design_coverage_findings`); the prompt in `plugins/agent/design/plugin.sh`.
 - **test-author:** `plugins/agent/test-author/lib/correspondence.sh` (`_sc_judge`, `_sc_batch_prompt`, `_ta_correspondence`); `plugins/agent/test-author/plugin.sh` (the parts in its prompt, the sections, and a `misconfigured` result for a SPEC no test can prove).
 - **Other readers:** build (`plugins/agent/build/lib/context.sh`, `plugins/agent/build/lib/prompt.sh`), issue-acceptance (`acceptance_requirements_for_judge`), and the review lenses (`_rl_requirements_readable`).
 
+## Amendment 2026-11-04 (#2470) — parts as written, findings marked where to fix, answers per SPEC
+
+On #1805 run 41845438073 design used its three tries and never reached test-author. Try 1 kept nine one-line SPECs from the old design, which only the failing check named. The findings named parts `Then 1` and `Then 2`, labels design never wrote, so it could not tell which line was meant. Each finding was shown twice, in design's result and again in its summary.
+
+- **§1: design is told up front which kept SPECs are still on one line.** When design refines its latest design, its prompt lists each `[code]` or `[done]` SPEC of that design written on one line (`- <id>`) and says each one it keeps is rewritten with its parts. A `[no-code]` SPEC is not listed.
+- **§2: a model sees the parts as design wrote them.** Every SPEC shown to a model — to design's check, test-author and its check, build, issue-acceptance and the review lenses — shows each part by the word its line starts with: `Given:`, `When:`, `Then:`, `And:`, `Cleanup:`. It never shows a number (`acceptance_parts_shown_v`). The numbered labels stay inside the engine, to tell the parts apart.
+- **§5 §6: a judge names a part by its word and a quote.** A part line is `<id> <word>: <verdict> | WHY: … | QUOTE: "<that part's own words>"`. The quote says which line it means: for `Then`, any Then or an And under one; for `And`, any And; for `When`, the When. A quote in none of them makes the answer unusable, asked again saying so. An old numbered label (`Then 2`) is still read. For every verdict the quote is the part's own words: `contradicts` and `duplicate` say in WHY what the part clashes with.
+- **§5 §6: one line for a SPEC that is fine, one per thing wrong.** design's check answers `<id>: ok` for a SPEC with nothing wrong, and otherwise one line for each thing wrong, with no ok line. test-author's check answers `<id>: ok` for a SPEC whose test is right, and otherwise one line per part it falls short on, `<id> sections: missing` for a test not laid out in sections, or `<id>: untestable`. A SPEC with no line at all is asked again, naming it.
+- **§5 §6: a finding is the SPEC whole, marked where to fix.** A SPEC with something to fix is one finding: a header (`FRSH-1: 1 part to fix`), the SPEC's first line as written, and each part as written, one per line. Each line to fix ends with `[FIX IN DESIGN: <why> — <what to do>]` or `[FIX IN TEST: <why> — <what to do>]`. A verdict about the whole SPEC (`outside`, `done_wrong`, `needs_cleanup`, missing sections) marks its first line. A SPEC no test can prove is marked `[FIX IN DESIGN: …]` on the line no test can prove. A requirement no SPEC covers is one line, marked `[FIX IN DESIGN: add or widen a SPEC so it covers this]`. A SPEC that passed is not shown. The finding's lines reach the next stage as one finding with several lines (`stage_findings_json` joins them on a record separator), and Previous work shows each of its lines (ADR-067 §8).
+- **One place for each finding.** design's summary no longer copies its findings: it says they are in design's result (ADR-055 §9 amendment, #2470).
+
 ## Enforced by
+
+- §1 §2 §5 §6 amendment 2026-11-04 (#2470) → `tests/unit/judge-feedback-test.sh` F1 (the one-line SPECs named), F2 (parts as written; a part named by word and quote), F3 (findings shown once), F5 (the SPEC whole, marked), F6 (a line per SPEC); `tests/unit/reply-multiline-test.sh` Q4 (an `And` line is its own item)
 
 - §1 §2 → `tests/unit/gwt-format-test.sh` P1–P5, R1, R2
 - §3 → `tests/unit/gwt-format-test.sh` C1–C5

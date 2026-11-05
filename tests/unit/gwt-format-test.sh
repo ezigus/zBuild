@@ -95,7 +95,9 @@ _p=(); acceptance_spec_parts_v _p "$_blk" LOOP-1
 assert_eq "[P4] a wrapped part is one part" "When|an inner loop is entered again, while the outer loop goes round" "$(tr '\t' '|' <<< "${_p[0]:-}")"
 _r=""; acceptance_spec_render_v _r "$_blk" FRSH-1
 assert_contains "[P5] a SPEC is shown with its words" "$_r" "a new run starts from the first stage"
-assert_contains "[P5] ...and each part, labelled" "$_r" "  Then 2: no stage is skipped"
+# #2470 (ADR-073 §2): by the word design wrote, never a number.
+assert_contains "[P5] ...and each part, as written" "$_r" "  And: no stage is skipped"
+assert_eq "[P5] ...never numbered" "0" "$(grep -c 'Then [0-9]' <<< "$_r")"
 
 print_test_section "C1-C5: design's check of the parts (C10)"
 _design "${GOOD[@]}"
@@ -134,7 +136,8 @@ for _w in "Given: " "When: " "Then: " "And: " "Cleanup: "; do
 done
 assert_contains "[D1] one When per SPEC" "$_dp" "exactly one When"
 assert_contains "[D1] Cleanup only for what outlives the test" "$_dp" "outlives the test"
-assert_contains "[D1] a one-line SPEC it keeps is rewritten" "$_dp" "rewrite it with its parts"
+# #2470: the kept one-line SPECs are named (judge-feedback-test.sh F1).
+assert_contains "[D1] a one-line SPEC it keeps is rewritten" "$_dp" "is rewritten with its parts"
 
 print_test_section "R1-R2: the readers"
 _design "${GOOD[@]}"
@@ -145,7 +148,7 @@ assert_contains "[R1] issue-acceptance is shown the parts" "$_ia" "When: it is s
     source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh" >/dev/null 2>&1
     _rl_requirements_readable "$D"
 ) > "$TEST_TEMP_DIR/lens.txt" 2>/dev/null
-assert_contains "[R1] a review lens is shown the parts" "$(cat "$TEST_TEMP_DIR/lens.txt")" "Then 2: no stage is skipped"
+assert_contains "[R1] a review lens is shown the parts" "$(cat "$TEST_TEMP_DIR/lens.txt")" "And: no stage is skipped"
 (
     # shellcheck source=../../plugins/agent/build/plugin.sh
     source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1

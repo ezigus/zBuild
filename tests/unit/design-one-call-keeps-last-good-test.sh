@@ -116,7 +116,8 @@ _run
 assert_eq "[D1] one model call, though its design fails a check" "1" "$CALLS"
 assert_eq "[D2] a design that fails its checks is unusable" "unusable" "$OUTCOME"
 assert_contains "[D2] the result names the check that failed" "$FINDINGS" "WIRING"
-assert_contains "[D2] the summary names it too" "$(cat "$_F_ART/design-summary.md" 2>/dev/null)" "WIRING"
+# #2470 (ADR-055 §9): the summary says where the findings are, never copies them.
+assert_contains "[D2] the summary says the findings are in the result" "$(cat "$_F_ART/design-summary.md" 2>/dev/null)" "The findings are in design's result"
 assert_eq "[D3] the last good design.md is untouched" "$GOOD" "$(cat "$_F_DESIGN" 2>/dev/null)"
 assert_eq "[D3] the failed try is kept as the working copy" "$NO_WIRING" "$(cat "$_F_DRAFT" 2>/dev/null)"
 

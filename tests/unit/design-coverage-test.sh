@@ -202,8 +202,11 @@ ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
 assert_eq "[X2] each item outside the issue is one entry, whatever the coverage verdict" "2" "${#_DESIGN_OUTSIDE[@]}"
 assert_eq "[X5] each [done] SPEC the code does not do is one entry" "1" "${#_DESIGN_DONE_WRONG[@]}"
 _fx="$(_design_coverage_findings)"
-assert_contains "[X2] ...and a finding design must fix" "$_fx" "the issue does not ask for this, or the design gets it wrong: scripts/telemetry.sh"
-assert_contains "[X5] ...and a finding too" "$_fx" "marked [done], but the code its evidence points at does not do it: CNFG-1"
+# #2470 (ADR-073 §5): the line to fix is marked with what to do.
+assert_contains "[X2] ...and a finding design must fix" "$_fx" "SCOPE scripts/telemetry.sh: the issue asks for no telemetry [FIX IN DESIGN: the issue does not ask for it"
+assert_contains "[X2] ...the SPEC's own line marked" "$_fx" "WORK-1[code]: a --dry-run flag is accepted covers: RQST-1 [FIX IN DESIGN: also renames the flag — the issue does not ask for this"
+assert_contains "[X5] ...and a finding too" "$_fx" "CNFG-1: 1 part to fix"
+assert_contains "[X5] ...its line marked with what the code does" "$_fx" "[FIX IN DESIGN: it returns 2 only when the file is absent, not when it is unreadable: scripts/cfg.sh:"
 
 cleanup_test_env
 print_test_results

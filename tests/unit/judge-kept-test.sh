@@ -102,6 +102,17 @@ assert_eq "[K2] another engine: judged again" "1|1|" "$(_l K2c)"
 assert_eq "[K3] design disputes the finding: judged again, the answer shown" "1|1||shown" "$(_l K3a)"
 assert_eq "[K3] ...and that verdict is kept in turn" "0|1|" "$(_l K3b)"
 
+print_test_section "K10: an answer with no fingerprint is not kept (review on #2471)"
+(
+    # shellcheck source=../../scripts/lib/judge.sh
+    source "$REPO_ROOT/scripts/lib/judge.sh"
+    kf="$TEST_TEMP_DIR/k10/design-judged.json"; mkdir -p "${kf%/*}"
+    declare -A p=([WORK-1]="WORK-1: ok" [WORK-2]="WORK-2: ok") f=([WORK-1]="1-1" [WORK-2]="") d=()
+    judge_kept_put_all "$kf" p f d
+    jq -r 'keys | join(" ")' "$kf"
+) > "$TEST_TEMP_DIR/k10.out" 2>/dev/null
+assert_eq "[K10] a SPEC whose fingerprint could not be made is not kept; the others are" "WORK-1" "$(cat "$TEST_TEMP_DIR/k10.out")"
+
 print_test_section "K9: what the fingerprint depends on (review on #2465)"
 (
     # shellcheck source=../../plugins/agent/design/plugin.sh

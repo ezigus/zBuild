@@ -163,6 +163,24 @@ _design_read_prior_design() {
     return 0
 }
 
+# _design_one_line_specs_v <var> <design_text> — "- <id>" for each [code] or
+# [done] SPEC of the design's acceptance block written on one line, with no
+# parts under it (#2470). Read by the shell: the design is already in hand.
+_design_one_line_specs_v() {
+    local -n _dol="$1"; local _dol_l _dol_in=0 _dol_id="" _dol_re="^(${_ACCEPTANCE_ID_ERE})\\[(code|change|done|guard)\\]:"
+    _dol=""
+    while IFS= read -r _dol_l; do
+        if (( ! _dol_in )); then [[ "$_dol_l" == '```acceptance'* ]] && _dol_in=1; continue; fi
+        [[ "$_dol_l" == '```'* || "$_dol_l" == TESTFILES:* ]] && break
+        [[ -n "$_dol_id" && "$_dol_l" =~ ^[[:space:]]+(Given|When|Then|And|Cleanup): ]] && { _dol_id=""; continue; }
+        [[ -n "$_dol_id" ]] && _dol+="- $_dol_id"$'\n'
+        _dol_id=""
+        [[ "$_dol_l" =~ $_dol_re ]] && _dol_id="${BASH_REMATCH[1]}"
+    done <<< "$2"
+    [[ -n "$_dol_id" ]] && _dol+="- $_dol_id"$'\n'
+    return 0
+}
+
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
@@ -285,7 +303,6 @@ path/to/file2
      variable, a file outside the test's own folder, global config or git state.
      Leave it out when nothing outlives the test: the test harness cleans up
      after every test.
-   A SPEC kept from an earlier design that is written on one line: rewrite it with its parts.
 
    The status says what work the requirement needs. Look at the code before you choose:
    - \`LOOP-1[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
@@ -409,6 +426,11 @@ DESIGN_PROMPT
         printf '\n### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)\n' >> "$prompt_input_file"
         printf 'Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
         printf '\n%s\n' "$_prior_design_body" >> "$prompt_input_file"
+        # #2470 (ADR-073 §1): the SPECs it keeps that still need their parts,
+        # named before design writes, not learned from a failed check.
+        local _one_line=""
+        _design_one_line_specs_v _one_line "$_prior_design_body"
+        [[ -n "$_one_line" ]] && printf '\nThese [code] and [done] SPECs of YOUR LATEST DESIGN are still written on one line. Each one you keep is rewritten with its parts on the lines under it — Given, When, Then, And, Cleanup:\n%s' "$_one_line" >> "$prompt_input_file"
         printf '\nRefine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
             >> "$prompt_input_file"
     fi
@@ -560,9 +582,11 @@ ${_dp_limits}")"; then
         emit_event "design.checks.failed" "plugin=design" "findings=${#_fnd[@]}"
         local _fj; _fj="$(printf '%s\n' "${_fnd[@]}" | stage_findings_json)"
         _design_write_outcome "$artifact_dir" "unusable" "the design fails ${#_fnd[@]} of its checks" "${_fj:-[]}"
+        # #2470 (ADR-055 §9): the findings are in the result, shown once; the
+        # summary says where they are, never copies them.
         stage_summary_write "$artifact_dir/design-summary.md" "design" "fail" \
             "the design fails ${#_fnd[@]} check(s)" \
-            "$(printf -- '- %s\n' "${_fnd[@]}"; printf '\nThis try is kept as the working copy for the next run; design.md is unchanged.')"
+            "The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged."
         emit_event "plugin.result" "outcome=unusable" "plugin=design" "reason=checks_failed"
         return 1
     fi

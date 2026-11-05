@@ -23,6 +23,8 @@ _ZBUILD_STAGE_SUMMARY_SH_LOADED=1
 # #2452 (ADR-071 §1): a line "<topic><TAB><text>" is a finding with its own
 # topic, so it reaches only the stages that take that topic. Only the five
 # topic words count; any other line is a finding with no topic, kept whole.
+# #2470: a finding of several lines (a SPEC shown whole) comes as one line with
+# its lines joined by a record separator (\x1e), and keeps them.
 _ZB_FINDING_TOPICS='^(ask|tests|change|requirement-findings|code-findings)\t'
 stage_findings_json() {
     jq -R -s -c --arg re "$_ZB_FINDING_TOPICS" \
@@ -30,7 +32,8 @@ stage_findings_json() {
          | to_entries
          | map(.value as $v | {n: (.key + 1)}
                + if ($v | test($re)) then {text: ($v | sub("^[^\t]+\t"; "")), topic: ($v | split("\t")[0])}
-                 else {text: $v} end)' 2>/dev/null || printf '[]'
+                 else {text: $v} end
+               | .text |= gsub("\u001e"; "\n"))' 2>/dev/null || printf '[]'
 }
 
 # stage_findings_lines <result.json> — the result's findings as the lines

@@ -1,6 +1,6 @@
 # ADR-067 — Model-facing text speaks plainly
 
-**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8), 2026-10-07 (#1799, §8), 2026-10-11 (§8 findings wording, §9), 2026-10-12 (§8: the engine/stage prompt contract — three parts from the stage, three blocks from the engine, one order), 2026-10-13 (#2363, §8: the engine's blocks hold only what every stage shares; §9: plan does not read code), 2026-10-14 (#2376, §8: design's job comes first, it writes design.md as it goes, finds its scope by searching, and may write its notes), 2026-10-27 (ADR-071, §8: Previous work holds only the topics the stage takes), 2026-10-31 (#2441, §8: test-author runs its own test files and nothing else); 2026-11-03 (#2464, §8: a judging call can read and search files, and nothing else)
+**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8), 2026-10-07 (#1799, §8), 2026-10-11 (§8 findings wording, §9), 2026-10-12 (§8: the engine/stage prompt contract — three parts from the stage, three blocks from the engine, one order), 2026-10-13 (#2363, §8: the engine's blocks hold only what every stage shares; §9: plan does not read code), 2026-10-14 (#2376, §8: design's job comes first, it writes design.md as it goes, finds its scope by searching, and may write its notes), 2026-10-27 (ADR-071, §8: Previous work holds only the topics the stage takes), 2026-10-31 (#2441, §8: test-author runs its own test files and nothing else); 2026-11-03 (#2464, §8: a judging call can read and search files, and nothing else); 2026-11-04 (#2470, §8: a judging call is not shown its own stage's earlier output; a finding is shown with all its lines)
 **Issue:** #2269, #2308
 **Related:** ADR-066 (every ADR statement has a test), ADR-055 §9 (stage summaries are read by every later stage), ADR-036 (the acceptance check whose vocabulary leaked), ADR-050 §9 and ADR-068 §8 (each stage's latest output, any run), ADR-063 §1 (the budget is stated from the value that enforces it)
 
@@ -83,7 +83,16 @@ On #1805 run 41489923219 issue-acceptance was handed its notes from an earlier r
 
 A fresh call (a judging call) is told that it can open and search files (Read, Grep, Glob) and nothing else, that it should open whatever it needs, and that its answer is its reply. A stage whose every call judges (`tools: read`, ADR-017 §11) has only the fresh rules and the fresh Previous work, as a stage with no tools already did. Judging calls still start fresh: none is shown its own earlier verdict. ADR-072 §4 keeps an unchanged item's verdict without asking again.
 
+## Amendment 2026-11-04 (#2470) — §8: a judge is not shown its own stage's earlier output; a finding keeps its lines
+
+On #1805 run 41845438073 design's coverage judge read design's earlier output under Previous work, and opened the old design.md, while it judged the new draft.
+
+- **§8: a judging call's Previous work leaves out its own stage's section.** The stage's earlier output is what the building call refines, not what the judge judges. The engine writes the judge's form (`previous-work-fresh.md`) without it; a stage whose every call judges (`tools: read`) gets that form too. A building call still sees its stage's own latest output, and a stage with no tools still sees its own section without its notes.
+- **§8: a finding is shown with all its lines.** A finding that spans several lines (ADR-073 amendment, #2470: a SPEC shown whole) is listed under its number with each further line indented under it, never joined into one.
+
 ## Enforced by
+
+- §8 amendment 2026-11-04 (#2470: a judge is not shown its own stage's earlier output; a finding keeps its lines) → `tests/unit/judge-feedback-test.sh` F4 (Previous work for a building call and for a judging call), F5 (a finding shown line by line)
 
 - §8 amendment 2026-11-03 (#2464: a judging call reads and searches files and nothing else) → `tests/unit/judge-tools-test.sh` T5
 - §8 §6 amendment 2026-11-02 (#2458: judging calls and stages with no tools start fresh; build's file list leaves out the test files it may not touch) → `tests/unit/fresh-judge-prompt-test.sh` J1–J4; `tests/unit/design-step-topics-test.sh` T5

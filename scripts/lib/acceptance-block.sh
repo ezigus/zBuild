@@ -227,14 +227,18 @@ _acceptance_spec_line() {
     return 1
 }
 
-# acceptance_parts_v <array_var> <parts> [problems_var] — a SPEC's parts
-# (_ACC_SPEC_PARTS) as "<label><TAB><words>", in order (#2467, ADR-073 §1). The
-# labels are what a check names: "Given 1", "When", "Then 2", "Cleanup 1". And
-# continues the Given, Then or Cleanup above it and takes its next number. With
-# [problems_var], each thing wrong with them: NO_WHEN, MANY_WHEN, NO_THEN,
-# AND_AFTER_WHEN, AND_FIRST, and "EMPTY <label>" for a part with no words.
+# acceptance_parts_v <array_var> <parts> [problems_var] [written_var] — a SPEC's
+# parts (_ACC_SPEC_PARTS) as "<label><TAB><words>", in order (#2467, ADR-073
+# §1). The labels tell the parts apart inside the engine: "Given 1", "When",
+# "Then 2", "Cleanup 1". And continues the Given, Then or Cleanup above it and
+# takes its next number. With [problems_var], each thing wrong with them:
+# NO_WHEN, MANY_WHEN, NO_THEN, AND_AFTER_WHEN, AND_FIRST, and "EMPTY <label>"
+# for a part with no words. With [written_var], each part's word as design wrote
+# it — Given, When, Then, And, Cleanup — which is all a model is ever shown
+# (#2470).
 acceptance_parts_v() {
-    local -n _apv="$1"; local _apv_raw="${2:-}" _apv_pl="${3:-}"
+    local -n _apv="$1"; local _apv_raw="${2:-}" _apv_pl="${3:-}" _apv_wl="${4:-}"
+    local -a _apv_wr=()
     local _apv_g=0 _apv_w=0 _apv_t=0 _apv_c=0 _apv_last="" _apv_k _apv_x _apv_lab
     local -a _apv_pr=()
     _apv=()
@@ -244,6 +248,7 @@ acceptance_parts_v() {
     [[ ${#_apv_items[@]} -gt 0 ]] && _apv_items[-1]="${_apv_items[-1]%$'\n'}"
     for _apv_x in ${_apv_items[@]+"${_apv_items[@]}"}; do
         _apv_k="${_apv_x%%:*}"; _apv_x="${_apv_x#*:}"; _apv_x="${_apv_x# }"
+        _apv_wr+=("$_apv_k")
         if [[ "$_apv_k" == And ]]; then
             case "$_apv_last" in
                 "")   _apv_pr+=(AND_FIRST); _apv_k=Then ;;
@@ -261,6 +266,10 @@ acceptance_parts_v() {
         [[ -n "${_apv_x//[[:space:]]/}" ]] || _apv_pr+=("EMPTY $_apv_lab")
         _apv+=("$_apv_lab"$'\t'"$_apv_x")
     done
+    if [[ -n "$_apv_wl" ]]; then
+        local -n _apv_w2="$_apv_wl"
+        _apv_w2=(${_apv_wr[@]+"${_apv_wr[@]}"})
+    fi
     if [[ -n "$_apv_pl" ]]; then
         local -n _apv_p="$_apv_pl"
         (( _apv_w == 0 )) && _apv_pr+=(NO_WHEN)
@@ -280,29 +289,39 @@ acceptance_spec_parts_v() {
     acceptance_parts_v _aspv "$_ACC_SPEC_PARTS"
 }
 
+# acceptance_parts_shown_v <array_var> <parts> — a SPEC's parts as a model is
+# shown them, "<word><TAB><words>", the word as design wrote it: Given, When,
+# Then, And, Cleanup — never a number (#2470, ADR-073 §2).
+acceptance_parts_shown_v() {
+    local -n _aps="$1"; local -a _aps_p=() _aps_w=(); local _aps_i
+    _aps=()
+    acceptance_parts_v _aps_p "${2:-}" "" _aps_w
+    for _aps_i in "${!_aps_p[@]}"; do _aps+=("${_aps_w[_aps_i]}"$'\t'"${_aps_p[_aps_i]#*$'\t'}"); done
+}
+
 # acceptance_spec_render_v <var> <block_output> <spec_id> [indent] — the SPEC's
-# words and, under them, each of its parts by its label: how a SPEC is shown to
-# a model (#2467, ADR-073 §2).
+# words and, under them, each of its parts by the word design wrote: how a SPEC
+# is shown to a model (#2467, #2470, ADR-073 §2).
 acceptance_spec_render_v() {
     local -n _asr="$1"; local _asr_i="${4-  }" _asr_x
     _asr=""
     _acceptance_spec_line "$2" "$3" || return 0
     _asr="$_ACC_SPEC_TEXT"
     local -a _asr_p=()
-    acceptance_parts_v _asr_p "$_ACC_SPEC_PARTS"
+    acceptance_parts_shown_v _asr_p "$_ACC_SPEC_PARTS"
     for _asr_x in ${_asr_p[@]+"${_asr_p[@]}"}; do _asr+=$'\n'"${_asr_i}${_asr_x%%$'\t'*}: ${_asr_x#*$'\t'}"; done
     return 0
 }
 
 # acceptance_block_render_v <var> <block_output> — the extracted block as a
-# model reads it: each SPEC's parts on their own lines, labelled, under it.
+# model reads it: each SPEC's parts on their own lines, as written, under it.
 acceptance_block_render_v() {
     local -n _abr="$1"; local _abr_l _abr_x
     _abr=""
     while IFS= read -r _abr_l; do
         if [[ "$_abr_l" == *$'\x1f'* ]]; then
             local -a _abr_p=()
-            acceptance_parts_v _abr_p "${_abr_l#*$'\x1f'}"
+            acceptance_parts_shown_v _abr_p "${_abr_l#*$'\x1f'}"
             _abr+="${_abr_l%%$'\x1f'*}"$'\n'
             for _abr_x in ${_abr_p[@]+"${_abr_p[@]}"}; do _abr+="  ${_abr_x%%$'\t'*}: ${_abr_x#*$'\t'}"$'\n'; done
         else
@@ -838,7 +857,7 @@ acceptance_requirements_for_judge() {
         printf -- '- %s: %s\n' "$sid" "$_ACC_SPEC_TEXT"
         # #2467: and its parts, each on its own line.
         local -a _rfj_p=(); local _rfj_x
-        acceptance_parts_v _rfj_p "$_ACC_SPEC_PARTS"
+        acceptance_parts_shown_v _rfj_p "$_ACC_SPEC_PARTS"
         for _rfj_x in ${_rfj_p[@]+"${_rfj_p[@]}"}; do printf '  %s: %s\n' "${_rfj_x%%$'\t'*}" "${_rfj_x#*$'\t'}"; done
         case "$_ACC_SPEC_STATUS" in
             no-code) printf '  Status: needs work (no code) — nothing checked it mechanically; judge it yourself, and say whether its tests would catch it broken\n' ;;

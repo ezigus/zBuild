@@ -114,19 +114,18 @@ assert_eq "[SPEC-2] ...and the check was judged" "" "$_TA_CORR_OUTCOME"
 
 # ── #2143 / SPEC-3 ──────────────────────────────────────────────────────────
 _contract 3
-_REPLY='SPEC-1 Then 1: ok
-SPEC-1 sections: ok
-SPEC-2 Then 1: missing | WHY: one case of several | QUOTE: "thing 2 holds"
-SPEC-2 sections: ok
-SPEC-3 Then 1: ok
-SPEC-3 sections: ok'
+# #2470: one line for a SPEC whose test is right, one per part it is not.
+_REPLY='SPEC-1: ok
+SPEC-2 Then: missing | WHY: one case of several | QUOTE: "thing 2 holds"
+SPEC-3: ok'
 _judge
 assert_eq "[#2143] all 3 SPECs are judged in ONE model call" "1" "$(wc -l < "$_CALLS" | tr -d ' ')"
 for _id in SPEC-1 SPEC-2 SPEC-3; do
     assert_contains "[#2143] the batch prompt carries $_id as a heading" "$(cat "$_P_FILE")" "### $_id"
 done
 assert_eq "[SPEC-3] a part short of its SPEC is one finding" "1" "${#_TA_CORR_FINDINGS[@]}"
-assert_contains "[SPEC-3] ...naming the SPEC, the part and why" "${_TA_CORR_FINDINGS[0]:-}" "SPEC-2 Then 1 is not asserted: one case of several"
+assert_contains "[SPEC-3] ...naming the SPEC" "${_TA_CORR_FINDINGS[0]:-}" "SPEC-2: 1 part to fix"
+assert_contains "[SPEC-3] ...marking the part with why and what to do" "${_TA_CORR_FINDINGS[0]:-}" "[FIX IN TEST: one case of several — assert this"
 
 # ── #2108: a stdin-draining model still leaves every SPEC judged ────────────
 _REPLY=""
@@ -170,10 +169,10 @@ route_to_model() {
         *) printf '%s' "$_RA_R3" ;;
     esac
 }
-printf '0' > "$_RA_N"; _RA_R3=$'SPEC-1 Then 1: ok\nSPEC-1 sections: ok'
+printf '0' > "$_RA_N"; _RA_R3=$'SPEC-1: ok'
 _judge
 assert_eq "[RA] batch, one-SPEC call, and one more ask" "3" "$(cat "$_RA_N")"
-assert_contains "[RA] the second ask says what was wrong" "$(cat "$_P_FILE.3" 2>/dev/null)" "it has no line for SPEC-1 Then 1, SPEC-1 sections"
+assert_contains "[RA] the second ask says what was wrong" "$(cat "$_P_FILE.3" 2>/dev/null)" "it has no line for SPEC-1"
 assert_contains "[RA] the second ask carries the answer" "$(cat "$_P_FILE.3" 2>/dev/null)" "hmm, looks about right"
 assert_eq "[RA] the second answer is the judgement" "0|" "${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 printf '0' > "$_RA_N"; _RA_R3='still unsure'

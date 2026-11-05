@@ -245,7 +245,7 @@ test_author_run() {
         if [[ "$_st" == "done" ]]; then n_done=$(( n_done + 1 )); continue; fi
         _txt="$_ACC_SPEC_TEXT"
         local -a _ta_parts=()
-        acceptance_parts_v _ta_parts "$_ACC_SPEC_PARTS"
+        acceptance_parts_shown_v _ta_parts "$_ACC_SPEC_PARTS"
         _tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         spec_block="${spec_block}- ${sid} [${_st:-code}] ${_txt}"$'\n'
         for _ta_p in ${_ta_parts[@]+"${_ta_parts[@]}"}; do
@@ -442,13 +442,15 @@ EOF
     fi
     # #2467 (ADR-073 §6): a SPEC no test can prove is design's to rewrite. The
     # tries cannot fix it, so the run stops here, naming it — nothing loops back.
+    # #2470: each such SPEC is one finding, shown whole, the line no test can
+    # prove marked [FIX IN DESIGN: …].
     if [[ -n "${_TA_CORR_UNTESTABLE:-}" ]]; then
         local _ut_first="${_TA_CORR_UNTESTABLE%%$'\n'*}"
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a SPEC cannot be tested"
         _ta_write_result "$art" "misconfigured" \
-            "${_ut_first%%:*} cannot be proven by any test — design must rewrite it: ${_ut_first#*: }" "$n" \
-            "$(while IFS= read -r _ut_first; do printf '%s cannot be proven by any test — design must rewrite it: %s\n' "${_ut_first%%:*}" "${_ut_first#*: }"; done <<< "$_TA_CORR_UNTESTABLE" | stage_findings_json)"
+            "${_ut_first%%:*} cannot be proven by any test — design must rewrite it" "$n" \
+            "$(stage_findings_json <<< "$_TA_CORR_UNTESTABLE")"
         return 1
     fi
     _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})

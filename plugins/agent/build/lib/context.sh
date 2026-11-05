@@ -85,7 +85,7 @@ _build_gather_acceptance_specs() {
             [[ "$_ACC_SPEC_STATUS" == "done" ]] && continue
             text="$_ACC_SPEC_TEXT"
             local -a _bg_parts=()
-            acceptance_parts_v _bg_parts "$_ACC_SPEC_PARTS"
+            acceptance_parts_shown_v _bg_parts "$_ACC_SPEC_PARTS"
             for _p in ${_bg_parts[@]+"${_bg_parts[@]}"}; do text+=" — ${_p%%$'\t'*}: ${_p#*$'\t'}"; done
         fi
         if [[ -n "$text" ]]; then

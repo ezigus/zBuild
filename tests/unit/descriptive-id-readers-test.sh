@@ -150,7 +150,13 @@ git -C "$G" add -A >/dev/null 2>&1; git -C "$G" -c user.email=t@t -c user.name=t
 source "$REPO_ROOT/plugins/agent/design/lib/coverage.sh" 2>/dev/null
 # #2464 (ADR-072 §2): the judges are pointed at the file and its text, and
 # open it themselves — no window of lines.
-_cov="$(_dcov_done_evidence "$D" "$G")"
+# #2470: per SPEC, read off the SPECs as the check reads them.
+_cov="$(
+    ids=(); declare -A first=() text=() st=() render=() labs=() pword=() ptext=() ev=()
+    _dcov_specs "$(extract_acceptance_block "$D")"
+    _dcov_done_evidence_v ev "$D" "$G"
+    printf '%s' "${ev[@]}"
+)"
 assert_contains "[R10] the coverage check names the evidence by its text" "$_cov" 'if $resume_mode'
 assert_contains "[R10] ...and the file to open" "$_cov" "open $G/core/run.sh"
 _jdg="$(acceptance_requirements_for_judge "$D")"
