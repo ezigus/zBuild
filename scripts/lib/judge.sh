@@ -87,49 +87,6 @@ _judge_holds() {
     [[ -n "$_jh_q" && " $_jh_t " == *"$_jh_q"* ]]
 }
 
-# judge_reply_line_v <var> <line> — one line of a judge's reply as every reader
-# reads it (#2474, ADR-072 §3). Its structure — the id, the part and the word —
-# is read with formatting and spacing aside: bold, italics, code marks, a list
-# bullet or number, a quote or heading mark, a table's borders and cells. WHY:
-# and QUOTE: are the separators, written back as " | WHY: " and " | QUOTE: ";
-# what follows each is kept as written, without the marks around it.
-judge_reply_line_v() {
-    local -n _jrl="$1"
-    local _jr_l="$2" _jr_head="$2" _jr_rest="" _jr_why="" _jr_quote="" _jr_has_w=0 _jr_has_q=0 _jr_a
-    if [[ "$_jr_l" == *WHY* ]]; then
-        _jr_a="${_jr_l#*WHY}"
-        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_l%%WHY*}"; _jr_rest="${BASH_REMATCH[1]}"; _jr_has_w=1; }
-    fi
-    if (( _jr_has_w )); then
-        _jr_why="$_jr_rest"
-        if [[ "$_jr_rest" == *QUOTE* ]]; then
-            _jr_a="${_jr_rest##*QUOTE}"
-            [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_why="${_jr_rest%QUOTE*}"; _jr_quote="${BASH_REMATCH[1]}"; _jr_has_q=1; }
-        fi
-    elif [[ "$_jr_head" == *QUOTE* ]]; then
-        _jr_a="${_jr_head##*QUOTE}"
-        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_head%QUOTE*}"; _jr_quote="${BASH_REMATCH[1]}"; _jr_has_q=1; }
-    fi
-    zb_reply_plain_v _jr_head "$_jr_head"
-    _jr_head="${_jr_head#"${_jr_head%%[![:space:]>#|+-]*}"}"
-    [[ "$_jr_head" =~ ^[0-9]+[.\)][[:space:]]+(.*)$ ]] && _jr_head="${BASH_REMATCH[1]}"
-    _judge_reply_trim_v _jr_head "$_jr_head"; _judge_reply_trim_v _jr_why "$_jr_why"; _judge_reply_trim_v _jr_quote "$_jr_quote"
-    # A table row's cells: the first border after the id is its colon.
-    [[ "$_jr_head" != *:* && "$_jr_head" == *" | "* ]] && _jr_head="${_jr_head/ | /: }"
-    _jr_head="${_jr_head//|/ }"; while [[ "$_jr_head" == *"  "* ]]; do _jr_head="${_jr_head//  / }"; done
-    _jrl="$_jr_head"
-    (( _jr_has_w )) && _jrl+=" | WHY: $_jr_why"
-    (( _jr_has_q )) && _jrl+=" | QUOTE: $_jr_quote"
-    return 0
-}
-
-# _judge_reply_trim_v <var> <text> — <text> without the spaces, table borders and
-# bold marks around it.
-_judge_reply_trim_v() {
-    local -n _jrt="$1"
-    _jrt="${2#"${2%%[![:space:]|*]*}"}"; _jrt="${_jrt%"${_jrt##*[![:space:]|*]}"}"
-}
-
 # judge_quote_check_v <why_var> <quote> <own_words> <repo> [base_dir] — rc 0
 # when <quote> is really there: `"text"` in the item's own words, or
 # `file:"text"` in that file in the repository or in the code from before the

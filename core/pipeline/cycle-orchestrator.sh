@@ -1940,7 +1940,8 @@ _cycle_iter_dispatch() {
         # ADR-068 §3 (#2474): a member that failed on a finding only an earlier
         # member can fix ends this round; the later members do not run and the
         # loop goes round from the top. Nothing jumps backwards.
-        if [[ "$verdict" != pass && "${_CYCLE_DISPATCH_REPORT:-}" == *'"ends_round":true'* ]]; then
+        # The report is JSON, read however it is spaced (review #2475).
+        if [[ "$verdict" != pass && "${_CYCLE_DISPATCH_REPORT:-}" =~ \"ends_round\"[[:space:]]*:[[:space:]]*true ]]; then
             _cycle_emit "cycle.member.ends_round" "iter=$iter" "stage=$s" \
                 "reason=${_CYCLE_DISPATCH_REASON:-}"
             break

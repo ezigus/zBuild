@@ -110,6 +110,21 @@ else
         "stage.write_boundary.sweep_failed missing from known_types"
 fi
 
+# SPEC-5 (#2474 review): folders of one depth are swept by one find; when it
+# fails, the report names the folder that failed, not every folder in the find.
+_SW_OK="$TEST_TEMP_DIR/sweep-ok"; mkdir -p "$_SW_OK"
+_SW_WATCH2="$TEST_TEMP_DIR/sweep-fail-watch2.txt"
+printf '%s\n%s\n' "$_SW_OK" "$_SW_ROOT" > "$_SW_WATCH2"
+: > "$_SW_LOG"
+chmod 000 "$_SW_ROOT/locked"
+# When the two are swept together and one cannot be read
+ZBUILD_WRITE_BOUNDARY_WATCH="$_SW_WATCH2" ZBUILD_WRITE_BOUNDARY_LOG="$_SW_LOG" \
+    write_boundary_sweep "$_SW_MARKER" >/dev/null 2>&1 || true
+chmod 755 "$_SW_ROOT/locked"
+# Then the report names the folder that failed, and not the one that did not
+assert_contains "[SPEC-5] the failed folder is named" "$(cat "$_SW_LOG")" "path=$_SW_ROOT"
+assert_eq "[SPEC-5] ...and the healthy one is not" "0" "$(grep -cF "path=$_SW_OK" "$_SW_LOG" || true)"
+
 # SPEC-4: a snapshot that was never taken must not read as a clean dispatch
 # either — write_boundary_mark swallowed both its mkdir and its touch failure,
 # and write_boundary_check returns 0 before sweeping when the marker is absent.

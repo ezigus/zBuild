@@ -312,7 +312,17 @@ write_boundary_sweep() {
         _ferr="$(find "${_paths[@]}" -maxdepth "$_depth" -mindepth 1 \( -name .git -prune \) -o \( -type f -newer "$_marker" -print \) 2>&1 >&3)"
         _frc=$?
         if [[ $_frc -ne 0 ]]; then
-            _wb_report_degraded "sweep_failed" "path=$_path" "rc=$_frc" "${_ferr//$'\n'/ }"
+            # Which folder failed (review #2475): each looked at again on its
+            # own, its candidates already printed. Only on a failure.
+            local _fp _fe _fr
+            for _fp in "${_paths[@]}"; do
+                if (( ${#_paths[@]} == 1 )); then _fe="$_ferr"; _fr=$_frc
+                else
+                    _fe="$(find "$_fp" -maxdepth "$_depth" -mindepth 1 \( -name .git -prune \) -o \( -type f -newer "$_marker" -print \) 2>&1 >/dev/null)"
+                    _fr=$?
+                fi
+                (( _fr == 0 )) || _wb_report_degraded "sweep_failed" "path=$_fp" "rc=$_fr" "${_fe//$'\n'/ }"
+            done
         fi
     done 3>&1
 }

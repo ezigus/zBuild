@@ -13,6 +13,7 @@
 # E3 [code]  it ends every round: the loop's round limit still ends the run
 # E4 [guard] a blocking stage that fails without ends_round still ends the run
 # E5 [guard] ends_round on a stage that passes changes nothing
+# E6 [code]  the report is read as JSON, not as one way of writing it (review)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -98,6 +99,7 @@ cycle_dispatch_stage() {
         ends)      _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_REPORT='{"ends_round":true}'; return 1 ;;
         fail)      _CYCLE_DISPATCH_VERDICT="fail"; return 1 ;;
         ends_pass) _CYCLE_DISPATCH_REPORT='{"ends_round":true}' ;;
+        ends_spaced) _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_REPORT=$'{\n  "ends_round": true\n}'; return 1 ;;
     esac
     return 0
 }
@@ -142,6 +144,11 @@ assert_eq "[E4] ...failed" "1" "$RUN_RC"
 WRITER=ends_pass _run
 assert_eq "[E5] ends_round on a pass: build still runs in round 1" "1" "$(grep -c '^build|iter=1$' "$LOG" || true)"
 assert_eq "[E5] ...and the run converges in one round" "1" "$(_count design)"
+
+# ── E6 ───────────────────────────────────────────────────────────────────────
+WRITER=ends_spaced,pass _run
+assert_eq "[E6] a report written with spaces still ends the round" "2" "$(_count design)"
+assert_eq "[E6] ...and the run converges" "0" "$RUN_RC"
 
 cleanup_test_env
 print_test_results
