@@ -85,6 +85,24 @@ assert_contains "[C5] intake's result carries the issue text, found by what it i
 E="$TEST_TEMP_DIR/empty-issue"; mkdir -p "$E"
 printf '{"result_contract":3,"outcome":"pass","reason":"x","data":{"issue_text":""}}\n' > "$E/r.json"
 ZBUILD_STAGE_INPUTS="" ZBUILD_STATE_DIR="" ZBUILD_ARTIFACT_DIR="" earlier_issue_text "$E" >/dev/null; _rc8=$?
+# ── C9 (#2472: one grep for all the outputs) ─────────────────────────────────
+E="$TEST_TEMP_DIR/c9"; mkdir -p "$E"
+printf 'first\nfile 1 took 2s\n' > "$E/b-later.txt"
+printf 'file 3 took 1s\n' > "$E/a-first.txt"
+printf '{"x":"file 9 took 1s"}\n' > "$E/c.json"
+: > "$E/d-empty.txt"
+printf 'file 7 took 1s\n' > "$E/e-last.txt"
+jq -n --arg a "$E/c.json" --arg b "$E/d-empty.txt" --arg c "$E/b-later.txt" --arg d "$E/a-first.txt" --arg e "$E/e-last.txt" --arg m "$E/missing.txt" \
+    '{inputs:{one:$a, two:[$b, $m], three:$c, four:$d, five:$e}}' > "$TEST_TEMP_DIR/idx9.json"
+_c9() { ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/idx9.json" earlier_output_with_text "$@"; }
+assert_eq "[C9] several hold the text: the first in the index, not the first by name" "$E/b-later.txt" "$(_c9 '^file [0-9]+ ')"
+assert_eq "[C9] a JSON output is never a text match, an empty or missing one is skipped" "$E/a-first.txt" "$(_c9 '^file 3 ')"
+assert_eq "[C9] a pattern starting with a dash is a pattern" "" "$(_c9 '-x')"
+head -c 4096 /dev/urandom > "$E/0.bin"
+jq -n --arg z "$E/0.bin" --arg d "$E/a-first.txt" '{inputs:{zero:$z, four:$d}}' > "$TEST_TEMP_DIR/idx9b.json"
+assert_eq "[C9] a binary output before the match does not stop the search" "$E/a-first.txt" \
+    "$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/idx9b.json" earlier_output_with_text '^file 3 ')"
+
 assert_eq "[C8] an empty issue text is not found: rc 1" "1" "$_rc8"
 
 # ── C6 ───────────────────────────────────────────────────────────────────────
