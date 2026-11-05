@@ -286,8 +286,8 @@ differs, say why.
 - FROM-2: `--from-stage <s>` dispatches `<s>` first, with every earlier stage's outputs rehydrated. It never emits `pipeline.skip_to_stage` and then runs an earlier stage.
 - FROM-3: `--from-stage <s>` naming a stage with no prior output to rehydrate refuses with a reason, and does not start.
 - PATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as R1. Each has its own test.
-- GUAR-1: A run with no prior state behaves exactly as today.
-- GUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6).
+- GUAR-1: A run with no prior state behaves exactly as today. This is a guard.
+- GUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
 - ADR-1: Amend ADR-006 (resume contract) with the decision above, with the amendment naming its enforcing tests inline.
 - ADR-2: Amend ADR-050 §6 to draw the line explicitly, stating that the rule "never skip a stage on the basis of prior output" governs a **new** run reusing an **earlier run's** work and stays, while resume continues **the same run** and is governed by ADR-006, with a test pinning each side.
 - HYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
@@ -468,12 +468,16 @@ Outputs:
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
+Findings:
+- design finding 1 (opened by design): RESU-3 is not covered: SKIP-1 covers skipping already-complete stages k-1, but no SPEC has a Then asserting that stage k (the interrupted stage) emits a stage.start event or is dispatched. Skipping k-1 does not logically guarantee k is dispatched. — "which runs again from its start" [FIX IN DESIGN: add or widen a SPEC so it covers this]
+- design finding 2 (opened by design): RESU-4 is not covered: RHYD-1 covers outputs present and no dispatch of 1…k-1; SKIP-1 covers the skip of k-1; but no SPEC has a Then asserting stage k emits stage.start. The requirement's last clause has no SPEC that affirmatively tests it. — "and stage k is dispatched" [FIX IN DESIGN: add or widen a SPEC so it covers this]
+
 Summary:
-## design — error
+## design — fail
 
-- the check that the design covers the issue could not be run (unusable)
+- the design fails 2 check(s)
 
-The new design is kept as the working copy, unchecked; design.md is unchanged.
+The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-3/design-steps.json
@@ -491,6 +495,21 @@ Summary of that output:
 
 Your notes so far:
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
+
+## Status: Twenty-second pass — SKIP-1 Then and FRSH-2 And made observable (design findings 1–2)
+
+### Root cause of twenty-first-pass failure
+
+Two SPECs had non-observable lines:
+- **SKIP-1**: `Then: The loop issues a continue, skipping dispatch of that stage` — names a Bash control-flow mechanism, not an observable outcome. The observable consequence was already in the And: line. Fixed: Then: now "No stage.start event is emitted for that stage"; the redundant And: removed.
+- **FRSH-2**: `And: Every stage is dispatched from stage 1 without consulting prior run state` — "without consulting prior run state" describes the internal resume_mode guard, not an observable test output. Removed; Then: already captures the observable outcome.
+
+### Changes in this pass
+
+1. **SKIP-1 Then/And:** Removed "issues a continue" language; promoted observable outcome (no stage.start) to Then:; removed the And: (now merged into Then:).
+2. **FRSH-2 And:** Removed the "without consulting prior run state" And: line. Then: already states the observable outcome.
+
+---
 
 ## Status: Twenty-first pass — Then: lines made observable (design findings 1–3)
 

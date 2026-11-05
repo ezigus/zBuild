@@ -82,11 +82,10 @@ ITER-1[code]: Cycle orchestrator reads current_iter from persisted state on resu
   Then: The iteration loop starts at iter 2, not iter 1
   And: No stage.start event is emitted for any iter-1 stage
   And: When _ZBUILD_RESUME_ACTIVE is false or unset (fresh run or nested-loop re-entry), the loop starts at iter=1
-SKIP-1[done]: On resume, the dispatch loop skips (via continue) a complete stage whose primary artifact is present after rehydration covers: RESU-3 RESU-4 evidence: core/pipeline/runner.sh:"When resuming, skip stages already marked complete unless --from-stage overrides"
+SKIP-1[done]: On resume, the dispatch loop skips a complete stage whose primary artifact is present after rehydration covers: RESU-3 RESU-4 evidence: core/pipeline/runner.sh:"When resuming, skip stages already marked complete unless --from-stage overrides"
   Given: A run is being resumed; a stage is marked complete and its primary artifact is present in ZBUILD_ARTIFACT_DIR after rehydration
   When: The dispatch loop reaches that stage
-  Then: The loop issues a continue, skipping dispatch of that stage
-  And: No stage.start event is emitted for it
+  Then: No stage.start event is emitted for that stage
 ENTR-1[code]: All three resume entry paths (--resume flag, auto-resume on status=interrupted, zbuild pipeline resume --run-id) restore completed-stage artifacts before the dispatch loop covers: PATH-1
   Given: A run has been interrupted and its state is persisted in runs/<run_id>/
   When: The run is resumed via any of the three entry paths in turn
@@ -97,7 +96,6 @@ FRSH-2[done]: A new run of the same issue never skips a stage due to prior run o
   Given: An issue has prior completed runs; a new run is started with no --resume flag and no status=interrupted state file
   When: The dispatch loop runs
   Then: Every stage emits a stage.start event and no stage.skip event is emitted for any stage
-  And: Every stage is dispatched from stage 1 without consulting prior run state
 BNDY-1[no-code]: resume-rehydrate-test.sh contains both a resume-side assertion (RHYD-1/RHYD-2) and a fresh-run sub-case with --no-resume, pinning both sides of the ADR-006/ADR-050 §6 boundary in one test file covers: ADR-2
 DLGT-1[code]: The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce covers: HYDR-1
   Given: hydrate_run is about to execute; _artifact_persist_put_back is overridden in the test environment with a sentinel-writing function
@@ -158,4 +156,6 @@ tests/integration/cycle-member-dispatch-events-test.sh: broken by unconditional 
 
 **Finding 10 — SPECs expanded with Given/When/Then parts (prior pass):** Previous design had 9 SPECs written on a single line without required sub-parts. That pass expanded RHYD-1, RHYD-2, FSTG-1, FSTG-2, ITER-1, SKIP-1, ENTR-1, FRSH-2, and DLGT-1 with their Given/When/Then/And sub-lines. AMDR-1, AMDR-2, FRSH-1, BNDY-1, and CYCL-1 are [no-code] SPECs that describe structural/doc work and need no sub-parts.
 
-**Finding 11 — Then: lines made observable (this pass, design findings 1–3):** RHYD-1 Then named `_artifact_persist_restore` and `_artifact_persist_put_back` (internal functions). FSTG-1 Then named the same two internal functions. ENTR-1 Then named `_runner_resume_rehydrate`. All three were rewritten to describe what someone can observe: artifacts appearing in ZBUILD_ARTIFACT_DIR before the dispatch loop starts, and no stage.start events for completed stages. The behavioral content that was in And: lines has been promoted to Then: or preserved as And: lines. SPEC text descriptions updated to match.
+**Finding 11 — Then: lines made observable (prior pass, design findings 1–3):** RHYD-1 Then named `_artifact_persist_restore` and `_artifact_persist_put_back` (internal functions). FSTG-1 Then named the same two internal functions. ENTR-1 Then named `_runner_resume_rehydrate`. All three were rewritten to describe what someone can observe: artifacts appearing in ZBUILD_ARTIFACT_DIR before the dispatch loop starts, and no stage.start events for completed stages. The behavioral content that was in And: lines has been promoted to Then: or preserved as And: lines. SPEC text descriptions updated to match.
+
+**Finding 12 — SKIP-1 and FRSH-2 Then/And lines made observable (this pass, design findings 1–2):** SKIP-1's Then: said "The loop issues a continue, skipping dispatch of that stage" — naming a Bash control-flow mechanism. The observable outcome was already in the And: ("No stage.start event is emitted for it"). Fixed: Then: now says "No stage.start event is emitted for that stage"; the redundant And: is removed. FRSH-2's And: said "Every stage is dispatched from stage 1 without consulting prior run state" — "without consulting prior run state" describes the internal resume_mode guard, not an observable output. The Then: already states the observable outcome. The And: line is removed.
