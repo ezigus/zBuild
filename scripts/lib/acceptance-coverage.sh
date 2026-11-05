@@ -74,28 +74,43 @@ _acceptance_trim_label() {
 # go — but a naive split on '#' also severs any assertion message containing
 # one, which corrupts the very text being judged. Track quoting; cut only a '#'
 # that actually starts a comment.
-_acceptance_strip_comment() {
-    local line="${1-}" out="" q="" c i=0 n
+_acceptance_strip_comment() { local _asc; _acceptance_strip_comment_v _asc "${1-}"; printf '%s' "$_asc"; }
+
+# _acceptance_strip_comment_v <var> <line> [headings] — the same into <var>, in
+# this shell (ADR-065 §5: it runs on every line of a test file). With headings,
+# a comment line that is a section heading — its first word Given, When, Then,
+# And or Cleanup, in any case and formatting — is kept as written (#2474,
+# ADR-073 §6): the check is asked about the sections, so it must see them.
+_acceptance_strip_comment_v() {
+    local -n _ascv="$1"
+    local _asc_line="${2-}" _asc_out="" _asc_q="" _asc_c _asc_i=0 _asc_n _asc_t
+    if [[ -n "${3:-}" ]]; then
+        _asc_t="${_asc_line#"${_asc_line%%[![:space:]]*}"}"
+        if [[ "$_asc_t" == "#"* && "$_asc_t" != "#!"* && "${_asc_t#\#}" =~ ^[[:space:]*_\`#]*([A-Za-z]+)([^A-Za-z]|$) ]]; then
+            case "${BASH_REMATCH[1],,}" in
+                given|when|then|and|cleanup) _ascv="${_asc_line%"${_asc_line##*[![:space:]]}"}"; return 0 ;;
+            esac
+        fi
+    fi
     # Separate statement: bash expands every word of a `local` BEFORE the
-    # locals exist, so `n=${#line}` on the line that assigns `line` reads the
-    # OUTER scope and silently yields 0 — the loop then never runs.
-    n=${#line}
-    while (( i < n )); do
-        c="${line:i:1}"
-        if [[ -n "$q" ]]; then
-            [[ "$c" == "$q" ]] && q=""
-            out+="$c"
-        elif [[ "$c" == '"' || "$c" == "'" ]]; then
-            q="$c"; out+="$c"
-        elif [[ "$c" == "#" ]] && { (( i == 0 )) || [[ "${line:i-1:1}" == [[:space:]] ]]; }; then
+    # locals exist, so `_asc_n=${#_asc_line}` on the line that assigns
+    # `_asc_line` reads the OUTER scope and silently yields 0 — the loop then never runs.
+    _asc_n=${#_asc_line}
+    while (( _asc_i < _asc_n )); do
+        _asc_c="${_asc_line:_asc_i:1}"
+        if [[ -n "$_asc_q" ]]; then
+            [[ "$_asc_c" == "$_asc_q" ]] && _asc_q=""
+            _asc_out+="$_asc_c"
+        elif [[ "$_asc_c" == '"' || "$_asc_c" == "'" ]]; then
+            _asc_q="$_asc_c"; _asc_out+="$_asc_c"
+        elif [[ "$_asc_c" == "#" ]] && { (( _asc_i == 0 )) || [[ "${_asc_line:_asc_i-1:1}" == [[:space:]] ]]; }; then
             break
         else
-            out+="$c"
+            _asc_out+="$_asc_c"
         fi
-        (( i++ ))
+        (( _asc_i++ ))
     done
-    # shellcheck disable=SC2001
-    printf '%s' "$(sed 's/[[:space:]]*$//' <<< "$out")"
+    _ascv="${_asc_out%"${_asc_out##*[![:space:]]}"}"
 }
 
 # ─── acceptance_find_assertion_sources <repo_root> <spec_id> <testfiles...> ──
@@ -151,7 +166,7 @@ acceptance_find_assertion_sources() {
             (( first )) || printf '\n'
             first=0
             for (( ; a <= b; a++ )); do
-                line="$(_acceptance_strip_comment "${lines[a]}")"
+                _acceptance_strip_comment_v line "${lines[a]}"
                 [[ -n "${line// }" ]] || continue
                 u=${ustart[a]}
                 if (( ucheck[u] )) && [[ "${utext[u]}" == *"$tag"* ]]; then
@@ -185,7 +200,8 @@ _acceptance_check_units() {
 }
 
 # ─── acceptance_testfile_source <repo_root> <testfile> <tag>... ─────────────
-# The whole test file, comments stripped, with each assertion tagged by one of
+# The whole test file, comments stripped but its section headings kept (#2474),
+# with each assertion tagged by one of
 # <tag>s marked ">> " (#2450) — every line of it, however many it spans (#2460).
 # The stanza view above shows an assertion's own
 # setup; setup that lives elsewhere — a helper function, a block shared by
@@ -200,7 +216,7 @@ acceptance_testfile_source() {
     local n=${#lines[@]}
     _acceptance_check_units
     for (( i = 0; i < n; i++ )); do
-        out="$(_acceptance_strip_comment "${lines[i]}")"
+        _acceptance_strip_comment_v out "${lines[i]}" headings
         [[ -n "${out// }" ]] || continue
         marked=0; u=${ustart[i]}
         if (( ucheck[u] )); then

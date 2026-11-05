@@ -1,6 +1,6 @@
 # ADR-073 — A requirement and its test are written as Given/When/Then, and every part is judged
 
-**Status:** Accepted (2026-11-04); amended 2026-11-04 (#2470, §1 §2 §5 §6: a SPEC is shown with its parts as design wrote them; design is told which SPECs it keeps are still on one line; a finding shows the failing SPEC whole, marked where to fix it; the checks answer per SPEC)
+**Status:** Accepted (2026-11-04); amended 2026-11-04 (#2470, §1 §2 §5 §6: a SPEC is shown with its parts as design wrote them; design is told which SPECs it keeps are still on one line; a finding shows the failing SPEC whole, marked where to fix it; the checks answer per SPEC); amended 2026-11-05 (#2474, §6: an untestable SPEC ends the round; the check sees the section headings)
 **Issue:** #2467 (#1805 run 41757933766)
 **Amends:** ADR-031 (the form of a SPEC), ADR-069 §1 (a [code] or [done] SPEC has parts), ADR-072 §3 (the checks answer a line per part), ADR-036 (build's three ways with a test that leaves something behind)
 **Related:** ADR-068 §3 (a `misconfigured` result ends the run), ADR-071, ADR-066 (every ADR statement has a test)
@@ -55,7 +55,7 @@ design's own check had passed both. test-author's check called each test "partia
 6. **test-author's check judges every part.** It answers one line per part — is each Given set up, the When done, each Then asserted, each Cleanup put back: `ok`, `missing` or `wrong`, with why and a quote of the part — and one line for the test's sections.
    - Each gap is a finding naming the SPEC and the part.
    - A part with no line is asked again on its own, then the SPEC is not judged.
-   - A SPEC no test can prove (`<id>: untestable`) ends the run at once: test-author's result is `misconfigured`, naming the SPEC and why, as design's to rewrite. Nothing loops back.
+   - A SPEC no test can prove (`<id>: untestable`) ends the loop's round (amended 2026-11-05, #2474; was: ends the run, `misconfigured`): test-author's result is `fail` with `ends_round`, naming the SPEC and why, as design's to rewrite, and the loop goes round to design (ADR-068 §3).
 
 7. **build and a test that leaves something behind (ADR-036).** build never edits an acceptance test. Its prompt names three cases:
    - its code leaks — it changes the code to write where it is told;
@@ -87,6 +87,12 @@ On #1805 run 41845438073 design used its three tries and never reached test-auth
 - **§5 §6: a finding is the SPEC whole, marked where to fix.** A SPEC with something to fix is one finding: a header (`FRSH-1: 1 part to fix`), the SPEC's first line as written, and each part as written, one per line. Each line to fix ends with `[FIX IN DESIGN: <why> — <what to do>]` or `[FIX IN TEST: <why> — <what to do>]`. A verdict about the whole SPEC (`outside`, `done_wrong`, `needs_cleanup`, missing sections) marks its first line. A SPEC no test can prove is marked `[FIX IN DESIGN: …]` on the line no test can prove. A requirement no SPEC covers is one line, marked `[FIX IN DESIGN: add or widen a SPEC so it covers this]`. A SPEC that passed is not shown. The finding's lines reach the next stage as one finding with several lines (`stage_findings_json` joins them on a record separator), and Previous work shows each of its lines (ADR-067 §8).
 - **One place for each finding.** design's summary no longer copies its findings: it says they are in design's result (ADR-055 §9 amendment, #2470).
 
+## Amendment 2026-11-05 (#2474) — §6: untestable ends the round; the check sees the sections
+
+- **An untestable SPEC ends the loop's round, not the run.** test-author's result is `fail` with `data.ends_round: true` (ADR-068 §3), so design, the loop's first stage, rewrites the SPEC in the next round.
+- **The check is shown the section headings.** The test file it reads (`acceptance_testfile_source`) keeps each comment line whose first word is Given, When, Then, And or Cleanup, in any case or formatting; every other comment is still left out, so a comment cannot stand in for code. #1805 run 42090130741 was asked about sections it could not see: they were stripped with the other comments.
+- **The sections question is whether each part's code is under its own heading.** A `sections: missing` line may quote the test (`<test file>:"<line>"`); a quote given is checked like any other.
+
 ## Enforced by
 
 - §1 §2 §5 §6 amendment 2026-11-04 (#2470) → `tests/unit/judge-feedback-test.sh` F1 (the one-line SPECs named), F2 (parts as written; a part named by word and quote), F3 (findings shown once), F5 (the SPEC whole, marked), F6 (a line per SPEC); `tests/unit/reply-multiline-test.sh` Q4 (an `And` line is its own item)
@@ -98,3 +104,4 @@ On #1805 run 41845438073 design used its three tries and never reached test-auth
 - §5 → `tests/unit/gwt-judges-test.sh` J1–J8
 - §6 → `tests/unit/gwt-judges-test.sh` T1–T9
 - §7 → `tests/unit/gwt-format-test.sh` B1
+- Amendment 2026-11-05 §6 (#2474) → `tests/unit/acceptance-testfile-sections-test.sh` S1–S3 (headings shown, other comments not); `tests/unit/gwt-judges-test.sh` T1 (the question), T4b, T4c (a sections quote is checked), T8 (untestable ends the round)

@@ -95,7 +95,9 @@ setup_test_env "fork-budget"
 # shell, not by a cat per section and a head) — measured 2,028 macOS.
 # 2008 (#2472: an earlier output found by its text is one grep over every
 # output, not one grep an output) — measured 1,996 macOS.
-FORK_BUDGET=2008
+# 1995 (#2474: the write-boundary sweep runs one find for the watched folders of
+# one depth, not one a folder) — measured 1,987 macOS.
+FORK_BUDGET=1995
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -120,13 +122,17 @@ FORK_BUDGET=2008
 # path in its shell, not in a `$( )` a stage; the prompt's first line is read
 # without a `$( )` — measured 2,724 macOS). 2640 (#2472: the contract check
 # reads each output's format, the formats and its summary mark in its shell,
-# not in three `$( )` an output — measured 2,622 macOS).
-PROCESS_BUDGET=2640
+# not in three `$( )` an output — measured 2,622 macOS). 2620 (#2474: the
+# sweep's finds grouped by depth, its watch list read without a `$( )` —
+# measured 2,604 macOS).
+PROCESS_BUDGET=2620
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
 # first measured on macOS: one more lens dispatch costs 500 processes and 294
 # execs; the start-up, 472 and 257 over 43 plugins, 11 and 6 a plugin).
+# 503 / 297 a dispatch (#2474: the write-boundary sweep after each dispatch —
+# measured 498 processes and 293 execs).
 # - Per dispatch, the extra cost of one more dispatch. A dispatch needs a shell
 #   to isolate the plugin, one for the model call and a few for its time limit
 #   and watchers (~20 processes); and its programs: jq for its result and
@@ -134,9 +140,9 @@ PROCESS_BUDGET=2640
 #   and write checks (~4), safe writes (~6), the model call (~2) — ~50 execs.
 # - Start-up, per plugin manifest: discovery and the manifest checks; about one
 #   process and one exec a plugin once each read is in the shell.
-DISPATCH_PROCS_BUDGET=505
+DISPATCH_PROCS_BUDGET=503
 DISPATCH_PROCS_FLOOR=20
-DISPATCH_EXECS_BUDGET=298
+DISPATCH_EXECS_BUDGET=297
 DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=12
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1

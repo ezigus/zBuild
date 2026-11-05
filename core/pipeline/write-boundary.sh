@@ -159,6 +159,14 @@ write_boundary_mark() {
 # Emit the watch-location list, one entry per line: "<path>[ maxdepth:<N>]".
 # Three-tier override: ZBUILD_WRITE_BOUNDARY_WATCH env > ~/.zbuild/ > shipped default.
 write_boundary_watch_list() {
+    local -a _wwl=(); write_boundary_watch_list_v _wwl
+    [[ ${#_wwl[@]} -eq 0 ]] || printf '%s\n' "${_wwl[@]}"
+}
+
+# write_boundary_watch_list_v <array> — the same entries into <array>, in this
+# shell: the sweep reads them after every dispatch (ADR-065 §5).
+write_boundary_watch_list_v() {
+    local -n _wwo="$1"; _wwo=()
     local _cfg="${ZBUILD_WRITE_BOUNDARY_WATCH:-}"
     if [[ -z "$_cfg" ]]; then
         local _user="${HOME}/.zbuild/write-boundary-watch.txt"
@@ -174,16 +182,13 @@ write_boundary_watch_list() {
             # deliberately carries no system-temp root — see ADR-058 C9, "What
             # the sweep does not cover" — so the omission lives in the config an
             # operator can override, not in logic they cannot.
-            printf '%s\n' "$_wbe"
+            _wwo+=("$_wbe")
         done < "$_cfg"
     else
         # Built-in defaults when config file is absent.
-        printf '%s maxdepth:1\n' "$HOME"
-        printf '%s\n' "$HOME/.zbuild"
-        printf '%s maxdepth:1\n' "${TMPDIR:-/tmp}"
-        [[ "${TMPDIR:-/tmp}" != "/tmp" ]] && printf '/tmp maxdepth:1\n'
-        printf '%s maxdepth:1\n' "$PWD"
-        printf '%s maxdepth:2\n' "$_ZBUILD_WB_ROOT"
+        _wwo+=("$HOME maxdepth:1" "$HOME/.zbuild" "${TMPDIR:-/tmp} maxdepth:1")
+        [[ "${TMPDIR:-/tmp}" != "/tmp" ]] && _wwo+=("/tmp maxdepth:1")
+        _wwo+=("$PWD maxdepth:1" "$_ZBUILD_WB_ROOT maxdepth:2")
     fi
 }
 
@@ -261,13 +266,24 @@ write_boundary_sweep() {
     local _marker="$1"
     [[ -f "$_marker" ]] || return 0
     local _entry _path _depth
-    while IFS= read -r _entry; do
+    # The watched folders of one depth are swept by one find (ADR-065 §5): it
+    # ran once a folder, after every dispatch.
+    local -a _wl=() _depths=()
+    local -A _by_depth=()
+    write_boundary_watch_list_v _wl
+    for _entry in ${_wl[@]+"${_wl[@]}"}; do
         [[ -z "$_entry" || "$_entry" =~ ^# ]] && continue
         _path="${_entry%% maxdepth:*}"
         _path="${_path%% *}"
         _depth=3
         [[ "$_entry" =~ maxdepth:([0-9]+) ]] && _depth="${BASH_REMATCH[1]}"
         [[ -d "$_path" ]] || continue
+        [[ -n "${_by_depth[$_depth]+x}" ]] || _depths+=("$_depth")
+        _by_depth["$_depth"]+="$_path"$'\n'
+    done
+    local -a _paths=()
+    for _depth in ${_depths[@]+"${_depths[@]}"}; do
+        mapfile -t _paths <<< "${_by_depth[$_depth]%$'\n'}"
         # -type f: the sweep asks "did this stage drop a FILE where nothing
         # should be?" — the issue's own honesty argument for -maxdepth 1. A bare
         # directory entry cannot answer it. A directory's mtime changes whenever
@@ -292,12 +308,22 @@ write_boundary_sweep() {
         # by whatever process runs git — a concurrent test, a persist push — and
         # are never a stage's output. Blamed on the dispatching stage they made it
         # `broken`, which halts the run since #2197.
-        _ferr="$(find "$_path" -maxdepth "$_depth" -mindepth 1 \( -name .git -prune \) -o \( -type f -newer "$_marker" -print \) 2>&1 >&3)"
+        _ferr="$(find "${_paths[@]}" -maxdepth "$_depth" -mindepth 1 \( -name .git -prune \) -o \( -type f -newer "$_marker" -print \) 2>&1 >&3)"
         _frc=$?
         if [[ $_frc -ne 0 ]]; then
-            _wb_report_degraded "sweep_failed" "path=$_path" "rc=$_frc" "${_ferr//$'\n'/ }"
+            # Which folder failed (review #2475): each looked at again on its
+            # own, its candidates already printed. Only on a failure.
+            local _fp _fe _fr
+            for _fp in "${_paths[@]}"; do
+                if (( ${#_paths[@]} == 1 )); then _fe="$_ferr"; _fr=$_frc
+                else
+                    _fe="$(find "$_fp" -maxdepth "$_depth" -mindepth 1 \( -name .git -prune \) -o \( -type f -newer "$_marker" -print \) 2>&1 >/dev/null)"
+                    _fr=$?
+                fi
+                (( _fr == 0 )) || _wb_report_degraded "sweep_failed" "path=$_fp" "rc=$_fr" "${_fe//$'\n'/ }"
+            done
         fi
-    done 3>&1 <<< "$(write_boundary_watch_list)"
+    done 3>&1
 }
 
 # ─── write_boundary_classify <candidate> <state_dir> <plugin_dir> ────────────

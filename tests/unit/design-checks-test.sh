@@ -329,7 +329,7 @@ _run_gate_with_md "$(_g_md 'WORK-1[code]: plugin.sh contains `_foo`' '  When: it
 assert_eq "[G7] 'plugin.sh contains _foo' as [code] → verdict=fail" "fail" "$VERDICT"
 assert_contains "[G7] the violation names it" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR WORK-1"
 assert_contains "[G7] the feedback says it in plain words" "$(cat "$FEEDBACK_PATH")" \
-    "WORK-1 describes what a file contains, not what the code does — describe the behaviour someone could observe (an input and what happens), or, if the code already does it, mark it [done] with evidence"
+    "WORK-1 describes what a file contains, not what the code does — no test can prove that; describe the behaviour someone could observe (an input and what happens)"
 assert_eq "[G7] the feedback does not write the code" "0" "$(grep -cF CONTENTS_NOT_BEHAVIOUR "$FEEDBACK_PATH" || true)"
 for _t in 'the manifest declares key `x`' 'scripts/x.sh defines function bar' \
           'the file tests/x-test.sh exists' 'the helper is present in scripts/lib/x.sh' \
@@ -348,10 +348,17 @@ for _t in 'an empty input returns rc 1' 'build writes a summary when the diff is
     _run_gate_with_md "$(_g_md "WORK-1[code]: $_t" "  When: it runs" "  Then: it is done")"
     assert_eq "[G7] guard: '$_t' passes" "pass" "$VERDICT"
 done
+# #2474 (ADR-069 §9 amended): every SPEC, whatever its tag. #1805 run
+# 42090130741's design passed BNDY-1, a [no-code] SPEC about what a test file
+# contains; no test could prove it, and it ended the run.
 _run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'WORK-2[done]: scripts/three.sh contains line two evidence: scripts/three.sh:"line two"' '  When: it runs' '  Then: it is done')"
-assert_eq "[G7] guard: a [done] requirement may describe what a file contains" "pass" "$VERDICT"
+assert_contains "[G7] a [done] requirement that describes what a file contains is rejected" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR WORK-2"
 _run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'WORK-2[no-code]: docs/x.md contains the new section')"
-assert_eq "[G7] guard: a [no-code] requirement may describe what a file contains" "pass" "$VERDICT"
+assert_contains "[G7] a [no-code] requirement that describes what a file contains is rejected" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR WORK-2"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'BNDY-1[no-code]: resume-rehydrate-test.sh contains both a resume-side assertion (RHYD-1/RHYD-2) and a fresh-run sub-case with --no-resume, pinning both sides of the ADR-006/ADR-050 §6 boundary in one test file')"
+assert_contains "[G7] ...as is #1805's BNDY-1, word for word" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR BNDY-1"
+_run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'WORK-2[no-code]: the README tells a user how to resume a run')"
+assert_eq "[G7] guard: a [no-code] requirement about what a reader is told passes" "pass" "$VERDICT"
 # One bad [code] requirement with no test file draws both violations in the
 # same pass (review #2319): the gate reports everything at once (SPEC-7).
 _run_gate_with_md "$(_g_md 'WORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'WORK-2[code]: plugin.sh contains `_bar`' '  When: it runs' '  Then: it is done')"

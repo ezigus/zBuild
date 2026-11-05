@@ -109,7 +109,7 @@ _dck_bad_id_lines_v() {
     return 0
 }
 
-# _dck_describes_contents <text> — rc 0 when a [code] requirement's words only
+# _dck_describes_contents <text> — rc 0 when a requirement's words only
 # say what a file contains or that it exists (#2305, ADR-069 §9). Such a
 # requirement fails before the change and passes after it, so it satisfies the
 # fail-first rule while proving nothing about behaviour. All three must hold:
@@ -132,7 +132,10 @@ _dck_describes_contents() {
     while [[ "$t" =~ ^(.*)\`[^\`]*\`(.*)$ ]]; do t="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"; done
     while [[ "$t" =~ ^(.*)\"[^\"]*\"(.*)$ ]]; do t="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"; done
     [[ "$t" =~ ${b}(contains?|defines?|declares?|exists?|greps?|(is|are)\ +present|(has|have)\ +(a|an|the)\ +([^ ]+\ +){0,3}(keys?|fields?|entry|entries|functions?))${e} ]] || return 1
-    [[ "$t" =~ ${b}((return|emit|write|fail|print|exit|reject|skip|stop|run|refuse|output|log|call|report|pass|create|remove|produce|read|send)[a-z]*|written|wrote|ran|when|if|whenever|unless|given)${e} ]] && return 1
+    # A behaviour word is a word of its own: "fresh-run" names a case, it does
+    # not say the code runs (#2474: #1805's BNDY-1 got through on it).
+    local hb='(^|[^a-z0-9_-])' he='([^a-z0-9_-]|$)'
+    [[ "$t" =~ ${hb}((return|emit|write|fail|print|exit|reject|skip|stop|run|refuse|output|log|call|report|pass|create|remove|produce|read|send)[a-z]*|written|wrote|ran|when|if|whenever|unless|given)${he} ]] && return 1
     return 0
 }
 
@@ -183,7 +186,7 @@ _dck_plain() {
         DONE_TEXT_MISSING*)  printf 'the evidence %s for %s is not in that file — quote its text exactly' "$third" "$id" ;;
         DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added or changed it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
         ID_*)                zb_id_plain "$v" SPEC ;;
-        CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — describe the behaviour someone could observe (an input and what happens), or, if the code already does it, mark it [done] with evidence' "$id" ;;
+        CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — no test can prove that; describe the behaviour someone could observe (an input and what happens)' "$id" ;;
         MISSING_TESTFILE_FOR_SPEC*) printf '%s has no test file listed — add a "%s: <test file>" line under TESTFILES:' "$id" "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
         REQUIREMENT_NOT_COVERED*) local _rt="${rest#* (}"; _rt="${_rt%)}"
@@ -275,6 +278,10 @@ _design_checks() {
             # ── C10 PARTS (#2467, ADR-073 §3): a [code] or [done] SPEC is written
             # as Given/When/Then — one action, at least one thing to observe.
             _dck_parts "$_spec" "$_ACC_SPEC_STATUS" "$_ACC_SPEC_PARTS"
+            # ADR-069 §9 (amended #2474): every SPEC, whatever its tag, says what
+            # someone could see the code do, not what a file contains.
+            [[ -n "$_ACC_SPEC_STATUS" ]] && _dck_describes_contents "$_ACC_SPEC_TEXT" \
+                && violations+=("CONTENTS_NOT_BEHAVIOUR $_spec (describes file contents, not behaviour)")
             case "$_ACC_SPEC_STATUS" in
                 "")      violations+=("NO_STATUS $_spec (requirement carries no [code], [no-code] or [done] status)") ;;
                 no-code) : ;;
@@ -284,9 +291,7 @@ _design_checks() {
                     # its own proposed test file. The acceptance gate checks it.
                     # Traversal is dropped by acceptance-block.sh while parsing.
                     [[ -n "$(acceptance_list_testfiles_for_spec "$design_md" "$_spec" 2>/dev/null || true)" ]] \
-                        || violations+=("MISSING_TESTFILE_FOR_SPEC $_spec (no testfile declared for [code] SPEC)")
-                    _dck_describes_contents "$_ACC_SPEC_TEXT" \
-                        && violations+=("CONTENTS_NOT_BEHAVIOUR $_spec (describes file contents, not behaviour)") ;;
+                        || violations+=("MISSING_TESTFILE_FOR_SPEC $_spec (no testfile declared for [code] SPEC)") ;;
                 done)
                     if [[ "$_ACC_SPEC_TAG" == "guard" ]]; then
                         violations+=("UNKNOWN_STATUS $_spec [guard] (the retired tag; use [done] with evidence)")

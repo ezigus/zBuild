@@ -325,7 +325,7 @@ _ia_parse() {
         rtext["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"; order+=("${BASH_REMATCH[1]}")
     done <<< "$reqs"
     while IFS= read -r l; do
-        l="${l#"${l%%[![:space:]>*\`_-]*}"}"
+        judge_reply_line_v l "$l"
         [[ "$l" =~ ^(MET|UNMET|UNSURE):[[:space:]]*(.*)$ ]] || continue
         kind="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"; fix=""
         [[ "$kind" == UNMET && "$rest" =~ ^(\[fix-(code|design)\])[[:space:]]*(.*)$ ]] && { fix="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[3]}"; }

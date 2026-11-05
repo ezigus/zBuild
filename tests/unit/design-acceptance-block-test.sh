@@ -169,7 +169,7 @@ assert_contains "T6: the example block carries a [done] line with evidence" "$_t
 # #2305 (ADR-069 §9): design-gate rejects a [code] requirement that describes
 # file contents, so the prompt says so before design writes one.
 assert_contains "T6: a [code] requirement must describe behaviour, not file contents (#2305)" "$_t6_prompt" \
-    "A [code] requirement describes what the code does, not what a file contains"
+    "Every requirement, whatever its status, describes what someone could see happen, not what a file contains"
 # J1 (#1801 run 40351795413): a SPEC joining several claims is judged against
 # one assertion and comes back partial; one claim per SPEC, several SPECs may
 # cover one requirement.

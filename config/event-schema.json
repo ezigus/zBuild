@@ -85,6 +85,7 @@
     "cycle.member.not_reproduced",
     "cycle.member.terminal_failure",
     "cycle.member.blocking_failure",
+    "cycle.member.ends_round",
     "cycle.build_unfinished.suppressed_convergence",
     "cycle.no_committed_changes.suppressed_convergence",
     "cycle.member_unfinished.suppressed_convergence",

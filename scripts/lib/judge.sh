@@ -12,6 +12,8 @@
 [[ -n "${_ZBUILD_JUDGE_LOADED:-}" ]] && return 0
 _ZBUILD_JUDGE_LOADED=1
 _ZB_JUDGE_DIR="${BASH_SOURCE[0]%/*}"
+# shellcheck source=reply-units.sh
+source "$_ZB_JUDGE_DIR/reply-units.sh"
 
 # _judge_emit <type> [k=v]... — an event, when the event bus is loaded (#2466).
 _judge_emit() { declare -F eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" 2>/dev/null; return 0; }

@@ -26,7 +26,8 @@
 # T5 a part the test does something else for is a finding
 # T6 a SPEC with no line is asked again on its own, and the answer counts
 # T7 ...still none: not judged
-# T8 a SPEC no test can prove ends the run at once, naming it as design's to fix
+# T8 a SPEC no test can prove ends the round, naming it as design's to fix,
+#    so the loop goes round to design (#2474, ADR-068 §3)
 # T9 a SPEC written on one line is judged as one Then, its words
 # T10 test-author is told to write the sections, and to rewrite an old test it
 #     touches into them
@@ -154,6 +155,12 @@ MD
     echo "T3|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")|$_TA_CORR_OUTCOME"
     _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: there is no Cleanup section\n'; _j
     echo "T4|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}"
+    # #2474: the sections line may quote the test file; the quote is checked.
+    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: the assertion is under Given | QUOTE: tests/loop-test.sh:"# Given"\n'; _j
+    echo "T4b|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}"
+    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: x | QUOTE: tests/loop-test.sh:"# Arrange"\n'; _R2=$'LOOP-1: ok\n'; _j
+    echo "T4c|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
+    _R2=""
     _R1=$'DOCS-1: ok\nLOOP-1 When: wrong | WHY: it enters the outer loop | QUOTE: "the inner loop is entered again"\n'; _j
     echo "T5|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")"
     _R1=$'DOCS-1: ok\n'; _R2=$'LOOP-1: ok\n'; _j
@@ -176,6 +183,12 @@ assert_contains "[T3] ...marking the line" "$(_l "$T" T3)" "~  And: the outer lo
 assert_contains "[T3] ...saying why" "$(_l "$T" T3)" "nothing asserts the outer round"
 assert_contains "[T4] a test without its sections is a finding" "$(_l "$T" T4)" "1|LOOP-1"
 assert_contains "[T4] ...saying what is missing" "$(_l "$T" T4)" "there is no Cleanup section"
+assert_contains "[T4b] a sections line quoting a line of the test is a finding" "$(_l "$T" T4b)" "1|1|LOOP-1"
+assert_contains "[T4b] ...saying what is wrong" "$(_l "$T" T4b)" "the assertion is under Given"
+assert_contains "[T4c] a sections quote that is not in the test is asked again" "$(_l "$T" T4c)" "2|"
+assert_contains "[T4c] ...saying so" "$(_l "$T" T4c)" "LOOP-1's quote"
+assert_contains "[T1] the check is asked whether each part's code is under its own heading" "$(_l "$T" T1)" "is each part's code under its own heading"
+assert_contains "[T1] ...told the headings are the only comments it is shown" "$(_l "$T" T1)" "the only comments you are shown"
 assert_contains "[T5] a part the test does something else for is a finding" "$(_l "$T" T5)" "~  When: the inner loop is entered again [FIX IN TEST:"
 assert_contains "[T5] ...saying what it does instead" "$(_l "$T" T5)" "it enters the outer loop"
 assert_contains "[T6] a missing part line is asked again on its own, and the answer counts" "$(_l "$T" T6)" "2|0||"
@@ -185,7 +198,7 @@ assert_contains "[T8] a SPEC no test can prove is named" "$(_l "$T" T8)" "LOOP-1
 assert_contains "[T8] ...with why, marked as design's to fix" "$(_l "$T" T8)" "[FIX IN DESIGN: no test can see the outer loop from outside"
 assert_eq "[T9] a one-line SPEC is judged as one Then" "one-then" "$(_l "$T" T9)"
 
-print_test_section "T8: a SPEC no test can prove ends the run"
+print_test_section "T8: a SPEC no test can prove ends the round"
 (
     # shellcheck source=../../plugins/agent/test-author/plugin.sh
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
@@ -207,8 +220,12 @@ print_test_section "T8: a SPEC no test can prove ends the run"
     export ZBUILD_REPO_ROOT="$R" ZBUILD_EVENTS_JSONL="$d/events.jsonl"
     test_author_run test-author "$d/state/pipeline-state.json" >/dev/null 2>&1
     echo "T8b|$(jq -r '.outcome' "$A/test-author-result.json" 2>/dev/null)|$(jq -r '.reason' "$A/test-author-result.json" 2>/dev/null)"
+    # shellcheck source=../../core/pipeline/verdict.sh
+    source "$REPO_ROOT/core/pipeline/verdict.sh"
+    echo "T8c|$(_verdict_report_from_file "$A/test-author-result.json" | jq -r '.ends_round // false')"
 ) > "$TEST_TEMP_DIR/t8.out" 2>/dev/null
-assert_contains "[T8] ...the try ends misconfigured, which stops the run" "$(_l "$TEST_TEMP_DIR/t8.out" T8b)" "misconfigured|"
+assert_contains "[T8] ...the try ends fail, not misconfigured: it does not stop the run" "$(_l "$TEST_TEMP_DIR/t8.out" T8b)" "fail|"
+assert_eq "[T8] ...and the engine reads it as ending the round" "true" "$(_l "$TEST_TEMP_DIR/t8.out" T8c)"
 assert_contains "[T8] ...naming the SPEC as design's to rewrite" "$(_l "$TEST_TEMP_DIR/t8.out" T8b)" "LOOP-1 cannot be proven by any test"
 
 print_test_section "T10: test-author's prompt"

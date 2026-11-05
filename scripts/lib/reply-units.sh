@@ -20,6 +20,67 @@ _ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space
 _ZB_RU_ITEM='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+(.*)$'
 _ZB_RU_KEY_ONLY='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*):[[:space:]*_`]*$'
 
+# zb_reply_plain_v <var> <text> — <text> with its formatting and spacing aside
+# (#2474, ADR-072 §3): no `*` or backticks, no underscore that is not inside a
+# word (done_wrong keeps its own), and tabs and runs of spaces as one space.
+zb_reply_plain_v() {
+    local -n _rp="$1"
+    local _rp_t="${2//[*\`]/}" _rp_o="" _rp_p=" " _rp_c _rp_i
+    if [[ "$_rp_t" == *_* ]]; then
+        for (( _rp_i = 0; _rp_i < ${#_rp_t}; _rp_i++ )); do
+            _rp_c="${_rp_t:_rp_i:1}"
+            [[ "$_rp_c" == _ && ! ( "$_rp_p" == [[:alnum:]] && "${_rp_t:_rp_i+1:1}" == [[:alnum:]_] ) ]] && continue
+            _rp_o+="$_rp_c"; _rp_p="$_rp_c"
+        done
+        _rp_t="$_rp_o"
+    fi
+    _rp_t="${_rp_t//$'\t'/ }"; while [[ "$_rp_t" == *"  "* ]]; do _rp_t="${_rp_t//  / }"; done
+    _rp="$_rp_t"
+}
+
+# judge_reply_line_v <var> <line> — one line of a judge's reply as every reader
+# reads it (#2474, ADR-072 §3). Its structure — the id, the part and the word —
+# is read with formatting and spacing aside: bold, italics, code marks, a list
+# bullet or number, a quote or heading mark, a table's borders and cells. WHY:
+# and QUOTE: are the separators, written back as " | WHY: " and " | QUOTE: ";
+# what follows each is kept as written, without the marks around it.
+judge_reply_line_v() {
+    local -n _jrl="$1"
+    local _jr_l="$2" _jr_head="$2" _jr_rest="" _jr_why="" _jr_quote="" _jr_has_w=0 _jr_has_q=0 _jr_a
+    if [[ "$_jr_l" == *WHY* ]]; then
+        _jr_a="${_jr_l#*WHY}"
+        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_l%%WHY*}"; _jr_rest="${BASH_REMATCH[1]}"; _jr_has_w=1; }
+    fi
+    if (( _jr_has_w )); then
+        _jr_why="$_jr_rest"
+        if [[ "$_jr_rest" == *QUOTE* ]]; then
+            _jr_a="${_jr_rest##*QUOTE}"
+            [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_why="${_jr_rest%QUOTE*}"; _jr_quote="${BASH_REMATCH[1]}"; _jr_has_q=1; }
+        fi
+    elif [[ "$_jr_head" == *QUOTE* ]]; then
+        _jr_a="${_jr_head##*QUOTE}"
+        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_head%QUOTE*}"; _jr_quote="${BASH_REMATCH[1]}"; _jr_has_q=1; }
+    fi
+    zb_reply_plain_v _jr_head "$_jr_head"
+    _jr_head="${_jr_head#"${_jr_head%%[![:space:]>#|+-]*}"}"
+    [[ "$_jr_head" =~ ^[0-9]+[.\)][[:space:]]+(.*)$ ]] && _jr_head="${BASH_REMATCH[1]}"
+    _judge_reply_trim_v _jr_head "$_jr_head"; _judge_reply_trim_v _jr_why "$_jr_why"; _judge_reply_trim_v _jr_quote "$_jr_quote"
+    # A table row's cells: the first border after the id is its colon.
+    [[ "$_jr_head" != *:* && "$_jr_head" == *" | "* ]] && _jr_head="${_jr_head/ | /: }"
+    _jr_head="${_jr_head//|/ }"; while [[ "$_jr_head" == *"  "* ]]; do _jr_head="${_jr_head//  / }"; done
+    _jrl="$_jr_head"
+    (( _jr_has_w )) && _jrl+=" | WHY: $_jr_why"
+    (( _jr_has_q )) && _jrl+=" | QUOTE: $_jr_quote"
+    return 0
+}
+
+# _judge_reply_trim_v <var> <text> — <text> without the spaces, table borders and
+# bold marks around it.
+_judge_reply_trim_v() {
+    local -n _jrt="$1"
+    _jrt="${2#"${2%%[![:space:]|*]*}"}"; _jrt="${_jrt%"${_jrt##*[![:space:]|*]}"}"
+}
+
 # zb_reply_join_v <var> <reply> — <reply> with each continued line joined, by
 # one space, to the line it continues. A line continues the one before it unless
 # it is blank, follows a blank, or starts a unit of its own. A list straight
@@ -29,8 +90,12 @@ zb_reply_join_v() {
     local -n _rj="$1"
     local _zbrj_l _zbrj_t _zbrj_cur="" _zbrj_key="" _zbrj_have=0 _zbrj_blank=1
     _rj=""
+    local _zbrj_p
     while IFS= read -r _zbrj_l || [[ -n "$_zbrj_l" ]]; do
         _zbrj_t="${_zbrj_l#"${_zbrj_l%%[![:space:]]*}"}"; _zbrj_t="${_zbrj_t%"${_zbrj_t##*[![:space:]]}"}"
+        # Where a unit starts is read with the formatting aside (#2474): its
+        # start, not the whole line, so a long reply costs little.
+        zb_reply_plain_v _zbrj_p "${_zbrj_l:0:80}"
         if [[ -z "$_zbrj_t" ]]; then
             (( _zbrj_have )) && _rj+="$_zbrj_cur"$'\n'
             _rj+=$'\n'; _zbrj_cur=""; _zbrj_have=0; _zbrj_key=""; _zbrj_blank=1
@@ -43,7 +108,7 @@ zb_reply_join_v() {
             _zbrj_cur="$_zbrj_key: $_zbrj_item"; _zbrj_have=1; _zbrj_blank=0
             continue
         fi
-        if (( _zbrj_blank || ! _zbrj_have )) || [[ "$_zbrj_l" =~ $_ZB_RU_START ]]; then
+        if (( _zbrj_blank || ! _zbrj_have )) || [[ "$_zbrj_p" =~ $_ZB_RU_START ]]; then
             (( _zbrj_have )) && _rj+="$_zbrj_cur"$'\n'
             _zbrj_cur="$_zbrj_l"; _zbrj_have=1; _zbrj_key=""
             [[ "$_zbrj_l" =~ $_ZB_RU_KEY_ONLY ]] && _zbrj_key="${BASH_REMATCH[1]}"
