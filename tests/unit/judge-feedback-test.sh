@@ -144,7 +144,7 @@ assert_contains "[F5] ...its parts as written, unmarked where fine" "$(_l "$F" F
 assert_contains "[F5] ...the line to fix marked with where and why" "$(_l "$F" F5a)" "  And: no stage is skipped [FIX IN DESIGN: a test cannot see what is skipped from outside"
 assert_lacks "[F5] ...a SPEC that passed is not shown" "$(_l "$F" F5a)" "WORK-2"
 assert_contains "[F2] a quote in none of the parts it names is asked again" "$(_l "$F" F2d)" "unusable|"
-assert_contains "[F2] ...saying so" "$(_l "$F" F2d)" "FRSH-1 Then's quote is not in any of its Then or And lines"
+assert_contains "[F2] ...saying so" "$(_l "$F" F2d)" "FRSH-1 Then's quote is not in any of its Then lines"
 assert_contains "[F5] a SPEC-level verdict marks the SPEC's own line" "$(_l "$F" F5b)" "FRSH-1[code]: a new run starts from the first stage covers: RQST-1 [FIX IN DESIGN: the run it sets up stays in the state folder"
 assert_contains "[F5] an uncovered requirement is one line, marked" "$(_l "$F" F5b)" "RQST-2 is not covered: nothing reads the flag from the config file"
 assert_contains "[F5] ...with where it is fixed" "$(_l "$F" F5b)" "[FIX IN DESIGN: add or widen a SPEC"

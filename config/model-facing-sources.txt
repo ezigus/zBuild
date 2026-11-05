@@ -19,6 +19,7 @@ plugins/tool/test/lib/shape-floor-check.sh
 scripts/lib/acceptance-reachability.sh
 scripts/lib/acceptance-negctl.sh
 scripts/lib/stage-prompt.sh printf
+scripts/lib/stage-prompt-compose.sh printf
 scripts/lib/stage-previous-work.sh printf
 config/prompts/default-rules.md
 core/pipeline/input-resolve.sh printf

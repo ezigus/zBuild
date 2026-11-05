@@ -409,6 +409,9 @@ judge_kept_put_all() {
     local _jpa_new="" _jpa_files _jpa_j _jpa_v _jpa_x _jpa_chk
     local -A _jpa_seen=()
     for _jpa_k in "${!_jpa_p[@]}"; do
+        # As in judge_kept_put: an answer with no fingerprint is never kept, or
+        # it would match a later fingerprint that also failed (review on #2471).
+        [[ -n "${_jpa_fp[$_jpa_k]:-}" ]] || continue
         _jpa_files=""; _jpa_seen=()
         while IFS= read -r _jpa_f; do
             [[ -n "$_jpa_f" && -z "${_jpa_seen[$_jpa_f]+x}" ]] || continue

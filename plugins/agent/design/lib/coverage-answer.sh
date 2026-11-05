@@ -144,7 +144,7 @@ _dcov_part_line() {
         case "$pw" in
             When) bad+=("$id When's quote is not in its When line") ;;
             And)  bad+=("$id And's quote is not in any of its And lines") ;;
-            *)    bad+=("$id $pw's quote is not in any of its $pw or And lines") ;;
+            *)    bad+=("$id $pw's quote is not in any of its $pw lines") ;;
         esac
         return 0
     fi
