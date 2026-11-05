@@ -4,4 +4,5 @@
 
 - goal length: 4989 chars
 - platforms: 1
-- the requirements are the same as the last run's
+- the requirements changed since the last run:
+  - added: DISP-1 No requirement may be marked done, and no change made, on the strength of the legacy loop.
