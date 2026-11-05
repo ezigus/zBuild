@@ -66,6 +66,8 @@ PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 # ── SPEC-1: resume rehydrates artifacts from git state branch ─────────────────
 print_test_section "[#1805/RHYD-1] on resume, artifacts restored from git state branch into ZBUILD_ARTIFACT_DIR"
 
+# Given — a run has been interrupted; stage intake is marked complete with its artifact
+#   present in the git state branch; stage cyc was the interrupted stage.
 S1_STATE_DIR="$TEST_TEMP_DIR/s1-state"
 S1_EVENTS_DIR="$TEST_TEMP_DIR/s1-events"
 S1_EVENTS_JSONL="$S1_EVENTS_DIR/events.jsonl"
@@ -111,8 +113,7 @@ jq -n \
         updated_at: $now
     }' > "$S1_STATE_FILE"
 
-# Run runner --resume. CWD=WORK_REPO so _artifact_persist_restore finds the
-# state branch. Capture rc; do not abort on failure.
+# When — the run is resumed via the --resume flag entry path (path 1).
 set +e
 ( cd "$WORK_REPO" && env \
     ZBUILD_CYCLES_ENABLED=1 \
@@ -130,24 +131,26 @@ set +e
 _s1_rc=$?
 set -e
 
+# Then — artifacts appear byte-identical, no stage.start for intake.
 # [#1805/RHYD-1]: artifact must be present in ZBUILD_ARTIFACT_DIR after resume.
 # Before the change: no rehydration → file absent → FAILS.
 # After the change: rehydration copies artifact from state branch → PASSES.
 assert_file_exists "[#1805/RHYD-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR" \
     "$S1_STATE_DIR/artifacts/intake-result.json"
 
-# [#1805/RHYD-1]: artifact content must match the git-snapshotted version, proving
-# _artifact_persist_restore read the artifact FROM the git state branch (not disk — the
-# disk copy was deleted before the runner ran), and _artifact_persist_put_back placed it
-# into ZBUILD_ARTIFACT_DIR. These are the only two functions that together produce the
-# effect: content from git state branch appearing in ZBUILD_ARTIFACT_DIR.
-# Before the change: no rehydration → file absent → cat empty → content mismatch → FAILS.
+# [#1805/RHYD-1]: artifact content must be byte-identical to what was snapshotted to the
+# git state branch, proving _artifact_persist_restore read the artifact FROM the git state
+# branch (not disk — the disk copy was deleted before the runner ran), and
+# _artifact_persist_put_back placed it into ZBUILD_ARTIFACT_DIR byte-for-byte. These are
+# the only two functions that together produce the effect: content from git state branch
+# appearing byte-identically in ZBUILD_ARTIFACT_DIR.
+# Before the change: no rehydration → file absent → content="" → not equal → FAILS.
 # After the change: _artifact_persist_restore reads git branch; _artifact_persist_put_back
-# writes to ZBUILD_ARTIFACT_DIR → content matches → PASSES.
+# writes to ZBUILD_ARTIFACT_DIR → content exactly matches the snapshotted payload → PASSES.
 _s1_artifact_content="$(cat "$S1_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
-assert_contains \
-    "[#1805/RHYD-1] artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)" \
-    "$_s1_artifact_content" "prior-run intake"
+assert_eq \
+    "[#1805/RHYD-1] artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
+    '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' "$_s1_artifact_content"
 
 # [#1805/RHYD-1]: at least one stage must have dispatched, proving the dispatch loop ran.
 # Combined with artifact-present (from git) and no-intake-stage.start, this establishes
@@ -195,6 +198,21 @@ if [[ -f "$S1_EVENTS_JSONL" ]]; then
 fi
 assert_eq "[#1805/RHYD-1] intake emits no stage.start (complete stage skipped)" \
     "0" "$_s1_intake_starts"
+
+# [#1805/DISP-1]: stage k (the interrupted stage) must emit stage.start when the
+# dispatch loop reaches it on resume. The fixture has intake=complete (stage k-1)
+# and cyc=pending (stage k). Cycles dispatch their inner members: cycled emits
+# stage.start with stage=cycled. This proves the dispatch loop reached and dispatched
+# stage k (cyc), not just that any stage ran.
+# Before the change: runner may abort before dispatching cyc → 0 cycled starts → FAILS.
+# After the change: rehydrate → loop skips intake → dispatches cyc → cycled dispatches → PASSES.
+_s1_cycled_starts=0
+if [[ -f "$S1_EVENTS_JSONL" ]]; then
+    _s1_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
+        "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DISP-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)" \
+    "$_s1_cycled_starts" "0"
 
 # ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
 # [#1805/RHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
@@ -259,16 +277,16 @@ assert_file_exists \
     "[#1805/RHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored" \
     "$S1P2_STATE_DIR/artifacts/intake-result.json"
 
-# [#1805/RHYD-1] path 2: content must match what was snapshotted to the git state branch.
-# Proves the artifact was placed into ZBUILD_ARTIFACT_DIR FROM the git state branch via
-# _artifact_persist_restore (which reads from git state branch) + _artifact_persist_put_back
-# (which copies from restore staging to ZBUILD_ARTIFACT_DIR). These are the only functions
+# [#1805/RHYD-1] path 2: content must be byte-identical to what was snapshotted to the git
+# state branch. Proves the artifact was placed into ZBUILD_ARTIFACT_DIR FROM the git state
+# branch via _artifact_persist_restore (reads from git state branch) +
+# _artifact_persist_put_back (copies to ZBUILD_ARTIFACT_DIR). These are the only functions
 # that together produce this effect.
-# Before fix: file absent → cat empty → FAILS. After: PASSES.
+# Before fix: file absent → content="" → not equal → FAILS. After fix: PASSES.
 _s1p2_artifact_content="$(cat "$S1P2_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
-assert_contains \
-    "[#1805/RHYD-1] path 2 (auto-resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)" \
-    "$_s1p2_artifact_content" "prior-run intake"
+assert_eq \
+    "[#1805/RHYD-1] path 2 (auto-resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
+    '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' "$_s1p2_artifact_content"
 
 # [#1805/RHYD-1] path 2: at least one stage must have dispatched (proving pipeline ran and events written).
 # Before fix: path-2 auto-resume doesn't exist → runner exits without events → 0 stage.start → FAILS.
@@ -368,16 +386,16 @@ assert_file_exists \
     "[#1805/RHYD-1] path 3 (zbuild pipeline resume): intake-result.json restored" \
     "$S1P3_STATE_DIR/artifacts/intake-result.json"
 
-# [#1805/RHYD-1] path 3: content must match what was snapshotted to the git state branch.
-# Proves the artifact was placed into ZBUILD_ARTIFACT_DIR FROM the git state branch via
-# _artifact_persist_restore (reads from git state branch) + _artifact_persist_put_back
-# (copies from restore staging to ZBUILD_ARTIFACT_DIR). These are the only functions
+# [#1805/RHYD-1] path 3: content must be byte-identical to what was snapshotted to the git
+# state branch. Proves the artifact was placed into ZBUILD_ARTIFACT_DIR FROM the git state
+# branch via _artifact_persist_restore (reads from git state branch) +
+# _artifact_persist_put_back (copies to ZBUILD_ARTIFACT_DIR). These are the only functions
 # that together produce this effect.
-# Before fix: file absent → cat empty → FAILS. After: PASSES.
+# Before fix: file absent → content="" → not equal → FAILS. After fix: PASSES.
 _s1p3_artifact_content="$(cat "$S1P3_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
-assert_contains \
-    "[#1805/RHYD-1] path 3 (zbuild pipeline resume): artifact content placed into ZBUILD_ARTIFACT_DIR from git state branch (via _artifact_persist_restore + _artifact_persist_put_back)" \
-    "$_s1p3_artifact_content" "prior-run intake"
+assert_eq \
+    "[#1805/RHYD-1] path 3 (zbuild pipeline resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
+    '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' "$_s1p3_artifact_content"
 
 # [#1805/RHYD-1] path 3: at least one stage must have dispatched (proving pipeline ran via zbuild pipeline resume).
 # Before fix: zbuild pipeline resume path has no rehydration / may not exist → no events → FAILS.
@@ -416,6 +434,8 @@ assert_eq "[#1805/RHYD-1] path 3 (zbuild pipeline resume): intake emits no stage
 # ── SPEC-2: missing artifact causes resume to exit 1 ─────────────────────────
 print_test_section "[#1805/RHYD-2] absent artifact causes resume to exit 1 before any stage.start"
 
+# Given — a run is being resumed; stage intake is marked complete in persisted state;
+#   its primary artifact is absent from both disk and the git state branch.
 S2_STATE_DIR="$TEST_TEMP_DIR/s2-state"
 S2_EVENTS_DIR="$TEST_TEMP_DIR/s2-events"
 S2_EVENTS_JSONL="$S2_EVENTS_DIR/events.jsonl"
@@ -450,6 +470,7 @@ jq -n \
         updated_at: $now
     }' > "$S2_STATE_FILE"
 
+# When — the runner processes that stage during resume rehydration.
 set +e
 ( cd "$WORK_REPO2" && env \
     ZBUILD_CYCLES_ENABLED=1 \
@@ -467,6 +488,7 @@ set +e
 _s2_rc=$?
 set -e
 
+# Then — runner exits 1; no stage.start event emitted.
 # [#1805/RHYD-2]: runner must exit 1 when artifact absent from disk AND state branch.
 # Before the change: runner warns about stale artifact and continues → exits 0 → FAILS.
 # After the change: runner exits 1 after failing to restore the artifact → PASSES.
