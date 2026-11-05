@@ -284,7 +284,6 @@ write_boundary_sweep() {
     local -a _paths=()
     for _depth in ${_depths[@]+"${_depths[@]}"}; do
         mapfile -t _paths <<< "${_by_depth[$_depth]%$'\n'}"
-        _path="${_paths[*]}"
         # -type f: the sweep asks "did this stage drop a FILE where nothing
         # should be?" — the issue's own honesty argument for -maxdepth 1. A bare
         # directory entry cannot answer it. A directory's mtime changes whenever
