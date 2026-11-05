@@ -13,7 +13,8 @@
 #    judge.kept.used for each one reused and not asked, judge.kept.stale with
 #    why=file / why=disputed for one that has to be judged again
 # V4 design's check, issue-acceptance and a lens: saved, then used, then stale
-#    why=fingerprint once what they judge changes
+#    why=fingerprint once what they judge changes — design's per SPEC, and its
+#    requirement coverage as one more item (#2470)
 # V5 judge.kept is gone; every new event is declared by the plugins that emit it
 set -uo pipefail
 
@@ -130,9 +131,13 @@ _reset
     _design_coverage "$D" "- RQST-1: add a flag" T2
     _design_coverage "$D" "- RQST-1: add a flag to every command" T2
 ) >/dev/null 2>&1
-assert_eq "[V4] design: saved" "2" "$(_ev judge.kept.saved '.check == "design" and .item == "coverage"')"
-assert_eq "[V4] design: used once" "1" "$(_ev judge.kept.used '.check == "design" and .item == "coverage"')"
-assert_eq "[V4] design: stale once its requirements change" "1" "$(_ev judge.kept.stale '.check == "design" and .why == "fingerprint"')"
+# #2470: kept per SPEC, and requirement coverage as one more item.
+assert_eq "[V4] design: requirement coverage saved, and saved again once they change" "2" "$(_ev judge.kept.saved '.check == "design" and .item == "requirements"')"
+assert_eq "[V4] ...the SPEC saved once" "1" "$(_ev judge.kept.saved '.check == "design" and .item == "WORK-1"')"
+assert_eq "[V4] design: requirement coverage used once" "1" "$(_ev judge.kept.used '.check == "design" and .item == "requirements"')"
+assert_eq "[V4] ...the unchanged SPEC used both times" "2" "$(_ev judge.kept.used '.check == "design" and .item == "WORK-1"')"
+assert_eq "[V4] design: stale once its requirements change — that item only" "1|1" \
+    "$(_ev judge.kept.stale '.check == "design" and .why == "fingerprint"')|$(_ev judge.kept.stale '.check == "design" and .item == "requirements"')"
 _reset
 (
     # shellcheck source=../../plugins/agent/issue-acceptance/plugin.sh

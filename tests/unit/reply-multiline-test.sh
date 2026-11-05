@@ -101,14 +101,19 @@ assert_eq "[Q3] ...two items" "2" "$(grep -c . "$TEST_TEMP_DIR/q3.txt" 2>/dev/nu
 # #2467: test-author's check answers a line per part of a SPEC.
 (
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
-    _parts=($'Then 1\tit counts the lines of the file')
-    _r=""; zb_reply_join_v _r $'SPEC-1 Then 1: missing | WHY: it checks grep x | wc -l,\n  not the file | QUOTE: "it counts the lines of the file"\nSPEC-1 sections: ok\nSPEC-2 Then 1: ok'
-    _sc_judge "$_r" SPEC-1 _parts "it counts the lines of the file" "$TEST_TEMP_DIR"
-    printf '%s\n' "$_SC_V" "$_SC_F" > "$TEST_TEMP_DIR/q4.txt"
+    _parts=($'Then 1\tThen\tit counts the lines of the file')
+    _r=""; zb_reply_join_v _r $'SPEC-1 Then: missing | WHY: it checks grep x | wc -l,\n  not the file | QUOTE: "it counts the lines of the file"\nSPEC-2: ok'
+    _sc_judge "$_r" SPEC-1 _parts "it counts the lines of the file" "$TEST_TEMP_DIR" "SPEC-1[code]: it counts the lines of the file"
+    printf '%s\n' "$_SC_V" "${_SC_F//$'\x1e'/ ~ }" > "$TEST_TEMP_DIR/q4.txt"
+    # #2470: a line about an And, after a line that is fine, starts a unit of its own.
+    _r=""; zb_reply_join_v _r $'SPEC-1: ok\nSPEC-2 And: missing | WHY: nothing\n  asserts it | QUOTE: "x"'
+    printf '%s\n' "$_r" > "$TEST_TEMP_DIR/q4b.txt"
 )
 assert_eq "[Q4] the part's verdict is read" "partial" "$(sed -n 1p "$TEST_TEMP_DIR/q4.txt" 2>/dev/null)"
 assert_contains "[Q4] a WHY wrapped onto the next line, holding '|', is read whole" "$(sed -n 2p "$TEST_TEMP_DIR/q4.txt" 2>/dev/null)" \
     "it checks grep x | wc -l, not the file"
+assert_eq "[Q4] a line about an And is its own unit, its WHY read whole" \
+    $'SPEC-1: ok\nSPEC-2 And: missing | WHY: nothing asserts it | QUOTE: "x"' "$(cat "$TEST_TEMP_DIR/q4b.txt" 2>/dev/null)"
 
 # ── Q5 ───────────────────────────────────────────────────────────────────────
 (

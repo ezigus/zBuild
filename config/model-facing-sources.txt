@@ -7,7 +7,7 @@ plugins/agent/intake/lib/requirements.sh
 plugins/agent/test-author/plugin.sh
 plugins/agent/build/lib/prompt.sh printf
 plugins/agent/issue-acceptance/plugin.sh
-plugins/agent/design/lib/coverage.sh
+plugins/agent/design/lib/coverage.sh printf
 plugins/agent/test-author/lib/correspondence.sh
 plugins/agent/review-lens/plugin.sh
 plugins/agent/review-lens/lib/charters.sh

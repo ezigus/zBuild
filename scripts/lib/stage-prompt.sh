@@ -54,6 +54,9 @@ _ZB_SP_REASK='## Your last reply could not be used'
 # #2458: what marks a stage's own notes in the Previous work it is written from.
 _ZB_SP_OWN_BEGIN=$'\x1e\x02'
 _ZB_SP_OWN_END=$'\x1e\x03'
+# #2470: the whole of the stage's own section, which a judging call is not shown.
+_ZB_SP_SECT_BEGIN=$'\x1e\x04'
+_ZB_SP_SECT_END=$'\x1e\x05'
 
 # Per-output bounds on what is put in the prompt (ADR-029). There is no total
 # cap: dropping a whole stage to fit a total hid the findings it carried.
@@ -311,19 +314,34 @@ EOF
     _sbr_fr="${_head_fresh}${_write}${_budget}${_rules}"
 }
 
-# _sp_own_notes_split_v <full_var> <fresh_var> <marked> — Previous work as a
-# building call reads it (the marks taken out) and as a fresh call reads it
-# (what lies between them taken out too). Bash only: no program per dispatch.
+# _sp_own_notes_split_v <full_var> <fresh_var> <marked> [judge_var] — Previous
+# work as a building call reads it (the marks taken out), as a fresh call of a
+# stage with no tools reads it (its notes and cut-off list taken out too), and,
+# into [judge_var], as a judging call reads it: without the stage's own section
+# at all (#2470). Bash only: no program per dispatch.
 _sp_own_notes_split_v() {
-    local -n _sons_fo="$1" _sons_fr="$2"; local _rest="$3"
+    local -n _sons_fo="$1" _sons_fr="$2"; local _rest="$3" _sons_x
+    _sp_cut_between_v _sons_x "$_rest" "$_ZB_SP_OWN_BEGIN" "$_ZB_SP_OWN_END"
+    _sons_fr="${_sons_x//"$_ZB_SP_SECT_BEGIN"/}"; _sons_fr="${_sons_fr//"$_ZB_SP_SECT_END"/}"
     _sons_fo="${_rest//"$_ZB_SP_OWN_BEGIN"/}"; _sons_fo="${_sons_fo//"$_ZB_SP_OWN_END"/}"
-    _sons_fr=""
-    while [[ "$_rest" == *"$_ZB_SP_OWN_BEGIN"* ]]; do
-        _sons_fr+="${_rest%%"$_ZB_SP_OWN_BEGIN"*}"
-        _rest="${_rest#*"$_ZB_SP_OWN_BEGIN"}"
-        _rest="${_rest#*"$_ZB_SP_OWN_END"}"
+    _sons_fo="${_sons_fo//"$_ZB_SP_SECT_BEGIN"/}"; _sons_fo="${_sons_fo//"$_ZB_SP_SECT_END"/}"
+    if [[ -n "${4:-}" ]]; then
+        local -n _sons_j="$4"
+        _sp_cut_between_v _sons_j "$_sons_x" "$_ZB_SP_SECT_BEGIN" "$_ZB_SP_SECT_END"
+    fi
+}
+
+# _sp_cut_between_v <var> <text> <begin> <end> — <text> without what lies
+# between each <begin> and the <end> after it, the marks included.
+_sp_cut_between_v() {
+    local -n _scb="$1"; local _scb_r="$2"
+    _scb=""
+    while [[ "$_scb_r" == *"$3"* ]]; do
+        _scb+="${_scb_r%%"$3"*}"
+        _scb_r="${_scb_r#*"$3"}"
+        _scb_r="${_scb_r#*"$4"}"
     done
-    _sons_fr+="$_rest"
+    _scb+="$_scb_r"
 }
 
 # ─── stage_blocks_write <stage> <state_dir> <manifest> <plugins_root> <index> <repo_root>
@@ -360,10 +378,15 @@ _stage_blocks_write_pw_rules() {
     _ZB_SP_MARK_OWN=1 _stage_block_previous_work "$stage" "$state_dir" "$plugins_root" "$index" "$repo_root" "$manifest" \
         > "$dir/previous-work.md" 2>/dev/null || return 1
     IFS= read -r -d '' _raw < "$dir/previous-work.md" || true
-    _sp_own_notes_split_v _pw_full _pw_fresh "$_raw"
-    # A stage whose every call judges (#2464) or that has no tools reads only the fresh set.
+    local _pw_judge=""
+    _sp_own_notes_split_v _pw_full _pw_fresh "$_raw" _pw_judge
+    # A stage with no tools reads the fresh set in every call; a stage whose
+    # every call judges (#2464) reads the judge's (#2470). A fresh call — one
+    # that judges — never sees its own stage's earlier output.
     local _pwr_tools; _route_manifest_tools_v _pwr_tools "$manifest"
-    [[ -n "$_pwr_tools" ]] && _pw_full="$_pw_fresh"
+    [[ "$_pwr_tools" == none ]] && _pw_full="$_pw_fresh"
+    [[ "$_pwr_tools" == read ]] && _pw_full="$_pw_judge"
+    _pw_fresh="$_pw_judge"
     _stage_block_rules_pair_v _r_full _r_fresh "$stage" "$state_dir" "$manifest" 2>/dev/null || return 1
     printf '%s' "$_pw_full"  > "$dir/previous-work.md" 2>/dev/null || return 1
     printf '%s' "$_pw_fresh" > "$dir/previous-work-fresh.md" 2>/dev/null || return 1
@@ -386,21 +409,26 @@ stage_prompt_compose() {
             return 1
         fi
     done
-    for f in "$own" "$judge" "$limits"; do
-        local _part=""; [[ -s "$f" ]] && _part="$(<"$f")"
-        if [[ -z "${_part//[[:space:]]/}" ]]; then
-            printf 'stage_prompt_compose: the stage part %s is empty\n' "$f" >&2
-            return 1
-        fi
-    done
-    {
-        printf '%s\n\n' "$_ZB_SP_REPO";   cat "$dir/from-repo.md"
-        printf '\n%s\n\n' "$_ZB_SP_OWN";    cat "$own"
-        printf '\n%s\n\n' "$_ZB_SP_JUDGE";  cat "$judge"
-        printf '\n%s\n\n' "$_ZB_SP_PREV";   cat "$dir/previous-work$_v.md"
-        printf '\n%s\n\n' "$_ZB_SP_LIMITS"; cat "$limits"
-        printf '\n%s\n\n' "$_ZB_SP_RULES";  cat "$dir/rules$_v.md"
-    } > "$out.tmp" 2>/dev/null && mv -f "$out.tmp" "$out" 2>/dev/null && return 0
+    # #2470: every section read by the shell, not a cat each (ADR-065 §5).
+    local _sp_o="" _sp_j="" _sp_l="" _sp_r="" _sp_p="" _sp_u=""
+    [[ -s "$own" ]] && { IFS= read -r -d '' _sp_o < "$own" || true; }
+    [[ -s "$judge" ]] && { IFS= read -r -d '' _sp_j < "$judge" || true; }
+    [[ -s "$limits" ]] && { IFS= read -r -d '' _sp_l < "$limits" || true; }
+    f=""
+    [[ -n "${_sp_o//[[:space:]]/}" ]] || f="$own"
+    [[ -n "$f" || -n "${_sp_j//[[:space:]]/}" ]] || f="$judge"
+    [[ -n "$f" || -n "${_sp_l//[[:space:]]/}" ]] || f="$limits"
+    if [[ -n "$f" ]]; then
+        printf 'stage_prompt_compose: the stage part %s is empty\n' "$f" >&2
+        return 1
+    fi
+    IFS= read -r -d '' _sp_r < "$dir/from-repo.md" || true
+    IFS= read -r -d '' _sp_p < "$dir/previous-work$_v.md" || true
+    IFS= read -r -d '' _sp_u < "$dir/rules$_v.md" || true
+    printf '%s\n\n%s\n%s\n\n%s\n%s\n\n%s\n%s\n\n%s\n%s\n\n%s\n%s\n\n%s' \
+        "$_ZB_SP_REPO" "$_sp_r" "$_ZB_SP_OWN" "$_sp_o" "$_ZB_SP_JUDGE" "$_sp_j" \
+        "$_ZB_SP_PREV" "$_sp_p" "$_ZB_SP_LIMITS" "$_sp_l" "$_ZB_SP_RULES" "$_sp_u" \
+        > "$out.tmp" 2>/dev/null && mv -f "$out.tmp" "$out" 2>/dev/null && return 0
     rm -f "$out.tmp" 2>/dev/null
     return 1
 }
@@ -413,7 +441,8 @@ stage_prompt_compose_text() {
     printf '%s\n' "$1" > "$t/own"; printf '%s\n' "$2" > "$t/judge"; printf '%s\n' "$3" > "$t/limits"
     local rc=0
     stage_prompt_compose "${_fr[@]+"${_fr[@]}"}" "$t/out" "$t/own" "$t/judge" "$t/limits" || rc=$?
-    [[ "$rc" -eq 0 ]] && cat "$t/out"
+    local _sp_out=""
+    [[ "$rc" -eq 0 ]] && { IFS= read -r -d '' _sp_out < "$t/out" || true; printf '%s' "$_sp_out"; }
     rm -rf "${t:?}"
     return "$rc"
 }
@@ -442,7 +471,8 @@ stage_prompt_compose_parts() {
         }' || { rm -rf "${t:?}"; printf 'stage_prompt_compose_parts: the stage text is missing one of its three parts\n' >&2; return 1; }
     local rc=0
     stage_prompt_compose "${_fr[@]+"${_fr[@]}"}" "$t/out" "$t/own" "$t/judge" "$t/limits" || rc=$?
-    [[ "$rc" -eq 0 ]] && cat "$t/out"
+    local _sp_out=""
+    [[ "$rc" -eq 0 ]] && { IFS= read -r -d '' _sp_out < "$t/out" || true; printf '%s' "$_sp_out"; }
     rm -rf "${t:?}"
     return "$rc"
 }
@@ -468,7 +498,8 @@ stage_prompt_reask() {
 stage_prompt_check() {
     local f="$1"
     [[ -s "$f" ]] || return 1
-    [[ "$(head -n1 "$f")" == "$_ZB_SP_REPO" ]] || return 1
+    local _sp_first=""; IFS= read -r _sp_first < "$f" || true
+    [[ "$_sp_first" == "$_ZB_SP_REPO" ]] || return 1
     awk -v h1="$_ZB_SP_OWN" -v h2="$_ZB_SP_JUDGE" -v h3="$_ZB_SP_PREV" \
         -v h4="$_ZB_SP_LIMITS" -v h5="$_ZB_SP_RULES" '
         BEGIN { want[1]=h1; want[2]=h2; want[3]=h3; want[4]=h4; want[5]=h5; n=1 }

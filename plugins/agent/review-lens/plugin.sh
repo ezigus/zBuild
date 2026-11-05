@@ -237,7 +237,7 @@ _rl_requirements_readable() {
         tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         printf -- '- %s (%s): %s\n' "$sid" "$kind" "${txt:-<no text>}"
         local -a _rl_parts=()
-        acceptance_parts_v _rl_parts "$_ACC_SPEC_PARTS"
+        acceptance_parts_shown_v _rl_parts "$_ACC_SPEC_PARTS"
         for _p in ${_rl_parts[@]+"${_rl_parts[@]}"}; do printf '  %s: %s\n' "${_p%%$'\t'*}" "${_p#*$'\t'}"; done
         ev="$(acceptance_spec_evidence "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         [[ -n "${ev// /}" ]] && printf -- '  shown by: %s\n' "${ev% }"

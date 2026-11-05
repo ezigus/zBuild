@@ -129,7 +129,7 @@ DONE_WRONG: none"; _R2=""; _cov
     echo "Q2h|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
     _R1=$'RQST-1: covered\nRQST-2: covered\nWORK-1: ok\nCNFG-1: ok\nSCOPE: scripts/telemetry.sh | WHY: the issue asks for no telemetry\n'; _R2=""; _cov
-    echo "Q2i|${#_DESIGN_OUTSIDE[@]}|${_DESIGN_OUTSIDE[0]:-}"
+    echo "Q2i|${#_DESIGN_OUTSIDE[@]}|$(_design_coverage_findings)"
 ) > "$TEST_TEMP_DIR/q2.out" 2>"$TEST_TEMP_DIR/q2.err"
 _l() { grep "^$1|" "$TEST_TEMP_DIR/q2.out" | head -1 | cut -d'|' -f2-; }
 assert_eq "[Q2] every item answered, none failing: nothing found, judged in one call" "000||1" "$(_l Q2a)"
@@ -148,7 +148,7 @@ assert_contains "[Q2] a [done] claim is judged on the code from before the chang
 assert_contains "[Q2] ...and carries its quote" "$(_l Q2f)" 'return 2'
 assert_contains "[Q2] done_wrong on a SPEC not marked [done] cannot be used" "$(_l Q2h)" "unusable|"
 assert_contains "[Q2] ...and is asked again, saying so" "$(_l Q2h)" "WORK-1 is not marked [done]"
-assert_contains "[Q2] a scope entry the issue does not ask for is a finding" "$(_l Q2i)" "1|scripts/telemetry.sh"
+assert_contains "[Q2] a scope entry the issue does not ask for is a finding" "$(_l Q2i)" "1|SCOPE scripts/telemetry.sh: the issue asks for no telemetry [FIX IN DESIGN:"
 
 print_test_section "Q3: test-author's assertion check"
 (
@@ -165,24 +165,25 @@ print_test_section "Q3: test-author's assertion check"
     printf 'unset RESUME\nassert_eq "[LOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/acc-test.sh"
     _j() { printf 0 > "$_N"; _ta_correspondence "$D" "$R" T2 >/dev/null 2>&1; }
 
-    # #2467 (ADR-073 §6): a line per part (this one-line SPEC is its one Then), and the sections.
-    _R1=$'LOOP-1 Then 1: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"\nLOOP-1 sections: ok'; _R2=""; _j
+    # #2467 (ADR-073 §6): a line per failing part (this one-line SPEC is its
+    # one Then), named by its word (#2470).
+    _R1=$'LOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _R2=""; _j
     echo "Q3a|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}|$_TA_CORR_OUTCOME|$(cat "$_N")"
-    echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: "<the part'"'"'s own words'* ]] && echo asked)"
+    echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: "<that part'"'"'s own words'* ]] && echo asked)"
 
-    _R1=$'LOOP-1 Then 1: missing | WHY: only a fresh run is tested\nLOOP-1 sections: ok'
-    _R2=$'LOOP-1 Then 1: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"\nLOOP-1 sections: ok'; _j
+    _R1=$'LOOP-1 Then: missing | WHY: only a fresh run is tested'
+    _R2=$'LOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _j
     echo "Q3b|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
-    _R1=$'LOOP-1 Then 1: missing | WHY: only a fresh run is tested\nLOOP-1 sections: ok'
+    _R1=$'LOOP-1 Then: missing | WHY: only a fresh run is tested'
     _R2="$_R1"; _j
     echo "Q3c|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.3" 2>/dev/null)"
 
-    _R1=$'LOOP-1 Then 1: wrong | WHY: x | QUOTE: "a resumed run reads the saved round"\nLOOP-1 sections: ok'
+    _R1=$'LOOP-1 Then: wrong | WHY: x | QUOTE: "a resumed run reads the saved round"'
     _R2="$_R1"; _j
     echo "Q3d|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
-    _R1=$'LOOP-1 Then 1: ok\nLOOP-1 sections: ok'; _R2=""; _j
+    _R1=$'LOOP-1: ok'; _R2=""; _j
     echo "Q3e|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(cat "$_N")"
 ) > "$TEST_TEMP_DIR/q3.out" 2>/dev/null
 _l() { grep "^$1|" "$TEST_TEMP_DIR/q3.out" | head -1 | cut -d'|' -f2-; }
@@ -191,7 +192,7 @@ assert_contains "[Q3] ...in one call" "$(_l Q3a)" "||1"
 assert_eq "[Q3] the check asks for the quote" "asked" "$(_l Q3p)"
 assert_eq "[Q3] partial with no quote is asked again on its own, and the answer counts" "2|1|" "$(_l Q3b)"
 assert_contains "[Q3] still no quote: asked again once more, then not judged" "$(_l Q3c)" "3|0|unusable|"
-assert_contains "[Q3] ...told what was wrong" "$(_l Q3c)" "LOOP-1 Then 1 has no QUOTE"
+assert_contains "[Q3] ...told what was wrong" "$(_l Q3c)" "LOOP-1 Then has no QUOTE"
 assert_eq "[Q3] a quote the requirement does not say is not judged" "0|unusable" "$(_l Q3d)"
 assert_eq "[Q3] corresponds needs no quote" "0||1" "$(_l Q3e)"
 

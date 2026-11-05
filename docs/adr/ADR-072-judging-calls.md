@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC)
+**Status:** Accepted (2026-11-03); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -90,7 +90,23 @@ On #1805 run 41757933766, two things could only be inferred, never read off the 
 
 design's coverage check and test-author's assertion check answer one line for every part of every SPEC (ADR-073 §5 §6), each complaint quoted from that part. A part with no line makes the answer unusable, asked again once. design's check adds the part verdicts `untestable`, `how`, `contradicts` and `duplicate`, and the SPEC verdict `needs_cleanup`; test-author's check answers `ok`, `missing` or `wrong` per part, a line for the test's sections, and `untestable` for a SPEC no test can prove, which ends the run.
 
+## Amendment 2026-11-04 (#2470) — §3 §4: answers per SPEC, kept per SPEC
+
+On #1805 run 41845438073 one unchanged part was `ok` in try 2 and `how` in try 3: design's check kept one answer for the whole design, so a one-line edit to one SPEC sent every SPEC back to the judge. The judge also opened the old design.md while judging the draft.
+
+- **§3:** design's coverage check and test-author's assertion check answer one line for a SPEC that is fine (`<id>: ok`) and one for each thing wrong. A part is named by its word and a quote of its own words (ADR-073 amendment, #2470). A SPEC with no line makes the answer unusable, asked again once naming it. Requirement lines and `SCOPE:` lines are asked only when requirement coverage is asked (below).
+- **§4: design's check keeps its answer per SPEC.** `design-judged.json` holds one entry per SPEC and one, `requirements`, for requirement coverage and the scope.
+  - A SPEC's fingerprint is the engine's commit, the SPEC as shown (its first line and parts), its `[done]` evidence, the base commit and the answers to its own findings.
+  - The `requirements` fingerprint is the engine's commit, the requirements, every SPEC as shown, the scope, every `[done]` evidence, the base commit and the answers to a requirement's or scope entry's finding. So requirement coverage is asked again whenever any SPEC changes.
+  - Only what is not kept is judged. The judge is given the draft by its path and told not to open design.md, an earlier design. It is shown in full only the SPECs it judges; when requirement coverage is asked, the other SPECs are shown by their first line, for what they cover.
+  - A "nothing to do" answer to a finding disputes the item that finding is about, found by the finding's first word (a SPEC id, a requirement id, or `SCOPE`): only that item is judged again. One that names nothing known disputes every item.
+  - The verdict is every item's answer together: the kept ones and the new ones.
+  - Events (§4, #2466) carry `item` = the SPEC id or `requirements`; the single `coverage` item is gone.
+  - `judge_kept_get_all_v` and `judge_kept_put_all` (`scripts/lib/judge.sh`) read and write every item of a check in one pass.
+
 ## Enforced by
+
+- §3 §4 amendment 2026-11-04 (#2470: answers per SPEC, kept per SPEC, the draft by its path) → `tests/unit/judge-feedback-test.sh` F4 (the draft by its path; only the SPECs judged, in full), F6 (one line per SPEC; kept per SPEC; requirements asked again when a SPEC changes; a dispute re-judges its SPEC only); `tests/unit/judge-events-test.sh` V4 (design's events per SPEC and `requirements`)
 
 - §3 amendment 2026-11-04 (#2467: one line per part) → `tests/unit/gwt-judges-test.sh` J1–J8, T1–T9
 - §2 §4 amendment 2026-11-04 (#2466: the copy and every kept answer leave events) → `tests/unit/judge-events-test.sh` V1–V5

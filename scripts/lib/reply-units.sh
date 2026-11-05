@@ -14,9 +14,9 @@ _ZBUILD_REPLY_UNITS_LOADED=1
 # A line that starts a unit of its own: a `KEY:` marker (capitals, digits, _ or
 # -, then a colon — `SPEC-3:` too), an ANSWER, LOOP_COMPLETE, a list item, a
 # heading or a code fence. Markdown emphasis or a quote mark may come first.
-# #2467: a check's line about one part of a SPEC — `FRSH-1 Then 2:`,
-# `FRSH-1 sections:` — starts a unit too.
-_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Given|When|Then|Cleanup|sections)([[:space:]]+[0-9]+)?:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
+# #2467: a check's line about one part of a SPEC — `FRSH-1 Then:`,
+# `FRSH-1 And:`, `FRSH-1 sections:`, an old `FRSH-1 Then 2:` — starts a unit too.
+_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Given|When|Then|And|Cleanup|sections)([[:space:]]+[0-9]+)?:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
 _ZB_RU_ITEM='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+(.*)$'
 _ZB_RU_KEY_ONLY='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*):[[:space:]*_`]*$'
 

@@ -155,6 +155,23 @@ _sp_takes_v() {
     return 0
 }
 
+# _sp_first_output_path_v <var> <stage> <raw> <state_dir> — the first path
+# _inputs_output_paths gives for an output, in this shell (#2470, ADR-065 §5):
+# a map stage's first element's.
+_sp_first_output_path_v() {
+    local _sfo_safe="${2//-/_}" _sfo_p="$3" _sfo_x=""
+    local _sfo_t="_TPL_STAGE_TYPE_$_sfo_safe" _sfo_as="_TPL_MAP_AS_$_sfo_safe" _sfo_el="_TPL_MAP_ELEMENTS_$_sfo_safe"
+    if [[ "${!_sfo_t:-}" == map && -n "${!_sfo_el:-}" ]]; then
+        local -a _sfo_e=()
+        IFS=',' read -r -a _sfo_e <<< "${!_sfo_el}"
+        for _sfo_x in ${_sfo_e[@]+"${_sfo_e[@]}"}; do [[ -n "$_sfo_x" ]] && break; done
+        [[ -n "$_sfo_x" ]] || { printf -v "$1" '%s' ""; return 0; }
+        local _sfo_a="${!_sfo_as:-}"
+        [[ -n "$_sfo_a" ]] && _sfo_p="${_sfo_p//\$\{$_sfo_a\}/$_sfo_x}"
+    fi
+    _verdict_resolve_path_v "$1" "$_sfo_p" "$4"
+}
+
 # _sp_read <file> <max> — the first <max> bytes of a file, without a fork.
 _sp_read() { local c; [[ -r "$1" ]] || return 0; c="$(<"$1")"; printf '%s' "${c:0:$2}"; }
 
@@ -252,7 +269,7 @@ _stage_block_previous_work() {
             [[ "$k" == P && -z "$res_any" ]] && { _verdict_resolve_path_v res_any "$raw" "$state_dir"; res_topic="${topic_of["path:$raw"]:-none}"; res_allow="${allow_of["path:$raw"]:-}"; }
             [[ -z "$takes" || "$takes" == *" ${topic_of["path:$raw"]:-none} "* ]] || continue
             case "$k" in
-                S) [[ -z "$summ" ]] && { summ="$(_inputs_output_paths "$s" "$raw" "$state_dir")"; summ="${summ%%$'\n'*}"; } ;;
+                S) [[ -z "$summ" ]] && _sp_first_output_path_v summ "$s" "$raw" "$state_dir" ;;
                 E) [[ -z "$errp" ]] && _verdict_resolve_path_v errp "$raw" "$state_dir" ;;
                 P) [[ -z "$res" ]] && _verdict_resolve_path_v res "$raw" "$state_dir" ;;
             esac
@@ -294,6 +311,9 @@ _stage_block_previous_work() {
             verdict="${BASH_REMATCH[2]}"
         fi
         own=""; [[ "$s" == "$stage" ]] && own=" — your own"
+        # #2470: the stage's own section, between marks the blocks writer takes
+        # out for a judging call — a judge never sees its stage's earlier output.
+        [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_SECT_BEGIN"
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
         [[ -n "$listed" ]] && printf 'Outputs:\n%s' "$listed"
         [[ -n "$body" ]] && printf '\nFindings:\n%s\n' "$body"
@@ -345,6 +365,7 @@ _stage_block_previous_work() {
                 "$(_sp_read "$cutoff" "$_ZB_SP_NOTES_MAX_BYTES")"
         fi
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_OWN_END"
+        [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_SECT_END"
     done
     [[ "$any" -eq 1 ]] || printf '\nNo stage has run before this one.\n'
     return 0
@@ -361,7 +382,9 @@ _sp_findings_for() {
          | ((if (.topic | type) == "string" then .topic else "" end) as $t
             | if ($t != "" and ($al | contains(" " + $t + " "))) then $t else $ot end) as $eff
          | select($tk == "" or ($tk | contains(" " + $eff + " ")))
-         | "- \($l) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' "$1" 2>/dev/null || true
+         # #2470: a finding that shows a SPEC whole keeps its lines, each
+         # indented under the first.
+         | "- \($l) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("\r"; "")|gsub("\n+$"; "")|gsub("\n"; "\n    "))"' "$1" 2>/dev/null || true
 }
 
 # _sp_list_words " a b c " — "a, b and c".

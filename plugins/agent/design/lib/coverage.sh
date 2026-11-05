@@ -22,95 +22,93 @@ declare -F zb_reply_join_v >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 # shellcheck source=../../../../scripts/lib/judge.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
+# shellcheck source=./coverage-answer.sh
+source "${BASH_SOURCE[0]%/*}/coverage-answer.sh"
 
 # The call's three parts, composed with the engine's blocks in the one prompt
-# order (ADR-067 §8).
+# order (ADR-067 §8). #2470: requirement coverage is asked only when a SPEC
+# changed or a requirement's finding was answered; with [reqs] it is.
 _dcov_prompt_own() {
-    cat <<'EOF2'
-You are checking whether a DESIGN covers what an ISSUE asked for.
+    local reqs="${1:-}"
+    printf 'You are checking whether a DESIGN covers what an ISSUE asked for, SPEC by SPEC.\n'
+    [[ -n "$reqs" ]] && cat <<'EOF2'
 
 Check EVERY requirement, and find EVERY one that no SPEC fully covers — not
 only the first you find. The design is revised once per round and fixes only
 what you list; a gap left out of this answer costs a whole round.
+EOF2
+    cat <<'EOF2'
 
-Then look the other way: find EVERY SPEC or scope entry that commits to
-something that the issue does not ask for, or that contradicts it.
+Look at every SPEC shown in full: find EVERY one that commits to
+something that the issue does not ask for, or that contradicts it. For every
+one marked [done], read the code its evidence names, as it was before this
+change: find each one whose code does not do what it says. Then judge each of
+its parts.
 
-Then, for every SPEC marked [done], read the code its evidence names, as it was
-before this change: find each one whose code does not do what the SPEC says.
+Answer in exactly this form, each line starting with its id.
+EOF2
+    [[ -n "$reqs" ]] && cat <<'EOF2'
 
-Answer with one line for every requirement and one line for every SPEC, each
-starting with its id, in exactly this form:
+One line for every requirement:
 
 <requirement id>: covered
 <requirement id>: uncovered | WHY: <what no SPEC covers> | QUOTE: "<the requirement's own words that no SPEC covers>"
+EOF2
+    cat <<'EOF2'
+
+At least one line for every SPEC shown in full. When nothing is wrong with it,
+one line:
+
 <SPEC id>: ok
+
+When something is wrong with it, one line for each thing wrong, and no ok line:
+
 <SPEC id>: outside | WHY: <what the issue does not ask for, or how it contradicts it> | QUOTE: "<the SPEC's own words that do>"
 <SPEC id>: done_wrong | WHY: <what the code does instead> | QUOTE: <file>:"<the exact text of the code that shows it>"
+<SPEC id>: needs_cleanup | WHY: <what the Given or a Then leaves behind> | QUOTE: "<the words of the part that leaves it>"
+<SPEC id> <part>: untestable | WHY: <why a test cannot observe it> | QUOTE: "<that part's own words>"
+<SPEC id> <part>: how | WHY: <what it says about how it is built> | QUOTE: "<that part's own words>"
+<SPEC id> <part>: contradicts | WHY: <what it cannot be true together with, and where that is> | QUOTE: "<that part's own words>"
+<SPEC id> <part>: duplicate | WHY: <which SPEC already has this action> | QUOTE: "<that part's own words>"
 
-done_wrong is only for a SPEC marked [done].
+<part> is the word the part's line starts with: Given, When, Then, And or
+Cleanup. The QUOTE is copied from that line, and says which line it is when the
+SPEC has several.
 
-A SPEC with parts (shown under it, each with its label: Given 1, When, Then 1,
-Cleanup 1) is judged part by part too. Answer one more line for every part:
-
-<SPEC id> <part>: ok
-<SPEC id> <part>: untestable | WHY: <why a test cannot observe it> | QUOTE: "<the part's own words>"
-<SPEC id> <part>: how | WHY: <what it says about how it is built> | QUOTE: "<the part's own words>"
-<SPEC id> <part>: contradicts | WHY: <what it cannot be true together with> | QUOTE: "<those words>" or <file>:"<that text>"
-<SPEC id> <part>: duplicate | WHY: <which SPEC already has this action> | QUOTE: "<that SPEC's words>"
-
-untestable is only for a Then: a Then must be something a test can observe
-after the When — an output, a result, a file the code writes, an event — never
-what a file or a test contains, and never "it works". duplicate is only for a
-When. And on the SPEC's own line, instead of ok:
-
-<SPEC id>: needs_cleanup | WHY: <what the Given or a Then leaves behind> | QUOTE: "<the part's own words that leave it>"
-
-when its Given sets up, or a Then says the code leaves, something that outlives
-the test — an exported variable, a file outside the test's own folder, global
-config or git state — and no Cleanup part puts it back.
+done_wrong is only for a SPEC marked [done]. untestable is only for a Then, or
+an And under a Then: it must be something a test can observe after the When —
+an output, a result, a file the code writes, an event — never what a file or a
+test contains, and never "it works". duplicate is only for the When.
+needs_cleanup is for a SPEC whose Given sets up, or whose Then says the code
+leaves, something that outlives the test — an exported variable, a file outside
+the test's own folder, global config or git state — when no Cleanup part puts
+it back.
+EOF2
+    [[ -n "$reqs" ]] && cat <<'EOF2'
 
 A scope entry the issue does not ask for, or that contradicts it, has a line of its own:
 
 SCOPE: <the scope entry, as listed> | WHY: <why>
+EOF2
+    cat <<'EOF2'
 
 Copy each QUOTE exactly from what it names. It is checked: a quote that is not
 there makes the answer unusable.
 EOF2
 }
-# _dcov_done_evidence <design_md> <base_dir> — each [done] SPEC's evidence, by
-# file and text: the check opens the code itself, in the copy of the code from
-# before the change (#2464, ADR-069 §2), never a window of it.
-_dcov_done_evidence() {
-    local design="$1" base="$2" sid item path
-    # shellcheck disable=SC2034  # the split's text and line, not needed here
-    local _t _n
-    while IFS= read -r sid; do
-        [[ -n "$sid" ]] || continue
-        [[ "$(acceptance_spec_status "$design" "$sid" 2>/dev/null)" == "done" ]] || continue
-        while IFS= read -r item; do
-            [[ -n "$item" ]] || continue
-            acceptance_evidence_split "$item" path _t _n
-            printf -- '- %s: %s — open %s\n' "$sid" "$item" "${base:+$base/}$path"
-        done < <(acceptance_spec_evidence "$design" "$sid" 2>/dev/null)
-    done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
-}
 
-# _dcov_ev_items_v <var> <done_evidence> <base> — the evidence as its
-# fingerprint takes it: without the copy's path, which differs every run; with
-# no copy, unchanged (review on #2465: an empty base stripped every `/`).
-_dcov_ev_items_v() {
-    local -n _dei="$1"
-    if [[ -n "$3" ]]; then _dei="${2//"$3/"/}"; else _dei="$2"; fi
-}
-
-# _dcov_prompt_judge <acceptance> <requirements> [scope] [done_evidence] [base]
+# _dcov_prompt_judge <draft> <shown> [requirements] [others] [scope] [done_evidence] [base]
+# — <shown> the SPECs to judge, in full; [others] the rest, by their first line,
+# given only with [requirements], for what they cover (#2470, ADR-072 §4).
 _dcov_prompt_judge() {
     cat <<EOF2
-Two things, shown at the end of this part, and the issue:
+The design you judge is the file at $1 — read it there for anything you need
+that is not shown here. Do not open design.md: it is an earlier design, not the
+one you judge.
+EOF2
+    [[ -n "${3:-}" ]] && cat <<EOF2
 
 REQUIREMENTS — the issue's requirements, each with its id.
-ACCEPTANCE — the SPEC sentences the design commits to.
 The issue itself, in the requester's own words, is under Previous work.
 
 Judge every requirement in REQUIREMENTS by its words. Read the issue for what a
@@ -142,21 +140,15 @@ counts as covered: the claim is judged against the code once the change is
 built.
 
 REQUIREMENTS:
-$2
-
-ACCEPTANCE:
-$1
-
-SCOPE — the files the design plans to change:
-${3:-(none named)}
-
-THE [done] SPECS' EVIDENCE — a file and a piece of its text. Open the file
-and read the code around that text, as much as you need:
-${4:-(no SPEC is marked [done])}
-${5:+
-The code from before this change is a copy at $5 — read the code of each
-[done] SPEC there. The repository as it is now is the current directory.}
+$3
 EOF2
+    printf '\nACCEPTANCE — the SPECs to judge, each with its parts:\n'
+    printf 'ACCEPTANCE:\n%s\n' "${2:-(none)}"
+    [[ -n "${3:-}" && -n "${4:-}" ]] && printf '\nOTHER SPECS — judged before and unchanged, shown by their first line for what they cover. Do not answer for them.\n%s\n' "$4"
+    [[ -n "${3:-}" ]] && printf '\nSCOPE — the files the design plans to change:\n%s\n' "${5:-(none named)}"
+    [[ -n "${6:-}" ]] && printf "\nTHE [done] SPECS' EVIDENCE — a file and a piece of its text. Open the file\nand read the code around that text, as much as you need:\n%s\n" "$6"
+    [[ -n "${6:-}" && -n "${7:-}" ]] && printf '\nThe code from before this change is a copy at %s — read the code of each\n[done] SPEC there. The repository as it is now is the current directory.\n' "$7"
+    return 0
 }
 _dcov_prompt_limits() {
     cat <<'EOF2'
@@ -166,168 +158,158 @@ _dcov_prompt_limits() {
 EOF2
 }
 
-# _dcov_parse <reply> <requirements> <acceptance> <scope> <repo> <base> — the
-# reply's line for each item into _DESIGN_UNCOVERED, _DESIGN_OUTSIDE and
-# _DESIGN_DONE_WRONG. _DCOV_PROBLEM says what makes the answer unusable (an item
-# with no line, a word that is not its kind's, a quote that is not there), and
-# _DCOV_QUOTED lists the files its quotes name.
-_dcov_parse() {
-    local raw="$1" reqs="$2" acc="$3" scope="$4" repo="$5" base="$6"
-    _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DCOV_PROBLEM=""; _DCOV_QUOTED=()
-    _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=()
-    local -A req_text=() spec_text=() spec_st=() seen=() part_text=() spec_parts=()
-    local -a order=() bad=()
-    local l id rest word why quote w qp lab _px
-    # #2467: the words every quote of a contradiction or a duplicate may come from.
-    local all_words="$reqs"$'\n'
-    acceptance_block_render_v w "$acc"; all_words+="$w"
-    while IFS= read -r l; do
-        [[ "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+):[[:space:]]*(.*)$ ]] || continue
-        req_text["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"; order+=("${BASH_REMATCH[1]}")
-    done <<< "$reqs"
-    while IFS= read -r l; do
-        [[ "$l" == "TESTFILES:" ]] && break
-        [[ "$l" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
-        id="${BASH_REMATCH[1]}"
-        _acceptance_spec_line "$acc" "$id" || continue
-        spec_text["$id"]="$_ACC_SPEC_TEXT"; spec_st["$id"]="$_ACC_SPEC_STATUS"; order+=("$id")
-        # #2467 (ADR-073 §5): each part of it is judged on its own line.
-        local -a _dp_parts=()
-        acceptance_parts_v _dp_parts "$_ACC_SPEC_PARTS"
-        for _px in ${_dp_parts[@]+"${_dp_parts[@]}"}; do
-            lab="${_px%%$'\t'*}"
-            part_text["$id $lab"]="${_px#*$'\t'}"; order+=("$id $lab")
-            spec_parts["$id"]+="${_px#*$'\t'}"$'\n'
+# _dcov_specs <acceptance> — every SPEC of the block, read once, into the
+# caller's ids, first, text, st, render, labs, pword and ptext: its first line as
+# written, its words, its status, the whole SPEC as a model is shown it, and
+# each part by its label (Then 2) with the word design wrote (And) and its words.
+_dcov_specs() {
+    local _dsl _dsid _dsi _dslab
+    while IFS= read -r _dsl; do
+        [[ "$_dsl" == "TESTFILES:" ]] && break
+        [[ "$_dsl" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
+        _dsid="${BASH_REMATCH[1]}"
+        _acceptance_spec_line "$_dsl" "$_dsid" || continue
+        ids+=("$_dsid"); text["$_dsid"]="$_ACC_SPEC_TEXT"; st["$_dsid"]="$_ACC_SPEC_STATUS"
+        first["$_dsid"]="$_dsid${_ACC_SPEC_TAG:+[$_ACC_SPEC_TAG]}: $_ACC_SPEC_REST"
+        render["$_dsid"]="${first[$_dsid]}"; labs["$_dsid"]=""
+        local -a _dsp=() _dsw=()
+        acceptance_parts_v _dsp "$_ACC_SPEC_PARTS" "" _dsw
+        for _dsi in "${!_dsp[@]}"; do
+            _dslab="${_dsp[_dsi]%%$'\t'*}"
+            labs["$_dsid"]+="$_dslab"$'\n'
+            pword["$_dsid $_dslab"]="${_dsw[_dsi]}"; ptext["$_dsid $_dslab"]="${_dsp[_dsi]#*$'\t'}"
+            render["$_dsid"]+=$'\n'"  ${_dsw[_dsi]}: ${_dsp[_dsi]#*$'\t'}"
         done
-    done <<< "$acc"
-    while IFS= read -r l; do
-        l="${l#"${l%%[![:space:]>*\`_-]*}"}"
-        if [[ "$l" =~ ^SCOPE:[[:space:]]*(.*)$ ]]; then
-            rest="${BASH_REMATCH[1]}"; w="${rest%%|*}"; w="${w%"${w##*[![:space:]]}"}"
-            why=""; [[ "$rest" == *"| WHY:"* ]] && { why="${rest#*| WHY:}"; why="${why#"${why%%[![:space:]]*}"}"; }
-            if [[ $'\n'"$scope"$'\n' == *$'\n'"$w"$'\n'* ]]; then
-                _DESIGN_OUTSIDE+=("$w: ${why:-the issue does not ask for it}")
-            else
-                bad+=("SCOPE names $w, which is not in the design's scope")
-            fi
-            continue
-        fi
-        if [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[[:space:]]+((Given|Then|Cleanup)[[:space:]]+[0-9]+|When([[:space:]]+[0-9]+)?)[*\`_]*:[[:space:]]*([a-z_]+)(.*)$ ]]; then
-            _dcov_part_line "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}"
-            continue
-        fi
-        [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[*\`_]*:[[:space:]]*([a-z_]+)(.*)$ ]] || continue
-        id="${BASH_REMATCH[1]}"; word="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"
-        [[ -n "${req_text[$id]+x}" || -n "${spec_text[$id]+x}" ]] || continue
-        seen["$id"]=1
-        why=""; quote=""
-        if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
-        why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
-        [[ "$rest" == *"| QUOTE:"* ]] && quote="${rest#*| QUOTE:}"
-        if [[ -n "${req_text[$id]+x}" ]]; then
-            case "$word" in
-                covered) continue ;;
-                uncovered)
-                    if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
-                    judge_quote_check_v w "$quote" "${req_text[$id]}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
-                    judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED+=("$qp")
-                    _DESIGN_UNCOVERED+=("$id: ${why:-no SPEC covers it} — ${quote#"${quote%%[![:space:]]*}"}") ;;
-                *) bad+=("$id is a requirement: it is covered or uncovered, not $word") ;;
-            esac
-            continue
-        fi
-        case "$word" in
-            ok) ;;
-            needs_cleanup)
-                if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
-                judge_quote_check_v w "$quote" "${spec_text[$id]}"$'\n'"${spec_parts[$id]:-}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
-                _DESIGN_NEEDS_CLEANUP+=("$id: ${why:-it leaves something behind} — ${quote#"${quote%%[![:space:]]*}"}") ;;
-            outside|done_wrong)
-                if [[ "$word" == done_wrong && "${spec_st[$id]}" != "done" ]]; then
-                    bad+=("$id is not marked [done]: done_wrong is only for a SPEC that is"); continue
-                fi
-                if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
-                judge_quote_check_v w "$quote" "${spec_text[$id]}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
-                judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED+=("$qp")
-                quote="${quote#"${quote%%[![:space:]]*}"}"
-                if [[ "$word" == outside ]]; then _DESIGN_OUTSIDE+=("$id: ${why:-the issue does not ask for it} — $quote")
-                else _DESIGN_DONE_WRONG+=("$id: ${why:-the code does not do it} — $quote"); fi ;;
-            *) bad+=("$id is a SPEC: it is ok, outside, done_wrong or needs_cleanup, not $word") ;;
-        esac
-    done <<< "$raw"
-    local -a missing=()
-    for id in ${order[@]+"${order[@]}"}; do [[ -n "${seen[$id]+x}" ]] || missing+=("$id"); done
-    [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
-    if [[ ${#bad[@]} -gt 0 ]]; then
-        local IFS=';'; _DCOV_PROBLEM="${bad[*]}"; _DCOV_PROBLEM="${_DCOV_PROBLEM//;/; }"
-    fi
-    return 0
+    done <<< "$1"
 }
 
-# _dcov_part_line <"<id> <label>"> <verdict> <rest> — one part's line of the
-# answer (#2467, ADR-073 §5), read in _dcov_parse's scope: its seen, bad,
-# part_text, all_words and _DESIGN_PART_WRONG.
-_dcov_part_line() {
-    local key="$1" word="$2" rest="$3" why="" quote="" own w qp
-    [[ -n "${part_text[$key]+x}" ]] || return 0
-    seen["$key"]=1
-    [[ "$word" == ok ]] && return 0
-    if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
-    why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
-    [[ "$rest" == *"| QUOTE:"* ]] && quote="${rest#*| QUOTE:}"
-    case "$word" in
-        untestable) [[ "$key" == *" Then "* ]] || { bad+=("$key: untestable is only for a Then"); return 0; }; own="${part_text[$key]}" ;;
-        how)        own="${part_text[$key]}" ;;
-        duplicate)  [[ "$key" == *" When"* ]] || { bad+=("$key: duplicate is only for a When"); return 0; }; own="$all_words" ;;
-        contradicts) own="$all_words" ;;
-        *) bad+=("$key is a part: it is ok, untestable, how, contradicts or duplicate, not $word"); return 0 ;;
-    esac
-    if [[ -z "$quote" ]]; then bad+=("$key has no QUOTE"); return 0; fi
-    judge_quote_check_v w "$quote" "$own" "$repo" "$base" || { bad+=("$key's quote $w"); return 0; }
-    judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED+=("$qp")
-    quote="${quote#"${quote%%[![:space:]]*}"}"
-    _DESIGN_PART_WRONG+=("$word"$'\t'"$key"$'\t'"${why:-}"$'\t'"$quote")
-    return 0
+# _dcov_done_evidence_v <assoc_var> <design_md> <base_dir> — each [done] SPEC's
+# evidence, by file and text, per SPEC: the check opens the code itself, in the
+# copy of the code from before the change (#2464, ADR-069 §2), never a window
+# of it. Reads the caller's ids and st.
+_dcov_done_evidence_v() {
+    local -n _dde="$1"; local _dde_sid _dde_item _dde_path
+    # shellcheck disable=SC2034  # the split's text and line, not needed here
+    local _t _n
+    for _dde_sid in ${ids[@]+"${ids[@]}"}; do
+        [[ "${st[$_dde_sid]}" == "done" ]] || continue
+        while IFS= read -r _dde_item; do
+            [[ -n "$_dde_item" ]] || continue
+            acceptance_evidence_split "$_dde_item" _dde_path _t _n
+            _dde["$_dde_sid"]+="- $_dde_sid: $_dde_item — open ${3:+$3/}$_dde_path"$'\n'
+        done < <(acceptance_spec_evidence "$2" "$_dde_sid" 2>/dev/null)
+    done
+}
+
+# _dcov_ev_items_v <var> <done_evidence> <base> — the evidence as its
+# fingerprint takes it: without the copy's path, which differs every run; with
+# no copy, unchanged (review on #2465: an empty base stripped every `/`).
+_dcov_ev_items_v() {
+    local -n _dei="$1"
+    if [[ -n "$3" ]]; then _dei="${2//"$3/"/}"; else _dei="$2"; fi
+}
+
+# _dcov_disputes_v <assoc_var> <answers> <verdict_json> — each "nothing to do"
+# answer by the item its finding is about: a SPEC id, or `requirements` for a
+# requirement's or a scope entry's. A finding's first word names it, as
+# _design_coverage_findings writes it; one that names nothing known disputes
+# every item (#2470, ADR-072 §5).
+_dcov_disputes_v() {
+    local -n _ddv="$1"; local _ddv_a _ddv_n _ddv_t _ddv_id _ddv_k
+    local -A _ddv_txt=()
+    [[ "$2" == *"nothing to do"* ]] || return 0
+    if [[ -s "$3" ]]; then
+        while IFS=$'\t' read -r _ddv_n _ddv_t; do _ddv_txt["$_ddv_n"]="$_ddv_t"; done \
+            < <(jq -r '(.data.findings // [])[]? | "\(.n)\t\(.text | tostring | split("\n")[0])"' "$3" 2>/dev/null)
+    fi
+    while IFS= read -r _ddv_a; do
+        [[ "$_ddv_a" =~ ^design\ finding\ ([0-9]+)[[:space:]]*:[[:space:]]*nothing\ to\ do ]] || continue
+        _ddv_t="${_ddv_txt[${BASH_REMATCH[1]}]:-}"; _ddv_id="${_ddv_t%%[: ]*}"
+        if [[ -n "${first[$_ddv_id]+x}" ]]; then _ddv["$_ddv_id"]+="$_ddv_a"$'\n'
+        elif [[ -n "${req_text[$_ddv_id]+x}" || "$_ddv_id" == SCOPE ]]; then _ddv["requirements"]+="$_ddv_a"$'\n'
+        else
+            for _ddv_k in ${ids[@]+"${ids[@]}"} requirements; do _ddv["$_ddv_k"]+="$_ddv_a"$'\n'; done
+        fi
+    done <<< "$2"
 }
 
 # _design_coverage <design_md> <requirements_text> [tier] [answers]
-# Sets _DESIGN_UNCOVERED, _DESIGN_OUTSIDE, _DESIGN_DONE_WRONG (one entry each)
-# and _DESIGN_COV_OUTCOME: empty when the call judged the design, otherwise the
-# outcome word for how the call failed (rate_limited, unavailable, unusable,
-# misconfigured, broken). [answers]: design's own answers disputing findings of
-# this check, one per line (ADR-072 §5). rc 0 always.
+# Sets _DESIGN_UNCOVERED, _DESIGN_OUTSIDE, _DESIGN_DONE_WRONG,
+# _DESIGN_NEEDS_CLEANUP, _DESIGN_PART_WRONG and _DESIGN_COV_OUTCOME: empty when
+# the call judged the design, otherwise the outcome word for how the call failed
+# (rate_limited, unavailable, unusable, misconfigured, broken). [answers]:
+# design's own answers to findings of this check, one per line (ADR-072 §5).
+#
+# #2470 (ADR-072 §4): the answer is kept per SPEC, and requirement coverage as
+# one more item. A SPEC is judged again only when it, its evidence or an answer
+# to its finding changed; requirement coverage whenever any SPEC changed. The
+# call is given the draft by its path and, in full, only the SPECs it judges.
+# rc 0 always.
 _design_coverage() {
     local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}"
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DESIGN_COV_OUTCOME=""
-    _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=()
+    _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=(); _DESIGN_COV_FINDINGS=()
     local acc; acc="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     [[ -n "$acc" ]] || return 0
 
-    local repo="${ZBUILD_REPO_ROOT:-$PWD}" base="" base_sha="" _scope _done_ev _ev_items
+    local -a ids=() req_order=()
+    # shellcheck disable=SC2034  # read by coverage-answer.sh, in this scope
+    local -A first=() text=() st=() render=() labs=() pword=() ptext=() req_text=()
+    local -A _DCOV_LINES=() _DCOV_QUOTED=()
+    _dcov_specs "$acc"
+    local l
+    while IFS= read -r l; do
+        [[ "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+):[[:space:]]*(.*)$ ]] || continue
+        req_text["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"; req_order+=("${BASH_REMATCH[1]}")
+    done <<< "$reqs"
+
+    local repo="${ZBUILD_REPO_ROOT:-$PWD}" base="" base_sha="" scope
     judge_base_dir_v base "$repo" || base=""
     [[ -n "$base" && -f "$base.sha" ]] && base_sha="$(<"$base.sha")"
-    _scope="$(acceptance_list_scope "$design_md" 2>/dev/null || true)"
-    _done_ev="$(_dcov_done_evidence "$design_md" "$base")"
-    _dcov_ev_items_v _ev_items "$_done_ev" "$base"
+    scope="$(acceptance_list_scope "$design_md" 2>/dev/null || true)"
+    local -A ev=()
+    _dcov_done_evidence_v ev "$design_md" "$base"
 
-    # ADR-072 §4: the answer is kept while what it judged is unchanged.
-    local kf="" fp="" eng kept=""
-    local _kd="${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}"
+    local kf="" eng id _kd="${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}"
     [[ -n "$_kd" ]] && kf="${_kd%/}/design-judged.json"
     judge_engine_v eng
-    judge_fp_v fp "$eng"$'\n'"$acc"$'\n'"$reqs"$'\n'"$_scope"$'\n'"$_ev_items"$'\n'"$base_sha"$'\n'"$answers"
-    local _disputed=0; [[ -n "${answers//[[:space:]]/}" ]] && _disputed=1
-    [[ -n "$kf" ]] && judge_kept_get_v kept "$kf" coverage "$fp" "$_disputed"
-    if [[ -n "$kept" ]]; then
-        _dcov_parse "$kept" "$reqs" "$acc" "$_scope" "$repo" "$base"
-        [[ -z "$_DCOV_PROBLEM" ]] && return 0
+    local -A disp=() fps=() kept=()
+    _dcov_disputes_v disp "$answers" "${_kd:+${_kd%/}/design-verdict.json}"
+    local _all="" _ev_all="" _evi _fpv
+    for id in ${ids[@]+"${ids[@]}"}; do
+        _dcov_ev_items_v _evi "${ev[$id]:-}" "$base"
+        _ev_all+="$_evi"; _all+="${render[$id]}"$'\n'
+        judge_fp_v _fpv "$eng"$'\n'"$id"$'\n'"${render[$id]}"$'\n'"$_evi"$'\n'"$base_sha"$'\n'"${disp[$id]:-}"
+        fps["$id"]="$_fpv"
+    done
+    judge_fp_v _fpv "$eng"$'\n'"$reqs"$'\n'"$_all"$'\n'"$scope"$'\n'"$_ev_all"$'\n'"$base_sha"$'\n'"${disp[requirements]:-}"
+    fps["requirements"]="$_fpv"
+    [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps disp
+
+    # A kept answer is read as it was given; one that no longer reads is judged again.
+    local kept_raw="" kept_want="" k
+    for k in "${!kept[@]}"; do kept_raw+="${kept[$k]}"; kept_want+="$k"$'\n'; done
+    if [[ -n "$kept_want" ]]; then
+        _dcov_parse "$kept_raw" "$kept_want"
+        [[ -n "$_DCOV_PROBLEM" ]] && { kept=(); kept_raw=""; kept_want=""; }
+    fi
+    local want="" shown="" others="" done_ev=""
+    for id in ${ids[@]+"${ids[@]}"}; do
+        if [[ -n "${kept[$id]+x}" ]]; then others+="${first[$id]}"$'\n'; continue; fi
+        want+="$id"$'\n'; shown+="${render[$id]}"$'\n'; done_ev+="${ev[$id]:-}"
+    done
+    local reqs_asked=""
+    [[ -n "${kept["requirements"]+x}" ]] || { want+=requirements$'\n'; reqs_asked="$reqs"; }
+    if [[ -z "$want" ]]; then
+        _dcov_parse "$kept_raw" "$kept_want"
+        _dcov_findings_build
+        return 0
     fi
 
-    local framed
+    local framed _disp_shown=""
+    for k in "${!disp[@]}"; do [[ $'\n'"$want" == *$'\n'"$k"$'\n'* ]] && _disp_shown+="${disp[$k]}"; done
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    # #2467: each SPEC shown with its parts, labelled as the answer names them.
-    local _acc_shown; acceptance_block_render_v _acc_shown "$acc"
-    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own)" "$(_dcov_prompt_judge "$_acc_shown" "$reqs" "$_scope" "$_done_ev" "$base")$(judge_disputes_block "$answers")" "$(_dcov_prompt_limits)")"; then
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$scope" "$done_ev" "$base")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
@@ -366,7 +348,7 @@ _design_coverage() {
         fi
         # #2460: each item read whole, however many lines it spans.
         zb_reply_join_v raw "$raw"
-        _dcov_parse "$raw" "$reqs" "$acc" "$_scope" "$repo" "$base"
+        _dcov_parse "$raw" "$want"
         [[ -z "$_DCOV_PROBLEM" ]] && break
         ask="$(stage_prompt_reask "$framed" "$_DCOV_PROBLEM" "$raw")"
     done
@@ -377,31 +359,22 @@ _design_coverage() {
         _DESIGN_COV_OUTCOME=unusable
         return 0
     fi
-    local q
-    for q in ${_DCOV_QUOTED[@]+"${_DCOV_QUOTED[@]}"}; do files+=("$repo/$q"); done
-    [[ -n "$kf" ]] && judge_kept_put_one "$kf" coverage "$fp" "$raw" ${files[@]+"${files[@]}"}
-    return 0
-}
-
-# _design_coverage_findings — the check's answer as design's findings, one per line.
-_design_coverage_findings() {
-    local x
-    for x in ${_DESIGN_UNCOVERED[@]+"${_DESIGN_UNCOVERED[@]}"}; do printf 'The issue asks for this and no SPEC covers it: %s\n' "$x"; done
-    for x in ${_DESIGN_OUTSIDE[@]+"${_DESIGN_OUTSIDE[@]}"}; do printf 'the issue does not ask for this, or the design gets it wrong: %s\n' "$x"; done
-    for x in ${_DESIGN_DONE_WRONG[@]+"${_DESIGN_DONE_WRONG[@]}"}; do printf 'marked [done], but the code its evidence points at does not do it: %s\n' "$x"; done
-    # #2467 (ADR-073 §5): which part of which SPEC, and what is wrong with it.
-    local _v _k _w _q
-    for x in ${_DESIGN_PART_WRONG[@]+"${_DESIGN_PART_WRONG[@]}"}; do
-        IFS=$'\t' read -r _v _k _w _q <<< "$x"
-        case "$_v" in
-            untestable)  printf '%s is not something a test can observe: %s — %s. Rewrite it as what someone could see the code do after the When\n' "$_k" "$_w" "$_q" ;;
-            how)         printf '%s says how it is built, not what it does: %s — %s. Say what someone could see happen instead\n' "$_k" "$_w" "$_q" ;;
-            contradicts) printf '%s cannot be true together with %s — %s\n' "$_k" "$_w" "$_q" ;;
-            duplicate)   printf '%s is the same action as another SPEC: %s — %s. Keep one of them\n' "$_k" "$_w" "$_q" ;;
-        esac
-    done
-    for x in ${_DESIGN_NEEDS_CLEANUP[@]+"${_DESIGN_NEEDS_CLEANUP[@]}"}; do
-        printf '%s leaves something behind that nothing puts back: %s. Add a Cleanup: line under it saying what must be true again after the test\n' "${x%%: *}" "${x#*: }"
-    done
+    # Each item judged is kept with what it depended on: the files the call
+    # opened, and the files its own quotes name.
+    local -A put=() putfp=() deps=()
+    local _opened_all="" f q
+    for f in ${files[@]+"${files[@]}"}; do _opened_all+="$f"$'\n'; done
+    local new_raw=""
+    while IFS= read -r k; do
+        [[ -n "$k" ]] || continue
+        # shellcheck disable=SC2034  # passed by name to judge_kept_put_all
+        { put["$k"]="${_DCOV_LINES[$k]:-}"; putfp["$k"]="${fps[$k]}"; deps["$k"]="$_opened_all"; }
+        while IFS= read -r q; do [[ -n "$q" ]] && deps["$k"]+="$repo/$q"$'\n'; done <<< "${_DCOV_QUOTED[$k]:-}"
+        new_raw+="${_DCOV_LINES[$k]:-}"
+    done <<< "$want"
+    [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps
+    # The verdict is every item's answer: the kept ones and this call's.
+    [[ -n "$kept_want" ]] && _dcov_parse "$kept_raw$new_raw" "$kept_want$want"
+    _dcov_findings_build
     return 0
 }

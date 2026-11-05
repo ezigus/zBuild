@@ -1469,23 +1469,21 @@ zb_test_test_run_output() {
 }
 
 # zb_test_coverage_ok <prompt> — design's coverage check answering that it
-# finds nothing (#2464, ADR-072 §3): every requirement covered and every SPEC
-# ok, each read off the prompt it was asked, as the real judge reads them.
+# finds nothing (#2464, ADR-072 §3): every requirement it is asked about
+# covered and every SPEC it is shown in full ok — one line each (#2470) — read
+# off the prompt it was asked, as the real judge reads them.
 zb_test_coverage_ok() {
-    local l sec="" id=""
+    local l sec=""
     while IFS= read -r l; do
         case "$l" in
             REQUIREMENTS:) sec=r; continue ;;
             ACCEPTANCE:)   sec=a; continue ;;
-            "SCOPE —"*|TESTFILES:) sec=""; continue ;;
+            "OTHER SPECS —"*|"SCOPE —"*|TESTFILES:) sec=""; continue ;;
         esac
         if [[ "$sec" == r && "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+): ]]; then
             printf '%s: covered\n' "${BASH_REMATCH[1]}"
         elif [[ "$sec" == a && "$l" =~ ^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)(\[[a-z-]+\])?: ]]; then
-            id="${BASH_REMATCH[1]}"; printf '%s: ok\n' "$id"
-        elif [[ "$sec" == a && -n "$id" && "$l" =~ ^[[:space:]]+((Given|Then|Cleanup)\ [0-9]+|When(\ [0-9]+)?):\  ]]; then
-            # #2467 (review on #2469): every part of a SPEC with parts, too.
-            printf '%s %s: ok\n' "$id" "${BASH_REMATCH[1]}"
+            printf '%s: ok\n' "${BASH_REMATCH[1]}"
         fi
     done <<< "$1"
 }
@@ -1506,22 +1504,14 @@ zb_test_acceptance_ok() {
 
 # zb_test_check_ok <prompt> — test-author's assertion check answering that
 # every part of every SPEC is met and every test is laid out in sections
-# (#2467, ADR-073 §6), read off the prompt it was asked, as the real check
-# reads it. rc 1 when <prompt> is not that check's.
+# (#2467, ADR-073 §6): one ok line per SPEC (#2470), read off the prompt it was
+# asked, as the real check reads it. rc 1 when <prompt> is not that check's.
 zb_test_check_ok() {
     [[ "$1" == *"judge every part of it against its test"* ]] || return 1
-    local l id="" in=0
+    local l
     while IFS= read -r l; do
-        if [[ "$l" =~ ^\#\#\#\ ([A-Z][A-Z0-9_]*-[0-9]+)$ ]]; then
-            [[ -n "$id" ]] && printf '%s sections: ok\n' "$id"
-            id="${BASH_REMATCH[1]}"; in=0; continue
-        fi
-        [[ "$l" == "REQUIREMENT:" ]] && { in=1; continue; }
-        [[ "$l" == "ASSERTION:" ]] && { in=0; continue; }
-        (( in )) && [[ "$l" =~ ^\ \ ((Given|Then|Cleanup)\ [0-9]+|When(\ [0-9]+)?):\  ]] \
-            && printf '%s %s: ok\n' "$id" "${BASH_REMATCH[1]}"
+        [[ "$l" =~ ^\#\#\#\ ([A-Z][A-Z0-9_]*-[0-9]+)$ ]] && printf '%s: ok\n' "${BASH_REMATCH[1]}"
     done <<< "$1"
-    [[ -n "$id" ]] && printf '%s sections: ok\n' "$id"
     return 0
 }
 
