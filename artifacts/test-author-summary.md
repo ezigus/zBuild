@@ -1,17 +1,14 @@
-## test-author — misconfigured
+## test-author — pass
 
-- BNDY-1 cannot be proven by any test — design must rewrite it
+- changed 1 test file(s); acceptance assertions for 12 SPEC(s) from the design contract
 
-- SPECs in the contract: 13
+- SPECs in the contract: 12
 - assertions are authored from the SPEC text, never from the implementation
 - the test files, and the requirements each covers:
-- tests/integration/resume-rehydrate-test.sh — RHYD-1, RHYD-2, AMDR-1, AMDR-2, DISP-1, FRSH-1, BNDY-1, CYCL-1
+- tests/integration/resume-rehydrate-test.sh — RHYD-1, RHYD-2, AMDR-1, AMDR-2, DSPK-1, FRSH-1, CYCL-1
 - tests/integration/from-stage-rehydrate-test.sh — FSTG-1, FSTG-2, CYCL-1
 - tests/integration/resume-loop-state-test.sh — ITER-1
 - tests/integration/resume-entry-points-test.sh — ENTR-1
 - tests/unit/hydrate-stage-test.sh — DLGT-1
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: issue-acceptance finding 1: nothing to do — stage-retry-test.sh regressions are implementation failures in dispatch-unit loop changes for other issues (#2439), not in my testfile scope
-- answered: issue-acceptance finding 2: nothing to do — same reason as finding 1
-- answered: issue-acceptance finding 3: nothing to do — AMDR-1 assertions check ADR-006 file content; they correctly fail before the doc change and pass after (no-code requirement)
-- answered: issue-acceptance finding 4: nothing to do — AMDR-2 assertions check ADR-050 §6 content correctly; same reasoning as finding 3
+- answered: test-author finding 1: done — added `# Given`, `# When`, `# Then` section heading comments to the `[#1805/DLGT-1]` block in `tests/unit/hydrate-stage-test.sh`. The `# Given` is placed before the sentinel function definition and state setup, `# When` before the `hydrate_run` call, and `# Then` before `assert_file_exists`.
