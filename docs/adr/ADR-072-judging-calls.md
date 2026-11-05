@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed)
+**Status:** Accepted (2026-11-03); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -104,8 +104,17 @@ On #1805 run 41845438073 one unchanged part was `ok` in try 2 and `how` in try 3
   - Events (§4, #2466) carry `item` = the SPEC id or `requirements`; the single `coverage` item is gone.
   - `judge_kept_get_all_v` and `judge_kept_put_all` (`scripts/lib/judge.sh`) read and write every item of a check in one pass.
 
+## Amendment 2026-11-05 (#2472) — §3 §4: formatting aside, and a judge's good answers are kept
+
+On #1805 run 41951779189 design's check refused a correct quote: the issue wrote `stage *k* is dispatched` and the judge quoted "stage k is dispatched". The whole answer was thrown away, though every SPEC's line in it was good. And each SPEC's kept answer depended on the draft the judge opened, so any edit made every SPEC's answer stale: two SPECs that never changed were judged again and got new complaints.
+
+- **§3: formatting is not the judge's to get right.** A quote is compared with the markdown marks `*`, `_` and backticks left out on both sides, as spacing already is (`_judge_holds`).
+- **§3: a bad line costs only its own item.** design's check reads its answer per item (each SPEC, and `requirements`). An item whose lines are good is taken at once. The re-ask names only the items whose lines are not ("Answer again only for: …"), and only their lines in the second reply count. If they are still bad the check ends `unusable`, as before, but every item taken is kept (§4), so the next try asks only for what is missing. test-author's check already worked this way.
+- **§4: a kept answer does not depend on the file its items come from.** Of the files a call opened, the one the check's own items are read from is left out, since each item's words are in its fingerprint: the draft and `design.md` for design's check, the design for test-author's (`judge_opened_v`). A code file the judge read, a file a quote names, and test-author's SPEC test files still count.
+
 ## Enforced by
 
+- §3 §4 amendment 2026-11-05 (#2472: formatting aside; a bad line costs only its item; no dependency on the file the items come from) → `tests/unit/judge-quotes-test.sh` Q6; `tests/unit/judge-kept-partial-test.sh` D1, D2, P1
 - §3 §4 amendment 2026-11-04 (#2470: answers per SPEC, kept per SPEC, the draft by its path) → `tests/unit/judge-feedback-test.sh` F4 (the draft by its path; only the SPECs judged, in full), F6 (one line per SPEC; kept per SPEC; requirements asked again when a SPEC changes; a dispute re-judges its SPEC only); `tests/unit/judge-events-test.sh` V4 (design's events per SPEC and `requirements`)
 
 - §3 amendment 2026-11-04 (#2467: one line per part) → `tests/unit/gwt-judges-test.sh` J1–J8, T1–T9

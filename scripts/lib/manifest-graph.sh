@@ -186,7 +186,17 @@ _mgraph_output_bool() { _mgraph_output_field "${1-}" "${2-}" "${3-}"; }
 # entry, read by the shell. The entry's id keeps any `# comment` and loses every
 # quote; the field loses its comment, trailing spaces and every quote.
 _mgraph_output_field() {
-    local manifest="${1-}" want="${2-}" field="${3-}"
+    local _mof=""
+    _mgraph_output_field_v _mof "${1-}" "${2-}" "${3-}"
+    [[ -n "$_mof" ]] && printf '%s\n' "$_mof"
+    return 0
+}
+
+# _mgraph_output_field_v <var> <manifest> <output_id> <field> — the same, into
+# <var> in the caller's shell (#2472: the contract check asks for every output).
+_mgraph_output_field_v() {
+    local -n _mofv="$1"; _mofv=""
+    local manifest="${2-}" want="${3-}" field="${4-}"
     [[ -f "$manifest" && -r "$manifest" && -n "$want" && -n "$field" ]] || return 0
     local l v cur="" inb=0
     local re_open='^outputs:[[:space:]]*$' re_top='^[a-zA-Z_]'
@@ -203,23 +213,30 @@ _mgraph_output_field() {
             v="${l#*"${field}":}"; _mg_strip_lead_v v
             if [[ "$v" == *#* ]]; then v="${v%%#*}"; fi
             _mg_strip_trail_v v
-            printf '%s\n' "${v//[\"\']/}"
+            _mofv="${v//[\"\']/}"
             return 0
         fi
     done 2>/dev/null < "$manifest"
     return 0
 }
 
+# manifest_graph_output_format_v <var> <manifest> <output_id> — the declared
+# `format:`, into <var>.
+manifest_graph_output_format_v() { _mgraph_output_field_v "$1" "${2-}" "${3-}" format; }
+
 # ─── manifest_graph_output_summary <manifest> <output_id> ────────────────────
 # Returns 'true' if the output entry is marked `summary: true` (#1976) — the ONE
 # output a stage offers downstream as ambient prompt context. Distinct from
 # `inputs:`, which stay required, resolved and programmatic (ADR-055 amendment).
 manifest_graph_output_summary() { _mgraph_output_bool "${1-}" "${2-}" summary; }
+manifest_graph_output_summary_v() { _mgraph_output_field_v "$1" "${2-}" "${3-}" summary; }
 
 # ─── manifest_graph_formats ──────────────────────────────────────────────────
 # The closed set (#1895/#1894). A format names how the engine checks an artifact
 # for damage, so it must be a vocabulary the engine implements, not free text.
-manifest_graph_formats() { printf 'json markdown text patch'; }
+_MGRAPH_FORMATS='json markdown text patch'
+manifest_graph_formats() { printf '%s' "$_MGRAPH_FORMATS"; }
+manifest_graph_formats_v() { local -n _mgfv="$1"; _mgfv="$_MGRAPH_FORMATS"; }
 
 # ─── manifest_graph_primary_output <manifest> ──────────────────────────────────
 # Echoes the FIRST outputs[] row marked `primary: true` in the same

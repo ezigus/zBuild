@@ -13,42 +13,51 @@
 [[ -n "${_ZBUILD_EARLIER_OUTPUT_LOADED:-}" ]] && return 0
 _ZBUILD_EARLIER_OUTPUT_LOADED=1
 
-# _eo_candidates [dir...] — one path per line: every output in the index, or,
-# with no index, every file in the given directories (the caller's own artifact
-# and state directories) and the run's.
-_eo_candidates() {
+# _eo_candidates_v <array_var> [dir...] — every output in the index, or, with
+# no index, every file in the given directories (the caller's own artifact and
+# state directories) and the run's, in the caller's shell (#2472, ADR-065).
+_eo_candidates_v() {
+    local -n _eoc="$1"; shift
+    _eoc=()
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
-        jq -r '.inputs // {} | .[] | if type == "array" then .[] else . end | select(type == "string")' \
-            "$ZBUILD_STAGE_INPUTS" 2>/dev/null
+        mapfile -t _eoc < <(jq -r '.inputs // {} | .[] | if type == "array" then .[] else . end | select(type == "string")' \
+            "$ZBUILD_STAGE_INPUTS" 2>/dev/null)
         return 0
     fi
-    local d f
-    for d in "$@" "${ZBUILD_ARTIFACT_DIR:-}" "${ZBUILD_STATE_DIR:+$ZBUILD_STATE_DIR/artifacts}" "${ZBUILD_STATE_DIR:-}"; do
-        [[ -n "$d" && -d "$d" ]] || continue
-        for f in "$d"/*; do [[ -f "$f" ]] && printf '%s\n' "$f"; done
+    local _eoc_d _eoc_f
+    for _eoc_d in "$@" "${ZBUILD_ARTIFACT_DIR:-}" "${ZBUILD_STATE_DIR:+$ZBUILD_STATE_DIR/artifacts}" "${ZBUILD_STATE_DIR:-}"; do
+        [[ -n "$_eoc_d" && -d "$_eoc_d" ]] || continue
+        for _eoc_f in "$_eoc_d"/*; do [[ -f "$_eoc_f" ]] && _eoc+=("$_eoc_f"); done
     done
+    return 0
 }
 
 # earlier_output_with_text <ERE> [dir...] — the first earlier output with a line
-# matching <ERE>. Prints its path; rc 1 when none has.
+# matching <ERE>. Prints its path; rc 1 when none has. One grep for them all:
+# `grep -l` names the files in the order given (#2472, ADR-065).
 earlier_output_with_text() {
-    local re="$1" f; shift
-    while IFS= read -r f; do
-        [[ -n "$f" && -f "$f" && -s "$f" ]] || continue
-        [[ "$f" == *.json ]] && continue
-        grep -qE -- "$re" "$f" 2>/dev/null && { printf '%s\n' "$f"; return 0; }
-    done < <(_eo_candidates "$@")
-    return 1
+    local re="$1" f out; shift
+    local -a _eot_all=() _eot_txt=()
+    _eo_candidates_v _eot_all "$@"
+    for f in ${_eot_all[@]+"${_eot_all[@]}"}; do
+        [[ -n "$f" && "$f" != *.json && -f "$f" && -s "$f" ]] && _eot_txt+=("$f")
+    done
+    [[ ${#_eot_txt[@]} -gt 0 ]] || return 1
+    out="$(grep -lE -- "$re" "${_eot_txt[@]}" 2>/dev/null)" || true
+    [[ -n "$out" ]] || return 1
+    printf '%s\n' "${out%%$'\n'*}"
 }
 
 # earlier_output_with_json <jq-test> [dir...] — the first earlier JSON output
 # <jq-test> is true of. Prints its path; rc 1 when none is.
 earlier_output_with_json() {
     local test="$1" f; shift
-    while IFS= read -r f; do
+    local -a _eoj_all=()
+    _eo_candidates_v _eoj_all "$@"
+    for f in ${_eoj_all[@]+"${_eoj_all[@]}"}; do
         [[ "$f" == *.json && -s "$f" ]] || continue
         jq -e "$test" "$f" >/dev/null 2>&1 && { printf '%s\n' "$f"; return 0; }
-    done < <(_eo_candidates "$@")
+    done
     return 1
 }
 
@@ -56,10 +65,12 @@ earlier_output_with_json() {
 # <jq-test> is true of, one path per line. rc 0 always.
 earlier_outputs_with_json() {
     local test="$1" f; shift
-    while IFS= read -r f; do
+    local -a _eos_all=()
+    _eo_candidates_v _eos_all "$@"
+    for f in ${_eos_all[@]+"${_eos_all[@]}"}; do
         [[ "$f" == *.json && -s "$f" ]] || continue
         jq -e "$test" "$f" >/dev/null 2>&1 && printf '%s\n' "$f"
-    done < <(_eo_candidates "$@")
+    done
     return 0
 }
 

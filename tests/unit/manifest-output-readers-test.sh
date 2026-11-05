@@ -11,6 +11,10 @@
 # R2 [guard]  each gives the awk reader's exact output, for every real manifest
 #             and an adversarial corpus (the awk programs below are the
 #             readers as they were, copied verbatim)
+# R3 [change] manifest_graph_output_format_v, _summary_v and
+#             manifest_graph_formats_v fill a variable in the caller's shell
+#             with the same answers — the contract check asks them for every
+#             output of every stage (#2472, ADR-065)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -177,7 +181,7 @@ _files() { command find "$REPO_ROOT/plugins" "$C" -name '*.yaml' -type f | LC_AL
 _ids() { _ref_block "$1" outputs | cut -d'|' -f1; printf '%s\n' x1 one q1 zero t1 none-such ''; }
 
 print_test_section "R2: the shell readers give the awk readers' answers"
-_mp=0; _mb=0; _mf=0; _n=0; _d=""
+_mp=0; _mb=0; _mf=0; _mv=0; _n=0; _d=""
 while IFS= read -r f; do
     _n=$((_n + 1))
     a="$(_ref_primary "$f")"; b="$(_verdict_primary_output_path "$f")"
@@ -192,6 +196,10 @@ while IFS= read -r f; do
             if [[ "$fld" == format ]]; then b="$(manifest_graph_output_format "$f" "$oid")"
             else b="$(manifest_graph_output_summary "$f" "$oid")"; fi
             [[ "$a" == "$b" ]] || { _mf=$((_mf + 1)); _d+="$fld($oid) $f: awk=[$a] got=[$b]; "; }
+            b="unset"
+            if [[ "$fld" == format ]]; then manifest_graph_output_format_v b "$f" "$oid"
+            else manifest_graph_output_summary_v b "$f" "$oid"; fi
+            [[ "$a" == "$b" ]] || { _mv=$((_mv + 1)); _d+="${fld}_v($oid) $f: awk=[$a] got=[$b]; "; }
         done
     done < <(_ids "$f")
 done < <(_files)
@@ -200,6 +208,13 @@ assert_eq "[R2] _mgraph_parse_block (outputs and inputs) agrees" "0" "$_mb" "$_d
 assert_eq "[R2] manifest_graph_output_format / _summary agree for every output id" "0" "$_mf" "$_d"
 assert_eq "[R2] a missing file gives nothing" "||" \
     "$(_verdict_primary_output_path "$C/absent.yaml")|$(_mgraph_parse_block "$C/absent.yaml" outputs)|$(manifest_graph_output_format "$C/absent.yaml" one)"
+
+print_test_section "R3: the same answers, into a variable (#2472)"
+assert_eq "[R3] manifest_graph_output_format_v / _summary_v agree for every output id" "0" "$_mv" "$_d"
+_r3="x"; manifest_graph_output_format_v _r3 "$C/absent.yaml" one
+assert_eq "[R3] a missing file gives nothing" "" "$_r3"
+_r3=""; manifest_graph_formats_v _r3
+assert_eq "[R3] the formats, in the caller's shell" "$(manifest_graph_formats)" "$_r3"
 
 print_test_section "R1: none of them starts a program"
 CALLS="$TEST_TEMP_DIR/calls"; : > "$CALLS"

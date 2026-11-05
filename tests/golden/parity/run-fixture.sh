@@ -274,6 +274,14 @@ review_lenses:
   io:
     destinations: [file]
 TPL
+# FIXTURE_LENSES (#2472): the review lenses to run, one dispatch each; the
+# fork-budget test runs it with more to measure what one more dispatch costs.
+# Unset, the template is as above, so the goldens do not change.
+if [[ -n "${FIXTURE_LENSES:-}" ]]; then
+    _fx_tpl="$(<"$FIXTURE_TEMPLATE")"; _fx_els=""
+    for _fx_l in $FIXTURE_LENSES; do _fx_els+="    - $_fx_l"$'\n'; done
+    printf '%s\n' "${_fx_tpl/"    - correctness"$'\n'/$_fx_els}" > "$FIXTURE_TEMPLATE"
+fi
 
 # ── Mock repo for the test stage to copy and apply diffs against ─────────────
 # #467: build now needs a real git repo so `git diff HEAD` works (not just a

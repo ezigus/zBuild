@@ -26,6 +26,13 @@
 #         How often a wait loop sleeps measures elapsed time, not code — under
 #         load the same tree counted 4,528 and 4,610.
 # SPEC-7: total processes (programs + subshells) ≤ PROCESS_BUDGET.
+# SPEC-8: the run's cost in two parts (#2472, ADR-065 §6), each within its
+#         budget, which ratchets down toward a floor below it:
+#         - start-up: processes and execs before the first plugin.run.start,
+#           per plugin manifest discovery reads;
+#         - per dispatch: the same run again with three more review lenses —
+#           the extra processes and execs over the extra dispatches.
+#         A stage or plugin added moves the totals, not these.
 # SPEC-6: the worker pool's execs scale with its work units, not with how long
 #         they take: its poll sleep is exempt, and no counted pool line runs
 #         more than once per unit (#2236).
@@ -86,7 +93,9 @@ setup_test_env "fork-budget"
 # events with the shell, not three awks a manifest) — measured 2,052 macOS.
 # 2040 (#2470: a stage prompt is put together, read back and checked by the
 # shell, not by a cat per section and a head) — measured 2,028 macOS.
-FORK_BUDGET=2040
+# 2008 (#2472: an earlier output found by its text is one grep over every
+# output, not one grep an output) — measured 1,996 macOS.
+FORK_BUDGET=2008
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -109,8 +118,30 @@ FORK_BUDGET=2040
 # test-author readers read the acceptance block once, not once per SPEC —
 # measured 2,756 macOS). 2745 (#2470: Previous work finds each stage's summary
 # path in its shell, not in a `$( )` a stage; the prompt's first line is read
-# without a `$( )` — measured 2,724 macOS).
-PROCESS_BUDGET=2745
+# without a `$( )` — measured 2,724 macOS). 2640 (#2472: the contract check
+# reads each output's format, the formats and its summary mark in its shell,
+# not in three `$( )` an output — measured 2,622 macOS).
+PROCESS_BUDGET=2640
+# The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
+# like the totals; each floor is the goal, an estimate, measured again when
+# reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
+# first measured on macOS: one more lens dispatch costs 500 processes and 294
+# execs; the start-up, 472 and 257 over 43 plugins, 11 and 6 a plugin).
+# - Per dispatch, the extra cost of one more dispatch. A dispatch needs a shell
+#   to isolate the plugin, one for the model call and a few for its time limit
+#   and watchers (~20 processes); and its programs: jq for its result and
+#   state (~10), git for the snapshot (~8), a lock an event (~10), the scope
+#   and write checks (~4), safe writes (~6), the model call (~2) — ~50 execs.
+# - Start-up, per plugin manifest: discovery and the manifest checks; about one
+#   process and one exec a plugin once each read is in the shell.
+DISPATCH_PROCS_BUDGET=505
+DISPATCH_PROCS_FLOOR=20
+DISPATCH_EXECS_BUDGET=298
+DISPATCH_EXECS_FLOOR=50
+STARTUP_PROCS_PER_PLUGIN_BUDGET=12
+STARTUP_PROCS_PER_PLUGIN_FLOOR=1
+STARTUP_EXECS_PER_PLUGIN_BUDGET=7
+STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh
@@ -202,6 +233,7 @@ awk -F'\t' '{ split($2, p, ":"); f[p[1]] += $1 } END { for (k in f) printf "%d\t
 # artifact (test.yml: fork-budget-census.txt under RUNNER_TEMP).
 _fb_census() {
     printf '### fork budget: %s external execs (budget %s) across %s source files\n\n```\n' "$_total" "$FORK_BUDGET" "$_files"
+    printf 'processes: %s (budget %s)\n' "$_procs" "$PROCESS_BUDGET"
     awk -F'\t' 'NR <= 15 { printf "%5d  %-34s %s\n", $1, $2, $3 }' "$SITES"
     printf '```\n'
 }
@@ -238,6 +270,46 @@ if (( _total <= FORK_BUDGET )); then
 else
     assert_fail "[SPEC-4] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
 fi
+
+# SPEC-8 (#2472): the cost in two parts.
+_fb_disp() { jq -r 'select(.type == "plugin.run.start") | 1' "$1" 2>/dev/null | grep -c . || true; }
+_dA="$(_fb_disp "$RUN_DIR/events/events.jsonl")"; _dA="${_dA:-0}"
+# The same run with three more review lenses: three more dispatches.
+RUN_B="$TEST_TEMP_DIR/run-b"; BIN_B="$TEST_TEMP_DIR/bin-b"; TRACE_B="$TEST_TEMP_DIR/run-b.trace"
+mkdir -p "$RUN_B/events" "$BIN_B"
+set +e
+(
+    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
+    export FIXTURE_STATE_DIR="$RUN_B" FIXTURE_BIN_DIR="$BIN_B" FIXTURE_LENSES="correctness red-team performance sre"
+    fork_census_traced "$TRACE_B" bash "$FIXTURE" >/dev/null 2>&1
+)
+_run_b_rc=$?
+set -e
+assert_eq "[SPEC-8] the run with four lenses exits 0 under tracing" "0" "$_run_b_rc"
+_dB="$(_fb_disp "$RUN_B/events/events.jsonl")"; _dB="${_dB:-0}"
+_totB="$(fork_census_count "$TRACE_B" "$TEST_TEMP_DIR/run-b.sites")"; _procsB="$(fork_census_processes "$TRACE_B")"
+_dd=$(( _dB - _dA ))
+assert_eq "[SPEC-8] three more lenses are three more dispatches (${_dA} → ${_dB})" "3" "$_dd"
+(( _dd > 0 )) || _dd=1
+_dp=$(( (_procsB - _procs + _dd - 1) / _dd )); _de=$(( (_totB - _total + _dd - 1) / _dd ))
+# Start-up: everything traced before the first dispatch.
+_first="$(awk '/^\++@[^ ]*@ eb_emit_event (["'"'"']?)plugin\.run\.start/ { print NR; exit }' "$TRACE")"
+head -n "$(( ${_first:-1} - 1 ))" "$TRACE" > "$TEST_TEMP_DIR/start.trace"
+_sE="$(fork_census_count "$TEST_TEMP_DIR/start.trace" "$TEST_TEMP_DIR/start.sites")"; _sP="$(fork_census_processes "$TEST_TEMP_DIR/start.trace")"
+_mf=(); while IFS= read -r _m; do _mf+=("$_m"); done < <(find "$REPO_ROOT/plugins" -maxdepth 3 -name manifest.yaml -type f)
+_plugins=${#_mf[@]}
+assert_eq "[SPEC-8] plugin manifests are found (${_plugins})" "1" "$(( _plugins > 0 ))"
+(( _plugins > 0 )) || _plugins=1
+_spp=$(( (_sP + _plugins - 1) / _plugins )); _spe=$(( (_sE + _plugins - 1) / _plugins ))
+echo "  per dispatch (${_dA} → ${_dB}): ${_dp} processes (budget ${DISPATCH_PROCS_BUDGET}, floor ${DISPATCH_PROCS_FLOOR}), ${_de} execs (budget ${DISPATCH_EXECS_BUDGET}, floor ${DISPATCH_EXECS_FLOOR})"
+echo "  start-up (${_sP} processes, ${_sE} execs over ${_plugins} plugins): ${_spp} processes a plugin (budget ${STARTUP_PROCS_PER_PLUGIN_BUDGET}, floor ${STARTUP_PROCS_PER_PLUGIN_FLOOR}), ${_spe} execs (budget ${STARTUP_EXECS_PER_PLUGIN_BUDGET}, floor ${STARTUP_EXECS_PER_PLUGIN_FLOOR})"
+assert_eq "[SPEC-8] the start-up is traced (before the first dispatch, ${_first:-none})" "1" "$(( ${_first:-0} > 1 && _sP > 0 ))"
+assert_eq "[SPEC-8] ${_dp} processes a dispatch ≤ DISPATCH_PROCS_BUDGET ${DISPATCH_PROCS_BUDGET}" "1" "$(( _dp <= DISPATCH_PROCS_BUDGET ))"
+assert_eq "[SPEC-8] ${_de} execs a dispatch ≤ DISPATCH_EXECS_BUDGET ${DISPATCH_EXECS_BUDGET}" "1" "$(( _de <= DISPATCH_EXECS_BUDGET ))"
+assert_eq "[SPEC-8] ${_spp} start-up processes a plugin ≤ STARTUP_PROCS_PER_PLUGIN_BUDGET ${STARTUP_PROCS_PER_PLUGIN_BUDGET}" "1" "$(( _spp <= STARTUP_PROCS_PER_PLUGIN_BUDGET ))"
+assert_eq "[SPEC-8] ${_spe} start-up execs a plugin ≤ STARTUP_EXECS_PER_PLUGIN_BUDGET ${STARTUP_EXECS_PER_PLUGIN_BUDGET}" "1" "$(( _spe <= STARTUP_EXECS_PER_PLUGIN_BUDGET ))"
+assert_eq "[SPEC-8] each floor is below its budget: the goal still ahead" "1" \
+    "$(( DISPATCH_PROCS_FLOOR < DISPATCH_PROCS_BUDGET && DISPATCH_EXECS_FLOOR < DISPATCH_EXECS_BUDGET && STARTUP_PROCS_PER_PLUGIN_FLOOR < STARTUP_PROCS_PER_PLUGIN_BUDGET && STARTUP_EXECS_PER_PLUGIN_FLOOR < STARTUP_EXECS_PER_PLUGIN_BUDGET ))"
 
 cleanup_test_env
 print_test_results

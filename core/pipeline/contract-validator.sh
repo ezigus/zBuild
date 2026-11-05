@@ -110,6 +110,8 @@ _contract_validate_pipeline() {
     local -A _CV_STAGE_MANIFEST=()
     local -A _CV_OUTPUT_PRODUCERS=()   # key=output_id  → space-delimited list of stages
     local -a violations=()
+    # The formats the engine implements, once (#2472, ADR-065).
+    local _ofmts; manifest_graph_formats_v _ofmts
     local fail_count=0
     local stage manifest
     for stage in "${stages[@]}"; do
@@ -170,12 +172,14 @@ _contract_validate_pipeline() {
                 violations+=("$stage|TYPE_UNVERSIONED|$out_id|type: '$_otype' carries no @version (ADR-055 §8, #1827)")
                 fail_count=$((fail_count + 1))
             fi
-            local _ofmt; _ofmt="$(manifest_graph_output_format "$manifest" "$out_id" 2>/dev/null || true)"
+            # #2472 (ADR-065): read in this shell, not in a `$( )` an output.
+            local _ofmt
+            manifest_graph_output_format_v _ofmt "$manifest" "$out_id"
             if [[ -z "$_ofmt" ]]; then
                 violations+=("$stage|FORMAT_MISSING|$out_id|output declares no format: — the engine cannot decide how to check it (ADR-055 §1, #1895)")
                 fail_count=$((fail_count + 1))
-            elif [[ " $(manifest_graph_formats) " != *" $_ofmt "* ]]; then
-                violations+=("$stage|FORMAT_UNKNOWN|$out_id|format: '$_ofmt' is not a check the engine implements (allowed: $(manifest_graph_formats))")
+            elif [[ " $_ofmts " != *" $_ofmt "* ]]; then
+                violations+=("$stage|FORMAT_UNKNOWN|$out_id|format: '$_ofmt' is not a check the engine implements (allowed: $_ofmts)")
                 fail_count=$((fail_count + 1))
             fi
         done < <(manifest_graph_get_outputs "$manifest")
@@ -228,11 +232,11 @@ _contract_validate_pipeline() {
         #
         # Refused, not warned: the failure mode is silence, and a warning about
         # silence is easy to not hear.
-        local _sum_n=0 _sum_rec
+        local _sum_n=0 _sum_rec _sum_v
         while IFS= read -r _sum_rec; do
             [[ -n "$_sum_rec" ]] || continue
-            [[ "$(manifest_graph_output_summary "$manifest" "${_sum_rec%%|*}")" == "true" ]] \
-                && _sum_n=$(( _sum_n + 1 ))
+            manifest_graph_output_summary_v _sum_v "$manifest" "${_sum_rec%%|*}"
+            [[ "$_sum_v" == "true" ]] && _sum_n=$(( _sum_n + 1 ))
         done < <(manifest_graph_get_outputs "$manifest")
         if [[ "$_sum_n" -eq 0 ]]; then
             violations+=("$stage|SUMMARY_MISSING|-|stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)")
