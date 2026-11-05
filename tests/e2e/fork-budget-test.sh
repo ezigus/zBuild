@@ -33,7 +33,6 @@
 #         - per dispatch: the same run again with three more review lenses —
 #           the extra processes and execs over the extra dispatches.
 #         A stage or plugin added moves the totals, not these.
-#         added to the run raises the totals, not the ratio.
 # SPEC-6: the worker pool's execs scale with its work units, not with how long
 #         they take: its poll sleep is exempt, and no counted pool line runs
 #         more than once per unit (#2236).
@@ -297,7 +296,10 @@ _dp=$(( (_procsB - _procs + _dd - 1) / _dd )); _de=$(( (_totB - _total + _dd - 1
 _first="$(awk '/^\++@[^ ]*@ eb_emit_event (["'"'"']?)plugin\.run\.start/ { print NR; exit }' "$TRACE")"
 head -n "$(( ${_first:-1} - 1 ))" "$TRACE" > "$TEST_TEMP_DIR/start.trace"
 _sE="$(fork_census_count "$TEST_TEMP_DIR/start.trace" "$TEST_TEMP_DIR/start.sites")"; _sP="$(fork_census_processes "$TEST_TEMP_DIR/start.trace")"
-_plugins="$(find "$REPO_ROOT/plugins" -maxdepth 3 -name manifest.yaml -type f | grep -c .)"
+_mf=(); while IFS= read -r _m; do _mf+=("$_m"); done < <(find "$REPO_ROOT/plugins" -maxdepth 3 -name manifest.yaml -type f)
+_plugins=${#_mf[@]}
+assert_eq "[SPEC-8] plugin manifests are found (${_plugins})" "1" "$(( _plugins > 0 ))"
+(( _plugins > 0 )) || _plugins=1
 _spp=$(( (_sP + _plugins - 1) / _plugins )); _spe=$(( (_sE + _plugins - 1) / _plugins ))
 echo "  per dispatch (${_dA} → ${_dB}): ${_dp} processes (budget ${DISPATCH_PROCS_BUDGET}, floor ${DISPATCH_PROCS_FLOOR}), ${_de} execs (budget ${DISPATCH_EXECS_BUDGET}, floor ${DISPATCH_EXECS_FLOOR})"
 echo "  start-up (${_sP} processes, ${_sE} execs over ${_plugins} plugins): ${_spp} processes a plugin (budget ${STARTUP_PROCS_PER_PLUGIN_BUDGET}, floor ${STARTUP_PROCS_PER_PLUGIN_FLOOR}), ${_spe} execs (budget ${STARTUP_EXECS_PER_PLUGIN_BUDGET}, floor ${STARTUP_EXECS_PER_PLUGIN_FLOOR})"
