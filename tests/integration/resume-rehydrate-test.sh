@@ -196,6 +196,21 @@ fi
 assert_eq "[#1805/RHYD-1] intake emits no stage.start (complete stage skipped)" \
     "0" "$_s1_intake_starts"
 
+# [#1805/DISP-1]: stage k (the interrupted stage) must emit stage.start when the
+# dispatch loop reaches it on resume. The fixture has intake=complete (stage k-1)
+# and cyc=pending (stage k). Cycles dispatch their inner members: cycled emits
+# stage.start with stage=cycled. This proves the dispatch loop reached and dispatched
+# stage k (cyc), not just that any stage ran.
+# Before the change: runner may abort before dispatching cyc → 0 cycled starts → FAILS.
+# After the change: rehydrate → loop skips intake → dispatches cyc → cycled dispatches → PASSES.
+_s1_cycled_starts=0
+if [[ -f "$S1_EVENTS_JSONL" ]]; then
+    _s1_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
+        "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DISP-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)" \
+    "$_s1_cycled_starts" "0"
+
 # ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
 # [#1805/RHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
 # No --resume flag; runner detects interrupted status and auto-resumes.
