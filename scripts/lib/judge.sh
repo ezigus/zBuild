@@ -76,10 +76,12 @@ _judge_words_v() {
     _jwo="${_jww[*]}"
 }
 
-# _judge_holds <text> <quote> — rc 0 when <text> holds <quote>, spacing aside.
+# _judge_holds <text> <quote> — rc 0 when <text> holds <quote>, spacing and
+# the markdown marks `*`, `_` and backticks aside (#2472: the issue wrote
+# `stage *k*`, the judge quoted "stage k", as it reads).
 _judge_holds() {
-    local _jh_t _jh_q
-    _judge_words_v _jh_t "$1"; _judge_words_v _jh_q "$2"
+    local _jh_t="${1//[*_\`]/}" _jh_q="${2//[*_\`]/}"
+    _judge_words_v _jh_t "$_jh_t"; _judge_words_v _jh_q "$_jh_q"
     [[ -n "$_jh_q" && " $_jh_t " == *"$_jh_q"* ]]
 }
 
@@ -96,7 +98,7 @@ judge_quote_check_v() {
     if [[ "$_judge__q" =~ ^\"(.*)\"$ ]]; then
         _judge__txt="${BASH_REMATCH[1]}"
         _judge_holds "$_judge__own" "$_judge__txt" && return 0
-        _jqw="is not in the item's _judge__own words: \"$_judge__txt\""
+        _jqw="is not in the item's own words: \"$_judge__txt\""
         return 1
     fi
     if [[ ! "$_judge__q" =~ ^([^\"]+):\"(.*)\"$ ]]; then
@@ -433,13 +435,18 @@ judge_kept_put_all() {
     return 0
 }
 
-# judge_opened_v <array_var> <opened_file> <repo> — the files a judging call
-# opened (the router lists them, ZBUILD_ROUTER_OPENED_FILE), each once.
+# judge_opened_v <array_var> <opened_file> [not_file...] — the files a judging
+# call opened (the router lists them, ZBUILD_ROUTER_OPENED_FILE), each once,
+# leaving out each <not_file>: the file the check's own items come from, whose
+# words are already in each item's fingerprint. Counted, an edit to one item
+# would make every item's kept answer stale (#2472, ADR-072 §4).
 judge_opened_v() {
     local -n _jop="$1"; local _judge__f="$2" _judge__l _judge__s
+    shift 2
     [[ -s "$_judge__f" ]] || return 0
     while IFS= read -r _judge__l; do
         [[ -n "$_judge__l" ]] || continue
+        for _judge__s in "$@"; do [[ -n "$_judge__s" && "$_judge__s" == "$_judge__l" ]] && continue 2; done
         for _judge__s in ${_jop[@]+"${_jop[@]}"}; do [[ "$_judge__s" == "$_judge__l" ]] && continue 2; done
         _jop+=("$_judge__l")
     done < "$_judge__f"

@@ -100,6 +100,48 @@ _dcov_parse() {
     return 0
 }
 
+# _dcov_take <reply> <need> — each item of <need> (one per line) whose lines in
+# <reply> can be used, into the caller's got (its lines) and gotq (the files its
+# quotes name), and out of need; _DCOV_PROBLEM says what is wrong with the rest
+# (#2472, ADR-072 §3: a bad line costs only its own item).
+# shellcheck disable=SC2034  # got, gotq and need are _design_coverage's
+_dcov_take() {
+    local _dt_reply="$1" _dt_k _dt_left="" _dt_prob=""
+    _dcov_parse "$_dt_reply" "$2"
+    if [[ -z "$_DCOV_PROBLEM" ]]; then
+        while IFS= read -r _dt_k; do
+            [[ -n "$_dt_k" ]] || continue
+            got["$_dt_k"]="${_DCOV_LINES[$_dt_k]:-}"; gotq["$_dt_k"]="${_DCOV_QUOTED[$_dt_k]:-}"
+        done <<< "$2"
+        need=""
+        return 0
+    fi
+    _dt_prob="$_DCOV_PROBLEM"
+    while IFS= read -r _dt_k; do
+        [[ -n "$_dt_k" ]] || continue
+        _dcov_parse "$_dt_reply" "$_dt_k"
+        if [[ -z "$_DCOV_PROBLEM" ]]; then
+            got["$_dt_k"]="${_DCOV_LINES[$_dt_k]:-}"; gotq["$_dt_k"]="${_DCOV_QUOTED[$_dt_k]:-}"
+        else
+            _dt_left+="$_dt_k"$'\n'
+        fi
+    done <<< "$2"
+    need="$_dt_left"
+    _DCOV_PROBLEM="$_dt_prob"
+    return 0
+}
+
+# _dcov_need_names <need> — the items still to answer, as a judge reads them.
+_dcov_need_names() {
+    local _dn_k _dn_out="" _dn_req=""
+    while IFS= read -r _dn_k; do
+        [[ -n "$_dn_k" ]] || continue
+        if [[ "$_dn_k" == requirements ]]; then _dn_req=1; else _dn_out+="${_dn_out:+, }$_dn_k"; fi
+    done <<< "$1"
+    [[ -n "$_dn_req" ]] && _dn_out+="${_dn_out:+, }every requirement"
+    printf '%s' "$_dn_out"
+}
+
 # _dcov_why_quote <rest> — a line's WHY and QUOTE, into the caller's why and quote.
 _dcov_why_quote() {
     why=""; quote=""

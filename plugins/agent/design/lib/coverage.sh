@@ -313,7 +313,8 @@ _design_coverage() {
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
-    local raw="" rc=0 rc_file ask="$framed" _try opened=""
+    local raw="" rc=0 rc_file ask="$framed" _try opened="" need="$want"
+    local -A got=() gotq=()
     # ADR-072 §1: this call reads and searches files, and nothing else.
     local -x ZBUILD_ROUTE_TOOLS=read ZBUILD_ROUTER_OPENED_FILE=""
     opened="$(mktemp 2>/dev/null)" && ZBUILD_ROUTER_OPENED_FILE="$opened"
@@ -348,33 +349,38 @@ _design_coverage() {
         fi
         # #2460: each item read whole, however many lines it spans.
         zb_reply_join_v raw "$raw"
-        _dcov_parse "$raw" "$want"
-        [[ -z "$_DCOV_PROBLEM" ]] && break
-        ask="$(stage_prompt_reask "$framed" "$_DCOV_PROBLEM" "$raw")"
+        # #2472: an item whose lines are good is taken at once; the re-ask asks
+        # only for the items whose lines are not.
+        _dcov_take "$raw" "$need"
+        [[ -z "$need" ]] && break
+        ask="$(stage_prompt_reask "$framed" "$_DCOV_PROBLEM"$'\n\n'"Answer again only for: $(_dcov_need_names "$need")" "$raw")"
     done
     local -a files=()
-    judge_opened_v files "$opened"; rm -f "$opened" 2>/dev/null
-    if [[ -n "$_DCOV_PROBLEM" ]]; then
+    # ADR-072 §4 (#2472): the draft and design.md are not depended on — each
+    # SPEC's own words are in its fingerprint.
+    judge_opened_v files "$opened" "$design_md" "${_kd:+${_kd%/}/design.md}"; rm -f "$opened" 2>/dev/null
+    # Each item judged is kept with what it depended on: the files the call
+    # opened, and the files its own quotes name — even when another item's
+    # lines could not be used (#2472).
+    local -A put=() putfp=() deps=()
+    local _opened_all="" f q
+    for f in ${files[@]+"${files[@]}"}; do _opened_all+="$f"$'\n'; done
+    local new_raw="" new_want=""
+    while IFS= read -r k; do
+        [[ -n "$k" && -n "${got[$k]+x}" ]] || continue
+        # shellcheck disable=SC2034  # passed by name to judge_kept_put_all
+        { put["$k"]="${got[$k]}"; putfp["$k"]="${fps[$k]}"; deps["$k"]="$_opened_all"; }
+        while IFS= read -r q; do [[ -n "$q" ]] && deps["$k"]+="$repo/$q"$'\n'; done <<< "${gotq[$k]:-}"
+        new_raw+="${got[$k]}"; new_want+="$k"$'\n'
+    done <<< "$want"
+    [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps
+    if [[ -n "$need" ]]; then
         _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=()
         _DESIGN_COV_OUTCOME=unusable
         return 0
     fi
-    # Each item judged is kept with what it depended on: the files the call
-    # opened, and the files its own quotes name.
-    local -A put=() putfp=() deps=()
-    local _opened_all="" f q
-    for f in ${files[@]+"${files[@]}"}; do _opened_all+="$f"$'\n'; done
-    local new_raw=""
-    while IFS= read -r k; do
-        [[ -n "$k" ]] || continue
-        # shellcheck disable=SC2034  # passed by name to judge_kept_put_all
-        { put["$k"]="${_DCOV_LINES[$k]:-}"; putfp["$k"]="${fps[$k]}"; deps["$k"]="$_opened_all"; }
-        while IFS= read -r q; do [[ -n "$q" ]] && deps["$k"]+="$repo/$q"$'\n'; done <<< "${_DCOV_QUOTED[$k]:-}"
-        new_raw+="${_DCOV_LINES[$k]:-}"
-    done <<< "$want"
-    [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps
     # The verdict is every item's answer: the kept ones and this call's.
-    [[ -n "$kept_want" ]] && _dcov_parse "$kept_raw$new_raw" "$kept_want$want"
+    _dcov_parse "$kept_raw$new_raw" "$kept_want$new_want"
     _dcov_findings_build
     return 0
 }

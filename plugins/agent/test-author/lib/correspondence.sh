@@ -434,7 +434,7 @@ _ta_correspondence() {
             _router_rc="$(cat "$_rc_file" 2>/dev/null || echo 0)"; rm -f "$_rc_file" 2>/dev/null || true
         fi
         local -a _open_files=()
-        judge_opened_v _open_files "$_opened"; rm -f "$_opened" 2>/dev/null
+        judge_opened_v _open_files "$_opened" "$design"; rm -f "$_opened" 2>/dev/null
         if [[ "$_router_rc" =~ ^[0-9]+$ && "$_router_rc" -ne 0 ]]; then
             local _rv _rr
             _router_rc_classify "$_router_rc" _rv _rr 2>/dev/null || true

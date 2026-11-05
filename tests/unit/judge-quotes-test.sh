@@ -18,6 +18,8 @@
 # Q4 issue-acceptance: one line per requirement; complaints quoted; no line
 #    numbers or windows of code in its prompt
 # Q5 a review lens quotes each finding's text from its file
+# Q6 formatting is not the judge's to get right (#2472): `*`, `_` and backticks
+#    are left out on both sides, as spacing is
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -305,6 +307,21 @@ assert_contains "[Q5] a finding with no quote is asked again, and the answer cou
 assert_contains "[Q5] ...told which finding" "$(_l Q5c)" "finding 1 has no quote"
 assert_contains "[Q5] a quote its file does not hold, twice: unusable" "$(_l Q5d)" "unusable|2|"
 assert_contains "[Q5] ...asked again saying which finding" "$(_l Q5d)" "finding 1's quote is not in scripts/cfg.sh"
+
+print_test_section "Q6: formatting aside (#2472)"
+# #1805 run 41951779189: the issue wrote `stage *k* is dispatched`; the judge
+# quoted it as it reads, and the check refused it twice.
+_Q6W='RESU-4: Resuming it does not dispatch stages 1…*k−1*, and stage *k* is dispatched. Run `zbuild_resume` on __init__.'
+assert_eq "[Q6] a quote with the emphasis left out holds" "ok" "$(_q '"stage k is dispatched"' "$_Q6W")"
+assert_eq "[Q6] ...across marks next to other characters" "ok" "$(_q '"stages 1…k−1, and"' "$_Q6W")"
+assert_eq "[Q6] backticks and underscores left out hold" "ok" "$(_q '"Run zbuildresume on init"' "$_Q6W")"
+assert_eq "[Q6] a quote that keeps the marks still holds" "ok" "$(_q '"stage *k* is dispatched"' "$_Q6W")"
+assert_eq "[Q6] a quote across a line break holds" "ok" "$(_q '"is dispatched. Run"' "stage *k* is"$'\n'"  dispatched.   Run")"
+assert_contains "[Q6] words that are not there are still refused" "$(_q '"stage k is skipped"' "$_Q6W")" "bad:"
+assert_contains "[Q6] the refusal says the item's own words" "$(_q '"stage k is skipped"' "$_Q6W")" "is not in the item's own words"
+assert_not_contains "[Q6] ...and no variable name" "$(_q '"stage k is skipped"' "$_Q6W")" "_judge__"
+printf 'see `skip_stage` and *every* stage\n' >> "$XR/scripts/cfg.sh"
+assert_eq "[Q6] a file's text, formatting aside" "ok" "$(_q 'scripts/cfg.sh:"see skipstage and every stage"')"
 
 cleanup_test_env
 print_test_results
