@@ -163,7 +163,7 @@ _sc_judge() {
     local _scj_re="^${_scj_sid}[[:space:]]+(Given|When|Then|And|Cleanup|sections)([[:space:]]+[0-9]+)?[*\`_]*:[[:space:]]*([a-z_]+)(.*)$"
     local _scj_ure="^${_scj_sid}[*\`_]*:[[:space:]]*([a-z_]+)(.*)$"
     while IFS= read -r _scj_l; do
-        _scj_l="${_scj_l#"${_scj_l%%[![:space:]>*\`_-]*}"}"
+        judge_reply_line_v _scj_l "$_scj_l"
         if [[ "$_scj_l" =~ $_scj_re ]]; then
             _scj_pw1="${BASH_REMATCH[1]}"; _scj_num="${BASH_REMATCH[2]// /}"; _scj_word="${BASH_REMATCH[3]}"; _scj_rest="${BASH_REMATCH[4]}"
         elif [[ "$_scj_l" =~ $_scj_ure ]]; then

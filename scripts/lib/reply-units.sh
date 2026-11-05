@@ -20,6 +20,24 @@ _ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space
 _ZB_RU_ITEM='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+(.*)$'
 _ZB_RU_KEY_ONLY='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*):[[:space:]*_`]*$'
 
+# zb_reply_plain_v <var> <text> — <text> with its formatting and spacing aside
+# (#2474, ADR-072 §3): no `*` or backticks, no underscore that is not inside a
+# word (done_wrong keeps its own), and tabs and runs of spaces as one space.
+zb_reply_plain_v() {
+    local -n _rp="$1"
+    local _rp_t="${2//[*\`]/}" _rp_o="" _rp_p=" " _rp_c _rp_i
+    if [[ "$_rp_t" == *_* ]]; then
+        for (( _rp_i = 0; _rp_i < ${#_rp_t}; _rp_i++ )); do
+            _rp_c="${_rp_t:_rp_i:1}"
+            [[ "$_rp_c" == _ && ! ( "$_rp_p" == [[:alnum:]] && "${_rp_t:_rp_i+1:1}" == [[:alnum:]_] ) ]] && continue
+            _rp_o+="$_rp_c"; _rp_p="$_rp_c"
+        done
+        _rp_t="$_rp_o"
+    fi
+    _rp_t="${_rp_t//$'\t'/ }"; while [[ "$_rp_t" == *"  "* ]]; do _rp_t="${_rp_t//  / }"; done
+    _rp="$_rp_t"
+}
+
 # zb_reply_join_v <var> <reply> — <reply> with each continued line joined, by
 # one space, to the line it continues. A line continues the one before it unless
 # it is blank, follows a blank, or starts a unit of its own. A list straight
@@ -29,8 +47,12 @@ zb_reply_join_v() {
     local -n _rj="$1"
     local _zbrj_l _zbrj_t _zbrj_cur="" _zbrj_key="" _zbrj_have=0 _zbrj_blank=1
     _rj=""
+    local _zbrj_p
     while IFS= read -r _zbrj_l || [[ -n "$_zbrj_l" ]]; do
         _zbrj_t="${_zbrj_l#"${_zbrj_l%%[![:space:]]*}"}"; _zbrj_t="${_zbrj_t%"${_zbrj_t##*[![:space:]]}"}"
+        # Where a unit starts is read with the formatting aside (#2474): its
+        # start, not the whole line, so a long reply costs little.
+        zb_reply_plain_v _zbrj_p "${_zbrj_l:0:80}"
         if [[ -z "$_zbrj_t" ]]; then
             (( _zbrj_have )) && _rj+="$_zbrj_cur"$'\n'
             _rj+=$'\n'; _zbrj_cur=""; _zbrj_have=0; _zbrj_key=""; _zbrj_blank=1
@@ -43,7 +65,7 @@ zb_reply_join_v() {
             _zbrj_cur="$_zbrj_key: $_zbrj_item"; _zbrj_have=1; _zbrj_blank=0
             continue
         fi
-        if (( _zbrj_blank || ! _zbrj_have )) || [[ "$_zbrj_l" =~ $_ZB_RU_START ]]; then
+        if (( _zbrj_blank || ! _zbrj_have )) || [[ "$_zbrj_p" =~ $_ZB_RU_START ]]; then
             (( _zbrj_have )) && _rj+="$_zbrj_cur"$'\n'
             _zbrj_cur="$_zbrj_l"; _zbrj_have=1; _zbrj_key=""
             [[ "$_zbrj_l" =~ $_ZB_RU_KEY_ONLY ]] && _zbrj_key="${BASH_REMATCH[1]}"

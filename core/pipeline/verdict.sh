@@ -576,6 +576,7 @@ _verdict_report_from_file() {
              + ((.data.wiring_files // .wiring_files // null) as $x | if ($x|type) == "array" then {wiring_files: $x} else {} end)
              + (if $sr != null then {scope_request: $sr} else {} end)
              + (if $nr != null then {not_reproduced: $nr} else {} end)
+             + (if (.data.ends_round // false) == true then {ends_round: true} else {} end)
     ' "$_p_path" 2>/dev/null || printf '{}'
 }
 

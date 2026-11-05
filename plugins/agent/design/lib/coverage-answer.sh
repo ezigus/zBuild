@@ -28,7 +28,7 @@ _dcov_parse() {
     local l id rest word why quote w qp key reqs_asked=0
     [[ "$want" == *$'\nrequirements\n'* ]] && reqs_asked=1
     while IFS= read -r l; do
-        l="${l#"${l%%[![:space:]>*\`_-]*}"}"
+        judge_reply_line_v l "$l"
         if [[ "$l" =~ ^SCOPE:[[:space:]]*(.*)$ ]]; then
             (( reqs_asked )) || continue
             rest="${BASH_REMATCH[1]}"; w="${rest%%|*}"; w="${w%"${w##*[![:space:]]}"}"

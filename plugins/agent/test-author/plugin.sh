@@ -102,7 +102,7 @@ _ta_drop_stale_tags() {
 # author finished, otherwise how it stopped. A router timeout is not a poor
 # authoring pass, it is no authoring pass at all.
 _ta_write_result() {
-    local dir="$1" o="$2" r="$3" n="${4:-0}" fnd="${5:-[]}"
+    local dir="$1" o="$2" r="$3" n="${4:-0}" fnd="${5:-[]}" ends="${6:-}"
     mkdir -p "$dir" 2>/dev/null || true
     # #2189: the author REPORTS the testfiles it owns; the engine denies every
     # other stage edits to them from this report (never from design.md by path).
@@ -133,10 +133,11 @@ _ta_write_result() {
     # ANSWER lines (_ta_collect_answers).
     local _ans; _ans="$(printf '%s\n' "${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || true)"
     [[ -n "$_ans" ]] || _ans="[]"
-    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" --argjson f "$fnd" --argjson a "$_ans" \
+    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" --argjson f "$fnd" --argjson a "$_ans" --arg e "$ends" \
         '{specs_covered: $n, owned_files: $o, testfiles: $t}
          + (if ($f | length) > 0 then {findings: $f} else {} end)
-         + (if ($a | length) > 0 then {answers: $a} else {} end)')"
+         + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + (if $e == "ends_round" then {ends_round: true} else {} end)')"
     if ! stage_result_write "$dir/test-author-result.json" "$o" "$r" "$_data"; then
         _ta_emit "test_author.result.write_failed" "dir=$dir"
     fi
@@ -441,16 +442,17 @@ EOF
         return 0
     fi
     # #2467 (ADR-073 §6): a SPEC no test can prove is design's to rewrite. The
-    # tries cannot fix it, so the run stops here, naming it — nothing loops back.
+    # tries cannot fix it, so the try fails and ends the loop's round: the loop
+    # goes round to design, handed the finding (#2474, ADR-068 §3).
     # #2470: each such SPEC is one finding, shown whole, the line no test can
     # prove marked [FIX IN DESIGN: …].
     if [[ -n "${_TA_CORR_UNTESTABLE:-}" ]]; then
         local _ut_first="${_TA_CORR_UNTESTABLE%%$'\n'*}"
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a SPEC cannot be tested"
-        _ta_write_result "$art" "misconfigured" \
+        _ta_write_result "$art" "fail" \
             "${_ut_first%%:*} cannot be proven by any test — design must rewrite it" "$n" \
-            "$(stage_findings_json <<< "$_TA_CORR_UNTESTABLE")"
+            "$(stage_findings_json <<< "$_TA_CORR_UNTESTABLE")" ends_round
         return 1
     fi
     _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})

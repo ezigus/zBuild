@@ -1937,6 +1937,15 @@ _cycle_iter_dispatch() {
         _cycle_state_write_member_atomic "$state_file" "$s" \
             "${_CYCLE_DISPATCH_STATUS:-missing}" "${_CYCLE_DISPATCH_VERDICT:-missing}" || true
 
+        # ADR-068 §3 (#2474): a member that failed on a finding only an earlier
+        # member can fix ends this round; the later members do not run and the
+        # loop goes round from the top. Nothing jumps backwards.
+        if [[ "$verdict" != pass && "${_CYCLE_DISPATCH_REPORT:-}" == *'"ends_round":true'* ]]; then
+            _cycle_emit "cycle.member.ends_round" "iter=$iter" "stage=$s" \
+                "reason=${_CYCLE_DISPATCH_REASON:-}"
+            break
+        fi
+
         # CQ-3 / ADR-013 (#863): blocking member enforcement. If the member
         # is in the ADR-013 blocking table and returned non-zero, halt the
         # cycle immediately (`failed`) so the pipeline can emit status=failed.
