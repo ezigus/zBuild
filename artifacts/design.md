@@ -44,7 +44,7 @@ tests/integration/cycle-member-dispatch-events-test.sh
 - In runner.sh, confirm `export _ZBUILD_RESUME_ACTIVE=true` is present immediately after the _runner_resume_rehydrate call (runner.sh:2862); do NOT set it for fresh runs | areas: core/pipeline/runner.sh
 - Confirm tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh, nested-loop-rounds-test.sh, nested-loop-rounds-build-test.sh, and cycle-member-dispatch-events-test.sh pass after the guard fix | areas: tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh, tests/integration/nested-loop-rounds-test.sh, tests/integration/nested-loop-rounds-build-test.sh, tests/integration/cycle-member-dispatch-events-test.sh
 - Update tests/integration/resume-loop-state-test.sh: add `export _ZBUILD_RESUME_ACTIVE=true` immediately before the cycle_orchestrator_run call so the [#1805/ITER-1] assertion "first dispatched iter is 2" reaches the guard | areas: tests/integration/resume-loop-state-test.sh
-- Update tests/integration/resume-rehydrate-test.sh: (1) fix grep-c anti-pattern sites — replace with wc -l; (2) add --no-resume flag to the BNDY-1 runner invocation; (3) remove stale cycled-dispatch assert_gt block; (4) retag the assert_contains type:cycle line to [#1805/CYCL-1]; (5) add [#1805/FRSH-1] assertion in the --no-resume sub-case verifying all stages dispatched from stage 1 with no stage.skip events emitted; (6) add [#1805/DISP-1] assertion in the resume sub-case verifying stage k emits stage.start | areas: tests/integration/resume-rehydrate-test.sh
+- Update tests/integration/resume-rehydrate-test.sh: (1) fix grep-c anti-pattern sites — replace with wc -l; (2) add --no-resume flag to the fresh-run sub-case; (3) remove stale cycled-dispatch assert_gt block; (4) retag the assert_contains type:cycle line to [#1805/CYCL-1]; (5) add [#1805/FRSH-1] assertion in the --no-resume sub-case verifying all stages dispatched from stage 1 with no stage.skip events emitted; (6) add [#1805/DSPK-1] assertion in the resume sub-case verifying stage k emits stage.start | areas: tests/integration/resume-rehydrate-test.sh
 - Update tests/integration/from-stage-rehydrate-test.sh: (1) fix FSTG-1 zero-count grep-c with wc -l; (2) retag assert_contains type:cycle to [#1805/CYCL-1]; (3) change FSTG-2 assert_contains to check for "has no restorable primary artifact" | areas: tests/integration/from-stage-rehydrate-test.sh
 - Verify tests/integration/resume-entry-points-test.sh: three entry-path assertions tagged [#1805/ENTR-1] | areas: tests/integration/resume-entry-points-test.sh
 - Verify tests/integration/pipeline-resume-test.sh: intake's primary artifact pre-written to ZBUILD_ARTIFACT_DIR before the --resume run | areas: tests/integration/pipeline-resume-test.sh
@@ -86,7 +86,7 @@ SKIP-1[done]: On resume, the dispatch loop skips a complete stage whose primary 
   Given: A run is being resumed; a stage is marked complete and its primary artifact is present in ZBUILD_ARTIFACT_DIR after rehydration
   When: The dispatch loop reaches that stage
   Then: No stage.start event is emitted for that stage
-DISP-1[code]: On resume, stage k (the interrupted stage) is dispatched and emits stage.start covers: RESU-3 RESU-4
+DSPK-1[code]: On resume, stage k (the interrupted stage) is dispatched and emits stage.start covers: RESU-3 RESU-4
   Given: A run with stages 1…N was interrupted during stage k; stages 1…k-1 are marked complete with their artifacts present in ZBUILD_ARTIFACT_DIR after rehydration
   When: The dispatch loop reaches stage k during resume
   Then: Stage k emits a stage.start event
@@ -100,12 +100,16 @@ FRSH-2[done]: A new run of the same issue never skips a stage due to prior run o
   Given: An issue has prior completed runs; a new run is started with no --resume flag and no status=interrupted state file
   When: The dispatch loop runs
   Then: Every stage emits a stage.start event and no stage.skip event is emitted for any stage
-BNDY-1[no-code]: resume-rehydrate-test.sh contains both a resume-side assertion (RHYD-1/RHYD-2) and a fresh-run sub-case with --no-resume, pinning both sides of the ADR-006/ADR-050 §6 boundary in one test file covers: ADR-2
 DLGT-1[code]: The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce covers: HYDR-1
   Given: hydrate_run is about to execute; _artifact_persist_put_back is overridden in the test environment with a sentinel-writing function
   When: hydrate_run executes
   Then: The sentinel file is written, confirming hydrate_run reached _artifact_persist_put_back
 CYCL-1[no-code]: The test fixtures used by resume-rehydrate-test.sh and from-stage-rehydrate-test.sh each contain a pipeline stage of type: cycle, verified by an assert_contains tagged [#1805/CYCL-1] in each file, ensuring RESU-1 through FROM-1 tests run against a cyclic pipeline covers: TEST-1
+LEGC-1[done]: The dispatch-loop skip-on-complete guard exists in core/pipeline/runner.sh and is not grounded in legacy-DoNotUse dispatch code; this design's [done] SPECs cite evidence only from non-legacy source files covers: DISP-1 evidence: core/pipeline/runner.sh:"When resuming, skip stages already marked complete unless --from-stage overrides"
+  When: The dispatch loop reaches a stage marked complete during resume
+  Then: No stage.start event is emitted for that stage
+REMOVED: DISP-1 — id collides with requirement code DISP-1 added by intake; the SPEC is preserved as DSPK-1
+REMOVED: BNDY-1 — described file contents ("contains both…"), which no test can prove; ADR-2 is fully covered by AMDR-2; the two sides of the boundary are pinned by RHYD-1 (resume) and FRSH-1 (new-run)
 WIRING:
 core/pipeline/runner.sh
 core/pipeline/cycle-orchestrator.sh
@@ -120,9 +124,8 @@ AMDR-2: tests/integration/resume-rehydrate-test.sh
 ITER-1: tests/integration/resume-loop-state-test.sh
 ENTR-1: tests/integration/resume-entry-points-test.sh
 FRSH-1: tests/integration/resume-rehydrate-test.sh
-BNDY-1: tests/integration/resume-rehydrate-test.sh
 DLGT-1: tests/unit/hydrate-stage-test.sh
-DISP-1: tests/integration/resume-rehydrate-test.sh
+DSPK-1: tests/integration/resume-rehydrate-test.sh
 CYCL-1: tests/integration/resume-rehydrate-test.sh tests/integration/from-stage-rehydrate-test.sh
 ```
 
@@ -136,11 +139,11 @@ tests/integration/cycle-member-dispatch-events-test.sh: broken by unconditional 
 
 ## Findings
 
-**Finding 1 — All SPECs renamed (prior pass):** Previous design used SPEC-N numbering. All SPECs use descriptive IDs: RHYD-1/2 (resume hydration), FSTG-1/2 (from-stage), AMDR-1/2 (ADR amendments), ITER-1 (iteration state), SKIP-1 (skip-complete), DISP-1 (dispatch interrupted stage), ENTR-1 (entry points), FRSH-1/2 (fresh run), BNDY-1 (boundary), DLGT-1 (hydrate delegation), CYCL-1 (cycle fixture).
+**Finding 1 — All SPECs named:** RHYD-1/2 (resume hydration), FSTG-1/2 (from-stage), AMDR-1/2 (ADR amendments), ITER-1 (iteration state), SKIP-1 (skip-complete), DSPK-1 (dispatch interrupted stage k), ENTR-1 (entry points), FRSH-1/2 (fresh run), DLGT-1 (hydrate delegation), CYCL-1 (cycle fixture), LEGC-1 (legacy constraint). REMOVED: DISP-1 (id collision with requirement code), BNDY-1 (described file contents, not behaviour).
 
-**Finding 2 — covers: fields use requirement IDs (prior pass):** All SPECs name actual requirement IDs: RESU-1, RESU-2, RESU-3, RESU-4, FROM-1, FROM-2, FROM-3, LOOP-1, PATH-1, GUAR-1, GUAR-2, ADR-1, ADR-2, HYDR-1, TEST-1, ORDE-1.
+**Finding 2 — covers: fields use requirement IDs:** All SPECs name actual requirement IDs: RESU-1, RESU-2, RESU-3, RESU-4, FROM-1, FROM-2, FROM-3, LOOP-1, PATH-1, GUAR-1, GUAR-2, ADR-1, ADR-2, HYDR-1, TEST-1, ORDE-1, DISP-1.
 
-**Finding 3 — All 16 requirements covered:** RESU-1: RHYD-1. RESU-2: RHYD-1, RHYD-2. RESU-3: SKIP-1, DISP-1. RESU-4: RHYD-1, SKIP-1, DISP-1. FROM-1: FSTG-1. FROM-2: FSTG-1. FROM-3: FSTG-2. LOOP-1: ITER-1. PATH-1: ENTR-1. GUAR-1: FRSH-1. GUAR-2: FRSH-2. ADR-1: AMDR-1. ADR-2: AMDR-2, BNDY-1. HYDR-1: RHYD-1, DLGT-1. TEST-1: CYCL-1. ORDE-1: AMDR-1.
+**Finding 3 — All 17 requirements covered:** RESU-1: RHYD-1. RESU-2: RHYD-1, RHYD-2. RESU-3: SKIP-1, DSPK-1. RESU-4: RHYD-1, SKIP-1, DSPK-1. FROM-1: FSTG-1. FROM-2: FSTG-1. FROM-3: FSTG-2. LOOP-1: ITER-1. PATH-1: ENTR-1. GUAR-1: FRSH-1. GUAR-2: FRSH-2. ADR-1: AMDR-1. ADR-2: AMDR-2. HYDR-1: RHYD-1, DLGT-1. TEST-1: CYCL-1. ORDE-1: AMDR-1. DISP-1: LEGC-1.
 
 **Finding 4 — Implementation state (verified):**
 - `_artifact_persist_put_back` defined in artifact-persist.sh ✓
@@ -152,18 +155,22 @@ tests/integration/cycle-member-dispatch-events-test.sh: broken by unconditional 
 
 **Finding 5 — Cycle orchestrator guard (NOT YET FIXED):** `_cycle_orchestrator_run_body` reads `current_iter` unconditionally. Fix (step 6): wrap with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]`; fresh path sets `_start_iter=1`. Step 9: resume-loop-state-test.sh must export `_ZBUILD_RESUME_ACTIVE=true` before calling `cycle_orchestrator_run` directly.
 
-**Finding 6 — SKIP-1 claim narrowed (this pass, design finding 2):** The previous SKIP-1 said "skips any stage with stage_statuses[s]=='complete' during resume" — the checker found this overclaims because runner.sh:3899-3920 shows the complete-stage branch is conditional: `continue` (skip) when artifact is present, `return 1` (exit 1) when artifact is absent. The claim is now narrowed to the artifact-present path only: "On resume, the dispatch loop skips (via `continue`) a complete stage whose primary artifact is present … SKIP-1 describes the artifact-present path only." The absent-artifact case is explicitly noted as covered by RHYD-2. The evidence text (`"When resuming, skip stages already marked complete unless --from-stage overrides"` at runner.sh:3895) remains valid: lines 3924-3925 immediately after the artifact-present check do `info "Skipping already-complete stage" / continue`.
+**Finding 6 — SKIP-1 claim narrowed (prior pass):** The previous SKIP-1 said "skips any stage with stage_statuses[s]=='complete' during resume" — the checker found this overclaims because runner.sh:3899-3920 shows the complete-stage branch is conditional: `continue` (skip) when artifact is present, `return 1` (exit 1) when artifact is absent. The claim is now narrowed to the artifact-present path only. The absent-artifact case is explicitly covered by RHYD-2.
 
-**Finding 7 — FRSH-1 changed to [no-code] (prior pass):** Previous FRSH-1[done] had evidence `runner.sh:"if ! $resume_mode; then"` (line 2194) — that block sets up a fresh run_id and does not prove "no rehydration on fresh run." The rehydration gate is the `if $resume_mode; then` block at runner.sh:2845 (not entered when resume_mode=false), but pointing at the absence of a call is not demonstrable with a text snippet. Changed to [no-code]: the test at resume-rehydrate-test.sh includes a --no-resume sub-case tagged [#1805/FRSH-1] that asserts all stages were dispatched from stage 1 with no stage.skip events, which passes after the change and fails if the fresh-run guard were broken. TESTFILES entry added.
+**Finding 7 — FRSH-1 changed to [no-code] (prior pass):** Previous FRSH-1[done] had evidence `runner.sh:"if ! $resume_mode; then"` (line 2194) — that block sets up a fresh run_id and does not prove "no rehydration on fresh run." Changed to [no-code]: the test at resume-rehydrate-test.sh includes a --no-resume sub-case tagged [#1805/FRSH-1] that asserts all stages were dispatched from stage 1 with no stage.skip events, which passes after the change and fails if the fresh-run guard were broken.
 
 **Finding 8 — issue-acceptance findings 3/4 (ADR amendment content):** These findings report that the diff doesn't show ADR amendment content. This is a build-stage concern: the design correctly specifies AMDR-1 and AMDR-2 as [no-code] SPECs with tests in resume-rehydrate-test.sh that grep for the required amendment text in the ADR files. If the amendments are not written to the ADR files, those grep assertions fail. The design cannot show diff content it does not produce; the build stage implements the amendments and the test verifies them.
 
 **Finding 9 — FSTG-2 tautology fixed (prior pass):** The assertion now checks for "has no restorable primary artifact" — the phrase unique to `_runner_from_stage_preflight`, absent from old code.
 
-**Finding 10 — SPECs expanded with Given/When/Then parts (prior pass):** Previous design had 9 SPECs written on a single line without required sub-parts. That pass expanded RHYD-1, RHYD-2, FSTG-1, FSTG-2, ITER-1, SKIP-1, ENTR-1, FRSH-2, and DLGT-1 with their Given/When/Then/And sub-lines. AMDR-1, AMDR-2, FRSH-1, BNDY-1, and CYCL-1 are [no-code] SPECs that describe structural/doc work and need no sub-parts.
+**Finding 10 — SPECs expanded with Given/When/Then parts (prior pass):** Previous design had 9 SPECs written on a single line without required sub-parts. That pass expanded RHYD-1, RHYD-2, FSTG-1, FSTG-2, ITER-1, SKIP-1, ENTR-1, FRSH-2, and DLGT-1 with their Given/When/Then/And sub-lines. AMDR-1, AMDR-2, FRSH-1, and CYCL-1 are [no-code] SPECs that describe structural/doc work and need no sub-parts.
 
-**Finding 11 — Then: lines made observable (prior pass, design findings 1–3):** RHYD-1 Then named `_artifact_persist_restore` and `_artifact_persist_put_back` (internal functions). FSTG-1 Then named the same two internal functions. ENTR-1 Then named `_runner_resume_rehydrate`. All three were rewritten to describe what someone can observe: artifacts appearing in ZBUILD_ARTIFACT_DIR before the dispatch loop starts, and no stage.start events for completed stages. The behavioral content that was in And: lines has been promoted to Then: or preserved as And: lines. SPEC text descriptions updated to match.
+**Finding 11 — Then: lines made observable (prior pass):** RHYD-1, FSTG-1, ENTR-1 Then lines rewrote internal function names into observable outputs (artifacts in ZBUILD_ARTIFACT_DIR, no stage.start events). SKIP-1 and FRSH-2 Then lines rewrote internal control-flow language into observable events.
 
-**Finding 12 — SKIP-1 and FRSH-2 Then/And lines made observable (prior pass, design findings 1–2):** SKIP-1's Then: said "The loop issues a continue, skipping dispatch of that stage" — naming a Bash control-flow mechanism. The observable outcome was already in the And: ("No stage.start event is emitted for it"). Fixed: Then: now says "No stage.start event is emitted for that stage"; the redundant And: is removed. FRSH-2's And: said "Every stage is dispatched from stage 1 without consulting prior run state" — "without consulting prior run state" describes the internal resume_mode guard, not an observable output. The And: line is removed.
+**Finding 12 — SKIP-1 and FRSH-2 Then/And lines made observable (prior pass):** SKIP-1's Then: now says "No stage.start event is emitted for that stage." FRSH-2's And: "without consulting prior run state" (internal mechanism) removed.
 
-**Finding 13 — DISP-1 added (this pass, design findings 1–2):** RESU-3 requires "the run picks up at the stage that was interrupted, which runs again from its start" and RESU-4 requires "stage k is dispatched." Neither of these was covered by a SPEC with a Then: asserting stage k emits stage.start. SKIP-1 covers only the "skip complete stages" aspect. Added DISP-1[code]: "On resume, stage k (the interrupted stage) is dispatched and emits stage.start." The Given/When/Then structure is straightforward: stages 1…k-1 are complete (and have been rehydrated), the dispatch loop reaches stage k, and stage k emits stage.start. The behavioral basis is runner.sh:3896-3927 (skip guard applies only when `stage_status == "complete"`) and runner.sh:3937 (`eb_emit_event "stage.start" "stage=$stage"` is reached for stage k). Test assertion tagged [#1805/DISP-1] is added to resume-rehydrate-test.sh (step 10, item 6). TESTFILES updated.
+**Finding 13 — DSPK-1 added (prior pass, renamed this pass):** RESU-3 and RESU-4 require "stage k is dispatched." SKIP-1 covers only skipping complete stages. Added DSPK-1[code]: "On resume, stage k (the interrupted stage) is dispatched and emits stage.start." Behavioral basis: runner.sh:3896-3927 (skip guard only for `stage_status == "complete"`); stage k falls through to `eb_emit_event "stage.start"` at runner.sh:3937.
+
+**Finding 14 — SPEC DISP-1 renamed to DSPK-1; LEGC-1[done] added (prior pass):** The intake stage added a new requirement `DISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.` This requirement code clashes with the SPEC I had named DISP-1. Rule: "A SPEC's code is never one of the issue's requirement codes." Renamed SPEC to DSPK-1 everywhere (acceptance block, step 10 tag, TESTFILES). Added LEGC-1[done] covers: DISP-1 to satisfy that requirement. LEGC-1 confirms that SKIP-1 and FRSH-2 — the two [done] SPECs — both cite evidence from `core/pipeline/runner.sh` (not `legacy-DoNotUse/`), so no [done] claim is grounded in the legacy dispatch loop. Evidence: `core/pipeline/runner.sh:"When resuming, skip stages already marked complete unless --from-stage overrides"` (runner.sh:3895).
+
+**Finding 15 — REMOVED: DISP-1 tombstone + REMOVED: BNDY-1 tombstone (this pass):** The design checker flagged two issues: (a) DISP-1 disappeared without a tombstone — the rule requires `REMOVED: DISP-1 — <why>` to stay in every later design so the id is never reused; added. (b) BNDY-1 described file contents ("resume-rehydrate-test.sh contains both…"), which no test can prove. BNDY-1's intent was to pin both sides of the ADR-006/ADR-050 §6 boundary, but ADR-2 is fully covered by AMDR-2[no-code] (the amendment) and the two behavioural sides are already pinned by RHYD-1 (resume) and FRSH-1 (new-run). BNDY-1 is REMOVED; tombstone added. TESTFILES entry for BNDY-1 removed. Step 10 wording "BNDY-1 runner invocation" changed to "fresh-run sub-case". Finding 3 updated: ADR-2 → AMDR-2 only.
