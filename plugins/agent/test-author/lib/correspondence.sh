@@ -58,7 +58,7 @@ For EACH SPEC, judge every part of it against its test, and the test's layout:
 - the When: does the test do it?
 - a Then: does the test assert it — would the test fail if it were not so?
 - a Cleanup: does the test put it back?
-- sections: is the test laid out in sections marked Given, When and Then (and Cleanup, when the SPEC has one), in the language's own comments?
+- sections: is each part's code under its own heading — a comment, in the language's own form, marking Given, When and Then (and Cleanup, when the SPEC has one)? The headings are the only comments you are shown.
 
 Answer at least one line for every SPEC, each starting with that SPEC's identifier from its `###` heading, exactly as written there. When its test does every part and is laid out in sections, one line:
 
@@ -68,7 +68,7 @@ Otherwise one line for each thing wrong, and no ok line:
 
 <identifier> <part>: missing | WHY: <what the test does not do> | QUOTE: "<that part's own words>"
 <identifier> <part>: wrong | WHY: <what the test does instead> | QUOTE: "<that part's own words>"
-<identifier> sections: missing | WHY: <which section is not there>
+<identifier> sections: missing | WHY: <which heading is not there, or which part's code is not under its own> | QUOTE: <test file>:"<the heading or line of the test that shows it>"
 
 <part> is the word the part's line starts with: Given, When, Then, And or Cleanup. The QUOTE is copied from that line, and says which line it is when the SPEC has several.
 
@@ -181,6 +181,10 @@ _sc_judge() {
         fi
         if [[ "$_scj_pw1" == sections ]]; then
             [[ "$_scj_word" == missing ]] || { _scj_bad+=("$_scj_sid sections is ok or missing, not $_scj_word"); continue; }
+            # #2474: a quote of the test, when given, must be there.
+            if [[ -n "$_scj_q" ]]; then
+                judge_quote_check_v _scj_w "$_scj_q" "" "$_scj_repo" || { _scj_bad+=("$_scj_sid's quote $_scj_w"); continue; }
+            fi
             _scj_miss=$((_scj_miss + 1)); _scj_n=$((_scj_n + 1))
             _scj_sect="${_scj_why:-a section is missing}"
             continue
