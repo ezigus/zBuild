@@ -77,6 +77,8 @@ _setup_path_state() {
 # ── PATH 1: --resume flag to runner.sh ────────────────────────────────────────
 print_test_section "[#1805/ENTR-1] path 1: bash runner.sh --resume restores artifacts"
 
+# Given — a run has been interrupted; stage intake is marked complete with its artifact
+#   present in the git state branch; run state is persisted in the state dir.
 P1_ID="$(zb_test_issue)"
 _setup_path_state "p1" "$P1_ID"
 P1_WORK_REPO="$P_WORK_REPO"
@@ -104,6 +106,7 @@ jq -n \
         updated_at: $now
     }' > "$P1_STATE_FILE"
 
+# When — the run is resumed via the --resume flag entry path.
 set +e
 ( cd "$P1_WORK_REPO" && env \
     ZBUILD_CYCLES_ENABLED=0 \
@@ -121,7 +124,8 @@ set +e
     >"$TEST_TEMP_DIR/p1-stdout.txt" 2>"$TEST_TEMP_DIR/p1-stderr.txt"
 set -e
 
-# [#1805/ENTR-1] path 1 assertion: artifact restored.
+# Then — completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR before any stage.start event.
+# [#1805/ENTR-1] path 1: artifact restored.
 # Before change: no rehydration → file absent → FAILS.
 # After change: _runner_resume_rehydrate restores it → PASSES.
 assert_file_exists \
@@ -150,9 +154,26 @@ assert_gt "[#1805/ENTR-1] path 1 (--resume flag): pipeline.resume event emitted 
 assert_gt "[#1805/ENTR-1] path 1 (--resume flag): pipeline.resume precedes first stage.start (rehydration before dispatch loop)" \
     "$_p1_first_start_lineno" "$_p1_resume_lineno"
 
+# [#1805/ENTR-1] path 1: no stage.start event must be emitted for intake (a stage marked
+# complete in the interrupted run's state). The runner skips complete stages on resume;
+# only the interrupted stage (build) may emit stage.start.
+# Before change: resume doesn't skip complete stages → intake dispatched → intake_starts=1 →
+#   assert 0==1 → FAILS.
+# After change: _runner_resume_rehydrate marks intake complete/rehydrated → dispatch loop
+#   skips it → intake_starts=0 → PASSES.
+_p1_intake_starts=0
+if [[ -f "$P1_EVENTS_JSONL" ]]; then
+    _p1_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+        "$P1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/ENTR-1] path 1 (--resume flag): no stage.start for intake (complete stage skipped before dispatch loop)" \
+    "0" "$_p1_intake_starts"
+
 # ── PATH 2: auto-resume on detecting status=interrupted ───────────────────────
 print_test_section "[#1805/ENTR-1] path 2: auto-resume on status=interrupted restores artifacts"
 
+# Given — a run has been interrupted (status=interrupted); stage intake is marked
+#   complete with its artifact present in the git state branch.
 P2_ID="$(zb_test_issue)"
 _setup_path_state "p2" "$P2_ID"
 P2_WORK_REPO="$P_WORK_REPO"
@@ -181,7 +202,8 @@ jq -n \
         updated_at: $now
     }' > "$P2_STATE_FILE"
 
-# No --resume flag: runner detects status=interrupted and auto-resumes.
+# When — the run is resumed via the auto-resume entry path (no --resume flag;
+#   runner detects status=interrupted and auto-resumes).
 set +e
 ( cd "$P2_WORK_REPO" && env \
     ZBUILD_CYCLES_ENABLED=0 \
@@ -198,7 +220,8 @@ set +e
     >"$TEST_TEMP_DIR/p2-stdout.txt" 2>"$TEST_TEMP_DIR/p2-stderr.txt"
 set -e
 
-# [#1805/ENTR-1] path 2 assertion: artifact restored via auto-resume.
+# Then — completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR before any stage.start event.
+# [#1805/ENTR-1] path 2: artifact restored via auto-resume.
 # Before change: no rehydration → file absent → FAILS.
 # After change: auto-resume path invokes _runner_resume_rehydrate → PASSES.
 assert_file_exists \
@@ -224,9 +247,25 @@ assert_gt "[#1805/ENTR-1] path 2 (auto-resume): pipeline.resume event emitted (r
 assert_gt "[#1805/ENTR-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)" \
     "$_p2_first_start_lineno" "$_p2_resume_lineno"
 
+# [#1805/ENTR-1] path 2: no stage.start event must be emitted for intake (a stage
+# marked complete in the interrupted run's state). Complete stages are skipped on resume.
+# Before change: resume doesn't skip complete stages → intake dispatched →
+#   intake_starts=1 → assert 0==1 → FAILS.
+# After change: dispatch loop skips intake → intake_starts=0 → PASSES.
+_p2_intake_starts=0
+if [[ -f "$P2_EVENTS_JSONL" ]]; then
+    _p2_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+        "$P2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/ENTR-1] path 2 (auto-resume): no stage.start for intake (complete stage skipped before dispatch loop)" \
+    "0" "$_p2_intake_starts"
+
 # ── PATH 3: zbuild pipeline resume --run-id ───────────────────────────────────
 print_test_section "[#1805/ENTR-1] path 3: zbuild pipeline resume --run-id restores artifacts"
 
+# Given — a run has been interrupted (status=interrupted); stage intake is marked
+#   complete with its artifact present in the git state branch; run state persisted
+#   with a known run_id.
 P3_ID="$(zb_test_issue)"
 _setup_path_state "p3" "$P3_ID"
 P3_WORK_REPO="$P_WORK_REPO"
@@ -257,6 +296,7 @@ jq -n \
         updated_at: $now
     }' > "$P3_STATE_FILE"
 
+# When — the run is resumed via zbuild pipeline resume --run-id entry path.
 # zbuild pipeline resume reads ZBUILD_STATE_DIR and finds the state file by run_id.
 # It sets status=in_progress and calls runner with --resume.
 # The runner's CWD must be P3_WORK_REPO so _artifact_persist_restore finds the branch.
@@ -277,7 +317,8 @@ set +e
     >"$TEST_TEMP_DIR/p3-stdout.txt" 2>"$TEST_TEMP_DIR/p3-stderr.txt"
 set -e
 
-# [#1805/ENTR-1] path 3 assertion: artifact restored via zbuild pipeline resume.
+# Then — completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR before any stage.start event.
+# [#1805/ENTR-1] path 3: artifact restored via zbuild pipeline resume.
 # Before change: no rehydration → file absent → FAILS.
 # After change: zbuild pipeline resume → runner --resume → _runner_resume_rehydrate → PASSES.
 assert_file_exists \
@@ -303,6 +344,19 @@ assert_gt "[#1805/ENTR-1] path 3 (zbuild pipeline resume): pipeline.resume event
     "$_p3_resume_lineno" "0"
 assert_gt "[#1805/ENTR-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)" \
     "$_p3_first_start_lineno" "$_p3_resume_lineno"
+
+# [#1805/ENTR-1] path 3: no stage.start event must be emitted for intake (a stage
+# marked complete in the interrupted run's state). Complete stages are skipped on resume.
+# Before change: resume doesn't skip complete stages → intake dispatched →
+#   intake_starts=1 → assert 0==1 → FAILS.
+# After change: dispatch loop skips intake → intake_starts=0 → PASSES.
+_p3_intake_starts=0
+if [[ -f "$P3_EVENTS_JSONL" ]]; then
+    _p3_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+        "$P3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/ENTR-1] path 3 (zbuild pipeline resume): no stage.start for intake (complete stage skipped before dispatch loop)" \
+    "0" "$_p3_intake_starts"
 
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-entry-points test uses a fixture containing a cyclic stage"
