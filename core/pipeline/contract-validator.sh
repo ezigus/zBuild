@@ -110,6 +110,8 @@ _contract_validate_pipeline() {
     local -A _CV_STAGE_MANIFEST=()
     local -A _CV_OUTPUT_PRODUCERS=()   # key=output_id  → space-delimited list of stages
     local -a violations=()
+    # The formats the engine implements, once (#2472, ADR-065).
+    local _ofmts; manifest_graph_formats_v _ofmts
     local fail_count=0
     local stage manifest
     for stage in "${stages[@]}"; do
@@ -171,9 +173,8 @@ _contract_validate_pipeline() {
                 fail_count=$((fail_count + 1))
             fi
             # #2472 (ADR-065): read in this shell, not in a `$( )` an output.
-            local _ofmt _ofmts
+            local _ofmt
             manifest_graph_output_format_v _ofmt "$manifest" "$out_id"
-            manifest_graph_formats_v _ofmts
             if [[ -z "$_ofmt" ]]; then
                 violations+=("$stage|FORMAT_MISSING|$out_id|output declares no format: — the engine cannot decide how to check it (ADR-055 §1, #1895)")
                 fail_count=$((fail_count + 1))

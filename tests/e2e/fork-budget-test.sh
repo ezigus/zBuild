@@ -26,9 +26,13 @@
 #         How often a wait loop sleeps measures elapsed time, not code — under
 #         load the same tree counted 4,528 and 4,610.
 # SPEC-7: total processes (programs + subshells) ≤ PROCESS_BUDGET.
-# SPEC-8: processes and external execs per dispatch (the run's own
-#         plugin.run.start events) ≤ their per-dispatch budgets, which ratchet
-#         down toward a floor; the floor sits below the budget (#2472). A stage
+# SPEC-8: the run's cost in two parts (#2472, ADR-065 §6), each within its
+#         budget, which ratchets down toward a floor below it:
+#         - start-up: processes and execs before the first plugin.run.start,
+#           per plugin manifest discovery reads;
+#         - per dispatch: the same run again with three more review lenses —
+#           the extra processes and execs over the extra dispatches.
+#         A stage or plugin added moves the totals, not these.
 #         added to the run raises the totals, not the ratio.
 # SPEC-6: the worker pool's execs scale with its work units, not with how long
 #         they take: its poll sleep is exempt, and no counted pool line runs
@@ -119,19 +123,26 @@ FORK_BUDGET=2008
 # reads each output's format, the formats and its summary mark in its shell,
 # not in three `$( )` an output — measured 2,622 macOS).
 PROCESS_BUDGET=2640
-# Per dispatch (ADR-065 §6, #2472): the totals over the run's plugin.run.start
-# events, so a stage added or removed moves the totals but not the ratio. The
-# budgets ratchet down like the totals. History: 294 / 224 (#2472 — measured
-# 2,622 processes and 1,996 execs over 9 dispatches, 292 and 222, macOS).
-# The floor is the goal, an estimate (#2472): a dispatch needs a shell to
-# isolate the plugin, one for the model call and a few for its time limit and
-# watchers, about 5–10 processes, and a handful of programs (git, jq, the
-# model); the run's start (sourcing, discovery) is about 50 more, spread over
-# its dispatches. Reached, the floor is measured again, not assumed.
-PROCS_PER_DISPATCH_BUDGET=294
-PROCS_PER_DISPATCH_FLOOR=20
-EXECS_PER_DISPATCH_BUDGET=224
-EXECS_PER_DISPATCH_FLOOR=15
+# The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
+# like the totals; each floor is the goal, an estimate, measured again when
+# reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
+# first measured on macOS: one more lens dispatch costs 500 processes and 294
+# execs; the start-up, 472 and 257 over 43 plugins, 11 and 6 a plugin).
+# - Per dispatch, the extra cost of one more dispatch. A dispatch needs a shell
+#   to isolate the plugin, one for the model call and a few for its time limit
+#   and watchers (~20 processes); and its programs: jq for its result and
+#   state (~10), git for the snapshot (~8), a lock an event (~10), the scope
+#   and write checks (~4), safe writes (~6), the model call (~2) — ~50 execs.
+# - Start-up, per plugin manifest: discovery and the manifest checks; about one
+#   process and one exec a plugin once each read is in the shell.
+DISPATCH_PROCS_BUDGET=505
+DISPATCH_PROCS_FLOOR=20
+DISPATCH_EXECS_BUDGET=298
+DISPATCH_EXECS_FLOOR=50
+STARTUP_PROCS_PER_PLUGIN_BUDGET=12
+STARTUP_PROCS_PER_PLUGIN_FLOOR=1
+STARTUP_EXECS_PER_PLUGIN_BUDGET=7
+STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh
@@ -261,21 +272,42 @@ else
     assert_fail "[SPEC-4] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
 fi
 
-# SPEC-8 (#2472): the same, per dispatch — the work the run did.
-_disp="$(jq -r 'select(.type == "plugin.run.start") | 1' "$RUN_DIR/events/events.jsonl" 2>/dev/null | grep -c . || true)"
-_disp="${_disp:-0}"
-if (( _disp >= 7 )); then
-    assert_pass "[SPEC-8] the run dispatched ${_disp} plugins"
-else
-    assert_fail "[SPEC-8] the run dispatched at least 7 plugins" "${_disp} plugin.run.start events"
-    _disp=1
-fi
-_ppd=$(( (_procs + _disp - 1) / _disp )); _epd=$(( (_total + _disp - 1) / _disp ))
-echo "  per dispatch (${_disp}): ${_ppd} processes (budget ${PROCS_PER_DISPATCH_BUDGET}, floor ${PROCS_PER_DISPATCH_FLOOR}), ${_epd} execs (budget ${EXECS_PER_DISPATCH_BUDGET}, floor ${EXECS_PER_DISPATCH_FLOOR})"
-assert_eq "[SPEC-8] ${_ppd} processes a dispatch ≤ PROCS_PER_DISPATCH_BUDGET ${PROCS_PER_DISPATCH_BUDGET}" "1" "$(( _ppd <= PROCS_PER_DISPATCH_BUDGET ))"
-assert_eq "[SPEC-8] ${_epd} execs a dispatch ≤ EXECS_PER_DISPATCH_BUDGET ${EXECS_PER_DISPATCH_BUDGET}" "1" "$(( _epd <= EXECS_PER_DISPATCH_BUDGET ))"
+# SPEC-8 (#2472): the cost in two parts.
+_fb_disp() { jq -r 'select(.type == "plugin.run.start") | 1' "$1" 2>/dev/null | grep -c . || true; }
+_dA="$(_fb_disp "$RUN_DIR/events/events.jsonl")"; _dA="${_dA:-0}"
+# The same run with three more review lenses: three more dispatches.
+RUN_B="$TEST_TEMP_DIR/run-b"; BIN_B="$TEST_TEMP_DIR/bin-b"; TRACE_B="$TEST_TEMP_DIR/run-b.trace"
+mkdir -p "$RUN_B/events" "$BIN_B"
+set +e
+(
+    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
+    export FIXTURE_STATE_DIR="$RUN_B" FIXTURE_BIN_DIR="$BIN_B" FIXTURE_LENSES="correctness red-team performance sre"
+    fork_census_traced "$TRACE_B" bash "$FIXTURE" >/dev/null 2>&1
+)
+_run_b_rc=$?
+set -e
+assert_eq "[SPEC-8] the run with four lenses exits 0 under tracing" "0" "$_run_b_rc"
+_dB="$(_fb_disp "$RUN_B/events/events.jsonl")"; _dB="${_dB:-0}"
+_totB="$(fork_census_count "$TRACE_B" "$TEST_TEMP_DIR/run-b.sites")"; _procsB="$(fork_census_processes "$TRACE_B")"
+_dd=$(( _dB - _dA ))
+assert_eq "[SPEC-8] three more lenses are three more dispatches (${_dA} → ${_dB})" "3" "$_dd"
+(( _dd > 0 )) || _dd=1
+_dp=$(( (_procsB - _procs + _dd - 1) / _dd )); _de=$(( (_totB - _total + _dd - 1) / _dd ))
+# Start-up: everything traced before the first dispatch.
+_first="$(awk '/^\++@[^ ]*@ eb_emit_event (["'"'"']?)plugin\.run\.start/ { print NR; exit }' "$TRACE")"
+head -n "$(( ${_first:-1} - 1 ))" "$TRACE" > "$TEST_TEMP_DIR/start.trace"
+_sE="$(fork_census_count "$TEST_TEMP_DIR/start.trace" "$TEST_TEMP_DIR/start.sites")"; _sP="$(fork_census_processes "$TEST_TEMP_DIR/start.trace")"
+_plugins="$(find "$REPO_ROOT/plugins" -maxdepth 3 -name manifest.yaml -type f | grep -c .)"
+_spp=$(( (_sP + _plugins - 1) / _plugins )); _spe=$(( (_sE + _plugins - 1) / _plugins ))
+echo "  per dispatch (${_dA} → ${_dB}): ${_dp} processes (budget ${DISPATCH_PROCS_BUDGET}, floor ${DISPATCH_PROCS_FLOOR}), ${_de} execs (budget ${DISPATCH_EXECS_BUDGET}, floor ${DISPATCH_EXECS_FLOOR})"
+echo "  start-up (${_sP} processes, ${_sE} execs over ${_plugins} plugins): ${_spp} processes a plugin (budget ${STARTUP_PROCS_PER_PLUGIN_BUDGET}, floor ${STARTUP_PROCS_PER_PLUGIN_FLOOR}), ${_spe} execs (budget ${STARTUP_EXECS_PER_PLUGIN_BUDGET}, floor ${STARTUP_EXECS_PER_PLUGIN_FLOOR})"
+assert_eq "[SPEC-8] the start-up is traced (before the first dispatch, ${_first:-none})" "1" "$(( ${_first:-0} > 1 && _sP > 0 ))"
+assert_eq "[SPEC-8] ${_dp} processes a dispatch ≤ DISPATCH_PROCS_BUDGET ${DISPATCH_PROCS_BUDGET}" "1" "$(( _dp <= DISPATCH_PROCS_BUDGET ))"
+assert_eq "[SPEC-8] ${_de} execs a dispatch ≤ DISPATCH_EXECS_BUDGET ${DISPATCH_EXECS_BUDGET}" "1" "$(( _de <= DISPATCH_EXECS_BUDGET ))"
+assert_eq "[SPEC-8] ${_spp} start-up processes a plugin ≤ STARTUP_PROCS_PER_PLUGIN_BUDGET ${STARTUP_PROCS_PER_PLUGIN_BUDGET}" "1" "$(( _spp <= STARTUP_PROCS_PER_PLUGIN_BUDGET ))"
+assert_eq "[SPEC-8] ${_spe} start-up execs a plugin ≤ STARTUP_EXECS_PER_PLUGIN_BUDGET ${STARTUP_EXECS_PER_PLUGIN_BUDGET}" "1" "$(( _spe <= STARTUP_EXECS_PER_PLUGIN_BUDGET ))"
 assert_eq "[SPEC-8] each floor is below its budget: the goal still ahead" "1" \
-    "$(( PROCS_PER_DISPATCH_FLOOR < PROCS_PER_DISPATCH_BUDGET && EXECS_PER_DISPATCH_FLOOR < EXECS_PER_DISPATCH_BUDGET ))"
+    "$(( DISPATCH_PROCS_FLOOR < DISPATCH_PROCS_BUDGET && DISPATCH_EXECS_FLOOR < DISPATCH_EXECS_BUDGET && STARTUP_PROCS_PER_PLUGIN_FLOOR < STARTUP_PROCS_PER_PLUGIN_BUDGET && STARTUP_EXECS_PER_PLUGIN_FLOOR < STARTUP_EXECS_PER_PLUGIN_BUDGET ))"
 
 cleanup_test_env
 print_test_results

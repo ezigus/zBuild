@@ -1,6 +1,6 @@
 # ADR-065 — Process budget: the engine's fork count is a tested contract
 
-**Status:** Accepted (2026-09-19); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock); amended 2026-11-05 (#2472, §6: a budget per dispatch, and a floor to work down to)
+**Status:** Accepted (2026-09-19); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock); amended 2026-11-05 (#2472, §6: the cost in two parts — one more dispatch, and start-up per plugin — each with a budget and a floor)
 **Issue:** #2151
 **Related:** ADR-001 (Discovery + lockfile), ADR-012 (test tiering), ADR-053 (test flake policy — the serial-pin cap that also needs an amendment to raise), ADR-041 (the fd-9 lock discipline the trace harness must respect)
 
@@ -282,17 +282,22 @@ The events lock is taken in the caller's shell (a brace group with `9>lock`, no 
 
 `eb_emit_event` now marks the time it holds the lock. An emit that starts while the mark is set, which can only be a trap that interrupted this shell's own emit, writes its line at once without the lock. bash runs a trap between commands, so no line of the interrupted emit is half-written. An ordinary emit still takes the lock, and still starts no subshell. The other locks (`locked_state_update`, the cost ledger, the claim coordinator) take theirs in a subshell and are not affected.
 
-### §6 (2026-11-05, #2472) — A budget per dispatch, and a floor to work down to
+### §6 (2026-11-05, #2472) — The cost in two parts, each with a budget and a floor
 
-A total alone cannot say whether the engine got leaner: a stage added to the mocked run raises it, a stage removed lowers it, and neither is progress. And a reduction is not always possible: some changes add work that is needed.
+A total alone cannot say whether the engine got leaner: a stage or plugin added raises it, one removed lowers it, and neither is progress. A reduction is not always possible either: some changes add work that is needed. And dispatches are not equal, and much of the cost is not per dispatch at all, so a total divided by the run's dispatches would only move when the mocked run changes.
 
-- **The ratio.** The mocked run's processes and external execs are also measured per dispatch: each total divided by the run's own `plugin.run.start` events (9 on the parity fixture), rounded up. `PROCS_PER_DISPATCH_BUDGET` and `EXECS_PER_DISPATCH_BUDGET` hold them, and ratchet down like the totals (§2). Both are checked: the totals keep the engine small, the ratios show whether it is getting leaner for the work it does.
-- **The floor.** Each ratio has a floor, `PROCS_PER_DISPATCH_FLOOR` and `EXECS_PER_DISPATCH_FLOOR`: an estimate of what a dispatch really needs, and the goal the budgets are worked down to.
-  - A dispatch needs a shell to isolate the plugin, one for the model call and a few for its time limit and watchers (about 5–10 processes), and a handful of programs (`git`, `jq`, the model).
-  - The run's start (sourcing, discovery) is about 50 processes more, spread over its dispatches.
-  - The floors are set at 20 processes and 15 execs a dispatch. On 2026-11-05 the run measured 292 and 222.
-  - A floor sits below its budget while there is work to do. Reached, it is measured again, not assumed.
-- **Each change that lowers a budget records the new measurement** in the history above it, as the totals do.
+The mocked run's cost is therefore also measured in the two parts that drive it:
+
+- **Per dispatch: what one more dispatch costs.** The same mocked run is traced a second time with three more review lenses: three more dispatches of a model stage. The extra processes and external execs over the extra `plugin.run.start` events, rounded up, are held by `DISPATCH_PROCS_BUDGET` and `DISPATCH_EXECS_BUDGET`. The fixture takes the lenses from `FIXTURE_LENSES`, and its template is unchanged without it.
+- **Start-up, per plugin.** Everything traced before the first `plugin.run.start` (sourcing, discovery, the manifest checks), divided by the plugin manifests under `plugins/`, rounded up. It is held by `STARTUP_PROCS_PER_PLUGIN_BUDGET` and `STARTUP_EXECS_PER_PLUGIN_BUDGET`.
+- **Each budget ratchets down like the totals (§2).** The totals keep the engine small; the parts show whether it is getting leaner for the work it does.
+- **Each part has a floor, the goal the budgets are worked down to.** A floor is an estimate, sits below its budget while there is work to do, and is measured again once reached, not assumed.
+  - **A dispatch:** 20 processes (a shell to isolate the plugin, one for the model call, a few for its time limit and watchers) and 50 execs (`jq` for its result and state ~10, `git` for the snapshot ~8, a lock for each event ~10, the scope and write checks ~4, safe writes ~6, the model call ~2).
+  - **Start-up:** 1 process and 1 exec for each plugin.
+- **First measured on 2026-11-05, macOS:**
+  - one more dispatch cost 500 processes and 294 execs;
+  - start-up cost 472 processes and 257 execs over 43 plugins, or 11 and 6 a plugin.
+- Each change that lowers a budget records the new measurement in the history above it, as the totals do.
 
 ## Consequences
 
@@ -326,7 +331,7 @@ counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
 
 ## Enforced by
 
-- §6 (2026-11-05, #2472: a budget per dispatch, and a floor) → `tests/e2e/fork-budget-test.sh` SPEC-8 (processes and execs per `plugin.run.start` are within `PROCS_PER_DISPATCH_BUDGET` and `EXECS_PER_DISPATCH_BUDGET`; each floor is below its budget; the run dispatched at least 7 plugins)
+- §6 (2026-11-05, #2472: the cost in two parts, each with a budget and a floor) → `tests/e2e/fork-budget-test.sh` SPEC-8 (three more lenses are three more dispatches; the extra processes and execs a dispatch are within `DISPATCH_PROCS_BUDGET` and `DISPATCH_EXECS_BUDGET`; the start-up before the first dispatch, per plugin, is within `STARTUP_PROCS_PER_PLUGIN_BUDGET` and `STARTUP_EXECS_PER_PLUGIN_BUDGET`; each floor is below its budget)
 - §5 (amended 2026-11-02, #2456: an emit from a signal trap does not wait on its own lock) → `tests/unit/event-bus-trap-reentry-test.sh` T1, T2 (the trap's emit returns at once and is written), T3 (an ordinary emit still takes the lock); `tests/unit/event-bus-emit-cost-test.sh` E1 (still no subshell or extra process)
 - §1 → `tests/e2e/fork-budget-test.sh` SPEC-1 (the canary counts one exec), SPEC-1b (a quoted value is not a command), SPEC-2, SPEC-3, SPEC-4 (the total is within `FORK_BUDGET`)
 - §1 (amended #2236, exempt waits) → `tests/e2e/fork-budget-test.sh` (marked waits are listed apart and not counted)

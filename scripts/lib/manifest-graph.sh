@@ -234,8 +234,9 @@ manifest_graph_output_summary_v() { _mgraph_output_field_v "$1" "${2-}" "${3-}" 
 # ─── manifest_graph_formats ──────────────────────────────────────────────────
 # The closed set (#1895/#1894). A format names how the engine checks an artifact
 # for damage, so it must be a vocabulary the engine implements, not free text.
-manifest_graph_formats() { printf 'json markdown text patch'; }
-manifest_graph_formats_v() { local -n _mgfv="$1"; _mgfv='json markdown text patch'; }
+_MGRAPH_FORMATS='json markdown text patch'
+manifest_graph_formats() { printf '%s' "$_MGRAPH_FORMATS"; }
+manifest_graph_formats_v() { local -n _mgfv="$1"; _mgfv="$_MGRAPH_FORMATS"; }
 
 # ─── manifest_graph_primary_output <manifest> ──────────────────────────────────
 # Echoes the FIRST outputs[] row marked `primary: true` in the same
