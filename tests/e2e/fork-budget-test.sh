@@ -26,6 +26,10 @@
 #         How often a wait loop sleeps measures elapsed time, not code — under
 #         load the same tree counted 4,528 and 4,610.
 # SPEC-7: total processes (programs + subshells) ≤ PROCESS_BUDGET.
+# SPEC-8: processes and external execs per dispatch (the run's own
+#         plugin.run.start events) ≤ their per-dispatch budgets, which ratchet
+#         down toward a floor; the floor sits below the budget (#2472). A stage
+#         added to the run raises the totals, not the ratio.
 # SPEC-6: the worker pool's execs scale with its work units, not with how long
 #         they take: its poll sleep is exempt, and no counted pool line runs
 #         more than once per unit (#2236).
@@ -115,6 +119,19 @@ FORK_BUDGET=2008
 # reads each output's format, the formats and its summary mark in its shell,
 # not in three `$( )` an output — measured 2,622 macOS).
 PROCESS_BUDGET=2640
+# Per dispatch (ADR-065 §6, #2472): the totals over the run's plugin.run.start
+# events, so a stage added or removed moves the totals but not the ratio. The
+# budgets ratchet down like the totals. History: 294 / 224 (#2472 — measured
+# 2,622 processes and 1,996 execs over 9 dispatches, 292 and 222, macOS).
+# The floor is the goal, an estimate (#2472): a dispatch needs a shell to
+# isolate the plugin, one for the model call and a few for its time limit and
+# watchers, about 5–10 processes, and a handful of programs (git, jq, the
+# model); the run's start (sourcing, discovery) is about 50 more, spread over
+# its dispatches. Reached, the floor is measured again, not assumed.
+PROCS_PER_DISPATCH_BUDGET=294
+PROCS_PER_DISPATCH_FLOOR=20
+EXECS_PER_DISPATCH_BUDGET=224
+EXECS_PER_DISPATCH_FLOOR=15
 
 # ─── the harness and the counter (scripts/lib/fork-census.sh) ────────────────
 # shellcheck source=../../scripts/lib/fork-census.sh
@@ -206,6 +223,7 @@ awk -F'\t' '{ split($2, p, ":"); f[p[1]] += $1 } END { for (k in f) printf "%d\t
 # artifact (test.yml: fork-budget-census.txt under RUNNER_TEMP).
 _fb_census() {
     printf '### fork budget: %s external execs (budget %s) across %s source files\n\n```\n' "$_total" "$FORK_BUDGET" "$_files"
+    printf 'processes: %s (budget %s)\n' "$_procs" "$PROCESS_BUDGET"
     awk -F'\t' 'NR <= 15 { printf "%5d  %-34s %s\n", $1, $2, $3 }' "$SITES"
     printf '```\n'
 }
@@ -242,6 +260,22 @@ if (( _total <= FORK_BUDGET )); then
 else
     assert_fail "[SPEC-4] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
 fi
+
+# SPEC-8 (#2472): the same, per dispatch — the work the run did.
+_disp="$(jq -r 'select(.type == "plugin.run.start") | 1' "$RUN_DIR/events/events.jsonl" 2>/dev/null | grep -c . || true)"
+_disp="${_disp:-0}"
+if (( _disp >= 7 )); then
+    assert_pass "[SPEC-8] the run dispatched ${_disp} plugins"
+else
+    assert_fail "[SPEC-8] the run dispatched at least 7 plugins" "${_disp} plugin.run.start events"
+    _disp=1
+fi
+_ppd=$(( (_procs + _disp - 1) / _disp )); _epd=$(( (_total + _disp - 1) / _disp ))
+echo "  per dispatch (${_disp}): ${_ppd} processes (budget ${PROCS_PER_DISPATCH_BUDGET}, floor ${PROCS_PER_DISPATCH_FLOOR}), ${_epd} execs (budget ${EXECS_PER_DISPATCH_BUDGET}, floor ${EXECS_PER_DISPATCH_FLOOR})"
+assert_eq "[SPEC-8] ${_ppd} processes a dispatch ≤ PROCS_PER_DISPATCH_BUDGET ${PROCS_PER_DISPATCH_BUDGET}" "1" "$(( _ppd <= PROCS_PER_DISPATCH_BUDGET ))"
+assert_eq "[SPEC-8] ${_epd} execs a dispatch ≤ EXECS_PER_DISPATCH_BUDGET ${EXECS_PER_DISPATCH_BUDGET}" "1" "$(( _epd <= EXECS_PER_DISPATCH_BUDGET ))"
+assert_eq "[SPEC-8] each floor is below its budget: the goal still ahead" "1" \
+    "$(( PROCS_PER_DISPATCH_FLOOR < PROCS_PER_DISPATCH_BUDGET && EXECS_PER_DISPATCH_FLOOR < EXECS_PER_DISPATCH_BUDGET ))"
 
 cleanup_test_env
 print_test_results
