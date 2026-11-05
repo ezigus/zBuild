@@ -199,7 +199,7 @@ fi
 assert_eq "[#1805/RHYD-1] intake emits no stage.start (complete stage skipped)" \
     "0" "$_s1_intake_starts"
 
-# [#1805/DISP-1]: stage k (the interrupted stage) must emit stage.start when the
+# [#1805/DSPK-1]: stage k (the interrupted stage) must emit stage.start when the
 # dispatch loop reaches it on resume. The fixture has intake=complete (stage k-1)
 # and cyc=pending (stage k). Cycles dispatch their inner members: cycled emits
 # stage.start with stage=cycled. This proves the dispatch loop reached and dispatched
@@ -211,7 +211,7 @@ if [[ -f "$S1_EVENTS_JSONL" ]]; then
     _s1_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
         "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/DISP-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)" \
+assert_gt "[#1805/DSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)" \
     "$_s1_cycled_starts" "0"
 
 # ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
@@ -570,7 +570,7 @@ assert_contains "[#1805/AMDR-2] ADR-050 §6 boundary note says a resume continue
     "$_adr050_s6" "continues the same run"
 
 # ── SPEC-12: fresh (non-resume) run dispatches all stages ─────────────────────
-print_test_section "[#1805/BNDY-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)"
+print_test_section "[#1805/FRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)"
 
 S12_STATE_DIR="$TEST_TEMP_DIR/s12-state"
 S12_EVENTS_DIR="$TEST_TEMP_DIR/s12-events"
@@ -597,7 +597,7 @@ _s12_snap_rc=0
   cd "$S12_WORK_REPO" && _artifact_persist_snapshot "$S12_STATE_DIR" "$_S12_ID" ) \
     >"$TEST_TEMP_DIR/s12-snap.log" 2>&1 || _s12_snap_rc=$?
 if [[ "$_s12_snap_rc" -ne 0 ]]; then
-    assert_fail "[#1805/BNDY-1] setup: snapshot to state branch failed" \
+    assert_fail "[#1805/FRSH-1] setup: snapshot to state branch failed" \
         "rc=$_s12_snap_rc; $(cat "$TEST_TEMP_DIR/s12-snap.log" 2>/dev/null | tail -5)"
 fi
 # Remove the artifact from disk — only the state branch has it now, matching a
@@ -648,7 +648,7 @@ set +e
     >"$TEST_TEMP_DIR/s12-stdout.txt" 2>"$TEST_TEMP_DIR/s12-stderr.txt"
 set -e
 
-# [#1805/BNDY-1]: intake must emit stage.start on a fresh run (not skipped by
+# : intake must emit stage.start on a fresh run (not skipped by
 # rehydration, which only applies on resume). This pins the new-run side of the
 # ADR-050 §6 boundary: the prior-work reuse invariant governs new runs; a resume
 # (governed by ADR-006) is the only path that may skip complete stages.
@@ -657,7 +657,7 @@ if [[ -f "$S12_EVENTS_JSONL" ]]; then
     _s12_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
         "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/BNDY-1] fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)" \
+assert_eq "fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)" \
     "1" "$_s12_intake_starts"
 
 # [#1805/FRSH-1]: dispatch started from stage 1; intake must have dispatched exactly once.
@@ -698,12 +698,12 @@ fi
 assert_eq "[#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)" \
     "0" "$_s12_prior_in_dir"
 
-# [#1805/BNDY-1]: the cycle fixture used for this fresh-run sub-case contains type: cycle,
+# : the cycle fixture used for this fresh-run sub-case contains type: cycle,
 # establishing that the fixture IS a cyclic pipeline (satisfying the "same cycle fixture" clause).
 # BNDY-1 requires "verifies intake dispatches AND the fixture contains type:cycle" —
 # the cycled sub-stage dispatch is not required by BNDY-1.
 _s12_fixt_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "[#1805/BNDY-1] cycle fixture used in BNDY-1 fresh-run sub-case has type: cycle" \
+assert_contains "cycle fixture used in fresh-run sub-case has type: cycle" \
     "$_s12_fixt_content" "type: cycle"
 
 # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
