@@ -64,7 +64,7 @@ elif grep -q "EXACT absolute path:" <<< "$prompt"; then
     design_out="$(awk '/EXACT absolute path:/ { getline; sub(/^[[:space:]]+/, ""); gsub(/<\/?out-of-scope-context>/, ""); print; exit }' <<< "$prompt")"
     if [[ -n "$design_out" ]]; then
         mkdir -p "$(dirname "$design_out")"
-        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nFIXT-1[no-code]: the parity fixture file exists covers: PRTY-1\n  When: the build runs\n  Then: the parity fixture file is in tests/fixtures\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
+        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nFIXT-1[no-code]: the build adds the parity fixture covers: PRTY-1\n  When: the build runs\n  Then: the parity fixture file is in tests/fixtures\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
     fi
     jq -n --arg r 'wrote the design' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
