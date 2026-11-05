@@ -1,5 +1,30 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
+## Status: Twenty-first pass — Then: lines made observable (design findings 1–3)
+
+### Root cause of twentieth-pass failure
+
+Three SPECs had `Then:` lines naming internal functions rather than observable outcomes:
+- **RHYD-1**: `Then: _artifact_persist_restore and _artifact_persist_put_back are called…` → not observable
+- **FSTG-1**: `Then: _artifact_persist_restore and _artifact_persist_put_back are called…` → not observable
+- **ENTR-1**: `Then: _runner_resume_rehydrate is called in each case…` → not observable
+
+### Changes in this pass
+
+1. **RHYD-1 Then:** Now "The completed stage's artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical to their state at the time of interruption". The old And: about artifacts is now the Then:. And: about no stage.start preserved. SPEC summary line updated.
+2. **FSTG-1 Then:** Now "The artifacts from every stage before <s> appear in ZBUILD_ARTIFACT_DIR before the dispatch loop starts". And: lines about stage.start events preserved.
+3. **ENTR-1 Then:** Now "Completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR before any stage.start event is emitted, for each of the three entry paths independently". Added And: about no stage.start for completed stages. SPEC summary line updated.
+
+---
+
+## Status: Twentieth pass — FRSH-2 Then 1 made observable
+
+### Root cause of nineteenth-pass failure (design finding 1)
+
+FRSH-2's first Then said "The skip-stage guard is not entered because resume_mode is false" — an internal code path description, not an observable output. Changed to: "Every stage emits a stage.start event and no stage.skip event is emitted for any stage." This is observable and testable. The And: line (every stage dispatched from stage 1 without consulting prior run state) is preserved unchanged.
+
+---
+
 ## Status: Nineteenth pass — DLGT-1 And: removed (unobservable)
 
 ### Root cause of eighteenth-pass failure (design finding 1)

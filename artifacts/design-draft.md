@@ -53,11 +53,10 @@ tests/integration/cycle-member-dispatch-events-test.sh
 ```
 
 ```acceptance
-RHYD-1[code]: On resume, before the dispatch loop, completed-stage artifacts are rehydrated via _artifact_persist_restore and _artifact_persist_put_back and placed in ZBUILD_ARTIFACT_DIR covers: RESU-1 RESU-2 RESU-4 HYDR-1
+RHYD-1[code]: On resume, before the dispatch loop, completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical to their state at interruption, and no stage.start event is emitted for them covers: RESU-1 RESU-2 RESU-4 HYDR-1
   Given: A run has been interrupted; stage k-1 is marked complete with its artifacts present in the git state branch; stage k was the interrupted stage
   When: The run is resumed via any of the three entry paths (--resume flag, auto-resume on status=interrupted, or zbuild pipeline resume --run-id)
-  Then: _artifact_persist_restore and _artifact_persist_put_back are called for each completed stage before the dispatch loop starts
-  And: The completed stage's artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical to their state at the time of interruption
+  Then: The completed stage's artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical to their state at the time of interruption
   And: No stage.start event is emitted for the completed stage
 RHYD-2[code]: A complete stage whose primary artifact cannot be rehydrated causes exit 1 before any stage.start event is emitted covers: RESU-2
   Given: A run is being resumed; a stage is marked complete in persisted state; its primary artifact is absent from both disk and the git state branch after rehydration attempt
@@ -67,8 +66,7 @@ RHYD-2[code]: A complete stage whose primary artifact cannot be rehydrated cause
 FSTG-1[code]: --from-stage <s> rehydrates all stages before <s> and dispatches <s> as the first stage covers: FROM-1 FROM-2
   Given: A previous run completed stages before <s>; their artifacts are present in the git state branch; a new invocation uses --from-stage <s>
   When: The runner starts with --from-stage <s>
-  Then: _artifact_persist_restore and _artifact_persist_put_back are called for every stage before <s>
-  And: Those stages' artifacts appear in ZBUILD_ARTIFACT_DIR
+  Then: The artifacts from every stage before <s> appear in ZBUILD_ARTIFACT_DIR before the dispatch loop starts
   And: Stage <s> is dispatched as the first stage (a stage.start event is emitted for <s>)
   And: No stage.start event is emitted for any stage before <s>
 FSTG-2[code]: --from-stage <s> when a prior stage has no restorable artifact emits a diagnostic and exits 1 before any stage.start event covers: FROM-3
@@ -89,15 +87,16 @@ SKIP-1[done]: On resume, the dispatch loop skips (via continue) a complete stage
   When: The dispatch loop reaches that stage
   Then: The loop issues a continue, skipping dispatch of that stage
   And: No stage.start event is emitted for it
-ENTR-1[code]: All three resume entry paths (--resume flag, auto-resume on status=interrupted, zbuild pipeline resume --run-id) invoke _runner_resume_rehydrate before the dispatch loop covers: PATH-1
+ENTR-1[code]: All three resume entry paths (--resume flag, auto-resume on status=interrupted, zbuild pipeline resume --run-id) restore completed-stage artifacts before the dispatch loop covers: PATH-1
   Given: A run has been interrupted and its state is persisted in runs/<run_id>/
   When: The run is resumed via any of the three entry paths in turn
-  Then: _runner_resume_rehydrate is called in each case before the dispatch loop runs
+  Then: Completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR before any stage.start event is emitted, for each of the three entry paths independently
+  And: No stage.start event is emitted for any stage marked complete in the interrupted run's state
 FRSH-1[no-code]: A fresh run dispatches all stages from stage 1 with no stage skipped due to prior state and no prior-run artifacts in ZBUILD_ARTIFACT_DIR covers: GUAR-1
 FRSH-2[done]: A new run of the same issue never skips a stage due to prior run output because the skip guard is conditional on resume_mode covers: GUAR-2 evidence: core/pipeline/runner.sh:"When resuming, skip stages already marked complete unless --from-stage overrides"
   Given: An issue has prior completed runs; a new run is started with no --resume flag and no status=interrupted state file
   When: The dispatch loop runs
-  Then: The skip-stage guard is not entered because resume_mode is false
+  Then: Every stage emits a stage.start event and no stage.skip event is emitted for any stage
   And: Every stage is dispatched from stage 1 without consulting prior run state
 BNDY-1[no-code]: resume-rehydrate-test.sh contains both a resume-side assertion (RHYD-1/RHYD-2) and a fresh-run sub-case with --no-resume, pinning both sides of the ADR-006/ADR-050 §6 boundary in one test file covers: ADR-2
 DLGT-1[code]: The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce covers: HYDR-1
@@ -157,4 +156,6 @@ tests/integration/cycle-member-dispatch-events-test.sh: broken by unconditional 
 
 **Finding 9 — FSTG-2 tautology fixed (prior pass):** The assertion now checks for "has no restorable primary artifact" — the phrase unique to `_runner_from_stage_preflight`, absent from old code.
 
-**Finding 10 — SPECs expanded with Given/When/Then parts (this pass):** Previous design had 9 SPECs written on a single line without required sub-parts. This pass expands RHYD-1, RHYD-2, FSTG-1, FSTG-2, ITER-1, SKIP-1, ENTR-1, FRSH-2, and DLGT-1 with their Given/When/Then/And sub-lines. AMDR-1, AMDR-2, FRSH-1, BNDY-1, and CYCL-1 are [no-code] SPECs that describe structural/doc work and need no sub-parts per the spec format.
+**Finding 10 — SPECs expanded with Given/When/Then parts (prior pass):** Previous design had 9 SPECs written on a single line without required sub-parts. That pass expanded RHYD-1, RHYD-2, FSTG-1, FSTG-2, ITER-1, SKIP-1, ENTR-1, FRSH-2, and DLGT-1 with their Given/When/Then/And sub-lines. AMDR-1, AMDR-2, FRSH-1, BNDY-1, and CYCL-1 are [no-code] SPECs that describe structural/doc work and need no sub-parts.
+
+**Finding 11 — Then: lines made observable (this pass, design findings 1–3):** RHYD-1 Then named `_artifact_persist_restore` and `_artifact_persist_put_back` (internal functions). FSTG-1 Then named the same two internal functions. ENTR-1 Then named `_runner_resume_rehydrate`. All three were rewritten to describe what someone can observe: artifacts appearing in ZBUILD_ARTIFACT_DIR before the dispatch loop starts, and no stage.start events for completed stages. The behavioral content that was in And: lines has been promoted to Then: or preserved as And: lines. SPEC text descriptions updated to match.

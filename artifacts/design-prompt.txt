@@ -180,7 +180,6 @@ path/to/file2
      variable, a file outside the test's own folder, global config or git state.
      Leave it out when nothing outlives the test: the test harness cleans up
      after every test.
-   A SPEC kept from an earlier design that is written on one line: rewrite it with its parts.
 
    The status says what work the requirement needs. Look at the code before you choose:
    - `LOOP-1[code]:` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
@@ -421,6 +420,17 @@ tests/integration/cycle-member-dispatch-events-test.sh: broken by unconditional 
 
 **Finding 9 — FSTG-2 tautology fixed (prior pass):** The assertion now checks for "has no restorable primary artifact" — the phrase unique to `_runner_from_stage_preflight`, absent from old code.
 
+These [code] and [done] SPECs of YOUR LATEST DESIGN are still written on one line. Each one you keep is rewritten with its parts on the lines under it — Given, When, Then, And, Cleanup:
+- RHYD-1
+- RHYD-2
+- FSTG-1
+- FSTG-2
+- ITER-1
+- SKIP-1
+- ENTR-1
+- FRSH-2
+- DLGT-1
+
 Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
 If Previous work says a [code] requirement's test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file with an exact piece of its text, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.
@@ -458,17 +468,12 @@ Outputs:
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
-Findings:
-- design finding 1 (opened by design): DLGT-1 Then 2 is not something a test can observe: describes what a test would observe if the implementation were reverted to a different form, not an observable output of the When's execution — "When plugin.sh is reverted to calling _hydrate_put_back inline, the sentinel is not written and the assertion fails". Rewrite it as what someone could see the code do after the When
-
 Summary:
-## design — fail
+## design — error
 
-- the design fails 1 check(s)
+- the check that the design covers the issue could not be run (unusable)
 
-- DLGT-1 Then 2 is not something a test can observe: describes what a test would observe if the implementation were reverted to a different form, not an observable output of the When's execution — "When plugin.sh is reverted to calling _hydrate_put_back inline, the sentinel is not written and the assertion fails". Rewrite it as what someone could see the code do after the When
-
-This try is kept as the working copy for the next run; design.md is unchanged.
+The new design is kept as the working copy, unchecked; design.md is unchanged.
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-3/design-steps.json
@@ -486,6 +491,39 @@ Summary of that output:
 
 Your notes so far:
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
+
+## Status: Twenty-first pass — Then: lines made observable (design findings 1–3)
+
+### Root cause of twentieth-pass failure
+
+Three SPECs had `Then:` lines naming internal functions rather than observable outcomes:
+- **RHYD-1**: `Then: _artifact_persist_restore and _artifact_persist_put_back are called…` → not observable
+- **FSTG-1**: `Then: _artifact_persist_restore and _artifact_persist_put_back are called…` → not observable
+- **ENTR-1**: `Then: _runner_resume_rehydrate is called in each case…` → not observable
+
+### Changes in this pass
+
+1. **RHYD-1 Then:** Now "The completed stage's artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical to their state at the time of interruption". The old And: about artifacts is now the Then:. And: about no stage.start preserved. SPEC summary line updated.
+2. **FSTG-1 Then:** Now "The artifacts from every stage before <s> appear in ZBUILD_ARTIFACT_DIR before the dispatch loop starts". And: lines about stage.start events preserved.
+3. **ENTR-1 Then:** Now "Completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR before any stage.start event is emitted, for each of the three entry paths independently". Added And: about no stage.start for completed stages. SPEC summary line updated.
+
+---
+
+## Status: Twentieth pass — FRSH-2 Then 1 made observable
+
+### Root cause of nineteenth-pass failure (design finding 1)
+
+FRSH-2's first Then said "The skip-stage guard is not entered because resume_mode is false" — an internal code path description, not an observable output. Changed to: "Every stage emits a stage.start event and no stage.skip event is emitted for any stage." This is observable and testable. The And: line (every stage dispatched from stage 1 without consulting prior run state) is preserved unchanged.
+
+---
+
+## Status: Nineteenth pass — DLGT-1 And: removed (unobservable)
+
+### Root cause of eighteenth-pass failure (design finding 1)
+
+DLGT-1's second And: line described what happens after reverting the implementation — "When plugin.sh is reverted to calling _hydrate_put_back inline, the sentinel is not written and the assertion fails" — which is not an observable output of the When's execution. Removed that And: line. The first Then: ("The sentinel file is written") is sufficient and testable.
+
+---
 
 ## Status: Eighteenth pass — SPECs expanded with Given/When/Then parts
 
