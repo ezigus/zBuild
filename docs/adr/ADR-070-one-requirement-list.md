@@ -92,7 +92,23 @@ of the first try, which then failed. The first try had been shown the list as bu
 - **§2: intake says what changed by id.** `requirements_changed.added` lists `{id, text}`, `.removed` lists
   `{id, text, reason}`; the summary names each, with the reason.
 
+## Amendment 2026-11-06 (#2477) — §1 §2: the list is kept while nothing it is written from changed
+
+intake asked its model to read the issue on every run. On #1805 run 42127743259 it added a requirement to an
+issue nobody had changed, and design lost a try renaming a SPEC for it.
+
+- **§1: the list records what it was written from.** `requirements.json` carries `input_fp`, the fingerprint
+  (`judge_fp_v`) of the engine (`judge_engine_v`), the issue as the calls are shown it (title and body), and
+  intake's own instructions as written (`_ireq_write_own`, `_ireq_check_own`, `_ireq_limits`). Comments are
+  not in it: the list never reads them (§1).
+- **§2: an unchanged list is kept, with no model call.** When the last list's `input_fp` is this run's,
+  intake keeps that list as it is, makes neither call, emits `intake.requirements.kept`, reports nothing added
+  or removed, and its summary says the issue is unchanged and its requirements were kept. A list with no
+  `input_fp`, a change to the issue's words, to intake's instructions, or another engine, writes it again.
+
 ## Enforced by
+
+- §1 §2 amendment 2026-11-06 (#2477: the list is kept while nothing it is written from changed) → `tests/unit/intake-kept-list-test.sh` K1–K6
 
 - §1 §2 amendment 2026-11-03 (#2462: ids describe their requirement and never move; a removal says why) → `tests/unit/intake-stable-ids-test.sh` S1–S11; `tests/unit/intake-requirements-model-test.sh` I1, I2; `tests/unit/intake-previous-list-test.sh` P2
 - §1 §2 amendment 2026-11-02 (#2460: intake starts from its last list and says what changed; one item per line) → `tests/unit/intake-previous-list-test.sh` P1–P4; `tests/unit/reply-multiline-test.sh` Q1

@@ -448,11 +448,16 @@ _ta_correspondence() {
             return 0
         fi
         # Each SPEC's answer judged now is kept, with the files it depends on.
+        # #2477 (ADR-072 §4): the code its test exercises — the design's WIRING
+        # files — counts whether or not the judge opened it.
         if [[ -n "$kf" ]]; then
-            local -a _deps=()
+            local -a _deps=() _wired=()
+            while IFS= read -r _f; do
+                [[ -n "$_f" && "$_f" != none ]] && _wired+=("$repo/$_f")
+            done < <(acceptance_list_wiring "$design" 2>/dev/null || true)
             for _i in "${_jx[@]}"; do
                 [[ -n "${_verdicts[_i]}" ]] || continue
-                _deps=(${_open_files[@]+"${_open_files[@]}"})
+                _deps=(${_open_files[@]+"${_open_files[@]}"} ${_wired[@]+"${_wired[@]}"})
                 for _f in ${_tfss[_i]}; do _deps+=("$repo/$_f"); done
                 judge_kept_put "$kf" "${_ids[_i]}" "${_fps[_i]}" "${_lines[_i]}" "${_deps[@]}"
             done

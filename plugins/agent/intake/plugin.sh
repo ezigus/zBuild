@@ -319,11 +319,13 @@ _intake_run_inner() {
     local _chg="null" _chg_md=""
     if [[ -n "$_req_written" && -n "${_INTAKE_REQ_CHANGES:-}" ]]; then
         _chg="$_INTAKE_REQ_CHANGES"
-        _chg_md="$(jq -r 'if (.added | length) + (.removed | length) == 0
+        # #2477: a kept list says why no model was asked.
+        if [[ -n "${_INTAKE_REQ_KEPT:-}" ]]; then _chg_md="- the issue is unchanged since the last run: its requirements were kept, with no model call"
+        else _chg_md="$(jq -r 'if (.added | length) + (.removed | length) == 0
                 then "- the requirements are the same as the last run'"'"'s"
                 else "- the requirements changed since the last run:"
                     + ([.added[] | "\n  - added: \(.id) \(.text)"] | join(""))
-                    + ([.removed[] | "\n  - removed: \(.id) \(.text) — \(.reason)"] | join("")) end' <<< "$_chg" 2>/dev/null || true)"
+                    + ([.removed[] | "\n  - removed: \(.id) \(.text) — \(.reason)"] | join("")) end' <<< "$_chg" 2>/dev/null || true)"; fi
     fi
 
     # #2364: the result carries the issue text, so a later stage finds it by
