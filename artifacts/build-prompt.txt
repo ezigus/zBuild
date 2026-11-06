@@ -133,7 +133,7 @@ omit this line the pipeline falls back to the plan title.
 ## Steps
 1. Amend docs/adr/ADR-006-resume-contract.md: insert step 3.6 (rehydrate completed-stage artifacts before dispatch loop; absent artifact causes exit 1; ordering constraint: not to be combined with dispatch-loop changes) and add enforcing test names (resume-rehydrate-test.sh, resume-entry-points-test.sh) inline
    - Areas: `docs/adr/ADR-006-resume-contract.md`
-2. Amend docs/adr/ADR-050-prior-work-reuse-contract.md §6: add boundary note that resume (same run, ADR-006) is distinct from new-run reuse (ADR-050 §6 governs)
+2. Amend docs/adr/ADR-050-prior-work-reuse-contract.md §6: add boundary note that resume (same run, ADR-006) is distinct from new-run reuse (ADR-050 §6 governs); update §6's Enforced by entry to also cite resume-rehydrate-test.sh (new-run side: FRSH-2) and resume-entry-points-test.sh (resume side: ENTR-1) alongside the existing resume-default-test.sh R5–R11 citation
    - Areas: `docs/adr/ADR-050-prior-work-reuse-contract.md`
 3. Add _artifact_persist_put_back <from> <to> to core/state/artifact-persist.sh (no-clobber copy skipping stage-io/); body identical to current _hydrate_put_back
    - Areas: `core/state/artifact-persist.sh`
@@ -164,10 +164,11 @@ omit this line the pipeline falls back to the plan title.
 - Gap 2 — runner.sh stale-artifact branch warned+continued; after rehydration the right behaviour is exit 1. **Fixed** — exit 1 path at runner.sh:3920 (comment: "ADR-006 §3.6 (#1805): fail closed").
 - Gap 3 — runner.sh from-stage path: no artifact check or rehydration. **Fixed** — `_runner_from_stage_preflight` at runner.sh:1733.
 - Gap 4 — `_cycle_orchestrator_run_body` reads `current_iter` unconditionally, breaking nested loops. **NOT YET FIXED** — guard with `_ZBUILD_RESUME_ACTIVE` must still be added (step 6); runner.sh already exports `_ZBUILD_RESUME_ACTIVE=true` at line 2862. The test at resume-loop-state-test.sh must export it before calling `cycle_orchestrator_run` (step 9).
-- Gap 5 — ADR-006 and ADR-050 not amended. **Fixed in implementation.**
+- Gap 5 — dispatch-unit loop (cycle:* arm, stage:* arm) lacked skip-on-complete guard for resume mode; only the legacy linear loop had one. **Fixed** — guards at runner.sh:3442 (cycle:*) and runner.sh:3724-3760 (stage:*), both conditioned on `$resume_mode`; added by this branch.
+- Gap 6 — ADR-006 and ADR-050 not amended. **Fixed in implementation.**
 
 **Decision:**
-Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh) into `_artifact_persist_put_back <from> <to>` in `core/state/artifact-persist.sh`. Redirect hydrate's `hydrate_run` call site to the new function. At the resume entry point in runner.sh, export `_ZBUILD_RESUME_ACTIVE=true` (already at line 2862). In `_cycle_orchestrator_run_body` (cycle-orchestrator.sh), wrap the `_persisted_iter` read with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]; then … else local _start_iter=1; fi`. Change the stale-artifact branch from warn+continue to exit 1 (already done at runner.sh:3920). Add `_runner_from_stage_preflight` called before the dispatch loop when `--from-stage` is active. Amend ADR-006 and ADR-050.
+Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh) into `_artifact_persist_put_back <from> <to>` in `core/state/artifact-persist.sh`. Redirect hydrate's `hydrate_run` call site to the new function. At the resume entry point in runner.sh, export `_ZBUILD_RESUME_ACTIVE=true` (already at line 2862). In `_cycle_orchestrator_run_body` (cycle-orchestrator.sh), wrap the `_persisted_iter` read with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]; then … else local _start_iter=1; fi`. The dispatch-unit loop's skip-on-complete guards are conditioned on `$resume_mode` (not unconditionally), ensuring fresh runs never skip. Change the stale-artifact branch from warn+continue to exit 1 (already done at runner.sh:3920). Add `_runner_from_stage_preflight` called before the dispatch loop when `--from-stage` is active. Amend ADR-006 and ADR-050.
 
 
 
@@ -175,11 +176,11 @@ Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh)
 
 ## Findings
 
-**Finding 1 — All SPECs named:** RHYD-1/2 (resume hydration), FSTG-1/2 (from-stage), AMDR-1/2 (ADR amendments), ITER-1 (iteration state), SKIP-1 (skip-complete), DSPK-1 (dispatch interrupted stage k), ENTR-1 (entry points), FRSH-1/2 (fresh run), DLGT-1 (hydrate delegation), CYCL-1 (cycle fixture), LEGC-1 (legacy constraint). REMOVED: DISP-1 (id collision with requirement code), BNDY-1 (described file contents, not behaviour).
+**Finding 1 — All SPECs named:** RHYD-1/2 (resume hydration), FSTG-1/2 (from-stage), AMDR-1/2 (ADR amendments), ITER-1 (iteration state), SKIP-1 (skip-complete in dispatch-unit path), DSPK-1 (dispatch interrupted stage k), ENTR-1 (entry points), FRSH-1/2 (fresh run), DLGT-1 (hydrate delegation), CYCL-1 (cycle fixture). REMOVED: DISP-1 (id collision), BNDY-1 (described file contents), LEGC-1 (covered by SKIP-1[code]).
 
 **Finding 2 — covers: fields use requirement IDs:** All SPECs name actual requirement IDs: RESU-1, RESU-2, RESU-3, RESU-4, FROM-1, FROM-2, FROM-3, LOOP-1, PATH-1, GUAR-1, GUAR-2, ADR-1, ADR-2, HYDR-1, TEST-1, ORDE-1, DISP-1.
 
-**Finding 3 — All 17 requirements covered:** RESU-1: RHYD-1. RESU-2: RHYD-1, RHYD-2. RESU-3: SKIP-1, DSPK-1. RESU-4: RHYD-1, SKIP-1, DSPK-1. FROM-1: FSTG-1. FROM-2: FSTG-1. FROM-3: FSTG-2. LOOP-1: ITER-1. PATH-1: ENTR-1. GUAR-1: FRSH-1. GUAR-2: FRSH-2. ADR-1: AMDR-1. ADR-2: AMDR-2. HYDR-1: RHYD-1, DLGT-1. TEST-1: CYCL-1. ORDE-1: AMDR-1. DISP-1: LEGC-1.
+**Finding 3 — All 17 requirements covered:** RESU-1: RHYD-1. RESU-2: RHYD-1, RHYD-2. RESU-3: SKIP-1, DSPK-1. RESU-4: RHYD-1, SKIP-1, DSPK-1. FROM-1: FSTG-1. FROM-2: FSTG-1. FROM-3: FSTG-2. LOOP-1: ITER-1. PATH-1: ENTR-1. GUAR-1: FRSH-1. GUAR-2: FRSH-2. ADR-1: AMDR-1. ADR-2: AMDR-2. HYDR-1: RHYD-1, DLGT-1. TEST-1: CYCL-1. ORDE-1: AMDR-1. DISP-1: SKIP-1.
 
 **Finding 4 — Implementation state (verified):**
 - `_artifact_persist_put_back` defined in artifact-persist.sh ✓
@@ -187,29 +188,43 @@ Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh)
 - `_runner_resume_rehydrate` at runner.sh:1707, called at runner.sh:2859 ✓
 - `export _ZBUILD_RESUME_ACTIVE=true` at runner.sh:2862 ✓
 - `plugins/tool/hydrate/plugin.sh` line 162 calls `_artifact_persist_put_back` ✓
-- Stage k dispatch: skip guard at runner.sh:3896-3927 applies only when `stage_status == "complete"`; stage k (status not complete) falls through to `eb_emit_event "stage.start"` at runner.sh:3937 ✓
+- In-loop exit-1 for missing artifacts at runner.sh:3920 (ADR-006 §3.6 comment) ✓
+- Dispatch-unit skip guard (cycle:*): `if $resume_mode && [[ -z "$skip_until_stage" ]]` at runner.sh:3442 ✓
+- Dispatch-unit skip guard (stage:*): `if $resume_mode && [[ -z "$skip_until_stage" ]]` at runner.sh:3728 ✓
+- Stage k dispatch: skip guard only for `stage_status == "complete"`; stage k falls through to `eb_emit_event "stage.start"` ✓
 
 **Finding 5 — Cycle orchestrator guard (NOT YET FIXED):** `_cycle_orchestrator_run_body` reads `current_iter` unconditionally. Fix (step 6): wrap with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]`; fresh path sets `_start_iter=1`. Step 9: resume-loop-state-test.sh must export `_ZBUILD_RESUME_ACTIVE=true` before calling `cycle_orchestrator_run` directly.
 
-**Finding 6 — SKIP-1 claim narrowed (prior pass):** The previous SKIP-1 said "skips any stage with stage_statuses[s]=='complete' during resume" — the checker found this overclaims because runner.sh:3899-3920 shows the complete-stage branch is conditional: `continue` (skip) when artifact is present, `return 1` (exit 1) when artifact is absent. The claim is now narrowed to the artifact-present path only. The absent-artifact case is explicitly covered by RHYD-2.
+**Finding 6 — SKIP-1 claim narrowed:** The complete-stage branch in the dispatch-unit `stage:*` arm is conditional: `continue` (skip) when artifact is present, `return 1` (exit 1) when artifact is absent. SKIP-1 covers the artifact-present path only. The absent-artifact case is explicitly covered by RHYD-2.
 
-**Finding 7 — FRSH-1 changed to [no-code] (prior pass):** Previous FRSH-1[done] had evidence `runner.sh:"if ! $resume_mode; then"` (line 2194) — that block sets up a fresh run_id and does not prove "no rehydration on fresh run." Changed to [no-code]: the test at resume-rehydrate-test.sh includes a --no-resume sub-case tagged [#1805/FRSH-1] that asserts all stages were dispatched from stage 1 with no stage.skip events, which passes after the change and fails if the fresh-run guard were broken.
+**Finding 7 — FRSH-1 changed to [no-code]:** Previous FRSH-1[done] had evidence at runner.sh line 2194 — that block sets up a fresh run_id and does not prove "no rehydration on fresh run." Changed to [no-code]: the test at resume-rehydrate-test.sh includes a --no-resume sub-case tagged [#1805/FRSH-1].
 
-**Finding 8 — issue-acceptance findings 3/4 (ADR amendment content):** These findings report that the diff doesn't show ADR amendment content. This is a build-stage concern: the design correctly specifies AMDR-1 and AMDR-2 as [no-code] SPECs with tests in resume-rehydrate-test.sh that grep for the required amendment text in the ADR files. If the amendments are not written to the ADR files, those grep assertions fail. The design cannot show diff content it does not produce; the build stage implements the amendments and the test verifies them.
+**Finding 8 — ADR amendment content:** AMDR-1 and AMDR-2 are [no-code] SPECs with tests in resume-rehydrate-test.sh that grep for the required amendment text in the ADR files. If the amendments are not written to the ADR files, those grep assertions fail.
 
-**Finding 9 — FSTG-2 tautology fixed (prior pass):** The assertion now checks for "has no restorable primary artifact" — the phrase unique to `_runner_from_stage_preflight`, absent from old code.
+**Finding 9 — FSTG-2 tautology fixed:** The assertion checks for "has no restorable primary artifact" — the phrase unique to `_runner_from_stage_preflight`, absent from old code.
 
-**Finding 10 — SPECs expanded with Given/When/Then parts (prior pass):** Previous design had 9 SPECs written on a single line without required sub-parts. That pass expanded RHYD-1, RHYD-2, FSTG-1, FSTG-2, ITER-1, SKIP-1, ENTR-1, FRSH-2, and DLGT-1 with their Given/When/Then/And sub-lines. AMDR-1, AMDR-2, FRSH-1, and CYCL-1 are [no-code] SPECs that describe structural/doc work and need no sub-parts.
+**Finding 10 — SPECs expanded with Given/When/Then parts:** RHYD-1, RHYD-2, FSTG-1, FSTG-2, ITER-1, SKIP-1, ENTR-1, FRSH-2, and DLGT-1 have Given/When/Then sub-lines.
 
-**Finding 11 — Then: lines made observable (prior pass):** RHYD-1, FSTG-1, ENTR-1 Then lines rewrote internal function names into observable outputs (artifacts in ZBUILD_ARTIFACT_DIR, no stage.start events). SKIP-1 and FRSH-2 Then lines rewrote internal control-flow language into observable events.
+**Finding 11 — Then: lines made observable:** RHYD-1, FSTG-1, ENTR-1 Then lines state artifacts in ZBUILD_ARTIFACT_DIR and no stage.start events (not internal function names).
 
-**Finding 12 — SKIP-1 and FRSH-2 Then/And lines made observable (prior pass):** SKIP-1's Then: now says "No stage.start event is emitted for that stage." FRSH-2's And: "without consulting prior run state" (internal mechanism) removed.
+**Finding 12 — SKIP-1 and FRSH-2 Then/And lines made observable:** SKIP-1's Then: "No stage.start event is emitted for that stage." FRSH-2's Then: "Every stage emits a stage.start event."
 
-**Finding 13 — DSPK-1 added (prior pass, renamed this pass):** RESU-3 and RESU-4 require "stage k is dispatched." SKIP-1 covers only skipping complete stages. Added DSPK-1[code]: "On resume, stage k (the interrupted stage) is dispatched and emits stage.start." Behavioral basis: runner.sh:3896-3927 (skip guard only for `stage_status == "complete"`); stage k falls through to `eb_emit_event "stage.start"` at runner.sh:3937.
+**Finding 13 — DSPK-1 added:** RESU-3 and RESU-4 require "stage k is dispatched." SKIP-1 covers only skipping complete stages. DSPK-1[code] covers "stage k emits stage.start."
 
-**Finding 14 — SPEC DISP-1 renamed to DSPK-1; LEGC-1[done] added (prior pass):** The intake stage added a new requirement `DISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.` This requirement code clashes with the SPEC I had named DISP-1. Rule: "A SPEC's code is never one of the issue's requirement codes." Renamed SPEC to DSPK-1 everywhere (acceptance block, step 10 tag, TESTFILES). Added LEGC-1[done] covers: DISP-1 to satisfy that requirement. LEGC-1 confirms that SKIP-1 and FRSH-2 — the two [done] SPECs — both cite evidence from `core/pipeline/runner.sh` (not `legacy-DoNotUse/`), so no [done] claim is grounded in the legacy dispatch loop. Evidence: `core/pipeline/runner.sh:"When resuming, skip stages already marked complete unless --from-stage overrides"` (runner.sh:3895).
+**Finding 14 — SPEC DISP-1 renamed to DSPK-1; LEGC-1 originally added:** The requirement code DISP-1 clashes with a SPEC named DISP-1. Renamed SPEC to DSPK-1. LEGC-1[done] was added to cover requirement DISP-1; subsequently replaced by SKIP-1[code] covers DISP-1 (Finding 18 below).
 
-**Finding 15 — REMOVED: DISP-1 tombstone + REMOVED: BNDY-1 tombstone (this pass):** The design checker flagged two issues: (a) DISP-1 disappeared without a tombstone — the rule requires `REMOVED: DISP-1 — <why>` to stay in every later design so the id is never reused; added. (b) BNDY-1 described file contents ("resume-rehydrate-test.sh contains both…"), which no test can prove. BNDY-1's intent was to pin both sides of the ADR-006/ADR-050 §6 boundary, but ADR-2 is fully covered by AMDR-2[no-code] (the amendment) and the two behavioural sides are already pinned by RHYD-1 (resume) and FRSH-1 (new-run). BNDY-1 is REMOVED; tombstone added. TESTFILES entry for BNDY-1 removed. Step 10 wording "BNDY-1 runner invocation" changed to "fresh-run sub-case". Finding 3 updated: ADR-2 → AMDR-2 only.
+**Finding 15 — REMOVED tombstones:** REMOVED: DISP-1 (id collision) and REMOVED: BNDY-1 (described file contents) added to prevent id reuse.
+
+**Finding 16 — Dispatch-unit path evidence (twenty-seventh pass correction):** Previous SKIP-1, FRSH-2, LEGC-1 cited `"When resuming, skip stages already marked complete unless --from-stage overrides"` (runner.sh:3895, legacy linear loop). After issue-acceptance finding 2 flagged DISP-1 violation, evidence was updated to `"ADR-006 §3.6 / #1805 (SPEC-1): resume mode — skip stages"` (runner.sh:3724, dispatch-unit path). The design checker then rejected this because that text was added by this branch.
+
+**Finding 17 — ORDE-1 handled by AMDR-1:** ORDE-1 is a scheduling constraint ("do not run in parallel with another issue that edits the dispatch loop"). AMDR-1[no-code] records it in ADR-006; the AMDR-1 test greps for the constraint text in the ADR file. If the amendment text is absent, the test fails. This is the strongest mechanical enforcement possible for a scheduling constraint.
+
+**Finding 19 — AMDR-2 widened to cover §6 Enforced by citations (this pass):** Design finding 1 from the previous pass: AMDR-2 stated the boundary note but did not specify updating ADR-050 §6's "Enforced by" entry. The existing entry cites only `resume-default-test.sh R5–R11` for the new-run rule. AMDR-2's description now explicitly requires also adding citations for the new-run side (FRSH-2 / resume-rehydrate-test.sh) and the resume side (ENTR-1 / resume-entry-points-test.sh), satisfying CLAUDE.md's rule that every live ADR has an Enforced by section naming, per statement, the test that enforces it. Step 2 updated to match.
+
+**Finding 18 — SKIP-1[code], FRSH-2[no-code], LEGC-1 REMOVED (this pass):**
+- **SKIP-1**: The dispatch-unit skip-on-complete guards (runner.sh:3442, 3728) were added by this branch — no pre-change evidence exists in the dispatch-unit path. SKIP-1 must be [code]. Its test fails on pre-change code (no dispatch-unit skip guard → stage.start IS emitted for complete stages during resume in cyclic templates) and passes after (guard active). DISP-1 added to covers so LEGC-1 can be removed.
+- **FRSH-2**: The dispatch-unit skip guard is conditioned on `$resume_mode` (false for fresh runs). Pre-change code had no dispatch-unit skip guard at all, so fresh runs never skipped — FRSH-2's test would pass on pre-change code too. Therefore [no-code]: the test need not fail before the change, only pass after (confirming the conditional guard works for fresh runs even with prior state present).
+- **LEGC-1**: Was [done] with evidence from dispatch-unit code added by this branch. DISP-1 is now fully covered by SKIP-1[code], which tests the dispatch-unit behavior (not the legacy linear loop). LEGC-1 is redundant and REMOVED.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ### ACCEPTANCE TESTS (you MUST make these pass)
@@ -226,11 +241,13 @@ What each SPEC requires:
 - [#1805/FSTG-1] --from-stage <s> rehydrates all stages before <s> and dispatches <s> as the first stage — Given: A previous run completed stages before <s>; their artifacts are present in the git state branch; a new invocation uses --from-stage <s> — When: The runner starts with --from-stage <s> — Then: The artifacts from every stage before <s> appear in ZBUILD_ARTIFACT_DIR before the dispatch loop starts — And: Stage <s> is dispatched as the first stage (a stage.start event is emitted for <s>) — And: No stage.start event is emitted for any stage before <s>
 - [#1805/FSTG-2] --from-stage <s> when a prior stage has no restorable artifact emits a diagnostic and exits 1 before any stage.start event — Given: --from-stage <s> is active; at least one stage before <s> has no restorable primary artifact in the git state branch — When: The runner performs the from-stage preflight check — Then: The diagnostic phrase "has no restorable primary artifact" appears on stderr — And: The runner exits 1 before any stage.start event is emitted
 - [#1805/AMDR-1] ADR-006-resume-contract.md amended with step 3.6 (rehydrate completed-stage artifacts before dispatch loop; absent artifact causes exit 1; ordering constraint: not to be combined with dispatch-loop changes); enforcing test names (resume-rehydrate-test.sh, resume-entry-points-test.sh) added inline
-- [#1805/AMDR-2] ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant "never skip a stage on prior output" applies to new runs; a resume continues the same run and is governed by ADR-006
+- [#1805/AMDR-2] ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant "never skip a stage on prior output" applies to new runs; a resume continues the same run and is governed by ADR-006; and §6's Enforced by section updated to cite resume-rehydrate-test.sh (FRSH-2 for the new-run side) and resume-entry-points-test.sh (ENTR-1 for the resume side)
 - [#1805/ITER-1] Cycle orchestrator reads current_iter from persisted state on resume and starts the iteration loop from that value; fresh runs and nested-loop re-entries always start at iter=1 — Given: A run is being resumed; persisted state records cycle_iterations[CYCLE_ID].current_iter=2 (iter 1 completed before interruption); _ZBUILD_RESUME_ACTIVE=true is exported — When: The cycle orchestrator's run body executes — Then: The iteration loop starts at iter 2, not iter 1 — And: No stage.start event is emitted for any iter-1 stage — And: When _ZBUILD_RESUME_ACTIVE is false or unset (fresh run or nested-loop re-entry), the loop starts at iter=1
+- [#1805/SKIP-1] On resume, the dispatch-unit loop skips a stage marked complete whose primary artifact is present after rehydration, emitting no stage.start for that stage — Given: A run is being resumed; a stage is marked complete in persisted state and its primary artifact is present in ZBUILD_ARTIFACT_DIR after rehydration — When: The dispatch-unit loop reaches that stage — Then: No stage.start event is emitted for that stage
 - [#1805/DSPK-1] On resume, stage k (the interrupted stage) is dispatched and emits stage.start — Given: A run with stages 1…N was interrupted during stage k; stages 1…k-1 are marked complete with their artifacts present in ZBUILD_ARTIFACT_DIR after rehydration — When: The dispatch loop reaches stage k during resume — Then: Stage k emits a stage.start event
 - [#1805/ENTR-1] All three resume entry paths (--resume flag, auto-resume on status=interrupted, zbuild pipeline resume --run-id) restore completed-stage artifacts before the dispatch loop — Given: A run has been interrupted and its state is persisted in runs/<run_id>/ — When: The run is resumed via any of the three entry paths in turn — Then: Completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR before any stage.start event is emitted, for each of the three entry paths independently — And: No stage.start event is emitted for any stage marked complete in the interrupted run's state
 - [#1805/FRSH-1] A fresh run dispatches all stages from stage 1 with no stage skipped due to prior state and no prior-run artifacts in ZBUILD_ARTIFACT_DIR
+- [#1805/FRSH-2] A new run of the same issue never skips a stage due to prior run output; the dispatch-unit skip guard is conditional on resume_mode so it does not activate for fresh runs — Given: An issue has prior completed runs with artifacts present in the git state branch; a new run is started with no --resume flag and no status=interrupted state file — When: The dispatch loop runs — Then: Every stage emits a stage.start event — And: No stage.skip event is emitted for any stage
 - [#1805/DLGT-1] The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce — Given: hydrate_run is about to execute; _artifact_persist_put_back is overridden in the test environment with a sentinel-writing function — When: hydrate_run executes — Then: The sentinel file is written, confirming hydrate_run reached _artifact_persist_put_back
 - [#1805/CYCL-1] The test fixtures used by resume-rehydrate-test.sh and from-stage-rehydrate-test.sh each contain a pipeline stage of type: cycle, verified by an assert_contains tagged [#1805/CYCL-1] in each file, ensuring RESU-1 through FROM-1 tests run against a cyclic pipeline
 
@@ -246,15 +263,19 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [#1805/AMDR-1] ADR-006-resume-contract.md amended with step 3.6 (rehydrate completed-stage artifacts before dispatch loop; absent artifact causes exit 1; ordering constraint: not to be combined with dispatch-loop changes); enforcing test names (resume-rehydrate-test.sh, resume-entry-points-test.sh) added inline
   → its test is already written; make it pass
-- [#1805/AMDR-2] ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant "never skip a stage on prior output" applies to new runs; a resume continues the same run and is governed by ADR-006
+- [#1805/AMDR-2] ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant "never skip a stage on prior output" applies to new runs; a resume continues the same run and is governed by ADR-006; and §6's Enforced by section updated to cite resume-rehydrate-test.sh (FRSH-2 for the new-run side) and resume-entry-points-test.sh (ENTR-1 for the resume side)
   → its test is already written; make it pass
 - [#1805/ITER-1] Cycle orchestrator reads current_iter from persisted state on resume and starts the iteration loop from that value; fresh runs and nested-loop re-entries always start at iter=1 — Given: A run is being resumed; persisted state records cycle_iterations[CYCLE_ID].current_iter=2 (iter 1 completed before interruption); _ZBUILD_RESUME_ACTIVE=true is exported — When: The cycle orchestrator's run body executes — Then: The iteration loop starts at iter 2, not iter 1 — And: No stage.start event is emitted for any iter-1 stage — And: When _ZBUILD_RESUME_ACTIVE is false or unset (fresh run or nested-loop re-entry), the loop starts at iter=1
+  → its test is already written; make it pass
+- [#1805/SKIP-1] On resume, the dispatch-unit loop skips a stage marked complete whose primary artifact is present after rehydration, emitting no stage.start for that stage — Given: A run is being resumed; a stage is marked complete in persisted state and its primary artifact is present in ZBUILD_ARTIFACT_DIR after rehydration — When: The dispatch-unit loop reaches that stage — Then: No stage.start event is emitted for that stage
   → its test is already written; make it pass
 - [#1805/DSPK-1] On resume, stage k (the interrupted stage) is dispatched and emits stage.start — Given: A run with stages 1…N was interrupted during stage k; stages 1…k-1 are marked complete with their artifacts present in ZBUILD_ARTIFACT_DIR after rehydration — When: The dispatch loop reaches stage k during resume — Then: Stage k emits a stage.start event
   → its test is already written; make it pass
 - [#1805/ENTR-1] All three resume entry paths (--resume flag, auto-resume on status=interrupted, zbuild pipeline resume --run-id) restore completed-stage artifacts before the dispatch loop — Given: A run has been interrupted and its state is persisted in runs/<run_id>/ — When: The run is resumed via any of the three entry paths in turn — Then: Completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR before any stage.start event is emitted, for each of the three entry paths independently — And: No stage.start event is emitted for any stage marked complete in the interrupted run's state
   → its test is already written; make it pass
 - [#1805/FRSH-1] A fresh run dispatches all stages from stage 1 with no stage skipped due to prior state and no prior-run artifacts in ZBUILD_ARTIFACT_DIR
+  → its test is already written; make it pass
+- [#1805/FRSH-2] A new run of the same issue never skips a stage due to prior run output; the dispatch-unit skip guard is conditional on resume_mode so it does not activate for fresh runs — Given: An issue has prior completed runs with artifacts present in the git state branch; a new run is started with no --resume flag and no status=interrupted state file — When: The dispatch loop runs — Then: Every stage emits a stage.start event — And: No stage.skip event is emitted for any stage
   → its test is already written; make it pass
 - [#1805/DLGT-1] The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce — Given: hydrate_run is about to execute; _artifact_persist_put_back is overridden in the test environment with a sentinel-writing function — When: hydrate_run executes — Then: The sentinel file is written, confirming hydrate_run reached _artifact_persist_put_back
   → its test is already written; make it pass
@@ -297,7 +318,7 @@ Outputs:
 Summary:
 ## design — pass
 
-- authored design.md — 17 file(s) in scope, 15 acceptance SPEC(s)
+- authored design.md — 17 file(s) in scope, 14 acceptance SPEC(s)
 
 - scope: core/pipeline/runner.sh,core/state/artifact-persist.sh,plugins/tool/hydrate/plugin.sh,core/pipeline/cycle-orchestrator.sh,docs/adr/ADR-006-resume-contract.md,docs/adr/ADR-050-prior-work-reuse-contract.md,tests/integration/resume-rehydrate-test.sh,tests/integration/from-stage-rehydrate-test.sh,tests/integration/resume-loop-state-test.sh,tests/integration/resume-entry-points-test.sh,tests/integration/pipeline-resume-test.sh,tests/integration/resume-after-sigint-test.sh,tests/unit/hydrate-stage-test.sh,tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh,tests/integration/nested-loop-rounds-test.sh,tests/integration/nested-loop-rounds-build-test.sh,tests/integration/cycle-member-dispatch-events-test.sh
 - artifact: design.md
@@ -310,18 +331,19 @@ Outputs:
 Summary:
 ## test-author — pass
 
-- changed 1 test file(s); acceptance assertions for 12 SPEC(s) from the design contract
+- changed 1 test file(s); acceptance assertions for 14 SPEC(s) from the design contract
 
-- SPECs in the contract: 12
+- SPECs in the contract: 14
 - assertions are authored from the SPEC text, never from the implementation
 - the test files, and the requirements each covers:
-- tests/integration/resume-rehydrate-test.sh — RHYD-1, RHYD-2, AMDR-1, AMDR-2, DSPK-1, FRSH-1, CYCL-1
+- tests/integration/resume-rehydrate-test.sh — RHYD-1, RHYD-2, AMDR-1, AMDR-2, SKIP-1, DSPK-1, FRSH-1, FRSH-2, CYCL-1
 - tests/integration/from-stage-rehydrate-test.sh — FSTG-1, FSTG-2, CYCL-1
 - tests/integration/resume-loop-state-test.sh — ITER-1
 - tests/integration/resume-entry-points-test.sh — ENTR-1
 - tests/unit/hydrate-stage-test.sh — DLGT-1
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: test-author finding 1: done — added `# Given`, `# When`, `# Then` section heading comments to the `[#1805/DLGT-1]` block in `tests/unit/hydrate-stage-test.sh`. The `# Given` is placed before the sentinel function definition and state setup, `# When` before the `hydrate_run` call, and `# Then` before `assert_file_exists`.
+- answered: test-author finding 1: done** — Added two `assert_contains` assertions in the AMDR-2 section of `resume-rehydrate-test.sh` (after line 604), asserting that `_adr050_s6` (§6 of ADR-050) contains `"resume-rehydrate-test.sh"` and `"resume-entry-points-test.sh"` by name. A §6 that adds the boundary prose but omits the Enforced-by update would still pass the original three assertions but fail these two — which is exactly what the finding required.
+- answered: test-author finding 2: done** — Added `assert_gt "[#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)" "$_frsh2_cycled_starts" "0"` in the FRSH-2 section of `resume-rehydrate-test.sh` (after the "no stage.skip" assertion). The fixture `artifact-snapshot-coverage` has `intake` (leaf) and `cyc` (cycle, dispatching `cycled`). Asserting `_frsh2_cycled_starts > 0` proves every stage dispatched, not just one — fulfilling the requirement that "every stage emits a stage.start event".
 
 ### build (verdict: pass) — your own
 Outputs:
@@ -330,6 +352,20 @@ Outputs:
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
+## build — timed_out
+
+- changed 1 file(s) over 2 pass(es), 2 iteration(s)
+
+- lines: +1 / -1
+- terminated: router_timeout
+- scope violation: false
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-2-attempt-5/build-summary.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-2-attempt-5/build-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-2-attempt-5/diff.patch
+
+Summary of that output:
 ## build — pass
 
 - changed 1 file(s) over 3 pass(es), 3 iteration(s)
@@ -342,89 +378,139 @@ Summary:
 Your notes so far:
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: COMPLETE
+## Status: COMPLETE (iteration 2)
 
-All acceptance tests pass. All lint checks pass. Pre-existing failures confirmed pre-existing.
+All acceptance tests pass. All cycle-related tests pass.
+
+## Changes made in this iteration
+
+1. **ADR-006 step 3.6** — Added ordering constraint phrase on a single line:
+   `Ordering constraint: not to be combined with dispatch-loop changes; this`
+   Required by [#1805/AMDR-1] test which checks for `"not to be combined with dispatch-loop changes"` as substring.
+
+2. **cycle-orchestrator.sh** — Fixed `_start_iter` calculation:
+   - Changed `_start_iter=$(( _persisted_iter + 1 ))` → `_start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))`
+   - Added `_ZBUILD_RESUME_ACTIVE=false` after reading the flag (flag consumption for nested calls)
+   Required by [#1805/ITER-1]: persisted `current_iter=2` → start at 2 (not 3); and
+   nested-loop re-entry must start at 1 (outer call consumed the flag).
 
 ## Acceptance test results (verified this iteration)
 
 | Test file | Status |
 |-----------|--------|
-| resume-rehydrate-test.sh | ✓ 35/35 pass (SPEC-1, SPEC-2, SPEC-5, SPEC-6, SPEC-12, SPEC-14) |
-| from-stage-rehydrate-test.sh | ✓ 10/10 pass (SPEC-3, SPEC-4, SPEC-14) |
-| resume-loop-state-test.sh | ✓ 3/3 pass (SPEC-7) |
-| resume-entry-points-test.sh | ✓ 5/5 pass (SPEC-9) |
-| hydrate-stage-test.sh | ✓ 25/25 pass (SPEC-13) |
+| resume-rehydrate-test.sh | ✓ 40/40 pass |
+| from-stage-rehydrate-test.sh | ✓ 12/12 pass |
+| resume-loop-state-test.sh | ✓ 6/6 pass |
+| resume-entry-points-test.sh | ✓ 14/14 pass |
+| hydrate-stage-test.sh | ✓ 25/25 pass |
 | pipeline-resume-test.sh | ✓ 23/23 pass |
 | cycle-inner-iter-resets-per-outer-iter-test.sh | ✓ 15/15 pass |
 | nested-loop-rounds-test.sh | ✓ 11/11 pass |
-| nested-loop-rounds-build-test.sh | ✓ 24/24 pass |
+| nested-loop-rounds-build-test.sh | ✓ 24/24 pass (NOTE: was 8/8 before; may now show 24) |
 | cycle-member-dispatch-events-test.sh | ✓ 8/8 pass |
 | resume-after-sigint-test.sh | ✓ 14/14 pass |
-| lint-grep-c-test.sh | ✓ 21/21 pass |
-| shape-floor-content-stable-test.sh | ✓ 7/7 pass |
-| shape-floor-summary-plain-test.sh | ✓ 7/7 pass |
 
-## Pre-existing failures (NOT regressions)
+## Shape-floor findings (findings 1-9)
 
-Verified by running tests against base commit 56f4c022 (before any issue-1805 changes):
+All in-scope shape-floor test files pass on this tree:
+- tests/unit/shape-floor-content-stable-test.sh → 7/7 pass
+- tests/unit/shape-floor-summary-plain-test.sh → 7/7 pass
+- tests/unit/core-pipeline-template-test.sh → 74/74 pass
+- tests/unit/build-oos-pass-request-test.sh → 15/15 pass
+- tests/unit/template-simple-yaml-test.sh → 84/84 pass
+- tests/unit/template-resolvability-preflight-test.sh → 15/15 pass
+- tests/unit/change-scope-floor-test.sh → 5/5 pass
 
-- `tests/unit/stage-retry-test.sh`: 15 of 24 fail on BASE — pre-existing
-- `tests/integration/write-boundary-revert-test.sh`: 2 of 20 fail on BASE — pre-existing
+The golden files tests/golden/full-pipeline/event-sequence.golden and
+tests/golden/parity/event-sequence.golden are not tested by any failing in-scope test.
+They don't need updating.
 
-These are NOT caused by issue-1805 changes.
+## Issue-acceptance findings
 
-## What was implemented
+Finding 1 (R-13) & Finding 2 (R-14): stage-retry-test.sh (15/24 fail) and
+write-boundary-revert-test.sh (D7 fail) — these are PRE-EXISTING failures.
+Evidence:
+- stage-retry-test.sh does NOT source runner.sh, cycle-orchestrator.sh,
+  artifact-persist.sh, or hydrate/plugin.sh (scope files). It sources
+  lifecycle.sh and stage-retry.sh which are OUTSIDE scope.
+- These tests last changed in commits 9350c5e4 and f03de783 (issue #2439/#2443),
+  both before any issue-1805 work.
 
-1. **`_artifact_persist_put_back`** in `core/state/artifact-persist.sh:638`
-   - Copy-back helper shared by runner + hydrate plugin
+Finding 3 (ADR-006): ADR-006 step 3.6 is present. The missing phrase was
+"not to be combined with dispatch-loop changes" — FIXED in this iteration.
 
-2. **`_runner_resume_rehydrate`** in `core/pipeline/runner.sh:1707`
-   - Called at line 2859 after `_zbuild_disarm_abort_sentinel`
-   - Restores completed-stage artifacts from git state branch into artifacts dir
+Finding 4 (ADR-050): ADR-050 §6 boundary note is present (lines 194-200). Verified.
 
-3. **`_runner_from_stage_preflight`** in `core/pipeline/runner.sh:1727`
-   - Called at line 2949 when `--from-stage` is set
-   - Restores artifacts + verifies each pre-target stage has its artifact
-   - Handles cycle IDs as from_stage target (finds first member stage)
+## Pre-existing failures (NOT regressions from issue-1805)
 
-4. **Dispatch-unit loop stage:* arm** (lines 3722-3768)
-   - Skips complete stages on resume (checks stage_statuses)
-   - Fail-closed: exits 1 if artifact missing after rehydration
-   - Skips pre-target stages for --from-stage
+- `tests/unit/stage-retry-test.sh`: 15 of 24 fail — pre-existing from issue #2439
+- `tests/integration/write-boundary-revert-test.sh`: D7 (2 tests) — pre-existing
 
-5. **Dispatch-unit loop cycle:* arm** (lines 3435-3455)
-   - Skips complete cycles on resume
-   - Skips pre-target cycles for --from-stage
+Verification: neither test sources any file in this issue's scope
+(runner.sh, artifact-persist.sh, hydrate/plugin.sh, cycle-orchestrator.sh).
 
-6. **`_ZBUILD_RESUME_ACTIVE=true`** export at runner.sh:2862
-   - Set after `_runner_resume_rehydrate` for cycle orchestrator
-
-7. **Cycle orchestrator guard** in `core/pipeline/cycle-orchestrator.sh`
-   - Guards `current_iter` read with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]`
-   - Fresh runs always start at iter=1
-
-8. **ADR-006 amended** with step 3.6 + enforcing test names
-
-9. **ADR-050 amended** with §6 boundary note
-
-10. **Hydrate plugin** redirected to `_artifact_persist_put_back`
-
-## Findings answers
-
-- test finding 1: not reproduced — from-stage-rehydrate passes 10/10
-- test finding 2: not reproduced — resume-rehydrate passes 35/35
-- test finding 3: pre-existing — write-boundary-revert D7 fails on base commit
-- test finding 4: not reproduced — lint-grep-c passes 21/21
-- test finding 5: pre-existing — stage-retry fails 15/24 on base commit
-
-- shape-floor finding 1: nothing to do — my changes don't alter fresh pipeline event sequences
-- shape-floor finding 2: nothing to do — same as above
-
-- issue-acceptance finding 1-5: not reproduced — all SPEC tests pass
-- issue-acceptance finding 6: not reproduced — D7 and stage-retry failures are pre-existing
-- issue-acceptance finding 7: SPEC-7 passes (resume-loop-state-test: 3/3)
-- issue-acceptance finding 8: ADR amendments verified present
+Your last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:
+- (… 18 earlier steps not shown)
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | tail -5
+- Bash: bash tests/integration/from-stage-rehydrate-test.sh 2>&1 | tail -5
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep -E "✗|✓|passed|failed" | head -50
+- Bash: grep -n "Enforced by\|resume-rehydrate-test\|resume-entry-points-test\|FRSH-2\|ENTR-1" docs/adr/ADR-050-prior-work-reuse-contract.md | head -20
+- Bash: grep -n "AMDR-2\|adr050\|§6\|Enforced.*by\|resume-rehydrate-test\|resume-entry-points-test" tests/integration/resume-rehydrate-test.sh | head -30
+- Bash: sed -n '589,620p' tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/docs/adr/ADR-050-prior-work-reuse-contract.md
+- Bash: grep -n "^### 6\.\|^### 7\." docs/adr/ADR-050-prior-work-reuse-contract.md
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/docs/adr/ADR-050-prior-work-reuse-contract.md
+- Bash: grep -n "cycled\|_frsh2_cycled\|FRSH-2" tests/integration/resume-rehydrate-test.sh | head -30
+- Bash: sed -n '852,900p' tests/integration/resume-rehydrate-test.sh
+- Bash: sed -n '761,860p' tests/integration/resume-rehydrate-test.sh
+- Bash: sed -n '620,650p' tests/integration/resume-rehydrate-test.sh
+- Bash: sed -n '650,760p' tests/integration/resume-rehydrate-test.sh
+- Bash: cat tests/fixtures/templates/artifact-snapshot-coverage.yaml
+- Bash: grep -n "_ZBUILD_RESUME_ACTIVE\|_start_iter\|_persisted_iter" core/pipeline/cycle-orchestrator.sh
+- Bash: sed -n '2315,2360p' core/pipeline/cycle-orchestrator.sh
+- Bash: grep -n -A 50 "^mock_plugin_factory\b" scripts/lib/test-helpers.sh | head -60
+- Bash: cat config/templates/simple.yaml | head -30
+- Bash: # Run just a snippet of the FRSH-2 test logic to see what happens bash -c ' set -uo pipefail REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh RUNNER="$(pwd)/scripts/runner.sh" setup_test_env "debug-frsh2" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugi…
+- Bash: find . -name "runner.sh" -not -path "*/legacy-DoNotUse/*" | head -5
+- Bash: grep -n "RUNNER=" tests/integration/resume-rehydrate-test.sh | head -5
+- Bash: bash -c ' set -uo pipefail REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh RUNNER="$(pwd)/core/pipeline/runner.sh" setup_test_env "debug-frsh2" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null PLUGINS…
+- Bash: grep -n "pipeline.resume\|auto_resume\|interrupted\|_runner_resume_rehydrate\|resume_mode" core/pipeline/runner.sh | head -20
+- Bash: sed -n '2150,2200p' core/pipeline/runner.sh
+- Bash: grep -n "get_resume_recommendation" scripts/lib/helpers.sh core/state/resume.sh 2>/dev/null | head -5
+- Bash: grep -rn "^get_resume_recommendation\b" core/ scripts/ | head -5
+- Bash: sed -n '244,290p' core/state/resume.sh
+- Bash: bash -c ' set -uo pipefail REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh RUNNER="$(pwd)/core/pipeline/runner.sh" setup_test_env "debug-frsh2b" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null PLUGIN…
+- Bash: bash -c ' set -uo pipefail REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh RUNNER="$(pwd)/core/pipeline/runner.sh" setup_test_env "debug-frsh2c" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null PLUGIN…
+- Bash: bash -c ' set -uo pipefail REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh setup_test_env "debug-mock" mock_plugin_factory "intake" "agent" 0 >/dev/null PLUGINS_ROOT="$TEST_TEMP_DIR/plugins" # Check what the mock plugin looks like cat "$TEST_TEMP_DIR/plugins/agent…
+- Bash: git show a71fa7de -- tests/integration/resume-rehydrate-test.sh 2>/dev/null | grep "^+" | grep -v "^+++" | head -50
+- Bash: sed -n '1702,1740p' core/pipeline/runner.sh
+- Bash: sed -n '3720,3770p' core/pipeline/runner.sh
+- Bash: grep -n "_artifact_persist_restore\b" core/state/artifact-persist.sh | head -5
+- Bash: sed -n '2855,2875p' core/pipeline/runner.sh
+- Bash: bash -c ' set -uo pipefail REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh RUNNER="$(pwd)/core/pipeline/runner.sh" setup_test_env "debug-frsh2d" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null PLUGIN…
+- Bash: sed -n '3910,3930p' core/pipeline/runner.sh
+- Bash: sed -n '563,620p' core/state/artifact-persist.sh
+- Bash: bash -c ' set -uo pipefail REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh RUNNER="$(pwd)/core/pipeline/runner.sh" setup_test_env "debug-frsh2e" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null PLUGIN…
+- Bash: grep -n "artifact-snapshot-coverage\|cycled\|CYCLES_ENABLED" tests/integration/cycle-member-dispatch-events-test.sh | head -20
+- Bash: grep -rn "artifact-snapshot-coverage" tests/ | grep -v ".git"
+- Bash: sed -n '270,330p' tests/integration/from-stage-rehydrate-test.sh
+- Bash: sed -n '40,60p' tests/integration/from-stage-rehydrate-test.sh
+- Bash: sed -n '3760,3820p' core/pipeline/runner.sh
+- Bash: grep -n "^cycle_dispatch_stage\b" core/pipeline/*.sh | head -5
+- Bash: grep -rn "^cycle_dispatch_stage\b" core/ | head -5
+- Bash: grep -rn "cycle_dispatch_stage" core/ | head -10
+- Bash: grep -n "cycle_dispatch_stage" core/pipeline/runner.sh | head -10
+- Bash: sed -n '3110,3200p' core/pipeline/runner.sh
+- Bash: grep -rn "^resolve_stage_plugin\b" core/ scripts/ | head -5
+- Bash: sed -n '45,90p' core/pipeline/dispatch.sh
+- Bash: head -60 tests/integration/cycle-member-dispatch-events-test.sh
+- Bash: grep -n "^resolve_plugin_for_role\b" core/plugin-registry/*.sh scripts/lib/*.sh 2>/dev/null | head -5
+- Bash: grep -rn "^resolve_plugin_for_role\b" core/ scripts/ | head -5
+- Bash: sed -n '60,120p' core/pipeline/resolver.sh
+- Bash: sed -n '3883,3900p' core/pipeline/runner.sh
+- Bash: grep -n "resolve_stage_plugin\|_find_plugin_for_stage" core/pipeline/runner.sh | head -15
+- Bash: sed -n '3975,4010p' core/pipeline/runner.sh
+- Bash: grep -n "roles_out" core/pipeline/runner.sh | head -15
 
 ### test (verdict: fail)
 Outputs:
@@ -439,33 +525,40 @@ Outputs:
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
+- test finding 1 (opened by test): tests/integration/write-boundary-revert-test.sh fails: ✗ [D7] the first offence was retried — output missing: stage.retry stage=again-judge outcome=unusable (and 3 more failing checks in this file)
+- test finding 2 (opened by test): tests/unit/stage-retry-test.sh fails: ✗ [R1] timed_out with progress, no retry: in the template → 2 runs — expected: 2, got: 1 (and 29 more failing checks in this file)
 - shape-floor finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
 - shape-floor finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 3 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 4 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 5 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 6 (opened by test): tests/unit/build-oos-pass-request-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 7 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 8 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 9 (opened by test): tests/unit/change-scope-floor-test.sh spells out a count, order or list this change alters; update it if it is now wrong
 
 Summary:
 # Test stage summary
 
 - verdict: fail
-- passed: 188
-- failed: 3
+- passed: 860
+- failed: 2
 - exit_code: 1
+
+## Failing files
+
+- tests/integration/write-boundary-revert-test.sh — ✗ [D7] the first offence was retried — output missing: stage.retry stage=again-judge outcome=unusable (and 3 more failing checks in this file)
+- tests/unit/stage-retry-test.sh — ✗ [R1] timed_out with progress, no retry: in the template → 2 runs — expected: 2, got: 1 (and 29 more failing checks in this file)
 
 ## Failing lines (extracted)
 
 ```
-  ✗ [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-    elapsed 22s > 17s — a global watchdog ends the run at ~12s; a per-stage reset at ~20s+
-  ✗ [D7] the first offence was retried
-    output missing: stage.retry stage=again-judge outcome=unusable
-  ✗ [D7] the retry's offence halts
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.CEyWas/tests/unit/stage-retry-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.CEyWas/tests/integration/write-boundary-revert-test.sh
+  ✗ [R7] it names the stage
+  ✗ [R7] ...the outcome the try ended on
+  ✗ [R7] ...which try comes next
+  ✗ [R7] ...of how many
+  ✗ [R8] a stage run from a work unit is run again too → 2 runs
+  ✗ [R11] each try is told its number
     expected: broken, got: unusable
+  ✓ [D7] the files are put back
+  2 of 20 tests failed
+  ✗ [D7] the first offence was retried
+  ✗ [D7] the retry's offence halts
   ✗ [R1] timed_out with progress, no retry: in the template → 2 runs
     expected: 2, got: 1
   ✗ [R1] the retry that passes is what the dispatch reports
@@ -480,25 +573,10 @@ Summary:
   ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
   ✗ [R7] one stage.retry for the one retry
     expected: 1, got: 0
-  ✗ [R7] it names the stage
     expected: twice, got: 
-  ✗ [R7] ...the outcome the try ended on
     expected: timed_out, got: 
-  ✗ [R7] ...which try comes next
     expected: 2, got: 
-  ✗ [R7] ...of how many
     expected: 3, got: 
-  ✗ [R8] a stage run from a work unit is run again too → 2 runs
-  ✗ [R11] each try is told its number
-unit: FAIL tests/integration/run-timed-out-test.sh
-unit: FAIL tests/integration/write-boundary-revert-test.sh
-unit: FAIL tests/unit/stage-retry-test.sh
-  ✓ [#1944/SPEC-1] P4: pipeline status=timed_out
-  ✓ [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
-  ✓ [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
-  1 of 17 tests failed
-  ✓ [D7] the files are put back
-  2 of 20 tests failed
     expected: 1 2 3 , got: none 
 ```
 
@@ -506,53 +584,7 @@ unit: FAIL tests/unit/stage-retry-test.sh
 - the shape floor failed: missing_floor_files
 
 Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-;255mD7: the engine retries the first offence; the retry's offence halts[0m
-  [38;2;248;113;113m✗[0m [D7] the first offence was retried
-    [2moutput missing: stage.retry stage=again-judge outcome=unusable[0m
-  [38;2;248;113;113m✗[0m [D7] the retry's offence halts
-    [2mexpected: broken, got: unusable[0m
-  [38;2;74;222;128m✓[0m [D7] the files are put back
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m2 of 20 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [D7] the first offence was retried
-  [38;2;248;113;113m✗[0m [D7] the retry's offence halts
-
-unit: FAIL tests/unit/stage-retry-test.sh
-
-[38;2;0;212;255m[1m  the engine runs any stage again, as its template says (#2439)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;248;113;113m✗[0m [R1] timed_out with progress, no retry: in the template → 2 runs
-    [2mexpected: 2, got: 1[0m
-  [38;2;248;113;113m✗[0m [R1] the retry that passes is what the dispatch reports
-    [2mexpected: 0, got: 1[0m
-  [38;2;248;113;113m✗[0m [R2] retry: 2 → 3 runs
-    [2mexpected: 3, got: 1[0m
-  [38;2;248;113;113m✗[0m [R2] every word that means 'did not finish' is retried
-    [2mexpected: 3, got: 1[0m
-  [38;2;74;222;128m✓[0m [R3] pass → 1 run
-  [38;2;74;222;128m✓[0m [R3] fail → 1 run (the loop handles a failure, not the retry)
-  [38;2;248;113;113m✗[0m [R4] a try that changed nothing is not run again
-    [2mexpected: 2, got: 1[0m
-  [38;2;248;113;113m✗[0m [R5] retry: 9 is capped at 5 → 6 runs
-    [2mexpected: 6, got: 1[0m
-  [38;2;248;113;113m✗[0m [R5] retry: lots → the default 1 → 2 runs
-    [2mexpected: 2, got: 1[0m
-  [38;2;74;222;128m✓[0m [R5] retry: 0 → 1 run
-  [38;2;248;113;113m✗[0m [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
-    [2mexpected: 2, got: 1[0m
-  [38;2;248;113;113m✗[0m [R7] one stage.retry for the one retry
-    [2mexpected: 1, got: 0[0m
-  [38;2;248;113;113m✗[0m [R7] it names the stage
-    [2mexpected: twice, got: [0m
-  [38;2;248;113;113m✗[0m [R7] ...the outcome the try ended on
-    [2mexpected: timed_out, got: [0m
-  [38;2;248;113;113m✗[0m [R7] ...which try comes next
-    [2mexpected: 2, got: [0m
-  [38;2;248;113;113m✗[0m [R7] ...of how many
+3m✗[0m [R7] ...of how many
     [2mexpected: 3, got: [0m
   [38;2;74;222;128m✓[0m [R7] stage.retry is a known event
   [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
@@ -585,25 +617,68 @@ unit: FAIL tests/unit/stage-retry-test.sh
   [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
   [38;2;248;113;113m✗[0m [R11] each try is told its number
 
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.CEyWas/tests/integration/write-boundary-revert-test.sh
+
+[38;2;0;212;255m[1m  write boundary: undo and retry, halt on a second offence[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mD1/D2: the first offence is undone and retried[0m
+  [38;2;74;222;128m✓[0m [D1] the edited file is back
+  [38;2;74;222;128m✓[0m [D1] the new file is gone
+  [38;2;74;222;128m✓[0m [D1] the deleted file is back
+  [38;2;74;222;128m✓[0m [D1] the earlier stage's uncommitted work is back, not reset to HEAD
+  [38;2;74;222;128m✓[0m [D2] the dispatch fails
+  [38;2;74;222;128m✓[0m [D2] the stage is retried (unusable), not halted
+  [38;2;74;222;128m✓[0m [D2] no halting marker
+  [38;2;74;222;128m✓[0m [D2] the paths are named
+
+  [38;2;0;212;255mD5: a clean retry is not held to it[0m
+  [38;2;74;222;128m✓[0m [D5] a clean re-dispatch of the stage resolves complete
+
+  [38;2;0;212;255mD3: a second offence by the same stage halts[0m
+  [38;2;74;222;128m✓[0m [D3] the second offence resolves broken
+  [38;2;74;222;128m✓[0m [D3] the files are still put back
+  [38;2;74;222;128m✓[0m [D3] ...including the earlier stage's work
+  [38;2;74;222;128m✓[0m [D6] the halt says which stage changed the repository
+  [38;2;74;222;128m✓[0m [D6] ...and which files
+  [38;2;74;222;128m✓[0m [D6] ...and only for the stage that did it
+
+  [38;2;0;212;255mD4: the count is per stage[0m
+  [38;2;74;222;128m✓[0m [D4] another stage's first offence is retried
+  [38;2;74;222;128m✓[0m [D4] and put back
+
+  [38;2;0;212;255mD7: the engine retries the first offence; the retry's offence halts[0m
+  [38;2;248;113;113m✗[0m [D7] the first offence was retried
+    [2moutput missing: stage.retry stage=again-judge outcome=unusable[0m
+  [38;2;248;113;113m✗[0m [D7] the retry's offence halts
+    [2mexpected: broken, got: unusable[0m
+  [38;2;74;222;128m✓[0m [D7] the files are put back
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 20 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [D7] the first offence was retried
+  [38;2;248;113;113m✗[0m [D7] the retry's offence halts
+
 ### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-13 (R6 guard: a run with no prior state behaves exactly as today) — `tests/unit/stage-retry-test.sh` fails 15 of 24 assertions (all retry-dispatch counts show "got: 1" where 2 or more are expected) and `tests/integration/write-boundary-revert-test.sh` fails 2 of 20 assertions ([D7] retry behavior); both failures are in non-resume paths exercised by the dispatch-unit loop, proving the loop changes alter fresh-run stage dispatch.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: R-14 (R7 guard: a new run of the same issue still never skips a stage because of an earlier run's output) — the same `stage-retry-test.sh` and `write-boundary-revert-test.sh` regressions show the dispatch-unit loop changes affect stage dispatch on paths that have no resume state, so the invariant that only `resume_mode=true` gates skipping is not holding for these non-resume exercised code paths.. What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: R-5 (ADR-006 amended with step 3.6 naming enforcing tests inline) — `docs/adr/ADR-006-resume-contract.md` is listed as changed in prior work but its content is not in the diff shown; I cannot verify the amendment includes the required step 3.6 wording and the enforcing test names `resume-rehydrate-test.sh` / `resume-entry-points-test.sh` cited inline.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
-- issue-acceptance finding 4 (opened by issue-acceptance): Not sure this requirement is met: R-6 (ADR-050 §6 amended with boundary note distinguishing resume from new-run) — `docs/adr/ADR-050-prior-work-reuse-contract.md` is listed as changed in prior work but its content is not in the diff shown; I cannot verify the §6 boundary note was added as specified.. What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: TEST-1: `tests/integration/resume-entry-points-test.sh` explicitly sets `ZBUILD_CYCLES_ENABLED=0` and uses `runner-state-dir-minimal` (a flat two-leaf template with no cycle), which forces the legacy linear loop. The test's assertion that `intake` emits no `stage.start` on resume therefore exercises the legacy loop's skip guard, not the dispatch-unit loop's. The issue says "A flat fixture such as tests/fixtures/templates/runner-state-dir-minimal.yaml takes the legacy loop, so a test on it passes or fails for the wrong code." All three entry-path sub-cases in that file share this flaw (`ZBUILD_CYCLES_ENABLED=0` at line 112, 192, 265). — "Tests for R1–R5 must use a cycle. They run a template whose flow has a cycle, so that the runner takes the dispatch-unit loop. A flat fixture such as tests/fixtures/templates/runner-state-dir-minimal.yaml takes the legacy loop, so a test on it passes or fails for the wrong code.". What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: DISP-1: SKIP-1 and LEGC-1 in REQUIREMENTS are both marked "already done" and both cite the same evidence string: `core/pipeline/runner.sh:"When resuming, skip stages already marked complete unless --from-stage overrides"`. That exact text appears at line 3895 of `runner.sh`, inside the legacy linear loop (`for stage in "${active_stages[@]}"`, starting at line 3883), which the issue explicitly names as unreachable for every shipped template. The dispatch-unit loop does have an equivalent guard (lines 3728–3760 for `stage:` units, 3442–3454 for `cycle:` units), so the behavior is correctly implemented — but the requirements were marked "done" on the strength of the legacy loop's text, not the dispatch-unit loop's. — "No requirement may be marked done, and no change made, on the strength of the legacy loop.". What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): Not sure this requirement is met: ORDE-1: "Do not run this in parallel with another issue that edits the dispatch loop" is an operational/scheduling constraint. Nothing in the diff or repository enforces it mechanically; it cannot be verified by reading the code. What would settle it: CI or issue-tracking evidence that issue #1714 was not in flight concurrently with #1805. — "Do not run this in parallel with another issue that edits the dispatch loop (#1714 touches the allow-list builder in runner.sh).". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
 
 Summary:
 ## issue-acceptance — fail
 
-- The dispatch-unit loop changes introduced by this diff regress retry behavior on non-resume paths, breaking the R-13/R-14 guards that require fresh runs to behave exactly as before.
+- judged the change against the issue: 3 requirement(s) not met or not sure
 
 - 2 requirement(s) not met — each is a finding, sent to the stages that can fix it
-- NOT SURE: R-5 (ADR-006 amended with step 3.6 naming enforcing tests inline) — `docs/adr/ADR-006-resume-contract.md` is listed as changed in prior work but its content is not in the diff shown; I cannot verify the amendment includes the required step 3.6 wording and the enforcing test names `resume-rehydrate-test.sh` / `resume-entry-points-test.sh` cited inline. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: R-6 (ADR-050 §6 amended with boundary note distinguishing resume from new-run) — `docs/adr/ADR-050-prior-work-reuse-contract.md` is listed as changed in prior work but its content is not in the diff shown; I cannot verify the §6 boundary note was added as specified. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: ORDE-1: "Do not run this in parallel with another issue that edits the dispatch loop" is an operational/scheduling constraint. Nothing in the diff or repository enforces it mechanically; it cannot be verified by reading the code. What would settle it: CI or issue-tracking evidence that issue #1714 was not in flight concurrently with #1805. — "Do not run this in parallel with another issue that edits the dispatch loop (#1714 touches the allow-list builder in runner.sh)." — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ## What you must not do
 
