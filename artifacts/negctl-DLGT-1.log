@@ -1,0 +1,103 @@
+### DLGT-1 baseline tests/unit/hydrate-stage-test.sh
+
+[38;2;0;212;255m[1m  hydrate stage (#1074)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SETUP] the author run snapshotted and pushed (exit 0)
+
+  [38;2;0;212;255m[SPEC-1][change] a fresh clone restores prior work[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: no local state ref in a fresh clone
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: no remote-tracking state ref either
+  [38;2;74;222;128m✓[0m [SPEC-1] control: restore without a fetch reports first-run
+  [38;2;74;222;128m✓[0m [SPEC-1] hydrate returns 0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-1] prior plan.json was restored
+  [38;2;74;222;128m✓[0m [SPEC-1] prior design.md was restored
+  [38;2;74;222;128m✓[0m [SPEC-1] the result records how many were restored
+  [38;2;74;222;128m✓[0m [SPEC-6] no separate restored area is made
+  [38;2;74;222;128m✓[0m [SPEC-6] a live file already there is kept
+  [38;2;74;222;128m✓[0m [SPEC-6] … and a missing one is put back
+
+  [38;2;0;212;255m[SPEC-2][guard] unpushed local work survives a hydrate[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] the local snapshot succeeded (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-2] premise: the local snapshot created a ref
+  [38;2;74;222;128m✓[0m [SPEC-2] the local branch ref is unmoved by the fetch
+  [38;2;74;222;128m✓[0m [SPEC-2] and the LOCAL (unpushed) content is what got restored
+
+  [38;2;0;212;255m[SPEC-4][change] hydrate records data.source[0m
+  [38;2;74;222;128m✓[0m [source-guard] the fresh-clone restore still reports restored
+  [38;2;74;222;128m✓[0m [SPEC-4] a fresh clone records source=remote, not local
+
+  [38;2;0;212;255m[SPEC-5][change] hydrate adopts the fetched tip locally[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] the local state ref now exists and matches the fetched tip
+
+  [38;2;0;212;255m[SPEC-7][change] stage-io records are not put back[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a stage's output is put back
+  [38;2;248;113;113m✗[0m [SPEC-7] an earlier run's stage-io record is not put back
+    [2mfile should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.Jiq600/s7-to/stage-io/design-iter4-error.json[0m
+
+  [38;2;0;212;255m[#1805/DLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)[0m
+  [38;2;248;113;113m✗[0m [#1805/DLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.Jiq600/spec13-put-back-called[0m
+
+  [38;2;0;212;255m[SPEC-3][guard] a failed restore leaves the area absent, not partial[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] hydrate still returns 0 on a failed restore (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-3] the half-extracted file was NOT promoted
+  [38;2;74;222;128m✓[0m [SPEC-3] the staging tree is discarded whole
+  [38;2;74;222;128m✓[0m [SPEC-3] and the result records fail (#2366)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 25 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-7] an earlier run's stage-io record is not put back
+  [38;2;248;113;113m✗[0m [#1805/DLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
+
+### DLGT-1 head tests/unit/hydrate-stage-test.sh
+
+[38;2;0;212;255m[1m  hydrate stage (#1074)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SETUP] the author run snapshotted and pushed (exit 0)
+
+  [38;2;0;212;255m[SPEC-1][change] a fresh clone restores prior work[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: no local state ref in a fresh clone
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: no remote-tracking state ref either
+  [38;2;74;222;128m✓[0m [SPEC-1] control: restore without a fetch reports first-run
+  [38;2;74;222;128m✓[0m [SPEC-1] hydrate returns 0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-1] prior plan.json was restored
+  [38;2;74;222;128m✓[0m [SPEC-1] prior design.md was restored
+  [38;2;74;222;128m✓[0m [SPEC-1] the result records how many were restored
+  [38;2;74;222;128m✓[0m [SPEC-6] no separate restored area is made
+  [38;2;74;222;128m✓[0m [SPEC-6] a live file already there is kept
+  [38;2;74;222;128m✓[0m [SPEC-6] … and a missing one is put back
+
+  [38;2;0;212;255m[SPEC-2][guard] unpushed local work survives a hydrate[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] the local snapshot succeeded (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-2] premise: the local snapshot created a ref
+  [38;2;74;222;128m✓[0m [SPEC-2] the local branch ref is unmoved by the fetch
+  [38;2;74;222;128m✓[0m [SPEC-2] and the LOCAL (unpushed) content is what got restored
+
+  [38;2;0;212;255m[SPEC-4][change] hydrate records data.source[0m
+  [38;2;74;222;128m✓[0m [source-guard] the fresh-clone restore still reports restored
+  [38;2;74;222;128m✓[0m [SPEC-4] a fresh clone records source=remote, not local
+
+  [38;2;0;212;255m[SPEC-5][change] hydrate adopts the fetched tip locally[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] the local state ref now exists and matches the fetched tip
+
+  [38;2;0;212;255m[SPEC-7][change] stage-io records are not put back[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a stage's output is put back
+  [38;2;74;222;128m✓[0m [SPEC-7] an earlier run's stage-io record is not put back
+
+  [38;2;0;212;255m[#1805/DLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)[0m
+  [38;2;74;222;128m✓[0m [#1805/DLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
+
+  [38;2;0;212;255m[SPEC-3][guard] a failed restore leaves the area absent, not partial[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] hydrate still returns 0 on a failed restore (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-3] the half-extracted file was NOT promoted
+  [38;2;74;222;128m✓[0m [SPEC-3] the staging tree is discarded whole
+  [38;2;74;222;128m✓[0m [SPEC-3] and the result records fail (#2366)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 25 tests passed[0m
+

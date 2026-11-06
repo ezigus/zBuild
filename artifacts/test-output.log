@@ -1,91 +1,8 @@
-skip non-test: tests/golden/parity/run-fixture.sh
-skip non-test: tests/lib/cycle-stall-break-fixture.sh
-skip non-test: tests/lib/nested-loop-rounds-fixture.sh
-skip non-test: tests/mutation/pipeline-contracts.md
-skip non-test: tests/mutation/run-status-comment.md
-skip non-test: tests/mutation/runner-fail-closed-mutations.md
-unit: FAIL tests/integration/run-timed-out-test.sh
 
-  run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
 
-
-  P1: slow stage timeout — status=timed_out written to pipeline-state.json
-  ✓ [#1944/SPEC-1] P1: runner exits non-zero
-  ✓ [#1944/SPEC-1] P1: pipeline-state.json status=timed_out
-  ✓ [#1944/SPEC-1] P1: the run's footer names the wall-clock limit
-
-  P1: pipeline.end event fields — status=timed_out, stage, limit_s
-  ✓ [#1944/SPEC-1] P1: pipeline.end status=timed_out event emitted
-  ✓ [#1944/SPEC-1] P1: pipeline.end event carries in-flight stage (stage=slow-stage)
-  ✓ [#1944/SPEC-1] P1: pipeline.end event carries limit_s=2
-
-  P2: watchdog fires even when engine is idle between dispatches
-  ✓ [#1944/SPEC-1] P2: runner exits non-zero
-  ✓ [#1944/SPEC-1] P2: pipeline status=timed_out (watchdog fires regardless of dispatch state)
-  ✓ [#1944/SPEC-1] P2: fast-one completed before watchdog fired (watchdog fires independently)
-  ✗ [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-    elapsed 22s > 17s — a global watchdog ends the run at ~12s; a per-stage reset at ~20s+
-
-  P3: stage that ignores SIGTERM is dead within TERM + 10s
-  ✓ [#1944/SPEC-1] P3: runner exits non-zero (not still running)
-  ✓ [#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed 5s)
-  ✓ [#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID 1645998 killed)
-
-  P4: always_run release and persist stages execute on timed-out exit path
-  ✓ [#1944/SPEC-1] P4: runner exits non-zero on timed-out path
-  ✓ [#1944/SPEC-1] P4: pipeline status=timed_out
-  ✓ [#1944/SPEC-1] P4: release (always_run) stage ran on timed-out exit path
-  ✓ [#1944/SPEC-1] P4: persist (always_run) stage ran on timed-out exit path
-
-
-  1 of 17 tests failed
-
-  ✗ [#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset
-
-unit: FAIL tests/integration/write-boundary-revert-test.sh
-
-  write boundary: undo and retry, halt on a second offence
-
-
-  D1/D2: the first offence is undone and retried
-  ✓ [D1] the edited file is back
-  ✓ [D1] the new file is gone
-  ✓ [D1] the deleted file is back
-  ✓ [D1] the earlier stage's uncommitted work is back, not reset to HEAD
-  ✓ [D2] the dispatch fails
-  ✓ [D2] the stage is retried (unusable), not halted
-  ✓ [D2] no halting marker
-  ✓ [D2] the paths are named
-
-  D5: a clean retry is not held to it
-  ✓ [D5] a clean re-dispatch of the stage resolves complete
-
-  D3: a second offence by the same stage halts
-  ✓ [D3] the second offence resolves broken
-  ✓ [D3] the files are still put back
-  ✓ [D3] ...including the earlier stage's work
-  ✓ [D6] the halt says which stage changed the repository
-  ✓ [D6] ...and which files
-  ✓ [D6] ...and only for the stage that did it
-
-  D4: the count is per stage
-  ✓ [D4] another stage's first offence is retried
-  ✓ [D4] and put back
-
-  D7: the engine retries the first offence; the retry's offence halts
-  ✗ [D7] the first offence was retried
-    output missing: stage.retry stage=again-judge outcome=unusable
-  ✗ [D7] the retry's offence halts
-    expected: broken, got: unusable
-  ✓ [D7] the files are put back
-
-
-  2 of 20 tests failed
-
-  ✗ [D7] the first offence was retried
-  ✗ [D7] the retry's offence halts
-
-unit: FAIL tests/unit/stage-retry-test.sh
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.CEyWas/tests/unit/stage-retry-test.sh
 
   the engine runs any stage again, as its template says (#2439)
 
@@ -148,4 +65,54 @@ unit: FAIL tests/unit/stage-retry-test.sh
   ✗ [R8] a stage run from a work unit is run again too → 2 runs
   ✗ [R11] each try is told its number
 
-unit: 188/191 passed
+unit: 566/567 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.CEyWas/tests/integration/write-boundary-revert-test.sh
+
+  write boundary: undo and retry, halt on a second offence
+
+
+  D1/D2: the first offence is undone and retried
+  ✓ [D1] the edited file is back
+  ✓ [D1] the new file is gone
+  ✓ [D1] the deleted file is back
+  ✓ [D1] the earlier stage's uncommitted work is back, not reset to HEAD
+  ✓ [D2] the dispatch fails
+  ✓ [D2] the stage is retried (unusable), not halted
+  ✓ [D2] no halting marker
+  ✓ [D2] the paths are named
+
+  D5: a clean retry is not held to it
+  ✓ [D5] a clean re-dispatch of the stage resolves complete
+
+  D3: a second offence by the same stage halts
+  ✓ [D3] the second offence resolves broken
+  ✓ [D3] the files are still put back
+  ✓ [D3] ...including the earlier stage's work
+  ✓ [D6] the halt says which stage changed the repository
+  ✓ [D6] ...and which files
+  ✓ [D6] ...and only for the stage that did it
+
+  D4: the count is per stage
+  ✓ [D4] another stage's first offence is retried
+  ✓ [D4] and put back
+
+  D7: the engine retries the first offence; the retry's offence halts
+  ✗ [D7] the first offence was retried
+    output missing: stage.retry stage=again-judge outcome=unusable
+  ✗ [D7] the retry's offence halts
+    expected: broken, got: unusable
+  ✓ [D7] the files are put back
+
+
+  2 of 20 tests failed
+
+  ✗ [D7] the first offence was retried
+  ✗ [D7] the retry's offence halts
+
+integration: 257/258 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 860/862 passed (4 skipped)

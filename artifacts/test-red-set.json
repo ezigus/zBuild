@@ -1,5 +1,4 @@
 [
-  "tests/integration/run-timed-out-test.sh",
   "tests/integration/write-boundary-revert-test.sh",
   "tests/unit/stage-retry-test.sh"
 ]

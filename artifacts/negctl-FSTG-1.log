@@ -1,0 +1,69 @@
+### FSTG-1 baseline tests/integration/from-stage-rehydrate-test.sh
+
+[38;2;0;212;255m[1m  from-stage-rehydrate — artifact restore on --from-stage (#1805)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1805/FSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first[0m
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] setup: state branch populated
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.1mJEDB/s3-state/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
+    [2moutput missing: prior-run intake[0m
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)
+    [2mexpected >0, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] pipeline.resume precedes first dispatch event (artifact restored before dispatch loop started)
+    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] intake emits no stage.start when skipped via --from-stage
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)
+    [2mexpected >0, got: 0[0m
+
+  [38;2;0;212;255m[#1805/FSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1[0m
+  [38;2;74;222;128m✓[0m [#1805/FSTG-2] --from-stage exits 1 when prior stage has no restorable artifact
+  [38;2;248;113;113m✗[0m [#1805/FSTG-2] stderr contains preflight diagnostic phrase (has no restorable primary artifact)
+    [2moutput missing: has no restorable primary artifact[0m
+  [38;2;74;222;128m✓[0m [#1805/FSTG-2] no stage.start emitted before exit 1
+
+  [38;2;0;212;255mfrom-stage-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m [#1805/CYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
+  [38;2;74;222;128m✓[0m cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m6 of 12 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] pipeline.resume precedes first dispatch event (artifact restored before dispatch loop started)
+  [38;2;248;113;113m✗[0m [#1805/FSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)
+  [38;2;248;113;113m✗[0m [#1805/FSTG-2] stderr contains preflight diagnostic phrase (has no restorable primary artifact)
+
+### FSTG-1 head tests/integration/from-stage-rehydrate-test.sh
+
+[38;2;0;212;255m[1m  from-stage-rehydrate — artifact restore on --from-stage (#1805)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1805/FSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first[0m
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] setup: state branch populated
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] pipeline.resume precedes first dispatch event (artifact restored before dispatch loop started)
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] intake emits no stage.start when skipped via --from-stage
+  [38;2;74;222;128m✓[0m [#1805/FSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)
+
+  [38;2;0;212;255m[#1805/FSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1[0m
+  [38;2;74;222;128m✓[0m [#1805/FSTG-2] --from-stage exits 1 when prior stage has no restorable artifact
+  [38;2;74;222;128m✓[0m [#1805/FSTG-2] stderr contains preflight diagnostic phrase (has no restorable primary artifact)
+  [38;2;74;222;128m✓[0m [#1805/FSTG-2] no stage.start emitted before exit 1
+
+  [38;2;0;212;255mfrom-stage-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m [#1805/CYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
+  [38;2;74;222;128m✓[0m cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
