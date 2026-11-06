@@ -62,8 +62,6 @@
   [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
-  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
-    [2mexpected: 1, got: 0[0m
 
   [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
   [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
@@ -71,9 +69,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 46 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
+  [38;2;74;222;128m[1mAll 45 tests passed[0m
 
 ### plugins/tool/hydrate/plugin.sh head tests/integration/resume-rehydrate-test.sh
 
@@ -139,8 +135,6 @@
   [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
-  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
-    [2mexpected: 1, got: 0[0m
 
   [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
   [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
@@ -148,9 +142,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 46 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
+  [38;2;74;222;128m[1mAll 45 tests passed[0m
 
 ### plugins/tool/hydrate/plugin.sh reverted tests/integration/from-stage-rehydrate-test.sh
 
@@ -216,11 +208,11 @@
 
   [38;2;0;212;255m[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 22:02:34 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 23:01:12 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 22:02:35 UTC ══
+══ build-test [cycle] seq=2 output OK 0.4s ═════════════════════ 23:01:12 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -228,22 +220,22 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 22:02:35 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 23:01:12 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 22:02:35 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 23:01:13 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 22:02:35 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 23:01:13 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 22:02:36 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 23:01:13 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -251,16 +243,14 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/CMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 22:02:36 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 23:01:14 UTC ══
 (no stage summaries)
 
-
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 22:02:36 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 23:01:14 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
-  [38;2;248;113;113m✗[0m [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
   [38;2;74;222;128m✓[0m [#1805/CMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)
 
   [38;2;0;212;255mresume-loop-state test uses a fixture containing a cyclic stage[0m
@@ -269,9 +259,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 8 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
 
 ### plugins/tool/hydrate/plugin.sh head tests/integration/resume-loop-state-test.sh
 
@@ -281,11 +269,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 22:02:14 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 23:00:52 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 22:02:14 UTC ══
+══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 23:00:52 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -293,22 +281,22 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 22:02:15 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 23:00:53 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 22:02:15 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 23:00:53 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 22:02:15 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 23:00:53 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 22:02:15 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 23:00:53 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -316,16 +304,14 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/CMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 22:02:16 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 23:00:54 UTC ══
 (no stage summaries)
 
-
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 22:02:16 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 23:00:54 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
-  [38;2;248;113;113m✗[0m [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
   [38;2;74;222;128m✓[0m [#1805/CMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)
 
   [38;2;0;212;255mresume-loop-state test uses a fixture containing a cyclic stage[0m
@@ -334,9 +320,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 8 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
+  [38;2;74;222;128m[1mAll 8 tests passed[0m
 
 ### plugins/tool/hydrate/plugin.sh reverted tests/integration/resume-entry-points-test.sh
 
@@ -452,7 +436,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/DLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)[0m
   [38;2;248;113;113m✗[0m [#1805/DLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.18Q6em/spec13-put-back-called[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.H0BiS6/spec13-put-back-called[0m
 
   [38;2;0;212;255m[SPEC-3][guard] a failed restore leaves the area absent, not partial[0m
   [38;2;74;222;128m✓[0m [SPEC-3] hydrate still returns 0 on a failed restore (exit 0)
