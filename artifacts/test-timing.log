@@ -9517,3 +9517,18 @@ cpu 1373 2420 tests/unit/stage-retry-test.sh
 file 3725 tests/unit/stage-retry-test.sh
 cpu 2130 4149 tests/unit/stage-stop-on-signal-test.sh
 file 11891 tests/unit/stage-stop-on-signal-test.sh
+run 8 targeted
+cpu 592 1154 tests/integration/resume-loop-state-test.sh
+file 1871 tests/integration/resume-loop-state-test.sh
+cpu 338 595 tests/integration/write-boundary-revert-test.sh
+file 1060 tests/integration/write-boundary-revert-test.sh
+cpu 257 571 tests/unit/hydrate-stage-test.sh
+file 945 tests/unit/hydrate-stage-test.sh
+cpu 1297 2816 tests/integration/from-stage-rehydrate-test.sh
+file 4461 tests/integration/from-stage-rehydrate-test.sh
+cpu 2009 4791 tests/integration/resume-entry-points-test.sh
+file 7109 tests/integration/resume-entry-points-test.sh
+cpu 1389 2485 tests/unit/stage-retry-test.sh
+file 3651 tests/unit/stage-retry-test.sh
+cpu 2621 5970 tests/integration/resume-rehydrate-test.sh
+file 8812 tests/integration/resume-rehydrate-test.sh

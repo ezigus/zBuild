@@ -1,24 +1,18 @@
 # Test stage summary
 
 - verdict: fail
-- passed: 74
-- failed: 3
+- passed: 5
+- failed: 2
 - exit_code: 1
 
 ## Failing lines (extracted)
 
 ```
-unit: FAIL tests/integration/resume-rehydrate-test.sh
 unit: FAIL tests/integration/write-boundary-revert-test.sh
 unit: FAIL tests/unit/stage-retry-test.sh
-  [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
-  [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
-  [38;2;74;222;128m✓[0m resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
-[2m  ──────────────────────────────────────────[0m
-  [38;2;248;113;113m[1m1 of 46 tests failed[0m
-  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)
     [2mexpected: broken, got: unusable[0m
   [38;2;74;222;128m✓[0m [D7] the files are put back
+[2m  ──────────────────────────────────────────[0m
   [38;2;248;113;113m[1m2 of 20 tests failed[0m
   [38;2;248;113;113m✗[0m [D7] the first offence was retried
   [38;2;248;113;113m✗[0m [D7] the retry's offence halts
@@ -28,7 +22,6 @@ unit: FAIL tests/unit/stage-retry-test.sh
   [38;2;248;113;113m✗[0m [R7] ...of how many
   [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
   [38;2;248;113;113m✗[0m [R11] each try is told its number
-    [2mexpected >0, got: 0[0m
   [38;2;248;113;113m✗[0m [R1] timed_out with progress, no retry: in the template → 2 runs
     [2mexpected: 2, got: 1[0m
   [38;2;248;113;113m✗[0m [R1] the retry that passes is what the dispatch reports
