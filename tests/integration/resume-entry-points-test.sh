@@ -512,6 +512,23 @@ fi
 assert_gt "[#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume event emitted (resume_mode=true)" \
     "$_p4_resume_lineno" "0"
 
+# [#1805/ENTR-2]: artifacts were restored BEFORE any stage.start event. The runner emits
+#   pipeline.resume immediately after _runner_resume_rehydrate returns, before the dispatch
+#   loop. A pipeline.resume line number lower than the first stage.start line number proves
+#   the rehydration completed before any stage was dispatched.
+# Before change: auto-resume not triggered → no pipeline.resume → resume_lineno=0 →
+#   the assert_gt resume > 0 above already fails; this assertion adds explicit ordering
+#   evidence that the artifact was placed BEFORE the dispatch loop.
+# After change: auto-resume via latest → pipeline.resume emitted before dispatch →
+#   first_start_lineno > resume_lineno → PASSES.
+_p4_first_start_lineno=0
+if [[ -f "$P4_EVENTS_JSONL" ]]; then
+    _p4_first_start_lineno="$(awk '/"stage.start"/{print NR; exit}' "$P4_EVENTS_JSONL" 2>/dev/null)"
+    _p4_first_start_lineno="${_p4_first_start_lineno:-0}"
+fi
+assert_gt "[#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume precedes first stage.start (artifact restored before dispatch loop)" \
+    "$_p4_first_start_lineno" "$_p4_resume_lineno"
+
 # [#1805/ENTR-2]: completed-stage artifacts restored from the per-run state directory
 #   before any stage.start event is emitted.
 # Before change: auto-resume not triggered → no rehydration call → artifact absent → FAILS.
