@@ -1,6 +1,6 @@
 ## design — pass
 
-- 15 SPEC(s): RHYD-1, RHYD-2, FSTG-1, FSTG-2, AMDR-1, AMDR-2, ITER-1, SKIP-1, DSPK-1, ENTR-1, ENTR-2, FRSH-1, FRSH-2, DLGT-1, CYCL-1
+- 16 SPEC(s): RHYD-1, RHYD-2, FSTG-1, FSTG-2, AMDR-1, AMDR-2, ITER-1, CMBR-1, SKIP-1, DSPK-1, ENTR-1, ENTR-2, FRSH-1, FRSH-2, DLGT-1, CYCL-1
 
 - RHYD-1 (covers RESU-1 RESU-2 RESU-4 HYDR-1): On resume, before the dispatch loop, completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical to their state at interruption, and no stage.start event is emitted for them
 - RHYD-2 (covers RESU-2): A complete stage whose primary artifact cannot be rehydrated causes exit 1 before any stage.start event is emitted
@@ -9,6 +9,7 @@
 - AMDR-1 (covers ADR-1): ADR-006-resume-contract.md amended with step 3.6 (rehydrate completed-stage artifacts before dispatch loop; absent artifact causes exit 1; ordering constraint: not to be combined with dispatch-loop changes); enforcing test names (resume-rehydrate-test.sh, resume-entry-points-test.sh) added inline
 - AMDR-2 (covers ADR-2): ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant "never skip a stage on prior output" applies to new runs; a resume continues the same run and is governed by ADR-006; and §6's Enforced by section updated to cite resume-rehydrate-test.sh (FRSH-2 for the new-run side) and resume-entry-points-test.sh (ENTR-1 for the resume side)
 - ITER-1 (covers LOOP-1): Cycle orchestrator reads current_iter from persisted state on resume and starts the iteration loop from that value; fresh runs and nested-loop re-entries always start at iter=1
+- CMBR-1 (covers LOOP-1): On resume, within the interrupted iteration, cycle member stages already marked complete in persisted state are skipped; the first dispatched cycle member is the interrupted stage
 - SKIP-1 (covers RESU-3 RESU-4 DISP-1): On resume, the dispatch-unit loop skips a stage marked complete whose primary artifact is present after rehydration, emitting no stage.start for that stage
 - DSPK-1 (covers RESU-3 RESU-4): On resume, stage k (the interrupted stage) is dispatched and emits stage.start
 - ENTR-1 (covers PATH-1): All three resume entry paths (--resume flag, auto-resume on status=interrupted, zbuild pipeline resume --run-id) restore completed-stage artifacts before the dispatch loop
