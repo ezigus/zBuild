@@ -1722,18 +1722,19 @@ _runner_resume_rehydrate() {
     return 0
 }
 
-# ─── _runner_from_stage_preflight <stages_arr> <from_stage> <state_dir> <plugins_root> ─
+# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> ─
 # For --from-stage <s>: restore + put_back artifacts from the git state branch,
 # then verify every stage before <s> has its primary artifact in ZBUILD_ARTIFACT_DIR.
 # Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
 _runner_from_stage_preflight() {
-    local -n _fsp_stages="$1"
-    local _fsp_from_stage="$2" _fsp_state_dir="$3" _fsp_plugins_root="$4"
+    local _fsp_issue="$1"
+    local -n _fsp_stages="$2"
+    local _fsp_from_stage="$3" _fsp_state_dir="$4" _fsp_plugins_root="$5"
     local _fsp_artifacts_dir="$_fsp_state_dir/artifacts"
     local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
     rm -rf "$_fsp_staging" 2>/dev/null || true
     # Restore + put_back (same sequence as _runner_resume_rehydrate)
-    _artifact_persist_restore "$_runner_issue" "$_fsp_staging" || true
+    _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" || true
     if [[ -d "$_fsp_staging/artifacts" ]]; then
         _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" || true
     fi
@@ -1815,7 +1816,7 @@ main() {
     if [[ -z "$issue" && -z "$goal" && -n "${ZBUILD_STATE_FILE:-}" && -f "${ZBUILD_STATE_FILE}" ]]; then
         local _sf_issue
         _sf_issue="$(jq -r '.issue // ""' "${ZBUILD_STATE_FILE}" 2>/dev/null || true)"
-        if [[ -n "$_sf_issue" && "$_sf_issue" != "null" && "$_sf_issue" != "0" ]]; then
+        if [[ "$_sf_issue" =~ ^[0-9]+$ && "$_sf_issue" != "0" ]]; then
             issue="$_sf_issue"
         fi
     fi
@@ -2955,7 +2956,7 @@ main() {
     # ADR-006 §3.6 (#1805): when --from-stage is active, verify every stage
     # before the target has a restorable artifact before the dispatch loop runs.
     if [[ -n "$from_stage" ]]; then
-        if ! _runner_from_stage_preflight "active_stages" "$from_stage" "$state_dir" "$plugins_root"; then
+        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root"; then
             return 1
         fi
     fi
