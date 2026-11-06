@@ -199,13 +199,19 @@ fi
 assert_eq "[#1805/RHYD-1] intake emits no stage.start (complete stage skipped)" \
     "0" "$_s1_intake_starts"
 
-# [#1805/SKIP-1]: dispatch-unit loop skips a stage marked complete whose primary artifact
-# is present after rehydration, emitting no stage.start for that stage.
-# intake is marked complete in state AND its artifact was rehydrated above (file exists,
-# content byte-identical). The dispatch-unit loop is exercised because the fixture is
-# artifact-snapshot-coverage (a cyclic pipeline) run with ZBUILD_CYCLES_ENABLED=1.
+# [#1805/SKIP-1]: dispatch-unit loop skips a stage marked complete whose primary
+# artifact is present after rehydration, emitting no stage.start for that stage.
+# Given — a run is being resumed; intake is marked complete in persisted state
+#   (s1 state file above: stage_statuses.intake="complete"); its primary artifact
+#   is present in ZBUILD_ARTIFACT_DIR after rehydration (the RHYD-1 path 1 runner
+#   call above placed it there via _artifact_persist_restore + _artifact_persist_put_back).
+#   The dispatch-unit loop is exercised by the cyclic fixture run with ZBUILD_CYCLES_ENABLED=1.
+# When — the dispatch-unit loop reaches stage intake (same RHYD-1 path 1 runner call;
+#   the loop executes after _runner_resume_rehydrate places the artifact).
+# Then — no stage.start event is emitted for that stage (the loop sees resume_mode=1
+#   and the artifact is present → it skips without dispatching).
 # Before the change: dispatch-unit loop has no skip guard conditioned on resume_mode
-# and artifact presence → dispatches intake → stage.start emitted → FAILS.
+#   and artifact presence → dispatches intake → stage.start emitted → FAILS.
 # After the change: skip guard checks resume_mode + artifact present → skips → PASSES.
 assert_eq "[#1805/SKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)" \
     "0" "$_s1_intake_starts"
