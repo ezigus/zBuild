@@ -12,6 +12,7 @@
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] pipeline.resume event emitted (runner reached resume path)
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] pipeline.resume precedes first stage.start (restore before dispatch loop)
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] intake emits no stage.start (complete stage skipped)
+  [38;2;74;222;128m✓[0m [#1805/SKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)
   [38;2;74;222;128m✓[0m [#1805/DSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)
 
   [38;2;0;212;255m[#1805/RHYD-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
@@ -48,6 +49,8 @@
   [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note says invariant applies to new runs
   [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note names ADR-006 as governing resume
   [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note says a resume continues the same run
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (FRSH-2 for new-run side)
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (ENTR-1 for resume side)
 
   [38;2;0;212;255m[#1805/FRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)[0m
   [38;2;74;222;128m✓[0m fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
@@ -56,13 +59,21 @@
   [38;2;74;222;128m✓[0m [#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
   [38;2;74;222;128m✓[0m cycle fixture used in fresh-run sub-case has type: cycle
 
+  [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
+  [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
+  [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)
+    [2mexpected >0, got: 0[0m
+
   [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
   [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
   [38;2;74;222;128m✓[0m resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 40 tests passed[0m
+  [38;2;248;113;113m[1m1 of 46 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)
 
 ### plugins/tool/hydrate/plugin.sh head tests/integration/resume-rehydrate-test.sh
 
@@ -78,6 +89,7 @@
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] pipeline.resume event emitted (runner reached resume path)
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] pipeline.resume precedes first stage.start (restore before dispatch loop)
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] intake emits no stage.start (complete stage skipped)
+  [38;2;74;222;128m✓[0m [#1805/SKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)
   [38;2;74;222;128m✓[0m [#1805/DSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)
 
   [38;2;0;212;255m[#1805/RHYD-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
@@ -114,6 +126,8 @@
   [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note says invariant applies to new runs
   [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note names ADR-006 as governing resume
   [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note says a resume continues the same run
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (FRSH-2 for new-run side)
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (ENTR-1 for resume side)
 
   [38;2;0;212;255m[#1805/FRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)[0m
   [38;2;74;222;128m✓[0m fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
@@ -122,13 +136,21 @@
   [38;2;74;222;128m✓[0m [#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
   [38;2;74;222;128m✓[0m cycle fixture used in fresh-run sub-case has type: cycle
 
+  [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
+  [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
+  [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)
+    [2mexpected >0, got: 0[0m
+
   [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
   [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
   [38;2;74;222;128m✓[0m resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 40 tests passed[0m
+  [38;2;248;113;113m[1m1 of 46 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)
 
 ### plugins/tool/hydrate/plugin.sh reverted tests/integration/from-stage-rehydrate-test.sh
 
@@ -194,11 +216,11 @@
 
   [38;2;0;212;255m[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 00:18:41 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 01:51:17 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 00:18:41 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 01:51:18 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -206,22 +228,22 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 00:18:41 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:51:18 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 00:18:41 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:51:18 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 00:18:41 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:51:18 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 00:18:42 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:51:18 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -243,11 +265,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 00:18:28 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 01:51:05 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 00:18:29 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 01:51:05 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -255,22 +277,22 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 00:18:29 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:51:05 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 00:18:29 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:51:05 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 00:18:29 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:51:05 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 00:18:29 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:51:06 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -386,7 +408,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/DLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)[0m
   [38;2;248;113;113m✗[0m [#1805/DLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.XUN9xz/spec13-put-back-called[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.75GRWv/spec13-put-back-called[0m
 
   [38;2;0;212;255m[SPEC-3][guard] a failed restore leaves the area absent, not partial[0m
   [38;2;74;222;128m✓[0m [SPEC-3] hydrate still returns 0 on a failed restore (exit 0)

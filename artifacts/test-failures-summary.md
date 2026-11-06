@@ -1,32 +1,34 @@
 # Test stage summary
 
 - verdict: fail
-- passed: 860
-- failed: 2
+- passed: 74
+- failed: 3
 - exit_code: 1
-
-## Failing files
-
-- tests/integration/write-boundary-revert-test.sh — ✗ [D7] the first offence was retried — output missing: stage.retry stage=again-judge outcome=unusable (and 3 more failing checks in this file)
-- tests/unit/stage-retry-test.sh — ✗ [R1] timed_out with progress, no retry: in the template → 2 runs — expected: 2, got: 1 (and 29 more failing checks in this file)
 
 ## Failing lines (extracted)
 
 ```
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.CEyWas/tests/unit/stage-retry-test.sh
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.CEyWas/tests/integration/write-boundary-revert-test.sh
+unit: FAIL tests/integration/resume-rehydrate-test.sh
+unit: FAIL tests/integration/write-boundary-revert-test.sh
+unit: FAIL tests/unit/stage-retry-test.sh
+  [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
+  [38;2;74;222;128m✓[0m resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
+[2m  ──────────────────────────────────────────[0m
+  [38;2;248;113;113m[1m1 of 46 tests failed[0m
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)
+    [2mexpected: broken, got: unusable[0m
+  [38;2;74;222;128m✓[0m [D7] the files are put back
+  [38;2;248;113;113m[1m2 of 20 tests failed[0m
+  [38;2;248;113;113m✗[0m [D7] the first offence was retried
+  [38;2;248;113;113m✗[0m [D7] the retry's offence halts
   [38;2;248;113;113m✗[0m [R7] it names the stage
   [38;2;248;113;113m✗[0m [R7] ...the outcome the try ended on
   [38;2;248;113;113m✗[0m [R7] ...which try comes next
   [38;2;248;113;113m✗[0m [R7] ...of how many
   [38;2;248;113;113m✗[0m [R8] a stage run from a work unit is run again too → 2 runs
   [38;2;248;113;113m✗[0m [R11] each try is told its number
-    [2mexpected: broken, got: unusable[0m
-  [38;2;74;222;128m✓[0m [D7] the files are put back
-[2m  ──────────────────────────────────────────[0m
-  [38;2;248;113;113m[1m2 of 20 tests failed[0m
-  [38;2;248;113;113m✗[0m [D7] the first offence was retried
-  [38;2;248;113;113m✗[0m [D7] the retry's offence halts
+    [2mexpected >0, got: 0[0m
   [38;2;248;113;113m✗[0m [R1] timed_out with progress, no retry: in the template → 2 runs
     [2mexpected: 2, got: 1[0m
   [38;2;248;113;113m✗[0m [R1] the retry that passes is what the dispatch reports

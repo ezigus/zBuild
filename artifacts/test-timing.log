@@ -9362,3 +9362,158 @@ cpu 99 172 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.C
 file 243 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.CEyWas/tests/golden/golden-contracts-test.sh
 tier 291 golden
 tier 101404 lint
+run 7 targeted
+cpu 312 561 tests/integration/build-banner-llm-prompt-visible-test.sh
+file 928 tests/integration/build-banner-llm-prompt-visible-test.sh
+cpu 621 1259 tests/integration/acceptance-gate-v2-reader-test.sh
+file 2100 tests/integration/acceptance-gate-v2-reader-test.sh
+cpu 693 1262 plugins/tool/pr-open/tests/pr-open-unsettled-test.sh
+file 2278 plugins/tool/pr-open/tests/pr-open-unsettled-test.sh
+cpu 887 1894 tests/integration/build-test-cycle-targeted-rerun-test.sh
+file 3003 tests/integration/build-test-cycle-targeted-rerun-test.sh
+cpu 1237 1194 tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+file 2506 tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+cpu 837 1688 tests/integration/cycle-abort-when-no-match-converges-test.sh
+file 2673 tests/integration/cycle-abort-when-no-match-converges-test.sh
+cpu 334 578 tests/integration/cycle-blocked-real-artifact-test.sh
+file 960 tests/integration/cycle-blocked-real-artifact-test.sh
+cpu 1666 3617 tests/integration/core-pipeline-cycle-blocked-integration-test.sh
+file 7245 tests/integration/core-pipeline-cycle-blocked-integration-test.sh
+cpu 426 777 tests/integration/cycle-exit-when-success-test.sh
+file 1264 tests/integration/cycle-exit-when-success-test.sh
+cpu 415 806 tests/integration/cycle-iter-visual-spacing-test.sh
+file 1661 tests/integration/cycle-iter-visual-spacing-test.sh
+cpu 4246 6821 tests/integration/build-test-cycle-fallthrough-to-review-test.sh
+file 11673 tests/integration/build-test-cycle-fallthrough-to-review-test.sh
+cpu 1307 2166 tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
+file 4314 tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh
+cpu 2952 5023 tests/integration/core-pipeline-cycle-orchestrator-test.sh
+file 9829 tests/integration/core-pipeline-cycle-orchestrator-test.sh
+cpu 1023 1816 tests/integration/cycle-map-member-test.sh
+file 3258 tests/integration/cycle-map-member-test.sh
+cpu 408 779 tests/integration/cycle-nested-outer-converges-test.sh
+file 1273 tests/integration/cycle-nested-outer-converges-test.sh
+cpu 1155 2151 tests/integration/cycle-member-unfinished-no-convergence-test.sh
+file 3570 tests/integration/cycle-member-unfinished-no-convergence-test.sh
+cpu 401 742 tests/integration/cycle-no-committed-changes-fail-fast-test.sh
+file 1209 tests/integration/cycle-no-committed-changes-fail-fast-test.sh
+cpu 2204 3527 tests/integration/cycle-member-dispatch-events-test.sh
+file 6571 tests/integration/cycle-member-dispatch-events-test.sh
+cpu 318 517 tests/integration/cycle-orchestrator-abort-when-test.sh
+file 880 tests/integration/cycle-orchestrator-abort-when-test.sh
+cpu 389 749 tests/integration/cycle-orchestrator-nested-cycle-test.sh
+file 1214 tests/integration/cycle-orchestrator-nested-cycle-test.sh
+cpu 382 672 tests/integration/cycle-orchestrator-sigint-test.sh
+file 1450 tests/integration/cycle-orchestrator-sigint-test.sh
+cpu 392 810 tests/integration/cycle-parallel-member-test.sh
+file 1677 tests/integration/cycle-parallel-member-test.sh
+cpu 637 1391 tests/integration/cycle-predicate-event-test.sh
+file 2231 tests/integration/cycle-predicate-event-test.sh
+cpu 421 912 tests/integration/cycle-seq-deep-nesting-test.sh
+file 1396 tests/integration/cycle-seq-deep-nesting-test.sh
+cpu 1236 1740 tests/integration/cycle-stage-seq-labels-test.sh
+file 3032 tests/integration/cycle-stage-seq-labels-test.sh
+cpu 947 1552 tests/integration/cycle-velocity-plateau-early-exit-test.sh
+file 3401 tests/integration/cycle-velocity-plateau-early-exit-test.sh
+cpu 1655 2962 tests/integration/cycle-scope-expansion-test.sh
+file 5414 tests/integration/cycle-scope-expansion-test.sh
+cpu 788 1394 tests/integration/dispatch-rc-signal-boundary-test.sh
+file 2287 tests/integration/dispatch-rc-signal-boundary-test.sh
+cpu 5147 8112 tests/integration/cycle-multi-exit-when-e2e-test.sh
+file 14190 tests/integration/cycle-multi-exit-when-e2e-test.sh
+cpu 557 1163 tests/integration/resume-loop-state-test.sh
+file 1820 tests/integration/resume-loop-state-test.sh
+cpu 1256 2854 tests/integration/from-stage-rehydrate-test.sh
+file 4349 tests/integration/from-stage-rehydrate-test.sh
+cpu 1187 1390 tests/integration/simple-yaml-build-test-convergence-test.sh
+file 2552 tests/integration/simple-yaml-build-test-convergence-test.sh
+cpu 2067 4808 tests/integration/resume-entry-points-test.sh
+file 7209 tests/integration/resume-entry-points-test.sh
+cpu 501 1084 tests/integration/template-constructs-test.sh
+file 1641 tests/integration/template-constructs-test.sh
+cpu 150 181 tests/unit/build-prompt-summary-marker-test.sh
+file 350 tests/unit/build-prompt-summary-marker-test.sh
+cpu 350 576 tests/integration/write-boundary-revert-test.sh
+file 964 tests/integration/write-boundary-revert-test.sh
+cpu 497 521 tests/unit/clock-dirname-cost-test.sh
+file 1053 tests/unit/clock-dirname-cost-test.sh
+cpu 189 392 tests/unit/core-pipeline-cycle-acceptance-terminal-test.sh
+file 625 tests/unit/core-pipeline-cycle-acceptance-terminal-test.sh
+cpu 118 148 tests/unit/core-pipeline-cycle-blocked-test.sh
+file 283 tests/unit/core-pipeline-cycle-blocked-test.sh
+cpu 122 130 tests/unit/core-pipeline-cycle-convergence-test.sh
+file 275 tests/unit/core-pipeline-cycle-convergence-test.sh
+cpu 107 115 tests/unit/core-pipeline-cycle-divergence-test.sh
+file 238 tests/unit/core-pipeline-cycle-divergence-test.sh
+cpu 242 265 tests/unit/core-pipeline-cycle-events-test.sh
+file 539 tests/unit/core-pipeline-cycle-events-test.sh
+cpu 251 500 tests/unit/core-pipeline-cycle-final-gate-test.sh
+file 786 tests/unit/core-pipeline-cycle-final-gate-test.sh
+cpu 111 162 tests/unit/core-pipeline-cycle-high-banner-integration-test.sh
+file 274 tests/unit/core-pipeline-cycle-high-banner-integration-test.sh
+cpu 2807 6276 tests/integration/resume-rehydrate-test.sh
+file 9669 tests/integration/resume-rehydrate-test.sh
+cpu 103 145 tests/unit/core-pipeline-cycle-plateau-test.sh
+file 246 tests/unit/core-pipeline-cycle-plateau-test.sh
+cpu 122 164 tests/unit/core-pipeline-cycle-velocity-plateau-test.sh
+file 289 tests/unit/core-pipeline-cycle-velocity-plateau-test.sh
+cpu 220 249 tests/unit/core-pipeline-disposition-test.sh
+file 498 tests/unit/core-pipeline-disposition-test.sh
+cpu 4207 7473 tests/integration/stop-run-on-fail-test.sh
+file 13736 tests/integration/stop-run-on-fail-test.sh
+cpu 1525 2390 tests/unit/cycle-g2-cross-iter-timeout-test.sh
+file 4328 tests/unit/cycle-g2-cross-iter-timeout-test.sh
+cpu 1012 1675 tests/unit/cycle-g2-timeout-abandon-test.sh
+file 3122 tests/unit/cycle-g2-timeout-abandon-test.sh
+cpu 2936 5400 tests/unit/core-pipeline-cycle-orchestrator-run-test.sh
+file 9847 tests/unit/core-pipeline-cycle-orchestrator-run-test.sh
+cpu 172 259 tests/unit/cycle-member-report-test.sh
+file 448 tests/unit/cycle-member-report-test.sh
+cpu 815 1358 tests/unit/cycle-history-multi-exit-test.sh
+file 2422 tests/unit/cycle-history-multi-exit-test.sh
+cpu 345 509 tests/unit/cycle-multi-exit-when-test.sh
+file 937 tests/unit/cycle-multi-exit-when-test.sh
+cpu 212 318 tests/unit/cycle-orchestrator-capability-flags-test.sh
+file 553 tests/unit/cycle-orchestrator-capability-flags-test.sh
+cpu 428 623 tests/unit/cycle-predicate-ops-test.sh
+file 1099 tests/unit/cycle-predicate-ops-test.sh
+cpu 370 456 tests/unit/dispatch-identity-test.sh
+file 866 tests/unit/dispatch-identity-test.sh
+cpu 4926 8549 tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+file 17629 tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+cpu 72 131 tests/unit/dispatch-rc-guard-test.sh
+file 204 tests/unit/dispatch-rc-guard-test.sh
+cpu 88 107 tests/unit/disposition-vocabulary-test.sh
+file 199 tests/unit/disposition-vocabulary-test.sh
+cpu 14 24 tests/unit/docs-adr-020-references-test.sh
+file 36 tests/unit/docs-adr-020-references-test.sh
+cpu 420 1112 tests/unit/event-schema-emitted-coverage-test.sh
+file 1592 tests/unit/event-schema-emitted-coverage-test.sh
+cpu 3356 5065 tests/unit/cycle-g3-maxturns-escalation-test.sh
+file 9848 tests/unit/cycle-g3-maxturns-escalation-test.sh
+cpu 182 314 tests/unit/route-banner-cycle-context-test.sh
+file 507 tests/unit/route-banner-cycle-context-test.sh
+cpu 782 1410 tests/unit/engine-combines-loop-test.sh
+file 2474 tests/unit/engine-combines-loop-test.sh
+cpu 264 556 tests/unit/hydrate-stage-test.sh
+file 898 tests/unit/hydrate-stage-test.sh
+cpu 240 242 tests/unit/runner-cycle-iter-divider-hierarchical-test.sh
+file 485 tests/unit/runner-cycle-iter-divider-hierarchical-test.sh
+cpu 391 557 tests/unit/stage-input-resolve-precedence-test.sh
+file 995 tests/unit/stage-input-resolve-precedence-test.sh
+cpu 368 730 tests/unit/shape-floor-content-stable-test.sh
+file 1213 tests/unit/shape-floor-content-stable-test.sh
+cpu 299 532 tests/unit/stage-io-cycle-kind-test.sh
+file 877 tests/unit/stage-io-cycle-kind-test.sh
+cpu 1771 3632 tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+file 6920 tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+cpu 589 1287 tests/unit/stage-latest-output-test.sh
+file 1930 tests/unit/stage-latest-output-test.sh
+cpu 572 893 tests/unit/stage-summaries-test.sh
+file 1511 tests/unit/stage-summaries-test.sh
+cpu 287 485 tests/unit/test-result-reason-contract-test.sh
+file 817 tests/unit/test-result-reason-contract-test.sh
+cpu 1373 2420 tests/unit/stage-retry-test.sh
+file 3725 tests/unit/stage-retry-test.sh
+cpu 2130 4149 tests/unit/stage-stop-on-signal-test.sh
+file 11891 tests/unit/stage-stop-on-signal-test.sh
