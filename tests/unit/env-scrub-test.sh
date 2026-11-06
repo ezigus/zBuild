@@ -249,5 +249,19 @@ assert_eq "[SPEC-C10] GUARD: with no job folder the scrub leaves TMPDIR untouche
 _scrub_seen="$(printf 'SPEC-2\nSPEC-3\n' | ( _zbuild_make_fresh_shell; cat ))"
 assert_eq "[#2108] _zbuild_make_fresh_shell leaves stdin at EOF (/dev/null)" "" "$_scrub_seen"
 
+# ─── [#2476] no engine-internal _ZB_* name reaches a program the engine starts ─
+# plugin_hook_call marked a retried stage with an EXPORTED _ZB_LC_RETRYING, so
+# the test stage's suite inherited it and every retry test inside it saw "this
+# is already a retry" (#1805 run 42127743259: stage-retry-test.sh and
+# write-boundary-revert-test.sh red in every pipeline test stage). The fresh
+# shell stops every _ZB_* name at the boundary, as it does ZBUILD_* and _TPL_*.
+_scrub_child="$(
+    export _ZB_LC_RETRYING=1 _ZB_CYCLE_ID=c1 NON_ZB_VAR=kept
+    _zbuild_make_fresh_shell
+    bash -c 'printf "%s|%s|%s" "${_ZB_LC_RETRYING-unset}" "${_ZB_CYCLE_ID-unset}" "${NON_ZB_VAR-unset}"'
+)"
+assert_eq "[#2476] a program started from a fresh shell sees no _ZB_* name; others pass through" \
+    "unset|unset|kept" "$_scrub_child"
+
 print_test_results
 exit $((FAIL > 0))

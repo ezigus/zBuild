@@ -858,8 +858,10 @@ _test_emit_failures_summary() {
 
     mkdir -p "$(dirname "$out_path")" 2>/dev/null || true
     local tmp; tmp="$(mktemp "${out_path}.XXXXXX" 2>/dev/null || echo "${out_path}.tmp")"
+    local _head; _test_summary_head_v _head "$verdict" "$passed_count" "$failed_count" "$exit_code" "$findings_md"
     {
         printf '# Test stage summary\n\n'
+        printf -- '- %s\n' "$_head"
         # `--` is mandatory: bash's printf option-parses a format beginning with
         # `-` and dies with "invalid option". The group redirects stderr to
         # /dev/null, so without this the metadata lines vanished in silence —

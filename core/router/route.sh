@@ -39,54 +39,50 @@ _route_has_done_sentinel() {
 # with the router half-loaded, which is the silent failure this issue exists to
 # remove.
 #
-# Syntax is checked with `bash -n` rather than `source X || …`: source returns
-# the LAST command's status, so a well-formed library ending in a merely-falsy
-# statement would be misreported as broken. `bash -n` parses without executing.
+# Each include is sourced, and only one that fails to load is looked at
+# (#2476, ADR-065: a check before every source started 14 programs each time a
+# process loaded the router). source returns the LAST command's status, so a
+# failure is then told apart with `bash -n`, which parses without executing: a
+# well-formed library that merely ended on a falsy statement loads on.
 #
 # bash's own parse error carries the line and token; it is captured and FORWARDED
 # rather than discarded. Sending it to /dev/null would name the broken file while
 # deleting the only text saying what is broken about it — strictly worse for the
 # operator than the unguarded original, on an issue whose whole point is
 # diagnosability (PR #1651 review; the pattern #1631 exists to lint for).
-_zbuild_route_require() {
+_zbuild_route_broken() {
     local _p="$1" _err
     [[ -f "$_p" ]] \
         || { printf 'zbuild: fatal: missing include: %s\n' "$_p" >&2; exit 1; }
     _err="$(bash -n "$_p" 2>&1)" \
         || { printf 'zbuild: fatal: broken include: %s\n%s\n' "$_p" "$_err" >&2; exit 1; }
+    return 0
 }
 
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
-source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
-_zbuild_route_require "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
-source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
+source "$_ZBUILD_ROOT/scripts/lib/helpers.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
+source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
 # ADR-015 v1 (#438): stage-io chokepoint — capture LLM prompt/response when
 # the current stage declares io.destinations. Sourced library is idempotent.
-_zbuild_route_require "$_ZBUILD_ROOT/core/output/stage-io.sh"
-source "$_ZBUILD_ROOT/core/output/stage-io.sh"
+source "$_ZBUILD_ROOT/core/output/stage-io.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/output/stage-io.sh"
 # ADR-024 / #671 (Wave 13-B): fresh-user-shell helper for the claude spawn
 # subshells below (the 4 spawn sites in _route_call_claude + the loop).
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
-source "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
+source "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
 # ADR-043 (redaction by construction): the router owns the redaction step, so
 # apply_scope_redaction must be available BY CONSTRUCTION in the model-call
 # path (single-shot + loop). Idempotent source; plugins that also source it
 # hit the load guard. See _route_redact_prompt / _route_ensure_redaction.
-_zbuild_route_require "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh"
-source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh"
+source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh"
 # #1237: rate-limit detection + honest reporting. The claude CLI reports a
 # rate/session limit as rc=1 with a misleading subtype:"success" envelope
 # (is_error:true + api_error_status ∈ {429,529}). _router_is_rate_limit /
 # _router_rate_limit_message let the router surface an honest disposition
 # instead of the opaque "claude CLI failed (rc=1)". Idempotent source.
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
-source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
+source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 # #1231 (ADR-003): resolve_tier — manifest config.tier_default is the single
 # source of truth for a plugin's tier (operator override ZBUILD_<ID>_TIER wins).
 # Sourced here so every routing plugin (all source route.sh) gets it by
 # construction, replacing the per-plugin hardcoded `${ZBUILD_<ID>_TIER:-Tn}`.
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
-source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
+source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
 # #1816 (ADR-017 §11): manifest_router_knob — the plugin's own declared budget.
 # Sourced BY CONSTRUCTION rather than left to whether some other lib happened to
 # pull manifest-validation.sh in first: _route_manifest_knob degrades to the
@@ -94,42 +90,35 @@ source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
 # would make every declaration silently inert instead of failing. Idempotent —
 # the file's own load guard makes a repeat source a no-op.
 if ! declare -F manifest_router_knob >/dev/null 2>&1; then
-    _zbuild_route_require "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
-    source "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
+    source "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
 fi
 # shellcheck source=../../scripts/lib/stage-limits.sh
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
-source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
+source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
 # ADR-051 (#1305): resolve_persona + persona_text — resolve a stage persona from
 # the four-step precedence chain (env > template-stage > template-global > generic)
 # with two-root discovery (installed tree + per-repo overlay). Sourced here so
 # every routing plugin gets resolve_persona/persona_text by construction.
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
-source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
+source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 # ADR-051 (amended 2026-10-12): every call a dispatched stage makes runs as its
 # persona, delivered the way the provider takes it.
-_zbuild_route_require "$_ZBUILD_ROOT/core/router/persona-delivery.sh"
 # shellcheck source=persona-delivery.sh
-source "$_ZBUILD_ROOT/core/router/persona-delivery.sh"
+source "$_ZBUILD_ROOT/core/router/persona-delivery.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/router/persona-delivery.sh"
 # ADR-067 §8: the engine/stage prompt contract — the router checks a stage
 # prompt's order with stage_prompt_check before every model call.
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh"
 # shellcheck source=../../scripts/lib/stage-prompt.sh
-source "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh"
+source "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/stage-prompt.sh"
 # #1752: the one shared timeout helper; both model-call paths bound through it.
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
 # shellcheck source=../../scripts/lib/timeout-cmd.sh
-source "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
+source "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
 # #2460: a reply read in whole units (the COMMIT_SUMMARY marker).
 # shellcheck source=../../scripts/lib/reply-units.sh
 source "$_ZBUILD_ROOT/scripts/lib/reply-units.sh"
 # Shared setsid capability probe + process-group kill helper.
 # Defines zbuild_pg_resolve and zbuild_pg_kill (extracted from the inline
 # probe that used to live here, so the test plugin can share one impl).
-_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
-source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
+source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 # #1919 (C10): acceptEdits + settings file — replaces --dangerously-skip-permissions.
-# Conditional (not _zbuild_route_require) so the stub-tree load test works without
+# Conditional (not _zbuild_route_broken) so the stub-tree load test works without
 # a permissions.sh fixture; spawn sites fail closed (command not found) if absent.
 if [[ -f "$_ROUTER_DIR/permissions.sh" ]]; then
     source "$_ROUTER_DIR/permissions.sh"

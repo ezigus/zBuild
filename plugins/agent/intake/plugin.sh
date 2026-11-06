@@ -37,6 +37,20 @@ source "$_INTAKE_ROOT/scripts/lib/stage-result.sh"
 # directory: the engine names the artifact dir, and a result that cannot be
 # written is reported, never skipped — a stage with no result reads as a
 # pass-less run.
+# _intake_pass_summary_write <path> <issue> <requirements.json|""> <changes_md> <title>
+# #2476 (ADR-064 §4): the line says what intake listed — the requirements, by
+# id, each with its words under it — not how long the goal was.
+_intake_pass_summary_write() {
+    local path="$1" issue="$2" req="$3" chg="$4" title="${5:-}" head="" body=""
+    if [[ -n "$req" && -s "$req" ]]; then
+        head="$(jq -r '(.requirements // []) | "\(length) requirement(s): \(map(.id) | join(", "))"' "$req" 2>/dev/null || true)"
+        body="$(jq -r '(.requirements // [])[] | "- \(.id): \(.text | gsub("[\r\n]+"; " "))"' "$req" 2>/dev/null || true)"
+    fi
+    [[ -n "$head" ]] || head="took in the goal for issue #$issue: $title"
+    [[ -n "$chg" ]] && body+="${body:+$'\n'}$chg"
+    stage_summary_write "$path" "intake" "pass" "$head" "$body"
+}
+
 _intake_write_result() {
     local art_dir="$1" outcome="$2" reason="$3" data_json="${4:-}"
     if [[ -z "$art_dir" ]]; then
@@ -335,9 +349,8 @@ _intake_run_inner() {
         "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" --argjson c "${_chg:-null}" \
             '{goal_len: ($t | length), platform_count: $n, issue_text: $t}
              + (if $c != null then {requirements_changed: $c} else {} end)')" || return 1
-    stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "pass" \
-        "took in the goal for issue #$issue: ${_title_line:0:60}" \
-        "$(printf -- '- goal length: %s chars\n- platforms: %s' "${#sanitized}" "${#platforms[@]}"; [[ -n "$_chg_md" ]] && printf '\n%s' "$_chg_md")"
+    _intake_pass_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "$issue" \
+        "${_req_written:+$_art/requirements.json}" "$_chg_md" "${_title_line:0:60}"
     emit_event "plugin.result" "plugin=intake" \
         "goal_len=${#sanitized}" \
         "platform_count=${#platforms[@]}"

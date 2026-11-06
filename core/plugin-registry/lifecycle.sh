@@ -281,7 +281,10 @@ plugin_hook_call() {
         _plugin_hook_call_once "$@"
         return
     fi
-    local -x _ZB_LC_RETRYING=1 ZBUILD_STAGE_TRY=1
+    # The mark is not exported (#2476): the stage's own shell sees it, so a stage
+    # it dispatches runs once; a program it starts, such as the test suite, does not.
+    local _ZB_LC_RETRYING=1
+    local -x ZBUILD_STAGE_TRY=1
     local _ph_budget _ph_tries=0 _ph_rc
     stage_retry_budget_v _ph_budget "$3"
     while :; do

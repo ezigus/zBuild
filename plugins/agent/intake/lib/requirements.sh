@@ -24,6 +24,26 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
 # #2477: the engine and fingerprint a kept list is checked against.
 # shellcheck source=../../../../scripts/lib/judge.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
+# #2476: the last design is found by what it holds, never by its name.
+declare -F earlier_output_with_text >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/earlier-output.sh" 2>/dev/null || true
+
+# _ireq_design_codes_v <var> — the codes the last design's SPECs use, removed
+# ones counted (ADR-070 §1, #2476): a new requirement never takes one, the rule
+# design's own check keeps the other way round. Read by the shell.
+_ireq_design_codes_v() {
+    local -n _idc="$1"; _idc=""
+    local _d _l _in=0 _re='^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)\[' _rm='^REMOVED:[[:space:]]*([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)'
+    local -a _ids=()
+    _d="$(earlier_output_with_text '^```acceptance' 2>/dev/null || true)"
+    [[ -n "$_d" && -s "$_d" ]] || return 0
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        if (( ! _in )); then [[ "$_l" == '```acceptance'* ]] && _in=1; continue; fi
+        [[ "$_l" == '```'* || "$_l" == "TESTFILES:"* ]] && break
+        if [[ "$_l" =~ $_re || "$_l" =~ $_rm ]]; then _ids+=("${BASH_REMATCH[1]}"); fi
+    done < "$_d"
+    zb_id_codes_v _idc ${_ids[@]+"${_ids[@]}"}
+}
 
 # _ireq_issue_text <issue_json> — the issue as the calls are shown it.
 _ireq_issue_text() {
@@ -35,7 +55,9 @@ _ireq_write_own() {
 Your job: list every requirement this issue states — each thing the change must
 do or deliver, in the issue's own words. A requirement may be written as a
 checkbox, a numbered or bulleted item, or a sentence. Context, background,
-rationale, links and history are not requirements.
+rationale, links and history are not requirements. Nor is a note about how or
+when to do the work — the order to do it in, what not to run it alongside, when
+to start it: no change to the code can show it is met.
 
 Answer with one line per requirement, in the order the issue gives them:
 
@@ -81,6 +103,12 @@ requirement is about, a dash, and a number: LOOP-1. A requirement about the same
 thing as a listed one shares its code, with the number one more than the
 highest that code has had, the removed ids counted. Never use an id the list or
 the issue already writes, or a removed one.
+
+A listed item that is not a requirement — a note about how or when to do the
+work, such as the order to do it in or what not to run it alongside, which no
+change to the code can show is met — gets its own line:
+
+NOT-A-REQUIREMENT: <id> — <why>
 EOF
 }
 
@@ -142,8 +170,15 @@ _ireq_prev_load() {
 _ireq_parse() {
     local label="$1" line rest re_id='^([A-Za-z][A-Za-z0-9_]*-[0-9]+)[[:space:]]*(—|–|:|-)?[[:space:]]*(.+)$'
     local re_rm='^[[:space:]]*REMOVED:[[:space:]]*([A-Za-z][A-Za-z0-9_]*-[0-9]+)[[:space:]]*(—|–|-|:)?[[:space:]]*(.*[^[:space:]])?[[:space:]]*$'
-    _IREQ_IDS=() _IREQ_TEXTS=() _IREQ_RM_IDS=() _IREQ_RM_WHY=() _IREQ_FORM=()
+    local re_nr='^[[:space:]]*NOT-A-REQUIREMENT:[[:space:]]*([A-Za-z][A-Za-z0-9_]*-[0-9]+)[[:space:]]*(—|–|-|:)?[[:space:]]*(.*[^[:space:]])?[[:space:]]*$'
+    _IREQ_IDS=() _IREQ_TEXTS=() _IREQ_RM_IDS=() _IREQ_RM_WHY=() _IREQ_FORM=() _IREQ_NR_IDS=() _IREQ_NR_WHY=()
     while IFS= read -r line; do
+        # #2476: the check names a listed item that is not a requirement.
+        if [[ "$label" == MISSING && "$line" =~ $re_nr ]]; then
+            if [[ -n "${BASH_REMATCH[3]}" ]]; then _IREQ_NR_IDS+=("${BASH_REMATCH[1]}"); _IREQ_NR_WHY+=("${BASH_REMATCH[3]}")
+            else _IREQ_FORM+=("the NOT-A-REQUIREMENT: line for ${BASH_REMATCH[1]} gives no reason — NOT-A-REQUIREMENT: ${BASH_REMATCH[1]} — <why>"); fi
+            continue
+        fi
         if [[ "$label" == REQUIREMENT && "$line" =~ $re_rm ]]; then
             if [[ -n "${BASH_REMATCH[3]}" ]]; then _IREQ_RM_IDS+=("${BASH_REMATCH[1]}"); _IREQ_RM_WHY+=("${BASH_REMATCH[3]}")
             else _IREQ_FORM+=("the REMOVED: line for ${BASH_REMATCH[1]} gives no reason — say why it goes: REMOVED: ${BASH_REMATCH[1]} — <why>"); fi
@@ -175,8 +210,11 @@ _ireq_call_parsed() {
         _ireq_call_v reply "$ask" || return 1
         zb_reply_join_v reply "$reply"
         _ireq_parse "$label" "$reply"
-        zb_ids_check_v _iv "$3" "$4" "$6 ${_IREQ_IDS[*]+${_IREQ_IDS[*]}}" "${_IREQ_RM_IDS[*]+${_IREQ_RM_IDS[*]}}" "$5" "" 0
+        zb_ids_check_v _iv "$3" "$4" "$6 ${_IREQ_IDS[*]+${_IREQ_IDS[*]}}" "${_IREQ_RM_IDS[*]+${_IREQ_RM_IDS[*]}}" "$5" "${_IREQ_SPEC_CODES:-}" 0
         plain=""
+        for v in "${_IREQ_NR_IDS[@]+"${_IREQ_NR_IDS[@]}"}"; do
+            [[ " $6 " == *" $v "* ]] || _IREQ_FORM+=("NOT-A-REQUIREMENT: names $v, which the list does not have — name only a listed id")
+        done
         for v in "${_IREQ_FORM[@]+"${_IREQ_FORM[@]}"}"; do plain+="${plain:+; }$v"; done
         for v in "${_iv[@]+"${_iv[@]}"}"; do plain+="${plain:+; }$(zb_id_plain "$v" requirement)"; done
         [[ -z "$plain" ]] && return 0
@@ -221,6 +259,7 @@ _intake_requirements_json_v() {
         return 0
     fi
     _ireq_prev_load "${_INTAKE_PREV_REQ_JSON:-}"
+    _ireq_design_codes_v _IREQ_SPEC_CODES
     # #2458: intake has no tools and its reply is its output, so both its calls
     # compose fresh — no notes, and no rule to confirm earlier work.
     local _judged="ISSUE:"$'\n'"$issue"
@@ -241,6 +280,18 @@ _intake_requirements_json_v() {
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     _ireq_call_parsed "$prompt" MISSING "${ids[*]}" "$_removed_now" "$issue" "${ids[*]}" || return 1
     ids+=("${_IREQ_IDS[@]+"${_IREQ_IDS[@]}"}"); texts+=("${_IREQ_TEXTS[@]+"${_IREQ_TEXTS[@]}"}")
+    # #2476: what the check says is not a requirement leaves the list, kept as
+    # removed with its words and why, so it never comes back.
+    local -A _txt_of=()
+    for i in "${!ids[@]}"; do _txt_of[${ids[i]}]="${texts[i]}"; done
+    if [[ ${#_IREQ_NR_IDS[@]} -gt 0 ]]; then
+        local -a _ki=() _kt=()
+        for i in "${!ids[@]}"; do
+            [[ " ${_IREQ_NR_IDS[*]} " == *" ${ids[i]} "* ]] || { _ki+=("${ids[i]}"); _kt+=("${texts[i]}"); }
+        done
+        ids=("${_ki[@]+"${_ki[@]}"}"); texts=("${_kt[@]+"${_kt[@]}"}")
+        rm_ids+=("${_IREQ_NR_IDS[@]}"); rm_why+=("${_IREQ_NR_WHY[@]}")
+    fi
 
     # #2462: the ids the issue's own words write — labels of the issue's, never
     # ours. Kept with the list, so design refuses them as SPEC ids without
@@ -251,7 +302,7 @@ _intake_requirements_json_v() {
         _s="${_s#*"${BASH_REMATCH[0]}"}"
     done
     for i in "${!ids[@]}"; do _new+="${ids[i]}"$'\x1f'"${texts[i]}"$'\n'; done
-    for i in "${!rm_ids[@]}"; do _rm+="${rm_ids[i]}"$'\x1f'"${_IREQ_PREV_TEXT[${rm_ids[i]}]:-}"$'\x1f'"${rm_why[i]}"$'\n'; done
+    for i in "${!rm_ids[@]}"; do _rm+="${rm_ids[i]}"$'\x1f'"${_IREQ_PREV_TEXT[${rm_ids[i]}]:-${_txt_of[${rm_ids[i]}]:-}}"$'\x1f'"${rm_why[i]}"$'\n'; done
     _irj="$(jq -nc --arg n "$_new" --arg r "$_rm" --arg iss "$_iss" --arg fp "$_ifp" --argjson carry "$_IREQ_PREV_REMOVED_JSON" '
         def rows($s): $s | split("\n") | map(select(length > 0) | split("\u001f")
             | map(gsub("[[:cntrl:]]"; " ") | gsub("^\\s+|\\s+$"; "")));

@@ -115,6 +115,43 @@ rsc_row_summary_line_v() {   # <var> <state_dir> <stage>
     _rsc_first_line_v "$1" "$_rsv_p"
 }
 
+# rsc_row_findings_v <var> <state_dir> <stage> [result_path] — what a try that
+# did not pass found (ADR-064 §4, #2476): "what failed: <the first finding>",
+# and every finding folded under it; empty when its result holds none. The
+# result is the stage's primary output (a map member's is named on its event),
+# else `artifacts/<stage>-result.json`. A finding is its text, as
+# stage_findings_json writes it, or a lens's severity, message and file.
+rsc_row_findings_v() {
+    local _rfv_p="${4:-}" _rfv_m="" _rfv_raw="" _rfv_l
+    printf -v "$1" '%s' ""
+    if [[ -z "$_rfv_p" ]] && declare -F _inputs_stage_manifest_v >/dev/null 2>&1 \
+            && declare -F _verdict_primary_output_path_v >/dev/null 2>&1; then
+        _inputs_stage_manifest_v _rfv_m "$3" "${ZBUILD_PLUGINS_ROOT:-$_RSC_ROOT/plugins}" 2>/dev/null || true
+        [[ -n "$_rfv_m" && -f "$_rfv_m" ]] && _verdict_primary_output_path_v _rfv_raw "$_rfv_m"
+        [[ -n "$_rfv_raw" ]] && _rfv_p="$(_inputs_output_paths "$3" "$_rfv_raw" "$2" 2>/dev/null || true)"
+    fi
+    [[ -n "$_rfv_p" && -s "$_rfv_p" ]] || _rfv_p="$2/artifacts/${3}-result.json"
+    [[ -s "$_rfv_p" && "$(<"$_rfv_p")" == *'"findings"'* ]] || return 0
+    _rfv_l="$(jq -r '[ ((.data.findings // .findings // [])[]? | select(type == "object")
+            | if (.text | type) == "string" then .text
+              elif (.message | type) == "string" then
+                  (if (.severity | type) == "string" then "\(.severity): " else "" end) + .message
+                  + (if (.file // "unknown") != "unknown" then " (\(.file)\(if .line then ":\(.line)" else "" end))" else "" end)
+              else empty end
+            | gsub("\r"; "") | gsub("\n+$"; "") | select(test("[^[:space:]]"))) ]
+        | if length == 0 then "" else
+            (.[0] | split("\n")[0]) as $h
+            | "what failed: " + ($h | gsub("\\|"; "\\|")) + (if length > 1 then " (and \(length - 1) more)" else "" end)
+            + (if length > 1 or (.[0] | contains("\n")) then
+                "\n<details><summary>what failed</summary>\n\n"
+                + ([.[] | "- " + gsub("\n"; "\n  ")] | join("\n")) + "\n\n</details>"
+              else "" end)
+          end' "$_rfv_p" 2>/dev/null || true)"
+    [[ -n "$_rfv_l" ]] || return 0
+    _rsc_code_labels_v _rfv_l "$_rfv_l"
+    printf -v "$1" '%s' "$_rfv_l"
+}
+
 # _rsc_first_line_v <var> <summary_file> — the first line with a non-blank
 # character that is not a heading, `- ` stripped, `|` escaped, whole; the rest
 # folded under it.
@@ -231,10 +268,10 @@ rsc_render_row() {
     local members from reason it _f
     _f="$(jq -r '[.kind, .seq, .started_ts, .stage, .ended_ts, .verdict, .rc, .summaries,
                   (.resolve // "0"), ((.members // []) | map(tostring) | join(", ")), .from_iter, .reason, .iter,
-                  .summary_path, (.member // false), (.key // .seq), .try, .of]
+                  .summary_path, (.member // false), (.key // .seq), .try, .result_path, .of]
                  | map(. // "" | tostring) | join("\u001f")' <<< "$row")"
-    local spath member key try of
-    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try of <<< "$_f" || true
+    local spath member key try rpath of
+    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try rpath of <<< "$_f" || true
     of="${of%$'\n'}"
     # #2439: a try the engine ran again says which, of how many.
     local tries=""
@@ -273,8 +310,13 @@ rsc_render_row() {
         if [[ -n "${_RSC_SNAP[$key]+x}" && ( -z "${_RSC_SNAP_END[$key]+x}" || "${_RSC_SNAP_END[$key]}" == "$ended" ) ]]; then
             summary="${_RSC_SNAP[$key]}"
         else
+            # #2476: a try that did not pass says what failed — its findings,
+            # from its result — in place of what its summary says.
+            summary=""
+            [[ "$verdict" != pass ]] && rsc_row_findings_v summary "$state_dir" "$stage" "$rpath"
             # A map member names its own summary file; any other row's is its stage's.
-            if [[ -n "$spath" && -s "$spath" ]]; then _rsc_first_line_v summary "$spath"
+            if [[ -n "$summary" ]]; then :
+            elif [[ -n "$spath" && -s "$spath" ]]; then _rsc_first_line_v summary "$spath"
             else rsc_row_summary_line_v summary "$state_dir" "$stage"; fi
             if [[ -n "$summary" && -n "$_RSC_SNAP_RUN" ]]; then
                 _RSC_SNAP["$key"]="$summary"; _RSC_SNAP_END["$key"]="$ended"; _RSC_SNAP_DIRTY=1

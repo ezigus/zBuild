@@ -119,6 +119,13 @@ _has "[D6] a SPEC code that is a requirement's code is refused" "ID_OTHER_POOL R
 BIND=("GONE-2: tests/unit/run-test.sh")
 _check 'GONE-2[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done'
 _has "[D6] ...a removed requirement's code too" "ID_OTHER_POOL GONE-2"
+# #2476: a SPEC the last design already had keeps its id — ids never move. A
+# requirement that took its code is new, and intake refuses it.
+BIND=("RSUM-2: tests/unit/run-test.sh")
+_md 'RSUM-2[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' > "$PREV"
+_check 'RSUM-2[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done'
+_ok "[D6] a SPEC the last design had keeps its id, though a requirement now shares its code"
+: > "$PREV"
 BIND=("LBL-1: tests/unit/run-test.sh")
 _check 'LBL-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done'
 _has "[D7] a SPEC id the issue's text writes is refused" "ID_IN_ISSUE LBL-1"

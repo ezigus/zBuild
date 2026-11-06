@@ -83,6 +83,26 @@ stage_summary_write() {
 # several failing subprocesses keeps all of them. Emptied by the engine at the
 # start of each dispatch (stage_errors_clear; the attempt archive keeps the
 # earlier copy). Fail-open: a diagnostic write never changes a stage's fate.
+# stage_lens_findings_head_v <var> <findings-array-json> <none-words> [body-var]
+# #2476 (ADR-064 §4): a lens's summary line names what it found — the first
+# finding's severity, message and file, "and N more" — or <none-words>; the
+# body (when asked for) lists each. One jq.
+stage_lens_findings_head_v() {
+    local -n _slh="$1"; local _sl_out _sl_none="$3"
+    _sl_out="$(jq -r 'def one: (if (.severity | type) == "string" then "\(.severity): " else "" end)
+            + ((.message // .text // "") | tostring | gsub("[\r\n]+"; " "))
+            + (if (.file // "unknown") != "unknown" then " (\(.file)\(if .line then ":\(.line)" else "" end))" else "" end);
+        [ (if type == "array" then . else (.findings // []) end)[]? | select(type == "object") | one ] as $f
+        | (if ($f | length) == 0 then "" else "found: " + $f[0] + (if ($f | length) > 1 then " (and \($f | length - 1) more)" else "" end) end),
+          ($f[] | "- " + .)' <<< "${2:-[]}" 2>/dev/null || true)"
+    _slh="${_sl_out%%$'\n'*}"
+    [[ -n "$_slh" ]] || _slh="$_sl_none"
+    if [[ -n "${4:-}" ]]; then
+        local -n _slb="$4"
+        if [[ "$_sl_out" == *$'\n'* ]]; then _slb="${_sl_out#*$'\n'}"; else _slb=""; fi
+    fi
+}
+
 stage_errors_append() {
     local stage="${1:-${ZBUILD_CURRENT_STAGE:-}}"; shift || true
     local log; log="$(_stage_errors_log "$stage")"

@@ -119,8 +119,9 @@ MOCK_WRITE=0; MOCK_TERMINATED_REASON="done_sentinel"; MOCK_ITERS=1
 _run_pass || true
 
 head_line="$(sed -n 3p "$SUMMARY_MD" 2>/dev/null || true)"
-assert_eq "R1: build-summary.md says 1 file over 2 passes" \
-    "- changed 1 file(s) over 2 pass(es), 4 iteration(s)" "$head_line"
+# #2476 (ADR-064 §4): the line names the file; how many passes it took is below.
+assert_contains "R1: build-summary.md names the round's file" "$head_line" "- changed in_scope.txt (+"
+assert_contains "R1: …over 2 passes" "$(cat "$SUMMARY_MD" 2>/dev/null)" "- over 2 pass(es), 4 iteration(s)"
 assert_eq "R1: build-summary.json files_changed is the round's file" \
     "in_scope.txt" "$(jq -r '(.files_changed // []) | join(",")' "$SUMMARY_JSON" 2>/dev/null || true)"
 assert_eq "R1: build-summary.json passes = 2" \
@@ -137,8 +138,8 @@ export ZBUILD_CYCLE_ITER=3
 : > "$ZBUILD_EVENTS_JSONL"
 _run_pass || true
 head_line="$(sed -n 3p "$SUMMARY_MD" 2>/dev/null || true)"
-assert_eq "R2: a new round starts its own count" \
-    "- changed 0 file(s) over 1 pass(es), 1 iteration(s)" "$head_line"
+assert_eq "R2: a new round starts its own count" "- changed no file" "$head_line"
+assert_contains "R2: …over 1 pass" "$(cat "$SUMMARY_MD" 2>/dev/null)" "- over 1 pass(es), 1 iteration(s)"
 assert_eq "R2: files_changed empty" \
     "0" "$(jq -r '(.files_changed // []) | length' "$SUMMARY_JSON" 2>/dev/null || true)"
 assert_eq "R2: passes = 1" "1" "$(jq -r '.passes // empty' "$SUMMARY_JSON" 2>/dev/null || true)"

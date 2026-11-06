@@ -110,6 +110,12 @@ against the code. If you cannot
 tell whether such a requirement is met, say so rather than guess: the run then
 reports it as open, with what would settle it.
 
+A failing test you cannot trace to the DIFF within a few reads: mark the
+requirement it bears on UNSURE, naming the test and that you could not tell
+whether the change broke it. Do not
+work out why a test fails: that is the build's job, and your answer is lost if
+your time runs out first.
+
 ISSUE:
 $1
 
@@ -127,6 +133,7 @@ ${6:-}
 ## What you must not do
 - Do not suggest code.
 - Do not guess whether a requirement is met: say you are unsure instead.
+- Do not work out why a test fails: a failure you cannot trace to the DIFF is UNSURE.
 - Answer only, in the form above.
 EOF
 }

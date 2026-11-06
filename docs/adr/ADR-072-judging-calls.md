@@ -134,10 +134,20 @@ A judge that never opened the code under test kept its verdict through any chang
 - The engine's commit stays in every fingerprint: in another repository it changes only when a new zBuild is
   installed.
 
+## Amendment 2026-11-06 (#2476) — §3: issue-acceptance does not investigate a failing test
+
+On #1805 run 42127743259 both round-2 issue-acceptance calls hit their 600s limit with no answer. Only their
+prompt held a failing test of the issue's own (an assertion test-author later removed), and each spent the
+whole call working out whether the change had caused it. A timed-out call keeps nothing.
+
+- **A failing test it cannot trace to the DIFF within a few reads is UNSURE.** The prompt says to mark the
+  requirement it bears on UNSURE, naming the test and that it could not tell whether the change broke it, and
+  not to work out why a test fails: that is the build's job.
+
 ## Enforced by
 
 - §4 amendment 2026-11-06 (#2477: a kept answer depends on the code its test exercises) → `tests/unit/judge-kept-code-test.sh` C1, C3, C4, C5
-
+- §3 amendment 2026-11-06 (#2476: a failing test it cannot trace is UNSURE) → `tests/unit/issue-acceptance-test.sh` SPEC-12
 - §3 §4 amendment 2026-11-05 (#2472: formatting aside; a bad line costs only its item; no dependency on the file the items come from) → `tests/unit/judge-quotes-test.sh` Q6; `tests/unit/judge-kept-partial-test.sh` D1, D2, P1
 - §3 §4 amendment 2026-11-04 (#2470: answers per SPEC, kept per SPEC, the draft by its path) → `tests/unit/judge-feedback-test.sh` F4 (the draft by its path; only the SPECs judged, in full), F6 (one line per SPEC; kept per SPEC; requirements asked again when a SPEC changes; a dispute re-judges its SPEC only); `tests/unit/judge-events-test.sh` V4 (design's events per SPEC and `requirements`)
 

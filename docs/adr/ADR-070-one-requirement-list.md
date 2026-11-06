@@ -106,10 +106,28 @@ issue nobody had changed, and design lost a try renaming a SPEC for it.
   or removed, and its summary says the issue is unchanged and its requirements were kept. A list with no
   `input_fp`, a change to the issue's words, to intake's instructions, or another engine, writes it again.
 
+## Amendment 2026-11-06 (#2476) — §1: intake keeps the one pool of ids, and a note about the work is not a requirement
+
+#2462 made a requirement's code never a SPEC's, but only design's check held the rule. On #1805 run
+42127743259 intake added a requirement DISP-1 while design's SPEC DISP-1 existed, so design had to rename a
+SPEC that had not changed (DISP-1 to DSPK-1), breaking "ids never move", and its first try failed for it. The
+same run listed the issue's "Order: do not run this in parallel with #1714" as ORDE-1, which no code or test
+can show, so it stayed UNSURE in every round.
+
+- **A new id never takes the other pool's code; a kept id stays.** Intake reads the codes the last design's
+  SPECs use, removed ones counted (`_ireq_design_codes_v`, finding the design by its acceptance block), and
+  refuses a NEW requirement with one through its re-ask. Design refuses a NEW SPEC with a requirement's code.
+  An id the last list already had is never held to it: the side that just took the code is the one that
+  changes. One rule set for both (`zb_ids_check_v`, `zb_id_codes_v` in `scripts/lib/item-ids.sh`).
+- **A note about how or when to do the work is not a requirement.** The writing call is told so: the order to
+  do it in, what not to run it alongside, when to start it. The check call may answer
+  `NOT-A-REQUIREMENT: <id> — <why>` for a listed item; it leaves the list and is kept as removed with its words
+  and the reason, so it never comes back. One for an id the list does not have is asked again.
+
 ## Enforced by
 
 - §1 §2 amendment 2026-11-06 (#2477: the list is kept while nothing it is written from changed) → `tests/unit/intake-kept-list-test.sh` K1–K6
-
+- §1 amendment 2026-11-06 (#2476: one pool, held by intake too; a note about the work is not a requirement) → `tests/unit/intake-stable-ids-test.sh` S12; `tests/unit/design-stable-ids-test.sh` D6; `tests/unit/intake-process-notes-test.sh` P1–P4
 - §1 §2 amendment 2026-11-03 (#2462: ids describe their requirement and never move; a removal says why) → `tests/unit/intake-stable-ids-test.sh` S1–S11; `tests/unit/intake-requirements-model-test.sh` I1, I2; `tests/unit/intake-previous-list-test.sh` P2
 - §1 §2 amendment 2026-11-02 (#2460: intake starts from its last list and says what changed; one item per line) → `tests/unit/intake-previous-list-test.sh` P1–P4; `tests/unit/reply-multiline-test.sh` Q1
 - §1 amendment 2026-11-01 (#2448: intake's calls have no tools) → `tests/unit/intake-no-tools-test.sh` T4
