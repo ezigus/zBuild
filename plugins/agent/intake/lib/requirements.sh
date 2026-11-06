@@ -21,6 +21,9 @@ declare -F zb_reply_join_v >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 # shellcheck source=../../../../scripts/lib/item-ids.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
+# #2477: the engine and fingerprint a kept list is checked against.
+# shellcheck source=../../../../scripts/lib/judge.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
 
 # _ireq_issue_text <issue_json> — the issue as the calls are shown it.
 _ireq_issue_text() {
@@ -183,6 +186,18 @@ _ireq_call_parsed() {
     return 1
 }
 
+# _ireq_input_fp_v <var> <issue> — the fingerprint of what the list is written
+# from (#2477, ADR-070 §1): the engine, the issue as the calls are shown it, and
+# intake's own instructions as written. Comments are not in it: the list never
+# reads them. `declare -f` prints a body as the running bash formats it, so a
+# new bash makes the calls once more: an extra call, never a missed one.
+_ireq_input_fp_v() {
+    local -n _iif="$1"; local _iif_e _iif_t
+    judge_engine_v _iif_e
+    _iif_t="$(declare -f _ireq_write_own _ireq_check_own _ireq_limits)"
+    judge_fp_v _iif "$_iif_e"$'\n'"$2"$'\n'"$_iif_t"
+}
+
 # _intake_requirements_json_v <var> <issue_json> — requirements.json for an
 # issue fetched as {title, body}, written and checked by the model, into <var>.
 # The last run's list (_INTAKE_PREV_REQ_JSON) is where it starts. rc 1, with
@@ -194,6 +209,17 @@ _intake_requirements_json_v() {
     local issue prompt i listed
     local -a ids=() texts=() rm_ids=() rm_why=()
     issue="$(_ireq_issue_text "${1:-}")"
+    # #2477: an unchanged issue under the same engine and instructions gives the
+    # same list, so the last one is kept and no model is asked.
+    local _ifp=""; _INTAKE_REQ_KEPT=""
+    _ireq_input_fp_v _ifp "$issue"
+    if [[ -n "$_ifp" && "${_INTAKE_PREV_REQ_JSON:-}" =~ \"input_fp\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" \
+          && "${BASH_REMATCH[1]}" == "$_ifp" ]]; then
+        _irj="$_INTAKE_PREV_REQ_JSON"; _INTAKE_REQ_KEPT=1
+        _INTAKE_REQ_CHANGES='{"added":[],"removed":[]}'
+        declare -F emit_event >/dev/null 2>&1 && emit_event "intake.requirements.kept" "plugin=intake" 2>/dev/null
+        return 0
+    fi
     _ireq_prev_load "${_INTAKE_PREV_REQ_JSON:-}"
     # #2458: intake has no tools and its reply is its output, so both its calls
     # compose fresh — no notes, and no rule to confirm earlier work.
@@ -226,14 +252,15 @@ _intake_requirements_json_v() {
     done
     for i in "${!ids[@]}"; do _new+="${ids[i]}"$'\x1f'"${texts[i]}"$'\n'; done
     for i in "${!rm_ids[@]}"; do _rm+="${rm_ids[i]}"$'\x1f'"${_IREQ_PREV_TEXT[${rm_ids[i]}]:-}"$'\x1f'"${rm_why[i]}"$'\n'; done
-    _irj="$(jq -nc --arg n "$_new" --arg r "$_rm" --arg iss "$_iss" --argjson carry "$_IREQ_PREV_REMOVED_JSON" '
+    _irj="$(jq -nc --arg n "$_new" --arg r "$_rm" --arg iss "$_iss" --arg fp "$_ifp" --argjson carry "$_IREQ_PREV_REMOVED_JSON" '
         def rows($s): $s | split("\n") | map(select(length > 0) | split("\u001f")
             | map(gsub("[[:cntrl:]]"; " ") | gsub("^\\s+|\\s+$"; "")));
         (rows($r) | map({id: .[0], text: .[1], reason: .[2]})) as $now
         | {schema_version: 1, source: "model",
            requirements: (rows($n) | map({id: .[0], text: .[1]})),
            removed: ($carry + $now),
-           issue_ids: ($iss | split("\n") | map(select(length > 0)))}')"
+           issue_ids: ($iss | split("\n") | map(select(length > 0)))}
+        + (if $fp != "" then {input_fp: $fp} else {} end)')"
     [[ -n "$_irj" ]] || return 1
     # #2460, #2462: what changed since the last list, by id.
     if [[ -n "${_INTAKE_PREV_REQ_JSON:-}" ]]; then

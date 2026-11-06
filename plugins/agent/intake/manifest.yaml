@@ -88,6 +88,8 @@ provides:
   events:
     - intake.override.closed_issue_allowed
     - intake.refused.issue_closed
+    # #2477: the list was kept, with no model call — nothing it reads changed.
+    - intake.requirements.kept
 
 # ADR-047 §6: after this stage completes, the runner merges the operator's
 # --scope override (scope-override.md) into this stage's scope-manifest.md. The

@@ -120,7 +120,23 @@ On #1805 run 41951779189 design's check refused a correct quote: the issue wrote
 - **`WHY:` and `QUOTE:` are the separators,** with or without the `|` before them. What follows each is kept as written, without the marks around it, so a finding keeps its code marks.
 - **Where a reply's items start is read the same way** (`zb_reply_join_v`), so a line in bold is not joined to the one before it.
 
+## Amendment 2026-11-06 (#2477) — §4: a kept answer depends on the code its test exercises
+
+A kept answer's files were those the call opened, those its quotes name, and test-author's SPEC test files.
+A judge that never opened the code under test kept its verdict through any change to it (verified by
+`tests/unit/judge-kept-code-test.sh` C1 before the fix).
+
+- **§4: test-author's check counts the design's WIRING files.** Every SPEC it judges is kept with the hash of
+  each file the design's `WIRING:` list names — the code whose revert must break a SPEC — whether or not the
+  judge opened it. A `[done]` SPEC is not judged by this check, so its evidence is not counted here.
+- **§4: issue-acceptance needs nothing new.** Its fingerprint already holds the change's diff, so any change to
+  the change's code, opened or not, is judged again.
+- The engine's commit stays in every fingerprint: in another repository it changes only when a new zBuild is
+  installed.
+
 ## Enforced by
+
+- §4 amendment 2026-11-06 (#2477: a kept answer depends on the code its test exercises) → `tests/unit/judge-kept-code-test.sh` C1, C3, C4, C5
 
 - §3 §4 amendment 2026-11-05 (#2472: formatting aside; a bad line costs only its item; no dependency on the file the items come from) → `tests/unit/judge-quotes-test.sh` Q6; `tests/unit/judge-kept-partial-test.sh` D1, D2, P1
 - §3 §4 amendment 2026-11-04 (#2470: answers per SPEC, kept per SPEC, the draft by its path) → `tests/unit/judge-feedback-test.sh` F4 (the draft by its path; only the SPECs judged, in full), F6 (one line per SPEC; kept per SPEC; requirements asked again when a SPEC changes; a dispute re-judges its SPEC only); `tests/unit/judge-events-test.sh` V4 (design's events per SPEC and `requirements`)

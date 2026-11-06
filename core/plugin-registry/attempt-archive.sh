@@ -136,6 +136,11 @@ attempt_outputs_fingerprint_v() {
     [[ -n "$_fp_sd" ]] || return 0
     _fp_ad="${ZBUILD_ARTIFACT_DIR:-$_fp_sd/artifacts}"
     local _k raw resolved sum facts name
+    # #2477 (ADR-065 §5): every file is summed by one cksum, after the walk —
+    # it was one `$( )` and one cksum a file. <name>\t<path> rows, in order;
+    # a path of `:absent` or `:new` is that word, and `:=<sum>` a sum already
+    # taken; neither is summed.
+    local -a _fp_rows=() _fp_sum=()
     _attempt_manifest_facts_v facts "$manifest"
     while IFS=$'\t' read -r _k raw; do
         [[ "$_k" == P && -n "$raw" ]] || continue
@@ -145,13 +150,12 @@ attempt_outputs_fingerprint_v() {
         # Only a file that is there is summed, and after the run only one that
         # had a sum before: nothing else can compare equal.
         if [[ ! -e "$resolved" ]]; then
-            sum="absent"
+            _fp_rows+=("$name"$'\t'":absent")
         elif [[ -n "$_fp_before" && $'\n'"$_fp_before" != *$'\n'"$name"$'\t'[0-9]* ]]; then
-            sum="new"
+            _fp_rows+=("$name"$'\t'":new")
         else
-            sum="$(cksum 2>/dev/null < "$resolved" || printf 'absent')"
+            _fp_rows+=("$name"$'\t'"$resolved"); _fp_sum+=("$resolved")
         fi
-        _fp_var+="$name"$'\t'"$sum"$'\n'
     done <<< "$facts"
     # #2252: a stage that writes the repository does its work THERE — its
     # declared outputs are reports of it. One more line fingerprints the tree:
@@ -164,22 +168,40 @@ attempt_outputs_fingerprint_v() {
             # The diff is hashed as it streams — never held whole in memory
             # (review on #2253); cksum reads all of it, so no early-exit pipe.
             df="$(git -C "$repo" diff HEAD 2>/dev/null | cksum)"
-            _fp_var+="__repository__"$'\t'"$(cksum <<< "$head"$'\n'"$st"$'\n'"$df")"$'\n'
+            _fp_rows+=("__repository__"$'\t'":=$(cksum <<< "$head"$'\n'"$st"$'\n'"$df")")
         fi
     fi
     # #2443: the stage's notes are what its next try reads, so a try that
     # wrote them left something; the engine names the file (ADR-063).
     if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F stage_notes_path_v >/dev/null 2>&1; then
         local _fp_notes; stage_notes_path_v _fp_notes "$_fp_sd" "$ZBUILD_CURRENT_STAGE"
-        if [[ -e "$_fp_notes" ]]; then sum="$(cksum 2>/dev/null < "$_fp_notes" || printf 'absent')"; else sum="absent"; fi
-        _fp_var+="__notes__"$'\t'"$sum"$'\n'
+        if [[ -e "$_fp_notes" ]]; then _fp_rows+=("__notes__"$'\t'"$_fp_notes"); _fp_sum+=("$_fp_notes")
+        else _fp_rows+=("__notes__"$'\t'":absent"); fi
         # #2454: the steps of a call cut off at its time limit are saved beside
         # the notes for the next try (stage-cutoff.sh), so new steps are
         # something left too. A call that finishes removes the list: absent.
         local _fp_cut=""; [[ -n "$_fp_notes" ]] && _fp_cut="${_fp_notes%.md}.cut-off.md"
-        if [[ -n "$_fp_cut" && -e "$_fp_cut" ]]; then sum="$(cksum 2>/dev/null < "$_fp_cut" || printf 'absent')"; else sum="absent"; fi
-        _fp_var+="__cutoff__"$'\t'"$sum"$'\n'
+        if [[ -n "$_fp_cut" && -e "$_fp_cut" ]]; then _fp_rows+=("__cutoff__"$'\t'"$_fp_cut"); _fp_sum+=("$_fp_cut")
+        else _fp_rows+=("__cutoff__"$'\t'":absent"); fi
     fi
+    # One cksum: "<sum> <bytes> <path>" a file, in the shell's order. A file it
+    # cannot read prints nothing, so each answer is matched by its path.
+    local -A _fp_cs=()
+    local _fp_c _fp_n _fp_p _fp_r
+    if [[ ${#_fp_sum[@]} -gt 0 ]]; then
+        while read -r _fp_c _fp_n _fp_p; do
+            [[ -n "$_fp_p" ]] && _fp_cs["$_fp_p"]="$_fp_c $_fp_n"
+        done < <(cksum -- "${_fp_sum[@]}" 2>/dev/null)
+    fi
+    for _fp_r in ${_fp_rows[@]+"${_fp_rows[@]}"}; do
+        _fp_p="${_fp_r#*$'\t'}"
+        case "$_fp_p" in
+            :absent|:new) sum="${_fp_p#:}" ;;
+            :=*) sum="${_fp_p#:=}" ;;
+            *) sum="${_fp_cs[$_fp_p]:-absent}" ;;
+        esac
+        _fp_var+="${_fp_r%%$'\t'*}"$'\t'"$sum"$'\n'
+    done
     _fp_var="${_fp_var%$'\n'}"
 }
 
@@ -231,14 +253,19 @@ attempt_archive_outputs() {
     [[ -n "$_paths" ]] || { rmdir "$_dest" 2>/dev/null || true; return 0; }
 
     local raw resolved copied=0
+    local -a _srcs=()
     while IFS= read -r raw; do
         [[ -n "$raw" ]] || continue
         _registry_resolve_output_path_v resolved "$raw" "$state_dir" "$artifact_dir"
-        [[ -n "$resolved" && -e "$resolved" ]] || continue
-        # Flattened to the basename: the archive answers "what did this attempt
-        # produce", and a declared output's basename is unique within a plugin.
-        cp -p "$resolved" "$_dest/${resolved##*/}" 2>/dev/null && copied=$(( copied + 1 ))
+        [[ -n "$resolved" && -e "$resolved" ]] && _srcs+=("$resolved")
     done <<< "$_paths"
+    # Flattened to the basename: the archive answers "what did this attempt
+    # produce", and a declared output's basename is unique within a plugin.
+    # One cp for them all (#2477, ADR-065 §5); when it fails, what landed counts.
+    if [[ ${#_srcs[@]} -gt 0 ]]; then
+        if cp -p "${_srcs[@]}" "$_dest/" 2>/dev/null; then copied=${#_srcs[@]}
+        else for raw in "${_srcs[@]}"; do [[ -e "$_dest/${raw##*/}" ]] && copied=$(( copied + 1 )); done; fi
+    fi
 
     if [[ "$copied" -eq 0 ]]; then
         rmdir "$_dest" 2>/dev/null || true
