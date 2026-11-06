@@ -1,5 +1,69 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
+## Status: Thirty-third pass — issue-acceptance PATH-1 gap addressed (auto-resume state discovery)
+
+### Change this pass
+
+**Issue-acceptance finding (PATH-1):** The auto-resume check in runner.sh (line 2174) tests
+`[[ -f "$state_file" ]]` where `state_file = $state_dir/pipeline-state.json`. Per-run layout
+(ADR-059 §1) stores state at `runs/<run_id>/pipeline-state.json`, not the flat root path.
+Result: without ZBUILD_STATE_FILE set, auto-resume never fires. All existing auto-resume tests
+mask this by setting ZBUILD_STATE_FILE directly.
+
+**Fix verified:** `_find_state_file` in `scripts/zbuild` already scans `runs/*/pipeline-state*.json`
+and also checks `$state_dir/latest/pipeline-state.json`. Runner.sh needs to do the same in its
+auto-resume elif.
+
+Changes made to design-draft.md:
+- Added Gap 8 to context section
+- Updated Decision section to include the `latest` symlink fix
+- Added step 7b: runner.sh auto-resume elif extended to check `$state_dir/latest/pipeline-state.json`
+- Added step: update resume-entry-points-test.sh with [#1805/ENTR-2] sub-case
+- Added ENTR-2[code] to acceptance block (auto-resume state discovery from `runs/<run_id>/` via `latest` symlink, no ZBUILD_STATE_FILE set)
+- Updated TESTFILES: ENTR-2: tests/integration/resume-entry-points-test.sh
+- Updated Finding 1 (list ENTR-2), Finding 3 (PATH-1 now covered by ENTR-1 AND ENTR-2)
+- Added Finding 21 (the issue-acceptance finding and resolution)
+
+**ENTR-2 pre/post test behavior:**
+- Pre-change: state at `runs/<run_id>/`, ZBUILD_STATE_FILE unset → state_file = flat root path →
+  `[[ -f ]]` false → auto-resume elif skips → no pipeline.resume event → test FAILS ✓
+- After fix: auto-resume elif checks `latest/pipeline-state.json` → found →
+  recommendation=auto_resume → fires → pipeline.resume emitted → test PASSES ✓
+
+### SPEC summary (this pass — 15 SPECs, 10 [code], 5 [no-code], 3 REMOVED)
+
+| SPEC | Classification | Covers |
+|------|---------------|--------|
+| RHYD-1 | [code] | RESU-1 RESU-2 RESU-4 HYDR-1 |
+| RHYD-2 | [code] | RESU-2 |
+| FSTG-1 | [code] | FROM-1 FROM-2 |
+| FSTG-2 | [code] | FROM-3 |
+| AMDR-1 | [no-code] | ADR-1 |
+| AMDR-2 | [no-code] | ADR-2 |
+| ITER-1 | [code] | LOOP-1 |
+| SKIP-1 | [code] | RESU-3 RESU-4 DISP-1 |
+| DSPK-1 | [code] | RESU-3 RESU-4 |
+| ENTR-1 | [code] | PATH-1 |
+| ENTR-2 | [code] | PATH-1 |
+| FRSH-1 | [no-code] | GUAR-1 |
+| FRSH-2 | [no-code] | GUAR-2 |
+| DLGT-1 | [code] | HYDR-1 |
+| CYCL-1 | [no-code] | TEST-1 |
+| REMOVED: DISP-1 | — | id collision |
+| REMOVED: BNDY-1 | — | described file contents |
+| REMOVED: LEGC-1 | — | DISP-1 covered by SKIP-1[code] |
+
+### Still NOT fixed in code (requires build stage)
+
+- `_cycle_orchestrator_run_body` reads `current_iter` unconditionally — guard with
+  `_ZBUILD_RESUME_ACTIVE` needed (step 6)
+- `resume-loop-state-test.sh` needs `export _ZBUILD_RESUME_ACTIVE=true` (step 9)
+- `_cycle_dispatch` runner.sh:3166 stage.start guard must be narrowed to resume-only (step 7a)
+- runner.sh auto-resume elif needs `latest` symlink check (step 7b) — NEW this pass
+- resume-entry-points-test.sh needs ENTR-2 sub-case (new step) — NEW this pass
+- ADR-006 step 3.6 amendment (AMDR-1)
+- ADR-050 §6 boundary note + Enforced by citations (AMDR-2)
+
 ## Status: Thirty-second pass — scope lens finding 1 addressed (cycle member stage.start guard)
 
 ### Change this pass

@@ -1,6 +1,6 @@
 ## design — pass
 
-- 14 SPEC(s): RHYD-1, RHYD-2, FSTG-1, FSTG-2, AMDR-1, AMDR-2, ITER-1, SKIP-1, DSPK-1, ENTR-1, FRSH-1, FRSH-2, DLGT-1, CYCL-1
+- 15 SPEC(s): RHYD-1, RHYD-2, FSTG-1, FSTG-2, AMDR-1, AMDR-2, ITER-1, SKIP-1, DSPK-1, ENTR-1, ENTR-2, FRSH-1, FRSH-2, DLGT-1, CYCL-1
 
 - RHYD-1 (covers RESU-1 RESU-2 RESU-4 HYDR-1): On resume, before the dispatch loop, completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical to their state at interruption, and no stage.start event is emitted for them
 - RHYD-2 (covers RESU-2): A complete stage whose primary artifact cannot be rehydrated causes exit 1 before any stage.start event is emitted
@@ -12,6 +12,7 @@
 - SKIP-1 (covers RESU-3 RESU-4 DISP-1): On resume, the dispatch-unit loop skips a stage marked complete whose primary artifact is present after rehydration, emitting no stage.start for that stage
 - DSPK-1 (covers RESU-3 RESU-4): On resume, stage k (the interrupted stage) is dispatched and emits stage.start
 - ENTR-1 (covers PATH-1): All three resume entry paths (--resume flag, auto-resume on status=interrupted, zbuild pipeline resume --run-id) restore completed-stage artifacts before the dispatch loop
+- ENTR-2 (covers PATH-1): On auto-resume, when no ZBUILD_STATE_FILE is set and the most recent run's state is under the per-run path `runs/<run_id>/`, the runner finds it via the `latest` symlink and enters resume_mode
 - FRSH-1 (covers GUAR-1): A fresh run dispatches all stages from stage 1 with no stage skipped due to prior state and no prior-run artifacts in ZBUILD_ARTIFACT_DIR
 - FRSH-2 (covers GUAR-2): A new run of the same issue never skips a stage due to prior run output; the dispatch-unit skip guard is conditional on resume_mode so it does not activate for fresh runs
 - DLGT-1 (covers HYDR-1): The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce
