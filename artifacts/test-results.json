@@ -1,1 +1,70 @@
-{"test_output":"unit: FAIL tests/integration/write-boundary-revert-test.sh\n\n  write boundary: undo and retry, halt on a second offence\n\n\n  D1/D2: the first offence is undone and retried\n  ✓ [D1] the edited file is back\n  ✓ [D1] the new file is gone\n  ✓ [D1] the deleted file is back\n  ✓ [D1] the earlier stage's uncommitted work is back, not reset to HEAD\n  ✓ [D2] the dispatch fails\n  ✓ [D2] the stage is retried (unusable), not halted\n  ✓ [D2] no halting marker\n  ✓ [D2] the paths are named\n\n  D5: a clean retry is not held to it\n  ✓ [D5] a clean re-dispatch of the stage resolves complete\n\n  D3: a second offence by the same stage halts\n  ✓ [D3] the second offence resolves broken\n  ✓ [D3] the files are still put back\n  ✓ [D3] ...including the earlier stage's work\n  ✓ [D6] the halt says which stage changed the repository\n  ✓ [D6] ...and which files\n  ✓ [D6] ...and only for the stage that did it\n\n  D4: the count is per stage\n  ✓ [D4] another stage's first offence is retried\n  ✓ [D4] and put back\n\n  D7: the engine retries the first offence; the retry's offence halts\n  ✗ [D7] the first offence was retried\n    output missing: stage.retry stage=again-judge outcome=unusable\n  ✗ [D7] the retry's offence halts\n    expected: broken, got: unusable\n  ✓ [D7] the files are put back\n\n\n  2 of 20 tests failed\n\n  ✗ [D7] the first offence was retried\n  ✗ [D7] the retry's offence halts\n\nunit: FAIL tests/unit/stage-retry-test.sh\n\n  the engine runs any stage again, as its template says (#2439)\n\n  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs\n    expected: 2, got: 1\n  ✗ [R1] the retry that passes is what the dispatch reports\n    expected: 0, got: 1\n  ✗ [R2] retry: 2 → 3 runs\n    expected: 3, got: 1\n  ✗ [R2] every word that means 'did not finish' is retried\n    expected: 3, got: 1\n  ✓ [R3] pass → 1 run\n  ✓ [R3] fail → 1 run (the loop handles a failure, not the retry)\n  ✗ [R4] a try that changed nothing is not run again\n    expected: 2, got: 1\n  ✗ [R5] retry: 9 is capped at 5 → 6 runs\n    expected: 6, got: 1\n  ✗ [R5] retry: lots → the default 1 → 2 runs\n    expected: 2, got: 1\n  ✓ [R5] retry: 0 → 1 run\n  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs\n    expected: 2, got: 1\n  ✗ [R7] one stage.retry for the one retry\n    expected: 1, got: 0\n  ✗ [R7] it names the stage\n    expected: twice, got: \n  ✗ [R7] ...the outcome the try ended on\n    expected: timed_out, got: \n  ✗ [R7] ...which try comes next\n    expected: 2, got: \n  ✗ [R7] ...of how many\n    expected: 3, got: \n  ✓ [R7] stage.retry is a known event\n  ✗ [R8] a stage run from a work unit is run again too → 2 runs\n    expected: 2, got: 1\n  ✓ [R9] the inner dispatch runs once; it is not retried on its own\n  ✓ [R10] a code-writing stage whose result alone changed made no progress\n  ✓ [R10] ...one whose other output changed did\n  ✓ [R10] ...one whose summary alone changed did not\n  ✓ [R10] ...one whose code changed did\n  ✗ [R11] each try is told its number\n    expected: 1 2 3 , got: none \n\n\n  15 of 24 tests failed\n\n  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs\n  ✗ [R1] the retry that passes is what the dispatch reports\n  ✗ [R2] retry: 2 → 3 runs\n  ✗ [R2] every word that means 'did not finish' is retried\n  ✗ [R4] a try that changed nothing is not run again\n  ✗ [R5] retry: 9 is capped at 5 → 6 runs\n  ✗ [R5] retry: lots → the default 1 → 2 runs\n  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs\n  ✗ [R7] one stage.retry for the one retry\n  ✗ [R7] it names the stage\n  ✗ [R7] ...the outcome the try ended on\n  ✗ [R7] ...which try comes next\n  ✗ [R7] ...of how many\n  ✗ [R8] a stage run from a work unit is run again too → 2 runs\n  ✗ [R11] each try is told its number\n\nunit: 5/7 passed","run_mode":"targeted","exit_code":1,"data":{"exit_code":1,"passed":5,"failed":2,"test_output":"unit: FAIL tests/integration/write-boundary-revert-test.sh\n\n  write boundary: undo and retry, halt on a second offence\n\n\n  D1/D2: the first offence is undone and retried\n  ✓ [D1] the edited file is back\n  ✓ [D1] the new file is gone\n  ✓ [D1] the deleted file is back\n  ✓ [D1] the earlier stage's uncommitted work is back, not reset to HEAD\n  ✓ [D2] the dispatch fails\n  ✓ [D2] the stage is retried (unusable), not halted\n  ✓ [D2] no halting marker\n  ✓ [D2] the paths are named\n\n  D5: a clean retry is not held to it\n  ✓ [D5] a clean re-dispatch of the stage resolves complete\n\n  D3: a second offence by the same stage halts\n  ✓ [D3] the second offence resolves broken\n  ✓ [D3] the files are still put back\n  ✓ [D3] ...including the earlier stage's work\n  ✓ [D6] the halt says which stage changed the repository\n  ✓ [D6] ...and which files\n  ✓ [D6] ...and only for the stage that did it\n\n  D4: the count is per stage\n  ✓ [D4] another stage's first offence is retried\n  ✓ [D4] and put back\n\n  D7: the engine retries the first offence; the retry's offence halts\n  ✗ [D7] the first offence was retried\n    output missing: stage.retry stage=again-judge outcome=unusable\n  ✗ [D7] the retry's offence halts\n    expected: broken, got: unusable\n  ✓ [D7] the files are put back\n\n\n  2 of 20 tests failed\n\n  ✗ [D7] the first offence was retried\n  ✗ [D7] the retry's offence halts\n\nunit: FAIL tests/unit/stage-retry-test.sh\n\n  the engine runs any stage again, as its template says (#2439)\n\n  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs\n    expected: 2, got: 1\n  ✗ [R1] the retry that passes is what the dispatch reports\n    expected: 0, got: 1\n  ✗ [R2] retry: 2 → 3 runs\n    expected: 3, got: 1\n  ✗ [R2] every word that means 'did not finish' is retried\n    expected: 3, got: 1\n  ✓ [R3] pass → 1 run\n  ✓ [R3] fail → 1 run (the loop handles a failure, not the retry)\n  ✗ [R4] a try that changed nothing is not run again\n    expected: 2, got: 1\n  ✗ [R5] retry: 9 is capped at 5 → 6 runs\n    expected: 6, got: 1\n  ✗ [R5] retry: lots → the default 1 → 2 runs\n    expected: 2, got: 1\n  ✓ [R5] retry: 0 → 1 run\n  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs\n    expected: 2, got: 1\n  ✗ [R7] one stage.retry for the one retry\n    expected: 1, got: 0\n  ✗ [R7] it names the stage\n    expected: twice, got: \n  ✗ [R7] ...the outcome the try ended on\n    expected: timed_out, got: \n  ✗ [R7] ...which try comes next\n    expected: 2, got: \n  ✗ [R7] ...of how many\n    expected: 3, got: \n  ✓ [R7] stage.retry is a known event\n  ✗ [R8] a stage run from a work unit is run again too → 2 runs\n    expected: 2, got: 1\n  ✓ [R9] the inner dispatch runs once; it is not retried on its own\n  ✓ [R10] a code-writing stage whose result alone changed made no progress\n  ✓ [R10] ...one whose other output changed did\n  ✓ [R10] ...one whose summary alone changed did not\n  ✓ [R10] ...one whose code changed did\n  ✗ [R11] each try is told its number\n    expected: 1 2 3 , got: none \n\n\n  15 of 24 tests failed\n\n  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs\n  ✗ [R1] the retry that passes is what the dispatch reports\n  ✗ [R2] retry: 2 → 3 runs\n  ✗ [R2] every word that means 'did not finish' is retried\n  ✗ [R4] a try that changed nothing is not run again\n  ✗ [R5] retry: 9 is capped at 5 → 6 runs\n  ✗ [R5] retry: lots → the default 1 → 2 runs\n  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs\n  ✗ [R7] one stage.retry for the one retry\n  ✗ [R7] it names the stage\n  ✗ [R7] ...the outcome the try ended on\n  ✗ [R7] ...which try comes next\n  ✗ [R7] ...of how many\n  ✗ [R8] a stage run from a work unit is run again too → 2 runs\n  ✗ [R11] each try is told its number\n\nunit: 5/7 passed","diff_applied":false,"test_cmd":"bash scripts/run-tests.sh --files 'tests/integration/from-stage-rehydrate-test.sh' 'tests/integration/resume-entry-points-test.sh' 'tests/integration/resume-loop-state-test.sh' 'tests/integration/resume-rehydrate-test.sh' 'tests/integration/write-boundary-revert-test.sh' 'tests/unit/hydrate-stage-test.sh' 'tests/unit/stage-retry-test.sh'","run_mode":"targeted","timing":{"tiers":{},"slowest_files":[{"file":"tests/integration/resume-rehydrate-test.sh","ms":8812},{"file":"tests/integration/resume-entry-points-test.sh","ms":7109},{"file":"tests/integration/from-stage-rehydrate-test.sh","ms":4461},{"file":"tests/unit/stage-retry-test.sh","ms":3651},{"file":"tests/integration/resume-loop-state-test.sh","ms":1871},{"file":"tests/integration/write-boundary-revert-test.sh","ms":1060},{"file":"tests/unit/hydrate-stage-test.sh","ms":945}]},"findings":[]},"result_contract":3,"outcome":"fail","reason":"2 of 7 tests failed; the shape floor failed: missing_floor_files"}
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 567/567 passed (4 skipped)\nintegration: 258/258 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 862/862 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 862,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 567/567 passed (4 skipped)\nintegration: 258/258 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 862/862 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 172421,
+        "e2e": 49096,
+        "golden": 6604,
+        "unit": 361308,
+        "integration": 318452
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 63464
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 49517
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/unit/lint-test-engine-state-test.sh",
+          "ms": 47385
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 44845
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/e2e/fork-budget-test.sh",
+          "ms": 41865
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 39405
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 38571
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 37838
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 37191
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/pipeline-preflight-missing-stage-test.sh",
+          "ms": 33747
+        }
+      ]
+    },
+    "tree_sha": "d9133464050dc26d364d0cb956ed20d5cc443660",
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "862 of 862 tests passed"
+}

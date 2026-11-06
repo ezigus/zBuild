@@ -1,107 +1,12 @@
-unit: FAIL tests/integration/write-boundary-revert-test.sh
 
-  write boundary: undo and retry, halt on a second offence
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
 
+unit: 567/567 passed (4 skipped)
+integration: 258/258 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
 
-  D1/D2: the first offence is undone and retried
-  ✓ [D1] the edited file is back
-  ✓ [D1] the new file is gone
-  ✓ [D1] the deleted file is back
-  ✓ [D1] the earlier stage's uncommitted work is back, not reset to HEAD
-  ✓ [D2] the dispatch fails
-  ✓ [D2] the stage is retried (unusable), not halted
-  ✓ [D2] no halting marker
-  ✓ [D2] the paths are named
-
-  D5: a clean retry is not held to it
-  ✓ [D5] a clean re-dispatch of the stage resolves complete
-
-  D3: a second offence by the same stage halts
-  ✓ [D3] the second offence resolves broken
-  ✓ [D3] the files are still put back
-  ✓ [D3] ...including the earlier stage's work
-  ✓ [D6] the halt says which stage changed the repository
-  ✓ [D6] ...and which files
-  ✓ [D6] ...and only for the stage that did it
-
-  D4: the count is per stage
-  ✓ [D4] another stage's first offence is retried
-  ✓ [D4] and put back
-
-  D7: the engine retries the first offence; the retry's offence halts
-  ✗ [D7] the first offence was retried
-    output missing: stage.retry stage=again-judge outcome=unusable
-  ✗ [D7] the retry's offence halts
-    expected: broken, got: unusable
-  ✓ [D7] the files are put back
-
-
-  2 of 20 tests failed
-
-  ✗ [D7] the first offence was retried
-  ✗ [D7] the retry's offence halts
-
-unit: FAIL tests/unit/stage-retry-test.sh
-
-  the engine runs any stage again, as its template says (#2439)
-
-  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs
-    expected: 2, got: 1
-  ✗ [R1] the retry that passes is what the dispatch reports
-    expected: 0, got: 1
-  ✗ [R2] retry: 2 → 3 runs
-    expected: 3, got: 1
-  ✗ [R2] every word that means 'did not finish' is retried
-    expected: 3, got: 1
-  ✓ [R3] pass → 1 run
-  ✓ [R3] fail → 1 run (the loop handles a failure, not the retry)
-  ✗ [R4] a try that changed nothing is not run again
-    expected: 2, got: 1
-  ✗ [R5] retry: 9 is capped at 5 → 6 runs
-    expected: 6, got: 1
-  ✗ [R5] retry: lots → the default 1 → 2 runs
-    expected: 2, got: 1
-  ✓ [R5] retry: 0 → 1 run
-  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
-    expected: 2, got: 1
-  ✗ [R7] one stage.retry for the one retry
-    expected: 1, got: 0
-  ✗ [R7] it names the stage
-    expected: twice, got: 
-  ✗ [R7] ...the outcome the try ended on
-    expected: timed_out, got: 
-  ✗ [R7] ...which try comes next
-    expected: 2, got: 
-  ✗ [R7] ...of how many
-    expected: 3, got: 
-  ✓ [R7] stage.retry is a known event
-  ✗ [R8] a stage run from a work unit is run again too → 2 runs
-    expected: 2, got: 1
-  ✓ [R9] the inner dispatch runs once; it is not retried on its own
-  ✓ [R10] a code-writing stage whose result alone changed made no progress
-  ✓ [R10] ...one whose other output changed did
-  ✓ [R10] ...one whose summary alone changed did not
-  ✓ [R10] ...one whose code changed did
-  ✗ [R11] each try is told its number
-    expected: 1 2 3 , got: none 
-
-
-  15 of 24 tests failed
-
-  ✗ [R1] timed_out with progress, no retry: in the template → 2 runs
-  ✗ [R1] the retry that passes is what the dispatch reports
-  ✗ [R2] retry: 2 → 3 runs
-  ✗ [R2] every word that means 'did not finish' is retried
-  ✗ [R4] a try that changed nothing is not run again
-  ✗ [R5] retry: 9 is capped at 5 → 6 runs
-  ✗ [R5] retry: lots → the default 1 → 2 runs
-  ✗ [R6] ZBUILD_DISPOSITION_REDISPATCH=4 changes nothing → 2 runs
-  ✗ [R7] one stage.retry for the one retry
-  ✗ [R7] it names the stage
-  ✗ [R7] ...the outcome the try ended on
-  ✗ [R7] ...which try comes next
-  ✗ [R7] ...of how many
-  ✗ [R8] a stage run from a work unit is run again too → 2 runs
-  ✗ [R11] each try is told its number
-
-unit: 5/7 passed
+total: 862/862 passed (4 skipped)
