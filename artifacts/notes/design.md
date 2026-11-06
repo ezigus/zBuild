@@ -1,70 +1,61 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Twenty-sixth pass — LEGC-1 Then: line stripped of implementation detail
+## Status: Twenty-ninth pass — AMDR-2 widened to cover §6 Enforced by citations
 
-### Root cause of twenty-sixth-pass need for change
+### Root cause of twenty-ninth-pass need for change
 
-**design finding 1 (this pass)**: LEGC-1's Then: line said "No stage.start event is emitted for that stage (behavior governed by runner.sh:3895-3927, not by legacy-DoNotUse dispatch)". The checker flagged this because:
-1. It names specific implementation line numbers as the governing location — that is not an observable behavior.
-2. Those line numbers are wrong anyway: 3895-3927 is the post-dispatch RC-narrowing/verdict block; the actual skip-on-complete guard is at 3723-3751.
+**Design finding 1**: AMDR-2 stated the boundary note for ADR-050 §6 but did not specify updating
+§6's "Enforced by" entry. The existing entry cites only `resume-default-test.sh R5–R11`. CLAUDE.md
+requires every live ADR statement to have its test named in Enforced by. AMDR-2 now explicitly
+requires adding citations for FRSH-2 (resume-rehydrate-test.sh, new-run side) and ENTR-1
+(resume-entry-points-test.sh, resume side). Step 2 updated to match.
 
-Fix: removed the parenthetical. LEGC-1's Then: now says only "No stage.start event is emitted for that stage" — the observable outcome. Evidence text `core/pipeline/runner.sh:"When resuming, skip stages already marked complete unless --from-stage overrides"` remains valid (confirmed at runner.sh:3895).
+## Status: Twenty-eighth pass — SKIP-1[code], FRSH-2[no-code], LEGC-1 REMOVED
 
-No other changes.
+### Root cause of twenty-eighth-pass need for change
 
-### Root cause of twenty-fifth-pass need for change
+**Design findings 1–3**: SKIP-1[done], FRSH-2[done], and LEGC-1[done] all cited evidence
+`core/pipeline/runner.sh:"ADR-006 §3.6 / #1805 (SPEC-1): resume mode — skip stages"`
+at runner.sh:3724. That text was **added by this branch** (dispatch-unit path). The design
+checker correctly rejected it as not being pre-change code.
 
-Design checker found two issues in the twenty-fourth-pass design-draft:
+### Key facts (verified)
 
-**design finding 1**: BNDY-1 describes what a file contains ("resume-rehydrate-test.sh
-contains both a resume-side assertion and a fresh-run sub-case"), which no test can
-prove. The checker rule: describe the behaviour someone could observe, not what a file
-contains.
+The dispatch-unit skip-on-complete guards are at:
+- runner.sh:3442 (`cycle:*` arm): `if $resume_mode && [[ -z "$skip_until_stage" ]]`
+- runner.sh:3728 (`stage:*` arm): `if $resume_mode && [[ -z "$skip_until_stage" ]]`
 
-**design finding 2**: DISP-1 (old SPEC id, renamed DSPK-1 in pass 24 to avoid
-collision with the new requirement id DISP-1) disappeared from the acceptance block
-without a REMOVED tombstone. Rule: "A SPEC you drop gets its own line:
-REMOVED: <id> — <why>."
+Both were added by this branch. The only pre-existing skip guard is in the legacy linear loop
+at runner.sh:3895 (`"When resuming, skip stages already marked complete unless --from-stage overrides"`),
+which DISP-1 forbids using as evidence.
 
 ### Changes in this pass
 
-**Fix for design finding 2 — add REMOVED: DISP-1 tombstone**
+**SKIP-1**: `[done]` → `[code]`
+- The dispatch-unit skip-on-complete guard is new code from this branch
+- Test fails on pre-change code: cyclic templates use the dispatch-unit loop; before this branch,
+  no skip guard existed there, so stage.start WOULD be emitted for complete stages during resume
+- Test passes after: guard active, no stage.start for complete stages
+- DISP-1 added to `covers:` → LEGC-1 can be removed
 
-Add after LEGC-1[done]:
-```
-REMOVED: DISP-1 — id collides with requirement code DISP-1 added by intake; the SPEC is preserved as DSPK-1
-```
+**FRSH-2**: `[done]` → `[no-code]`
+- The skip guard is conditioned on `$resume_mode` (false for fresh runs)
+- Pre-change code had no dispatch-unit skip guard at all → fresh runs never skipped → test
+  would PASS on pre-change code → cannot be [code]
+- [no-code]: test need not fail before, just pass after (confirms conditional guard works)
+- Given/When/Then kept: scenario has prior run state present but no --resume flag
 
-**Fix for design finding 1 — REMOVE BNDY-1**
+**LEGC-1**: `[done]` → `REMOVED: LEGC-1`
+- Was meant to prove "no [done] SPEC cites legacy-loop evidence"
+- DISP-1 is now fully covered by SKIP-1[code], which tests the dispatch-unit path directly
+- Redundant; removed with tombstone to prevent id reuse
 
-BNDY-1[no-code] described "resume-rehydrate-test.sh contains both..." — that is a
-file-content assertion, which no test can prove. I examined whether to rewrite it as
-an observable behaviour, but:
+**TESTFILES updated**: Added `SKIP-1: tests/integration/resume-rehydrate-test.sh` and
+`FRSH-2: tests/integration/resume-rehydrate-test.sh`; removed LEGC-1 entry.
 
-- Any single-When/Then form for the boundary would duplicate either RHYD-1 (resume
-  side) or FRSH-1/FRSH-2 (new-run side), which already cover both sides.
-- ADR-2 says "amend ADR-050 §6 … with a test pinning each side." The amendment is
-  covered by AMDR-2[no-code]. The "test pinning each side" is satisfied by the
-  [code] SPEC RHYD-1 (covers the resume side, tagged RESU-1/RESU-2/RESU-4/HYDR-1)
-  and FRSH-1[no-code] (covers the new-run side, tagged GUAR-1) already in the design.
-  AMDR-2 alone is sufficient to cover ADR-2.
+**Step 10 updated**: Added items (7) [#1805/FRSH-2] assertion and (8) [#1805/SKIP-1] assertion.
 
-Therefore BNDY-1 is REMOVED. Add tombstone:
-```
-REMOVED: BNDY-1 — described file contents ("contains both…"), which no test can prove;
-ADR-2 is fully covered by AMDR-2; the two sides are pinned by RHYD-1 (resume) and FRSH-1 (new-run)
-```
-
-**Step 10 update**: the reference to "BNDY-1 runner invocation" becomes "fresh-run
-sub-case" (the sub-case is still needed for FRSH-1).
-
-**TESTFILES update**: remove the `BNDY-1: tests/integration/resume-rehydrate-test.sh` line.
-
-**Finding 3 update**: ADR-2: AMDR-2 only (BNDY-1 removed).
-
-**Finding counts update**: [no-code] was 5, now 4. REMOVED count: 2.
-
-### SPEC summary (twenty-fifth pass)
+### SPEC summary (twenty-eighth pass)
 
 | SPEC | Classification | Covers |
 |------|---------------|--------|
@@ -75,18 +66,18 @@ sub-case" (the sub-case is still needed for FRSH-1).
 | AMDR-1 | [no-code] | ADR-1 ORDE-1 |
 | AMDR-2 | [no-code] | ADR-2 |
 | ITER-1 | [code] | LOOP-1 |
-| SKIP-1 | [done] | RESU-3 RESU-4 |
+| SKIP-1 | [code] | RESU-3 RESU-4 DISP-1 |
 | DSPK-1 | [code] | RESU-3 RESU-4 |
 | ENTR-1 | [code] | PATH-1 |
 | FRSH-1 | [no-code] | GUAR-1 |
-| FRSH-2 | [done] | GUAR-2 |
+| FRSH-2 | [no-code] | GUAR-2 |
 | DLGT-1 | [code] | HYDR-1 |
 | CYCL-1 | [no-code] | TEST-1 |
-| LEGC-1 | [done] | DISP-1 |
 | REMOVED: DISP-1 | — | id collision with requirement DISP-1; preserved as DSPK-1 |
 | REMOVED: BNDY-1 | — | described file contents; ADR-2 covered by AMDR-2 |
+| REMOVED: LEGC-1 | — | DISP-1 covered by SKIP-1[code]; no [done] SPECs remain |
 
-**Counts: 8 [code], 3 [done], 4 [no-code], 2 REMOVED**
+**Counts: 9 [code], 5 [no-code], 0 [done], 3 REMOVED**
 
 ### Requirement → SPEC mapping (all 17 covered)
 
@@ -108,20 +99,19 @@ sub-case" (the sub-case is still needed for FRSH-1).
 | HYDR-1 | RHYD-1, DLGT-1 |
 | TEST-1 | CYCL-1 |
 | ORDE-1 | AMDR-1 |
-| DISP-1 | LEGC-1 |
+| DISP-1 | SKIP-1 |
 
-### Implementation state (verified — no code changes in this pass)
+### Implementation state (verified)
 
 - `_artifact_persist_put_back` in artifact-persist.sh ✓
 - `_artifact_persist_restore` in artifact-persist.sh ✓
 - `_runner_resume_rehydrate` at runner.sh:1707, called at runner.sh:2859 ✓
 - `export _ZBUILD_RESUME_ACTIVE=true` at runner.sh:2862 ✓
 - `plugins/tool/hydrate/plugin.sh` line 162 calls `_artifact_persist_put_back` ✓
-- In-loop exit-1 for missing artifacts at runner.sh:3920 (ADR-006 §3.6 comment) ✓
-- comment "When resuming, skip stages already marked complete…" at runner.sh:3895 ✓
-- `if $resume_mode; then` at runner.sh:2845 gates entire rehydration block ✓
-- Stage k dispatch: skip guard only for `stage_status == "complete"`; stage k falls
-  through to `eb_emit_event "stage.start"` at runner.sh:3937 ✓
+- In-loop exit-1 for missing artifacts at runner.sh:3920 ✓
+- Dispatch-unit skip guard (cycle:*): `if $resume_mode` at runner.sh:3442 ✓
+- Dispatch-unit skip guard (stage:*): `if $resume_mode` at runner.sh:3728 ✓
+- Stage k dispatch: skip guard only for `stage_status == "complete"`; falls through to stage.start ✓
 
 ### Still NOT fixed in code (requires build stage)
 
@@ -129,3 +119,13 @@ sub-case" (the sub-case is still needed for FRSH-1).
   `_ZBUILD_RESUME_ACTIVE` needed (step 6)
 - resume-loop-state-test.sh needs `export _ZBUILD_RESUME_ACTIVE=true` before
   `cycle_orchestrator_run` call (step 9)
+
+### Design findings answered
+
+- Design finding 1 (SKIP-1 evidence): Fixed — SKIP-1 is now [code]; no evidence field needed
+- Design finding 2 (FRSH-2 evidence): Fixed — FRSH-2 is now [no-code]; no evidence field needed
+- Design finding 3 (LEGC-1 evidence): Fixed — LEGC-1 REMOVED; DISP-1 covered by SKIP-1[code]
+- Issue-acceptance finding 2: Fixed by same changes
+- Issue-acceptance finding 3 (ORDE-1): AMDR-1[no-code] records the constraint in ADR-006 and its
+  test greps for the constraint text; mechanical enforcement is as strong as possible for a
+  scheduling constraint. No design change needed.
