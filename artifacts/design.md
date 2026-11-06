@@ -75,7 +75,7 @@ FSTG-2[code]: --from-stage <s> when a prior stage has no restorable artifact emi
   When: The runner performs the from-stage preflight check
   Then: The diagnostic phrase "has no restorable primary artifact" appears on stderr
   And: The runner exits 1 before any stage.start event is emitted
-AMDR-1[no-code]: ADR-006-resume-contract.md amended with step 3.6 (rehydrate completed-stage artifacts before dispatch loop; absent artifact causes exit 1; ordering constraint: not to be combined with dispatch-loop changes); enforcing test names (resume-rehydrate-test.sh, resume-entry-points-test.sh) added inline covers: ADR-1 ORDE-1
+AMDR-1[no-code]: ADR-006-resume-contract.md amended with step 3.6 (rehydrate completed-stage artifacts before dispatch loop; absent artifact causes exit 1; ordering constraint: not to be combined with dispatch-loop changes); enforcing test names (resume-rehydrate-test.sh, resume-entry-points-test.sh) added inline covers: ADR-1
 AMDR-2[no-code]: ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant "never skip a stage on prior output" applies to new runs; a resume continues the same run and is governed by ADR-006; and §6's Enforced by section updated to cite resume-rehydrate-test.sh (FRSH-2 for the new-run side) and resume-entry-points-test.sh (ENTR-1 for the resume side) covers: ADR-2
 ITER-1[code]: Cycle orchestrator reads current_iter from persisted state on resume and starts the iteration loop from that value; fresh runs and nested-loop re-entries always start at iter=1 covers: LOOP-1
   Given: A run is being resumed; persisted state records cycle_iterations[CYCLE_ID].current_iter=2 (iter 1 completed before interruption); _ZBUILD_RESUME_ACTIVE=true is exported
@@ -143,9 +143,9 @@ tests/integration/cycle-member-dispatch-events-test.sh: broken by unconditional 
 
 **Finding 1 — All SPECs named:** RHYD-1/2 (resume hydration), FSTG-1/2 (from-stage), AMDR-1/2 (ADR amendments), ITER-1 (iteration state), SKIP-1 (skip-complete in dispatch-unit path), DSPK-1 (dispatch interrupted stage k), ENTR-1 (entry points), FRSH-1/2 (fresh run), DLGT-1 (hydrate delegation), CYCL-1 (cycle fixture). REMOVED: DISP-1 (id collision), BNDY-1 (described file contents), LEGC-1 (covered by SKIP-1[code]).
 
-**Finding 2 — covers: fields use requirement IDs:** All SPECs name actual requirement IDs: RESU-1, RESU-2, RESU-3, RESU-4, FROM-1, FROM-2, FROM-3, LOOP-1, PATH-1, GUAR-1, GUAR-2, ADR-1, ADR-2, HYDR-1, TEST-1, ORDE-1, DISP-1.
+**Finding 2 — covers: fields use requirement IDs:** All SPECs name actual requirement IDs: RESU-1, RESU-2, RESU-3, RESU-4, FROM-1, FROM-2, FROM-3, LOOP-1, PATH-1, GUAR-1, GUAR-2, ADR-1, ADR-2, HYDR-1, TEST-1, DISP-1. ORDE-1 was removed from requirements by intake (process/ordering constraint, not a code requirement); AMDR-1's covers field updated accordingly.
 
-**Finding 3 — All 17 requirements covered:** RESU-1: RHYD-1. RESU-2: RHYD-1, RHYD-2. RESU-3: SKIP-1, DSPK-1. RESU-4: RHYD-1, SKIP-1, DSPK-1. FROM-1: FSTG-1. FROM-2: FSTG-1. FROM-3: FSTG-2. LOOP-1: ITER-1. PATH-1: ENTR-1. GUAR-1: FRSH-1. GUAR-2: FRSH-2. ADR-1: AMDR-1. ADR-2: AMDR-2. HYDR-1: RHYD-1, DLGT-1. TEST-1: CYCL-1. ORDE-1: AMDR-1. DISP-1: SKIP-1.
+**Finding 3 — All 16 requirements covered:** RESU-1: RHYD-1. RESU-2: RHYD-1, RHYD-2. RESU-3: SKIP-1, DSPK-1. RESU-4: RHYD-1, SKIP-1, DSPK-1. FROM-1: FSTG-1. FROM-2: FSTG-1. FROM-3: FSTG-2. LOOP-1: ITER-1. PATH-1: ENTR-1. GUAR-1: FRSH-1. GUAR-2: FRSH-2. ADR-1: AMDR-1. ADR-2: AMDR-2. HYDR-1: RHYD-1, DLGT-1. TEST-1: CYCL-1. DISP-1: SKIP-1.
 
 **Finding 4 — Implementation state (verified):**
 - `_artifact_persist_put_back` defined in artifact-persist.sh ✓
@@ -182,7 +182,7 @@ tests/integration/cycle-member-dispatch-events-test.sh: broken by unconditional 
 
 **Finding 16 — Dispatch-unit path evidence (twenty-seventh pass correction):** Previous SKIP-1, FRSH-2, LEGC-1 cited `"When resuming, skip stages already marked complete unless --from-stage overrides"` (runner.sh:3895, legacy linear loop). After issue-acceptance finding 2 flagged DISP-1 violation, evidence was updated to `"ADR-006 §3.6 / #1805 (SPEC-1): resume mode — skip stages"` (runner.sh:3724, dispatch-unit path). The design checker then rejected this because that text was added by this branch.
 
-**Finding 17 — ORDE-1 handled by AMDR-1:** ORDE-1 is a scheduling constraint ("do not run in parallel with another issue that edits the dispatch loop"). AMDR-1[no-code] records it in ADR-006; the AMDR-1 test greps for the constraint text in the ADR file. If the amendment text is absent, the test fails. This is the strongest mechanical enforcement possible for a scheduling constraint.
+**Finding 17 — ORDE-1 removed from requirements by intake:** ORDE-1 was a scheduling/process constraint ("do not run in parallel with another issue that edits the dispatch loop"). Intake classified it as a process note, not a code requirement, and removed it. AMDR-1's covers field previously included ORDE-1; it has been reduced to `covers: ADR-1` only. The ADR-006 amendment still records the ordering constraint as prose (a note about what not to run alongside), which is appropriate — the constraint belongs in the ADR, not in a testable SPEC.
 
 **Finding 19 — AMDR-2 widened to cover §6 Enforced by citations (this pass):** Design finding 1 from the previous pass: AMDR-2 stated the boundary note but did not specify updating ADR-050 §6's "Enforced by" entry. The existing entry cites only `resume-default-test.sh R5–R11` for the new-run rule. AMDR-2's description now explicitly requires also adding citations for the new-run side (FRSH-2 / resume-rehydrate-test.sh) and the resume side (ENTR-1 / resume-entry-points-test.sh), satisfying CLAUDE.md's rule that every live ADR has an Enforced by section naming, per statement, the test that enforces it. Step 2 updated to match.
 

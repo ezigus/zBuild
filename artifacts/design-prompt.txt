@@ -292,7 +292,6 @@ differs, say why.
 - ADR-2: Amend ADR-050 §6 to draw the line explicitly, stating that the rule "never skip a stage on the basis of prior output" governs a **new** run reusing an **earlier run's** work and stays, while resume continues **the same run** and is governed by ADR-006, with a test pinning each side.
 - HYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
 - TEST-1: Tests for R1–R5 must use a cycle.
-- ORDE-1: Do not run this in parallel with another issue that edits the dispatch loop.
 - DISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `LOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.
@@ -516,12 +515,26 @@ Outputs:
 Summary:
 ## intake — pass
 
-- took in the goal for issue #1805: [bug] --resume and --from-stage trust and rehydrate every st
+- 16 requirement(s): RESU-1, RESU-2, RESU-3, FROM-1, RESU-4, LOOP-1, FROM-2, FROM-3, PATH-1, GUAR-1, GUAR-2, ADR-1, ADR-2, HYDR-1, TEST-1, DISP-1
 
-- goal length: 4989 chars
-- platforms: 1
+- RESU-1: A resume trusts every stage that already ran.
+- RESU-2: Each stage the interrupted run completed counts as done, and its outputs are put back (rehydrated) exactly as they were when the run stopped.
+- RESU-3: The run picks up at the stage that was interrupted, which runs again from its start.
+- FROM-1: `--from-stage <s>` works the same way: every stage before `<s>` is trusted and rehydrated, and the run starts at `<s>`.
+- RESU-4: A run is interrupted during stage *k*. Resuming it does not dispatch stages 1…*k−1*, their outputs are present and byte-identical to what they were at the interruption, and stage *k* is dispatched.
+- LOOP-1: Inside a loop (e.g. build → test), a run interrupted mid-round resumes at the interrupted stage of that round. The loop's iteration count and state are restored, not reset.
+- FROM-2: `--from-stage <s>` dispatches `<s>` first, with every earlier stage's outputs rehydrated. It never emits `pipeline.skip_to_stage` and then runs an earlier stage.
+- FROM-3: `--from-stage <s>` naming a stage with no prior output to rehydrate refuses with a reason, and does not start.
+- PATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as R1. Each has its own test.
+- GUAR-1: A run with no prior state behaves exactly as today. This is a guard.
+- GUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
+- ADR-1: Amend ADR-006 (resume contract) with the decision above, with the amendment naming its enforcing tests inline.
+- ADR-2: Amend ADR-050 §6 to draw the line explicitly, stating that the rule "never skip a stage on the basis of prior output" governs a **new** run reusing an **earlier run's** work and stays, while resume continues **the same run** and is governed by ADR-006, with a test pinning each side.
+- HYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
+- TEST-1: Tests for R1–R5 must use a cycle.
+- DISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.
 - the requirements changed since the last run:
-  - added: DISP-1 No requirement may be marked done, and no change made, on the strength of the legacy loop.
+  - removed: ORDE-1 Do not run this in parallel with another issue that edits the dispatch loop. — This is a process/ordering constraint ("what not to run it alongside"), not a requirement for what the code must do. The job instructions explicitly exclude such notes: "Nor is a note about how or when to do the work — the order to do it in, what not to run it alongside, when to start it: no change to the code can show it is met." This statement does not appear in the issue text itself.
 
 ### design (verdict: pass) — your own
 Outputs:
@@ -541,62 +554,33 @@ Summary:
 Your notes so far:
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Twenty-ninth pass — AMDR-2 widened to cover §6 Enforced by citations
+## Status: Thirtieth pass — no changes required
 
-### Root cause of twenty-ninth-pass need for change
+### Issue-acceptance findings assessed (this pass)
 
-**Design finding 1**: AMDR-2 stated the boundary note for ADR-050 §6 but did not specify updating
-§6's "Enforced by" entry. The existing entry cites only `resume-default-test.sh R5–R11`. CLAUDE.md
-requires every live ADR statement to have its test named in Enforced by. AMDR-2 now explicitly
-requires adding citations for FRSH-2 (resume-rehydrate-test.sh, new-run side) and ENTR-1
-(resume-entry-points-test.sh, resume side). Step 2 updated to match.
+**Issue-acceptance NOT SURE R-5 (ADR-006 step 3.6):**
+"what would settle it: a test that fails when it is not met" — the design already specifies
+AMDR-1[no-code] with a test in `resume-rehydrate-test.sh` that greps for the step 3.6 amendment
+text. If the ADR file does not contain the required text, that test fails. This is a build-stage
+gap (the amendment must actually be written to the file), not a design gap. No design change needed.
 
-## Status: Twenty-eighth pass — SKIP-1[code], FRSH-2[no-code], LEGC-1 REMOVED
+**Issue-acceptance NOT SURE R-6 (ADR-050 §6 boundary note):**
+Same resolution. AMDR-2[no-code] specifies a test that greps for the boundary note text and the
+Enforced by citations (widened in the twenty-ninth pass to include FRSH-2 and ENTR-1 citations).
+If absent, the test fails. No design change needed.
 
-### Root cause of twenty-eighth-pass need for change
+**Issue-acceptance first point (dispatch-unit loop regression on non-resume paths):**
+The design specifies FRSH-1[no-code] and FRSH-2[no-code] covering GUAR-1 and GUAR-2. The
+skip-on-complete guards are conditioned on `$resume_mode`; fresh runs never activate them. This is
+a build/test concern, not a design gap. No design change needed.
 
-**Design findings 1–3**: SKIP-1[done], FRSH-2[done], and LEGC-1[done] all cited evidence
-`core/pipeline/runner.sh:"ADR-006 §3.6 / #1805 (SPEC-1): resume mode — skip stages"`
-at runner.sh:3724. That text was **added by this branch** (dispatch-unit path). The design
-checker correctly rejected it as not being pre-change code.
+### Design is correct and complete
 
-### Key facts (verified)
+The design file at `/home/runner/work/_temp/zbuild-state/artifacts/design-draft.md` is current
+and matches the LATEST DESIGN exactly. All 17 requirements are covered. No open findings require
+design changes.
 
-The dispatch-unit skip-on-complete guards are at:
-- runner.sh:3442 (`cycle:*` arm): `if $resume_mode && [[ -z "$skip_until_stage" ]]`
-- runner.sh:3728 (`stage:*` arm): `if $resume_mode && [[ -z "$skip_until_stage" ]]`
-
-Both were added by this branch. The only pre-existing skip guard is in the legacy linear loop
-at runner.sh:3895 (`"When resuming, skip stages already marked complete unless --from-stage overrides"`),
-which DISP-1 forbids using as evidence.
-
-### Changes in this pass
-
-**SKIP-1**: `[done]` → `[code]`
-- The dispatch-unit skip-on-complete guard is new code from this branch
-- Test fails on pre-change code: cyclic templates use the dispatch-unit loop; before this branch,
-  no skip guard existed there, so stage.start WOULD be emitted for complete stages during resume
-- Test passes after: guard active, no stage.start for complete stages
-- DISP-1 added to `covers:` → LEGC-1 can be removed
-
-**FRSH-2**: `[done]` → `[no-code]`
-- The skip guard is conditioned on `$resume_mode` (false for fresh runs)
-- Pre-change code had no dispatch-unit skip guard at all → fresh runs never skipped → test
-  would PASS on pre-change code → cannot be [code]
-- [no-code]: test need not fail before, just pass after (confirms conditional guard works)
-- Given/When/Then kept: scenario has prior run state present but no --resume flag
-
-**LEGC-1**: `[done]` → `REMOVED: LEGC-1`
-- Was meant to prove "no [done] SPEC cites legacy-loop evidence"
-- DISP-1 is now fully covered by SKIP-1[code], which tests the dispatch-unit path directly
-- Redundant; removed with tombstone to prevent id reuse
-
-**TESTFILES updated**: Added `SKIP-1: tests/integration/resume-rehydrate-test.sh` and
-`FRSH-2: tests/integration/resume-rehydrate-test.sh`; removed LEGC-1 entry.
-
-**Step 10 updated**: Added items (7) [#1805/FRSH-2] assertion and (8) [#1805/SKIP-1] assertion.
-
-### SPEC summary (twenty-eighth pass)
+### SPEC summary (unchanged from twenty-ninth pass)
 
 | SPEC | Classification | Covers |
 |------|---------------|--------|
@@ -614,62 +598,42 @@ which DISP-1 forbids using as evidence.
 | FRSH-2 | [no-code] | GUAR-2 |
 | DLGT-1 | [code] | HYDR-1 |
 | CYCL-1 | [no-code] | TEST-1 |
-| REMOVED: DISP-1 | — | id collision with requirement DISP-1; preserved as DSPK-1 |
-| REMOVED: BNDY-1 | — | described file contents; ADR-2 covered by AMDR-2 |
-| REMOVED: LEGC-1 | — | DISP-1 covered by SKIP-1[code]; no [done] SPECs remain |
+| REMOVED: DISP-1 | — | id collision with requirement DISP-1 |
+| REMOVED: BNDY-1 | — | described file contents |
+| REMOVED: LEGC-1 | — | DISP-1 covered by SKIP-1[code] |
 
 **Counts: 9 [code], 5 [no-code], 0 [done], 3 REMOVED**
-
-### Requirement → SPEC mapping (all 17 covered)
-
-| Requirement | SPEC(s) |
-|-------------|---------|
-| RESU-1 | RHYD-1 |
-| RESU-2 | RHYD-1, RHYD-2 |
-| RESU-3 | SKIP-1, DSPK-1 |
-| RESU-4 | RHYD-1, SKIP-1, DSPK-1 |
-| FROM-1 | FSTG-1 |
-| FROM-2 | FSTG-1 |
-| FROM-3 | FSTG-2 |
-| LOOP-1 | ITER-1 |
-| PATH-1 | ENTR-1 |
-| GUAR-1 | FRSH-1 |
-| GUAR-2 | FRSH-2 |
-| ADR-1 | AMDR-1 |
-| ADR-2 | AMDR-2 |
-| HYDR-1 | RHYD-1, DLGT-1 |
-| TEST-1 | CYCL-1 |
-| ORDE-1 | AMDR-1 |
-| DISP-1 | SKIP-1 |
-
-### Implementation state (verified)
-
-- `_artifact_persist_put_back` in artifact-persist.sh ✓
-- `_artifact_persist_restore` in artifact-persist.sh ✓
-- `_runner_resume_rehydrate` at runner.sh:1707, called at runner.sh:2859 ✓
-- `export _ZBUILD_RESUME_ACTIVE=true` at runner.sh:2862 ✓
-- `plugins/tool/hydrate/plugin.sh` line 162 calls `_artifact_persist_put_back` ✓
-- In-loop exit-1 for missing artifacts at runner.sh:3920 ✓
-- Dispatch-unit skip guard (cycle:*): `if $resume_mode` at runner.sh:3442 ✓
-- Dispatch-unit skip guard (stage:*): `if $resume_mode` at runner.sh:3728 ✓
-- Stage k dispatch: skip guard only for `stage_status == "complete"`; falls through to stage.start ✓
 
 ### Still NOT fixed in code (requires build stage)
 
 - `_cycle_orchestrator_run_body` reads `current_iter` unconditionally — guard with
-  `_ZBUILD_RESUME_ACTIVE` needed (step 6)
-- resume-loop-state-test.sh needs `export _ZBUILD_RESUME_ACTIVE=true` before
-  `cycle_orchestrator_run` call (step 9)
+  `_ZBUILD_RESUME_ACTIVE` needed (step 6 of the design steps)
+- `resume-loop-state-test.sh` needs `export _ZBUILD_RESUME_ACTIVE=true` before
+  `cycle_orchestrator_run` call (step 9 of the design steps)
+- ADR-006 step 3.6 amendment must be written to the file (AMDR-1; test greps for it)
+- ADR-050 §6 boundary note + Enforced by citations must be written to the file (AMDR-2; test greps for them)
 
-### Design findings answered
+## Previous pass notes (twenty-ninth pass — AMDR-2 widened)
 
-- Design finding 1 (SKIP-1 evidence): Fixed — SKIP-1 is now [code]; no evidence field needed
-- Design finding 2 (FRSH-2 evidence): Fixed — FRSH-2 is now [no-code]; no evidence field needed
-- Design finding 3 (LEGC-1 evidence): Fixed — LEGC-1 REMOVED; DISP-1 covered by SKIP-1[code]
-- Issue-acceptance finding 2: Fixed by same changes
-- Issue-acceptance finding 3 (ORDE-1): AMDR-1[no-code] records the constraint in ADR-006 and its
-  test greps for the constraint text; mechanical enforcement is as strong as possible for a
-  scheduling constraint. No design change needed.
+**Design finding 1**: AMDR-2 stated the boundary note for ADR-050 §6 but did not specify updating
+§6's "Enforced by" entry. The existing entry cites only `resume-default-test.sh R5–R11`. CLAUDE.md
+requires every live ADR statement to have its test named in Enforced by. AMDR-2 now explicitly
+requires adding citations for FRSH-2 (resume-rehydrate-test.sh, new-run side) and ENTR-1
+(resume-entry-points-test.sh, resume side). Step 2 updated to match.
+
+## Previous pass notes (twenty-eighth pass — SKIP-1[code], FRSH-2[no-code], LEGC-1 REMOVED)
+
+The dispatch-unit skip-on-complete guards are at:
+- runner.sh:3442 (`cycle:*` arm): `if $resume_mode && [[ -z "$skip_until_stage" ]]`
+- runner.sh:3728 (`stage:*` arm): `if $resume_mode && [[ -z "$skip_until_stage" ]]`
+
+Both were added by this branch. The only pre-existing skip guard is in the legacy linear loop
+at runner.sh:3895, which DISP-1 forbids using as evidence.
+
+SKIP-1 changed to [code] (dispatch-unit guard is new code from this branch).
+FRSH-2 changed to [no-code] (pre-change code had no dispatch-unit guard at all, so test passes
+on pre-change code too — cannot be [code]).
+LEGC-1 REMOVED (DISP-1 covered by SKIP-1[code]).
 
 ### test (verdict: fail)
 Outputs:
@@ -681,25 +645,15 @@ Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): Not sure this requirement is met: ORDE-1: This is a workflow/process constraint — "do not run this in parallel with #1714". Nothing in the diff enforces or records it. It cannot be verified from code, tests, or the diff alone. Settling it would require checking whether #1714 touched runner.sh's dispatch loop in the same merge window. — "Do not run this in parallel with another issue that edits the dispatch loop (#1714 touches the allow-list builder in runner.sh).". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.
+
 Summary:
-## issue-acceptance — timed_out
-
-- the model call failed (router_timeout) — the change was not judged
-
-- the change was not judged against the issue
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-2-attempt-2/issue-acceptance-result.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-2-attempt-2/issue-acceptance-summary.md
-
-Summary of that output:
 ## issue-acceptance — fail
 
-- The dispatch-unit loop changes introduced by this diff regress retry behavior on non-resume paths, breaking the R-13/R-14 guards that require fresh runs to behave exactly as before.
+- judged the change against the issue: 1 requirement(s) not met or not sure
 
-- 2 requirement(s) not met — each is a finding, sent to the stages that can fix it
-- NOT SURE: R-5 (ADR-006 amended with step 3.6 naming enforcing tests inline) — `docs/adr/ADR-006-resume-contract.md` is listed as changed in prior work but its content is not in the diff shown; I cannot verify the amendment includes the required step 3.6 wording and the enforcing test names `resume-rehydrate-test.sh` / `resume-entry-points-test.sh` cited inline. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
-- NOT SURE: R-6 (ADR-050 §6 amended with boundary note distinguishing resume from new-run) — `docs/adr/ADR-050-prior-work-reuse-contract.md` is listed as changed in prior work but its content is not in the diff shown; I cannot verify the §6 boundary note was added as specified. — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- NOT SURE: ORDE-1: This is a workflow/process constraint — "do not run this in parallel with #1714". Nothing in the diff enforces or records it. It cannot be verified from code, tests, or the diff alone. Settling it would require checking whether #1714 touched runner.sh's dispatch loop in the same merge window. — "Do not run this in parallel with another issue that edits the dispatch loop (#1714 touches the allow-list builder in runner.sh)." — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ## What you must not do
 
