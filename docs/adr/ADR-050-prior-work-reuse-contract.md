@@ -199,6 +199,8 @@ A plugin author, when creating or changing a stage, MUST observe:
 > [ADR-006](ADR-006-resume-contract.md); this ADR's reuse rules do not apply
 > to a resume because a resume continues the same run, not a new run.
 
+Enforced by: `tests/integration/resume-rehydrate-test.sh` FRSH-2 (new-run side); `tests/integration/resume-entry-points-test.sh` ENTR-1 (resume side).
+
 ### 7. Amendment (#141) — git is the store, the folder is the working copy, and every run pushes
 
 **Status:** Accepted (2026-08-23). See [ADR-059](ADR-059-issue-vs-run-keying.md) §3.
