@@ -1,0 +1,26 @@
+--- reply 1 ---
+{
+  "score": 6,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "scope / event-contract",
+      "severity": "high",
+      "line": 3204,
+      "message": "The `stage.start` guard in `_cycle_dispatch` lacks the required `_ZBUILD_RESUME_ACTIVE` check, so ALL fresh cycle-based runs now emit extra `stage.start` events for every cycle member at iter > 0, changing the event contract beyond what the issue asked for.",
+      "quote": "        if [[ \"$_cd_iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$_cd_stage\" \\",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "tests/integration/resume-entry-points-test.sh",
+      "category": "coverage / ENTR-2 gap",
+      "severity": "medium",
+      "line": 215,
+      "message": "Path 2 (auto-resume) passes `ZBUILD_STATE_FILE=\"$P2_STATE_FILE\"` explicitly, so the new `latest`-symlink auto-resume branch (runner.sh's `elif ! $no_resume && [[ -z \"${ZBUILD_STATE_FILE:-}\" && -L \"$state_dir/latest\" ]]`) is never exercised; ENTR-2 is checked by this file according to the issue but the symlink path is untested.",
+      "quote": "    ZBUILD_STATE_FILE=\"$P2_STATE_FILE\" \\",
+      "introduced": true,
+      "fix": "test"
+    }
+  ]
+}

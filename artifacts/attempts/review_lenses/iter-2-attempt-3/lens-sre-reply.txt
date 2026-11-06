@@ -1,0 +1,56 @@
+--- reply 1 ---
+{
+  "score": 5,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "event-contract",
+      "severity": "high",
+      "line": 3204,
+      "message": "cycle_dispatch_stage emits stage.start for every cycle member at every iteration in ALL runs (not only resume), because the guard is `_cd_iter > 0` with no `_ZBUILD_RESUME_ACTIVE` check; the design document for this issue explicitly names this as Gap 7 and states it is NOT YET FIXED, requiring the guard `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]] && [[ \"$_cd_iter\" -gt 0 ]]; then`.",
+      "quote": "        if [[ \"$_cd_iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$_cd_stage\" \\\n                || { local _r=$?; warn \"eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)\"; true; }\n        fi",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "observability",
+      "severity": "medium",
+      "line": 1712,
+      "message": "_runner_resume_rehydrate silently returns 0 when _artifact_persist_restore fails — no log line and no event are emitted — so an operator cannot distinguish a successful resume from one that ran with absent artifacts; the stale-artifact check downstream only fires for stages that have a manifest-declared primary artifact, leaving stages with no primary artifact path silently unprotected.",
+      "quote": "    _artifact_persist_restore \"$_rr_issue\" \"$_rr_staging\" || {\n        rm -rf \"${_rr_staging:?}\" 2>/dev/null || true\n        return 0\n    }",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "observability",
+      "severity": "medium",
+      "line": 1735,
+      "message": "_runner_from_stage_preflight swallows _artifact_persist_restore failure with `|| true`, making a git-backend failure (network down, branch absent) indistinguishable from 'artifact was never committed'; both paths produce the same 'has no restorable primary artifact' diagnostic, which will mislead an operator diagnosing a git infrastructure failure as a missing prior-run artifact.",
+      "quote": "    _artifact_persist_restore \"$_fsp_issue\" \"$_fsp_staging\" || true",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "failure-mode",
+      "severity": "medium",
+      "line": 2215,
+      "message": "The auto-resume via latest symlink branch calls `readlink -f` to resolve the per-run state directory; if readlink fails (broken symlink, macOS without GNU coreutils), state_dir is set to an empty string and all subsequent artifact and state-file operations use paths under an empty prefix, which silently corrupts or misroutes them rather than failing closed with a diagnostic.",
+      "quote": "                state_dir=\"$(readlink -f \"$state_dir/latest\")\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "failure-mode",
+      "severity": "low",
+      "line": 2333,
+      "message": "_ZBUILD_RESUME_ACTIVE is set to false inside _cycle_orchestrator_run_body to prevent nested cycles from restoring their iter; however, if `get_state_field` fails (jq absent, state file corrupt), `_persisted_iter` falls back to 0 via the `|| echo 0` path, _start_iter resolves to 1, and the cycle silently starts from the beginning — the same as a fresh run — with no warning or event that the persisted iter could not be read.",
+      "quote": "        _persisted_iter=\"$(get_state_field \"$state_file\" \\\n            \".cycle_iterations[\\\"$cycle_id\\\"].current_iter\" 0 2>/dev/null || echo 0)\"",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

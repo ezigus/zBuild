@@ -1,24 +1,34 @@
 --- reply 1 ---
 {
-  "score": 4,
+  "score": 5,
   "findings": [
     {
-      "file": "core/pipeline/cycle-orchestrator.sh",
+      "file": "core/pipeline/runner.sh",
       "category": "logic",
       "severity": "high",
-      "line": 2336,
-      "message": "`_cycle_state_jq_write_iter` writes `current_iter = $n` **after** iter N completes; so when a run is interrupted during iter 2 with iter 1 done, the persisted value is 1, not 2 — `_start_iter` becomes 1 and the cycle re-runs the already-completed iteration instead of starting at the interrupted one, contradicting ITER-1.",
-      "quote": "_start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))",
+      "line": 3204,
+      "message": "`cycle_dispatch_stage` emits `stage.start` for every cycle member dispatch where `_cd_iter > 0` without a `_ZBUILD_RESUME_ACTIVE` guard, so on every fresh cycle-based run each cycle member now emits a `stage.start` event — a change to the event contract the design explicitly prohibited for non-resume paths.",
+      "quote": "if [[ \"$_cd_iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$_cd_stage\" \\",
       "introduced": true,
       "fix": "code"
     },
     {
-      "file": "tests/integration/resume-loop-state-test.sh",
-      "category": "coverage",
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
       "severity": "high",
-      "line": 51,
-      "message": "The ITER-1 test creates `current_iter=2` by running **two** full iterations (`zb_engine_loop_state … 2 5 "in_progress"`), which represents \"iter 2 is the last completed iteration\", not \"iter 1 completed before interruption\" as the comment claims; it therefore never tests the real interrupted scenario where only iter 1 has completed and `current_iter=1`, meaning the test passes whatever the code does for the wrong state shape.",
-      "quote": "# This simulates: iter 1 of the cycle completed; the run was interrupted before\n# iter 2 dispatched. After the change the orchestrator reads current_iter=2 and\n# starts from iter 2.",
+      "line": 3204,
+      "message": "The design decision states the guard must be `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]] && [[ \"$_cd_iter\" -gt 0 ]]`, but the cycle orchestrator already sets `_ZBUILD_RESUME_ACTIVE=false` at line 2333 of `cycle-orchestrator.sh` before it ever calls `cycle_dispatch_stage`, so that proposed guard would suppress `stage.start` for cycle members even during resume — meaning `from-stage-rehydrate-test.sh` line 185's assertion (`assert_gt ... \"_s3_cycled_started\" \"0\"`) would fail. The design decision and the test requirement for DSPK-1/FSTG-1 are inconsistent with each other; the implementation silently chose one side (emit always) without resolving the conflict.",
+      "quote": "# Consume the flag: nested cycles and subsequent re-entries start at 1.\n        _ZBUILD_RESUME_ACTIVE=false",
+      "introduced": true,
+      "fix": "design"
+    },
+    {
+      "file": "tests/integration/resume-rehydrate-test.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "line": 707,
+      "message": "The FRSH-1 and FRSH-2 fresh-run sub-cases only assert that `intake` emits exactly one `stage.start` and that no `stage.skip` events appear; neither test asserts that cycle members (e.g. `cycled`) do NOT emit `stage.start` on a fresh run. The behavior change in finding 1 (unexpected `stage.start` for every cycle member on fresh runs) therefore passes all guards undetected.",
+      "quote": "assert_eq \"fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)\"\n    \"1\" \"$_s12_intake_starts\"",
       "introduced": true,
       "fix": "test"
     },
@@ -26,19 +36,9 @@
       "file": "core/pipeline/runner.sh",
       "category": "logic",
       "severity": "medium",
-      "line": 3446,
-      "message": "The `cycle:*` resume skip guard skips a complete cycle with only `continue`, performing no artifact verification; unlike the `stage:*` arm (which checks `! -s` on the primary artifact path and exits 1 if absent), a complete cycle whose member artifacts are missing after rehydration is silently skipped, violating RHYD-2 fail-closed semantics for cycle units.",
-      "quote": "if [[ \"$_du_cyc_status\" == \"complete\" ]]; then\n                            info \"Skipping already-complete cycle: $_cyc_id\"\n                            continue\n                        fi",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "logic",
-      "severity": "medium",
-      "line": 3442,
-      "message": "After `skip_until_stage` is cleared at the `--from-stage` target, `resume_mode` remains true; any stage after the target that is already marked `complete` in state (e.g. a fully-completed prior run) is silently skipped by the resume guard, so `--resume --from-stage <s>` on a previously-completed run dispatches only `<s>` and skips all subsequent stages that were previously complete, contrary to the intent of re-running from `<s>` onwards.",
-      "quote": "if $resume_mode && [[ -z \"$skip_until_stage\" ]]; then",
+      "line": 2987,
+      "message": "When both `resume_mode=true` and `from_stage` is set, `_artifact_persist_restore` is called twice: first inside `_runner_resume_rehydrate` (line ~2897), then again inside `_runner_from_stage_preflight` (line ~2987). The second restore is a no-op at the `put_back` level due to no-clobber semantics, but `_runner_from_stage_preflight` already subsumes the restore, so the first call in `_runner_resume_rehydrate` is unreachable in its useful effect for the from-stage path. More importantly, if the first restore fails silently (`|| { rm ...; return 0 }`) the second also silently swallows the failure (`|| true`), leaving the preflight to report \"has no restorable primary artifact\" with no earlier indication of why.",
+      "quote": "_artifact_persist_restore \"$_fsp_issue\" \"$_fsp_staging\" || true",
       "introduced": true,
       "fix": "code"
     },
@@ -46,13 +46,67 @@
       "file": "core/pipeline/runner.sh",
       "category": "logic",
       "severity": "low",
-      "line": 1734,
-      "message": "`_runner_from_stage_preflight` silently depends on the global `$_runner_issue` instead of receiving the issue as a parameter, while every other caller-visible parameter is explicit; the function header and signature give no indication of this implicit dependency, making the function impossible to call correctly from outside `main()`.",
-      "quote": "_artifact_persist_restore \"$_runner_issue\" \"$_fsp_staging\" || true",
-      "introduced": true,
+      "line": 2903,
+      "message": "`pipeline.skip_to_stage` is still emitted on the `--resume --from-stage` path. The issue says the original problem was the event being emitted and then all stages running anyway; the fix correctly makes stages skip, but the event name implies skipping happened at the pipeline level before dispatch, while `_runner_from_stage_preflight` now rehydrates artifacts from the git state branch — the event no longer describes what actually occurs.",
+      "quote": "eb_emit_event \"pipeline.skip_to_stage\" \"stage=$from_stage\" \"run_id=$_runner_run_id\"",
+      "introduced": false,
       "fix": "code"
     }
   ]
 }
 --- reply 2 ---
-{"score": 3, "findings": [{"file": "core/pipeline/cycle-orchestrator.sh", "category": "logic", "severity": "critical", "line": 2336, "message": "`_cycle_state_write_iter_atomic` is called at the END of each iteration (line 2753), so `current_iter=N` means iteration N has fully completed; when a run is interrupted mid-iter-K before that write, `current_iter=K-1` is in state, and `_start_iter=K-1` re-runs the already-completed iteration instead of the interrupted one — the formula must be `_persisted_iter + 1`.", "quote": "_start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))", "introduced": true, "fix": "code"}, {"file": "tests/integration/resume-loop-state-test.sh", "category": "coverage", "severity": "high", "line": 51, "message": "`zb_engine_loop_state ... 2 5 \"in_progress\"` runs the state writer twice (n=1 and n=2), leaving `current_iter=2` — both iterations have been recorded as completed; the comment that this represents \"iter 1 completed, interrupted before iter 2 dispatched\" is wrong (that scenario would leave `current_iter=1`), so the test never exercises the actual interrupted case and passes even with the off-by-one formula.", "quote": "zb_engine_loop_state \"$STATE_FILE\" \"build-test\" 2 5 \"in_progress\"", "introduced": true, "fix": "test"}, {"file": "core/pipeline/runner.sh", "category": "logic", "severity": "medium", "line": 3446, "message": "The `cycle:*` resume skip guard calls `continue` without verifying that the cycle's member artifacts are present after rehydration; unlike the `stage:*` arm which checks `! -s` on the primary artifact path and exits 1 when absent, a complete cycle whose member artifacts are missing is silently skipped, violating the RHYD-2 fail-closed requirement for cycle units.", "quote": "if [[ \"$_du_cyc_status\" == \"complete\" ]]; then\n                            info \"Skipping already-complete cycle: $_cyc_id\"\n                            continue\n                        fi", "introduced": true, "fix": "code"}, {"file": "core/pipeline/runner.sh", "category": "logic", "severity": "low", "line": 1734, "message": "`_runner_from_stage_preflight` silently reads the global `$_runner_issue` for the restore call, but the function header and signature list only four explicit parameters with no mention of this implicit dependency, making the function impossible to call correctly from outside `main()`.", "quote": "_artifact_persist_restore \"$_runner_issue\" \"$_fsp_staging\" || true", "introduced": true, "fix": "code"}]}
+{
+  "score": 5,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 3204,
+      "message": "`_cycle_dispatch` emits `stage.start` for every cycle member dispatch where `_cd_iter > 0` without a `_ZBUILD_RESUME_ACTIVE` guard, so on every fresh cycle-based run each cycle member now emits a `stage.start` event — a change to the event contract the design explicitly prohibited for non-resume paths.",
+      "quote": "if [[ \"$_cd_iter\" -gt 0 ]]; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 2333,
+      "message": "The design decision states the `stage.start` guard in `_cycle_dispatch` must be `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]] && [[ \"$_cd_iter\" -gt 0 ]]`, but the cycle orchestrator already sets `_ZBUILD_RESUME_ACTIVE=false` here before it ever calls `_cycle_dispatch`, so that proposed guard would suppress `stage.start` for cycle members even during resume — the design decision and the DSPK-1/FSTG-1 requirements are inconsistent with each other, and the implementation silently chose one side (emit always) without resolving the conflict.",
+      "quote": "_ZBUILD_RESUME_ACTIVE=false",
+      "introduced": true,
+      "fix": "design"
+    },
+    {
+      "file": "tests/integration/resume-rehydrate-test.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "line": 718,
+      "message": "The FRSH-2 fresh-run sub-case only asserts that `intake` emits exactly one `stage.start`; it never asserts that cycle members do NOT emit `stage.start` on a fresh run, so the spurious `stage.start` emission introduced by finding 1 passes the guard undetected.",
+      "quote": "assert_eq \"fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)\" \\",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 1735,
+      "message": "When both `resume_mode=true` and `from_stage` is set, `_artifact_persist_restore` is called twice: first inside `_runner_resume_rehydrate` at line ~2897, then again here inside `_runner_from_stage_preflight`. Both failures are silently swallowed (`|| true`), so a git-state-branch read failure leaves the preflight to report \"has no restorable primary artifact\" with no prior indication of why restoration actually failed.",
+      "quote": "_artifact_persist_restore \"$_fsp_issue\" \"$_fsp_staging\" || true",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "low",
+      "line": 2905,
+      "message": "`pipeline.skip_to_stage` is still emitted on the `--resume --from-stage` path; the original issue identified this event being emitted and nothing acting on it as a bug, and while the fix correctly makes stages skip, the event name still misrepresents what actually occurs now that `_runner_from_stage_preflight` rehydrates artifacts from the git state branch before dispatch.",
+      "quote": "eb_emit_event \"pipeline.skip_to_stage\" \"stage=$from_stage\" \"run_id=$_runner_run_id\"",
+      "introduced": false,
+      "fix": "code"
+    }
+  ]
+}
