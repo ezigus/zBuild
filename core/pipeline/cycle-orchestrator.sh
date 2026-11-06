@@ -2277,16 +2277,21 @@ _cycle_orchestrator_run_body() {
     }
 
     # ADR-006 §3.6 / #1805 (SPEC-7): on resume (_ZBUILD_RESUME_ACTIVE=true),
-    # read the persisted current_iter so the cycle starts from the next
-    # unfinished iteration. On a fresh run or nested-loop re-entry, always
-    # start at 1 so inner cycles reset correctly on each outer iteration.
+    # read the persisted current_iter so the cycle restarts the interrupted
+    # iteration. Consume the flag immediately so nested cycles and subsequent
+    # re-entries always start at 1. On a fresh run or nested-loop re-entry,
+    # always start at 1 so inner cycles reset correctly on each outer iteration.
     local _start_iter
     if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
         local _persisted_iter
         _persisted_iter="$(get_state_field "$state_file" \
             ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
         [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
-        _start_iter=$(( _persisted_iter + 1 ))
+        # Consume the flag: nested cycles and subsequent re-entries start at 1.
+        _ZBUILD_RESUME_ACTIVE=false
+        # Start at the persisted iter (re-run the interrupted iteration); fall
+        # back to 1 when no iteration has been recorded yet.
+        _start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))
     else
         _start_iter=1
     fi
