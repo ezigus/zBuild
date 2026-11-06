@@ -640,6 +640,8 @@ _artifact_persist_put_back() {
     mkdir -p "$to" || return 1
     while IFS= read -r -d '' f; do
         rel="${f#"$from"/}"
+        # Guard: skip if strip failed (trailing slash on $from) — rel would be absolute
+        [[ "$rel" == /* ]] && continue
         [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
         mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
     done < <(find "$from" -type f -print0 2>/dev/null)
