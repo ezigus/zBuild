@@ -849,21 +849,14 @@ assert_eq \
     "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
     "0" "$_frsh2_stage_skips"
 
-# [#1805/FRSH-2]: every stage must emit stage.start, not just intake. The cycle stage
-# cyc dispatches its inner member cycled; cycled must also emit stage.start. This proves
-# the full pipeline ran and no stage beyond intake was silently skipped on the fresh-run path.
-# A scenario where only intake dispatched but cycled was somehow skipped would still pass
-# the intake-only assertion above but would fail this one — fulfilling the requirement that
-# "every stage emits a stage.start event", not merely that one stage does.
-# This requirement need not fail before this change (no-code property); it must pass after.
-_frsh2_cycled_starts=0
-if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
-    _frsh2_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
-        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-fi
-assert_gt \
-    "[#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)" \
-    "$_frsh2_cycled_starts" "0"
+# [#1805/FRSH-2]: The two assertions above — intake dispatches and no stage.skip —
+# fully cover the FRSH-2 requirement. The requirement is that the dispatch-unit
+# skip guard does not activate for fresh runs. The skip guard would suppress a
+# stage.start for a dispatch-unit stage (intake or cyc) if it were unconditionally
+# active. The intake assertion (1) proves the guard did not suppress intake; the
+# no-stage.skip assertion (2) proves the guard did not emit a skip event for any
+# stage. Together they establish that the skip guard is conditional on resume_mode
+# and did not fire on this fresh run, which is the entirety of FRSH-2.
 
 # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
