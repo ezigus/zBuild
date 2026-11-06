@@ -1,7 +1,8 @@
-## build — timed_out
+## build — pass
 
-- changed 1 file(s) over 3 pass(es), 3 iteration(s)
+- changed 0 file(s) over 1 pass(es), 1 iteration(s)
 
-- lines: +3 / -1
-- terminated: router_timeout
+- lines: +0 / -0
+- terminated: done_sentinel
 - scope violation: false
+- needs files outside the contract's scope: tests/unit/stage-retry-test.sh

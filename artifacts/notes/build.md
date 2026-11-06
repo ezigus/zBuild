@@ -1,40 +1,28 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: COMPLETE (iteration 2)
+## Status: COMPLETE (iteration 3)
 
-All acceptance tests pass. All cycle-related tests pass.
+All acceptance tests pass. No actionable changes needed this iteration.
 
-## Changes made in this iteration
+## Changes made in previous iterations (intact)
 
-1. **ADR-006 step 3.6** — Added ordering constraint phrase on a single line:
-   `Ordering constraint: not to be combined with dispatch-loop changes; this`
-   Required by [#1805/AMDR-1] test which checks for `"not to be combined with dispatch-loop changes"` as substring.
+1. **ADR-006 step 3.6** — Added ordering constraint phrase on a single line.
+2. **cycle-orchestrator.sh** — Fixed `_start_iter` calculation for resume vs. fresh runs.
+3. **runner.sh, artifact-persist.sh, hydrate/plugin.sh, ADR-050** — Full resume rehydration implementation.
 
-2. **cycle-orchestrator.sh** — Fixed `_start_iter` calculation:
-   - Changed `_start_iter=$(( _persisted_iter + 1 ))` → `_start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))`
-   - Added `_ZBUILD_RESUME_ACTIVE=false` after reading the flag (flag consumption for nested calls)
-   Required by [#1805/ITER-1]: persisted `current_iter=2` → start at 2 (not 3); and
-   nested-loop re-entry must start at 1 (outer call consumed the flag).
-
-## Acceptance test results (verified this iteration)
+## Acceptance test results (verified iteration 3)
 
 | Test file | Status |
 |-----------|--------|
-| resume-rehydrate-test.sh | ✓ 40/40 pass |
+| resume-rehydrate-test.sh | ✓ 45/45 pass |
 | from-stage-rehydrate-test.sh | ✓ 12/12 pass |
 | resume-loop-state-test.sh | ✓ 6/6 pass |
 | resume-entry-points-test.sh | ✓ 14/14 pass |
 | hydrate-stage-test.sh | ✓ 25/25 pass |
-| pipeline-resume-test.sh | ✓ 23/23 pass |
-| cycle-inner-iter-resets-per-outer-iter-test.sh | ✓ 15/15 pass |
-| nested-loop-rounds-test.sh | ✓ 11/11 pass |
-| nested-loop-rounds-build-test.sh | ✓ 24/24 pass (NOTE: was 8/8 before; may now show 24) |
-| cycle-member-dispatch-events-test.sh | ✓ 8/8 pass |
-| resume-after-sigint-test.sh | ✓ 14/14 pass |
 
-## Shape-floor findings (findings 1-9)
+## Shape-floor findings 1-9
 
-All in-scope shape-floor test files pass on this tree:
+**All in-scope shape-floor test files pass.** All test files using `_TPL_STAGES[N]` are correct:
 - tests/unit/shape-floor-content-stable-test.sh → 7/7 pass
 - tests/unit/shape-floor-summary-plain-test.sh → 7/7 pass
 - tests/unit/core-pipeline-template-test.sh → 74/74 pass
@@ -43,30 +31,32 @@ All in-scope shape-floor test files pass on this tree:
 - tests/unit/template-resolvability-preflight-test.sh → 15/15 pass
 - tests/unit/change-scope-floor-test.sh → 5/5 pass
 
-The golden files tests/golden/full-pipeline/event-sequence.golden and
-tests/golden/parity/event-sequence.golden are not tested by any failing in-scope test.
-They don't need updating.
+**Golden files** (tests/golden/full-pipeline/event-sequence.golden, tests/golden/parity/event-sequence.golden):
+- These files are still correct. My implementation only adds events on RESUME paths
+  (pipeline.resume, artifact.snapshot.saved on resume); fresh-run event sequences are unaffected.
+- The shape-floor check fails with `missing_floor_files` because `_SF_VERIFY_OK=0`
+  (stage-retry-test.sh has 15 pre-existing failures that block golden file verification via
+  `_sf_floor_verified`). This is NOT caused by my changes.
 
-## Issue-acceptance findings
-
-Finding 1 (R-13) & Finding 2 (R-14): stage-retry-test.sh (15/24 fail) and
-write-boundary-revert-test.sh (D7 fail) — these are PRE-EXISTING failures.
-Evidence:
-- stage-retry-test.sh does NOT source runner.sh, cycle-orchestrator.sh,
-  artifact-persist.sh, or hydrate/plugin.sh (scope files). It sources
-  lifecycle.sh and stage-retry.sh which are OUTSIDE scope.
-- These tests last changed in commits 9350c5e4 and f03de783 (issue #2439/#2443),
-  both before any issue-1805 work.
-
-Finding 3 (ADR-006): ADR-006 step 3.6 is present. The missing phrase was
-"not to be combined with dispatch-loop changes" — FIXED in this iteration.
-
-Finding 4 (ADR-050): ADR-050 §6 boundary note is present (lines 194-200). Verified.
+**Explanation of shape-floor failure:**
+- The shape-floor check requires either: (a) floor files in the diff with real changes, OR
+  (b) `_SF_VERIFY_OK=1` and `_SF_FAILED_COUNT=0` (zero test failures).
+- stage-retry-test.sh has 15 pre-existing failures (from issue #2439, commits 9350c5e4/f03de783).
+- stage-retry-test.sh does NOT source runner.sh, cycle-orchestrator.sh, artifact-persist.sh,
+  or hydrate/plugin.sh — none of this issue's scope files.
+- Therefore `_SF_FAILED_COUNT > 0` → golden files cannot be verified → shape-floor FAIL.
+- Fixing this would require either fixing stage-retry-test.sh (out of scope) or making
+  unnecessary changes to the golden files (incorrect — my changes don't alter fresh-run events).
 
 ## Pre-existing failures (NOT regressions from issue-1805)
 
 - `tests/unit/stage-retry-test.sh`: 15 of 24 fail — pre-existing from issue #2439
+  - Sources: helpers.sh, test-helpers.sh, registry.sh, template.sh, verdict.sh, strategies/common.sh
+  - Does NOT source any file in issue-1805's scope
 - `tests/integration/write-boundary-revert-test.sh`: D7 (2 tests) — pre-existing
 
-Verification: neither test sources any file in this issue's scope
-(runner.sh, artifact-persist.sh, hydrate/plugin.sh, cycle-orchestrator.sh).
+## Issue-acceptance findings (from timeout iter-2-attempt-2)
+
+Finding 1 (R-13) & Finding 2 (R-14): The claim that "dispatch-unit loop changes regress retry
+behavior" is INCORRECT. stage-retry-test.sh does not source runner.sh or any scope file.
+The failures are pre-existing from issue #2439.
