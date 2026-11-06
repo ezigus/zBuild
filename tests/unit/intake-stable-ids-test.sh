@@ -30,6 +30,10 @@
 #            requirements get new ids, and need no REMOVED line
 # S11 [code] the list records the ids the issue's own text writes, so design
 #            can refuse them as SPEC ids without reading the issue again
+# S12 [code] #2476: a new requirement never takes a code the last design's
+#            SPECs use, removed ones counted — the rule design already keeps
+#            (on #1805 run 42127743259 intake added DISP-1 beside SPEC DISP-1,
+#            and design had to rename an unchanged SPEC); a kept id stays
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -194,6 +198,26 @@ assert_contains "[S10] an old position id is shown without its id" "$(_prompt 1)
 _lacks_r=1; [[ "$(_prompt 1)" == *"REQUIREMENT: R-2"* ]] && _lacks_r=0
 assert_eq "[S10] ...never as R-2" "1" "$_lacks_r"
 assert_eq "[S10] dropping it needs no REMOVED line" "pass" "$OUTCOME"
+
+# ── S12 ──────────────────────────────────────────────────────────────────────
+printf '# Design\n```acceptance\nDISP-1[code]: the stage is dispatched covers: PRNT-1\nREMOVED: GATE-1 — folded into DISP-1\nWIRING: none\nTESTFILES:\nDISP-1: tests/d-test.sh\n```\n' \
+    > "$ARTIFACT_DIR/design.md"
+_last ""
+REPLY=([1]=$'REQUIREMENT: PRNT-1 Print each line once.\nREQUIREMENT: DISP-1 Dispatch the stage.'
+       [2]=$'REQUIREMENT: PRNT-1 Print each line once.\nREQUIREMENT: DSPT-1 Dispatch the stage.')
+_intake
+assert_contains "[S12] a new requirement with a SPEC's code is asked again, naming it" "$(_prompt 2)" "DISP-1 uses a code the design's SPECs use"
+assert_eq "[S12] ...and with its own code it passes" "PRNT-1 DSPT-1" "$(_ids)"
+_last ""
+REPLY=([1]=$'REQUIREMENT: PRNT-1 Print each line once.\nREQUIREMENT: GATE-1 Gate the stage.'
+       [2]=$'REQUIREMENT: PRNT-1 Print each line once.\nREQUIREMENT: GATE-1 Gate the stage.')
+_intake
+assert_eq "[S12] a removed SPEC's code counts too" "unusable" "$OUTCOME"
+_last '{"schema_version":1,"source":"model","requirements":[{"id":"PRNT-1","text":"a"},{"id":"DISP-1","text":"b"}]}'
+REPLY=([1]=$'REQUIREMENT: PRNT-1 a\nREQUIREMENT: DISP-1 b')
+_intake
+assert_eq "[S12] a requirement the last list already had keeps its id: ids never move" "pass" "$OUTCOME"
+rm -f "$ARTIFACT_DIR/design.md"
 
 cleanup_test_env
 print_test_results

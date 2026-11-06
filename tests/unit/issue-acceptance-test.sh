@@ -30,6 +30,9 @@
 #                    told what was wrong and shown the answer (ADR-060 §6); a
 #                    second answer with no verdict is `unusable`; a failed
 #                    call is not asked again
+#   SPEC-12 [change]: a failing test it cannot quickly trace to the change is
+#                    UNSURE with the reason, never investigated (#2476: on #1805
+#                    run 42127743259 both round-2 calls spent their 600s on one)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -179,6 +182,9 @@ assert_contains "[SPEC-9] the prompt says what the tests must catch is a require
 assert_contains "[SPEC-9] the prompt asks whether the tests would catch a broken change" \
     "$_p9" "if the change were broken, would its tests catch it?"
 assert_contains "[SPEC-9] the narrowed-SPEC rule is kept" "$_p9" "a SPEC that narrowed a"
+assert_contains "[SPEC-12] a failing test it cannot trace to the change is UNSURE, not investigated" \
+    "$_p9" "A failing test you cannot trace to the DIFF within a few reads: mark the requirement it bears on UNSURE"
+assert_contains "[SPEC-12] ...and it does not work out why the test fails" "$_p9" "Do not work out why a test fails"
 
 print_test_section "SPEC-10: one finding per line, whole"
 _setup s10

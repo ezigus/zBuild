@@ -143,13 +143,14 @@ _ta_write_result() {
     fi
     # The test files and what each covers, for the stages after this one: build
     # starts from them instead of running them to find them (#1801 run 40390919951).
-    local _tf_lines=""
+    local _tf_lines="" _tf_ids=""
     if [[ -s "$_design" ]] && declare -F acceptance_list_spec_ids >/dev/null 2>&1; then
         local -A _tf_specs=()
         local -a _tf_order=()
         local _sid _f
         while IFS= read -r _sid; do
             [[ -n "$_sid" ]] || continue
+            _tf_ids+="${_tf_ids:+, }$_sid"
             while IFS= read -r _f; do
                 [[ -n "$_f" ]] || continue
                 [[ -n "${_tf_specs[$_f]+x}" ]] || _tf_order+=("$_f")
@@ -158,15 +159,17 @@ _ta_write_result() {
         done < <(acceptance_list_spec_ids "$_design" 2>/dev/null || true)
         for _f in ${_tf_order[@]+"${_tf_order[@]}"}; do _tf_lines+=$'\n'"- ${_f} — ${_tf_specs[$_f]}"; done
     fi
-    local _sum_body
-    printf -v _sum_body -- '- SPECs in the contract: %s\n- assertions are authored from the SPEC text, never from the implementation' "${n:-0}"
+    # #2476 (ADR-064 §4): a passing try's line names the SPECs it wrote tests
+    # for; one that did not pass says why (its findings reach the row).
+    local _sum_body="" _sum_head="$r"
+    [[ "$o" == pass && -n "$_tf_ids" ]] && _sum_head="tests for ${_tf_ids}"
     if [[ -n "$_tf_lines" ]]; then
-        _sum_body+=$'\n'"- the test files, and the requirements each covers:${_tf_lines}"
+        _sum_body="- the test files, and the requirements each covers:${_tf_lines}"
         _sum_body+=$'\n'"- Each [code] requirement's test must fail on the code from before this change, and pass once the code is written."
     fi
     local _a
-    for _a in ${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}; do _sum_body+=$'\n'"- answered: ${_a}"; done
-    stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$r" "$_sum_body"
+    for _a in ${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}; do _sum_body+="${_sum_body:+$'\n'}- answered: ${_a}"; done
+    stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$_sum_head" "$_sum_body"
 }
 
 # _ta_collect_answers <reply> — the model's `ANSWER <stage> finding <n>: …`

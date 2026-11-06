@@ -57,6 +57,8 @@ source "$_DESIGN_ROOT/scripts/lib/stage-result.sh"
 source "$_DESIGN_DIR/lib/checks.sh"
 # shellcheck source=./lib/coverage.sh
 source "$_DESIGN_DIR/lib/coverage.sh"
+# shellcheck source=./lib/summary.sh
+source "$_DESIGN_DIR/lib/summary.sh"
 # #2364: earlier work is found by what it contains, never by which stage made it.
 # shellcheck source=../../../scripts/lib/earlier-output.sh
 source "$_DESIGN_ROOT/scripts/lib/earlier-output.sh"
@@ -114,15 +116,6 @@ _design_write_outcome() {
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
-# #2154: SPEC declarations only. The acceptance block's TESTFILES section binds
-# each SPEC on a line that also starts `SPEC-n:`; counting those doubled the
-# number in the run-status comment (38 for a 19-SPEC design on #1840 run 5).
-_design_spec_count() {
-    local n
-    n="$(acceptance_list_spec_ids "$1" 2>/dev/null | grep -c . || true)"
-    printf '%s' "${n:-0}"
-}
-
 design_stage_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
@@ -604,15 +597,9 @@ ${_dp_limits}")"; then
     # work plan (a `steps` list, earlier_work_plan).
     _design_write_steps "$output_design_md" "$artifact_dir/design-steps.json"
 
-    # ADR-055 §9: state the SHAPE of the design a later stage is held to —
-    # the boundary it may touch and the SPECs it must satisfy.
-    local _scope_csv="" _scope_n=0 _spec_n=0
-    _scope_csv="$(_extract_scope_from_design "$output_design_md" 2>/dev/null || true)"
-    [[ -n "$_scope_csv" ]] && _scope_n="$(awk -F, '{print NF}' <<< "$_scope_csv")"
-    _spec_n="$(_design_spec_count "$output_design_md")"
-    stage_summary_write "$artifact_dir/design-summary.md" "design" "pass" \
-        "authored design.md — $_scope_n file(s) in scope, $_spec_n acceptance SPEC(s)" \
-        "$(printf -- '- scope: %s\n- artifact: design.md' "${_scope_csv:-<none>}")"
+    # ADR-055 §9: the SPECs a later stage is held to, and the boundary it may
+    # touch; #2476: by name, each with what it covers.
+    _design_pass_summary_write "$artifact_dir" "$output_design_md"
     emit_event "plugin.result" "stage=design" \
         "plugin=design" \
         "artifact=design.md"

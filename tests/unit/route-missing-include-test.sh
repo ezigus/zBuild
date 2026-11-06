@@ -19,6 +19,9 @@
 # SPEC-3: the caller does NOT continue past a bad include (no half-loaded router)
 # SPEC-4: every base include is guarded — uniformity, not just the two #1305 added
 # SPEC-5[guard]: a healthy tree still loads cleanly (the guard costs nothing)
+# SPEC-6: a healthy load starts no program for the guard: the syntax check runs
+#         only when an include fails to load (#2476, ADR-065 — 52 `bash -n` a
+#         mocked run, one per include each time a process loads the router)
 set -uo pipefail
 # Deliberately NOT `set -e`: assert_fail returns non-zero when called without a
 # detail argument, which under -e would abort before print_test_results — a
@@ -174,6 +177,15 @@ _load "$_t5"
 assert_eq "[SPEC-5] a healthy tree loads cleanly (rc=0)" "0" "$_LOAD_RC"
 assert_contains "[SPEC-5] the caller continues past a healthy load" \
     "$_LOAD_OUT" "CALLER_CONTINUED"
+
+# ─── SPEC-6: the guard starts nothing on the happy path ─────────────────────
+_real_bash="$(command -v bash)"
+_shim="$TEST_TEMP_DIR/shim"; mkdir -p "$_shim"
+printf '#!%s\nprintf "%%s\\n" "$*" >> "%s/bash-calls"\nexec %s "$@"\n' "$_real_bash" "$TEST_TEMP_DIR" "$_real_bash" > "$_shim/bash"
+chmod +x "$_shim/bash"; : > "$TEST_TEMP_DIR/bash-calls"
+_t6="$(_stub_tree)"
+PATH="$_shim:$PATH" "$_real_bash" "$TEST_TEMP_DIR/caller.sh" "$_t6" >/dev/null 2>&1
+assert_eq "[SPEC-6] a healthy load runs no syntax check" "0" "$(grep -c -- '-n' "$TEST_TEMP_DIR/bash-calls" || true)"
 
 cleanup_test_env
 print_test_results

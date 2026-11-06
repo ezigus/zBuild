@@ -94,8 +94,14 @@ _zbuild_make_fresh_shell() {
         # `declare -p`, not `${!_v+x}`: the indirect form probes element 0, so an
         # EMPTY array or hash reads as unset and would survive a scrub that the
         # single-unset version cleared.
+        # #2476: an engine-internal _ZB_* name stops being exported, and keeps
+        # its value: code still running in this shell may read it, a program
+        # it starts never sees it (an exported retry mark switched off every
+        # retry inside the test stage's suite).
+        # shellcheck disable=SC2163  # the name held in _v is the one un-exported
+        if [[ "$_v" == _ZB_* ]]; then export -n "$_v" 2>/dev/null || true; continue; fi
         while declare -p "$_v" >/dev/null 2>&1; do unset "$_v" || break; done
-    done < <(compgen -v 2>/dev/null | grep -E '^(ZBUILD_|_TPL_)' || true)
+    done < <(compgen -v 2>/dev/null | grep -E '^(ZBUILD_|_TPL_|_ZB_)' || true)
     exec 3>&-
     # #2108: the spawned test file or model never reads the caller's stdin. A
     # fresh user shell would have a terminal there; the engine has a

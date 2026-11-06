@@ -84,6 +84,19 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS
 source "$_BUILD_DIR/lib/secrets.sh"
 
 # ─── run ────────────────────────────────────────────────────────────────────
+# _build_summary_head_v <var> <verdict> <terminated_reason> <added> <removed> <files_json>
+# #2476: what the try changed, by file — or that it changed none; a try cut off
+# at its time limit says so. The list is the diff's own ["path",…], read by the shell.
+_build_summary_head_v() {
+    local -n _bsh="$1"; local _v="$2" _t="$3" _a="${4:-0}" _r="${5:-0}" _j="${6:-[]}" _fl=""
+    _j="${_j#[}"; _j="${_j%]}"; _j="${_j//\"/}"
+    [[ -n "$_j" ]] && _fl="${_j//,/, }"
+    if [[ -n "$_fl" ]]; then _bsh="changed ${_fl} (+${_a} / -${_r})"; else _bsh="changed no file"; fi
+    if [[ "$_v" != pass && ( "$_t" == router_timeout || "$_t" == timeout ) ]]; then
+        if [[ -n "$_fl" ]]; then _bsh="ran out of time; ${_bsh} so far"; else _bsh="ran out of time with no file changed"; fi
+    fi
+}
+
 build_stage_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
@@ -409,9 +422,13 @@ _build_stage_run_inner() {
     # `incomplete` run told the next prompt the opposite of build-summary.json.
     # #2178: the files it needed outside scope are part of what build reports.
     local _needs_line; _needs_line="$(_build_scope_needs_line "$artifact_dir/build-summary.json")"
-    stage_summary_write "$artifact_dir/build-summary.md" "build" "$build_verdict" \
-        "changed $files_changed_count file(s) over $_BUILD_ROUND_PASSES pass(es), $(_build_round_total_iterations "$iterations") iteration(s)" \
-        "$(printf -- '- lines: +%s / -%s\n- terminated: %s\n- scope violation: %s%s' "$lines_added" "$lines_removed" "$terminated_reason" "$scope_violation" "${_needs_line:+$'\n'$_needs_line}")"
+    # #2476 (ADR-064 §4): the line names what changed; how it got there is below.
+    local _sum_head; _build_summary_head_v _sum_head "$build_verdict" "$terminated_reason" \
+        "$lines_added" "$lines_removed" "$files_changed_json"
+    stage_summary_write "$artifact_dir/build-summary.md" "build" "$build_verdict" "$_sum_head" \
+        "$(printf -- '- over %s pass(es), %s iteration(s)' "$_BUILD_ROUND_PASSES" "$(_build_round_total_iterations "$iterations")"
+           [[ "$scope_violation" == true ]] && printf -- '\n- it wrote outside its scope'
+           [[ -n "$_needs_line" ]] && printf '\n%s' "$_needs_line")"
     emit_event "plugin.result" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \

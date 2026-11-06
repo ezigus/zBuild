@@ -587,3 +587,21 @@ load-bearing. Extending lint to `tests/` remains a separate decision.
 References: #2103 (the incident and fix), ADR-053 §2.1 (hermeticity is the
 first remediation), ADR-024 §"Amendment 2026-06-15 (#897)" (the TMPDIR fence,
 the same class one layer down).
+
+## Amendment 2026-11-06 (#2476) — no engine-internal `_ZB_*` name reaches a program the engine starts
+
+`plugin_hook_call` marked a retried stage with `local -x _ZB_LC_RETRYING=1`. The export reached every program
+the stage started, the test stage's suite among them, so inside the suite no retry happened:
+`tests/unit/stage-retry-test.sh` and `tests/integration/write-boundary-revert-test.sh` failed in every
+pipeline test stage of #1805 run 42127743259, though both pass on their own, and the shape floor (a full run
+with no failure) could never clear.
+
+- **The retry mark is not exported.** The stage's own shell sees it, so a stage it dispatches still runs once;
+  a program it starts does not.
+- **The fresh shell stops every `_ZB_*` name at the boundary,** as it does `ZBUILD_*` and `_TPL_*`
+  (`_zbuild_make_fresh_shell`): each is un-exported, keeping its value for code still running in that shell.
+
+## Enforced by
+
+- Amendment 2026-11-06 (#2476: `_ZB_*` stays inside the engine) → `tests/integration/retry-mark-boundary-test.sh` B1–B3; `tests/unit/env-scrub-test.sh` #2476
+- The fresh-user-shell scrub (`ZBUILD_*`, `_TPL_*`, fd 3, stdin, TMPDIR) → `tests/unit/env-scrub-test.sh`

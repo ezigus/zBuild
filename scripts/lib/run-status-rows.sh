@@ -78,7 +78,7 @@ rsc_rows_json() {
             # ended when its run did, not when the group was summed up.
             cur(.; $seq) as $k
             | .rows[$k] += {stage: ($d.member // .rows[$k].stage), verdict: ($d.verdict // "unknown"),
-                            reason: $d.reason, summary_path: $d.summary_path,
+                            reason: $d.reason, summary_path: $d.summary_path, result_path: $d.result_path,
                             ended_ts: (.rows[$k].ended_ts // $e.ts)}
           elif $t == "stage.complete" then
             (if $seq != "" and .rows[cur(.; $seq)] != null then cur(.; $seq) else open_for(.; ($d.stage // "")) end) as $k

@@ -571,13 +571,20 @@ _review_lens_run_inner() {
     local score findings_count
     score="$(printf '%s' "$normalized" | jq -r '.score // 0' 2>/dev/null || echo 0)"
     findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"
+    local _rl_head _rl_body
+    _rl_summary_head_v _rl_head "$lens" "$normalized" _rl_body
     stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "$_rl_outcome" \
-        "reviewed the change through the ${lens} lens — $findings_count finding(s), score $score" \
-        "$(printf -- '- artifact: lens-%s.json' "${lens}")"
+        "$_rl_head" "${_rl_body:+$_rl_body$'\n'}- score: $score"
     emit_event "plugin.result" "plugin=review-lens" \
         "lens=$lens" "score=$score" "findings_count=$findings_count" \
         "router_rc=$router_rc"
     return 0
+}
+
+# _rl_summary_head_v <var> <lens> <normalized-json> [body-var] — #2476: what
+# the lens found, or that it found nothing (stage_lens_findings_head_v).
+_rl_summary_head_v() {
+    stage_lens_findings_head_v "$1" "$3" "reviewed the change through the $2 lens: found no problem" "${4:-}"
 }
 
 # ─── review_lens_cleanup ───────────────────────────────────────────────────────

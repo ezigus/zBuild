@@ -55,6 +55,12 @@ _security_lens_envelope_schema_ok() {
 # ADR-054 §6 (#2366, contract 3) / ADR-060 §1: the result, written with the
 # shared writer. Keeps top-level findings/stub for the consumers that read them.
 # Args: <output-path> <outcome> <reason> [<findings-json>]
+# _sl_summary_head_v <var> <findings-json> [body-var] — #2476: what the lens
+# found, or that it found nothing (stage_lens_findings_head_v).
+_sl_summary_head_v() {
+    stage_lens_findings_head_v "$1" "$2" "reviewed the change for security: found no problem" "${3:-}"
+}
+
 _security_lens_write_result() {
     local output="$1" outcome="$2" reason="$3"
     local findings_json="${4:-[]}"
@@ -316,9 +322,11 @@ _security_lens_run_inner() {
     [[ "$_sl_outcome" == pass ]] || _reason="no security review: the model's answer could not be used"
     _security_lens_write_result "$output" "$_sl_outcome" "$_reason" "$findings_json"
 
+    # #2476 (ADR-064 §4): the line names what it found.
+    local _sl_head="$_reason" _sl_body=""
+    [[ "$_sl_outcome" == pass ]] && _sl_summary_head_v _sl_head "$findings_json" _sl_body
     stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "$_sl_outcome" \
-        "$_reason" \
-        "$(printf -- '- artifact: findings.json')"
+        "$_sl_head" "$_sl_body"
     emit_event "plugin.result" "plugin=security-lens" \
         "result_contract=3" \
         "findings_count=$findings_count" \

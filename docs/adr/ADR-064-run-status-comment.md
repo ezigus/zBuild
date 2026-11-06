@@ -253,8 +253,29 @@ GitHub links `#1805` in a comment and shows the issue's title in its place, so `
 `[[bug] --resume … #1805/SPEC-3]`. The comment shows each `[#n/SPEC-m]` label as code, which GitHub leaves
 as written; one already between backticks is left alone.
 
+## Amendment 2026-11-06 (#2476) — §4: a row tells the reader what failed, or what the stage produced
+
+On #1805 run 42127743259 a failing design try's row read "the design fails 2 check(s)", and folded under it
+"The findings are in design's result. This try is kept as the working copy…"; test-author's read "8 finding(s)
+about its assertions are open — the next try fixes them"; a passing build's read "changed 2 file(s) over 1
+pass(es), 1 iteration(s)". Since #2470 a stage's findings live in its result only, and the row was built from
+its summary only, so nothing said what failed. A row is written for the person reading the issue, not for the
+next stage, and says nothing about the stage's mechanics.
+
+- **A try that did not pass says what failed.** When its result holds findings, the row's line is "what
+  failed: <the first finding>" with "(and N more)", and every finding is folded under it; nothing of the
+  summary is shown (`rsc_row_findings_v`). The result is the stage's primary output; a map member's (a lens)
+  is named on its `parallel.member.dispatch.complete` event (`result_path`). A finding is its text, or a
+  lens's severity, message and file. With no findings the row shows the summary, as before.
+- **A stage's summary line says what it produced, or what failed.** intake names the requirements it listed,
+  each with its words under it; design names its SPECs, each with what it covers; test-author names the SPECs
+  it wrote tests for; build names the files it changed (a try cut off at its time limit says so); test says
+  how many passed, or which files failed; a review lens and the security lens name what they found, or that
+  they found nothing. The counts a reader cannot act on go, and so does each stage's line about its own rules.
+
 ## Enforced by
 
+- §4 amendment 2026-11-06 (#2476: a row says what failed, or what the stage produced) → `tests/unit/status-row-findings-test.sh` W1–W4; `tests/unit/stage-summary-says-what-test.sh` S1–S7; `tests/unit/build-round-summary-test.sh` R1, R2
 - Amendment 2026-11-02 (#2460: labels shown as code) → `tests/unit/run-status-comment-render-test.sh` #2460
 - Amendment 2026-11-01 (#2443: stop at 345 minutes) → `tests/unit/ci-stop-before-github-test.sh` C1–C3
 - Amendment 2026-10-28 → `tests/unit/run-status-comment-pages-test.sh` P1–P2 (the whole line, the rest folded), P3 (the snapshot keeps it whole), P4–P6 (parts, not omissions; the newest has the header; earlier parts do not change), P7 (one comment per part); `tests/unit/run-status-comment-render-test.sh` SPEC-4 (never cut), SPEC-6 (no omission); `tests/unit/test-author-loop-test.sh` A9 (test-author counts the test files it changed); `tests/unit/test-author-test.sh` SPEC-14 (a retryable outcome carries no count)

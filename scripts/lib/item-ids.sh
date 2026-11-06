@@ -32,8 +32,9 @@ zb_id_new_form() {
 #   new_active/new_removed    the ids this list has, and says it removes
 #   text                      the issue's own words: an id written there is a
 #                             label of the issue's, never ours (#2035)
-#   other_codes               codes the other kind of item uses: a requirement
-#                             code is never a SPEC code, and the other way round
+#   other_codes               codes the other kind of item uses: a NEW
+#                             requirement code is never a SPEC code, and the
+#                             other way round (zb_id_codes_v makes the list)
 #   carry                     1 when the list itself must keep listing what was
 #                             removed before (a design does; intake's engine
 #                             keeps them for it)
@@ -67,7 +68,9 @@ zb_ids_check_v() {
             hi="${_hi[$code]:-0}"
             (( num > hi && num <= hi + ${_k[$code]:-1} )) || _zic+=("ID_NOT_AFTER_LAST $id $code-$((hi + 1))")
         fi
-        [[ "$oc" == *" $code "* ]] && _zic+=("ID_OTHER_POOL $id")
+        # #2476: only a new id is held to the other pool — a kept one never
+        # moves; the side that just took the code is the one that changes.
+        [[ "$oc" == *" $code "* && "$pa" != *" $id "* ]] && _zic+=("ID_OTHER_POOL $id")
         [[ "$text" =~ (^|[^A-Za-z0-9])$id([^0-9]|$) ]] && _zic+=("ID_IN_ISSUE $id")
     done
     for id in $2; do
@@ -87,6 +90,19 @@ zb_ids_check_v() {
     return 0
 }
 
+# zb_id_codes_v <var> <id>... — the codes of the ids given, each once, space
+# separated: the other_codes zb_ids_check_v takes (#2476). Read by the shell.
+zb_id_codes_v() {
+    local -n _zcv="$1"; shift
+    local _zid
+    _zcv=" "
+    for _zid in "$@"; do
+        [[ "$_zid" =~ $_ZB_ID_NEW_RE ]] || continue
+        [[ "$_zcv" == *" ${BASH_REMATCH[1]} "* ]] || _zcv+="${BASH_REMATCH[1]} "
+    done
+    _zcv="${_zcv# }"; _zcv="${_zcv% }"
+}
+
 # zb_id_plain <violation> <noun> — the sentence a model reads for one broken
 # rule; <noun> is what the id names (requirement, SPEC).
 zb_id_plain() {
@@ -99,7 +115,12 @@ zb_id_plain() {
         ID_REUSED*)    printf '%s was removed earlier and never comes back — give the %s a new id' "$id" "$noun" ;;
         ID_NOT_AFTER_LAST*) printf '%s is new, but its number is not the next after the highest that code has had, removed ones counted — use %s' "$id" "$det" ;;
         ID_REMOVED_UNKNOWN*) printf 'REMOVED: names %s, which the last list never had — remove only an id that was there' "$id" ;;
-        ID_OTHER_POOL*) printf '%s uses a code the issue'"'"'s requirements use — a %s'"'"'s code is its own' "$id" "$noun" ;;
+        ID_OTHER_POOL*)
+            if [[ "$noun" == requirement ]]; then
+                printf '%s uses a code the design'"'"'s SPECs use — a requirement'"'"'s code is its own: choose another' "$id"
+            else
+                printf '%s uses a code the issue'"'"'s requirements use — a %s'"'"'s code is its own' "$id" "$noun"
+            fi ;;
         ID_IN_ISSUE*)  printf '%s is written in the issue itself, where it means something else — choose another id' "$id" ;;
         ID_DROPPED*)   printf '%s was in the last list and is gone — keep it, or say why it goes on its own line: REMOVED: %s — <why>' "$id" "$id" ;;
         ID_REMOVED_LOST*) printf '%s was removed earlier — keep its REMOVED: line, so no later list uses it again' "$id" ;;

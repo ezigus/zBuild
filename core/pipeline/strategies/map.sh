@@ -166,7 +166,7 @@ _map_write_summary() {
             ZBUILD_STAGE_IO_SEQ_LABEL="${ZBUILD_SEQ_PREFIX}.$(( i + 1 ))" \
                 eb_emit_event "parallel.member.dispatch.complete" "group=$stage" \
                 "member=${stage}.${elems[$i]}" "verdict=$outcome" "reason=$reason" \
-                "summary_path=$sum" 2>/dev/null || true
+                "summary_path=$sum" "result_path=$res" 2>/dev/null || true
         fi
     done
     local noun="${dimension:-members}" head

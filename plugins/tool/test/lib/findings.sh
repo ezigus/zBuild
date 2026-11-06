@@ -152,3 +152,21 @@ _test_findings_markdown() {
     [[ -n "$md" ]] || return 0
     printf '## Failing files\n\n%s\n' "$md"
 }
+
+# _test_summary_head_v <var> <verdict> <passed> <failed> <exit_code> <findings_md>
+# #2476 (ADR-064 §4): the summary's line — how many passed, or which files
+# failed (the `- <file> — ` lines _test_findings_markdown writes) — read by the shell.
+_test_summary_head_v() {
+    local -n _tsh="$1"; local _v="$2" _p="${3:-}" _f="${4:-0}" _e="${5:-}" _md="${6:-}" _l _files=""
+    if [[ "$_v" == pass ]]; then
+        if [[ "$_p" =~ ^[0-9]+$ ]]; then _tsh="all ${_p} tests passed"; else _tsh="the suite passed"; fi
+        return 0
+    fi
+    while IFS= read -r _l; do
+        [[ "$_l" == "- "*" — "* ]] || continue
+        _l="${_l#- }"; _files+="${_files:+, }${_l%% — *}"
+    done <<< "$_md"
+    if [[ -n "$_files" ]]; then _tsh="failed: ${_files}"
+    elif [[ "$_f" =~ ^[1-9][0-9]*$ ]]; then _tsh="${_f} test(s) failed"
+    else _tsh="the suite did not run to its end${_e:+ (exit ${_e})}"; fi
+}
