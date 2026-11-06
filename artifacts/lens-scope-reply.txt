@@ -1,0 +1,36 @@
+--- reply 1 ---
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "scope",
+      "severity": "medium",
+      "line": 3166,
+      "message": "The diff emits `stage.start` for ALL cycle member dispatches (iter > 0), not just the interrupted stage k, changing the event contract for every cycle-based pipeline run including fresh runs — this is broader than what DSPK-1 and the issue requested.",
+      "quote": "        # Emit stage.start for cycle members (iter > 0 distinguishes them from\n        # stage:* arm calls which emit stage.start before calling this function).\n        if [[ \"$_cd_iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$_cd_stage\" \\",
+      "introduced": true,
+      "fix": "design"
+    },
+    {
+      "file": "tests/integration/resume-entry-points-test.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "line": 212,
+      "message": "Path 2 (auto-resume) passes ZBUILD_STATE_FILE explicitly, bypassing the actual bug the issue describes: 'auto-resume reads $state_dir/pipeline-state.json before the run switches to runs/<run_id>/, so it may never find the interrupted run's state'; R5/PATH-1/ENTR-1 explicitly requires that the auto-resume path 'finds the interrupted run's state in runs/<run_id>/' — the test does not prove this.",
+      "quote": "    ZBUILD_STATE_FILE=\"$P2_STATE_FILE\" \\",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "scope",
+      "severity": "low",
+      "line": 1734,
+      "message": "`_runner_from_stage_preflight` is declared with 4 parameters but reads `$_runner_issue` as a global rather than accepting issue as a 5th argument, while the companion function `_runner_resume_rehydrate` takes issue explicitly as `$1`.",
+      "quote": "    _artifact_persist_restore \"$_runner_issue\" \"$_fsp_staging\" || true",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

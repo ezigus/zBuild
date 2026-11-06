@@ -1,0 +1,9 @@
+## review-lens-performance — fail
+
+- found: medium: On resume, the dispatch-unit loop calls `get_state_field` (which forks a subshell, then forks `validate_json`/jq, then forks jq again to read the value — three processes) once per stage/cycle iteration; reading all stage statuses into an associative array once before the loop would eliminate O(N) process forks. (core/pipeline/runner.sh:3730) (and 3 more)
+
+- medium: On resume, the dispatch-unit loop calls `get_state_field` (which forks a subshell, then forks `validate_json`/jq, then forks jq again to read the value — three processes) once per stage/cycle iteration; reading all stage statuses into an associative array once before the loop would eliminate O(N) process forks. (core/pipeline/runner.sh:3730)
+- medium: The cycle:* arm of the dispatch-unit loop also calls `get_state_field` per cycle on every resume, adding the same three-process-fork overhead for each cycle unit; both arms should read stage statuses from a single pre-loop bulk read. (core/pipeline/runner.sh:3444)
+- low: For every complete stage skipped on resume, the dispatch-unit loop forks three additional subshells (`_find_plugin_for_stage`, `_verdict_primary_output_path`, `_verdict_resolve_path`) to verify the primary artifact; this work could be done once during `_runner_resume_rehydrate` before the dispatch loop, sharing a single plugin-discovery pass across all stages. (core/pipeline/runner.sh:3737)
+- low: In `_runner_from_stage_preflight`, each stage before the target forks a subshell for `_find_plugin_for_stage` (which calls `discover_plugins_into` even with caching — the cache is in the parent shell and each `$()` subshell must call `discover_plugins` to repopulate its own copy), plus a subshell for `_verdict_primary_output_path` reading the manifest; for a `--from-stage` near the end of a long pipeline this is O(N) manifest reads. (core/pipeline/runner.sh:1756)
+- score: 7

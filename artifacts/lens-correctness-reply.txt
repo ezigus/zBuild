@@ -1,0 +1,58 @@
+--- reply 1 ---
+{
+  "score": 4,
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 2336,
+      "message": "`_cycle_state_jq_write_iter` writes `current_iter = $n` **after** iter N completes; so when a run is interrupted during iter 2 with iter 1 done, the persisted value is 1, not 2 — `_start_iter` becomes 1 and the cycle re-runs the already-completed iteration instead of starting at the interrupted one, contradicting ITER-1.",
+      "quote": "_start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "tests/integration/resume-loop-state-test.sh",
+      "category": "coverage",
+      "severity": "high",
+      "line": 51,
+      "message": "The ITER-1 test creates `current_iter=2` by running **two** full iterations (`zb_engine_loop_state … 2 5 "in_progress"`), which represents \"iter 2 is the last completed iteration\", not \"iter 1 completed before interruption\" as the comment claims; it therefore never tests the real interrupted scenario where only iter 1 has completed and `current_iter=1`, meaning the test passes whatever the code does for the wrong state shape.",
+      "quote": "# This simulates: iter 1 of the cycle completed; the run was interrupted before\n# iter 2 dispatched. After the change the orchestrator reads current_iter=2 and\n# starts from iter 2.",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 3446,
+      "message": "The `cycle:*` resume skip guard skips a complete cycle with only `continue`, performing no artifact verification; unlike the `stage:*` arm (which checks `! -s` on the primary artifact path and exits 1 if absent), a complete cycle whose member artifacts are missing after rehydration is silently skipped, violating RHYD-2 fail-closed semantics for cycle units.",
+      "quote": "if [[ \"$_du_cyc_status\" == \"complete\" ]]; then\n                            info \"Skipping already-complete cycle: $_cyc_id\"\n                            continue\n                        fi",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 3442,
+      "message": "After `skip_until_stage` is cleared at the `--from-stage` target, `resume_mode` remains true; any stage after the target that is already marked `complete` in state (e.g. a fully-completed prior run) is silently skipped by the resume guard, so `--resume --from-stage <s>` on a previously-completed run dispatches only `<s>` and skips all subsequent stages that were previously complete, contrary to the intent of re-running from `<s>` onwards.",
+      "quote": "if $resume_mode && [[ -z \"$skip_until_stage\" ]]; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "low",
+      "line": 1734,
+      "message": "`_runner_from_stage_preflight` silently depends on the global `$_runner_issue` instead of receiving the issue as a parameter, while every other caller-visible parameter is explicit; the function header and signature give no indication of this implicit dependency, making the function impossible to call correctly from outside `main()`.",
+      "quote": "_artifact_persist_restore \"$_runner_issue\" \"$_fsp_staging\" || true",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}
+--- reply 2 ---
+{"score": 3, "findings": [{"file": "core/pipeline/cycle-orchestrator.sh", "category": "logic", "severity": "critical", "line": 2336, "message": "`_cycle_state_write_iter_atomic` is called at the END of each iteration (line 2753), so `current_iter=N` means iteration N has fully completed; when a run is interrupted mid-iter-K before that write, `current_iter=K-1` is in state, and `_start_iter=K-1` re-runs the already-completed iteration instead of the interrupted one — the formula must be `_persisted_iter + 1`.", "quote": "_start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))", "introduced": true, "fix": "code"}, {"file": "tests/integration/resume-loop-state-test.sh", "category": "coverage", "severity": "high", "line": 51, "message": "`zb_engine_loop_state ... 2 5 \"in_progress\"` runs the state writer twice (n=1 and n=2), leaving `current_iter=2` — both iterations have been recorded as completed; the comment that this represents \"iter 1 completed, interrupted before iter 2 dispatched\" is wrong (that scenario would leave `current_iter=1`), so the test never exercises the actual interrupted case and passes even with the off-by-one formula.", "quote": "zb_engine_loop_state \"$STATE_FILE\" \"build-test\" 2 5 \"in_progress\"", "introduced": true, "fix": "test"}, {"file": "core/pipeline/runner.sh", "category": "logic", "severity": "medium", "line": 3446, "message": "The `cycle:*` resume skip guard calls `continue` without verifying that the cycle's member artifacts are present after rehydration; unlike the `stage:*` arm which checks `! -s` on the primary artifact path and exits 1 when absent, a complete cycle whose member artifacts are missing is silently skipped, violating the RHYD-2 fail-closed requirement for cycle units.", "quote": "if [[ \"$_du_cyc_status\" == \"complete\" ]]; then\n                            info \"Skipping already-complete cycle: $_cyc_id\"\n                            continue\n                        fi", "introduced": true, "fix": "code"}, {"file": "core/pipeline/runner.sh", "category": "logic", "severity": "low", "line": 1734, "message": "`_runner_from_stage_preflight` silently reads the global `$_runner_issue` for the restore call, but the function header and signature list only four explicit parameters with no mention of this implicit dependency, making the function impossible to call correctly from outside `main()`.", "quote": "_artifact_persist_restore \"$_runner_issue\" \"$_fsp_staging\" || true", "introduced": true, "fix": "code"}]}

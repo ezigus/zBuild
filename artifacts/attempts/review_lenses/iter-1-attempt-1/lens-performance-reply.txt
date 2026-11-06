@@ -1,0 +1,46 @@
+--- reply 1 ---
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "hot-path allocation",
+      "severity": "medium",
+      "line": 3730,
+      "message": "On resume, the dispatch-unit loop calls `get_state_field` (which forks a subshell, then forks `validate_json`/jq, then forks jq again to read the value — three processes) once per stage/cycle iteration; reading all stage statuses into an associative array once before the loop would eliminate O(N) process forks.",
+      "quote": "_du_stage_status=\"$(get_state_field \"$state_file\" \\\n                            \".stage_statuses[\\\"$_ust\\\"]\" '' 2>/dev/null || true)\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "hot-path allocation",
+      "severity": "medium",
+      "line": 3444,
+      "message": "The cycle:* arm of the dispatch-unit loop also calls `get_state_field` per cycle on every resume, adding the same three-process-fork overhead for each cycle unit; both arms should read stage statuses from a single pre-loop bulk read.",
+      "quote": "_du_cyc_status=\"$(get_state_field \"$state_file\" \\\n                            \".stage_statuses[\\\"$_cyc_id\\\"]\" '' 2>/dev/null || true)\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "hot-path allocation",
+      "severity": "low",
+      "line": 3737,
+      "message": "For every complete stage skipped on resume, the dispatch-unit loop forks three additional subshells (`_find_plugin_for_stage`, `_verdict_primary_output_path`, `_verdict_resolve_path`) to verify the primary artifact; this work could be done once during `_runner_resume_rehydrate` before the dispatch loop, sharing a single plugin-discovery pass across all stages.",
+      "quote": "_du_plugin_dir=\"$(_find_plugin_for_stage \\\n                                \"$_ust\" \"$plugins_root\" 2>/dev/null || true)\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "hot-path allocation",
+      "severity": "low",
+      "line": 1756,
+      "message": "In `_runner_from_stage_preflight`, each stage before the target forks a subshell for `_find_plugin_for_stage` (which calls `discover_plugins_into` even with caching — the cache is in the parent shell and each `$()` subshell must call `discover_plugins` to repopulate its own copy), plus a subshell for `_verdict_primary_output_path` reading the manifest; for a `--from-stage` near the end of a long pipeline this is O(N) manifest reads.",
+      "quote": "_fsp_plugin_dir=\"$(_find_plugin_for_stage \"$_fsp_s\" \"$_fsp_plugins_root\" 2>/dev/null || true)\"",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

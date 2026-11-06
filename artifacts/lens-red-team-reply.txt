@@ -1,0 +1,56 @@
+--- reply 1 ---
+{
+  "score": 5,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 2862,
+      "message": "`_ZBUILD_RESUME_ACTIVE` is exported to true inside the resume branch but is never explicitly cleared (unset or set to false) at the top of `main()`, so a fresh non-resume invocation that inherits `_ZBUILD_RESUME_ACTIVE=true` from a prior crashed run or injected environment causes cycle orchestrators to skip to the persisted iteration instead of starting at iter=1, violating GUAR-2.",
+      "quote": "export _ZBUILD_RESUME_ACTIVE=true",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 1734,
+      "message": "`_runner_from_stage_preflight` reads `$_runner_issue` from outer scope instead of accepting it as a parameter, while its companion `_runner_resume_rehydrate` takes issue as an explicit `$1`; a test or refactored caller must set the global to exercise this function correctly, and the hidden dependency can silently use the wrong issue if the function is ever called outside the current call site.",
+      "quote": "_artifact_persist_restore \"$_runner_issue\" \"$_fsp_staging\" || true",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 1757,
+      "message": "FSTG-2 requires exit 1 when a pre-target stage has no restorable primary artifact, but `[[ -z \"$_fsp_plugin_dir\" ]] && continue` and `[[ -z \"$_fsp_prim_path\" ]] && continue` silently accept stages that have no discoverable plugin or no manifest-defined primary output path, so the preflight check never fires for such stages even when they genuinely have no restored artifact.",
+      "quote": "[[ -z \"$_fsp_plugin_dir\" ]] && continue",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 2349,
+      "message": "When a cycle resumes at the persisted iteration, every stage within that iteration dispatches via `_cycle_dispatch_stage` with iter > 0 and unconditionally emits `stage.start`; stages that completed before the interruption within the same iteration are not skipped, so they re-run, violating RHYD-1 (no stage.start for completed stages) and RESU-2 (outputs byte-identical to interruption state) for within-iteration cycle members.",
+      "quote": "for (( iter=_start_iter; iter <= _CYCLE_MAX_ITER; iter++ ));",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "low",
+      "line": 1712,
+      "message": "`_runner_resume_rehydrate` returns 0 on `_artifact_persist_restore` failure (non-fatal), and the downstream stale-artifact check that is supposed to catch missing artifacts also silently skips stages with no discoverable plugin or no manifest-defined primary output path; such a stage is skipped on resume with no artifacts restored and no error emitted.",
+      "quote": "_artifact_persist_restore \"$_rr_issue\" \"$_rr_staging\" || {\n        rm -rf \"${_rr_staging:?}\" 2>/dev/null || true\n        return 0\n    }",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}
