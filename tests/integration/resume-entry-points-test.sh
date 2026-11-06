@@ -48,7 +48,7 @@ _setup_path_state() {
     local label="$1" issue_id="$2"
 
     P_WORK_REPO="$(setup_git_temp_repo "ep-${label}")"
-    install_template_overlay "$P_WORK_REPO" runner-state-dir-minimal
+    install_template_overlay "$P_WORK_REPO" artifact-snapshot-coverage
 
     P_STATE_DIR="$TEST_TEMP_DIR/${label}-state"
     P_EVENTS_DIR="$TEST_TEMP_DIR/${label}-events"
@@ -95,7 +95,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -109,7 +109,7 @@ jq -n \
 # When — the run is resumed via the --resume flag entry path.
 set +e
 ( cd "$P1_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$P1_STATE_DIR" \
     ZBUILD_STATE_FILE="$P1_STATE_FILE" \
@@ -119,7 +119,7 @@ set +e
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal \
+    bash "$RUNNER" --template artifact-snapshot-coverage \
         --resume --issue "$P1_ID" ) \
     >"$TEST_TEMP_DIR/p1-stdout.txt" 2>"$TEST_TEMP_DIR/p1-stderr.txt"
 set -e
@@ -191,7 +191,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -206,7 +206,7 @@ jq -n \
 #   runner detects status=interrupted and auto-resumes).
 set +e
 ( cd "$P2_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$P2_STATE_DIR" \
     ZBUILD_STATE_FILE="$P2_STATE_FILE" \
@@ -216,7 +216,7 @@ set +e
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal ) \
+    bash "$RUNNER" --template artifact-snapshot-coverage ) \
     >"$TEST_TEMP_DIR/p2-stdout.txt" 2>"$TEST_TEMP_DIR/p2-stderr.txt"
 set -e
 
@@ -285,7 +285,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: $issue,
-        stage_statuses: {intake: "complete", build: "pending"},
+        stage_statuses: {intake: "complete", cyc: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -302,7 +302,7 @@ jq -n \
 # The runner's CWD must be P3_WORK_REPO so _artifact_persist_restore finds the branch.
 set +e
 ( cd "$P3_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$P3_STATE_DIR" \
     ZBUILD_EVENTS_DIR="$P3_EVENTS_DIR" \
@@ -313,7 +313,7 @@ set +e
     PATH="$PATH" HOME="$HOME" \
     bash "$ZBUILD_CLI" pipeline resume \
         --run-id "$P3_RUN_ID" \
-        --template runner-state-dir-minimal ) \
+        --template artifact-snapshot-coverage ) \
     >"$TEST_TEMP_DIR/p3-stdout.txt" 2>"$TEST_TEMP_DIR/p3-stderr.txt"
 set -e
 
