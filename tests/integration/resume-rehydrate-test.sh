@@ -603,6 +603,19 @@ assert_contains "[#1805/AMDR-2] ADR-050 §6 boundary note names ADR-006 as gover
 assert_contains "[#1805/AMDR-2] ADR-050 §6 boundary note says a resume continues the same run" \
     "$_adr050_s6" "continues the same run"
 
+# [#1805/AMDR-2]: §6's Enforced-by section must cite resume-rehydrate-test.sh and
+# resume-entry-points-test.sh by name. The requirement says "§6's Enforced by section
+# updated to cite resume-rehydrate-test.sh (FRSH-2 for the new-run side) and
+# resume-entry-points-test.sh (ENTR-1 for the resume side)". A §6 that only adds the
+# boundary prose but omits the Enforced-by update would still pass the three assertions
+# above but fail these two, ensuring the Enforced-by section was actually updated.
+# This requirement need not fail before this change (no-code property); it must pass after.
+assert_contains "[#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (FRSH-2 for new-run side)" \
+    "$_adr050_s6" "resume-rehydrate-test.sh"
+
+assert_contains "[#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (ENTR-1 for resume side)" \
+    "$_adr050_s6" "resume-entry-points-test.sh"
+
 # ── SPEC-12: fresh (non-resume) run dispatches all stages ─────────────────────
 print_test_section "[#1805/FRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)"
 
@@ -835,6 +848,22 @@ fi
 assert_eq \
     "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
     "0" "$_frsh2_stage_skips"
+
+# [#1805/FRSH-2]: every stage must emit stage.start, not just intake. The cycle stage
+# cyc dispatches its inner member cycled; cycled must also emit stage.start. This proves
+# the full pipeline ran and no stage beyond intake was silently skipped on the fresh-run path.
+# A scenario where only intake dispatched but cycled was somehow skipped would still pass
+# the intake-only assertion above but would fail this one — fulfilling the requirement that
+# "every stage emits a stage.start event", not merely that one stage does.
+# This requirement need not fail before this change (no-code property); it must pass after.
+_frsh2_cycled_starts=0
+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
+    _frsh2_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt \
+    "[#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)" \
+    "$_frsh2_cycled_starts" "0"
 
 # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
