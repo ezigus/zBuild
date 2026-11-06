@@ -1,0 +1,138 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: 585/585 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Lz4HOx/tests/integration/resume-loop-state-test.sh
+
+  resume-loop-state — cycle orchestrator resumes from persisted iter (#1805)
+
+
+  [#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)
+
+(no stage summaries)
+
+
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+  ✓ [#1805/ITER-1] first dispatched iter is 2 (resumed from current_iter=2, not restarted from 1)
+  ✓ [#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
+
+  [#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)
+(no feedback — first iteration)
+
+
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+  ✓ [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
+
+  [#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1
+(no feedback — first iteration)
+
+
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+  ✓ [#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)
+
+  [#1805/CMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched
+
+(no stage summaries)
+
+
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+  ✗ [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
+    expected: 0, got: 1
+  ✓ [#1805/CMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)
+
+  resume-loop-state test uses a fixture containing a cyclic stage
+  ✓ cycle fixture used by resume-loop-state test has type: cycle
+  ✓ resume-loop-state ran the cyclic pipeline (cycle_dispatch_stage was invoked)
+
+
+  1 of 8 tests failed
+
+  ✗ [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
+
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Lz4HOx/tests/integration/resume-rehydrate-test.sh
+
+  resume-rehydrate — artifact restore on resume (#1805)
+
+
+  [#1805/RHYD-1] on resume, artifacts restored from git state branch into ZBUILD_ARTIFACT_DIR
+  ✓ [#1805/RHYD-1] setup: state branch populated with intake-result.json
+  ✓ [#1805/RHYD-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR
+  ✓ [#1805/RHYD-1] artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
+  ✓ [#1805/RHYD-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)
+  ✓ [#1805/RHYD-1] pipeline.resume event emitted (runner reached resume path)
+  ✓ [#1805/RHYD-1] pipeline.resume precedes first stage.start (restore before dispatch loop)
+  ✓ [#1805/RHYD-1] intake emits no stage.start (complete stage skipped)
+  ✓ [#1805/SKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)
+  ✓ [#1805/DSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)
+
+  [#1805/RHYD-1] path 2: auto-resume (status=interrupted) restores artifacts
+  ✓ [#1805/RHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored
+  ✓ [#1805/RHYD-1] path 2 (auto-resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
+  ✓ [#1805/RHYD-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)
+  ✓ [#1805/RHYD-1] path 2 (auto-resume): pipeline.resume event emitted
+  ✓ [#1805/RHYD-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (restore before dispatch loop)
+  ✓ [#1805/RHYD-1] path 2 (auto-resume): intake emits no stage.start (skipped)
+
+  [#1805/RHYD-1] path 3: zbuild pipeline resume --run-id restores artifacts
+  ✓ [#1805/RHYD-1] path 3 (zbuild pipeline resume): intake-result.json restored
+  ✓ [#1805/RHYD-1] path 3 (zbuild pipeline resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
+  ✓ [#1805/RHYD-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)
+  ✓ [#1805/RHYD-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted
+  ✓ [#1805/RHYD-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (restore before dispatch loop)
+  ✓ [#1805/RHYD-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)
+
+  [#1805/RHYD-2] absent artifact causes resume to exit 1 before any stage.start
+  ✓ [#1805/RHYD-2] resume exits 1 when primary artifact cannot be restored
+  ✓ [#1805/RHYD-2] no stage.start emitted before exit 1
+
+  [#1805/AMDR-1] ADR-006 amended: step 3.6 restores artifacts before dispatch loop
+  ✓ [#1805/AMDR-1] ADR-006 step 3.6 added (step number present)
+  ✓ [#1805/AMDR-1] ADR-006 step 3.6 names _runner_resume_rehydrate
+  ✓ [#1805/AMDR-1] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test
+  ✓ [#1805/AMDR-1] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test
+  ✓ [#1805/AMDR-1] ADR-006 step 3.6 documents still-absent artifact causes exit 1
+  ✓ [#1805/AMDR-1] ADR-006 step 3.6 documents restore happens before the dispatch loop
+  ✓ [#1805/AMDR-1] ADR-006 step 3.6 documents artifacts restored from the git state branch
+  ✓ [#1805/AMDR-1] ADR-006 step 3.6 documents ordering constraint (not to be combined with dispatch-loop changes)
+
+  [#1805/AMDR-2] ADR-050 §6 amended: resume governed by ADR-006; new-run invariant governs new runs
+  ✓ [#1805/AMDR-2] ADR-050 §6 boundary note says invariant applies to new runs
+  ✓ [#1805/AMDR-2] ADR-050 §6 boundary note names ADR-006 as governing resume
+  ✓ [#1805/AMDR-2] ADR-050 §6 boundary note says a resume continues the same run
+  ✓ [#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (FRSH-2 for new-run side)
+  ✓ [#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (ENTR-1 for resume side)
+
+  [#1805/FRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)
+  ✓ fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
+  ✓ [#1805/FRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)
+  ✓ [#1805/FRSH-1] fresh run (--no-resume) emits no stage.skip events (all stages dispatched from stage 1; none skipped due to prior state)
+  ✓ [#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
+  ✓ cycle fixture used in fresh-run sub-case has type: cycle
+
+  [#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch
+  ✓ [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
+  ✓ [#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+  ✗ [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
+    expected: 1, got: 0
+
+  resume-rehydrate test uses a fixture containing a cyclic stage
+  ✓ [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
+  ✓ resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
+
+
+  1 of 46 tests failed
+
+  ✗ [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
+
+integration: 258/260 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 880/882 passed (4 skipped)
