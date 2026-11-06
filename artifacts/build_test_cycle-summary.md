@@ -1,7 +1,7 @@
-## build_test_cycle — round 1
+## build_test_cycle — round 2
 
 - design: pass — design_produced
-- test-author: pass — changed 2 test file(s); acceptance assertions for 16 SPEC(s) from the design contract
+- test-author: pass — changed 1 test file(s); acceptance assertions for 16 SPEC(s) from the design contract
 - build: pass — build_complete
-- test: fail — 2 of 882 tests failed; the shape floor failed: missing_floor_files;the acceptance check failed: the acceptance check failed — CMBR-1: its test does not pass on the new code — the code or the test is wrong
-- issue-acceptance: fail — judged the change against the issue: 2 requirement(s) not met or not sure
+- test: pass — 882 of 882 tests passed
+- issue-acceptance: fail — judged the change against the issue: 1 requirement(s) not met or not sure

@@ -1,0 +1,1 @@
+{"result_contract":3,"outcome":"unusable","reason":"the design fails 1 of its checks","data":{"authored_at":"2026-11-06T23:20:48Z","authored_at_commit":"5e9cb1836518b5aa11ca17573c3fe04a1882416e","wiring_files":[],"findings":[{"n":1,"text":"REMOVED: names GUAR-3, which the last list never had — remove only an id that was there"}]}}
