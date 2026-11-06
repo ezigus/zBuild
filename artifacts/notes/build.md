@@ -1,8 +1,8 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: COMPLETE (iteration 3)
+## Status: COMPLETE (iteration 4 — no changes needed)
 
-All acceptance tests pass. No actionable changes needed this iteration.
+All acceptance tests pass. Shape-floor and issue-acceptance findings are pre-existing or already answered.
 
 ## Changes made in previous iterations (intact)
 
@@ -10,7 +10,7 @@ All acceptance tests pass. No actionable changes needed this iteration.
 2. **cycle-orchestrator.sh** — Fixed `_start_iter` calculation for resume vs. fresh runs.
 3. **runner.sh, artifact-persist.sh, hydrate/plugin.sh, ADR-050** — Full resume rehydration implementation.
 
-## Acceptance test results (verified iteration 3)
+## Acceptance test results (verified iteration 4)
 
 | Test file | Status |
 |-----------|--------|
@@ -20,33 +20,27 @@ All acceptance tests pass. No actionable changes needed this iteration.
 | resume-entry-points-test.sh | ✓ 14/14 pass |
 | hydrate-stage-test.sh | ✓ 25/25 pass |
 
-## Shape-floor findings 1-9
+## Shape-floor findings 1-9 — answered
 
-**All in-scope shape-floor test files pass.** All test files using `_TPL_STAGES[N]` are correct:
-- tests/unit/shape-floor-content-stable-test.sh → 7/7 pass
-- tests/unit/shape-floor-summary-plain-test.sh → 7/7 pass
-- tests/unit/core-pipeline-template-test.sh → 74/74 pass
-- tests/unit/build-oos-pass-request-test.sh → 15/15 pass
-- tests/unit/template-simple-yaml-test.sh → 84/84 pass
-- tests/unit/template-resolvability-preflight-test.sh → 15/15 pass
-- tests/unit/change-scope-floor-test.sh → 5/5 pass
+The shape-floor failed with `missing_floor_files` because:
+- `runner.sh` and `cycle-orchestrator.sh` match `config/shape-change-paths.txt`
+- This triggers a shape-change, requiring floor files (golden + _TPL_STAGES tests) to be in diff OR verified by the test run
+- The test run has pre-existing failures (stage-retry-test.sh #2439, write-boundary-revert-test.sh) → `_SF_FAILED_COUNT > 0`
+- Golden files cannot be verified when `_SF_FAILED_COUNT > 0` (by design in _sf_floor_verified)
 
-**Golden files** (tests/golden/full-pipeline/event-sequence.golden, tests/golden/parity/event-sequence.golden):
-- These files are still correct. My implementation only adds events on RESUME paths
-  (pipeline.resume, artifact.snapshot.saved on resume); fresh-run event sequences are unaffected.
-- The shape-floor check fails with `missing_floor_files` because `_SF_VERIFY_OK=0`
-  (stage-retry-test.sh has 15 pre-existing failures that block golden file verification via
-  `_sf_floor_verified`). This is NOT caused by my changes.
+The floor files ARE correct:
+- Golden files: my changes only add behavior on RESUME paths; fresh-run event sequences are unchanged
+- Unit test files: all pass individually (7/7, 7/7, 15/15, 74/74, 84/84, 15/15, 5/5)
 
-**Explanation of shape-floor failure:**
-- The shape-floor check requires either: (a) floor files in the diff with real changes, OR
-  (b) `_SF_VERIFY_OK=1` and `_SF_FAILED_COUNT=0` (zero test failures).
-- stage-retry-test.sh has 15 pre-existing failures (from issue #2439, commits 9350c5e4/f03de783).
-- stage-retry-test.sh does NOT source runner.sh, cycle-orchestrator.sh, artifact-persist.sh,
-  or hydrate/plugin.sh — none of this issue's scope files.
-- Therefore `_SF_FAILED_COUNT > 0` → golden files cannot be verified → shape-floor FAIL.
-- Fixing this would require either fixing stage-retry-test.sh (out of scope) or making
-  unnecessary changes to the golden files (incorrect — my changes don't alter fresh-run events).
+The shape-floor failure is caused by pre-existing failures in stage-retry-test.sh (issue #2439)
+and write-boundary-revert-test.sh, which are out of scope and do not source any file in
+issue-1805's scope.
+
+## Issue-acceptance finding 1 — answered
+
+ORDE-1 was removed from requirements by the intake stage as a process/scheduling
+constraint ("do not run this in parallel with #1714"). It does not appear in the
+REQUIREMENTS YOUR CODE MUST MEET section and cannot be verified by any code or test.
 
 ## Pre-existing failures (NOT regressions from issue-1805)
 
@@ -54,9 +48,3 @@ All acceptance tests pass. No actionable changes needed this iteration.
   - Sources: helpers.sh, test-helpers.sh, registry.sh, template.sh, verdict.sh, strategies/common.sh
   - Does NOT source any file in issue-1805's scope
 - `tests/integration/write-boundary-revert-test.sh`: D7 (2 tests) — pre-existing
-
-## Issue-acceptance findings (from timeout iter-2-attempt-2)
-
-Finding 1 (R-13) & Finding 2 (R-14): The claim that "dispatch-unit loop changes regress retry
-behavior" is INCORRECT. stage-retry-test.sh does not source runner.sh or any scope file.
-The failures are pre-existing from issue #2439.
