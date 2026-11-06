@@ -27,8 +27,10 @@ _OPEN_ITEMS_JQ_PASSED='def passed: (.outcome // "" | ascii_downcase)
 # What a stage wrote, as text (#2480, ADR-064 §4): `<` and `>` outside a code
 # span escaped, so GitHub never takes `<s>` for a tag. Every jq that puts a
 # stage's words into the comment or the PR body uses it.
-_RSC_JQ_ESC='def esc: split("`") | to_entries
-    | map(if .key % 2 == 0 then .value | gsub("<"; "&lt;") | gsub(">"; "&gt;") else .value end) | join("`");'
+# The last piece after an unpaired backtick is text too (review on #2481).
+# shellcheck disable=SC2016  # $n is jq's, not the shell's
+_RSC_JQ_ESC='def esc: split("`") | length as $n | to_entries
+    | map(if .key % 2 == 0 or .key == $n - 1 then .value | gsub("<"; "&lt;") | gsub(">"; "&gt;") else .value end) | join("`");'
 
 # open_items_json <state_dir> — [{ref, opener, text}].
 open_items_json() {

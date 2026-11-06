@@ -54,6 +54,16 @@ x1="$(rsc_render_row "$S" "$(_row 3.1.1.1.1 design pass)")"
 assert_contains "[X1] <s> a stage wrote is escaped" "$x1" "--from-stage &lt;s&gt; rehydrates all stages before &lt;s&gt;"
 assert_contains "[X1] …but not inside a code span" "$x1" "\`--from-stage <s>\`"
 assert_contains "[X1] …and the renderer's own fold stays a tag" "$x1" "<details><summary>the rest of what it reported</summary>"
+# A backtick with no partner opens no code span on GitHub (review on #2481):
+# what follows it is text, and is escaped like any other.
+stage_summary_write "$A/design-summary.md" design pass "1 SPEC(s): FSTG-1" \
+    "- use \`--from-stage <s> to skip"
+x1b="$(rsc_render_row "$S" "$(_row 3.1.1.1.1 design pass)")"
+assert_contains "[X1] <s> after an unpaired backtick is escaped" "$x1b" "\`--from-stage &lt;s&gt; to skip"
+x1c="$( source "$REPO_ROOT/scripts/lib/run-open-items.sh"
+    jq -rn --arg t 'a `b <s>` then `c <d>' "$_RSC_JQ_ESC"'$t | esc' )"
+assert_eq "[X1] …in an open item too, the code span kept as it is" \
+    'a `b <s>` then `c &lt;d&gt;' "$x1c"
 
 # ── X2 ───────────────────────────────────────────────────────────────────────
 printf '%s\n' '{"lens":"scope","findings":[{"file":"a.sh","severity":"medium","message":"auto-resume reads state before the run switches to runs/<run_id>/"}]}' > "$A/lens-scope.json"

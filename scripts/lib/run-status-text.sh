@@ -97,11 +97,13 @@ _rsc_text_v() {
         if (( _rt_code )); then _rt_out+="$_rt_seg"; else _rsc_text_plain "$_rt_seg"; fi
         _rt_out+='`'; _rt_code=$(( 1 - _rt_code ))
     done
-    if (( _rt_code )); then _rt_out+="$_rt_in"; else _rsc_text_plain "$_rt_in"; fi
+    # A backtick with no partner opens no span (review on #2481): what follows
+    # it is text.
+    _rsc_text_plain "$_rt_in"
     _rtv="$_rt_out"
 }
-# _rsc_text_plain <text> — <text> outside a code span, escaped, onto the
-# caller's _rt_out.
+# _rsc_text_plain <text> — <text> outside a code span, escaped, appended to
+# _rt_out, the local of its caller _rsc_text_v (bash's dynamic scope).
 _rsc_text_plain() {
     local _rtp="$1"
     while [[ "$_rtp" == *[\<\>]* ]]; do
