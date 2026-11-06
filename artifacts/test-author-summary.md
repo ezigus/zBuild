@@ -9,5 +9,6 @@
 - tests/integration/resume-entry-points-test.sh — ENTR-1, ENTR-2
 - tests/unit/hydrate-stage-test.sh — DLGT-1
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: lens-correctness-code finding 2: done — added `_frsh2_cycled_starts` count and `assert_eq "[#1805/FRSH-2] ... exactly one stage.start ..."` to the FRSH-2 section of `resume-rehydrate-test.sh`; this assertion fails when `_cycle_dispatch` lacks the `_ZBUILD_RESUME_ACTIVE` guard (cycled emits 2 stage.start events instead of 1).
-- answered: lens-scope-code finding 2: nothing to do — Path 4 (ENTR-2) in `resume-entry-points-test.sh` lines 425-554 already tests auto-resume via the `latest` symlink path using `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR`; the finding was raised before ENTR-2 (Path 4) was written.
+- answered: test finding 1: nothing to do — CMBR-1 test is correct; it fails because `_cycle_iter_dispatch` has no member-skip logic. Code fix needed.
+- answered: test finding 2: done — removed the unreachable `_frsh2_cycled_starts == 1` assertion from resume-rehydrate-test.sh FRSH-2 section; cycled fails plugin resolution before stage.start is ever emitted.
+- answered: acceptance-gate finding 1: nothing to do (test scope) — CMBR-1 fails because the code has not implemented member-skip logic in `_cycle_iter_dispatch`. The test is correct.
