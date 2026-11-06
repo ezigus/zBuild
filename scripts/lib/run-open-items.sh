@@ -24,6 +24,14 @@ _OPEN_ITEMS_SETTLE_RE='[[:space:]]*What would settle it:[[:space:]]*'
 _OPEN_ITEMS_JQ_PASSED='def passed: (.outcome // "" | ascii_downcase)
     | IN("pass", "passed", "approve", "approved", "complete", "success", "skip", "skipped", "");'
 
+# What a stage wrote, as text (#2480, ADR-064 §4): `<` and `>` outside a code
+# span escaped, so GitHub never takes `<s>` for a tag. Every jq that puts a
+# stage's words into the comment or the PR body uses it.
+# The last piece after an unpaired backtick is text too (review on #2481).
+# shellcheck disable=SC2016  # $n is jq's, not the shell's
+_RSC_JQ_ESC='def esc: split("`") | length as $n | to_entries
+    | map(if .key % 2 == 0 or .key == $n - 1 then .value | gsub("<"; "&lt;") | gsub(">"; "&gt;") else .value end) | join("`");'
+
 # open_items_json <state_dir> — [{ref, opener, text}].
 open_items_json() {
     local sd="$1" f
@@ -61,9 +69,9 @@ open_items_count() {
 # item: its name and what is unresolved, then what would settle it.
 open_items_render() {
     local items="$1"
-    jq -r --arg re "$_OPEN_ITEMS_SETTLE_RE" '
+    jq -r --arg re "$_OPEN_ITEMS_SETTLE_RE" "$_RSC_JQ_ESC"'
         to_entries[] | .key as $i | .value as $it
-        | ($it.text // "" | [splits($re)]) as $p
+        | ($it.text // "" | esc | [splits($re)]) as $p
         | ($p[0] | sub("[[:space:]]+$"; "")) as $what
         | (if ($p | length) > 1 and ($p[1:] | join(" ") | length) > 0 then ($p[1:] | join(" "))
            else "the " + $it.opener + " check no longer reports it when it runs again: a change that resolves it, or evidence that it is already resolved"

@@ -25,8 +25,13 @@ rsc_rows_json() {
       def open_for($st; $s): [$st.order[] | select($st.rows[.].stage == $s and $st.rows[.].verdict == null)] | last;
       def cur($st; $q): ($st.cur[$q] // $q);
       def close($k; $e; $f): if $k == null then . else .rows[$k] |= (. + {ended_ts: $e.ts} + $f) end;
+      # #2480 (ADR-064 §4): every loop a position is inside — <loop>.<round>.<member>,
+      # nested — each with its name when its start named it, and its round.
+      def rounds($st; $q): ($q | split(".")) as $p
+        | [range(1; $p | length; 2) as $i
+           | {name: ($st.loops[[range(0; $i; 2) as $j | $p[$j]] | join("/")] // ""), round: $p[$i]}];
       reduce (.[] | select(type == "object")) as $e (
-        {header:{}, rows:{}, order:[], terminal:{}, pr:{}, cardinal:"", cur:{}, next_try:{}};
+        {header:{}, rows:{}, order:[], terminal:{}, pr:{}, cardinal:"", cur:{}, next_try:{}, loops:{}, pending_loop:null};
         ($e.type // "") as $t
         | ($e.seq // "") as $seq
         | ($e.data // {}) as $d
@@ -46,10 +51,16 @@ rsc_rows_json() {
                                             reason:null, summaries:null, resolve:null, try:$nt.try, of:$nt.of})
               | .order += [$nk] | .cur[$seq] = $nk | del(.next_try[$seq])
             elif .rows[$seq] == null then
-              .rows[$seq] = {key:$seq, seq:$seq, stage:($e.stage // ""), kind:($d.kind // ""), started_ts:$e.ts,
+              (.groups[$seq | split(".")[:-1] | join(".")] // false) as $mem
+              | (if .pending_loop != null and ($seq | contains(".")) then .loops[$seq | split(".")[0]] = .pending_loop | .pending_loop = null else . end)
+              | .rows[$seq] = {key:$seq, seq:$seq,
+                             # #2480: a map member is named for its unit from its start.
+                             stage:(if $mem and ($e.unit // "") != "" then $e.unit else ($e.stage // "") end),
+                             kind:($d.kind // ""), started_ts:$e.ts,
                              ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null,
                              # A map member (<group>.<n>) is not a loop iteration.
-                             member: (.groups[$seq | split(".")[:-1] | join(".")] // false)}
+                             member: $mem,
+                             rounds: rounds(.; (if $mem then ($seq | split(".")[:-1] | join(".")) else $seq end))}
               | .order += [$seq]
               | (if ($seq|contains(".")) then .cardinal = ($seq|split(".")[0]) else . end)
             elif .rows[$ck].verdict != null then
@@ -57,6 +68,15 @@ rsc_rows_json() {
               # ended: the row shows the latest start.
               .rows[$ck] += {started_ts:$e.ts, ended_ts:null, verdict:null, rc:null, reason:null, summaries:null, resolve:null}
             else . end
+          elif $t == "cycle.start" then
+            # #2480: which loop a position belongs to. A loop at the top has no
+            # position on its start; the first row after it carries its cardinal.
+            ($d.cycle_id // "") as $cid
+            | if $seq == "" then .pending_loop = $cid
+              else ($seq | split(".")) as $p
+                | (if .pending_loop != null then .loops[$p[0]] = .pending_loop | .pending_loop = null else . end)
+                | .loops[[range(0; $p | length; 2) as $i | $p[$i]] | join("/")] = $cid
+              end
           elif $t == "stage.retry" then
             (if $seq != "" and .rows[cur(.; $seq)] != null then cur(.; $seq) else open_for(.; ($d.stage // $e.stage // "")) end) as $k
             | if $k == null then . else

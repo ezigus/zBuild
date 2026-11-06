@@ -454,7 +454,7 @@ EOF
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a SPEC cannot be tested"
         _ta_write_result "$art" "fail" \
-            "${_ut_first%%:*} cannot be proven by any test — design must rewrite it" "$n" \
+            "${_ut_first%%[ :]*} cannot be proven by any test — design must rewrite it" "$n" \
             "$(stage_findings_json <<< "$_TA_CORR_UNTESTABLE")" ends_round
         return 1
     fi

@@ -30,13 +30,16 @@ declare -F earlier_output_with_text >/dev/null 2>&1 \
 
 # _ireq_design_codes_v <var> — the codes the last design's SPECs use, removed
 # ones counted (ADR-070 §1, #2476): a new requirement never takes one, the rule
-# design's own check keeps the other way round. Read by the shell.
+# design's own check keeps the other way round. Read by the shell. Sets
+# _IREQ_DESIGN_PATH to the design it read, or "" (#2480).
 _ireq_design_codes_v() {
     local -n _idc="$1"; _idc=""
     local _d _l _in=0 _re='^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)\[' _rm='^REMOVED:[[:space:]]*([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)'
     local -a _ids=()
+    _IREQ_DESIGN_PATH=""
     _d="$(earlier_output_with_text '^```acceptance' 2>/dev/null || true)"
     [[ -n "$_d" && -s "$_d" ]] || return 0
+    _IREQ_DESIGN_PATH="$_d"
     while IFS= read -r _l || [[ -n "$_l" ]]; do
         if (( ! _in )); then [[ "$_l" == '```acceptance'* ]] && _in=1; continue; fi
         [[ "$_l" == '```'* || "$_l" == "TESTFILES:"* ]] && break
@@ -260,6 +263,9 @@ _intake_requirements_json_v() {
     fi
     _ireq_prev_load "${_INTAKE_PREV_REQ_JSON:-}"
     _ireq_design_codes_v _IREQ_SPEC_CODES
+    # #2480 (ADR-070 §1): what the one-pool check was given, so a run shows it.
+    declare -F emit_event >/dev/null 2>&1 && emit_event "intake.requirements.design_codes" "plugin=intake" \
+        "codes=${_IREQ_SPEC_CODES:-}" "design=${_IREQ_DESIGN_PATH:-}" 2>/dev/null
     # #2458: intake has no tools and its reply is its output, so both its calls
     # compose fresh — no notes, and no rule to confirm earlier work.
     local _judged="ISSUE:"$'\n'"$issue"

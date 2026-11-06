@@ -178,10 +178,13 @@ assert_contains "[T1] ...and asked for one line for a SPEC whose test is right" 
 assert_contains "[T1] ...and one for each part it is not" "$(_l "$T" T1)" "<identifier> <part>: missing"
 assert_contains "[T1] ...and one for the sections" "$(_l "$T" T1)" "<identifier> sections:"
 assert_eq "[T2] every part ok: corresponds, nothing found, one call" "0||1" "$(_l "$T" T2)"
-assert_contains "[T3] a Then not asserted is a finding" "$(_l "$T" T3)" "1|LOOP-1: 1 part to fix"
+# #2480 (ADR-064 §4): the finding's first line, which a run-status row shows,
+# says what is wrong — the part and why — not how many parts.
+assert_contains "[T3] a Then not asserted is a finding headed with the part and why" "$(_l "$T" T3)" \
+    "1|LOOP-1 And: nothing asserts the outer round~"
 assert_contains "[T3] ...marking the line" "$(_l "$T" T3)" "~  And: the outer loop is still at round 2 [FIX IN TEST: nothing asserts the outer round"
 assert_contains "[T3] ...saying why" "$(_l "$T" T3)" "nothing asserts the outer round"
-assert_contains "[T4] a test without its sections is a finding" "$(_l "$T" T4)" "1|LOOP-1"
+assert_contains "[T4] a test without its sections is a finding headed with why" "$(_l "$T" T4)" "1|LOOP-1 sections: there is no Cleanup section"
 assert_contains "[T4] ...saying what is missing" "$(_l "$T" T4)" "there is no Cleanup section"
 assert_contains "[T4b] a sections line quoting a line of the test is a finding" "$(_l "$T" T4b)" "1|1|LOOP-1"
 assert_contains "[T4b] ...saying what is wrong" "$(_l "$T" T4b)" "the assertion is under Given"

@@ -1,6 +1,7 @@
 # ADR-064 — One live run-status comment per run
 
 **Status:** Proposed (2026-09-18)
+**Amended:** 2026-11-06 (#2480) — a row shows what a stage said as text, names the round of every loop it is in, and says each finding once (§4; see the amendment below).
 **Amended:** 2026-10-14 (#2378) — the open items list only results this run wrote. Hydrate restores an earlier run's results with their saved times; one older than this run's start belongs to a stage that did not run this time, and is left out.
 **Amended:** 2026-10-31 (#2439) — each try of a stage the engine runs again has its own row (see the amendment below).
 **Amended:** 2026-10-28 — nothing a stage reported is cut, and a run that outgrows one comment continues in the next (§4, §6; see the amendment below).
@@ -273,7 +274,20 @@ next stage, and says nothing about the stage's mechanics.
   how many passed, or which files failed; a review lens and the security lens name what they found, or that
   they found nothing. The counts a reader cannot act on go, and so does each stage's line about its own rules.
 
+## Amendment 2026-11-06 (#2480) — §4: a row shows what a stage said as text, and where it sits
+
+On #1805 run 42229975998 design's SPECs said `--from-stage <s>`: GitHub took `<s>` for the strike-through tag, nothing closed it, and the rest of the comment was struck through; `runs/<run_id>/` and `<state_dir>` in the lenses' findings vanished as unknown tags. Design in delivery round 2 read "iter 1" (build_test_cycle's round; the outer one only in the position number). A failed row said its first finding twice: as its line, and first in the list folded under it. test-author's failed row read "ENTR-1: 1 part to fix" and `unusable`; a lens still running read `review_lenses`.
+
+- **A stage's words are text.** `<` and `>` a stage wrote are escaped outside code spans — in a row's line and what is folded under it (`_rsc_text_v`), in its findings, and in the open items (`_RSC_JQ_ESC`); inside a code span they stay. The renderer's own `<details>` stay tags.
+- **A row names the round of every loop it is inside**, by the loop's name when its `cycle.start` named it: `delivery_loop round 2 · build_test_cycle round 1` (`rsc_rows_json` keeps each position's loop; `rounds`). A map member is in its group's rounds.
+- **A failed row says each finding once.** One finding: its first line is the row's line, the rest folded. Several: the line says how many, by severity when they carry one (`3 findings: 1 high, 2 medium`), and each is folded once. This replaces "the first finding (and N more)" of the 2026-11-06 #2476 amendment.
+- **A try run again because its result held findings shows as failed.** `unusable` with findings is a stage's own check finding something (test-author, #2460); the row says `fail`. `unusable` with none — a reply that could not be read — stays.
+- **test-author's finding says what is wrong first:** `ENTR-1 Given: <the judge's reason>` — each part and why — then the SPEC whole with its lines marked; not "ENTR-1: 1 part to fix" (`_sc_judge`).
+- **A running map member shows its own name** (`review_lenses.correctness`), from the unit its start names.
+
 ## Enforced by
+
+- §4 amendment 2026-11-06 (#2480: a stage's words are text; every loop's round; each finding once; fail, not unusable; a running member's name) → `tests/unit/status-row-text-test.sh` X1–X3, R1, R2, L1; `tests/unit/status-row-findings-test.sh` W1, W5–W7; `tests/unit/gwt-judges-test.sh` T3, T4; `tests/unit/test-author-correspondence-test.sh` SPEC-3; `tests/unit/judge-feedback-test.sh` F5; `tests/unit/run-status-comment-render-test.sh` SPEC-3, SPEC-9
 
 - §4 amendment 2026-11-06 (#2476: a row says what failed, or what the stage produced) → `tests/unit/status-row-findings-test.sh` W1–W4; `tests/unit/stage-summary-says-what-test.sh` S1–S7; `tests/unit/build-round-summary-test.sh` R1, R2
 - Amendment 2026-11-02 (#2460: labels shown as code) → `tests/unit/run-status-comment-render-test.sh` #2460

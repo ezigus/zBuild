@@ -124,7 +124,13 @@ can show, so it stayed UNSURE in every round.
   `NOT-A-REQUIREMENT: <id> — <why>` for a listed item; it leaves the list and is kept as removed with its words
   and the reason, so it never comes back. One for an id the list does not have is asked again.
 
+## Amendment 2026-11-06 (#2480) — §1: intake says which codes it held the one pool to
+
+On #1805 run 42229975998 no requirement took a SPEC's code, but nothing showed whether intake had read the last design's codes at all. Intake now leaves `intake.requirements.design_codes` each time it writes its list, with `codes=` the codes it read and `design=` the file it read them from, both empty when there was no design.
+
 ## Enforced by
+
+- §1 amendment 2026-11-06 (#2480: intake says which codes it held the one pool to) → `tests/unit/intake-stable-ids-test.sh` S13
 
 - §1 §2 amendment 2026-11-06 (#2477: the list is kept while nothing it is written from changed) → `tests/unit/intake-kept-list-test.sh` K1–K6
 - §1 amendment 2026-11-06 (#2476: one pool, held by intake too; a note about the work is not a requirement) → `tests/unit/intake-stable-ids-test.sh` S12; `tests/unit/design-stable-ids-test.sh` D6; `tests/unit/intake-process-notes-test.sh` P1–P4

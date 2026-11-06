@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
+**Status:** Accepted (2026-10-27); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -110,7 +110,16 @@ On #1805 run 41489923219 design's step "add `export _ZBUILD_RESUME_ACTIVE=true` 
 - **Each step in `design-steps.json` carries a topic, from its files.** A step whose files are the design's own test files (its TESTFILES) is `tests`: only the stage that writes the tests may change them. A step on code, or on a test file outside that list (a golden, an older test this change must update), is `change`. A step that touches both is split into one of each, with the same words. The same rule the test stage labels its findings by (#2454).
 - **Each stage is shown its own steps.** Build's work plan holds only the `change` steps; test-author's prompt lists the `tests` steps as part of its job. A step written before steps carried a topic counts as `change` (`work_steps_of_topic`).
 
+## Amendment 2026-11-06 (#2480) — §2: a map group's outputs are read member by member
+
+On #1805 run 42229975998 the six review lenses failed in both rounds, and build's Previous work held none of their findings — only the security lens's summary. A map group writes each output once a member (`lens-<id>-code-result.json`), so the output reaches the input index as an array of files. Previous work listed the array's paths but read none of them for findings, and read the summary and result of the first member only; `_summaries_collect` kept the first summary path. Round 1's critical finding never reached build or test-author.
+
+- **Every file of an output is read as a single file is** (`_stage_block_previous_work`, `_sp_output_paths_v`): each member's findings, by the topic its output names (§2, unchanged), labelled by its file — the name `open_items_json` gives it (`lens-correctness-code finding 1`); each member's summary; each member's result for its findings. Nothing is special to the lenses: any map group's outputs are read so.
+- **A map group counts as having a summary when any member wrote one** (`_summaries_collect`), not only the first.
+
 ## Enforced by
+
+- §2 amendment 2026-11-06 (#2480: a map group's outputs are read member by member) → `tests/unit/map-findings-reach-stages-test.sh` M1–M6
 
 - §1 §2 amendment 2026-11-02 (#2458: design's work steps carry a topic; each stage is shown its own) → `tests/unit/design-step-topics-test.sh` T1–T4
 

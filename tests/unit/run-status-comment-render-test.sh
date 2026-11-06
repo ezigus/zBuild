@@ -103,8 +103,8 @@ assert_eq "[SPEC-2] a nested plugin.run.start for the same seq opens no second r
 
 # ─── SPEC-3: row cells ──────────────────────────────────────────────────────
 build_row="$(row_of '**6.1.1 build**')"
-assert_eq "[SPEC-3] closed cycle-member row: start → end (duration) first, then seq, iter, verdict, summary first line (#2145)" \
-    '**8:20 AM ET → 9:21 AM ET (61m33s)** · **6.1.1 build** · iter 1 · **pass** — 3 files changed, tests added' \
+assert_eq "[SPEC-3] closed cycle-member row: start → end (duration) first, then seq, the round (#2480), verdict, summary first line (#2145)" \
+    '**8:20 AM ET → 9:21 AM ET (61m33s)** · **6.1.1 build** · round 1 · **pass** — 3 files changed, tests added' \
     "$build_row"
 intake_row="$(row_of '**1 intake**')"
 assert_eq "[SPEC-3] linear row: no iter, <1s for equal timestamps" \
@@ -114,7 +114,7 @@ test_row="$(row_of '**6.1.2 test**')"
 # A running row names no inputs: every stage gets every earlier stage's latest
 # output, so the list said the same thing on every row.
 assert_eq "[SPEC-3] open row: start, running, injected summaries count, no inputs" \
-    '**9:22 AM ET → running** · **6.1.2 test** · iter 1 · previous work from 3 stage(s) (0 failing)' \
+    '**9:22 AM ET → running** · **6.1.2 test** · round 1 · previous work from 3 stage(s) (0 failing)' \
     "$test_row"
 deploy_row="$(row_of '**9 deploy**')"
 assert_eq "[SPEC-3] open row without an injection: start and running only" \
@@ -198,7 +198,7 @@ EV="$STATE/events.jsonl"   # SPEC-6 pointed EV at the bound fixture
 printf '## build — pass\n\n- OVERWRITTEN by iteration 2\n' > "$STATE/artifacts/build-summary.md"
 body="$(rsc_render_body "$EV" "$STATE")"
 assert_eq "[SPEC-9] the build row still says what it said when it closed" \
-    '**8:20 AM ET → 9:21 AM ET (61m33s)** · **6.1.1 build** · iter 1 · **pass** — 3 files changed, tests added' \
+    '**8:20 AM ET → 9:21 AM ET (61m33s)** · **6.1.1 build** · round 1 · **pass** — 3 files changed, tests added' \
     "$(row_of '**6.1.1 build**')"
 _fresh="$(bash -c 'source "$1"; rsc_render_body "$2" "$3"' _ "$LIB" "$EV" "$STATE" 2>/dev/null | grep -F -- '**6.1.1 build**' | sed -n 1p)"
 assert_contains "[SPEC-9] …and a fresh process (the post-run finalize) renders the same snapshot" "$_fresh" "3 files changed, tests added"

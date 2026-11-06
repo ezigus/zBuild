@@ -18,6 +18,8 @@ source "$_RSC_ROOT/scripts/lib/run-open-items.sh"   # run_end_words, open_items_
 source "$_RSC_ROOT/scripts/lib/run-status-pages.sh"  # rsc_render_pages, rsc_outbound_pages
 # shellcheck source=./run-status-rows.sh
 source "$_RSC_ROOT/scripts/lib/run-status-rows.sh"   # rsc_rows_json
+# shellcheck source=./run-status-text.sh
+source "$_RSC_ROOT/scripts/lib/run-status-text.sh"   # rsc_row_findings_v, _rsc_first_line_v (#2480)
 
 # ─── rsc_byte_len <string> — bytes, not chars (the GitHub limit is bytes) ───
 rsc_byte_len() {
@@ -115,87 +117,6 @@ rsc_row_summary_line_v() {   # <var> <state_dir> <stage>
     _rsc_first_line_v "$1" "$_rsv_p"
 }
 
-# rsc_row_findings_v <var> <state_dir> <stage> [result_path] — what a try that
-# did not pass found (ADR-064 §4, #2476): "what failed: <the first finding>",
-# and every finding folded under it; empty when its result holds none. The
-# result is the stage's primary output (a map member's is named on its event),
-# else `artifacts/<stage>-result.json`. A finding is its text, as
-# stage_findings_json writes it, or a lens's severity, message and file.
-rsc_row_findings_v() {
-    local _rfv_p="${4:-}" _rfv_m="" _rfv_raw="" _rfv_l
-    printf -v "$1" '%s' ""
-    if [[ -z "$_rfv_p" ]] && declare -F _inputs_stage_manifest_v >/dev/null 2>&1 \
-            && declare -F _verdict_primary_output_path_v >/dev/null 2>&1; then
-        _inputs_stage_manifest_v _rfv_m "$3" "${ZBUILD_PLUGINS_ROOT:-$_RSC_ROOT/plugins}" 2>/dev/null || true
-        [[ -n "$_rfv_m" && -f "$_rfv_m" ]] && _verdict_primary_output_path_v _rfv_raw "$_rfv_m"
-        [[ -n "$_rfv_raw" ]] && _rfv_p="$(_inputs_output_paths "$3" "$_rfv_raw" "$2" 2>/dev/null || true)"
-    fi
-    [[ -n "$_rfv_p" && -s "$_rfv_p" ]] || _rfv_p="$2/artifacts/${3}-result.json"
-    [[ -s "$_rfv_p" && "$(<"$_rfv_p")" == *'"findings"'* ]] || return 0
-    _rfv_l="$(jq -r '[ ((.data.findings // .findings // [])[]? | select(type == "object")
-            | if (.text | type) == "string" then .text
-              elif (.message | type) == "string" then
-                  (if (.severity | type) == "string" then "\(.severity): " else "" end) + .message
-                  + (if (.file // "unknown") != "unknown" then " (\(.file)\(if .line then ":\(.line)" else "" end))" else "" end)
-              else empty end
-            | gsub("\r"; "") | gsub("\n+$"; "") | select(test("[^[:space:]]"))) ]
-        | if length == 0 then "" else
-            (.[0] | split("\n")[0]) as $h
-            | "what failed: " + ($h | gsub("\\|"; "\\|")) + (if length > 1 then " (and \(length - 1) more)" else "" end)
-            + (if length > 1 or (.[0] | contains("\n")) then
-                "\n<details><summary>what failed</summary>\n\n"
-                + ([.[] | "- " + gsub("\n"; "\n  ")] | join("\n")) + "\n\n</details>"
-              else "" end)
-          end' "$_rfv_p" 2>/dev/null || true)"
-    [[ -n "$_rfv_l" ]] || return 0
-    _rsc_code_labels_v _rfv_l "$_rfv_l"
-    printf -v "$1" '%s' "$_rfv_l"
-}
-
-# _rsc_first_line_v <var> <summary_file> — the first line with a non-blank
-# character that is not a heading, `- ` stripped, `|` escaped, whole; the rest
-# folded under it.
-_rsc_first_line_v() {
-    local _rsv_p="$2" _rsv_l=""
-    printf -v "$1" '%s' ""
-    [[ -s "$_rsv_p" ]] || return 0
-    # The first line with a non-blank character that is not a heading, read by
-    # the shell (it was an awk: `NF && $0 !~ /^#/`).
-    local _rsv_found=0 _rsv_rest="" _rsv_x
-    while IFS= read -r _rsv_x || [[ -n "$_rsv_x" ]]; do
-        if (( _rsv_found )); then
-            _rsv_rest+="${_rsv_x}"$'\n'
-        elif [[ "$_rsv_x" =~ [^[:space:]] && "$_rsv_x" != \#* ]]; then
-            _rsv_found=1; _rsv_l="$_rsv_x"
-        fi
-    done < "$_rsv_p"
-    (( _rsv_found )) || return 0
-    _rsv_l="${_rsv_l#- }"
-    _rsv_l="${_rsv_l//|/\\|}"
-    # The rest, without its leading and trailing blank lines.
-    while [[ "$_rsv_rest" == $'\n'* ]]; do _rsv_rest="${_rsv_rest#$'\n'}"; done
-    while [[ "$_rsv_rest" == *$'\n' ]]; do _rsv_rest="${_rsv_rest%$'\n'}"; done
-    [[ "$_rsv_rest" =~ [^[:space:]] ]] \
-        && _rsv_l+=$'\n'"<details><summary>the rest of what it reported</summary>"$'\n\n'"${_rsv_rest}"$'\n\n'"</details>"
-    _rsc_code_labels_v _rsv_l "$_rsv_l"
-    printf -v "$1" '%s' "$_rsv_l"
-}
-
-# _rsc_code_labels_v <var> <text> — each requirement label, `[#1805/FSTG-1]`
-# (#2462: any SPEC id, descriptive or the old SPEC-3),
-# shown as code (#2460): GitHub links `#1805` and shows the issue's title in its
-# place. One already between backticks is left as it is. Read by the shell.
-_rsc_code_labels_v() {
-    local -n _rcl="$1"; local _in="$2" _out="" _pre _lbl
-    local _re='\[#[0-9]+/[A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+\]'
-    while [[ "$_in" =~ $_re ]]; do
-        _lbl="${BASH_REMATCH[0]}"; _pre="${_in%%"$_lbl"*}"
-        if [[ "$_pre" == *'`' ]]; then _out+="$_pre$_lbl"; else _out+="$_pre\`$_lbl\`"; fi
-        _in="${_in#*"$_lbl"}"
-    done
-    _rcl="$_out$_in"
-}
-
 # ─── #2154: a closed row's summary is a snapshot ─────────────────────────────
 # A stage writes ONE summary file and a later iteration overwrites it, so a
 # live re-read made iteration-1 rows change after the fact (#1840 run 5). The
@@ -268,11 +189,12 @@ rsc_render_row() {
     local members from reason it _f
     _f="$(jq -r '[.kind, .seq, .started_ts, .stage, .ended_ts, .verdict, .rc, .summaries,
                   (.resolve // "0"), ((.members // []) | map(tostring) | join(", ")), .from_iter, .reason, .iter,
-                  .summary_path, (.member // false), (.key // .seq), .try, .result_path, .of]
+                  .summary_path, (.member // false), (.key // .seq), .try, .result_path, .of,
+                  ((.rounds // []) | map((if .name != "" then .name + " " else "" end) + "round " + .round) | join(" · "))]
                  | map(. // "" | tostring) | join("\u001f")' <<< "$row")"
-    local spath member key try rpath of
-    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try rpath of <<< "$_f" || true
-    of="${of%$'\n'}"
+    local spath member key try rpath of rounds
+    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try rpath of rounds <<< "$_f" || true
+    rounds="${rounds%$'\n'}"
     # #2439: a try the engine ran again says which, of how many.
     local tries=""
     [[ -n "$try" ]] && tries=" · try ${try}${of:+ of ${of}}"
@@ -281,29 +203,29 @@ rsc_render_row() {
             "$(_rsc_clock "$started")" "$seq" "$it" "$members" "$from" "$reason"
         return 0
     fi
-    # iter = second-to-last segment: `6.1.3` → 1, `1.2` → 1, `6.1.3.2.1` → 2.
+    # #2480: the round of every loop the row is inside, named when known
+    # (`delivery_loop round 2 · build_test_cycle round 1`); a row made before
+    # rounds were kept says the innermost, as `iter`: `6.1.3` → 1.
     iter=""
-    if [[ "$seq" == *.* && "$member" != true ]]; then
-        local _s="${seq%.*}"; iter="${_s##*.}"
+    if [[ -n "$rounds" ]]; then iter="$rounds"
+    elif [[ "$seq" == *.* && "$member" != true ]]; then
+        local _s="${seq%.*}"; iter="iter ${_s##*.}"
     fi
     # #2145: WHEN first — a reader scanning the feed wants the clock before
     # the name. seq + stage stay bold and second.
     if [[ -z "$verdict" ]]; then
         local _c1; _rsc_clock_v _c1 "$started"
         line="**${_c1} → running** · **${seq} ${stage}**"
-        [[ -n "$iter" ]] && line+=" · iter ${iter}"
+        [[ -n "$iter" ]] && line+=" · ${iter}"
         line+="$tries"
         [[ -n "$summaries" ]] && line+=" · previous work from ${summaries} stage(s) (${resolve} failing)"
     else
         [[ -z "$ended" ]] && ended="$started"
         local _c1 _c2 _du; _rsc_clock_v _c1 "$started"; _rsc_clock_v _c2 "$ended"; rsc_duration_v _du "$started" "$ended"
         line="**${_c1} → ${_c2} (${_du})** · **${seq} ${stage}**"
-        [[ -n "$iter" ]] && line+=" · iter ${iter}"
+        [[ -n "$iter" ]] && line+=" · ${iter}"
         line+="$tries"
-        local v="$verdict"
-        [[ "$v" != "pass" && -n "$rc" && "$rc" != "0" ]] && v+=" rc=${rc}"
-        line+=" · **${v}**"
-        local summary
+        local v="$verdict" summary
         # Frozen for THIS close: a retry closes again with a new ended_ts and
         # the line re-freezes from the live file (#2166).
         # Keyed by the row (#2439: two tries share a seq).
@@ -322,6 +244,11 @@ rsc_render_row() {
                 _RSC_SNAP["$key"]="$summary"; _RSC_SNAP_END["$key"]="$ended"; _RSC_SNAP_DIRTY=1
             fi
         fi
+        # #2480: a try the engine ran again because its result held findings
+        # (`unusable`, a stage's "my own check found something") failed.
+        [[ "$v" == unusable && "$summary" == "what failed: "* ]] && v=fail
+        [[ "$v" != "pass" && -n "$rc" && "$rc" != "0" ]] && v+=" rc=${rc}"
+        line+=" · **${v}**"
         if [[ -n "$summary" ]]; then
             line+=" — ${summary}"
         else

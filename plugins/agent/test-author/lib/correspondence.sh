@@ -153,7 +153,7 @@ _sc_judge() {
     local -n _scj_parts="$3"
     _SC_V="" _SC_F="" _SC_U="" _SC_LINES="" _SC_PROBLEM=""
     local -A _scj_text=() _scj_pw=() _scj_mark=()
-    local -a _scj_order=() _scj_bad=()
+    local -a _scj_order=() _scj_bad=() _scj_head=()
     local _scj_x _scj_l _scj_lab _scj_pw1 _scj_num _scj_word _scj_rest _scj_why _scj_q _scj_w _scj_c _scj_cand
     local _scj_seen=0 _scj_miss=0 _scj_wrong=0 _scj_sect="" _scj_unt="" _scj_n=0
     for _scj_x in ${_scj_parts[@]+"${_scj_parts[@]}"}; do
@@ -187,6 +187,7 @@ _sc_judge() {
             fi
             _scj_miss=$((_scj_miss + 1)); _scj_n=$((_scj_n + 1))
             _scj_sect="${_scj_why:-a section is missing}"
+            _scj_head+=("sections: $_scj_sect")
             continue
         fi
         if [[ -z "$_scj_pw1" ]]; then
@@ -200,6 +201,7 @@ _sc_judge() {
                 _judge_holds "${_scj_text[$_scj_lab]}" "${BASH_REMATCH[1]}" && { _scj_c="$_scj_lab"; break; }
             done
             _scj_n=$((_scj_n + 1))
+            _scj_head+=("${_scj_c:+${_scj_pw[$_scj_c]}: }$_scj_unt — no test can prove it")
             _scj_mark["${_scj_c:-^}"]+=" [FIX IN DESIGN: $_scj_unt — no test can prove it; say something a test can see the code do]"
             continue
         fi
@@ -237,6 +239,7 @@ _sc_judge() {
         fi
         if [[ "$_scj_word" == wrong ]]; then
             _scj_wrong=$((_scj_wrong + 1)); _scj_n=$((_scj_n + 1))
+            _scj_head+=("${_scj_pw[$_scj_lab]}: the test does something else: ${_scj_why:-not what this line says}")
             _scj_mark["$_scj_lab"]+=" [FIX IN TEST: the test does something else: ${_scj_why:-not what this line says} — make it do what this line says]"
         else
             _scj_miss=$((_scj_miss + 1)); _scj_n=$((_scj_n + 1))
@@ -246,6 +249,7 @@ _sc_judge() {
                 Cleanup*) _scj_x="put this back at the end of the test" ;;
                 *)        _scj_x="assert this, so the test fails when it is not so" ;;
             esac
+            _scj_head+=("${_scj_pw[$_scj_lab]}: ${_scj_why:-the test does not do it}")
             _scj_mark["$_scj_lab"]+=" [FIX IN TEST: ${_scj_why:-the test does not do it} — $_scj_x]"
         fi
     done <<< "$_scj_reply"
@@ -264,10 +268,11 @@ _sc_judge() {
     elif (( _scj_wrong )); then _SC_V=mismatch
     elif (( _scj_miss )); then _SC_V=partial
     else _SC_V=corresponds; return 0; fi
-    # The SPEC whole, the lines to fix marked.
-    local _scj_out
-    _scj_x=s; (( _scj_n == 1 )) && _scj_x=""
-    _scj_out="$_scj_sid: $_scj_n part$_scj_x to fix"$'\x1e'"$_scj_first${_scj_mark[^]:-}"
+    # The SPEC whole, the lines to fix marked, under a first line that says
+    # what is wrong (#2480, ADR-064 §4): a run-status row shows that line.
+    local _scj_out _scj_h=""
+    for _scj_x in ${_scj_head[@]+"${_scj_head[@]}"}; do _scj_h+="${_scj_h:+; }$_scj_x"; done
+    _scj_out="$_scj_sid $_scj_h"$'\x1e'"$_scj_first${_scj_mark[^]:-}"
     for _scj_lab in "${_scj_order[@]}"; do
         _scj_out+=$'\x1e'"  ${_scj_pw[$_scj_lab]}: ${_scj_text[$_scj_lab]}${_scj_mark[$_scj_lab]:-}"
     done
