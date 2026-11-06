@@ -18,5 +18,4 @@
 - HYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
 - TEST-1: Tests for R1–R5 must use a cycle.
 - DISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.
-- the requirements changed since the last run:
-  - removed: ORDE-1 Do not run this in parallel with another issue that edits the dispatch loop. — This is a process/ordering constraint ("what not to run it alongside"), not a requirement for what the code must do. The job instructions explicitly exclude such notes: "Nor is a note about how or when to do the work — the order to do it in, what not to run it alongside, when to start it: no change to the code can show it is met." This statement does not appear in the issue text itself.
+- the requirements are the same as the last run's
