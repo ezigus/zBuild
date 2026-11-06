@@ -2,5 +2,5 @@
 7167b5dc6b088c24853205e811d93bd87fc647cae8b8ff5370dd35a72794278d  tests/integration/resume-rehydrate-test.sh
 18753868b8f3eb803f5b3d7a6602c05c91c5900d18423d22d85c911d4f44bc3b  tests/integration/from-stage-rehydrate-test.sh
 d8dd26acf3882de8887972c8cd51b3cab8f26c333752bd6d09091b8070d87817  tests/integration/resume-loop-state-test.sh
-c34d0388274bcf0c4c03d9341419b465b5c922dd8e34f9bec8cf89919058796f  tests/integration/resume-entry-points-test.sh
+79ec6aabaff2024827ef085cb7b86d318a187972116c8307f8a6219b37ccd101  tests/integration/resume-entry-points-test.sh
 9f1059db86b5df197289a9326fa751b05ee5adfb576331985d56e4b6c8e02d92  tests/unit/hydrate-stage-test.sh

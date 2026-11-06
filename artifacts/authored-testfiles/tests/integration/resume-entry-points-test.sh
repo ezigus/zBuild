@@ -42,15 +42,19 @@ mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
 # ── Shared helper: set up a work repo with a state branch for one path ──────────
-# Usage: _setup_path_state <label> <issue_id> → sets:
+# Usage: _setup_path_state <label> <issue_id> <run_id> → sets:
 #   P_WORK_REPO, P_STATE_DIR, P_STATE_FILE, P_EVENTS_DIR, P_EVENTS_JSONL
+#   State is at <TEST_TEMP_DIR>/<label>-state-root/runs/<run_id>/ (per ENTR-1 Given).
 _setup_path_state() {
-    local label="$1" issue_id="$2"
+    local label="$1" issue_id="$2" run_id="$3"
 
     P_WORK_REPO="$(setup_git_temp_repo "ep-${label}")"
     install_template_overlay "$P_WORK_REPO" artifact-snapshot-coverage
 
-    P_STATE_DIR="$TEST_TEMP_DIR/${label}-state"
+    # State layout: per-run path <state-root>/runs/<run_id>/ (ENTR-1 Given:
+    # "state is persisted in runs/<run_id>/").
+    local _P_STATE_ROOT="$TEST_TEMP_DIR/${label}-state-root"
+    P_STATE_DIR="$_P_STATE_ROOT/runs/$run_id"
     P_EVENTS_DIR="$TEST_TEMP_DIR/${label}-events"
     P_STATE_FILE="$P_STATE_DIR/pipeline-state.json"
     P_EVENTS_JSONL="$P_EVENTS_DIR/events.jsonl"
@@ -78,9 +82,10 @@ _setup_path_state() {
 print_test_section "[#1805/ENTR-1] path 1: bash runner.sh --resume restores artifacts"
 
 # Given — a run has been interrupted; stage intake is marked complete with its artifact
-#   present in the git state branch; run state is persisted in the state dir.
+#   present in the git state branch; run state is persisted in runs/<run_id>/ per ENTR-1.
 P1_ID="$(zb_test_issue)"
-_setup_path_state "p1" "$P1_ID"
+P1_RUN_ID="s9-p1-resume-1805"
+_setup_path_state "p1" "$P1_ID" "$P1_RUN_ID"
 P1_WORK_REPO="$P_WORK_REPO"
 P1_STATE_DIR="$P_STATE_DIR"
 P1_STATE_FILE="$P_STATE_FILE"
@@ -88,7 +93,7 @@ P1_EVENTS_DIR="$P_EVENTS_DIR"
 P1_EVENTS_JSONL="$P_EVENTS_JSONL"
 
 jq -n \
-    --arg run_id "s9-p1-resume-1805" \
+    --arg run_id "$P1_RUN_ID" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson issue "$P1_ID" \
     '{
@@ -173,9 +178,11 @@ assert_eq "[#1805/ENTR-1] path 1 (--resume flag): no stage.start for intake (com
 print_test_section "[#1805/ENTR-1] path 2: auto-resume on status=interrupted restores artifacts"
 
 # Given — a run has been interrupted (status=interrupted); stage intake is marked
-#   complete with its artifact present in the git state branch.
+#   complete with its artifact present in the git state branch; run state is persisted
+#   in runs/<run_id>/ per ENTR-1.
 P2_ID="$(zb_test_issue)"
-_setup_path_state "p2" "$P2_ID"
+P2_RUN_ID="s9-p2-resume-1805"
+_setup_path_state "p2" "$P2_ID" "$P2_RUN_ID"
 P2_WORK_REPO="$P_WORK_REPO"
 P2_STATE_DIR="$P_STATE_DIR"
 P2_STATE_FILE="$P_STATE_FILE"
@@ -184,7 +191,7 @@ P2_EVENTS_JSONL="$P_EVENTS_JSONL"
 
 # status=interrupted → get_resume_recommendation → auto_resume → resume_mode=true.
 jq -n \
-    --arg run_id "s9-p2-resume-1805" \
+    --arg run_id "$P2_RUN_ID" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson issue "$P2_ID" \
     '{
@@ -265,15 +272,15 @@ print_test_section "[#1805/ENTR-1] path 3: zbuild pipeline resume --run-id resto
 
 # Given — a run has been interrupted (status=interrupted); stage intake is marked
 #   complete with its artifact present in the git state branch; run state persisted
-#   with a known run_id.
+#   with a known run_id in runs/<run_id>/ per ENTR-1.
 P3_ID="$(zb_test_issue)"
-_setup_path_state "p3" "$P3_ID"
+P3_RUN_ID="s9-p3-resume-1805"
+_setup_path_state "p3" "$P3_ID" "$P3_RUN_ID"
 P3_WORK_REPO="$P_WORK_REPO"
 P3_STATE_DIR="$P_STATE_DIR"
 P3_STATE_FILE="$P_STATE_FILE"
 P3_EVENTS_DIR="$P_EVENTS_DIR"
 P3_EVENTS_JSONL="$P_EVENTS_JSONL"
-P3_RUN_ID="s9-p3-resume-1805"
 
 # status=interrupted so zbuild doesn't refuse (aborted requires --force;
 # interrupted is accepted). zbuild changes it to in_progress, then runner sees --resume.
@@ -414,6 +421,133 @@ assert_eq "cyclic fixture pipeline ran in resume-entry-points test (intake dispa
 # intake dispatching into a cycle-fixture pipeline is sufficient evidence the pipeline
 # executed (not just a non-cyclic path). The cycled sub-stage dispatch depends on the
 # cycle-orchestrator implementation and is not required by SPEC-9 (artifact restoration).
+
+# ── PATH 4 (ENTR-2): auto-resume via `latest` symlink, no ZBUILD_STATE_FILE ───
+print_test_section "[#1805/ENTR-2] auto-resume via latest symlink (no ZBUILD_STATE_FILE set)"
+
+# Given — a previous run stored state at $ZBUILD_STATE_ROOT/runs/<run_id>/pipeline-state.json
+#   with status=interrupted; $ZBUILD_STATE_ROOT/latest symlinks to that per-run dir;
+#   ZBUILD_STATE_FILE and ZBUILD_STATE_DIR are unset.
+P4_ID="$(zb_test_issue)"
+P4_RUN_ID="e2-p4-resume-1805"
+P4_WORK_REPO="$(setup_git_temp_repo "ep-p4")"
+install_template_overlay "$P4_WORK_REPO" artifact-snapshot-coverage
+
+P4_STATE_ROOT="$TEST_TEMP_DIR/p4-state-root"
+P4_RUN_DIR="$P4_STATE_ROOT/runs/$P4_RUN_ID"
+P4_EVENTS_DIR="$TEST_TEMP_DIR/p4-events"
+P4_EVENTS_JSONL="$P4_EVENTS_DIR/events.jsonl"
+mkdir -p "$P4_RUN_DIR/artifacts" "$P4_EVENTS_DIR"
+
+# Write the intake artifact and snapshot it to the git state branch.
+printf '{"result_contract":3,"outcome":"pass","reason":"prior-run intake entr2"}' \
+    > "$P4_RUN_DIR/artifacts/intake-result.json"
+
+_p4_snap_rc=0
+( export ZBUILD_STATE_DIR="$P4_RUN_DIR"
+  cd "$P4_WORK_REPO" && _artifact_persist_snapshot "$P4_RUN_DIR" "$P4_ID" ) \
+    >"$TEST_TEMP_DIR/p4-snap.log" 2>&1 || _p4_snap_rc=$?
+if [[ "$_p4_snap_rc" -ne 0 ]]; then
+    echo "setup-p4: snapshot to state branch failed (rc=$_p4_snap_rc):" >&2
+    cat "$TEST_TEMP_DIR/p4-snap.log" >&2
+fi
+
+# Remove artifact from disk; it now lives only on the state branch.
+rm -f "$P4_RUN_DIR/artifacts/intake-result.json"
+
+# Create the latest symlink pointing to the per-run state dir.
+ln -sfn "$P4_RUN_DIR" "$P4_STATE_ROOT/latest"
+
+# Write state file at the per-run path with status=interrupted and intake=complete.
+jq -n \
+    --arg run_id "$P4_RUN_ID" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$P4_ID" \
+    '{
+        schema_version: 1,
+        run_id: $run_id,
+        issue: $issue,
+        stage_statuses: {intake: "complete", cyc: "pending"},
+        current_iteration: 0,
+        self_heal_count: {},
+        scope_manifest_hash: "",
+        cost_ledger_pointer: 0,
+        claim_lease_id: "",
+        plugin_state: {},
+        status: "interrupted",
+        updated_at: $now
+    }' > "$P4_RUN_DIR/pipeline-state.json"
+
+# When — runner invoked with ZBUILD_STATE_FILE and ZBUILD_STATE_DIR unset;
+#   only ZBUILD_STATE_ROOT is set, pointing to the state root containing the
+#   latest symlink. The runner must find state via $ZBUILD_STATE_ROOT/latest.
+set +e
+( cd "$P4_WORK_REPO" && env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR \
+    ZBUILD_CYCLES_ENABLED=1 \
+    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+    ZBUILD_STATE_ROOT="$P4_STATE_ROOT" \
+    ZBUILD_EVENTS_DIR="$P4_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$P4_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template artifact-snapshot-coverage ) \
+    >"$TEST_TEMP_DIR/p4-stdout.txt" 2>"$TEST_TEMP_DIR/p4-stderr.txt"
+set -e
+
+# Then
+# [#1805/ENTR-2]: pipeline.resume event emitted (auto-resume fired via latest symlink).
+# Before change: state_file=$ZBUILD_STATE_ROOT/pipeline-state.json doesn't exist
+#   (state only at runs/<run_id>/) → [[ -f "$state_file" ]] is false → auto-resume
+#   block not entered → pipeline.resume not emitted → resume_lineno=0 →
+#   assert_gt 0 > 0 → FAILS.
+# After change: runner follows latest symlink → finds pipeline-state.json with
+#   status=interrupted → auto-resumes → pipeline.resume emitted → PASSES.
+_p4_resume_lineno=0
+if [[ -f "$P4_EVENTS_JSONL" ]]; then
+    _p4_resume_lineno="$(awk '/"pipeline.resume"/{print NR; exit}' "$P4_EVENTS_JSONL" 2>/dev/null)"
+    _p4_resume_lineno="${_p4_resume_lineno:-0}"
+fi
+assert_gt "[#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume event emitted (resume_mode=true)" \
+    "$_p4_resume_lineno" "0"
+
+# [#1805/ENTR-2]: artifacts were restored BEFORE any stage.start event. The runner emits
+#   pipeline.resume immediately after _runner_resume_rehydrate returns, before the dispatch
+#   loop. A pipeline.resume line number lower than the first stage.start line number proves
+#   the rehydration completed before any stage was dispatched.
+# Before change: auto-resume not triggered → no pipeline.resume → resume_lineno=0 →
+#   the assert_gt resume > 0 above already fails; this assertion adds explicit ordering
+#   evidence that the artifact was placed BEFORE the dispatch loop.
+# After change: auto-resume via latest → pipeline.resume emitted before dispatch →
+#   first_start_lineno > resume_lineno → PASSES.
+_p4_first_start_lineno=0
+if [[ -f "$P4_EVENTS_JSONL" ]]; then
+    _p4_first_start_lineno="$(awk '/"stage.start"/{print NR; exit}' "$P4_EVENTS_JSONL" 2>/dev/null)"
+    _p4_first_start_lineno="${_p4_first_start_lineno:-0}"
+fi
+assert_gt "[#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume precedes first stage.start (artifact restored before dispatch loop)" \
+    "$_p4_first_start_lineno" "$_p4_resume_lineno"
+
+# [#1805/ENTR-2]: completed-stage artifacts restored from the per-run state directory
+#   before any stage.start event is emitted.
+# Before change: auto-resume not triggered → no rehydration call → artifact absent → FAILS.
+# After change: auto-resume via latest → _runner_resume_rehydrate → artifact restored → PASSES.
+assert_file_exists \
+    "[#1805/ENTR-2] auto-resume via latest symlink: intake-result.json restored from per-run state dir" \
+    "$P4_RUN_DIR/artifacts/intake-result.json"
+
+# [#1805/ENTR-2]: no stage.start event for intake (a stage marked complete in the
+#   per-run state file). The dispatch loop must skip it.
+# Before change: no resume_mode → intake dispatched normally → intake_starts=1 → FAILS.
+# After change: resume_mode → dispatch loop skips intake → intake_starts=0 → PASSES.
+_p4_intake_starts=0
+if [[ -f "$P4_EVENTS_JSONL" ]]; then
+    _p4_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+        "$P4_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/ENTR-2] auto-resume via latest symlink: no stage.start for intake (complete stage skipped)" \
+    "0" "$_p4_intake_starts"
 
 cleanup_test_env
 print_test_results
