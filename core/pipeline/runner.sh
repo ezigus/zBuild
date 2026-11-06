@@ -1805,6 +1805,18 @@ main() {
             issue="$_sf_issue"
         fi
     fi
+    # Also try latest symlink for per-run default layout when ZBUILD_STATE_FILE is
+    # unset (ADR-059 §1 / #1805 ENTR-2): state lives at runs/<run_id>/ not at root.
+    if [[ -z "$issue" && -z "$goal" && -z "${ZBUILD_STATE_FILE:-}" ]]; then
+        local _ls_sd="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/latest"
+        if [[ -L "$_ls_sd" && -f "$_ls_sd/pipeline-state.json" ]]; then
+            local _ls_issue
+            _ls_issue="$(jq -r '.issue // ""' "$_ls_sd/pipeline-state.json" 2>/dev/null || true)"
+            if [[ "$_ls_issue" =~ ^[0-9]+$ && "$_ls_issue" != "0" ]]; then
+                issue="$_ls_issue"
+            fi
+        fi
+    fi
     if [[ -z "$issue" && -z "$goal" ]]; then
         error "Must specify --issue <N> or --goal \"<text>\""
         _usage
@@ -2172,6 +2184,31 @@ main() {
         case "$recommendation" in
             auto_resume)
                 info "Auto-resuming previous run (use --no-resume to force fresh start)"
+                resume_mode=true
+                _runner_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
+                _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
+                ;;
+            manual_resume_only)
+                info "Previous run requires explicit --resume (or --force for aborted)"
+                resume_mode=false
+                ;;
+            fresh_start|*)
+                resume_mode=false
+                ;;
+        esac
+    elif ! $no_resume && [[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]] \
+         && [[ -f "$state_dir/latest/pipeline-state.json" ]]; then
+        # Auto-resume via latest symlink (per-run layout, ADR-059 §1 / #1805 ENTR-2):
+        # flat state file absent; follow latest to find the interrupted per-run state.
+        local _lr_recommendation
+        _lr_recommendation="$(get_resume_recommendation "$state_dir/latest/pipeline-state.json")"
+        case "$_lr_recommendation" in
+            auto_resume)
+                info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
+                # Resolve the per-run dir so artifact operations use the concrete path.
+                state_dir="$(readlink -f "$state_dir/latest")"
+                state_file="$state_dir/pipeline-state.json"
+                _runner_state_file="$state_file"
                 resume_mode=true
                 _runner_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
                 _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
