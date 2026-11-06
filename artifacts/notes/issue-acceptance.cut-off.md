@@ -1,0 +1,31 @@
+- said: I need to examine the actual code and test files to judge whether each requirement is met. Let me start by reading the key files.
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/docs/adr/ADR-006-resume-contract.md
+- Grep: _runner_resume_rehydrate|resume_mode|skip_until_stage|_run_dispatch_units|_runner_linear_cardinal
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/docs/adr/ADR-050-prior-work-reuse-contract.md
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Grep: pipeline resume|resume_rehydrate|_runner_resume_rehydrate
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Grep: retry|stage\.retry|RETRY|_runner_retry
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Grep: cycle_dispatch_stage|_runner_retry|stage_retry|_CYCLE_DISPATCH_VERDICT
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/unit/stage-retry-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/state/resume.sh
+- Grep: auto_resume|manual_resume|fresh_start|in_progress|interrupted|recommend
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Grep: pipeline.*resume|run-id|ZBUILD_STATE_FILE|state_dir.*runs
+- Grep: pipeline.*resume|run-id|ZBUILD_STATE_FILE.*runs|export ZBUILD_STATE_FILE
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-loop-state-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh
+- Grep: assert_gt|broken|unusable
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/artifact-snapshot-coverage.yaml
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
