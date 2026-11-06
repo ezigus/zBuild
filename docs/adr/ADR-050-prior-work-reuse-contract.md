@@ -444,7 +444,7 @@ no model ever reads that line.
 - §4 (a snapshot at each stage boundary; a failed snapshot never aborts the run) → `tests/integration/artifact-snapshot-runner-test.sh`
 - §4 (#1921: persist's own result joins the store; the secret gate runs before the push) → `tests/unit/persist-stage-test.sh`
 - §5 (`_read_prior_output` order; no restored tier, §9) → `tests/unit/prior-output-reader-test.sh` T2; `tests/unit/own-run-artifacts-first-test.sh` O5–O8
-- §6 (never skip a stage on the basis of prior output — design always runs, the prior design is a reference in its prompt) → `tests/unit/resume-default-test.sh` R5–R11 (#2299)
+- §6 (never skip a stage on the basis of prior output — design always runs, the prior design is a reference in its prompt; new-run invariant governs new runs; resume governed by ADR-006) → `tests/unit/resume-default-test.sh` R5–R11 (#2299); `tests/integration/resume-rehydrate-test.sh` FRSH-2 (new-run side); `tests/integration/resume-entry-points-test.sh` ENTR-1 (resume side)
 - §7 (persist is an always-run stage) → `tests/unit/template-always-run-test.sh`
 - §10 (no changes, no save: with no starting commit set a stage end pushes nothing and the work branch on origin is untouched; with no commits past it, nothing is pushed) → `tests/unit/stage-work-saved-test.sh` SPEC-8, SPEC-9
 - §10 (the starting commit is set by the engine before any stage, hydrate included) → `tests/integration/engine-run-branch-test.sh` E1
